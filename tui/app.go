@@ -44,9 +44,13 @@ func NewApp(theme int, glyphSet string) *App {
 	}
 
 	a.Main = NewMainDisplay(tviewApp, theme, glyphSet)
-	tviewApp.SetRoot(a.Main.Root(), true)
 
 	return a
+}
+
+// SetRoot sets the root primitive for the application.
+func (a *App) SetRoot() {
+	a.Application.SetRoot(a.Main.Root(), true)
 }
 
 // Run starts the tview application event loop.
