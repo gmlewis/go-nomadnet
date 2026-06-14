@@ -495,3 +495,187 @@ func tempDir(t *testing.T) string {
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
 	return dir
 }
+
+// TestPythonConfigCompatibility verifies that Go can read a Python-generated config file.
+func TestPythonConfigCompatibility(t *testing.T) {
+	t.Parallel()
+
+	// This simulates a Python-generated config file
+	pythonConfig := `[logging]
+loglevel = 4
+destination = file
+
+[client]
+enable_client = yes
+user_interface = text
+downloads_path = ~/Downloads
+announce_at_start = yes
+announce_interval = 360
+try_propagation_on_send_fail = yes
+periodic_lxmf_sync = yes
+lxmf_sync_interval = 360
+lxmf_sync_limit = 8
+required_stamp_cost = None
+accept_invalid_stamps = no
+max_accepted_size = 500
+compact_announce_stream = no
+notify_on_new_message = yes
+compose_in_markdown = yes
+
+[textui]
+intro_time = 1
+theme = dark
+colormode = 24bit
+glyphs = unicode
+mouse_enabled = yes
+editor = nano
+hide_guide = no
+sanitize_names = yes
+clipboard_copy = no
+
+[rrc]
+history_per_room_cap = 500
+filter_loaded_history = yes
+ephemeral_notices = 10
+color_mention_timestamps = yes
+render_markdown = yes
+render_micron = yes
+nick_colors = yes
+justify_msgs = yes
+space_msgs = no
+show_gutters = yes
+enable_esoterics = no
+
+[node]
+enable_node = no
+announce_interval = 360
+announce_at_start = yes
+disable_propagation = yes
+propagation_cost = 16
+max_transfer_size = 256
+max_sync_size = 10240
+page_refresh_interval = 0
+file_refresh_interval = 0
+message_storage_limit = 2000
+
+[printing]
+print_messages = no
+print_command = lp
+`
+
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config")
+	if err := os.WriteFile(configPath, []byte(pythonConfig), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	c, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	// Verify logging
+	if c.Logging.LogLevel != 4 {
+		t.Errorf("LogLevel = %d, want 4", c.Logging.LogLevel)
+	}
+	if c.Logging.Destination != "file" {
+		t.Errorf("Destination = %q, want %q", c.Logging.Destination, "file")
+	}
+
+	// Verify client
+	if !c.Client.EnableClient {
+		t.Error("EnableClient = false, want true")
+	}
+	if c.Client.UserInterface != "text" {
+		t.Errorf("UserInterface = %q, want %q", c.Client.UserInterface, "text")
+	}
+	if c.Client.AnnounceInterval != 360*60 {
+		t.Errorf("AnnounceInterval = %d, want %d", c.Client.AnnounceInterval, 360*60)
+	}
+	if c.Client.RequiredStampCost != nil {
+		t.Errorf("RequiredStampCost = %v, want nil", c.Client.RequiredStampCost)
+	}
+	if c.Client.MaxAcceptedSize != 500 {
+		t.Errorf("MaxAcceptedSize = %f, want 500", c.Client.MaxAcceptedSize)
+	}
+
+	// Verify textui
+	if c.TextUI.Theme != "dark" {
+		t.Errorf("Theme = %q, want %q", c.TextUI.Theme, "dark")
+	}
+	if c.TextUI.Glyphs != "unicode" {
+		t.Errorf("Glyphs = %q, want %q", c.TextUI.Glyphs, "unicode")
+	}
+	if c.TextUI.Editor != "nano" {
+		t.Errorf("Editor = %q, want %q", c.TextUI.Editor, "nano")
+	}
+
+	// Verify rrc
+	if c.RRC.HistoryPerRoomCap != 500 {
+		t.Errorf("HistoryPerRoomCap = %d, want 500", c.RRC.HistoryPerRoomCap)
+	}
+	if c.RRC.NickColors != true {
+		t.Error("NickColors = false, want true")
+	}
+	if c.RRC.RenderMicron != true {
+		t.Error("RenderMicron = false, want true")
+	}
+
+	// Verify node
+	if c.Node.EnableNode != false {
+		t.Error("EnableNode = true, want false")
+	}
+	if c.Node.PropagationCost != 16 {
+		t.Errorf("PropagationCost = %d, want 16", c.Node.PropagationCost)
+	}
+	if c.Node.MaxTransferSize != 256 {
+		t.Errorf("MaxTransferSize = %f, want 256", c.Node.MaxTransferSize)
+	}
+
+	// Verify printing
+	if c.Printing.PrintMessages != false {
+		t.Error("PrintMessages = true, want false")
+	}
+	if c.Printing.PrintCommand != "lp" {
+		t.Errorf("PrintCommand = %q, want %q", c.Printing.PrintCommand, "lp")
+	}
+}
+
+// TestGoConfigRoundTrip verifies that Go can write a config and read it back.
+func TestGoConfigRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config")
+
+	// Create and save config
+	c := DefaultConfig()
+	c.Client.EnableClient = false
+	c.TextUI.Theme = "light"
+	c.Node.EnableNode = true
+	c.Node.NodeName = "TestNode"
+
+	if err := Save(c, configPath); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	// Load it back
+	loaded, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	// Verify round-trip
+	if loaded.Client.EnableClient != false {
+		t.Error("EnableClient = true after round-trip, want false")
+	}
+	if loaded.TextUI.Theme != "light" {
+		t.Errorf("Theme = %q, want %q", loaded.TextUI.Theme, "light")
+	}
+	if !loaded.Node.EnableNode {
+		t.Error("EnableNode = false after round-trip, want true")
+	}
+	if loaded.Node.NodeName != "TestNode" {
+		t.Errorf("NodeName = %q, want %q", loaded.Node.NodeName, "TestNode")
+	}
+}

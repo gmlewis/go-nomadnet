@@ -280,8 +280,10 @@ func TestSharedInstance(t *testing.T) {
 	t.Parallel()
 
 	// Reset global state
+	globalMu.Lock()
 	globalApp = nil
 	appOnce = sync.Once{}
+	globalMu.Unlock()
 
 	if SharedInstance() != nil {
 		t.Error("SharedInstance() = non-nil before Init")

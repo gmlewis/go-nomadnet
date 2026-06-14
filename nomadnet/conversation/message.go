@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/vmihailenco/msgpack/v5"
 )
@@ -380,9 +379,4 @@ func toInt(v any) (int, bool) {
 	default:
 		return 0, false
 	}
-}
-
-// now returns the current time as a Unix timestamp.
-func now() float64 {
-	return float64(time.Now().UnixNano()) / 1e9
 }

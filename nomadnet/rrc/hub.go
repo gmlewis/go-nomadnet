@@ -75,15 +75,14 @@ type RRCHub struct {
 	NickOverride  string
 
 	// Internal state
-	lock              sync.Mutex
-	sentIDs           *ring.Ring           // dedup ring buffer
-	pendingPings      map[string]time.Time // body → send time
-	pendingJoins      map[string]bool
-	pendingParts      map[string]bool
-	silentJoins       map[string]bool
-	silentWhoRooms    map[string]bool
-	reconnectAttempts int
-	historyPath       string
+	lock           sync.Mutex
+	sentIDs        *ring.Ring           // dedup ring buffer
+	pendingPings   map[string]time.Time // body → send time
+	pendingJoins   map[string]bool
+	pendingParts   map[string]bool
+	silentJoins    map[string]bool
+	silentWhoRooms map[string]bool
+	historyPath    string
 }
 
 // NewHub creates a new RRCHub with default values.

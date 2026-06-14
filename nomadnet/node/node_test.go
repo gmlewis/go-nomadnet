@@ -321,7 +321,7 @@ func TestServeFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ServeFile: %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	if name != "test.txt" {
 		t.Errorf("filename = %q, want %q", name, "test.txt")

@@ -153,11 +153,14 @@ type App struct {
 var (
 	globalApp *App
 	appOnce   sync.Once
+	globalMu  sync.Mutex
 )
 
 // SharedInstance returns the global App singleton. Returns nil if not
 // yet initialized.
 func SharedInstance() *App {
+	globalMu.Lock()
+	defer globalMu.Unlock()
 	return globalApp
 }
 
@@ -219,7 +222,9 @@ func (a *App) Init() error {
 	a.RRC = rrc.NewManager(a.StoragePath, nil)
 
 	// Set global singleton
+	globalMu.Lock()
 	globalApp = a
+	globalMu.Unlock()
 	appOnce.Do(func() {})
 
 	return nil
