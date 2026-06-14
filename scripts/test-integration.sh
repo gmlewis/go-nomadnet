@@ -2,18 +2,20 @@
 # -*- compile-command: "./test-integration.sh"; -*-
 
 # Copyright 2026 Glenn Lewis. All rights reserved.
-#
-# Use of this source code is governed by the Reticulum License
-# that can be found in the LICENSE file.
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
 
 # test-integration.sh runs integration tests with the 'integration' build tag.
-# These tests verify Go/Python parity and full audio pipeline behavior.
+# These tests verify Go/Python parity and NomadNet/LXMF integration.
 
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 REPO_ROOT="${SCRIPT_DIR}/.."
 
 # Point to the original Python repo directories for parity testing
-export ORIGINAL_LXST_REPO_DIR="${ORIGINAL_LXST_REPO_DIR:-$HOME/src/github.com/markqvist/LXST}"
+export ORIGINAL_NOMADNET_REPO_DIR="${ORIGINAL_NOMADNET_REPO_DIR:-$HOME/src/github.com/markqvist/nomadnet}"
 
 ERRCHECK_BIN="$(command -v errcheck || true)"
 if [[ -z "${ERRCHECK_BIN}" ]]; then

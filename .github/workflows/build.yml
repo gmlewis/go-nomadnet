@@ -1,4 +1,4 @@
-name: Build Go LXST
+name: Build Go NomadNet
 
 on:
   push:
@@ -74,13 +74,10 @@ jobs:
   vet:
     name: Go Vet
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
-
-      - name: Install ALSA dev libraries
-        run: sudo apt-get update && sudo apt-get install -y libasound2-dev pkg-config
 
       - name: Set up Go
         uses: actions/setup-go@v6
@@ -94,13 +91,10 @@ jobs:
   errcheck:
     name: Errcheck
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
-
-      - name: Install ALSA dev libraries
-        run: sudo apt-get update && sudo apt-get install -y libasound2-dev pkg-config
 
       - name: Set up Go
         uses: actions/setup-go@v6
@@ -117,13 +111,10 @@ jobs:
   staticcheck:
     name: Staticcheck
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
-
-      - name: Install ALSA dev libraries
-        run: sudo apt-get update && sudo apt-get install -y libasound2-dev pkg-config
 
       - name: Set up Go
         uses: actions/setup-go@v6
@@ -144,9 +135,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
-
-      - name: Install ALSA dev libraries
-        run: sudo apt-get update && sudo apt-get install -y libasound2-dev pkg-config
 
       - name: Set up Go
         uses: actions/setup-go@v6

@@ -1,12 +1,13 @@
 #!/bin/bash
 
 # Copyright 2026 Glenn Lewis. All rights reserved.
-#
-# Use of this source code is governed by the Reticulum License
-# that can be found in the LICENSE file.
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
 
 # run-all-tests.sh runs all unit tests and integration tests with timeouts.
-# This is the top-level test script for the go-lxst project.
 
 set -euo pipefail
 set -x
