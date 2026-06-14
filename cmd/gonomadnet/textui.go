@@ -76,6 +76,9 @@ func runTextUI(configDir, rnsConfigDir string) {
 	// Wire up real displays
 	wireDisplays(tuiApp, a)
 
+	// Force initial draw after all displays are set up
+	tuiApp.QueueUpdateDraw(func() {})
+
 	if err := tuiApp.Run(); err != nil {
 		log.Fatalf("TUI error: %v", err)
 	}
