@@ -58,3 +58,10 @@ func (a *App) Run() error {
 func (a *App) Stop() {
 	a.Application.Stop()
 }
+
+// SetQuitCallback sets the callback invoked when the user quits.
+func (a *App) SetQuitCallback(fn func()) {
+	if a.Main != nil {
+		a.Main.SetQuitCallback(fn)
+	}
+}
