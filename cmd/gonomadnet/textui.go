@@ -17,6 +17,8 @@ package main
 
 import (
 	"log"
+	"os"
+	"path/filepath"
 
 	"github.com/gmlewis/go-nomadnet/nomadnet/app"
 	"github.com/gmlewis/go-nomadnet/tui"
@@ -24,6 +26,20 @@ import (
 
 // runTextUI starts NomadNet with the terminal UI.
 func runTextUI(configDir, rnsConfigDir string) {
+	// Ensure the log directory exists
+	logDir := filepath.Join(configDir, "logs")
+	_ = os.MkdirAll(logDir, 0o755)
+
+	// Redirect standard log to file BEFORE any logging happens
+	// (matches gornphone pattern to prevent log output destroying TUI)
+	logPath := filepath.Join(logDir, "nomadnet.log")
+	logFile, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err == nil {
+		defer logFile.Close()
+		log.SetOutput(logFile)
+		log.SetFlags(0)
+	}
+
 	log.Printf("Nomad Network text UI starting...")
 
 	// Initialize the app
