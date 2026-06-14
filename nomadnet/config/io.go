@@ -72,20 +72,20 @@ func Save(c *Config, path string) error {
 	})
 
 	clientKeys := map[string]string{
-		"enable_client":               boolStr(c.Client.EnableClient),
-		"user_interface":              c.Client.UserInterface,
-		"downloads_path":              c.Client.DownloadsPath,
-		"notify_on_new_message":       boolStr(c.Client.NotifyOnNewMessage),
-		"announce_at_start":           boolStr(c.Client.AnnounceAtStart),
-		"announce_interval":           fmt.Sprintf("%d", c.Client.AnnounceInterval/60),
+		"enable_client":                boolStr(c.Client.EnableClient),
+		"user_interface":               c.Client.UserInterface,
+		"downloads_path":               c.Client.DownloadsPath,
+		"notify_on_new_message":        boolStr(c.Client.NotifyOnNewMessage),
+		"announce_at_start":            boolStr(c.Client.AnnounceAtStart),
+		"announce_interval":            fmt.Sprintf("%d", c.Client.AnnounceInterval/60),
 		"try_propagation_on_send_fail": boolStr(c.Client.TryPropagationOnSendFail),
-		"periodic_lxmf_sync":         boolStr(c.Client.PeriodicLXMFSync),
-		"lxmf_sync_interval":         fmt.Sprintf("%d", c.Client.LXMFSyncInterval/60),
-		"lxmf_sync_limit":            fmt.Sprintf("%d", c.Client.LXMFSyncLimit),
-		"accept_invalid_stamps":      boolStr(c.Client.AcceptInvalidStamps),
-		"max_accepted_size":          fmt.Sprintf("%.0f", c.Client.MaxAcceptedSize),
-		"compact_announce_stream":    boolStr(c.Client.CompactAnnounceStream),
-		"compose_in_markdown":        boolStr(c.Client.ComposeInMarkdown),
+		"periodic_lxmf_sync":           boolStr(c.Client.PeriodicLXMFSync),
+		"lxmf_sync_interval":           fmt.Sprintf("%d", c.Client.LXMFSyncInterval/60),
+		"lxmf_sync_limit":              fmt.Sprintf("%d", c.Client.LXMFSyncLimit),
+		"accept_invalid_stamps":        boolStr(c.Client.AcceptInvalidStamps),
+		"max_accepted_size":            fmt.Sprintf("%.0f", c.Client.MaxAcceptedSize),
+		"compact_announce_stream":      boolStr(c.Client.CompactAnnounceStream),
+		"compose_in_markdown":          boolStr(c.Client.ComposeInMarkdown),
 	}
 	if c.Client.RequiredStampCost != nil {
 		clientKeys["required_stamp_cost"] = fmt.Sprintf("%d", *c.Client.RequiredStampCost)
@@ -107,17 +107,17 @@ func Save(c *Config, path string) error {
 	})
 
 	rrcKeys := map[string]string{
-		"history_per_room_cap":        fmt.Sprintf("%d", c.RRC.HistoryPerRoomCap),
-		"filter_loaded_history":       boolStr(c.RRC.FilterLoadedHistory),
-		"ephemeral_notices":           fmt.Sprintf("%.0f", c.RRC.EphemeralNotices),
-		"color_mention_timestamps":    boolStr(c.RRC.ColorMentionTimestamps),
-		"render_markdown":             boolStr(c.RRC.RenderMarkdown),
-		"render_micron":               boolStr(c.RRC.RenderMicron),
-		"nick_colors":                 boolStr(c.RRC.NickColors),
-		"justify_msgs":                boolStr(c.RRC.JustifyMsgs),
-		"space_msgs":                  boolStr(c.RRC.SpaceMsgs),
-		"show_gutters":                boolStr(c.RRC.ShowGutters),
-		"enable_esoterics":            boolStr(c.RRC.EnableEsoterics),
+		"history_per_room_cap":     fmt.Sprintf("%d", c.RRC.HistoryPerRoomCap),
+		"filter_loaded_history":    boolStr(c.RRC.FilterLoadedHistory),
+		"ephemeral_notices":        fmt.Sprintf("%.0f", c.RRC.EphemeralNotices),
+		"color_mention_timestamps": boolStr(c.RRC.ColorMentionTimestamps),
+		"render_markdown":          boolStr(c.RRC.RenderMarkdown),
+		"render_micron":            boolStr(c.RRC.RenderMicron),
+		"nick_colors":              boolStr(c.RRC.NickColors),
+		"justify_msgs":             boolStr(c.RRC.JustifyMsgs),
+		"space_msgs":               boolStr(c.RRC.SpaceMsgs),
+		"show_gutters":             boolStr(c.RRC.ShowGutters),
+		"enable_esoterics":         boolStr(c.RRC.EnableEsoterics),
 	}
 	if c.RRC.MentionColor != "" {
 		rrcKeys["mention_color"] = c.RRC.MentionColor
@@ -128,13 +128,13 @@ func Save(c *Config, path string) error {
 	writeSection("rrc", rrcKeys)
 
 	nodeKeys := map[string]string{
-		"enable_node":         boolStr(c.Node.EnableNode),
-		"announce_interval":   fmt.Sprintf("%d", c.Node.AnnounceInterval/60),
-		"announce_at_start":   boolStr(c.Node.AnnounceAtStart),
-		"disable_propagation": boolStr(c.Node.DisablePropagation),
-		"propagation_cost":    fmt.Sprintf("%d", c.Node.PropagationCost),
-		"max_transfer_size":   fmt.Sprintf("%.0f", c.Node.MaxTransferSize),
-		"max_sync_size":       fmt.Sprintf("%.0f", c.Node.MaxSyncSize),
+		"enable_node":           boolStr(c.Node.EnableNode),
+		"announce_interval":     fmt.Sprintf("%d", c.Node.AnnounceInterval/60),
+		"announce_at_start":     boolStr(c.Node.AnnounceAtStart),
+		"disable_propagation":   boolStr(c.Node.DisablePropagation),
+		"propagation_cost":      fmt.Sprintf("%d", c.Node.PropagationCost),
+		"max_transfer_size":     fmt.Sprintf("%.0f", c.Node.MaxTransferSize),
+		"max_sync_size":         fmt.Sprintf("%.0f", c.Node.MaxSyncSize),
 		"page_refresh_interval": fmt.Sprintf("%d", c.Node.PageRefreshInterval),
 		"file_refresh_interval": fmt.Sprintf("%d", c.Node.FileRefreshInterval),
 		"message_storage_limit": fmt.Sprintf("%.0f", c.Node.MessageStorageLimit),

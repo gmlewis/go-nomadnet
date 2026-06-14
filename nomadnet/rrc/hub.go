@@ -58,15 +58,15 @@ type RRCHub struct {
 	RateLimitMsgsPerMin int
 
 	// Room state
-	Rooms        map[string]bool   // joined rooms (lowercased)
-	Messages     map[string][]*RRCMessage // room → messages
-	Notices      []*RRCMessage     // global notices
-	UnreadRooms  map[string]bool   // rooms with unread messages
-	MentionRooms map[string]bool   // rooms with unread mentions
-	Members      map[string]map[string]bool // room → set of hash hex
-	Nicks        map[string]string  // hash hex → nick
-	PartedRooms  map[string]bool   // rooms with history but not joined
-	AvailableRooms map[string]*string // room → topic or nil
+	Rooms          map[string]bool            // joined rooms (lowercased)
+	Messages       map[string][]*RRCMessage   // room → messages
+	Notices        []*RRCMessage              // global notices
+	UnreadRooms    map[string]bool            // rooms with unread messages
+	MentionRooms   map[string]bool            // rooms with unread mentions
+	Members        map[string]map[string]bool // room → set of hash hex
+	Nicks          map[string]string          // hash hex → nick
+	PartedRooms    map[string]bool            // rooms with history but not joined
+	AvailableRooms map[string]*string         // room → topic or nil
 
 	// Auto-connect options
 	AutoReconnect bool
@@ -76,7 +76,7 @@ type RRCHub struct {
 
 	// Internal state
 	lock              sync.Mutex
-	sentIDs           *ring.Ring // dedup ring buffer
+	sentIDs           *ring.Ring           // dedup ring buffer
 	pendingPings      map[string]time.Time // body → send time
 	pendingJoins      map[string]bool
 	pendingParts      map[string]bool
@@ -96,31 +96,31 @@ func NewHub(manager *RRCManager, hubHash []byte, destName, name string) *RRCHub 
 	}
 
 	h := &RRCHub{
-		Manager:           manager,
-		HubHash:           hubHash,
-		DestName:          destName,
-		Name:              name,
-		Status:            StatusDisconnected,
-		StatusText:        "Disconnected",
-		MaxNickBytes:      DefaultMaxNickBytes,
-		MaxRoomNameBytes:  DefaultMaxRoomBytes,
-		MaxMsgBodyBytes:   DefaultMaxMsgBytes,
-		MaxRoomsPerSession: DefaultMaxRooms,
+		Manager:             manager,
+		HubHash:             hubHash,
+		DestName:            destName,
+		Name:                name,
+		Status:              StatusDisconnected,
+		StatusText:          "Disconnected",
+		MaxNickBytes:        DefaultMaxNickBytes,
+		MaxRoomNameBytes:    DefaultMaxRoomBytes,
+		MaxMsgBodyBytes:     DefaultMaxMsgBytes,
+		MaxRoomsPerSession:  DefaultMaxRooms,
 		RateLimitMsgsPerMin: DefaultRatePerMinute,
-		Rooms:             make(map[string]bool),
-		Messages:          make(map[string][]*RRCMessage),
-		UnreadRooms:       make(map[string]bool),
-		MentionRooms:      make(map[string]bool),
-		Members:           make(map[string]map[string]bool),
-		Nicks:             make(map[string]string),
-		PartedRooms:       make(map[string]bool),
-		AvailableRooms:    make(map[string]*string),
-		sentIDs:           ring.New(256),
-		pendingPings:      make(map[string]time.Time),
-		pendingJoins:      make(map[string]bool),
-		pendingParts:      make(map[string]bool),
-		silentJoins:       make(map[string]bool),
-		silentWhoRooms:    make(map[string]bool),
+		Rooms:               make(map[string]bool),
+		Messages:            make(map[string][]*RRCMessage),
+		UnreadRooms:         make(map[string]bool),
+		MentionRooms:        make(map[string]bool),
+		Members:             make(map[string]map[string]bool),
+		Nicks:               make(map[string]string),
+		PartedRooms:         make(map[string]bool),
+		AvailableRooms:      make(map[string]*string),
+		sentIDs:             ring.New(256),
+		pendingPings:        make(map[string]time.Time),
+		pendingJoins:        make(map[string]bool),
+		pendingParts:        make(map[string]bool),
+		silentJoins:         make(map[string]bool),
+		silentWhoRooms:      make(map[string]bool),
 	}
 
 	return h

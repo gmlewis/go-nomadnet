@@ -32,9 +32,9 @@ const AnnounceStreamMaxLen = 256
 
 // Announce represents a single announce entry in the stream.
 type Announce struct {
-	Timestamp   float64
-	SourceHash  []byte
-	AppData     []byte
+	Timestamp    float64
+	SourceHash   []byte
+	AppData      []byte
 	AnnounceType string // "peer", "node", or "pn"
 }
 

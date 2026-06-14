@@ -28,29 +28,29 @@ import (
 
 // Settings holds local peer configuration and state.
 type Settings struct {
-	DisplayName         string `msgpack:"display_name"`
-	AnnounceInterval    int    `msgpack:"announce_interval"`
-	LastAnnounce        any    `msgpack:"last_announce"`
-	NodeLastAnnounce    any    `msgpack:"node_last_announce"`
-	PropagationNode     any    `msgpack:"propagation_node"`
-	LastLXMFSync        int    `msgpack:"last_lxmf_sync"`
-	NodeConnects        int    `msgpack:"node_connects"`
-	ServedPageRequests  int    `msgpack:"served_page_requests"`
-	ServedFileRequests  int    `msgpack:"served_file_requests"`
+	DisplayName        string `msgpack:"display_name"`
+	AnnounceInterval   int    `msgpack:"announce_interval"`
+	LastAnnounce       any    `msgpack:"last_announce"`
+	NodeLastAnnounce   any    `msgpack:"node_last_announce"`
+	PropagationNode    any    `msgpack:"propagation_node"`
+	LastLXMFSync       int    `msgpack:"last_lxmf_sync"`
+	NodeConnects       int    `msgpack:"node_connects"`
+	ServedPageRequests int    `msgpack:"served_page_requests"`
+	ServedFileRequests int    `msgpack:"served_file_requests"`
 }
 
 // DefaultSettings returns a new Settings with default values.
 func DefaultSettings(announceInterval int) *Settings {
 	return &Settings{
-		DisplayName:      "Anonymous Peer",
-		AnnounceInterval: announceInterval,
-		LastAnnounce:     nil,
-		NodeLastAnnounce: nil,
-		PropagationNode:  nil,
-		LastLXMFSync:     0,
-		NodeConnects:     0,
-		ServedPageRequests:  0,
-		ServedFileRequests:  0,
+		DisplayName:        "Anonymous Peer",
+		AnnounceInterval:   announceInterval,
+		LastAnnounce:       nil,
+		NodeLastAnnounce:   nil,
+		PropagationNode:    nil,
+		LastLXMFSync:       0,
+		NodeConnects:       0,
+		ServedPageRequests: 0,
+		ServedFileRequests: 0,
 	}
 }
 

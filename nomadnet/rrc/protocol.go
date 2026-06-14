@@ -74,11 +74,11 @@ const (
 
 // Limit keys in WELCOME body.
 const (
-	LMaxNickBytes            = 0
-	LMaxRoomNameBytes        = 1
-	LMaxMsgBodyBytes         = 2
-	LMaxRoomsPerSession      = 3
-	LRateLimitMsgsPerMinute  = 4
+	LMaxNickBytes           = 0
+	LMaxRoomNameBytes       = 1
+	LMaxMsgBodyBytes        = 2
+	LMaxRoomsPerSession     = 3
+	LRateLimitMsgsPerMinute = 4
 )
 
 // Capability flags.
@@ -105,12 +105,12 @@ const (
 
 // Default values.
 const (
-	DefaultDestName       = "rrc.hub"
-	DefaultMaxNickBytes   = 32
-	DefaultMaxRoomBytes   = 64
-	DefaultMaxMsgBytes    = 350
-	DefaultMaxRooms       = 32
-	DefaultRatePerMinute  = 240
+	DefaultDestName      = "rrc.hub"
+	DefaultMaxNickBytes  = 32
+	DefaultMaxRoomBytes  = 64
+	DefaultMaxMsgBytes   = 350
+	DefaultMaxRooms      = 32
+	DefaultRatePerMinute = 240
 )
 
 // History entry keys for persistence.
@@ -133,6 +133,6 @@ const (
 
 // Timing constants.
 const (
-	CleanHistoryInterval = 5  // seconds between history cleanups
+	CleanHistoryInterval = 5   // seconds between history cleanups
 	NoticeTimeout        = 600 // seconds before ephemeral notices expire
 )

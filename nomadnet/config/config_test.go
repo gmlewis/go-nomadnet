@@ -254,21 +254,21 @@ func TestApplyCustomValues(t *testing.T) {
 	c := DefaultConfig()
 	c.Raw = map[string]map[string]string{
 		"client": {
-			"enable_client":     "no",
-			"announce_interval": "60",
+			"enable_client":       "no",
+			"announce_interval":   "60",
 			"required_stamp_cost": "42",
-			"max_accepted_size": "1024.5",
+			"max_accepted_size":   "1024.5",
 		},
 		"textui": {
-			"theme":    "light",
-			"glyphs":   "unicode",
-			"editor":   "vim",
+			"theme":  "light",
+			"glyphs": "unicode",
+			"editor": "vim",
 		},
 		"node": {
-			"enable_node":       "yes",
-			"node_name":         "MyNode",
-			"propagation_cost":  "20",
-			"max_peers":         "10",
+			"enable_node":      "yes",
+			"node_name":        "MyNode",
+			"propagation_cost": "20",
+			"max_peers":        "10",
 		},
 	}
 

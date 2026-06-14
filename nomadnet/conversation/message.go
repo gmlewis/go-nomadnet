@@ -40,9 +40,9 @@ const (
 type SignatureState int
 
 const (
-	SigValidated    SignatureState = 0
+	SigValidated     SignatureState = 0
 	SigSourceUnknown SignatureState = 1
-	SigInvalid      SignatureState = 2
+	SigInvalid       SignatureState = 2
 )
 
 // Message represents a single message in a conversation.
@@ -51,7 +51,7 @@ type Message struct {
 
 	Loaded bool
 
-	Timestamp    *float64
+	Timestamp     *float64
 	SortTimestamp float64
 
 	// Cached fields from the LXM
@@ -256,19 +256,19 @@ func (m *Message) ToIndexEntry() map[string]any {
 	}
 
 	return map[string]any{
-		"timestamp":              ts,
-		"sort_timestamp":         m.SortTimestamp,
-		"state":                  state,
-		"title":                  m.CachedTitle,
-		"content":                m.CachedContent,
-		"source_hash":            m.CachedSourceHash,
-		"transport_encrypted":    m.CachedTransportEncrypted,
-		"signature_validated":    sigValid,
-		"unverified_reason":      m.CachedUnverifiedReason,
-		"method":                 m.CachedMethod,
-		"renderer":               renderer,
-		"has_attachments":        m.CachedHasAttachments,
-		"attachment_names":       attNames,
+		"timestamp":           ts,
+		"sort_timestamp":      m.SortTimestamp,
+		"state":               state,
+		"title":               m.CachedTitle,
+		"content":             m.CachedContent,
+		"source_hash":         m.CachedSourceHash,
+		"transport_encrypted": m.CachedTransportEncrypted,
+		"signature_validated": sigValid,
+		"unverified_reason":   m.CachedUnverifiedReason,
+		"method":              m.CachedMethod,
+		"renderer":            renderer,
+		"has_attachments":     m.CachedHasAttachments,
+		"attachment_names":    attNames,
 	}
 }
 

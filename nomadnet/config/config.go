@@ -82,46 +82,46 @@ type TextUIConfig struct {
 
 // RRCConfig holds Reticulum Relay Chat settings.
 type RRCConfig struct {
-	HistoryPerRoomCap           int
-	FilterLoadedHistory         bool
-	EphemeralNotices            float64 // minutes
-	ColorMentionTimestamps      bool
-	RenderMarkdown              bool
-	RenderMicron                bool
-	NickColors                  bool
-	JustifyMsgs                 bool
-	SpaceMsgs                   bool
-	ShowGutters                 bool
-	MentionColor                string
-	NickColorsTheme             []string
-	EnableEsoterics             bool
+	HistoryPerRoomCap      int
+	FilterLoadedHistory    bool
+	EphemeralNotices       float64 // minutes
+	ColorMentionTimestamps bool
+	RenderMarkdown         bool
+	RenderMicron           bool
+	NickColors             bool
+	JustifyMsgs            bool
+	SpaceMsgs              bool
+	ShowGutters            bool
+	MentionColor           string
+	NickColorsTheme        []string
+	EnableEsoterics        bool
 }
 
 // NodeConfig holds node settings.
 type NodeConfig struct {
-	EnableNode           bool
-	NodeName             string
-	AnnounceInterval     int // seconds
-	AnnounceAtStart      bool
-	DisablePropagation   bool
-	PropagationCost      int
-	MaxTransferSize      float64 // KB
-	MaxSyncSize          float64 // KB
-	PagesPath            string
-	PageRefreshInterval  int
-	FilesPath            string
-	FileRefreshInterval  int
+	EnableNode             bool
+	NodeName               string
+	AnnounceInterval       int // seconds
+	AnnounceAtStart        bool
+	DisablePropagation     bool
+	PropagationCost        int
+	MaxTransferSize        float64 // KB
+	MaxSyncSize            float64 // KB
+	PagesPath              string
+	PageRefreshInterval    int
+	FilesPath              string
+	FileRefreshInterval    int
 	PrioritiseDestinations []string
-	StaticPeers          []string
-	MaxPeers             *int
-	MessageStorageLimit  float64 // MB
+	StaticPeers            []string
+	MaxPeers               *int
+	MessageStorageLimit    float64 // MB
 }
 
 // PrintingConfig holds printing settings.
 type PrintingConfig struct {
-	PrintMessages  bool
-	PrintCommand   string
-	PrintFrom      string
+	PrintMessages   bool
+	PrintCommand    string
+	PrintFrom       string
 	MessageTemplate string
 }
 
@@ -174,13 +174,13 @@ func DefaultConfig() *Config {
 			ShowGutters:            true,
 		},
 		Node: NodeConfig{
-			EnableNode:         false,
-			AnnounceInterval:   360 * 60, // 360 minutes → seconds
-			AnnounceAtStart:    true,
-			DisablePropagation: true,
-			PropagationCost:    16,
-			MaxTransferSize:    256,
-			MaxSyncSize:        10240,
+			EnableNode:          false,
+			AnnounceInterval:    360 * 60, // 360 minutes → seconds
+			AnnounceAtStart:     true,
+			DisablePropagation:  true,
+			PropagationCost:     16,
+			MaxTransferSize:     256,
+			MaxSyncSize:         10240,
 			MessageStorageLimit: 2000,
 		},
 		Printing: PrintingConfig{

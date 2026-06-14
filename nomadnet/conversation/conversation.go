@@ -43,9 +43,9 @@ type Conversation struct {
 }
 
 var (
-	cachedConversations  = make(map[string]*Conversation)
-	unreadConversations  = make(map[string]bool)
-	failedConversations  = make(map[string]bool)
+	cachedConversations = make(map[string]*Conversation)
+	unreadConversations = make(map[string]bool)
+	failedConversations = make(map[string]bool)
 	cachedMu            sync.Mutex
 )
 

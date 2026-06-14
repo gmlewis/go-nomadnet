@@ -29,16 +29,16 @@ import (
 type RRCManager struct {
 	Hubs []*RRCHub
 
-	storagePath  string
+	storagePath    string
 	identityHashFn func() []byte
 
-	lock             sync.Mutex
-	changeCallback   func()
-	messageCallback  func(hub *RRCHub, msg *RRCMessage)
-	activeHub        *RRCHub
-	activeRoom       string
-	loaded           bool
-	nickname         string
+	lock            sync.Mutex
+	changeCallback  func()
+	messageCallback func(hub *RRCHub, msg *RRCMessage)
+	activeHub       *RRCHub
+	activeRoom      string
+	loaded          bool
+	nickname        string
 }
 
 // NewManager creates a new RRCManager rooted at the given storage path.
@@ -201,15 +201,15 @@ func (m *RRCManager) FindHub(hubHash []byte, destName string) *RRCHub {
 
 // HubInfo holds the serialized state of a hub for persistence.
 type HubInfo struct {
-	Hash           []byte   `cbor:"hash"`
-	DestName       string   `cbor:"dest_name"`
-	Name           string   `cbor:"name"`
-	Rooms          []string `cbor:"rooms"`
-	PartedRooms    []string `cbor:"parted_rooms"`
-	AutoReconnect  bool     `cbor:"auto_reconnect"`
-	AutoList       bool     `cbor:"auto_list"`
-	AutoWho        bool     `cbor:"auto_who"`
-	Nick           string   `cbor:"nick,omitempty"`
+	Hash          []byte   `cbor:"hash"`
+	DestName      string   `cbor:"dest_name"`
+	Name          string   `cbor:"name"`
+	Rooms         []string `cbor:"rooms"`
+	PartedRooms   []string `cbor:"parted_rooms"`
+	AutoReconnect bool     `cbor:"auto_reconnect"`
+	AutoList      bool     `cbor:"auto_list"`
+	AutoWho       bool     `cbor:"auto_who"`
+	Nick          string   `cbor:"nick,omitempty"`
 }
 
 // Save persists all hub configurations to disk.
