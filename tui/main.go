@@ -69,6 +69,15 @@ func NewMainDisplay(app *tview.Application, theme int, glyphSetName string) *Mai
 	md.contentArea = tview.NewPages()
 	md.contentArea.SetBackgroundColor(tcell.ColorDefault)
 
+	// Add placeholder content for each menu item
+	for _, item := range MenuItems {
+		placeholder := tview.NewTextView().
+			SetTextAlign(tview.AlignCenter).
+			SetTextColor(tcell.NewHexColor(0x999999)).
+			SetText(fmt.Sprintf("\n\n%s\n\n[yellow]Content will appear here[-]", item.Label))
+		md.contentArea.AddPage(item.Key, placeholder, true, false)
+	}
+
 	// Layout: menu bar on top, content below
 	md.pages.AddPage("main",
 		tview.NewFlex().SetDirection(tview.FlexRow).

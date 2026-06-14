@@ -147,7 +147,7 @@ func TestNewAppPaths(t *testing.T) {
 }
 
 func TestAppInit(t *testing.T) {
-	t.Parallel()
+	// Not parallel — Init() modifies globalApp
 
 	dir := tempDir(t)
 	a := NewApp(dir, "", false, false)
@@ -221,7 +221,7 @@ func TestAppApplyConfig(t *testing.T) {
 }
 
 func TestAppShutdown(t *testing.T) {
-	t.Parallel()
+	// Not parallel — Init() modifies globalApp
 
 	dir := tempDir(t)
 	a := NewApp(dir, "", false, false)
@@ -277,7 +277,7 @@ func TestAppConversationListEmpty(t *testing.T) {
 }
 
 func TestSharedInstance(t *testing.T) {
-	t.Parallel()
+	// Not parallel — tests share globalApp
 
 	// Reset global state
 	globalMu.Lock()
@@ -344,7 +344,7 @@ func TestAppUIModeConstants(t *testing.T) {
 }
 
 func TestAppWithConfigFile(t *testing.T) {
-	t.Parallel()
+	// Not parallel — Init() modifies globalApp
 
 	dir := tempDir(t)
 	configPath := filepath.Join(dir, "config")

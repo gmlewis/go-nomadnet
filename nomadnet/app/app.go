@@ -23,6 +23,7 @@
 package app
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -33,6 +34,8 @@ import (
 	"github.com/gmlewis/go-nomadnet/nomadnet/directory"
 	"github.com/gmlewis/go-nomadnet/nomadnet/rrc"
 	"github.com/gmlewis/go-nomadnet/nomadnet/storage"
+	"github.com/gmlewis/go-reticulum/lxmf"
+	"github.com/gmlewis/go-reticulum/rns"
 )
 
 // UI mode constants matching the Python NomadNet UI modes.
@@ -137,6 +140,15 @@ type App struct {
 	Dir     *directory.Directory
 	RRC     *rrc.RRCManager
 
+	// RNS/LXMF references
+	Logger       *rns.Logger
+	Transport    *rns.TransportSystem
+	RNS          *rns.Reticulum
+	Identity     *rns.Identity
+	Router       *lxmf.Router
+	LXMFDest     *rns.Destination
+	RNSConfigDir string
+
 	// Announce state
 	LastAnnounce    time.Time
 	LastLXMFSync    time.Time
@@ -169,6 +181,7 @@ func NewApp(configDir, rnsConfigDir string, daemon, forceConsole bool) *App {
 	a := &App{
 		Version:                   "0.1.0",
 		ConfigDir:                 configDir,
+		RNSConfigDir:              rnsConfigDir,
 		EnableClient:              true,
 		ForceConsoleLog:           forceConsole,
 		ShouldRunJobs:             true,
@@ -217,9 +230,62 @@ func (a *App) Init() error {
 	a.Config = cfg
 	a.applyConfig(cfg)
 
+	// Initialize logger
+	a.Logger = rns.NewLogger()
+	a.Logger.SetLogLevel(rns.LogNotice)
+
+	// Configure logging destination
+	if a.ForceConsoleLog {
+		a.Logger.SetLogDest(rns.LogStdout)
+	} else {
+		a.Logger.SetLogDest(rns.LogDestFile)
+		a.Logger.SetLogFilePath(a.LogFilePath)
+	}
+
+	a.Logger.Info("Nomad Network Client %s starting...", a.Version)
+
+	// Initialize RNS transport and stack
+	a.Logger.Info("Substantiating Reticulum...")
+	a.Transport = rns.NewTransportSystem(a.Logger)
+	rnsConfigDir := a.RNSConfigDir
+	if rnsConfigDir == "" {
+		// Use default RNS config location
+		home, _ := os.UserHomeDir()
+		rnsConfigDir = filepath.Join(home, ".reticulum")
+	}
+	ret, err := rns.NewReticulumWithLogger(a.Transport, rnsConfigDir, a.Logger)
+	if err != nil {
+		return fmt.Errorf("could not initialize Reticulum: %w", err)
+	}
+	a.RNS = ret
+
+	// Load or create identity
+	a.Identity, err = a.loadOrCreateIdentity(a.IdentityPath)
+	if err != nil {
+		return fmt.Errorf("could not load identity: %w", err)
+	}
+	a.Logger.Info("Identity loaded: %s", rns.PrettyHex(a.Identity.Hash))
+
 	// Initialize subsystems
 	a.Dir = directory.New()
 	a.RRC = rrc.NewManager(a.StoragePath, nil)
+
+	// Initialize LXMF router
+	a.Logger.Info("Initializing LXMF router...")
+	a.Router, err = lxmf.NewRouter(a.Transport, a.Identity, a.StoragePath)
+	if err != nil {
+		return fmt.Errorf("could not create LXMF router: %w", err)
+	}
+
+	// Register delivery callback
+	a.Router.RegisterDeliveryCallback(a.lxmfDelivery)
+
+	// Register delivery identity for receiving messages
+	a.LXMFDest, err = a.Router.RegisterDeliveryIdentity(a.Identity, a.Config.Client.UserInterface, nil)
+	if err != nil {
+		return fmt.Errorf("could not register delivery identity: %w", err)
+	}
+	a.Logger.Info("LXMF Router ready to receive on %s", rns.PrettyHex(a.LXMFDest.Hash))
 
 	// Set global singleton
 	globalMu.Lock()
@@ -227,7 +293,45 @@ func (a *App) Init() error {
 	globalMu.Unlock()
 	appOnce.Do(func() {})
 
+	// Start background jobs
+	go a.jobs()
+
 	return nil
+}
+
+// loadOrCreateIdentity loads an existing identity or creates a new one.
+func (a *App) loadOrCreateIdentity(path string) (*rns.Identity, error) {
+	if _, err := os.Stat(path); err == nil {
+		id, err := rns.FromFile(path, a.Logger)
+		if err != nil {
+			return nil, fmt.Errorf("loading identity: %w", err)
+		}
+		a.Logger.Info("Loaded identity from %s", path)
+		return id, nil
+	}
+
+	a.Logger.Info("No identity found, creating new...")
+	id, err := rns.NewIdentity(true, a.Logger)
+	if err != nil {
+		return nil, fmt.Errorf("creating identity: %w", err)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return nil, fmt.Errorf("creating identity directory: %w", err)
+	}
+	if err := id.ToFile(path); err != nil {
+		return nil, fmt.Errorf("saving identity: %w", err)
+	}
+	a.Logger.Info("Created new identity at %s", path)
+	return id, nil
+}
+
+// lxmfDelivery handles incoming LXMF messages.
+func (a *App) lxmfDelivery(msg *lxmf.Message) {
+	a.Logger.Info("Received LXMF message from %s", rns.PrettyHex(msg.SourceHash))
+	if a.DeliveryCallback != nil {
+		a.DeliveryCallback(msg)
+	}
 }
 
 // setupPaths initializes all file system paths based on ConfigDir.
@@ -310,6 +414,12 @@ func (a *App) Shutdown() {
 
 	if a.RRC != nil {
 		a.RRC.Shutdown()
+	}
+
+	if a.RNS != nil {
+		if err := a.RNS.Close(); err != nil {
+			a.Logger.Warning("Could not close Reticulum: %v", err)
+		}
 	}
 }
 
