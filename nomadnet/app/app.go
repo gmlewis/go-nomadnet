@@ -234,10 +234,23 @@ func (a *App) Init() error {
 	a.Logger = rns.NewLogger()
 	a.Logger.SetLogLevel(rns.LogNotice)
 
-	// Configure logging destination
+	// Configure logging destination — always log to file in TUI mode
+	// to prevent RNS logs from destroying the terminal display.
 	if a.ForceConsoleLog {
 		a.Logger.SetLogDest(rns.LogStdout)
 	} else {
+		// Ensure the log directory exists
+		logDir := filepath.Dir(a.LogFilePath)
+		if err := os.MkdirAll(logDir, 0o755); err != nil {
+			return fmt.Errorf("creating log directory: %w", err)
+		}
+		// Create/touch the log file so the logger can open it
+		f, err := os.OpenFile(a.LogFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+		if err != nil {
+			return fmt.Errorf("creating log file: %w", err)
+		}
+		f.Close()
+
 		a.Logger.SetLogDest(rns.LogDestFile)
 		a.Logger.SetLogFilePath(a.LogFilePath)
 	}
