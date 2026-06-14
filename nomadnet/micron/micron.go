@@ -67,7 +67,7 @@ const (
 type Alignment int
 
 const (
-	AlignLeft   Alignment = iota
+	AlignLeft Alignment = iota
 	AlignCenter
 	AlignRight
 )

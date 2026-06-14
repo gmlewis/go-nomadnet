@@ -37,69 +37,69 @@ import (
 
 // UI mode constants matching the Python NomadNet UI modes.
 const (
-	UINone     = 0
-	UIText     = 1
+	UINone      = 0
+	UIText      = 1
 	UIGraphical = 2
-	UIWeb      = 3
-	UIMenu     = 4
+	UIWeb       = 3
+	UIMenu      = 4
 )
 
 // App is the central NomadNetworkApp singleton that holds all state.
 type App struct {
 	// Core settings
-	Version       string
-	EnableClient  bool
-	EnableNode    bool
-	UIMode        int
+	Version         string
+	EnableClient    bool
+	EnableNode      bool
+	UIMode          int
 	ForceConsoleLog bool
 
 	// Paths
-	ConfigDir     string
-	ConfigPath    string
-	IgnoredPath   string
-	LogFilePath   string
-	ErrorFilePath string
-	StoragePath   string
-	IdentityPath  string
-	CachePath     string
-	ResourcePath  string
-	ConversationPath string
-	DirectoryPath string
-	PeerSettingsPath string
-	TmpFilesPath  string
-	AttachmentPath string
-	PagesPath     string
-	FilesPath     string
-	ExamplesPath  string
-	DownloadsPath string
+	ConfigDir          string
+	ConfigPath         string
+	IgnoredPath        string
+	LogFilePath        string
+	ErrorFilePath      string
+	StoragePath        string
+	IdentityPath       string
+	CachePath          string
+	ResourcePath       string
+	ConversationPath   string
+	DirectoryPath      string
+	PeerSettingsPath   string
+	TmpFilesPath       string
+	AttachmentPath     string
+	PagesPath          string
+	FilesPath          string
+	ExamplesPath       string
+	DownloadsPath      string
 	AttachmentSavePath string
 
 	// Runtime settings
-	FirstRun          bool
-	ShouldRunJobs     bool
-	JobInterval       int // seconds
-	DeferJobs         int // seconds
-	AnnounceInterval  int // seconds
-	PageRefreshInterval int // minutes
-	FileRefreshInterval int // minutes
-	StaticPeers       []string
-	PeerAnnounceAtStart bool
+	FirstRun             bool
+	ShouldRunJobs        bool
+	JobInterval          int // seconds
+	DeferJobs            int // seconds
+	AnnounceInterval     int // seconds
+	PageRefreshInterval  int // minutes
+	FileRefreshInterval  int // minutes
+	StaticPeers          []string
+	PeerAnnounceAtStart  bool
 	TryPropagationOnFail bool
-	DisablePropagation  bool
-	NotifyOnNewMessage  bool
-	ComposeMarkdown     bool
+	DisablePropagation   bool
+	NotifyOnNewMessage   bool
+	ComposeMarkdown      bool
 
 	// LXMF settings
-	LXMFSyncInterval    int // seconds
-	LXMFSyncLimit       int
-	CompactStream       bool
-	RequiredStampCost   *int
-	AcceptInvalidStamps bool
+	LXMFSyncInterval       int // seconds
+	LXMFSyncLimit          int
+	CompactStream          bool
+	RequiredStampCost      *int
+	AcceptInvalidStamps    bool
 	LXMFMaxPropagationSize *int
-	LXMFMaxSyncSize     *int
-	LXMFMaxIncomingSize *int
-	NodePropagationCost int
-	PeriodicLXMFSync    bool
+	LXMFMaxSyncSize        *int
+	LXMFMaxIncomingSize    *int
+	NodePropagationCost    int
+	PeriodicLXMFSync       bool
 
 	// Node settings
 	NodeName             string
@@ -109,27 +109,27 @@ type App struct {
 	FilePath             string
 
 	// RRC settings
-	RRCHistoryPerRoomCap    int
-	RRCFilterLoadedHistory  bool
-	RRCEphemeralNotices     int // seconds
-	RRCNickColors           bool
-	RRCNickColorsTheme      []string
-	RRCMentionColor         string
+	RRCHistoryPerRoomCap      int
+	RRCFilterLoadedHistory    bool
+	RRCEphemeralNotices       int // seconds
+	RRCNickColors             bool
+	RRCNickColorsTheme        []string
+	RRCMentionColor           string
 	RRCColorMentionTimestamps bool
-	RRCUIJustifyMsgs        bool
-	RRCUISpaceMsgs          bool
-	RRCUIRenderMarkdown     bool
-	RRCUIRenderMicron       bool
-	RRCShowGutters          bool
-	RRCEnableEsoterics      bool
+	RRCUIJustifyMsgs          bool
+	RRCUISpaceMsgs            bool
+	RRCUIRenderMarkdown       bool
+	RRCUIRenderMicron         bool
+	RRCShowGutters            bool
+	RRCEnableEsoterics        bool
 
 	// Printing settings
-	PrintMessages  bool
-	PrintCommand   string
-	PrintAllMessages bool
-	PrintTrustedMessages bool
+	PrintMessages                   bool
+	PrintCommand                    string
+	PrintAllMessages                bool
+	PrintTrustedMessages            bool
 	AllowedMessagePrintDestinations []string
-	PrintingTemplateMsg string
+	PrintingTemplateMsg             string
 
 	// Subsystem references
 	Config  *config.Config
@@ -138,10 +138,10 @@ type App struct {
 	RRC     *rrc.RRCManager
 
 	// Announce state
-	LastAnnounce     time.Time
-	LastLXMFSync     time.Time
-	LastPageRefresh  time.Time
-	LastFileRefresh  time.Time
+	LastAnnounce    time.Time
+	LastLXMFSync    time.Time
+	LastPageRefresh time.Time
+	LastFileRefresh time.Time
 
 	// Callbacks
 	DeliveryCallback func(msg any)
@@ -164,32 +164,32 @@ func SharedInstance() *App {
 // NewApp creates a new App with the given configuration directory.
 func NewApp(configDir, rnsConfigDir string, daemon, forceConsole bool) *App {
 	a := &App{
-		Version:                "0.1.0",
-		ConfigDir:              configDir,
-		EnableClient:           true,
-		ForceConsoleLog:        forceConsole,
-		ShouldRunJobs:          true,
-		JobInterval:            5,
-		DeferJobs:              90,
-		AnnounceInterval:       6 * 60 * 60, // 6 hours
-		PeerAnnounceAtStart:    true,
-		TryPropagationOnFail:   true,
-		DisablePropagation:     true,
-		NotifyOnNewMessage:     true,
-		ComposeMarkdown:        true,
-		PeriodicLXMFSync:       true,
-		LXMFSyncInterval:       360 * 60, // 6 hours
-		LXMFSyncLimit:          8,
-		RRCHistoryPerRoomCap:   500,
-		RRCFilterLoadedHistory: true,
-		RRCEphemeralNotices:    600,
-		RRCNickColors:          true,
+		Version:                   "0.1.0",
+		ConfigDir:                 configDir,
+		EnableClient:              true,
+		ForceConsoleLog:           forceConsole,
+		ShouldRunJobs:             true,
+		JobInterval:               5,
+		DeferJobs:                 90,
+		AnnounceInterval:          6 * 60 * 60, // 6 hours
+		PeerAnnounceAtStart:       true,
+		TryPropagationOnFail:      true,
+		DisablePropagation:        true,
+		NotifyOnNewMessage:        true,
+		ComposeMarkdown:           true,
+		PeriodicLXMFSync:          true,
+		LXMFSyncInterval:          360 * 60, // 6 hours
+		LXMFSyncLimit:             8,
+		RRCHistoryPerRoomCap:      500,
+		RRCFilterLoadedHistory:    true,
+		RRCEphemeralNotices:       600,
+		RRCNickColors:             true,
 		RRCColorMentionTimestamps: true,
-		RRCUIJustifyMsgs:       true,
-		RRCUIRenderMarkdown:    true,
-		RRCUIRenderMicron:      true,
-		NodePropagationCost:    16,
-		PrintCommand:           "lp",
+		RRCUIJustifyMsgs:          true,
+		RRCUIRenderMarkdown:       true,
+		RRCUIRenderMicron:         true,
+		NodePropagationCost:       16,
+		PrintCommand:              "lp",
 	}
 
 	// Set up paths

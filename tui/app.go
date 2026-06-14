@@ -22,9 +22,9 @@ import (
 // App wraps tview.Application with NomadNet configuration.
 type App struct {
 	*tview.Application
-	Main    *MainDisplay
-	Theme   int
-	Glyphs  GlyphSet
+	Main   *MainDisplay
+	Theme  int
+	Glyphs GlyphSet
 }
 
 // NewApp creates a new tview Application with the given theme and glyph set.

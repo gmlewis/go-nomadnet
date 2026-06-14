@@ -71,10 +71,10 @@ type Node struct {
 	ServedPages []string
 	ServedFiles []string
 
-	LastAnnounce     time.Time
-	LastPageRefresh  time.Time
-	LastFileRefresh  time.Time
-	ShouldRunJobs    bool
+	LastAnnounce    time.Time
+	LastPageRefresh time.Time
+	LastFileRefresh time.Time
+	ShouldRunJobs   bool
 
 	ServedPageRequests int
 	ServedFileRequests int

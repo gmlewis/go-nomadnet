@@ -67,12 +67,12 @@ var PlainSymbols = Symbols{
 
 // Chart represents an ASCII chart renderer.
 type Chart struct {
-	Symbols  Symbols
-	Offset   int
-	Height   int
-	Min      *float64
-	Max      *float64
-	Format   string
+	Symbols Symbols
+	Offset  int
+	Height  int
+	Min     *float64
+	Max     *float64
+	Format  string
 }
 
 // New creates a new Chart with the given glyph set name.

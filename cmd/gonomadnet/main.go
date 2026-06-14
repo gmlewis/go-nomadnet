@@ -34,12 +34,12 @@ func main() {
 	log.SetFlags(0)
 
 	var (
-		configDir  string
-		rnsConfig  string
-		textUI     bool
-		daemon     bool
-		console    bool
-		showVer    bool
+		configDir string
+		rnsConfig string
+		textUI    bool
+		daemon    bool
+		console   bool
+		showVer   bool
 	)
 
 	flag.StringVar(&configDir, "config", "", "path to alternative Nomad Network config directory")
