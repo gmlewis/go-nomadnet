@@ -388,14 +388,14 @@ func (h *RRCHub) _appendHistory(room string, msg *RRCMessage) {
 
 	path := h._historyPath(room)
 	dir := filepath.Dir(path)
-	os.MkdirAll(dir, 0o755)
+	_ = os.MkdirAll(dir, 0o755)
 
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		return
 	}
-	defer f.Close()
-	f.Write(data)
+	defer func() { _ = f.Close() }()
+	_, _ = f.Write(data)
 }
 
 func (h *RRCHub) _deleteHistory(room string) {
@@ -403,7 +403,7 @@ func (h *RRCHub) _deleteHistory(room string) {
 		return
 	}
 	path := h._historyPath(room)
-	os.Remove(path)
+	_ = os.Remove(path)
 }
 
 func (h *RRCHub) _historyPath(room string) string {

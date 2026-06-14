@@ -160,7 +160,7 @@ func (c *Conversation) PurgeFailed() {
 	var remaining []*Message
 	for _, msg := range c.Messages {
 		if msg.GetState() == StateFailed {
-			msg.Purge()
+			_ = msg.Purge()
 		} else {
 			remaining = append(remaining, msg)
 		}
@@ -171,7 +171,7 @@ func (c *Conversation) PurgeFailed() {
 // ClearHistory purges all messages in the conversation.
 func (c *Conversation) ClearHistory() {
 	for _, msg := range c.Messages {
-		msg.Purge()
+		_ = msg.Purge()
 	}
 	c.Messages = nil
 }

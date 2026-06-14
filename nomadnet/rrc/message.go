@@ -60,9 +60,9 @@ func (m *RRCMessage) HistoryEntry() map[string]any {
 	if m.Nick != "" {
 		entry[HNick] = m.Nick
 	}
-	if m.Room != "" {
-		// Room is stored implicitly in the file path, but included for clarity
-	}
+	// if m.Room != "" {
+	//   Room is stored implicitly in the file path, but included for clarity
+	// }
 	if m.Mention {
 		entry[HMention] = true
 	}

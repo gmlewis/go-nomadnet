@@ -355,10 +355,18 @@ func TestScanStorageSkipsNonHex(t *testing.T) {
 
 	// Create valid and invalid message files
 	validHash := "0102030405060708010203040506070801020304050607080102030405060708"
-	os.WriteFile(filepath.Join(convPath, validHash), []byte("test"), 0o644)
-	os.WriteFile(filepath.Join(convPath, "unread"), []byte(""), 0o644)
-	os.WriteFile(filepath.Join(convPath, "not_a_hash"), []byte("test"), 0o644)
-	os.WriteFile(filepath.Join(convPath, ".index"), []byte(""), 0o644)
+	if err := os.WriteFile(filepath.Join(convPath, validHash), []byte("test"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(convPath, "unread"), []byte(""), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(convPath, "not_a_hash"), []byte("test"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(convPath, ".index"), []byte(""), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	conv := NewConversation("abc123", convPath)
 	if err := conv.ScanStorage(); err != nil {
@@ -375,7 +383,9 @@ func TestPurgeFailed(t *testing.T) {
 
 	dir := tempDir(t)
 	convPath := filepath.Join(dir, "abc123")
-	os.MkdirAll(convPath, 0o755)
+	if err := os.MkdirAll(convPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	// Create message files
 	for i := 0; i < 3; i++ {
@@ -383,11 +393,15 @@ func TestPurgeFailed(t *testing.T) {
 		hash[0] = byte(i + 10)
 		name := hexHash(hash)
 		msgPath := filepath.Join(convPath, name)
-		os.WriteFile(msgPath, []byte("test"), 0o644)
+		if err := os.WriteFile(msgPath, []byte("test"), 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	conv := NewConversation("abc123", convPath)
-	conv.ScanStorage()
+	if err := conv.ScanStorage(); err != nil {
+		t.Fatal(err)
+	}
 
 	// Mark one message as failed
 	failedState := StateFailed
@@ -414,17 +428,23 @@ func TestClearHistory(t *testing.T) {
 
 	dir := tempDir(t)
 	convPath := filepath.Join(dir, "abc123")
-	os.MkdirAll(convPath, 0o755)
+	if err := os.MkdirAll(convPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	for i := 0; i < 3; i++ {
 		hash := make([]byte, 32)
 		hash[0] = byte(i + 20)
 		name := hexHash(hash)
-		os.WriteFile(filepath.Join(convPath, name), []byte("test"), 0o644)
+		if err := os.WriteFile(filepath.Join(convPath, name), []byte("test"), 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	conv := NewConversation("abc123", convPath)
-	conv.ScanStorage()
+	if err := conv.ScanStorage(); err != nil {
+		t.Fatal(err)
+	}
 
 	conv.ClearHistory()
 
@@ -446,16 +466,24 @@ func TestConversationList(t *testing.T) {
 
 	dir := tempDir(t)
 	convPath := filepath.Join(dir, "conversations")
-	os.MkdirAll(convPath, 0o755)
+	if err := os.MkdirAll(convPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	// Create two conversations
 	hash1 := "0102030405060708010203040506070801020304050607080102030405060708"
 	hash2 := "090a0b0c0d0e0f10090a0b0c0d0e0f10090a0b0c0d0e0f10090a0b0c0d0e0f10"
-	os.MkdirAll(filepath.Join(convPath, hash1), 0o755)
-	os.MkdirAll(filepath.Join(convPath, hash2), 0o755)
+	if err := os.MkdirAll(filepath.Join(convPath, hash1), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(convPath, hash2), 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	// Create unread flag in one
-	os.WriteFile(filepath.Join(convPath, hash1, "unread"), []byte(""), 0o644)
+	if err := os.WriteFile(filepath.Join(convPath, hash1, "unread"), []byte(""), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	displayNames := map[string]string{
 		hash1: "Alice",
@@ -498,8 +526,12 @@ func TestDeleteConversation(t *testing.T) {
 	dir := tempDir(t)
 	convPath := filepath.Join(dir, "conversations")
 	hash := "0102030405060708010203040506070801020304050607080102030405060708"
-	os.MkdirAll(filepath.Join(convPath, hash), 0o755)
-	os.WriteFile(filepath.Join(convPath, hash, "unread"), []byte(""), 0o644)
+	if err := os.MkdirAll(filepath.Join(convPath, hash), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(convPath, hash, "unread"), []byte(""), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	// Cache it first
 	c := NewConversation(hash, filepath.Join(convPath, hash))
@@ -551,7 +583,7 @@ func tempDir(t *testing.T) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { os.RemoveAll(dir) })
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
 	return dir
 }
 

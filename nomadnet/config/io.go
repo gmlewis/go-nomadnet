@@ -35,7 +35,7 @@ func Load(path string) (*Config, error) {
 		}
 		return nil, fmt.Errorf("opening config: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	c.Raw = parseINI(f)
 	c.Apply()
@@ -43,7 +43,7 @@ func Load(path string) (*Config, error) {
 }
 
 // Save writes the config to the specified path in INI format.
-func Save(c *Config, path string) error {
+func Save(c *Config, path string) (retErr error) {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("creating config dir: %w", err)
@@ -53,17 +53,25 @@ func Save(c *Config, path string) error {
 	if err != nil {
 		return fmt.Errorf("creating config file: %w", err)
 	}
-	defer f.Close()
+	defer func() {
+		if cerr := f.Close(); cerr != nil && retErr == nil {
+			retErr = fmt.Errorf("closing config file: %w", cerr)
+		}
+	}()
 
 	w := bufio.NewWriter(f)
-	defer w.Flush()
+	defer func() {
+		if ferr := w.Flush(); ferr != nil && retErr == nil {
+			retErr = fmt.Errorf("flushing config file: %w", ferr)
+		}
+	}()
 
 	writeSection := func(name string, keys map[string]string) {
-		fmt.Fprintf(w, "[%s]\n", name)
+		_, _ = fmt.Fprintf(w, "[%s]\n", name)
 		for k, v := range keys {
-			fmt.Fprintf(w, "%s = %s\n", k, v)
+			_, _ = fmt.Fprintf(w, "%s = %s\n", k, v)
 		}
-		fmt.Fprintln(w)
+		_, _ = fmt.Fprintln(w)
 	}
 
 	writeSection("logging", map[string]string{
