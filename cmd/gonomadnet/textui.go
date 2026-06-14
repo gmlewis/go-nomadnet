@@ -19,6 +19,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/gmlewis/go-nomadnet/nomadnet/app"
 	"github.com/gmlewis/go-nomadnet/tui"
@@ -72,7 +73,86 @@ func runTextUI(configDir, rnsConfigDir string) {
 		tuiApp.Stop()
 	})
 
+	// Wire up real displays
+	wireDisplays(tuiApp, a)
+
 	if err := tuiApp.Run(); err != nil {
 		log.Fatalf("TUI error: %v", err)
 	}
+}
+
+// wireDisplays connects the app data to the TUI display widgets.
+func wireDisplays(tuiApp *tui.App, a *app.App) {
+	main := tuiApp.Main
+
+	// Network display
+	networkDisplay := tui.NewNetworkDisplay(tuiApp.Application, nil, nil)
+	main.SetDisplay("network", networkDisplay.Widget())
+
+	// Conversations display
+	convs := a.ConversationList()
+	tuiConvs := make([]tui.ConversationInfo, len(convs))
+	for i, c := range convs {
+		// Convert trust level byte to string
+		trustStr := "unknown"
+		switch c.TrustLevel {
+		case 0xFF:
+			trustStr = "trusted"
+		case 0x01:
+			trustStr = "untrusted"
+		case 0x00:
+			trustStr = "warning"
+		}
+
+		// Convert LastActivity (float64 unix timestamp) to time.Time
+		var lastTime time.Time
+		if c.LastActivity > 0 {
+			lastTime = time.Unix(int64(c.LastActivity), 0)
+		}
+
+		tuiConvs[i] = tui.ConversationInfo{
+			SourceHash:  c.SourceHash,
+			DisplayName: c.DisplayName,
+			TrustLevel:  trustStr,
+			LastTime:    lastTime,
+			Unread:      c.Unread,
+		}
+	}
+	conversationsDisplay := tui.NewConversationsDisplay(tuiApp.Application, tuiConvs)
+	main.SetDisplay("conversations", conversationsDisplay.Widget())
+
+	// Channels display
+	channelsDisplay := tui.NewChannelsDisplay(tuiApp.Application, nil)
+	main.SetDisplay("channels", channelsDisplay.Widget())
+
+	// Config display
+	configPath := a.ConfigPath
+	if configPath == "" {
+		configPath = filepath.Join(a.ConfigDir, "config")
+	}
+	configDisplay := tui.NewConfigDisplay(tuiApp.Application, configPath)
+	main.SetDisplay("config", configDisplay.Widget())
+
+	// Log display
+	logPath := a.LogFilePath
+	if logPath == "" {
+		logPath = filepath.Join(a.ConfigDir, "logfile")
+	}
+	logDisplay := tui.NewLogDisplay(tuiApp.Application, logPath, 50)
+	main.SetDisplay("log", logDisplay.Widget())
+
+	// Guide display
+	guideDisplay := tui.NewGuideDisplay(tuiApp.Application)
+	main.SetDisplay("guide", guideDisplay.Widget())
+
+	// Interfaces display
+	interfaces := []tui.InterfaceInfo{
+		{Name: "Michmesh Testnet", Type: "TCPClientInterface", Status: "connected", Target: "RNS.MichMesh.net:7822"},
+	}
+	interfacesDisplay := tui.NewInterfacesDisplay(tuiApp.Application, interfaces)
+	main.SetDisplay("interfaces", interfacesDisplay.Widget())
+
+	// Intro/splash display
+	introDisplay := tui.NewIntroDisplay("Nomad Network", a.Version)
+	main.SetDisplay("quit", introDisplay.Widget())
 }
