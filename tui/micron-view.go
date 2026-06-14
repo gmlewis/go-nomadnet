@@ -18,8 +18,8 @@ package tui
 import (
 	"strings"
 
-	"github.com/gmlewis/go-nomadnet/nomadnet/micron"
 	"github.com/gdamore/tcell/v2"
+	"github.com/gmlewis/go-nomadnet/nomadnet/micron"
 	"github.com/rivo/tview"
 )
 

@@ -19,20 +19,20 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/gmlewis/go-nomadnet/nomadnet/micron"
 	"github.com/gdamore/tcell/v2"
+	"github.com/gmlewis/go-nomadnet/nomadnet/micron"
 	"github.com/rivo/tview"
 )
 
 // BrowserDisplay provides URL-based page browsing.
 type BrowserDisplay struct {
-	app      *tview.Application
-	widget   tview.Primitive
-	urlBar   *ReadlineEdit
-	content  *tview.TextView
-	history  []string
-	histIdx  int
-	onLoad   func(url string)
+	app     *tview.Application
+	widget  tview.Primitive
+	urlBar  *ReadlineEdit
+	content *tview.TextView
+	history []string
+	histIdx int
+	onLoad  func(url string)
 }
 
 // NewBrowserDisplay creates a new browser display.

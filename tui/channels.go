@@ -45,11 +45,11 @@ type ChannelMember struct {
 
 // ChannelInfo holds room information.
 type ChannelInfo struct {
-	Name      string
-	Topic     string
-	Members   int
-	Unread    bool
-	Joined    bool
+	Name    string
+	Topic   string
+	Members int
+	Unread  bool
+	Joined  bool
 }
 
 // ChannelsDisplay shows the RRC chat interface.

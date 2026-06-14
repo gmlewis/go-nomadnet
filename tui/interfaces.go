@@ -19,19 +19,19 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/gmlewis/go-nomadnet/nomadnet/asciichart"
 	"github.com/gdamore/tcell/v2"
+	"github.com/gmlewis/go-nomadnet/nomadnet/asciichart"
 	"github.com/rivo/tview"
 )
 
 // InterfaceInfo holds status information for a network interface.
 type InterfaceInfo struct {
-	Name       string
-	Type       string
-	Status     string // "connected" or "disconnected"
-	Target     string
-	Bandwidth  float64
-	Traffic    []float64 // recent traffic samples for chart
+	Name      string
+	Type      string
+	Status    string // "connected" or "disconnected"
+	Target    string
+	Bandwidth float64
+	Traffic   []float64 // recent traffic samples for chart
 }
 
 // InterfacesDisplay shows RNS interface status and bandwidth charts.
