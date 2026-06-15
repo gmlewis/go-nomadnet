@@ -37,7 +37,7 @@ func runTextUI(configDir, rnsConfigDir string) {
 	logPath := filepath.Join(logDir, "nomadnet.log")
 	logFile, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err == nil {
-		defer logFile.Close()
+		defer func() { _ = logFile.Close() }()
 		log.SetOutput(logFile)
 		log.SetFlags(0)
 	}

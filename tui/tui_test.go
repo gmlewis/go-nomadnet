@@ -147,13 +147,16 @@ func TestMenuItemCount(t *testing.T) {
 func TestBuildMenuBarText(t *testing.T) {
 	t.Parallel()
 
-	text := BuildMenuBarText(0)
+	app := tview.NewApplication()
+	md := NewMainDisplay(app, ThemeDark, GlyphUnicode)
+
+	text := md.BuildMenuBarText()
 	if len(text) == 0 {
 		t.Error("BuildMenuBarText returned empty")
 	}
 
 	// Should contain all menu labels
-	for _, item := range MenuItems {
+	for _, item := range md.menuItems {
 		if !contains(text, item.Label) {
 			t.Errorf("BuildMenuBarText missing label %q", item.Label)
 		}

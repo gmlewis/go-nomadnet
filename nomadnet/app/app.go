@@ -261,7 +261,9 @@ func (a *App) Init() error {
 		if err != nil {
 			return fmt.Errorf("creating log file: %w", err)
 		}
-		f.Close()
+		if err := f.Close(); err != nil {
+			return fmt.Errorf("closing log file: %w", err)
+		}
 
 		a.Logger.SetLogDest(rns.LogDestFile)
 		a.Logger.SetLogFilePath(a.LogFilePath)

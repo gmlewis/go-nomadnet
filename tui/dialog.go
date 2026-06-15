@@ -24,8 +24,8 @@ import (
 // Matches Python's DialogLineBox which extends urwid.LineBox with esc handling.
 type DialogLineBox struct {
 	*tview.Box
-	content  tview.Primitive
-	title    string
+	content   tview.Primitive
+	title     string
 	onDismiss func()
 }
 

@@ -28,19 +28,21 @@ import (
 // MainDisplay is the top-level layout matching Python's MainFrame:
 // header=menu bar, body=content area, footer=shortcut bar.
 type MainDisplay struct {
-	app          *tview.Application
-	frame        *tview.Flex
-	menuBar      *tview.Flex
-	menuButtons  []*tview.Button
-	contentArea  *tview.Pages
-	shortcutBar  *tview.TextView
-	activeMenu   int
-	theme        int
-	glyphs       GlyphSet
-	onQuit       func()
-	shortcuts    map[string]string // display key → shortcut text
-	quitCh       chan struct{}
-	mu           sync.Mutex
+	app         *tview.Application
+	frame       *tview.Flex
+	menuBar     *tview.Flex
+	menuButtons []*tview.Button
+	menuItems   []MenuItem // filtered menu items (may exclude Guide)
+	contentArea *tview.Pages
+	shortcutBar *tview.TextView
+	activeMenu  int
+	theme       int
+	glyphs      GlyphSet
+	onQuit      func()
+	shortcuts   map[string]string // display key → shortcut text
+	quitCh      chan struct{}
+	mu          sync.Mutex
+	hideGuide   bool
 }
 
 // NewMainDisplay creates the main display with Frame layout:
@@ -59,11 +61,20 @@ func NewMainDisplay(app *tview.Application, theme int, glyphSetName string) *Mai
 		quitCh:    make(chan struct{}),
 	}
 
+	// Filter menu items based on hideGuide setting
+	md.menuItems = make([]MenuItem, 0, len(MenuItems))
+	for _, item := range MenuItems {
+		if md.hideGuide && item.Key == "guide" {
+			continue
+		}
+		md.menuItems = append(md.menuItems, item)
+	}
+
 	// Create menu bar with bracket-wrapped buttons (matching Python style)
 	md.menuBar = tview.NewFlex().SetDirection(tview.FlexColumn)
-	md.menuButtons = make([]*tview.Button, len(MenuItems))
+	md.menuButtons = make([]*tview.Button, len(md.menuItems))
 
-	for i, item := range MenuItems {
+	for i, item := range md.menuItems {
 		label := fmt.Sprintf("[%s]", item.Label)
 		btn := tview.NewButton(label)
 		btn.SetBackgroundColor(tcell.ColorDefault)
@@ -87,7 +98,7 @@ func NewMainDisplay(app *tview.Application, theme int, glyphSetName string) *Mai
 	md.shortcutBar.SetTextAlign(tview.AlignLeft)
 
 	// Add placeholder content for each menu item
-	for _, item := range MenuItems {
+	for _, item := range md.menuItems {
 		placeholder := tview.NewTextView().
 			SetTextAlign(tview.AlignCenter).
 			SetDynamicColors(true).
@@ -108,7 +119,7 @@ func NewMainDisplay(app *tview.Application, theme int, glyphSetName string) *Mai
 	})
 
 	// Select first menu by default
-	if len(MenuItems) > 0 {
+	if len(md.menuItems) > 0 {
 		md.selectMenu(0)
 	}
 
@@ -118,7 +129,7 @@ func NewMainDisplay(app *tview.Application, theme int, glyphSetName string) *Mai
 // SetDisplay replaces the placeholder for a menu key with a real display widget.
 func (md *MainDisplay) SetDisplay(key string, widget tview.Primitive) {
 	md.contentArea.AddPage(key, widget, true, false)
-	if key == MenuItems[md.activeMenu].Key {
+	if md.activeMenu >= 0 && md.activeMenu < len(md.menuItems) && key == md.menuItems[md.activeMenu].Key {
 		md.contentArea.SwitchToPage(key)
 	}
 }
@@ -135,7 +146,7 @@ func (md *MainDisplay) SetShortcut(key, text string) {
 func (md *MainDisplay) updateShortcuts() {
 	md.mu.Lock()
 	defer md.mu.Unlock()
-	key := MenuItems[md.activeMenu].Key
+	key := md.menuItems[md.activeMenu].Key
 	if text, ok := md.shortcuts[key]; ok {
 		md.shortcutBar.SetText(text)
 	} else {
@@ -145,7 +156,7 @@ func (md *MainDisplay) updateShortcuts() {
 
 // selectMenu highlights the given menu item and switches content.
 func (md *MainDisplay) selectMenu(index int) {
-	if index < 0 || index >= len(MenuItems) {
+	if index < 0 || index >= len(md.menuItems) {
 		return
 	}
 
@@ -159,7 +170,7 @@ func (md *MainDisplay) selectMenu(index int) {
 	}
 
 	md.activeMenu = index
-	key := MenuItems[index].Key
+	key := md.menuItems[index].Key
 	md.contentArea.SwitchToPage(key)
 	md.updateShortcuts()
 }
@@ -188,18 +199,22 @@ func (md *MainDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 
 	case tcell.KeyTab:
 		// Python: Tab from menu bar → focus moves to body
-		if md.activeMenu >= 0 && md.activeMenu < len(MenuItems) {
-			md.contentArea.SwitchToPage(MenuItems[md.activeMenu].Key)
+		if md.activeMenu >= 0 && md.activeMenu < len(md.menuItems) {
+			md.contentArea.SwitchToPage(md.menuItems[md.activeMenu].Key)
 		}
 		return nil
 
 	case tcell.KeyBacktab:
 		prev := md.activeMenu - 1
 		if prev < 0 {
-			prev = len(MenuItems) - 1
+			prev = len(md.menuItems) - 1
 		}
 		md.selectMenu(prev)
 		return nil
+
+	case tcell.KeyF8:
+		// Python: F8 toggles join/part collapse (delegated to display)
+		return event
 
 	case tcell.KeyRune:
 		switch event.Rune() {
@@ -210,15 +225,18 @@ func (md *MainDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 			return nil
 		case '1', '2', '3', '4', '5', '6', '7', '8', '9':
 			idx := int(event.Rune() - '1')
-			if idx < len(MenuItems) {
+			if idx < len(md.menuItems) {
 				md.selectMenu(idx)
 			}
 			return nil
 		case '0':
-			if len(MenuItems) >= 10 {
+			if len(md.menuItems) >= 10 {
 				md.selectMenu(9)
 			}
 			return nil
+		case 'g':
+			// Python: ctrl-g toggles fullscreen (delegated to display)
+			return event
 		}
 	}
 
@@ -240,11 +258,43 @@ func (md *MainDisplay) SetGlyphs(name string) {
 	md.glyphs = GetGlyphSet(name)
 }
 
+// SetHideGuide hides or shows the Guide menu button.
+func (md *MainDisplay) SetHideGuide(hideGuide bool) {
+	md.mu.Lock()
+	defer md.mu.Unlock()
+	md.hideGuide = hideGuide
+	// Rebuild menu bar with filtered items
+	md.menuBar.Clear()
+	md.menuItems = make([]MenuItem, 0, len(MenuItems))
+	for _, item := range MenuItems {
+		if hideGuide && item.Key == "guide" {
+			continue
+		}
+		md.menuItems = append(md.menuItems, item)
+	}
+	md.menuButtons = make([]*tview.Button, len(md.menuItems))
+	for i, item := range md.menuItems {
+		label := fmt.Sprintf("[%s]", item.Label)
+		btn := tview.NewButton(label)
+		btn.SetBackgroundColor(tcell.ColorDefault)
+		idx := i
+		btn.SetSelectedFunc(func() {
+			md.selectMenu(idx)
+		})
+		md.menuButtons[i] = btn
+		md.menuBar.AddItem(btn, 0, 1, false)
+	}
+	if md.activeMenu >= len(md.menuItems) {
+		md.activeMenu = 0
+	}
+	md.selectMenu(md.activeMenu)
+}
+
 // BuildMenuBarText creates a formatted menu bar string for display.
-func BuildMenuBarText(activeIndex int) string {
+func (md *MainDisplay) BuildMenuBarText() string {
 	var parts []string
-	for i, item := range MenuItems {
-		if i == activeIndex {
+	for i, item := range md.menuItems {
+		if i == md.activeMenu {
 			parts = append(parts, fmt.Sprintf("[::b]%s[::-]", item.Label))
 		} else {
 			parts = append(parts, item.Label)
@@ -275,4 +325,12 @@ func (md *MainDisplay) StartUnreadBlink() {
 // StopUnreadBlink stops the unread blink goroutine.
 func (md *MainDisplay) StopUnreadBlink() {
 	close(md.quitCh)
+}
+
+// RequestRedraw forces a redraw after a short delay (Python: set_alarm_in(0.25)).
+func (md *MainDisplay) RequestRedraw() {
+	go func() {
+		time.Sleep(250 * time.Millisecond)
+		md.app.QueueUpdateDraw(func() {})
+	}()
 }
