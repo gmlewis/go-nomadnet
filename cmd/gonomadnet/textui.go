@@ -107,6 +107,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) {
 		networkDisplay.UpdateAnnounces(tuiConvs)
 	})
 	main.SetDisplay("network", networkDisplay.Widget())
+	main.SetShortcut("network", "[C-l] Nodes/Announces  [C-x] Remove  [C-w] Disconnect  [C-d] Back  [C-f] Forward  [C-r] Reload  [C-u] URL  [C-g] Fullscreen  [C-s] Save Node")
 
 	// Conversations display
 	convs := a.ConversationList()
@@ -139,10 +140,12 @@ func wireDisplays(tuiApp *tui.App, a *app.App) {
 	}
 	conversationsDisplay := tui.NewConversationsDisplay(tuiApp.Application, tuiConvs)
 	main.SetDisplay("conversations", conversationsDisplay.Widget())
+	main.SetShortcut("conversations", "[C-e] Peer Info  [C-x] Delete  [C-r] Sync  [C-n] New  [C-u] Ingest URI  [C-o] Sort  [C-p] My LXMF  [C-g] Fullscreen")
 
 	// Channels display
 	channelsDisplay := tui.NewChannelsDisplay(tuiApp.Application, nil)
 	main.SetDisplay("channels", channelsDisplay.Widget())
+	main.SetShortcut("channels", "[C-n] New Hub  [C-a] Add Room  [C-r] Connect  [C-w] Disconnect  [C-t] Auto-reconnect  [C-e] Edit Hub  [C-x] Remove")
 
 	// Config display
 	configPath := a.ConfigPath
@@ -151,6 +154,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) {
 	}
 	configDisplay := tui.NewConfigDisplay(tuiApp.Application, configPath)
 	main.SetDisplay("config", configDisplay.Widget())
+	main.SetShortcut("config", "")
 
 	// Log display
 	logPath := a.LogFilePath
@@ -159,10 +163,12 @@ func wireDisplays(tuiApp *tui.App, a *app.App) {
 	}
 	logDisplay := tui.NewLogDisplay(tuiApp.Application, logPath, 50)
 	main.SetDisplay("log", logDisplay.Widget())
+	main.SetShortcut("log", "")
 
 	// Guide display
 	guideDisplay := tui.NewGuideDisplay(tuiApp.Application)
 	main.SetDisplay("guide", guideDisplay.Widget())
+	main.SetShortcut("guide", "")
 
 	// Interfaces display
 	interfaces := []tui.InterfaceInfo{
@@ -170,6 +176,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) {
 	}
 	interfacesDisplay := tui.NewInterfacesDisplay(tuiApp.Application, interfaces)
 	main.SetDisplay("interfaces", interfacesDisplay.Widget())
+	main.SetShortcut("interfaces", "[C-a] Add  [C-e] Edit  [C-x] Remove  [C-w] Config Editor")
 
 	// Intro/splash display
 	introDisplay := tui.NewIntroDisplay("Nomad Network", a.Version)

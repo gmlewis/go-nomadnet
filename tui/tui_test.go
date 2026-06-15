@@ -169,8 +169,8 @@ func TestNewMainDisplay(t *testing.T) {
 	if md == nil {
 		t.Fatal("NewMainDisplay returned nil")
 	}
-	if md.pages == nil {
-		t.Error("pages is nil")
+	if md.frame == nil {
+		t.Error("frame is nil")
 	}
 	if md.menuBar == nil {
 		t.Error("menuBar is nil")
@@ -183,7 +183,7 @@ func TestNewMainDisplay(t *testing.T) {
 	}
 }
 
-func TestMainDisplayAddContentPage(t *testing.T) {
+func TestMainDisplaySetDisplay(t *testing.T) {
 	t.Parallel()
 
 	app := tview.NewApplication()
@@ -191,7 +191,7 @@ func TestMainDisplayAddContentPage(t *testing.T) {
 
 	// Add a test page
 	page := tview.NewTextView()
-	md.AddContentPage("test", page)
+	md.SetDisplay("test", page)
 
 	// Verify page was added
 	_, _ = md.contentArea.GetFrontPage()

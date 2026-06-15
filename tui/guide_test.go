@@ -50,15 +50,15 @@ func TestGuideDisplayWidgetType(t *testing.T) {
 func TestGuideContent(t *testing.T) {
 	t.Parallel()
 
-	content := guideContent()
+	content := introContent()
 	if len(content) == 0 {
-		t.Error("guideContent() returned empty")
+		t.Error("introContent() returned empty")
 	}
-	if !containsStr(content, "Navigation") {
-		t.Error("guideContent() missing Navigation section")
+	if !containsStr(content, "NomadNet") {
+		t.Error("introContent() missing NomadNet section")
 	}
-	if !containsStr(content, "Micron") {
-		t.Error("guideContent() missing Micron section")
+	if !containsStr(content, "Reticulum") {
+		t.Error("introContent() missing Reticulum section")
 	}
 }
 
