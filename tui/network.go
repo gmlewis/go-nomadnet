@@ -150,6 +150,10 @@ func (nd *NetworkDisplay) UpdateAnnounces(announces []AnnounceEntry) {
 		secondary := fmt.Sprintf("%s — %s", ann.Timestamp.Format("15:04:05"), truncateStr(ann.AppData, 30))
 		nd.announces.AddItem(text, secondary, 0, nil)
 	}
+	// Force redraw
+	if nd.app != nil {
+		nd.app.QueueUpdateDraw(func() {})
+	}
 }
 
 // truncateStr truncates a string to maxLen characters.

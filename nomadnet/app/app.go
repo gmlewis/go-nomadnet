@@ -377,6 +377,7 @@ func (a *App) lxmfDelivery(msg *lxmf.Message) {
 // handleLXMFAnnounce processes LXMF delivery announces.
 func (a *App) handleLXMFAnnounce(destHash []byte, identity *rns.Identity, appData []byte, isPathResponse bool) {
 	displayName, _ := lxmf.DisplayNameFromAppData(appData)
+	a.Logger.Info("LXMF announce received: hash=%x name=%q", destHash, displayName)
 
 	a.mu.Lock()
 	a.Announces = append(a.Announces, AnnounceEvent{
@@ -387,11 +388,16 @@ func (a *App) handleLXMFAnnounce(destHash []byte, identity *rns.Identity, appDat
 		DisplayName:  displayName,
 	})
 	a.mu.Unlock()
+
+	if a.UIChangeCallback != nil {
+		a.UIChangeCallback()
+	}
 }
 
 // handleNodeAnnounce processes NomadNet node announces.
 func (a *App) handleNodeAnnounce(destHash []byte, identity *rns.Identity, appData []byte, isPathResponse bool) {
 	displayName := string(appData)
+	a.Logger.Info("Node announce received: hash=%x name=%q", destHash, displayName)
 
 	a.mu.Lock()
 	a.Announces = append(a.Announces, AnnounceEvent{
@@ -402,6 +408,10 @@ func (a *App) handleNodeAnnounce(destHash []byte, identity *rns.Identity, appDat
 		DisplayName:  displayName,
 	})
 	a.mu.Unlock()
+
+	if a.UIChangeCallback != nil {
+		a.UIChangeCallback()
+	}
 }
 
 // handlePNAnnounce processes propagation node announces.
@@ -543,6 +553,13 @@ func (a *App) GetAnnounces() []AnnounceEvent {
 	result := make([]AnnounceEvent, len(a.Announces))
 	copy(result, a.Announces)
 	return result
+}
+
+// AnnounceCount returns the number of announces received.
+func (a *App) AnnounceCount() int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return len(a.Announces)
 }
 
 // SetUIChangeCallback sets a callback for UI refresh.
