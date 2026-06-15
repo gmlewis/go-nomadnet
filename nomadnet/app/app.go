@@ -227,8 +227,8 @@ func NewApp(configDir, rnsConfigDir string, daemon, forceConsole bool) *App {
 	return a
 }
 
-// Init initializes all subsystems: storage, config, identity, directory,
-// RRC, and LXMF router.
+// Init initializes subsystems that don't block, then starts RNS
+// initialization in a goroutine so the TUI can start immediately.
 func (a *App) Init() error {
 	// Ensure storage directories exist
 	if err := a.Storage.EnsureDirs(); err != nil {
@@ -272,37 +272,56 @@ func (a *App) Init() error {
 
 	a.Logger.Info("Nomad Network Client %s starting...", a.Version)
 
-	// Initialize RNS transport and stack
-	a.Logger.Info("Substantiating Reticulum...")
+	// Initialize non-blocking subsystems
+	a.Dir = directory.New()
+	a.RRC = rrc.NewManager(a.StoragePath, nil)
+
+	// Set global singleton
+	globalMu.Lock()
+	globalApp = a
+	globalMu.Unlock()
+	appOnce.Do(func() {})
+
+	// Start RNS initialization in a goroutine so the TUI can start immediately.
+	// RNS initialization may block on network interfaces.
+	go a.initRNS()
+
+	return nil
+}
+
+// initRNS initializes RNS transport, LXMF router, and background jobs.
+// This runs in a goroutine to avoid blocking the TUI startup.
+func (a *App) initRNS() {
+	a.Logger.Info("Initializing RNS transport...")
+
 	a.Transport = rns.NewTransportSystem(a.Logger)
 	rnsConfigDir := a.RNSConfigDir
 	if rnsConfigDir == "" {
-		// Create a standalone RNS config with share_instance = No
-		// so each gonomadnet instance runs independently
 		rnsConfigDir = a.ensureStandaloneRNSConfig()
 	}
+
 	ret, err := rns.NewReticulumWithLogger(a.Transport, rnsConfigDir, a.Logger)
 	if err != nil {
-		return fmt.Errorf("could not initialize Reticulum: %w", err)
+		a.Logger.Error("Could not initialize Reticulum: %v", err)
+		return
 	}
 	a.RNS = ret
 
 	// Load or create identity
-	a.Identity, err = a.loadOrCreateIdentity(a.IdentityPath)
-	if err != nil {
-		return fmt.Errorf("could not load identity: %w", err)
+	var err2 error
+	a.Identity, err2 = a.loadOrCreateIdentity(a.IdentityPath)
+	if err2 != nil {
+		a.Logger.Error("Could not load identity: %v", err2)
+		return
 	}
 	a.Logger.Info("Identity loaded: %s", rns.PrettyHex(a.Identity.Hash))
-
-	// Initialize subsystems
-	a.Dir = directory.New()
-	a.RRC = rrc.NewManager(a.StoragePath, nil)
 
 	// Initialize LXMF router
 	a.Logger.Info("Initializing LXMF router...")
 	a.Router, err = lxmf.NewRouter(a.Transport, a.Identity, a.StoragePath)
 	if err != nil {
-		return fmt.Errorf("could not create LXMF router: %w", err)
+		a.Logger.Error("Could not create LXMF router: %v", err)
+		return
 	}
 
 	// Register delivery callback
@@ -311,7 +330,8 @@ func (a *App) Init() error {
 	// Register delivery identity for receiving messages
 	a.LXMFDest, err = a.Router.RegisterDeliveryIdentity(a.Identity, a.Config.Client.UserInterface, nil)
 	if err != nil {
-		return fmt.Errorf("could not register delivery identity: %w", err)
+		a.Logger.Error("Could not register delivery identity: %v", err)
+		return
 	}
 	a.Logger.Info("LXMF Router ready to receive on %s", rns.PrettyHex(a.LXMFDest.Hash))
 
@@ -330,106 +350,8 @@ func (a *App) Init() error {
 	})
 	a.Logger.Info("Announce handlers registered")
 
-	// Set global singleton
-	globalMu.Lock()
-	globalApp = a
-	globalMu.Unlock()
-	appOnce.Do(func() {})
-
 	// Start background jobs
 	go a.jobs()
-
-	return nil
-}
-
-// loadOrCreateIdentity loads an existing identity or creates a new one.
-func (a *App) loadOrCreateIdentity(path string) (*rns.Identity, error) {
-	if _, err := os.Stat(path); err == nil {
-		id, err := rns.FromFile(path, a.Logger)
-		if err != nil {
-			return nil, fmt.Errorf("loading identity: %w", err)
-		}
-		a.Logger.Info("Loaded identity from %s", path)
-		return id, nil
-	}
-
-	a.Logger.Info("No identity found, creating new...")
-	id, err := rns.NewIdentity(true, a.Logger)
-	if err != nil {
-		return nil, fmt.Errorf("creating identity: %w", err)
-	}
-
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return nil, fmt.Errorf("creating identity directory: %w", err)
-	}
-	if err := id.ToFile(path); err != nil {
-		return nil, fmt.Errorf("saving identity: %w", err)
-	}
-	a.Logger.Info("Created new identity at %s", path)
-	return id, nil
-}
-
-// lxmfDelivery handles incoming LXMF messages.
-func (a *App) lxmfDelivery(msg *lxmf.Message) {
-	a.Logger.Info("Received LXMF message from %s", rns.PrettyHex(msg.SourceHash))
-	if a.DeliveryCallback != nil {
-		a.DeliveryCallback(msg)
-	}
-}
-
-// handleLXMFAnnounce processes LXMF delivery announces.
-func (a *App) handleLXMFAnnounce(destHash []byte, identity *rns.Identity, appData []byte, isPathResponse bool) {
-	displayName, _ := lxmf.DisplayNameFromAppData(appData)
-	a.Logger.Info("LXMF announce received: hash=%x name=%q", destHash, displayName)
-
-	a.mu.Lock()
-	a.Announces = append(a.Announces, AnnounceEvent{
-		Timestamp:    time.Now(),
-		SourceHash:   destHash,
-		AppData:      appData,
-		AnnounceType: "peer",
-		DisplayName:  displayName,
-	})
-	a.mu.Unlock()
-
-	if a.UIChangeCallback != nil {
-		a.UIChangeCallback()
-	}
-}
-
-// handleNodeAnnounce processes NomadNet node announces.
-func (a *App) handleNodeAnnounce(destHash []byte, identity *rns.Identity, appData []byte, isPathResponse bool) {
-	displayName := string(appData)
-	a.Logger.Info("Node announce received: hash=%x name=%q", destHash, displayName)
-
-	a.mu.Lock()
-	a.Announces = append(a.Announces, AnnounceEvent{
-		Timestamp:    time.Now(),
-		SourceHash:   destHash,
-		AppData:      appData,
-		AnnounceType: "node",
-		DisplayName:  displayName,
-	})
-	a.mu.Unlock()
-
-	if a.UIChangeCallback != nil {
-		a.UIChangeCallback()
-	}
-}
-
-// handlePNAnnounce processes propagation node announces.
-func (a *App) handlePNAnnounce(destHash []byte, identity *rns.Identity, appData []byte, isPathResponse bool) {
-	displayName, _ := lxmf.DisplayNameFromAppData(appData)
-
-	a.mu.Lock()
-	a.Announces = append(a.Announces, AnnounceEvent{
-		Timestamp:    time.Now(),
-		SourceHash:   destHash,
-		AppData:      appData,
-		AnnounceType: "pn",
-		DisplayName:  displayName,
-	})
-	a.mu.Unlock()
 }
 
 // setupPaths initializes all file system paths based on ConfigDir.
@@ -676,4 +598,99 @@ func setRNSConfigDirective(content, key, value string) string {
 		}
 	}
 	return strings.Join(lines, "\n")
+}
+
+// loadOrCreateIdentity loads an existing identity or creates a new one.
+func (a *App) loadOrCreateIdentity(path string) (*rns.Identity, error) {
+	if _, err := os.Stat(path); err == nil {
+		id, err := rns.FromFile(path, a.Logger)
+		if err != nil {
+			return nil, fmt.Errorf("loading identity: %w", err)
+		}
+		a.Logger.Info("Loaded identity from %s", path)
+		return id, nil
+	}
+
+	a.Logger.Info("No identity found, creating new...")
+	id, err := rns.NewIdentity(true, a.Logger)
+	if err != nil {
+		return nil, fmt.Errorf("creating identity: %w", err)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return nil, fmt.Errorf("creating identity directory: %w", err)
+	}
+	if err := id.ToFile(path); err != nil {
+		return nil, fmt.Errorf("saving identity: %w", err)
+	}
+	a.Logger.Info("Created new identity at %s", path)
+	return id, nil
+}
+
+// lxmfDelivery handles incoming LXMF messages.
+func (a *App) lxmfDelivery(msg *lxmf.Message) {
+	a.Logger.Info("Received LXMF message from %s", rns.PrettyHex(msg.SourceHash))
+	if a.DeliveryCallback != nil {
+		a.DeliveryCallback(msg)
+	}
+}
+
+// handleLXMFAnnounce processes LXMF delivery announces.
+func (a *App) handleLXMFAnnounce(destHash []byte, identity *rns.Identity, appData []byte, isPathResponse bool) {
+	displayName, _ := lxmf.DisplayNameFromAppData(appData)
+	a.Logger.Info("LXMF announce received: hash=%x name=%q", destHash, displayName)
+
+	a.mu.Lock()
+	a.Announces = append(a.Announces, AnnounceEvent{
+		Timestamp:    time.Now(),
+		SourceHash:   destHash,
+		AppData:      appData,
+		AnnounceType: "peer",
+		DisplayName:  displayName,
+	})
+	a.mu.Unlock()
+
+	if a.UIChangeCallback != nil {
+		a.UIChangeCallback()
+	}
+}
+
+// handleNodeAnnounce processes NomadNet node announces.
+func (a *App) handleNodeAnnounce(destHash []byte, identity *rns.Identity, appData []byte, isPathResponse bool) {
+	displayName := string(appData)
+	a.Logger.Info("Node announce received: hash=%x name=%q", destHash, displayName)
+
+	a.mu.Lock()
+	a.Announces = append(a.Announces, AnnounceEvent{
+		Timestamp:    time.Now(),
+		SourceHash:   destHash,
+		AppData:      appData,
+		AnnounceType: "node",
+		DisplayName:  displayName,
+	})
+	a.mu.Unlock()
+
+	if a.UIChangeCallback != nil {
+		a.UIChangeCallback()
+	}
+}
+
+// handlePNAnnounce processes propagation node announces.
+func (a *App) handlePNAnnounce(destHash []byte, identity *rns.Identity, appData []byte, isPathResponse bool) {
+	displayName, _ := lxmf.DisplayNameFromAppData(appData)
+	a.Logger.Info("PN announce received: hash=%x name=%q", destHash, displayName)
+
+	a.mu.Lock()
+	a.Announces = append(a.Announces, AnnounceEvent{
+		Timestamp:    time.Now(),
+		SourceHash:   destHash,
+		AppData:      appData,
+		AnnounceType: "pn",
+		DisplayName:  displayName,
+	})
+	a.mu.Unlock()
+
+	if a.UIChangeCallback != nil {
+		a.UIChangeCallback()
+	}
 }

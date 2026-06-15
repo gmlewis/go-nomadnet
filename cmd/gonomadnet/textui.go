@@ -113,7 +113,6 @@ func wireDisplays(tuiApp *tui.App, a *app.App) {
 	convs := a.ConversationList()
 	tuiConvs := make([]tui.ConversationInfo, len(convs))
 	for i, c := range convs {
-		// Convert trust level byte to string
 		trustStr := "unknown"
 		switch c.TrustLevel {
 		case 0xFF:
@@ -124,7 +123,6 @@ func wireDisplays(tuiApp *tui.App, a *app.App) {
 			trustStr = "warning"
 		}
 
-		// Convert LastActivity (float64 unix timestamp) to time.Time
 		var lastTime time.Time
 		if c.LastActivity > 0 {
 			lastTime = time.Unix(int64(c.LastActivity), 0)

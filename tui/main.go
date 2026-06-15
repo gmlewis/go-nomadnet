@@ -139,13 +139,18 @@ func (md *MainDisplay) SetShortcut(key, text string) {
 	md.mu.Lock()
 	defer md.mu.Unlock()
 	md.shortcuts[key] = text
-	md.updateShortcuts()
+	md.updateShortcutsLocked()
 }
 
 // updateShortcuts refreshes the shortcut bar for the active display.
 func (md *MainDisplay) updateShortcuts() {
 	md.mu.Lock()
 	defer md.mu.Unlock()
+	md.updateShortcutsLocked()
+}
+
+// updateShortcutsLocked refreshes the shortcut bar. Caller must hold md.mu.
+func (md *MainDisplay) updateShortcutsLocked() {
 	key := md.menuItems[md.activeMenu].Key
 	if text, ok := md.shortcuts[key]; ok {
 		md.shortcutBar.SetText(text)
