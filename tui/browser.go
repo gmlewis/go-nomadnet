@@ -42,6 +42,7 @@ func NewBrowserDisplay(app *tview.Application) *BrowserDisplay {
 	// Title
 	title := tview.NewTextView().
 		SetTextAlign(tview.AlignCenter).
+		SetDynamicColors(true).
 		SetTextColor(tcell.NewHexColor(0xdddddd)).
 		SetText("[::b]Browser[-]")
 
@@ -60,6 +61,7 @@ func NewBrowserDisplay(app *tview.Application) *BrowserDisplay {
 	// Navigation bar
 	navBar := tview.NewTextView().
 		SetTextAlign(tview.AlignCenter).
+		SetDynamicColors(true).
 		SetTextColor(tcell.NewHexColor(0x999999)).
 		SetText("[yellow]Enter[-] Load  [yellow]Ctrl-L[-] Back  [yellow]Ctrl-R[-] Forward  [yellow]Esc[-] URL bar")
 

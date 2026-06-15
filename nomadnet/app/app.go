@@ -38,6 +38,15 @@ import (
 	"github.com/gmlewis/go-reticulum/rns"
 )
 
+// AnnounceEvent represents a received announce.
+type AnnounceEvent struct {
+	Timestamp    time.Time
+	SourceHash   []byte
+	AppData      []byte
+	AnnounceType string // "node", "peer", "pn"
+	DisplayName  string
+}
+
 // UI mode constants matching the Python NomadNet UI modes.
 const (
 	UINone      = 0
@@ -139,6 +148,9 @@ type App struct {
 	Storage *storage.Paths
 	Dir     *directory.Directory
 	RRC     *rrc.RRCManager
+
+	// Announce streams (populated by RNS announce handlers)
+	Announces []AnnounceEvent
 
 	// RNS/LXMF references
 	Logger       *rns.Logger
@@ -300,6 +312,21 @@ func (a *App) Init() error {
 	}
 	a.Logger.Info("LXMF Router ready to receive on %s", rns.PrettyHex(a.LXMFDest.Hash))
 
+	// Register announce handlers with RNS transport
+	a.Transport.RegisterAnnounceHandler(&rns.AnnounceHandler{
+		AspectFilter:                "lxmf.delivery",
+		ReceivedAnnounceWithContext: a.handleLXMFAnnounce,
+	})
+	a.Transport.RegisterAnnounceHandler(&rns.AnnounceHandler{
+		AspectFilter:                "nomadnetwork.node",
+		ReceivedAnnounceWithContext: a.handleNodeAnnounce,
+	})
+	a.Transport.RegisterAnnounceHandler(&rns.AnnounceHandler{
+		AspectFilter:                "lxmf.propagation",
+		ReceivedAnnounceWithContext: a.handlePNAnnounce,
+	})
+	a.Logger.Info("Announce handlers registered")
+
 	// Set global singleton
 	globalMu.Lock()
 	globalApp = a
@@ -345,6 +372,51 @@ func (a *App) lxmfDelivery(msg *lxmf.Message) {
 	if a.DeliveryCallback != nil {
 		a.DeliveryCallback(msg)
 	}
+}
+
+// handleLXMFAnnounce processes LXMF delivery announces.
+func (a *App) handleLXMFAnnounce(destHash []byte, identity *rns.Identity, appData []byte, isPathResponse bool) {
+	displayName, _ := lxmf.DisplayNameFromAppData(appData)
+
+	a.mu.Lock()
+	a.Announces = append(a.Announces, AnnounceEvent{
+		Timestamp:    time.Now(),
+		SourceHash:   destHash,
+		AppData:      appData,
+		AnnounceType: "peer",
+		DisplayName:  displayName,
+	})
+	a.mu.Unlock()
+}
+
+// handleNodeAnnounce processes NomadNet node announces.
+func (a *App) handleNodeAnnounce(destHash []byte, identity *rns.Identity, appData []byte, isPathResponse bool) {
+	displayName := string(appData)
+
+	a.mu.Lock()
+	a.Announces = append(a.Announces, AnnounceEvent{
+		Timestamp:    time.Now(),
+		SourceHash:   destHash,
+		AppData:      appData,
+		AnnounceType: "node",
+		DisplayName:  displayName,
+	})
+	a.mu.Unlock()
+}
+
+// handlePNAnnounce processes propagation node announces.
+func (a *App) handlePNAnnounce(destHash []byte, identity *rns.Identity, appData []byte, isPathResponse bool) {
+	displayName, _ := lxmf.DisplayNameFromAppData(appData)
+
+	a.mu.Lock()
+	a.Announces = append(a.Announces, AnnounceEvent{
+		Timestamp:    time.Now(),
+		SourceHash:   destHash,
+		AppData:      appData,
+		AnnounceType: "pn",
+		DisplayName:  displayName,
+	})
+	a.mu.Unlock()
 }
 
 // setupPaths initializes all file system paths based on ConfigDir.
@@ -462,6 +534,22 @@ func (a *App) AutoSelectPropagationNode() {
 // IsIgnored checks if a source hash is in the ignored list.
 func (a *App) IsIgnored(sourceHash []byte) bool {
 	return false // placeholder
+}
+
+// GetAnnounces returns a copy of the announce stream.
+func (a *App) GetAnnounces() []AnnounceEvent {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	result := make([]AnnounceEvent, len(a.Announces))
+	copy(result, a.Announces)
+	return result
+}
+
+// SetUIChangeCallback sets a callback for UI refresh.
+func (a *App) SetUIChangeCallback(fn func()) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.UIChangeCallback = fn
 }
 
 // ConversationList returns the list of all conversations.

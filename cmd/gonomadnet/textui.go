@@ -16,6 +16,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -88,8 +89,23 @@ func runTextUI(configDir, rnsConfigDir string) {
 func wireDisplays(tuiApp *tui.App, a *app.App) {
 	main := tuiApp.Main
 
-	// Network display
+	// Network display — use real announces from the app
 	networkDisplay := tui.NewNetworkDisplay(tuiApp.Application, nil, nil)
+	// Wire up real announce data via callback
+	a.SetUIChangeCallback(func() {
+		anns := a.GetAnnounces()
+		tuiConvs := make([]tui.AnnounceEntry, len(anns))
+		for i, ann := range anns {
+			tuiConvs[i] = tui.AnnounceEntry{
+				Timestamp:   ann.Timestamp,
+				SourceHash:  fmt.Sprintf("%x", ann.SourceHash),
+				AppData:     string(ann.AppData),
+				Type:        ann.AnnounceType,
+				DisplayName: ann.DisplayName,
+			}
+		}
+		networkDisplay.UpdateAnnounces(tuiConvs)
+	})
 	main.SetDisplay("network", networkDisplay.Widget())
 
 	// Conversations display

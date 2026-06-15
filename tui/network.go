@@ -133,6 +133,25 @@ func (nd *NetworkDisplay) Widget() tview.Primitive {
 	return nd.widget
 }
 
+// UpdateAnnounces replaces the announce list with new data.
+func (nd *NetworkDisplay) UpdateAnnounces(announces []AnnounceEntry) {
+	nd.announces.Clear()
+	for _, ann := range announces {
+		typeIcon := "○"
+		switch ann.Type {
+		case "node":
+			typeIcon = "Ⓝ"
+		case "pn":
+			typeIcon = "↑"
+		case "peer":
+			typeIcon = "Ⓟ"
+		}
+		text := fmt.Sprintf("%s %s", typeIcon, ann.DisplayName)
+		secondary := fmt.Sprintf("%s — %s", ann.Timestamp.Format("15:04:05"), truncateStr(ann.AppData, 30))
+		nd.announces.AddItem(text, secondary, 0, nil)
+	}
+}
+
 // truncateStr truncates a string to maxLen characters.
 func truncateStr(s string, maxLen int) string {
 	if len(s) <= maxLen {
