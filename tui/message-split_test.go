@@ -226,3 +226,33 @@ func itoa(n int) string {
 	}
 	return result
 }
+
+func TestNeedsSplit(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		text     string
+		maxBytes int
+		want     bool
+	}{
+		{"fits", "hello", 10, false},
+		{"exact", "hello", 5, false},
+		{"exceeds", "hello world", 5, true},
+		{"empty text", "", 10, false},
+		{"zero limit", "a", 0, true},
+		{"unicode fits", "日本語", 12, false},
+		{"unicode exceeds", "日本語", 5, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := NeedsSplit(tt.text, tt.maxBytes)
+			if got != tt.want {
+				t.Errorf("NeedsSplit(%q, %d) = %v, want %v",
+					tt.text, tt.maxBytes, got, tt.want)
+			}
+		})
+	}
+}

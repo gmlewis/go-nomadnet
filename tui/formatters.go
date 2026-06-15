@@ -60,6 +60,102 @@ func FormatSize(size int64) string {
 	}
 }
 
+// FormatBytes formats a byte count as a human-readable string with units.
+// Matches Python's format_bytes() exactly. Uses units: bytes, KB, MB, GB, TB.
+func FormatBytes(size float64) string {
+	units := []string{"bytes", "KB", "MB", "GB", "TB"}
+	unitIndex := 0
+
+	for size >= 1024.0 && unitIndex < len(units)-1 {
+		size /= 1024.0
+		unitIndex++
+	}
+
+	if unitIndex == 0 {
+		return fmt.Sprintf("%d %s", int(size), units[unitIndex])
+	}
+	return fmt.Sprintf("%.1f %s", size, units[unitIndex])
+}
+
+// FormatSyncStatus produces the sync status line shown in the
+// conversation list footer. Matches Python's _sync_status_line().
+func FormatSyncStatus(lastSyncTime time.Time, hasSynced bool, nodeLabel string) string {
+	var when string
+	if !hasSynced {
+		when = "never"
+	} else {
+		when = RelativeTime(lastSyncTime)
+	}
+
+	line := "Last sync: " + when
+	if nodeLabel != "" {
+		line += "  (" + nodeLabel + ")"
+	}
+	return line
+}
+
+// FormatHubStatus produces a formatted status line for a hub entry.
+// Includes status icon, name, room count, and unread indicator.
+func FormatHubStatus(hub HubEntry) string {
+	icon := StatusIcon(hub.Status)
+	roomCount := len(hub.Rooms)
+	unread := hub.UnreadCount()
+
+	status := "Disconnected"
+	switch hub.Status {
+	case HubConnected:
+		status = "Connected"
+	case HubReconnecting:
+		status = "Reconnecting"
+	}
+
+	line := fmt.Sprintf("%s %s (%s", icon, hub.Name, status)
+	if roomCount > 0 {
+		line += fmt.Sprintf(", %d rooms", roomCount)
+	}
+	if unread > 0 {
+		line += fmt.Sprintf(", %d unread", unread)
+	}
+	line += ")"
+	return line
+}
+
+// FormatSyncProgress produces a progress bar string for sync operations.
+// Returns a string like "[========    ] 40%" or "" if not syncing.
+func FormatSyncProgress(progress int) string {
+	if progress < 0 {
+		progress = 0
+	}
+	if progress > 100 {
+		progress = 100
+	}
+
+	const barWidth = 20
+	filled := progress * barWidth / 100
+	empty := barWidth - filled
+
+	bar := "[" + strings.Repeat("=", filled) + strings.Repeat(" ", empty) + "]"
+	return fmt.Sprintf("%s %d%%", bar, progress)
+}
+
+// FormatAnnounceSummary formats a single announce for the list view.
+func FormatAnnounceSummary(ann AnnounceEntry) string {
+	typeIcon := "○"
+	switch ann.Type {
+	case "node":
+		typeIcon = "Ⓝ"
+	case "pn":
+		typeIcon = "↑"
+	case "peer":
+		typeIcon = "Ⓟ"
+	}
+	return fmt.Sprintf("%s %s [%s] %s",
+		typeIcon,
+		ann.DisplayName,
+		ann.Type,
+		RelativeTime(ann.Timestamp))
+}
+
 // ExpandShorthands maps short destination type prefixes to their
 // full names. Matches Python's Browser.expand_shorthands().
 func ExpandShorthands(destType string) string {

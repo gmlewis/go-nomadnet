@@ -81,6 +81,7 @@ func NewGuideDisplay(app *tview.Application) *GuideDisplay {
 	content.AddItem(gd.reader, 0, 2, false)
 
 	gd.widget = tview.NewFlex().SetDirection(tview.FlexRow)
+	gd.widget.SetBorder(true)
 	gd.widget.AddItem(title, 2, 0, false)
 	gd.widget.AddItem(content, 0, 1, true)
 

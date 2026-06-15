@@ -53,6 +53,8 @@ func NewMainDisplay(app *tview.Application, theme int, glyphSetName string) *Mai
 		glyphs = glyphsUnicode
 	}
 
+	colors := GetThemeColors(theme)
+
 	md := &MainDisplay{
 		app:       app,
 		theme:     theme,
@@ -71,13 +73,18 @@ func NewMainDisplay(app *tview.Application, theme int, glyphSetName string) *Mai
 	}
 
 	// Create menu bar with bracket-wrapped buttons (matching Python style)
+	// The menu bar uses menubar_fg/menubar_bg from the theme to render
+	// a visible bar at the top of the terminal (matching Python's
+	// urwid.AttrMap(columns, "menubar") styling).
 	md.menuBar = tview.NewFlex().SetDirection(tview.FlexColumn)
+	md.menuBar.SetBackgroundColor(colors["menubar_bg"])
 	md.menuButtons = make([]*tview.Button, len(md.menuItems))
 
 	for i, item := range md.menuItems {
 		label := fmt.Sprintf("[%s]", item.Label)
 		btn := tview.NewButton(label)
-		btn.SetBackgroundColor(tcell.ColorDefault)
+		btn.SetBackgroundColor(colors["menubar_bg"])
+		btn.SetLabelColor(colors["menubar_fg"])
 		idx := i
 		btn.SetSelectedFunc(func() {
 			md.selectMenu(idx)
@@ -86,7 +93,7 @@ func NewMainDisplay(app *tview.Application, theme int, glyphSetName string) *Mai
 		md.menuBar.AddItem(btn, 0, 1, false)
 	}
 
-	// Create content area
+	// Create content area (individual displays add their own borders)
 	md.contentArea = tview.NewPages()
 	md.contentArea.SetBackgroundColor(tcell.ColorDefault)
 
@@ -165,12 +172,15 @@ func (md *MainDisplay) selectMenu(index int) {
 		return
 	}
 
-	// Update button highlights
+	// Update button highlights using theme colors
+	colors := GetThemeColors(md.theme)
 	for i, btn := range md.menuButtons {
 		if i == index {
-			btn.SetBackgroundColor(tcell.NewHexColor(0x666666))
+			btn.SetBackgroundColor(colors["list_focus_bg"])
+			btn.SetLabelColor(colors["list_focus_fg"])
 		} else {
-			btn.SetBackgroundColor(tcell.ColorDefault)
+			btn.SetBackgroundColor(colors["menubar_bg"])
+			btn.SetLabelColor(colors["menubar_fg"])
 		}
 	}
 
@@ -268,6 +278,9 @@ func (md *MainDisplay) SetHideGuide(hideGuide bool) {
 	md.mu.Lock()
 	defer md.mu.Unlock()
 	md.hideGuide = hideGuide
+
+	colors := GetThemeColors(md.theme)
+
 	// Rebuild menu bar with filtered items
 	md.menuBar.Clear()
 	md.menuItems = make([]MenuItem, 0, len(MenuItems))
@@ -281,7 +294,8 @@ func (md *MainDisplay) SetHideGuide(hideGuide bool) {
 	for i, item := range md.menuItems {
 		label := fmt.Sprintf("[%s]", item.Label)
 		btn := tview.NewButton(label)
-		btn.SetBackgroundColor(tcell.ColorDefault)
+		btn.SetBackgroundColor(colors["menubar_bg"])
+		btn.SetLabelColor(colors["menubar_fg"])
 		idx := i
 		btn.SetSelectedFunc(func() {
 			md.selectMenu(idx)

@@ -61,6 +61,7 @@ func NewConfigDisplay(app *tview.Application, configPath string) *ConfigDisplay 
 		AddItem(title, 2, 0, false).
 		AddItem(info, 0, 1, false).
 		AddItem(editorBtn, 1, 0, true)
+	layout.SetBorder(true)
 
 	cd.widget = layout
 	return cd

@@ -59,6 +59,7 @@ func NewInterfacesDisplay(app *tview.Application, interfaces []InterfaceInfo) *I
 	layout := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(title, 2, 0, false).
 		AddItem(content, 0, 1, true)
+	layout.SetBorder(true)
 
 	id.widget = layout
 	return id

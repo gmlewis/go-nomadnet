@@ -83,6 +83,7 @@ func NewDirectoryDisplay(app *tview.Application, entries []DirectoryEntry) *Dire
 	content.AddItem(dd.detail, 0, 2, false)
 
 	dd.widget = tview.NewFlex().SetDirection(tview.FlexRow)
+	dd.widget.SetBorder(true)
 	dd.widget.AddItem(title, 2, 0, false)
 	dd.widget.AddItem(content, 0, 1, true)
 

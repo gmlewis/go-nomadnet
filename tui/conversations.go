@@ -109,6 +109,7 @@ func NewConversationsDisplay(app *tview.Application, convs []ConversationInfo) *
 	content.AddItem(cd.detail, 0, 2, false)
 
 	cd.widget = tview.NewFlex().SetDirection(tview.FlexRow)
+	cd.widget.SetBorder(true)
 	cd.widget.AddItem(title, 2, 0, false)
 	cd.widget.AddItem(content, 0, 1, true)
 

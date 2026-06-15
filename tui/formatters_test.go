@@ -16,6 +16,7 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -60,6 +61,64 @@ func TestRelativeTimeWeeks(t *testing.T) {
 				t.Errorf("RelativeTime(%v offset) = %q, want %q", tt.offset, got, tt.want)
 			}
 		}
+	}
+}
+
+func TestFormatAnnounceSummary(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+	tests := []struct {
+		name string
+		ann  AnnounceEntry
+		want string
+	}{
+		{
+			name: "node type",
+			ann: AnnounceEntry{
+				Type:        "node",
+				DisplayName: "MyNode",
+				Timestamp:   now.Add(-5 * time.Minute),
+			},
+			want: "Ⓝ MyNode [node] 5m ago",
+		},
+		{
+			name: "pn type",
+			ann: AnnounceEntry{
+				Type:        "pn",
+				DisplayName: "PN-Relay",
+				Timestamp:   now.Add(-1 * time.Hour),
+			},
+			want: "↑ PN-Relay [pn] 1h ago",
+		},
+		{
+			name: "peer type",
+			ann: AnnounceEntry{
+				Type:        "peer",
+				DisplayName: "Alice",
+				Timestamp:   now.Add(-2 * time.Hour),
+			},
+			want: "Ⓟ Alice [peer] 2h ago",
+		},
+		{
+			name: "unknown type",
+			ann: AnnounceEntry{
+				Type:        "other",
+				DisplayName: "Unknown",
+				Timestamp:   now.Add(-30 * time.Second),
+			},
+			want: "○ Unknown [other] just now",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := FormatAnnounceSummary(tt.ann)
+			if got != tt.want {
+				t.Errorf("FormatAnnounceSummary() = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
 
@@ -468,6 +527,195 @@ func TestConversationTabStatsEmpty(t *testing.T) {
 	if stats.TrustedCount != 0 || stats.UntrustedCount != 0 {
 		t.Errorf("empty stats: trusted=%d untrusted=%d, want both 0",
 			stats.TrustedCount, stats.UntrustedCount)
+	}
+}
+
+func TestFormatHubStatus(t *testing.T) {
+	t.Parallel()
+
+	hub := HubEntry{
+		Name:   "My Hub",
+		Status: HubConnected,
+		Rooms: map[string]*HubRoom{
+			"general": {Name: "general", Joined: true, Unread: true},
+			"random":  {Name: "random", Joined: true},
+		},
+	}
+
+	got := FormatHubStatus(hub)
+	if !strings.Contains(got, "My Hub") {
+		t.Errorf("FormatHubStatus() missing hub name: %q", got)
+	}
+	if !strings.Contains(got, "Connected") {
+		t.Errorf("FormatHubStatus() missing connected status: %q", got)
+	}
+	if !strings.Contains(got, "1 unread") {
+		t.Errorf("FormatHubStatus() missing unread count: %q", got)
+	}
+}
+
+func TestFormatSyncProgress(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		progress int
+		want     string
+	}{
+		{0, "[                    ] 0%"},
+		{50, "[==========          ] 50%"},
+		{100, "[====================] 100%"},
+		{-5, "[                    ] 0%"},
+		{150, "[====================] 100%"},
+	}
+
+	for _, tt := range tests {
+		got := FormatSyncProgress(tt.progress)
+		if got != tt.want {
+			t.Errorf("FormatSyncProgress(%d) = %q, want %q", tt.progress, got, tt.want)
+		}
+	}
+}
+
+func TestFormatBytes(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		input float64
+		want  string
+	}{
+		{0, "0 bytes"},
+		{512, "512 bytes"},
+		{1023, "1023 bytes"},
+		{1024, "1.0 KB"},
+		{1536, "1.5 KB"},
+		{1048576, "1.0 MB"},
+		{1073741824, "1.0 GB"},
+	}
+
+	for _, tt := range tests {
+		got := FormatBytes(tt.input)
+		if got != tt.want {
+			t.Errorf("FormatBytes(%v) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestFormatSyncStatus(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		lastSync time.Time
+		hasSynced bool
+		nodeLabel string
+		want     string
+	}{
+		{
+			name:      "never synced",
+			lastSync:  time.Time{},
+			hasSynced: false,
+			nodeLabel: "",
+			want:      "Last sync: never",
+		},
+		{
+			name:      "synced recently with node",
+			lastSync:  time.Now().Add(-5 * time.Minute),
+			hasSynced: true,
+			nodeLabel: "TestNode",
+			want:      "Last sync: 5m ago  (TestNode)",
+		},
+		{
+			name:      "synced no node",
+			lastSync:  time.Now().Add(-1 * time.Hour),
+			hasSynced: true,
+			nodeLabel: "",
+			want:      "Last sync: 1h ago",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := FormatSyncStatus(tt.lastSync, tt.hasSynced, tt.nodeLabel)
+			if got != tt.want {
+				t.Errorf("FormatSyncStatus() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestParseQueryFields(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		query     string
+		wantKeys  map[string]string
+		wantWild  bool
+	}{
+		{
+			name:     "wildcard",
+			query:    "*",
+			wantKeys: nil,
+			wantWild: true,
+		},
+		{
+			name:     "empty string",
+			query:    "",
+			wantKeys: map[string]string{},
+			wantWild: false,
+		},
+		{
+			name:     "single key",
+			query:    "name",
+			wantKeys: map[string]string{"name": ""},
+			wantWild: false,
+		},
+		{
+			name:     "key=value",
+			query:    "name=alice",
+			wantKeys: map[string]string{"name": "alice"},
+			wantWild: false,
+		},
+		{
+			name:     "pipe separated",
+			query:    "name=alice|role=admin",
+			wantKeys: map[string]string{"name": "alice", "role": "admin"},
+			wantWild: false,
+		},
+		{
+			name:     "mixed keys and key-value",
+			query:    "verbose|name=bob|debug",
+			wantKeys: map[string]string{"verbose": "", "name": "bob", "debug": ""},
+			wantWild: false,
+		},
+		{
+			name:     "value with special chars",
+			query:    "name=alice bob",
+			wantKeys: map[string]string{"name": "alice bob"},
+			wantWild: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			gotFields, gotWild := ParseQueryFields(tt.query)
+			if gotWild != tt.wantWild {
+				t.Errorf("ParseQueryFields(%q) wildcard = %v, want %v", tt.query, gotWild, tt.wantWild)
+			}
+			if tt.wantWild {
+				return
+			}
+			if len(gotFields) != len(tt.wantKeys) {
+				t.Errorf("ParseQueryFields(%q) got %d fields, want %d", tt.query, len(gotFields), len(tt.wantKeys))
+				return
+			}
+			for k, v := range tt.wantKeys {
+				if gotFields[k] != v {
+					t.Errorf("ParseQueryFields(%q)[%q] = %q, want %q", tt.query, k, gotFields[k], v)
+				}
+			}
+		})
 	}
 }
 

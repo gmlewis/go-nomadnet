@@ -344,3 +344,49 @@ func TestIsInCodeBlock(t *testing.T) {
 		}
 	}
 }
+
+func TestMakeMentionPattern(t *testing.T) {
+	t.Parallel()
+
+	t.Run("valid nick", func(t *testing.T) {
+		t.Parallel()
+		pat, err := MakeMentionPattern("alice")
+		if err != nil {
+			t.Fatalf("MakeMentionPattern(%q) error: %v", "alice", err)
+		}
+		if pat == nil {
+			t.Fatal("MakeMentionPattern returned nil pattern")
+		}
+		if !pat.MatchString("@alice") {
+			t.Errorf("pattern should match @alice")
+		}
+		if !pat.MatchString("hello @alice there") {
+			t.Errorf("pattern should match embedded @alice")
+		}
+		if pat.MatchString("alice") {
+			t.Errorf("pattern should not match alice without @")
+		}
+	})
+
+	t.Run("empty nick", func(t *testing.T) {
+		t.Parallel()
+		_, err := MakeMentionPattern("")
+		if err == nil {
+			t.Error("MakeMentionPattern(\"\") should return error")
+		}
+	})
+
+	t.Run("nick with regex special chars", func(t *testing.T) {
+		t.Parallel()
+		pat, err := MakeMentionPattern("a.b+c")
+		if err != nil {
+			t.Fatalf("MakeMentionPattern(%q) error: %v", "a.b+c", err)
+		}
+		if !pat.MatchString("@a.b+c") {
+			t.Errorf("pattern should match literal @a.b+c")
+		}
+		if pat.MatchString("@ab+c") {
+			t.Errorf("pattern should not match @ab+c")
+		}
+	})
+}

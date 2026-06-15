@@ -52,6 +52,7 @@ func NewLogDisplay(app *tview.Application, logPath string, lines int) *LogDispla
 	layout := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(title, 1, 0, false).
 		AddItem(logView, 0, 1, true)
+	layout.SetBorder(true)
 
 	ld.widget = layout
 	return ld

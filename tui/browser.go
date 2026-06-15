@@ -71,6 +71,7 @@ func NewBrowserDisplay(app *tview.Application) *BrowserDisplay {
 		AddItem(bd.urlBar, 1, 0, false).
 		AddItem(navBar, 1, 0, false).
 		AddItem(bd.content, 0, 1, true)
+	layout.SetBorder(true)
 
 	bd.widget = layout
 	return bd

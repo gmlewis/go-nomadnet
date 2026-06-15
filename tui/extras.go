@@ -48,12 +48,10 @@ func NewIntroDisplay(title string, version string) *IntroDisplay {
 		SetText("-= Starting =-")
 
 	layout := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(nil, 0, 1, false).
-		AddItem(titleView, 3, 0, false).
+		AddItem(titleView, 0, 1, false).
 		AddItem(versionView, 1, 0, false).
-		AddItem(nil, 1, 0, false).
-		AddItem(startingView, 1, 0, false).
-		AddItem(nil, 0, 1, false)
+		AddItem(startingView, 1, 0, false)
+	layout.SetBorder(true)
 
 	id.widget = layout
 	return id

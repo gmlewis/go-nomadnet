@@ -121,9 +121,12 @@ func NewChannelsDisplay(app *tview.Application, rooms []ChannelInfo) *ChannelsDi
 		AddItem(leftPanel, 0, 1, true).
 		AddItem(rightPanel, 0, 3, false)
 
-	cd.widget = tview.NewFlex().SetDirection(tview.FlexRow).
+	layout := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(title, 2, 0, false).
 		AddItem(content, 0, 1, true)
+	layout.SetBorder(true)
+
+	cd.widget = layout
 
 	return cd
 }
