@@ -73,10 +73,10 @@ func runTextUI(configDir, rnsConfigDir string) {
 		tuiApp.Stop()
 	})
 
-	// Wire up real displays
+	// Wire up real displays BEFORE setting root
 	wireDisplays(tuiApp, a)
 
-	// Set root AFTER all displays are wired up
+	// Set root after all displays are wired up
 	tuiApp.SetRoot()
 
 	if err := tuiApp.Run(); err != nil {

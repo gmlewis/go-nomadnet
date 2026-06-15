@@ -101,6 +101,10 @@ func NewMainDisplay(app *tview.Application, theme int, glyphSetName string) *Mai
 // SetDisplay replaces the placeholder for a menu key with a real display widget.
 func (md *MainDisplay) SetDisplay(key string, widget tview.Primitive) {
 	md.contentArea.AddPage(key, widget, true, false)
+	// If this is the currently active page, re-switch to make it visible
+	if key == MenuItems[md.activeMenu].Key {
+		md.contentArea.SwitchToPage(key)
+	}
 }
 
 // selectMenu highlights the given menu item and switches content.
