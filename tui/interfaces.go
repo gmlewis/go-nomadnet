@@ -119,3 +119,46 @@ func formatBandwidth(bps float64) string {
 	}
 	return fmt.Sprintf("%.1f %s", size, units[unitIdx])
 }
+
+// FormatInterfaceEntry produces a single-line summary for the interface
+// list widget. Includes icon, name, and status indicator.
+// Matches Python's InterfaceListEntry widget.
+func FormatInterfaceEntry(iface InterfaceInfo) string {
+	icon := InterfaceIcon(iface.Type)
+	statusColor := "[green]"
+	if iface.Status != "connected" {
+		statusColor = "[red]"
+	}
+	return fmt.Sprintf("%s %s %s(%s)", icon, iface.Name, statusColor, iface.Status)
+}
+
+// FormatInterfaceDetail produces a multi-line detail view for the
+// interface info panel. Shows name, type, status, target, bandwidth,
+// and recent traffic data when available.
+// Matches Python's InterfaceDetail view layout.
+func FormatInterfaceDetail(iface InterfaceInfo) string {
+	var sb strings.Builder
+
+	sb.WriteString(fmt.Sprintf("[::b]Interface Details[-]\n\n"))
+	sb.WriteString(fmt.Sprintf("  Name: %s\n", iface.Name))
+	sb.WriteString(fmt.Sprintf("  Type: %s\n", iface.Type))
+
+	statusIcon := "○"
+	if iface.Status == "connected" {
+		statusIcon = "●"
+	}
+	sb.WriteString(fmt.Sprintf("  Status: %s %s\n", statusIcon, iface.Status))
+
+	if iface.Target != "" {
+		sb.WriteString(fmt.Sprintf("  Target: %s\n", iface.Target))
+	}
+
+	sb.WriteString(fmt.Sprintf("  Bandwidth: %s\n", formatBandwidth(iface.Bandwidth)))
+
+	if len(iface.Traffic) > 0 {
+		sb.WriteString("\n  [gray]Recent Traffic[-]\n")
+		sb.WriteString(fmt.Sprintf("  Samples: %d\n", len(iface.Traffic)))
+	}
+
+	return sb.String()
+}

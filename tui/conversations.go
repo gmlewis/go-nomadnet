@@ -187,25 +187,9 @@ func (cd *ConversationsDisplay) showDetail(idx int) {
 }
 
 // relativeTime formats a timestamp as a relative string.
+// Delegates to RelativeTime for consistent behavior.
 func relativeTime(t time.Time) string {
-	delta := time.Since(t)
-	switch {
-	case delta < time.Minute:
-		return "just now"
-	case delta < time.Hour:
-		m := int(delta.Minutes())
-		return fmt.Sprintf("%dm ago", m)
-	case delta < 24*time.Hour:
-		h := int(delta.Hours())
-		return fmt.Sprintf("%dh ago", h)
-	case delta < 48*time.Hour:
-		return "yesterday"
-	case delta < 7*24*time.Hour:
-		d := int(delta.Hours() / 24)
-		return fmt.Sprintf("%dd ago", d)
-	default:
-		return t.Format("2006-01-02")
-	}
+	return RelativeTime(t)
 }
 
 // sortByName sorts conversations by display name.

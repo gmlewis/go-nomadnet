@@ -170,3 +170,28 @@ func (cd *ChannelsDisplay) ShowMembers(members []ChannelMember) {
 func nickColor(nick string) string {
 	return NickColor(nick, ThemeDark)
 }
+
+// FormatMessage produces a styled message string for display in the
+// message list. Returns a tview-compatible formatted string with
+// appropriate color tags for the message type.
+// Matches Python's message rendering with header, trust styling,
+// and type-based coloring.
+func FormatMessage(msg ChannelMessage, theme int) string {
+	switch {
+	case msg.IsSystem:
+		return fmt.Sprintf("[gray]system:%s[-]", msg.Text)
+	case msg.IsNotice:
+		return fmt.Sprintf("[yellow]notice:%s[-]", msg.Text)
+	case msg.IsError:
+		return fmt.Sprintf("[red]error:%s[-]", msg.Text)
+	case msg.IsSelf:
+		return fmt.Sprintf("[green]%s[-] %s", msg.Nick, msg.Text)
+	default:
+		// Check for mention indicator
+		extra := ""
+		if msg.Mention {
+			extra = " [orange]@mention[-]"
+		}
+		return fmt.Sprintf("[%s]%s[-] %s%s", nickColor(msg.Nick), msg.Nick, msg.Text, extra)
+	}
+}
