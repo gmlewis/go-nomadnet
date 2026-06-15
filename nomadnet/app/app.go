@@ -26,6 +26,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -276,9 +277,9 @@ func (a *App) Init() error {
 	a.Transport = rns.NewTransportSystem(a.Logger)
 	rnsConfigDir := a.RNSConfigDir
 	if rnsConfigDir == "" {
-		// Use default RNS config location
-		home, _ := os.UserHomeDir()
-		rnsConfigDir = filepath.Join(home, ".reticulum")
+		// Create a standalone RNS config with share_instance = No
+		// so each gonomadnet instance runs independently
+		rnsConfigDir = a.ensureStandaloneRNSConfig()
 	}
 	ret, err := rns.NewReticulumWithLogger(a.Transport, rnsConfigDir, a.Logger)
 	if err != nil {
@@ -588,4 +589,91 @@ func expandUser(path string) string {
 		return path
 	}
 	return filepath.Join(home, path[1:])
+}
+
+// ensureStandaloneRNSConfig creates a standalone RNS config directory
+// with share_instance = No, matching gornphone's pattern. Each gonomadnet
+// instance runs its own standalone RNS stack so destinations are registered
+// on its own TransportSystem.
+func (a *App) ensureStandaloneRNSConfig() string {
+	rnsDir := filepath.Join(os.TempDir(), fmt.Sprintf("gonomadnet-rns-%d", time.Now().UnixMilli()))
+	configPath := filepath.Join(rnsDir, "config")
+
+	_ = os.MkdirAll(rnsDir, 0o755)
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		home = ""
+	}
+
+	var content string
+	if home != "" {
+		systemConfigPath := filepath.Join(home, ".reticulum", "config")
+		if data, err := os.ReadFile(systemConfigPath); err == nil {
+			content = string(data)
+		}
+	}
+
+	if content == "" {
+		content = `[reticulum]
+  share_instance = No
+
+[logging]
+  loglevel = 4
+
+[interfaces]
+  [[Default Interface]]
+    type = AutoInterface
+    enabled = Yes
+    name = Default Interface
+`
+	}
+
+	// Override share_instance to No for standalone operation
+	content = setRNSConfigDirective(content, "share_instance", "No")
+
+	_ = os.WriteFile(configPath, []byte(content), 0o644)
+	a.Logger.Info("Created standalone RNS config at %s", rnsDir)
+	return rnsDir
+}
+
+// setRNSConfigDirective replaces or adds a key=value directive in the
+// [reticulum] section of an RNS config string.
+func setRNSConfigDirective(content, key, value string) string {
+	lines := strings.Split(content, "\n")
+	inReticulum := false
+	replaced := false
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "[[") || strings.HasPrefix(trimmed, "[[") {
+			continue
+		}
+		if strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]") {
+			section := strings.Trim(trimmed, "[] ")
+			inReticulum = section == "reticulum"
+			continue
+		}
+		if inReticulum {
+			if strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, ";") {
+				continue
+			}
+			parts := strings.SplitN(trimmed, "=", 2)
+			if len(parts) == 2 && strings.TrimSpace(parts[0]) == key {
+				lines[i] = fmt.Sprintf("  %s = %s", key, value)
+				replaced = true
+				break
+			}
+		}
+	}
+	if !replaced {
+		// Add to end of [reticulum] section
+		for i, line := range lines {
+			trimmed := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmed, "[reticulum]") {
+				lines = append(lines[:i+1], append([]string{fmt.Sprintf("  %s = %s", key, value)}, lines[i+1:]...)...)
+				break
+			}
+		}
+	}
+	return strings.Join(lines, "\n")
 }
