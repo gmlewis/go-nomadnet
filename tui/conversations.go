@@ -18,6 +18,7 @@ package tui
 import (
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/gdamore/tcell/v2"
@@ -34,6 +35,8 @@ type ConversationInfo struct {
 	Unread       bool
 	MessageCount int
 	Failed       bool
+	Pinned       bool
+	SortRank     *int
 }
 
 // ConversationsDisplay shows the conversation list and message view.
@@ -217,4 +220,79 @@ func sortByTime(convs []ConversationInfo) {
 	sort.Slice(convs, func(i, j int) bool {
 		return convs[i].LastTime.After(convs[j].LastTime)
 	})
+}
+
+// SortMode represents the conversation list sort order.
+type SortMode int
+
+const (
+	// SortRecent sorts conversations by most recent activity first.
+	SortRecent SortMode = iota
+	// SortName sorts conversations alphabetically by display name.
+	SortName
+)
+
+// ToggleSortMode returns the alternate sort mode.
+func ToggleSortMode(mode SortMode) SortMode {
+	if mode == SortRecent {
+		return SortName
+	}
+	return SortRecent
+}
+
+// SortConversations sorts conversations by the given mode, pinning
+// conversations with SortRank != nil to the top. Pinned conversations
+// are sorted among themselves by the same mode.
+func SortConversations(convs []ConversationInfo, mode SortMode) {
+	if len(convs) <= 1 {
+		return
+	}
+
+	sort.SliceStable(convs, func(i, j int) bool {
+		if convs[i].Pinned != convs[j].Pinned {
+			return convs[i].Pinned
+		}
+		switch mode {
+		case SortName:
+			li, lj := strings.ToLower(convs[i].DisplayName), strings.ToLower(convs[j].DisplayName)
+			if li != lj {
+				return li < lj
+			}
+			return convs[i].SourceHash < convs[j].SourceHash
+		default:
+			if !convs[i].LastTime.Equal(convs[j].LastTime) {
+				return convs[i].LastTime.After(convs[j].LastTime)
+			}
+			return convs[i].SourceHash < convs[j].SourceHash
+		}
+	})
+}
+
+// FilterConversations returns conversations matching the given trust level.
+func FilterConversations(convs []ConversationInfo, trustLevel string) []ConversationInfo {
+	var result []ConversationInfo
+	for _, c := range convs {
+		if c.TrustLevel == trustLevel {
+			result = append(result, c)
+		}
+	}
+	return result
+}
+
+// FilterConversationsWithBlocked returns conversations for a trust tab,
+// optionally including blocked conversations on the untrusted tab.
+func FilterConversationsWithBlocked(convs []ConversationInfo, trustLevel string, showBlocked bool) []ConversationInfo {
+	var result []ConversationInfo
+	for _, c := range convs {
+		if trustLevel == "trusted" && c.TrustLevel == "trusted" {
+			result = append(result, c)
+		} else if trustLevel == "untrusted" {
+			if c.TrustLevel == "untrusted" {
+				result = append(result, c)
+			} else if showBlocked && c.TrustLevel == "blocked" {
+				result = append(result, c)
+			}
+		}
+	}
+	return result
 }

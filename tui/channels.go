@@ -166,15 +166,7 @@ func (cd *ChannelsDisplay) ShowMembers(members []ChannelMember) {
 	}
 }
 
-// nickColor returns a consistent color for a nickname.
+// nickColor returns a consistent 24-color palette color for a nickname.
 func nickColor(nick string) string {
-	colors := []string{
-		"red", "green", "yellow", "blue", "magenta", "cyan",
-		"lightred", "lightgreen", "lightyellow", "lightblue",
-	}
-	hash := 0
-	for _, c := range nick {
-		hash += int(c)
-	}
-	return colors[hash%len(colors)]
+	return NickColor(nick, ThemeDark)
 }

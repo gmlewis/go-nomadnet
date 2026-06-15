@@ -53,7 +53,9 @@ type NetworkDisplay struct {
 	announces    *tview.List
 	nodes        *tview.List
 	detail       *tview.TextView
-	showingNodes bool // false = showing announces, true = showing nodes
+	showingNodes bool          // false = showing announces, true = showing nodes
+	displayMode  DisplayMode   // name vs destination hash
+	announceData []AnnounceEntry // stored for rebuild on mode change
 }
 
 // NewNetworkDisplay creates a new network display matching Python's layout.
@@ -118,16 +120,7 @@ func NewNetworkDisplay(app *tview.Application, announces []AnnounceEntry, nodes 
 
 // addAnnounceEntry adds a single announce to the list.
 func (nd *NetworkDisplay) addAnnounceEntry(ann AnnounceEntry) {
-	typeIcon := "○"
-	switch ann.Type {
-	case "node":
-		typeIcon = "Ⓝ"
-	case "pn":
-		typeIcon = "↑"
-	case "peer":
-		typeIcon = "Ⓟ"
-	}
-	text := fmt.Sprintf("%s %s", typeIcon, ann.DisplayName)
+	text := FormatAnnounceFull(ann, false)
 	secondary := fmt.Sprintf("%s — %s", ann.Timestamp.Format("15:04:05"), truncateStr(ann.AppData, 30))
 	nd.announces.AddItem(text, secondary, 0, nil)
 }
@@ -163,9 +156,10 @@ func (nd *NetworkDisplay) Widget() tview.Primitive {
 
 // UpdateAnnounces replaces the announce list with new data.
 func (nd *NetworkDisplay) UpdateAnnounces(announces []AnnounceEntry) {
+	nd.announceData = announces
 	nd.announces.Clear()
 	for _, ann := range announces {
-		nd.addAnnounceEntry(ann)
+		nd.addAnnounceEntryWithMode(ann)
 	}
 	if nd.app != nil {
 		nd.app.QueueUpdateDraw(func() {})
@@ -186,6 +180,45 @@ func (nd *NetworkDisplay) toggleList() {
 	}
 }
 
+// ToggleDisplayMode toggles between showing display names and
+// destination hashes in the announce stream.
+func (nd *NetworkDisplay) ToggleDisplayMode() {
+	nd.displayMode = ToggleDisplayMode(nd.displayMode)
+	nd.rebuildAnnounceList()
+}
+
+// rebuildAnnounceList repopulates the announce list using the
+// current display mode.
+func (nd *NetworkDisplay) rebuildAnnounceList() {
+	nd.announces.Clear()
+	for _, ann := range nd.announceData {
+		nd.addAnnounceEntryWithMode(ann)
+	}
+	if nd.app != nil {
+		nd.app.QueueUpdateDraw(func() {})
+	}
+}
+
+// addAnnounceEntryWithMode adds a single announce using the current display mode.
+func (nd *NetworkDisplay) addAnnounceEntryWithMode(ann AnnounceEntry) {
+	text := FormatAnnounceFull(ann, nd.displayMode == DisplayHash)
+	secondary := fmt.Sprintf("%s — %s", ann.Timestamp.Format("15:04:05"), truncateStr(ann.AppData, 30))
+	nd.announces.AddItem(text, secondary, 0, nil)
+}
+
+// GetDisplayMode returns the current display mode.
+func (nd *NetworkDisplay) GetDisplayMode() DisplayMode {
+	return nd.displayMode
+}
+
+// DisplayModeLabel returns the toggle button label for the current mode.
+func (nd *NetworkDisplay) DisplayModeLabel() string {
+	if nd.displayMode == DisplayName {
+		return "Show: Name"
+	}
+	return "Show: Dest"
+}
+
 // truncateStr truncates a string to maxLen characters.
 func truncateStr(s string, maxLen int) string {
 	if len([]rune(s)) <= maxLen {
@@ -193,6 +226,52 @@ func truncateStr(s string, maxLen int) string {
 	}
 	runes := []rune(s)
 	return string(runes[:maxLen-3]) + "..."
+}
+
+// DisplayMode controls whether the announce stream shows names or hashes.
+type DisplayMode int
+
+const (
+	// DisplayName shows the peer's display name.
+	DisplayName DisplayMode = iota
+	// DisplayHash shows the raw destination hex hash.
+	DisplayHash
+)
+
+// ToggleDisplayMode returns the alternate display mode.
+func ToggleDisplayMode(mode DisplayMode) DisplayMode {
+	if mode == DisplayName {
+		return DisplayHash
+	}
+	return DisplayName
+}
+
+// FormatAnnounceEntry returns the display text for an announce entry
+// based on the given display mode. When showHash is true, the raw
+// source hash is shown instead of the display name.
+func FormatAnnounceEntry(ann AnnounceEntry, showHash bool) string {
+	if showHash {
+		return ann.SourceHash
+	}
+	if ann.DisplayName != "" {
+		return ann.DisplayName
+	}
+	return ann.SourceHash
+}
+
+// FormatAnnounceFull returns the full announce line with type icon and
+// display text. Used for the announce stream list items.
+func FormatAnnounceFull(ann AnnounceEntry, showHash bool) string {
+	typeIcon := "○"
+	switch ann.Type {
+	case "node":
+		typeIcon = "Ⓝ"
+	case "pn":
+		typeIcon = "↑"
+	case "peer":
+		typeIcon = "Ⓟ"
+	}
+	return typeIcon + " " + FormatAnnounceEntry(ann, showHash)
 }
 
 // formatAnnounce formats an announce for display.
