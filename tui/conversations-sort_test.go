@@ -228,4 +228,3 @@ func TestFilterConversationsBlocked(t *testing.T) {
 		t.Fatalf("trusted with blocked flag: got %d, want 1", len(filtered))
 	}
 }
-

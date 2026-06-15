@@ -53,8 +53,8 @@ type NetworkDisplay struct {
 	announces    *tview.List
 	nodes        *tview.List
 	detail       *tview.TextView
-	showingNodes bool          // false = showing announces, true = showing nodes
-	displayMode  DisplayMode   // name vs destination hash
+	showingNodes bool            // false = showing announces, true = showing nodes
+	displayMode  DisplayMode     // name vs destination hash
 	announceData []AnnounceEntry // stored for rebuild on mode change
 }
 

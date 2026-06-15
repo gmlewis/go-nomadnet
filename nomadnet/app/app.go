@@ -567,7 +567,7 @@ func setRNSConfigDirective(content, key, value string) string {
 	replaced := false
 	for i, line := range lines {
 		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "[[") || strings.HasPrefix(trimmed, "[[") {
+		if strings.HasPrefix(trimmed, "[[") && strings.HasSuffix(trimmed, "]]") {
 			continue
 		}
 		if strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]") {
