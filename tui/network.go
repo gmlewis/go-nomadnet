@@ -59,6 +59,7 @@ func NewNetworkDisplay(app *tview.Application, announces []AnnounceEntry, nodes 
 	// Title
 	title := tview.NewTextView().
 		SetTextAlign(tview.AlignCenter).
+		SetDynamicColors(true).
 		SetTextColor(tcell.NewHexColor(0xdddddd)).
 		SetText("[::b]Network[-]")
 
@@ -107,6 +108,7 @@ func NewNetworkDisplay(app *tview.Application, announces []AnnounceEntry, nodes 
 	// Tabs for announces/nodes
 	tabBar := tview.NewTextView().
 		SetTextAlign(tview.AlignCenter).
+		SetDynamicColors(true).
 		SetTextColor(tcell.NewHexColor(0xdddddd)).
 		SetText("[yellow]1[-] Announces  [yellow]2[-] Nodes")
 

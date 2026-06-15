@@ -56,6 +56,7 @@ func NewConversationsDisplay(app *tview.Application, convs []ConversationInfo) *
 	// Title
 	title := tview.NewTextView().
 		SetTextAlign(tview.AlignCenter).
+		SetDynamicColors(true).
 		SetTextColor(tcell.NewHexColor(0xdddddd)).
 		SetText("[::b]Conversations[-]")
 

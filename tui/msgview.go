@@ -47,6 +47,7 @@ func NewMessageViewDisplay(app *tview.Application) *MessageViewDisplay {
 
 	title := tview.NewTextView().
 		SetTextAlign(tview.AlignCenter).
+		SetDynamicColors(true).
 		SetTextColor(tcell.NewHexColor(0xdddddd)).
 		SetText("[::b]Message[-]")
 

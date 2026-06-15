@@ -32,6 +32,7 @@ func NewGuideDisplay(app *tview.Application) *GuideDisplay {
 
 	title := tview.NewTextView().
 		SetTextAlign(tview.AlignCenter).
+		SetDynamicColors(true).
 		SetTextColor(tcell.NewHexColor(0xdddddd)).
 		SetText("[::b]Nomad Network Guide[-]")
 

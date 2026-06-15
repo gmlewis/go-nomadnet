@@ -69,6 +69,7 @@ func NewChannelsDisplay(app *tview.Application, rooms []ChannelInfo) *ChannelsDi
 	// Title
 	title := tview.NewTextView().
 		SetTextAlign(tview.AlignCenter).
+		SetDynamicColors(true).
 		SetTextColor(tcell.NewHexColor(0xdddddd)).
 		SetText("[::b]Channels[-]")
 

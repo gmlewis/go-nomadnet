@@ -33,6 +33,7 @@ func NewIntroDisplay(title string, version string) *IntroDisplay {
 
 	titleView := tview.NewTextView().
 		SetTextAlign(tview.AlignCenter).
+		SetDynamicColors(true).
 		SetTextColor(tcell.NewHexColor(0x00a533)).
 		SetText(fmt.Sprintf("[::b]%s[-]", title))
 

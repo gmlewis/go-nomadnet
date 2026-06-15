@@ -46,6 +46,7 @@ func NewInterfacesDisplay(app *tview.Application, interfaces []InterfaceInfo) *I
 
 	title := tview.NewTextView().
 		SetTextAlign(tview.AlignCenter).
+		SetDynamicColors(true).
 		SetTextColor(tcell.NewHexColor(0xdddddd)).
 		SetText("[::b]Network Interfaces[-]")
 
