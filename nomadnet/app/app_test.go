@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/gmlewis/go-nomadnet/nomadnet/config"
+	"github.com/gmlewis/go-reticulum/rns"
 )
 
 func TestNewAppDefaults(t *testing.T) {
@@ -375,6 +376,104 @@ func TestAppWithConfigFile(t *testing.T) {
 	}
 	if a.NodeName != "TestNode" {
 		t.Errorf("NodeName = %q, want %q", a.NodeName, "TestNode")
+	}
+}
+
+func TestNewAppWithTransportWithInjectedTransport(t *testing.T) {
+	t.Parallel()
+
+	dir := tempDir(t)
+	ts := rns.NewTransportSystem(nil)
+	id, err := rns.NewIdentity(true, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	a := NewAppWithTransport(dir, WithTransport(ts), WithIdentity(id))
+
+	if a.Transport != ts {
+		t.Error("Transport not set from option")
+	}
+	if a.Identity != id {
+		t.Error("Identity not set from option")
+	}
+	if a.ConfigDir != dir {
+		t.Errorf("ConfigDir = %q, want %q", a.ConfigDir, dir)
+	}
+}
+
+func TestNewAppWithTransportWithoutOptionsMatchesNewApp(t *testing.T) {
+	t.Parallel()
+
+	dir := tempDir(t)
+	a := NewAppWithTransport(dir)
+
+	if a.ConfigDir != dir {
+		t.Errorf("ConfigDir = %q, want %q", a.ConfigDir, dir)
+	}
+	if a.Transport != nil {
+		t.Error("Transport should be nil without option")
+	}
+	if a.Identity != nil {
+		t.Error("Identity should be nil without option")
+	}
+	if a.Version != "0.1.0" {
+		t.Errorf("Version = %q, want %q", a.Version, "0.1.0")
+	}
+}
+
+func TestInitWithTransportCreatesRouter(t *testing.T) {
+	t.Parallel()
+
+	dir := tempDir(t)
+	ts := rns.NewTransportSystem(nil)
+	id, err := rns.NewIdentity(true, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	a := NewAppWithTransport(dir, WithTransport(ts), WithIdentity(id))
+	if err := a.InitWithTransport(ts, id); err != nil {
+		t.Fatalf("InitWithTransport error: %v", err)
+	}
+	defer a.Shutdown()
+
+	if a.Router == nil {
+		t.Error("Router should be created by InitWithTransport")
+	}
+	if a.LXMFDest == nil {
+		t.Error("LXMFDest should be registered by InitWithTransport")
+	}
+	if a.Dir == nil {
+		t.Error("Dir should be initialized by InitWithTransport")
+	}
+}
+
+func TestInitWithTransportReceivesAnnounces(t *testing.T) {
+	t.Parallel()
+
+	dir := tempDir(t)
+	ts := rns.NewTransportSystem(nil)
+	id, err := rns.NewIdentity(true, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	a := NewAppWithTransport(dir, WithTransport(ts), WithIdentity(id))
+	if err := a.InitWithTransport(ts, id); err != nil {
+		t.Fatalf("InitWithTransport error: %v", err)
+	}
+	defer a.Shutdown()
+
+	if a.AnnounceCount() != 0 {
+		t.Errorf("AnnounceCount = %d, want 0", a.AnnounceCount())
+	}
+
+	// Simulate receiving a peer announce directly
+	a.handleLXMFAnnounce(id.Hash, id, []byte("test"), false)
+
+	if a.AnnounceCount() != 1 {
+		t.Errorf("AnnounceCount = %d, want 1 after announce", a.AnnounceCount())
 	}
 }
 

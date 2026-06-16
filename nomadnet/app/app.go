@@ -175,6 +175,26 @@ type App struct {
 	mu sync.Mutex
 }
 
+// AppOption configures an App during construction.
+type AppOption func(*App)
+
+// WithTransport injects an external TransportSystem, skipping the
+// automatic transport creation in initRNS.
+func WithTransport(ts *rns.TransportSystem) AppOption {
+	return func(a *App) { a.Transport = ts }
+}
+
+// WithIdentity injects an external Identity, skipping automatic
+// identity creation in initRNS.
+func WithIdentity(id *rns.Identity) AppOption {
+	return func(a *App) { a.Identity = id }
+}
+
+// WithLogger injects an external Logger.
+func WithLogger(logger *rns.Logger) AppOption {
+	return func(a *App) { a.Logger = logger }
+}
+
 var (
 	globalApp *App
 	appOnce   sync.Once
@@ -224,6 +244,18 @@ func NewApp(configDir, rnsConfigDir string, daemon, forceConsole bool) *App {
 	// Set up paths
 	a.setupPaths()
 
+	return a
+}
+
+// NewAppWithTransport creates a new App with optional external
+// dependencies injected via AppOption. When WithTransport and
+// WithIdentity are provided, the App skips creating its own
+// transport and identity during initialization.
+func NewAppWithTransport(configDir string, opts ...AppOption) *App {
+	a := NewApp(configDir, "", false, false)
+	for _, opt := range opts {
+		opt(a)
+	}
 	return a
 }
 
@@ -352,6 +384,64 @@ func (a *App) initRNS() {
 
 	// Start background jobs
 	go a.jobs()
+}
+
+// InitWithTransport initializes the App synchronously using the provided
+// transport and identity, bypassing the automatic initRNS flow. This is
+// used for integration testing where external RNS instances are injected.
+func (a *App) InitWithTransport(ts *rns.TransportSystem, identity *rns.Identity) error {
+	if err := a.Storage.EnsureDirs(); err != nil {
+		return err
+	}
+
+	cfg, err := config.Load(a.ConfigPath)
+	if err != nil {
+		return err
+	}
+	a.Config = cfg
+	a.applyConfig(cfg)
+
+	if a.Logger == nil {
+		a.Logger = rns.NewLogger()
+		a.Logger.SetLogLevel(rns.LogNotice)
+		a.Logger.SetLogDest(rns.LogStdout)
+	}
+
+	a.Transport = ts
+	a.Identity = identity
+	a.Dir = directory.New()
+	a.RRC = rrc.NewManager(a.StoragePath, nil)
+
+	globalMu.Lock()
+	globalApp = a
+	globalMu.Unlock()
+	appOnce.Do(func() {})
+
+	a.Router, err = lxmf.NewRouter(a.Transport, a.Identity, a.StoragePath)
+	if err != nil {
+		return fmt.Errorf("creating LXMF router: %w", err)
+	}
+	a.Router.RegisterDeliveryCallback(a.lxmfDelivery)
+
+	a.LXMFDest, err = a.Router.RegisterDeliveryIdentity(a.Identity, a.Config.Client.UserInterface, nil)
+	if err != nil {
+		return fmt.Errorf("registering delivery identity: %w", err)
+	}
+
+	a.Transport.RegisterAnnounceHandler(&rns.AnnounceHandler{
+		AspectFilter:                "lxmf.delivery",
+		ReceivedAnnounceWithContext: a.handleLXMFAnnounce,
+	})
+	a.Transport.RegisterAnnounceHandler(&rns.AnnounceHandler{
+		AspectFilter:                "nomadnetwork.node",
+		ReceivedAnnounceWithContext: a.handleNodeAnnounce,
+	})
+	a.Transport.RegisterAnnounceHandler(&rns.AnnounceHandler{
+		AspectFilter:                "lxmf.propagation",
+		ReceivedAnnounceWithContext: a.handlePNAnnounce,
+	})
+
+	return nil
 }
 
 // setupPaths initializes all file system paths based on ConfigDir.
@@ -630,8 +720,19 @@ func (a *App) loadOrCreateIdentity(path string) (*rns.Identity, error) {
 // lxmfDelivery handles incoming LXMF messages.
 func (a *App) lxmfDelivery(msg *lxmf.Message) {
 	a.Logger.Info("Received LXMF message from %s", rns.PrettyHex(msg.SourceHash))
+
+	if a.ConversationPath != "" {
+		if _, err := conversation.Ingest(msg, a.ConversationPath, false); err != nil {
+			a.Logger.Error("Failed to ingest LXMF message: %v", err)
+		}
+	}
+
 	if a.DeliveryCallback != nil {
 		a.DeliveryCallback(msg)
+	}
+
+	if a.UIChangeCallback != nil {
+		a.UIChangeCallback()
 	}
 }
 

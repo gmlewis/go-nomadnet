@@ -20,12 +20,15 @@
 package conversation
 
 import (
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/gmlewis/go-reticulum/lxmf"
 )
 
 // Conversation represents an LXMF conversation with a single peer.
@@ -306,4 +309,49 @@ func isHexString(s string) bool {
 		}
 	}
 	return true
+}
+
+// Ingest writes an incoming LXMF message to the appropriate conversation
+// directory, creating it if necessary. The originator flag indicates whether
+// this message was sent by the local user (true) or received from a peer
+// (false). Returns the path of the ingested message file.
+//
+// This matches Python's Conversation.ingest() in Conversation.py:56.
+func Ingest(msg *lxmf.Message, conversationsPath string, originator bool) (string, error) {
+	var sourceHash []byte
+	if originator {
+		sourceHash = msg.DestinationHash
+	} else {
+		sourceHash = msg.SourceHash
+	}
+
+	sourceHex := hex.EncodeToString(sourceHash)
+	convDir := filepath.Join(conversationsPath, sourceHex)
+
+	if err := os.MkdirAll(convDir, 0o755); err != nil {
+		return "", fmt.Errorf("creating conversation dir: %w", err)
+	}
+
+	ingestedPath, err := msg.WriteToDirectory(convDir)
+	if err != nil {
+		return "", fmt.Errorf("writing message to directory: %w", err)
+	}
+
+	cachedMu.Lock()
+	if cached, ok := cachedConversations[sourceHex]; ok {
+		cachedMu.Unlock()
+		_ = cached.ScanStorage()
+	} else {
+		cachedMu.Unlock()
+	}
+
+	if !originator {
+		unreadPath := filepath.Join(convDir, "unread")
+		_ = os.WriteFile(unreadPath, []byte("1"), 0o644)
+		cachedMu.Lock()
+		unreadConversations[sourceHex] = true
+		cachedMu.Unlock()
+	}
+
+	return ingestedPath, nil
 }

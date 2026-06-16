@@ -19,6 +19,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/gmlewis/go-reticulum/rns"
 )
 
 func TestScanPages(t *testing.T) {
@@ -526,6 +528,88 @@ func mkdir(t *testing.T, path string) {
 	t.Helper()
 	if err := os.MkdirAll(path, 0o755); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestStartCreatesDestination(t *testing.T) {
+	t.Parallel()
+
+	ts := rns.NewTransportSystem(nil)
+	id, err := rns.NewIdentity(true, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dir := tempDir(t)
+	n := NewNode("TestNode", dir, dir, 720, 0, 0, false)
+
+	if err := n.Start(ts, id); err != nil {
+		t.Fatalf("Start error: %v", err)
+	}
+	defer n.Stop()
+
+	if n.destination == nil {
+		t.Error("destination should be set after Start")
+	}
+	if n.destination.Type != rns.DestinationSingle {
+		t.Errorf("destination type = %d, want DestinationSingle", n.destination.Type)
+	}
+}
+
+func TestStartRegistersRequestHandlers(t *testing.T) {
+	t.Parallel()
+
+	ts := rns.NewTransportSystem(nil)
+	id, err := rns.NewIdentity(true, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	pagesDir := tempDir(t)
+	writeFile(t, filepath.Join(pagesDir, "index.mu"), ">Home Page\nWelcome!")
+
+	n := NewNode("TestNode", pagesDir, pagesDir, 720, 0, 0, false)
+
+	if err := n.Start(ts, id); err != nil {
+		t.Fatalf("Start error: %v", err)
+	}
+	defer n.Stop()
+
+	if n.destination == nil {
+		t.Fatal("destination not set after Start")
+	}
+
+	if len(n.ServedPages) == 0 {
+		t.Error("ServedPages should not be empty after Start")
+	}
+}
+
+func TestAnnounceSetsAppData(t *testing.T) {
+	t.Parallel()
+
+	ts := rns.NewTransportSystem(nil)
+	id, err := rns.NewIdentity(true, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dir := tempDir(t)
+	n := NewNode("TestNode", dir, dir, 720, 0, 0, false)
+
+	if err := n.Start(ts, id); err != nil {
+		t.Fatalf("Start error: %v", err)
+	}
+	defer n.Stop()
+
+	if err := n.Announce(); err != nil {
+		t.Fatalf("Announce error: %v", err)
+	}
+
+	if n.AppData == nil {
+		t.Error("AppData should be set after Announce")
+	}
+	if string(n.AppData) != "TestNode" {
+		t.Errorf("AppData = %q, want %q", string(n.AppData), "TestNode")
 	}
 }
 

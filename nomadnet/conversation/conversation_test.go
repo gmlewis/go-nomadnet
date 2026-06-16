@@ -16,10 +16,13 @@
 package conversation
 
 import (
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/gmlewis/go-reticulum/lxmf"
+	"github.com/gmlewis/go-reticulum/rns"
 	"github.com/vmihailenco/msgpack/v5"
 )
 
@@ -574,6 +577,112 @@ func TestCacheConversation(t *testing.T) {
 
 	if CachedConversation("nonexistent") != nil {
 		t.Error("CachedConversation returned non-nil for nonexistent hash")
+	}
+}
+
+func TestIngestCreatesConversationDirAndWritesMessage(t *testing.T) {
+	t.Parallel()
+
+	dir := tempDir(t)
+	ts := rns.NewTransportSystem(nil)
+	id, err := rns.NewIdentity(true, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dest, err := rns.NewDestination(ts, id, rns.DestinationIn, rns.DestinationSingle, "lxmf", "delivery")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	msg, err := lxmf.NewMessage(dest, dest, "test content", "test title", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := msg.Pack(); err != nil {
+		t.Fatal(err)
+	}
+
+	ingestedPath, err := Ingest(msg, dir, false)
+	if err != nil {
+		t.Fatalf("Ingest error: %v", err)
+	}
+
+	sourceHex := hex.EncodeToString(msg.SourceHash)
+	convDir := filepath.Join(dir, sourceHex)
+
+	if _, statErr := os.Stat(convDir); os.IsNotExist(statErr) {
+		t.Errorf("conversation dir %q should exist", convDir)
+	}
+	if ingestedPath == "" {
+		t.Error("Ingest should return the ingested file path")
+	}
+
+	list := ConversationList(dir, nil, nil)
+	found := false
+	for _, ci := range list {
+		if ci.SourceHash == sourceHex {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("source %q not found in ConversationList", sourceHex)
+	}
+}
+
+func TestIngestTwoMessagesSameSourceSingleConversation(t *testing.T) {
+	t.Parallel()
+
+	dir := tempDir(t)
+	ts := rns.NewTransportSystem(nil)
+	id, err := rns.NewIdentity(true, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dest, err := rns.NewDestination(ts, id, rns.DestinationIn, rns.DestinationSingle, "lxmf", "delivery")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	msg1, err := lxmf.NewMessage(dest, dest, "first", "title1", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := msg1.Pack(); err != nil {
+		t.Fatal(err)
+	}
+
+	msg2, err := lxmf.NewMessage(dest, dest, "second", "title2", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := msg2.Pack(); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := Ingest(msg1, dir, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Ingest(msg2, dir, false); err != nil {
+		t.Fatal(err)
+	}
+
+	list := ConversationList(dir, nil, nil)
+	sourceHex := hex.EncodeToString(msg1.SourceHash)
+	if len(list) != 1 {
+		t.Errorf("ConversationList len = %d, want 1", len(list))
+	}
+	if len(list) > 0 && list[0].SourceHash != sourceHex {
+		t.Errorf("SourceHash = %q, want %q", list[0].SourceHash, sourceHex)
+	}
+
+	conv := NewConversation(sourceHex, filepath.Join(dir, sourceHex))
+	if err := conv.ScanStorage(); err != nil {
+		t.Fatal(err)
+	}
+	if conv.MessageCount() != 2 {
+		t.Errorf("MessageCount = %d, want 2", conv.MessageCount())
 	}
 }
 

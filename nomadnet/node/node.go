@@ -30,6 +30,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/gmlewis/go-reticulum/rns"
 )
 
 // ErrInvalidHex is returned when a hex string contains invalid characters.
@@ -80,6 +82,12 @@ type Node struct {
 	ServedFileRequests int
 	NodeConnects       int
 
+	AppData []byte
+
+	destination *rns.Destination
+	identity    *rns.Identity
+	transport   rns.Transport
+
 	mu sync.Mutex
 }
 
@@ -100,6 +108,119 @@ func NewNode(name, pagesPath, filesPath string, announceInterval, pageRefresh, f
 	}
 
 	return n
+}
+
+// Start registers the node destination on the given transport and sets up
+// request handlers for pages and files. This matches Python's Node.__init__
+// which creates a Destination and registers link/request callbacks.
+func (n *Node) Start(ts rns.Transport, identity *rns.Identity) error {
+	dest, err := rns.NewDestination(ts, identity, rns.DestinationIn, rns.DestinationSingle, "nomadnetwork", "node")
+	if err != nil {
+		return err
+	}
+
+	n.destination = dest
+	n.identity = identity
+	n.transport = ts
+
+	dest.SetLinkEstablishedCallback(func(link *rns.Link) {
+		n.mu.Lock()
+		n.NodeConnects++
+		n.mu.Unlock()
+		link.SetLinkClosedCallback(func(*rns.Link) {})
+	})
+
+	n.RegisterPages()
+	n.RegisterFiles()
+
+	n.registerRequestHandlers()
+
+	return nil
+}
+
+// Stop shuts down the node by marking jobs as stopped.
+func (n *Node) Stop() {
+	n.mu.Lock()
+	n.ShouldRunJobs = false
+	n.mu.Unlock()
+}
+
+// Destination returns the node's RNS destination, or nil if not started.
+func (n *Node) Destination() *rns.Destination {
+	return n.destination
+}
+
+// registerRequestHandlers registers RNS request handlers for all served
+// pages and files, plus the default index.
+func (n *Node) registerRequestHandlers() {
+	if n.destination == nil {
+		return
+	}
+
+	hasIndex := false
+	for _, page := range n.ServedPages {
+		if filepath.Base(page) == "index.mu" {
+			hasIndex = true
+		}
+		reqPath := PageRequestPath(page, n.PagesPath)
+		if reqPath == "" {
+			continue
+		}
+		n.destination.RegisterRequestHandler(reqPath, n.makePageHandler(page), rns.AllowAll, nil, true)
+	}
+
+	if !hasIndex {
+		n.destination.RegisterRequestHandler("/page/index.mu", n.defaultIndexHandler, rns.AllowAll, nil, true)
+	}
+
+	for _, file := range n.ServedFiles {
+		reqPath := FileRequestPath(file, n.FilesPath)
+		if reqPath == "" {
+			continue
+		}
+		n.destination.RegisterRequestHandler(reqPath, n.makeFileHandler(file), rns.AllowAll, nil, true)
+	}
+}
+
+// makePageHandler returns a request handler function for a specific page file.
+func (n *Node) makePageHandler(filePath string) func(string, []byte, []byte, []byte, *rns.Identity, time.Time) any {
+	return func(path string, data []byte, requestID []byte, linkID []byte, remoteIdentity *rns.Identity, requestedAt time.Time) any {
+		if !IsAllowed(filePath, remoteIdentity.Hash) {
+			return ServeNotAllowed()
+		}
+		content := ServePage(filePath)
+		if content == nil {
+			return nil
+		}
+		return content
+	}
+}
+
+// makeFileHandler returns a request handler function for a specific file.
+func (n *Node) makeFileHandler(filePath string) func(string, []byte, []byte, []byte, *rns.Identity, time.Time) any {
+	return func(path string, data []byte, requestID []byte, linkID []byte, remoteIdentity *rns.Identity, requestedAt time.Time) any {
+		fileData, err := os.ReadFile(filePath)
+		if err != nil {
+			return nil
+		}
+		return fileData
+	}
+}
+
+// defaultIndexHandler serves the default index page.
+func (n *Node) defaultIndexHandler(path string, data []byte, requestID []byte, linkID []byte, remoteIdentity *rns.Identity, requestedAt time.Time) any {
+	return ServeDefaultIndex()
+}
+
+// Announce sends an announce for this node on the RNS network with
+// the node name as app data. Matches Python's Node.announce().
+func (n *Node) Announce() error {
+	if n.destination == nil {
+		return errors.New("node not started")
+	}
+	n.AppData = []byte(n.Name)
+	n.LastAnnounce = time.Now()
+	return n.destination.Announce(n.AppData)
 }
 
 // ScanPages recursively scans a directory for .mu page files,
