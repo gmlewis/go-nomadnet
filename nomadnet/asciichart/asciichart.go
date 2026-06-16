@@ -176,7 +176,16 @@ func (c *Chart) Plot(series [][]float64) string {
 
 	// Draw Y-axis labels and cross marks
 	for y := min2; y <= max2+1; y++ {
-		labelVal := maxVal - (float64(y-min2) * interval / float64(rows))
+		var labelVal float64
+		if rows > 0 {
+			labelVal = maxVal - (float64(y-min2) * interval / float64(rows))
+		} else {
+			if y == min2 {
+				labelVal = maxVal
+			} else {
+				continue
+			}
+		}
 		label := formatLabel(labelVal, c.Format)
 		labelLen := len([]rune(label))
 
@@ -291,42 +300,47 @@ func (c *Chart) PlotSingle(series []float64) string {
 }
 
 func formatLabel(val float64, format string) string {
-	if strings.Contains(format, "%") {
-		s := strings.Builder{}
-		s.WriteString(strings.Repeat(" ", 12))
-		// Simple formatting: just use a default
-		s.Reset()
-		if val == 0 {
-			return "    0.00 "
-		}
-		// Basic formatting
-		neg := val < 0
-		if neg {
-			val = -val
-		}
-		intPart := int(val)
-		fracPart := val - float64(intPart)
-		frac2 := int(fracPart * 100)
-
-		suffix := " "
-		prefix := " "
-		if neg {
-			prefix = "-"
-		}
-
-		s.WriteString(prefix)
-		s.WriteString(strings.Repeat(" ", 7-len(strings.TrimSpace(strings.TrimRight(strings.TrimRight(strings.TrimRight(
-			formatInt(intPart), " "), "."), "0")))))
-		s.WriteString(formatInt(intPart))
-		s.WriteString(".")
-		if frac2 < 10 {
-			s.WriteString("0")
-		}
-		s.WriteString(formatInt(frac2))
-		s.WriteString(suffix)
-		return s.String()
+	if !strings.Contains(format, "%") {
+		return strings.Repeat(" ", 12)
 	}
-	return strings.Repeat(" ", 12)
+	if math.IsNaN(val) || math.IsInf(val, 0) {
+		return "     NaN "
+	}
+	if val == 0 {
+		return "    0.00 "
+	}
+	neg := val < 0
+	absVal := val
+	if neg {
+		absVal = -val
+	}
+	intPart := int(absVal)
+	fracPart := absVal - float64(intPart)
+	frac2 := int(fracPart*100 + 0.5)
+
+	suffix := " "
+	prefix := " "
+	if neg {
+		prefix = "-"
+	}
+
+	intStr := formatInt(intPart)
+	padLen := 7 - len(strings.TrimSpace(intStr))
+	if padLen < 0 {
+		padLen = 0
+	}
+
+	var s strings.Builder
+	s.WriteString(prefix)
+	s.WriteString(strings.Repeat(" ", padLen))
+	s.WriteString(intStr)
+	s.WriteString(".")
+	if frac2 < 10 {
+		s.WriteString("0")
+	}
+	s.WriteString(formatInt(frac2))
+	s.WriteString(suffix)
+	return s.String()
 }
 
 func formatInt(n int) string {
