@@ -44,7 +44,7 @@ type MainDisplay struct {
 	quitCh           chan struct{}
 	mu               sync.Mutex
 	hideGuide        bool
-	menuWidths  []int // pixel widths of each menu item for click detection
+	menuWidths       []int // pixel widths of each menu item for click detection
 }
 
 // NewMainDisplay creates the main display with Frame layout:
