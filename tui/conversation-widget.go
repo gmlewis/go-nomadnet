@@ -46,14 +46,15 @@ type ConversationWidget struct {
 	sortByTimestamp  bool
 
 	// Callbacks
-	OnClose           func()
-	OnPurgeFailed     func()
-	OnClearHistory    func()
-	OnSend            func(content, title string)
-	OnAttach          func()
-	OnPaperMessage    func(action string)
-	OnAttachFiles     func(paths []string)
-	OnSaveAttachments func(names []string)
+	OnClose            func()
+	OnPurgeFailed      func()
+	OnClearHistory     func()
+	OnSend             func(content, title string)
+	OnAttach           func()
+	OnToggleFullscreen func()
+	OnPaperMessage     func(action string)
+	OnAttachFiles      func(paths []string)
+	OnSaveAttachments  func(names []string)
 
 	// Dialog state
 	dialogOpen bool
@@ -194,6 +195,11 @@ func (cw *ConversationWidget) handleInput(event *tcell.EventKey) *tcell.EventKey
 		return nil
 	case tcell.KeyCtrlD:
 		cw.sendMessage()
+		return nil
+	case tcell.KeyCtrlG:
+		if cw.OnToggleFullscreen != nil {
+			cw.OnToggleFullscreen()
+		}
 		return nil
 	case tcell.KeyTab:
 		// Toggle focus between editor and message list

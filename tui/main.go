@@ -96,8 +96,8 @@ func NewMainDisplay(app *tview.Application, theme int, glyphSetName string) *Mai
 	// Create shortcut bar (footer)
 	md.shortcutBar = tview.NewTextView()
 	md.shortcutBar.SetDynamicColors(true)
-	md.shortcutBar.SetTextColor(tcell.NewHexColor(0xdddddd))
-	md.shortcutBar.SetBackgroundColor(tcell.NewHexColor(0x444444))
+	md.shortcutBar.SetTextColor(colors["menubar_fg"])
+	md.shortcutBar.SetBackgroundColor(colors["menubar_bg"])
 	md.shortcutBar.SetTextAlign(tview.AlignLeft)
 
 	// Add placeholder content for each menu item

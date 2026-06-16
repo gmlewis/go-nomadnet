@@ -59,6 +59,8 @@ func (kr *killRing) kill(killed string, forward bool) {
 //	Ctrl-W        kill previous word
 //	Ctrl-L        kill whole buffer
 //	Ctrl-Y        yank (paste killed text)
+//	Ctrl-Left     backward word (alphanumeric boundary)
+//	Ctrl-Right    forward word (alphanumeric boundary)
 type ReadlineEdit struct {
 	*tview.InputField
 	cursorPos int
@@ -152,6 +154,45 @@ func (re *ReadlineEdit) handleKey(event *tcell.EventKey) *tcell.EventKey {
 		re.cursorPos += len(killRunes)
 		globalKillRing.resetChain()
 		return nil
+
+	case tcell.KeyLeft:
+		// Ctrl-Left: backward word (some terminals report Ctrl+Left as Left with ModAlt)
+		if event.Modifiers()&(tcell.ModCtrl|tcell.ModAlt) != 0 {
+			pos := re.cursorPos
+			for pos > 0 && !isWordChar(runes[pos-1]) {
+				pos--
+			}
+			for pos > 0 && isWordChar(runes[pos-1]) {
+				pos--
+			}
+			re.cursorPos = pos
+			return nil
+		}
+		// Plain Left arrow
+		if re.cursorPos > 0 {
+			re.cursorPos--
+		}
+		return event
+
+	case tcell.KeyRight:
+		// Ctrl-Right: forward word
+		if event.Modifiers()&(tcell.ModCtrl|tcell.ModAlt) != 0 {
+			n := len(runes)
+			pos := re.cursorPos
+			for pos < n && !isWordChar(runes[pos]) {
+				pos++
+			}
+			for pos < n && isWordChar(runes[pos]) {
+				pos++
+			}
+			re.cursorPos = pos
+			return nil
+		}
+		// Plain Right arrow
+		if re.cursorPos < len(runes) {
+			re.cursorPos++
+		}
+		return event
 	}
 
 	// Track cursor position on regular key input

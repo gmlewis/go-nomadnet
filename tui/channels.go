@@ -74,6 +74,7 @@ type ChannelsDisplay struct {
 	OnToggleChannelList   func()
 	OnSendMessage         func()
 	OnLeaveRoom           func()
+	OnToggleCollapse      func()
 }
 
 // NewChannelsDisplay creates a new channels display.
@@ -205,8 +206,8 @@ func (cd *ChannelsDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 		}
 		return nil
 	case tcell.KeyF8:
-		if cd.OnRemoveHub != nil {
-			cd.OnRemoveHub()
+		if cd.OnToggleCollapse != nil {
+			cd.OnToggleCollapse()
 		}
 		return nil
 	}

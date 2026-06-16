@@ -17,6 +17,8 @@ package tui
 
 import (
 	"testing"
+
+	"github.com/gdamore/tcell/v2"
 )
 
 func TestIsWordChar(t *testing.T) {
@@ -202,5 +204,97 @@ func TestResetKillRing(t *testing.T) {
 	}
 	if globalKillRing.lastWasKill {
 		t.Error("lastWasKill should be false after reset")
+	}
+}
+
+func TestBackwardWord(t *testing.T) {
+	t.Parallel()
+
+	re := NewReadlineEdit("", "")
+	re.SetText("hello world foo")
+
+	// Move cursor to end
+	re.cursorPos = len([]rune("hello world foo"))
+
+	// Ctrl-Left: skip non-word (none), skip word "foo" → start of "foo"
+	event := tcell.NewEventKey(tcell.KeyLeft, 0, tcell.ModAlt)
+	re.handleKey(event)
+	pos := re.cursorPos
+	if pos != 12 {
+		t.Errorf("after backward word from end: pos = %d, want 12 (start of 'foo')", pos)
+	}
+
+	// Ctrl-Left again: skip space, skip word "world" → start of "world"
+	event = tcell.NewEventKey(tcell.KeyLeft, 0, tcell.ModAlt)
+	re.handleKey(event)
+	pos = re.cursorPos
+	if pos != 6 {
+		t.Errorf("after backward word from 12: pos = %d, want 6 (start of 'world')", pos)
+	}
+
+	// Ctrl-Left again: skip space, skip word "hello" → start of "hello"
+	event = tcell.NewEventKey(tcell.KeyLeft, 0, tcell.ModAlt)
+	re.handleKey(event)
+	pos = re.cursorPos
+	if pos != 0 {
+		t.Errorf("after backward word from 6: pos = %d, want 0 (start of 'hello')", pos)
+	}
+}
+
+func TestForwardWord(t *testing.T) {
+	t.Parallel()
+
+	re := NewReadlineEdit("", "")
+	re.SetText("hello world foo")
+	re.cursorPos = 0
+
+	// Ctrl-Right: skip non-word (none), skip word "hello" → end of "hello"
+	event := tcell.NewEventKey(tcell.KeyRight, 0, tcell.ModAlt)
+	re.handleKey(event)
+	pos := re.cursorPos
+	if pos != 5 {
+		t.Errorf("after forward word from 0: pos = %d, want 5 (end of 'hello')", pos)
+	}
+
+	// Ctrl-Right again: skip space, skip word "world" → end of "world"
+	event = tcell.NewEventKey(tcell.KeyRight, 0, tcell.ModAlt)
+	re.handleKey(event)
+	pos = re.cursorPos
+	if pos != 11 {
+		t.Errorf("after forward word from 5: pos = %d, want 11 (end of 'world')", pos)
+	}
+
+	// Ctrl-Right again: skip space, skip word "foo" → end of "foo"
+	event = tcell.NewEventKey(tcell.KeyRight, 0, tcell.ModAlt)
+	re.handleKey(event)
+	pos = re.cursorPos
+	if pos != 15 {
+		t.Errorf("after forward word from 11: pos = %d, want 15 (end of 'foo')", pos)
+	}
+}
+
+func TestWordMovementWithSpecialChars(t *testing.T) {
+	t.Parallel()
+
+	re := NewReadlineEdit("", "")
+	re.SetText("hello-world_foo bar")
+
+	re.cursorPos = len([]rune("hello-world_foo bar"))
+
+	// Ctrl-Left: skip non-word (none), skip word "bar" → start of "bar"
+	event := tcell.NewEventKey(tcell.KeyLeft, 0, tcell.ModAlt)
+	re.handleKey(event)
+	pos := re.cursorPos
+	if pos != 16 {
+		t.Errorf("special chars backward: pos = %d, want 16 (start of 'bar')", pos)
+	}
+
+	// Ctrl-Right from start: skip non-word (none), skip word "hello" → end of "hello"
+	re.cursorPos = 0
+	event = tcell.NewEventKey(tcell.KeyRight, 0, tcell.ModAlt)
+	re.handleKey(event)
+	pos = re.cursorPos
+	if pos != 5 {
+		t.Errorf("special chars forward: pos = %d, want 5 (end of 'hello')", pos)
 	}
 }

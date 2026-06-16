@@ -130,6 +130,12 @@ func (bd *BrowserDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 			bd.OnSaveNode()
 		}
 		return nil
+	case tcell.KeyCtrlB:
+		// Ctrl-B is an alias for Ctrl-S (save node) in Python
+		if bd.OnSaveNode != nil {
+			bd.OnSaveNode()
+		}
+		return nil
 	case tcell.KeyCtrlG:
 		if bd.OnToggleFullscreen != nil {
 			bd.OnToggleFullscreen()

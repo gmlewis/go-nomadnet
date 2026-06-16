@@ -40,10 +40,12 @@ type RoomWidget struct {
 	maxMessageBytes int
 
 	// Callbacks
-	OnSendMessage func(text string)
-	OnLeaveRoom   func()
-	OnToggleUsers func()
-	OnSplitDialog func(text string, limit int)
+	OnSendMessage    func(text string)
+	OnLeaveRoom      func()
+	OnToggleUsers    func()
+	OnToggleCollapse func()
+	OnTabComplete    func()
+	OnSplitDialog    func(text string, limit int)
 
 	// Message data
 	chatMessages []ChannelMessage
@@ -134,6 +136,16 @@ func (rw *RoomWidget) handleInput(event *tcell.EventKey) *tcell.EventKey {
 	case tcell.KeyCtrlU:
 		rw.toggleUsers()
 		return nil
+	case tcell.KeyF8:
+		if rw.OnToggleCollapse != nil {
+			rw.OnToggleCollapse()
+		}
+		return nil
+	case tcell.KeyTab:
+		if rw.OnTabComplete != nil {
+			rw.OnTabComplete()
+		}
+		return event
 	}
 
 	return event
