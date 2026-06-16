@@ -177,3 +177,15 @@ func TestChannelsDisplayChannelListVisibility(t *testing.T) {
 		t.Error("Second toggle should restore visibility")
 	}
 }
+
+func TestShowUserInfoDialog(t *testing.T) {
+	t.Parallel()
+	app := tview.NewApplication()
+	cd := NewChannelsDisplay(app, nil)
+
+	// Verify function exists and can be called without panic
+	cd.ShowUserInfoDialog("Alice", "aabb1122334455667788", false, nil)
+
+	// Verify self-user case
+	cd.ShowUserInfoDialog("Bob", "aabb1122334455667788", true, nil)
+}

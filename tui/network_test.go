@@ -261,3 +261,32 @@ func TestNetworkDisplayKeyboardShortcuts(t *testing.T) {
 		})
 	}
 }
+
+func TestShowLocalPeerDialog(t *testing.T) {
+	t.Parallel()
+	app := tview.NewApplication()
+	nd := NewNetworkDisplay(app, nil, nil)
+
+	// Should not panic
+	nd.ShowLocalPeerDialog("addr123", "ident456", "MyPeer", "2h ago")
+}
+
+func TestShowLXMFPeersDialogEmpty(t *testing.T) {
+	t.Parallel()
+	app := tview.NewApplication()
+	nd := NewNetworkDisplay(app, nil, nil)
+
+	nd.ShowLXMFPeersDialog(nil)
+}
+
+func TestShowLXMFPeersDialogWithPeers(t *testing.T) {
+	t.Parallel()
+	app := tview.NewApplication()
+	nd := NewNetworkDisplay(app, nil, nil)
+
+	peers := []LXMFPeerEntry{
+		{Hash: "aabb1122", Name: "Peer1", Alive: true, Pending: 3},
+		{Hash: "ccdd3344", Name: "Peer2", Alive: false, Pending: 0},
+	}
+	nd.ShowLXMFPeersDialog(peers)
+}

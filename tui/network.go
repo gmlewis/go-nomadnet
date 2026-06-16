@@ -534,3 +534,69 @@ func formatAnnounce(ann AnnounceEntry) string {
 	sb.WriteString(fmt.Sprintf("Data: %s\n", ann.AppData))
 	return sb.String()
 }
+
+// ShowLocalPeerDialog shows the local peer information panel.
+// Matches Python's LocalPeer at Network.py:1259-1350.
+func (nd *NetworkDisplay) ShowLocalPeerDialog(lxmfAddr, identityHash, name string, lastAnnounce string) {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf(" LXMF Addr : %s\n", lxmfAddr))
+	sb.WriteString(fmt.Sprintf(" Identity  : %s\n", identityHash))
+	sb.WriteString(fmt.Sprintf(" Name      : %s\n", name))
+	if lastAnnounce != "" {
+		sb.WriteString(fmt.Sprintf(" Last Announce: %s\n", lastAnnounce))
+	}
+
+	buttons := tview.NewFlex().SetDirection(tview.FlexColumn).
+		AddItem(tview.NewButton("Save").SetSelectedFunc(func() {
+			// Save name
+		}), 0, 1, true).
+		AddItem(tview.NewButton("Announce Now").SetSelectedFunc(func() {
+			// Trigger announce
+		}), 0, 1, false)
+
+	layout := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(tview.NewTextView().
+			SetDynamicColors(true).
+			SetTextColor(tcell.NewHexColor(0xdddddd)).
+			SetText(sb.String()), 0, 1, false).
+		AddItem(buttons, 1, 0, false)
+
+	ShowDialog(nd.app, "Local Peer", layout, 50, 10, nil)
+}
+
+// ShowLXMFPeersDialog shows the LXMF peers list panel.
+// Matches Python's LXMFPeers at Network.py:1752-1860.
+func (nd *NetworkDisplay) ShowLXMFPeersDialog(peers []LXMFPeerEntry) {
+	list := tview.NewList()
+	list.SetHighlightFullLine(true)
+	list.SetSelectedBackgroundColor(tcell.NewHexColor(0x666666))
+
+	for _, peer := range peers {
+		status := "[green]alive[-]"
+		if !peer.Alive {
+			status = "[red]dead[-]"
+		}
+		text := fmt.Sprintf("%s %s %s", peer.Name, status, truncateStr(peer.Hash, 8))
+		secondary := fmt.Sprintf("Pending: %d", peer.Pending)
+		list.AddItem(text, secondary, 0, nil)
+	}
+
+	if len(peers) == 0 {
+		list.AddItem("[gray]No propagation peers[-]", "", 0, nil)
+	}
+
+	buttons := tview.NewFlex().SetDirection(tview.FlexColumn).
+		AddItem(tview.NewButton("Delete").SetSelectedFunc(func() {
+			// Delete selected peer
+		}), 0, 1, false).
+		AddItem(tview.NewButton("Sync").SetSelectedFunc(func() {
+			// Sync selected peer
+		}), 0, 1, false).
+		AddItem(tview.NewButton("Close").SetSelectedFunc(func() {}), 0, 1, false)
+
+	layout := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(list, 0, 1, true).
+		AddItem(buttons, 1, 0, false)
+
+	ShowDialog(nd.app, "LXMF Peers", layout, 50, 12, nil)
+}

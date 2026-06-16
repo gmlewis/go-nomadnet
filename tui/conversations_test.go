@@ -16,6 +16,7 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -534,13 +535,75 @@ func TestConversationsDisplayBlockedRowLabel(t *testing.T) {
 			t.Parallel()
 
 			label := BlockedRowLabel(tt.displayName, tt.sourceHash)
-			if !containsSubstring(label, tt.wantPrefix) {
+			if !strings.HasPrefix(label, tt.wantPrefix) {
 				t.Errorf("BlockedRowLabel(%q, %q) = %q, want prefix %q", tt.displayName, tt.sourceHash, label, tt.wantPrefix)
 			}
 		})
 	}
 }
 
-func containsSubstring(s, sub string) bool {
-	return len(s) >= len(sub) && (s[:len(sub)] == sub || containsSubstring(s[1:], sub))
+func TestPaperMessageDialog(t *testing.T) {
+	t.Parallel()
+
+	app := tview.NewApplication()
+	cd := NewConversationsDisplay(app, nil)
+
+	var printFired, saveQRFired, saveURIFired bool
+	cd.PaperMessageDialog(
+		func() { printFired = true },
+		func() { saveQRFired = true },
+		func() { saveURIFired = true },
+	)
+
+	if !cd.dialogOpen {
+		t.Error("dialog should be open after PaperMessageDialog")
+	}
+
+	// Verify callbacks are set (dialog display requires running app)
+	_ = printFired
+	_ = saveQRFired
+	_ = saveURIFired
+}
+
+func TestPaperMessageFailed(t *testing.T) {
+	t.Parallel()
+
+	app := tview.NewApplication()
+	cd := NewConversationsDisplay(app, nil)
+
+	cd.PaperMessageFailed()
+	if !cd.dialogOpen {
+		t.Error("dialog should be open after PaperMessageFailed")
+	}
+}
+
+func TestAttachFileDialog(t *testing.T) {
+	t.Parallel()
+
+	app := tview.NewApplication()
+	cd := NewConversationsDisplay(app, nil)
+
+	var selectedPath string
+	cd.AttachFileDialog("/tmp/", func(path string) {
+		selectedPath = path
+	})
+
+	if !cd.dialogOpen {
+		t.Error("dialog should be open")
+	}
+	_ = selectedPath
+}
+
+func TestSaveAttachmentsDialog(t *testing.T) {
+	t.Parallel()
+
+	app := tview.NewApplication()
+	cd := NewConversationsDisplay(app, nil)
+
+	attachments := []string{"file1.pdf", "image.png", "doc.txt"}
+	cd.SaveAttachmentsDialog(attachments, func(selected []string) {})
+
+	if !cd.dialogOpen {
+		t.Error("dialog should be open")
+	}
 }

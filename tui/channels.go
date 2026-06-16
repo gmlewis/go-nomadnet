@@ -343,3 +343,38 @@ func FormatMessage(msg ChannelMessage, theme int) string {
 		return fmt.Sprintf("[%s]%s[-] %s%s", nickColor(msg.Nick), msg.Nick, msg.Text, extra)
 	}
 }
+
+// ShowUserInfoDialog displays user information for a channel member.
+// Matches Python's ChannelsDisplay.show_user_info() at
+// Channels.py:2119-2155.
+func (cd *ChannelsDisplay) ShowUserInfoDialog(nick, identityHash string, isSelf bool, onOpenConversation func()) {
+	var sb strings.Builder
+	sb.WriteString("\n")
+	sb.WriteString(fmt.Sprintf(" Nick     : %s\n", nick))
+	sb.WriteString(fmt.Sprintf(" Identity : %s\n", identityHash))
+
+	if isSelf {
+		sb.WriteString("\n (This is you)\n")
+	}
+
+	buttons := tview.NewFlex().SetDirection(tview.FlexColumn)
+	if isSelf {
+		buttons.AddItem(tview.NewButton("Close").SetSelectedFunc(func() {}), 0, 1, true)
+	} else {
+		buttons.AddItem(tview.NewButton("Open Conversation").SetSelectedFunc(func() {
+			if onOpenConversation != nil {
+				onOpenConversation()
+			}
+		}), 0, 1, true)
+		buttons.AddItem(tview.NewButton("Close").SetSelectedFunc(func() {}), 0, 1, false)
+	}
+
+	layout := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(tview.NewTextView().
+			SetDynamicColors(true).
+			SetTextColor(tcell.NewHexColor(0xdddddd)).
+			SetText(sb.String()), 0, 1, false).
+		AddItem(buttons, 1, 0, false)
+
+	ShowDialog(cd.app, "User Info", layout, 40, 8, nil)
+}

@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"unicode"
 )
 
 // ParamCategories holds interface parameters grouped by category for
@@ -168,31 +169,17 @@ func titleWord(word string) string {
 	prevIsLetter := false
 	for i, r := range word {
 		if i == 0 || !prevIsLetter {
-			sb.WriteRune(toUpper(r))
+			sb.WriteRune(unicode.ToUpper(r))
 		} else {
-			sb.WriteRune(toLower(r))
+			sb.WriteRune(unicode.ToLower(r))
 		}
-		prevIsLetter = isLetter(r)
+		prevIsLetter = unicode.IsLetter(r)
 	}
 	return sb.String()
 }
 
 func isLetter(r rune) bool {
-	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')
-}
-
-func toUpper(r rune) rune {
-	if r >= 'a' && r <= 'z' {
-		return r - 32
-	}
-	return r
-}
-
-func toLower(r rune) rune {
-	if r >= 'A' && r <= 'Z' {
-		return r + 32
-	}
-	return r
+	return unicode.IsLetter(r)
 }
 
 // formatRadioFrequency converts a Hz value to MHz display string.

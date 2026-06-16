@@ -559,3 +559,136 @@ const (
 	// IngestError means the URI contained no decodable messages.
 	IngestError
 )
+
+// PaperMessageDialog shows the paper message output options.
+// Matches Python's paper_message() at Conversations.py:2505-2570.
+func (cd *ConversationsDisplay) PaperMessageDialog(
+	onPrintQR func(),
+	onSaveQR func(),
+	onSaveURI func(),
+) {
+	cd.dialogOpen = true
+
+	buttons := tview.NewFlex().SetDirection(tview.FlexColumn).
+		AddItem(tview.NewButton("Print QR").SetSelectedFunc(func() {
+			cd.dialogOpen = false
+			if onPrintQR != nil {
+				onPrintQR()
+			}
+		}), 0, 1, false).
+		AddItem(tview.NewButton("Save QR").SetSelectedFunc(func() {
+			cd.dialogOpen = false
+			if onSaveQR != nil {
+				onSaveQR()
+			}
+		}), 0, 1, false).
+		AddItem(tview.NewButton("Save URI").SetSelectedFunc(func() {
+			cd.dialogOpen = false
+			if onSaveURI != nil {
+				onSaveURI()
+			}
+		}), 0, 1, false).
+		AddItem(tview.NewButton("Cancel").SetSelectedFunc(func() {
+			cd.dialogOpen = false
+		}), 0, 1, false)
+
+	layout := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(tview.NewTextView().
+			SetDynamicColors(true).
+			SetTextColor(tcell.NewHexColor(0xdddddd)).
+			SetTextAlign(tview.AlignCenter).
+			SetText("Select the desired paper message output method."), 2, 0, false).
+		AddItem(buttons, 1, 0, false)
+
+	ShowDialog(cd.app, "Create Paper Message", layout, 60, 5, func() {
+		cd.dialogOpen = false
+	})
+}
+
+// PaperMessageFailed shows a failure message for paper message operations.
+// Matches Python's paper_message_failed() at Conversations.py:2580-2600.
+func (cd *ConversationsDisplay) PaperMessageFailed() {
+	cd.dialogOpen = true
+
+	buttons := tview.NewFlex().SetDirection(tview.FlexColumn).
+		AddItem(tview.NewButton("OK").SetSelectedFunc(func() {
+			cd.dialogOpen = false
+		}), 0, 1, false)
+
+	layout := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(tview.NewTextView().
+			SetDynamicColors(true).
+			SetTextColor(tcell.NewHexColor(0xdddddd)).
+			SetTextAlign(tview.AlignCenter).
+			SetText("Could not output paper message,\ncheck your settings. See the log\nfile for any error messages."), 4, 0, false).
+		AddItem(buttons, 1, 0, false)
+
+	ShowDialog(cd.app, "!", layout, 40, 6, func() {
+		cd.dialogOpen = false
+	})
+}
+
+// AttachFileDialog shows a file browser dialog for selecting files.
+// Matches Python's attach_file() at Conversations.py:2438.
+func (cd *ConversationsDisplay) AttachFileDialog(directory string, onSelect func(path string)) {
+	cd.dialogOpen = true
+	ShowInputDialog(cd.app, "Attach File", "Path:", directory,
+		func(path string) {
+			cd.dialogOpen = false
+			if onSelect != nil {
+				onSelect(path)
+			}
+		},
+		func() {
+			cd.dialogOpen = false
+		},
+	)
+}
+
+// SaveAttachmentsDialog shows a dialog for saving attachments.
+// Matches Python's save_focused_attachments() at Conversations.py:2324.
+func (cd *ConversationsDisplay) SaveAttachmentsDialog(attachments []string, onSave func(selected []string)) {
+	cd.dialogOpen = true
+	list := tview.NewList()
+	list.SetHighlightFullLine(true)
+	list.SetSelectedBackgroundColor(tcell.NewHexColor(0x666666))
+
+	for _, att := range attachments {
+		list.AddItem(att, "", 0, nil)
+	}
+
+	selected := make(map[int]bool)
+	list.SetSelectedFunc(func(i int, mainText, secondaryText string, shortcut rune) {
+		selected[i] = !selected[i]
+		if selected[i] {
+			list.SetItemText(i, "[x] "+mainText, secondaryText)
+		} else {
+			list.SetItemText(i, mainText, secondaryText)
+		}
+	})
+
+	buttons := tview.NewFlex().SetDirection(tview.FlexColumn).
+		AddItem(tview.NewButton("Copy to Downloads").SetSelectedFunc(func() {
+			cd.dialogOpen = false
+			var chosen []string
+			for i, att := range attachments {
+				if selected[i] {
+					chosen = append(chosen, att)
+				}
+			}
+			if onSave != nil {
+				onSave(chosen)
+			}
+		}), 0, 1, true).
+		AddItem(tview.NewButton("Close").SetSelectedFunc(func() {
+			cd.dialogOpen = false
+		}), 0, 1, false)
+
+	layout := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(list, 0, 1, true).
+		AddItem(buttons, 1, 0, false)
+
+	ShowDialog(cd.app, "Attachments", layout, 50, 12, func() {
+		cd.dialogOpen = false
+	})
+}
