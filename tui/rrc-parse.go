@@ -215,7 +215,7 @@ func FormatTimestamp(tsMs int64) string {
 	if tsMs < 0 {
 		return ""
 	}
-	t := time.UnixMilli(tsMs)
+	t := time.UnixMilli(tsMs).UTC()
 	return t.Format("15:04:05")
 }
 

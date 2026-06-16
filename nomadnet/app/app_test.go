@@ -303,10 +303,15 @@ func TestSharedInstance(t *testing.T) {
 func TestExpandUser(t *testing.T) {
 	t.Parallel()
 
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Skipf("cannot determine home directory: %v", err)
+	}
+
 	tests := []struct {
 		input, want string
 	}{
-		{"~/Downloads", "/Users/" + os.Getenv("USER") + "/Downloads"},
+		{"~/Downloads", filepath.Join(home, "Downloads")},
 		{"/absolute/path", "/absolute/path"},
 		{"relative/path", "relative/path"},
 		{"", ""},

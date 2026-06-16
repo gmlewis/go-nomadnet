@@ -183,6 +183,29 @@ func (cd *ConversationsDisplay) handleInput(event *tcell.EventKey) *tcell.EventK
 	return event
 }
 
+// GetSelectedConversation returns the currently selected ConversationInfo.
+func (cd *ConversationsDisplay) GetSelectedConversation() (ConversationInfo, bool) {
+	idx := cd.list.GetCurrentItem()
+	if idx < 0 || idx >= len(cd.conversations) {
+		return ConversationInfo{}, false
+	}
+	return cd.conversations[idx], true
+}
+
+// DisplayConversation replaces the detail panel with a ConversationWidget
+// for the given source hash. Matches Python's display_conversation at
+// Conversations.py:1630.
+func (cd *ConversationsDisplay) DisplayConversation(sourceHash string) {
+	cw := NewConversationWidget(cd.app, sourceHash)
+	cw.OnClose = func() {
+		// Restore the detail panel
+		cd.widget.RemoveItem(cd.widget.GetItem(1))
+		cd.widget.AddItem(cd.detail, 0, 2, false)
+	}
+	cd.widget.RemoveItem(cd.detail)
+	cd.widget.AddItem(cw.Widget(), 0, 1, true)
+}
+
 // populateList fills the list based on current tab (trusted/untrusted).
 func (cd *ConversationsDisplay) populateList() {
 	cd.list.Clear()

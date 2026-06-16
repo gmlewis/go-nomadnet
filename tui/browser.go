@@ -218,3 +218,23 @@ func renderContent(text string) string {
 	}
 	return text
 }
+
+// Reload refreshes the current page.
+func (bd *BrowserDisplay) Reload() {
+	if bd.histIdx >= 0 && bd.histIdx < len(bd.history) {
+		bd.displayURL(bd.history[bd.histIdx])
+	}
+}
+
+// CurrentURL returns the currently loaded URL.
+func (bd *BrowserDisplay) CurrentURL() string {
+	if bd.histIdx >= 0 && bd.histIdx < len(bd.history) {
+		return bd.history[bd.histIdx]
+	}
+	return ""
+}
+
+// SetContent replaces the browser content area text.
+func (bd *BrowserDisplay) SetContent(text string) {
+	bd.content.SetText(text)
+}

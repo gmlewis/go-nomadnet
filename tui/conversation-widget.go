@@ -269,3 +269,13 @@ func (cw *ConversationWidget) renderMessages() {
 
 	cw.messageList.SetText(sb.String())
 }
+
+// FormatQRText creates a text-based QR-like display for an address.
+// Matches Python's show_qr_dialog at Conversations.py:641.
+func FormatQRText(data string) string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("┌%s┐\n", strings.Repeat("─", len(data)+4)))
+	sb.WriteString(fmt.Sprintf("│  %s  │\n", data))
+	sb.WriteString(fmt.Sprintf("└%s┘\n", strings.Repeat("─", len(data)+4)))
+	return sb.String()
+}

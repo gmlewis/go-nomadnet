@@ -97,6 +97,11 @@ var darkColors = map[string]tcell.Color{
 	"irc_error":                  tcell.NewHexColor(0xff5555),
 	"irc_system":                 tcell.NewHexColor(0x888888),
 	"irc_mention_fg":             tcell.NewHexColor(0xffbb44),
+	"interface_title":            tcell.NewHexColor(0xdddddd),
+	"interface_title_selected":   tcell.NewHexColor(0xaaaaaa),
+	"connected_status":           tcell.NewHexColor(0x66bb22),
+	"disconnected_status":        tcell.NewHexColor(0xaa2222),
+	"shortcutbar":                tcell.NewHexColor(0xdddddd),
 }
 
 // Color definitions for the light theme.
@@ -157,6 +162,12 @@ var lightColors = map[string]tcell.Color{
 	"irc_error":                  tcell.NewHexColor(0xaa2222),
 	"irc_system":                 tcell.NewHexColor(0x888888),
 	"irc_mention_fg":             tcell.NewHexColor(0xcc5500),
+	"browser_inactive":           tcell.NewHexColor(0x999999),
+	"interface_title":            tcell.NewHexColor(0x222222),
+	"interface_title_selected":   tcell.NewHexColor(0x444444),
+	"connected_status":           tcell.NewHexColor(0x44aa00),
+	"disconnected_status":        tcell.NewHexColor(0xaa2222),
+	"shortcutbar":                tcell.NewHexColor(0x222222),
 }
 
 // Glyph definitions: name → (plain, unicode, nerd)

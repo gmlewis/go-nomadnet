@@ -140,8 +140,43 @@ func (rw *RoomWidget) sendMessage() {
 	if text == "" {
 		return
 	}
+	if strings.HasPrefix(text, "/") {
+		rw.handleSlashCommand(text)
+		return
+	}
 	if rw.OnSendMessage != nil {
 		rw.OnSendMessage(text)
+	}
+	rw.editor.SetText("")
+}
+
+// handleSlashCommand dispatches slash commands matching Python's
+// _handle_slash_command at Channels.py:997.
+func (rw *RoomWidget) handleSlashCommand(text string) {
+	parts := strings.SplitN(text, " ", 2)
+	cmd := strings.ToLower(parts[0])
+
+	switch cmd {
+	case "/join", "/j":
+		if rw.OnSendMessage != nil {
+			rw.OnSendMessage(text)
+		}
+	case "/part", "/leave":
+		if rw.OnLeaveRoom != nil {
+			rw.OnLeaveRoom()
+		}
+	case "/quit", "/q", "/disconnect":
+		if rw.OnLeaveRoom != nil {
+			rw.OnLeaveRoom()
+		}
+	case "/nick", "/who", "/names", "/topic", "/mode", "/me":
+		if rw.OnSendMessage != nil {
+			rw.OnSendMessage(text)
+		}
+	default:
+		if rw.OnSendMessage != nil {
+			rw.OnSendMessage(text)
+		}
 	}
 	rw.editor.SetText("")
 }

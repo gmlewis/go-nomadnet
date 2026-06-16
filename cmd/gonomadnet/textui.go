@@ -263,6 +263,74 @@ func wireDisplays(tuiApp *tui.App, a *app.App) {
 				SetText("[gray]LXMF address display — TODO: wire to app identity[-]"),
 			50, 8, nil)
 	}
+	conversationsDisplay.OnEditPeerInfo = func() {
+		conv, ok := conversationsDisplay.GetSelectedConversation()
+		if !ok {
+			return
+		}
+		tui.ShowInputDialog(tuiApp.Application, "Peer Info",
+			"Display name:", conv.DisplayName,
+			func(text string) {
+				_ = text
+				// TODO: Update directory entry when app method exists
+			},
+			func() {},
+		)
+	}
+	conversationsDisplay.OnIngestURI = func() {
+		tui.ShowInputDialog(tuiApp.Application, "Ingest LXM URI",
+			"URI:", "",
+			func(text string) {
+				if text == "" {
+					return
+				}
+				_ = text
+				// TODO: Parse and ingest LXM URI
+			},
+			func() {},
+		)
+	}
+	conversationsDisplay.OnSync = func() {
+		tui.ShowDialog(tuiApp.Application, "Sync",
+			tview.NewTextView().
+				SetDynamicColors(true).
+				SetText("[gray]Syncing conversations...[-]"),
+			40, 5, nil)
+		// TODO: Trigger actual LXMF sync via app.RequestLXMFSync()
+	}
+
+	// Block/Unblock peer callbacks — used in conversation context
+	blockPeer := func(sourceHash string) {
+		tui.ShowConfirmDialog(tuiApp.Application,
+			"Block this peer?\nThis will blackhole their identity and delete this conversation.",
+			func() {
+				// TODO: Block peer via app when method exists
+				_ = sourceHash
+			},
+			func() {},
+		)
+	}
+	unblockPeer := func(sourceHash string) {
+		tui.ShowConfirmDialog(tuiApp.Application,
+			"Unblock this peer?\nThis lifts the blackhole and removes them from your ignored list.",
+			func() {
+				// TODO: Unblock peer via app when method exists
+				_ = sourceHash
+			},
+			func() {},
+		)
+	}
+	pingPeer := func(sourceHash string) {
+		tui.ShowDialog(tuiApp.Application, "Ping",
+			tview.NewTextView().
+				SetDynamicColors(true).
+				SetText(fmt.Sprintf("[gray]Pinging %s...[-]", sourceHash[:8])),
+			40, 5, nil)
+		// TODO: Actual ping via RNS transport
+	}
+	_ = blockPeer
+	_ = unblockPeer
+	_ = pingPeer
 
 	// Channels display
 	channelsDisplay := tui.NewChannelsDisplay(tuiApp.Application, nil)
@@ -311,6 +379,38 @@ func wireDisplays(tuiApp *tui.App, a *app.App) {
 			func() {},
 		)
 	}
+	channelsDisplay.OnEditHub = func() {
+		tui.ShowInputDialog(tuiApp.Application, "Edit Hub",
+			"Display name:", "",
+			func(text string) {
+				if text == "" {
+					return
+				}
+				// TODO: Update hub display name
+				_ = text
+			},
+			func() {},
+		)
+	}
+	channelsDisplay.OnConnect = func() {
+		tui.ShowDialog(tuiApp.Application, "Connect",
+			tview.NewTextView().
+				SetDynamicColors(true).
+				SetText("[gray]Connecting to hub...[-]"),
+			40, 5, nil)
+		// TODO: Connect to hub via RRC
+	}
+	channelsDisplay.OnDisconnect = func() {
+		tui.ShowDialog(tuiApp.Application, "Disconnect",
+			tview.NewTextView().
+				SetDynamicColors(true).
+				SetText("[gray]Disconnected from hub.[-]"),
+			40, 5, nil)
+		// TODO: Disconnect from hub
+	}
+	channelsDisplay.OnToggleAutoReconnect = func() {
+		// TODO: Toggle auto-reconnect setting
+	}
 
 	// Config display
 	configPath := a.ConfigPath
@@ -342,6 +442,71 @@ func wireDisplays(tuiApp *tui.App, a *app.App) {
 	interfacesDisplay := tui.NewInterfacesDisplay(tuiApp.Application, interfaces)
 	main.SetDisplay("interfaces", interfacesDisplay.Widget())
 	main.SetShortcut("interfaces", "[C-a] Add  [C-e] Edit  [C-x] Remove  [C-w] Config Editor")
+
+	// Wire interfaces keyboard shortcuts
+	interfacesDisplay.OnAddInterface = func() {
+		tui.ShowInputDialog(tuiApp.Application, "Add Interface",
+			"Interface type:", "",
+			func(text string) {
+				_ = text
+				// TODO: Add interface via RNS config
+			},
+			func() {},
+		)
+	}
+	interfacesDisplay.OnConfigEditor = func() {
+		tui.ShowDialog(tuiApp.Application, "Config Editor",
+			tview.NewTextView().
+				SetDynamicColors(true).
+				SetText(fmt.Sprintf("[gray]Config file: %s[-]\n\n[gray]Edit this file with your text editor.[-]", configPath)),
+			60, 8, nil)
+	}
+
+	// Browser display (hidden by default, shown when navigating from network)
+	browserDisplay := tui.NewBrowserDisplay(tuiApp.Application)
+	main.SetDisplay("browser", browserDisplay.Widget())
+	main.SetShortcut("browser", "[C-d] Back  [C-f] Forward  [C-r] Reload  [C-u] URL  [C-s] Save  [C-y] Copy URL  [C-g] Fullscreen")
+
+	// Wire browser keyboard shortcuts
+	browserDisplay.OnBack = func() { browserDisplay.GoBack() }
+	browserDisplay.OnForward = func() { browserDisplay.GoForward() }
+	browserDisplay.OnReload = func() { browserDisplay.Reload() }
+	browserDisplay.OnCopyURL = func() {
+		url := browserDisplay.CurrentURL()
+		if url != "" {
+			_ = tui.CopyToClipboard(url)
+		}
+	}
+	browserDisplay.OnURLDialog = func() {
+		tui.ShowInputDialog(tuiApp.Application, "Navigate",
+			"Enter URL:", "",
+			func(text string) {
+				if text != "" {
+					browserDisplay.LoadURL(text)
+				}
+			},
+			func() {},
+		)
+	}
+	browserDisplay.OnSaveNode = func() {
+		tui.ShowConfirmDialog(tuiApp.Application,
+			"Save connected node to directory?",
+			func() { /* TODO */ },
+			func() {},
+		)
+	}
+	browserDisplay.OnDisconnect = func() {
+		browserDisplay.SetContent("[gray]Disconnected.[-]")
+	}
+	browserDisplay.OnToggleFullscreen = func() {
+		// TODO: Toggle fullscreen
+	}
+
+	// Wire network connect to browser
+	networkDisplay.SetNavigateCallback(func(url string) {
+		main.SetDisplay("browser", browserDisplay.Widget())
+		browserDisplay.LoadURL(url)
+	})
 
 	// Intro/splash display
 	introDisplay := tui.NewIntroDisplay("Nomad Network", a.Version)

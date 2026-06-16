@@ -215,6 +215,42 @@ func (cd *ChannelsDisplay) Widget() tview.Primitive {
 	return cd.widget
 }
 
+// UpdateRooms refreshes the room list.
+func (cd *ChannelsDisplay) UpdateRooms(rooms []ChannelInfo) {
+	cd.rooms.Clear()
+	for _, room := range rooms {
+		prefix := "  "
+		if room.Unread {
+			prefix = "[!] "
+		}
+		if room.Joined {
+			prefix = "[*] "
+		}
+		text := fmt.Sprintf("%s#%s", prefix, room.Name)
+		secondary := fmt.Sprintf("%d members — %s", room.Members, room.Topic)
+		cd.rooms.AddItem(text, secondary, 0, nil)
+	}
+}
+
+// ToggleChannelListVisibility shows/hides the channel list panel.
+func (cd *ChannelsDisplay) ToggleChannelListVisibility() {
+	if cd.OnToggleChannelList != nil {
+		cd.OnToggleChannelList()
+	}
+}
+
+// SetMessages replaces the messages view content.
+func (cd *ChannelsDisplay) SetMessages(text string) {
+	cd.messages.SetText(text)
+}
+
+// ShowUserInfo displays a user info dialog for the selected member.
+// Matches Python's ChannelsDisplay.show_user_info() at Channels.py:2119.
+func (cd *ChannelsDisplay) ShowUserInfo(nick, hash string) {
+	info := fmt.Sprintf("[::b]Nick[-]  : %s\n[::b]Hash[-] : %s", nick, hash)
+	cd.messages.SetText(info)
+}
+
 // ShowMessages displays messages for a room.
 func (cd *ChannelsDisplay) ShowMessages(msgs []ChannelMessage) {
 	var sb strings.Builder

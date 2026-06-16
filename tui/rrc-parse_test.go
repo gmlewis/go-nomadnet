@@ -250,9 +250,9 @@ func TestFormatTimestamp(t *testing.T) {
 		tsMs int64
 		want string
 	}{
-		{"zero UTC", 0, "19:00:00"},
-		{"noon UTC", 43200000, "07:00:00"},
-		{"minute UTC", 3661000, "20:01:01"},
+		{"zero UTC", 0, "00:00:00"},
+		{"noon UTC", 43200000, "12:00:00"},
+		{"minute UTC", 3661000, "01:01:01"},
 		{"negative", -1, ""},
 	}
 

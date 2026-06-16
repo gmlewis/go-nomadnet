@@ -20,6 +20,9 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+
+	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 )
 
 // CopyToClipboard copies text to the system clipboard using
@@ -65,3 +68,87 @@ var (
 	// ErrUnsupportedPlatform is returned on unsupported platforms.
 	ErrUnsupportedPlatform = fmt.Errorf("unsupported platform for clipboard operations")
 )
+
+// ClickableIcon is a tview primitive that renders a glyph and fires
+// a callback on mouse click. Matches Python's ClickableIcon at
+// Helpers.py:20.
+type ClickableIcon struct {
+	*tview.Box
+	glyph  string
+	action func()
+}
+
+// NewClickableIcon creates a clickable icon with the given glyph and action.
+func NewClickableIcon(glyph string, action func()) *ClickableIcon {
+	ci := &ClickableIcon{
+		Box:    tview.NewBox(),
+		glyph:  glyph,
+		action: action,
+	}
+	ci.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
+		if action&tview.MouseLeftClick != 0 {
+			if ci.action != nil {
+				ci.action()
+			}
+		}
+		return action, event
+	})
+	return ci
+}
+
+// Draw implements tview.Primitive.
+func (ci *ClickableIcon) Draw(screen tcell.Screen) {
+	ci.Box.DrawForSubclass(screen, ci)
+	x, y, w, _ := ci.GetInnerRect()
+	if w > 0 {
+		ci.glyph = truncateStr(ci.glyph, w)
+	}
+	for i, r := range ci.glyph {
+		if x+i >= x+w {
+			break
+		}
+		screen.SetContent(x+i, y, r, nil, tcell.StyleDefault.Foreground(tcell.NewHexColor(0xdddddd)))
+	}
+}
+
+// BuildTrustBanner creates a trust warning banner with Trust/Block/Do nothing
+// buttons for untrusted peers. Matches Python's _build_trust_banner at
+// Conversations.py:1957.
+func BuildTrustBanner(onTrust, onBlock, onIgnore func()) *tview.Flex {
+	warning := tview.NewTextView().
+		SetDynamicColors(true).
+		SetTextColor(tcell.NewHexColor(0xffdd33)).
+		SetText(" ⚠ This peer isn't trusted yet.")
+
+	trustBtn := tview.NewButton("[Trust]")
+	trustBtn.SetBackgroundColor(tcell.NewHexColor(0x444444))
+	trustBtn.SetLabelColor(tcell.NewHexColor(0xdddddd))
+	if onTrust != nil {
+		trustBtn.SetSelectedFunc(func() { onTrust() })
+	}
+
+	blockBtn := tview.NewButton("[Block]")
+	blockBtn.SetBackgroundColor(tcell.NewHexColor(0x444444))
+	blockBtn.SetLabelColor(tcell.NewHexColor(0xdddddd))
+	if onBlock != nil {
+		blockBtn.SetSelectedFunc(func() { onBlock() })
+	}
+
+	ignoreBtn := tview.NewButton("[Do nothing]")
+	ignoreBtn.SetBackgroundColor(tcell.NewHexColor(0x444444))
+	ignoreBtn.SetLabelColor(tcell.NewHexColor(0xdddddd))
+	if onIgnore != nil {
+		ignoreBtn.SetSelectedFunc(func() { onIgnore() })
+	}
+
+	banner := tview.NewFlex().SetDirection(tview.FlexColumn).
+		AddItem(warning, 0, 1, false).
+		AddItem(trustBtn, 9, 0, false).
+		AddItem(tview.NewTextView().SetText(" "), 1, 0, false).
+		AddItem(blockBtn, 8, 0, false).
+		AddItem(tview.NewTextView().SetText(" "), 1, 0, false).
+		AddItem(ignoreBtn, 13, 0, false)
+	banner.SetBackgroundColor(tcell.NewHexColor(0x553300))
+
+	return banner
+}

@@ -16,6 +16,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/gdamore/tcell/v2"
@@ -100,12 +101,45 @@ func renderNodes(nodes []*micron.Node) string {
 				sb.WriteString(node.LinkURL)
 			}
 			sb.WriteString("[-]")
+		case micron.NodeField:
+			if node.FieldName != "" {
+				sb.WriteString(fmt.Sprintf("[cyan]%s[-]: ", node.FieldName))
+			}
+			if node.FieldData != "" {
+				sb.WriteString(fmt.Sprintf("[gray][%s][-]", node.FieldData))
+			} else {
+				sb.WriteString("[gray][...] [-]")
+			}
+		case micron.NodeCheckbox:
+			cb := "[ ]"
+			if node.FieldData == "true" || node.FieldData == "1" {
+				cb = "[x]"
+			}
+			if node.FieldName != "" {
+				sb.WriteString(fmt.Sprintf("[cyan]%s[-] %s", node.FieldName, cb))
+			} else {
+				sb.WriteString(cb)
+			}
+		case micron.NodeRadio:
+			rb := "( )"
+			if node.FieldData == "true" || node.FieldData == "1" {
+				rb = "(*)"
+			}
+			if node.FieldName != "" {
+				sb.WriteString(fmt.Sprintf("[cyan]%s[-] %s", node.FieldName, rb))
+			} else {
+				sb.WriteString(rb)
+			}
 		case micron.NodeColor:
 			if node.FGColor != "" {
 				sb.WriteString("[")
 				sb.WriteString(mapColor(node.FGColor))
 				sb.WriteString("]")
 			}
+		case micron.NodePartial:
+			sb.WriteString(fmt.Sprintf("[gray][partial:%s][-]", node.PartialID))
+		case micron.NodeAnchor:
+			sb.WriteString(fmt.Sprintf("[gray][#%s][-]", node.AnchorName))
 		default:
 			if node.Text != "" {
 				sb.WriteString(node.Text)

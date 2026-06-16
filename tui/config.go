@@ -17,68 +17,94 @@ package tui
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
-// ConfigDisplay shows the configuration file path and an editor button.
+// ConfigDisplay shows the configuration file with an in-app editor.
 type ConfigDisplay struct {
-	app    *tview.Application
-	widget tview.Primitive
+	app        *tview.Application
+	widget     tview.Primitive
+	editor     *tview.TextArea
+	configPath string
 }
 
-// NewConfigDisplay creates a new config display.
+// NewConfigDisplay creates a new config display with an editable text area.
+// Matches Python's ConfigDisplay at Config.py:25 with in-app editor.
 func NewConfigDisplay(app *tview.Application, configPath string) *ConfigDisplay {
-	cd := &ConfigDisplay{app: app}
+	cd := &ConfigDisplay{app: app, configPath: configPath}
 
 	// Title
-	title := tview.NewTextView().
-		SetTextAlign(tview.AlignCenter).
-		SetTextColor(tcell.NewHexColor(0xdddddd)).
-		SetText("Configuration")
+	title := tview.NewTextView()
+	title.SetTextAlign(tview.AlignCenter)
+	title.SetDynamicColors(true)
+	title.SetTextColor(tcell.NewHexColor(0xdddddd))
+	title.SetText("[::b]Configuration[-]")
 
-	// Instructions
-	info := tview.NewTextView().
-		SetTextAlign(tview.AlignCenter).
-		SetTextColor(tcell.NewHexColor(0xbbbbbb)).
-		SetText(fmt.Sprintf(
-			"\nTo change the configuration, edit the config file located at:\n\n%s\n\nRestart Nomad Network for changes to take effect.\n",
-			configPath,
-		))
+	// Load config file content
+	content := ""
+	data, err := os.ReadFile(configPath)
+	if err == nil {
+		content = string(data)
+	} else {
+		content = fmt.Sprintf("# Error reading config: %v\n# File: %s", err, configPath)
+	}
 
-	// Open editor button
-	editorBtn := tview.NewButton("Open Editor")
-	editorBtn.SetLabelColor(tcell.NewHexColor(0x00a533))
-	editorBtn.SetBackgroundColor(tcell.ColorDefault)
-	editorBtn.SetSelectedFunc(func() {
-		// In a real implementation, this would open an editor
-		// For now, show a message
-		cd.showMessage(fmt.Sprintf("Edit: %s", configPath))
+	// Editor
+	cd.editor = tview.NewTextArea()
+	cd.editor.SetText(content, true)
+	cd.editor.SetBackgroundColor(tcell.NewHexColor(0x1a1a1a))
+	cd.editor.SetTextStyle(tcell.StyleDefault.Foreground(tcell.NewHexColor(0xbbbbbb)))
+
+	// Status bar
+	statusBar := tview.NewTextView()
+	statusBar.SetDynamicColors(true)
+	statusBar.SetTextColor(tcell.NewHexColor(0x999999))
+	statusBar.SetText(fmt.Sprintf("[yellow]Ctrl-S[-] Save  [yellow]Ctrl-Q[-] Back  [gray]%s[-]", configPath))
+
+	// Save button
+	saveBtn := tview.NewButton("[Save]")
+	saveBtn.SetBackgroundColor(tcell.NewHexColor(0x444444))
+	saveBtn.SetLabelColor(tcell.NewHexColor(0xdddddd))
+	saveBtn.SetSelectedFunc(func() {
+		cd.saveConfig()
 	})
 
-	layout := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(title, 2, 0, false).
-		AddItem(info, 0, 1, false).
-		AddItem(editorBtn, 1, 0, true)
+	layout := tview.NewFlex().SetDirection(tview.FlexRow)
+	layout.AddItem(title, 1, 0, false)
+	layout.AddItem(cd.editor, 0, 1, true)
+	layout.AddItem(statusBar, 1, 0, false)
 	layout.SetBorder(true)
 
 	cd.widget = layout
 	return cd
 }
 
-// Widget returns the tview primitive for this display.
+// Widget returns the tview primitive.
 func (cd *ConfigDisplay) Widget() tview.Primitive {
 	return cd.widget
 }
 
+// saveConfig writes the editor content to the config file.
+func (cd *ConfigDisplay) saveConfig() {
+	content := cd.editor.GetText()
+	err := os.WriteFile(cd.configPath, []byte(content), 0o644)
+	if err != nil {
+		cd.showMessage(fmt.Sprintf("Error saving: %v", err))
+		return
+	}
+	cd.showMessage("Config saved. Restart Nomad Network for changes to take effect.")
+}
+
 // showMessage displays a temporary message.
 func (cd *ConfigDisplay) showMessage(msg string) {
-	modal := tview.NewModal().
-		SetText(msg).
-		AddButtons([]string{"OK"}).
-		SetDoneFunc(func(buttonIndex int, buttonLabel string) {
-			cd.app.SetRoot(cd.widget, true)
-		})
+	modal := tview.NewModal()
+	modal.SetText(msg)
+	modal.AddButtons([]string{"OK"})
+	modal.SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+		cd.app.SetRoot(cd.widget, true)
+	})
 	cd.app.SetRoot(modal, true)
 }

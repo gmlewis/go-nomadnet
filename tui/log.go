@@ -16,51 +16,100 @@
 package tui
 
 import (
+	"bufio"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
-// LogDisplay shows the tail of the log file.
+// LogDisplay shows the tail of the log file with optional live tailing.
 type LogDisplay struct {
-	app    *tview.Application
-	widget tview.Primitive
+	app     *tview.Application
+	widget  tview.Primitive
+	logView *tview.TextView
+	logPath string
+	lines   int
+	stopCh  chan struct{}
+	wg      sync.WaitGroup
 }
 
-// NewLogDisplay creates a new log display that shows the last N lines.
+// NewLogDisplay creates a new log display that shows the last N lines
+// and optionally tails the file for live updates.
 func NewLogDisplay(app *tview.Application, logPath string, lines int) *LogDisplay {
-	ld := &LogDisplay{app: app}
+	ld := &LogDisplay{
+		app:     app,
+		logPath: logPath,
+		lines:   lines,
+		stopCh:  make(chan struct{}),
+	}
 
-	logView := tview.NewTextView()
-	logView.SetDynamicColors(true)
-	logView.SetScrollable(true)
-	logView.SetTextColor(tcell.NewHexColor(0xbbbbbb))
-	logView.SetBackgroundColor(tcell.ColorDefault)
+	ld.logView = tview.NewTextView()
+	ld.logView.SetDynamicColors(true)
+	ld.logView.SetScrollable(true)
+	ld.logView.SetTextColor(tcell.NewHexColor(0xbbbbbb))
+	ld.logView.SetBackgroundColor(tcell.ColorDefault)
 
 	// Load initial content
 	content := tailFile(logPath, lines)
-	logView.SetText(content)
+	ld.logView.SetText(content)
 
 	// Title with file path
-	title := tview.NewTextView().
-		SetTextAlign(tview.AlignCenter).
-		SetTextColor(tcell.NewHexColor(0xdddddd)).
-		SetText("Log Viewer")
+	title := tview.NewTextView()
+	title.SetTextAlign(tview.AlignCenter)
+	title.SetTextColor(tcell.NewHexColor(0xdddddd))
+	title.SetText("Log Viewer")
 
-	layout := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(title, 1, 0, false).
-		AddItem(logView, 0, 1, true)
+	layout := tview.NewFlex().SetDirection(tview.FlexRow)
+	layout.AddItem(title, 1, 0, false)
+	layout.AddItem(ld.logView, 0, 1, true)
 	layout.SetBorder(true)
 
 	ld.widget = layout
 	return ld
 }
 
-// Widget returns the tview primitive for this display.
+// Widget returns the tview primitive.
 func (ld *LogDisplay) Widget() tview.Primitive {
 	return ld.widget
+}
+
+// StartTailing begins watching the log file for new lines.
+func (ld *LogDisplay) StartTailing() {
+	file, err := os.Open(ld.logPath)
+	if err != nil {
+		return
+	}
+	// Seek to end to start tailing from here
+	_, _ = file.Seek(0, 2)
+
+	ld.wg.Add(1)
+	go func() {
+		defer ld.wg.Done()
+		defer func() { _ = file.Close() }()
+		scanner := bufio.NewScanner(file)
+		for {
+			select {
+			case <-ld.stopCh:
+				return
+			default:
+				if scanner.Scan() {
+					line := scanner.Text()
+					ld.app.QueueUpdateDraw(func() {
+						ld.logView.SetText(ld.logView.GetText(false) + "\n" + line)
+					})
+				}
+			}
+		}
+	}()
+}
+
+// StopTailing stops the live tail goroutine.
+func (ld *LogDisplay) StopTailing() {
+	close(ld.stopCh)
+	ld.wg.Wait()
 }
 
 // tailFile reads the last n lines from a file.
