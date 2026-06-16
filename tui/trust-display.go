@@ -66,7 +66,7 @@ func FormatNodeSummary(entry *NodeEntryFull) string {
 // Supports edit mode where the name field is shown as editable.
 func FormatNodeDetail(entry *NodeEntryFull, editable bool) string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("[::b]Node Details[-]\n\n"))
+	sb.WriteString("[::b]Node Details[-]\n\n")
 	sb.WriteString(fmt.Sprintf("  Name: %s\n", entry.DisplayName))
 	if editable {
 		sb.WriteString("  [gray](editable)[-]\n")

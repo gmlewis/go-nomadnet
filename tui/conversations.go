@@ -249,12 +249,6 @@ func (cd *ConversationsDisplay) populateList() {
 	}
 }
 
-// switchTab switches between trusted and untrusted tabs.
-func (cd *ConversationsDisplay) switchTab() {
-	cd.showTrusted = !cd.showTrusted
-	cd.populateList()
-}
-
 // Widget returns the tview primitive for this display.
 func (cd *ConversationsDisplay) Widget() tview.Primitive {
 	return cd.widget
@@ -280,20 +274,6 @@ func (cd *ConversationsDisplay) showDetail(idx int) {
 // Delegates to RelativeTime for consistent behavior.
 func relativeTime(t time.Time) string {
 	return RelativeTime(t)
-}
-
-// sortByName sorts conversations by display name.
-func sortByName(convs []ConversationInfo) {
-	sort.Slice(convs, func(i, j int) bool {
-		return convs[i].DisplayName < convs[j].DisplayName
-	})
-}
-
-// sortByTime sorts conversations by last time (most recent first).
-func sortByTime(convs []ConversationInfo) {
-	sort.Slice(convs, func(i, j int) bool {
-		return convs[i].LastTime.After(convs[j].LastTime)
-	})
 }
 
 // SortMode represents the conversation list sort order.
@@ -690,5 +670,215 @@ func (cd *ConversationsDisplay) SaveAttachmentsDialog(attachments []string, onSa
 
 	ShowDialog(cd.app, "Attachments", layout, 50, 12, func() {
 		cd.dialogOpen = false
+	})
+}
+
+// ShowPeerInfoDialog shows the Peer Info dialog with editable fields
+// for name, trust level, delivery mode, pin, and notes.
+// Matches Python's edit_selected_in_directory() at Conversations.py:821-1020.
+func (cd *ConversationsDisplay) ShowPeerInfoDialog(entry PeerInfoEntry, onSave func(PeerInfoEntry)) {
+	cd.dialogOpen = true
+
+	// Name field
+	nameInput := tview.NewInputField()
+	nameInput.SetLabel("Name : ")
+	nameInput.SetText(entry.DisplayName)
+	nameInput.SetFieldBackgroundColor(tcell.NewHexColor(0x222222))
+	nameInput.SetFieldTextColor(tcell.NewHexColor(0xdddddd))
+
+	// Address (read-only)
+	addrText := tview.NewTextView()
+	addrText.SetDynamicColors(true)
+	addrText.SetTextColor(tcell.NewHexColor(0xdddddd))
+	addrText.SetText("Addr : " + entry.SourceHash)
+
+	// Trust level selection via list
+	trustList := tview.NewList()
+	trustList.SetHighlightFullLine(true)
+	trustList.SetSelectedBackgroundColor(tcell.NewHexColor(0x666666))
+	trustLevels := []string{TrustUntrusted, TrustUnknown, TrustTrusted}
+	trustList.AddItem(TrustUntrusted, "", 0, nil)
+	trustList.AddItem(TrustUnknown, "", 0, nil)
+	trustList.AddItem(TrustTrusted, "", 0, nil)
+
+	// Select current trust level
+	selectedTrust := entry.TrustLevelValue()
+	for i, tl := range trustLevels {
+		if tl == selectedTrust {
+			trustList.SetCurrentItem(i)
+			break
+		}
+	}
+
+	// Delivery mode via list
+	deliveryList := tview.NewList()
+	deliveryList.SetHighlightFullLine(true)
+	deliveryList.SetSelectedBackgroundColor(tcell.NewHexColor(0x666666))
+	deliveryList.AddItem("Deliver directly", "", 0, nil)
+	deliveryList.AddItem("Use propagation nodes", "", 0, nil)
+	if entry.PreferredDelivery == "propagated" {
+		deliveryList.SetCurrentItem(1)
+	}
+
+	// Notes field
+	notesInput := tview.NewInputField()
+	notesInput.SetLabel("Notes: ")
+	notesInput.SetText(entry.Notes)
+	notesInput.SetFieldBackgroundColor(tcell.NewHexColor(0x222222))
+	notesInput.SetFieldTextColor(tcell.NewHexColor(0xdddddd))
+
+	// Save/Back buttons
+	saveBtn := tview.NewButton("Save")
+	saveBtn.SetSelectedFunc(func() {
+		cd.dialogOpen = false
+		result := PeerInfoEntry{
+			SourceHash:  entry.SourceHash,
+			DisplayName: nameInput.GetText(),
+			TrustLevel:  trustLevels[trustList.GetCurrentItem()],
+			Pinned:      entry.Pinned,
+			Notes:       notesInput.GetText(),
+		}
+		if deliveryList.GetCurrentItem() == 1 {
+			result.PreferredDelivery = "propagated"
+		} else {
+			result.PreferredDelivery = "direct"
+		}
+		if onSave != nil {
+			onSave(result)
+		}
+	})
+
+	backBtn := tview.NewButton("Back")
+	backBtn.SetSelectedFunc(func() {
+		cd.dialogOpen = false
+	})
+
+	buttons := tview.NewFlex().SetDirection(tview.FlexColumn).
+		AddItem(saveBtn, 0, 1, true).
+		AddItem(backBtn, 0, 1, false)
+
+	layout := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(addrText, 1, 0, false).
+		AddItem(nameInput, 1, 0, true).
+		AddItem(tview.NewTextView().SetText("Trust Level:"), 1, 0, false).
+		AddItem(trustList, 3, 0, false).
+		AddItem(tview.NewTextView().SetText("Delivery:"), 1, 0, false).
+		AddItem(deliveryList, 2, 0, false).
+		AddItem(notesInput, 1, 0, false).
+		AddItem(buttons, 1, 0, false)
+
+	ShowDialog(cd.app, "Peer Info", layout, 50, 14, func() {
+		cd.dialogOpen = false
+	})
+}
+
+// SyncMode represents the conversation sync download mode.
+type SyncMode int
+
+const (
+	// SyncAll downloads all available messages.
+	SyncAll SyncMode = iota
+	// SyncLimited downloads up to a specified limit.
+	SyncLimited
+)
+
+// SyncDialogResult holds the result of the sync dialog.
+type SyncDialogResult struct {
+	Mode   SyncMode
+	Limit  int
+	Action string // "sync", "cancel", or "dismiss"
+}
+
+// ShowSyncDialog shows the sync configuration dialog with propagation
+// node selection and download limit options.
+// Matches Python's sync_conversations() at Conversations.py:1359-1500.
+func (cd *ConversationsDisplay) ShowSyncDialog(
+	currentPN string,
+	pnOptions []string,
+	progress float64,
+	onSync func(result SyncDialogResult),
+) {
+	cd.dialogOpen = true
+	mode := SyncAll
+
+	// Mode selection via list
+	modeList := tview.NewList()
+	modeList.SetHighlightFullLine(true)
+	modeList.SetSelectedBackgroundColor(tcell.NewHexColor(0x666666))
+	modeList.AddItem("Download all", "", 0, nil)
+	modeList.AddItem("Limit to:", "", 0, nil)
+
+	// Limit input
+	limitInput := tview.NewInputField()
+	limitInput.SetLabel("Messages: ")
+	limitInput.SetText("5")
+	limitInput.SetFieldBackgroundColor(tcell.NewHexColor(0x222222))
+	limitInput.SetFieldTextColor(tcell.NewHexColor(0xdddddd))
+
+	// Progress bar (simplified as text)
+	progressBar := tview.NewTextView()
+	progressBar.SetDynamicColors(true)
+	progressBar.SetTextColor(tcell.NewHexColor(0xdddddd))
+	progressBar.SetText(fmt.Sprintf("Progress: %.0f%%", progress*100))
+
+	// Propagation node display
+	pnText := tview.NewTextView()
+	pnText.SetDynamicColors(true)
+	pnText.SetTextColor(tcell.NewHexColor(0xdddddd))
+	if currentPN != "" {
+		pnText.SetText("Node: " + currentPN)
+	} else {
+		pnText.SetText("[gray]No propagation node selected[-]")
+	}
+
+	// Sync Now / Close buttons
+	syncBtn := tview.NewButton("Sync Now")
+	syncBtn.SetSelectedFunc(func() {
+		cd.dialogOpen = false
+		if onSync != nil {
+			result := SyncDialogResult{Mode: mode, Action: "sync"}
+			if mode == SyncLimited {
+				_, _ = fmt.Sscanf(limitInput.GetText(), "%d", &result.Limit)
+			}
+			onSync(result)
+		}
+	})
+
+	cancelBtn := tview.NewButton("Cancel Sync")
+	cancelBtn.SetSelectedFunc(func() {
+		cd.dialogOpen = false
+		if onSync != nil {
+			onSync(SyncDialogResult{Action: "cancel"})
+		}
+	})
+
+	closeBtn := tview.NewButton("Close")
+	closeBtn.SetSelectedFunc(func() {
+		cd.dialogOpen = false
+		if onSync != nil {
+			onSync(SyncDialogResult{Action: "dismiss"})
+		}
+	})
+
+	buttons := tview.NewFlex().SetDirection(tview.FlexColumn).
+		AddItem(syncBtn, 0, 1, true).
+		AddItem(cancelBtn, 0, 1, false).
+		AddItem(closeBtn, 0, 1, false)
+
+	// Layout
+	layout := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(pnText, 1, 0, false).
+		AddItem(progressBar, 1, 0, false).
+		AddItem(tview.NewTextView().SetText("Download mode:"), 1, 0, false).
+		AddItem(modeList, 2, 0, false).
+		AddItem(limitInput, 1, 0, false).
+		AddItem(tview.NewTextView().SetText(""), 1, 0, false).
+		AddItem(buttons, 1, 0, false)
+
+	ShowDialog(cd.app, "Sync", layout, 50, 10, func() {
+		cd.dialogOpen = false
+		if onSync != nil {
+			onSync(SyncDialogResult{Action: "dismiss"})
+		}
 	})
 }

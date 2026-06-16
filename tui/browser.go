@@ -20,7 +20,6 @@ import (
 	"strings"
 
 	"github.com/gdamore/tcell/v2"
-	"github.com/gmlewis/go-nomadnet/nomadnet/micron"
 	"github.com/rivo/tview"
 )
 
@@ -33,7 +32,6 @@ type BrowserDisplay struct {
 	content *tview.TextView
 	history []string
 	histIdx int
-	onLoad  func(url string)
 
 	// Keyboard shortcut callbacks (Python: BrowserFrame.keypress)
 	OnDisconnect       func()
@@ -199,36 +197,6 @@ func (bd *BrowserDisplay) displayURL(url string) {
 	content += "4. Render the Micron content\n\n"
 	content += fmt.Sprintf("[gray]URL: %s[-]", url)
 	bd.content.SetText(content)
-}
-
-// renderContent renders Micron content for display.
-func renderContent(text string) string {
-	if strings.Contains(text, ">>") || strings.Contains(text, "`!") {
-		nodes := micron.Parse(text)
-		var sb strings.Builder
-		for _, node := range nodes {
-			switch node.Type {
-			case micron.NodeHeading:
-				sb.WriteString("[::b]")
-				for _, child := range node.Children {
-					sb.WriteString(child.Text)
-				}
-				sb.WriteString("[-]\n")
-			case micron.NodeText:
-				sb.WriteString(node.Text)
-			case micron.NodeBold:
-				sb.WriteString("[::b]")
-			case micron.NodeReset:
-				sb.WriteString("[-]")
-			case micron.NodeDivider:
-				sb.WriteString(strings.Repeat("─", 30) + "\n")
-			default:
-				sb.WriteString(node.Text)
-			}
-		}
-		return sb.String()
-	}
-	return text
 }
 
 // Reload refreshes the current page.

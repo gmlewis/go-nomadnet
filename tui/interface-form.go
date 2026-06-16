@@ -59,15 +59,6 @@ var commonInterfaceOptions = []InterfaceField{
 	{ConfigKey: "bitrate", Type: "edit", Label: "Inferred Bitrate: ", Placeholder: "Automatically determined", Validation: []string{"number"}},
 }
 
-// transportOptions are additional common options when transport is
-// enabled. Matches the COMMON_INTERFACE_OPTIONS.extend() at
-// Interfaces.py:1582.
-var transportOptions = []InterfaceField{
-	{ConfigKey: "outgoing", Type: "checkbox", Label: "Allow outgoing traffic", Default: "true"},
-	{ConfigKey: "mode", Type: "dropdown", Label: "Interface Mode: ", Options: []string{"full", "gateway", "access_point", "roaming", "boundary"}, Default: "full"},
-	{ConfigKey: "announce_cap", Type: "edit", Label: "Announce Cap: ", Placeholder: "Default: 2.0", Validation: []string{"float"}},
-}
-
 // NewInterfaceFormData creates form data for the given interface type,
 // initializing all fields from the INTERFACE_FIELDS registry, common
 // options, and the required "name" field.

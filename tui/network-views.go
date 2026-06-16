@@ -50,7 +50,7 @@ func NewKnownNodeInfo(entry *NodeEntryFull) *KnownNodeInfo {
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("[::b]Name[-]  : %s\n", entry.DisplayName))
 	sb.WriteString(fmt.Sprintf("[::b]Addr[-]  : <[lightblue]%s[-]>\n", entry.SourceHash))
-	sb.WriteString(fmt.Sprintf("[::b]Type[-]  : Node Ⓝ\n"))
+	sb.WriteString("[::b]Type[-]  : Node Ⓝ\n")
 	sb.WriteString(fmt.Sprintf("[::b]Trust[-] : [%s]%s[-]\n", trustColor, trustStr))
 	if entry.PreferredDelivery != "" {
 		sb.WriteString(fmt.Sprintf("[::b]Delivery[-]: %s\n", entry.PreferredDelivery))

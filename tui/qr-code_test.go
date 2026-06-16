@@ -56,10 +56,3 @@ func TestGenerateQRASCIILXMFAddress(t *testing.T) {
 		t.Error("GenerateQRASCII returned empty string for LXMF address")
 	}
 }
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}

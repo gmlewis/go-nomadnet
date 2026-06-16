@@ -178,10 +178,6 @@ func titleWord(word string) string {
 	return sb.String()
 }
 
-func isLetter(r rune) bool {
-	return unicode.IsLetter(r)
-}
-
 // formatRadioFrequency converts a Hz value to MHz display string.
 func formatRadioFrequency(value any) string {
 	var hz float64

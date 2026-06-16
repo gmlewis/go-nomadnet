@@ -178,7 +178,7 @@ func FormatInterfaceEntry(iface InterfaceInfo) string {
 func FormatInterfaceDetail(iface InterfaceInfo) string {
 	var sb strings.Builder
 
-	sb.WriteString(fmt.Sprintf("[::b]Interface Details[-]\n\n"))
+	sb.WriteString("[::b]Interface Details[-]\n\n")
 	sb.WriteString(fmt.Sprintf("  Name: %s\n", iface.Name))
 	sb.WriteString(fmt.Sprintf("  Type: %s\n", iface.Type))
 

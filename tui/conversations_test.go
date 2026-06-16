@@ -607,3 +607,106 @@ func TestSaveAttachmentsDialog(t *testing.T) {
 		t.Error("dialog should be open")
 	}
 }
+
+func TestShowPeerInfoDialog(t *testing.T) {
+	t.Parallel()
+
+	app := tview.NewApplication()
+	cd := NewConversationsDisplay(app, nil)
+
+	entry := PeerInfoEntry{
+		SourceHash:        "aabb112233445566",
+		DisplayName:       "TestPeer",
+		TrustLevel:        TrustTrusted,
+		PreferredDelivery: "direct",
+		Pinned:            true,
+		Notes:             "test notes",
+	}
+
+	var saved bool
+	cd.ShowPeerInfoDialog(entry, func(e PeerInfoEntry) {
+		saved = true
+		if e.DisplayName != "TestPeer" {
+			t.Errorf("DisplayName = %q, want TestPeer", e.DisplayName)
+		}
+	})
+
+	if !cd.dialogOpen {
+		t.Error("dialog should be open")
+	}
+	_ = saved
+}
+
+func TestPeerInfoEntryTrustLevelValue(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{TrustTrusted, TrustTrusted},
+		{TrustUntrusted, TrustUntrusted},
+		{TrustUnknown, TrustUnknown},
+		{"blocked", TrustUntrusted},
+		{"other", TrustUnknown},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			t.Parallel()
+			e := PeerInfoEntry{TrustLevel: tt.input}
+			got := e.TrustLevelValue()
+			if got != tt.want {
+				t.Errorf("TrustLevelValue() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestShowSyncDialog(t *testing.T) {
+	t.Parallel()
+
+	app := tview.NewApplication()
+	cd := NewConversationsDisplay(app, nil)
+
+	var result SyncDialogResult
+	cd.ShowSyncDialog("aabb112233445566", nil, 0.5, func(r SyncDialogResult) {
+		result = r
+	})
+
+	if !cd.dialogOpen {
+		t.Error("dialog should be open")
+	}
+	_ = result
+}
+
+func TestSyncDialogResult(t *testing.T) {
+	t.Parallel()
+
+	result := SyncDialogResult{
+		Mode:   SyncLimited,
+		Limit:  10,
+		Action: "sync",
+	}
+
+	if result.Mode != SyncLimited {
+		t.Errorf("Mode = %v, want SyncLimited", result.Mode)
+	}
+	if result.Limit != 10 {
+		t.Errorf("Limit = %d, want 10", result.Limit)
+	}
+	if result.Action != "sync" {
+		t.Errorf("Action = %q, want sync", result.Action)
+	}
+}
+
+func TestSyncModeConstants(t *testing.T) {
+	t.Parallel()
+
+	if SyncAll != 0 {
+		t.Errorf("SyncAll = %d, want 0", SyncAll)
+	}
+	if SyncLimited != 1 {
+		t.Errorf("SyncLimited = %d, want 1", SyncLimited)
+	}
+}
