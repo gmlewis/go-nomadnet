@@ -440,6 +440,10 @@ func (a *App) InitWithTransport(ts *rns.TransportSystem, identity *rns.Identity)
 		AspectFilter:                "lxmf.propagation",
 		ReceivedAnnounceWithContext: a.handlePNAnnounce,
 	})
+	a.Transport.RegisterAnnounceHandler(&rns.AnnounceHandler{
+		AspectFilter:                "rrc.chat",
+		ReceivedAnnounceWithContext: a.handleRRCAnnounce,
+	})
 
 	return nil
 }
@@ -788,6 +792,28 @@ func (a *App) handlePNAnnounce(destHash []byte, identity *rns.Identity, appData 
 		AppData:      appData,
 		AnnounceType: "pn",
 		DisplayName:  displayName,
+	})
+	a.mu.Unlock()
+
+	if a.UIChangeCallback != nil {
+		a.UIChangeCallback()
+	}
+}
+
+// handleRRCAnnounce processes RRC chat announces.
+func (a *App) handleRRCAnnounce(destHash []byte, identity *rns.Identity, appData []byte, isPathResponse bool) {
+	a.Logger.Info("RRC announce received: hash=%x", destHash)
+
+	if a.RRC != nil {
+		a.RRC.AddHub(destHash, "rrc.chat", "")
+	}
+
+	a.mu.Lock()
+	a.Announces = append(a.Announces, AnnounceEvent{
+		Timestamp:    time.Now(),
+		SourceHash:   destHash,
+		AppData:      appData,
+		AnnounceType: "rrc",
 	})
 	a.mu.Unlock()
 

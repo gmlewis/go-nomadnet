@@ -18,6 +18,7 @@ package rrc
 import (
 	"os"
 	"testing"
+	"time"
 )
 
 func TestProtocolConstants(t *testing.T) {
@@ -555,6 +556,76 @@ func TestManagerNickname(t *testing.T) {
 	mgr.SetNickname("Alice")
 	if mgr.GetNickname() != "Alice" {
 		t.Errorf("GetNickname = %q, want %q", mgr.GetNickname(), "Alice")
+	}
+}
+
+func TestHandleDataMsgEnvelopeRecordsMessage(t *testing.T) {
+	t.Parallel()
+
+	mgr := NewManager(tempDir(t), func() []byte { return []byte("testhash") })
+	mgr.SetNickname("TestNick")
+	hub := mgr.AddHub([]byte("hubhash"), "rrc.chat", "TestHub")
+	hub.AddRoom("general")
+
+	env := MakeEnvelope(TypeMsg, []byte("sender"), []byte("general"), []byte("OtherNick"), []byte("hello world"), []byte("mid1"), NowMs())
+	data, err := EncodeEnvelope(env)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	msgReceived := make(chan string, 1)
+	mgr.SetMessageCallback(func(h *RRCHub, m *RRCMessage) {
+		select {
+		case msgReceived <- m.Text:
+		default:
+		}
+	})
+
+	hub.HandleData(data)
+
+	select {
+	case text := <-msgReceived:
+		if text != "hello world" {
+			t.Errorf("message text = %q, want %q", text, "hello world")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timeout waiting for message callback")
+	}
+
+	msgs := hub.GetMessages("general")
+	if len(msgs) != 1 {
+		t.Fatalf("GetMessages len = %d, want 1", len(msgs))
+	}
+	if msgs[0].Nick != "OtherNick" {
+		t.Errorf("nick = %q, want %q", msgs[0].Nick, "OtherNick")
+	}
+}
+
+func TestHandleDataJoinEnvelopeAddsMember(t *testing.T) {
+	t.Parallel()
+
+	mgr := NewManager(tempDir(t), func() []byte { return []byte("testhash") })
+	mgr.SetNickname("TestNick")
+	hub := mgr.AddHub([]byte("hubhash"), "rrc.chat", "TestHub")
+	hub.AddRoom("general")
+
+	env := MakeEnvelope(TypeJoined, []byte("joinerhash"), []byte("general"), []byte("JoinerNick"), nil, []byte("mid2"), NowMs())
+	data, err := EncodeEnvelope(env)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	hub.HandleData(data)
+
+	members := hub.GetMembers("general")
+	found := false
+	for _, m := range members {
+		if m == "JoinerNick" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("JoinerNick not in members: %v", members)
 	}
 }
 

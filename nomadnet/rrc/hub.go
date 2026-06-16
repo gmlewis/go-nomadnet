@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/fxamacker/cbor/v2"
+	"github.com/gmlewis/go-reticulum/rns"
 )
 
 // RRCHub represents a connection to a single RRC hub server.
@@ -75,14 +76,17 @@ type RRCHub struct {
 	NickOverride  string
 
 	// Internal state
-	lock           sync.Mutex
-	sentIDs        *ring.Ring           // dedup ring buffer
-	pendingPings   map[string]time.Time // body → send time
-	pendingJoins   map[string]bool
-	pendingParts   map[string]bool
-	silentJoins    map[string]bool
-	silentWhoRooms map[string]bool
-	historyPath    string
+	lock              sync.Mutex
+	sentIDs           *ring.Ring           // dedup ring buffer
+	pendingPings      map[string]time.Time // body → send time
+	pendingJoins      map[string]bool
+	pendingParts      map[string]bool
+	silentJoins       map[string]bool
+	silentWhoRooms    map[string]bool
+	historyPath       string
+	link              *rns.Link
+	onLinkEstablished func()
+	onLinkClosed      func()
 }
 
 // NewHub creates a new RRCHub with default values.
@@ -123,6 +127,78 @@ func NewHub(manager *RRCManager, hubHash []byte, destName, name string) *RRCHub 
 	}
 
 	return h
+}
+
+// SetOnLinkEstablished registers a callback invoked when the RNS link
+// to the hub becomes active.
+func (h *RRCHub) SetOnLinkEstablished(fn func()) {
+	h.lock.Lock()
+	h.onLinkEstablished = fn
+	h.lock.Unlock()
+}
+
+// SetOnLinkClosed registers a callback invoked when the RNS link closes.
+func (h *RRCHub) SetOnLinkClosed(fn func()) {
+	h.lock.Lock()
+	h.onLinkClosed = fn
+	h.lock.Unlock()
+}
+
+// Connect establishes an RNS link to the hub's destination. The link
+// handshake is asynchronous; use SetOnLinkEstablished to be notified
+// when the link becomes active.
+func (h *RRCHub) Connect(ts rns.Transport, dest *rns.Destination) error {
+	link, err := rns.NewLink(ts, dest)
+	if err != nil {
+		return err
+	}
+
+	h.lock.Lock()
+	h.link = link
+	h.Status = StatusConnecting
+	h.StatusText = "Connecting"
+	h.lock.Unlock()
+
+	link.SetLinkEstablishedCallback(func(l *rns.Link) {
+		h.lock.Lock()
+		h.Status = StatusConnected
+		h.StatusText = "Connected"
+		h.Welcomed = false
+		cb := h.onLinkEstablished
+		h.lock.Unlock()
+		if cb != nil {
+			cb()
+		}
+	})
+
+	link.SetLinkClosedCallback(func(l *rns.Link) {
+		h.lock.Lock()
+		h.Status = StatusDisconnected
+		h.StatusText = "Disconnected"
+		h.Welcomed = false
+		cb := h.onLinkClosed
+		h.lock.Unlock()
+		if cb != nil {
+			cb()
+		}
+	})
+
+	return link.Establish()
+}
+
+// Disconnect tears down the RNS link and resets hub status.
+func (h *RRCHub) Disconnect() {
+	h.lock.Lock()
+	link := h.link
+	h.link = nil
+	h.Status = StatusDisconnected
+	h.StatusText = "Disconnected"
+	h.Welcomed = false
+	h.lock.Unlock()
+
+	if link != nil {
+		link.Teardown()
+	}
 }
 
 // AddRoom adds a room to the local state.
@@ -333,8 +409,226 @@ func (h *RRCHub) SetNickOverride(nick string) {
 }
 
 func (h *RRCHub) _sendEnv(env map[any]any) {
-	// Placeholder: actual send via RNS link
-	_ = env
+	data, err := EncodeEnvelope(env)
+	if err != nil {
+		return
+	}
+	h.lock.Lock()
+	link := h.link
+	h.lock.Unlock()
+	if link == nil {
+		return
+	}
+	p := rns.NewPacketWithTransport(link.GetTransport(), link, data)
+	if err := p.Pack(); err != nil {
+		return
+	}
+	_ = link.SendPacket(p)
+}
+
+// HandleData decodes a CBOR-encoded RRC envelope and dispatches it
+// to the appropriate handler based on the message type.
+func (h *RRCHub) HandleData(data []byte) {
+	env, err := DecodeEnvelope(data)
+	if err != nil {
+		return
+	}
+
+	msgType := intVal(env, KeyType)
+	src := byteVal(env, KeySource)
+	room := byteVal(env, KeyRoom)
+	nick := byteVal(env, KeyNick)
+	body := envVal(env, KeyBody)
+	ts := int64Val(env, KeyTimestamp)
+	mid := byteVal(env, KeyMessageID)
+
+	roomStr := strings.ToLower(string(room))
+	nickStr := string(nick)
+	srcHex := hexString(src)
+
+	switch msgType {
+	case TypeMsg:
+		text, _ := body.([]byte)
+		msg := &RRCMessage{
+			Kind: "msg",
+			Room: roomStr,
+			Src:  src,
+			Nick: nickStr,
+			Text: string(text),
+			Ts:   ts,
+		}
+		h._recordMessage(msg, false)
+		if h.Manager != nil && h.Manager.messageCallback != nil {
+			h.Manager.messageCallback(h, msg)
+		}
+
+	case TypeJoined:
+		h.lock.Lock()
+		if h.Members[roomStr] == nil {
+			h.Members[roomStr] = make(map[string]bool)
+		}
+		h.Members[roomStr][nickStr] = true
+		h.Nicks[srcHex] = nickStr
+		h.lock.Unlock()
+
+	case TypeParted:
+		h.lock.Lock()
+		if h.Members[roomStr] != nil {
+			delete(h.Members[roomStr], nickStr)
+		}
+		h.lock.Unlock()
+
+	case TypeWelcome:
+		h._handleWelcome(body)
+
+	case TypePong:
+		h.lock.Lock()
+		bodyStr := string(body.([]byte))
+		delete(h.pendingPings, bodyStr)
+		h.lock.Unlock()
+
+	case TypePing:
+		h._sendEnv(MakeEnvelope(TypePong, src, nil, nil, body, mid, NowMs()))
+
+	case TypeNotice:
+		text, _ := body.([]byte)
+		msg := &RRCMessage{
+			Kind: "notice",
+			Room: roomStr,
+			Src:  src,
+			Nick: nickStr,
+			Text: string(text),
+			Ts:   ts,
+		}
+		h._recordMessage(msg, false)
+	}
+}
+
+// intVal extracts an int value from a CBOR-decoded map, handling both
+// int and uint64 key types produced by fxamacker/cbor.
+func intVal(env map[any]any, key int) int {
+	if v, ok := env[key]; ok {
+		if i, ok := v.(int); ok {
+			return i
+		}
+		if u, ok := v.(uint64); ok {
+			return int(u)
+		}
+	}
+	if v, ok := env[uint64(key)]; ok {
+		if i, ok := v.(int); ok {
+			return i
+		}
+		if u, ok := v.(uint64); ok {
+			return int(u)
+		}
+	}
+	return 0
+}
+
+// envVal extracts a value from a CBOR-decoded map using both int and
+// uint64 key variants, since fxamacker/cbor decodes integer keys as uint64.
+func envVal(env map[any]any, key int) any {
+	if v, ok := env[key]; ok {
+		return v
+	}
+	if v, ok := env[uint64(key)]; ok {
+		return v
+	}
+	return nil
+}
+
+// byteVal extracts a []byte value from a CBOR-decoded map.
+func byteVal(env map[any]any, key int) []byte {
+	if v, ok := env[key]; ok {
+		return toBytes(v)
+	}
+	if v, ok := env[uint64(key)]; ok {
+		return toBytes(v)
+	}
+	return nil
+}
+
+// int64Val extracts an int64 value from a CBOR-decoded map.
+func int64Val(env map[any]any, key int) int64 {
+	if v, ok := env[key]; ok {
+		return toInt64(v)
+	}
+	if v, ok := env[uint64(key)]; ok {
+		return toInt64(v)
+	}
+	return 0
+}
+
+func toBytes(v any) []byte {
+	switch b := v.(type) {
+	case []byte:
+		return b
+	case string:
+		return []byte(b)
+	}
+	return nil
+}
+
+func toInt64(v any) int64 {
+	switch i := v.(type) {
+	case int:
+		return int64(i)
+	case int64:
+		return i
+	case uint64:
+		return int64(i)
+	}
+	return 0
+}
+
+// _handleWelcome processes a WELCOME envelope from the hub server.
+func (h *RRCHub) _handleWelcome(body any) {
+	bodyMap, ok := body.(map[any]any)
+	if !ok {
+		return
+	}
+
+	h.lock.Lock()
+	h.Welcomed = true
+	h.lock.Unlock()
+
+	if hubName, ok := bodyMap[BWelcomeHub].([]byte); ok {
+		h.lock.Lock()
+		h.HubName = string(hubName)
+		h.lock.Unlock()
+	}
+	if hubVer, ok := bodyMap[BWelcomeVer].([]byte); ok {
+		h.lock.Lock()
+		h.HubVersion = string(hubVer)
+		h.lock.Unlock()
+	}
+	if caps, ok := bodyMap[BWelcomeCaps].(map[any]any); ok {
+		h.lock.Lock()
+		h.HubCaps = caps
+		h.lock.Unlock()
+	}
+	if limits, ok := bodyMap[BWelcomeLimits].(map[any]any); ok {
+		if v, ok := limits[LMaxNickBytes].(int); ok {
+			h.MaxNickBytes = v
+		}
+		if v, ok := limits[LMaxRoomNameBytes].(int); ok {
+			h.MaxRoomNameBytes = v
+		}
+		if v, ok := limits[LMaxMsgBodyBytes].(int); ok {
+			h.MaxMsgBodyBytes = v
+		}
+		if v, ok := limits[LMaxRoomsPerSession].(int); ok {
+			h.MaxRoomsPerSession = v
+		}
+		if v, ok := limits[LRateLimitMsgsPerMinute].(int); ok {
+			h.RateLimitMsgsPerMin = v
+		}
+	}
+
+	if h.Manager != nil {
+		h.Manager.OnWelcome(h)
+	}
 }
 
 func (h *RRCHub) _recordMessage(msg *RRCMessage, local bool) {
