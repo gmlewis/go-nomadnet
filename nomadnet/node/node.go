@@ -185,7 +185,7 @@ func (n *Node) registerRequestHandlers() {
 // makePageHandler returns a request handler function for a specific page file.
 func (n *Node) makePageHandler(filePath string) func(string, []byte, []byte, []byte, *rns.Identity, time.Time) any {
 	return func(path string, data []byte, requestID []byte, linkID []byte, remoteIdentity *rns.Identity, requestedAt time.Time) any {
-		if !IsAllowed(filePath, remoteIdentity.Hash) {
+		if !isRequestAllowed(filePath, remoteIdentity) {
 			return ServeNotAllowed()
 		}
 		content := ServePage(filePath)
@@ -199,6 +199,9 @@ func (n *Node) makePageHandler(filePath string) func(string, []byte, []byte, []b
 // makeFileHandler returns a request handler function for a specific file.
 func (n *Node) makeFileHandler(filePath string) func(string, []byte, []byte, []byte, *rns.Identity, time.Time) any {
 	return func(path string, data []byte, requestID []byte, linkID []byte, remoteIdentity *rns.Identity, requestedAt time.Time) any {
+		if !isRequestAllowed(filePath, remoteIdentity) {
+			return ServeNotAllowed()
+		}
 		fileData, err := os.ReadFile(filePath)
 		if err != nil {
 			return nil
@@ -340,6 +343,21 @@ func ParseAllowedFile(path string) ([][]byte, error) {
 	}
 
 	return hashes, nil
+}
+
+// isRequestAllowed checks if a request from the given identity is allowed
+// to access filePath. If a .allowed file exists and the remote identity is
+// nil (unidentified), access is denied. If no .allowed file exists, access
+// is granted to everyone.
+func isRequestAllowed(filePath string, remoteIdentity *rns.Identity) bool {
+	allowedPath := filePath + ".allowed"
+	if _, err := os.Stat(allowedPath); os.IsNotExist(err) {
+		return true
+	}
+	if remoteIdentity == nil {
+		return false
+	}
+	return IsAllowed(filePath, remoteIdentity.Hash)
 }
 
 // IsAllowed checks if a remote identity hash is in the allowed list.

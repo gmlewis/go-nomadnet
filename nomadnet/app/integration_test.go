@@ -221,3 +221,43 @@ func TestIntegrationLXMFAnnouncePopulatesDirectoryName(t *testing.T) {
 		t.Error("expected app_data in peer announce, got empty")
 	}
 }
+
+func TestIntegrationAnnounceStreamOrder(t *testing.T) {
+	appA, appB, cleanup := setupTwoNodeApps(t)
+	defer cleanup()
+
+	if err := appA.Router.Announce(appA.LXMFDest.Hash); err != nil {
+		t.Fatalf("LXMF Announce error: %v", err)
+	}
+	waitForAnnounce(t, appB, "peer", 5*time.Second)
+
+	nodeDest, err := rns.NewDestination(appA.Transport, appA.Identity, rns.DestinationIn, rns.DestinationSingle, "nomadnetwork", "node")
+	if err != nil {
+		t.Fatalf("node dest error: %v", err)
+	}
+	if err := nodeDest.Announce([]byte("NodeA")); err != nil {
+		t.Fatalf("Node Announce error: %v", err)
+	}
+	waitForAnnounce(t, appB, "node", 5*time.Second)
+
+	peerAnnounces := appB.Dir.PeerAnnounces()
+	nodeAnnounces := appB.Dir.NodeAnnounces()
+
+	if len(peerAnnounces) == 0 {
+		t.Error("expected peer announces in directory")
+	}
+	if len(nodeAnnounces) == 0 {
+		t.Error("expected node announces in directory")
+	}
+
+	for _, a := range peerAnnounces {
+		if a.AnnounceType != "peer" {
+			t.Errorf("peer announce has wrong type: %q", a.AnnounceType)
+		}
+	}
+	for _, a := range nodeAnnounces {
+		if a.AnnounceType != "node" {
+			t.Errorf("node announce has wrong type: %q", a.AnnounceType)
+		}
+	}
+}
