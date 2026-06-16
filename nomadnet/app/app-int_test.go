@@ -105,7 +105,7 @@ func newStartedTSApp(t *testing.T, storageDir string) (*rns.TransportSystem, fun
 	if err := ts.Start(filepath.Join(storageDir, "rns-storage")); err != nil {
 		t.Fatalf("TransportSystem.Start error: %v", err)
 	}
-	return ts, func() {}
+	return ts, func() { ts.Stop() }
 }
 
 func writeAppRNSConfig(t *testing.T, configDir string) {
