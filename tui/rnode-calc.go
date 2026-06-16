@@ -20,64 +20,84 @@ import (
 	"math"
 )
 
-// RNodeParams holds the calculated RNode link parameters.
+// RNodeParams holds optional parameters for RNode on-air calculations.
 type RNodeParams struct {
-	DataRate       string  // formatted data rate string
-	Sensitivity    string  // formatted sensitivity string
-	LinkBudget     string  // formatted link budget string
-	RawDataRate    float64 // data rate in bps
-	RawSensitivity float64 // sensitivity in dBm
-	RawLinkBudget  float64 // link budget in dB
+	NoiseFloor    float64
+	AntennaGain   float64
+	TransmitPower float64
 }
 
-// crn maps coding rate denominator to numerator offset.
-// CR 4:5→1, 4:6→2, 4:7→3, 4:8→4.
-var crn = map[int]int{5: 1, 6: 2, 7: 3, 8: 4}
-
-// sfn maps spreading factor to noise margin offset in dB.
-var sfn = map[int]float64{
-	5: -2.5, 6: -5, 7: -7.5, 8: -10,
-	9: -12.5, 10: -15, 11: -17.5, 12: -20,
+// RNodeCalcResult holds the results of RNode parameter calculations.
+type RNodeCalcResult struct {
+	DataRate       string
+	LinkBudget     string
+	Sensitivity    string
+	RawDataRate    float64
+	RawLinkBudget  float64
+	RawSensitivity float64
 }
 
-// CalcRNodeParams computes data rate, sensitivity, and link budget
-// for an RNode LoRa interface. Matches Python's
-// calculate_rnode_parameters exactly.
-func CalcRNodeParams(bandwidth, spreadingFactor, codingRate int,
-	noiseFloor, antennaGain, transmitPower float64) RNodeParams {
+// codingRateN maps coding rate values to their numerical
+// representation used in the data rate formula.
+var codingRateN = map[int]float64{
+	5: 1,
+	6: 2,
+	7: 3,
+	8: 4,
+}
 
-	codingRateN := crn[codingRate]
-	if codingRateN == 0 {
-		codingRateN = 1
+// spreadingFactorNoise maps spreading factor values to their noise
+// floor offset in dB. Matches Python's sfn dict.
+var spreadingFactorNoise = map[int]float64{
+	5:  -2.5,
+	6:  -5,
+	7:  -7.5,
+	8:  -10,
+	9:  -12.5,
+	10: -15,
+	11: -17.5,
+	12: -20,
+}
+
+// CalculateRNodeParameters computes on-air parameters for LoRa RNode
+// interfaces: data rate, sensitivity, and link budget. Matches Python's
+// calculate_rnode_parameters() at Interfaces.py:178.
+func CalculateRNodeParameters(bandwidth float64, spreadingFactor, codingRate int, opts RNodeParams) RNodeCalcResult {
+	crN := codingRateN[codingRate]
+	sfNoise := spreadingFactorNoise[spreadingFactor]
+
+	if opts.NoiseFloor == 0 {
+		opts.NoiseFloor = 6
+	}
+	if opts.TransmitPower == 0 {
+		opts.TransmitPower = 17
 	}
 
-	crEff := 4.0 / float64(4+codingRateN)
-	dataRate := float64(spreadingFactor) * (crEff / (math.Pow(2, float64(spreadingFactor)) / (float64(bandwidth) / 1000.0))) * 1000.0
+	dataRate := float64(spreadingFactor) *
+		(4.0 / (4.0 + crN)) /
+		(math.Pow(2, float64(spreadingFactor)) / (bandwidth / 1000.0)) * 1000.0
 
-	// Alternate thermal noise floor for wider bandwidths
-	var thermalNoise float64
+	sensitivity := -174.0 + 10.0*math.Log10(bandwidth) + opts.NoiseFloor + sfNoise
+
 	if bandwidth == 203125 || bandwidth == 406250 || bandwidth > 500000 {
-		thermalNoise = -165.6
-	} else {
-		thermalNoise = -174.0
+		sensitivity = -165.6 + 10.0*math.Log10(bandwidth) + opts.NoiseFloor + sfNoise
 	}
 
-	sensitivity := thermalNoise + 10*math.Log10(float64(bandwidth)) + noiseFloor + sfn[spreadingFactor]
-	linkBudget := (transmitPower - sensitivity) + antennaGain
+	linkBudget := (opts.TransmitPower - sensitivity) + opts.AntennaGain
 
-	var drStr string
+	var dataRateStr string
 	if dataRate < 1000 {
-		drStr = fmt.Sprintf("%.0f bps", dataRate)
+		dataRateStr = fmt.Sprintf("%.0f bps", dataRate)
 	} else {
-		drStr = fmt.Sprintf("%.2f kbps", dataRate/1000)
+		dataRateStr = fmt.Sprintf("%.2f kbps", dataRate/1000.0)
 	}
 
-	return RNodeParams{
-		DataRate:       drStr,
-		Sensitivity:    fmt.Sprintf("%.1f dBm", sensitivity),
+	return RNodeCalcResult{
+		DataRate:       dataRateStr,
 		LinkBudget:     fmt.Sprintf("%.1f dB", linkBudget),
+		Sensitivity:    fmt.Sprintf("%.1f dBm", sensitivity),
 		RawDataRate:    dataRate,
-		RawSensitivity: sensitivity,
 		RawLinkBudget:  linkBudget,
+		RawSensitivity: sensitivity,
 	}
 }

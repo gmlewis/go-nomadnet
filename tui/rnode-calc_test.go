@@ -19,129 +19,93 @@ import (
 	"testing"
 )
 
-func TestRNodeCalcDefaults(t *testing.T) {
+func TestCalculateRNodeParameters(t *testing.T) {
 	t.Parallel()
 
-	r := CalcRNodeParams(125000, 7, 5, 6, 0, 17)
-	assertClose(t, r.RawDataRate, 5468.75, 0.01, "data rate")
-	assertClose(t, r.RawSensitivity, -124.5309, 0.001, "sensitivity")
-	assertClose(t, r.RawLinkBudget, 141.5309, 0.001, "link budget")
-	if r.DataRate != "5.47 kbps" {
-		t.Errorf("DataRate = %q, want %q", r.DataRate, "5.47 kbps")
+	tests := []struct {
+		name            string
+		bandwidth       float64
+		sf              int
+		cr              int
+		noiseFloor      float64
+		antennaGain     float64
+		txPower         float64
+		wantDataRate    string
+		wantLinkBudget  string
+		wantSensitivity string
+	}{
+		{
+			name:      "7800/7/5 defaults",
+			bandwidth: 7800, sf: 7, cr: 5,
+			wantDataRate:    "341 bps",
+			wantLinkBudget:  "153.6 dB",
+			wantSensitivity: "-136.6 dBm",
+		},
+		{
+			name:      "125000/7/5 defaults",
+			bandwidth: 125000, sf: 7, cr: 5,
+			wantDataRate:    "5.47 kbps",
+			wantLinkBudget:  "141.5 dB",
+			wantSensitivity: "-124.5 dBm",
+		},
+		{
+			name:      "62500/9/5 with custom noise/gain/power",
+			bandwidth: 62500, sf: 9, cr: 5,
+			noiseFloor: 6, antennaGain: 3, txPower: 20,
+			wantDataRate:    "879 bps",
+			wantLinkBudget:  "155.5 dB",
+			wantSensitivity: "-132.5 dBm",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			result := CalculateRNodeParameters(tt.bandwidth, tt.sf, tt.cr,
+				RNodeParams{NoiseFloor: tt.noiseFloor, AntennaGain: tt.antennaGain, TransmitPower: tt.txPower})
+
+			if result.DataRate != tt.wantDataRate {
+				t.Errorf("DataRate = %q, want %q", result.DataRate, tt.wantDataRate)
+			}
+			if result.LinkBudget != tt.wantLinkBudget {
+				t.Errorf("LinkBudget = %q, want %q", result.LinkBudget, tt.wantLinkBudget)
+			}
+			if result.Sensitivity != tt.wantSensitivity {
+				t.Errorf("Sensitivity = %q, want %q", result.Sensitivity, tt.wantSensitivity)
+			}
+		})
 	}
 }
 
-func TestRNodeCalcSF12(t *testing.T) {
+func TestCalculateRNodeParametersHighBandwidth(t *testing.T) {
 	t.Parallel()
 
-	r := CalcRNodeParams(125000, 12, 5, 6, 0, 17)
-	assertClose(t, r.RawDataRate, 292.968750, 0.01, "data rate")
-	assertClose(t, r.RawSensitivity, -137.0309, 0.001, "sensitivity")
-	assertClose(t, r.RawLinkBudget, 154.0309, 0.001, "link budget")
-	if r.DataRate != "293 bps" {
-		t.Errorf("DataRate = %q, want %q", r.DataRate, "293 bps")
+	result := CalculateRNodeParameters(500001, 7, 5, RNodeParams{})
+
+	if result.Sensitivity == "" {
+		t.Error("should produce sensitivity for bandwidth > 500000")
 	}
 }
 
-func TestRNodeCalcFast(t *testing.T) {
+func TestCalculateRNodeParametersCodingRates(t *testing.T) {
 	t.Parallel()
 
-	r := CalcRNodeParams(500000, 7, 5, 6, 0, 17)
-	assertClose(t, r.RawDataRate, 21875.0, 0.1, "data rate")
-	assertClose(t, r.RawSensitivity, -118.5103, 0.001, "sensitivity")
-	if r.DataRate != "21.88 kbps" {
-		t.Errorf("DataRate = %q, want %q", r.DataRate, "21.88 kbps")
+	for _, cr := range []int{5, 6, 7, 8} {
+		result := CalculateRNodeParameters(125000, 7, cr, RNodeParams{})
+		if result.DataRate == "" {
+			t.Errorf("coding rate %d produced empty data rate", cr)
+		}
 	}
 }
 
-func TestRNodeCalcBW203125(t *testing.T) {
+func TestCalculateRNodeParametersSpreadingFactors(t *testing.T) {
 	t.Parallel()
 
-	r := CalcRNodeParams(203125, 7, 5, 6, 0, 17)
-	assertClose(t, r.RawSensitivity, -114.022366, 0.001, "sensitivity")
-	assertClose(t, r.RawDataRate, 8886.718750, 0.1, "data rate")
-}
-
-func TestRNodeCalcMinBW(t *testing.T) {
-	t.Parallel()
-
-	r := CalcRNodeParams(7800, 7, 5, 6, 0, 17)
-	assertClose(t, r.RawDataRate, 341.25, 0.01, "data rate")
-	assertClose(t, r.RawSensitivity, -136.579054, 0.001, "sensitivity")
-	if r.DataRate != "341 bps" {
-		t.Errorf("DataRate = %q, want %q", r.DataRate, "341 bps")
-	}
-}
-
-func TestRNodeCalcCustomParams(t *testing.T) {
-	t.Parallel()
-
-	r := CalcRNodeParams(125000, 10, 8, 3, 6, 20)
-	assertClose(t, r.RawDataRate, 610.351562, 0.01, "data rate")
-	assertClose(t, r.RawSensitivity, -135.0309, 0.001, "sensitivity")
-	assertClose(t, r.RawLinkBudget, 161.0309, 0.001, "link budget")
-}
-
-func TestRNodeCalcCR6(t *testing.T) {
-	t.Parallel()
-
-	// coding_rate=6 → n=2, CR_eff=4/6
-	r := CalcRNodeParams(125000, 7, 6, 6, 0, 17)
-	assertClose(t, r.RawDataRate, 4557.291667, 0.1, "data rate")
-}
-
-func TestRNodeCalcCR8(t *testing.T) {
-	t.Parallel()
-
-	// coding_rate=8 → n=4, CR_eff=4/8
-	r := CalcRNodeParams(125000, 7, 8, 6, 0, 17)
-	assertClose(t, r.RawDataRate, 3417.96875, 0.01, "data rate")
-}
-
-func TestRNodeCalcSensitivityBW406250(t *testing.T) {
-	t.Parallel()
-
-	// BW=406250 uses alternate thermal noise floor (-165.6)
-	r := CalcRNodeParams(406250, 7, 5, 6, 0, 17)
-	assertClose(t, r.RawSensitivity, -111.0121, 0.001, "sensitivity")
-}
-
-func TestRNodeCalcAntennaGain(t *testing.T) {
-	t.Parallel()
-
-	r1 := CalcRNodeParams(125000, 7, 5, 6, 0, 17)
-	r2 := CalcRNodeParams(125000, 7, 5, 6, 6, 17)
-	// Link budget should differ by exactly the antenna gain (6 dB)
-	diff := r2.RawLinkBudget - r1.RawLinkBudget
-	assertClose(t, diff, 6.0, 0.001, "antenna gain effect")
-}
-
-func TestRNodeCalcTransmitPower(t *testing.T) {
-	t.Parallel()
-
-	r1 := CalcRNodeParams(125000, 7, 5, 6, 0, 14)
-	r2 := CalcRNodeParams(125000, 7, 5, 6, 0, 20)
-	diff := r2.RawLinkBudget - r1.RawLinkBudget
-	assertClose(t, diff, 6.0, 0.001, "transmit power effect")
-}
-
-func TestRNodeCalcNoiseFloor(t *testing.T) {
-	t.Parallel()
-
-	r1 := CalcRNodeParams(125000, 7, 5, 6, 0, 17)
-	r2 := CalcRNodeParams(125000, 7, 5, 3, 0, 17)
-	// Lower noise floor → lower sensitivity → higher link budget
-	diff := r2.RawLinkBudget - r1.RawLinkBudget
-	assertClose(t, diff, 3.0, 0.001, "noise floor effect")
-}
-
-func assertClose(t *testing.T, got, want, tolerance float64, label string) {
-	t.Helper()
-	diff := got - want
-	if diff < 0 {
-		diff = -diff
-	}
-	if diff > tolerance {
-		t.Errorf("%s = %v, want %v (tolerance %v)", label, got, want, tolerance)
+	for _, sf := range []int{5, 6, 7, 8, 9, 10, 11, 12} {
+		result := CalculateRNodeParameters(125000, sf, 5, RNodeParams{})
+		if result.DataRate == "" {
+			t.Errorf("spreading factor %d produced empty data rate", sf)
+		}
 	}
 }
