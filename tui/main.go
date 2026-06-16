@@ -30,19 +30,20 @@ import (
 type MainDisplay struct {
 	app         *tview.Application
 	frame       *tview.Flex
-	menuBar     *tview.Flex
-	menuButtons []*tview.Button
-	menuItems   []MenuItem // filtered menu items (may exclude Guide)
+	menuBar     *tview.TextView
+	menuItems   []MenuItem
 	contentArea *tview.Pages
 	shortcutBar *tview.TextView
 	activeMenu  int
 	theme       int
 	glyphs      GlyphSet
 	onQuit      func()
-	shortcuts   map[string]string // display key → shortcut text
+	onEsc       func() bool // display-specific Esc handler; returns true if consumed
+	shortcuts   map[string]string
 	quitCh      chan struct{}
 	mu          sync.Mutex
 	hideGuide   bool
+	menuWidths  []int // pixel widths of each menu item for click detection
 }
 
 // NewMainDisplay creates the main display with Frame layout:
@@ -72,26 +73,21 @@ func NewMainDisplay(app *tview.Application, theme int, glyphSetName string) *Mai
 		md.menuItems = append(md.menuItems, item)
 	}
 
-	// Create menu bar with bracket-wrapped buttons (matching Python style)
-	// The menu bar uses menubar_fg/menubar_bg from the theme to render
-	// a visible bar at the top of the terminal (matching Python's
-	// urwid.AttrMap(columns, "menubar") styling).
-	md.menuBar = tview.NewFlex().SetDirection(tview.FlexColumn)
+	// Create menu bar as a single TextView matching Python's
+	// urwid.AttrMap(MenuColumns(buttons), "menubar") pattern.
+	// This renders menu items as a single row of text with mouse support.
+	md.menuBar = tview.NewTextView()
 	md.menuBar.SetBackgroundColor(colors["menubar_bg"])
-	md.menuButtons = make([]*tview.Button, len(md.menuItems))
-
-	for i, item := range md.menuItems {
-		label := fmt.Sprintf("[%s]", item.Label)
-		btn := tview.NewButton(label)
-		btn.SetBackgroundColor(colors["menubar_bg"])
-		btn.SetLabelColor(colors["menubar_fg"])
-		idx := i
-		btn.SetSelectedFunc(func() {
-			md.selectMenu(idx)
-		})
-		md.menuButtons[i] = btn
-		md.menuBar.AddItem(btn, 0, 1, false)
-	}
+	md.menuBar.SetTextColor(colors["menubar_fg"])
+	md.menuBar.SetDynamicColors(true)
+	md.menuBar.SetTextAlign(tview.AlignLeft)
+	md.menuBar.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
+		if action&tview.MouseLeftClick != 0 {
+			x, _ := event.Position()
+			md.handleClick(x)
+		}
+		return action, event
+	})
 
 	// Create content area (individual displays add their own borders)
 	md.contentArea = tview.NewPages()
@@ -166,58 +162,101 @@ func (md *MainDisplay) updateShortcutsLocked() {
 	}
 }
 
+// redrawMenuBar rebuilds the menu bar text and tracks item widths for
+// mouse click detection.
+func (md *MainDisplay) redrawMenuBar() {
+	colors := GetThemeColors(md.theme)
+	fg := colors["menubar_fg"]
+	bg := colors["menubar_bg"]
+	focusBg := colors["list_focus_bg"]
+
+	var parts []string
+	md.menuWidths = md.menuWidths[:0]
+
+	for i, item := range md.menuItems {
+		label := " " + item.Label + " "
+		var styled string
+		if i == md.activeMenu {
+			styled = fmt.Sprintf("[#%06x:#%06x:b]%s[-:-:-]",
+				int32(fg), int32(focusBg), label)
+		} else {
+			styled = fmt.Sprintf("[#%06x:#%06x]%s[-:-]",
+				int32(fg), int32(bg), label)
+		}
+		parts = append(parts, styled)
+		md.menuWidths = append(md.menuWidths, len([]rune(label)))
+	}
+
+	text := strings.Join(parts, "")
+	md.menuBar.SetText(text)
+}
+
 // selectMenu highlights the given menu item and switches content.
 func (md *MainDisplay) selectMenu(index int) {
 	if index < 0 || index >= len(md.menuItems) {
 		return
 	}
 
-	// Update button highlights using theme colors
-	colors := GetThemeColors(md.theme)
-	for i, btn := range md.menuButtons {
-		if i == index {
-			btn.SetBackgroundColor(colors["list_focus_bg"])
-			btn.SetLabelColor(colors["list_focus_fg"])
-		} else {
-			btn.SetBackgroundColor(colors["menubar_bg"])
-			btn.SetLabelColor(colors["menubar_fg"])
-		}
-	}
-
 	md.activeMenu = index
+	md.redrawMenuBar()
 	key := md.menuItems[index].Key
 	md.contentArea.SwitchToPage(key)
 	md.updateShortcuts()
 }
 
+// handleClick determines which menu item was clicked based on x position.
+func (md *MainDisplay) handleClick(x int) {
+	offset := 0
+	for i, w := range md.menuWidths {
+		if x >= offset && x < offset+w {
+			md.selectMenu(i)
+			return
+		}
+		offset += w
+	}
+}
+
 // handleInput processes keyboard shortcuts matching Python's MainFrame keypress.
 func (md *MainDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
-	// Global shortcuts (Python: unhandled_input)
 	switch event.Key() {
-	case tcell.KeyCtrlQ, tcell.KeyCtrlD:
-		// Python: ctrl-q quits, ctrl-d passes through
-		if event.Key() == tcell.KeyCtrlQ {
-			if md.onQuit != nil {
-				md.onQuit()
-			}
-			return nil
-		}
-		// ctrl-d passes through to children
-		return event
-
-	case tcell.KeyEscape:
-		// Python: Escape quits
+	case tcell.KeyCtrlQ:
 		if md.onQuit != nil {
 			md.onQuit()
 		}
 		return nil
 
-	case tcell.KeyTab:
-		// Python: Tab from menu bar → focus moves to body
-		if md.activeMenu >= 0 && md.activeMenu < len(md.menuItems) {
-			md.contentArea.SwitchToPage(md.menuItems[md.activeMenu].Key)
+	case tcell.KeyCtrlD:
+		return event
+
+	case tcell.KeyEscape:
+		// Let the active display handle Esc first (e.g., leaving
+		// AnnounceInfo). Only quit if the display didn't consume it.
+		if md.onEsc != nil && md.onEsc() {
+			return nil
+		}
+		if md.onQuit != nil {
+			md.onQuit()
 		}
 		return nil
+
+	case tcell.KeyLeft:
+		prev := md.activeMenu - 1
+		if prev < 0 {
+			prev = len(md.menuItems) - 1
+		}
+		md.selectMenu(prev)
+		return nil
+
+	case tcell.KeyRight:
+		next := md.activeMenu + 1
+		if next >= len(md.menuItems) {
+			next = 0
+		}
+		md.selectMenu(next)
+		return nil
+
+	case tcell.KeyTab:
+		return event
 
 	case tcell.KeyBacktab:
 		prev := md.activeMenu - 1
@@ -228,7 +267,6 @@ func (md *MainDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 		return nil
 
 	case tcell.KeyF8:
-		// Python: F8 toggles join/part collapse (delegated to display)
 		return event
 
 	case tcell.KeyRune:
@@ -250,7 +288,6 @@ func (md *MainDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 			}
 			return nil
 		case 'g':
-			// Python: ctrl-g toggles fullscreen (delegated to display)
 			return event
 		}
 	}
@@ -268,6 +305,12 @@ func (md *MainDisplay) SetQuitCallback(fn func()) {
 	md.onQuit = fn
 }
 
+// SetEscCallback sets the display-specific Escape handler.
+// Returns true if the event was consumed (should not quit).
+func (md *MainDisplay) SetEscCallback(fn func() bool) {
+	md.onEsc = fn
+}
+
 // SetGlyphs updates the glyph set used for display.
 func (md *MainDisplay) SetGlyphs(name string) {
 	md.glyphs = GetGlyphSet(name)
@@ -279,29 +322,12 @@ func (md *MainDisplay) SetHideGuide(hideGuide bool) {
 	defer md.mu.Unlock()
 	md.hideGuide = hideGuide
 
-	colors := GetThemeColors(md.theme)
-
-	// Rebuild menu bar with filtered items
-	md.menuBar.Clear()
 	md.menuItems = make([]MenuItem, 0, len(MenuItems))
 	for _, item := range MenuItems {
 		if hideGuide && item.Key == "guide" {
 			continue
 		}
 		md.menuItems = append(md.menuItems, item)
-	}
-	md.menuButtons = make([]*tview.Button, len(md.menuItems))
-	for i, item := range md.menuItems {
-		label := fmt.Sprintf("[%s]", item.Label)
-		btn := tview.NewButton(label)
-		btn.SetBackgroundColor(colors["menubar_bg"])
-		btn.SetLabelColor(colors["menubar_fg"])
-		idx := i
-		btn.SetSelectedFunc(func() {
-			md.selectMenu(idx)
-		})
-		md.menuButtons[i] = btn
-		md.menuBar.AddItem(btn, 0, 1, false)
 	}
 	if md.activeMenu >= len(md.menuItems) {
 		md.activeMenu = 0
@@ -332,9 +358,7 @@ func (md *MainDisplay) StartUnreadBlink() {
 			case <-md.quitCh:
 				return
 			case <-ticker.C:
-				// Toggle unread indicator in menu bar
 				md.mu.Lock()
-				// This would toggle an unread glyph on the menu
 				md.mu.Unlock()
 			}
 		}
@@ -346,7 +370,7 @@ func (md *MainDisplay) StopUnreadBlink() {
 	close(md.quitCh)
 }
 
-// RequestRedraw forces a redraw after a short delay (Python: set_alarm_in(0.25)).
+// RequestRedraw forces a redraw after a short delay.
 func (md *MainDisplay) RequestRedraw() {
 	go func() {
 		time.Sleep(250 * time.Millisecond)

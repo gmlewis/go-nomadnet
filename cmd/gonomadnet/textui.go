@@ -109,6 +109,17 @@ func wireDisplays(tuiApp *tui.App, a *app.App) {
 	main.SetDisplay("network", networkDisplay.Widget())
 	main.SetShortcut("network", "[C-l] Nodes/Announces  [C-x] Remove  [C-w] Disconnect  [C-d] Back  [C-f] Forward  [C-r] Reload  [C-u] URL  [C-g] Fullscreen  [C-s] Save Node")
 
+	// Wire Esc to go back from AnnounceInfo before quitting.
+	main.SetEscCallback(func() bool {
+		return networkDisplay.HandleEsc()
+	})
+
+	// Wire node connect to open the browser.
+	networkDisplay.SetNavigateCallback(func(url string) {
+		// TODO: Switch to browser display and load the URL.
+		_ = url
+	})
+
 	// Conversations display
 	convs := a.ConversationList()
 	tuiConvs := make([]tui.ConversationInfo, len(convs))

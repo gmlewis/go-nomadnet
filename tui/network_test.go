@@ -199,7 +199,8 @@ func TestMapColor(t *testing.T) {
 		{"0f0", "green"},
 		{"blue", "blue"},
 		{"00f", "blue"},
-		{"unknown", "unknown"},
+		{"unknown", "#unknown"},
+		{"#ff8080", "#ff8080"},
 	}
 
 	for _, tt := range tests {

@@ -181,8 +181,8 @@ func TestNewMainDisplay(t *testing.T) {
 	if md.contentArea == nil {
 		t.Error("contentArea is nil")
 	}
-	if len(md.menuButtons) != 10 {
-		t.Errorf("menuButtons len = %d, want 10", len(md.menuButtons))
+	if len(md.menuItems) != 10 {
+		t.Errorf("menuItems len = %d, want 10", len(md.menuItems))
 	}
 }
 

@@ -16,6 +16,7 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -30,18 +31,18 @@ func TestNickColorByHash(t *testing.T) {
 		{
 			name:      "zero hash returns palette[15] due to shift",
 			hash:      make([]byte, 16),
-			wantColor: DarkThemeNickColors[15], // (0 + 15) % 24 = 15
+			wantColor: "#" + DarkThemeNickColors[15], // (0 + 15) % 24 = 15
 		},
 		{
 			name:      "hash with high byte set",
 			hash:      []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0, 0, 0},
-			wantColor: DarkThemeNickColors[16], // (1 + 15) % 24 = 16
+			wantColor: "#" + DarkThemeNickColors[16], // (1 + 15) % 24 = 16
 		},
 		{
 			name: "hash with multiple bytes set",
 			hash: []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x09,
 				0, 0, 0, 0, 0, 0, 0, 0},
-			wantColor: DarkThemeNickColors[0], // (9 + 15) % 24 = 0
+			wantColor: "#" + DarkThemeNickColors[0], // (9 + 15) % 24 = 0
 		},
 	}
 
@@ -122,6 +123,7 @@ func TestNickColorByHashEmpty(t *testing.T) {
 }
 
 func isValidHexColor(s string) bool {
+	s = strings.TrimPrefix(s, "#")
 	if len(s) != 6 {
 		return false
 	}

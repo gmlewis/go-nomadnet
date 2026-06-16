@@ -53,9 +53,11 @@ type NetworkDisplay struct {
 	announces    *tview.List
 	nodes        *tview.List
 	detail       *tview.TextView
-	showingNodes bool            // false = showing announces, true = showing nodes
-	displayMode  DisplayMode     // name vs destination hash
-	announceData []AnnounceEntry // stored for rebuild on mode change
+	showingNodes bool
+	inInfoView   bool // true when leftPanel shows AnnounceInfo
+	displayMode  DisplayMode
+	announceData []AnnounceEntry
+	onNavigate   func(url string) // callback to open browser
 }
 
 // NewNetworkDisplay creates a new network display matching Python's layout.
@@ -119,6 +121,12 @@ func NewNetworkDisplay(app *tview.Application, announces []AnnounceEntry, nodes 
 	return nd
 }
 
+// SetNavigateCallback sets the callback invoked when the user wants
+// to open a URL in the browser (e.g., Connect on a node).
+func (nd *NetworkDisplay) SetNavigateCallback(fn func(url string)) {
+	nd.onNavigate = fn
+}
+
 // addAnnounceEntry adds a single announce to the list.
 func (nd *NetworkDisplay) addAnnounceEntry(ann AnnounceEntry) {
 	text := FormatAnnounceFull(ann, false)
@@ -139,15 +147,173 @@ func (nd *NetworkDisplay) addNodeEntry(node NodeEntry) {
 	nd.nodes.AddItem(text, secondary, 0, nil)
 }
 
-// showAnnounceDetail shows details for the selected announce.
+// showAnnounceDetail replaces the left panel with an AnnounceInfo view
+// matching Python's AnnounceInfo widget. Shows Time, Addr, Type, Name,
+// Trust, Operator (for nodes), Announce Data, and action buttons.
 func (nd *NetworkDisplay) showAnnounceDetail(i int) {
-	// Would show announce info dialog in full implementation
-	nd.detail.SetText(fmt.Sprintf("[gray]Announce details for entry %d[-]", i+1))
+	if i < 0 || i >= len(nd.announceData) {
+		return
+	}
+	ann := nd.announceData[i]
+
+	isNode := ann.Type == "node"
+	isPN := ann.Type == "pn"
+
+	// Build info text
+	var sb strings.Builder
+	tsStr := ann.Timestamp.Format("2006-01-02 15:04:05")
+
+	typeStr := "Peer Ⓟ"
+	if isNode {
+		typeStr = "Nomad Network Node Ⓝ"
+	} else if isPN {
+		typeStr = "LXMF Propagation Node ↑"
+	}
+
+	addrStr := "<" + ann.SourceHash + ">"
+	displayStr := ann.DisplayName
+	if displayStr == "" {
+		displayStr = ann.SourceHash
+	}
+
+	sb.WriteString(fmt.Sprintf("[::b]Time  :[-]  %s\n", tsStr))
+	sb.WriteString(fmt.Sprintf("[::b]Addr  :[-]  [lightblue]%s[-]\n", addrStr))
+	sb.WriteString(fmt.Sprintf("[::b]Type  :[-]  %s\n", typeStr))
+	sb.WriteString(fmt.Sprintf("[::b]Name  :[-]  %s\n", displayStr))
+
+	if isNode {
+		sb.WriteString(fmt.Sprintf("[::b]Trust :[-]  %s\n", ann.TrustLevel))
+	}
+
+	if ann.AppData != "" {
+		dataStr := truncateStr(ann.AppData, 120)
+		sb.WriteString(fmt.Sprintf("\n[::b]Announce Data:[-]\n%s\n", dataStr))
+	}
+
+	infoText := tview.NewTextView().
+		SetDynamicColors(true).
+		SetTextColor(tcell.NewHexColor(0xbbbbbb)).
+		SetText(sb.String())
+
+	// Build buttons matching Python's layout
+	var buttons *tview.Flex
+	if isNode {
+		buttons = tview.NewFlex().SetDirection(tview.FlexColumn).
+			AddItem(nd.makeButton("[Back]", func() { nd.showAnnounceStream() }), 8, 1, false).
+			AddItem(tview.NewTextView().SetText(" "), 1, 0, false).
+			AddItem(nd.makeButton("[Connect]", func() { nd.connectToNode(ann) }), 12, 1, false).
+			AddItem(tview.NewTextView().SetText(" "), 1, 0, false).
+			AddItem(nd.makeButton("[Msg Op]", func() { nd.msgOpNode(ann) }), 11, 1, false).
+			AddItem(tview.NewTextView().SetText(" "), 1, 0, false).
+			AddItem(nd.makeButton("[Save]", func() { nd.saveNode(ann) }), 9, 1, false)
+	} else if isPN {
+		buttons = tview.NewFlex().SetDirection(tview.FlexColumn).
+			AddItem(nd.makeButton("[Back]", func() { nd.showAnnounceStream() }), 8, 1, false).
+			AddItem(tview.NewTextView().SetText(" "), 1, 0, false).
+			AddItem(nd.makeButton("[Use as default]", func() { nd.useAsPN(ann) }), 20, 1, false)
+	} else {
+		buttons = tview.NewFlex().SetDirection(tview.FlexColumn).
+			AddItem(nd.makeButton("[Back]", func() { nd.showAnnounceStream() }), 8, 1, false).
+			AddItem(tview.NewTextView().SetText(" "), 1, 0, false).
+			AddItem(nd.makeButton("[Converse]", func() { nd.converseWith(ann) }), 14, 1, false)
+	}
+
+	// Layout: info + divider + buttons
+	infoView := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(infoText, 0, 1, false).
+		AddItem(buttons, 1, 0, false)
+	infoView.SetBorder(true)
+	infoView.SetBorderColor(tcell.NewHexColor(0x888888))
+
+	// Swap into left panel
+	nd.leftPanel.RemoveItem(nd.announces)
+	nd.leftPanel.RemoveItem(nd.nodes)
+	nd.leftPanel.AddItem(infoView, 0, 1, true)
+	nd.inInfoView = true
+
+	// Show announce detail in the right panel
+	nd.detail.SetText(formatAnnounce(ann))
 }
 
-// showNodeDetail shows details for the selected node.
+// showNodeDetail is an alias — nodes are selected from the nodes list.
 func (nd *NetworkDisplay) showNodeDetail(i int) {
-	nd.detail.SetText(fmt.Sprintf("[gray]Node details for entry %d[-]", i+1))
+	nd.showAnnounceDetail(i)
+}
+
+// showAnnounceStream restores the left panel to the announce/node list.
+func (nd *NetworkDisplay) showAnnounceStream() {
+	if !nd.inInfoView {
+		return
+	}
+
+	// Remove info view from left panel
+	nd.leftPanel.Clear()
+
+	// Restore the appropriate list
+	if nd.showingNodes {
+		nd.leftPanel.AddItem(nd.nodes, 0, 1, true)
+	} else {
+		nd.leftPanel.AddItem(nd.announces, 0, 1, true)
+	}
+	nd.inInfoView = false
+}
+
+// HandleEsc returns from AnnounceInfo to the list. Returns true if the
+// event was consumed.
+func (nd *NetworkDisplay) HandleEsc() bool {
+	if nd.inInfoView {
+		nd.showAnnounceStream()
+		return true
+	}
+	return false
+}
+
+// connectToNode opens the browser to the node's page URL.
+// Matches Python's connect(sender): self.parent.browser.retrieve_url(...)
+func (nd *NetworkDisplay) connectToNode(ann AnnounceEntry) {
+	nd.showAnnounceStream()
+	if nd.onNavigate != nil {
+		nd.onNavigate(ann.SourceHash)
+	}
+}
+
+// msgOpNode starts a conversation with the node's operator.
+// Matches Python's msg_op(sender).
+func (nd *NetworkDisplay) msgOpNode(ann AnnounceEntry) {
+	nd.showAnnounceStream()
+	// TODO: Open conversation with the node's operator identity.
+	// Requires resolving the operator's LXMF delivery address from
+	// the node's source hash via RNS.Identity.
+}
+
+// saveNode saves the node to the directory.
+// Matches Python's save_node(sender).
+func (nd *NetworkDisplay) saveNode(ann AnnounceEntry) {
+	nd.showAnnounceStream()
+	// TODO: Save to directory via app.directory.remember().
+}
+
+// useAsPN sets the announce's source as the default propagation node.
+// Matches Python's use_pn(sender).
+func (nd *NetworkDisplay) useAsPN(ann AnnounceEntry) {
+	nd.showAnnounceStream()
+	// TODO: Set via app.set_user_selected_propagation_node().
+}
+
+// converseWith starts a conversation with a peer.
+// Matches Python's converse(sender).
+func (nd *NetworkDisplay) converseWith(ann AnnounceEntry) {
+	nd.showAnnounceStream()
+	// TODO: Open conversation with the peer.
+}
+
+// makeButton creates a tview.Button styled for the AnnounceInfo view.
+func (nd *NetworkDisplay) makeButton(label string, action func()) *tview.Button {
+	btn := tview.NewButton(label)
+	btn.SetBackgroundColor(tcell.NewHexColor(0x444444))
+	btn.SetLabelColor(tcell.NewHexColor(0xdddddd))
+	btn.SetSelectedFunc(action)
+	return btn
 }
 
 // Widget returns the tview primitive for this display.
@@ -155,13 +321,28 @@ func (nd *NetworkDisplay) Widget() tview.Primitive {
 	return nd.widget
 }
 
-// UpdateAnnounces replaces the announce list with new data.
+// UpdateAnnounces replaces the announce list with new data,
+// preserving the current scroll position.
 func (nd *NetworkDisplay) UpdateAnnounces(announces []AnnounceEntry) {
 	nd.announceData = announces
+
+	// Save current position before clearing.
+	currentItem := nd.announces.GetCurrentItem()
+
 	nd.announces.Clear()
 	for _, ann := range announces {
 		nd.addAnnounceEntryWithMode(ann)
 	}
+
+	// Restore position, clamping to valid range.
+	newCount := nd.announces.GetItemCount()
+	if newCount > 0 {
+		if currentItem >= newCount {
+			currentItem = newCount - 1
+		}
+		nd.announces.SetCurrentItem(currentItem)
+	}
+
 	if nd.app != nil {
 		nd.app.QueueUpdateDraw(func() {})
 	}
@@ -169,6 +350,10 @@ func (nd *NetworkDisplay) UpdateAnnounces(announces []AnnounceEntry) {
 
 // toggleList switches between announces and nodes views.
 func (nd *NetworkDisplay) toggleList() {
+	if nd.inInfoView {
+		nd.showAnnounceStream()
+	}
+
 	nd.leftPanel.RemoveItem(nd.announces)
 	nd.leftPanel.RemoveItem(nd.nodes)
 
@@ -275,7 +460,7 @@ func FormatAnnounceFull(ann AnnounceEntry, showHash bool) string {
 	return typeIcon + " " + FormatAnnounceEntry(ann, showHash)
 }
 
-// formatAnnounce formats an announce for display.
+// formatAnnounce formats an announce for the detail panel.
 func formatAnnounce(ann AnnounceEntry) string {
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("[::b]%s[-]\n", ann.DisplayName))

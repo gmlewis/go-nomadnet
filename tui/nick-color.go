@@ -43,10 +43,10 @@ var LightThemeNickColors = []string{
 // The shift defaults to 15 to match Python's default.
 func NickColorByHash(hash []byte, palette []string) string {
 	if len(palette) == 0 {
-		return "bbbbbb"
+		return "#bbbbbb"
 	}
 	if len(hash) == 0 {
-		return palette[0]
+		return "#" + palette[0]
 	}
 
 	// Use first 16 bytes as big-endian uint64 (matches Python's
@@ -66,7 +66,7 @@ func NickColorByHash(hash []byte, palette []string) string {
 
 	const shift uint64 = 15
 	idx := (val + shift) % uint64(len(palette))
-	return palette[idx]
+	return "#" + palette[idx]
 }
 
 // NickColor returns a tview color tag string for the given nick.

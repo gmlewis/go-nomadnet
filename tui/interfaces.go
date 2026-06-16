@@ -85,7 +85,7 @@ func formatInterfaces(interfaces []InterfaceInfo) string {
 			statusColor = "[red]"
 		}
 
-		sb.WriteString(fmt.Sprintf("[::b]%s[-] %s(%s)\n", iface.Name, statusColor, iface.Status))
+		sb.WriteString(fmt.Sprintf("[::b]%s[-] %s(%s)[-]\n", iface.Name, statusColor, iface.Status))
 		sb.WriteString(fmt.Sprintf("  Type: %s  Target: %s\n", iface.Type, iface.Target))
 		sb.WriteString(fmt.Sprintf("  Bandwidth: %s\n", formatBandwidth(iface.Bandwidth)))
 
@@ -130,7 +130,7 @@ func FormatInterfaceEntry(iface InterfaceInfo) string {
 	if iface.Status != "connected" {
 		statusColor = "[red]"
 	}
-	return fmt.Sprintf("%s %s %s(%s)", icon, iface.Name, statusColor, iface.Status)
+	return fmt.Sprintf("%s %s %s(%s)[-]", icon, iface.Name, statusColor, iface.Status)
 }
 
 // FormatInterfaceDetail produces a multi-line detail view for the

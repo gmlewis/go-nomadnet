@@ -137,6 +137,9 @@ func mapColor(color string) string {
 	case "gray", "888":
 		return "gray"
 	default:
-		return color
+		if len(color) > 0 && color[0] == '#' {
+			return color
+		}
+		return "#" + color
 	}
 }
