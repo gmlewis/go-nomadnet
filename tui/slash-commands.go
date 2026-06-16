@@ -19,9 +19,9 @@ import "strings"
 
 // CommandAlias maps aliases to their canonical command names.
 var CommandAlias = map[string]string{
-	"j":         "join",
-	"leave":     "part",
-	"q":         "quit",
+	"j":          "join",
+	"leave":      "part",
+	"q":          "quit",
 	"disconnect": "quit",
 }
 

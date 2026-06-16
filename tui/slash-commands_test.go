@@ -24,10 +24,10 @@ func TestParseSlashCommand(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		input      string
-		wantCmd    string
-		wantArg    string
-		wantIsCmd  bool
+		input     string
+		wantCmd   string
+		wantArg   string
+		wantIsCmd bool
 	}{
 		{"/help", "help", "", true},
 		{"/ping", "ping", "", true},

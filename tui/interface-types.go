@@ -17,19 +17,19 @@ package tui
 
 // Interface type constants matching Python's INTERFACE_FIELDS keys.
 const (
-	IfaceBackbone       = "BackboneInterface"
-	IfaceAuto           = "AutoInterface"
-	IfaceI2P            = "I2PInterface"
-	IfaceTCPServer      = "TCPServerInterface"
-	IfaceTCPClient      = "TCPClientInterface"
-	IfaceUDP            = "UDPInterface"
-	IfaceRNode          = "RNodeInterface"
-	IfaceRNodeMulti     = "RNodeMultiInterface"
-	IfaceSerial         = "SerialInterface"
-	IfacePipe           = "PipeInterface"
-	IfaceKISS           = "KISSInterface"
-	IfaceAX25KISS       = "AX25KISSInterface"
-	IfaceCustom         = "CustomInterface"
+	IfaceBackbone   = "BackboneInterface"
+	IfaceAuto       = "AutoInterface"
+	IfaceI2P        = "I2PInterface"
+	IfaceTCPServer  = "TCPServerInterface"
+	IfaceTCPClient  = "TCPClientInterface"
+	IfaceUDP        = "UDPInterface"
+	IfaceRNode      = "RNodeInterface"
+	IfaceRNodeMulti = "RNodeMultiInterface"
+	IfaceSerial     = "SerialInterface"
+	IfacePipe       = "PipeInterface"
+	IfaceKISS       = "KISSInterface"
+	IfaceAX25KISS   = "AX25KISSInterface"
+	IfaceCustom     = "CustomInterface"
 )
 
 // allInterfaceTypes lists all supported interface type names.
@@ -64,14 +64,14 @@ var serialTypes = map[string]bool{
 
 // requiredFields maps each interface type to its required config fields.
 var requiredFields = map[string][]string{
-	IfaceTCPClient:  {"target_host", "target_port"},
-	IfaceTCPServer:  {"listen_ip"},
-	IfaceUDP:        {"listen_ip", "forward_ip", "forward_port"},
-	IfaceRNode:      {"frequency"},
-	IfaceSerial:     {"speed"},
-	IfacePipe:       {"command"},
-	IfaceKISS:       {"speed", "preamble", "txtail", "slottime", "persistence"},
-	IfaceAX25KISS:   {"speed", "callsign", "ssid", "preamble", "txtail", "slottime", "persistence"},
+	IfaceTCPClient: {"target_host", "target_port"},
+	IfaceTCPServer: {"listen_ip"},
+	IfaceUDP:       {"listen_ip", "forward_ip", "forward_port"},
+	IfaceRNode:     {"frequency"},
+	IfaceSerial:    {"speed"},
+	IfacePipe:      {"command"},
+	IfaceKISS:      {"speed", "preamble", "txtail", "slottime", "persistence"},
+	IfaceAX25KISS:  {"speed", "callsign", "ssid", "preamble", "txtail", "slottime", "persistence"},
 }
 
 // InterfaceCategory returns the glyph category for the given type.

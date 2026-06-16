@@ -23,9 +23,9 @@ func TestScanLinks(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name  string
-		text  string
-		want  []LinkSpan
+		name string
+		text string
+		want []LinkSpan
 	}{
 		{
 			name: "lxmf link",
@@ -121,28 +121,28 @@ func TestScanMentions(t *testing.T) {
 	tests := []struct {
 		name    string
 		text    string
-	ownNick  string
+		ownNick string
 		want    []MentionSpan
 	}{
 		{
-			name:   "self mention",
-			text:   "Hey @alice, how are you?",
+			name:    "self mention",
+			text:    "Hey @alice, how are you?",
 			ownNick: "alice",
 			want: []MentionSpan{
 				{Nick: "alice", IsSelf: true},
 			},
 		},
 		{
-			name:   "other mention",
-			text:   "Hey @bob, how are you?",
+			name:    "other mention",
+			text:    "Hey @bob, how are you?",
 			ownNick: "alice",
 			want: []MentionSpan{
 				{Nick: "bob", IsSelf: false},
 			},
 		},
 		{
-			name:   "multiple mentions",
-			text:   "@alice and @bob are here",
+			name:    "multiple mentions",
+			text:    "@alice and @bob are here",
 			ownNick: "alice",
 			want: []MentionSpan{
 				{Nick: "alice", IsSelf: true},
@@ -150,20 +150,20 @@ func TestScanMentions(t *testing.T) {
 			},
 		},
 		{
-			name:   "no mentions",
-			text:   "Hello world",
+			name:    "no mentions",
+			text:    "Hello world",
 			ownNick: "alice",
-			want:   nil,
+			want:    nil,
 		},
 		{
-			name:   "mention in word boundary",
-			text:   "not@alice here",
+			name:    "mention in word boundary",
+			text:    "not@alice here",
 			ownNick: "alice",
-			want:   nil,
+			want:    nil,
 		},
 		{
-			name:   "case insensitive",
-			text:   "Hey @Alice",
+			name:    "case insensitive",
+			text:    "Hey @Alice",
 			ownNick: "alice",
 			want: []MentionSpan{
 				{Nick: "Alice", IsSelf: true},

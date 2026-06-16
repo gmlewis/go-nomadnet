@@ -26,15 +26,15 @@ import (
 // RoomWidget displays a single RRC chat room with messages, users, and editor.
 // Matches Python's RoomWidget at Channels.py:590.
 type RoomWidget struct {
-	app       *tview.Application
-	hubName   string
-	roomName  string
-	widget    tview.Primitive
-	columns   *tview.Flex
-	chatBox   *tview.Flex
-	messages  *tview.TextView
-	usersList *tview.List
-	editor    *ReadlineEdit
+	app          *tview.Application
+	hubName      string
+	roomName     string
+	widget       tview.Primitive
+	columns      *tview.Flex
+	chatBox      *tview.Flex
+	messages     *tview.TextView
+	usersList    *tview.List
+	editor       *ReadlineEdit
 	usersVisible bool
 
 	// Callbacks
@@ -51,9 +51,9 @@ type RoomWidget struct {
 // Matches Python's RoomWidget.__init__().
 func NewRoomWidget(app *tview.Application, hubName, roomName string) *RoomWidget {
 	rw := &RoomWidget{
-		app:       app,
-		hubName:   hubName,
-		roomName:  roomName,
+		app:          app,
+		hubName:      hubName,
+		roomName:     roomName,
 		usersVisible: true,
 	}
 

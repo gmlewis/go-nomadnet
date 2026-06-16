@@ -428,10 +428,10 @@ func TestParseLinkTargetWithFields(t *testing.T) {
 			wantAll:  true,
 		},
 		{
-			name:     "link with key=value fields",
-			input:    "a1b2c3d4e5f6a1b2c3d4`name=alice|role=admin",
-			wantType: "nomadnetwork.node",
-			wantHash: "a1b2c3d4e5f6a1b2c3d4",
+			name:       "link with key=value fields",
+			input:      "a1b2c3d4e5f6a1b2c3d4`name=alice|role=admin",
+			wantType:   "nomadnetwork.node",
+			wantHash:   "a1b2c3d4e5f6a1b2c3d4",
 			wantFields: []string{"name=alice", "role=admin"},
 		},
 		{
@@ -604,11 +604,11 @@ func TestFormatSyncStatus(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name     string
-		lastSync time.Time
+		name      string
+		lastSync  time.Time
 		hasSynced bool
 		nodeLabel string
-		want     string
+		want      string
 	}{
 		{
 			name:      "never synced",
@@ -647,10 +647,10 @@ func TestParseQueryFields(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name      string
-		query     string
-		wantKeys  map[string]string
-		wantWild  bool
+		name     string
+		query    string
+		wantKeys map[string]string
+		wantWild bool
 	}{
 		{
 			name:     "wildcard",
@@ -718,5 +718,3 @@ func TestParseQueryFields(t *testing.T) {
 		})
 	}
 }
-
-

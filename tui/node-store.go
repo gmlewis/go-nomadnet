@@ -31,13 +31,13 @@ const (
 
 // NodeEntryFull holds full node information for the known-nodes store.
 type NodeEntryFull struct {
-	SourceHash    string
-	DisplayName   string
-	TrustLevel    string
-	HostsNode     bool
+	SourceHash        string
+	DisplayName       string
+	TrustLevel        string
+	HostsNode         bool
 	PreferredDelivery string
-	SortRank      int
-	Notes         string
+	SortRank          int
+	Notes             string
 }
 
 // NodeStore manages the collection of known nodes/peers.

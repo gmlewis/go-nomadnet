@@ -63,16 +63,16 @@ type ChannelsDisplay struct {
 	input    *ReadlineEdit
 
 	// Keyboard shortcut callbacks (Python: ChannelsListArea.keypress, RoomFrame.keypress)
-	OnNewHub           func()
-	OnJoinRoom         func()
-	OnConnect          func()
-	OnDisconnect       func()
+	OnNewHub              func()
+	OnJoinRoom            func()
+	OnConnect             func()
+	OnDisconnect          func()
 	OnToggleAutoReconnect func()
-	OnEditHub          func()
-	OnRemoveHub        func()
-	OnToggleChannelList func()
-	OnSendMessage      func()
-	OnLeaveRoom        func()
+	OnEditHub             func()
+	OnRemoveHub           func()
+	OnToggleChannelList   func()
+	OnSendMessage         func()
+	OnLeaveRoom           func()
 }
 
 // NewChannelsDisplay creates a new channels display.

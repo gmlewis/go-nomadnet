@@ -140,8 +140,8 @@ func TestFormatMessageSelf(t *testing.T) {
 	t.Parallel()
 
 	msg := ChannelMessage{
-		Nick:  "Alice",
-		Text:  "Hello",
+		Nick:   "Alice",
+		Text:   "Hello",
 		IsSelf: true,
 	}
 

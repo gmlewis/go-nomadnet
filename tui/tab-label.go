@@ -42,5 +42,3 @@ func ConversationFilterPredicate(trustLevel string, listFilter string) bool {
 func ConversationHasAlerts(unread, failed bool) bool {
 	return unread || failed
 }
-
-

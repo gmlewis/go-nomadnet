@@ -46,7 +46,7 @@ func TestBandwidthChartTwoUpdates(t *testing.T) {
 	t.Parallel()
 
 	bc := NewBandwidthChart(10)
-	bc.Update(0, 0)   // baseline
+	bc.Update(0, 0)    // baseline
 	bc.Update(100, 50) // delta: 100 bytes RX, 50 bytes TX
 
 	if !bc.Initialized() {
@@ -84,7 +84,7 @@ func TestBandwidthChartRates(t *testing.T) {
 }
 
 func TestBandwidthChartSlidingWindow(t *testing.T) {
-t.Parallel()
+	t.Parallel()
 
 	bc := NewBandwidthChart(5) // 5 samples max
 

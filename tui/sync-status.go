@@ -23,11 +23,11 @@ import (
 // SyncStatus holds the state for displaying conversation sync status.
 // Matches Python's ConversationsDisplay._sync_status_line() logic.
 type SyncStatus struct {
-	LastSyncTime  time.Time
-	NodeLabel     string
-	HasSynced     bool
-	SyncRunning   bool
-	SyncProgress  int // 0-100
+	LastSyncTime time.Time
+	NodeLabel    string
+	HasSynced    bool
+	SyncRunning  bool
+	SyncProgress int // 0-100
 }
 
 // FormatStatusLine returns the formatted sync status text.

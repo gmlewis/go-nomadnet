@@ -185,9 +185,13 @@ func ParseURL(url, currentHash string) (hash, path string, err error) {
 
 // ParseURLWithQuery parses a browser URL into destination hash, path,
 // query fields, and wildcard flag. The URL format is:
-//   hash:path`field1=val1|field2=val2
+//
+//	hash:path`field1=val1|field2=val2
+//
 // or
-//   hash:path`*    (wildcard — collect all fields)
+//
+//	hash:path`*    (wildcard — collect all fields)
+//
 // Matches Python's Browser.parse_url() and current_url() exactly.
 func ParseURLWithQuery(url, currentHash string) (hash, path string, fields map[string]string, wildcard bool, err error) {
 	// Split off query part (backtick separator)
@@ -347,9 +351,9 @@ func FormatAnnounceDetail(ann AnnounceEntry) string {
 // ConversationTabStats computes counts for the conversation list tabs.
 // Matches Python's update_listbox trusted/untrusted counts.
 type ConversationTabStats struct {
-	TrustedCount   int
-	UntrustedCount int
-	TrustedUnread  int
+	TrustedCount    int
+	UntrustedCount  int
+	TrustedUnread   int
 	UntrustedUnread int
 }
 

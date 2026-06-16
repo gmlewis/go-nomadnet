@@ -23,8 +23,8 @@ import (
 	"time"
 
 	"github.com/gmlewis/go-nomadnet/nomadnet/app"
-	"github.com/rivo/tview"
 	"github.com/gmlewis/go-nomadnet/tui"
+	"github.com/rivo/tview"
 )
 
 // runTextUI starts NomadNet with the terminal UI.

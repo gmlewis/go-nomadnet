@@ -52,11 +52,11 @@ type HubRoom struct {
 
 // HubEntry holds all state for a single RRC hub connection.
 type HubEntry struct {
-	Address        string
-	Name           string
-	Status         HubStatus
-	AutoReconnect  bool
-	Rooms          map[string]*HubRoom
+	Address       string
+	Name          string
+	Status        HubStatus
+	AutoReconnect bool
+	Rooms         map[string]*HubRoom
 }
 
 // GetRoom returns the room by name, or nil if not found.

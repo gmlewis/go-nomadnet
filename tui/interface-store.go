@@ -26,9 +26,9 @@ import (
 // InterfaceStore manages the collection of network interfaces.
 // Thread-safe for concurrent access.
 type InterfaceStore struct {
-	mu        sync.RWMutex
+	mu            sync.RWMutex
 	interfaceList []InterfaceInfo
-	trafficHist  map[string]*TrafficRingBuffer
+	trafficHist   map[string]*TrafficRingBuffer
 }
 
 // TrafficRingBuffer stores fixed-size traffic history.

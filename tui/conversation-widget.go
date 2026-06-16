@@ -46,11 +46,11 @@ type ConversationWidget struct {
 	sortByTimestamp  bool
 
 	// Callbacks
-	OnClose       func()
-	OnPurgeFailed func()
+	OnClose        func()
+	OnPurgeFailed  func()
 	OnClearHistory func()
-	OnSend        func(content, title string)
-	OnAttach      func()
+	OnSend         func(content, title string)
+	OnAttach       func()
 
 	// Message data
 	messages []ConversationMessage

@@ -159,8 +159,8 @@ func TestBrowseHistoryBranchThenNavigate(t *testing.T) {
 	bh.Navigate("page1")
 	bh.Navigate("page2")
 	bh.Navigate("page3")
-	bh.GoBack() // at page2
-	bh.GoBack() // at page1
+	bh.GoBack()           // at page2
+	bh.GoBack()           // at page1
 	bh.Navigate("branch") // truncates page2, page3
 
 	history := bh.History()

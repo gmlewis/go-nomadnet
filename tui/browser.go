@@ -36,14 +36,14 @@ type BrowserDisplay struct {
 	onLoad  func(url string)
 
 	// Keyboard shortcut callbacks (Python: BrowserFrame.keypress)
-	OnDisconnect  func()
-	OnBack        func()
-	OnForward     func()
-	OnReload      func()
-	OnURLDialog   func()
-	OnSaveNode    func()
+	OnDisconnect       func()
+	OnBack             func()
+	OnForward          func()
+	OnReload           func()
+	OnURLDialog        func()
+	OnSaveNode         func()
 	OnToggleFullscreen func()
-	OnCopyURL     func()
+	OnCopyURL          func()
 }
 
 // NewBrowserDisplay creates a new browser display.

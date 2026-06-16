@@ -105,10 +105,10 @@ func TestSplitMessage(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name string
-		text string
+		name  string
+		text  string
 		limit int
-		want []string
+		want  []string
 	}{
 		{
 			name:  "fits in one part",

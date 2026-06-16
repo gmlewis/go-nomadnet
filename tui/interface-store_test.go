@@ -202,9 +202,9 @@ func TestFormatInterfaceSummaryTraffic(t *testing.T) {
 	t.Parallel()
 
 	iface := InterfaceInfo{
-		Name:     "eth0",
-		Status:   "connected",
-		Traffic:  make([]float64, 10),
+		Name:      "eth0",
+		Status:    "connected",
+		Traffic:   make([]float64, 10),
 		Bandwidth: 1000,
 	}
 

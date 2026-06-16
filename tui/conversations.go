@@ -51,14 +51,14 @@ type ConversationsDisplay struct {
 	showTrusted   bool // true = trusted tab, false = untrusted
 
 	// Keyboard shortcut callbacks (Python: ConversationsArea.keypress)
-	OnEditPeerInfo    func()
-	OnDeleteConv      func()
-	OnNewConv         func()
-	OnIngestURI       func()
-	OnSync            func()
+	OnEditPeerInfo     func()
+	OnDeleteConv       func()
+	OnNewConv          func()
+	OnIngestURI        func()
+	OnSync             func()
 	OnToggleFullscreen func()
-	OnToggleSort      func()
-	OnShowQR          func()
+	OnToggleSort       func()
+	OnShowQR           func()
 }
 
 // NewConversationsDisplay creates a new conversations display.
@@ -357,6 +357,5 @@ func (cd *ConversationsDisplay) SetConversations(convs []ConversationInfo) {
 
 // ToggleSort toggles between sort-by-time and sort-by-name.
 func (cd *ConversationsDisplay) ToggleSort() {
-	cd.showTrusted = cd.showTrusted
 	cd.populateList()
 }
