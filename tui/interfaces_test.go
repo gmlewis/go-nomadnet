@@ -18,6 +18,9 @@ package tui
 import (
 	"strings"
 	"testing"
+
+	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 )
 
 func TestFormatInterfaceEntry(t *testing.T) {
@@ -220,5 +223,42 @@ func TestFormatMessageMention(t *testing.T) {
 	}
 	if !strings.Contains(got, "mention") {
 		t.Error("message missing mention indicator")
+	}
+}
+
+func TestInterfacesDisplayKeyboardShortcuts(t *testing.T) {
+	t.Parallel()
+
+	app := tview.NewApplication()
+	id := NewInterfacesDisplay(app, nil)
+
+	var fired []string
+	id.OnAddInterface = func() { fired = append(fired, "add") }
+	id.OnEditInterface = func() { fired = append(fired, "edit") }
+	id.OnRemoveInterface = func() { fired = append(fired, "remove") }
+	id.OnConfigEditor = func() { fired = append(fired, "config") }
+
+	tests := []struct {
+		name  string
+		event *tcell.EventKey
+		want  string
+	}{
+		{"ctrl-a", tcell.NewEventKey(tcell.KeyCtrlA, 0, tcell.ModNone), "add"},
+		{"ctrl-e", tcell.NewEventKey(tcell.KeyCtrlE, 0, tcell.ModNone), "edit"},
+		{"ctrl-x", tcell.NewEventKey(tcell.KeyCtrlX, 0, tcell.ModNone), "remove"},
+		{"ctrl-w", tcell.NewEventKey(tcell.KeyCtrlW, 0, tcell.ModNone), "config"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fired = fired[:0]
+			result := id.handleInput(tt.event)
+			if result != nil {
+				t.Errorf("key %s was not consumed", tt.name)
+			}
+			if len(fired) != 1 || fired[0] != tt.want {
+				t.Errorf("key %s fired %v, want [%s]", tt.name, fired, tt.want)
+			}
+		})
 	}
 }

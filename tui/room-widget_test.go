@@ -1,0 +1,142 @@
+// Copyright 2026 Glenn Lewis. All rights reserved.
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+package tui
+
+import (
+	"testing"
+
+	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
+)
+
+func TestNewRoomWidget(t *testing.T) {
+	t.Parallel()
+
+	app := tview.NewApplication()
+	rw := NewRoomWidget(app, "hub1", "general")
+	if rw == nil {
+		t.Fatal("NewRoomWidget returned nil")
+	}
+	if rw.Widget() == nil {
+		t.Error("Widget() returned nil")
+	}
+}
+
+func TestRoomWidgetSendMessage(t *testing.T) {
+	t.Parallel()
+
+	app := tview.NewApplication()
+	rw := NewRoomWidget(app, "hub1", "general")
+
+	var sent string
+	rw.OnSendMessage = func(text string) { sent = text }
+
+	rw.editor.SetText("Hello world")
+	rw.sendMessage()
+
+	if sent != "Hello world" {
+		t.Errorf("sendMessage content = %q, want %q", sent, "Hello world")
+	}
+	if rw.editor.GetText() != "" {
+		t.Error("sendMessage should clear editor")
+	}
+}
+
+func TestRoomWidgetSendMessageEmpty(t *testing.T) {
+	t.Parallel()
+
+	app := tview.NewApplication()
+	rw := NewRoomWidget(app, "hub1", "general")
+
+	sent := false
+	rw.OnSendMessage = func(text string) { sent = true }
+	rw.sendMessage()
+
+	if sent {
+		t.Error("Empty message should not be sent")
+	}
+}
+
+func TestRoomWidgetKeyboardShortcuts(t *testing.T) {
+	t.Parallel()
+
+	app := tview.NewApplication()
+	rw := NewRoomWidget(app, "hub1", "general")
+
+	var fired []string
+	rw.OnSendMessage = func(text string) { fired = append(fired, "send:"+text) }
+	rw.OnLeaveRoom = func() { fired = append(fired, "leave") }
+
+	tests := []struct {
+		name  string
+		event *tcell.EventKey
+		want  string
+	}{
+		{"ctrl-d-sends", tcell.NewEventKey(tcell.KeyCtrlD, 0, tcell.ModNone), ""},
+		{"ctrl-x-leaves", tcell.NewEventKey(tcell.KeyCtrlX, 0, tcell.ModNone), "leave"},
+		{"ctrl-u-toggles", tcell.NewEventKey(tcell.KeyCtrlU, 0, tcell.ModNone), ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fired = fired[:0]
+			result := rw.handleInput(tt.event)
+			if result != nil {
+				t.Errorf("key %s was not consumed", tt.name)
+			}
+			if tt.want != "" {
+				if len(fired) != 1 || fired[0] != tt.want {
+					t.Errorf("key %s fired %v, want [%s]", tt.name, fired, tt.want)
+				}
+			}
+		})
+	}
+}
+
+func TestRoomWidgetSetMessages(t *testing.T) {
+	t.Parallel()
+
+	app := tview.NewApplication()
+	rw := NewRoomWidget(app, "hub1", "general")
+
+	msgs := []ChannelMessage{
+		{Nick: "Alice", Text: "Hello", IsSelf: false},
+		{Nick: "Bob", Text: "Hi", IsSelf: true},
+		{Text: "User joined", IsSystem: true},
+	}
+
+	rw.SetMessages(msgs)
+	if len(rw.chatMessages) != 3 {
+		t.Errorf("SetMessages: got %d, want 3", len(rw.chatMessages))
+	}
+}
+
+func TestRoomWidgetSetMembers(t *testing.T) {
+	t.Parallel()
+
+	app := tview.NewApplication()
+	rw := NewRoomWidget(app, "hub1", "general")
+
+	members := []ChannelMember{
+		{Nick: "Alice", Online: true},
+		{Nick: "Bob", Online: false},
+	}
+
+	rw.SetMembers(members)
+	if len(rw.members) != 2 {
+		t.Errorf("SetMembers: got %d, want 2", len(rw.members))
+	}
+}

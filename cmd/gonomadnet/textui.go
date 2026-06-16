@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/gmlewis/go-nomadnet/nomadnet/app"
+	"github.com/rivo/tview"
 	"github.com/gmlewis/go-nomadnet/tui"
 )
 
@@ -120,6 +121,45 @@ func wireDisplays(tuiApp *tui.App, a *app.App) {
 		_ = url
 	})
 
+	// Wire network keyboard shortcuts
+	networkDisplay.OnDeleteSelected = func() {
+		tui.ShowConfirmDialog(tuiApp.Application,
+			"Delete selected entry?",
+			func() {
+				// TODO: Delete selected announce/node
+			},
+			func() {},
+		)
+	}
+	networkDisplay.OnShowPeers = func() {
+		tui.ShowDialog(tuiApp.Application, "LXMF Peers",
+			tview.NewTextView().
+				SetDynamicColors(true).
+				SetTextAlign(tview.AlignCenter).
+				SetText("[gray]LXMF Peers list — TODO: wire to propagation peers[-]"),
+			50, 10, nil)
+	}
+	networkDisplay.OnURLDialog = func() {
+		tui.ShowInputDialog(tuiApp.Application, "Navigate",
+			"Enter URL:", "",
+			func(text string) {
+				if text != "" {
+					networkDisplay.SetNavigateCallback(func(url string) { _ = url })
+				}
+			},
+			func() {},
+		)
+	}
+	networkDisplay.OnSaveNode = func() {
+		tui.ShowConfirmDialog(tuiApp.Application,
+			"Save selected node?",
+			func() {
+				// TODO: Save node to directory
+			},
+			func() {},
+		)
+	}
+
 	// Conversations display
 	convs := a.ConversationList()
 	tuiConvs := make([]tui.ConversationInfo, len(convs))
@@ -151,10 +191,126 @@ func wireDisplays(tuiApp *tui.App, a *app.App) {
 	main.SetDisplay("conversations", conversationsDisplay.Widget())
 	main.SetShortcut("conversations", "[C-e] Peer Info  [C-x] Delete  [C-r] Sync  [C-n] New  [C-u] Ingest URI  [C-o] Sort  [C-p] My LXMF  [C-g] Fullscreen")
 
+	// refreshConvs updates the conversation list from the app.
+	refreshConvs := func() {
+		newConvs := a.ConversationList()
+		tuiConvs = make([]tui.ConversationInfo, len(newConvs))
+		for i, c := range newConvs {
+			trustStr := "unknown"
+			switch c.TrustLevel {
+			case 0xFF:
+				trustStr = "trusted"
+			case 0x01:
+				trustStr = "untrusted"
+			case 0x00:
+				trustStr = "warning"
+			}
+			var lastTime time.Time
+			if c.LastActivity > 0 {
+				lastTime = time.Unix(int64(c.LastActivity), 0)
+			}
+			tuiConvs[i] = tui.ConversationInfo{
+				SourceHash:  c.SourceHash,
+				DisplayName: c.DisplayName,
+				TrustLevel:  trustStr,
+				LastTime:    lastTime,
+				Unread:      c.Unread,
+			}
+		}
+		conversationsDisplay.SetConversations(tuiConvs)
+	}
+
+	// Wire conversation keyboard shortcuts
+	conversationsDisplay.OnDeleteConv = func() {
+		idx := conversationsDisplay.GetSelectedIndex()
+		if idx < 0 || idx >= len(tuiConvs) {
+			return
+		}
+		conv := tuiConvs[idx]
+		tui.ShowConfirmDialog(tuiApp.Application,
+			"Delete conversation with "+conv.DisplayName+"?",
+			func() {
+				// TODO: Call a.DeleteConversation(conv.SourceHash) when app method exists
+				_ = a
+				_ = conv
+				refreshConvs()
+			},
+			func() {},
+		)
+	}
+	conversationsDisplay.OnNewConv = func() {
+		tui.ShowInputDialog(tuiApp.Application, "New Conversation",
+			"Address (hex hash):", "",
+			func(text string) {
+				if text == "" {
+					return
+				}
+				// TODO: Call a.CreateDirectoryEntry when app method exists
+				_ = text
+				refreshConvs()
+			},
+			func() {},
+		)
+	}
+	conversationsDisplay.OnToggleSort = func() {
+		conversationsDisplay.ToggleSort()
+	}
+	conversationsDisplay.OnShowQR = func() {
+		tui.ShowDialog(tuiApp.Application, "LXMF Address",
+			tview.NewTextView().
+				SetDynamicColors(true).
+				SetTextAlign(tview.AlignCenter).
+				SetText("[gray]LXMF address display — TODO: wire to app identity[-]"),
+			50, 8, nil)
+	}
+
 	// Channels display
 	channelsDisplay := tui.NewChannelsDisplay(tuiApp.Application, nil)
 	main.SetDisplay("channels", channelsDisplay.Widget())
 	main.SetShortcut("channels", "[C-n] New Hub  [C-a] Add Room  [C-r] Connect  [C-w] Disconnect  [C-t] Auto-reconnect  [C-e] Edit Hub  [C-x] Remove")
+
+	// Wire channel keyboard shortcuts
+	channelsDisplay.OnNewHub = func() {
+		tui.ShowInputDialog(tuiApp.Application, "New Hub",
+			"Hub address (hex hash):", "",
+			func(text string) {
+				if text == "" {
+					return
+				}
+				name := text
+				if len(name) > 8 {
+					name = name[:8] + "..."
+				}
+				_ = a
+				// TODO: Call a.AddHub when app method exists
+				_ = text
+				_ = name
+			},
+			func() {},
+		)
+	}
+	channelsDisplay.OnJoinRoom = func() {
+		tui.ShowInputDialog(tuiApp.Application, "Join Room",
+			"Room name:", "",
+			func(text string) {
+				if text == "" {
+					return
+				}
+				_ = text
+				// TODO: Join room via RRC hub
+			},
+			func() {},
+		)
+	}
+	channelsDisplay.OnRemoveHub = func() {
+		tui.ShowConfirmDialog(tuiApp.Application,
+			"Remove selected hub/room?",
+			func() {
+				// TODO: Remove hub/room via RRC hub
+			},
+			func() {},
+		)
+	}
 
 	// Config display
 	configPath := a.ConfigPath

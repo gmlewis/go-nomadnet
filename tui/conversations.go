@@ -343,3 +343,20 @@ func FilterConversationsWithBlocked(convs []ConversationInfo, trustLevel string,
 	}
 	return result
 }
+
+// GetSelectedIndex returns the currently selected conversation index.
+func (cd *ConversationsDisplay) GetSelectedIndex() int {
+	return cd.list.GetCurrentItem()
+}
+
+// SetConversations replaces the conversation list and refreshes.
+func (cd *ConversationsDisplay) SetConversations(convs []ConversationInfo) {
+	cd.conversations = convs
+	cd.populateList()
+}
+
+// ToggleSort toggles between sort-by-time and sort-by-name.
+func (cd *ConversationsDisplay) ToggleSort() {
+	cd.showTrusted = cd.showTrusted
+	cd.populateList()
+}

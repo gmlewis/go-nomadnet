@@ -28,11 +28,22 @@ import (
 type BrowserDisplay struct {
 	app     *tview.Application
 	widget  tview.Primitive
+	layout  *tview.Flex
 	urlBar  *ReadlineEdit
 	content *tview.TextView
 	history []string
 	histIdx int
 	onLoad  func(url string)
+
+	// Keyboard shortcut callbacks (Python: BrowserFrame.keypress)
+	OnDisconnect  func()
+	OnBack        func()
+	OnForward     func()
+	OnReload      func()
+	OnURLDialog   func()
+	OnSaveNode    func()
+	OnToggleFullscreen func()
+	OnCopyURL     func()
 }
 
 // NewBrowserDisplay creates a new browser display.
@@ -72,9 +83,60 @@ func NewBrowserDisplay(app *tview.Application) *BrowserDisplay {
 		AddItem(navBar, 1, 0, false).
 		AddItem(bd.content, 0, 1, true)
 	layout.SetBorder(true)
+	layout.SetInputCapture(bd.handleInput)
 
+	bd.layout = layout
 	bd.widget = layout
 	return bd
+}
+
+// handleInput processes keyboard shortcuts for the browser display.
+// Matches Python's BrowserFrame.keypress() at Browser.py:21.
+func (bd *BrowserDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
+	switch event.Key() {
+	case tcell.KeyCtrlW:
+		if bd.OnDisconnect != nil {
+			bd.OnDisconnect()
+		}
+		return nil
+	case tcell.KeyCtrlD:
+		if bd.OnBack != nil {
+			bd.OnBack()
+		}
+		return nil
+	case tcell.KeyCtrlF:
+		if bd.OnForward != nil {
+			bd.OnForward()
+		}
+		return nil
+	case tcell.KeyCtrlR:
+		if bd.OnReload != nil {
+			bd.OnReload()
+		}
+		return nil
+	case tcell.KeyCtrlU:
+		if bd.OnURLDialog != nil {
+			bd.OnURLDialog()
+		}
+		return nil
+	case tcell.KeyCtrlS:
+		if bd.OnSaveNode != nil {
+			bd.OnSaveNode()
+		}
+		return nil
+	case tcell.KeyCtrlG:
+		if bd.OnToggleFullscreen != nil {
+			bd.OnToggleFullscreen()
+		}
+		return nil
+	case tcell.KeyCtrlY:
+		if bd.OnCopyURL != nil {
+			bd.OnCopyURL()
+		}
+		return nil
+	}
+
+	return event
 }
 
 // Widget returns the tview primitive for this display.

@@ -91,6 +91,10 @@ func NewChannelsDisplay(app *tview.Application, rooms []ChannelInfo) *ChannelsDi
 		SetHighlightFullLine(true).
 		SetSelectedBackgroundColor(tcell.NewHexColor(0x666666))
 
+	cd.rooms.SetSelectedFunc(func(i int, mainText, secondaryText string, shortcut rune) {
+		// Room selected — could load messages for that room
+	})
+
 	for _, room := range rooms {
 		prefix := "  "
 		if room.Unread {
@@ -189,6 +193,16 @@ func (cd *ChannelsDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 	case tcell.KeyCtrlY:
 		if cd.OnToggleChannelList != nil {
 			cd.OnToggleChannelList()
+		}
+		return nil
+	case tcell.KeyCtrlD:
+		if cd.OnSendMessage != nil {
+			cd.OnSendMessage()
+		}
+		return nil
+	case tcell.KeyF8:
+		if cd.OnRemoveHub != nil {
+			cd.OnRemoveHub()
 		}
 		return nil
 	}

@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/gmlewis/go-nomadnet/nomadnet/micron"
 	"github.com/rivo/tview"
 )
@@ -208,5 +209,55 @@ func TestMapColor(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("mapColor(%q) = %q, want %q", tt.input, got, tt.want)
 		}
+	}
+}
+
+func TestNetworkDisplayKeyboardShortcuts(t *testing.T) {
+	t.Parallel()
+
+	app := tview.NewApplication()
+	nd := NewNetworkDisplay(app, nil, nil)
+
+	var fired []string
+	nd.OnToggleFullscreen = func() { fired = append(fired, "fullscreen") }
+	nd.OnEditNode = func() { fired = append(fired, "edit_node") }
+	nd.OnShowPeers = func() { fired = append(fired, "peers") }
+	nd.OnDisconnect = func() { fired = append(fired, "disconnect") }
+	nd.OnURLDialog = func() { fired = append(fired, "url") }
+	nd.OnSaveNode = func() { fired = append(fired, "save") }
+	nd.OnDeleteSelected = func() { fired = append(fired, "delete") }
+
+	tests := []struct {
+		name  string
+		event *tcell.EventKey
+		want  string
+	}{
+		{"ctrl-l", tcell.NewEventKey(tcell.KeyCtrlL, 0, tcell.ModNone), ""},
+		{"ctrl-g", tcell.NewEventKey(tcell.KeyCtrlG, 0, tcell.ModNone), "fullscreen"},
+		{"ctrl-e", tcell.NewEventKey(tcell.KeyCtrlE, 0, tcell.ModNone), "edit_node"},
+		{"ctrl-p", tcell.NewEventKey(tcell.KeyCtrlP, 0, tcell.ModNone), "peers"},
+		{"ctrl-w", tcell.NewEventKey(tcell.KeyCtrlW, 0, tcell.ModNone), "disconnect"},
+		{"ctrl-u", tcell.NewEventKey(tcell.KeyCtrlU, 0, tcell.ModNone), "url"},
+		{"ctrl-s", tcell.NewEventKey(tcell.KeyCtrlS, 0, tcell.ModNone), "save"},
+		{"ctrl-x", tcell.NewEventKey(tcell.KeyCtrlX, 0, tcell.ModNone), "delete"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fired = fired[:0]
+			result := nd.handleInput(tt.event)
+			if result != nil {
+				t.Errorf("key %s was not consumed", tt.name)
+			}
+			if tt.want == "" {
+				if len(fired) != 0 {
+					t.Errorf("key %s should not fire callbacks, fired %v", tt.name, fired)
+				}
+			} else {
+				if len(fired) != 1 || fired[0] != tt.want {
+					t.Errorf("key %s fired %v, want [%s]", tt.name, fired, tt.want)
+				}
+			}
+		})
 	}
 }

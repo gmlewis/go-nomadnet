@@ -117,6 +117,7 @@ func NewNetworkDisplay(app *tview.Application, announces []AnnounceEntry, nodes 
 
 	nd.widget = tview.NewFlex().SetDirection(tview.FlexRow)
 	nd.widget.SetBorder(true)
+	nd.widget.SetInputCapture(nd.handleInput)
 	nd.widget.AddItem(title, 2, 0, false)
 	nd.widget.AddItem(content, 0, 1, true)
 
@@ -135,6 +136,58 @@ func NewNetworkDisplay(app *tview.Application, announces []AnnounceEntry, nodes 
 // to open a URL in the browser (e.g., Connect on a node).
 func (nd *NetworkDisplay) SetNavigateCallback(fn func(url string)) {
 	nd.onNavigate = fn
+}
+
+// handleInput processes keyboard shortcuts for the network display.
+// Matches Python's NetworkDisplay.keypress() at Network.py:1600.
+func (nd *NetworkDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
+	// When AnnounceInfo is open, only Esc is handled (via MainDisplay.onEsc).
+	if nd.inInfoView {
+		return event
+	}
+
+	switch event.Key() {
+	case tcell.KeyCtrlL:
+		nd.toggleList()
+		return nil
+	case tcell.KeyCtrlG:
+		if nd.OnToggleFullscreen != nil {
+			nd.OnToggleFullscreen()
+		}
+		return nil
+	case tcell.KeyCtrlE:
+		if nd.OnEditNode != nil {
+			nd.OnEditNode()
+		}
+		return nil
+	case tcell.KeyCtrlP:
+		if nd.OnShowPeers != nil {
+			nd.OnShowPeers()
+		}
+		return nil
+	case tcell.KeyCtrlW:
+		if nd.OnDisconnect != nil {
+			nd.OnDisconnect()
+		}
+		return nil
+	case tcell.KeyCtrlU:
+		if nd.OnURLDialog != nil {
+			nd.OnURLDialog()
+		}
+		return nil
+	case tcell.KeyCtrlS:
+		if nd.OnSaveNode != nil {
+			nd.OnSaveNode()
+		}
+		return nil
+	case tcell.KeyCtrlX:
+		if nd.OnDeleteSelected != nil {
+			nd.OnDeleteSelected()
+		}
+		return nil
+	}
+
+	return event
 }
 
 // addAnnounceEntry adds a single announce to the list.

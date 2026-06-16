@@ -38,6 +38,13 @@ type InterfaceInfo struct {
 type InterfacesDisplay struct {
 	app    *tview.Application
 	widget tview.Primitive
+	layout *tview.Flex
+
+	// Keyboard shortcut callbacks (Python: InterfaceFiller.keypress)
+	OnAddInterface    func()
+	OnEditInterface   func()
+	OnRemoveInterface func()
+	OnConfigEditor    func()
 }
 
 // NewInterfacesDisplay creates a new interfaces display.
@@ -60,9 +67,40 @@ func NewInterfacesDisplay(app *tview.Application, interfaces []InterfaceInfo) *I
 		AddItem(title, 2, 0, false).
 		AddItem(content, 0, 1, true)
 	layout.SetBorder(true)
+	layout.SetInputCapture(id.handleInput)
 
+	id.layout = layout
 	id.widget = layout
 	return id
+}
+
+// handleInput processes keyboard shortcuts for the interfaces display.
+// Matches Python's InterfaceFiller.keypress() at Interfaces.py:1391.
+func (id *InterfacesDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
+	switch event.Key() {
+	case tcell.KeyCtrlA:
+		if id.OnAddInterface != nil {
+			id.OnAddInterface()
+		}
+		return nil
+	case tcell.KeyCtrlE:
+		if id.OnEditInterface != nil {
+			id.OnEditInterface()
+		}
+		return nil
+	case tcell.KeyCtrlX:
+		if id.OnRemoveInterface != nil {
+			id.OnRemoveInterface()
+		}
+		return nil
+	case tcell.KeyCtrlW:
+		if id.OnConfigEditor != nil {
+			id.OnConfigEditor()
+		}
+		return nil
+	}
+
+	return event
 }
 
 // Widget returns the tview primitive for this display.
