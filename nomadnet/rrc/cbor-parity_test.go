@@ -208,3 +208,61 @@ print("OK")
 		t.Errorf("room = %q, want '#test'", string(roomBytes))
 	}
 }
+
+func TestIntegrationProtocolConstantsMatch(t *testing.T) {
+	// Verify Go protocol constants match Python values.
+	// This ensures the Go and Python implementations use the same wire format.
+	expected := map[string]int{
+		"RRCVersion": 1,
+		"TypeHello":  1,
+		"TypeWelcome": 2,
+		"TypeJoin":   10,
+		"TypeJoined": 11,
+		"TypePart":   12,
+		"TypeParted": 13,
+		"TypeMsg":    20,
+		"TypeNotice": 21,
+		"TypeAction": 22,
+		"TypePing":   30,
+		"TypePong":   31,
+		"TypeError":  40,
+		"KeyVersion": 0,
+		"KeyType":    1,
+		"KeyMessageID": 2,
+		"KeyTimestamp": 3,
+		"KeySource":  4,
+		"KeyRoom":    5,
+		"KeyBody":    6,
+		"KeyNick":    7,
+	}
+
+	actual := map[string]int{
+		"RRCVersion":  RRCVersion,
+		"TypeHello":   TypeHello,
+		"TypeWelcome": TypeWelcome,
+		"TypeJoin":    TypeJoin,
+		"TypeJoined":  TypeJoined,
+		"TypePart":    TypePart,
+		"TypeParted":  TypeParted,
+		"TypeMsg":     TypeMsg,
+		"TypeNotice":  TypeNotice,
+		"TypeAction":  TypeAction,
+		"TypePing":    TypePing,
+		"TypePong":    TypePong,
+		"TypeError":   TypeError,
+		"KeyVersion":  KeyVersion,
+		"KeyType":     KeyType,
+		"KeyMessageID": KeyMessageID,
+		"KeyTimestamp": KeyTimestamp,
+		"KeySource":   KeySource,
+		"KeyRoom":     KeyRoom,
+		"KeyBody":     KeyBody,
+		"KeyNick":     KeyNick,
+	}
+
+	for name, want := range expected {
+		if got := actual[name]; got != want {
+			t.Errorf("%s = %d, want %d", name, got, want)
+		}
+	}
+}

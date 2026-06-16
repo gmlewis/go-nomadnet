@@ -28,21 +28,22 @@ import (
 // MainDisplay is the top-level layout matching Python's MainFrame:
 // header=menu bar, body=content area, footer=shortcut bar.
 type MainDisplay struct {
-	app         *tview.Application
-	frame       *tview.Flex
-	menuBar     *tview.TextView
-	menuItems   []MenuItem
-	contentArea *tview.Pages
-	shortcutBar *tview.TextView
-	activeMenu  int
-	theme       int
-	glyphs      GlyphSet
-	onQuit      func()
-	onEsc       func() bool // display-specific Esc handler; returns true if consumed
-	shortcuts   map[string]string
-	quitCh      chan struct{}
-	mu          sync.Mutex
-	hideGuide   bool
+	app              *tview.Application
+	frame            *tview.Flex
+	menuBar          *tview.TextView
+	menuItems        []MenuItem
+	contentArea      *tview.Pages
+	shortcutBar      *tview.TextView
+	activeMenu       int
+	theme            int
+	glyphs           GlyphSet
+	onQuit           func()
+	onEsc            func() bool // display-specific Esc handler; returns true if consumed
+	shortcuts        map[string]string
+	shortcutCallback func() string // returns dynamic shortcut text for active display
+	quitCh           chan struct{}
+	mu               sync.Mutex
+	hideGuide        bool
 	menuWidths  []int // pixel widths of each menu item for click detection
 }
 
@@ -145,6 +146,15 @@ func (md *MainDisplay) SetShortcut(key, text string) {
 	md.updateShortcutsLocked()
 }
 
+// SetShortcutCallback registers a function that returns the current
+// shortcut text for the active display. This enables dynamic shortcut
+// bar updates when focus changes within a display.
+func (md *MainDisplay) SetShortcutCallback(fn func() string) {
+	md.mu.Lock()
+	defer md.mu.Unlock()
+	md.shortcutCallback = fn
+}
+
 // updateShortcuts refreshes the shortcut bar for the active display.
 func (md *MainDisplay) updateShortcuts() {
 	md.mu.Lock()
@@ -154,6 +164,12 @@ func (md *MainDisplay) updateShortcuts() {
 
 // updateShortcutsLocked refreshes the shortcut bar. Caller must hold md.mu.
 func (md *MainDisplay) updateShortcutsLocked() {
+	if md.shortcutCallback != nil {
+		if text := md.shortcutCallback(); text != "" {
+			md.shortcutBar.SetText(text)
+			return
+		}
+	}
 	key := md.menuItems[md.activeMenu].Key
 	if text, ok := md.shortcuts[key]; ok {
 		md.shortcutBar.SetText(text)
@@ -292,6 +308,8 @@ func (md *MainDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 		}
 	}
 
+	// Refresh shortcut bar after any key event to capture focus changes
+	md.updateShortcuts()
 	return event
 }
 

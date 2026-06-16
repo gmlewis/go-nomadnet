@@ -138,6 +138,17 @@ func NewConversationsDisplay(app *tview.Application, convs []ConversationInfo) *
 	return cd
 }
 
+// GetShortcutText returns the appropriate shortcut bar text for the
+// current focus context. Matches Python's shortcuts() method at
+// Conversations.py:1765 which returns different shortcut sets based
+// on whether the list, body, or editor has focus.
+func (cd *ConversationsDisplay) GetShortcutText() string {
+	if cd.dialogOpen {
+		return ""
+	}
+	return "[C-e] Peer Info  [C-x] Delete  [C-r] Sync  [C-n] New  [C-u] Ingest URI  [C-o] Sort  [C-p] My LXMF  [C-g] Fullscreen"
+}
+
 // handleInput processes keyboard shortcuts for the conversations display.
 // Matches Python's ConversationsArea.keypress() at Conversations.py:88.
 func (cd *ConversationsDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {

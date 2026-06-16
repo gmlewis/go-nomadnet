@@ -191,6 +191,11 @@ func wireDisplays(tuiApp *tui.App, a *app.App) {
 	main.SetDisplay("conversations", conversationsDisplay.Widget())
 	main.SetShortcut("conversations", "[C-e] Peer Info  [C-x] Delete  [C-r] Sync  [C-n] New  [C-u] Ingest URI  [C-o] Sort  [C-p] My LXMF  [C-g] Fullscreen")
 
+	// Wire dynamic shortcut bar callback for conversations display
+	main.SetShortcutCallback(func() string {
+		return conversationsDisplay.GetShortcutText()
+	})
+
 	// refreshConvs updates the conversation list from the app.
 	refreshConvs := func() {
 		newConvs := a.ConversationList()
