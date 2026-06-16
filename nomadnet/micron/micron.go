@@ -25,6 +25,8 @@ package micron
 
 import (
 	"regexp"
+	"strconv"
+	"strings"
 )
 
 // NodeType identifies the type of an AST node.
@@ -61,6 +63,10 @@ const (
 	NodeAlign
 	// NodeAnchor declares a named anchor position.
 	NodeAnchor
+	// NodeLiteral toggles literal (preformatted) mode.
+	NodeLiteral
+	// NodeTable is a formatted table with rows and columns.
+	NodeTable
 )
 
 // Alignment represents text alignment.
@@ -79,6 +85,10 @@ type Node struct {
 
 	// For NodeHeading
 	Level int // 1, 2, or 3
+
+	// Depth is the section depth (number of >) that applies to this node.
+	// Content after a heading inherits the heading's depth until reset.
+	Depth int
 
 	// For NodeLink
 	LinkURL    string
@@ -104,6 +114,11 @@ type Node struct {
 	PartialFields string
 	PartialID     string
 
+	// For NodeTable
+	TableRows     [][]string // raw cell text per row
+	TableAlign    Alignment  // table-level alignment
+	TableMaxWidth int        // max table width in chars
+
 	// For NodeAnchor
 	AnchorName string
 
@@ -111,13 +126,28 @@ type Node struct {
 	Children []*Node
 }
 
+// MaxTableWidth is the default maximum width for Micron tables.
+const MaxTableWidth = 100
+
+// parseState holds cross-line parsing state for stateful features like
+// literal mode and table mode.
+type parseState struct {
+	literal    bool
+	depth      int
+	tableMode  bool
+	tableBuf   []string
+	tableAlign Alignment
+	tableMaxW  int
+}
+
 // Parse parses Micron markup text and returns a list of top-level nodes.
 func Parse(markup string) []*Node {
 	lines := splitLines(markup)
 	var nodes []*Node
+	state := &parseState{}
 
 	for _, line := range lines {
-		if lineNodes := parseLine(line); len(lineNodes) > 0 {
+		if lineNodes := parseLine(line, state); len(lineNodes) > 0 {
 			nodes = append(nodes, lineNodes...)
 		}
 	}
@@ -130,9 +160,10 @@ func Parse(markup string) []*Node {
 func ParseDocument(markup string) *Document {
 	lines := splitLines(markup)
 	doc := &Document{}
+	state := &parseState{}
 
 	for _, line := range lines {
-		if lineNodes := parseLine(line); len(lineNodes) > 0 {
+		if lineNodes := parseLine(line, state); len(lineNodes) > 0 {
 			doc.Nodes = append(doc.Nodes, lineNodes...)
 		}
 	}
@@ -147,9 +178,22 @@ type Document struct {
 }
 
 // parseLine parses a single line of Micron markup.
-func parseLine(line string) []*Node {
+func parseLine(line string, state *parseState) []*Node {
 	if len(line) == 0 {
 		return nil
+	}
+
+	// Check for literal toggle
+	if line == "`=" {
+		state.literal = !state.literal
+		return []*Node{{Type: NodeLiteral, Depth: state.depth}}
+	}
+
+	// In literal mode, output the line as-is (no inline formatting)
+	if state.literal {
+		// Handle escaped literal toggle: \`= → `=
+		escaped := strings.ReplaceAll(line, "\\`=", "`=")
+		return []*Node{{Type: NodeText, Text: escaped, Depth: state.depth}}
 	}
 
 	// Check for comment
@@ -164,21 +208,72 @@ func parseLine(line string) []*Node {
 
 	// Check for headings: >>>>, >>>, >>
 	if line[0] == '>' {
-		return parseHeading(line)
+		return parseHeading(line, state)
 	}
 
-	// Check for divider: --
-	if line == "--" || (len(line) > 2 && line[0] == '-' && line[1] == '-' && line[2] != '-') {
-		char := '\u2500'
+	// Check for horizontal dividers: -X (custom char) or longer (default)
+	if line[0] == '-' {
+		char := rune('\u2500')
 		if len(line) == 2 {
-			char = '\u2500'
+			char = rune(line[1])
+			if char < 32 {
+				char = '\u2500'
+			}
 		}
-		return []*Node{{Type: NodeDivider, Text: string(char)}}
+		return []*Node{{Type: NodeDivider, Text: string(char), Depth: state.depth}}
 	}
 
 	// Check for table start/end: `t
 	if len(line) >= 2 && line[0] == '`' && line[1] == 't' {
-		return nil // Tables need special handling; return nil for now
+		if state.tableMode {
+			rows := parseTableRows(state.tableBuf)
+			savedAlign := state.tableAlign
+			savedMaxW := state.tableMaxW
+			state.tableMode = false
+			state.tableBuf = nil
+			state.tableAlign = AlignLeft
+			state.tableMaxW = MaxTableWidth
+			if len(rows) < 2 {
+				return nil
+			}
+			return []*Node{{
+				Type:          NodeTable,
+				TableRows:     rows,
+				TableAlign:    savedAlign,
+				TableMaxWidth: savedMaxW,
+				Depth:         state.depth,
+			}}
+		}
+
+		rest := line[2:]
+		align := AlignLeft
+		maxWidth := MaxTableWidth
+		if len(rest) > 0 && (rest[0] == 'l' || rest[0] == 'c' || rest[0] == 'r') {
+			switch rest[0] {
+			case 'c':
+				align = AlignCenter
+			case 'r':
+				align = AlignRight
+			}
+			rest = rest[1:]
+		}
+		if len(rest) > 0 {
+			if w, err := strconv.Atoi(rest); err == nil && w > 0 {
+				maxWidth = w
+			}
+		}
+
+		state.tableMode = true
+		state.tableBuf = nil
+		state.tableAlign = align
+		state.tableMaxW = maxWidth
+		return nil
+	}
+
+	// Buffer lines while in table mode
+	if state.tableMode {
+		state.tableBuf = append(state.tableBuf, line)
+		return nil
 	}
 
 	// Check for partial: `{
@@ -188,18 +283,22 @@ func parseLine(line string) []*Node {
 
 	// Check for section reset: < (but not field pattern)
 	if line[0] == '<' {
-		// Check if this is a field: <...`...>
 		if !isFieldPattern(line) {
-			return parseLine(line[1:])
+			state.depth = 0
+			return parseLine(line[1:], state)
 		}
 	}
 
 	// Parse inline formatting
-	return parseInline(line)
+	nodes := parseInline(line)
+	for _, n := range nodes {
+		n.Depth = state.depth
+	}
+	return nodes
 }
 
 // parseHeading parses heading lines starting with >.
-func parseHeading(line string) []*Node {
+func parseHeading(line string, state *parseState) []*Node {
 	level := 0
 	for i, c := range line {
 		if c == '>' {
@@ -213,6 +312,8 @@ func parseHeading(line string) []*Node {
 		level = 4
 	}
 
+	state.depth = level
+
 	headingText := line[level:]
 	if len(headingText) == 0 {
 		return nil
@@ -222,8 +323,35 @@ func parseHeading(line string) []*Node {
 	return []*Node{{
 		Type:     NodeHeading,
 		Level:    level,
+		Depth:    level,
 		Children: children,
 	}}
+}
+
+// parseTableRows splits buffered table lines into rows of cells.
+// Each line uses ! as cell separator: !cell1!cell2!cell3
+func parseTableRows(lines []string) [][]string {
+	var rows [][]string
+	for _, line := range lines {
+		if len(line) == 0 {
+			continue
+		}
+		// Skip lines that don't start with !
+		if line[0] != '!' {
+			continue
+		}
+		cells := splitTableCells(line[1:])
+		rows = append(rows, cells)
+	}
+	return rows
+}
+
+// splitTableCells splits a table row on ! delimiters.
+func splitTableCells(s string) []string {
+	if len(s) == 0 {
+		return []string{""}
+	}
+	return strings.Split(s, "!")
 }
 
 // parsePartial parses a partial reference line.

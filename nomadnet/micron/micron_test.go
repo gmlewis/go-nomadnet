@@ -163,6 +163,48 @@ func TestParseDivider(t *testing.T) {
 	}
 }
 
+func TestParseDividerCustomChar(t *testing.T) {
+	t.Parallel()
+
+	nodes := Parse("-=")
+	if len(nodes) != 1 {
+		t.Fatalf("Parse custom divider len = %d, want 1", len(nodes))
+	}
+	if nodes[0].Type != NodeDivider {
+		t.Errorf("node type = %d, want %d", nodes[0].Type, NodeDivider)
+	}
+	if nodes[0].Text != "=" {
+		t.Errorf("divider char = %q, want %q", nodes[0].Text, "=")
+	}
+}
+
+func TestParseDividerControlCharFallback(t *testing.T) {
+	t.Parallel()
+
+	nodes := Parse("-\x01")
+	if len(nodes) != 1 {
+		t.Fatalf("Parse control-char divider len = %d, want 1", len(nodes))
+	}
+	if nodes[0].Text != "\u2500" {
+		t.Errorf("divider char = %q, want \\u2500", nodes[0].Text)
+	}
+}
+
+func TestParseDividerLongLine(t *testing.T) {
+	t.Parallel()
+
+	nodes := Parse("-------")
+	if len(nodes) != 1 {
+		t.Fatalf("Parse long divider len = %d, want 1", len(nodes))
+	}
+	if nodes[0].Type != NodeDivider {
+		t.Errorf("node type = %d, want %d", nodes[0].Type, NodeDivider)
+	}
+	if nodes[0].Text != "\u2500" {
+		t.Errorf("long divider char = %q, want \\u2500", nodes[0].Text)
+	}
+}
+
 func TestParseLink(t *testing.T) {
 	t.Parallel()
 
