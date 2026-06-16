@@ -141,3 +141,83 @@ func TestIntegrationNodeAnnounceReceivedByPeer(t *testing.T) {
 
 	waitForAnnounce(t, appB, "node", 5*time.Second)
 }
+
+func TestIntegrationLXMFAnnouncePopulatesDirectory(t *testing.T) {
+	appA, appB, cleanup := setupTwoNodeApps(t)
+	defer cleanup()
+
+	if err := appA.Router.Announce(appA.LXMFDest.Hash); err != nil {
+		t.Fatalf("Announce error: %v", err)
+	}
+
+	waitForAnnounce(t, appB, "peer", 5*time.Second)
+
+	peerAnnounces := appB.Dir.PeerAnnounces()
+	if len(peerAnnounces) == 0 {
+		t.Fatal("expected at least one peer announce in directory after LXMF announce")
+	}
+
+	found := false
+	for _, a := range peerAnnounces {
+		if a.AnnounceType == "peer" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected peer announce type in directory peer announces")
+	}
+}
+
+func TestIntegrationNodeAnnouncePopulatesDirectory(t *testing.T) {
+	appA, appB, cleanup := setupTwoNodeApps(t)
+	defer cleanup()
+
+	nodeDest, err := rns.NewDestination(appA.Transport, appA.Identity, rns.DestinationIn, rns.DestinationSingle, "nomadnetwork", "node")
+	if err != nil {
+		t.Fatalf("node dest error: %v", err)
+	}
+
+	if err := nodeDest.Announce([]byte("MyNode")); err != nil {
+		t.Fatalf("Announce error: %v", err)
+	}
+
+	waitForAnnounce(t, appB, "node", 5*time.Second)
+
+	nodeAnnounces := appB.Dir.NodeAnnounces()
+	if len(nodeAnnounces) == 0 {
+		t.Fatal("expected at least one node announce in directory after node announce")
+	}
+
+	found := false
+	for _, a := range nodeAnnounces {
+		if a.AnnounceType == "node" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected node announce type in directory node announces")
+	}
+}
+
+func TestIntegrationLXMFAnnouncePopulatesDirectoryName(t *testing.T) {
+	appA, appB, cleanup := setupTwoNodeApps(t)
+	defer cleanup()
+
+	if err := appA.Router.Announce(appA.LXMFDest.Hash); err != nil {
+		t.Fatalf("Announce error: %v", err)
+	}
+
+	waitForAnnounce(t, appB, "peer", 5*time.Second)
+
+	peerAnnounces := appB.Dir.PeerAnnounces()
+	if len(peerAnnounces) == 0 {
+		t.Fatal("expected at least one peer announce")
+	}
+
+	appData := peerAnnounces[0].AppData
+	if len(appData) == 0 {
+		t.Error("expected app_data in peer announce, got empty")
+	}
+}

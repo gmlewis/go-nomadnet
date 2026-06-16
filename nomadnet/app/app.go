@@ -755,6 +755,13 @@ func (a *App) handleLXMFAnnounce(destHash []byte, identity *rns.Identity, appDat
 	})
 	a.mu.Unlock()
 
+	a.Dir.PeerAnnounceReceived(directory.Announce{
+		Timestamp:    float64(time.Now().UnixNano()) / 1e9,
+		SourceHash:   destHash,
+		AppData:      appData,
+		AnnounceType: "peer",
+	}, true)
+
 	if a.UIChangeCallback != nil {
 		a.UIChangeCallback()
 	}
@@ -775,6 +782,13 @@ func (a *App) handleNodeAnnounce(destHash []byte, identity *rns.Identity, appDat
 	})
 	a.mu.Unlock()
 
+	a.Dir.NodeAnnounceReceived(directory.Announce{
+		Timestamp:    float64(time.Now().UnixNano()) / 1e9,
+		SourceHash:   destHash,
+		AppData:      appData,
+		AnnounceType: "node",
+	}, true)
+
 	if a.UIChangeCallback != nil {
 		a.UIChangeCallback()
 	}
@@ -794,6 +808,13 @@ func (a *App) handlePNAnnounce(destHash []byte, identity *rns.Identity, appData 
 		DisplayName:  displayName,
 	})
 	a.mu.Unlock()
+
+	a.Dir.PNAnnounceReceived(directory.Announce{
+		Timestamp:    float64(time.Now().UnixNano()) / 1e9,
+		SourceHash:   destHash,
+		AppData:      appData,
+		AnnounceType: "pn",
+	}, true)
 
 	if a.UIChangeCallback != nil {
 		a.UIChangeCallback()
