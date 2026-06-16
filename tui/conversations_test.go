@@ -269,3 +269,278 @@ func TestConversationsDisplayUnhandledKeys(t *testing.T) {
 		t.Error("Unhandled key should pass through")
 	}
 }
+
+func TestConversationsDisplayEditSelectedInDirectory(t *testing.T) {
+	t.Parallel()
+
+	app := tview.NewApplication()
+	convs := []ConversationInfo{
+		{SourceHash: "aabb1122", DisplayName: "Alice", TrustLevel: "trusted"},
+	}
+	cd := NewConversationsDisplay(app, convs)
+
+	var edited PeerInfoEntry
+	cd.OnEditPeerInfo = func() { edited = cd.EditSelectedInDirectory() }
+
+	cd.list.SetCurrentItem(0)
+	cd.OnEditPeerInfo()
+
+	if edited.SourceHash != "aabb1122" {
+		t.Errorf("SourceHash = %q, want %q", edited.SourceHash, "aabb1122")
+	}
+	if edited.DisplayName != "Alice" {
+		t.Errorf("DisplayName = %q, want %q", edited.DisplayName, "Alice")
+	}
+}
+
+func TestConversationsDisplayEditSelectedNoSelection(t *testing.T) {
+	t.Parallel()
+
+	app := tview.NewApplication()
+	cd := NewConversationsDisplay(app, nil)
+
+	result := cd.EditSelectedInDirectory()
+	if result.SourceHash != "" {
+		t.Errorf("with no selection, SourceHash should be empty, got %q", result.SourceHash)
+	}
+}
+
+func TestPeerInfoEntryTrustLevels(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		trust    string
+		expected string
+	}{
+		{"trusted", TrustTrusted},
+		{"untrusted", TrustUntrusted},
+		{"unknown", TrustUnknown},
+		{"blocked", TrustUntrusted},
+		{"", TrustUnknown},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.trust, func(t *testing.T) {
+			t.Parallel()
+
+			entry := PeerInfoEntry{TrustLevel: tt.trust}
+			if entry.TrustLevelValue() != tt.expected {
+				t.Errorf("TrustLevelValue() = %q, want %q", entry.TrustLevelValue(), tt.expected)
+			}
+		})
+	}
+}
+
+func TestConversationsDisplayIngestLXMURI(t *testing.T) {
+	t.Parallel()
+
+	app := tview.NewApplication()
+	cd := NewConversationsDisplay(app, nil)
+
+	cd.OpenIngestURIDialog()
+	if !cd.DialogOpen() {
+		t.Error("OpenIngestURIDialog should set dialog open")
+	}
+
+	cd.ConfirmIngestURI("lxm://abc123def")
+	if cd.DialogOpen() {
+		t.Error("ConfirmIngestURI should close dialog")
+	}
+	if cd.IngestURIDialogValue() != "lxm://abc123def" {
+		t.Errorf("IngestURIDialogValue = %q, want %q", cd.IngestURIDialogValue(), "lxm://abc123def")
+	}
+}
+
+func TestConversationsDisplayIngestURIDismiss(t *testing.T) {
+	t.Parallel()
+
+	app := tview.NewApplication()
+	cd := NewConversationsDisplay(app, nil)
+
+	cd.OpenIngestURIDialog()
+	cd.DismissIngestURIDialog()
+
+	if cd.DialogOpen() {
+		t.Error("DismissIngestURIDialog should close dialog")
+	}
+}
+
+func TestConversationsDisplaySyncConversations(t *testing.T) {
+	t.Parallel()
+
+	app := tview.NewApplication()
+	cd := NewConversationsDisplay(app, nil)
+
+	cd.OpenSyncDialog()
+	if !cd.DialogOpen() {
+		t.Error("OpenSyncDialog should set dialog open")
+	}
+}
+
+func TestConversationsDisplaySyncConversationsRequestSync(t *testing.T) {
+	t.Parallel()
+
+	app := tview.NewApplication()
+	cd := NewConversationsDisplay(app, nil)
+
+	var syncRequested bool
+	var syncLimit int
+	cd.OnSyncRequested = func(limit int) { syncRequested = true; syncLimit = limit }
+
+	cd.OpenSyncDialog()
+	cd.RequestSync(0)
+
+	if syncRequested != true {
+		t.Error("RequestSync should fire OnSyncRequested")
+	}
+	if syncLimit != 0 {
+		t.Errorf("syncLimit = %d, want 0 (unlimited)", syncLimit)
+	}
+}
+
+func TestConversationsDisplaySyncConversationsWithLimit(t *testing.T) {
+	t.Parallel()
+
+	app := tview.NewApplication()
+	cd := NewConversationsDisplay(app, nil)
+
+	var syncLimit int
+	cd.OnSyncRequested = func(limit int) { syncLimit = limit }
+
+	cd.OpenSyncDialog()
+	cd.RequestSync(5)
+
+	if syncLimit != 5 {
+		t.Errorf("syncLimit = %d, want 5", syncLimit)
+	}
+}
+
+func TestConversationsDisplaySyncConversationsDismiss(t *testing.T) {
+	t.Parallel()
+
+	app := tview.NewApplication()
+	cd := NewConversationsDisplay(app, nil)
+
+	cd.OpenSyncDialog()
+	cd.DismissSyncDialog()
+
+	if cd.DialogOpen() {
+		t.Error("DismissSyncDialog should close dialog")
+	}
+}
+
+func TestSyncStatus(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		progress int
+		running  bool
+		node     string
+		wantBar  string
+	}{
+		{"idle", 0, false, "", ""},
+		{"syncing 50%", 50, true, "Node1", "[==========          ] 50%"},
+		{"syncing 100%", 100, true, "", "[====================] 100%"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			ss := &SyncStatus{
+				SyncProgress: tt.progress,
+				SyncRunning:  tt.running,
+				NodeLabel:    tt.node,
+			}
+			bar := ss.FormatSyncProgress()
+			if bar != tt.wantBar {
+				t.Errorf("FormatSyncProgress() = %q, want %q", bar, tt.wantBar)
+			}
+		})
+	}
+}
+
+func TestSyncStatusLine(t *testing.T) {
+	t.Parallel()
+
+	ss := &SyncStatus{HasSynced: false}
+	if got := ss.FormatStatusLine(); got != "Last sync: never" {
+		t.Errorf("FormatStatusLine() = %q, want %q", got, "Last sync: never")
+	}
+}
+
+func TestConversationsDisplayShowBlocked(t *testing.T) {
+	t.Parallel()
+
+	app := tview.NewApplication()
+	cd := NewConversationsDisplay(app, nil)
+
+	if cd.ShowBlocked() {
+		t.Error("ShowBlocked should default to false")
+	}
+
+	cd.SetShowBlocked(true)
+	if !cd.ShowBlocked() {
+		t.Error("SetShowBlocked(true) should make ShowBlocked return true")
+	}
+
+	cd.SetShowBlocked(false)
+	if cd.ShowBlocked() {
+		t.Error("SetShowBlocked(false) should make ShowBlocked return false")
+	}
+}
+
+func TestConversationsDisplayShowBlockedFiltersList(t *testing.T) {
+	t.Parallel()
+
+	app := tview.NewApplication()
+	convs := []ConversationInfo{
+		{SourceHash: "aaaa", DisplayName: "Alice", TrustLevel: "trusted"},
+		{SourceHash: "bbbb", DisplayName: "Eve", TrustLevel: "blocked"},
+	}
+	cd := NewConversationsDisplay(app, convs)
+
+	cd.showTrusted = false
+
+	cd.SetShowBlocked(false)
+	filtered := FilterConversationsWithBlocked(cd.conversations, "untrusted", cd.ShowBlocked())
+	if len(filtered) != 0 {
+		t.Errorf("without blocked, got %d untrusted, want 0", len(filtered))
+	}
+
+	cd.SetShowBlocked(true)
+	filtered = FilterConversationsWithBlocked(cd.conversations, "untrusted", cd.ShowBlocked())
+	if len(filtered) != 1 {
+		t.Errorf("with blocked, got %d untrusted, want 1", len(filtered))
+	}
+}
+
+func TestConversationsDisplayBlockedRowLabel(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		displayName string
+		sourceHash  string
+		wantPrefix  string
+	}{
+		{"named peer", "Eve", "aabb1122", "× [blocked] Eve"},
+		{"unnamed peer", "", "aabb1122", "× [blocked]"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			label := BlockedRowLabel(tt.displayName, tt.sourceHash)
+			if !containsSubstring(label, tt.wantPrefix) {
+				t.Errorf("BlockedRowLabel(%q, %q) = %q, want prefix %q", tt.displayName, tt.sourceHash, label, tt.wantPrefix)
+			}
+		})
+	}
+}
+
+func containsSubstring(s, sub string) bool {
+	return len(s) >= len(sub) && (s[:len(sub)] == sub || containsSubstring(s[1:], sub))
+}

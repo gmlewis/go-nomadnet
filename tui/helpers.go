@@ -16,6 +16,7 @@
 package tui
 
 import (
+	"encoding/base64"
 	"fmt"
 	"os/exec"
 	"runtime"
@@ -53,12 +54,17 @@ func CopyToClipboard(text string) error {
 	return cmd.Run()
 }
 
-// OSC52Copy attempts to copy text using the OSC 52 escape sequence,
-// which works in terminals that support it (iTerm2, kitty, etc.).
+// OSC52Copy copies text using the OSC 52 escape sequence, which works
+// in terminals that support it (iTerm2, kitty, etc.).
+// Matches Python's osc52_copy() at Helpers.py:7.
 func OSC52Copy(text string) error {
-	// OSC 52 format: ESC ] 52 ; c ; <base64> ESC \
-	// This is a placeholder implementation
-	return nil
+	if text == "" {
+		return nil
+	}
+	encoded := base64.StdEncoding.EncodeToString([]byte(text))
+	escape := "\x1b]52;c;" + encoded + "\x07"
+	_, err := fmt.Print(escape)
+	return err
 }
 
 var (
@@ -87,13 +93,19 @@ func NewClickableIcon(glyph string, action func()) *ClickableIcon {
 	}
 	ci.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
 		if action&tview.MouseLeftClick != 0 {
-			if ci.action != nil {
-				ci.action()
-			}
+			ci.HandleMouseLeftClick()
 		}
 		return action, event
 	})
 	return ci
+}
+
+// HandleMouseLeftClick fires the on-click callback.
+// Matches Python's ClickableIcon.mouse_event() at Helpers.py:27.
+func (ci *ClickableIcon) HandleMouseLeftClick() {
+	if ci.action != nil {
+		ci.action()
+	}
 }
 
 // Draw implements tview.Primitive.

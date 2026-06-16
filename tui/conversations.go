@@ -42,13 +42,16 @@ type ConversationInfo struct {
 // ConversationsDisplay shows the conversation list and message view.
 // Matches Python's ConversationsDisplay with Trusted/Untrusted tabs.
 type ConversationsDisplay struct {
-	app           *tview.Application
-	widget        *tview.Flex
-	list          *tview.List
-	detail        *tview.TextView
-	conversations []ConversationInfo
-	selected      int
-	showTrusted   bool // true = trusted tab, false = untrusted
+	app            *tview.Application
+	widget         *tview.Flex
+	list           *tview.List
+	detail         *tview.TextView
+	conversations  []ConversationInfo
+	selected       int
+	showTrusted    bool // true = trusted tab, false = untrusted
+	showBlocked    bool // show blocked peers in untrusted tab
+	dialogOpen     bool
+	ingestURIValue string
 
 	// Keyboard shortcut callbacks (Python: ConversationsArea.keypress)
 	OnEditPeerInfo     func()
@@ -59,6 +62,7 @@ type ConversationsDisplay struct {
 	OnToggleFullscreen func()
 	OnToggleSort       func()
 	OnShowQR           func()
+	OnSyncRequested    func(limit int)
 }
 
 // NewConversationsDisplay creates a new conversations display.
@@ -381,4 +385,117 @@ func (cd *ConversationsDisplay) SetConversations(convs []ConversationInfo) {
 // ToggleSort toggles between sort-by-time and sort-by-name.
 func (cd *ConversationsDisplay) ToggleSort() {
 	cd.populateList()
+}
+
+// PeerInfoEntry holds the data for a peer info dialog.
+// Matches Python's directory entry fields used in
+// edit_selected_in_directory() at Conversations.py:821.
+type PeerInfoEntry struct {
+	SourceHash        string
+	DisplayName       string
+	TrustLevel        string
+	PreferredDelivery string
+	Pinned            bool
+	Notes             string
+}
+
+// TrustLevelValue returns the trust level string normalized to one of
+// TrustTrusted, TrustUntrusted, or TrustUnknown.
+func (e PeerInfoEntry) TrustLevelValue() string {
+	switch e.TrustLevel {
+	case TrustTrusted:
+		return TrustTrusted
+	case TrustUntrusted, "blocked":
+		return TrustUntrusted
+	default:
+		return TrustUnknown
+	}
+}
+
+// EditSelectedInDirectory opens a Peer Info dialog for the currently
+// selected conversation, returning the peer's directory entry data.
+// Matches Python's edit_selected_in_directory() at Conversations.py:821.
+func (cd *ConversationsDisplay) EditSelectedInDirectory() PeerInfoEntry {
+	conv, ok := cd.GetSelectedConversation()
+	if !ok {
+		return PeerInfoEntry{}
+	}
+	return PeerInfoEntry{
+		SourceHash:  conv.SourceHash,
+		DisplayName: conv.DisplayName,
+		TrustLevel:  conv.TrustLevel,
+	}
+}
+
+// DialogOpen reports whether a dialog is currently open.
+func (cd *ConversationsDisplay) DialogOpen() bool {
+	return cd.dialogOpen
+}
+
+// OpenIngestURIDialog opens the ingest LXMF URI dialog.
+// Matches Python's ingest_lxm_uri() at Conversations.py:1118.
+func (cd *ConversationsDisplay) OpenIngestURIDialog() {
+	cd.dialogOpen = true
+	cd.ingestURIValue = ""
+}
+
+// ConfirmIngestURI confirms the URI to ingest and closes the dialog.
+func (cd *ConversationsDisplay) ConfirmIngestURI(uri string) {
+	cd.ingestURIValue = uri
+	cd.dialogOpen = false
+}
+
+// IngestURIDialogValue returns the URI entered in the dialog.
+func (cd *ConversationsDisplay) IngestURIDialogValue() string {
+	return cd.ingestURIValue
+}
+
+// DismissIngestURIDialog closes the ingest URI dialog without action.
+func (cd *ConversationsDisplay) DismissIngestURIDialog() {
+	cd.dialogOpen = false
+	cd.ingestURIValue = ""
+}
+
+// ShowBlocked reports whether blocked peers are shown in the
+// untrusted tab. Matches Python's _on_show_blocked_change()
+// at Conversations.py:306.
+func (cd *ConversationsDisplay) ShowBlocked() bool {
+	return cd.showBlocked
+}
+
+// SetShowBlocked toggles showing blocked peers and refreshes
+// the conversation list. Matches Python's _on_show_blocked_change()
+// at Conversations.py:306.
+func (cd *ConversationsDisplay) SetShowBlocked(show bool) {
+	cd.showBlocked = show
+	cd.populateList()
+}
+
+// BlockedRowLabel formats the display label for a blocked peer row.
+// Matches Python's _blocked_row_widget() at Conversations.py:332.
+func BlockedRowLabel(displayName, sourceHash string) string {
+	if displayName == "" {
+		displayName = sourceHash
+	}
+	return fmt.Sprintf("× [blocked] %s", displayName)
+}
+
+// OpenSyncDialog opens the LXMF sync dialog with propagation
+// node selector and progress bar.
+// Matches Python's sync_conversations() at Conversations.py:1359.
+func (cd *ConversationsDisplay) OpenSyncDialog() {
+	cd.dialogOpen = true
+}
+
+// RequestSync requests an LXMF sync with an optional message limit.
+// A limit of 0 means download all messages.
+func (cd *ConversationsDisplay) RequestSync(limit int) {
+	if cd.OnSyncRequested != nil {
+		cd.OnSyncRequested(limit)
+	}
+}
+
+// DismissSyncDialog closes the sync dialog.
+func (cd *ConversationsDisplay) DismissSyncDialog() {
+	cd.dialogOpen = false
 }

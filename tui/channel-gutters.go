@@ -20,46 +20,100 @@ import (
 	"github.com/rivo/tview"
 )
 
-// ChannelGutter is a 1-char-wide clickable gutter that toggles
-// panel visibility. Matches Python's ChannelsExpandGutter at
-// Channels.py:267 and UsersExpandGutter at Channels.py:290.
-type ChannelGutter struct {
+// GutterDirection indicates which arrow direction a gutter displays.
+type GutterDirection int
+
+const (
+	GutterRight GutterDirection = iota
+	GutterLeft
+)
+
+// ExpandGutter is a 1-char-wide clickable gutter that toggles
+// panel visibility via mouse left-click. It supports two visual
+// directions matching the Python gutters:
+//   - GutterRight: matches ChannelsExpandGutter at Channels.py:267
+//     which calls delegate.toggle_channel_list()
+//   - GutterLeft: matches UsersExpandGutter at Channels.py:290
+//     which calls delegate.toggle_users()
+type ExpandGutter struct {
 	*tview.Box
-	expanded bool
-	onToggle func()
+	expanded  bool
+	direction GutterDirection
+	onToggle  func()
 }
 
-// NewChannelGutter creates a 1-char-wide expand/collapse gutter.
-func NewChannelGutter(onToggle func()) *ChannelGutter {
-	cg := &ChannelGutter{
-		Box:      tview.NewBox(),
-		expanded: true,
-		onToggle: onToggle,
+// NewChannelsExpandGutter creates a right-arrow gutter that toggles
+// the channel list panel. Matches Python's ChannelsExpandGutter
+// at Channels.py:267.
+func NewChannelsExpandGutter(onToggle func()) *ExpandGutter {
+	return newExpandGutter(GutterRight, onToggle)
+}
+
+// NewUsersExpandGutter creates a left-arrow gutter that toggles
+// the users panel. Matches Python's UsersExpandGutter
+// at Channels.py:290.
+func NewUsersExpandGutter(onToggle func()) *ExpandGutter {
+	return newExpandGutter(GutterLeft, onToggle)
+}
+
+// newExpandGutter creates an ExpandGutter with the given direction.
+func newExpandGutter(dir GutterDirection, onToggle func()) *ExpandGutter {
+	g := &ExpandGutter{
+		Box:       tview.NewBox(),
+		expanded:  true,
+		direction: dir,
+		onToggle:  onToggle,
 	}
-	cg.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
+	g.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
 		if action&tview.MouseLeftClick != 0 {
-			cg.expanded = !cg.expanded
-			if cg.onToggle != nil {
-				cg.onToggle()
-			}
+			g.HandleMouseLeftClick()
 		}
 		return action, event
 	})
-	return cg
+	return g
+}
+
+// HandleMouseLeftClick processes a mouse left-click by toggling
+// the expanded state and calling the onToggle callback.
+// Matches Python's mouse_event at Channels.py:267 and Channels.py:290.
+func (g *ExpandGutter) HandleMouseLeftClick() {
+	g.expanded = !g.expanded
+	if g.onToggle != nil {
+		g.onToggle()
+	}
+}
+
+// Expanded reports whether the associated panel is currently expanded.
+func (g *ExpandGutter) Expanded() bool {
+	return g.expanded
 }
 
 // SetExpanded sets the expanded state for the gutter indicator.
-func (cg *ChannelGutter) SetExpanded(expanded bool) {
-	cg.expanded = expanded
+func (g *ExpandGutter) SetExpanded(expanded bool) {
+	g.expanded = expanded
+}
+
+// Direction returns the gutter's arrow direction.
+func (g *ExpandGutter) Direction() GutterDirection {
+	return g.direction
 }
 
 // Draw implements tview.Primitive.
-func (cg *ChannelGutter) Draw(screen tcell.Screen) {
-	cg.Box.DrawForSubclass(screen, cg)
-	x, y, _, _ := cg.GetInnerRect()
-	glyph := "▸"
-	if cg.expanded {
-		glyph = "▾"
+func (g *ExpandGutter) Draw(screen tcell.Screen) {
+	g.Box.DrawForSubclass(screen, g)
+	x, y, _, _ := g.GetInnerRect()
+	var glyph string
+	switch g.direction {
+	case GutterRight:
+		glyph = "▸"
+		if g.expanded {
+			glyph = "▾"
+		}
+	case GutterLeft:
+		glyph = "◂"
+		if g.expanded {
+			glyph = "▾"
+		}
 	}
 	style := tcell.StyleDefault.Foreground(tcell.NewHexColor(0x666666))
 	screen.SetContent(x, y, []rune(glyph)[0], nil, style)

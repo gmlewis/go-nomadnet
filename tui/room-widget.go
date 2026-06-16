@@ -26,21 +26,24 @@ import (
 // RoomWidget displays a single RRC chat room with messages, users, and editor.
 // Matches Python's RoomWidget at Channels.py:590.
 type RoomWidget struct {
-	app          *tview.Application
-	hubName      string
-	roomName     string
-	widget       tview.Primitive
-	columns      *tview.Flex
-	chatBox      *tview.Flex
-	messages     *tview.TextView
-	usersList    *tview.List
-	editor       *ReadlineEdit
-	usersVisible bool
+	app             *tview.Application
+	hubName         string
+	roomName        string
+	widget          tview.Primitive
+	columns         *tview.Flex
+	chatBox         *tview.Flex
+	messages        *tview.TextView
+	usersList       *tview.List
+	editor          *ReadlineEdit
+	usersVisible    bool
+	hubConnected    bool
+	maxMessageBytes int
 
 	// Callbacks
 	OnSendMessage func(text string)
 	OnLeaveRoom   func()
 	OnToggleUsers func()
+	OnSplitDialog func(text string, limit int)
 
 	// Message data
 	chatMessages []ChannelMessage
@@ -51,10 +54,12 @@ type RoomWidget struct {
 // Matches Python's RoomWidget.__init__().
 func NewRoomWidget(app *tview.Application, hubName, roomName string) *RoomWidget {
 	rw := &RoomWidget{
-		app:          app,
-		hubName:      hubName,
-		roomName:     roomName,
-		usersVisible: true,
+		app:             app,
+		hubName:         hubName,
+		roomName:        roomName,
+		usersVisible:    true,
+		hubConnected:    true,
+		maxMessageBytes: 350,
 	}
 
 	// Messages view
@@ -135,13 +140,26 @@ func (rw *RoomWidget) handleInput(event *tcell.EventKey) *tcell.EventKey {
 }
 
 // sendMessage sends the current editor content.
+// Matches Python's RoomWidget.send_message() at Channels.py:864.
 func (rw *RoomWidget) sendMessage() {
-	text := rw.editor.GetText()
+	text := strings.TrimSpace(rw.editor.GetText())
 	if text == "" {
 		return
 	}
 	if strings.HasPrefix(text, "/") {
 		rw.handleSlashCommand(text)
+		return
+	}
+	if !rw.hubConnected {
+		if rw.OnSendMessage != nil {
+			rw.OnSendMessage("/connect")
+		}
+		return
+	}
+	if NeedsSplit(text, rw.maxMessageBytes) {
+		if rw.OnSplitDialog != nil {
+			rw.OnSplitDialog(text, rw.maxMessageBytes)
+		}
 		return
 	}
 	if rw.OnSendMessage != nil {
@@ -243,4 +261,24 @@ func (rw *RoomWidget) renderMembers() {
 	if len(rw.members) == 0 {
 		rw.usersList.AddItem("[gray]No users[-]", "", 0, nil)
 	}
+}
+
+// HubConnected reports whether the hub is currently connected.
+func (rw *RoomWidget) HubConnected() bool {
+	return rw.hubConnected
+}
+
+// SetHubConnected sets the hub connection status.
+func (rw *RoomWidget) SetHubConnected(connected bool) {
+	rw.hubConnected = connected
+}
+
+// MaxMessageBytes returns the per-message byte limit.
+func (rw *RoomWidget) MaxMessageBytes() int {
+	return rw.maxMessageBytes
+}
+
+// SetMaxMessageBytes sets the per-message byte limit.
+func (rw *RoomWidget) SetMaxMessageBytes(limit int) {
+	rw.maxMessageBytes = limit
 }

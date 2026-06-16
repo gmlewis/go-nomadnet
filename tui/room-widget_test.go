@@ -70,6 +70,90 @@ func TestRoomWidgetSendMessageEmpty(t *testing.T) {
 	}
 }
 
+func TestRoomWidgetSendMessageWhitespaceOnly(t *testing.T) {
+	t.Parallel()
+
+	app := tview.NewApplication()
+	rw := NewRoomWidget(app, "hub1", "general")
+
+	sent := false
+	rw.OnSendMessage = func(text string) { sent = true }
+	rw.editor.SetText("   ")
+	rw.sendMessage()
+
+	if sent {
+		t.Error("Whitespace-only message should not be sent")
+	}
+}
+
+func TestRoomWidgetSendMessageHubDisconnected(t *testing.T) {
+	t.Parallel()
+
+	app := tview.NewApplication()
+	rw := NewRoomWidget(app, "hub1", "general")
+	rw.hubConnected = false
+
+	var sent string
+	rw.OnSendMessage = func(text string) { sent = text }
+	rw.editor.SetText("Hello")
+	rw.sendMessage()
+
+	if sent != "/connect" {
+		t.Errorf("disconnected hub should send /connect, got %q", sent)
+	}
+}
+
+func TestRoomWidgetSendMessageTooLong(t *testing.T) {
+	t.Parallel()
+
+	app := tview.NewApplication()
+	rw := NewRoomWidget(app, "hub1", "general")
+	rw.maxMessageBytes = 10
+
+	var splitText string
+	rw.OnSplitDialog = func(text string, limit int) { splitText = text }
+
+	longMsg := "This is a very long message that exceeds the byte limit"
+	rw.editor.SetText(longMsg)
+	rw.sendMessage()
+
+	if splitText != longMsg {
+		t.Errorf("long message should trigger split dialog, got %q", splitText)
+	}
+}
+
+func TestRoomWidgetSetHubConnected(t *testing.T) {
+	t.Parallel()
+
+	app := tview.NewApplication()
+	rw := NewRoomWidget(app, "hub1", "general")
+
+	if !rw.HubConnected() {
+		t.Error("HubConnected should default to true")
+	}
+
+	rw.SetHubConnected(false)
+	if rw.HubConnected() {
+		t.Error("SetHubConnected(false) should make HubConnected return false")
+	}
+}
+
+func TestRoomWidgetSetMaxMessageBytes(t *testing.T) {
+	t.Parallel()
+
+	app := tview.NewApplication()
+	rw := NewRoomWidget(app, "hub1", "general")
+
+	if rw.MaxMessageBytes() != 350 {
+		t.Errorf("MaxMessageBytes = %d, want 350", rw.MaxMessageBytes())
+	}
+
+	rw.SetMaxMessageBytes(500)
+	if rw.MaxMessageBytes() != 500 {
+		t.Errorf("MaxMessageBytes = %d, want 500", rw.MaxMessageBytes())
+	}
+}
+
 func TestRoomWidgetKeyboardShortcuts(t *testing.T) {
 	t.Parallel()
 

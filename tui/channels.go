@@ -54,13 +54,14 @@ type ChannelInfo struct {
 
 // ChannelsDisplay shows the RRC chat interface.
 type ChannelsDisplay struct {
-	app      *tview.Application
-	widget   tview.Primitive
-	layout   *tview.Flex
-	rooms    *tview.List
-	messages *tview.TextView
-	members  *tview.List
-	input    *ReadlineEdit
+	app                *tview.Application
+	widget             tview.Primitive
+	layout             *tview.Flex
+	rooms              *tview.List
+	messages           *tview.TextView
+	members            *tview.List
+	input              *ReadlineEdit
+	channelListVisible bool
 
 	// Keyboard shortcut callbacks (Python: ChannelsListArea.keypress, RoomFrame.keypress)
 	OnNewHub              func()
@@ -77,7 +78,10 @@ type ChannelsDisplay struct {
 
 // NewChannelsDisplay creates a new channels display.
 func NewChannelsDisplay(app *tview.Application, rooms []ChannelInfo) *ChannelsDisplay {
-	cd := &ChannelsDisplay{app: app}
+	cd := &ChannelsDisplay{
+		app:                app,
+		channelListVisible: true,
+	}
 
 	// Title
 	title := tview.NewTextView().
@@ -237,6 +241,18 @@ func (cd *ChannelsDisplay) ToggleChannelListVisibility() {
 	if cd.OnToggleChannelList != nil {
 		cd.OnToggleChannelList()
 	}
+}
+
+// ChannelListVisible reports whether the channel list panel is visible.
+// Matches Python's channel_list_visible at Channels.py:1531.
+func (cd *ChannelsDisplay) ChannelListVisible() bool {
+	return cd.channelListVisible
+}
+
+// ToggleChannelListState toggles the channel list visibility state.
+// Matches Python's toggle_channel_list() at Channels.py:1531.
+func (cd *ChannelsDisplay) ToggleChannelListState() {
+	cd.channelListVisible = !cd.channelListVisible
 }
 
 // SetMessages replaces the messages view content.

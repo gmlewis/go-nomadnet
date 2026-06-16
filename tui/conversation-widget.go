@@ -46,11 +46,17 @@ type ConversationWidget struct {
 	sortByTimestamp  bool
 
 	// Callbacks
-	OnClose        func()
-	OnPurgeFailed  func()
-	OnClearHistory func()
-	OnSend         func(content, title string)
-	OnAttach       func()
+	OnClose           func()
+	OnPurgeFailed     func()
+	OnClearHistory    func()
+	OnSend            func(content, title string)
+	OnAttach          func()
+	OnPaperMessage    func(action string)
+	OnAttachFiles     func(paths []string)
+	OnSaveAttachments func(names []string)
+
+	// Dialog state
+	dialogOpen bool
 
 	// Message data
 	messages []ConversationMessage
@@ -278,4 +284,123 @@ func FormatQRText(data string) string {
 	sb.WriteString(fmt.Sprintf("│  %s  │\n", data))
 	sb.WriteString(fmt.Sprintf("└%s┘\n", strings.Repeat("─", len(data)+4)))
 	return sb.String()
+}
+
+// ClearHistoryDialog shows a confirmation dialog before clearing
+// conversation history. Matches Python's clear_history_dialog()
+// at Conversations.py:2122.
+func (cw *ConversationWidget) ClearHistoryDialog() {
+	cw.dialogOpen = true
+}
+
+// ConfirmClearHistory confirms the clear history action, fires
+// the OnClearHistory callback, and closes the dialog.
+func (cw *ConversationWidget) ConfirmClearHistory() {
+	cw.dialogOpen = false
+	if cw.OnClearHistory != nil {
+		cw.OnClearHistory()
+	}
+}
+
+// DismissClearHistoryDialog closes the clear history dialog
+// without taking action.
+func (cw *ConversationWidget) DismissClearHistoryDialog() {
+	cw.dialogOpen = false
+}
+
+// DialogOpen reports whether a dialog is currently open.
+func (cw *ConversationWidget) DialogOpen() bool {
+	return cw.dialogOpen
+}
+
+// PaperMessageDialog shows a dialog for choosing how to output a
+// paper message: Print QR, Save QR, Save URI, or Cancel.
+// Matches Python's paper_message() at Conversations.py:2505.
+func (cw *ConversationWidget) PaperMessageDialog() {
+	cw.dialogOpen = true
+}
+
+// PaperMessagePrintQR fires the OnPaperMessage callback with "PrintQR"
+// and closes the dialog.
+func (cw *ConversationWidget) PaperMessagePrintQR() {
+	cw.dialogOpen = false
+	if cw.OnPaperMessage != nil {
+		cw.OnPaperMessage("PrintQR")
+	}
+}
+
+// PaperMessageSaveQR fires the OnPaperMessage callback with "SaveQR"
+// and closes the dialog.
+func (cw *ConversationWidget) PaperMessageSaveQR() {
+	cw.dialogOpen = false
+	if cw.OnPaperMessage != nil {
+		cw.OnPaperMessage("SaveQR")
+	}
+}
+
+// PaperMessageSaveURI fires the OnPaperMessage callback with "SaveURI"
+// and closes the dialog.
+func (cw *ConversationWidget) PaperMessageSaveURI() {
+	cw.dialogOpen = false
+	if cw.OnPaperMessage != nil {
+		cw.OnPaperMessage("SaveURI")
+	}
+}
+
+// DismissPaperMessageDialog closes the paper message dialog
+// without taking action.
+func (cw *ConversationWidget) DismissPaperMessageDialog() {
+	cw.dialogOpen = false
+}
+
+// OpenAttachFileDialog opens a file browser dialog for selecting
+// files to attach. Matches Python's attach_file() at
+// Conversations.py:2438.
+func (cw *ConversationWidget) OpenAttachFileDialog(startDir string) {
+	cw.dialogOpen = true
+}
+
+// ConfirmAttachFile confirms the file selection, fires the
+// OnAttachFiles callback, and closes the dialog.
+func (cw *ConversationWidget) ConfirmAttachFile(paths []string) {
+	cw.dialogOpen = false
+	if cw.OnAttachFiles != nil {
+		cw.OnAttachFiles(paths)
+	}
+}
+
+// DismissAttachFileDialog closes the attach file dialog
+// without selecting any files.
+func (cw *ConversationWidget) DismissAttachFileDialog() {
+	cw.dialogOpen = false
+}
+
+// AttachmentRef represents a single attachment in a conversation.
+// Matches Python's _collect_attachment_refs() at Conversations.py:2270.
+type AttachmentRef struct {
+	Name string
+	Type string
+}
+
+// SaveAttachmentsDialog shows a dialog with checkboxes for each
+// attachment in the conversation, allowing the user to select
+// which to save. Matches Python's save_focused_attachments()
+// at Conversations.py:2324.
+func (cw *ConversationWidget) SaveAttachmentsDialog(attachments []AttachmentRef) {
+	cw.dialogOpen = true
+}
+
+// ConfirmSaveAttachments saves the selected attachments, fires
+// the OnSaveAttachments callback, and closes the dialog.
+func (cw *ConversationWidget) ConfirmSaveAttachments(names []string) {
+	cw.dialogOpen = false
+	if cw.OnSaveAttachments != nil {
+		cw.OnSaveAttachments(names)
+	}
+}
+
+// DismissSaveAttachmentsDialog closes the save attachments
+// dialog without saving.
+func (cw *ConversationWidget) DismissSaveAttachmentsDialog() {
+	cw.dialogOpen = false
 }

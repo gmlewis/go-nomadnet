@@ -156,3 +156,24 @@ func TestChannelsDisplayKeyboardShortcuts(t *testing.T) {
 		})
 	}
 }
+
+func TestChannelsDisplayChannelListVisibility(t *testing.T) {
+	t.Parallel()
+
+	app := tview.NewApplication()
+	cd := NewChannelsDisplay(app, nil)
+
+	if !cd.ChannelListVisible() {
+		t.Error("ChannelListVisible should default to true")
+	}
+
+	cd.ToggleChannelListState()
+	if cd.ChannelListVisible() {
+		t.Error("ToggleChannelListState should toggle visibility")
+	}
+
+	cd.ToggleChannelListState()
+	if !cd.ChannelListVisible() {
+		t.Error("Second toggle should restore visibility")
+	}
+}

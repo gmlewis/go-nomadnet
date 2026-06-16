@@ -201,3 +201,163 @@ func TestConversationWidgetRenderMessages(t *testing.T) {
 		t.Error("Message list should have content after SetMessages")
 	}
 }
+
+func TestConversationWidgetClearHistoryDialogConfirm(t *testing.T) {
+	t.Parallel()
+
+	app := tview.NewApplication()
+	cw := NewConversationWidget(app, "aabb1122")
+
+	now := time.Now()
+	cw.SetMessages([]ConversationMessage{
+		{Content: "Hello", Timestamp: now, IsSent: true},
+	})
+
+	var historyCleared bool
+	cw.OnClearHistory = func() { historyCleared = true }
+
+	cw.ClearHistoryDialog()
+	if !cw.DialogOpen() {
+		t.Error("ClearHistoryDialog should set dialog open")
+	}
+
+	cw.ConfirmClearHistory()
+	if historyCleared != true {
+		t.Error("ConfirmClearHistory should call OnClearHistory")
+	}
+	if cw.DialogOpen() {
+		t.Error("ConfirmClearHistory should close dialog")
+	}
+}
+
+func TestConversationWidgetClearHistoryDialogDismiss(t *testing.T) {
+	t.Parallel()
+
+	app := tview.NewApplication()
+	cw := NewConversationWidget(app, "aabb1122")
+
+	cw.ClearHistoryDialog()
+	if !cw.DialogOpen() {
+		t.Error("ClearHistoryDialog should set dialog open")
+	}
+
+	cw.DismissClearHistoryDialog()
+	if cw.DialogOpen() {
+		t.Error("DismissClearHistoryDialog should close dialog")
+	}
+}
+
+func TestConversationWidgetPaperMessageDialog(t *testing.T) {
+	t.Parallel()
+
+	app := tview.NewApplication()
+	cw := NewConversationWidget(app, "aabb1122")
+
+	cw.PaperMessageDialog()
+	if !cw.DialogOpen() {
+		t.Error("PaperMessageDialog should set dialog open")
+	}
+}
+
+func TestConversationWidgetPaperMessageDialogActions(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		action func(cw *ConversationWidget)
+	}{
+		{"PrintQR", func(cw *ConversationWidget) { cw.PaperMessagePrintQR() }},
+		{"SaveQR", func(cw *ConversationWidget) { cw.PaperMessageSaveQR() }},
+		{"SaveURI", func(cw *ConversationWidget) { cw.PaperMessageSaveURI() }},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := tview.NewApplication()
+			cw := NewConversationWidget(app, "aabb1122")
+
+			var actionFired string
+			cw.OnPaperMessage = func(action string) { actionFired = action }
+
+			cw.PaperMessageDialog()
+			tt.action(cw)
+
+			if cw.DialogOpen() {
+				t.Error("action should close dialog")
+			}
+			if actionFired != tt.name {
+				t.Errorf("OnPaperMessage = %q, want %q", actionFired, tt.name)
+			}
+		})
+	}
+}
+
+func TestConversationWidgetPaperMessageDialogCancel(t *testing.T) {
+	t.Parallel()
+
+	app := tview.NewApplication()
+	cw := NewConversationWidget(app, "aabb1122")
+
+	cw.PaperMessageDialog()
+	cw.DismissPaperMessageDialog()
+
+	if cw.DialogOpen() {
+		t.Error("DismissPaperMessageDialog should close dialog")
+	}
+}
+
+func TestConversationWidgetSaveAttachmentsNoAttachments(t *testing.T) {
+	t.Parallel()
+
+	app := tview.NewApplication()
+	cw := NewConversationWidget(app, "aabb1122")
+
+	cw.SaveAttachmentsDialog([]AttachmentRef{})
+	if !cw.DialogOpen() {
+		t.Error("SaveAttachmentsDialog should set dialog open")
+	}
+}
+
+func TestConversationWidgetSaveAttachmentsWithItems(t *testing.T) {
+	t.Parallel()
+
+	app := tview.NewApplication()
+	cw := NewConversationWidget(app, "aabb1122")
+
+	attachments := []AttachmentRef{
+		{Name: "photo.jpg", Type: "file"},
+		{Name: "doc.pdf", Type: "file"},
+	}
+
+	cw.SaveAttachmentsDialog(attachments)
+	if !cw.DialogOpen() {
+		t.Error("SaveAttachmentsDialog should set dialog open")
+	}
+
+	var saved []string
+	cw.OnSaveAttachments = func(names []string) { saved = names }
+
+	cw.ConfirmSaveAttachments([]string{"photo.jpg"})
+	if cw.DialogOpen() {
+		t.Error("ConfirmSaveAttachments should close dialog")
+	}
+	if len(saved) != 1 || saved[0] != "photo.jpg" {
+		t.Errorf("OnSaveAttachments = %v, want [photo.jpg]", saved)
+	}
+}
+
+func TestConversationWidgetDismissSaveAttachments(t *testing.T) {
+	t.Parallel()
+
+	app := tview.NewApplication()
+	cw := NewConversationWidget(app, "aabb1122")
+
+	cw.SaveAttachmentsDialog([]AttachmentRef{{Name: "file.txt", Type: "file"}})
+	cw.DismissSaveAttachmentsDialog()
+
+	if cw.DialogOpen() {
+		t.Error("DismissSaveAttachmentsDialog should close dialog")
+	}
+}
