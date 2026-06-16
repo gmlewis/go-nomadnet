@@ -54,10 +54,20 @@ type NetworkDisplay struct {
 	nodes        *tview.List
 	detail       *tview.TextView
 	showingNodes bool
-	inInfoView   bool // true when leftPanel shows AnnounceInfo
+	inInfoView   bool
 	displayMode  DisplayMode
 	announceData []AnnounceEntry
-	onNavigate   func(url string) // callback to open browser
+	onNavigate   func(url string)
+
+	// Keyboard shortcut callbacks (Python: NetworkDisplay.keypress)
+	OnToggleFullscreen func()
+	OnToggleList       func()
+	OnEditNode         func()
+	OnShowPeers        func()
+	OnDisconnect       func()
+	OnURLDialog        func()
+	OnSaveNode         func()
+	OnDeleteSelected   func()
 }
 
 // NewNetworkDisplay creates a new network display matching Python's layout.

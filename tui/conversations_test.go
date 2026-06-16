@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
@@ -206,5 +207,65 @@ func TestRenderMicronAsText(t *testing.T) {
 	result := renderMicronAsText("plain text")
 	if result != "plain text" {
 		t.Errorf("renderMicronAsText plain = %q, want %q", result, "plain text")
+	}
+}
+
+func TestConversationsDisplayKeyboardShortcuts(t *testing.T) {
+	t.Parallel()
+
+	app := tview.NewApplication()
+	cd := NewConversationsDisplay(app, nil)
+
+	// Track which callbacks fire
+	var fired []string
+	cd.OnEditPeerInfo = func() { fired = append(fired, "edit_peer") }
+	cd.OnDeleteConv = func() { fired = append(fired, "delete") }
+	cd.OnNewConv = func() { fired = append(fired, "new") }
+	cd.OnIngestURI = func() { fired = append(fired, "ingest") }
+	cd.OnSync = func() { fired = append(fired, "sync") }
+	cd.OnToggleFullscreen = func() { fired = append(fired, "fullscreen") }
+	cd.OnToggleSort = func() { fired = append(fired, "sort") }
+	cd.OnShowQR = func() { fired = append(fired, "qr") }
+
+	tests := []struct {
+		name  string
+		event *tcell.EventKey
+		want  string
+	}{
+		{"ctrl-e", tcell.NewEventKey(tcell.KeyCtrlE, 0, tcell.ModNone), "edit_peer"},
+		{"ctrl-x", tcell.NewEventKey(tcell.KeyCtrlX, 0, tcell.ModNone), "delete"},
+		{"ctrl-n", tcell.NewEventKey(tcell.KeyCtrlN, 0, tcell.ModNone), "new"},
+		{"ctrl-u", tcell.NewEventKey(tcell.KeyCtrlU, 0, tcell.ModNone), "ingest"},
+		{"ctrl-r", tcell.NewEventKey(tcell.KeyCtrlR, 0, tcell.ModNone), "sync"},
+		{"ctrl-g", tcell.NewEventKey(tcell.KeyCtrlG, 0, tcell.ModNone), "fullscreen"},
+		{"ctrl-o", tcell.NewEventKey(tcell.KeyCtrlO, 0, tcell.ModNone), "sort"},
+		{"ctrl-p", tcell.NewEventKey(tcell.KeyCtrlP, 0, tcell.ModNone), "qr"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fired = fired[:0]
+			result := cd.handleInput(tt.event)
+			if result != nil {
+				t.Errorf("key %s was not consumed (returned non-nil)", tt.name)
+			}
+			if len(fired) != 1 || fired[0] != tt.want {
+				t.Errorf("key %s fired %v, want [%s]", tt.name, fired, tt.want)
+			}
+		})
+	}
+}
+
+func TestConversationsDisplayUnhandledKeys(t *testing.T) {
+	t.Parallel()
+
+	app := tview.NewApplication()
+	cd := NewConversationsDisplay(app, nil)
+
+	// Unhandled keys should pass through
+	event := tcell.NewEventKey(tcell.KeyUp, 0, tcell.ModNone)
+	result := cd.handleInput(event)
+	if result != event {
+		t.Error("Unhandled key should pass through")
 	}
 }

@@ -49,6 +49,16 @@ type ConversationsDisplay struct {
 	conversations []ConversationInfo
 	selected      int
 	showTrusted   bool // true = trusted tab, false = untrusted
+
+	// Keyboard shortcut callbacks (Python: ConversationsArea.keypress)
+	OnEditPeerInfo    func()
+	OnDeleteConv      func()
+	OnNewConv         func()
+	OnIngestURI       func()
+	OnSync            func()
+	OnToggleFullscreen func()
+	OnToggleSort      func()
+	OnShowQR          func()
 }
 
 // NewConversationsDisplay creates a new conversations display.
@@ -118,7 +128,59 @@ func NewConversationsDisplay(app *tview.Application, convs []ConversationInfo) *
 		cd.showDetail(i)
 	})
 
+	// Set up keyboard shortcuts matching Python's ConversationsArea.keypress()
+	cd.widget.SetInputCapture(cd.handleInput)
+
 	return cd
+}
+
+// handleInput processes keyboard shortcuts for the conversations display.
+// Matches Python's ConversationsArea.keypress() at Conversations.py:88.
+func (cd *ConversationsDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
+	switch event.Key() {
+	case tcell.KeyCtrlE:
+		if cd.OnEditPeerInfo != nil {
+			cd.OnEditPeerInfo()
+		}
+		return nil
+	case tcell.KeyCtrlX:
+		if cd.OnDeleteConv != nil {
+			cd.OnDeleteConv()
+		}
+		return nil
+	case tcell.KeyCtrlN:
+		if cd.OnNewConv != nil {
+			cd.OnNewConv()
+		}
+		return nil
+	case tcell.KeyCtrlU:
+		if cd.OnIngestURI != nil {
+			cd.OnIngestURI()
+		}
+		return nil
+	case tcell.KeyCtrlR:
+		if cd.OnSync != nil {
+			cd.OnSync()
+		}
+		return nil
+	case tcell.KeyCtrlG:
+		if cd.OnToggleFullscreen != nil {
+			cd.OnToggleFullscreen()
+		}
+		return nil
+	case tcell.KeyCtrlO:
+		if cd.OnToggleSort != nil {
+			cd.OnToggleSort()
+		}
+		return nil
+	case tcell.KeyCtrlP:
+		if cd.OnShowQR != nil {
+			cd.OnShowQR()
+		}
+		return nil
+	}
+
+	return event
 }
 
 // populateList fills the list based on current tab (trusted/untrusted).

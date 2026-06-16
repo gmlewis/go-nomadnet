@@ -56,10 +56,23 @@ type ChannelInfo struct {
 type ChannelsDisplay struct {
 	app      *tview.Application
 	widget   tview.Primitive
+	layout   *tview.Flex
 	rooms    *tview.List
 	messages *tview.TextView
 	members  *tview.List
 	input    *ReadlineEdit
+
+	// Keyboard shortcut callbacks (Python: ChannelsListArea.keypress, RoomFrame.keypress)
+	OnNewHub           func()
+	OnJoinRoom         func()
+	OnConnect          func()
+	OnDisconnect       func()
+	OnToggleAutoReconnect func()
+	OnEditHub          func()
+	OnRemoveHub        func()
+	OnToggleChannelList func()
+	OnSendMessage      func()
+	OnLeaveRoom        func()
 }
 
 // NewChannelsDisplay creates a new channels display.
@@ -125,10 +138,62 @@ func NewChannelsDisplay(app *tview.Application, rooms []ChannelInfo) *ChannelsDi
 		AddItem(title, 2, 0, false).
 		AddItem(content, 0, 1, true)
 	layout.SetBorder(true)
+	layout.SetInputCapture(cd.handleInput)
 
+	cd.layout = layout
 	cd.widget = layout
 
 	return cd
+}
+
+// handleInput processes keyboard shortcuts for the channels display.
+// Matches Python's ChannelsListArea.keypress() at Channels.py:352
+// and RoomFrame.keypress() at Channels.py:522.
+func (cd *ChannelsDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
+	switch event.Key() {
+	case tcell.KeyCtrlN:
+		if cd.OnNewHub != nil {
+			cd.OnNewHub()
+		}
+		return nil
+	case tcell.KeyCtrlA:
+		if cd.OnJoinRoom != nil {
+			cd.OnJoinRoom()
+		}
+		return nil
+	case tcell.KeyCtrlR:
+		if cd.OnConnect != nil {
+			cd.OnConnect()
+		}
+		return nil
+	case tcell.KeyCtrlW:
+		if cd.OnDisconnect != nil {
+			cd.OnDisconnect()
+		}
+		return nil
+	case tcell.KeyCtrlT:
+		if cd.OnToggleAutoReconnect != nil {
+			cd.OnToggleAutoReconnect()
+		}
+		return nil
+	case tcell.KeyCtrlE:
+		if cd.OnEditHub != nil {
+			cd.OnEditHub()
+		}
+		return nil
+	case tcell.KeyCtrlX:
+		if cd.OnRemoveHub != nil {
+			cd.OnRemoveHub()
+		}
+		return nil
+	case tcell.KeyCtrlY:
+		if cd.OnToggleChannelList != nil {
+			cd.OnToggleChannelList()
+		}
+		return nil
+	}
+
+	return event
 }
 
 // Widget returns the tview primitive for this display.

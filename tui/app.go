@@ -30,6 +30,7 @@ type App struct {
 // NewApp creates a new tview Application with the given theme and glyph set.
 func NewApp(theme int, glyphSet string) *App {
 	tviewApp := tview.NewApplication()
+	tviewApp.EnableMouse(true)
 	glyphs := GetGlyphSet(glyphSet)
 	if glyphs == nil {
 		glyphs = glyphsUnicode
