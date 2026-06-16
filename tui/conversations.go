@@ -119,8 +119,8 @@ func NewConversationsDisplay(app *tview.Application, convs []ConversationInfo) *
 	leftPanel.AddItem(cd.list, 0, 1, true)
 
 	content := tview.NewFlex().SetDirection(tview.FlexColumn)
-	content.AddItem(leftPanel, 0, 1, true)
-	content.AddItem(cd.detail, 0, 2, false)
+	content.AddItem(leftPanel, 52, 0, true)
+	content.AddItem(cd.detail, 0, 1, false)
 
 	cd.widget = tview.NewFlex().SetDirection(tview.FlexRow)
 	cd.widget.SetBorder(true)

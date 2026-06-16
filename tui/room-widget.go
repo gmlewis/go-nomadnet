@@ -108,7 +108,7 @@ func NewRoomWidget(app *tview.Application, hubName, roomName string) *RoomWidget
 	// Columns: chat + users
 	rw.columns = tview.NewFlex().SetDirection(tview.FlexColumn).
 		AddItem(rw.chatBox, 0, 1, true).
-		AddItem(usersBox, 20, 0, false)
+		AddItem(usersBox, 22, 0, false)
 
 	rw.widget = rw.columns
 	rw.widget.(*tview.Flex).SetInputCapture(rw.handleInput)

@@ -75,6 +75,7 @@ type ChannelsDisplay struct {
 	OnSendMessage         func()
 	OnLeaveRoom           func()
 	OnToggleCollapse      func()
+	OnMemberClick         func(nick, hash string)
 }
 
 // NewChannelsDisplay creates a new channels display.
@@ -125,6 +126,12 @@ func NewChannelsDisplay(app *tview.Application, rooms []ChannelInfo) *ChannelsDi
 		SetHighlightFullLine(true).
 		SetSelectedBackgroundColor(tcell.NewHexColor(0x666666))
 
+	cd.members.SetSelectedFunc(func(i int, mainText, secondaryText string, shortcut rune) {
+		if cd.OnMemberClick != nil {
+			cd.OnMemberClick(mainText, secondaryText)
+		}
+	})
+
 	// Input field
 	cd.input = NewReadlineEdit("", "Type a message...")
 	cd.input.SetFieldBackgroundColor(tcell.NewHexColor(0x222222))
@@ -139,9 +146,15 @@ func NewChannelsDisplay(app *tview.Application, rooms []ChannelInfo) *ChannelsDi
 		AddItem(cd.members, 5, 0, false).
 		AddItem(cd.input, 1, 0, true)
 
+	// Channel list gutter (right arrow) — toggles left panel visibility
+	chanGutter := NewChannelsExpandGutter(func() {
+		cd.channelListVisible = !cd.channelListVisible
+	})
+
 	content := tview.NewFlex().SetDirection(tview.FlexColumn).
-		AddItem(leftPanel, 0, 1, true).
-		AddItem(rightPanel, 0, 3, false)
+		AddItem(leftPanel, 36, 0, true).
+		AddItem(chanGutter, 1, 0, false).
+		AddItem(rightPanel, 0, 1, false)
 
 	layout := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(title, 2, 0, false).

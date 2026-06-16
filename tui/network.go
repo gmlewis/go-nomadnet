@@ -112,8 +112,8 @@ func NewNetworkDisplay(app *tview.Application, announces []AnnounceEntry, nodes 
 
 	// Content: left panel + detail
 	content := tview.NewFlex().SetDirection(tview.FlexColumn)
-	content.AddItem(nd.leftPanel, 0, 1, true)
-	content.AddItem(nd.detail, 0, 2, false)
+	content.AddItem(nd.leftPanel, 52, 0, true)
+	content.AddItem(nd.detail, 0, 1, false)
 
 	nd.widget = tview.NewFlex().SetDirection(tview.FlexRow)
 	nd.widget.SetBorder(true)

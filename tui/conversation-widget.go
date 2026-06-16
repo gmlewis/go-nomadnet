@@ -297,6 +297,11 @@ func FormatQRText(data string) string {
 // at Conversations.py:2122.
 func (cw *ConversationWidget) ClearHistoryDialog() {
 	cw.dialogOpen = true
+	ShowConfirmDialog(cw.app, "Clear conversation history?", func() {
+		cw.ConfirmClearHistory()
+	}, func() {
+		cw.DismissClearHistoryDialog()
+	})
 }
 
 // ConfirmClearHistory confirms the clear history action, fires
