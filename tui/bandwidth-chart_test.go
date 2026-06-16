@@ -17,128 +17,161 @@ package tui
 
 import (
 	"testing"
+	"time"
 )
 
-func TestBandwidthChartNew(t *testing.T) {
+func TestPrettySpeed(t *testing.T) {
 	t.Parallel()
 
-	bc := NewBandwidthChart(60)
-	if bc.Length() != 60 {
-		t.Errorf("Length() = %d, want 60", bc.Length())
+	tests := []struct {
+		name  string
+		input float64
+		want  string
+	}{
+		{"zero", 0, "0 bps"},
+		{"small bps", 500, "500 bps"},
+		{"1 Kbps", 1000, "1.0 Kbps"},
+		{"1.5 Kbps", 1500, "1.5 Kbps"},
+		{"1 Mbps", 1000000, "1.0 Mbps"},
+		{"1 Gbps", 1000000000, "1.0 Gbps"},
 	}
-	if bc.Initialized() {
-		t.Error("should not be initialized after creation")
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := PrettySpeed(tt.input)
+			if got != tt.want {
+				t.Errorf("PrettySpeed(%v) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
 	}
 }
 
 func TestBandwidthChartFirstUpdate(t *testing.T) {
 	t.Parallel()
 
-	bc := NewBandwidthChart(10)
-	bc.Update(100, 200)
+	c := NewInterfaceBandwidthChart(5)
+	now := time.Now()
+	c.Update(1000, 2000, now)
 
-	if bc.Initialized() {
-		t.Error("should not be initialized after first update (baseline only)")
+	if c.updateCount != 0 {
+		t.Errorf("updateCount after first update = %v, want 0", c.updateCount)
+	}
+	if c.initializationComplete {
+		t.Error("should not be initialized after first update")
 	}
 }
 
-func TestBandwidthChartTwoUpdates(t *testing.T) {
+func TestBandwidthChartSubsequentUpdates(t *testing.T) {
 	t.Parallel()
 
-	bc := NewBandwidthChart(10)
-	bc.Update(0, 0)    // baseline
-	bc.Update(100, 50) // delta: 100 bytes RX, 50 bytes TX
+	c := NewInterfaceBandwidthChart(5)
+	base := time.Now()
 
-	if !bc.Initialized() {
-		t.Error("should be initialized after 2 updates")
+	c.Update(1000, 2000, base)
+	c.Update(11000, 22000, base.Add(time.Second))
+
+	if c.updateCount != 1 {
+		t.Errorf("updateCount = %v, want 1", c.updateCount)
+	}
+	if c.initializationComplete {
+		t.Error("should not be initialized after only 1 real update (stabilization=2)")
+	}
+
+	c.Update(21000, 42000, base.Add(2*time.Second))
+	if !c.initializationComplete {
+		t.Error("should be initialized after 2 real updates (stabilization=2)")
+	}
+
+	rx, tx := c.Rates()
+	lastRX := rx[len(rx)-1]
+	lastTX := tx[len(tx)-1]
+
+	if lastRX <= 0 {
+		t.Errorf("last rx rate = %v, want > 0", lastRX)
+	}
+	if lastTX <= 0 {
+		t.Errorf("last tx rate = %v, want > 0", lastTX)
 	}
 }
 
-func TestBandwidthChartRates(t *testing.T) {
+func TestBandwidthChartRateCalculation(t *testing.T) {
 	t.Parallel()
 
-	bc := NewBandwidthChart(10)
-	bc.Update(0, 0)
-	bc.Update(1000, 500)
+	c := NewInterfaceBandwidthChart(3)
+	base := time.Now()
 
-	rxRates := bc.RXRates()
-	txRates := bc.TXRates()
+	c.Update(0, 0, base)
+	c.Update(1000, 5000, base.Add(time.Second))
 
-	// With 1 second elapsed: RX=1000 bytes → 8000 bits, TX=500 bytes → 4000 bits
-	// All other entries should be 0
-	totalRX := 0.0
-	for _, v := range rxRates {
-		totalRX += v
-	}
-	totalTX := 0.0
-	for _, v := range txRates {
-		totalTX += v
-	}
+	rx, tx := c.Rates()
+	lastRX := rx[len(rx)-1]
+	lastTX := tx[len(tx)-1]
 
-	if totalRX <= 0 {
-		t.Errorf("total RX rate should be > 0, got %v", totalRX)
+	wantRXBits := 1000.0 * 8
+	wantTXBits := 5000.0 * 8
+
+	if lastRX != wantRXBits {
+		t.Errorf("rx rate = %v, want %v", lastRX, wantRXBits)
 	}
-	if totalTX <= 0 {
-		t.Errorf("total TX rate should be > 0, got %v", totalTX)
+	if lastTX != wantTXBits {
+		t.Errorf("tx rate = %v, want %v", lastTX, wantTXBits)
 	}
 }
 
-func TestBandwidthChartSlidingWindow(t *testing.T) {
+func TestBandwidthChartHistoryRolls(t *testing.T) {
 	t.Parallel()
 
-	bc := NewBandwidthChart(5) // 5 samples max
+	c := NewInterfaceBandwidthChart(3)
+	base := time.Now()
 
-	// Fill the buffer
-	for i := 0; i < 10; i++ {
-		bc.Update(float64(i*100), float64(i*50))
-	}
+	c.Update(0, 0, base)
+	c.Update(100, 100, base.Add(time.Second))
+	c.Update(200, 200, base.Add(2*time.Second))
+	c.Update(300, 300, base.Add(3*time.Second))
 
-	rxRates := bc.RXRates()
-	if len(rxRates) != 5 {
-		t.Errorf("RXRates length = %d, want 5", len(rxRates))
+	rx, _ := c.Rates()
+	if len(rx) != 3 {
+		t.Errorf("rx history length = %v, want 3", len(rx))
 	}
 }
 
 func TestBandwidthChartPeaks(t *testing.T) {
 	t.Parallel()
 
-	bc := NewBandwidthChart(10)
-	bc.Update(0, 0)
-	bc.Update(1000, 200)
-	bc.Update(500, 800)
+	c := NewInterfaceBandwidthChart(5)
+	base := time.Now()
 
-	peakRX := bc.PeakRX()
-	peakTX := bc.PeakTX()
-
-	if peakRX <= 0 {
-		t.Errorf("PeakRX = %v, want > 0", peakRX)
+	rxStr, txStr := c.Peaks()
+	if rxStr != "0 bps" || txStr != "0 bps" {
+		t.Errorf("peaks before init = (%q, %q), want (0 bps, 0 bps)", rxStr, txStr)
 	}
-	if peakTX <= 0 {
-		t.Errorf("PeakTX = %v, want > 0", peakTX)
+
+	c.Update(0, 0, base)
+	c.Update(1000, 5000, base.Add(time.Second))
+	c.Update(2000, 10000, base.Add(2*time.Second))
+
+	rxStr, _ = c.Peaks()
+	if rxStr == "0 bps" {
+		t.Error("rx peak should not be 0 bps after initialization")
 	}
 }
 
-func TestBandwidthChartMaxRate(t *testing.T) {
+func TestBandwidthChartMaxRates(t *testing.T) {
 	t.Parallel()
 
-	bc := NewBandwidthChart(10)
-	bc.Update(0, 0)
+	c := NewInterfaceBandwidthChart(5)
+	base := time.Now()
 
-	for i := 1; i <= 5; i++ {
-		bc.Update(float64(i*1000), float64(i*500))
-	}
+	c.Update(0, 0, base)
+	c.Update(1000, 5000, base.Add(time.Second))
+	c.Update(2000, 10000, base.Add(2*time.Second))
 
-	maxRX := bc.MaxRX()
-	maxTX := bc.MaxTX()
-
-	if maxRX <= 0 {
-		t.Errorf("MaxRX = %v, want > 0", maxRX)
+	rxMax, txMax := c.MaxRates()
+	if rxMax < 1 {
+		t.Errorf("rx max = %v, want >= 1", rxMax)
 	}
-	if maxTX <= 0 {
-		t.Errorf("MaxTX = %v, want > 0", maxTX)
-	}
-	// Max should be >= peak
-	if maxRX < bc.PeakRX() {
-		t.Errorf("MaxRX (%v) < PeakRX (%v)", maxRX, bc.PeakRX())
+	if txMax < 1 {
+		t.Errorf("tx max = %v, want >= 1", txMax)
 	}
 }

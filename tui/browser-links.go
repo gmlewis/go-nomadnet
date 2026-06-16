@@ -1,0 +1,168 @@
+// Copyright 2026 Glenn Lewis. All rights reserved.
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+package tui
+
+import (
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"strings"
+)
+
+// truncatedHashHexLen is the number of hex characters for a truncated
+// RNS destination hash: TRUNCATED_HASHLENGTH/8*2 = 128/8*2 = 32.
+const truncatedHashHexLen = 32
+
+// ValidateLXMFLink validates that linkTarget is a valid LXMF link
+// destination hash (32 hex characters). Matches Python's
+// handle_lxmf_link() validation at Browser.py:383.
+func ValidateLXMFLink(linkTarget string) error {
+	if len(linkTarget) != truncatedHashHexLen {
+		return fmt.Errorf("invalid length for LXMF link: got %d, want %d", len(linkTarget), truncatedHashHexLen)
+	}
+	if _, err := hex.DecodeString(linkTarget); err != nil {
+		return errors.New("could not decode destination hash from LXMF link")
+	}
+	return nil
+}
+
+// ParseRRCLink parses an RRC link target into hub hash hex, room,
+// and optional destination name. Input format:
+// "hexhash/room" or "hexhash:dest/room".
+// Matches Python's handle_rrc_link() at Browser.py:426.
+func ParseRRCLink(linkTarget string) (hubHex, room, dest string, err error) {
+	rest := strings.TrimSpace(linkTarget)
+	rest = strings.TrimPrefix(rest, "/")
+
+	hubAndRoom := strings.SplitN(rest, "/", 2)
+	hubPart := hubAndRoom[0]
+	roomVal := ""
+	if len(hubAndRoom) > 1 {
+		roomVal = hubAndRoom[1]
+	}
+
+	hubAndDest := strings.SplitN(hubPart, ":", 2)
+	hexPart := strings.TrimSpace(hubAndDest[0])
+	destVal := ""
+	if len(hubAndDest) > 1 {
+		destVal = strings.TrimSpace(hubAndDest[1])
+	}
+
+	hubBytes, decodeErr := hex.DecodeString(hexPart)
+	if decodeErr != nil {
+		return "", "", "", errors.New("invalid hub hash")
+	}
+	if len(hubBytes) != truncatedHashHexLen/2 {
+		return "", "", "", fmt.Errorf("hub hash must be %d bytes", truncatedHashHexLen/2)
+	}
+
+	roomVal = strings.ToLower(strings.TrimSpace(strings.TrimPrefix(roomVal, "#")))
+
+	return hexPart, roomVal, destVal, nil
+}
+
+// HandleLXMFLink validates and dispatches an LXMF link.
+// On success calls OnOpenLXMF; on failure calls OnBrowserError.
+// Matches Python's handle_lxmf_link() at Browser.py:383.
+func (bd *BrowserDisplay) HandleLXMFLink(linkTarget string) {
+	if err := ValidateLXMFLink(linkTarget); err != nil {
+		if bd.OnBrowserError != nil {
+			bd.OnBrowserError(fmt.Sprintf("Could not open LXMF link: %v", err))
+		}
+		return
+	}
+	if bd.OnOpenLXMF != nil {
+		bd.OnOpenLXMF(linkTarget)
+	}
+}
+
+// HandleRRCLink parses and dispatches an RRC link.
+// On success calls OnOpenRRC; on failure calls OnBrowserError.
+// Matches Python's handle_rrc_link() at Browser.py:426.
+func (bd *BrowserDisplay) HandleRRCLink(linkTarget string) {
+	hubHex, room, _, err := ParseRRCLink(linkTarget)
+	if err != nil {
+		if bd.OnBrowserError != nil {
+			bd.OnBrowserError(fmt.Sprintf("Could not open RRC link: %v", err))
+		}
+		return
+	}
+	if bd.OnOpenRRC != nil {
+		bd.OnOpenRRC(hubHex, room)
+	}
+}
+
+// HandleLink dispatches a browser link target to the appropriate
+// handler based on its format. Matches Python's handle_link() at
+// Browser.py:216.
+//
+// Link formats:
+//   - "#name"       → anchor jump (OnJumpAnchor)
+//   - "rrc://..."   → RRC link (HandleRRCLink)
+//   - "type@target" → typed dispatch (node, lxmf, rrc, partial)
+//   - "p:ids"       → partial update (OnPartialUpdate)
+//   - plain hash    → nomadnetwork.node (OnRetrieveURL)
+func (bd *BrowserDisplay) HandleLink(linkTarget string) {
+	if strings.HasPrefix(linkTarget, "#") {
+		if bd.OnJumpAnchor != nil {
+			bd.OnJumpAnchor(linkTarget[1:])
+		}
+		return
+	}
+
+	if strings.HasPrefix(linkTarget, "rrc://") {
+		bd.HandleRRCLink(linkTarget[6:])
+		return
+	}
+
+	components := strings.SplitN(linkTarget, "@", 2)
+	var destType, target string
+	var partialIDs []string
+
+	if len(components) == 2 {
+		destType = ExpandShorthands(components[0])
+		target = components[1]
+	} else if strings.HasPrefix(linkTarget, "p:") {
+		comps := strings.Split(linkTarget, ":")
+		if len(comps) > 1 {
+			partialIDs = comps[1:]
+		}
+		destType = "partial"
+		target = linkTarget
+	} else {
+		destType = "nomadnetwork.node"
+		target = components[0]
+	}
+
+	switch destType {
+	case "nomadnetwork.node":
+		if bd.OnRetrieveURL != nil {
+			bd.OnRetrieveURL(target)
+		}
+	case "lxmf.delivery":
+		bd.HandleLXMFLink(target)
+	case "rrc.hub.session":
+		bd.HandleRRCLink(target)
+	case "partial":
+		if len(partialIDs) > 0 && bd.OnPartialUpdate != nil {
+			bd.OnPartialUpdate(partialIDs)
+		}
+	default:
+		if bd.OnBrowserError != nil {
+			bd.OnBrowserError(fmt.Sprintf("No known handler for destination type %v", destType))
+		}
+	}
+}

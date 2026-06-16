@@ -44,6 +44,12 @@ type BrowserDisplay struct {
 	OnSaveNode         func()
 	OnToggleFullscreen func()
 	OnCopyURL          func()
+	OnOpenLXMF         func(hash string)
+	OnOpenRRC          func(hubHex, room string)
+	OnBrowserError     func(msg string)
+	OnJumpAnchor       func(name string)
+	OnRetrieveURL      func(url string)
+	OnPartialUpdate    func(ids []string)
 }
 
 // NewBrowserDisplay creates a new browser display.
