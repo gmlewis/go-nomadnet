@@ -201,3 +201,61 @@ func FormatInterfaceDetail(iface InterfaceInfo) string {
 
 	return sb.String()
 }
+
+// ShowEnableDisableConfirm shows a confirmation dialog for enabling or
+// disabling an interface. Matches Python's Interfaces.py:2570-2590.
+func (id *InterfacesDisplay) ShowEnableDisableConfirm(name string, enabled bool, onConfirm func()) {
+	action := "Enable"
+	if enabled {
+		action = "Disable"
+	}
+	msg := fmt.Sprintf("%s interface %s?", action, name)
+
+	ShowConfirmDialog(id.app, msg, func() {
+		if onConfirm != nil {
+			onConfirm()
+		}
+	}, nil)
+}
+
+// ShowRestartRequired shows a notice that a restart is required after
+// interface changes. Matches Python's Interfaces.py:2589-2610.
+func (id *InterfacesDisplay) ShowRestartRequired() {
+	msg := "RNS must be restarted for interface changes to take effect.\nRestart Nomad Network to apply changes."
+
+	ShowDialog(id.app, "Restart Required",
+		tview.NewTextView().
+			SetDynamicColors(true).
+			SetTextColor(tcell.NewHexColor(0xdddddd)).
+			SetTextAlign(tview.AlignCenter).
+			SetText(msg),
+		50, 5, nil)
+}
+
+// ShowInterfaceError shows an error message for interface operations.
+// Matches Python's Interfaces.py:2619-2650.
+func (id *InterfacesDisplay) ShowInterfaceError(errMsg string) {
+	msg := fmt.Sprintf("[red]Error:[-] %s", errMsg)
+
+	ShowDialog(id.app, "Interface Error",
+		tview.NewTextView().
+			SetDynamicColors(true).
+			SetTextColor(tcell.NewHexColor(0xdddddd)).
+			SetTextAlign(tview.AlignCenter).
+			SetText(msg),
+		50, 5, nil)
+}
+
+// ShowRNSDisconnected shows an overlay when the RNS transport is lost.
+// Matches Python's Interfaces.py:2794-2830.
+func (id *InterfacesDisplay) ShowRNSDisconnected() {
+	msg := "[red]RNS Instance Disconnected[-]\n\nThe RNS transport connection has been lost.\nCheck your network configuration and restart if necessary."
+
+	ShowDialog(id.app, "Disconnected",
+		tview.NewTextView().
+			SetDynamicColors(true).
+			SetTextColor(tcell.NewHexColor(0xdddddd)).
+			SetTextAlign(tview.AlignCenter).
+			SetText(msg),
+		50, 8, nil)
+}

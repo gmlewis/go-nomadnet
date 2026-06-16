@@ -499,3 +499,63 @@ func (cd *ConversationsDisplay) RequestSync(limit int) {
 func (cd *ConversationsDisplay) DismissSyncDialog() {
 	cd.dialogOpen = false
 }
+
+// IngestURIDialog shows a dialog to ingest an LXM URI.
+// Matches Python's ingest_lxm_uri() at Conversations.py:1118.
+func (cd *ConversationsDisplay) IngestURIDialog(onSubmit func(uri string)) {
+	cd.dialogOpen = true
+	ShowInputDialog(cd.app, "Ingest LXM URI", "URI : ", "",
+		func(uri string) {
+			cd.dialogOpen = false
+			if onSubmit != nil {
+				onSubmit(uri)
+			}
+		},
+		func() {
+			cd.dialogOpen = false
+		},
+	)
+}
+
+// ShowIngestResult shows the result of an LXM URI ingest operation.
+func (cd *ConversationsDisplay) ShowIngestResult(result IngestResult) {
+	cd.dialogOpen = true
+	var msg string
+	switch result {
+	case IngestSuccess:
+		msg = "Message was decoded, decrypted successfully, and added to your conversation list."
+	case IngestDuplicate:
+		msg = "The decoded message has already been processed by the LXMF Router, and will not be ingested again."
+	case IngestError:
+		msg = "The URI contained no decodable messages"
+	}
+
+	buttons := tview.NewFlex().SetDirection(tview.FlexColumn).
+		AddItem(tview.NewButton("OK").SetSelectedFunc(func() {
+			cd.dialogOpen = false
+		}), 0, 1, false)
+
+	layout := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(tview.NewTextView().
+			SetDynamicColors(true).
+			SetTextColor(tcell.NewHexColor(0xdddddd)).
+			SetTextAlign(tview.AlignCenter).
+			SetText(msg), 3, 0, false).
+		AddItem(buttons, 1, 0, false)
+
+	ShowDialog(cd.app, "Ingest message URI", layout, 50, 6, func() {
+		cd.dialogOpen = false
+	})
+}
+
+// IngestResult represents the result of an LXM URI ingest operation.
+type IngestResult int
+
+const (
+	// IngestSuccess means the message was decoded and added.
+	IngestSuccess IngestResult = iota
+	// IngestDuplicate means the message was already processed.
+	IngestDuplicate
+	// IngestError means the URI contained no decodable messages.
+	IngestError
+)
