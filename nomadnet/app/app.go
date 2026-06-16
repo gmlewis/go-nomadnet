@@ -768,6 +768,8 @@ func (a *App) handleLXMFAnnounce(destHash []byte, identity *rns.Identity, appDat
 }
 
 // handleNodeAnnounce processes NomadNet node announces.
+// Matches Python's Directory.received_announce (Directory.py:41) and
+// Directory.node_announce_received (Directory.py:178).
 func (a *App) handleNodeAnnounce(destHash []byte, identity *rns.Identity, appData []byte, isPathResponse bool) {
 	displayName := string(appData)
 	a.Logger.Info("Node announce received: hash=%x name=%q", destHash, displayName)
@@ -788,6 +790,20 @@ func (a *App) handleNodeAnnounce(destHash []byte, identity *rns.Identity, appDat
 		AppData:      appData,
 		AnnounceType: "node",
 	}, true)
+
+	if identity != nil {
+		associatedPeer := rns.CalculateHash(identity, "lxmf", "delivery")
+		if a.Dir.TrustLevel(associatedPeer, nil) == directory.TrustTrusted {
+			existing := a.Dir.Find(destHash)
+			if existing == nil {
+				nodeEntry := directory.NewEntry(destHash)
+				nodeEntry.DisplayName = displayName
+				nodeEntry.TrustLevel = directory.TrustTrusted
+				nodeEntry.HostsNode = true
+				a.Dir.Remember(nodeEntry)
+			}
+		}
+	}
 
 	if a.UIChangeCallback != nil {
 		a.UIChangeCallback()

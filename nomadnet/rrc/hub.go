@@ -83,7 +83,7 @@ type RRCHub struct {
 	pendingParts      map[string]bool
 	silentJoins       map[string]bool
 	silentWhoRooms    map[string]bool
-	historyPath       string
+	savedHistoryPath  string
 	link              *rns.Link
 	onLinkEstablished func()
 	onLinkClosed      func()
@@ -140,13 +140,22 @@ func (h *RRCHub) SetOnLinkEstablished(fn func()) {
 // SetOnLinkClosed registers a callback invoked when the RNS link closes.
 func (h *RRCHub) SetOnLinkClosed(fn func()) {
 	h.lock.Lock()
+	defer h.lock.Unlock()
 	h.onLinkClosed = fn
-	h.lock.Unlock()
+}
+
+// SetLink sets the RNS link used by this hub for sending data. This is
+// used by server-side hubs that receive incoming links.
+func (h *RRCHub) SetLink(link *rns.Link) {
+	h.lock.Lock()
+	defer h.lock.Unlock()
+	h.link = link
 }
 
 // Connect establishes an RNS link to the hub's destination. The link
 // handshake is asynchronous; use SetOnLinkEstablished to be notified
-// when the link becomes active.
+// when the link becomes active. After link establishment, a HELLO
+// envelope is sent to the server to initiate the RRC handshake.
 func (h *RRCHub) Connect(ts rns.Transport, dest *rns.Destination) error {
 	link, err := rns.NewLink(ts, dest)
 	if err != nil {
@@ -166,6 +175,13 @@ func (h *RRCHub) Connect(ts rns.Transport, dest *rns.Destination) error {
 		h.Welcomed = false
 		cb := h.onLinkEstablished
 		h.lock.Unlock()
+
+		l.SetPacketCallback(func(data []byte, packet *rns.Packet) {
+			h.HandleData(data)
+		})
+
+		h.sendHello(l)
+
 		if cb != nil {
 			cb()
 		}
@@ -184,6 +200,35 @@ func (h *RRCHub) Connect(ts rns.Transport, dest *rns.Destination) error {
 	})
 
 	return link.Establish()
+}
+
+// sendHello sends a HELLO envelope on the given link. Matches Python's
+// RRCHub._send_hello which sends client name, version, caps, and nick.
+func (h *RRCHub) sendHello(link *rns.Link) {
+	var srcHash []byte
+	if h.Manager != nil {
+		srcHash = h.Manager.identityHash()
+	}
+
+	body := map[any]any{
+		BHelloName: []byte("nomadnet"),
+		BHelloVer:  []byte("0.1"),
+		BHelloCaps: map[any]any{
+			CapResourceEnvelope: true,
+			CapAction:           true,
+		},
+	}
+
+	mid := MsgID()
+	ts := NowMs()
+	env := MakeEnvelope(TypeHello, srcHash, nil, nil, body, mid, ts)
+
+	nick := h.GetEffectiveNick()
+	if nick != "" {
+		env[KeyNick] = []byte(nick)
+	}
+
+	h.sendEnv(env)
 }
 
 // Disconnect tears down the RNS link and resets hub status.
@@ -222,7 +267,7 @@ func (h *RRCHub) RemoveRoom(room string) {
 	delete(h.Members, room)
 	delete(h.UnreadRooms, room)
 	delete(h.MentionRooms, room)
-	h._deleteHistory(room)
+	h.deleteHistory(room)
 }
 
 // ClearMessages clears the message buffer for a room.
@@ -302,7 +347,7 @@ func (h *RRCHub) JoinRoom(room string, silent bool) {
 	mid := MsgID()
 	ts := NowMs()
 	env := MakeEnvelope(TypeJoin, nil, []byte(room), nil, nil, mid, ts)
-	h._sendEnv(env)
+	h.sendEnv(env)
 }
 
 // PartRoom sends a T_PART for a room.
@@ -315,7 +360,7 @@ func (h *RRCHub) PartRoom(room string) {
 	mid := MsgID()
 	ts := NowMs()
 	env := MakeEnvelope(TypePart, nil, []byte(room), nil, nil, mid, ts)
-	h._sendEnv(env)
+	h.sendEnv(env)
 }
 
 // SendMessage sends a T_MSG to a room and records it locally.
@@ -330,7 +375,7 @@ func (h *RRCHub) SendMessage(room, text string) string {
 		srcHash = h.Manager.identityHash()
 	}
 	env := MakeEnvelope(TypeMsg, srcHash, []byte(room), []byte(nick), text, mid, ts)
-	h._sendEnv(env)
+	h.sendEnv(env)
 
 	msg := &RRCMessage{
 		Kind: "msg",
@@ -340,7 +385,7 @@ func (h *RRCHub) SendMessage(room, text string) string {
 		Text: text,
 		Ts:   ts,
 	}
-	h._recordMessage(msg, true)
+	h.recordMessage(msg, true)
 
 	return hexString(mid)
 }
@@ -357,7 +402,7 @@ func (h *RRCHub) SendAction(room, text string) string {
 		srcHash = h.Manager.identityHash()
 	}
 	env := MakeEnvelope(TypeAction, srcHash, []byte(room), []byte(nick), text, mid, ts)
-	h._sendEnv(env)
+	h.sendEnv(env)
 
 	msg := &RRCMessage{
 		Kind: "action",
@@ -367,7 +412,7 @@ func (h *RRCHub) SendAction(room, text string) string {
 		Text: text,
 		Ts:   ts,
 	}
-	h._recordMessage(msg, true)
+	h.recordMessage(msg, true)
 
 	return hexString(mid)
 }
@@ -387,7 +432,7 @@ func (h *RRCHub) SendPing(room string) {
 	h.lock.Unlock()
 
 	env := MakeEnvelope(TypePing, nil, []byte(room), nil, body, mid, ts)
-	h._sendEnv(env)
+	h.sendEnv(env)
 }
 
 // GetEffectiveNick returns the override nick or the manager's nick.
@@ -408,7 +453,7 @@ func (h *RRCHub) SetNickOverride(nick string) {
 	h.NickOverride = nick
 }
 
-func (h *RRCHub) _sendEnv(env map[any]any) {
+func (h *RRCHub) sendEnv(env map[any]any) {
 	data, err := EncodeEnvelope(env)
 	if err != nil {
 		return
@@ -447,20 +492,37 @@ func (h *RRCHub) HandleData(data []byte) {
 	srcHex := hexString(src)
 
 	switch msgType {
+	case TypeHello:
+		h.handleHello(src, nick, body)
+
+	case TypeJoin:
+		h.handleJoin(src, nick, room, body)
+
 	case TypeMsg:
-		text, _ := body.([]byte)
+		var textStr string
+		switch b := body.(type) {
+		case []byte:
+			textStr = string(b)
+		case string:
+			textStr = b
+		}
 		msg := &RRCMessage{
 			Kind: "msg",
 			Room: roomStr,
 			Src:  src,
 			Nick: nickStr,
-			Text: string(text),
+			Text: textStr,
 			Ts:   ts,
 		}
-		h._recordMessage(msg, false)
+		h.recordMessage(msg, false)
 		if h.Manager != nil && h.Manager.messageCallback != nil {
 			h.Manager.messageCallback(h, msg)
 		}
+
+		h.echoMessage(src, room, nick, body, mid, ts)
+
+	case TypePart:
+		h.handlePart(src, nick, room, body)
 
 	case TypeJoined:
 		h.lock.Lock()
@@ -479,28 +541,40 @@ func (h *RRCHub) HandleData(data []byte) {
 		h.lock.Unlock()
 
 	case TypeWelcome:
-		h._handleWelcome(body)
+		h.handleWelcome(body)
 
 	case TypePong:
 		h.lock.Lock()
-		bodyStr := string(body.([]byte))
+		var bodyStr string
+		switch b := body.(type) {
+		case []byte:
+			bodyStr = string(b)
+		case string:
+			bodyStr = b
+		}
 		delete(h.pendingPings, bodyStr)
 		h.lock.Unlock()
 
 	case TypePing:
-		h._sendEnv(MakeEnvelope(TypePong, src, nil, nil, body, mid, NowMs()))
+		h.sendEnv(MakeEnvelope(TypePong, src, nil, nil, body, mid, NowMs()))
 
 	case TypeNotice:
-		text, _ := body.([]byte)
+		var textStr string
+		switch b := body.(type) {
+		case []byte:
+			textStr = string(b)
+		case string:
+			textStr = b
+		}
 		msg := &RRCMessage{
 			Kind: "notice",
 			Room: roomStr,
 			Src:  src,
 			Nick: nickStr,
-			Text: string(text),
+			Text: textStr,
 			Ts:   ts,
 		}
-		h._recordMessage(msg, false)
+		h.recordMessage(msg, false)
 	}
 }
 
@@ -582,8 +656,8 @@ func toInt64(v any) int64 {
 	return 0
 }
 
-// _handleWelcome processes a WELCOME envelope from the hub server.
-func (h *RRCHub) _handleWelcome(body any) {
+// handleWelcome processes a WELCOME envelope from the hub server.
+func (h *RRCHub) handleWelcome(body any) {
 	bodyMap, ok := body.(map[any]any)
 	if !ok {
 		return
@@ -631,7 +705,89 @@ func (h *RRCHub) _handleWelcome(body any) {
 	}
 }
 
-func (h *RRCHub) _recordMessage(msg *RRCMessage, local bool) {
+// handleHello processes a HELLO envelope from a connecting client.
+// It stores the client's nick and sends a WELCOME response. Matches
+// Python's RRC server behavior when receiving a HELLO from a client.
+func (h *RRCHub) handleHello(src, nick []byte, body any) {
+	srcHex := hexString(src)
+	nickStr := string(nick)
+
+	h.lock.Lock()
+	if nickStr != "" {
+		h.Nicks[srcHex] = nickStr
+	}
+	hubName := h.Name
+	h.lock.Unlock()
+
+	welcomeBody := map[any]any{
+		BWelcomeHub:  []byte(hubName),
+		BWelcomeVer:  []byte("0.1"),
+		BWelcomeCaps: map[any]any{},
+		BWelcomeLimits: map[any]any{
+			LMaxNickBytes:           DefaultMaxNickBytes,
+			LMaxRoomNameBytes:       DefaultMaxRoomBytes,
+			LMaxMsgBodyBytes:        DefaultMaxMsgBytes,
+			LMaxRoomsPerSession:     DefaultMaxRooms,
+			LRateLimitMsgsPerMinute: DefaultRatePerMinute,
+		},
+	}
+
+	mid := MsgID()
+	ts := NowMs()
+	env := MakeEnvelope(TypeWelcome, nil, nil, nil, welcomeBody, mid, ts)
+	h.sendEnv(env)
+}
+
+// handleJoin processes a JOIN envelope. On the server side, it
+// broadcasts a JOINED notification back to the joining client with
+// the joiner's identity hash and nick. On the client side, JOINED
+// is handled in the main HandleData switch.
+func (h *RRCHub) handleJoin(src, nick, room []byte, body any) {
+	roomStr := strings.ToLower(string(room))
+	nickStr := string(nick)
+
+	h.lock.Lock()
+	if h.Members[roomStr] == nil {
+		h.Members[roomStr] = make(map[string]bool)
+	}
+	h.Members[roomStr][nickStr] = true
+	h.Nicks[hexString(src)] = nickStr
+	h.lock.Unlock()
+
+	mid := MsgID()
+	ts := NowMs()
+	env := MakeEnvelope(TypeJoined, src, []byte(roomStr), nick, src, mid, ts)
+	h.sendEnv(env)
+}
+
+// handlePart processes a PART envelope. On the server side, it
+// broadcasts a PARTED notification back to the parting client.
+func (h *RRCHub) handlePart(src, nick, room []byte, body any) {
+	roomStr := strings.ToLower(string(room))
+	nickStr := string(nick)
+
+	h.lock.Lock()
+	if h.Members[roomStr] != nil {
+		delete(h.Members[roomStr], nickStr)
+	}
+	h.lock.Unlock()
+
+	mid := MsgID()
+	ts := NowMs()
+	env := MakeEnvelope(TypeParted, src, []byte(roomStr), nick, src, mid, ts)
+	h.sendEnv(env)
+}
+
+// echoMessage echoes a received MSG envelope back on the link.
+// This simulates the rrcd server broadcasting messages to connected
+// clients. The echoed message uses the same source, room, nick,
+// and body so that other clients can display it.
+func (h *RRCHub) echoMessage(src, room, nick []byte, body any, mid []byte, ts int64) {
+	env := MakeEnvelope(TypeMsg, src, room, nick, body, mid, ts)
+	h.sendEnv(env)
+}
+
+func (h *RRCHub) recordMessage(msg *RRCMessage, local bool) {
 	h.lock.Lock()
 	defer h.lock.Unlock()
 
@@ -664,11 +820,11 @@ func (h *RRCHub) _recordMessage(msg *RRCMessage, local bool) {
 	}
 
 	// Append to history
-	h._appendHistory(room, msg)
+	h.appendHistory(room, msg)
 }
 
-func (h *RRCHub) _appendHistory(room string, msg *RRCMessage) {
-	if h.historyPath == "" {
+func (h *RRCHub) appendHistory(room string, msg *RRCMessage) {
+	if h.savedHistoryPath == "" {
 		return
 	}
 
@@ -679,7 +835,7 @@ func (h *RRCHub) _appendHistory(room string, msg *RRCMessage) {
 		return
 	}
 
-	path := h._historyPath(room)
+	path := h.historyPath(room)
 	dir := filepath.Dir(path)
 	_ = os.MkdirAll(dir, 0o755)
 
@@ -691,22 +847,22 @@ func (h *RRCHub) _appendHistory(room string, msg *RRCMessage) {
 	_, _ = f.Write(data)
 }
 
-func (h *RRCHub) _deleteHistory(room string) {
-	if h.historyPath == "" {
+func (h *RRCHub) deleteHistory(room string) {
+	if h.savedHistoryPath == "" {
 		return
 	}
-	path := h._historyPath(room)
+	path := h.historyPath(room)
 	_ = os.Remove(path)
 }
 
-func (h *RRCHub) _historyPath(room string) string {
-	if h.historyPath == "" {
+func (h *RRCHub) historyPath(room string) string {
+	if h.savedHistoryPath == "" {
 		return ""
 	}
 	sanitized := sanitizeRoomName(room)
 	hash := sha256.Sum256([]byte(room))
 	prefix := fmt.Sprintf("%x", hash[:4])
-	return filepath.Join(h.historyPath, sanitized+"_"+prefix+".log")
+	return filepath.Join(h.savedHistoryPath, sanitized+"_"+prefix+".log")
 }
 
 // SetStatus updates the connection status.

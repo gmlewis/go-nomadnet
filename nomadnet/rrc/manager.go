@@ -166,7 +166,7 @@ func (m *RRCManager) AddHub(hubHash []byte, destName, name string) *RRCHub {
 	}
 
 	hub := NewHub(m, hubHash, destName, name)
-	hub.historyPath = m._historyDir(hub)
+	hub.savedHistoryPath = m.historyDir(hub)
 	m.Hubs = append(m.Hubs, hub)
 	return hub
 }
@@ -240,7 +240,7 @@ func (m *RRCManager) Save() error {
 		return fmt.Errorf("encoding hub config: %w", err)
 	}
 
-	storePath := m._storePath()
+	storePath := m.storePath()
 	dir := filepath.Dir(storePath)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("creating store dir: %w", err)
@@ -261,7 +261,7 @@ func (m *RRCManager) Load() error {
 	}
 	m.loaded = true
 
-	storePath := m._storePath()
+	storePath := m.storePath()
 	data, err := os.ReadFile(storePath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -337,19 +337,19 @@ func (m *RRCManager) Shutdown() {
 	}
 }
 
-func (m *RRCManager) _storePath() string {
+func (m *RRCManager) storePath() string {
 	return filepath.Join(m.storagePath, "rrc_hubs")
 }
 
-func (m *RRCManager) _historyRoot() string {
+func (m *RRCManager) historyRoot() string {
 	return filepath.Join(m.storagePath, "rrc_history")
 }
 
-func (m *RRCManager) _historyDir(hub *RRCHub) string {
+func (m *RRCManager) historyDir(hub *RRCHub) string {
 	hub.lock.Lock()
 	defer hub.lock.Unlock()
 	hex := hexString(hub.HubHash)
-	return filepath.Join(m._historyRoot(), hex)
+	return filepath.Join(m.historyRoot(), hex)
 }
 
 func bytesEqual(a, b []byte) bool {

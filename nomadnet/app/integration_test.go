@@ -18,9 +18,11 @@
 package app
 
 import (
+	"bytes"
 	"testing"
 	"time"
 
+	"github.com/gmlewis/go-nomadnet/nomadnet/directory"
 	"github.com/gmlewis/go-reticulum/lxmf"
 	"github.com/gmlewis/go-reticulum/rns"
 )
@@ -259,5 +261,80 @@ func TestIntegrationAnnounceStreamOrder(t *testing.T) {
 		if a.AnnounceType != "node" {
 			t.Errorf("node announce has wrong type: %q", a.AnnounceType)
 		}
+	}
+}
+
+func TestIntegrationNodeAnnounceCreatesKnownNodeForTrustedPeer(t *testing.T) {
+	appA, appB, cleanup := setupTwoNodeApps(t)
+	defer cleanup()
+
+	peerHash := rns.CalculateHash(appA.Identity, "lxmf", "delivery")
+	entry := directory.NewEntry(peerHash)
+	entry.DisplayName = "TrustedPeer"
+	entry.TrustLevel = directory.TrustTrusted
+	appB.Dir.Remember(entry)
+
+	nodeDest, err := rns.NewDestination(appA.Transport, appA.Identity, rns.DestinationIn, rns.DestinationSingle, "nomadnetwork", "node")
+	if err != nil {
+		t.Fatalf("node dest error: %v", err)
+	}
+
+	if err := nodeDest.Announce([]byte("TrustedNode")); err != nil {
+		t.Fatalf("Announce error: %v", err)
+	}
+
+	waitForAnnounce(t, appB, "node", 5*time.Second)
+
+	knownNodes := appB.Dir.KnownNodes()
+	if len(knownNodes) == 0 {
+		t.Fatal("expected at least one known node after trusted peer announces node")
+	}
+
+	nodeHash := rns.CalculateHash(appA.Identity, "nomadnetwork", "node")
+	found := false
+	for _, n := range knownNodes {
+		if bytes.Equal(n.SourceHash, nodeHash) {
+			found = true
+			if !n.HostsNode {
+				t.Error("known node entry should have HostsNode=true")
+			}
+			if n.DisplayName != "TrustedNode" {
+				t.Errorf("display name = %q, want %q", n.DisplayName, "TrustedNode")
+			}
+			break
+		}
+	}
+	if !found {
+		t.Error("node hash not found in known nodes")
+	}
+}
+
+func TestIntegrationPNAnnounceReceivedByPeer(t *testing.T) {
+	appA, appB, cleanup := setupTwoNodeApps(t)
+	defer cleanup()
+
+	_, err := appA.Router.RegisterPropagationDestination()
+	if err != nil {
+		t.Fatalf("RegisterPropagationDestination error: %v", err)
+	}
+	appA.Router.EnablePropagation()
+	appA.Router.AnnouncePropagationNode()
+
+	waitForAnnounce(t, appB, "pn", 5*time.Second)
+
+	pnAnnounces := appB.Dir.PNAnnounces()
+	if len(pnAnnounces) == 0 {
+		t.Fatal("expected at least one PN announce in directory after propagation node announce")
+	}
+
+	found := false
+	for _, a := range pnAnnounces {
+		if a.AnnounceType == "pn" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected pn announce type in directory PN announces")
 	}
 }

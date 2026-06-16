@@ -293,7 +293,7 @@ func TestHubSendMessage(t *testing.T) {
 	dir := tempDir(t)
 	hash := []byte{0x01, 0x02, 0x03, 0x04}
 	hub := NewHub(nil, hash, "", "")
-	hub.historyPath = dir
+	hub.savedHistoryPath = dir
 
 	mid := hub.SendMessage("general", "Hello!")
 	if len(mid) == 0 {

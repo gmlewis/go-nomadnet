@@ -261,3 +261,604 @@ func tempDirRRC(t *testing.T) string {
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
 	return dir
 }
+
+func TestIntegrationHelloWelcomeHandshake(t *testing.T) {
+	tsClient, clientCleanup := newStartedTS(t)
+	defer clientCleanup()
+	tsServer, serverCleanup := newStartedTS(t)
+	defer serverCleanup()
+
+	pipeA, pipeB, pipeCleanup := newRRCPipes(t, tsClient, tsServer)
+	defer pipeCleanup()
+	tsClient.RegisterInterface(pipeA)
+	tsServer.RegisterInterface(pipeB)
+
+	serverDest, err := rns.NewDestination(tsServer, tsServer.Identity(), rns.DestinationIn, rns.DestinationSingle, "rrc", "chat")
+	if err != nil {
+		t.Fatalf("server dest error: %v", err)
+	}
+
+	serverMgr := NewManager(tempDirRRC(t), func() []byte { return tsServer.Identity().Hash })
+	serverMgr.SetNickname("ServerHub")
+	serverHub := serverMgr.AddHub(serverDest.Hash, "rrc.chat", "ServerHub")
+
+	serverLinkCh := make(chan *rns.Link, 1)
+	serverDest.SetLinkEstablishedCallback(func(l *rns.Link) {
+		serverHub.SetLink(l)
+		l.SetPacketCallback(func(data []byte, packet *rns.Packet) {
+			serverHub.HandleData(data)
+		})
+		select {
+		case serverLinkCh <- l:
+		default:
+		}
+	})
+
+	clientMgr := NewManager(tempDirRRC(t), func() []byte { return tsClient.Identity().Hash })
+	clientMgr.SetNickname("TestClient")
+	clientHub := clientMgr.AddHub(serverDest.Hash, "rrc.chat", "TestHub")
+
+	clientEstablished := make(chan struct{}, 1)
+	clientHub.SetOnLinkEstablished(func() {
+		select {
+		case clientEstablished <- struct{}{}:
+		default:
+		}
+	})
+
+	if err := clientHub.Connect(tsClient, serverDest); err != nil {
+		t.Fatalf("Connect error: %v", err)
+	}
+
+	select {
+	case <-clientEstablished:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timeout waiting for client link establishment")
+	}
+
+	select {
+	case <-serverLinkCh:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timeout waiting for server link establishment")
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		clientHub.lock.Lock()
+		welcomed := clientHub.Welcomed
+		clientHub.lock.Unlock()
+		if welcomed {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	clientHub.lock.Lock()
+	welcomed := clientHub.Welcomed
+	clientHub.lock.Unlock()
+	if !welcomed {
+		t.Fatal("client hub should be welcomed after handshake")
+	}
+}
+
+func TestIntegrationJoinRoomSeesJoinedNotification(t *testing.T) {
+	tsClient, clientCleanup := newStartedTS(t)
+	defer clientCleanup()
+	tsServer, serverCleanup := newStartedTS(t)
+	defer serverCleanup()
+
+	pipeA, pipeB, pipeCleanup := newRRCPipes(t, tsClient, tsServer)
+	defer pipeCleanup()
+	tsClient.RegisterInterface(pipeA)
+	tsServer.RegisterInterface(pipeB)
+
+	serverDest, err := rns.NewDestination(tsServer, tsServer.Identity(), rns.DestinationIn, rns.DestinationSingle, "rrc", "chat")
+	if err != nil {
+		t.Fatalf("server dest error: %v", err)
+	}
+
+	serverMgr := NewManager(tempDirRRC(t), func() []byte { return tsServer.Identity().Hash })
+	serverMgr.SetNickname("ServerHub")
+	serverHub := serverMgr.AddHub(serverDest.Hash, "rrc.chat", "ServerHub")
+
+	serverLinkCh := make(chan *rns.Link, 1)
+	serverDest.SetLinkEstablishedCallback(func(l *rns.Link) {
+		serverHub.SetLink(l)
+		l.SetPacketCallback(func(data []byte, packet *rns.Packet) {
+			serverHub.HandleData(data)
+		})
+		select {
+		case serverLinkCh <- l:
+		default:
+		}
+	})
+
+	clientMgr := NewManager(tempDirRRC(t), func() []byte { return tsClient.Identity().Hash })
+	clientMgr.SetNickname("TestClient")
+	clientHub := clientMgr.AddHub(serverDest.Hash, "rrc.chat", "TestHub")
+
+	clientEstablished := make(chan struct{}, 1)
+	clientHub.SetOnLinkEstablished(func() {
+		select {
+		case clientEstablished <- struct{}{}:
+		default:
+		}
+	})
+
+	if err := clientHub.Connect(tsClient, serverDest); err != nil {
+		t.Fatalf("Connect error: %v", err)
+	}
+
+	select {
+	case <-clientEstablished:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timeout waiting for client link establishment")
+	}
+
+	select {
+	case <-serverLinkCh:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timeout waiting for server link establishment")
+	}
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		clientHub.lock.Lock()
+		welcomed := clientHub.Welcomed
+		clientHub.lock.Unlock()
+		if welcomed {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	clientHub.JoinRoom("general", false)
+
+	deadline = time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		clientHub.lock.Lock()
+		hasMembers := len(clientHub.Members["general"]) > 0
+		clientHub.lock.Unlock()
+		if hasMembers {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	clientHub.lock.Lock()
+	membersBefore := len(clientHub.Members["general"])
+	clientHub.lock.Unlock()
+	if membersBefore == 0 {
+		t.Fatal("expected members in 'general' room after join")
+	}
+
+	serverHub.lock.Lock()
+	serverMembersBefore := len(serverHub.Members["general"])
+	serverHub.lock.Unlock()
+	if serverMembersBefore == 0 {
+		t.Error("server should also have members in 'general' room after join")
+	}
+}
+
+func TestIntegrationSendMessageReceivedByServer(t *testing.T) {
+	tsClient, clientCleanup := newStartedTS(t)
+	defer clientCleanup()
+	tsServer, serverCleanup := newStartedTS(t)
+	defer serverCleanup()
+
+	pipeA, pipeB, pipeCleanup := newRRCPipes(t, tsClient, tsServer)
+	defer pipeCleanup()
+	tsClient.RegisterInterface(pipeA)
+	tsServer.RegisterInterface(pipeB)
+
+	serverDest, err := rns.NewDestination(tsServer, tsServer.Identity(), rns.DestinationIn, rns.DestinationSingle, "rrc", "chat")
+	if err != nil {
+		t.Fatalf("server dest error: %v", err)
+	}
+
+	serverMgr := NewManager(tempDirRRC(t), func() []byte { return tsServer.Identity().Hash })
+	serverMgr.SetNickname("ServerHub")
+	serverHub := serverMgr.AddHub(serverDest.Hash, "rrc.chat", "ServerHub")
+
+	serverLinkCh := make(chan *rns.Link, 1)
+	serverDest.SetLinkEstablishedCallback(func(l *rns.Link) {
+		serverHub.SetLink(l)
+		l.SetPacketCallback(func(data []byte, packet *rns.Packet) {
+			serverHub.HandleData(data)
+		})
+		select {
+		case serverLinkCh <- l:
+		default:
+		}
+	})
+
+	clientMgr := NewManager(tempDirRRC(t), func() []byte { return tsClient.Identity().Hash })
+	clientMgr.SetNickname("TestClient")
+	clientHub := clientMgr.AddHub(serverDest.Hash, "rrc.chat", "TestHub")
+
+	clientEstablished := make(chan struct{}, 1)
+	clientHub.SetOnLinkEstablished(func() {
+		select {
+		case clientEstablished <- struct{}{}:
+		default:
+		}
+	})
+
+	if err := clientHub.Connect(tsClient, serverDest); err != nil {
+		t.Fatalf("Connect error: %v", err)
+	}
+
+	select {
+	case <-clientEstablished:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timeout waiting for client link establishment")
+	}
+
+	select {
+	case <-serverLinkCh:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timeout waiting for server link establishment")
+	}
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		clientHub.lock.Lock()
+		welcomed := clientHub.Welcomed
+		clientHub.lock.Unlock()
+		if welcomed {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	clientHub.AddRoom("general")
+	clientHub.SendMessage("general", "Hello from client!")
+
+	deadline = time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		serverMsgs := serverHub.GetMessages("general")
+		if len(serverMsgs) > 0 {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	serverMsgs := serverHub.GetMessages("general")
+	if len(serverMsgs) == 0 {
+		t.Fatal("server hub should have recorded the message")
+	}
+	found := false
+	for _, m := range serverMsgs {
+		if m.Text == "Hello from client!" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("server hub messages don't contain expected text; got %v", serverMsgs)
+	}
+}
+
+func TestIntegrationPartRoomUpdatesMembers(t *testing.T) {
+	tsClient, clientCleanup := newStartedTS(t)
+	defer clientCleanup()
+	tsServer, serverCleanup := newStartedTS(t)
+	defer serverCleanup()
+
+	pipeA, pipeB, pipeCleanup := newRRCPipes(t, tsClient, tsServer)
+	defer pipeCleanup()
+	tsClient.RegisterInterface(pipeA)
+	tsServer.RegisterInterface(pipeB)
+
+	serverDest, err := rns.NewDestination(tsServer, tsServer.Identity(), rns.DestinationIn, rns.DestinationSingle, "rrc", "chat")
+	if err != nil {
+		t.Fatalf("server dest error: %v", err)
+	}
+
+	serverMgr := NewManager(tempDirRRC(t), func() []byte { return tsServer.Identity().Hash })
+	serverMgr.SetNickname("ServerHub")
+	serverHub := serverMgr.AddHub(serverDest.Hash, "rrc.chat", "ServerHub")
+
+	serverLinkCh := make(chan *rns.Link, 1)
+	serverDest.SetLinkEstablishedCallback(func(l *rns.Link) {
+		serverHub.SetLink(l)
+		l.SetPacketCallback(func(data []byte, packet *rns.Packet) {
+			serverHub.HandleData(data)
+		})
+		select {
+		case serverLinkCh <- l:
+		default:
+		}
+	})
+
+	clientMgr := NewManager(tempDirRRC(t), func() []byte { return tsClient.Identity().Hash })
+	clientMgr.SetNickname("TestClient")
+	clientHub := clientMgr.AddHub(serverDest.Hash, "rrc.chat", "TestHub")
+
+	clientEstablished := make(chan struct{}, 1)
+	clientHub.SetOnLinkEstablished(func() {
+		select {
+		case clientEstablished <- struct{}{}:
+		default:
+		}
+	})
+
+	if err := clientHub.Connect(tsClient, serverDest); err != nil {
+		t.Fatalf("Connect error: %v", err)
+	}
+
+	select {
+	case <-clientEstablished:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timeout waiting for client link establishment")
+	}
+
+	select {
+	case <-serverLinkCh:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timeout waiting for server link establishment")
+	}
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		clientHub.lock.Lock()
+		welcomed := clientHub.Welcomed
+		clientHub.lock.Unlock()
+		if welcomed {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	clientHub.JoinRoom("general", false)
+
+	deadline = time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		clientHub.lock.Lock()
+		hasMembers := len(clientHub.Members["general"]) > 0
+		clientHub.lock.Unlock()
+		if hasMembers {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	clientHub.lock.Lock()
+	membersBefore := len(clientHub.Members["general"])
+	clientHub.lock.Unlock()
+	if membersBefore == 0 {
+		t.Fatal("expected members in 'general' room before part")
+	}
+
+	clientHub.PartRoom("general")
+
+	deadline = time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		serverHub.lock.Lock()
+		serverEmpty := len(serverHub.Members["general"]) == 0
+		serverHub.lock.Unlock()
+		if serverEmpty {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	serverHub.lock.Lock()
+	serverMembersAfter := len(serverHub.Members["general"])
+	serverHub.lock.Unlock()
+	if serverMembersAfter > 0 {
+		t.Errorf("server should have removed member after part, got %d members", serverMembersAfter)
+	}
+
+	clientHub.lock.Lock()
+	clientMembersAfter := len(clientHub.Members["general"])
+	clientHub.lock.Unlock()
+	if clientMembersAfter > 0 {
+		t.Errorf("client should have removed member after PARTED notification, got %d members", clientMembersAfter)
+	}
+}
+
+func TestIntegrationHubDisconnectUpdatesStatus(t *testing.T) {
+	tsClient, clientCleanup := newStartedTS(t)
+	defer clientCleanup()
+	tsServer, serverCleanup := newStartedTS(t)
+	defer serverCleanup()
+
+	pipeA, pipeB, pipeCleanup := newRRCPipes(t, tsClient, tsServer)
+	defer pipeCleanup()
+	tsClient.RegisterInterface(pipeA)
+	tsServer.RegisterInterface(pipeB)
+
+	serverDest, err := rns.NewDestination(tsServer, tsServer.Identity(), rns.DestinationIn, rns.DestinationSingle, "rrc", "chat")
+	if err != nil {
+		t.Fatalf("server dest error: %v", err)
+	}
+
+	serverLinkCh := make(chan *rns.Link, 1)
+	serverDest.SetLinkEstablishedCallback(func(l *rns.Link) {
+		select {
+		case serverLinkCh <- l:
+		default:
+		}
+	})
+
+	clientMgr := NewManager(tempDirRRC(t), func() []byte { return tsClient.Identity().Hash })
+	clientMgr.SetNickname("TestClient")
+	clientHub := clientMgr.AddHub(serverDest.Hash, "rrc.chat", "TestHub")
+
+	clientEstablished := make(chan struct{}, 1)
+	clientHub.SetOnLinkEstablished(func() {
+		select {
+		case clientEstablished <- struct{}{}:
+		default:
+		}
+	})
+
+	clientClosed := make(chan struct{}, 1)
+	clientHub.SetOnLinkClosed(func() {
+		select {
+		case clientClosed <- struct{}{}:
+		default:
+		}
+	})
+
+	if err := clientHub.Connect(tsClient, serverDest); err != nil {
+		t.Fatalf("Connect error: %v", err)
+	}
+
+	select {
+	case <-clientEstablished:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timeout waiting for client link establishment")
+	}
+
+	clientHub.lock.Lock()
+	status := clientHub.Status
+	clientHub.lock.Unlock()
+	if status != StatusConnected {
+		t.Fatalf("expected StatusConnected, got %d", status)
+	}
+
+	clientHub.Disconnect()
+
+	select {
+	case <-clientClosed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timeout waiting for link closed callback")
+	}
+
+	clientHub.lock.Lock()
+	status = clientHub.Status
+	clientHub.lock.Unlock()
+	if status != StatusDisconnected {
+		t.Errorf("expected StatusDisconnected after disconnect, got %d", status)
+	}
+}
+
+func TestIntegrationMultipleRoomsIsolated(t *testing.T) {
+	tsClient, clientCleanup := newStartedTS(t)
+	defer clientCleanup()
+	tsServer, serverCleanup := newStartedTS(t)
+	defer serverCleanup()
+
+	pipeA, pipeB, pipeCleanup := newRRCPipes(t, tsClient, tsServer)
+	defer pipeCleanup()
+	tsClient.RegisterInterface(pipeA)
+	tsServer.RegisterInterface(pipeB)
+
+	serverDest, err := rns.NewDestination(tsServer, tsServer.Identity(), rns.DestinationIn, rns.DestinationSingle, "rrc", "chat")
+	if err != nil {
+		t.Fatalf("server dest error: %v", err)
+	}
+
+	serverMgr := NewManager(tempDirRRC(t), func() []byte { return tsServer.Identity().Hash })
+	serverMgr.SetNickname("ServerHub")
+	serverHub := serverMgr.AddHub(serverDest.Hash, "rrc.chat", "ServerHub")
+
+	serverLinkCh := make(chan *rns.Link, 1)
+	serverDest.SetLinkEstablishedCallback(func(l *rns.Link) {
+		serverHub.SetLink(l)
+		l.SetPacketCallback(func(data []byte, packet *rns.Packet) {
+			serverHub.HandleData(data)
+		})
+		select {
+		case serverLinkCh <- l:
+		default:
+		}
+	})
+
+	clientMgr := NewManager(tempDirRRC(t), func() []byte { return tsClient.Identity().Hash })
+	clientMgr.SetNickname("TestClient")
+	clientHub := clientMgr.AddHub(serverDest.Hash, "rrc.chat", "TestHub")
+
+	clientEstablished := make(chan struct{}, 1)
+	clientHub.SetOnLinkEstablished(func() {
+		select {
+		case clientEstablished <- struct{}{}:
+		default:
+		}
+	})
+
+	if err := clientHub.Connect(tsClient, serverDest); err != nil {
+		t.Fatalf("Connect error: %v", err)
+	}
+
+	select {
+	case <-clientEstablished:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timeout waiting for client link establishment")
+	}
+
+	select {
+	case <-serverLinkCh:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timeout waiting for server link establishment")
+	}
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		clientHub.lock.Lock()
+		welcomed := clientHub.Welcomed
+		clientHub.lock.Unlock()
+		if welcomed {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	clientHub.AddRoom("room-a")
+	clientHub.AddRoom("room-b")
+	clientHub.SendMessage("room-a", "message for room A")
+	clientHub.SendMessage("room-b", "message for room B")
+
+	deadline = time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		serverMsgsA := serverHub.GetMessages("room-a")
+		serverMsgsB := serverHub.GetMessages("room-b")
+		if len(serverMsgsA) > 0 && len(serverMsgsB) > 0 {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	serverMsgsA := serverHub.GetMessages("room-a")
+	serverMsgsB := serverHub.GetMessages("room-b")
+
+	if len(serverMsgsA) == 0 {
+		t.Fatal("expected messages in room-a")
+	}
+	if len(serverMsgsB) == 0 {
+		t.Fatal("expected messages in room-b")
+	}
+
+	for _, m := range serverMsgsA {
+		if m.Room != "room-a" {
+			t.Errorf("room-a message has wrong room: %q", m.Room)
+		}
+	}
+	for _, m := range serverMsgsB {
+		if m.Room != "room-b" {
+			t.Errorf("room-b message has wrong room: %q", m.Room)
+		}
+	}
+
+	foundA := false
+	for _, m := range serverMsgsA {
+		if m.Text == "message for room A" {
+			foundA = true
+		}
+	}
+	if !foundA {
+		t.Error("room-a should contain 'message for room A'")
+	}
+
+	foundB := false
+	for _, m := range serverMsgsB {
+		if m.Text == "message for room B" {
+			foundB = true
+		}
+	}
+	if !foundB {
+		t.Error("room-b should contain 'message for room B'")
+	}
+}

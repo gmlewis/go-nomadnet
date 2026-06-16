@@ -446,3 +446,122 @@ func TestIntegrationNodeAllowedFileRestrictsAccess(t *testing.T) {
 		t.Fatal("timeout waiting for page request response")
 	}
 }
+
+func TestIntegrationNodeServesBinaryFile(t *testing.T) {
+	tsA, cleanupA := newStartedTS(t)
+	defer cleanupA()
+	tsB, cleanupB := newStartedTS(t)
+	defer cleanupB()
+
+	pipeA, pipeB, pipeCleanup := newTestPipes(t, tsA, tsB)
+	defer pipeCleanup()
+	tsA.RegisterInterface(pipeA)
+	tsB.RegisterInterface(pipeB)
+
+	dir := tempDirInt(t)
+	pagesDir := filepath.Join(dir, "pages")
+	filesDir := filepath.Join(dir, "files")
+	if err := os.MkdirAll(pagesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	binaryData := []byte{
+		0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+		0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+		0x00, 0x01, 0x00, 0x01, 0x08, 0x02, 0x00, 0x00,
+		0x00, 0x90, 0x77, 0x53, 0xde, 0x00, 0x00, 0x00,
+	}
+	filePath := filepath.Join(filesDir, "test.png")
+	if err := os.WriteFile(filePath, binaryData, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	n := NewNode("TestNode", pagesDir, filesDir, 720, 0, 0, false)
+	if err := n.Start(tsA, tsA.Identity()); err != nil {
+		t.Fatalf("Start error: %v", err)
+	}
+	defer n.Stop()
+
+	if err := n.Announce(); err != nil {
+		t.Fatalf("Announce error: %v", err)
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if tsB.HasPath(n.Destination().Hash) {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if !tsB.HasPath(n.Destination().Hash) {
+		t.Fatal("timeout waiting for path to node")
+	}
+
+	linkEstablished := make(chan *rns.Link, 1)
+	n.Destination().SetLinkEstablishedCallback(func(l *rns.Link) {
+		select {
+		case linkEstablished <- l:
+		default:
+		}
+	})
+
+	outDest, err := rns.NewDestination(tsB, n.identity, rns.DestinationOut, rns.DestinationSingle, "nomadnetwork", "node")
+	if err != nil {
+		t.Fatalf("NewDestination error: %v", err)
+	}
+
+	link, err := rns.NewLink(tsB, outDest)
+	if err != nil {
+		t.Fatalf("NewLink error: %v", err)
+	}
+	link.SetLinkEstablishedCallback(func(l *rns.Link) {
+		select {
+		case linkEstablished <- l:
+		default:
+		}
+	})
+	if err := link.Establish(); err != nil {
+		t.Fatalf("Establish error: %v", err)
+	}
+
+	select {
+	case <-linkEstablished:
+	case <-time.After(10 * time.Second):
+		t.Fatal("timeout waiting for link establishment")
+	}
+
+	responseCh := make(chan []byte, 1)
+	_, err = link.Request("/file/test.png", nil, func(rr *rns.RequestReceipt) {
+		if rr.Response != nil {
+			if data, ok := rr.Response.([]byte); ok {
+				select {
+				case responseCh <- data:
+				default:
+				}
+			}
+		}
+	}, func(rr *rns.RequestReceipt) {
+		t.Logf("request failed")
+	}, nil, 15*time.Second)
+	if err != nil {
+		t.Fatalf("Request error: %v", err)
+	}
+
+	select {
+	case content := <-responseCh:
+		if len(content) != len(binaryData) {
+			t.Errorf("content length = %d, want %d", len(content), len(binaryData))
+		}
+		for i, b := range content {
+			if i >= len(binaryData) || b != binaryData[i] {
+				t.Errorf("content[%d] = 0x%02x, want 0x%02x", i, b, binaryData[i])
+				break
+			}
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatal("timeout waiting for binary file response")
+	}
+}

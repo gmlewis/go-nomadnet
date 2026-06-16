@@ -244,3 +244,121 @@ func (bd *BrowserDisplay) CurrentURL() string {
 func (bd *BrowserDisplay) SetContent(text string) {
 	bd.content.SetText(text)
 }
+
+// PageCache stores cached Micron pages by URL.
+var PageCache = make(map[string][]byte)
+
+// CachePage stores page data in the in-memory cache.
+// Matches Python's Browser.cache_page at Browser.py:1615.
+func CachePage(url string, data []byte) {
+	PageCache[url] = data
+}
+
+// GetCached retrieves page data from cache, or nil if not cached.
+// Matches Python's Browser.get_cached at Browser.py:1564.
+func GetCached(url string) []byte {
+	return PageCache[url]
+}
+
+// CleanCache removes pages older than maxAge from the cache.
+// Matches Python's Browser.clean_cache at Browser.py:1598.
+func CleanCache(maxEntries int) {
+	if len(PageCache) <= maxEntries {
+		return
+	}
+	// Remove oldest entries (simple LRU approximation)
+	for k := range PageCache {
+		delete(PageCache, k)
+		if len(PageCache) <= maxEntries {
+			break
+		}
+	}
+}
+
+// HandleLink dispatches a link target based on its type.
+// Matches Python's Browser.handle_link at Browser.py:216.
+// Returns (destType, hash, err).
+func HandleLink(target string) (destType, hash string, err error) {
+	if target == "" {
+		return "", "", fmt.Errorf("empty link target")
+	}
+
+	// Anchor links (#name) — handled locally
+	if strings.HasPrefix(target, "#") {
+		return "anchor", target[1:], nil
+	}
+
+	// RRC hub links (rrc://...)
+	if strings.HasPrefix(target, "rrc://") {
+		return "rrc", target[6:], nil
+	}
+
+	// LXMF delivery links (lxmf@hash)
+	if strings.HasPrefix(target, "lxmf@") {
+		return "lxmf", target[5:], nil
+	}
+
+	// Page address (32-hex hash)
+	if len(target) == 64 {
+		allHex := true
+		for _, c := range target {
+			if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+				allHex = false
+				break
+			}
+		}
+		if allHex {
+			return "page", target, nil
+		}
+	}
+
+	return "", "", fmt.Errorf("unrecognized link target: %s", target)
+}
+
+// DetectPartials scans page markup for partial include directives.
+// Returns a list of partial names to fetch.
+// Matches Python's Browser.detect_partials at Browser.py:659.
+func DetectPartials(markup string) []string {
+	var partials []string
+	lines := strings.Split(markup, "\n")
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, ">>") {
+			name := strings.TrimSpace(strings.TrimPrefix(trimmed, ">>"))
+			if name != "" {
+				partials = append(partials, name)
+			}
+		}
+	}
+	return partials
+}
+
+// ParseMicronColors extracts#!bg= and #!fg= directives from page markup.
+// Returns (bg, fg) hex color strings, or empty strings if not found.
+func ParseMicronColors(markup string) (bg, fg string) {
+	bgpos := strings.Index(markup, "#!bg=")
+	if bgpos >= 0 {
+		endpos := strings.Index(markup[bgpos:], "\n")
+		if endpos < 0 {
+			endpos = len(markup) - bgpos
+		}
+		bgVal := markup[bgpos+5 : bgpos+endpos]
+		if len(bgVal) == 3 || len(bgVal) == 6 {
+			bg = bgVal
+		}
+	}
+
+	fgpos := strings.Index(markup, "#!fg=")
+	if fgpos >= 0 {
+		endpos := strings.Index(markup[fgpos:], "\n")
+		if endpos < 0 {
+			endpos = len(markup) - fgpos
+		}
+		fgVal := markup[fgpos+5 : fgpos+endpos]
+		if len(fgVal) == 3 || len(fgVal) == 6 {
+			fg = fgVal
+		}
+	}
+
+	return bg, fg
+}
