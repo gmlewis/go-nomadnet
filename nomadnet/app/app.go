@@ -275,13 +275,24 @@ func (a *App) Init() error {
 		return err
 	}
 
-	// Load or create config
-	cfg, err := config.Load(a.ConfigPath)
-	if err != nil {
-		return err
+	// Load or create config. On first run (config file missing) write the
+	// default NomadNet config to disk — mirroring Python's createDefaultConfig —
+	// then load and apply it.
+	if _, err := os.Stat(a.ConfigPath); err != nil {
+		if !os.IsNotExist(err) {
+			return fmt.Errorf("checking config file: %w", err)
+		}
+		if err := a.CreateDefaultConfig(); err != nil {
+			return fmt.Errorf("creating default config: %w", err)
+		}
+	} else {
+		cfg, err := config.Load(a.ConfigPath)
+		if err != nil {
+			return err
+		}
+		a.Config = cfg
+		a.applyConfig(cfg)
 	}
-	a.Config = cfg
-	a.applyConfig(cfg)
 
 	// Initialize logger
 	a.Logger = rns.NewLogger()
@@ -507,14 +518,16 @@ func (a *App) applyConfig(cfg *config.Config) {
 	a.NotifyOnNewMessage = cfg.Client.NotifyOnNewMessage
 	a.ComposeMarkdown = cfg.Client.ComposeInMarkdown
 	a.DownloadsPath = expandUser(cfg.Client.DownloadsPath)
-	a.DisablePropagation = true
+	a.DisablePropagation = cfg.Node.DisablePropagation
 
 	a.PageRefreshInterval = 0
 	a.FileRefreshInterval = 0
 
 	a.RRCHistoryPerRoomCap = cfg.RRC.HistoryPerRoomCap
 	a.RRCFilterLoadedHistory = cfg.RRC.FilterLoadedHistory
-	a.RRCEphemeralNotices = int(cfg.RRC.EphemeralNotices)
+	// Python stores rrc_ephemeral_notices in seconds (value*60); the Go config
+	// holds minutes, so convert to seconds here to match Python.
+	a.RRCEphemeralNotices = int(cfg.RRC.EphemeralNotices) * 60
 	a.RRCNickColors = cfg.RRC.NickColors
 	a.RRCMentionColor = cfg.RRC.MentionColor
 	a.RRCColorMentionTimestamps = cfg.RRC.ColorMentionTimestamps

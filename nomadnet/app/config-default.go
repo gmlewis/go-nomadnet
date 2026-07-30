@@ -24,16 +24,21 @@ import (
 // CreateDefaultConfig writes the default NomadNet configuration file to
 // ConfigPath, ensures the config directory exists, loads it into the App, and
 // applies it to all subsystems. This mirrors the Python NomadNet
-// createDefaultConfig.
+// createDefaultConfig: the verbatim __default_nomadnet_config__ string is
+// written so the on-disk file is byte-identical to what Python produces.
 func (a *App) CreateDefaultConfig() error {
 	if err := os.MkdirAll(a.ConfigDir, 0o755); err != nil {
 		return err
 	}
-	cfg := config.DefaultConfig()
-	if err := config.Save(cfg, a.ConfigPath); err != nil {
+	if err := os.WriteFile(a.ConfigPath, []byte(config.DefaultConfigText()), 0o644); err != nil {
+		return err
+	}
+	cfg, err := config.Load(a.ConfigPath)
+	if err != nil {
 		return err
 	}
 	a.Config = cfg
 	a.applyConfig(cfg)
+	a.FirstRun = true
 	return nil
 }

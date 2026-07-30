@@ -20,6 +20,7 @@
 package config
 
 import (
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -174,14 +175,16 @@ func DefaultConfig() *Config {
 			ShowGutters:            true,
 		},
 		Node: NodeConfig{
-			EnableNode:          false,
-			AnnounceInterval:    360 * 60, // 360 minutes → seconds
-			AnnounceAtStart:     true,
-			DisablePropagation:  true,
-			PropagationCost:     16,
-			MaxTransferSize:     256,
-			MaxSyncSize:         10240,
-			MessageStorageLimit: 2000,
+			EnableNode:             false,
+			AnnounceInterval:       360 * 60, // 360 minutes → seconds
+			AnnounceAtStart:        true,
+			DisablePropagation:     true,
+			PropagationCost:        16,
+			MaxTransferSize:        256,
+			MaxSyncSize:            10240,
+			MessageStorageLimit:    2000,
+			PrioritiseDestinations: []string{}, // Python applyConfig defaults to []
+			StaticPeers:            []string{}, // Python applyConfig defaults to []
 		},
 		Printing: PrintingConfig{
 			PrintMessages: false,
@@ -246,6 +249,16 @@ func asList(s string) []string {
 		}
 	}
 	return result
+}
+
+// isHexColor reports whether s is a 6-character hexadecimal color string,
+// matching Python's `len(value) == 6 and bytes.fromhex(value)` validation.
+func isHexColor(s string) bool {
+	if len(s) != 6 {
+		return false
+	}
+	_, err := hex.DecodeString(s)
+	return err == nil
 }
 
 // Apply parses the raw config values and populates the typed fields.
@@ -329,10 +342,12 @@ func (c *Config) applyClient() {
 	}
 	if v, ok := sec["lxmf_sync_interval"]; ok {
 		if n, err := asInt(v); err == nil {
-			if n < 60 {
-				n = 60
+			// Python: value = minutes*60; only assign when value >= 60 (i.e.
+			// minutes >= 1). Below that the configured default is preserved.
+			seconds := n * 60
+			if seconds >= 60 {
+				c.Client.LXMFSyncInterval = seconds
 			}
-			c.Client.LXMFSyncInterval = n * 60 // minutes → seconds
 		}
 	}
 	if v, ok := sec["lxmf_sync_limit"]; ok {
@@ -349,13 +364,15 @@ func (c *Config) applyClient() {
 		if strings.ToLower(v) == "none" {
 			c.Client.RequiredStampCost = nil
 		} else if n, err := asInt(v); err == nil {
+			// Python: clamp to 255; assign only when > 0, else None.
 			if n > 255 {
 				n = 255
 			}
-			if n < 1 {
-				n = 1
+			if n > 0 {
+				c.Client.RequiredStampCost = &n
+			} else {
+				c.Client.RequiredStampCost = nil
 			}
-			c.Client.RequiredStampCost = &n
 		}
 	}
 	if v, ok := sec["accept_invalid_stamps"]; ok {
@@ -455,10 +472,24 @@ func (c *Config) applyRRC() {
 		c.RRC.ShowGutters = asBool(v)
 	}
 	if v, ok := sec["mention_color"]; ok {
-		c.RRC.MentionColor = strings.TrimSpace(v)
+		// Python only accepts a 6-character hex string; anything else is None.
+		v = strings.TrimSpace(v)
+		if isHexColor(v) {
+			c.RRC.MentionColor = v
+		} else {
+			c.RRC.MentionColor = ""
+		}
 	}
 	if v, ok := sec["nick_colors_theme"]; ok {
-		c.RRC.NickColorsTheme = asList(v)
+		// Python keeps only entries that are valid 6-character hex strings.
+		theme := asList(v)
+		filtered := make([]string, 0, len(theme))
+		for _, c := range theme {
+			if isHexColor(c) {
+				filtered = append(filtered, c)
+			}
+		}
+		c.RRC.NickColorsTheme = filtered
 	}
 	if v, ok := sec["enable_esoterics"]; ok {
 		c.RRC.EnableEsoterics = asBool(v)
@@ -506,18 +537,18 @@ func (c *Config) applyNode() {
 	}
 	if v, ok := sec["max_transfer_size"]; ok {
 		if f, err := asFloat(v); err == nil {
+			// Python clamps values below 1 up to 1 (not to the default 256).
 			if f < 1 {
-				f = 256
+				f = 1
 			}
 			c.Node.MaxTransferSize = f
 		}
 	}
 	if v, ok := sec["max_sync_size"]; ok {
 		if f, err := asFloat(v); err == nil {
+			// Python floors max_sync_size at lxmf_max_propagation_size
+			// (the configured max_transfer_size, already clamped to >= 1).
 			minSize := c.Node.MaxTransferSize
-			if minSize < 256 {
-				minSize = 256
-			}
 			if f < minSize {
 				f = minSize
 			}
@@ -562,8 +593,9 @@ func (c *Config) applyNode() {
 	}
 	if v, ok := sec["message_storage_limit"]; ok {
 		if f, err := asFloat(v); err == nil {
+			// Python floors values below 0.005 at 0.005 (not at the default 2000).
 			if f < 0.005 {
-				f = 2000
+				f = 0.005
 			}
 			c.Node.MessageStorageLimit = f
 		}
