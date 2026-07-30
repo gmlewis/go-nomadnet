@@ -1,0 +1,60 @@
+{
+  "logging": {
+    "loglevel": "4",
+    "destination": "file"
+  },
+  "client": {
+    "enable_client": "yes",
+    "user_interface": "text",
+    "downloads_path": "~/Downloads",
+    "notify_on_new_message": "yes",
+    "announce_at_start": "yes",
+    "announce_interval": "360",
+    "try_propagation_on_send_fail": "yes",
+    "periodic_lxmf_sync": "yes",
+    "lxmf_sync_interval": "360",
+    "lxmf_sync_limit": "8",
+    "required_stamp_cost": "None",
+    "accept_invalid_stamps": "False",
+    "max_accepted_size": "500",
+    "compact_announce_stream": "yes",
+    "compose_in_markdown": "yes"
+  },
+  "textui": {
+    "intro_time": "1",
+    "theme": "dark",
+    "colormode": "24bit",
+    "glyphs": "nerdfont",
+    "mouse_enabled": "True",
+    "editor": "nano",
+    "hide_guide": "no",
+    "sanitize_names": "yes",
+    "clipboard_copy": "no"
+  },
+  "rrc": {
+    "history_per_room_cap": "500",
+    "filter_loaded_history": "yes",
+    "ephemeral_notices": "10",
+    "color_mention_timestamps": "yes",
+    "render_markdown": "yes",
+    "render_micron": "yes",
+    "nick_colors": "yes",
+    "justify_msgs": "yes",
+    "space_msgs": "no",
+    "show_gutters": "yes"
+  },
+  "node": {
+    "enable_node": "no",
+    "node_name": "None",
+    "announce_interval": "360",
+    "announce_at_start": "Yes",
+    "disable_propagation": "Yes",
+    "propagation_cost": "16",
+    "max_transfer_size": "256",
+    "max_sync_size": "10240"
+  },
+  "printing": {
+    "print_messages": "No",
+    "print_command": "lp"
+  }
+}
