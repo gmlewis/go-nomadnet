@@ -19,17 +19,20 @@
 package asciichart
 
 import (
+	"fmt"
 	"math"
 	"strconv"
 	"strings"
 )
 
-// Symbols for chart drawing.
+// Symbols for chart drawing, ordered to match the Python symbols list:
+// [cross, tee-right, left-line, right-line, horiz, corner-bl, corner-tl,
+// corner-tr, corner-br, vert].
 type Symbols struct {
 	Cross     string // ┼ or +
 	TeeRight  string // ┤ or |
-	LeftLine  string // ─ or -
-	RightLine string // ─ or -
+	LeftLine  string // ╶ or -
+	RightLine string // ╴ or -
 	HorizLine string // ─ or -
 	CornerBL  string // ╰ or '
 	CornerTL  string // ╭ or ,
@@ -89,18 +92,25 @@ func New(glyphSet string) *Chart {
 	}
 }
 
-// Plot renders the series as an ASCII chart.
-// Series can be a single slice or multiple slices for multi-line charts.
+// list returns the drawing symbols in the Python symbols-list order.
+func (s Symbols) list() []string {
+	return []string{s.Cross, s.TeeRight, s.LeftLine, s.RightLine, s.HorizLine,
+		s.CornerBL, s.CornerTL, s.CornerTR, s.CornerBR, s.VertLine}
+}
+
+// Plot renders the series as an ASCII chart. It mirrors the Python
+// AsciiChart.plot, including that library's quirk that the Y-axis label is
+// stored as a single (possibly multi-character) cell in each row, so the
+// rendered line width depends on the formatted label length.
 func (c *Chart) Plot(series [][]float64) string {
 	if len(series) == 0 {
 		return ""
 	}
 
-	// Find min/max across all series
+	// Find min/max across all series.
 	minVal := math.MaxFloat64
 	maxVal := -math.MaxFloat64
 	hasValues := false
-
 	for _, s := range series {
 		for _, v := range s {
 			if !math.IsNaN(v) {
@@ -114,49 +124,52 @@ func (c *Chart) Plot(series [][]float64) string {
 			}
 		}
 	}
-
 	if !hasValues {
 		return ""
 	}
 
-	// Apply overrides
 	if c.Min != nil {
 		minVal = *c.Min
 	}
 	if c.Max != nil {
 		maxVal = *c.Max
 	}
-
 	if minVal > maxVal {
 		minVal, maxVal = maxVal, minVal
 	}
 
 	interval := maxVal - minVal
 	offset := c.Offset
-	height := c.Height
-	if height == 0 {
-		height = int(interval)
-	}
-	if height < 1 {
-		height = 1
+	if offset < 0 {
+		offset = 0
 	}
 
-	ratio := float64(height) / interval
-	if interval == 0 {
-		ratio = 1
+	// Python: height = cfg.get('height', interval); ratio = height/interval
+	// if interval > 0 else 1. An unset height (c.Height == 0) therefore yields
+	// ratio = 1, matching Python's default height == interval.
+	ratio := 1.0
+	if interval > 0 && c.Height != 0 {
+		ratio = float64(c.Height) / interval
 	}
 
 	min2 := int(math.Floor(minVal * ratio))
 	max2 := int(math.Ceil(maxVal * ratio))
 
+	clamp := func(n float64) float64 {
+		if n < minVal {
+			return minVal
+		}
+		if n > maxVal {
+			return maxVal
+		}
+		return n
+	}
 	scaled := func(y float64) int {
-		clamped := math.Max(math.Min(y, maxVal), minVal)
-		return int(math.Round(clamped*ratio)) - min2
+		return int(pyRound(clamp(y)*ratio)) - min2
 	}
 
 	rows := max2 - min2
 
-	// Find max width
 	width := 0
 	for _, s := range series {
 		if len(s) > width {
@@ -165,17 +178,26 @@ func (c *Chart) Plot(series [][]float64) string {
 	}
 	width += offset
 
-	// Build result grid
-	result := make([][]rune, rows+1)
+	symbols := c.Symbols.list()
+
+	// result is a grid of string cells (not single runes), mirroring Python's
+	// list-of-strings rows. The label is one multi-character cell.
+	result := make([][]string, rows+1)
 	for i := range result {
-		result[i] = make([]rune, width)
+		result[i] = make([]string, width)
 		for j := range result[i] {
-			result[i][j] = ' '
+			result[i][j] = " "
 		}
 	}
 
-	// Draw Y-axis labels and cross marks
-	for y := min2; y <= max2+1; y++ {
+	setCell := func(row, col int, sym string) {
+		if row >= 0 && row <= rows && col >= 0 && col < width {
+			result[row][col] = sym
+		}
+	}
+
+	// Y-axis labels and axis markers.
+	for y := min2; y <= max2; y++ {
 		var labelVal float64
 		if rows > 0 {
 			labelVal = maxVal - (float64(y-min2) * interval / float64(rows))
@@ -187,110 +209,70 @@ func (c *Chart) Plot(series [][]float64) string {
 			}
 		}
 		label := formatLabel(labelVal, c.Format)
-		labelLen := len([]rune(label))
-
 		row := y - min2
-		if row >= 0 && row <= rows {
-			startPos := offset - labelLen
-			if startPos < 0 {
-				startPos = 0
-			}
-			for i, ch := range label {
-				if startPos+i < width {
-					result[row][startPos+i] = ch
-				}
-			}
-			if offset-1 >= 0 && offset-1 < width {
-				if y == 0 {
-					result[row][offset-1] = []rune(c.Symbols.Cross)[0]
-				} else {
-					result[row][offset-1] = []rune(c.Symbols.TeeRight)[0]
-				}
-			}
+		start := offset - len([]rune(label))
+		if start < 0 {
+			start = 0
+		}
+		setCell(row, start, label)
+		if y == 0 {
+			setCell(row, offset-1, symbols[0])
+		} else {
+			setCell(row, offset-1, symbols[1])
 		}
 	}
 
-	// Draw first point
+	// First point marker.
 	if len(series) > 0 && len(series[0]) > 0 && !math.IsNaN(series[0][0]) {
-		scaledVal := scaled(series[0][0])
-		row := rows - scaledVal
-		if row >= 0 && row <= rows && offset-1 >= 0 && offset-1 < width {
-			result[row][offset-1] = []rune(c.Symbols.Cross)[0]
-		}
+		setCell(rows-scaled(series[0][0]), offset-1, symbols[0])
 	}
 
-	// Draw series
+	// Series.
 	for _, s := range series {
 		for x := 0; x < len(s)-1; x++ {
 			d0 := s[x]
 			d1 := s[x+1]
-
 			if math.IsNaN(d0) && math.IsNaN(d1) {
 				continue
 			}
-
 			col := x + offset
-
 			if math.IsNaN(d0) && !math.IsNaN(d1) {
-				scaledVal := scaled(d1)
-				row := rows - scaledVal
-				if row >= 0 && row <= rows && col < width {
-					result[row][col] = []rune(c.Symbols.LeftLine)[0]
-				}
+				setCell(rows-scaled(d1), col, symbols[2])
 				continue
 			}
-
 			if !math.IsNaN(d0) && math.IsNaN(d1) {
-				scaledVal := scaled(d0)
-				row := rows - scaledVal
-				if row >= 0 && row <= rows && col < width {
-					result[row][col] = []rune(c.Symbols.RightLine)[0]
-				}
+				setCell(rows-scaled(d0), col, symbols[3])
 				continue
 			}
-
 			y0 := scaled(d0)
 			y1 := scaled(d1)
-
 			if y0 == y1 {
-				row := rows - y0
-				if row >= 0 && row <= rows && col < width {
-					result[row][col] = []rune(c.Symbols.HorizLine)[0]
-				}
+				setCell(rows-y0, col, symbols[4])
 				continue
 			}
-
-			// Draw corners
-			if col < width {
-				if y0 > y1 {
-					result[rows-y1][col] = []rune(c.Symbols.CornerBL)[0]
-					result[rows-y0][col] = []rune(c.Symbols.CornerBR)[0]
-				} else {
-					result[rows-y1][col] = []rune(c.Symbols.CornerTL)[0]
-					result[rows-y0][col] = []rune(c.Symbols.CornerTR)[0]
-				}
+			if y0 > y1 {
+				setCell(rows-y1, col, symbols[5])
+				setCell(rows-y0, col, symbols[7])
+			} else {
+				setCell(rows-y1, col, symbols[6])
+				setCell(rows-y0, col, symbols[8])
 			}
-
-			// Draw vertical line between corners
-			start := min(y0, y1) + 1
-			end := max(y0, y1)
-			for y := start; y < end; y++ {
-				row := rows - y
-				if row >= 0 && row <= rows && col < width {
-					result[row][col] = []rune(c.Symbols.VertLine)[0]
-				}
+			lo := y0
+			hi := y1
+			if lo > hi {
+				lo, hi = hi, lo
+			}
+			for y := lo + 1; y < hi; y++ {
+				setCell(rows-y, col, symbols[9])
 			}
 		}
 	}
 
-	// Convert to strings, trimming trailing spaces
 	var lines []string
 	for _, row := range result {
-		line := string(row)
-		line = strings.TrimRight(line, " ")
+		line := strings.TrimRight(strings.Join(row, ""), " ")
 		lines = append(lines, line)
 	}
-
 	return strings.Join(lines, "\n")
 }
 
@@ -299,6 +281,10 @@ func (c *Chart) PlotSingle(series []float64) string {
 	return c.Plot([][]float64{series})
 }
 
+// formatLabel formats a Y-axis value. The format string is a Go fmt verb
+// (e.g. "%8.2f ") mirroring the Python placeholder (e.g. "{:8.2f }"). A format
+// without a "%" verb yields a blank 12-column label, matching Python's
+// non-callable placeholder edge handling.
 func formatLabel(val float64, format string) string {
 	if !strings.Contains(format, "%") {
 		return strings.Repeat(" ", 12)
@@ -306,57 +292,31 @@ func formatLabel(val float64, format string) string {
 	if math.IsNaN(val) || math.IsInf(val, 0) {
 		return "     NaN "
 	}
-	if val == 0 {
-		return "    0.00 "
-	}
-	neg := val < 0
-	absVal := val
-	if neg {
-		absVal = -val
-	}
-	intPart := int(absVal)
-	fracPart := absVal - float64(intPart)
-	frac2 := int(fracPart*100 + 0.5)
-
-	suffix := " "
-	prefix := " "
-	if neg {
-		prefix = "-"
-	}
-
-	intStr := formatInt(intPart)
-	padLen := 7 - len(strings.TrimSpace(intStr))
-	if padLen < 0 {
-		padLen = 0
-	}
-
-	var s strings.Builder
-	s.WriteString(prefix)
-	s.WriteString(strings.Repeat(" ", padLen))
-	s.WriteString(intStr)
-	s.WriteString(".")
-	if frac2 < 10 {
-		s.WriteString("0")
-	}
-	s.WriteString(formatInt(frac2))
-	s.WriteString(suffix)
-	return s.String()
+	return fmt.Sprintf(format, val)
 }
 
 func formatInt(n int) string {
 	return strconv.Itoa(n)
 }
 
-func min(a, b int) int {
-	if a < b {
-		return a
+// pyRound mirrors Python's built-in round for a single float argument: round
+// half to even (banker's rounding). Go's math.Round rounds half away from zero,
+// which diverges from Python on exact .5 ties (e.g. round(2.5)==2, round(0.5)==0).
+func pyRound(x float64) float64 {
+	if math.IsNaN(x) || math.IsInf(x, 0) {
+		return x
 	}
-	return b
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
+	f := math.Floor(x)
+	r := x - f
+	if r < 0.5 {
+		return f
 	}
-	return b
+	if r > 0.5 {
+		return f + 1
+	}
+	// Exact tie: round to even.
+	if math.Mod(f, 2) == 0 {
+		return f
+	}
+	return f + 1
 }

@@ -1,0 +1,49 @@
+{
+  "msg_abc.lxm": {
+    "timestamp": 1700000000.5,
+    "sort_timestamp": 1700000000.5,
+    "state": 2,
+    "title": "Hello Title",
+    "content": "Body content here",
+    "source_hash": {
+      "__bytes_hex__": "0123456789abcdef"
+    },
+    "transport_encrypted": true,
+    "transport_encryption": "AES-128",
+    "signature_validated": true,
+    "unverified_reason": null,
+    "method": 1,
+    "renderer": null,
+    "has_attachments": true,
+    "attachment_names": [
+      [
+        "file",
+        "notes.txt",
+        16
+      ],
+      [
+        "file",
+        "image.png",
+        28
+      ]
+    ]
+  },
+  "msg_def.lxm": {
+    "timestamp": null,
+    "sort_timestamp": 1700000001.0,
+    "state": null,
+    "title": "",
+    "content": "",
+    "source_hash": {
+      "__bytes_hex__": ""
+    },
+    "transport_encrypted": false,
+    "transport_encryption": "",
+    "signature_validated": false,
+    "unverified_reason": "unknown_origin",
+    "method": 0,
+    "renderer": "default",
+    "has_attachments": false,
+    "attachment_names": []
+  }
+}
