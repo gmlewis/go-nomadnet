@@ -70,3 +70,20 @@ func removeFlagFile(path string) {
 		_ = os.Remove(path)
 	}
 }
+
+// IsUnreadCached reports whether the given source hash is currently held in
+// the in-memory unread cache. It is provided for tests and callers that need to
+// inspect the cache safely (the cache is guarded by an internal mutex).
+func IsUnreadCached(sourceHash string) bool {
+	cachedMu.Lock()
+	defer cachedMu.Unlock()
+	return unreadConversations[sourceHash]
+}
+
+// IsFailedCached reports whether the given source hash is currently held in
+// the in-memory failed cache.
+func IsFailedCached(sourceHash string) bool {
+	cachedMu.Lock()
+	defer cachedMu.Unlock()
+	return failedConversations[sourceHash]
+}

@@ -94,10 +94,10 @@ func TestMarkConversationRead(t *testing.T) {
 	// idempotent: marking a clean conversation read is a no-op
 	MarkConversationRead("abcd", base)
 	// in-memory maps should be cleared
-	if _, ok := unreadConversations["abcd"]; ok {
+	if IsUnreadCached("abcd") {
 		t.Fatal("unreadConversations should not contain abcd")
 	}
-	if _, ok := failedConversations["abcd"]; ok {
+	if IsFailedCached("abcd") {
 		t.Fatal("failedConversations should not contain abcd")
 	}
 }
