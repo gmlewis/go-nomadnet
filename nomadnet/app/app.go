@@ -24,6 +24,7 @@ package app
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -33,6 +34,7 @@ import (
 	"github.com/gmlewis/go-nomadnet/nomadnet/config"
 	"github.com/gmlewis/go-nomadnet/nomadnet/conversation"
 	"github.com/gmlewis/go-nomadnet/nomadnet/directory"
+	"github.com/gmlewis/go-nomadnet/nomadnet/peersettings"
 	"github.com/gmlewis/go-nomadnet/nomadnet/rrc"
 	"github.com/gmlewis/go-nomadnet/nomadnet/storage"
 	"github.com/gmlewis/go-reticulum/lxmf"
@@ -86,6 +88,10 @@ type App struct {
 	ExamplesPath       string
 	DownloadsPath      string
 	AttachmentSavePath string
+
+	// Local peer state
+	PeerSettings *peersettings.Settings
+	IgnoredList  [][]byte
 
 	// Runtime settings
 	FirstRun             bool
@@ -168,6 +174,7 @@ type App struct {
 	LastPageRefresh time.Time
 	LastFileRefresh time.Time
 
+	notifyWriter io.Writer
 	// Callbacks
 	DeliveryCallback func(msg any)
 	UIChangeCallback func()
@@ -307,6 +314,8 @@ func (a *App) Init() error {
 	// Initialize non-blocking subsystems
 	a.Dir = directory.New()
 	a.RRC = rrc.NewManager(a.StoragePath, nil)
+	a.loadPeerSettings()
+	a.loadIgnoredList()
 
 	// Set global singleton
 	globalMu.Lock()
@@ -411,6 +420,8 @@ func (a *App) InitWithTransport(ts *rns.TransportSystem, identity *rns.Identity)
 	a.Identity = identity
 	a.Dir = directory.New()
 	a.RRC = rrc.NewManager(a.StoragePath, nil)
+	a.loadPeerSettings()
+	a.loadIgnoredList()
 
 	globalMu.Lock()
 	globalApp = a
@@ -537,32 +548,58 @@ func (a *App) Shutdown() {
 	}
 }
 
-// RequestLXMFSync initiates an LXMF sync with propagation nodes.
-func (a *App) RequestLXMFSync(limit int) {
-	a.mu.Lock()
-	a.LastLXMFSync = time.Now()
-	a.mu.Unlock()
-}
-
-// AnnounceNow sends an LXMF announce and records the timestamp.
+// AnnounceNow sends an LXMF delivery announce using the configured display
+// name and stamp cost, then records the announce time and persists peer
+// settings. This mirrors the Python NomadNetworkApp.announce_now.
 func (a *App) AnnounceNow() {
+	if a.Router != nil && a.LXMFDest != nil {
+		a.Router.SetInboundStampCost(a.LXMFDest.Hash, a.RequiredStampCost)
+		a.Router.SetDisplayName(a.LXMFDest.Hash, a.GetDisplayName())
+		_ = a.Router.Announce(a.LXMFDest.Hash)
+	}
 	a.mu.Lock()
 	a.LastAnnounce = time.Now()
 	a.mu.Unlock()
+	a.SavePeerSettings()
 }
 
-// AutoSelectPropagationNode selects the best propagation node from
-// known trusted nodes with fewest hops.
+// AutoSelectPropagationNode selects a default LXMF propagation node.
+// When the user has manually selected a node it is used; otherwise the
+// trusted known node with the fewest hops is chosen. The selection is
+// pushed to the LXMF router. This mirrors the Python NomadNet
+// autoselect_propagation_node.
 func (a *App) AutoSelectPropagationNode() {
-	if a.Dir == nil {
+	var selected []byte
+	if ps := a.PeerSettings; ps != nil {
+		if h, ok := ps.PropagationNode.([]byte); ok && len(h) > 0 {
+			selected = h
+		}
+	}
+	if selected == nil && a.Dir != nil {
+		bestHops := rns.PathfinderM + 1
+		for _, node := range a.Dir.KnownNodes() {
+			if node.TrustLevel != directory.TrustTrusted {
+				continue
+			}
+			hops := rns.PathfinderM + 1
+			if a.Transport != nil {
+				hops = a.Transport.HopsTo(node.SourceHash)
+			}
+			if hops < bestHops {
+				bestHops = hops
+				selected = node.SourceHash
+			}
+		}
+	}
+	if selected == nil {
+		if a.Logger != nil {
+			a.Logger.Notice("Could not autoselect a propagation node")
+		}
 		return
 	}
-	// Selection logic will be implemented when RNS transport is available
-}
-
-// IsIgnored checks if a source hash is in the ignored list.
-func (a *App) IsIgnored(sourceHash []byte) bool {
-	return false // placeholder
+	if a.Router != nil {
+		_ = a.Router.SetOutboundPropagationNode(selected)
+	}
 }
 
 // GetAnnounces returns a copy of the announce stream.
@@ -729,6 +766,14 @@ func (a *App) lxmfDelivery(msg *lxmf.Message) {
 		if _, err := conversation.Ingest(msg, a.ConversationPath, false); err != nil {
 			a.Logger.Error("Failed to ingest LXMF message: %v", err)
 		}
+	}
+
+	if a.NotifyOnNewMessage {
+		a.NotifyMessageReceived()
+	}
+
+	if a.ShouldPrint(msg) {
+		a.PrintMessage(msg, time.Now())
 	}
 
 	if a.DeliveryCallback != nil {

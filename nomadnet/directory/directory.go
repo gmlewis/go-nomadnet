@@ -23,6 +23,7 @@ package directory
 
 import (
 	"sync"
+	"time"
 
 	"github.com/gmlewis/go-nomadnet/nomadnet/util"
 )
@@ -425,4 +426,46 @@ func bytesEqual(a, b []byte) bool {
 		}
 	}
 	return true
+}
+
+// NumberOfKnownNodes returns the count of directory entries that host a node.
+func (d *Directory) NumberOfKnownNodes() int {
+	return len(d.KnownNodes())
+}
+
+// NumberOfKnownPeers returns the count of unique source hashes seen in the
+// announce stream. When lookbackSeconds is non-nil, only announces newer than
+// (now - lookbackSeconds) are counted, matching the Python
+// number_of_known_peers lookback behavior.
+func (d *Directory) NumberOfKnownPeers(lookbackSeconds *float64) int {
+	stream := d.AnnounceStream()
+	seen := make(map[string]bool, len(stream))
+	now := float64(0)
+	if lookbackSeconds != nil {
+		now = float64(time.Now().UnixNano()) / 1e9
+	}
+	for _, a := range stream {
+		if lookbackSeconds != nil {
+			cutoff := now - *lookbackSeconds
+			if a.Timestamp <= cutoff {
+				continue
+			}
+		}
+		seen[hexKey(a.SourceHash)] = true
+	}
+	return len(seen)
+}
+
+// SortRank returns the configured sort rank for a source hash, or nil when
+// the entry is absent or has no sort rank set.
+func (d *Directory) SortRank(sourceHash []byte) *int {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	key := hexKey(sourceHash)
+	entry, ok := d.entries[key]
+	if !ok {
+		return nil
+	}
+	return entry.SortRank
 }
