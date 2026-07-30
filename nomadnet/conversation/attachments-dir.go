@@ -20,10 +20,10 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sync"
 
 	"github.com/gmlewis/go-reticulum/lxmf"
 	"github.com/vmihailenco/msgpack/v5"
-	"sync"
 )
 
 // attachmentPathProvider returns the base directory in which per-message
