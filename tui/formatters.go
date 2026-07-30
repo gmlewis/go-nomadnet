@@ -171,9 +171,12 @@ func ExpandShorthands(destType string) string {
 	}
 }
 
-// hashLen is the number of hex characters for a truncated RNS hash
-// (TRUNCATED_HASHLENGTH//8 * 2 = 20 chars).
-const hashLen = 20
+// hashLen is the number of hex characters for a truncated RNS hash:
+// RNS.Reticulum.TRUNCATED_HASHLENGTH is 128 bits, so a truncated hash is
+// 128/8 = 16 bytes = 32 hex characters. This matches browser-links.go's
+// truncatedHashHexLen and Python's parse_url, which expects
+// (RNS.Reticulum.TRUNCATED_HASHLENGTH//8)*2 == 32 hex chars.
+const hashLen = 32
 
 // ParseURL parses a browser URL into destination hash (hex string)
 // and path. Matches Python's Browser.parse_url() exactly.
@@ -285,11 +288,9 @@ func ParseLinkTarget(target string) (destType, hash string) {
 // The backtick separates the link target from field specifications.
 // Returns (destinationType, hash, fields, allFields).
 func ParseLinkTargetWithFields(target string) (destType, hash string, fields []string, allFields bool) {
-	if target == "" {
-		return "", "", nil, false
-	}
-
-	// Split off field data (backtick separator)
+	// Split off field data (backtick separator). Python's handle_link
+	// receives the link target and its field list separately; Go combines
+	// them with a backtick, so strip it here before resolving the target.
 	linkPart := target
 	fieldPart := ""
 	if idx := strings.Index(target, "`"); idx >= 0 {
@@ -306,29 +307,35 @@ func ParseLinkTargetWithFields(target string) (destType, hash string, fields []s
 		}
 	}
 
-	// Anchor link
+	// In-document anchor link (#name or empty #) — handled locally.
 	if strings.HasPrefix(linkPart, "#") {
 		return "anchor", linkPart[1:], fields, allFields
 	}
 
-	// RRC link
+	// rrc://<hex>[:<dest>]/<room> URL form.
 	if strings.HasPrefix(linkPart, "rrc://") {
 		return "rrc", linkPart[6:], fields, allFields
 	}
 
-	// Partial update
-	if strings.HasPrefix(linkPart, "p:") {
-		return "partial", linkPart[2:], fields, allFields
-	}
-
-	// Split on @ for type prefix
-	parts := strings.SplitN(linkPart, "@", 2)
+	// Split on @ for a type prefix. This mirrors Python's handle_link, which
+	// uses an unbounded split("@") and only treats the link as typed when
+	// exactly one "@" is present (len(components) == 2). This check comes
+	// before the "p:" partial branch, so a target like "p:id@x" is treated as
+	// a typed link rather than a partial.
+	parts := strings.Split(linkPart, "@")
 	if len(parts) == 2 {
 		return ExpandShorthands(parts[0]), parts[1], fields, allFields
 	}
 
-	// Plain address — treat as nomadnetwork.node
-	return "nomadnetwork.node", linkPart, fields, allFields
+	// Partial update.
+	if strings.HasPrefix(linkPart, "p:") {
+		return "partial", linkPart[2:], fields, allFields
+	}
+
+	// Plain address — treat as nomadnetwork.node. Python reassigns the link
+	// target to components[0] (the first "@"-delimited segment), so a target
+	// with two or more "@" uses only its first segment here.
+	return "nomadnetwork.node", parts[0], fields, allFields
 }
 
 // FormatAnnounceDetail formats a full announce for the detail/info view.

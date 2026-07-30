@@ -1,0 +1,168 @@
+{
+  "cases": [
+    {
+      "kind": "anchor",
+      "destination_type": null,
+      "target": "section1",
+      "partial_ids": null,
+      "url": "#section1"
+    },
+    {
+      "kind": "anchor",
+      "destination_type": null,
+      "target": "",
+      "partial_ids": null,
+      "url": "#"
+    },
+    {
+      "kind": "rrc",
+      "destination_type": "rrc.hub.session",
+      "target": "abcdef0123456789/roomname",
+      "partial_ids": null,
+      "url": "rrc://abcdef0123456789/roomname"
+    },
+    {
+      "kind": "rrc",
+      "destination_type": "rrc.hub.session",
+      "target": "",
+      "partial_ids": null,
+      "url": "rrc://"
+    },
+    {
+      "kind": "typed",
+      "destination_type": "nomadnetwork.node",
+      "target": "a1b2c3d4e5f6a1b2c3d4a1b2c3d4e5f6",
+      "partial_ids": null,
+      "url": "nnn@a1b2c3d4e5f6a1b2c3d4a1b2c3d4e5f6"
+    },
+    {
+      "kind": "typed",
+      "destination_type": "lxmf.delivery",
+      "target": "a1b2c3d4e5f6a1b2c3d4a1b2c3d4e5f6",
+      "partial_ids": null,
+      "url": "lxmf@a1b2c3d4e5f6a1b2c3d4a1b2c3d4e5f6"
+    },
+    {
+      "kind": "typed",
+      "destination_type": "rrc.hub.session",
+      "target": "a1b2c3d4e5f6a1b2c3d4a1b2c3d4e5f6",
+      "partial_ids": null,
+      "url": "rrc@a1b2c3d4e5f6a1b2c3d4a1b2c3d4e5f6"
+    },
+    {
+      "kind": "typed",
+      "destination_type": "nomadnetwork.node",
+      "target": "a1b2c3d4e5f6a1b2c3d4a1b2c3d4e5f6",
+      "partial_ids": null,
+      "url": "nomadnetwork.node@a1b2c3d4e5f6a1b2c3d4a1b2c3d4e5f6"
+    },
+    {
+      "kind": "typed",
+      "destination_type": "lxmf.delivery",
+      "target": "a1b2c3d4e5f6a1b2c3d4a1b2c3d4e5f6",
+      "partial_ids": null,
+      "url": "lxmf.delivery@a1b2c3d4e5f6a1b2c3d4a1b2c3d4e5f6"
+    },
+    {
+      "kind": "typed",
+      "destination_type": "rrc.hub.session",
+      "target": "a1b2c3d4e5f6a1b2c3d4a1b2c3d4e5f6",
+      "partial_ids": null,
+      "url": "rrc.hub.session@a1b2c3d4e5f6a1b2c3d4a1b2c3d4e5f6"
+    },
+    {
+      "kind": "typed",
+      "destination_type": "custom.type",
+      "target": "a1b2c3d4e5f6a1b2c3d4a1b2c3d4e5f6",
+      "partial_ids": null,
+      "url": "custom.type@a1b2c3d4e5f6a1b2c3d4a1b2c3d4e5f6"
+    },
+    {
+      "kind": "typed",
+      "destination_type": "nomadnetwork.node",
+      "target": "a1b2c3d4e5f6a1b2c3d4a1b2c3d4e5f6",
+      "partial_ids": null,
+      "url": "a1b2c3d4e5f6a1b2c3d4a1b2c3d4e5f6"
+    },
+    {
+      "kind": "typed",
+      "destination_type": "nomadnetwork.node",
+      "target": "somenonhexname",
+      "partial_ids": null,
+      "url": "somenonhexname"
+    },
+    {
+      "kind": "typed",
+      "destination_type": "partial",
+      "target": null,
+      "partial_ids": [
+        "id1"
+      ],
+      "url": "p:id1"
+    },
+    {
+      "kind": "typed",
+      "destination_type": "partial",
+      "target": null,
+      "partial_ids": [
+        "id1",
+        "id2",
+        "id3"
+      ],
+      "url": "p:id1:id2:id3"
+    },
+    {
+      "kind": "typed",
+      "destination_type": "partial",
+      "target": null,
+      "partial_ids": [
+        ""
+      ],
+      "url": "p:"
+    },
+    {
+      "kind": "typed",
+      "destination_type": "partial",
+      "target": null,
+      "partial_ids": [
+        "id1|id2"
+      ],
+      "url": "p:id1|id2"
+    },
+    {
+      "kind": "typed",
+      "destination_type": "nomadnetwork.node",
+      "target": "a",
+      "partial_ids": null,
+      "url": "a@b@c"
+    },
+    {
+      "kind": "typed",
+      "destination_type": "unknown",
+      "target": "target",
+      "partial_ids": null,
+      "url": "unknown@target"
+    },
+    {
+      "kind": "typed",
+      "destination_type": "",
+      "target": "",
+      "partial_ids": null,
+      "url": "@"
+    },
+    {
+      "kind": "typed",
+      "destination_type": "nomadnetwork.node",
+      "target": "",
+      "partial_ids": null,
+      "url": "nnn@"
+    },
+    {
+      "kind": "typed",
+      "destination_type": "nomadnetwork.node",
+      "target": "",
+      "partial_ids": null,
+      "url": ""
+    }
+  ]
+}

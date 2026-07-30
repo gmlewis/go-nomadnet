@@ -1,0 +1,142 @@
+{
+  "default_path": "/page/index.mu",
+  "truncated_hash_hex_len": 32,
+  "cases": [
+    {
+      "url": "a1b2c3d4e5f6a1b2c3d4a1b2c3d4e5f6",
+      "current_hash": null,
+      "label": "bare_32hex_hash",
+      "dest_hash": "a1b2c3d4e5f6a1b2c3d4a1b2c3d4e5f6",
+      "path": "/page/index.mu",
+      "error": null
+    },
+    {
+      "url": "a1b2c3d4e5f6a1b2c3d4a1b2c3d4e5f6:/page/about.mu",
+      "current_hash": null,
+      "label": "hash_with_path",
+      "dest_hash": "a1b2c3d4e5f6a1b2c3d4a1b2c3d4e5f6",
+      "path": "/page/about.mu",
+      "error": null
+    },
+    {
+      "url": "a1b2c3d4e5f6a1b2c3d4a1b2c3d4e5f6:",
+      "current_hash": null,
+      "label": "hash_empty_path",
+      "dest_hash": "a1b2c3d4e5f6a1b2c3d4a1b2c3d4e5f6",
+      "path": "/page/index.mu",
+      "error": null
+    },
+    {
+      "url": "a1b2c3d4e5f6a1b2c3d4a1b2c3d4e5f6:/file/foo.bin",
+      "current_hash": null,
+      "label": "hash_file_path",
+      "dest_hash": "a1b2c3d4e5f6a1b2c3d4a1b2c3d4e5f6",
+      "path": "/file/foo.bin",
+      "error": null
+    },
+    {
+      "url": ":/page/foo.mu",
+      "current_hash": "a1b2c3d4e5f6a1b2c3d4a1b2c3d4e5f6",
+      "label": "relative_with_current",
+      "dest_hash": "a1b2c3d4e5f6a1b2c3d4a1b2c3d4e5f6",
+      "path": "/page/foo.mu",
+      "error": null
+    },
+    {
+      "url": ":",
+      "current_hash": "a1b2c3d4e5f6a1b2c3d4a1b2c3d4e5f6",
+      "label": "relative_empty_path",
+      "dest_hash": "a1b2c3d4e5f6a1b2c3d4a1b2c3d4e5f6",
+      "path": "/page/index.mu",
+      "error": null
+    },
+    {
+      "url": "",
+      "current_hash": null,
+      "label": "empty_url",
+      "dest_hash": null,
+      "path": null,
+      "error": "Malformed URL"
+    },
+    {
+      "url": "tooShort",
+      "current_hash": null,
+      "label": "short_hash",
+      "dest_hash": null,
+      "path": null,
+      "error": "Malformed URL"
+    },
+    {
+      "url": "a1b2c3d4e5f6a1b2c3d4a1b2c3d4e5f60",
+      "current_hash": null,
+      "label": "hash_too_long_33",
+      "dest_hash": null,
+      "path": null,
+      "error": "Malformed URL"
+    },
+    {
+      "url": "a1b2c3d4e5f6a1b2c3d4a1b2c3d4e5",
+      "current_hash": null,
+      "label": "hash_too_short_30",
+      "dest_hash": null,
+      "path": null,
+      "error": "Malformed URL"
+    },
+    {
+      "url": "zzb2c3d4e5f6a1b2c3d4a1b2c3d4e5f6",
+      "current_hash": null,
+      "label": "invalid_hex_32",
+      "dest_hash": null,
+      "path": null,
+      "error": "Malformed URL"
+    },
+    {
+      "url": "a1b2c3d4e5f6a1b2c3d4a1b2c3d4e5f6:a:b",
+      "current_hash": null,
+      "label": "too_many_colons",
+      "dest_hash": null,
+      "path": null,
+      "error": "Malformed URL"
+    },
+    {
+      "url": ":/page/x.mu",
+      "current_hash": null,
+      "label": "relative_no_current",
+      "dest_hash": null,
+      "path": null,
+      "error": "Malformed URL"
+    },
+    {
+      "url": "g1b2c3d4e5f6a1b2c3d4a1b2c3d4e5f6",
+      "current_hash": null,
+      "label": "nonhex_len32",
+      "dest_hash": null,
+      "path": null,
+      "error": "Malformed URL"
+    },
+    {
+      "url": "0123456789abcdef0123456789abcdef",
+      "current_hash": null,
+      "label": "bare_alt_hash",
+      "dest_hash": "0123456789abcdef0123456789abcdef",
+      "path": "/page/index.mu",
+      "error": null
+    },
+    {
+      "url": "0123456789abcdef0123456789abcdef:/page/index.mu",
+      "current_hash": null,
+      "label": "alt_hash_default_path",
+      "dest_hash": "0123456789abcdef0123456789abcdef",
+      "path": "/page/index.mu",
+      "error": null
+    },
+    {
+      "url": "a1b2c3d4e5f6a1b2c3d4a1b2c3d4e5f6:/p:age",
+      "current_hash": null,
+      "label": "path_contains_colon_is_too_many",
+      "dest_hash": null,
+      "path": null,
+      "error": "Malformed URL"
+    }
+  ]
+}

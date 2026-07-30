@@ -174,7 +174,7 @@ func TestExpandShorthands(t *testing.T) {
 func TestParseURL(t *testing.T) {
 	t.Parallel()
 
-	hash20 := "a1b2c3d4e5f6a1b2c3d4" // 20 hex chars
+	hash32 := "a1b2c3d4e5f6a1b2c3d4a1b2c3d4e5f6" // 32 hex chars (truncated RNS hash)
 
 	tests := []struct {
 		name     string
@@ -185,20 +185,20 @@ func TestParseURL(t *testing.T) {
 	}{
 		{
 			name:     "bare hash",
-			url:      hash20,
-			wantHash: hash20,
+			url:      hash32,
+			wantHash: hash32,
 			wantPath: "/page/index.mu",
 		},
 		{
 			name:     "hash with path",
-			url:      hash20 + ":/page/about.mu",
-			wantHash: hash20,
+			url:      hash32 + ":/page/about.mu",
+			wantHash: hash32,
 			wantPath: "/page/about.mu",
 		},
 		{
 			name:     "hash with empty path",
-			url:      hash20 + ":",
-			wantHash: hash20,
+			url:      hash32 + ":",
+			wantHash: hash32,
 			wantPath: "/page/index.mu",
 		},
 		{
@@ -208,12 +208,12 @@ func TestParseURL(t *testing.T) {
 		},
 		{
 			name:    "too many colons",
-			url:     hash20 + ":extra:more",
+			url:     hash32 + ":extra:more",
 			wantErr: true,
 		},
 		{
 			name:    "invalid hex in hash",
-			url:     "zz" + hash20[2:],
+			url:     "zz" + hash32[2:],
 			wantErr: true,
 		},
 	}
@@ -313,7 +313,7 @@ func TestParseLinkTarget(t *testing.T) {
 func TestParseURLWithQuery(t *testing.T) {
 	t.Parallel()
 
-	hash20 := "a1b2c3d4e5f6a1b2c3d4"
+	hash32 := "a1b2c3d4e5f6a1b2c3d4a1b2c3d4e5f6" // 32 hex chars (truncated RNS hash)
 
 	tests := []struct {
 		name         string
@@ -326,8 +326,8 @@ func TestParseURLWithQuery(t *testing.T) {
 	}{
 		{
 			name:     "hash path with single field",
-			url:      hash20 + ":/page/form.mu`name=alice",
-			wantHash: hash20,
+			url:      hash32 + ":/page/form.mu`name=alice",
+			wantHash: hash32,
 			wantPath: "/page/form.mu",
 			wantFields: map[string]string{
 				"name": "alice",
@@ -335,8 +335,8 @@ func TestParseURLWithQuery(t *testing.T) {
 		},
 		{
 			name:     "hash path with multiple fields",
-			url:      hash20 + ":/page/form.mu`name=alice|role=admin",
-			wantHash: hash20,
+			url:      hash32 + ":/page/form.mu`name=alice|role=admin",
+			wantHash: hash32,
 			wantPath: "/page/form.mu",
 			wantFields: map[string]string{
 				"name": "alice",
@@ -345,21 +345,21 @@ func TestParseURLWithQuery(t *testing.T) {
 		},
 		{
 			name:         "hash path with wildcard",
-			url:          hash20 + ":/page/form.mu`*",
-			wantHash:     hash20,
+			url:          hash32 + ":/page/form.mu`*",
+			wantHash:     hash32,
 			wantPath:     "/page/form.mu",
 			wantWildcard: true,
 		},
 		{
 			name:     "hash path with empty fields after backtick",
-			url:      hash20 + ":/page/form.mu`",
-			wantHash: hash20,
+			url:      hash32 + ":/page/form.mu`",
+			wantHash: hash32,
 			wantPath: "/page/form.mu",
 		},
 		{
 			name:     "relative URL with fields",
 			url:      ":/page/form.mu`x=1",
-			wantHash: hash20,
+			wantHash: hash32,
 			wantPath: "/page/form.mu",
 			wantFields: map[string]string{
 				"x": "1",
@@ -370,7 +370,7 @@ func TestParseURLWithQuery(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			hash, path, fields, wildcard, err := ParseURLWithQuery(tt.url, hash20)
+			hash, path, fields, wildcard, err := ParseURLWithQuery(tt.url, hash32)
 			if tt.wantErr {
 				if err == nil {
 					t.Errorf("ParseURLWithQuery(%q) did not return error", tt.url)

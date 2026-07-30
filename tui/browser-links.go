@@ -128,7 +128,11 @@ func (bd *BrowserDisplay) HandleLink(linkTarget string) {
 		return
 	}
 
-	components := strings.SplitN(linkTarget, "@", 2)
+	// Split on @ for a type prefix. Python's handle_link uses an unbounded
+	// split("@") and only treats the link as typed when exactly one "@" is
+	// present (len(components) == 2); a target with two or more "@" falls
+	// through to the bare-address (nomadnetwork.node) branch.
+	components := strings.Split(linkTarget, "@")
 	var destType, target string
 	var partialIDs []string
 
