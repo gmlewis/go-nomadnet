@@ -1,0 +1,142 @@
+{
+  "rrc": [
+    {
+      "hub": "aabb1122aabb1122aabb1122aabb1122",
+      "dest": "",
+      "room": "general",
+      "error": null,
+      "url": "aabb1122aabb1122aabb1122aabb1122/general"
+    },
+    {
+      "hub": "aabb1122aabb1122aabb1122aabb1122",
+      "dest": "myhub",
+      "room": "general",
+      "error": null,
+      "url": "aabb1122aabb1122aabb1122aabb1122:myhub/general"
+    },
+    {
+      "hub": "aabb1122aabb1122aabb1122aabb1122",
+      "dest": "",
+      "room": "",
+      "error": null,
+      "url": "aabb1122aabb1122aabb1122aabb1122"
+    },
+    {
+      "hub": "aabb1122aabb1122aabb1122aabb1122",
+      "dest": "",
+      "room": "random",
+      "error": null,
+      "url": "/aabb1122aabb1122aabb1122aabb1122/random"
+    },
+    {
+      "hub": "aabb1122aabb1122aabb1122aabb1122",
+      "dest": "",
+      "room": "random",
+      "error": null,
+      "url": "aabb1122aabb1122aabb1122aabb1122/#random"
+    },
+    {
+      "hub": "aabb1122aabb1122aabb1122aabb1122",
+      "dest": "",
+      "room": "doubled",
+      "error": null,
+      "url": "aabb1122aabb1122aabb1122aabb1122/##doubled"
+    },
+    {
+      "hub": "aabb1122aabb1122aabb1122aabb1122",
+      "dest": "",
+      "room": "spaced",
+      "error": null,
+      "url": "aabb1122aabb1122aabb1122aabb1122/ #spaced "
+    },
+    {
+      "hub": "aabb1122aabb1122aabb1122aabb1122",
+      "dest": "",
+      "room": "room",
+      "error": null,
+      "url": "aabb1122aabb1122aabb1122aabb1122/Room"
+    },
+    {
+      "hub": "aabb1122aabb1122aabb1122aabb1122",
+      "dest": "",
+      "room": "",
+      "error": null,
+      "url": "aabb1122aabb1122aabb1122aabb1122/"
+    },
+    {
+      "hub": "aabb1122aabb1122aabb1122aabb1122",
+      "dest": "dest",
+      "room": "",
+      "error": null,
+      "url": "aabb1122aabb1122aabb1122aabb1122:dest/"
+    },
+    {
+      "hub": "aabb1122aabb1122aabb1122aabb1122",
+      "dest": "dest",
+      "room": "room",
+      "error": null,
+      "url": "aabb1122aabb1122aabb1122aabb1122: dest /room"
+    },
+    {
+      "hub": "aabb1122aabb1122aabb1122aabb1122",
+      "dest": "dest",
+      "room": "",
+      "error": null,
+      "url": "aabb1122aabb1122aabb1122aabb1122:dest"
+    },
+    {
+      "error": "invalid hub hash",
+      "url": "zzzz1122aabb1122aabb1122aabb1122/general"
+    },
+    {
+      "error": "hub hash must be 16 bytes",
+      "url": "aabb/general"
+    },
+    {
+      "error": "hub hash must be 16 bytes",
+      "url": "aabb1122aabb1122aabb1122aabb1122aa/general"
+    },
+    {
+      "error": "hub hash must be 16 bytes",
+      "url": ""
+    },
+    {
+      "hub": "aabb1122aabb1122aabb1122aabb1122",
+      "dest": "",
+      "room": "room/extra",
+      "error": null,
+      "url": "aabb1122aabb1122aabb1122aabb1122/room/extra"
+    }
+  ],
+  "lxmf": [
+    {
+      "hash": "aabb1122aabb1122aabb1122aabb1122",
+      "error": null,
+      "url": "aabb1122aabb1122aabb1122aabb1122"
+    },
+    {
+      "error": "Invalid length for LXMF link",
+      "url": "aabb1122"
+    },
+    {
+      "error": "Invalid length for LXMF link",
+      "url": "aabb1122aabb1122aabb1122aabb1122aa"
+    },
+    {
+      "error": "Could not decode destination hash from LXMF link",
+      "url": "zzbb1122aabb1122aabb1122aabb1122"
+    },
+    {
+      "error": "Invalid length for LXMF link",
+      "url": ""
+    },
+    {
+      "error": "Invalid length for LXMF link",
+      "url": "aabb1122aabb1122aabb1122aabb1122a"
+    },
+    {
+      "error": "Invalid length for LXMF link",
+      "url": "aabb1122aabb1122aabb1122aabb112"
+    }
+  ]
+}

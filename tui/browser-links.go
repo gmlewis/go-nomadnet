@@ -69,7 +69,13 @@ func ParseRRCLink(linkTarget string) (hubHex, room, dest string, err error) {
 		return "", "", "", fmt.Errorf("hub hash must be %d bytes", truncatedHashHexLen/2)
 	}
 
-	roomVal = strings.ToLower(strings.TrimSpace(strings.TrimPrefix(roomVal, "#")))
+	// Normalize the room exactly as Python's handle_rrc_link does:
+	// room.strip().lstrip("#").strip(), lowercased, with an empty room
+	// becoming "" (Python uses None; Go callers treat "" as no room).
+	roomVal = strings.TrimSpace(roomVal)
+	roomVal = strings.TrimLeft(roomVal, "#")
+	roomVal = strings.TrimSpace(roomVal)
+	roomVal = strings.ToLower(roomVal)
 
 	return hexPart, roomVal, destVal, nil
 }
