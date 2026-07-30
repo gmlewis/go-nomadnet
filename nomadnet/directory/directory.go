@@ -564,3 +564,11 @@ func (d *Directory) PNTrustLevel(sourceHash []byte) (byte, bool) {
 	associatedNode := rns.CalculateHash(id, "nomadnetwork", "node")
 	return d.TrustLevel(associatedNode, nil), true
 }
+
+// SetTransport sets the transport used for identity recall (IsKnown/PNTrustLevel)
+// in a thread-safe manner.
+func (d *Directory) SetTransport(ts rns.Transport) {
+	d.mu.Lock()
+	d.Transport = ts
+	d.mu.Unlock()
+}

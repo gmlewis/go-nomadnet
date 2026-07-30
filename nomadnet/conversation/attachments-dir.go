@@ -23,14 +23,33 @@ import (
 
 	"github.com/gmlewis/go-reticulum/lxmf"
 	"github.com/vmihailenco/msgpack/v5"
+	"sync"
 )
 
-// AttachmentPathProvider returns the base directory in which per-message
-// attachment directories are stored. The app package sets this during
-// initialization so the conversation package can locate attachments without
-// importing the app package (which would create an import cycle). Tests may
-// override it directly.
-var AttachmentPathProvider func() string
+// attachmentPathProvider returns the base directory in which per-message
+// attachment directories are stored. The app package sets it via
+// SetAttachmentPathProvider during initialization so the conversation package
+// can locate attachments without importing the app package (which would create
+// an import cycle). Access is guarded by attachmentPathProviderMu because the
+// app may be initialized from concurrent tests/goroutines.
+var (
+	attachmentPathProviderMu sync.RWMutex
+	attachmentPathProvider   func() string
+)
+
+// SetAttachmentPathProvider configures the package-level attachment base
+// directory provider. It is safe to call concurrently.
+func SetAttachmentPathProvider(fn func() string) {
+	attachmentPathProviderMu.Lock()
+	attachmentPathProvider = fn
+	attachmentPathProviderMu.Unlock()
+}
+
+func getAttachmentPathProvider() func() string {
+	attachmentPathProviderMu.RLock()
+	defer attachmentPathProviderMu.RUnlock()
+	return attachmentPathProvider
+}
 
 var storedNameRE = regexp.MustCompile(`^file_\d+$`)
 
@@ -40,8 +59,10 @@ var storedNameRE = regexp.MustCompile(`^file_\d+$`)
 // This mirrors the Python NomadNet _attachment_dir.
 func (m *Message) attachmentDir() string {
 	base := m.AttachmentPath
-	if base == "" && AttachmentPathProvider != nil {
-		base = AttachmentPathProvider()
+	if base == "" {
+		if provider := getAttachmentPathProvider(); provider != nil {
+			base = provider()
+		}
 	}
 	if base == "" {
 		return ""

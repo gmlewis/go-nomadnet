@@ -179,7 +179,8 @@ type App struct {
 	DeliveryCallback func(msg any)
 	UIChangeCallback func()
 
-	mu sync.Mutex
+	mu     sync.Mutex
+	initWG sync.WaitGroup
 }
 
 // AppOption configures an App during construction.
@@ -317,7 +318,7 @@ func (a *App) Init() error {
 	a.RRC = rrc.NewManager(a.StoragePath, nil)
 	a.loadPeerSettings()
 	a.loadIgnoredList()
-	conversation.AttachmentPathProvider = func() string { return a.AttachmentPath }
+	conversation.SetAttachmentPathProvider(func() string { return a.AttachmentPath })
 
 	// Set global singleton
 	globalMu.Lock()
@@ -327,7 +328,11 @@ func (a *App) Init() error {
 
 	// Start RNS initialization in a goroutine so the TUI can start immediately.
 	// RNS initialization may block on network interfaces.
-	go a.initRNS()
+	a.initWG.Add(1)
+	go func() {
+		defer a.initWG.Done()
+		a.initRNS()
+	}()
 
 	return nil
 }
@@ -338,7 +343,7 @@ func (a *App) initRNS() {
 	a.Logger.Info("Initializing RNS transport...")
 
 	a.Transport = rns.NewTransportSystem(a.Logger)
-	a.Dir.Transport = a.Transport
+	a.Dir.SetTransport(a.Transport)
 	rnsConfigDir := a.RNSConfigDir
 	if rnsConfigDir == "" {
 		rnsConfigDir = a.ensureStandaloneRNSConfig()
@@ -423,11 +428,11 @@ func (a *App) InitWithTransport(ts *rns.TransportSystem, identity *rns.Identity)
 	a.Identity = identity
 	a.Dir = directory.New()
 	a.Dir.SanitizeNames = a.Config.TextUI.SanitizeNames
-	a.Dir.Transport = ts
+	a.Dir.SetTransport(ts)
 	a.RRC = rrc.NewManager(a.StoragePath, nil)
 	a.loadPeerSettings()
 	a.loadIgnoredList()
-	conversation.AttachmentPathProvider = func() string { return a.AttachmentPath }
+	conversation.SetAttachmentPathProvider(func() string { return a.AttachmentPath })
 
 	globalMu.Lock()
 	globalApp = a
@@ -536,8 +541,12 @@ func (a *App) applyConfig(cfg *config.Config) {
 	a.PrintCommand = cfg.Printing.PrintCommand
 }
 
-// Shutdown stops background jobs and persists state.
+// Shutdown stops background jobs and persists state. It waits for any
+// in-progress asynchronous RNS initialization (started by Init) to complete
+// before tearing down subsystems, avoiding races on the RNS/Router fields.
 func (a *App) Shutdown() {
+	a.initWG.Wait()
+
 	a.mu.Lock()
 	defer a.mu.Unlock()
 

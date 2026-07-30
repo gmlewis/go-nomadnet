@@ -179,7 +179,9 @@ func TestAppDisplayName(t *testing.T) {
 	t.Parallel()
 	a := NewApp(tempDir(t), "", false, false)
 	a.setupPaths()
-	os.MkdirAll(a.StoragePath, 0o755)
+	if err := os.MkdirAll(a.StoragePath, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	a.loadPeerSettings()
 	if a.GetDisplayName() != "Anonymous Peer" {
 		t.Fatalf("default name = %q, want Anonymous Peer", a.GetDisplayName())

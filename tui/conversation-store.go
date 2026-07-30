@@ -28,6 +28,9 @@ type ConversationStore struct {
 	mu    sync.RWMutex
 	convs map[string]*ConversationInfo
 	order []string // insertion order for stable listing
+
+	lastSyncTime time.Time
+	lastSyncNode string
 }
 
 // NewConversationStore creates an empty conversation store.
@@ -199,24 +202,18 @@ func (cs *ConversationStore) UnreadCount() int {
 	return n
 }
 
-// lastSyncTime stores the last LXMF sync timestamp.
-var lastSyncTime time.Time
-
-// lastSyncNode stores the label of the propagation node used.
-var lastSyncNode string
-
 // SetLastSyncTime updates the last sync timestamp.
 func (cs *ConversationStore) SetLastSyncTime(t time.Time) {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
-	lastSyncTime = t
+	cs.lastSyncTime = t
 }
 
 // SetSyncNodeLabel updates the propagation node label.
 func (cs *ConversationStore) SetSyncNodeLabel(label string) {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
-	lastSyncNode = label
+	cs.lastSyncNode = label
 }
 
 // LastSyncStatus returns the formatted sync status line.
@@ -226,15 +223,15 @@ func (cs *ConversationStore) LastSyncStatus() string {
 	defer cs.mu.RUnlock()
 
 	var when string
-	if lastSyncTime.IsZero() {
+	if cs.lastSyncTime.IsZero() {
 		when = "never"
 	} else {
-		when = RelativeTime(lastSyncTime)
+		when = RelativeTime(cs.lastSyncTime)
 	}
 
 	line := "Last sync: " + when
-	if lastSyncNode != "" {
-		line += "  (" + lastSyncNode + ")"
+	if cs.lastSyncNode != "" {
+		line += "  (" + cs.lastSyncNode + ")"
 	}
 	return line
 }

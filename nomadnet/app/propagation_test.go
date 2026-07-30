@@ -28,7 +28,9 @@ func TestUserSelectedPropagationNode(t *testing.T) {
 	t.Parallel()
 	a := NewApp(tempDir(t), "", false, false)
 	a.setupPaths()
-	os.MkdirAll(a.StoragePath, 0o755)
+	if err := os.MkdirAll(a.StoragePath, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	a.loadPeerSettings()
 	if a.GetUserSelectedPropagationNode() != nil {
 		t.Fatal("default should be nil")

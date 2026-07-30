@@ -55,9 +55,6 @@ func buildLXMWithAttachments(t *testing.T, dir, attachmentPath string) (string, 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := ExtractAttachmentsFromLXM(msg, attachmentPath); err != nil {
-		t.Fatal(err)
-	}
 	return path, png, fileData
 }
 
@@ -78,6 +75,11 @@ func TestExtractAndGetAttachments(t *testing.T) {
 	m := NewMessageWithTransport(path, ts)
 	m.AttachmentPath = attachmentPath
 	m.Load()
+	// Extract using the *reloaded* message so the attachment directory is keyed by
+	// the same hash that GetImage/GetAttachmentFilePath use (m.lxm.Hash == m.GetHash()).
+	if err := ExtractAttachmentsFromLXM(m.lxm, attachmentPath); err != nil {
+		t.Fatal(err)
+	}
 
 	if !m.HasAttachments() {
 		t.Fatal("message should report attachments")
