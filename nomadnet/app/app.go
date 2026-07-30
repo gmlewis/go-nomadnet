@@ -313,9 +313,11 @@ func (a *App) Init() error {
 
 	// Initialize non-blocking subsystems
 	a.Dir = directory.New()
+	a.Dir.SanitizeNames = a.Config.TextUI.SanitizeNames
 	a.RRC = rrc.NewManager(a.StoragePath, nil)
 	a.loadPeerSettings()
 	a.loadIgnoredList()
+	conversation.AttachmentPathProvider = func() string { return a.AttachmentPath }
 
 	// Set global singleton
 	globalMu.Lock()
@@ -336,6 +338,7 @@ func (a *App) initRNS() {
 	a.Logger.Info("Initializing RNS transport...")
 
 	a.Transport = rns.NewTransportSystem(a.Logger)
+	a.Dir.Transport = a.Transport
 	rnsConfigDir := a.RNSConfigDir
 	if rnsConfigDir == "" {
 		rnsConfigDir = a.ensureStandaloneRNSConfig()
@@ -419,9 +422,12 @@ func (a *App) InitWithTransport(ts *rns.TransportSystem, identity *rns.Identity)
 	a.Transport = ts
 	a.Identity = identity
 	a.Dir = directory.New()
+	a.Dir.SanitizeNames = a.Config.TextUI.SanitizeNames
+	a.Dir.Transport = ts
 	a.RRC = rrc.NewManager(a.StoragePath, nil)
 	a.loadPeerSettings()
 	a.loadIgnoredList()
+	conversation.AttachmentPathProvider = func() string { return a.AttachmentPath }
 
 	globalMu.Lock()
 	globalApp = a

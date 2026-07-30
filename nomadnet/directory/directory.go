@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/gmlewis/go-nomadnet/nomadnet/util"
+	"github.com/gmlewis/go-reticulum/rns"
 )
 
 // AnnounceStreamMaxLen is the maximum number of announces kept in each stream.
@@ -42,6 +43,13 @@ type Announce struct {
 // Directory manages the peer directory and announce streams.
 type Directory struct {
 	entries map[string]*Entry // source_hash hex → Entry
+
+	// SanitizeNames mirrors the [textui] sanitize_names config flag. When true
+	// display names are run through SanitizeName instead of StripModifiers.
+	SanitizeNames bool
+
+	// Transport, when set, enables identity recall for IsKnown and PNTrustLevel.
+	Transport rns.Transport
 
 	nodeAnnounces []Announce
 	peerAnnounces []Announce
@@ -168,9 +176,19 @@ func (d *Directory) SetIdentifyOnConnect(sourceHash []byte, identify bool) {
 	}
 }
 
-// SimplestDisplayStr returns a sanitized display name. For WARNING and
-// UNTRUSTED entries, the hex hash is appended in angle brackets.
+// SimplestDisplayStr returns a display name for sourceHash using the default
+// sanitization behavior (san=true). For WARNING and UNTRUSTED entries the hex
+// hash is appended in angle brackets; an unknown entry is rendered as its hex
+// hash in angle brackets.
 func (d *Directory) SimplestDisplayStr(sourceHash []byte) string {
+	return d.SimplestDisplayStrSan(sourceHash, true)
+}
+
+// SimplestDisplayStrSan returns a display name for sourceHash, mirroring the
+// Python NomadNet simplest_display_str(source_hash, san). When san is true and
+// the SanitizeNames flag is set, names are run through SanitizeName; otherwise
+// only Micron modifiers are stripped.
+func (d *Directory) SimplestDisplayStrSan(sourceHash []byte, san bool) string {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
@@ -180,11 +198,7 @@ func (d *Directory) SimplestDisplayStr(sourceHash []byte) string {
 		return "<" + hexString(sourceHash) + ">"
 	}
 
-	name := util.StripModifiers(&entry.DisplayName)
-	displayName := ""
-	if name != nil {
-		displayName = *name
-	}
+	displayName := d.displayNameFor(entry, san)
 
 	if entry.TrustLevel == TrustWarning || entry.TrustLevel == TrustUntrusted {
 		return displayName + " <" + hexString(sourceHash) + ">"
@@ -195,6 +209,24 @@ func (d *Directory) SimplestDisplayStr(sourceHash []byte) string {
 	}
 
 	return displayName
+}
+
+// displayNameFor applies the configured name normalization to an entry's display
+// name, returning the resulting string (possibly empty). The caller must hold
+// d.mu.
+func (d *Directory) displayNameFor(entry *Entry, san bool) string {
+	if d.SanitizeNames && san {
+		name := util.SanitizeName(&entry.DisplayName)
+		if name != nil {
+			return *name
+		}
+		return ""
+	}
+	name := util.StripModifiers(&entry.DisplayName)
+	if name != nil {
+		return *name
+	}
+	return ""
 }
 
 // AllegedDisplayStr returns the raw display name with modifiers stripped.
@@ -468,4 +500,67 @@ func (d *Directory) SortRank(sourceHash []byte) *int {
 		return nil
 	}
 	return entry.SortRank
+}
+
+// NodeAnnounceReceivedPeer processes a node announce with knowledge of the
+// associated LXMF peer hash, mirroring the Python NomadNet
+// node_announce_received(source_hash, app_data, associated_peer). It records the
+// announce (with optional compact-stream pruning) and, when the associated peer
+// is trusted and no entry yet exists for the node, creates a trusted node entry
+// using the announce app_data as the display name.
+func (d *Directory) NodeAnnounceReceivedPeer(announce Announce, compact bool, associatedPeer []byte) {
+	d.mu.Lock()
+	if compact {
+		d.compactList(&d.nodeAnnounces, announce.SourceHash)
+	}
+	d.nodeAnnounces = append([]Announce{announce}, d.nodeAnnounces...)
+	d.cleanList(&d.nodeAnnounces)
+
+	createsEntry := false
+	if associatedPeer != nil {
+		peerKey := hexKey(associatedPeer)
+		if peerEntry, ok := d.entries[peerKey]; ok && peerEntry.TrustLevel == TrustTrusted {
+			nodeKey := hexKey(announce.SourceHash)
+			if _, exists := d.entries[nodeKey]; !exists {
+				createsEntry = true
+			}
+		}
+	}
+	d.mu.Unlock()
+
+	if createsEntry {
+		d.Remember(&Entry{
+			SourceHash:  announce.SourceHash,
+			DisplayName: string(announce.AppData),
+			TrustLevel:  TrustTrusted,
+			HostsNode:   true,
+		})
+	}
+}
+
+// IsKnown reports whether a source hash corresponds to a recalled identity on
+// the configured transport, mirroring the Python NomadNet is_known. When no
+// transport is configured it always returns false.
+func (d *Directory) IsKnown(sourceHash []byte) bool {
+	if d.Transport == nil {
+		return false
+	}
+	return rns.RecallIdentity(d.Transport, sourceHash) != nil
+}
+
+// PNTrustLevel returns the trust level of the node associated with a
+// propagation-node source hash, mirroring the Python NomadNet pn_trust_level.
+// It recalls the identity for sourceHash, derives the associated
+// nomadnetwork.node destination hash, and returns that node's trust level. ok
+// is false when the identity cannot be recalled.
+func (d *Directory) PNTrustLevel(sourceHash []byte) (byte, bool) {
+	if d.Transport == nil {
+		return 0, false
+	}
+	id := rns.RecallIdentity(d.Transport, sourceHash)
+	if id == nil {
+		return 0, false
+	}
+	associatedNode := rns.CalculateHash(id, "nomadnetwork", "node")
+	return d.TrustLevel(associatedNode, nil), true
 }
