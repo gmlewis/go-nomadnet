@@ -1,0 +1,15 @@
+{
+  "display_name": "Test Peer",
+  "announce_interval": 720,
+  "last_announce": 1700000123.456,
+  "node_last_announce": {
+    "__bytes_hex__": "00112233445566778899aabbccddeeff"
+  },
+  "propagation_node": {
+    "__bytes_hex__": "ffeeddccbbaa99887766554433221100"
+  },
+  "last_lxmf_sync": 1700000200,
+  "node_connects": 42,
+  "served_page_requests": 100,
+  "served_file_requests": 7
+}
