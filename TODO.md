@@ -257,13 +257,6 @@ test or a matching `parity.sh` summary):
 
 ### Phase 0 — Foundation & cross-cutting infrastructure (do first; everything depends on it)
 
-- [ ] **0.3 Glyph sets.** Port `GLYPHS` (`plain`/`unicode`/`nerdfont`) into a Go
-      glyph registry; resolve by config. Test: each glyph name resolves to the
-      expected rune for each set (capture from `ui/TextUI.py:140-172`).
-- [ ] **0.4 Box borders.** Add a shared bordered-box helper using single-line
-      `┌─┐` (rounded `╭─╮` for Interfaces detail) instead of tview default
-      double-line. Test: rendered border runes match the original’s for a titled
-      box (capture via `tui-parity/capture.sh --target orig`).
 - [ ] **0.5 Dialog overlay infrastructure.** Replace `tui/dialog.go` `ShowDialog`’s
       `app.SetRoot(dialog, true)` with a true overlay that preserves the
       underlying screen and restores previous focus/page on dismiss. Add a

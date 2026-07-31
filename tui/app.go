@@ -40,6 +40,7 @@ func NewApp(theme int, glyphSet string, colorMode int) *App {
 	}
 
 	RegisterThemeStyles(theme, colorMode)
+	ApplySingleLineBorders()
 
 	a := &App{
 		Application: tviewApp,
