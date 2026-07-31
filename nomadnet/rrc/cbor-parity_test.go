@@ -64,8 +64,8 @@ func TestIntegrationCBORGoToPython(t *testing.T) {
 		t.Skip("Python cbor2 not available, skipping CBOR parity test")
 	}
 
-	tmpDir, cleanup := testutils.TempDir(t, "nomadnet-cbor-parity")
-	defer cleanup()
+	// testutils.TempDir now self-registers cleanup via t.Cleanup.
+	tmpDir := testutils.TempDir(t, "nomadnet-cbor-parity")
 
 	// Create a Go envelope
 	env := MakeEnvelope(TypeMsg, []byte{0xAA, 0xBB}, []byte("#general"), []byte("testnick"), []byte("hello from go"), nil, NowMs())
@@ -119,8 +119,8 @@ func TestIntegrationRRCGoToPythonCBORRoundTrip(t *testing.T) {
 		t.Skip("Python cbor2 not available, skipping CBOR round-trip test")
 	}
 
-	tmpDir, cleanup := testutils.TempDir(t, "nomadnet-cbor-roundtrip")
-	defer cleanup()
+	// testutils.TempDir now self-registers cleanup via t.Cleanup.
+	tmpDir := testutils.TempDir(t, "nomadnet-cbor-roundtrip")
 
 	// Go encodes
 	env := MakeEnvelope(TypeMsg, []byte{0x01}, []byte("#test"), []byte("gopher"), []byte("go says hello"), nil, NowMs())

@@ -88,16 +88,17 @@ func TestIntegrationHubConnectEstablishesLink(t *testing.T) {
 
 func newStartedTS(t *testing.T) (*rns.TransportSystem, func()) {
 	t.Helper()
-	dir, cleanup := testutils.TempDir(t, "nomadnet-rrc-int-ts")
+	// testutils.TempDir now self-registers cleanup via t.Cleanup, so the
+	// returned cleanup func is a no-op retained for callers that defer it.
+	dir := testutils.TempDir(t, "nomadnet-rrc-int-ts")
 	cfgDir := filepath.Join(dir, "config")
 	writeRNSConfigRRC(t, cfgDir)
 	ts := rns.NewTransportSystem(nil)
 	_, err := rns.NewReticulum(ts, cfgDir)
 	if err != nil {
-		cleanup()
 		t.Fatalf("NewReticulum error: %v", err)
 	}
-	return ts, cleanup
+	return ts, func() {}
 }
 
 func writeRNSConfigRRC(t *testing.T, configDir string) {
