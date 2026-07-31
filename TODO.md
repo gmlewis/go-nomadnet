@@ -259,14 +259,6 @@ test or a matching `parity.sh` summary):
 
 ### Phase 1 — Core interaction model (highest-impact TUI fixes; unblocks all page work)
 
-- [ ] **1.2 Focus model / key dispatch.** Rewrite `MainDisplay.handleInput`
-      (`tui/main.go:228-296`): remove the global `Left/Right` page-cycle and the
-      `1`–`9` digit menu shortcuts; remove `Esc`/`q` as global quits (keep only
-      `Ctrl-Q`). Implement: `Up` at top of body list → focus menu; in menu
-      `Left/Right` move between buttons, `Enter` activates, `Tab/Down` → body;
-      in body `Left/Right` are forwarded to the page (pane focus). Test: a
-      key-dispatch table test asserting, for each key + focus region, the
-      resulting focus/page transition matches the Python model.
 - [ ] **1.3 Per-page shortcut bar.** Remove the unconditional
       `conversationsDisplay.GetShortcutText()` in `cmd/gonomadnet/textui.go:195`
       / `tui/main.go:131-136`; each display supplies its own shortcut text

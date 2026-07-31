@@ -34,7 +34,9 @@ type MainDisplay struct {
 	menuItems        []MenuItem
 	contentArea      *tview.Pages
 	shortcutBar      *tview.TextView
-	activeMenu       int
+	activeMenu       int    // focused menu button (highlight); not necessarily the displayed page
+	activePage       string // key of the currently displayed body page
+	focusRegion      string // "body" (default) or "menu" — mirrors MainFrame.focus_position
 	theme            int
 	glyphs           GlyphSet
 	onQuit           func()
@@ -59,11 +61,12 @@ func NewMainDisplay(app *App, theme int, glyphSetName string) *MainDisplay {
 	colors := GetThemeColors(theme)
 
 	md := &MainDisplay{
-		app:       app,
-		theme:     theme,
-		glyphs:    glyphs,
-		shortcuts: make(map[string]string),
-		quitCh:    make(chan struct{}),
+		app:         app,
+		theme:       theme,
+		glyphs:      glyphs,
+		shortcuts:   make(map[string]string),
+		quitCh:      make(chan struct{}),
+		focusRegion: "body",
 	}
 
 	// Filter menu items based on hideGuide setting
@@ -132,9 +135,12 @@ func NewMainDisplay(app *App, theme int, glyphSetName string) *MainDisplay {
 }
 
 // SetDisplay replaces the placeholder for a menu key with a real display widget.
+// If key is the currently displayed page it is brought to the front.
 func (md *MainDisplay) SetDisplay(key string, widget tview.Primitive) {
+	md.mu.Lock()
+	defer md.mu.Unlock()
 	md.contentArea.AddPage(key, widget, true, false)
-	if md.activeMenu >= 0 && md.activeMenu < len(md.menuItems) && key == md.menuItems[md.activeMenu].Key {
+	if key == md.activePage {
 		md.contentArea.SwitchToPage(key)
 	}
 }
@@ -164,6 +170,8 @@ func (md *MainDisplay) updateShortcuts() {
 }
 
 // updateShortcutsLocked refreshes the shortcut bar. Caller must hold md.mu.
+// The footer follows the DISPLAYED page (Python Main.update_active_shortcuts),
+// not the focused menu button, so it keys off activePage.
 func (md *MainDisplay) updateShortcutsLocked() {
 	if md.shortcutCallback != nil {
 		if text := md.shortcutCallback(); text != "" {
@@ -171,8 +179,7 @@ func (md *MainDisplay) updateShortcutsLocked() {
 			return
 		}
 	}
-	key := md.menuItems[md.activeMenu].Key
-	if text, ok := md.shortcuts[key]; ok {
+	if text, ok := md.shortcuts[md.activePage]; ok {
 		md.shortcutBar.SetText(text)
 	} else {
 		md.shortcutBar.SetText("")
@@ -226,16 +233,20 @@ func (md *MainDisplay) redrawMenuBar() {
 	md.menuBar.SetText(b.String())
 }
 
-// selectMenu highlights the given menu item and switches content.
+// selectMenu ACTIVATES the given menu item: it becomes the focused button AND
+// the displayed body page, then focus drops to the body. This mirrors a urwid
+// MenuButton press (Main.py show_* + update_active_sub_display) — used for
+// Enter/Space, mouse click, and programmatic page switches.
 func (md *MainDisplay) selectMenu(index int) {
 	md.mu.Lock()
-	defer md.mu.Unlock()
 	md.selectMenuLocked(index)
+	md.mu.Unlock()
+	md.FocusBody()
 }
 
 // selectMenuLocked is the lock-free inner of selectMenu; the caller must hold
 // md.mu (used by SetHideGuide, which already holds the lock, to avoid a
-// self-deadlock via updateShortcuts).
+// self-deadlock via updateShortcuts). It does NOT drop focus to the body.
 func (md *MainDisplay) selectMenuLocked(index int) {
 	if index < 0 || index >= len(md.menuItems) {
 		return
@@ -243,9 +254,44 @@ func (md *MainDisplay) selectMenuLocked(index int) {
 
 	md.activeMenu = index
 	md.redrawMenuBar()
-	key := md.menuItems[index].Key
-	md.contentArea.SwitchToPage(key)
+	md.activePage = md.menuItems[index].Key
+	md.contentArea.SwitchToPage(md.activePage)
 	md.updateShortcutsLocked()
+}
+
+// focusMenuIndex moves the menu highlight to the given button WITHOUT switching
+// the body page — this is what Left/Right do in the menu (Python MenuColumns
+// only moves Columns focus; the button on_press fires on Enter/Space).
+func (md *MainDisplay) focusMenuIndex(index int) {
+	md.mu.Lock()
+	defer md.mu.Unlock()
+	if index < 0 || index >= len(md.menuItems) {
+		return
+	}
+	md.activeMenu = index
+	md.redrawMenuBar()
+}
+
+// FocusMenu moves focus to the menu bar (MainFrame.focus_position = "header").
+// Body pages call this when an Up key reaches the top of their list.
+func (md *MainDisplay) FocusMenu() {
+	md.mu.Lock()
+	md.focusRegion = "menu"
+	md.redrawMenuBar()
+	md.mu.Unlock()
+	if md.app != nil {
+		md.app.SetFocus(md.menuBar)
+	}
+}
+
+// FocusBody moves focus to the content area (MainFrame.focus_position = "body").
+func (md *MainDisplay) FocusBody() {
+	md.mu.Lock()
+	md.focusRegion = "body"
+	md.mu.Unlock()
+	if md.app != nil {
+		md.app.SetFocus(md.contentArea)
+	}
 }
 
 // handleClick determines which menu item was clicked based on x position.
@@ -260,84 +306,81 @@ func (md *MainDisplay) handleClick(x int) {
 	}
 }
 
-// handleInput processes keyboard shortcuts matching Python's MainFrame keypress.
+// handleInput implements the Python focus model. It runs as the app-level
+// input capture, so it sees every key before the focused widget.
+//
+// Global (any region): Ctrl-Q is the only quit (TextUI.py:262-264
+// unhandled_input). Esc is NOT a quit — it is forwarded so the DialogManager
+// overlay can close the top dialog (Phase 0.5). There are no digit menu
+// shortcuts and no 'q' quit.
+//
+// Menu region (MainFrame.focus_position == "header", Main.py MenuColumns:171-176):
+// Left/Right move the button highlight WITHOUT switching the body page;
+// Enter/Space activate the focused button (switch page + drop to body);
+// Tab/Down drop to the body without switching.
+//
+// Body region: Left/Right/Up/Tab are forwarded to the page (returned
+// unconsumed) so the page can do pane focus and Up-at-top→FocusMenu. The main
+// dispatcher never switches pages or quits from the body.
 func (md *MainDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
-	switch event.Key() {
-	case tcell.KeyCtrlQ:
-		if md.onQuit != nil {
-			md.onQuit()
-		}
-		return nil
-
-	case tcell.KeyCtrlD:
+	if event == nil {
 		return event
+	}
 
-	case tcell.KeyEscape:
-		// Let the active display handle Esc first (e.g., leaving
-		// AnnounceInfo). Only quit if the display didn't consume it.
-		if md.onEsc != nil && md.onEsc() {
-			return nil
-		}
+	// Global quit — the only key the dispatcher always owns.
+	if event.Key() == tcell.KeyCtrlQ {
 		if md.onQuit != nil {
 			md.onQuit()
 		}
 		return nil
+	}
 
+	if md.focusRegion == "menu" {
+		return md.handleMenuInput(event)
+	}
+	// Body region: forward everything (pane focus, Up-at-top→menu, Esc→dialog,
+	// per-page keybindings) to the focused page widget.
+	return event
+}
+
+// handleMenuInput dispatches keys while the menu bar is focused.
+func (md *MainDisplay) handleMenuInput(event *tcell.EventKey) *tcell.EventKey {
+	n := len(md.menuItems)
+	if n == 0 {
+		return event
+	}
+
+	switch event.Key() {
 	case tcell.KeyLeft:
 		prev := md.activeMenu - 1
 		if prev < 0 {
-			prev = len(md.menuItems) - 1
+			prev = n - 1
 		}
-		md.selectMenu(prev)
+		md.focusMenuIndex(prev)
 		return nil
-
 	case tcell.KeyRight:
 		next := md.activeMenu + 1
-		if next >= len(md.menuItems) {
+		if next >= n {
 			next = 0
 		}
-		md.selectMenu(next)
+		md.focusMenuIndex(next)
 		return nil
-
-	case tcell.KeyTab:
-		return event
-
-	case tcell.KeyBacktab:
-		prev := md.activeMenu - 1
-		if prev < 0 {
-			prev = len(md.menuItems) - 1
-		}
-		md.selectMenu(prev)
+	case tcell.KeyEnter:
+		md.selectMenu(md.activeMenu)
 		return nil
-
-	case tcell.KeyF8:
-		return event
-
-	case tcell.KeyRune:
-		switch event.Rune() {
-		case 'q', 'Q':
-			if md.onQuit != nil {
-				md.onQuit()
-			}
-			return nil
-		case '1', '2', '3', '4', '5', '6', '7', '8', '9':
-			idx := int(event.Rune() - '1')
-			if idx < len(md.menuItems) {
-				md.selectMenu(idx)
-			}
-			return nil
-		case '0':
-			if len(md.menuItems) >= 10 {
-				md.selectMenu(9)
-			}
-			return nil
-		case 'g':
-			return event
-		}
+	case tcell.KeyTab, tcell.KeyDown:
+		md.FocusBody()
+		return nil
 	}
 
-	// Refresh shortcut bar after any key event to capture focus changes
-	md.updateShortcuts()
+	// Space arrives as a Rune, not a Key.
+	if event.Key() == tcell.KeyRune && event.Rune() == ' ' {
+		md.selectMenu(md.activeMenu)
+		return nil
+	}
+
+	// Esc and everything else are forwarded (Esc lets the DialogManager close
+	// an open dialog; other keys have no menu action).
 	return event
 }
 
