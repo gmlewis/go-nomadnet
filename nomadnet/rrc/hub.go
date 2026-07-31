@@ -1141,37 +1141,30 @@ func (h *RRCHub) handleWelcome(body any) {
 	h.Welcomed = true
 	h.lock.Unlock()
 
-	if hubName, ok := bodyMap[BWelcomeHub].([]byte); ok {
+	// fxamacker/cbor decodes integer map keys as uint64, so every lookup must
+	// go through the int/uint64-tolerant helpers (byteVal/intVal/envVal).
+	// Direct bodyMap[intKey] indexing silently misses every field.
+	if hubName := byteVal(bodyMap, BWelcomeHub); hubName != nil {
 		h.lock.Lock()
 		h.HubName = string(hubName)
 		h.lock.Unlock()
 	}
-	if hubVer, ok := bodyMap[BWelcomeVer].([]byte); ok {
+	if hubVer := byteVal(bodyMap, BWelcomeVer); hubVer != nil {
 		h.lock.Lock()
 		h.HubVersion = string(hubVer)
 		h.lock.Unlock()
 	}
-	if caps, ok := bodyMap[BWelcomeCaps].(map[any]any); ok {
+	if caps, ok := envVal(bodyMap, BWelcomeCaps).(map[any]any); ok {
 		h.lock.Lock()
 		h.HubCaps = caps
 		h.lock.Unlock()
 	}
-	if limits, ok := bodyMap[BWelcomeLimits].(map[any]any); ok {
-		if v, ok := limits[LMaxNickBytes].(int); ok {
-			h.MaxNickBytes = v
-		}
-		if v, ok := limits[LMaxRoomNameBytes].(int); ok {
-			h.MaxRoomNameBytes = v
-		}
-		if v, ok := limits[LMaxMsgBodyBytes].(int); ok {
-			h.MaxMsgBodyBytes = v
-		}
-		if v, ok := limits[LMaxRoomsPerSession].(int); ok {
-			h.MaxRoomsPerSession = v
-		}
-		if v, ok := limits[LRateLimitMsgsPerMinute].(int); ok {
-			h.RateLimitMsgsPerMin = v
-		}
+	if limits, ok := envVal(bodyMap, BWelcomeLimits).(map[any]any); ok {
+		h.MaxNickBytes = intVal(limits, LMaxNickBytes)
+		h.MaxRoomNameBytes = intVal(limits, LMaxRoomNameBytes)
+		h.MaxMsgBodyBytes = intVal(limits, LMaxMsgBodyBytes)
+		h.MaxRoomsPerSession = intVal(limits, LMaxRoomsPerSession)
+		h.RateLimitMsgsPerMin = intVal(limits, LRateLimitMsgsPerMinute)
 	}
 
 	if h.Manager != nil {

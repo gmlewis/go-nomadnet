@@ -46,9 +46,9 @@ type MainDisplay struct {
 	quitCh            chan struct{}
 	mu                sync.Mutex
 	hideGuide         bool
-	unreadIndicator   bool       // true swaps the menu glyph to unread_menu (Main.py:220-230)
+	unreadIndicator   bool        // true swaps the menu glyph to unread_menu (Main.py:220-230)
 	hasUnread         func() bool // unread-conversation probe; nil ⇒ none (app injects via SetUnreadCheck)
-	menuWidths        []int      // pixel widths of each menu item for click detection
+	menuWidths        []int       // pixel widths of each menu item for click detection
 }
 
 // NewMainDisplay creates the main display with Frame layout:

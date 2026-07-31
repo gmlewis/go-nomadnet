@@ -261,8 +261,6 @@ test or a matching `parity.sh` summary):
 
 ### Phase 2 — Core library prerequisites (needed by the TUI wiring in Phase 5)
 
-- [ ] **2.1 rrc cross-process parity.** Integration test: Go RRC hub sends
-      HELLO, a Python subprocess (temp TCP RNS transport) responds WELCOME.
 - [ ] **2.2 rrc MSG round-trip.** Integration test: Python RRC client sends MSG,
       Go hub receives and records it; and Go hub sends MSG, Python client
       receives it.

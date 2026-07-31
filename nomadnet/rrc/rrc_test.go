@@ -2085,3 +2085,78 @@ func TestConnectAsyncGuard(t *testing.T) {
 		t.Errorf("StatusText = %q, want %q", text, "Connecting")
 	}
 }
+
+// TestHandleWelcomeParsesFieldsAfterCBORRoundTrip asserts the WELCOME envelope
+// is fully parsed after a real CBOR encode→decode cycle. This is the
+// prerequisite for the cross-process HELLO/WELCOME test (task 2.1): a WELCOME
+// arriving from a Python hub (or even a Go hub over a real link) is CBOR bytes,
+// and fxamacker decodes integer map keys/values as uint64, so handleWelcome
+// must use the int/uint64-tolerant *Val helpers — not raw bodyMap[intKey]
+// indexing, which silently misses every field except Welcomed.
+//
+// Golden WELCOME body mirrors Python's RRC server contract (RRC.py:73-82) and
+// the Go handleHello sender (hub.go:1196-1207): hub name, ver "0.1", empty
+// caps, limits {0:32, 1:64, 2:350, 3:32, 4:240}.
+func TestHandleWelcomeParsesFieldsAfterCBORRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	mgr := NewManager(tempDir(t), func() []byte { return []byte("testhash") })
+	mgr.SetNickname("TestNick")
+	hub := mgr.AddHub([]byte("hubhash"), "rrc.chat", "TestHub")
+
+	welcomeBody := map[any]any{
+		BWelcomeHub:  []byte("PyHub"),
+		BWelcomeVer:  []byte("0.1"),
+		BWelcomeCaps: map[any]any{},
+		BWelcomeLimits: map[any]any{
+			LMaxNickBytes:           32,
+			LMaxRoomNameBytes:       64,
+			LMaxMsgBodyBytes:        350,
+			LMaxRoomsPerSession:     32,
+			LRateLimitMsgsPerMinute: 240,
+		},
+	}
+	env := MakeEnvelope(TypeWelcome, nil, nil, nil, welcomeBody, []byte("mid-w"), NowMs())
+	data, err := EncodeEnvelope(env)
+	if err != nil {
+		t.Fatalf("EncodeEnvelope: %v", err)
+	}
+
+	hub.HandleData(data)
+
+	hub.lock.Lock()
+	welcomed := hub.Welcomed
+	hubName := hub.HubName
+	hubVer := hub.HubVersion
+	maxNick := hub.MaxNickBytes
+	maxRoom := hub.MaxRoomNameBytes
+	maxMsg := hub.MaxMsgBodyBytes
+	maxRooms := hub.MaxRoomsPerSession
+	rate := hub.RateLimitMsgsPerMin
+	hub.lock.Unlock()
+
+	if !welcomed {
+		t.Error("Welcomed = false, want true")
+	}
+	if hubName != "PyHub" {
+		t.Errorf("HubName = %q, want %q", hubName, "PyHub")
+	}
+	if hubVer != "0.1" {
+		t.Errorf("HubVersion = %q, want %q", hubVer, "0.1")
+	}
+	if maxNick != 32 {
+		t.Errorf("MaxNickBytes = %v, want 32", maxNick)
+	}
+	if maxRoom != 64 {
+		t.Errorf("MaxRoomNameBytes = %v, want 64", maxRoom)
+	}
+	if maxMsg != 350 {
+		t.Errorf("MaxMsgBodyBytes = %v, want 350", maxMsg)
+	}
+	if maxRooms != 32 {
+		t.Errorf("MaxRoomsPerSession = %v, want 32", maxRooms)
+	}
+	if rate != 240 {
+		t.Errorf("RateLimitMsgsPerMin = %v, want 240", rate)
+	}
+}
