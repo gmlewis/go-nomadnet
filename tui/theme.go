@@ -30,13 +30,6 @@ const (
 	ThemeLight = 2
 )
 
-// Glyph set constants.
-const (
-	GlyphPlain   = "plain"
-	GlyphUnicode = "unicode"
-	GlyphNerd    = "nerdfont"
-)
-
 // Color definitions for the dark theme.
 var darkColors = map[string]tcell.Color{
 	"heading":                    tcell.NewHexColor(0x999999), // g93
@@ -168,129 +161,12 @@ var lightColors = map[string]tcell.Color{
 	"shortcutbar":                tcell.NewHexColor(0x111111),
 }
 
-// Glyph definitions: name → (plain, unicode, nerd)
-type GlyphSet map[string]string
-
-var glyphsPlain = GlyphSet{
-	"check":           "=",
-	"cross":           "X",
-	"unknown":         "?",
-	"encrypted":       "",
-	"plaintext":       "!",
-	"arrow_r":         "->",
-	"arrow_l":         "<-",
-	"arrow_u":         "/\\",
-	"arrow_d":         "\\/",
-	"warning":         "!",
-	"info":            "i",
-	"unread":          "[!]",
-	"divider1":        "-",
-	"peer":            "[P]",
-	"node":            "[N]",
-	"page":            "",
-	"speed":           "",
-	"decoration_menu": " +",
-	"unread_menu":     " !",
-	"globe":           "",
-	"sent":            "/\\",
-	"papermsg":        "P",
-	"qrcode":          "QR",
-	"selected":        "[*] ",
-	"unselected":      "[ ] ",
-	"file":            "[F]",
-	"image":           "[I]",
-	"audio":           "[~]",
-	"pin":             "*",
-	"copy":            "[C]",
-}
-
-var glyphsUnicode = GlyphSet{
-	"check":           "\u2713",
-	"cross":           "\u2715",
-	"unknown":         "?",
-	"encrypted":       "\u26BF",
-	"plaintext":       "!",
-	"arrow_r":         "\u2192",
-	"arrow_l":         "\u2190",
-	"arrow_u":         "\u2191",
-	"arrow_d":         "\u2193",
-	"warning":         "\u26a0",
-	"info":            "\u2139",
-	"unread":          "\u2709",
-	"divider1":        "\u2504",
-	"peer":            "\u24c5 ",
-	"node":            "\u24c3 ",
-	"page":            "\u25a4 ",
-	"speed":           "\u25F7 ",
-	"decoration_menu": " +",
-	"unread_menu":     " \u2709",
-	"globe":           "",
-	"sent":            "\u2191",
-	"papermsg":        "\u25a4",
-	"qrcode":          "\u25a4",
-	"selected":        "\u25CF ",
-	"unselected":      "\u25CB ",
-	"file":            "\u25a4",
-	"image":           "\u25a3",
-	"audio":           "\u266b",
-	"pin":             "\u2605",
-	"copy":            "\u29c9",
-}
-
-var glyphsNerd = GlyphSet{
-	"check":           "\u2713",
-	"cross":           "\u2715",
-	"unknown":         "?",
-	"encrypted":       "\uf023",
-	"plaintext":       "\uf06e ",
-	"arrow_r":         "\u2192",
-	"arrow_l":         "\u2190",
-	"arrow_u":         "\u2191",
-	"arrow_d":         "\u2193",
-	"warning":         "\uf12a",
-	"info":            "\U000f064e",
-	"unread":          "\uf0e0",
-	"divider1":        "\u2504",
-	"peer":            "\uf415",
-	"node":            "\U000f0002",
-	"page":            "\uf719 ",
-	"speed":           "\U000f04c5 ",
-	"decoration_menu": " \U000f043b",
-	"unread_menu":     " \uf0e0",
-	"globe":           "\uf484",
-	"sent":            "\U000f0cd8",
-	"papermsg":        "\uf719",
-	"qrcode":          "\uf029",
-	"selected":        "\u25CF ",
-	"unselected":      "\u25CB ",
-	"file":            "\uf15b",
-	"image":           "\uf1c5",
-	"audio":           "\uf1c7",
-	"pin":             "\uf08d",
-	"copy":            "\uf0c5",
-}
-
-// GlyphSets maps glyph set names to their glyph maps.
-var GlyphSets = map[string]GlyphSet{
-	GlyphPlain:   glyphsPlain,
-	GlyphUnicode: glyphsUnicode,
-	GlyphNerd:    glyphsNerd,
-}
-
 // GetThemeColors returns the color map for the given theme.
 func GetThemeColors(theme int) map[string]tcell.Color {
 	if theme == ThemeLight {
 		return lightColors
 	}
 	return darkColors
-}
-
-// GetGlyphSet returns the glyph set for the given name.
-func GetGlyphSet(name string) GlyphSet {
-	if gs, ok := GlyphSets[name]; ok {
-		return gs
-	}
-	return glyphsUnicode
 }
 
 // Menu items for the top menu bar.
