@@ -23,12 +23,15 @@
 package app
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/gmlewis/go-nomadnet/nomadnet/config"
@@ -160,13 +163,14 @@ type App struct {
 	Announces []AnnounceEvent
 
 	// RNS/LXMF references
-	Logger       *rns.Logger
-	Transport    *rns.TransportSystem
-	RNS          *rns.Reticulum
-	Identity     *rns.Identity
-	Router       *lxmf.Router
-	LXMFDest     *rns.Destination
-	RNSConfigDir string
+	Logger           *rns.Logger
+	Transport        *rns.TransportSystem
+	RNS              *rns.Reticulum
+	Identity         *rns.Identity
+	Router           *lxmf.Router
+	LXMFDest         *rns.Destination
+	RNSConfigDir     string
+	standaloneRNSDir string
 
 	// Announce state
 	LastAnnounce    time.Time
@@ -574,6 +578,19 @@ func (a *App) Shutdown() {
 			a.Logger.Warning("Could not close Reticulum: %v", err)
 		}
 	}
+
+	// Remove the per-run standalone RNS config dir created by
+	// ensureStandaloneRNSConfig so temp dirs don't accumulate across runs.
+	// Done after RNS.Close(); the retry handles the brief window where RNS
+	// background goroutines finish flushing ratchet/destination storage and
+	// recreate files mid-removal (ENOTEMPTY/EBUSY). This mirrors the
+	// removeAllWithRetry pattern used in go-reticulum's testutils.
+	if a.standaloneRNSDir != "" {
+		if err := removeAllWithRetry(a.standaloneRNSDir); err != nil {
+			a.Logger.Warning("Could not remove standalone RNS config dir %s: %v", a.standaloneRNSDir, err)
+		}
+		a.standaloneRNSDir = ""
+	}
 }
 
 // AnnounceNow sends an LXMF delivery announce using the configured display
@@ -676,11 +693,54 @@ func expandUser(path string) string {
 // with share_instance = No, matching gornphone's pattern. Each gonomadnet
 // instance runs its own standalone RNS stack so destinations are registered
 // on its own TransportSystem.
-func (a *App) ensureStandaloneRNSConfig() string {
-	rnsDir := filepath.Join(os.TempDir(), fmt.Sprintf("gonomadnet-rns-%d", time.Now().UnixMilli()))
-	configPath := filepath.Join(rnsDir, "config")
+// tempBaseDir returns the base directory for standalone RNS config temp dirs.
+// On macOS (darwin) it returns "/tmp" — matching the go-reticulum repo's
+// testutils.tempBaseDir() — instead of os.TempDir() ($TMPDIR, a per-user
+// /var/folders path) so the dirs live in the conventional, easily inspected
+// /tmp location. On every other platform it returns "" so os.MkdirTemp uses
+// its default (os.TempDir()).
+func tempBaseDir() string {
+	if runtime.GOOS == "darwin" {
+		return "/tmp"
+	}
+	return ""
+}
 
-	_ = os.MkdirAll(rnsDir, 0o755)
+// removeAllWithRetry removes path with os.RemoveAll, retrying on transient
+// ENOTEMPTY/EBUSY errors for up to ~100ms. After RNS.Close() a handful of
+// background goroutines may still be flushing ratchet/destination storage and
+// briefly recreate files mid-removal; the retry lets them quiesce. Mirrors the
+// helper of the same name in go-reticulum's testutils package.
+func removeAllWithRetry(path string) error {
+	const maxAttempts = 10
+	const retryDelay = 10 * time.Millisecond
+
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		err := os.RemoveAll(path)
+		if err == nil || os.IsNotExist(err) {
+			return nil
+		}
+		if !isRetriableRemoveAllError(err) {
+			return err
+		}
+		time.Sleep(retryDelay)
+	}
+
+	return os.RemoveAll(path)
+}
+
+func isRetriableRemoveAllError(err error) bool {
+	return errors.Is(err, syscall.ENOTEMPTY) || errors.Is(err, syscall.EBUSY)
+}
+
+func (a *App) ensureStandaloneRNSConfig() string {
+	rnsDir, err := os.MkdirTemp(tempBaseDir(), "gonomadnet-rns-")
+	if err != nil {
+		a.Logger.Error("Could not create standalone RNS config dir: %v", err)
+		return ""
+	}
+	a.standaloneRNSDir = rnsDir
+	configPath := filepath.Join(rnsDir, "config")
 
 	home, err := os.UserHomeDir()
 	if err != nil {
