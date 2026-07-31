@@ -10,6 +10,7 @@ require (
 	github.com/rivo/tview v0.42.0
 	github.com/vmihailenco/msgpack/v5 v5.4.1
 	golang.org/x/text v0.38.0
+	rsc.io/qr v0.2.0
 )
 
 require (
@@ -21,5 +22,4 @@ require (
 	github.com/x448/float16 v0.8.4 // indirect
 	golang.org/x/sys v0.29.0 // indirect
 	golang.org/x/term v0.28.0 // indirect
-	rsc.io/qr v0.2.0 // indirect
 )

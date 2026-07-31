@@ -38,9 +38,15 @@ type fakeSendDeps struct {
 	tryProp   bool
 	convPath  string
 
+	downloadsPath string
+	tmpFilesPath  string
+	printResult   bool
+	printCalls    int
+
 	handled      []*lxmf.Message
 	ingestCount  int
 	ingestOrigin []bool
+	lastIngest   *lxmf.Message
 }
 
 func (f *fakeSendDeps) SendDestination() *rns.Destination { return f.dest }
@@ -58,10 +64,17 @@ func (f *fakeSendDeps) HandleOutbound(lxm *lxmf.Message) error {
 func (f *fakeSendDeps) Ingest(lxm *lxmf.Message, originator bool) (string, error) {
 	f.ingestCount++
 	f.ingestOrigin = append(f.ingestOrigin, originator)
+	f.lastIngest = lxm
 	if f.convPath == "" {
 		return "", nil
 	}
 	return Ingest(lxm, f.convPath, originator)
+}
+func (f *fakeSendDeps) DownloadsPath() string { return f.downloadsPath }
+func (f *fakeSendDeps) TmpFilesPath() string  { return f.tmpFilesPath }
+func (f *fakeSendDeps) PrintFile(string) bool {
+	f.printCalls++
+	return f.printResult
 }
 
 func newLXMFDest(t *testing.T) *rns.Destination {

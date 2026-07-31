@@ -21,16 +21,17 @@ import (
 	"github.com/gmlewis/go-reticulum/rns"
 )
 
-// SendDeps supplies the app-level dependencies that Conversation.Send and
-// Conversation.MessageNotification require, mirroring Python Conversation's
-// access to self.send_destination, self.app.lxmf_destination, the directory,
-// the message router, and Conversation.ingest. Injecting these as an interface
-// keeps the conversation package decoupled from the app package (avoiding an
-// import cycle) and lets tests substitute fakes.
+// SendDeps supplies the app-level dependencies that Conversation.Send,
+// Conversation.MessageNotification, and Conversation.PaperOutput require,
+// mirroring Python Conversation's access to self.send_destination,
+// self.app.lxmf_destination, the directory, the message router, the app's
+// downloads/tmp paths, the print command, and Conversation.ingest. Injecting
+// these as an interface keeps the conversation package decoupled from the app
+// package (avoiding an import cycle) and lets tests substitute fakes.
 type SendDeps interface {
 	// SendDestination returns the peer LXMF destination to deliver to (Python
 	// self.send_destination). A nil return means the destination is unknown and
-	// Send aborts with false.
+	// Send/PaperOutput abort with false.
 	SendDestination() *rns.Destination
 	// LXMFSource returns the local outbound LXMF destination (Python
 	// self.app.lxmf_destination), used as the message source.
@@ -60,6 +61,15 @@ type SendDeps interface {
 	// Ingest writes the outbound message into conversation storage and returns
 	// its file path (Python Conversation.ingest(lxm, app, originator=True)).
 	Ingest(lxm *lxmf.Message, originator bool) (string, error)
+	// DownloadsPath returns the directory where paper-message QR/URI files are
+	// saved (Python self.app.downloads_path).
+	DownloadsPath() string
+	// TmpFilesPath returns the scratch directory for transient print files
+	// (Python self.app.tmpfilespath).
+	TmpFilesPath() string
+	// PrintFile prints the file at the given path using the configured print
+	// command (Python self.app.print_file). Returns true on success.
+	PrintFile(path string) bool
 }
 
 // SetSendDeps wires the app-level dependencies used by Send and
