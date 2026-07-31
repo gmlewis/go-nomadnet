@@ -46,8 +46,9 @@ type MainDisplay struct {
 	quitCh            chan struct{}
 	mu                sync.Mutex
 	hideGuide         bool
-	unreadIndicator   bool  // true swaps the menu glyph to unread_menu (Main.py:220-230)
-	menuWidths        []int // pixel widths of each menu item for click detection
+	unreadIndicator   bool       // true swaps the menu glyph to unread_menu (Main.py:220-230)
+	hasUnread         func() bool // unread-conversation probe; nil ⇒ none (app injects via SetUnreadCheck)
+	menuWidths        []int      // pixel widths of each menu item for click detection
 }
 
 // NewMainDisplay creates the main display with Frame layout:
@@ -446,26 +447,89 @@ func (md *MainDisplay) BuildMenuBarText() string {
 	return strings.Join(parts, " | ")
 }
 
-// StartUnreadBlink starts a goroutine that alternates the unread indicator.
+// SetUnreadCheck installs the probe used by the unread-indicator blink. The
+// tui package must not import the app package (that would be a cycle), so the
+// app injects a callback wrapping app.HasUnreadConversations. nil ⇒ no unread.
+func (md *MainDisplay) SetUnreadCheck(fn func() bool) {
+	md.mu.Lock()
+	md.hasUnread = fn
+	md.mu.Unlock()
+}
+
+// updateUnreadIndicator is the synchronous core of the Python
+// MenuDisplay.update_display job (Main.py:216-230): probe for unread
+// conversations and, when the result differs from the current indicator, swap
+// the leading menu glyph (decoration_menu ⇄ unread_menu) and redraw the bar.
+// The probe runs OUTSIDE md.mu to avoid holding the lock across app work; only
+// the read/swap/redraw is under the lock. It does no UI-thread marshalling, so
+// it is safe to call directly from tests — production wraps it in
+// QueueUpdateDraw via startUnreadBlink(marshal=true).
+func (md *MainDisplay) updateUnreadIndicator() {
+	unread := false
+	if fn := md.hasUnread; fn != nil {
+		unread = fn()
+	}
+	md.mu.Lock()
+	if md.unreadIndicator == unread {
+		md.mu.Unlock()
+		return
+	}
+	md.unreadIndicator = unread
+	md.redrawMenuBar()
+	md.mu.Unlock()
+}
+
+// StartUnreadBlink starts a background goroutine that probes for unread
+// conversations every 2 s (Python UPDATE_INTERVAL, Main.py:194,216) and
+// refreshes the menu indicator. Updates are marshalled onto the application
+// event loop via QueueUpdateDraw because tview primitives must not be mutated
+// concurrently with Draw.
 func (md *MainDisplay) StartUnreadBlink() {
+	md.startUnreadBlink(time.NewTicker(2*time.Second), true)
+}
+
+// startUnreadBlink runs the indicator loop on the given ticker. When marshal is
+// true each tick's update is queued onto the application event loop
+// (production); when false it runs synchronously (tests, where no event loop is
+// running and QueueUpdateDraw would block forever on an undrained channel).
+// The goroutine captures the quit channel at start so StopUnreadBlink can nil
+// the field without leaving a live goroutine reading a nil channel; this also
+// makes Start/Stop restartable (Stop closes the captured channel, the next
+// Start mints a fresh one).
+func (md *MainDisplay) startUnreadBlink(ticker *time.Ticker, marshal bool) {
+	md.mu.Lock()
+	if md.quitCh == nil {
+		md.quitCh = make(chan struct{})
+	}
+	quit := md.quitCh
+	md.mu.Unlock()
 	go func() {
-		ticker := time.NewTicker(2 * time.Second)
 		defer ticker.Stop()
 		for {
 			select {
-			case <-md.quitCh:
+			case <-quit:
 				return
 			case <-ticker.C:
-				md.mu.Lock()
-				md.mu.Unlock()
+				if marshal && md.app != nil {
+					md.app.QueueUpdateDraw(md.updateUnreadIndicator)
+				} else {
+					md.updateUnreadIndicator()
+				}
 			}
 		}
 	}()
 }
 
-// StopUnreadBlink stops the unread blink goroutine.
+// StopUnreadBlink stops the unread blink goroutine. Idempotent: a second call
+// (or a call after the channel was already closed and replaced) is a no-op.
 func (md *MainDisplay) StopUnreadBlink() {
-	close(md.quitCh)
+	md.mu.Lock()
+	ch := md.quitCh
+	md.quitCh = nil
+	md.mu.Unlock()
+	if ch != nil {
+		close(ch)
+	}
 }
 
 // RequestRedraw forces a redraw after a short delay.

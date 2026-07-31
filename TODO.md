@@ -259,11 +259,6 @@ test or a matching `parity.sh` summary):
 
 ### Phase 1 — Core interaction model (highest-impact TUI fixes; unblocks all page work)
 
-- [ ] **1.4 Unread blink.** Make `StartUnreadBlink` (`tui/main.go:330-345`)
-      actually redraw the menu indicator every 2 s when there are unread
-      conversations. Test: feed an unread conversation, assert the indicator
-      glyph toggles to `unread_menu` on the next tick (mocked clock).
-
 ### Phase 2 — Core library prerequisites (needed by the TUI wiring in Phase 5)
 
 - [ ] **2.1 rrc cross-process parity.** Integration test: Go RRC hub sends

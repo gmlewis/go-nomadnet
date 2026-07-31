@@ -77,12 +77,19 @@ func runTextUI(configDir, rnsConfigDir string) {
 	// Create and run the TUI
 	tuiApp := tui.NewApp(theme, glyphSet, colorMode)
 	tuiApp.SetQuitCallback(func() {
+		tuiApp.Main.StopUnreadBlink()
 		a.Shutdown()
 		tuiApp.Stop()
 	})
 
 	// Wire up real displays BEFORE setting root
 	wireDisplays(tuiApp, a)
+
+	// Probe unread conversations every 2 s and swap the menu indicator glyph
+	// (Python MenuDisplay.update_display job, Main.py:216-230). The app injects
+	// the probe so the tui package need not import nomadnet/app.
+	tuiApp.Main.SetUnreadCheck(func() bool { return a.HasUnreadConversations() })
+	tuiApp.Main.StartUnreadBlink()
 
 	// Set root after all displays are wired up
 	tuiApp.SetRoot()
