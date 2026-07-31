@@ -68,8 +68,14 @@ func runTextUI(configDir, rnsConfigDir string) {
 		}
 	}
 
+	// Determine color depth from config (default 24-bit true color).
+	colorMode := tui.ColorModeTrue
+	if a.Config != nil {
+		colorMode = tui.ParseColorMode(a.Config.TextUI.ColorMode)
+	}
+
 	// Create and run the TUI
-	tuiApp := tui.NewApp(theme, glyphSet)
+	tuiApp := tui.NewApp(theme, glyphSet, colorMode)
 	tuiApp.SetQuitCallback(func() {
 		a.Shutdown()
 		tuiApp.Stop()

@@ -240,7 +240,7 @@ func TestMainDisplayRoot(t *testing.T) {
 func TestNewApp(t *testing.T) {
 	t.Parallel()
 
-	a := NewApp(ThemeDark, GlyphUnicode)
+	a := NewApp(ThemeDark, GlyphUnicode, ColorModeTrue)
 	if a == nil {
 		t.Fatal("NewApp returned nil")
 	}
@@ -258,7 +258,7 @@ func TestNewApp(t *testing.T) {
 func TestNewAppDefaults(t *testing.T) {
 	t.Parallel()
 
-	a := NewApp(ThemeLight, GlyphPlain)
+	a := NewApp(ThemeLight, GlyphPlain, ColorModeTrue)
 	if a.Theme != ThemeLight {
 		t.Errorf("Theme = %d, want %d", a.Theme, ThemeLight)
 	}
@@ -271,7 +271,7 @@ func TestNewAppNilGlyphSet(t *testing.T) {
 	t.Parallel()
 
 	// Unknown glyph set should default to unicode
-	a := NewApp(ThemeDark, "unknown")
+	a := NewApp(ThemeDark, "unknown", ColorModeTrue)
 	if a.Glyphs["check"] != "\u2713" {
 		t.Error("Unknown glyph set did not default to unicode")
 	}

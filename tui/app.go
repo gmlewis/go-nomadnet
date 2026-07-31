@@ -22,13 +22,16 @@ import (
 // App wraps tview.Application with NomadNet configuration.
 type App struct {
 	*tview.Application
-	Main   *MainDisplay
-	Theme  int
-	Glyphs GlyphSet
+	Main      *MainDisplay
+	Theme     int
+	ColorMode int
+	Glyphs    GlyphSet
 }
 
-// NewApp creates a new tview Application with the given theme and glyph set.
-func NewApp(theme int, glyphSet string) *App {
+// NewApp creates a new tview Application with the given theme, color depth,
+// and glyph set. colorMode selects the palette variant (mono/16/256/true);
+// pass ColorModeTrue for the shipped 24-bit default.
+func NewApp(theme int, glyphSet string, colorMode int) *App {
 	tviewApp := tview.NewApplication()
 	tviewApp.EnableMouse(true)
 	glyphs := GetGlyphSet(glyphSet)
@@ -36,11 +39,12 @@ func NewApp(theme int, glyphSet string) *App {
 		glyphs = glyphsUnicode
 	}
 
-	RegisterThemeStyles(tviewApp, theme)
+	RegisterThemeStyles(theme, colorMode)
 
 	a := &App{
 		Application: tviewApp,
 		Theme:       theme,
+		ColorMode:   colorMode,
 		Glyphs:      glyphs,
 	}
 

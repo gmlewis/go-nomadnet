@@ -22,7 +22,6 @@ package tui
 
 import (
 	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 )
 
 // Theme constants matching Python NomadNet.
@@ -292,13 +291,6 @@ func GetGlyphSet(name string) GlyphSet {
 		return gs
 	}
 	return glyphsUnicode
-}
-
-// RegisterThemeStyles registers tview styles for the given theme.
-func RegisterThemeStyles(app *tview.Application, theme int) {
-	// tview uses tcell.Style for the default style
-	// The actual styling is applied per-widget via SetForegroundColor etc.
-	// This function is a placeholder for theme initialization
 }
 
 // Menu items for the top menu bar.

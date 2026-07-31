@@ -257,11 +257,6 @@ test or a matching `parity.sh` summary):
 
 ### Phase 0 — Foundation & cross-cutting infrastructure (do first; everything depends on it)
 
-- [ ] **0.1 Color-depth wiring.** Implement `tui.RegisterThemeStyles` (currently a
-      no-op) to detect terminal color depth via tcell and select
-      mono/16/256/true variants per style using `nomadnet/micron/color-depth.go`.
-      Make `colormode` config-driven. Test: for each colormode, assert the
-      resolved style for a few named styles matches the Python 5-tuple entry.
 - [ ] **0.2 Theme/style map.** Port the full Python palette (§Colors) into
       `tui/theme.go` as 5-tuples: `menubar`, `shortcutbar`, `list_focus`,
       `list_off_focus`, `list_trusted/untrusted/unresponsive/unknown` + focus
