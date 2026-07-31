@@ -63,13 +63,23 @@ func SafeAttachmentName(name any, fallback string) string {
 	if s == "" || s == "." || s == ".." {
 		return fallback
 	}
-	if len(s) > 200 {
+	// Python's safe_attachment_name measures len() in characters (code
+	// points) and slices base[:200-len(ext)] on a str, which never splits a
+	// multibyte rune. Mirror that by counting and slicing runes; the
+	// previous byte-wise base[:200-len(ext)] split multibyte filenames and
+	// produced invalid UTF-8 that rendered as U+FFFD.
+	if utf8.RuneCountInString(s) > 200 {
 		ext := filepath.Ext(s)
-		if len(ext) > 16 {
-			ext = ext[:16]
+		if utf8.RuneCountInString(ext) > 16 {
+			ext = string([]rune(ext)[:16])
 		}
+		extRunes := utf8.RuneCountInString(ext)
 		base := strings.TrimSuffix(s, filepath.Ext(s))
-		s = base[:200-len(ext)] + ext
+		baseRunes := []rune(base)
+		if len(baseRunes) > 200-extRunes {
+			baseRunes = baseRunes[:200-extRunes]
+		}
+		s = string(baseRunes) + ext
 	}
 	return s
 }

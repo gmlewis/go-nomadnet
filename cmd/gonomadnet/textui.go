@@ -356,10 +356,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) {
 				if text == "" {
 					return
 				}
-				name := text
-				if len(name) > 8 {
-					name = name[:8] + "..."
-				}
+				name := tui.TruncateString(text, 8)
 				_ = a
 				// TODO: Call a.AddHub when app method exists
 				_ = text

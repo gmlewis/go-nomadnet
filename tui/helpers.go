@@ -75,6 +75,26 @@ var (
 	ErrUnsupportedPlatform = fmt.Errorf("unsupported platform for clipboard operations")
 )
 
+// TruncateString returns s truncated to at most maxVisible runes, appending
+// "..." when the input is longer. It operates on runes, never splitting a
+// multibyte UTF-8 character, so the result is always valid UTF-8 and never
+// contains a stray U+FFFD. It is the rune-safe replacement for the byte-wise
+// `s[:n]+"..."` pattern. A non-positive maxVisible yields just "..." when the
+// input is non-empty.
+func TruncateString(s string, maxVisible int) string {
+	if maxVisible < 0 {
+		maxVisible = 0
+	}
+	r := []rune(s)
+	if len(r) <= maxVisible {
+		return s
+	}
+	if maxVisible <= 0 {
+		return "..."
+	}
+	return string(r[:maxVisible]) + "..."
+}
+
 // ClickableIcon is a tview primitive that renders a glyph and fires
 // a callback on mouse click. Matches Python's ClickableIcon at
 // Helpers.py:20.

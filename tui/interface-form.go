@@ -225,7 +225,11 @@ func humanizeConfigKey(key string) string {
 	parts := strings.Split(key, "_")
 	for i, p := range parts {
 		if len(p) > 0 {
-			parts[i] = strings.ToUpper(p[:1]) + p[1:]
+			// Capitalize the first rune (not the first byte) so a
+			// multibyte leading character is not split into an
+			// incomplete UTF-8 sequence.
+			r := []rune(p)
+			parts[i] = strings.ToUpper(string(r[0])) + string(r[1:])
 		}
 	}
 	return strings.Join(parts, " ")

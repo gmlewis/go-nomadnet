@@ -257,13 +257,6 @@ test or a matching `parity.sh` summary):
 
 ### Phase 0 — Foundation & cross-cutting infrastructure (do first; everything depends on it)
 
-- [ ] **0.7 UTF-8 handling.** Fix the `U+FFFD` glitches (decode announce/source
-      names as UTF-8, not byte-wise). Test: a fixture with non-ASCII names
-      round-trips through the rendering path unchanged.
-- [ ] **0.8 Resize safety.** Find and fix the resize crash (the process died on
-      `tmux resize-window`). Add a test that drives a resize on a running
-      `MainDisplay` (mocked screen) without panic; verify reflow at 80×24.
-
 ### Phase 1 — Core interaction model (highest-impact TUI fixes; unblocks all page work)
 
 - [ ] **1.1 Menu structure.** In `tui/theme.go`/`tui/main.go`, set 8 items in

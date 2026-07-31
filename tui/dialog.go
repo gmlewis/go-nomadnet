@@ -49,29 +49,43 @@ func (d *DialogLineBox) Draw(screen tcell.Screen) {
 		return
 	}
 
+	// The border is drawn one cell outside the inner rect (x-1..x+w,
+	// y-1..y+h). When the dialog is positioned at a screen edge or is larger
+	// than the terminal (which happens during a resize to a small window),
+	// those coordinates go negative or past the edge. tcell clips such writes
+	// silently, but relying on that is fragile and produces stray glyphs, so
+	// every border/title cell is clamped to the screen bounds here.
+	sw, sh := screen.Size()
+	set := func(px, py int, r rune, st tcell.Style) {
+		if px < 0 || py < 0 || px >= sw || py >= sh {
+			return
+		}
+		screen.SetContent(px, py, r, nil, st)
+	}
+
 	// Draw border using tview.Box primitives
 	style := tcell.StyleDefault.
 		Foreground(tcell.NewHexColor(0xdddddd)).
 		Background(tcell.ColorDefault)
 
 	// Top border
-	screen.SetContent(x-1, y-1, '┌', nil, style)
+	set(x-1, y-1, '┌', style)
 	for i := 0; i < w; i++ {
-		screen.SetContent(x+i, y-1, '─', nil, style)
+		set(x+i, y-1, '─', style)
 	}
-	screen.SetContent(x+w, y-1, '┐', nil, style)
+	set(x+w, y-1, '┐', style)
 
 	// Bottom border
-	screen.SetContent(x-1, y+h, '└', nil, style)
+	set(x-1, y+h, '└', style)
 	for i := 0; i < w; i++ {
-		screen.SetContent(x+i, y+h, '─', nil, style)
+		set(x+i, y+h, '─', style)
 	}
-	screen.SetContent(x+w, y+h, '┘', nil, style)
+	set(x+w, y+h, '┘', style)
 
 	// Side borders
 	for i := 0; i < h; i++ {
-		screen.SetContent(x-1, y+i, '│', nil, style)
-		screen.SetContent(x+w, y+i, '│', nil, style)
+		set(x-1, y+i, '│', style)
+		set(x+w, y+i, '│', style)
 	}
 
 	// Title
@@ -80,7 +94,7 @@ func (d *DialogLineBox) Draw(screen tcell.Screen) {
 		titleRunes := []rune(d.title)
 		titleX := x + (w-len(titleRunes))/2
 		for i, r := range titleRunes {
-			screen.SetContent(titleX+i, y-1, r, nil, titleStyle)
+			set(titleX+i, y-1, r, titleStyle)
 		}
 	}
 
