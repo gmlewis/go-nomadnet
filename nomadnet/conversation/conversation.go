@@ -43,6 +43,7 @@ type Conversation struct {
 	TrustLevel    byte
 
 	changedCallback func()
+	sendDeps        SendDeps
 }
 
 var (

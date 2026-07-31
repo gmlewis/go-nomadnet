@@ -16,9 +16,11 @@
 package node
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/gmlewis/go-reticulum/rns"
 )
@@ -362,6 +364,36 @@ func TestServeNotAllowed(t *testing.T) {
 	}
 }
 
+// TestServeDefaultIndexPythonParity verifies that the default index and
+// not-allowed markup bytes match the Python NomadNet Node.DEFAULT_INDEX and
+// Node.DEFAULT_NOTALLOWED constants exactly. The reference bytes were
+// captured from the Python source into testdata.
+func TestServeDefaultIndexPythonParity(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		got  []byte
+		fix  string
+	}{
+		{"index", ServeDefaultIndex(), filepath.Join("testdata", "py_default_index.mu")},
+		{"notallowed", ServeNotAllowed(), filepath.Join("testdata", "py_default_notallowed.mu")},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			want, err := os.ReadFile(tc.fix)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(tc.got) != string(want) {
+				t.Errorf("%s markup differs from Python reference:\n got  (%v bytes): %q\n want (%v bytes): %q",
+					tc.name, len(tc.got), string(tc.got), len(want), string(want))
+			}
+		})
+	}
+}
+
 func TestNewNode(t *testing.T) {
 	t.Parallel()
 
@@ -610,6 +642,252 @@ func TestAnnounceSetsAppData(t *testing.T) {
 	}
 	if string(n.AppData) != "TestNode" {
 		t.Errorf("AppData = %q, want %q", string(n.AppData), "TestNode")
+	}
+}
+
+// TestAnnounceAppDataParity verifies that Node.Announce encodes the announce
+// app_data exactly as Python Node.announce does: self.app_data =
+// self.name.encode("utf-8"), passed as app_data to destination.announce. A
+// non-ASCII name exercises UTF-8 encoding parity. The announce packet's data
+// payload is pubkey + nameHash + randomHash + ratchet + signature + app_data,
+// so the packet data must end with the name's UTF-8 bytes.
+func TestAnnounceAppDataParity(t *testing.T) {
+	t.Parallel()
+
+	ts := rns.NewTransportSystem(nil)
+	id, err := rns.NewIdentity(true, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const name = "TëstNödë ☕"
+	dir := tempDir(t)
+	n := NewNode(name, dir, dir, 720, 0, 0, false)
+
+	if err := n.Start(ts, id); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer n.Stop()
+
+	if err := n.Announce(); err != nil {
+		t.Fatalf("Announce: %v", err)
+	}
+
+	wantAppData := []byte(name)
+	if !bytes.Equal(n.AppData, wantAppData) {
+		t.Errorf("AppData = %x, want %x (name UTF-8)", n.AppData, wantAppData)
+	}
+
+	pkt, err := n.destination.BuildAnnouncePacket(wantAppData)
+	if err != nil {
+		t.Fatalf("BuildAnnouncePacket: %v", err)
+	}
+	if !bytes.HasSuffix(pkt.Data, wantAppData) {
+		t.Errorf("announce packet data does not end with app_data:\n data = %x\n want suffix = %x", pkt.Data, wantAppData)
+	}
+}
+
+// TestPeerConnectedIncrementsConnects verifies that PeerConnected, the
+// link-established callback, increments the node connection count — matching
+// Python Node.peer_connected which does app.peer_settings["node_connects"] += 1.
+func TestPeerConnectedIncrementsConnects(t *testing.T) {
+	t.Parallel()
+
+	ts := rns.NewTransportSystem(nil)
+	id, err := rns.NewIdentity(true, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dir := tempDir(t)
+	n := NewNode("N", dir, dir, 720, 0, 0, false)
+	if err := n.Start(ts, id); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer n.Stop()
+
+	if n.NodeConnects != 0 {
+		t.Fatalf("initial NodeConnects = %d, want 0", n.NodeConnects)
+	}
+
+	n.PeerConnected(&rns.Link{})
+	if n.NodeConnects != 1 {
+		t.Errorf("after 1 connect, NodeConnects = %d, want 1", n.NodeConnects)
+	}
+
+	n.PeerConnected(&rns.Link{})
+	if n.NodeConnects != 2 {
+		t.Errorf("after 2 connects, NodeConnects = %d, want 2", n.NodeConnects)
+	}
+}
+
+// TestPeerDisconnectedNoop verifies that PeerDisconnected, the link-closed
+// callback, does not alter the connection count — matching Python
+// Node.peer_disconnected which only logs (its body is `pass`).
+func TestPeerDisconnectedNoop(t *testing.T) {
+	t.Parallel()
+
+	ts := rns.NewTransportSystem(nil)
+	id, err := rns.NewIdentity(true, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dir := tempDir(t)
+	n := NewNode("N", dir, dir, 720, 0, 0, false)
+	if err := n.Start(ts, id); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer n.Stop()
+
+	n.PeerConnected(&rns.Link{})
+	before := n.NodeConnects
+	n.PeerDisconnected(&rns.Link{})
+	if n.NodeConnects != before {
+		t.Errorf("PeerDisconnected changed NodeConnects from %d to %d", before, n.NodeConnects)
+	}
+}
+
+// TestRunJobsOnce verifies a single pass of the background job loop mirrors
+// Python Node.__jobs: it re-announces when now exceeds last_announce plus the
+// announce interval (minutes, no zero-guard), and re-scans pages/files when
+// now exceeds the last refresh plus the refresh interval (minutes, only when
+// the interval is greater than zero).
+func TestRunJobsOnce(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+
+	cases := []struct {
+		name           string
+		announceMin    int
+		pageRefreshMin int
+		fileRefreshMin int
+		lastAnnounce   time.Time
+		lastPage       time.Time
+		lastFile       time.Time
+		now            time.Time
+		wantAnnounce   bool
+		wantPage       bool
+		wantFile       bool
+	}{
+		{
+			name: "announce_due", announceMin: 30, pageRefreshMin: 0, fileRefreshMin: 0,
+			lastAnnounce: base.Add(-31 * time.Minute), lastPage: base, lastFile: base, now: base,
+			wantAnnounce: true,
+		},
+		{
+			name: "announce_not_due", announceMin: 30, pageRefreshMin: 0, fileRefreshMin: 0,
+			lastAnnounce: base.Add(-10 * time.Minute), lastPage: base, lastFile: base, now: base,
+			wantAnnounce: false,
+		},
+		{
+			name: "page_refresh_due", announceMin: 9999, pageRefreshMin: 10, fileRefreshMin: 0,
+			lastAnnounce: base, lastPage: base.Add(-11 * time.Minute), lastFile: base, now: base,
+			wantPage: true,
+		},
+		{
+			name: "page_refresh_disabled", announceMin: 9999, pageRefreshMin: 0, fileRefreshMin: 0,
+			lastAnnounce: base, lastPage: base.Add(-11 * time.Minute), lastFile: base, now: base,
+			wantPage: false,
+		},
+		{
+			name: "file_refresh_due", announceMin: 9999, pageRefreshMin: 0, fileRefreshMin: 10,
+			lastAnnounce: base, lastPage: base, lastFile: base.Add(-11 * time.Minute), now: base,
+			wantFile: true,
+		},
+		{
+			name: "file_refresh_disabled", announceMin: 9999, pageRefreshMin: 0, fileRefreshMin: 0,
+			lastAnnounce: base, lastPage: base, lastFile: base.Add(-11 * time.Minute), now: base,
+			wantFile: false,
+		},
+		{
+			name: "all_due", announceMin: 30, pageRefreshMin: 10, fileRefreshMin: 10,
+			lastAnnounce: base.Add(-31 * time.Minute), lastPage: base.Add(-11 * time.Minute),
+			lastFile: base.Add(-11 * time.Minute), now: base,
+			wantAnnounce: true, wantPage: true, wantFile: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			ts := rns.NewTransportSystem(nil)
+			id, err := rns.NewIdentity(true, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			dir := tempDir(t)
+			n := NewNode("N", dir, dir, tc.announceMin, tc.pageRefreshMin, tc.fileRefreshMin, false)
+			if err := n.Start(ts, id); err != nil {
+				t.Fatalf("Start: %v", err)
+			}
+			defer n.Stop()
+
+			n.LastAnnounce = tc.lastAnnounce
+			n.LastPageRefresh = tc.lastPage
+			n.LastFileRefresh = tc.lastFile
+
+			if err := n.runJobsOnce(tc.now); err != nil {
+				t.Fatalf("runJobsOnce: %v", err)
+			}
+
+			if tc.wantAnnounce {
+				if string(n.AppData) != "N" {
+					t.Errorf("announce should have fired; AppData = %q, want %q", string(n.AppData), "N")
+				}
+			} else {
+				if n.AppData != nil {
+					t.Errorf("announce should not have fired; AppData = %q, want nil", string(n.AppData))
+				}
+			}
+
+			wantPageRefresh := tc.lastPage
+			if tc.wantPage {
+				wantPageRefresh = tc.now
+			}
+			if !n.LastPageRefresh.Equal(wantPageRefresh) {
+				t.Errorf("LastPageRefresh = %v, want %v", n.LastPageRefresh, wantPageRefresh)
+			}
+
+			wantFileRefresh := tc.lastFile
+			if tc.wantFile {
+				wantFileRefresh = tc.now
+			}
+			if !n.LastFileRefresh.Equal(wantFileRefresh) {
+				t.Errorf("LastFileRefresh = %v, want %v", n.LastFileRefresh, wantFileRefresh)
+			}
+		})
+	}
+}
+
+// TestJobsReturnsWhenStopped verifies that Jobs exits its loop promptly when
+// ShouldRunJobs is false, rather than blocking on the sleep between passes.
+func TestJobsReturnsWhenStopped(t *testing.T) {
+	t.Parallel()
+
+	ts := rns.NewTransportSystem(nil)
+	id, err := rns.NewIdentity(true, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := tempDir(t)
+	n := NewNode("N", dir, dir, 9999, 0, 0, false)
+	if err := n.Start(ts, id); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	n.Stop()
+
+	done := make(chan struct{})
+	go func() {
+		n.Jobs()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Jobs did not return after Stop")
 	}
 }
 

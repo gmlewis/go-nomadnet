@@ -477,6 +477,37 @@ func TestInitWithTransportReceivesAnnounces(t *testing.T) {
 	}
 }
 
+// TestInitWithTransportSetsRRCIdentity verifies the App wires its identity
+// into the RRC manager, mirroring Python RRCManager.identity (a @property that
+// returns self.app.identity). After init, a.RRC.Identity() must be the very
+// same identity the app holds.
+func TestInitWithTransportSetsRRCIdentity(t *testing.T) {
+	t.Parallel()
+
+	dir := tempDir(t)
+	ts := rns.NewTransportSystem(nil)
+	id, err := rns.NewIdentity(true, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	a := NewAppWithTransport(dir, WithTransport(ts), WithIdentity(id))
+	if err := a.InitWithTransport(ts, id); err != nil {
+		t.Fatalf("InitWithTransport error: %v", err)
+	}
+	defer a.Shutdown()
+
+	if a.RRC == nil {
+		t.Fatal("RRC is nil after InitWithTransport")
+	}
+	if a.Identity == nil {
+		t.Fatal("App Identity is nil after InitWithTransport")
+	}
+	if a.RRC.Identity() != a.Identity {
+		t.Error("RRC.Identity() does not match App Identity after InitWithTransport")
+	}
+}
+
 func tempDir(t *testing.T) string {
 	t.Helper()
 	dir, err := os.MkdirTemp("", "nomadnet-app-test")

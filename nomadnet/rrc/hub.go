@@ -16,20 +16,25 @@
 package rrc
 
 import (
+	"bytes"
 	"container/ring"
 	"crypto/rand"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/gmlewis/go-reticulum/rns"
+	"golang.org/x/text/encoding/htmlindex"
+	"golang.org/x/text/transform"
 )
 
 // RRCHub represents a connection to a single RRC hub server.
@@ -66,7 +71,6 @@ type RRCHub struct {
 	MentionRooms   map[string]bool            // rooms with unread mentions
 	Members        map[string]map[string]bool // room → set of hash hex
 	Nicks          map[string]string          // hash hex → nick
-	PartedRooms    map[string]bool            // rooms with history but not joined
 	AvailableRooms map[string]*string         // room → topic or nil
 
 	// Auto-connect options
@@ -76,17 +80,43 @@ type RRCHub struct {
 	NickOverride  string
 
 	// Internal state
-	lock              sync.Mutex
-	sentIDs           *ring.Ring           // dedup ring buffer
-	pendingPings      map[string]time.Time // body → send time
-	pendingJoins      map[string]bool
-	pendingParts      map[string]bool
-	silentJoins       map[string]bool
-	silentWhoRooms    map[string]bool
-	savedHistoryPath  string
-	link              *rns.Link
-	onLinkEstablished func()
-	onLinkClosed      func()
+	lock                 sync.Mutex
+	sentIDs              *ring.Ring           // dedup ring buffer
+	pendingPings         map[string]time.Time // body → send time
+	pendingJoins         map[string]bool
+	pendingParts         map[string]bool
+	silentJoins          map[string]bool
+	silentWhoRooms       map[string]bool
+	resourceExpectations map[string]*resourceExpectation // rid → pending transfer
+	savedHistoryPath     string
+	transport            rns.Transport
+	link                 *rns.Link
+	manualDisconnect     bool
+	reconnectAttempts    int
+	reconnectTimer       *time.Timer
+	connectTimeout       time.Duration // override the connect-worker recall deadline (tests)
+	onLinkEstablished    func()
+	onLinkClosed         func()
+
+	// onSend, when set, is invoked by sendEnv with each outbound envelope
+	// before it is encoded and transmitted. It is an observability seam used by
+	// tests (and optionally the TUI) to inspect outgoing traffic; it is nil in
+	// normal operation.
+	onSend func(env map[any]any)
+
+	lastHistoryClean int64 // unix seconds of last cleanup (Python _last_history_clean)
+	cleanLastRemoved int64 // unix seconds when cleanup last removed messages
+
+	// Testing seams (nil in production). They mirror Python dependencies that
+	// otherwise require a live RNS transport or background goroutine, allowing
+	// the connection lifecycle to be exercised deterministically in unit tests.
+	afterFunc        func(d time.Duration, f func()) *time.Timer
+	connectFn        func() // reconnect fire target; defaults to ConnectAsync
+	connectWorkerFn  func() // stubs connectWorker from ConnectAsync
+	hasPathFn        func(hash []byte) bool
+	requestPathFn    func(hash []byte) error
+	recallIdentityFn func(hash []byte) *rns.Identity
+	buildDestFn      func(id *rns.Identity) (*rns.Destination, error)
 }
 
 // NewHub creates a new RRCHub with default values.
@@ -99,31 +129,31 @@ func NewHub(manager *RRCManager, hubHash []byte, destName, name string) *RRCHub 
 	}
 
 	h := &RRCHub{
-		Manager:             manager,
-		HubHash:             hubHash,
-		DestName:            destName,
-		Name:                name,
-		Status:              StatusDisconnected,
-		StatusText:          "Disconnected",
-		MaxNickBytes:        DefaultMaxNickBytes,
-		MaxRoomNameBytes:    DefaultMaxRoomBytes,
-		MaxMsgBodyBytes:     DefaultMaxMsgBytes,
-		MaxRoomsPerSession:  DefaultMaxRooms,
-		RateLimitMsgsPerMin: DefaultRatePerMinute,
-		Rooms:               make(map[string]bool),
-		Messages:            make(map[string][]*RRCMessage),
-		UnreadRooms:         make(map[string]bool),
-		MentionRooms:        make(map[string]bool),
-		Members:             make(map[string]map[string]bool),
-		Nicks:               make(map[string]string),
-		PartedRooms:         make(map[string]bool),
-		AvailableRooms:      make(map[string]*string),
-		sentIDs:             ring.New(256),
-		pendingPings:        make(map[string]time.Time),
-		pendingJoins:        make(map[string]bool),
-		pendingParts:        make(map[string]bool),
-		silentJoins:         make(map[string]bool),
-		silentWhoRooms:      make(map[string]bool),
+		Manager:              manager,
+		HubHash:              hubHash,
+		DestName:             destName,
+		Name:                 name,
+		Status:               StatusDisconnected,
+		StatusText:           "Disconnected",
+		MaxNickBytes:         DefaultMaxNickBytes,
+		MaxRoomNameBytes:     DefaultMaxRoomBytes,
+		MaxMsgBodyBytes:      DefaultMaxMsgBytes,
+		MaxRoomsPerSession:   DefaultMaxRooms,
+		RateLimitMsgsPerMin:  DefaultRatePerMinute,
+		Rooms:                make(map[string]bool),
+		Messages:             make(map[string][]*RRCMessage),
+		UnreadRooms:          make(map[string]bool),
+		MentionRooms:         make(map[string]bool),
+		Members:              make(map[string]map[string]bool),
+		Nicks:                make(map[string]string),
+		AvailableRooms:       make(map[string]*string),
+		sentIDs:              ring.New(256),
+		pendingPings:         make(map[string]time.Time),
+		pendingJoins:         make(map[string]bool),
+		pendingParts:         make(map[string]bool),
+		silentJoins:          make(map[string]bool),
+		silentWhoRooms:       make(map[string]bool),
+		resourceExpectations: make(map[string]*resourceExpectation),
 	}
 
 	return h
@@ -168,36 +198,342 @@ func (h *RRCHub) Connect(ts rns.Transport, dest *rns.Destination) error {
 	h.StatusText = "Connecting"
 	h.lock.Unlock()
 
-	link.SetLinkEstablishedCallback(func(l *rns.Link) {
-		h.lock.Lock()
-		h.Status = StatusConnected
-		h.StatusText = "Connected"
-		h.Welcomed = false
-		cb := h.onLinkEstablished
-		h.lock.Unlock()
+	link.SetLinkEstablishedCallback(h.onEstablished)
+	link.SetLinkClosedCallback(func(l *rns.Link) { h.onClosed() })
 
-		l.SetPacketCallback(func(data []byte, packet *rns.Packet) {
-			h.HandleData(data)
-		})
+	return link.Establish()
+}
 
-		h.sendHello(l)
+// onEstablished is the link-established callback, mirroring Python
+// RRCHub._on_established: it registers the packet and resource callbacks,
+// then sends the initial HELLO envelope.
+func (h *RRCHub) onEstablished(l *rns.Link) {
+	h.lock.Lock()
+	h.Status = StatusConnected
+	h.StatusText = "Connected"
+	h.Welcomed = false
+	cb := h.onLinkEstablished
+	h.lock.Unlock()
 
-		if cb != nil {
-			cb()
-		}
+	l.SetPacketCallback(func(data []byte, packet *rns.Packet) {
+		h.HandleData(data)
 	})
 
-	link.SetLinkClosedCallback(func(l *rns.Link) {
+	// Accept resource transfers via the app callback, mirroring Python's
+	// _on_established registration of the resource callbacks.
+	_ = l.SetResourceStrategy(rns.AcceptApp)
+	l.SetResourceCallback(h.resourceAdvertised)
+	l.SetResourceStartedCallback(func(_ *rns.Resource) {})
+	l.SetResourceConcludedCallback(h.resourceConcluded)
+
+	h.sendHello(l)
+
+	if cb != nil {
+		cb()
+	}
+}
+
+// onClosed is the link-closed handler, mirroring Python RRCHub._on_closed: it
+// clears link-derived state, marks the hub disconnected, and schedules a
+// reconnect when auto-reconnect is enabled and the close was not the result of
+// a manual disconnect. The optional onLinkClosed seam is fired before the
+// reconnect decision.
+func (h *RRCHub) onClosed() {
+	h.lock.Lock()
+	h.link = nil
+	h.Welcomed = false
+	h.MOTD = ""
+	for k := range h.Members {
+		delete(h.Members, k)
+	}
+	for k := range h.resourceExpectations {
+		delete(h.resourceExpectations, k)
+	}
+	for k := range h.pendingJoins {
+		delete(h.pendingJoins, k)
+	}
+	for k := range h.pendingParts {
+		delete(h.pendingParts, k)
+	}
+	for k := range h.silentJoins {
+		delete(h.silentJoins, k)
+	}
+	for k := range h.silentWhoRooms {
+		delete(h.silentWhoRooms, k)
+	}
+	shouldReconnect := h.AutoReconnect && !h.manualDisconnect
+	cb := h.onLinkClosed
+	h.Status = StatusDisconnected
+	h.StatusText = "Disconnected"
+	h.lock.Unlock()
+
+	if cb != nil {
+		cb()
+	}
+	if shouldReconnect {
+		h.scheduleReconnect()
+	}
+}
+
+// scheduleReconnect schedules a reconnect attempt after an exponential backoff,
+// mirroring Python RRCHub._schedule_reconnect. Each call increments the attempt
+// counter and recomputes the backoff; the scheduled fire is a no-op if a manual
+// disconnect happened or auto-reconnect was disabled in the meantime.
+func (h *RRCHub) scheduleReconnect() {
+	h.lock.Lock()
+	h.reconnectAttempts++
+	backoff := reconnectBackoff(h.reconnectAttempts)
+	if h.reconnectTimer != nil {
+		h.reconnectTimer.Stop()
+	}
+	h.Status = StatusDisconnected
+	h.StatusText = "Reconnect in " + strconv.Itoa(int(backoff.Seconds())) + "s"
+	afterFunc := h.afterFunc
+	connectFn := h.connectFn
+	h.lock.Unlock()
+
+	fire := func() {
 		h.lock.Lock()
-		h.Status = StatusDisconnected
-		h.StatusText = "Disconnected"
-		h.Welcomed = false
-		cb := h.onLinkClosed
+		h.reconnectTimer = nil
+		proceed := h.AutoReconnect && !h.manualDisconnect
 		h.lock.Unlock()
-		if cb != nil {
-			cb()
+		if !proceed {
+			return
 		}
-	})
+		if connectFn != nil {
+			connectFn()
+		} else {
+			h.ConnectAsync()
+		}
+	}
+
+	if afterFunc != nil {
+		h.lock.Lock()
+		h.reconnectTimer = afterFunc(backoff, fire)
+		h.lock.Unlock()
+	} else {
+		h.lock.Lock()
+		h.reconnectTimer = time.AfterFunc(backoff, fire)
+		h.lock.Unlock()
+	}
+}
+
+// reconnectBackoff computes the reconnect delay for the given (post-increment)
+// attempt count, matching Python's backoff = min(60.0, max(1.0, 2.0 ** min(attempts, 6))).
+func reconnectBackoff(attempts int) time.Duration {
+	exp := attempts
+	if exp > 6 {
+		exp = 6
+	}
+	if exp < 0 {
+		exp = 0
+	}
+	secs := 1 << uint(exp) // 2 ** exp
+	if secs < 1 {
+		secs = 1
+	}
+	if secs > 60 {
+		secs = 60
+	}
+	return time.Duration(secs) * time.Second
+}
+
+// ConnectAsync initiates a connection to the hub's destination asynchronously,
+// mirroring Python RRCHub.connect: it is a no-op when already connecting or
+// connected, clears the manual-disconnect flag, cancels any pending reconnect
+// timer, sets the status to Connecting, and launches the connect worker. The
+// transport must have been configured via SetTransport.
+func (h *RRCHub) ConnectAsync() {
+	h.lock.Lock()
+	if h.Status == StatusConnecting || h.Status == StatusConnected {
+		h.lock.Unlock()
+		return
+	}
+	h.manualDisconnect = false
+	if h.reconnectTimer != nil {
+		h.reconnectTimer.Stop()
+		h.reconnectTimer = nil
+	}
+	text := "Connecting"
+	if h.reconnectAttempts > 0 {
+		text = "Reconnecting (attempt " + strconv.Itoa(h.reconnectAttempts) + ")"
+	}
+	h.Status = StatusConnecting
+	h.StatusText = text
+	workerFn := h.connectWorkerFn
+	h.lock.Unlock()
+
+	if workerFn != nil {
+		go workerFn()
+	} else {
+		go h.connectWorker()
+	}
+}
+
+// SetTransport configures the RNS transport used by the async connection
+// worker (ConnectAsync). The synchronous Connect entry takes its transport
+// argument directly; this setter is for the parameterless Python-style path.
+func (h *RRCHub) SetTransport(ts rns.Transport) {
+	h.lock.Lock()
+	defer h.lock.Unlock()
+	h.transport = ts
+}
+
+// connectWorker resolves the hub destination and establishes an RNS link to it,
+// mirroring Python RRCHub._connect_worker: it ensures a path is known, recalls
+// the hub identity, builds the destination from the configured destination name,
+// verifies the resolved hash matches the stored hub hash, then establishes a
+// link with the established/closed callbacks wired. On any resolution failure it
+// sets the FAILED status with a diagnostic message.
+func (h *RRCHub) connectWorker() {
+	defer func() {
+		if r := recover(); r != nil {
+			h.SetStatus(StatusFailed, "Connect error: "+fmt.Sprintf("%v", r))
+		}
+	}()
+
+	hubHash := h.HubHash
+
+	hasPath := func(hash []byte) bool {
+		if fn := h.hasPathFn; fn != nil {
+			return fn(hash)
+		}
+		h.lock.Lock()
+		ts := h.transport
+		h.lock.Unlock()
+		return ts != nil && ts.HasPath(hash)
+	}
+	requestPath := func(hash []byte) error {
+		if fn := h.requestPathFn; fn != nil {
+			return fn(hash)
+		}
+		h.lock.Lock()
+		ts := h.transport
+		h.lock.Unlock()
+		if ts == nil {
+			return errors.New("no transport configured")
+		}
+		return ts.RequestPath(hash)
+	}
+	recallIdentity := func(hash []byte) *rns.Identity {
+		if fn := h.recallIdentityFn; fn != nil {
+			return fn(hash)
+		}
+		h.lock.Lock()
+		ts := h.transport
+		h.lock.Unlock()
+		if ts == nil {
+			return nil
+		}
+		return rns.RecallIdentity(ts, hash)
+	}
+	buildDest := func(id *rns.Identity) (*rns.Destination, error) {
+		if fn := h.buildDestFn; fn != nil {
+			return fn(id)
+		}
+		return h.buildDestination(id)
+	}
+
+	const timeout = 20 * time.Second
+	h.lock.Lock()
+	override := h.connectTimeout
+	h.lock.Unlock()
+	recallTimeout := timeout
+	if override > 0 {
+		recallTimeout = override
+	}
+	deadline := time.Now().Add(recallTimeout)
+
+	if !hasPath(hubHash) {
+		_ = requestPath(hubHash)
+		pathDeadline := time.Now().Add(5 * time.Second)
+		if override > 0 && override < 5*time.Second {
+			pathDeadline = time.Now().Add(override)
+		}
+		if pathDeadline.After(deadline) {
+			pathDeadline = deadline
+		}
+		for time.Now().Before(pathDeadline) {
+			if hasPath(hubHash) {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+
+	var hubIdentity *rns.Identity
+	for time.Now().Before(deadline) {
+		hubIdentity = recallIdentity(hubHash)
+		if hubIdentity != nil {
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+
+	if hubIdentity == nil {
+		h.SetStatus(StatusFailed, "Hub identity unknown")
+		return
+	}
+
+	hubDest, err := buildDest(hubIdentity)
+	if err != nil {
+		h.SetStatus(StatusFailed, "Connect error: "+err.Error())
+		return
+	}
+
+	if !bytes.Equal(hubDest.Hash, hubHash) {
+		h.SetStatus(StatusFailed, "Hash/destination name mismatch")
+		return
+	}
+
+	ts := h.transport
+	if ts == nil {
+		h.SetStatus(StatusFailed, "Connect error: no transport configured")
+		return
+	}
+
+	if err := h.establishLink(ts, hubDest); err != nil {
+		h.SetStatus(StatusFailed, "Connect error: "+err.Error())
+	}
+}
+
+// buildDestination constructs the RNS destination for this hub from the
+// configured destination name, mirroring Python's
+// RNS.Destination.app_and_aspects_from_name + RNS.Destination(...) call: the
+// name is split on "." into an app name followed by zero or more aspects.
+func (h *RRCHub) buildDestination(id *rns.Identity) (*rns.Destination, error) {
+	parts := strings.Split(h.DestName, ".")
+	if len(parts) == 0 || parts[0] == "" {
+		return nil, errors.New("empty destination name")
+	}
+	appName := parts[0]
+	aspects := parts[1:]
+	h.lock.Lock()
+	ts := h.transport
+	h.lock.Unlock()
+	if ts == nil {
+		return nil, errors.New("no transport configured")
+	}
+	return rns.NewDestination(ts, id, rns.DestinationOut, rns.DestinationSingle, appName, aspects...)
+}
+
+// establishLink creates and starts an RNS link to dest, wiring the established
+// and closed callbacks. It is the shared tail of both the synchronous Connect
+// entry and the async connectWorker.
+func (h *RRCHub) establishLink(ts rns.Transport, dest *rns.Destination) error {
+	link, err := rns.NewLink(ts, dest)
+	if err != nil {
+		return err
+	}
+
+	h.lock.Lock()
+	h.link = link
+	h.Status = StatusConnecting
+	h.StatusText = "Connecting"
+	h.lock.Unlock()
+
+	link.SetLinkEstablishedCallback(h.onEstablished)
+	link.SetLinkClosedCallback(func(l *rns.Link) { h.onClosed() })
 
 	return link.Establish()
 }
@@ -231,9 +567,31 @@ func (h *RRCHub) sendHello(link *rns.Link) {
 	h.sendEnv(env)
 }
 
-// Disconnect tears down the RNS link and resets hub status.
+// packetWouldFit reports whether payload, packed as a link data packet, would
+// fit within the link MTU — mirroring Python RRC._packet_would_fit, which
+// builds RNS.Packet(link, payload) and attempts to pack it. Pack fails when
+// the packed size (header plus the encrypted ciphertext) exceeds the MTU, so
+// a nil error means the payload fits.
+func (h *RRCHub) packetWouldFit(link *rns.Link, payload []byte) bool {
+	if link == nil {
+		return false
+	}
+	p := rns.NewPacketWithTransport(link.GetTransport(), link, payload)
+	return p.Pack() == nil
+}
+
+// Disconnect tears down the RNS link and resets hub status, mirroring Python
+// RRCHub.disconnect: it marks the disconnect as manual (so onClosed will not
+// schedule a reconnect), resets the attempt counter, cancels any pending
+// reconnect timer, and tears down the active link.
 func (h *RRCHub) Disconnect() {
 	h.lock.Lock()
+	h.manualDisconnect = true
+	h.reconnectAttempts = 0
+	if h.reconnectTimer != nil {
+		h.reconnectTimer.Stop()
+		h.reconnectTimer = nil
+	}
 	link := h.link
 	h.link = nil
 	h.Status = StatusDisconnected
@@ -243,6 +601,60 @@ func (h *RRCHub) Disconnect() {
 
 	if link != nil {
 		link.Teardown()
+	}
+}
+
+// SetAutoReconnect toggles automatic reconnection, mirroring Python
+// RRCHub.set_auto_reconnect: when disabled it cancels any pending reconnect
+// timer, persists the change to disk when save is true, and notifies the
+// manager of the change.
+func (h *RRCHub) SetAutoReconnect(enabled, save bool) {
+	h.lock.Lock()
+	h.AutoReconnect = enabled
+	if !enabled && h.reconnectTimer != nil {
+		h.reconnectTimer.Stop()
+		h.reconnectTimer = nil
+	}
+	mgr := h.Manager
+	h.lock.Unlock()
+
+	if save && mgr != nil {
+		_ = mgr.Save()
+	}
+	if mgr != nil {
+		mgr.NotifyChange(h)
+	}
+}
+
+// SetAutoList toggles the auto-list option, persisting and notifying, mirroring
+// Python RRCHub.set_auto_list.
+func (h *RRCHub) SetAutoList(enabled, save bool) {
+	h.lock.Lock()
+	h.AutoList = enabled
+	mgr := h.Manager
+	h.lock.Unlock()
+
+	if save && mgr != nil {
+		_ = mgr.Save()
+	}
+	if mgr != nil {
+		mgr.NotifyChange(h)
+	}
+}
+
+// SetAutoWho toggles the auto-who option, persisting and notifying, mirroring
+// Python RRCHub.set_auto_who.
+func (h *RRCHub) SetAutoWho(enabled, save bool) {
+	h.lock.Lock()
+	h.AutoWho = enabled
+	mgr := h.Manager
+	h.lock.Unlock()
+
+	if save && mgr != nil {
+		_ = mgr.Save()
+	}
+	if mgr != nil {
+		mgr.NotifyChange(h)
 	}
 }
 
@@ -417,6 +829,26 @@ func (h *RRCHub) SendAction(room, text string) string {
 	return hexString(mid)
 }
 
+// SendCommand mirrors Python RRCHub.send_command: it sends a raw command
+// string (which must begin with "/") to the hub as a T_MSG envelope. Unlike
+// SendMessage it does not normalize the room, record the message locally, or
+// track the message ID for dedup — it is a thin send of the command text.
+func (h *RRCHub) SendCommand(text, room string) error {
+	if !strings.HasPrefix(text, "/") {
+		return errors.New("command must start with /")
+	}
+	mid := MsgID()
+	ts := NowMs()
+	nick := h.GetEffectiveNick()
+	var srcHash []byte
+	if h.Manager != nil {
+		srcHash = h.Manager.identityHash()
+	}
+	env := MakeEnvelope(TypeMsg, srcHash, []byte(room), []byte(nick), text, mid, ts)
+	h.sendEnv(env)
+	return nil
+}
+
 // SendPing sends a T_PING to a room.
 func (h *RRCHub) SendPing(room string) {
 	room = strings.ToLower(room)
@@ -454,6 +886,9 @@ func (h *RRCHub) SetNickOverride(nick string) {
 }
 
 func (h *RRCHub) sendEnv(env map[any]any) {
+	if h.onSend != nil {
+		h.onSend(env)
+	}
 	data, err := EncodeEnvelope(env)
 	if err != nil {
 		return
@@ -575,7 +1010,46 @@ func (h *RRCHub) HandleData(data []byte) {
 			Ts:   ts,
 		}
 		h.recordMessage(msg, false)
+
+	case TypeResourceEnvelope:
+		h.recordResourceExpectation(env)
 	}
+}
+
+// recordResourceExpectation mirrors the T_RESOURCE_ENVELOPE branch of Python
+// RRCHub._on_packet: it records a pending resource expectation keyed by the
+// resource id, capturing kind, size, sha256, encoding and (lowercased) room,
+// expiring after 30 seconds.
+func (h *RRCHub) recordResourceExpectation(env map[any]any) {
+	body, ok := envVal(env, KeyBody).(map[any]any)
+	if !ok {
+		return
+	}
+	rid := byteVal(body, ResKeyID)
+	kind, _ := envVal(body, ResKeyKind).(string)
+	size := int(int64Val(body, ResKeySize))
+	if len(rid) == 0 || kind == "" || size <= 0 {
+		return
+	}
+	sha := byteVal(body, ResKeySHA256)
+	encoding, _ := envVal(body, ResKeyEncoding).(string)
+	if encoding == "" {
+		encoding = "utf-8"
+	}
+	room := ""
+	if r := byteVal(env, KeyRoom); len(r) > 0 {
+		room = strings.ToLower(strings.TrimSpace(string(r)))
+	}
+	h.lock.Lock()
+	h.resourceExpectations[string(rid)] = &resourceExpectation{
+		kind:     kind,
+		size:     size,
+		sha256:   sha,
+		encoding: encoding,
+		room:     room,
+		expires:  time.Now().Add(30 * time.Second),
+	}
+	h.lock.Unlock()
 }
 
 // intVal extracts an int value from a CBOR-decoded map, handling both
@@ -788,19 +1262,19 @@ func (h *RRCHub) echoMessage(src, room, nick []byte, body any, mid []byte, ts in
 }
 
 func (h *RRCHub) recordMessage(msg *RRCMessage, local bool) {
-	h.lock.Lock()
-	defer h.lock.Unlock()
-
 	room := strings.ToLower(msg.Room)
 	if room == "" {
+		h.lock.Lock()
 		// Global notice
 		h.Notices = append(h.Notices, msg)
 		if len(h.Notices) > 100 {
 			h.Notices = h.Notices[len(h.Notices)-100:]
 		}
+		h.lock.Unlock()
 		return
 	}
 
+	h.lock.Lock()
 	// Cap message buffer at 256
 	msgs := h.Messages[room]
 	if len(msgs) >= 256 {
@@ -818,9 +1292,124 @@ func (h *RRCHub) recordMessage(msg *RRCMessage, local bool) {
 			}
 		}
 	}
+	h.lock.Unlock()
 
-	// Append to history
+	// Append to history and clean up — outside the lock, mirroring Python,
+	// which calls _append_history and _clean_history after the `with self._lock`
+	// block. cleanHistory acquires the lock itself.
 	h.appendHistory(room, msg)
+	h.cleanHistory()
+}
+
+// perRoomCap mirrors Python RRCHub._per_room_cap: it returns the configured
+// per-room history cap, or 0 when no cap is set (Python returns None). The
+// value comes from the manager, which reads rrc_history_per_room_cap from the
+// app config.
+func (h *RRCHub) perRoomCap() int {
+	if h.Manager == nil {
+		return 0
+	}
+	return h.Manager.HistoryPerRoomCap()
+}
+
+// filterHistory mirrors Python RRCHub._filter_history: whether system/notice
+// messages are dropped when loading history from disk. Defaults to true.
+func (h *RRCHub) filterHistory() bool {
+	if h.Manager == nil {
+		return true
+	}
+	return h.Manager.FilterLoadedHistory()
+}
+
+// ephemeralNoticesHistory mirrors Python RRCHub._ephemeral_notices_history:
+// the age in seconds after which ephemeral system/notice messages are removed
+// by the periodic cleanup. Defaults to SYS_NOTICE_TIMEOUT.
+func (h *RRCHub) ephemeralNoticesHistory() int {
+	if h.Manager == nil {
+		return NoticeTimeout
+	}
+	return h.Manager.EphemeralNotices()
+}
+
+// cleanHistory mirrors Python RRCHub._clean_history. At most once per
+// CLEAN_HISTORY_INTERVAL seconds it scans every room's message buffer and
+// removes system/notice messages older than the ephemeral-notices timeout.
+func (h *RRCHub) cleanHistory() {
+	now := time.Now().Unix()
+	cleaned := false
+	removeAfter := int64(h.ephemeralNoticesHistory())
+	if now > h.lastHistoryClean+CleanHistoryInterval {
+		h.lock.Lock()
+		for r := range h.Messages {
+			kept := h.Messages[r][:0]
+			removed := false
+			for _, m := range h.Messages[r] {
+				shouldFilter := m.Kind == "system" || m.Kind == "notice"
+				if shouldFilter {
+					age := now - m.Ts/1000
+					if age > removeAfter {
+						removed = true
+						continue
+					}
+				}
+				kept = append(kept, m)
+			}
+			if removed {
+				h.Messages[r] = kept
+				cleaned = true
+			}
+		}
+		h.lock.Unlock()
+	}
+	h.lastHistoryClean = now
+	if cleaned {
+		h.cleanLastRemoved = now
+	}
+}
+
+// recordNotice mirrors Python RRCHub._record_notice. A notice is appended to
+// the global notices list (capped at 200) and, when it has a target room, to
+// that room's message buffer (capped at perRoomCap), marked unread when the
+// room is not active, persisted to history, and followed by a history cleanup.
+func (h *RRCHub) recordNotice(msg *RRCMessage) {
+	targetRoom := strings.ToLower(msg.Room)
+	if targetRoom == "" && h.Manager != nil {
+		if active := strings.ToLower(h.Manager.ActiveRoomFor(h)); active != "" {
+			targetRoom = active
+			msg.Room = active
+		}
+	}
+
+	cap := h.perRoomCap()
+	h.lock.Lock()
+	h.Notices = append(h.Notices, msg)
+	if len(h.Notices) > 200 {
+		h.Notices = h.Notices[len(h.Notices)-200:]
+	}
+	if targetRoom != "" {
+		buf := h.Messages[targetRoom]
+		if buf == nil {
+			buf = make([]*RRCMessage, 0)
+		}
+		buf = append(buf, msg)
+		if cap > 0 && len(buf) > cap {
+			buf = buf[len(buf)-cap:]
+		}
+		h.Messages[targetRoom] = buf
+		if h.Manager != nil && targetRoom != strings.ToLower(h.Manager.ActiveRoomFor(h)) {
+			h.UnreadRooms[targetRoom] = true
+		}
+	}
+	notify := h.Manager != nil
+	h.lock.Unlock()
+
+	if notify {
+		h.Manager.NotifyMessage(h, msg)
+	}
+	if targetRoom != "" {
+		h.appendHistory(targetRoom, msg)
+		h.cleanHistory()
+	}
 }
 
 func (h *RRCHub) appendHistory(room string, msg *RRCMessage) {
@@ -855,14 +1444,93 @@ func (h *RRCHub) deleteHistory(room string) {
 	_ = os.Remove(path)
 }
 
+// persistableRoom mirrors Python RRCHub._persistable_room: a room is persistable
+// when it is a non-empty string other than the "*" catch-all.
+func persistableRoom(room string) bool {
+	return room != "" && room != "*"
+}
+
+// loadHistory mirrors Python RRCHub._load_history. For each room that currently
+// has a message buffer, it reads the per-room CBOR history file, keeps only the
+// last perRoomCap entries (truncating at the first decode error), drops
+// system/notice entries when the loaded-history filter is enabled, and
+// replaces the in-memory buffer with the result.
+func (h *RRCHub) loadHistory() {
+	h.lock.Lock()
+	rooms := make([]string, 0, len(h.Messages))
+	for r := range h.Messages {
+		rooms = append(rooms, r)
+	}
+	h.lock.Unlock()
+
+	cap := h.perRoomCap()
+	filter := h.filterHistory()
+
+	for _, room := range rooms {
+		if !persistableRoom(room) {
+			continue
+		}
+		path := h.historyPath(room)
+		info, err := os.Stat(path)
+		if err != nil || info.IsDir() {
+			continue
+		}
+		f, err := os.Open(path)
+		if err != nil {
+			continue
+		}
+
+		var window []*RRCMessage
+		dec := cbor.NewDecoder(f)
+		for {
+			var entry map[string]any
+			if err := dec.Decode(&entry); err != nil {
+				break // EOF or decode error: stop, keeping the valid prefix
+			}
+			m := DecodeHistoryEntry(entry)
+			if m == nil {
+				continue
+			}
+			m.Room = room
+			window = append(window, m)
+			if cap > 0 && len(window) > cap {
+				window = window[len(window)-cap:]
+			}
+		}
+		_ = f.Close()
+
+		msgs := make([]*RRCMessage, 0, len(window))
+		for _, m := range window {
+			if filter && (m.Kind == "system" || m.Kind == "notice") {
+				continue
+			}
+			msgs = append(msgs, m)
+		}
+
+		h.lock.Lock()
+		h.Messages[room] = msgs
+		h.lock.Unlock()
+	}
+}
+
 func (h *RRCHub) historyPath(room string) string {
 	if h.savedHistoryPath == "" {
 		return ""
 	}
+	room = strings.ToLower(room)
 	sanitized := sanitizeRoomName(room)
+	if len(sanitized) > 64 {
+		sanitized = sanitized[:64]
+	}
 	hash := sha256.Sum256([]byte(room))
-	prefix := fmt.Sprintf("%x", hash[:4])
-	return filepath.Join(h.savedHistoryPath, sanitized+"_"+prefix+".log")
+	prefix := fmt.Sprintf("%x", hash[:4]) // 8 hex chars, matching Python's [:8]
+	var filename string
+	if sanitized != "" {
+		filename = sanitized + "_" + prefix + ".log"
+	} else {
+		filename = prefix + ".log"
+	}
+	return filepath.Join(h.savedHistoryPath, filename)
 }
 
 // SetStatus updates the connection status.
@@ -873,6 +1541,129 @@ func (h *RRCHub) SetStatus(status int, text string) {
 	if text != "" {
 		h.StatusText = text
 	}
+}
+
+// resourceExpectation records a pending inbound resource transfer announced via
+// a T_RESOURCE_ENVELOPE, mirroring Python RRCHub._resource_expectations. It is
+// matched (by size) and consumed when the transfer concludes.
+type resourceExpectation struct {
+	kind     string
+	size     int
+	sha256   []byte
+	encoding string
+	room     string
+	expires  time.Time
+}
+
+// resourceAdvertised mirrors Python RRCHub._resource_advertised: it accepts an
+// incoming resource advertisement when its data size is within the 262144-byte
+// cap, and rejects larger transfers.
+func (h *RRCHub) resourceAdvertised(adv *rns.ResourceAdvertisement) bool {
+	if adv == nil {
+		return false
+	}
+	size := adv.D
+	if size == 0 {
+		size = adv.T
+	}
+	return size <= 262144
+}
+
+// resourceConcluded mirrors Python RRCHub._resource_concluded: on a completed
+// transfer it passes the received data to the testable core handler. Non-complete
+// resources are dropped.
+func (h *RRCHub) resourceConcluded(resource *rns.Resource) {
+	if resource == nil || resource.Status() != rns.ResourceStatusComplete {
+		return
+	}
+	h.handleConcludedResource(resource.Data())
+}
+
+// handleConcludedResource is the testable core of _resource_concluded: it
+// matches the received data against a pending resource expectation (by size,
+// purging expired ones first), verifies the sha256 when present, and for
+// notice/MOTD kinds decodes the text and records it (MOTD also updates the hub
+// motd and fires a change notification).
+func (h *RRCHub) handleConcludedResource(data []byte) {
+	if len(data) == 0 {
+		return
+	}
+
+	now := time.Now()
+	h.lock.Lock()
+	for k, exp := range h.resourceExpectations {
+		if now.After(exp.expires) {
+			delete(h.resourceExpectations, k)
+		}
+	}
+	var matched *resourceExpectation
+	for k, exp := range h.resourceExpectations {
+		if exp.size == len(data) {
+			matched = exp
+			delete(h.resourceExpectations, k)
+			break
+		}
+	}
+	h.lock.Unlock()
+
+	kind := ResKindBlob
+	room := ""
+	encoding := "utf-8"
+	var sha []byte
+	if matched != nil {
+		kind = matched.kind
+		room = matched.room
+		encoding = matched.encoding
+		sha = matched.sha256
+	}
+	if len(sha) > 0 {
+		sum := sha256.Sum256(data)
+		if !bytes.Equal(sum[:], sha) {
+			return
+		}
+	}
+
+	if kind != ResKindNotice && kind != ResKindMOTD {
+		return
+	}
+	text := decodeText(data, encoding)
+	if kind == ResKindMOTD {
+		h.lock.Lock()
+		h.MOTD = text
+		h.lock.Unlock()
+		if h.Manager != nil {
+			h.Manager.NotifyChange(h)
+		}
+	}
+	h.recordNotice(&RRCMessage{Kind: "notice", Room: room, Text: text, Ts: NowMs()})
+}
+
+// decodeText decodes data using the given charset name with U+FFFD replacement
+// for invalid bytes, mirroring Python's data.decode(encoding, errors="replace").
+// Unknown or unavailable encodings fall back to UTF-8-with-replacement.
+func decodeText(data []byte, encoding string) string {
+	if encoding == "" {
+		encoding = "utf-8"
+	}
+	encoding = strings.ToLower(encoding)
+	if canon, ok := encodingAliases[encoding]; ok {
+		encoding = canon
+	}
+	if e, err := htmlindex.Get(encoding); err == nil {
+		if s, _, err := transform.String(e.NewDecoder(), string(data)); err == nil {
+			return s
+		}
+	}
+	return strings.ToValidUTF8(string(data), "�")
+}
+
+// encodingAliases maps Python codec names that Go's htmlindex does not
+// recognize to their WHATWG canonical names, so decodeText matches Python's
+// data.decode for the common charsets.
+var encodingAliases = map[string]string{
+	"latin-1": "iso-8859-1",
+	"latin1":  "iso-8859-1",
+	"ascii":   "us-ascii",
 }
 
 func sanitizeRoomName(name string) string {
@@ -894,6 +1685,21 @@ func sortedKeys(m map[string]bool) []string {
 	keys := make([]string, 0, len(m))
 	for k := range m {
 		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// partedRoomKeys mirrors Python RRCManager.save, where parted_rooms is derived
+// as sorted(set(h.messages.keys()) - joined): every room that has a message
+// buffer but is not currently joined. Both maps must already be under the hub
+// lock when this is called.
+func partedRoomKeys(messages map[string][]*RRCMessage, joined map[string]bool) []string {
+	keys := make([]string, 0, len(messages))
+	for r := range messages {
+		if !joined[r] {
+			keys = append(keys, r)
+		}
 	}
 	sort.Strings(keys)
 	return keys

@@ -379,6 +379,8 @@ func (a *App) initRNS() {
 		return
 	}
 	a.Logger.Info("Identity loaded: %s", rns.PrettyHex(a.Identity.Hash))
+	a.RRC.SetIdentity(a.Identity)
+	a.RRC.SetHistoryConfig(a.RRCHistoryPerRoomCap, a.RRCFilterLoadedHistory, a.RRCEphemeralNotices)
 
 	// Initialize LXMF router
 	a.Logger.Info("Initializing LXMF router...")
@@ -445,6 +447,8 @@ func (a *App) InitWithTransport(ts *rns.TransportSystem, identity *rns.Identity)
 	a.Dir.SanitizeNames = a.Config.TextUI.SanitizeNames
 	a.Dir.SetTransport(ts)
 	a.RRC = rrc.NewManager(a.StoragePath, nil)
+	a.RRC.SetIdentity(a.Identity)
+	a.RRC.SetHistoryConfig(a.RRCHistoryPerRoomCap, a.RRCFilterLoadedHistory, a.RRCEphemeralNotices)
 	a.loadPeerSettings()
 	a.loadIgnoredList()
 	conversation.SetAttachmentPathProvider(func() string { return a.AttachmentPath })

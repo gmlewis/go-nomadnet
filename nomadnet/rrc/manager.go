@@ -16,6 +16,7 @@
 package rrc
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -23,6 +24,7 @@ import (
 	"sync"
 
 	"github.com/fxamacker/cbor/v2"
+	"github.com/gmlewis/go-reticulum/rns"
 )
 
 // RRCManager manages multiple RRC hub connections and persistence.
@@ -30,7 +32,15 @@ type RRCManager struct {
 	Hubs []*RRCHub
 
 	storagePath    string
+	identity       *rns.Identity
 	identityHashFn func() []byte
+
+	// History config, mirroring the Python hub's getattr(self.manager.app, …)
+	// fallbacks: rrc_history_per_room_cap (0 = no cap), rrc_filter_loaded_history
+	// (default true), rrc_ephemeral_notices (default SYS_NOTICE_TIMEOUT seconds).
+	historyPerRoomCap    int
+	filterLoadedHistory  bool
+	ephemeralNoticesSecs int
 
 	lock            sync.Mutex
 	changeCallback  func()
@@ -44,16 +54,81 @@ type RRCManager struct {
 // NewManager creates a new RRCManager rooted at the given storage path.
 func NewManager(storagePath string, identityHashFn func() []byte) *RRCManager {
 	return &RRCManager{
-		storagePath:    storagePath,
-		identityHashFn: identityHashFn,
-		Hubs:           make([]*RRCHub, 0),
+		storagePath:          storagePath,
+		identityHashFn:       identityHashFn,
+		Hubs:                 make([]*RRCHub, 0),
+		filterLoadedHistory:  true,
+		ephemeralNoticesSecs: NoticeTimeout,
 	}
+}
+
+// SetHistoryConfig configures the per-room message-history cap, whether loaded
+// history is filtered (system/notice messages dropped on load), and how long
+// ephemeral system/notice messages survive the periodic cleanup — mirroring
+// Python's rrc_history_per_room_cap, rrc_filter_loaded_history and
+// rrc_ephemeral_notices app attributes. A perRoomCap <= 0 disables the cap.
+func (m *RRCManager) SetHistoryConfig(perRoomCap int, filterLoaded bool, ephemeralSecs int) {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	m.historyPerRoomCap = perRoomCap
+	m.filterLoadedHistory = filterLoaded
+	if ephemeralSecs > 0 {
+		m.ephemeralNoticesSecs = ephemeralSecs
+	}
+}
+
+// HistoryPerRoomCap returns the per-room history cap, or 0 when no cap is set
+// (matching Python _per_room_cap returning None).
+func (m *RRCManager) HistoryPerRoomCap() int {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	return m.historyPerRoomCap
+}
+
+// FilterLoadedHistory reports whether system/notice messages are dropped when
+// loading history from disk.
+func (m *RRCManager) FilterLoadedHistory() bool {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	return m.filterLoadedHistory
+}
+
+// EphemeralNotices returns the age in seconds after which ephemeral
+// system/notice messages are removed by the periodic cleanup.
+func (m *RRCManager) EphemeralNotices() int {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	return m.ephemeralNoticesSecs
+}
+
+// SetIdentity sets the local RNS identity, mirroring Python RRCManager, which
+// obtains its identity from the owning app (self.app.identity). The identity
+// is exposed via Identity and used as the source for outgoing envelopes and
+// for link identification.
+func (m *RRCManager) SetIdentity(id *rns.Identity) {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	m.identity = id
+}
+
+// Identity returns the local RNS identity, mirroring Python's
+// RRCManager.identity property (self.app.identity). It returns nil when no
+// identity has been configured.
+func (m *RRCManager) Identity() *rns.Identity {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	return m.identity
 }
 
 // identityHash returns the local identity hash.
 func (m *RRCManager) identityHash() []byte {
 	if m.identityHashFn != nil {
 		return m.identityHashFn()
+	}
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	if m.identity != nil {
+		return m.identity.Hash
 	}
 	return nil
 }
@@ -223,7 +298,7 @@ func (m *RRCManager) Save() error {
 			DestName:      h.DestName,
 			Name:          h.Name,
 			Rooms:         sortedKeys(h.Rooms),
-			PartedRooms:   sortedKeys(h.PartedRooms),
+			PartedRooms:   partedRoomKeys(h.Messages, h.Rooms),
 			AutoReconnect: h.AutoReconnect,
 			AutoList:      h.AutoList,
 			AutoWho:       h.AutoWho,
@@ -293,20 +368,6 @@ func (m *RRCManager) Load() error {
 		hub := m.AddHub(hash, destName, name)
 
 		hub.lock.Lock()
-		if rooms, ok := hubMap["rooms"].([]any); ok {
-			for _, r := range rooms {
-				if rs, ok := r.(string); ok {
-					hub.Rooms[rs] = true
-				}
-			}
-		}
-		if parted, ok := hubMap["parted_rooms"].([]any); ok {
-			for _, r := range parted {
-				if rs, ok := r.(string); ok {
-					hub.PartedRooms[rs] = true
-				}
-			}
-		}
 		if v, ok := hubMap["auto_reconnect"].(bool); ok {
 			hub.AutoReconnect = v
 		}
@@ -320,6 +381,38 @@ func (m *RRCManager) Load() error {
 			hub.NickOverride = v
 		}
 		hub.lock.Unlock()
+
+		// Joined rooms: Python calls hub.add_room(r), which normalizes the
+		// name and ensures an empty message buffer exists. AddRoom mirrors that
+		// (it lowercases and creates the buffer), so call it unlocked.
+		if rooms, ok := hubMap["rooms"].([]any); ok {
+			for _, r := range rooms {
+				if rs, ok := r.(string); ok {
+					hub.AddRoom(rs)
+				}
+			}
+		}
+		// Parted rooms: Python does hub.messages.setdefault(rn, []) — the room
+		// gets an empty message buffer but is NOT added to the joined set.
+		if parted, ok := hubMap["parted_rooms"].([]any); ok {
+			for _, r := range parted {
+				if rs, ok := r.(string); ok {
+					rs = strings.ToLower(strings.TrimSpace(rs))
+					if rs == "" {
+						continue
+					}
+					hub.lock.Lock()
+					if hub.Messages[rs] == nil {
+						hub.Messages[rs] = make([]*RRCMessage, 0)
+					}
+					hub.lock.Unlock()
+				}
+			}
+		}
+
+		// Load per-room history now that the room buffers exist, mirroring
+		// Python's hub._load_history() call at the end of each load entry.
+		hub.loadHistory()
 	}
 
 	return nil
@@ -333,7 +426,7 @@ func (m *RRCManager) Shutdown() {
 	m.lock.Unlock()
 
 	for _, hub := range hubs {
-		hub.SetStatus(StatusDisconnected, "Shutting down")
+		hub.Disconnect()
 	}
 }
 
@@ -345,11 +438,19 @@ func (m *RRCManager) historyRoot() string {
 	return filepath.Join(m.storagePath, "rrc_history")
 }
 
+// historyDir mirrors Python RRCManager._history_dir: the per-hub history
+// directory is keyed by the hub hash hex, with a "__<dest_name hash>" suffix
+// appended when the hub has a non-default destination name, so hubs sharing a
+// hash but differing in dest name keep separate histories.
 func (m *RRCManager) historyDir(hub *RRCHub) string {
 	hub.lock.Lock()
 	defer hub.lock.Unlock()
-	hex := hexString(hub.HubHash)
-	return filepath.Join(m.historyRoot(), hex)
+	key := hexString(hub.HubHash)
+	if hub.DestName != "" && hub.DestName != DefaultDestName {
+		sum := sha256.Sum256([]byte(hub.DestName))
+		key = key + "__" + fmt.Sprintf("%x", sum[:4])
+	}
+	return filepath.Join(m.historyRoot(), key)
 }
 
 func bytesEqual(a, b []byte) bool {

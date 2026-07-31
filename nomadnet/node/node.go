@@ -24,6 +24,7 @@ package node
 
 import (
 	"errors"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -49,7 +50,7 @@ const DefaultIndex = `>Default Home Page
 
 This node is serving pages, but the home page file (index.mu) was not found in the page storage directory. This is an auto-generated placeholder.
 
-If you are the node operator, you can define your own home page by creating a file named ` + "`*index.mu*`" + ` in the page storage directory.
+If you are the node operator, you can define your own home page by creating a file named ` + "`*index.mu`*" + ` in the page storage directory.
 `
 
 // DefaultNotAllowed is the response sent when a request is denied.
@@ -123,12 +124,7 @@ func (n *Node) Start(ts rns.Transport, identity *rns.Identity) error {
 	n.identity = identity
 	n.transport = ts
 
-	dest.SetLinkEstablishedCallback(func(link *rns.Link) {
-		n.mu.Lock()
-		n.NodeConnects++
-		n.mu.Unlock()
-		link.SetLinkClosedCallback(func(*rns.Link) {})
-	})
+	dest.SetLinkEstablishedCallback(n.PeerConnected)
 
 	n.RegisterPages()
 	n.RegisterFiles()
@@ -224,6 +220,69 @@ func (n *Node) Announce() error {
 	n.AppData = []byte(n.Name)
 	n.LastAnnounce = time.Now()
 	return n.destination.Announce(n.AppData)
+}
+
+// PeerConnected handles a peer establishing a link to this node, mirroring
+// Python Node.peer_connected: it increments the node connection count and
+// registers PeerDisconnected as the link-closed callback. Python persists the
+// incremented count via app.save_peer_settings; that persistence is applied at
+// the app layer when the node is wired into NomadNetworkApp.
+func (n *Node) PeerConnected(link *rns.Link) {
+	n.mu.Lock()
+	n.NodeConnects++
+	n.mu.Unlock()
+	if link != nil {
+		link.SetLinkClosedCallback(n.PeerDisconnected)
+	}
+}
+
+// PeerDisconnected handles a peer link closing, mirroring Python
+// Node.peer_disconnected, whose body only logs (it is a `pass`).
+func (n *Node) PeerDisconnected(link *rns.Link) {
+}
+
+// Jobs runs the background job loop, mirroring Python Node.__jobs. It repeats
+// until Stop sets ShouldRunJobs false, sleeping JobInterval seconds between
+// passes. Each pass re-announces when the announce interval has elapsed and
+// re-scans the page and file directories when their refresh intervals have
+// elapsed. Announce errors are logged so the loop keeps running, since Python's
+// __jobs likewise has no error handling that would halt the worker.
+func (n *Node) Jobs() {
+	for {
+		n.mu.Lock()
+		run := n.ShouldRunJobs
+		n.mu.Unlock()
+		if !run {
+			return
+		}
+		if err := n.runJobsOnce(time.Now()); err != nil {
+			log.Printf("node jobs: %v", err)
+		}
+		time.Sleep(JobInterval * time.Second)
+	}
+}
+
+// runJobsOnce performs a single pass of the background job loop as of now,
+// mirroring one iteration of Python Node.__jobs. The announce interval is in
+// minutes and has no zero-guard (matching Python, which re-announces whenever
+// now exceeds last_announce). The refresh intervals are in minutes and only
+// fire when greater than zero, matching Python's guards. It returns any error
+// from announcing.
+func (n *Node) runJobsOnce(now time.Time) error {
+	if now.After(n.LastAnnounce.Add(time.Duration(n.AnnounceInterval) * time.Minute)) {
+		if err := n.Announce(); err != nil {
+			return err
+		}
+	}
+	if n.PageRefreshInterval > 0 && now.After(n.LastPageRefresh.Add(time.Duration(n.PageRefreshInterval)*time.Minute)) {
+		n.RegisterPages()
+		n.LastPageRefresh = now
+	}
+	if n.FileRefreshInterval > 0 && now.After(n.LastFileRefresh.Add(time.Duration(n.FileRefreshInterval)*time.Minute)) {
+		n.RegisterFiles()
+		n.LastFileRefresh = now
+	}
+	return nil
 }
 
 // ScanPages recursively scans a directory for .mu page files,

@@ -1,0 +1,53 @@
+package conversation
+
+import (
+	"encoding/hex"
+	"fmt"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/gmlewis/go-reticulum/lxmf"
+	"github.com/gmlewis/go-reticulum/rns"
+)
+
+func TestStripDebug(t *testing.T) {
+	data, _ := os.ReadFile(filepath.Join("testdata", "strip", "nostamp_input.bin"))
+	vs, ve, lb, ok := findLxmfBytesValue(data)
+	fmt.Printf("findLxmfBytes: ok=%v valStart=%d valEnd=%d lbLen=%d\n", ok, vs, ve, len(lb))
+	hl := 2*lxmf.DestinationLength + lxmf.SignatureLength
+	fmt.Printf("headerLen=%d\n", hl)
+	payload := lb[hl:]
+	es, ee, _, aok := parseArraySpans(payload, 0)
+	fmt.Printf("array ok=%v nElems=%d\n", aok, len(es))
+	if aok {
+		entries, mok := parseMapEntries(payload, es[3])
+		fmt.Printf("map ok=%v nEntries=%d\n", mok, len(entries))
+		for i, e := range entries {
+			k, _ := rnsFullKey(payload, e.keyStart, e.keyEnd)
+			fmt.Printf("  entry %d key=%v keyBytes=%x\n", i, k, payload[e.keyStart:e.keyEnd])
+		}
+	}
+	var hashPayload []byte
+	if len(es) > 4 {
+		hashPayload = append(minimalArrayHeader(4), payload[es[0]:ee[3]]...)
+	} else {
+		hashPayload = payload
+	}
+	hashInput := append(append([]byte{}, lb[:2*lxmf.DestinationLength]...), hashPayload...)
+	h := rns.FullHash(hashInput)
+	fmt.Printf("computed hash: %s\n", hex.EncodeToString(h))
+	// list the staged dir
+	attBase := filepath.Join("testdata", "strip", "nostamp_attachments")
+	entries, _ := os.ReadDir(attBase)
+	for _, e := range entries {
+		fmt.Printf("att dir entry: %s\n", e.Name())
+	}
+	attDir := filepath.Join(attBase, hex.EncodeToString(h))
+	st, err := os.Stat(attDir)
+	fmt.Printf("attDir %s exists=%v err=%v\n", attDir, st != nil, err)
+}
+
+func rnsFullKey(data []byte, s, e int) (any, error) {
+	return msgpackUnpackKey(data, s, e)
+}
