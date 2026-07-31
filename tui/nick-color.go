@@ -15,10 +15,6 @@
 
 package tui
 
-import (
-	"encoding/binary"
-)
-
 // DarkThemeNickColors is the 24-color nick palette for the dark theme.
 // Matches Python nomadnet theme_dark["nick_colors"] exactly.
 var DarkThemeNickColors = []string{
@@ -49,23 +45,18 @@ func NickColorByHash(hash []byte, palette []string) string {
 		return "#" + palette[0]
 	}
 
-	// Use first 16 bytes as big-endian uint64 (matches Python's
-	// int.from_bytes on full hash, but we only need lower bits).
+	// Reduce the full hash modulo len(palette) using Horner's method so the
+	// result matches Python's int.from_bytes(hash, "big") % len(palette) for
+	// any hash length, without needing a big.Int. val stays below len(palette)
+	// at every step, so there is no overflow even for very long hashes.
+	m := uint64(len(palette))
 	var val uint64
-	n := len(hash)
-	if n > 8 {
-		n = 8
-	}
-	if n >= 8 {
-		val = binary.BigEndian.Uint64(hash[:8])
-	} else {
-		for i := 0; i < n; i++ {
-			val = (val << 8) | uint64(hash[i])
-		}
+	for _, b := range hash {
+		val = (val*256 + uint64(b)) % m
 	}
 
 	const shift uint64 = 15
-	idx := (val + shift) % uint64(len(palette))
+	idx := (val + shift) % m
 	return "#" + palette[idx]
 }
 

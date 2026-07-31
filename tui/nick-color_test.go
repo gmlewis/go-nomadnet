@@ -34,15 +34,18 @@ func TestNickColorByHash(t *testing.T) {
 			wantColor: "#" + DarkThemeNickColors[15], // (0 + 15) % 24 = 15
 		},
 		{
+			// byte index 7 set: int.from_bytes = 1<<64. The full-hash mod
+			// gives (val + 15) % 24 = 7, NOT 16 — the old 8-byte-truncating
+			// implementation returned 16 here, which diverged from Python.
 			name:      "hash with high byte set",
 			hash:      []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0, 0, 0},
-			wantColor: "#" + DarkThemeNickColors[16], // (1 + 15) % 24 = 16
+			wantColor: "#" + DarkThemeNickColors[7], // (val + 15) % 24 = 7
 		},
 		{
 			name: "hash with multiple bytes set",
 			hash: []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x09,
 				0, 0, 0, 0, 0, 0, 0, 0},
-			wantColor: "#" + DarkThemeNickColors[0], // (9 + 15) % 24 = 0
+			wantColor: "#" + DarkThemeNickColors[15], // (val + 15) % 24 = 15
 		},
 	}
 
@@ -70,12 +73,69 @@ func TestNickColorByHashConsistency(t *testing.T) {
 	}
 }
 
+// TestNickColorByHashPythonParity verifies the full-hash modular reduction
+// against Python's get_nick_color (Channels.py:1254):
+//
+//	nick_colors[(int.from_bytes(sender_hash, "big") + shift) % len(nick_colors)]
+//
+// with the default shift of 15. Expected values were captured from the Python
+// source. These cases exercise bytes beyond the first 8, which the previous
+// implementation (truncating to the first 8 bytes as a uint64) got wrong.
+func TestNickColorByHashPythonParity(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		hash      []byte
+		wantColor string
+	}{
+		{"last byte set 16B", bytes16(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1), "#95a0fd"},
+		{"first byte set 16B", bytes16(1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0), "#81b385"},
+		{"all 0xff 16B", bytes16(0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff), "#76a9ee"},
+		{"range 0..15 16B", bytes16(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15), "#76a9ee"},
+		{"range 1..16 16B", bytes16(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16), "#81b385"},
+		{"all 7 32B", bytes32(7), "#98a8c3"},
+		{"31 zeros then 23 32B", append(make([]byte, 31), 23), "#98a8c3"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := NickColorByHash(tt.hash, DarkThemeNickColors)
+			if got != tt.wantColor {
+				t.Errorf("NickColorByHash(%x) = %q, want %q", tt.hash, got, tt.wantColor)
+			}
+		})
+	}
+}
+
+// TestNickColorByHashPythonParityLight runs the same parity check against the
+// light-theme palette (captured from Python).
+func TestNickColorByHashPythonParityLight(t *testing.T) {
+	t.Parallel()
+
+	got := NickColorByHash(bytes16(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15), LightThemeNickColors)
+	if want := "#004ac0"; got != want {
+		t.Errorf("light parity: got %q, want %q", got, want)
+	}
+}
+
+func bytes16(b ...byte) []byte { return b }
+
+func bytes32(fill byte) []byte {
+	b := make([]byte, 32)
+	for i := range b {
+		b[i] = fill
+	}
+	return b
+}
+
 func TestNickColorByHashDifferentHashes(t *testing.T) {
 	t.Parallel()
 
 	hash1 := make([]byte, 16)
-	hash2 := []byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-		0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xf0}
+	hash2 := bytes16(0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+		0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff)
 
 	c1 := NickColorByHash(hash1, DarkThemeNickColors)
 	c2 := NickColorByHash(hash2, DarkThemeNickColors)

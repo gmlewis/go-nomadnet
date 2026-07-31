@@ -18,80 +18,91 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
-// ChunkByBytes splits text into chunks that each fit within budget
-// UTF-8 bytes. Splits prefer word boundaries (spaces/newlines/tabs)
-// when possible. Matches Python's _chunk_by_bytes exactly.
+// ChunkByBytes splits text into chunks that each fit within budget UTF-8 bytes.
+// It matches Python's _chunk_by_bytes (Channels.py:85) exactly: it takes a
+// byte-budget prefix, strips trailing UTF-8 continuation bytes, decodes with
+// errors="ignore", splits on the last whitespace boundary in the second half
+// of the chunk (falling back to the whole chunk when there is none), rstrips
+// the chunk, and lstrips the remainder. When the byte budget is smaller than a
+// single code point, it keeps one code point.
 func ChunkByBytes(text string, budget int) []string {
 	if budget <= 0 || text == "" {
 		return nil
 	}
 
-	var parts []string
+	var chunks []string
 	remaining := text
 
 	for remaining != "" {
-		if len([]byte(remaining)) <= budget {
-			parts = append(parts, remaining)
+		encoded := []byte(remaining)
+		if len(encoded) <= budget {
+			chunks = append(chunks, remaining)
 			break
 		}
 
-		// Take first budget characters (Python: remaining[:budget])
-		runes := []rune(remaining)
-		n := budget
-		if n > len(runes) {
-			n = len(runes)
+		// Take a byte-budget prefix and strip trailing UTF-8 continuation
+		// bytes so we do not cut in the middle of a multibyte code point.
+		cut := encoded[:budget]
+		for len(cut) > 0 && cut[len(cut)-1]&0xC0 == 0x80 {
+			cut = cut[:len(cut)-1]
 		}
 
-		// Encode to UTF-8, strip trailing continuation bytes
-		encoded := []byte(string(runes[:n]))
-		safe := len(encoded)
-		for safe > 0 && (encoded[safe-1]&0xC0) == 0x80 {
-			safe--
-		}
-		if safe == 0 {
-			safe = len(encoded)
-		}
+		// Decode ignoring any incomplete trailing lead byte, then operate on
+		// code points (Python str indexing is by code point).
+		chunk := strings.ToValidUTF8(string(cut), "")
+		chunkRunes := []rune(chunk)
 
-		// Decode back to get safe character count
-		chunkRunes := []rune(string(encoded[:safe]))
-		chunkLen := len(chunkRunes)
-
-		// Look for word boundary in second half of chunk
-		splitRuneIdx := -1
-		for i := chunkLen - 1; i >= 0; i-- {
-			if chunkRunes[i] == ' ' || chunkRunes[i] == '\n' || chunkRunes[i] == '\t' {
-				if i > chunkLen/2 {
-					splitRuneIdx = i
-					break
-				}
+		// Find the last whitespace boundary (space/newline/tab) and split there
+		// when it lies in the second half of the chunk.
+		lastSpace := -1
+		for i, r := range chunkRunes {
+			if r == ' ' || r == '\n' || r == '\t' {
+				lastSpace = i
 			}
 		}
-
-		if splitRuneIdx >= 0 {
-			// Apply split to remaining using rune indexing
-			before := strings.TrimRight(string(runes[:splitRuneIdx]), " \n\t")
-			after := strings.TrimLeft(string(runes[splitRuneIdx:]), " \n\t")
-			parts = append(parts, before)
-			remaining = after
-		} else {
-			// Fall back to single character
-			if len(runes) == 0 {
-				break
-			}
-			parts = append(parts, string(runes[0]))
-			remaining = string(runes[1:])
+		if lastSpace > 0 && lastSpace >= len(chunkRunes)/2 {
+			chunkRunes = chunkRunes[:lastSpace]
+			chunk = string(chunkRunes)
 		}
+
+		// If the budget was too small to decode even one code point, take the
+		// first code point of the remaining text (Python remaining[:1]).
+		if len(chunkRunes) == 0 {
+			_, size := utf8.DecodeRuneInString(remaining)
+			chunk = remaining[:size]
+			chunkRunes = []rune(chunk)
+		}
+
+		// Append the right-stripped chunk. Python advances remaining by the
+		// pre-rstrip code-point length of chunk.
+		consumed := len(chunkRunes)
+		chunks = append(chunks, strings.TrimRightFunc(chunk, unicode.IsSpace))
+		remaining = strings.TrimLeftFunc(sliceFromRunes(remaining, consumed), unicode.IsSpace)
 	}
 
-	return parts
+	return chunks
+}
+
+// sliceFromRunes returns s with its first n code points removed.
+func sliceFromRunes(s string, n int) string {
+	i := 0
+	for n > 0 && i < len(s) {
+		_, size := utf8.DecodeRuneInString(s[i:])
+		i += size
+		n--
+	}
+	return s[i:]
 }
 
 // SplitMessage splits text into multiple messages that each fit within
-// maxBytes (accounting for the "(i/N) " prefix). Returns nil if the
-// prefix overhead alone exceeds the limit. Matches Python's
-// _split_message exactly.
+// maxBytes, accounting for the "(i/N) " prefix. Returns nil if the prefix
+// overhead alone exceeds the limit. Matches Python's _split_message
+// (Channels.py:107), including the convergence loop that re-estimates the
+// prefix size once the part count is known.
 func SplitMessage(text string, maxBytes int) []string {
 	if text == "" {
 		return []string{""}

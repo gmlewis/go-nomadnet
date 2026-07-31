@@ -241,13 +241,32 @@ func ScanCodeBlocks(text string) []CodeBlockRegion {
 		regions = append(regions, CodeBlockRegion{Start: m[0], End: m[1]})
 	}
 
-	// Inline backticks: `...` (not preceded by another backtick)
+	// Inline backticks: `...` (not preceded by another backtick).
+	// Python's inline regex uses a (?<!`) lookbehind, so a backtick
+	// immediately preceded by another backtick is not an opener. Go's regexp
+	// lacks lookarounds, so we drive the regex manually and, on any match
+	// (accepted or rejected), advance one byte past the opener. This lets a
+	// backtick that Python would accept inside a rejected span — for example
+	// the `inline` after a ```fence``` — still be found, instead of being
+	// swallowed by a spurious "` and `" match that Python's lookbehind
+	// suppresses.
 	inlineRe := regexp.MustCompile("(?s)`[^`\\n]+`")
-	for _, m := range inlineRe.FindAllStringIndex(text, -1) {
-		// Skip if inside a fenced block
-		if !isInAnyRegion(m[0], regions) {
-			regions = append(regions, CodeBlockRegion{Start: m[0], End: m[1]})
+	pos := 0
+	for pos < len(text) {
+		loc := inlineRe.FindStringIndex(text[pos:])
+		if loc == nil {
+			break
 		}
+		start := pos + loc[0]
+		end := pos + loc[1]
+		pos = start + 1
+		if isInAnyRegion(start, regions) {
+			continue
+		}
+		if start > 0 && text[start-1] == '`' {
+			continue
+		}
+		regions = append(regions, CodeBlockRegion{Start: start, End: end})
 	}
 
 	// Sort by start position

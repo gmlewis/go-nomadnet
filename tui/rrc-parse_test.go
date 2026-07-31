@@ -300,21 +300,17 @@ func TestScanCodeBlockRegions(t *testing.T) {
 	text := "before `code` middle" + "\n```block```" + " after"
 	regions := ScanCodeBlocks(text)
 
-	if len(regions) != 2 {
-		t.Fatalf("ScanCodeBlocks returned %d regions, want 2", len(regions))
+	// Python's _scan_code_blocks returns only the single inline `code`
+	// region here: "```block```" has no newline after its opening fence,
+	// so it is not a fenced block, and its leading backticks are rejected
+	// as inline openers by the (?<!`) lookbehind.
+	if len(regions) != 1 {
+		t.Fatalf("ScanCodeBlocks returned %d regions, want 1: %+v", len(regions), regions)
 	}
 
 	// First region: inline `code`
 	if regions[0].Start != 7 || regions[0].End != 13 {
 		t.Errorf("region 0 = {%d, %d}, want {7, 13}", regions[0].Start, regions[0].End)
-	}
-
-	// Second region: fenced ```block``` — the opening ``` is at 21
-	// (after newline), but regex also needs the newline after opening ```.
-	// Just verify it exists and is non-zero
-	if regions[1].Start <= regions[0].End || regions[1].End <= regions[1].Start {
-		t.Errorf("region 1 = {%d, %d}, expected valid range after region 0",
-			regions[1].Start, regions[1].End)
 	}
 }
 

@@ -209,19 +209,19 @@ func TestBodyMarkupWithNickMention(t *testing.T) {
 	t.Parallel()
 
 	spans, _ := BodyMarkup("Hey @bob!", ThemeDark, "alice")
-	// @bob is detected as a "mention" span (non-self) in the current
-	// implementation since ScanMentions handles all @word patterns
+	// Python's _body_markup styles other-nick mentions (not the own nick)
+	// as "nick_mention", distinct from the "irc_mention" self-mention style.
 	found := false
 	for _, s := range spans {
-		if (s.Kind == "mention" || s.Kind == "nick_mention") && s.Text == "@bob" {
+		if s.Kind == "nick_mention" && s.Text == "@bob" {
 			found = true
-			if s.Style != "irc_mention" {
-				t.Errorf("mention style = %q, want %q", s.Style, "irc_mention")
+			if s.Style != "nick_mention" {
+				t.Errorf("nick_mention style = %q, want %q", s.Style, "nick_mention")
 			}
 		}
 	}
 	if !found {
-		t.Error("no mention span found for @bob")
+		t.Error("no nick_mention span found for @bob")
 	}
 }
 

@@ -18,6 +18,7 @@ package tui
 import (
 	"encoding/hex"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -44,6 +45,56 @@ func RelativeTime(t time.Time) string {
 		return fmt.Sprintf("%dw ago", int(delta.Hours()/(7*24)))
 	default:
 		return t.Format("2006-01-02")
+	}
+}
+
+// PrettyDate formats a timestamp as a relative phrase matching Python's
+// pretty_date() at Network.py:1933 exactly, including its plural forms
+// ("1 weeks ago", "1 months ago", "1 years ago") and the empty result for
+// future timestamps. It mirrors a Python timedelta: dayDiff is the whole-day
+// component of the age and secondDiff is the within-day remainder.
+func PrettyDate(t time.Time) string {
+	return prettyDateAt(t, time.Now())
+}
+
+// prettyDateAt is the time-injected core of PrettyDate, exposed for tests so
+// the age math can be checked against captured Python reference values.
+func prettyDateAt(t, now time.Time) string {
+	diff := now.Sub(t)
+	if diff < 0 {
+		return ""
+	}
+	totalSec := int64(diff.Seconds())
+	dayDiff := int(totalSec / 86400)
+	secondDiff := int(totalSec % 86400)
+
+	if dayDiff == 0 {
+		switch {
+		case secondDiff < 10:
+			return "just now"
+		case secondDiff < 60:
+			return strconv.Itoa(secondDiff) + " seconds ago"
+		case secondDiff < 120:
+			return "a minute ago"
+		case secondDiff < 3600:
+			return strconv.Itoa(secondDiff/60) + " minutes ago"
+		case secondDiff < 7200:
+			return "an hour ago"
+		case secondDiff < 86400:
+			return strconv.Itoa(secondDiff/3600) + " hours ago"
+		}
+	}
+	switch {
+	case dayDiff == 1:
+		return "Yesterday"
+	case dayDiff < 7:
+		return strconv.Itoa(dayDiff) + " days ago"
+	case dayDiff < 31:
+		return strconv.Itoa(dayDiff/7) + " weeks ago"
+	case dayDiff < 365:
+		return strconv.Itoa(dayDiff/30) + " months ago"
+	default:
+		return strconv.Itoa(dayDiff/365) + " years ago"
 	}
 }
 

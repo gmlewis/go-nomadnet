@@ -26,12 +26,16 @@ import (
 type LinkSpan struct {
 	Kind   string // "lxmf", "page", or "room"
 	Target string // the link target (hash, page addr, or room name)
+	Start  int    // byte offset of the match start in the source text
+	End    int    // byte offset just past the match end
 }
 
 // MentionSpan represents a detected @nick mention in a message.
 type MentionSpan struct {
 	Nick   string
 	IsSelf bool
+	Start  int // byte offset of the "@nick" match start
+	End    int // byte offset just past the match end
 }
 
 // linkRe matches lxmf@hash, page addresses, and #room links.
@@ -50,43 +54,76 @@ func wordChar(ch byte) bool {
 }
 
 // ScanLinks finds all links in the given text and returns them as
-// LinkSpan values. Matches Python's _scan_links function.
+// LinkSpan values. Matches Python's _scan_links (Channels.py:75), including
+// the _LINK_RE lookbehind/lookahead boundaries (Channels.py:60):
+//
+//   - lxmf@hash and #room are rejected when preceded by a word char
+//     ((?<!\w) in Python).
+//   - a bare 32-hex page address is rejected when preceded by a word char
+//     or by '@' ((?<![@\w]) in Python).
+//   - lxmf@hash and page addresses are rejected when followed by a word char
+//     ((?!\w) in Python); #room has no trailing boundary.
+//
+// Because Go's regexp cannot express lookarounds, the scanner drives the
+// regex manually and advances one byte past a rejected match start (rather
+// than past the whole match) so a link hidden inside a rejected token — for
+// example a 32-hex page inside a rejected "#hash" room — is still found,
+// exactly as Python's lookbehind lets it.
 func ScanLinks(text string) []LinkSpan {
 	if text == "" {
 		return nil
 	}
 	var result []LinkSpan
-	locs := linkRe.FindAllStringIndex(text, -1)
-	for _, loc := range locs {
-		match := text[loc[0]:loc[1]]
-		start, end := loc[0], loc[1]
+	pos := 0
+	for pos < len(text) {
+		loc := linkRe.FindStringIndex(text[pos:])
+		if loc == nil {
+			break
+		}
+		start := pos + loc[0]
+		end := pos + loc[1]
+		match := text[start:end]
 
-		if start > 0 && wordChar(text[start-1]) {
-			if strings.HasPrefix(match, "lxmf@") {
-				continue
+		accept := true
+		// Leading boundary, mirroring Python's lookbehinds.
+		if start > 0 {
+			prev := text[start-1]
+			switch {
+			case strings.HasPrefix(match, "lxmf@"):
+				if wordChar(prev) {
+					accept = false
+				}
+			case match[0] == '#':
+				if wordChar(prev) {
+					accept = false
+				}
+			default: // page
+				if wordChar(prev) || prev == '@' {
+					accept = false
+				}
 			}
-			if len(match) >= 32 && match[0] != '#' {
-				continue
-			}
-			// Room links (#) must not be preceded by word char
-			if match[0] == '#' {
-				continue
+		}
+		// Trailing boundary, mirroring Python's (?!\w) on lxmf and page.
+		// #room has no trailing boundary in _LINK_RE.
+		if accept && end < len(text) {
+			next := text[end]
+			if match[0] != '#' && wordChar(next) {
+				accept = false
 			}
 		}
 
-		if end < len(text) && wordChar(text[end]) {
-			if strings.HasPrefix(match, "lxmf@") || match[0] == '#' {
-				continue
+		if accept {
+			switch {
+			case strings.HasPrefix(match, "lxmf@"):
+				result = append(result, LinkSpan{Kind: "lxmf", Target: match[5:], Start: start, End: end})
+			case match[0] == '#':
+				result = append(result, LinkSpan{Kind: "room", Target: match[1:], Start: start, End: end})
+			default:
+				result = append(result, LinkSpan{Kind: "page", Target: match, Start: start, End: end})
 			}
-		}
-
-		switch {
-		case strings.HasPrefix(match, "lxmf@"):
-			result = append(result, LinkSpan{Kind: "lxmf", Target: match[5:]})
-		case match[0] == '#':
-			result = append(result, LinkSpan{Kind: "room", Target: match[1:]})
-		default:
-			result = append(result, LinkSpan{Kind: "page", Target: match})
+			pos = end
+		} else {
+			pos = start + 1
 		}
 	}
 	return result
@@ -96,8 +133,10 @@ func ScanLinks(text string) []LinkSpan {
 // and validate the preceding character in the scanner.
 var mentionRe = regexp.MustCompile(`@([A-Za-z0-9_]+)`)
 
-// ScanMentions finds all @nick mentions in the given text.
-// Self-mentions (matching ownNick, case-insensitive) are flagged.
+// ScanMentions finds all self-mentions of ownNick in the given text.
+// Matches Python's _scan_mentions (Channels.py:124), which yields only
+// matches of the own nick (case-insensitive, word-bounded). The matched
+// span is recorded as byte offsets in Start/End.
 func ScanMentions(text string, ownNick string) []MentionSpan {
 	if text == "" || ownNick == "" {
 		return nil
@@ -110,28 +149,18 @@ func ScanMentions(text string, ownNick string) []MentionSpan {
 		nickEnd := m[3]
 
 		// Check word boundary before: must not be preceded by alphanumeric or underscore
-		if start > 0 {
-			prev := text[start-1]
-			if (prev >= 'a' && prev <= 'z') || (prev >= 'A' && prev <= 'Z') ||
-				(prev >= '0' && prev <= '9') || prev == '_' {
-				continue
-			}
+		if start > 0 && wordChar(text[start-1]) {
+			continue
 		}
 
 		// Check word boundary after: must not be followed by alphanumeric or underscore
-		if nickEnd < len(text) {
-			next := text[nickEnd]
-			if (next >= 'a' && next <= 'z') || (next >= 'A' && next <= 'Z') ||
-				(next >= '0' && next <= '9') || next == '_' {
-				continue
-			}
+		if nickEnd < len(text) && wordChar(text[nickEnd]) {
+			continue
 		}
 
 		nick := text[nickStart:nickEnd]
 		if strings.ToLower(nick) == ownLower {
-			result = append(result, MentionSpan{Nick: nick, IsSelf: true})
-		} else {
-			result = append(result, MentionSpan{Nick: nick, IsSelf: false})
+			result = append(result, MentionSpan{Nick: nick, IsSelf: true, Start: start, End: nickEnd})
 		}
 	}
 	return result

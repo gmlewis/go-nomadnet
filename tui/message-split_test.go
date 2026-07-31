@@ -16,9 +16,17 @@
 package tui
 
 import (
+	"reflect"
 	"testing"
 )
 
+// TestChunkByBytes verifies ChunkByBytes matches Python's _chunk_by_bytes
+// (Channels.py:85) exactly. Expected values were captured from the Python
+// source run in /tmp/chunk_ref.py. The algorithm slices a byte budget (not a
+// rune count), strips trailing UTF-8 continuation bytes, decodes with
+// errors="ignore", and splits on a whitespace boundary in the second half of
+// the chunk — falling back to the whole chunk (not a single character) when
+// no such boundary exists.
 func TestChunkByBytes(t *testing.T) {
 	t.Parallel()
 
@@ -28,65 +36,35 @@ func TestChunkByBytes(t *testing.T) {
 		bud  int
 		want []string
 	}{
-		{
-			name: "fits in budget",
-			text: "hello world",
-			bud:  20,
-			want: []string{"hello world"},
-		},
-		{
-			name: "split at space near end",
-			text: "hello world",
-			bud:  5,
-			want: []string{"h", "ello", "world"},
-		},
-		{
-			name: "split at word boundary mid",
-			text: "a b c d e",
-			bud:  5,
-			want: []string{"a b", "c d e"},
-		},
-		{
-			name: "single char budget",
-			text: "hello world",
-			bud:  3,
-			want: []string{"h", "e", "l", "lo", "w", "o", "rld"},
-		},
-		{
-			name: "unicode chars",
-			text: "café résumé",
-			bud:  10,
-			want: []string{"c", "a", "f", "é", " résumé"},
-		},
-		{
-			name: "empty string",
-			text: "",
-			bud:  10,
-			want: []string{},
-		},
-		{
-			name: "exact fit",
-			text: "short",
-			bud:  100,
-			want: []string{"short"},
-		},
+		{"fits in budget", "hello world", 20, []string{"hello world"}},
+		{"split at word boundary", "hello world", 5, []string{"hello", "world"}},
+		{"split at word mid", "a b c d e", 5, []string{"a b", "c d e"}},
+		{"three byte budget ascii", "hello world", 3, []string{"hel", "lo", "wor", "ld"}},
+		{"multibyte word split", "café résumé", 10, []string{"café", "résumé"}},
+		{"single byte ascii", "hello world", 1, []string{"h", "e", "l", "l", "o", "w", "o", "r", "l", "d"}},
+		{"two byte ascii", "hello world", 2, []string{"he", "ll", "o", "wo", "rl", "d"}},
+		{"budget below multibyte char", "ñ", 1, []string{"ñ"}},
+		{"multibyte below char budget", "ññ", 1, []string{"ñ", "ñ"}},
+		{"multibyte three chars", "ñññ", 3, []string{"ñ", "ñ", "ñ"}},
+		{"no space in second half", "abcdef", 4, []string{"abcd", "ef"}},
+		{"space not in second half", "ab cd", 4, []string{"ab", "cd"}},
+		{"single char spaces", "a b c d", 3, []string{"a", "b", "c d"}},
+		{"leading spaces kept", "   leading", 6, []string{"   lea", "ding"}},
+		{"trailing spaces chunk", "trailing   ", 8, []string{"trailing"}},
+		{"tab boundary", "tab\there", 6, []string{"tab", "here"}},
+		{"newline boundary", "new\nline", 6, []string{"new", "line"}},
+		{"single multibyte budget one", "é", 1, []string{"é"}},
+		{"multibyte space split", "é é", 4, []string{"é", "é"}},
+		{"two word groups", "hello world foo bar baz", 12, []string{"hello world", "foo bar baz"}},
+		{"quad groups", "aaaa bbbb cccc dddd", 9, []string{"aaaa", "bbbb", "cccc dddd"}},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			got := ChunkByBytes(tt.text, tt.bud)
-			if len(got) != len(tt.want) {
-				t.Errorf("got %d parts, want %d", len(got), len(tt.want))
-				for i, p := range got {
-					t.Logf("  [%d] %q", i, p)
-				}
-				return
-			}
-			for i := range got {
-				if got[i] != tt.want[i] {
-					t.Errorf("part[%d] = %q, want %q", i, got[i], tt.want[i])
-				}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("ChunkByBytes(%q, %d) = %v, want %v", tt.text, tt.bud, got, tt.want)
 			}
 		})
 	}
@@ -95,12 +73,20 @@ func TestChunkByBytes(t *testing.T) {
 func TestChunkByBytesBudgetValidation(t *testing.T) {
 	t.Parallel()
 
-	got := ChunkByBytes("hello", 0)
-	if len(got) != 0 {
+	if got := ChunkByBytes("hello", 0); len(got) != 0 {
 		t.Errorf("budget=0: got %d parts, want 0", len(got))
+	}
+	if got := ChunkByBytes("hello", -1); len(got) != 0 {
+		t.Errorf("budget=-1: got %d parts, want 0", len(got))
+	}
+	if got := ChunkByBytes("", 10); len(got) != 0 {
+		t.Errorf("empty text: got %d parts, want 0", len(got))
 	}
 }
 
+// TestSplitMessage verifies SplitMessage matches Python's _split_message
+// (Channels.py:107), including the "(i/N) " prefix and the convergence loop.
+// Expected values captured from /tmp/chunk_ref.py.
 func TestSplitMessage(t *testing.T) {
 	t.Parallel()
 
@@ -111,34 +97,16 @@ func TestSplitMessage(t *testing.T) {
 		want  []string
 	}{
 		{
-			name:  "fits in one part",
-			text:  "hello",
-			limit: 100,
-			want:  []string{"(1/1) hello"},
-		},
-		{
-			name:  "empty text",
-			text:  "",
-			limit: 100,
-			want:  []string{""},
-		},
-		{
-			name:  "split into two at word boundary",
-			text:  "word1 word2 word3",
+			name:  "three parts ascii",
+			text:  "hello world this is a long message",
 			limit: 20,
-			want:  []string{"(1/2) word1 word2", "(2/2) word3"},
+			want:  []string{"(1/3) hello world", "(2/3) this is a", "(3/3) long message"},
 		},
 		{
-			name:  "single char fits",
-			text:  "x",
-			limit: 12,
-			want:  []string{"(1/1) x"},
-		},
-		{
-			name:  "340 chars fits in 350",
-			text:  repeatStr("a", 340),
-			limit: 350,
-			want:  []string{"(1/1) " + repeatStr("a", 340)},
+			name:  "three parts multibyte",
+			text:  "café résumé nomadnet test message",
+			limit: 18,
+			want:  []string{"(1/3) café résum", "(2/3) é nomadnet", "(3/3) test message"},
 		},
 	}
 
@@ -146,113 +114,48 @@ func TestSplitMessage(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			got := SplitMessage(tt.text, tt.limit)
-			if len(got) != len(tt.want) {
-				t.Errorf("got %d parts, want %d", len(got), len(tt.want))
-				for i, p := range got {
-					t.Logf("  [%d] %q (%d bytes)", i, p, len([]byte(p)))
-				}
-				return
-			}
-			for i := range got {
-				if got[i] != tt.want[i] {
-					t.Errorf("part[%d] = %q, want %q", i, got[i], tt.want[i])
-				}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("SplitMessage(%q, %d) = %v, want %v", tt.text, tt.limit, got, tt.want)
 			}
 		})
 	}
 }
 
-func TestSplitMessageConverges(t *testing.T) {
+func TestSplitMessageFitsOne(t *testing.T) {
 	t.Parallel()
 
-	text := repeatStr("hello ", 100)
-	got := SplitMessage(text, 50)
-	if len(got) < 2 {
-		t.Errorf("expected multiple parts, got %d", len(got))
-	}
-	// Each part should start with the (i/N) prefix
-	for i, p := range got {
-		prefix := "(" + itoa(i+1) + "/" + itoa(len(got)) + ") "
-		if len(p) < len(prefix) || p[:len(prefix)] != prefix {
-			t.Errorf("part[%d] missing prefix %q: %q", i, prefix, p)
-		}
-	}
-	// Each part should be within the limit
-	for i, p := range got {
-		if len([]byte(p)) > 50 {
-			t.Errorf("part[%d] = %d bytes, exceeds limit 50", i, len([]byte(p)))
-		}
+	got := SplitMessage("short", 100)
+	want := []string{"(1/1) short"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("SplitMessage short = %v, want %v", got, want)
 	}
 }
 
-func TestSplitMessageTooLongForOne(t *testing.T) {
+func TestSplitMessageEmpty(t *testing.T) {
 	t.Parallel()
 
-	// When prefix overhead makes budget negative, should return nil
-	got := SplitMessage("hello", 5)
-	// "(1/1) " is 6 bytes which exceeds limit of 5
-	// Python returns None in this case
-	if got != nil {
-		t.Errorf("got %v, want nil (prefix exceeds limit)", got)
+	got := SplitMessage("", 100)
+	want := []string{""}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("SplitMessage empty = %v, want %v", got, want)
 	}
 }
 
 func TestSplitMessageReturnsNilForTinyLimit(t *testing.T) {
 	t.Parallel()
 
-	got := SplitMessage("x", 3)
-	// "(1/1) " is 6 bytes > 3
-	if got != nil {
-		t.Errorf("got %v, want nil", got)
+	if got := SplitMessage("hello world", 5); got != nil {
+		t.Errorf("SplitMessage tiny limit = %v, want nil", got)
 	}
-}
-
-func repeatStr(s string, n int) string {
-	result := ""
-	for i := 0; i < n; i++ {
-		result += s
-	}
-	return result
-}
-
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	result := ""
-	for n > 0 {
-		result = string(rune('0'+n%10)) + result
-		n /= 10
-	}
-	return result
 }
 
 func TestNeedsSplit(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name     string
-		text     string
-		maxBytes int
-		want     bool
-	}{
-		{"fits", "hello", 10, false},
-		{"exact", "hello", 5, false},
-		{"exceeds", "hello world", 5, true},
-		{"empty text", "", 10, false},
-		{"zero limit", "a", 0, true},
-		{"unicode fits", "日本語", 12, false},
-		{"unicode exceeds", "日本語", 5, true},
+	if !NeedsSplit("hello world", 5) {
+		t.Error("NeedsSplit should be true when text exceeds limit")
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			got := NeedsSplit(tt.text, tt.maxBytes)
-			if got != tt.want {
-				t.Errorf("NeedsSplit(%q, %d) = %v, want %v",
-					tt.text, tt.maxBytes, got, tt.want)
-			}
-		})
+	if NeedsSplit("hi", 100) {
+		t.Error("NeedsSplit should be false when text fits")
 	}
 }

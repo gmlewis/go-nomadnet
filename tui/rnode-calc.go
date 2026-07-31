@@ -66,6 +66,13 @@ func CalculateRNodeParameters(bandwidth float64, spreadingFactor, codingRate int
 	crN := codingRateN[codingRate]
 	sfNoise := spreadingFactorNoise[spreadingFactor]
 
+	// Apply Python's default argument values (noise_floor=6,
+	// transmit_power=17; antenna_gain defaults to 0 which is already the
+	// Go zero value) when the caller leaves them unset. This mirrors
+	// Python's keyword defaults for the common case but means an explicit
+	// 0 for NoiseFloor/TransmitPower is treated as "unset" rather than the
+	// literal 0 — an accepted divergence, since 0 dB noise floor / 0 dBm
+	// transmit power are not meaningful RNode configurations.
 	if opts.NoiseFloor == 0 {
 		opts.NoiseFloor = 6
 	}

@@ -109,3 +109,47 @@ func TestCalculateRNodeParametersSpreadingFactors(t *testing.T) {
 		}
 	}
 }
+
+// TestCalculateRNodeParametersPythonParity locks the exact on-air parameter
+// strings against Python's calculate_rnode_parameters (Interfaces.py:185),
+// captured by inlining the Python function (the module import pulls in urwid).
+// It covers the high-bandwidth sensitivity override (>500000 Hz and the
+// 203125/406250 special cases) and the spreading-factor / coding-rate
+// variants, all with the Python defaults noise_floor=6, antenna_gain=0,
+// transmit_power=17 (which the Go zero-value RNodeParams{} maps to).
+func TestCalculateRNodeParametersPythonParity(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name            string
+		bandwidth       float64
+		sf              int
+		cr              int
+		wantDataRate    string
+		wantLinkBudget  string
+		wantSensitivity string
+	}{
+		{"500001 high bw override", 500001, 7, 5, "21.88 kbps", "127.1 dB", "-110.1 dBm"},
+		{"203125 special case", 203125, 7, 5, "8.89 kbps", "131.0 dB", "-114.0 dBm"},
+		{"406250 special case", 406250, 7, 5, "17.77 kbps", "128.0 dB", "-111.0 dBm"},
+		{"125000 coding rate 6", 125000, 7, 6, "4.56 kbps", "141.5 dB", "-124.5 dBm"},
+		{"125000 coding rate 8", 125000, 7, 8, "3.42 kbps", "141.5 dB", "-124.5 dBm"},
+		{"125000 spreading factor 12", 125000, 12, 5, "293 bps", "154.0 dB", "-137.0 dBm"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			result := CalculateRNodeParameters(tt.bandwidth, tt.sf, tt.cr, RNodeParams{})
+			if result.DataRate != tt.wantDataRate {
+				t.Errorf("DataRate = %q, want %q", result.DataRate, tt.wantDataRate)
+			}
+			if result.LinkBudget != tt.wantLinkBudget {
+				t.Errorf("LinkBudget = %q, want %q", result.LinkBudget, tt.wantLinkBudget)
+			}
+			if result.Sensitivity != tt.wantSensitivity {
+				t.Errorf("Sensitivity = %q, want %q", result.Sensitivity, tt.wantSensitivity)
+			}
+		})
+	}
+}

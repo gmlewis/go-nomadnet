@@ -15,25 +15,31 @@
 
 package tui
 
-// RoomDrafts stores unsent message drafts per hub+room.
-// Matches Python's _room_drafts dict with _draft_key(hub, room).
+// draftKey is the composite key for a room draft, matching Python's
+// _draft_key tuple (hub_hash, dest_name, room) at Channels.py:1500. Hubs that
+// share a hub_hash but differ in dest_name are distinct keys.
+type draftKey struct {
+	hubHash  string
+	destName string
+	room     string
+}
+
+// RoomDrafts stores unsent message drafts per (hub, room), matching Python's
+// _room_drafts dict with _draft_key(hub, room) (Channels.py:1506,1519).
 type RoomDrafts struct {
-	drafts map[string]string
+	drafts map[draftKey]string
 }
 
 // NewRoomDrafts creates a new empty drafts store.
 func NewRoomDrafts() *RoomDrafts {
-	return &RoomDrafts{drafts: make(map[string]string)}
+	return &RoomDrafts{drafts: make(map[draftKey]string)}
 }
 
-// draftKey builds the map key from hub identifier and room name.
-func draftKey(hub, room string) string {
-	return hub + "/" + room
-}
-
-// Save stores a draft for the given hub+room. Empty text removes the draft.
-func (rd *RoomDrafts) Save(hub, room, text string) {
-	key := draftKey(hub, room)
+// Save stores a draft for the given (hubHash, destName, room). Empty text
+// removes the draft, matching Python's _save_room_draft which pops the key
+// when the editor text is falsy.
+func (rd *RoomDrafts) Save(hubHash, destName, room, text string) {
+	key := draftKey{hubHash, destName, room}
 	if text == "" {
 		delete(rd.drafts, key)
 		return
@@ -41,12 +47,13 @@ func (rd *RoomDrafts) Save(hub, room, text string) {
 	rd.drafts[key] = text
 }
 
-// Restore returns the saved draft for the given hub+room, or empty string.
-func (rd *RoomDrafts) Restore(hub, room string) string {
-	return rd.drafts[draftKey(hub, room)]
+// Restore returns the saved draft for (hubHash, destName, room), or empty
+// string, matching Python's _room_drafts.get(key) (None -> empty).
+func (rd *RoomDrafts) Restore(hubHash, destName, room string) string {
+	return rd.drafts[draftKey{hubHash, destName, room}]
 }
 
-// Remove deletes the draft for the given hub+room.
-func (rd *RoomDrafts) Remove(hub, room string) {
-	delete(rd.drafts, draftKey(hub, room))
+// Remove deletes the draft for (hubHash, destName, room).
+func (rd *RoomDrafts) Remove(hubHash, destName, room string) {
+	delete(rd.drafts, draftKey{hubHash, destName, room})
 }

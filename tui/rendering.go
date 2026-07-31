@@ -75,7 +75,8 @@ type StyledSpan struct {
 // spanInfo is an internal type for tracking spans during body markup parsing.
 type spanInfo struct {
 	start, end int
-	kind       string
+	kind       string // "mention", "nick_mention", or "link"
+	linkKind   string // for links: "room", "lxmf", "page"
 	text       string
 	target     string
 }
@@ -114,34 +115,35 @@ func BodyMarkup(body string, theme int, ownNick ...string) ([]StyledSpan, bool) 
 
 	var allSpans []spanInfo
 
-	// Add link spans
+	// Add link spans, using the byte offsets captured by ScanLinks so a
+	// link that appears more than once (or whose target text also occurs
+	// elsewhere as plain text) is placed at the right position, matching
+	// Python's _body_markup which slices body[m.start():m.end()].
 	for _, link := range links {
-		// Find the actual text positions of this link
-		start, end := findLinkInText(body, link)
-		if start >= 0 {
-			style := "link_" + link.Kind
-			allSpans = append(allSpans, spanInfo{
-				start:  start,
-				end:    end,
-				kind:   "link",
-				text:   body[start:end],
-				target: link.Target,
-			})
-			_ = style
+		if link.Start < 0 || link.End > len(body) || link.Start > link.End {
+			continue
 		}
+		allSpans = append(allSpans, spanInfo{
+			start:    link.Start,
+			end:      link.End,
+			kind:     "link",
+			linkKind: link.Kind,
+			text:     body[link.Start:link.End],
+			target:   link.Target,
+		})
 	}
 
-	// Add mention spans
+	// Add self-mention spans using the offsets captured by ScanMentions.
 	for _, m := range mentions {
-		start := findMentionInText(body, m.Nick)
-		if start >= 0 {
-			allSpans = append(allSpans, spanInfo{
-				start: start,
-				end:   start + 1 + len(m.Nick), // @ + nick
-				kind:  "mention",
-				text:  "@" + m.Nick,
-			})
+		if m.Start < 0 || m.End > len(body) || m.Start > m.End {
+			continue
 		}
+		allSpans = append(allSpans, spanInfo{
+			start: m.Start,
+			end:   m.End,
+			kind:  "mention",
+			text:  body[m.Start:m.End],
+		})
 	}
 
 	// Add nick mention spans
@@ -207,11 +209,10 @@ func BodyMarkup(body string, theme int, ownNick ...string) ([]StyledSpan, bool) 
 				Style: "nick_mention",
 			})
 		case "link":
-			baseStyle := "link_" + getLinkStyle(s.target)
 			out = append(out, StyledSpan{
 				Kind:   "link",
 				Text:   s.text,
-				Style:  baseStyle,
+				Style:  "link_" + s.linkKind,
 				Target: s.target,
 			})
 			hasLinks = true
@@ -279,33 +280,6 @@ func isWordByte(b byte) bool {
 		(b >= '0' && b <= '9') || b == '_'
 }
 
-// findLinkInText locates a LinkSpan in the text.
-func findLinkInText(text string, link LinkSpan) (int, int) {
-	var pattern string
-	switch link.Kind {
-	case "lxmf":
-		pattern = "lxmf@" + link.Target
-	case "room":
-		pattern = "#" + link.Target
-	case "page":
-		pattern = link.Target
-	default:
-		return -1, -1
-	}
-
-	idx := strings.Index(text, pattern)
-	if idx < 0 {
-		return -1, -1
-	}
-	return idx, idx + len(pattern)
-}
-
-// findMentionInText locates an @nick mention in the text.
-func findMentionInText(text string, nick string) int {
-	idx := strings.Index(text, "@"+nick)
-	return idx
-}
-
 // overlapsCodeBlock checks if a span overlaps any code block region.
 func overlapsCodeBlock(start, end int, blocks []CodeBlockRegion) bool {
 	for _, b := range blocks {
@@ -327,22 +301,6 @@ func sortSpans(spans []spanInfo) {
 		}
 		spans[j+1] = key
 	}
-}
-
-// getLinkStyle returns the style category for a link type.
-func getLinkStyle(target string) string {
-	if strings.HasPrefix(target, "lxmf@") {
-		return "lxmf"
-	}
-	if strings.HasPrefix(target, "#") || isRoomName(target) {
-		return "room"
-	}
-	return "page"
-}
-
-// isRoomName checks if a string looks like a room name.
-func isRoomName(s string) bool {
-	return len(s) > 0 && s[0] != '#' && s[0] != 'l'
 }
 
 // FormatHubEntry formats a hub entry for display in the channel list.

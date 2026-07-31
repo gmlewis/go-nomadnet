@@ -16,85 +16,86 @@
 package tui
 
 import (
+	"bytes"
 	"testing"
-	"time"
 )
 
-func TestMentionBellFirstMention(t *testing.T) {
+// TestMentionBellPythonParity verifies MentionBell.Ring against Python's
+// _ring_mention_bell (Channels.py:2273). The bell rings (writes the 0x07 BEL
+// character and records the time) only when at least mentionBellCooldown
+// seconds of monotonic time have passed since the last ring for the
+// (hub_hash, room) key; otherwise it is a no-op. Because the per-key last
+// time defaults to 0.0, the very first ring at now=0 does NOT fire
+// (0 - 0 < 5.0); the first fire requires now >= 5.0. Expected ring/no-ring
+// decisions were captured from /tmp/bell_ref.py, which replays the Python
+// debounce on a single key, across rooms, and with empty rooms.
+func TestMentionBellPythonParity(t *testing.T) {
 	t.Parallel()
 
-	bell := NewMentionBell(5 * time.Second)
-	if !bell.ShouldRing("room1", 1) {
-		t.Error("first mention should ring")
-	}
-}
+	t.Run("debounce sequence on one key", func(t *testing.T) {
+		t.Parallel()
+		var buf bytes.Buffer
+		b := NewMentionBell()
+		b.writer = &buf
+		seq := []struct {
+			now  float64
+			ring bool
+		}{
+			{0.0, false},
+			{4.0, false},
+			{5.0, true}, // 5.0 - 0.0 == 5.0, not < 5.0 -> rings
+			{9.9, false},
+			{10.0, true},
+			{14.999, false},
+			{15.0, true},
+		}
+		rangCount := 0
+		for _, s := range seq {
+			got := b.Ring("h1", "room1", s.now)
+			if got != s.ring {
+				t.Errorf("Ring(now=%v) = %v, want %v", s.now, got, s.ring)
+			}
+			if got {
+				rangCount++
+			}
+		}
+		if got := buf.Len(); got != rangCount {
+			t.Errorf("bell wrote %d bytes, want %d (one BEL per ring)", got, rangCount)
+		}
+		for _, by := range buf.Bytes() {
+			if by != 0x07 {
+				t.Errorf("bell wrote byte %v, want 0x07", by)
+			}
+		}
+	})
 
-func TestMentionBellCooldown(t *testing.T) {
-	t.Parallel()
+	t.Run("independent keys per room", func(t *testing.T) {
+		t.Parallel()
+		var buf bytes.Buffer
+		b := NewMentionBell()
+		b.writer = &buf
+		if got := b.Ring("h1", "room1", 5.0); !got {
+			t.Errorf("Ring(room1, now=5.0) = false, want true (first fire)")
+		}
+		// room2 on same hub is independent and still at its 0.0 baseline.
+		if got := b.Ring("h1", "room2", 3.0); got {
+			t.Errorf("Ring(room2, now=3.0) = true, want false (3.0 - 0.0 < 5.0)")
+		}
+	})
 
-	bell := NewMentionBell(5 * time.Second)
-	bell.ShouldRing("room1", 1)
-
-	// Same message again — should not ring
-	if bell.ShouldRing("room1", 1) {
-		t.Error("same message should not ring again")
-	}
-}
-
-func TestMentionBellDifferentRoom(t *testing.T) {
-	t.Parallel()
-
-	bell := NewMentionBell(5 * time.Second)
-	bell.ShouldRing("room1", 1)
-
-	// Different room — should ring
-	if !bell.ShouldRing("room2", 1) {
-		t.Error("different room should ring")
-	}
-}
-
-func TestMentionBellDifferentMessage(t *testing.T) {
-	t.Parallel()
-
-	bell := NewMentionBell(5 * time.Second)
-	bell.ShouldRing("room1", 1)
-
-	// Different message in same room — should ring
-	if !bell.ShouldRing("room1", 2) {
-		t.Error("different message should ring")
-	}
-}
-
-func TestMentionBellResetCooldown(t *testing.T) {
-	t.Parallel()
-
-	bell := NewMentionBell(1 * time.Millisecond)
-	bell.ShouldRing("room1", 1)
-
-	time.Sleep(2 * time.Millisecond)
-
-	// After cooldown expires — should ring again
-	if !bell.ShouldRing("room1", 2) {
-		t.Error("should ring after cooldown")
-	}
-}
-
-func TestMentionBellMultipleRooms(t *testing.T) {
-	t.Parallel()
-
-	bell := NewMentionBell(5 * time.Second)
-	bell.ShouldRing("room1", 1)
-	bell.ShouldRing("room2", 1)
-	bell.ShouldRing("room3", 1)
-
-	// Each room independent — same msg in same room should not ring
-	if bell.ShouldRing("room1", 1) {
-		t.Error("room1 should still be in cooldown")
-	}
-	if bell.ShouldRing("room2", 1) {
-		t.Error("room2 should still be in cooldown")
-	}
-	if bell.ShouldRing("room3", 1) {
-		t.Error("room3 should still be in cooldown")
-	}
+	t.Run("empty room key", func(t *testing.T) {
+		t.Parallel()
+		var buf bytes.Buffer
+		b := NewMentionBell()
+		b.writer = &buf
+		if got := b.Ring("h2", "", 0.0); got {
+			t.Errorf("Ring(empty, now=0.0) = true, want false (0.0 - 0.0 < 5.0)")
+		}
+		if got := b.Ring("h2", "", 3.0); got {
+			t.Errorf("Ring(empty, now=3.0) = true, want false")
+		}
+		if got := b.Ring("h2", "", 5.0); !got {
+			t.Errorf("Ring(empty, now=5.0) = false, want true")
+		}
+	})
 }

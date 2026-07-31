@@ -138,6 +138,16 @@ func TestFormatSize(t *testing.T) {
 		{1048576, "1.0 MB"},
 		{5242880, "5.0 MB"},
 		{1073741824, "1024.0 MB"},
+		// Python-captured banker's-rounding (round-half-to-even) cases.
+		// Python's round(x, 1) and Go's %.1f both round an exact .x5 to the
+		// nearest even tenth: 2.25 -> 2.2, 2.75 -> 2.8, 3.25 -> 3.2.
+		{2304, "2.2 KB"},          // 2304/1024  = 2.25  -> 2.2
+		{2816, "2.8 KB"},          // 2816/1024  = 2.75  -> 2.8
+		{3328, "3.2 KB"},          // 3328/1024  = 3.25  -> 3.2
+		{2612, "2.6 KB"},          // 2612/1024  = 2.550 -> 2.6
+		{2359296, "2.2 MB"},       // 2359296/1048576    = 2.25  -> 2.2
+		{29360128, "28.0 MB"},     // 29360128/1048576   = 28.0
+		{1076101120, "1026.2 MB"}, // = 1026.1875 -> 1026.2
 	}
 
 	for _, tt := range tests {
@@ -590,6 +600,15 @@ func TestFormatBytes(t *testing.T) {
 		{1536, "1.5 KB"},
 		{1048576, "1.0 MB"},
 		{1073741824, "1.0 GB"},
+		// Python-captured edge cases.
+		{1, "1 bytes"},
+		{1025, "1.0 KB"},
+		{1099511627776, "1.0 TB"}, // 1 TiB reaches the TB unit
+		{2304, "2.2 KB"},          // 2.25 -> banker's rounding -> 2.2
+		{2816, "2.8 KB"},          // 2.75 -> 2.8
+		{5368709120, "5.0 GB"},
+		{0.5, "0 bytes"},       // int(0.5) truncates to 0
+		{1023.9, "1023 bytes"}, // int() truncates the fraction
 	}
 
 	for _, tt := range tests {
@@ -716,5 +735,59 @@ func TestParseQueryFields(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestPrettyDate verifies PrettyDate matches Python's pretty_date at
+// Network.py:1933 for a range of ages. Expected values were captured from the
+// Python source run with a fixed now (2026-07-31 12:00:00 UTC), so the test
+// drives the time-injected prettyDateAt with that same fixed now.
+func TestPrettyDate(t *testing.T) {
+	t.Parallel()
+
+	// Fixed now matching /tmp/prettydate_ref.py: 2026-07-31 12:00:00 UTC.
+	now := time.Date(2026, 7, 31, 12, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name   string
+		offset time.Duration
+		want   string
+	}{
+		{"now", 0, "just now"},
+		{"5s", 5 * time.Second, "just now"},
+		{"45s", 45 * time.Second, "45 seconds ago"},
+		{"90s", 90 * time.Second, "a minute ago"},
+		{"30m", 30 * time.Minute, "30 minutes ago"},
+		{"90m", 90 * time.Minute, "an hour ago"},
+		{"5h", 5 * time.Hour, "5 hours ago"},
+		{"23h", 23 * time.Hour, "23 hours ago"},
+		{"25h", 25 * time.Hour, "Yesterday"},
+		{"2d", 2 * 24 * time.Hour, "2 days ago"},
+		{"6d", 6 * 24 * time.Hour, "6 days ago"},
+		{"10d", 10 * 24 * time.Hour, "1 weeks ago"},
+		{"40d", 40 * 24 * time.Hour, "1 months ago"},
+		{"400d", 400 * 24 * time.Hour, "1 years ago"},
+		{"future", -100 * time.Second, ""},
+	}
+
+	for _, tt := range tests {
+		got := prettyDateAt(now.Add(-tt.offset), now)
+		if got != tt.want {
+			t.Errorf("PrettyDate(%s) = %q, want %q", tt.name, got, tt.want)
+		}
+	}
+}
+
+// TestPrettyDateBoundaryDays verifies the day-component boundary matches
+// Python's timedelta semantics: a 24h age is exactly "Yesterday", and 23h59m
+// is still in the same-day "hours ago" range.
+func TestPrettyDateBoundaryDays(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 7, 31, 12, 0, 0, 0, time.UTC)
+	if got := prettyDateAt(now.Add(-24*time.Hour), now); got != "Yesterday" {
+		t.Errorf("24h = %q, want %q", got, "Yesterday")
+	}
+	if got := prettyDateAt(now.Add(-(24*time.Hour - time.Second)), now); got != "23 hours ago" {
+		t.Errorf("23h59m59s = %q, want %q", got, "23 hours ago")
 	}
 }

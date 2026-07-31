@@ -16,49 +16,46 @@
 package tui
 
 import (
-	"sync"
-	"time"
+	"io"
+	"os"
 )
 
-// MentionBell tracks terminal bell cooldown per room to prevent
-// excessive bell rings when multiple mentions arrive in quick succession.
+// MentionBell debounces the terminal mention bell per (hub, room), matching
+// Python's _ring_mention_bell (Channels.py:2273). The bell rings only when at
+// least mentionBellCooldown seconds of monotonic time have passed since the
+// last ring for the (hubHash, room) key; otherwise it is a no-op. When it
+// rings, it writes the 0x07 BEL character to writer (stdout by default).
 type MentionBell struct {
-	mu       sync.Mutex
-	cooldown time.Duration
-	lastRing map[string]time.Time
-	lastMsg  map[string]int
+	last   map[[2]string]float64
+	writer io.Writer
 }
 
-// NewMentionBell creates a bell with the given cooldown duration.
-func NewMentionBell(cooldown time.Duration) *MentionBell {
+// mentionBellCooldown is the minimum spacing between rings for a single
+// (hub, room) key, in seconds. It mirrors Python's hardcoded 5.0 threshold.
+const mentionBellCooldown = 5.0
+
+// NewMentionBell creates a mention bell that writes BEL to stdout.
+func NewMentionBell() *MentionBell {
 	return &MentionBell{
-		cooldown: cooldown,
-		lastRing: make(map[string]time.Time),
-		lastMsg:  make(map[string]int),
+		last:   make(map[[2]string]float64),
+		writer: os.Stdout,
 	}
 }
 
-// ShouldRing returns true if the bell should ring for the given
-// room and message ID. Implements per-room cooldown logic matching
-// Python's mention bell (5-second cooldown per room).
-func (mb *MentionBell) ShouldRing(room string, msgID int) bool {
-	mb.mu.Lock()
-	defer mb.mu.Unlock()
-
-	now := time.Now()
-
-	// Always ring for a new message (different msgID)
-	if mb.lastMsg[room] != msgID {
-		mb.lastRing[room] = now
-		mb.lastMsg[room] = msgID
-		return true
-	}
-
-	// Same message — check cooldown
-	if last, ok := mb.lastRing[room]; ok && now.Sub(last) < mb.cooldown {
+// Ring rings the mention bell for (hubHash, room) if at least
+// mentionBellCooldown seconds have passed since the last ring for that key.
+// now is a monotonic timestamp in seconds (Python uses time.monotonic()). A
+// nil/empty room collapses to "" like Python's `room or ""`. Returns whether
+// the bell actually rang.
+func (b *MentionBell) Ring(hubHash, room string, now float64) bool {
+	key := [2]string{hubHash, room}
+	last := b.last[key]
+	if now-last < mentionBellCooldown {
 		return false
 	}
-
-	mb.lastRing[room] = now
+	b.last[key] = now
+	if b.writer != nil {
+		_, _ = b.writer.Write([]byte{0x07})
+	}
 	return true
 }

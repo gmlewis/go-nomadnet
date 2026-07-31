@@ -133,20 +133,19 @@ func TestScanMentions(t *testing.T) {
 			},
 		},
 		{
-			name:    "other mention",
+			// Python _scan_mentions yields only own-nick matches; other
+			// @nicks are reported by scanNickMentions, not ScanMentions.
+			name:    "other mention not returned",
 			text:    "Hey @bob, how are you?",
 			ownNick: "alice",
-			want: []MentionSpan{
-				{Nick: "bob", IsSelf: false},
-			},
+			want:    nil,
 		},
 		{
-			name:    "multiple mentions",
+			name:    "only self among multiple",
 			text:    "@alice and @bob are here",
 			ownNick: "alice",
 			want: []MentionSpan{
 				{Nick: "alice", IsSelf: true},
-				{Nick: "bob", IsSelf: false},
 			},
 		},
 		{

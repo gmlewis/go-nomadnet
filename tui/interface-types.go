@@ -102,6 +102,59 @@ func InterfaceGlyph(ifType string) string {
 	}
 }
 
+// interfaceGlyphCategory maps an interface type to its Python glyph-tuple
+// name (Interfaces.py:35-51). Types absent from the map fall back to the
+// OtherInterfaceType glyph, matching Python's type_to_glyph_tuple.get(
+// iface_type, "OtherInterfaceType").
+var interfaceGlyphCategory = map[string]string{
+	IfaceBackbone:   "NetworkInterfaceType",
+	IfaceAuto:       "NetworkInterfaceType",
+	IfaceTCPClient:  "NetworkInterfaceType",
+	IfaceTCPServer:  "NetworkInterfaceType",
+	IfaceUDP:        "NetworkInterfaceType",
+	IfaceI2P:        "NetworkInterfaceType",
+	IfaceRNode:      "RNodeInterfaceType",
+	IfaceRNodeMulti: "RNodeInterfaceType",
+	IfaceSerial:     "SerialInterfaceType",
+	IfaceKISS:       "SerialInterfaceType",
+	IfaceAX25KISS:   "SerialInterfaceType",
+	IfacePipe:       "OtherInterfaceType",
+}
+
+// interfaceGlyphs holds the (plain, unicode, nerd-font) glyph for each
+// glyph-tuple name, matching Python's INTERFACE_GLYPHS table (Interfaces.py:12).
+var interfaceGlyphs = map[string][3]string{
+	"NetworkInterfaceType": {"(IP)", "\U0001f5a7", "\U000f0200"},
+	"SerialInterfaceType":  {"(<->)", "↔", "\U000f065c"},
+	"RNodeInterfaceType":   {"(R)", "ᚱ", "\U000f043a"},
+	"OtherInterfaceType":   {"(#)", "\U0001f67e", ""},
+}
+
+// GetInterfaceIcon returns the interface icon for the given glyphset and
+// interface type, matching Python's _get_interface_icon (Interfaces.py:28).
+// glyphset is one of GlyphPlain, GlyphUnicode, or GlyphNerd; an unrecognized
+// or empty glyphset defaults to unicode, exactly as Python defaults the
+// glyphset index to 1. Unknown interface types fall back to the
+// OtherInterfaceType glyph.
+func GetInterfaceIcon(glyphset, ifType string) string {
+	idx := 1 // default to unicode
+	switch glyphset {
+	case GlyphPlain:
+		idx = 0
+	case GlyphNerd:
+		idx = 2
+	}
+	category := interfaceGlyphCategory[ifType]
+	if category == "" {
+		category = "OtherInterfaceType"
+	}
+	glyphs, ok := interfaceGlyphs[category]
+	if !ok {
+		glyphs = interfaceGlyphs["OtherInterfaceType"]
+	}
+	return glyphs[idx]
+}
+
 // InterfaceIcon returns a single-character icon for the interface type.
 func InterfaceIcon(ifType string) string {
 	switch ifType {
