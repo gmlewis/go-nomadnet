@@ -34,14 +34,14 @@ type DirectoryEntry struct {
 
 // DirectoryDisplay shows the peer directory with trust levels.
 type DirectoryDisplay struct {
-	app    *tview.Application
+	app    *App
 	widget *tview.Flex
 	list   *tview.List
 	detail *tview.TextView
 }
 
 // NewDirectoryDisplay creates a new directory display.
-func NewDirectoryDisplay(app *tview.Application, entries []DirectoryEntry) *DirectoryDisplay {
+func NewDirectoryDisplay(app *App, entries []DirectoryEntry) *DirectoryDisplay {
 	dd := &DirectoryDisplay{app: app}
 
 	// Title

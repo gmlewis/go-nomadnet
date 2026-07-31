@@ -537,10 +537,11 @@ func TestDeleteConversation(t *testing.T) {
 	}
 
 	// Cache it first
+	cache := NewConversationCache()
 	c := NewConversation(hash, filepath.Join(convPath, hash))
-	CacheConversation(c)
+	cache.Store(c)
 
-	if err := DeleteConversation(hash, convPath); err != nil {
+	if err := cache.Delete(hash, convPath); err != nil {
 		t.Fatalf("DeleteConversation: %v", err)
 	}
 
@@ -548,7 +549,7 @@ func TestDeleteConversation(t *testing.T) {
 		t.Error("Conversation directory still exists after delete")
 	}
 
-	if CachedConversation(hash) != nil {
+	if cache.Get(hash) != nil {
 		t.Error("Conversation still cached after delete")
 	}
 }
@@ -556,27 +557,19 @@ func TestDeleteConversation(t *testing.T) {
 func TestCacheConversation(t *testing.T) {
 	t.Parallel()
 
-	cachedMu.Lock()
-	old := cachedConversations
-	cachedConversations = make(map[string]*Conversation)
-	cachedMu.Unlock()
-	defer func() {
-		cachedMu.Lock()
-		cachedConversations = old
-		cachedMu.Unlock()
-	}()
+	cache := NewConversationCache()
 
 	hash := "abc123"
 	c := NewConversation(hash, "/tmp/test")
-	CacheConversation(c)
+	cache.Store(c)
 
-	got := CachedConversation(hash)
+	got := cache.Get(hash)
 	if got != c {
-		t.Error("CachedConversation did not return the cached conversation")
+		t.Error("Cache.Get did not return the cached conversation")
 	}
 
-	if CachedConversation("nonexistent") != nil {
-		t.Error("CachedConversation returned non-nil for nonexistent hash")
+	if cache.Get("nonexistent") != nil {
+		t.Error("Cache.Get returned non-nil for nonexistent hash")
 	}
 }
 
@@ -603,7 +596,8 @@ func TestIngestCreatesConversationDirAndWritesMessage(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ingestedPath, err := Ingest(msg, dir, false)
+	cache := NewConversationCache()
+	ingestedPath, err := cache.Ingest(msg, dir, false)
 	if err != nil {
 		t.Fatalf("Ingest error: %v", err)
 	}
@@ -661,10 +655,11 @@ func TestIngestTwoMessagesSameSourceSingleConversation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := Ingest(msg1, dir, false); err != nil {
+	cache := NewConversationCache()
+	if _, err := cache.Ingest(msg1, dir, false); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Ingest(msg2, dir, false); err != nil {
+	if _, err := cache.Ingest(msg2, dir, false); err != nil {
 		t.Fatal(err)
 	}
 

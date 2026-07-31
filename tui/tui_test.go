@@ -147,7 +147,7 @@ func TestMenuItemCount(t *testing.T) {
 func TestBuildMenuBarText(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	md := NewMainDisplay(app, ThemeDark, GlyphUnicode)
 
 	text := md.BuildMenuBarText()
@@ -166,7 +166,7 @@ func TestBuildMenuBarText(t *testing.T) {
 func TestNewMainDisplay(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	md := NewMainDisplay(app, ThemeDark, GlyphUnicode)
 
 	if md == nil {
@@ -189,7 +189,7 @@ func TestNewMainDisplay(t *testing.T) {
 func TestMainDisplaySetDisplay(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	md := NewMainDisplay(app, ThemeDark, GlyphUnicode)
 
 	// Add a test page
@@ -203,7 +203,7 @@ func TestMainDisplaySetDisplay(t *testing.T) {
 func TestMainDisplaySetGlyphs(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	md := NewMainDisplay(app, ThemeDark, GlyphUnicode)
 
 	md.SetGlyphs(GlyphNerd)
@@ -215,7 +215,7 @@ func TestMainDisplaySetGlyphs(t *testing.T) {
 func TestMainDisplaySetQuitCallback(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	md := NewMainDisplay(app, ThemeDark, GlyphUnicode)
 
 	md.SetQuitCallback(func() {})
@@ -228,7 +228,7 @@ func TestMainDisplaySetQuitCallback(t *testing.T) {
 func TestMainDisplayRoot(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	md := NewMainDisplay(app, ThemeDark, GlyphUnicode)
 
 	root := md.Root()

@@ -162,6 +162,11 @@ type App struct {
 	Dir     *directory.Directory
 	RRC     *rrc.RRCManager
 
+	// ConversationCache is the per-app in-memory conversation cache (cached
+	// conversations, unread/failed flags, and attachment base path). Owned
+	// here rather than at package level so parallel tests get isolated state.
+	ConversationCache *conversation.ConversationCache
+
 	// Announce streams (populated by RNS announce handlers)
 	Announces []AnnounceEvent
 
@@ -210,20 +215,6 @@ func WithLogger(logger *rns.Logger) AppOption {
 	return func(a *App) { a.Logger = logger }
 }
 
-var (
-	globalApp *App
-	appOnce   sync.Once
-	globalMu  sync.Mutex
-)
-
-// SharedInstance returns the global App singleton. Returns nil if not
-// yet initialized.
-func SharedInstance() *App {
-	globalMu.Lock()
-	defer globalMu.Unlock()
-	return globalApp
-}
-
 // NewApp creates a new App with the given configuration directory.
 func NewApp(configDir, rnsConfigDir string, daemon, forceConsole bool) *App {
 	a := &App{
@@ -258,6 +249,8 @@ func NewApp(configDir, rnsConfigDir string, daemon, forceConsole bool) *App {
 
 	// Set up paths
 	a.setupPaths()
+
+	a.ConversationCache = conversation.NewConversationCache()
 
 	return a
 }
@@ -336,13 +329,7 @@ func (a *App) Init() error {
 	a.RRC = rrc.NewManager(a.StoragePath, nil)
 	a.loadPeerSettings()
 	a.loadIgnoredList()
-	conversation.SetAttachmentPathProvider(func() string { return a.AttachmentPath })
-
-	// Set global singleton
-	globalMu.Lock()
-	globalApp = a
-	globalMu.Unlock()
-	appOnce.Do(func() {})
+	a.ConversationCache.SetAttachmentPath(a.AttachmentPath)
 
 	// Start RNS initialization in a goroutine so the TUI can start immediately.
 	// RNS initialization may block on network interfaces.
@@ -454,12 +441,7 @@ func (a *App) InitWithTransport(ts *rns.TransportSystem, identity *rns.Identity)
 	a.RRC.SetHistoryConfig(a.RRCHistoryPerRoomCap, a.RRCFilterLoadedHistory, a.RRCEphemeralNotices)
 	a.loadPeerSettings()
 	a.loadIgnoredList()
-	conversation.SetAttachmentPathProvider(func() string { return a.AttachmentPath })
-
-	globalMu.Lock()
-	globalApp = a
-	globalMu.Unlock()
-	appOnce.Do(func() {})
+	a.ConversationCache.SetAttachmentPath(a.AttachmentPath)
 
 	a.Router, err = lxmf.NewRouter(a.Transport, a.Identity, a.StoragePath)
 	if err != nil {
@@ -962,7 +944,7 @@ func (a *App) lxmfDelivery(msg *lxmf.Message) {
 	a.Logger.Info("Received LXMF message from %s", rns.PrettyHex(msg.SourceHash))
 
 	if a.ConversationPath != "" {
-		if _, err := conversation.Ingest(msg, a.ConversationPath, false); err != nil {
+		if _, err := a.ConversationCache.Ingest(msg, a.ConversationPath, false); err != nil {
 			a.Logger.Error("Failed to ingest LXMF message: %v", err)
 		}
 	}

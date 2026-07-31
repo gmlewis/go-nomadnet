@@ -22,10 +22,6 @@ import (
 	"github.com/rivo/tview"
 )
 
-func newTestApp() *tview.Application {
-	return tview.NewApplication()
-}
-
 const (
 	// ConversationsGivenWidth matches Python ConversationsDisplay.given_list_width = 52
 	ConversationsGivenWidth = 52

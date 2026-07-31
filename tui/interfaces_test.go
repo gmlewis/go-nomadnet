@@ -20,7 +20,6 @@ import (
 	"testing"
 
 	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 )
 
 func TestFormatInterfaceEntry(t *testing.T) {
@@ -229,7 +228,7 @@ func TestFormatMessageMention(t *testing.T) {
 func TestInterfacesDisplayKeyboardShortcuts(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	id := NewInterfacesDisplay(app, nil)
 
 	var fired []string
@@ -268,7 +267,7 @@ func TestInterfacesDisplayShowEnableDisableConfirm(t *testing.T) {
 
 	// Test that the function exists and can be called without panic
 	// (actual dialog display requires a running app)
-	app := tview.NewApplication()
+	app := newTestApp()
 	id := NewInterfacesDisplay(app, nil)
 
 	// Verify the function exists and can be called
@@ -281,7 +280,7 @@ func TestInterfacesDisplayShowEnableDisableConfirm(t *testing.T) {
 
 func TestInterfacesDisplayShowRestartRequired(t *testing.T) {
 	t.Parallel()
-	app := tview.NewApplication()
+	app := newTestApp()
 	id := NewInterfacesDisplay(app, nil)
 
 	// Should not panic
@@ -290,7 +289,7 @@ func TestInterfacesDisplayShowRestartRequired(t *testing.T) {
 
 func TestInterfacesDisplayShowInterfaceError(t *testing.T) {
 	t.Parallel()
-	app := tview.NewApplication()
+	app := newTestApp()
 	id := NewInterfacesDisplay(app, nil)
 
 	// Should not panic
@@ -299,7 +298,7 @@ func TestInterfacesDisplayShowInterfaceError(t *testing.T) {
 
 func TestInterfacesDisplayShowRNSDisconnected(t *testing.T) {
 	t.Parallel()
-	app := tview.NewApplication()
+	app := newTestApp()
 	id := NewInterfacesDisplay(app, nil)
 
 	// Should not panic

@@ -17,8 +17,6 @@ package tui
 
 import (
 	"testing"
-
-	"github.com/rivo/tview"
 )
 
 func TestValidateLXMFLinkValid(t *testing.T) {
@@ -57,7 +55,7 @@ func TestValidateLXMFLinkValid(t *testing.T) {
 func TestBrowserHandleLXMFLink(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	bd := NewBrowserDisplay(app)
 
 	var openedHash string
@@ -74,7 +72,7 @@ func TestBrowserHandleLXMFLink(t *testing.T) {
 func TestBrowserHandleLXMFLinkInvalid(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	bd := NewBrowserDisplay(app)
 
 	var lastError string
@@ -151,7 +149,7 @@ func TestValidateRRCLinkInvalid(t *testing.T) {
 func TestBrowserHandleRRCLink(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	bd := NewBrowserDisplay(app)
 
 	var hubHash, room string
@@ -170,7 +168,7 @@ func TestBrowserHandleRRCLink(t *testing.T) {
 func TestBrowserHandleRRCLinkInvalid(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	bd := NewBrowserDisplay(app)
 
 	var lastError string
@@ -268,7 +266,7 @@ func TestBrowserHandleLink(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			app := tview.NewApplication()
+			app := newTestApp()
 			bd := NewBrowserDisplay(app)
 
 			var gotAnchor string

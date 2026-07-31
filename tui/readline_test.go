@@ -176,7 +176,7 @@ func TestKillRingEmpty(t *testing.T) {
 func TestNewReadlineEdit(t *testing.T) {
 	t.Parallel()
 
-	re := NewReadlineEdit("Label: ", "placeholder")
+	re := NewReadlineEdit(&killRing{}, "Label: ", "placeholder")
 	if re == nil {
 		t.Fatal("NewReadlineEdit returned nil")
 	}
@@ -188,7 +188,7 @@ func TestNewReadlineEdit(t *testing.T) {
 func TestReadlineEditCursorTracking(t *testing.T) {
 	t.Parallel()
 
-	re := NewReadlineEdit("", "")
+	re := NewReadlineEdit(&killRing{}, "", "")
 	re.SetText("hello")
 	re.cursorPos = 5
 
@@ -199,23 +199,24 @@ func TestReadlineEditCursorTracking(t *testing.T) {
 }
 
 func TestResetKillRing(t *testing.T) {
-	// No t.Parallel(): mutates the package-global kill ring.
+	t.Parallel()
 
-	globalKillRing.kill("test", true)
-	ResetKillRing()
+	kr := &killRing{}
+	kr.kill("test", true)
+	kr.Reset()
 
-	if globalKillRing.text != "" {
-		t.Errorf("kill ring text = %q, want empty", globalKillRing.text)
+	if kr.text != "" {
+		t.Errorf("kill ring text = %q, want empty", kr.text)
 	}
-	if globalKillRing.lastWasKill {
+	if kr.lastWasKill {
 		t.Error("lastWasKill should be false after reset")
 	}
 }
 
 func TestBackwardWord(t *testing.T) {
-	// No t.Parallel(): handleKey mutates the package-global kill ring.
+	t.Parallel()
 
-	re := NewReadlineEdit("", "")
+	re := NewReadlineEdit(&killRing{}, "", "")
 	re.SetText("hello world foo")
 
 	// Move cursor to end
@@ -247,9 +248,9 @@ func TestBackwardWord(t *testing.T) {
 }
 
 func TestForwardWord(t *testing.T) {
-	// No t.Parallel(): handleKey mutates the package-global kill ring.
+	t.Parallel()
 
-	re := NewReadlineEdit("", "")
+	re := NewReadlineEdit(&killRing{}, "", "")
 	re.SetText("hello world foo")
 	re.cursorPos = 0
 
@@ -279,9 +280,9 @@ func TestForwardWord(t *testing.T) {
 }
 
 func TestWordMovementWithSpecialChars(t *testing.T) {
-	// No t.Parallel(): handleKey mutates the package-global kill ring.
+	t.Parallel()
 
-	re := NewReadlineEdit("", "")
+	re := NewReadlineEdit(&killRing{}, "", "")
 	re.SetText("hello-world_foo bar")
 
 	re.cursorPos = len([]rune("hello-world_foo bar"))

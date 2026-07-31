@@ -54,7 +54,7 @@ type ChannelInfo struct {
 
 // ChannelsDisplay shows the RRC chat interface.
 type ChannelsDisplay struct {
-	app                *tview.Application
+	app                *App
 	widget             tview.Primitive
 	layout             *tview.Flex
 	rooms              *tview.List
@@ -79,7 +79,7 @@ type ChannelsDisplay struct {
 }
 
 // NewChannelsDisplay creates a new channels display.
-func NewChannelsDisplay(app *tview.Application, rooms []ChannelInfo) *ChannelsDisplay {
+func NewChannelsDisplay(app *App, rooms []ChannelInfo) *ChannelsDisplay {
 	cd := &ChannelsDisplay{
 		app:                app,
 		channelListVisible: true,
@@ -133,7 +133,7 @@ func NewChannelsDisplay(app *tview.Application, rooms []ChannelInfo) *ChannelsDi
 	})
 
 	// Input field
-	cd.input = NewReadlineEdit("", "Type a message...")
+	cd.input = NewReadlineEdit(app.killRing, "", "Type a message...")
 	cd.input.SetFieldBackgroundColor(tcell.NewHexColor(0x222222))
 	cd.input.SetFieldTextColor(tcell.NewHexColor(0xdddddd))
 
@@ -376,5 +376,5 @@ func (cd *ChannelsDisplay) ShowUserInfoDialog(nick, identityHash string, isSelf 
 			SetText(sb.String()), 0, 1, false).
 		AddItem(buttons, 1, 0, false)
 
-	ShowDialog(cd.app, "User Info", layout, 40, 8, nil)
+	cd.app.Dialogs.ShowDialog("User Info", layout, 40, 8, nil)
 }

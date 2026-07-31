@@ -45,13 +45,14 @@ func resizeAndDraw(t *testing.T, root tview.Primitive, screen tcell.Screen, w, h
 // spec: "the process died on tmux resize-window; add a test that drives a
 // resize on a running MainDisplay without panic."
 //
-// These tests must not run in parallel: they share the package-global
-// dialogManager.
+// These tests use a per-test *App with its own DialogManager, so they are
+// safe to run in parallel (left serial here only because they drive a real
+// SimulationScreen).
 func TestMainDisplayResizeNoCrash(t *testing.T) {
-	app := tview.NewApplication()
+	app := newTestApp()
 	md := NewMainDisplay(app, ThemeDark, GlyphUnicode)
-	root := InitDialogManager(app, md.Root())
-	app.SetRoot(root, true)
+	root := app.Dialogs.Init(app.Application, md.Root())
+	app.Application.SetRoot(root, true)
 
 	screen := tcell.NewSimulationScreen("UTF-8")
 	if screen == nil {
@@ -82,17 +83,17 @@ func TestMainDisplayResizeNoCrash(t *testing.T) {
 // modal dialog open, exercising DialogLineBox.Draw (the prime resize-crash
 // suspect) at small sizes where its border/title arithmetic is most fragile.
 func TestMainDisplayResizeWithDialogOpen(t *testing.T) {
-	app := tview.NewApplication()
+	app := newTestApp()
 	md := NewMainDisplay(app, ThemeDark, GlyphUnicode)
-	root := InitDialogManager(app, md.Root())
-	app.SetRoot(root, true)
-	app.SetFocus(md.Root())
+	root := app.Dialogs.Init(app.Application, md.Root())
+	app.Application.SetRoot(root, true)
+	app.Application.SetFocus(md.Root())
 
 	// Open a dialog with a long title so the title-centering arithmetic runs
 	// at widths narrower than the title.
-	ShowDialog(app, "A Rather Long Dialog Title", tview.NewTextView().SetText("body"), 40, 6, nil)
-	if DialogCount() != 1 {
-		t.Fatalf("DialogCount = %d, want 1", DialogCount())
+	app.Dialogs.ShowDialog("A Rather Long Dialog Title", tview.NewTextView().SetText("body"), 40, 6, nil)
+	if app.Dialogs.Count() != 1 {
+		t.Fatalf("DialogCount = %d, want 1", app.Dialogs.Count())
 	}
 
 	screen := tcell.NewSimulationScreen("UTF-8")
@@ -142,10 +143,10 @@ func mountRealDisplays(md *MainDisplay) []string {
 // BorderedBoxes, lists, tables, and charts that are the actual resize-crash
 // surface — and asserts none panic.
 func TestMainDisplayResizeAllPagesRealWidgets(t *testing.T) {
-	app := tview.NewApplication()
+	app := newTestApp()
 	md := NewMainDisplay(app, ThemeDark, GlyphUnicode)
-	root := InitDialogManager(app, md.Root())
-	app.SetRoot(root, true)
+	root := app.Dialogs.Init(app.Application, md.Root())
+	app.Application.SetRoot(root, true)
 
 	pages := mountRealDisplays(md)
 
@@ -185,10 +186,10 @@ func TestMainDisplayResizeAllPagesRealWidgets(t *testing.T) {
 // the bottom row, with the content area between them — confirming a non-crashing
 // two-column-aware reflow at 80x24.
 func TestMainDisplayReflowAt80x24(t *testing.T) {
-	app := tview.NewApplication()
+	app := newTestApp()
 	md := NewMainDisplay(app, ThemeDark, GlyphUnicode)
-	root := InitDialogManager(app, md.Root())
-	app.SetRoot(root, true)
+	root := app.Dialogs.Init(app.Application, md.Root())
+	app.Application.SetRoot(root, true)
 
 	screen := tcell.NewSimulationScreen("UTF-8")
 	if screen == nil {

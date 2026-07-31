@@ -47,11 +47,11 @@ func TestNewDialogLineBox(t *testing.T) {
 func TestNewConfirmationDialog(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	yesCalled := false
 	noCalled := false
 
-	cd := NewConfirmationDialog(app, "Are you sure?", func() { yesCalled = true }, func() { noCalled = true })
+	cd := NewConfirmationDialog(app.Dialogs, "Are you sure?", func() { yesCalled = true }, func() { noCalled = true })
 
 	if cd == nil {
 		t.Fatal("NewConfirmationDialog returned nil")

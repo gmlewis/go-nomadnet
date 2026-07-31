@@ -50,40 +50,8 @@ func ConversationIsUnread(sourceHash string, conversationsPath string) bool {
 	return fileExists(filepath.Join(conv, "unread")) || fileExists(filepath.Join(conv, "failed"))
 }
 
-// MarkConversationRead clears the unread and failed flags for the
-// conversation identified by sourceHash (hex), mirroring the Python NomadNet
-// mark_conversation_read. It also removes the entry from the in-memory
-// unread/failed caches so subsequent lookups reflect the cleared state.
-func MarkConversationRead(sourceHash string, conversationsPath string) {
-	conv := filepath.Join(conversationsPath, sourceHash)
-	removeFlagFile(filepath.Join(conv, "unread"))
-	removeFlagFile(filepath.Join(conv, "failed"))
-
-	cachedMu.Lock()
-	delete(unreadConversations, sourceHash)
-	delete(failedConversations, sourceHash)
-	cachedMu.Unlock()
-}
-
 func removeFlagFile(path string) {
 	if fileExists(path) {
 		_ = os.Remove(path)
 	}
-}
-
-// IsUnreadCached reports whether the given source hash is currently held in
-// the in-memory unread cache. It is provided for tests and callers that need to
-// inspect the cache safely (the cache is guarded by an internal mutex).
-func IsUnreadCached(sourceHash string) bool {
-	cachedMu.Lock()
-	defer cachedMu.Unlock()
-	return unreadConversations[sourceHash]
-}
-
-// IsFailedCached reports whether the given source hash is currently held in
-// the in-memory failed cache.
-func IsFailedCached(sourceHash string) bool {
-	cachedMu.Lock()
-	defer cachedMu.Unlock()
-	return failedConversations[sourceHash]
 }

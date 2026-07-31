@@ -17,14 +17,12 @@ package tui
 
 import (
 	"testing"
-
-	"github.com/rivo/tview"
 )
 
 func TestIngestURIDialogStructure(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	var submittedURI string
 	var cancelled bool
 
@@ -67,7 +65,7 @@ func TestIngestURIDialogStructure(t *testing.T) {
 func TestIngestURIResultSuccess(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	cd := NewConversationsDisplay(app, nil)
 
 	cd.ShowIngestResult(IngestSuccess)
@@ -79,7 +77,7 @@ func TestIngestURIResultSuccess(t *testing.T) {
 func TestIngestURIResultDuplicate(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	cd := NewConversationsDisplay(app, nil)
 
 	cd.ShowIngestResult(IngestDuplicate)
@@ -91,7 +89,7 @@ func TestIngestURIResultDuplicate(t *testing.T) {
 func TestIngestURIResultError(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	cd := NewConversationsDisplay(app, nil)
 
 	cd.ShowIngestResult(IngestError)

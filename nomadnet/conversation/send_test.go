@@ -24,8 +24,8 @@ import (
 	"github.com/gmlewis/go-reticulum/rns"
 )
 
-// fakeSendDeps is a test stand-in for SendDeps. By default it uses the real
-// conversation.Ingest against convPath so that Send produces an on-disk
+// fakeSendDeps is a test stand-in for SendDeps. By default it uses a real
+// ConversationCache.Ingest against convPath so that Send produces an on-disk
 // message and a path, exercising the full ingest path.
 type fakeSendDeps struct {
 	dest      *rns.Destination
@@ -47,6 +47,7 @@ type fakeSendDeps struct {
 	ingestCount  int
 	ingestOrigin []bool
 	lastIngest   *lxmf.Message
+	cache        *ConversationCache
 }
 
 func (f *fakeSendDeps) SendDestination() *rns.Destination { return f.dest }
@@ -68,7 +69,10 @@ func (f *fakeSendDeps) Ingest(lxm *lxmf.Message, originator bool) (string, error
 	if f.convPath == "" {
 		return "", nil
 	}
-	return Ingest(lxm, f.convPath, originator)
+	if f.cache == nil {
+		f.cache = NewConversationCache()
+	}
+	return f.cache.Ingest(lxm, f.convPath, originator)
 }
 func (f *fakeSendDeps) DownloadsPath() string { return f.downloadsPath }
 func (f *fakeSendDeps) TmpFilesPath() string  { return f.tmpFilesPath }

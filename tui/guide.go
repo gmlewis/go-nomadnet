@@ -22,14 +22,14 @@ import (
 
 // GuideDisplay shows help content with topic list and scrollable reader.
 type GuideDisplay struct {
-	app    *tview.Application
+	app    *App
 	widget *tview.Flex
 	topics *tview.List
 	reader *tview.TextView
 }
 
 // NewGuideDisplay creates a new guide display with two-column layout.
-func NewGuideDisplay(app *tview.Application) *GuideDisplay {
+func NewGuideDisplay(app *App) *GuideDisplay {
 	gd := &GuideDisplay{app: app}
 
 	// Title

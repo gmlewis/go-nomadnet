@@ -20,8 +20,6 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
-
-	"github.com/rivo/tview"
 )
 
 //go:embed testdata/handlelink_parity.json
@@ -158,7 +156,7 @@ func TestHandleLinkDispatchPythonParity(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			app := tview.NewApplication()
+			app := newTestApp()
 			bd := NewBrowserDisplay(app)
 
 			var gotAnchor, gotLXMF, gotNode string

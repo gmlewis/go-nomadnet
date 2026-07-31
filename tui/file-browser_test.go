@@ -19,8 +19,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/rivo/tview"
 )
 
 func tempDir(t *testing.T) string {
@@ -203,7 +201,7 @@ func TestFileBrowserDialogHiddenFilesExcluded(t *testing.T) {
 func TestConversationWidgetAttachFile(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	cw := NewConversationWidget(app, "aabb1122")
 
 	var attached []string

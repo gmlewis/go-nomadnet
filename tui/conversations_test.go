@@ -27,7 +27,7 @@ import (
 func TestNewConversationsDisplay(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	convs := []ConversationInfo{
 		{DisplayName: "Alice", TrustLevel: "trusted", Unread: true, LastTime: time.Now()},
 		{DisplayName: "Bob", TrustLevel: "unknown", Unread: false, LastTime: time.Now().Add(-time.Hour)},
@@ -45,7 +45,7 @@ func TestNewConversationsDisplay(t *testing.T) {
 func TestConversationsDisplayWidgetType(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	cd := NewConversationsDisplay(app, nil)
 
 	_, ok := cd.Widget().(*tview.Flex)
@@ -57,7 +57,7 @@ func TestConversationsDisplayWidgetType(t *testing.T) {
 func TestConversationsDisplayEmpty(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	cd := NewConversationsDisplay(app, []ConversationInfo{})
 
 	if cd == nil {
@@ -68,7 +68,7 @@ func TestConversationsDisplayEmpty(t *testing.T) {
 func TestNewComposeDisplay(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	cd := NewComposeDisplay(app)
 
 	if cd == nil {
@@ -82,7 +82,7 @@ func TestNewComposeDisplay(t *testing.T) {
 func TestComposeDisplayGetSetText(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	cd := NewComposeDisplay(app)
 
 	cd.editor.SetText("Hello World")
@@ -99,7 +99,7 @@ func TestComposeDisplayGetSetText(t *testing.T) {
 func TestComposeDisplayClear(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	cd := NewComposeDisplay(app)
 
 	cd.editor.SetText("test")
@@ -117,7 +117,7 @@ func TestComposeDisplayClear(t *testing.T) {
 func TestNewMessageViewDisplay(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	mvd := NewMessageViewDisplay(app)
 
 	if mvd == nil {
@@ -131,7 +131,7 @@ func TestNewMessageViewDisplay(t *testing.T) {
 func TestMessageViewShowMessage(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	mvd := NewMessageViewDisplay(app)
 
 	msg := MessageInfo{
@@ -149,7 +149,7 @@ func TestMessageViewShowMessage(t *testing.T) {
 func TestMessageViewClear(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	mvd := NewMessageViewDisplay(app)
 
 	mvd.ShowMessage(MessageInfo{Content: "test"})
@@ -214,7 +214,7 @@ func TestRenderMicronAsText(t *testing.T) {
 func TestConversationsDisplayKeyboardShortcuts(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	cd := NewConversationsDisplay(app, nil)
 
 	// Track which callbacks fire
@@ -260,7 +260,7 @@ func TestConversationsDisplayKeyboardShortcuts(t *testing.T) {
 func TestConversationsDisplayUnhandledKeys(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	cd := NewConversationsDisplay(app, nil)
 
 	// Unhandled keys should pass through
@@ -274,7 +274,7 @@ func TestConversationsDisplayUnhandledKeys(t *testing.T) {
 func TestConversationsDisplayEditSelectedInDirectory(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	convs := []ConversationInfo{
 		{SourceHash: "aabb1122", DisplayName: "Alice", TrustLevel: "trusted"},
 	}
@@ -297,7 +297,7 @@ func TestConversationsDisplayEditSelectedInDirectory(t *testing.T) {
 func TestConversationsDisplayEditSelectedNoSelection(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	cd := NewConversationsDisplay(app, nil)
 
 	result := cd.EditSelectedInDirectory()
@@ -335,7 +335,7 @@ func TestPeerInfoEntryTrustLevels(t *testing.T) {
 func TestConversationsDisplayIngestLXMURI(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	cd := NewConversationsDisplay(app, nil)
 
 	cd.OpenIngestURIDialog()
@@ -355,7 +355,7 @@ func TestConversationsDisplayIngestLXMURI(t *testing.T) {
 func TestConversationsDisplayIngestURIDismiss(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	cd := NewConversationsDisplay(app, nil)
 
 	cd.OpenIngestURIDialog()
@@ -369,7 +369,7 @@ func TestConversationsDisplayIngestURIDismiss(t *testing.T) {
 func TestConversationsDisplaySyncConversations(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	cd := NewConversationsDisplay(app, nil)
 
 	cd.OpenSyncDialog()
@@ -381,7 +381,7 @@ func TestConversationsDisplaySyncConversations(t *testing.T) {
 func TestConversationsDisplaySyncConversationsRequestSync(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	cd := NewConversationsDisplay(app, nil)
 
 	var syncRequested bool
@@ -402,7 +402,7 @@ func TestConversationsDisplaySyncConversationsRequestSync(t *testing.T) {
 func TestConversationsDisplaySyncConversationsWithLimit(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	cd := NewConversationsDisplay(app, nil)
 
 	var syncLimit int
@@ -419,7 +419,7 @@ func TestConversationsDisplaySyncConversationsWithLimit(t *testing.T) {
 func TestConversationsDisplaySyncConversationsDismiss(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	cd := NewConversationsDisplay(app, nil)
 
 	cd.OpenSyncDialog()
@@ -474,7 +474,7 @@ func TestSyncStatusLine(t *testing.T) {
 func TestConversationsDisplayShowBlocked(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	cd := NewConversationsDisplay(app, nil)
 
 	if cd.ShowBlocked() {
@@ -495,7 +495,7 @@ func TestConversationsDisplayShowBlocked(t *testing.T) {
 func TestConversationsDisplayShowBlockedFiltersList(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	convs := []ConversationInfo{
 		{SourceHash: "aaaa", DisplayName: "Alice", TrustLevel: "trusted"},
 		{SourceHash: "bbbb", DisplayName: "Eve", TrustLevel: "blocked"},
@@ -545,7 +545,7 @@ func TestConversationsDisplayBlockedRowLabel(t *testing.T) {
 func TestPaperMessageDialog(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	cd := NewConversationsDisplay(app, nil)
 
 	var printFired, saveQRFired, saveURIFired bool
@@ -568,7 +568,7 @@ func TestPaperMessageDialog(t *testing.T) {
 func TestPaperMessageFailed(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	cd := NewConversationsDisplay(app, nil)
 
 	cd.PaperMessageFailed()
@@ -580,7 +580,7 @@ func TestPaperMessageFailed(t *testing.T) {
 func TestAttachFileDialog(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	cd := NewConversationsDisplay(app, nil)
 
 	var selectedPath string
@@ -597,7 +597,7 @@ func TestAttachFileDialog(t *testing.T) {
 func TestSaveAttachmentsDialog(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	cd := NewConversationsDisplay(app, nil)
 
 	attachments := []string{"file1.pdf", "image.png", "doc.txt"}
@@ -611,7 +611,7 @@ func TestSaveAttachmentsDialog(t *testing.T) {
 func TestShowPeerInfoDialog(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	cd := NewConversationsDisplay(app, nil)
 
 	entry := PeerInfoEntry{
@@ -666,7 +666,7 @@ func TestPeerInfoEntryTrustLevelValue(t *testing.T) {
 func TestShowSyncDialog(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	cd := NewConversationsDisplay(app, nil)
 
 	var result SyncDialogResult

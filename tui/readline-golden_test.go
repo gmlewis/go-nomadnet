@@ -68,7 +68,7 @@ func rlEvent(desc string) *tcell.EventKey {
 }
 
 func TestReadlineGolden(t *testing.T) {
-	// No t.Parallel(): exercises the package-global kill ring.
+	t.Parallel()
 
 	scenarios := []rlScenario{
 		{
@@ -215,10 +215,12 @@ func TestReadlineGolden(t *testing.T) {
 
 	for _, sc := range scenarios {
 		t.Run(sc.name, func(t *testing.T) {
-			// No t.Parallel(): scenarios share the package-global kill ring
-			// (correct per Python) and must run serially for isolation.
-			ResetKillRing()
-			re := NewReadlineEdit("", "")
+			t.Parallel()
+			// Each scenario gets its own isolated kill ring shared across
+			// the single ReadLineEdit under test (matching Python, where the
+			// kill ring is per-process).
+			kr := &killRing{}
+			re := NewReadlineEdit(kr, "", "")
 			re.SetText(sc.init)
 
 			for i, st := range sc.steps {
@@ -229,7 +231,7 @@ func TestReadlineGolden(t *testing.T) {
 				if got := re.CursorPos(); got != st.wantPos {
 					t.Errorf("step %d (%q): pos = %d, want %d", i, st.key, got, st.wantPos)
 				}
-				if got := KillRingText(); got != st.wantKR {
+				if got := kr.Text(); got != st.wantKR {
 					t.Errorf("step %d (%q): killring = %q, want %q", i, st.key, got, st.wantKR)
 				}
 			}
@@ -237,23 +239,24 @@ func TestReadlineGolden(t *testing.T) {
 	}
 }
 
-// TestKillRingSharedAcrossInstances verifies the kill ring is package-global:
-// text killed in one ReadlineEdit can be yanked into another.
+// TestKillRingSharedAcrossInstances verifies the kill ring is shared across
+// ReadlineEdit instances that were constructed with the same *killRing: text
+// killed in one can be yanked into another.
 func TestKillRingSharedAcrossInstances(t *testing.T) {
-	// No t.Parallel(): exercises the package-global kill ring.
-	ResetKillRing()
+	t.Parallel()
+	kr := &killRing{}
 
-	a := NewReadlineEdit("", "")
+	a := NewReadlineEdit(kr, "", "")
 	a.SetText("secret value")
 	// Kill to end of line from the end (kills nothing), so move to start first.
 	a.SetCursorPos(0)
 	a.handleKey(tcell.NewEventKey(tcell.KeyCtrlK, 0, tcell.ModNone)) // kills "secret value"
 
-	if got := KillRingText(); got != "secret value" {
+	if got := kr.Text(); got != "secret value" {
 		t.Fatalf("killring after kill = %q, want %q", got, "secret value")
 	}
 
-	b := NewReadlineEdit("", "")
+	b := NewReadlineEdit(kr, "", "")
 	b.SetText("")
 	b.handleKey(tcell.NewEventKey(tcell.KeyCtrlY, 0, tcell.ModNone)) // yank into other field
 

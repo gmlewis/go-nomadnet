@@ -26,7 +26,7 @@ import (
 // RoomWidget displays a single RRC chat room with messages, users, and editor.
 // Matches Python's RoomWidget at Channels.py:590.
 type RoomWidget struct {
-	app             *tview.Application
+	app             *App
 	hubName         string
 	roomName        string
 	widget          tview.Primitive
@@ -54,7 +54,7 @@ type RoomWidget struct {
 
 // NewRoomWidget creates a chat room view for the given hub and room.
 // Matches Python's RoomWidget.__init__().
-func NewRoomWidget(app *tview.Application, hubName, roomName string) *RoomWidget {
+func NewRoomWidget(app *App, hubName, roomName string) *RoomWidget {
 	rw := &RoomWidget{
 		app:             app,
 		hubName:         hubName,
@@ -72,7 +72,7 @@ func NewRoomWidget(app *tview.Application, hubName, roomName string) *RoomWidget
 	rw.messages.SetBackgroundColor(tcell.ColorDefault)
 
 	// Editor
-	rw.editor = NewReadlineEdit("", "Type a message...")
+	rw.editor = NewReadlineEdit(app.killRing, "", "Type a message...")
 	rw.editor.SetFieldBackgroundColor(tcell.NewHexColor(0x222222))
 	rw.editor.SetFieldTextColor(tcell.NewHexColor(0xdddddd))
 

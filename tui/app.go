@@ -26,6 +26,9 @@ type App struct {
 	Theme     int
 	ColorMode int
 	Glyphs    GlyphSet
+	Dialogs   *DialogManager
+	Styles    *StyleRegistry
+	killRing  *killRing
 }
 
 // NewApp creates a new tview Application with the given theme, color depth,
@@ -39,17 +42,19 @@ func NewApp(theme int, glyphSet string, colorMode int) *App {
 		glyphs = glyphsUnicode
 	}
 
-	RegisterThemeStyles(theme, colorMode)
-	ApplySingleLineBorders()
-
 	a := &App{
 		Application: tviewApp,
 		Theme:       theme,
 		ColorMode:   colorMode,
 		Glyphs:      glyphs,
+		Dialogs:     &DialogManager{},
+		Styles:      newStyleRegistry(),
+		killRing:    &killRing{},
 	}
+	a.Styles.Register(theme, colorMode)
+	ApplySingleLineBorders()
 
-	a.Main = NewMainDisplay(tviewApp, theme, glyphSet)
+	a.Main = NewMainDisplay(a, theme, glyphSet)
 
 	return a
 }
@@ -59,7 +64,7 @@ func NewApp(theme int, glyphSet string, colorMode int) *App {
 // manager, so modal dialogs can overlay it without destroying the underlying
 // screen.
 func (a *App) SetRoot() {
-	root := InitDialogManager(a.Application, a.Main.Root())
+	root := a.Dialogs.Init(a.Application, a.Main.Root())
 	a.Application.SetRoot(root, true)
 }
 

@@ -27,7 +27,7 @@ import (
 // available rooms, with keyboard shortcuts matching Python's
 // HubInfoArea.keypress() at Channels.py:381.
 type HubInfoArea struct {
-	app            *tview.Application
+	app            *App
 	hubName        string
 	widget         *tview.Flex
 	view           *tview.TextView
@@ -47,7 +47,7 @@ type HubInfoArea struct {
 }
 
 // NewHubInfoArea creates a hub detail panel for the given hub.
-func NewHubInfoArea(app *tview.Application, hubName string) *HubInfoArea {
+func NewHubInfoArea(app *App, hubName string) *HubInfoArea {
 	hia := &HubInfoArea{
 		app:     app,
 		hubName: hubName,

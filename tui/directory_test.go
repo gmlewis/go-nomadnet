@@ -17,14 +17,12 @@ package tui
 
 import (
 	"testing"
-
-	"github.com/rivo/tview"
 )
 
 func TestNewDirectoryDisplay(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	entries := []DirectoryEntry{
 		{SourceHash: "abc123", DisplayName: "Alice", TrustLevel: "trusted"},
 		{SourceHash: "def456", DisplayName: "Bob", TrustLevel: "untrusted"},
@@ -42,7 +40,7 @@ func TestNewDirectoryDisplay(t *testing.T) {
 func TestDirectoryDisplayEmpty(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	dd := NewDirectoryDisplay(app, nil)
 
 	if dd == nil {

@@ -20,15 +20,11 @@
 package conversation
 
 import (
-	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
-	"sync"
-
-	"github.com/gmlewis/go-reticulum/lxmf"
 )
 
 // Conversation represents an LXMF conversation with a single peer.
@@ -44,14 +40,14 @@ type Conversation struct {
 
 	changedCallback func()
 	sendDeps        SendDeps
-}
 
-var (
-	cachedConversations = make(map[string]*Conversation)
-	unreadConversations = make(map[string]bool)
-	failedConversations = make(map[string]bool)
-	cachedMu            sync.Mutex
-)
+	// attachmentPath is the base directory for this conversation's per-message
+	// attachment directories. It is stamped by ConversationCache.Store from
+	// the cache's configured attachment path, and ScanStorage copies it onto
+	// each message so Message.attachmentDir can locate attachments without a
+	// package-level provider.
+	attachmentPath string
+}
 
 // NewConversation creates a Conversation for the given source hash.
 func NewConversation(sourceHash, messagesPath string) *Conversation {
@@ -122,6 +118,7 @@ func (c *Conversation) ScanStorage() error {
 		}
 
 		msg := NewMessage(filePath)
+		msg.AttachmentPath = c.attachmentPath
 
 		// Restore from index if available
 		if indexEntry, ok := index[name]; ok {
@@ -268,36 +265,6 @@ func ConversationList(conversationsPath string, displayNames map[string]string, 
 	return list
 }
 
-// CacheConversation stores a conversation in the global cache.
-func CacheConversation(c *Conversation) {
-	cachedMu.Lock()
-	defer cachedMu.Unlock()
-	cachedConversations[c.SourceHash] = c
-}
-
-// CachedConversation retrieves a conversation from the global cache.
-func CachedConversation(sourceHash string) *Conversation {
-	cachedMu.Lock()
-	defer cachedMu.Unlock()
-	return cachedConversations[sourceHash]
-}
-
-// DeleteConversation removes a conversation from disk and the cache.
-func DeleteConversation(sourceHash, conversationsPath string) error {
-	convPath := filepath.Join(conversationsPath, sourceHash)
-	if err := os.RemoveAll(convPath); err != nil {
-		return fmt.Errorf("removing conversation: %w", err)
-	}
-
-	cachedMu.Lock()
-	delete(cachedConversations, sourceHash)
-	delete(unreadConversations, sourceHash)
-	delete(failedConversations, sourceHash)
-	cachedMu.Unlock()
-
-	return nil
-}
-
 func fileExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
@@ -310,49 +277,4 @@ func isHexString(s string) bool {
 		}
 	}
 	return true
-}
-
-// Ingest writes an incoming LXMF message to the appropriate conversation
-// directory, creating it if necessary. The originator flag indicates whether
-// this message was sent by the local user (true) or received from a peer
-// (false). Returns the path of the ingested message file.
-//
-// This matches Python's Conversation.ingest() in Conversation.py:56.
-func Ingest(msg *lxmf.Message, conversationsPath string, originator bool) (string, error) {
-	var sourceHash []byte
-	if originator {
-		sourceHash = msg.DestinationHash
-	} else {
-		sourceHash = msg.SourceHash
-	}
-
-	sourceHex := hex.EncodeToString(sourceHash)
-	convDir := filepath.Join(conversationsPath, sourceHex)
-
-	if err := os.MkdirAll(convDir, 0o755); err != nil {
-		return "", fmt.Errorf("creating conversation dir: %w", err)
-	}
-
-	ingestedPath, err := msg.WriteToDirectory(convDir)
-	if err != nil {
-		return "", fmt.Errorf("writing message to directory: %w", err)
-	}
-
-	cachedMu.Lock()
-	if cached, ok := cachedConversations[sourceHex]; ok {
-		cachedMu.Unlock()
-		_ = cached.ScanStorage()
-	} else {
-		cachedMu.Unlock()
-	}
-
-	if !originator {
-		unreadPath := filepath.Join(convDir, "unread")
-		_ = os.WriteFile(unreadPath, []byte("1"), 0o644)
-		cachedMu.Lock()
-		unreadConversations[sourceHex] = true
-		cachedMu.Unlock()
-	}
-
-	return ingestedPath, nil
 }

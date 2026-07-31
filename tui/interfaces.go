@@ -36,7 +36,7 @@ type InterfaceInfo struct {
 
 // InterfacesDisplay shows RNS interface status and bandwidth charts.
 type InterfacesDisplay struct {
-	app    *tview.Application
+	app    *App
 	widget tview.Primitive
 	layout *tview.Flex
 
@@ -48,7 +48,7 @@ type InterfacesDisplay struct {
 }
 
 // NewInterfacesDisplay creates a new interfaces display.
-func NewInterfacesDisplay(app *tview.Application, interfaces []InterfaceInfo) *InterfacesDisplay {
+func NewInterfacesDisplay(app *App, interfaces []InterfaceInfo) *InterfacesDisplay {
 	id := &InterfacesDisplay{app: app}
 
 	title := tview.NewTextView().
@@ -211,7 +211,7 @@ func (id *InterfacesDisplay) ShowEnableDisableConfirm(name string, enabled bool,
 	}
 	msg := fmt.Sprintf("%s interface %s?", action, name)
 
-	ShowConfirmDialog(id.app, msg, func() {
+	id.app.Dialogs.ShowConfirmDialog(msg, func() {
 		if onConfirm != nil {
 			onConfirm()
 		}
@@ -223,7 +223,7 @@ func (id *InterfacesDisplay) ShowEnableDisableConfirm(name string, enabled bool,
 func (id *InterfacesDisplay) ShowRestartRequired() {
 	msg := "RNS must be restarted for interface changes to take effect.\nRestart Nomad Network to apply changes."
 
-	ShowDialog(id.app, "Restart Required",
+	id.app.Dialogs.ShowDialog("Restart Required",
 		tview.NewTextView().
 			SetDynamicColors(true).
 			SetTextColor(tcell.NewHexColor(0xdddddd)).
@@ -237,7 +237,7 @@ func (id *InterfacesDisplay) ShowRestartRequired() {
 func (id *InterfacesDisplay) ShowInterfaceError(errMsg string) {
 	msg := fmt.Sprintf("[red]Error:[-] %s", errMsg)
 
-	ShowDialog(id.app, "Interface Error",
+	id.app.Dialogs.ShowDialog("Interface Error",
 		tview.NewTextView().
 			SetDynamicColors(true).
 			SetTextColor(tcell.NewHexColor(0xdddddd)).
@@ -251,7 +251,7 @@ func (id *InterfacesDisplay) ShowInterfaceError(errMsg string) {
 func (id *InterfacesDisplay) ShowRNSDisconnected() {
 	msg := "[red]RNS Instance Disconnected[-]\n\nThe RNS transport connection has been lost.\nCheck your network configuration and restart if necessary."
 
-	ShowDialog(id.app, "Disconnected",
+	id.app.Dialogs.ShowDialog("Disconnected",
 		tview.NewTextView().
 			SetDynamicColors(true).
 			SetTextColor(tcell.NewHexColor(0xdddddd)).

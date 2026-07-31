@@ -127,22 +127,22 @@ func (d *DialogLineBox) InputHandler() func(event *tcell.EventKey, setFocus func
 // ShowDialog creates and shows a centered dialog overlay on the application.
 // The dialog is pushed onto the modal dialog stack (see DialogManager), so the
 // underlying screen is preserved and focus is restored on dismiss. Esc on the
-// dialog closes it (not the app); DismissTopDialog closes it programmatically.
-func ShowDialog(app *tview.Application, title string, content tview.Primitive, width, height int, onDismiss func()) {
-	showDialogOverlay(app, title, content, width, height, onDismiss)
+// dialog closes it (not the app); DismissTop closes it programmatically.
+func (dm *DialogManager) ShowDialog(title string, content tview.Primitive, width, height int, onDismiss func()) {
+	dm.showOverlay(dm.app, title, content, width, height, onDismiss)
 }
 
 // ShowConfirmDialog shows a Yes/No confirmation dialog.
-func ShowConfirmDialog(app *tview.Application, message string, onYes, onNo func()) {
+func (dm *DialogManager) ShowConfirmDialog(message string, onYes, onNo func()) {
 	buttons := tview.NewFlex().SetDirection(tview.FlexColumn).
 		AddItem(tview.NewButton("Yes").SetSelectedFunc(func() {
-			DismissTopDialog()
+			dm.DismissTop()
 			if onYes != nil {
 				onYes()
 			}
 		}), 0, 1, true).
 		AddItem(tview.NewButton("No").SetSelectedFunc(func() {
-			DismissTopDialog()
+			dm.DismissTop()
 			if onNo != nil {
 				onNo()
 			}
@@ -156,11 +156,11 @@ func ShowConfirmDialog(app *tview.Application, message string, onYes, onNo func(
 			SetText(message), 3, 0, false).
 		AddItem(buttons, 1, 0, true)
 
-	ShowDialog(app, "Confirm", layout, 40, 6, nil)
+	dm.ShowDialog("Confirm", layout, 40, 6, nil)
 }
 
 // ShowInputDialog shows a text input dialog with Save/Cancel buttons.
-func ShowInputDialog(app *tview.Application, title, label, defaultValue string, onSubmit func(string), onCancel func()) {
+func (dm *DialogManager) ShowInputDialog(title, label, defaultValue string, onSubmit func(string), onCancel func()) {
 	input := tview.NewInputField()
 	input.SetLabel(label)
 	input.SetText(defaultValue)
@@ -170,13 +170,13 @@ func ShowInputDialog(app *tview.Application, title, label, defaultValue string, 
 	buttons := tview.NewFlex().SetDirection(tview.FlexColumn).
 		AddItem(tview.NewButton("Save").SetSelectedFunc(func() {
 			value := input.GetText()
-			DismissTopDialog()
+			dm.DismissTop()
 			if onSubmit != nil {
 				onSubmit(value)
 			}
 		}), 0, 1, true).
 		AddItem(tview.NewButton("Cancel").SetSelectedFunc(func() {
-			DismissTopDialog()
+			dm.DismissTop()
 			if onCancel != nil {
 				onCancel()
 			}
@@ -186,11 +186,11 @@ func ShowInputDialog(app *tview.Application, title, label, defaultValue string, 
 		AddItem(input, 1, 0, true).
 		AddItem(buttons, 1, 0, false)
 
-	ShowDialog(app, title, layout, 50, 5, nil)
+	dm.ShowDialog(title, layout, 50, 5, nil)
 }
 
 // ShowRadioDialog shows a radio button selection dialog.
-func ShowRadioDialog(app *tview.Application, title, message string, options []string, onSelect func(int)) {
+func (dm *DialogManager) ShowRadioDialog(title, message string, options []string, onSelect func(int)) {
 	list := tview.NewList()
 	list.SetHighlightFullLine(true)
 	list.SetSelectedBackgroundColor(tcell.NewHexColor(0x666666))
@@ -212,21 +212,21 @@ func ShowRadioDialog(app *tview.Application, title, message string, options []st
 			SetText(message), 1, 0, false).
 		AddItem(list, 0, 1, true)
 
-	ShowDialog(app, title, layout, 40, 10, nil)
+	dm.ShowDialog(title, layout, 40, 10, nil)
 }
 
 // ConfirmationDialog is a reusable confirmation dialog.
 type ConfirmationDialog struct {
-	app     *tview.Application
+	dialogs *DialogManager
 	message string
 	onYes   func()
 	onNo    func()
 }
 
 // NewConfirmationDialog creates a new confirmation dialog.
-func NewConfirmationDialog(app *tview.Application, message string, onYes, onNo func()) *ConfirmationDialog {
+func NewConfirmationDialog(dm *DialogManager, message string, onYes, onNo func()) *ConfirmationDialog {
 	return &ConfirmationDialog{
-		app:     app,
+		dialogs: dm,
 		message: message,
 		onYes:   onYes,
 		onNo:    onNo,
@@ -235,5 +235,5 @@ func NewConfirmationDialog(app *tview.Application, message string, onYes, onNo f
 
 // Show displays the confirmation dialog.
 func (cd *ConfirmationDialog) Show() {
-	ShowConfirmDialog(cd.app, cd.message, cd.onYes, cd.onNo)
+	cd.dialogs.ShowConfirmDialog(cd.message, cd.onYes, cd.onNo)
 }

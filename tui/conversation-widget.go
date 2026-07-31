@@ -28,7 +28,7 @@ import (
 // peer info header, trust banner, and compose editor.
 // Matches Python's ConversationWidget at Conversations.py:1874.
 type ConversationWidget struct {
-	app    *tview.Application
+	app    *App
 	source string // source hash hex
 
 	// Layout
@@ -77,7 +77,7 @@ type ConversationMessage struct {
 
 // NewConversationWidget creates a conversation view for the given source hash.
 // Matches Python's ConversationWidget.__init__().
-func NewConversationWidget(app *tview.Application, sourceHash string) *ConversationWidget {
+func NewConversationWidget(app *App, sourceHash string) *ConversationWidget {
 	cw := &ConversationWidget{
 		app:    app,
 		source: sourceHash,
@@ -108,12 +108,12 @@ func NewConversationWidget(app *tview.Application, sourceHash string) *Conversat
 	cw.messageList.SetTextAlign(tview.AlignLeft)
 
 	// Minimal editor (content only)
-	cw.editor = NewReadlineEdit("", "Type a message... (Ctrl-D to send)")
+	cw.editor = NewReadlineEdit(app.killRing, "", "Type a message... (Ctrl-D to send)")
 	cw.editor.SetFieldBackgroundColor(tcell.NewHexColor(0x222222))
 	cw.editor.SetFieldTextColor(tcell.NewHexColor(0xdddddd))
 
 	// Title editor (hidden by default)
-	cw.titleEditor = NewReadlineEdit("Title: ", "")
+	cw.titleEditor = NewReadlineEdit(app.killRing, "Title: ", "")
 	cw.titleEditor.SetFieldBackgroundColor(tcell.NewHexColor(0x222222))
 	cw.titleEditor.SetFieldTextColor(tcell.NewHexColor(0xdddddd))
 
@@ -297,7 +297,7 @@ func FormatQRText(data string) string {
 // at Conversations.py:2122.
 func (cw *ConversationWidget) ClearHistoryDialog() {
 	cw.dialogOpen = true
-	ShowConfirmDialog(cw.app, "Clear conversation history?", func() {
+	cw.app.Dialogs.ShowConfirmDialog("Clear conversation history?", func() {
 		cw.ConfirmClearHistory()
 	}, func() {
 		cw.DismissClearHistoryDialog()

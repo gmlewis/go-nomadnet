@@ -47,7 +47,7 @@ type NodeEntry struct {
 // Matches Python's NetworkDisplay with KnownNodes, AnnounceStream,
 // and toggle between them via ctrl-l.
 type NetworkDisplay struct {
-	app          *tview.Application
+	app          *App
 	widget       *tview.Flex
 	leftPanel    *tview.Flex
 	announces    *tview.List
@@ -71,7 +71,7 @@ type NetworkDisplay struct {
 }
 
 // NewNetworkDisplay creates a new network display matching Python's layout.
-func NewNetworkDisplay(app *tview.Application, announces []AnnounceEntry, nodes []NodeEntry) *NetworkDisplay {
+func NewNetworkDisplay(app *App, announces []AnnounceEntry, nodes []NodeEntry) *NetworkDisplay {
 	nd := &NetworkDisplay{app: app, showingNodes: false}
 
 	// Title
@@ -561,7 +561,7 @@ func (nd *NetworkDisplay) ShowLocalPeerDialog(lxmfAddr, identityHash, name strin
 			SetText(sb.String()), 0, 1, false).
 		AddItem(buttons, 1, 0, false)
 
-	ShowDialog(nd.app, "Local Peer", layout, 50, 10, nil)
+	nd.app.Dialogs.ShowDialog("Local Peer", layout, 50, 10, nil)
 }
 
 // ShowLXMFPeersDialog shows the LXMF peers list panel.
@@ -598,5 +598,5 @@ func (nd *NetworkDisplay) ShowLXMFPeersDialog(peers []LXMFPeerEntry) {
 		AddItem(list, 0, 1, true).
 		AddItem(buttons, 1, 0, false)
 
-	ShowDialog(nd.app, "LXMF Peers", layout, 50, 12, nil)
+	nd.app.Dialogs.ShowDialog("LXMF Peers", layout, 50, 12, nil)
 }

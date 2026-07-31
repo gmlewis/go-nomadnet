@@ -47,7 +47,7 @@ func (a *App) ConversationIsUnread(sourceHash string) bool {
 // MarkConversationRead clears the unread and failed flags for a conversation,
 // mirroring the Python NomadNet mark_conversation_read.
 func (a *App) MarkConversationRead(sourceHash string) {
-	conversation.MarkConversationRead(sourceHash, a.ConversationPath)
+	a.ConversationCache.MarkRead(sourceHash, a.ConversationPath)
 }
 
 // ClearTmpDir removes all files from the temporary files directory, mirroring
@@ -94,7 +94,7 @@ func (a *App) ShouldPrint(msg *lxmf.Message) bool {
 // source hash and clears the in-memory unread/failed caches, mirroring the
 // Python Conversation.delete_conversation.
 func (a *App) DeleteConversation(sourceHash string) {
-	if err := conversation.DeleteConversation(sourceHash, a.ConversationPath); err != nil {
+	if err := a.ConversationCache.Delete(sourceHash, a.ConversationPath); err != nil {
 		if a.Logger != nil {
 			a.Logger.Error("Could not remove conversation at %v: %v", sourceHash, err)
 		}

@@ -26,13 +26,13 @@ import (
 
 // MicronViewDisplay renders Micron pages as tview widgets.
 type MicronViewDisplay struct {
-	app    *tview.Application
+	app    *App
 	widget tview.Primitive
 	view   *tview.TextView
 }
 
 // NewMicronViewDisplay creates a new Micron page viewer.
-func NewMicronViewDisplay(app *tview.Application) *MicronViewDisplay {
+func NewMicronViewDisplay(app *App) *MicronViewDisplay {
 	mvd := &MicronViewDisplay{app: app}
 
 	mvd.view = tview.NewTextView().

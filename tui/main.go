@@ -28,7 +28,7 @@ import (
 // MainDisplay is the top-level layout matching Python's MainFrame:
 // header=menu bar, body=content area, footer=shortcut bar.
 type MainDisplay struct {
-	app              *tview.Application
+	app              *App
 	frame            *tview.Flex
 	menuBar          *tview.TextView
 	menuItems        []MenuItem
@@ -49,7 +49,7 @@ type MainDisplay struct {
 
 // NewMainDisplay creates the main display with Frame layout:
 // header=menu bar, body=content area, footer=shortcut bar.
-func NewMainDisplay(app *tview.Application, theme int, glyphSetName string) *MainDisplay {
+func NewMainDisplay(app *App, theme int, glyphSetName string) *MainDisplay {
 	glyphs := GetGlyphSet(glyphSetName)
 	if glyphs == nil {
 		glyphs = glyphsUnicode

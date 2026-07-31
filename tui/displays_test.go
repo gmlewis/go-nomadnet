@@ -26,7 +26,7 @@ import (
 func TestNewConfigDisplay(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	cd := NewConfigDisplay(app, "/home/user/.nomadnetwork/config")
 
 	if cd == nil {
@@ -40,7 +40,7 @@ func TestNewConfigDisplay(t *testing.T) {
 func TestConfigDisplayWidgetType(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	cd := NewConfigDisplay(app, "/test/config")
 
 	// Should be a Flex layout
@@ -53,7 +53,7 @@ func TestConfigDisplayWidgetType(t *testing.T) {
 func TestNewLogDisplay(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	ld := NewLogDisplay(app, "/nonexistent/log", 50)
 
 	if ld == nil {
@@ -67,7 +67,7 @@ func TestNewLogDisplay(t *testing.T) {
 func TestLogDisplayWidgetType(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	ld := NewLogDisplay(app, "/test/log", 50)
 
 	_, ok := ld.Widget().(*tview.Flex)

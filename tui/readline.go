@@ -22,17 +22,17 @@ import (
 	"github.com/rivo/tview"
 )
 
-// killRing is a package-global kill buffer shared across all ReadlineEdit
-// instances, mirroring Python's module-global _KillRing (ReadlineEdit.py).
-// Consecutive kills accumulate into the same entry (forward kills append,
-// backward kills prepend); any non-kill keypress breaks the chain so the
-// next kill replaces the buffer.
+// killRing is an emacs-style kill buffer shared across the ReadlineEdit
+// instances of one App, mirroring Python's module-global _KillRing
+// (ReadlineEdit.py). Consecutive kills accumulate into the same entry
+// (forward kills append, backward kills prepend); any non-kill keypress
+// breaks the chain so the next kill replaces the buffer. It is owned by App
+// (App.killRing) and passed into each ReadlineEdit so the buffer is shared
+// without a package global.
 type killRing struct {
 	text        string
 	lastWasKill bool
 }
-
-var globalKillRing = &killRing{}
 
 func (kr *killRing) resetChain() {
 	kr.lastWasKill = false
@@ -82,7 +82,8 @@ var killKeySet = map[tcell.Key]bool{
 // "Line" is the current logical line within the buffer (newline-delimited),
 // so on multiline edits these act on the line under the cursor.
 //
-// The kill buffer is shared across all ReadlineEdit instances.
+// The kill buffer is shared across all ReadlineEdit instances of one App via
+// the App-owned *killRing passed into NewReadLineEdit.
 //
 // The edit model (text + cursorPos, both rune-based) is the source of truth
 // and is fully driven by handleKey; the embedded tview.InputField is synced
@@ -91,13 +92,17 @@ var killKeySet = map[tcell.Key]bool{
 // model cursor — the model itself (tested in readline_test.go) is correct.
 type ReadlineEdit struct {
 	*tview.InputField
+	killRing  *killRing
 	cursorPos int // rune offset, mirrors Python edit_pos
 }
 
-// NewReadlineEdit creates a new ReadlineEdit with the given label and placeholder.
-func NewReadlineEdit(label, placeholder string) *ReadlineEdit {
+// NewReadLineEdit creates a new ReadlineEdit with the given shared kill ring,
+// label, and placeholder. The kill ring is shared across all ReadlineEdit
+// instances of one App so emacs kill/yank works across fields.
+func NewReadlineEdit(kr *killRing, label, placeholder string) *ReadlineEdit {
 	re := &ReadlineEdit{
 		InputField: tview.NewInputField(),
+		killRing:   kr,
 		cursorPos:  0,
 	}
 	re.SetLabel(label)
@@ -150,13 +155,13 @@ func (re *ReadlineEdit) handleKey(event *tcell.EventKey) *tcell.EventKey {
 	case tcell.KeyCtrlU:
 		killKey = true
 		bol := lineStart(runes, pos)
-		globalKillRing.kill(string(runes[bol:pos]), false)
+		re.killRing.kill(string(runes[bol:pos]), false)
 		runes = append(runes[:bol], runes[pos:]...)
 		pos = bol
 	case tcell.KeyCtrlK:
 		killKey = true
 		eol := lineEnd(runes, pos)
-		globalKillRing.kill(string(runes[pos:eol]), true)
+		re.killRing.kill(string(runes[pos:eol]), true)
 		runes = append(runes[:pos], runes[eol:]...)
 	case tcell.KeyCtrlW:
 		killKey = true
@@ -167,17 +172,17 @@ func (re *ReadlineEdit) handleKey(event *tcell.EventKey) *tcell.EventKey {
 		for p > 0 && !unicode.IsSpace(runes[p-1]) {
 			p--
 		}
-		globalKillRing.kill(string(runes[p:pos]), false)
+		re.killRing.kill(string(runes[p:pos]), false)
 		runes = append(runes[:p], runes[pos:]...)
 		pos = p
 	case tcell.KeyCtrlL:
 		killKey = true
-		globalKillRing.kill(string(runes), true)
+		re.killRing.kill(string(runes), true)
 		runes = runes[:0]
 		pos = 0
 	case tcell.KeyCtrlY:
-		if globalKillRing.text != "" {
-			kr := []rune(globalKillRing.text)
+		if re.killRing.text != "" {
+			kr := []rune(re.killRing.text)
 			newRunes := make([]rune, 0, len(runes)+len(kr))
 			newRunes = append(newRunes, runes[:pos]...)
 			newRunes = append(newRunes, kr...)
@@ -224,7 +229,7 @@ func (re *ReadlineEdit) handleKey(event *tcell.EventKey) *tcell.EventKey {
 
 	// Match Python: any key that is NOT a kill key breaks the kill chain.
 	if !killKey {
-		globalKillRing.resetChain()
+		re.killRing.resetChain()
 	}
 
 	if !consumed {
@@ -279,19 +284,19 @@ func isWordChar(ch rune) bool {
 	return unicode.IsLetter(ch) || unicode.IsDigit(ch) || ch == '_'
 }
 
-// KillRingText returns the current shared kill-ring contents (for testing).
-func KillRingText() string {
-	return globalKillRing.text
+// Text returns the current kill-ring contents (for testing).
+func (kr *killRing) Text() string {
+	return kr.text
 }
 
-// KillRingLastWasKill reports whether the previous keypress was a kill
-// (i.e. the accumulation chain is still open) — for testing.
-func KillRingLastWasKill() bool {
-	return globalKillRing.lastWasKill
+// LastWasKill reports whether the previous keypress was a kill (i.e. the
+// accumulation chain is still open) — for testing.
+func (kr *killRing) LastWasKill() bool {
+	return kr.lastWasKill
 }
 
-// ResetKillRing clears the shared kill ring state (text and chain flag).
-func ResetKillRing() {
-	globalKillRing.text = ""
-	globalKillRing.lastWasKill = false
+// Reset clears the kill-ring state (text and chain flag), for testing.
+func (kr *killRing) Reset() {
+	kr.text = ""
+	kr.lastWasKill = false
 }

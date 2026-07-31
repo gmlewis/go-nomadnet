@@ -22,17 +22,17 @@ import (
 	"github.com/rivo/tview"
 )
 
-// setupDialogTest initializes a fresh DialogManager backed by a real
-// tview.Application (no event loop) and a stand-in main primitive, returns
-// the app, the main primitive, and the Pages root. Tests must not run in
-// parallel because they share the package-global dialogManager.
-func setupDialogTest(t *testing.T) (*tview.Application, tview.Primitive, *tview.Pages) {
+// setupDialogTest initializes a fresh, isolated DialogManager (owned by a
+// per-test *App) backed by a real tview.Application (no event loop) and a
+// stand-in main primitive, and returns the app, the main primitive, and the
+// Pages root. Each test gets its own manager, so tests may run in parallel.
+func setupDialogTest(t *testing.T) (*App, tview.Primitive, *tview.Pages) {
 	t.Helper()
-	app := tview.NewApplication()
+	app := newTestApp()
 	main := tview.NewTextView().SetText("main body")
-	pages := InitDialogManager(app, main)
-	app.SetRoot(pages, true)
-	app.SetFocus(main)
+	pages := app.Dialogs.Init(app.Application, main)
+	app.Application.SetRoot(pages, true)
+	app.Application.SetFocus(main)
 	return app, main, pages
 }
 
@@ -40,23 +40,25 @@ func setupDialogTest(t *testing.T) (*tview.Application, tview.Primitive, *tview.
 // dialog keeps the underlying page widget in the tree, and dismissing
 // restores the previous focus.
 func TestDialogOverlayPreservesUnderlying(t *testing.T) {
+	t.Parallel()
 	app, main, pages := setupDialogTest(t)
+	dm := app.Dialogs
 
 	if !pages.HasPage("main") {
 		t.Fatal("main page missing before dialog opened")
 	}
-	if got := app.GetFocus(); got != main {
+	if got := app.Application.GetFocus(); got != main {
 		t.Fatalf("initial focus = %v, want main", got)
 	}
 
-	ShowDialog(app, "Title", tview.NewTextView().SetText("body"), 40, 6, nil)
+	dm.ShowDialog("Title", tview.NewTextView().SetText("body"), 40, 6, nil)
 
 	// Underlying page is still mounted.
 	if !pages.HasPage("main") {
 		t.Error("main page removed after dialog opened; underlying screen must be preserved")
 	}
-	if DialogCount() != 1 {
-		t.Errorf("DialogCount = %d, want 1", DialogCount())
+	if dm.Count() != 1 {
+		t.Errorf("DialogCount = %d, want 1", dm.Count())
 	}
 	// A dialog page was added on top.
 	if pages.GetPageCount() != 2 {
@@ -64,14 +66,14 @@ func TestDialogOverlayPreservesUnderlying(t *testing.T) {
 	}
 
 	// Dismiss and assert focus is restored to the main body.
-	DismissTopDialog()
-	if DialogCount() != 0 {
-		t.Errorf("DialogCount after dismiss = %d, want 0", DialogCount())
+	dm.DismissTop()
+	if dm.Count() != 0 {
+		t.Errorf("DialogCount after dismiss = %d, want 0", dm.Count())
 	}
 	if pages.GetPageCount() != 1 {
 		t.Errorf("page count after dismiss = %d, want 1 (main only)", pages.GetPageCount())
 	}
-	if got := app.GetFocus(); got != main {
+	if got := app.Application.GetFocus(); got != main {
 		t.Errorf("focus after dismiss = %v, want main (restored)", got)
 	}
 }
@@ -80,47 +82,49 @@ func TestDialogOverlayPreservesUnderlying(t *testing.T) {
 // dialogs, Esc dismisses only the top one (focus returns to the lower
 // dialog), and a second Esc restores the original main-body focus.
 func TestDialogStackEscDismissesTop(t *testing.T) {
+	t.Parallel()
 	app, main, pages := setupDialogTest(t)
+	dm := app.Dialogs
 
-	ShowDialog(app, "First", tview.NewTextView().SetText("1"), 30, 5, nil)
-	ShowDialog(app, "Second", tview.NewTextView().SetText("2"), 30, 5, nil)
+	dm.ShowDialog("First", tview.NewTextView().SetText("1"), 30, 5, nil)
+	dm.ShowDialog("Second", tview.NewTextView().SetText("2"), 30, 5, nil)
 
-	if DialogCount() != 2 {
-		t.Fatalf("DialogCount = %d, want 2", DialogCount())
+	if dm.Count() != 2 {
+		t.Fatalf("DialogCount = %d, want 2", dm.Count())
 	}
 	if pages.GetPageCount() != 3 {
 		t.Errorf("page count = %d, want 3 (main + 2 dialogs)", pages.GetPageCount())
 	}
 
 	// Esc on the top dialog: simulate via its InputHandler.
-	top := dialogManager.stack[len(dialogManager.stack)-1].dialog
+	top := dm.stack[len(dm.stack)-1].dialog
 	top.InputHandler()(
 		tcell.NewEventKey(tcell.KeyEscape, 0, tcell.ModNone),
-		func(p tview.Primitive) { app.SetFocus(p) },
+		func(p tview.Primitive) { app.Application.SetFocus(p) },
 	)
 
-	if DialogCount() != 1 {
-		t.Errorf("after first Esc: DialogCount = %d, want 1 (lower dialog remains)", DialogCount())
+	if dm.Count() != 1 {
+		t.Errorf("after first Esc: DialogCount = %d, want 1 (lower dialog remains)", dm.Count())
 	}
 	if pages.GetPageCount() != 2 {
 		t.Errorf("after first Esc: page count = %d, want 2", pages.GetPageCount())
 	}
 	// Focus should now be on the remaining (first) dialog.
-	if got := app.GetFocus(); got != dialogManager.stack[0].dialog {
+	if got := app.Application.GetFocus(); got != dm.stack[0].dialog {
 		t.Errorf("after first Esc: focus = %v, want remaining dialog", got)
 	}
 
 	// Esc again dismisses the remaining dialog and restores main-body focus.
-	remaining := dialogManager.stack[len(dialogManager.stack)-1].dialog
+	remaining := dm.stack[len(dm.stack)-1].dialog
 	remaining.InputHandler()(
 		tcell.NewEventKey(tcell.KeyEscape, 0, tcell.ModNone),
-		func(p tview.Primitive) { app.SetFocus(p) },
+		func(p tview.Primitive) { app.Application.SetFocus(p) },
 	)
 
-	if DialogCount() != 0 {
-		t.Errorf("after second Esc: DialogCount = %d, want 0", DialogCount())
+	if dm.Count() != 0 {
+		t.Errorf("after second Esc: DialogCount = %d, want 0", dm.Count())
 	}
-	if got := app.GetFocus(); got != main {
+	if got := app.Application.GetFocus(); got != main {
 		t.Errorf("after second Esc: focus = %v, want main (restored)", got)
 	}
 }
@@ -128,31 +132,35 @@ func TestDialogStackEscDismissesTop(t *testing.T) {
 // TestDialogOnDismissInvoked asserts the user onDismiss callback fires when a
 // dialog is dismissed, and that Confirm/Cancel buttons dismiss via the stack.
 func TestDialogOnDismissInvoked(t *testing.T) {
+	t.Parallel()
 	app, _, _ := setupDialogTest(t)
+	dm := app.Dialogs
 
 	dismissed := false
-	ShowDialog(app, "X", tview.NewTextView().SetText("x"), 20, 5, func() {
+	dm.ShowDialog("X", tview.NewTextView().SetText("x"), 20, 5, func() {
 		dismissed = true
 	})
-	DismissTopDialog()
+	dm.DismissTop()
 	if !dismissed {
 		t.Error("user onDismiss callback was not invoked on dismiss")
 	}
 }
 
-// TestDialogOpenFlag checks the DialogOpen convenience predicate.
+// TestDialogOpenFlag checks the Open convenience predicate.
 func TestDialogOpenFlag(t *testing.T) {
+	t.Parallel()
 	app, _, _ := setupDialogTest(t)
+	dm := app.Dialogs
 
-	if DialogOpen() {
-		t.Error("DialogOpen = true before any dialog opened")
+	if dm.Open() {
+		t.Error("Open = true before any dialog opened")
 	}
-	ShowDialog(app, "X", tview.NewTextView().SetText("x"), 20, 5, nil)
-	if !DialogOpen() {
-		t.Error("DialogOpen = false after opening a dialog")
+	dm.ShowDialog("X", tview.NewTextView().SetText("x"), 20, 5, nil)
+	if !dm.Open() {
+		t.Error("Open = false after opening a dialog")
 	}
-	DismissTopDialog()
-	if DialogOpen() {
-		t.Error("DialogOpen = true after dismissing all dialogs")
+	dm.DismissTop()
+	if dm.Open() {
+		t.Error("Open = true after dismissing all dialogs")
 	}
 }

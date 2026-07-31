@@ -17,8 +17,6 @@ package tui
 
 import (
 	"testing"
-
-	"github.com/rivo/tview"
 )
 
 func TestHandleLinkAnchor(t *testing.T) {
@@ -118,7 +116,7 @@ func TestParseMicronColorsHex6(t *testing.T) {
 func TestBrowserDisplayCurrentURL(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	bd := NewBrowserDisplay(app)
 
 	if bd.CurrentURL() != "" {
@@ -134,7 +132,7 @@ func TestBrowserDisplayCurrentURL(t *testing.T) {
 func TestBrowserDisplayBackForward(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	bd := NewBrowserDisplay(app)
 
 	bd.LoadURL("page1")
@@ -166,7 +164,7 @@ func TestBrowserDisplayBackForward(t *testing.T) {
 func TestBrowserDisplayReload(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	bd := NewBrowserDisplay(app)
 
 	bd.LoadURL("test://page")

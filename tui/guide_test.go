@@ -24,7 +24,7 @@ import (
 func TestNewGuideDisplay(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	gd := NewGuideDisplay(app)
 
 	if gd == nil {
@@ -38,7 +38,7 @@ func TestNewGuideDisplay(t *testing.T) {
 func TestGuideDisplayWidgetType(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	gd := NewGuideDisplay(app)
 
 	_, ok := gd.Widget().(*tview.Flex)
@@ -65,7 +65,7 @@ func TestGuideContent(t *testing.T) {
 func TestNewInterfacesDisplay(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	id := NewInterfacesDisplay(app, nil)
 
 	if id == nil {
@@ -79,7 +79,7 @@ func TestNewInterfacesDisplay(t *testing.T) {
 func TestInterfacesDisplayWithInterfaces(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	interfaces := []InterfaceInfo{
 		{Name: "TCP", Type: "TCPClientInterface", Status: "connected", Target: "192.168.1.1:4173"},
 		{Name: "LoRa", Type: "RNodeInterface", Status: "disconnected", Target: "/dev/ttyUSB0"},

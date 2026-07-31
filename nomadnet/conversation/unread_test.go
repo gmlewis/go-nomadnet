@@ -84,7 +84,8 @@ func TestMarkConversationRead(t *testing.T) {
 	t.Parallel()
 	base := tempDir(t)
 	conv := mkConv(t, base, "abcd", true, true)
-	MarkConversationRead("abcd", base)
+	cache := NewConversationCache()
+	cache.MarkRead("abcd", base)
 	if fileExists(filepath.Join(conv, "unread")) {
 		t.Fatal("unread file should be removed")
 	}
@@ -92,12 +93,12 @@ func TestMarkConversationRead(t *testing.T) {
 		t.Fatal("failed file should be removed")
 	}
 	// idempotent: marking a clean conversation read is a no-op
-	MarkConversationRead("abcd", base)
+	cache.MarkRead("abcd", base)
 	// in-memory maps should be cleared
-	if IsUnreadCached("abcd") {
-		t.Fatal("unreadConversations should not contain abcd")
+	if cache.IsUnread("abcd") {
+		t.Fatal("unread cache should not contain abcd")
 	}
-	if IsFailedCached("abcd") {
-		t.Fatal("failedConversations should not contain abcd")
+	if cache.IsFailed("abcd") {
+		t.Fatal("failed cache should not contain abcd")
 	}
 }

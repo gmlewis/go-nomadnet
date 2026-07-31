@@ -366,37 +366,44 @@ func DetectColorMode() int {
 	return ColorModeTrue
 }
 
-// registeredStyles is the name -> tcell.Style registry populated by
-// RegisterThemeStyles, mirroring urwid's named palette. Widgets look up
-// styles via Style.
-var (
-	registeredStylesMu sync.RWMutex
-	registeredStyles   = map[string]tcell.Style{}
-)
+// StyleRegistry is the name -> tcell.Style registry mirroring urwid's named
+// palette. It is owned by App (App.Styles) and populated by Register; widgets
+// look up styles via Style. Holding the registry on App (rather than a
+// package global) keeps the mutable registry off the package level so
+// parallel tests can each use an isolated instance.
+type StyleRegistry struct {
+	mu     sync.RWMutex
+	styles map[string]tcell.Style
+}
 
-// RegisterThemeStyles resolves every named palette entry for the given theme
-// at the given color depth and records it in the style registry. If
-// colorMode is non-positive, the depth is auto-detected from the terminal
-// via tcell (DetectColorMode). This replaces the prior no-op stub.
-func RegisterThemeStyles(theme, colorMode int) {
+// newStyleRegistry returns an empty StyleRegistry.
+func newStyleRegistry() *StyleRegistry {
+	return &StyleRegistry{styles: map[string]tcell.Style{}}
+}
+
+// Register resolves every named palette entry for the given theme at the
+// given color depth and records it in the registry. If colorMode is
+// non-positive, the depth is auto-detected from the terminal via tcell
+// (DetectColorMode).
+func (r *StyleRegistry) Register(theme, colorMode int) {
 	if colorMode <= 0 {
 		colorMode = DetectColorMode()
 	}
 	pal := paletteFor(theme)
-	registeredStylesMu.Lock()
-	defer registeredStylesMu.Unlock()
-	registeredStyles = make(map[string]tcell.Style, len(pal))
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.styles = make(map[string]tcell.Style, len(pal))
 	for name, e := range pal {
-		registeredStyles[name] = resolveTcellStyle(e, colorMode)
+		r.styles[name] = resolveTcellStyle(e, colorMode)
 	}
 }
 
 // Style returns the registered tcell.Style for a named style, or
 // tcell.StyleDefault if the name is unknown.
-func Style(name string) tcell.Style {
-	registeredStylesMu.RLock()
-	defer registeredStylesMu.RUnlock()
-	if s, ok := registeredStyles[name]; ok {
+func (r *StyleRegistry) Style(name string) tcell.Style {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if s, ok := r.styles[name]; ok {
 		return s
 	}
 	return tcell.StyleDefault

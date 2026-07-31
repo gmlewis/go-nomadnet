@@ -42,7 +42,7 @@ type ConversationInfo struct {
 // ConversationsDisplay shows the conversation list and message view.
 // Matches Python's ConversationsDisplay with Trusted/Untrusted tabs.
 type ConversationsDisplay struct {
-	app            *tview.Application
+	app            *App
 	widget         *tview.Flex
 	list           *tview.List
 	detail         *tview.TextView
@@ -66,7 +66,7 @@ type ConversationsDisplay struct {
 }
 
 // NewConversationsDisplay creates a new conversations display.
-func NewConversationsDisplay(app *tview.Application, convs []ConversationInfo) *ConversationsDisplay {
+func NewConversationsDisplay(app *App, convs []ConversationInfo) *ConversationsDisplay {
 	cd := &ConversationsDisplay{
 		app:           app,
 		conversations: convs,
@@ -495,7 +495,7 @@ func (cd *ConversationsDisplay) DismissSyncDialog() {
 // Matches Python's ingest_lxm_uri() at Conversations.py:1118.
 func (cd *ConversationsDisplay) IngestURIDialog(onSubmit func(uri string)) {
 	cd.dialogOpen = true
-	ShowInputDialog(cd.app, "Ingest LXM URI", "URI : ", "",
+	cd.app.Dialogs.ShowInputDialog("Ingest LXM URI", "URI : ", "",
 		func(uri string) {
 			cd.dialogOpen = false
 			if onSubmit != nil {
@@ -534,7 +534,7 @@ func (cd *ConversationsDisplay) ShowIngestResult(result IngestResult) {
 			SetText(msg), 3, 0, false).
 		AddItem(buttons, 1, 0, false)
 
-	ShowDialog(cd.app, "Ingest message URI", layout, 50, 6, func() {
+	cd.app.Dialogs.ShowDialog("Ingest message URI", layout, 50, 6, func() {
 		cd.dialogOpen = false
 	})
 }
@@ -591,7 +591,7 @@ func (cd *ConversationsDisplay) PaperMessageDialog(
 			SetText("Select the desired paper message output method."), 2, 0, false).
 		AddItem(buttons, 1, 0, false)
 
-	ShowDialog(cd.app, "Create Paper Message", layout, 60, 5, func() {
+	cd.app.Dialogs.ShowDialog("Create Paper Message", layout, 60, 5, func() {
 		cd.dialogOpen = false
 	})
 }
@@ -614,7 +614,7 @@ func (cd *ConversationsDisplay) PaperMessageFailed() {
 			SetText("Could not output paper message,\ncheck your settings. See the log\nfile for any error messages."), 4, 0, false).
 		AddItem(buttons, 1, 0, false)
 
-	ShowDialog(cd.app, "!", layout, 40, 6, func() {
+	cd.app.Dialogs.ShowDialog("!", layout, 40, 6, func() {
 		cd.dialogOpen = false
 	})
 }
@@ -623,7 +623,7 @@ func (cd *ConversationsDisplay) PaperMessageFailed() {
 // Matches Python's attach_file() at Conversations.py:2438.
 func (cd *ConversationsDisplay) AttachFileDialog(directory string, onSelect func(path string)) {
 	cd.dialogOpen = true
-	ShowInputDialog(cd.app, "Attach File", "Path:", directory,
+	cd.app.Dialogs.ShowInputDialog("Attach File", "Path:", directory,
 		func(path string) {
 			cd.dialogOpen = false
 			if onSelect != nil {
@@ -679,7 +679,7 @@ func (cd *ConversationsDisplay) SaveAttachmentsDialog(attachments []string, onSa
 		AddItem(list, 0, 1, true).
 		AddItem(buttons, 1, 0, false)
 
-	ShowDialog(cd.app, "Attachments", layout, 50, 12, func() {
+	cd.app.Dialogs.ShowDialog("Attachments", layout, 50, 12, func() {
 		cd.dialogOpen = false
 	})
 }
@@ -778,7 +778,7 @@ func (cd *ConversationsDisplay) ShowPeerInfoDialog(entry PeerInfoEntry, onSave f
 		AddItem(notesInput, 1, 0, false).
 		AddItem(buttons, 1, 0, false)
 
-	ShowDialog(cd.app, "Peer Info", layout, 50, 14, func() {
+	cd.app.Dialogs.ShowDialog("Peer Info", layout, 50, 14, func() {
 		cd.dialogOpen = false
 	})
 }
@@ -886,7 +886,7 @@ func (cd *ConversationsDisplay) ShowSyncDialog(
 		AddItem(tview.NewTextView().SetText(""), 1, 0, false).
 		AddItem(buttons, 1, 0, false)
 
-	ShowDialog(cd.app, "Sync", layout, 50, 10, func() {
+	cd.app.Dialogs.ShowDialog("Sync", layout, 50, 10, func() {
 		cd.dialogOpen = false
 		if onSync != nil {
 			onSync(SyncDialogResult{Action: "dismiss"})

@@ -22,23 +22,23 @@ import (
 
 // ComposeDisplay provides a message compose area.
 type ComposeDisplay struct {
-	app    *tview.Application
+	app    *App
 	widget tview.Primitive
 	editor *ReadlineEdit
 	title  *ReadlineEdit
 }
 
 // NewComposeDisplay creates a new compose display.
-func NewComposeDisplay(app *tview.Application) *ComposeDisplay {
+func NewComposeDisplay(app *App) *ComposeDisplay {
 	cd := &ComposeDisplay{app: app}
 
 	// Title field
-	cd.title = NewReadlineEdit("To: ", "recipient")
+	cd.title = NewReadlineEdit(app.killRing, "To: ", "recipient")
 	cd.title.SetFieldBackgroundColor(tcell.NewHexColor(0x222222))
 	cd.title.SetFieldTextColor(tcell.NewHexColor(0xdddddd))
 
 	// Message editor
-	cd.editor = NewReadlineEdit("", "Type your message...")
+	cd.editor = NewReadlineEdit(app.killRing, "", "Type your message...")
 	cd.editor.SetFieldBackgroundColor(tcell.NewHexColor(0x222222))
 	cd.editor.SetFieldTextColor(tcell.NewHexColor(0xdddddd))
 

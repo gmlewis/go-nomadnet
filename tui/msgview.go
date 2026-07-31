@@ -36,13 +36,13 @@ type MessageInfo struct {
 
 // MessageViewDisplay renders messages with Micron markup.
 type MessageViewDisplay struct {
-	app    *tview.Application
+	app    *App
 	widget tview.Primitive
 	view   *tview.TextView
 }
 
 // NewMessageViewDisplay creates a new message view display.
-func NewMessageViewDisplay(app *tview.Application) *MessageViewDisplay {
+func NewMessageViewDisplay(app *App) *MessageViewDisplay {
 	mvd := &MessageViewDisplay{app: app}
 
 	title := tview.NewTextView().

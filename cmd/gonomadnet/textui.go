@@ -97,7 +97,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) {
 	main := tuiApp.Main
 
 	// Network display — use real announces from the app
-	networkDisplay := tui.NewNetworkDisplay(tuiApp.Application, nil, nil)
+	networkDisplay := tui.NewNetworkDisplay(tuiApp, nil, nil)
 	// Wire up real announce data via callback
 	a.SetUIChangeCallback(func() {
 		anns := a.GetAnnounces()
@@ -129,8 +129,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) {
 
 	// Wire network keyboard shortcuts
 	networkDisplay.OnDeleteSelected = func() {
-		tui.ShowConfirmDialog(tuiApp.Application,
-			"Delete selected entry?",
+		tuiApp.Dialogs.ShowConfirmDialog("Delete selected entry?",
 			func() {
 				// TODO: Delete selected announce/node
 			},
@@ -138,7 +137,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) {
 		)
 	}
 	networkDisplay.OnShowPeers = func() {
-		tui.ShowDialog(tuiApp.Application, "LXMF Peers",
+		tuiApp.Dialogs.ShowDialog("LXMF Peers",
 			tview.NewTextView().
 				SetDynamicColors(true).
 				SetTextAlign(tview.AlignCenter).
@@ -146,7 +145,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) {
 			50, 10, nil)
 	}
 	networkDisplay.OnURLDialog = func() {
-		tui.ShowInputDialog(tuiApp.Application, "Navigate",
+		tuiApp.Dialogs.ShowInputDialog("Navigate",
 			"Enter URL:", "",
 			func(text string) {
 				if text != "" {
@@ -157,8 +156,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) {
 		)
 	}
 	networkDisplay.OnSaveNode = func() {
-		tui.ShowConfirmDialog(tuiApp.Application,
-			"Save selected node?",
+		tuiApp.Dialogs.ShowConfirmDialog("Save selected node?",
 			func() {
 				// TODO: Save node to directory
 			},
@@ -193,7 +191,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) {
 			Unread:      c.Unread,
 		}
 	}
-	conversationsDisplay := tui.NewConversationsDisplay(tuiApp.Application, tuiConvs)
+	conversationsDisplay := tui.NewConversationsDisplay(tuiApp, tuiConvs)
 	main.SetDisplay("conversations", conversationsDisplay.Widget())
 	main.SetShortcut("conversations", "[C-e] Peer Info  [C-x] Delete  [C-r] Sync  [C-n] New  [C-u] Ingest URI  [C-o] Sort  [C-p] My LXMF  [C-g] Fullscreen")
 
@@ -238,8 +236,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) {
 			return
 		}
 		conv := tuiConvs[idx]
-		tui.ShowConfirmDialog(tuiApp.Application,
-			"Delete conversation with "+conv.DisplayName+"?",
+		tuiApp.Dialogs.ShowConfirmDialog("Delete conversation with "+conv.DisplayName+"?",
 			func() {
 				// TODO: Call a.DeleteConversation(conv.SourceHash) when app method exists
 				_ = a
@@ -250,7 +247,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) {
 		)
 	}
 	conversationsDisplay.OnNewConv = func() {
-		tui.ShowInputDialog(tuiApp.Application, "New Conversation",
+		tuiApp.Dialogs.ShowInputDialog("New Conversation",
 			"Address (hex hash):", "",
 			func(text string) {
 				if text == "" {
@@ -267,7 +264,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) {
 		conversationsDisplay.ToggleSort()
 	}
 	conversationsDisplay.OnShowQR = func() {
-		tui.ShowDialog(tuiApp.Application, "LXMF Address",
+		tuiApp.Dialogs.ShowDialog("LXMF Address",
 			tview.NewTextView().
 				SetDynamicColors(true).
 				SetTextAlign(tview.AlignCenter).
@@ -279,7 +276,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) {
 		if !ok {
 			return
 		}
-		tui.ShowInputDialog(tuiApp.Application, "Peer Info",
+		tuiApp.Dialogs.ShowInputDialog("Peer Info",
 			"Display name:", conv.DisplayName,
 			func(text string) {
 				_ = text
@@ -289,7 +286,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) {
 		)
 	}
 	conversationsDisplay.OnIngestURI = func() {
-		tui.ShowInputDialog(tuiApp.Application, "Ingest LXM URI",
+		tuiApp.Dialogs.ShowInputDialog("Ingest LXM URI",
 			"URI:", "",
 			func(text string) {
 				if text == "" {
@@ -302,7 +299,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) {
 		)
 	}
 	conversationsDisplay.OnSync = func() {
-		tui.ShowDialog(tuiApp.Application, "Sync",
+		tuiApp.Dialogs.ShowDialog("Sync",
 			tview.NewTextView().
 				SetDynamicColors(true).
 				SetText("[gray]Syncing conversations...[-]"),
@@ -312,8 +309,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) {
 
 	// Block/Unblock peer callbacks — used in conversation context
 	blockPeer := func(sourceHash string) {
-		tui.ShowConfirmDialog(tuiApp.Application,
-			"Block this peer?\nThis will blackhole their identity and delete this conversation.",
+		tuiApp.Dialogs.ShowConfirmDialog("Block this peer?\nThis will blackhole their identity and delete this conversation.",
 			func() {
 				// TODO: Block peer via app when method exists
 				_ = sourceHash
@@ -322,8 +318,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) {
 		)
 	}
 	unblockPeer := func(sourceHash string) {
-		tui.ShowConfirmDialog(tuiApp.Application,
-			"Unblock this peer?\nThis lifts the blackhole and removes them from your ignored list.",
+		tuiApp.Dialogs.ShowConfirmDialog("Unblock this peer?\nThis lifts the blackhole and removes them from your ignored list.",
 			func() {
 				// TODO: Unblock peer via app when method exists
 				_ = sourceHash
@@ -332,7 +327,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) {
 		)
 	}
 	pingPeer := func(sourceHash string) {
-		tui.ShowDialog(tuiApp.Application, "Ping",
+		tuiApp.Dialogs.ShowDialog("Ping",
 			tview.NewTextView().
 				SetDynamicColors(true).
 				SetText(fmt.Sprintf("[gray]Pinging %s...[-]", sourceHash[:8])),
@@ -344,13 +339,13 @@ func wireDisplays(tuiApp *tui.App, a *app.App) {
 	_ = pingPeer
 
 	// Channels display
-	channelsDisplay := tui.NewChannelsDisplay(tuiApp.Application, nil)
+	channelsDisplay := tui.NewChannelsDisplay(tuiApp, nil)
 	main.SetDisplay("channels", channelsDisplay.Widget())
 	main.SetShortcut("channels", "[C-n] New Hub  [C-a] Add Room  [C-r] Connect  [C-w] Disconnect  [C-t] Auto-reconnect  [C-e] Edit Hub  [C-x] Remove")
 
 	// Wire channel keyboard shortcuts
 	channelsDisplay.OnNewHub = func() {
-		tui.ShowInputDialog(tuiApp.Application, "New Hub",
+		tuiApp.Dialogs.ShowInputDialog("New Hub",
 			"Hub address (hex hash):", "",
 			func(text string) {
 				if text == "" {
@@ -366,7 +361,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) {
 		)
 	}
 	channelsDisplay.OnJoinRoom = func() {
-		tui.ShowInputDialog(tuiApp.Application, "Join Room",
+		tuiApp.Dialogs.ShowInputDialog("Join Room",
 			"Room name:", "",
 			func(text string) {
 				if text == "" {
@@ -379,8 +374,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) {
 		)
 	}
 	channelsDisplay.OnRemoveHub = func() {
-		tui.ShowConfirmDialog(tuiApp.Application,
-			"Remove selected hub/room?",
+		tuiApp.Dialogs.ShowConfirmDialog("Remove selected hub/room?",
 			func() {
 				// TODO: Remove hub/room via RRC hub
 			},
@@ -388,7 +382,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) {
 		)
 	}
 	channelsDisplay.OnEditHub = func() {
-		tui.ShowInputDialog(tuiApp.Application, "Edit Hub",
+		tuiApp.Dialogs.ShowInputDialog("Edit Hub",
 			"Display name:", "",
 			func(text string) {
 				if text == "" {
@@ -401,7 +395,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) {
 		)
 	}
 	channelsDisplay.OnConnect = func() {
-		tui.ShowDialog(tuiApp.Application, "Connect",
+		tuiApp.Dialogs.ShowDialog("Connect",
 			tview.NewTextView().
 				SetDynamicColors(true).
 				SetText("[gray]Connecting to hub...[-]"),
@@ -409,7 +403,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) {
 		// TODO: Connect to hub via RRC
 	}
 	channelsDisplay.OnDisconnect = func() {
-		tui.ShowDialog(tuiApp.Application, "Disconnect",
+		tuiApp.Dialogs.ShowDialog("Disconnect",
 			tview.NewTextView().
 				SetDynamicColors(true).
 				SetText("[gray]Disconnected from hub.[-]"),
@@ -425,7 +419,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) {
 	if configPath == "" {
 		configPath = filepath.Join(a.ConfigDir, "config")
 	}
-	configDisplay := tui.NewConfigDisplay(tuiApp.Application, configPath)
+	configDisplay := tui.NewConfigDisplay(tuiApp, configPath)
 	main.SetDisplay("config", configDisplay.Widget())
 	main.SetShortcut("config", "")
 
@@ -434,12 +428,12 @@ func wireDisplays(tuiApp *tui.App, a *app.App) {
 	if logPath == "" {
 		logPath = filepath.Join(a.ConfigDir, "logfile")
 	}
-	logDisplay := tui.NewLogDisplay(tuiApp.Application, logPath, 50)
+	logDisplay := tui.NewLogDisplay(tuiApp, logPath, 50)
 	main.SetDisplay("log", logDisplay.Widget())
 	main.SetShortcut("log", "")
 
 	// Guide display
-	guideDisplay := tui.NewGuideDisplay(tuiApp.Application)
+	guideDisplay := tui.NewGuideDisplay(tuiApp)
 	main.SetDisplay("guide", guideDisplay.Widget())
 	main.SetShortcut("guide", "")
 
@@ -447,13 +441,13 @@ func wireDisplays(tuiApp *tui.App, a *app.App) {
 	interfaces := []tui.InterfaceInfo{
 		{Name: "Michmesh Testnet", Type: "TCPClientInterface", Status: "connected", Target: "RNS.MichMesh.net:7822"},
 	}
-	interfacesDisplay := tui.NewInterfacesDisplay(tuiApp.Application, interfaces)
+	interfacesDisplay := tui.NewInterfacesDisplay(tuiApp, interfaces)
 	main.SetDisplay("interfaces", interfacesDisplay.Widget())
 	main.SetShortcut("interfaces", "[C-a] Add  [C-e] Edit  [C-x] Remove  [C-w] Config Editor")
 
 	// Wire interfaces keyboard shortcuts
 	interfacesDisplay.OnAddInterface = func() {
-		tui.ShowInputDialog(tuiApp.Application, "Add Interface",
+		tuiApp.Dialogs.ShowInputDialog("Add Interface",
 			"Interface type:", "",
 			func(text string) {
 				_ = text
@@ -463,7 +457,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) {
 		)
 	}
 	interfacesDisplay.OnConfigEditor = func() {
-		tui.ShowDialog(tuiApp.Application, "Config Editor",
+		tuiApp.Dialogs.ShowDialog("Config Editor",
 			tview.NewTextView().
 				SetDynamicColors(true).
 				SetText(fmt.Sprintf("[gray]Config file: %s[-]\n\n[gray]Edit this file with your text editor.[-]", configPath)),
@@ -471,7 +465,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) {
 	}
 
 	// Browser display (hidden by default, shown when navigating from network)
-	browserDisplay := tui.NewBrowserDisplay(tuiApp.Application)
+	browserDisplay := tui.NewBrowserDisplay(tuiApp)
 	main.SetDisplay("browser", browserDisplay.Widget())
 	main.SetShortcut("browser", "[C-d] Back  [C-f] Forward  [C-r] Reload  [C-u] URL  [C-s] Save  [C-y] Copy URL  [C-g] Fullscreen")
 
@@ -486,7 +480,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) {
 		}
 	}
 	browserDisplay.OnURLDialog = func() {
-		tui.ShowInputDialog(tuiApp.Application, "Navigate",
+		tuiApp.Dialogs.ShowInputDialog("Navigate",
 			"Enter URL:", "",
 			func(text string) {
 				if text != "" {
@@ -497,8 +491,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) {
 		)
 	}
 	browserDisplay.OnSaveNode = func() {
-		tui.ShowConfirmDialog(tuiApp.Application,
-			"Save connected node to directory?",
+		tuiApp.Dialogs.ShowConfirmDialog("Save connected node to directory?",
 			func() { /* TODO */ },
 			func() {},
 		)

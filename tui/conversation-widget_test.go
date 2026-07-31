@@ -20,13 +20,12 @@ import (
 	"time"
 
 	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 )
 
 func TestNewConversationWidget(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	cw := NewConversationWidget(app, "aabb1122")
 	if cw == nil {
 		t.Fatal("NewConversationWidget returned nil")
@@ -39,7 +38,7 @@ func TestNewConversationWidget(t *testing.T) {
 func TestConversationWidgetEmptySource(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	cw := NewConversationWidget(app, "")
 	if cw == nil {
 		t.Fatal("NewConversationWidget returned nil")
@@ -49,7 +48,7 @@ func TestConversationWidgetEmptySource(t *testing.T) {
 func TestConversationWidgetSetMessages(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	cw := NewConversationWidget(app, "aabb1122")
 
 	now := time.Now()
@@ -68,7 +67,7 @@ func TestConversationWidgetSetMessages(t *testing.T) {
 func TestConversationWidgetClearEditor(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	cw := NewConversationWidget(app, "aabb1122")
 	cw.ClearEditor()
 	if cw.editor.GetText() != "" {
@@ -79,7 +78,7 @@ func TestConversationWidgetClearEditor(t *testing.T) {
 func TestConversationWidgetSendMessage(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	cw := NewConversationWidget(app, "aabb1122")
 
 	var sentContent string
@@ -101,7 +100,7 @@ func TestConversationWidgetSendMessage(t *testing.T) {
 func TestConversationWidgetSendMessageEmpty(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	cw := NewConversationWidget(app, "aabb1122")
 
 	sent := false
@@ -116,7 +115,7 @@ func TestConversationWidgetSendMessageEmpty(t *testing.T) {
 func TestConversationWidgetKeyboardShortcuts(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	cw := NewConversationWidget(app, "aabb1122")
 
 	var fired []string
@@ -161,7 +160,7 @@ func TestConversationWidgetKeyboardShortcuts(t *testing.T) {
 func TestConversationWidgetToggleEditor(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	cw := NewConversationWidget(app, "aabb1122")
 
 	if cw.fullEditorActive {
@@ -182,7 +181,7 @@ func TestConversationWidgetToggleEditor(t *testing.T) {
 func TestConversationWidgetRenderMessages(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	cw := NewConversationWidget(app, "aabb1122")
 
 	cw.SetMessages(nil)
@@ -205,7 +204,7 @@ func TestConversationWidgetRenderMessages(t *testing.T) {
 func TestConversationWidgetClearHistoryDialogConfirm(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	cw := NewConversationWidget(app, "aabb1122")
 
 	now := time.Now()
@@ -233,7 +232,7 @@ func TestConversationWidgetClearHistoryDialogConfirm(t *testing.T) {
 func TestConversationWidgetClearHistoryDialogDismiss(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	cw := NewConversationWidget(app, "aabb1122")
 
 	cw.ClearHistoryDialog()
@@ -250,7 +249,7 @@ func TestConversationWidgetClearHistoryDialogDismiss(t *testing.T) {
 func TestConversationWidgetPaperMessageDialog(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	cw := NewConversationWidget(app, "aabb1122")
 
 	cw.PaperMessageDialog()
@@ -275,7 +274,7 @@ func TestConversationWidgetPaperMessageDialogActions(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			app := tview.NewApplication()
+			app := newTestApp()
 			cw := NewConversationWidget(app, "aabb1122")
 
 			var actionFired string
@@ -297,7 +296,7 @@ func TestConversationWidgetPaperMessageDialogActions(t *testing.T) {
 func TestConversationWidgetPaperMessageDialogCancel(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	cw := NewConversationWidget(app, "aabb1122")
 
 	cw.PaperMessageDialog()
@@ -311,7 +310,7 @@ func TestConversationWidgetPaperMessageDialogCancel(t *testing.T) {
 func TestConversationWidgetSaveAttachmentsNoAttachments(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	cw := NewConversationWidget(app, "aabb1122")
 
 	cw.SaveAttachmentsDialog([]AttachmentRef{})
@@ -323,7 +322,7 @@ func TestConversationWidgetSaveAttachmentsNoAttachments(t *testing.T) {
 func TestConversationWidgetSaveAttachmentsWithItems(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	cw := NewConversationWidget(app, "aabb1122")
 
 	attachments := []AttachmentRef{
@@ -351,7 +350,7 @@ func TestConversationWidgetSaveAttachmentsWithItems(t *testing.T) {
 func TestConversationWidgetDismissSaveAttachments(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	cw := NewConversationWidget(app, "aabb1122")
 
 	cw.SaveAttachmentsDialog([]AttachmentRef{{Name: "file.txt", Type: "file"}})

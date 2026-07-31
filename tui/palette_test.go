@@ -229,7 +229,9 @@ func TestResolveStyleDepthSelection(t *testing.T) {
 }
 
 func TestRegisterThemeStylesTrueColor(t *testing.T) {
-	RegisterThemeStyles(ThemeDark, ColorModeTrue)
+	t.Parallel()
+	r := newStyleRegistry()
+	r.Register(ThemeDark, ColorModeTrue)
 
 	cases := []struct {
 		name      string
@@ -246,7 +248,7 @@ func TestRegisterThemeStylesTrueColor(t *testing.T) {
 		{"irc_mention", tcell.NewHexColor(0xffbb44), tcell.ColorDefault, tcell.AttrBold, true},
 	}
 	for _, c := range cases {
-		fg, bg, attr := Style(c.name).Decompose()
+		fg, bg, attr := r.Style(c.name).Decompose()
 		if fg != c.wantFG {
 			t.Errorf("Style(%q) fg = %v, want %v", c.name, fg, c.wantFG)
 		}
@@ -260,9 +262,11 @@ func TestRegisterThemeStylesTrueColor(t *testing.T) {
 }
 
 func TestRegisterThemeStyles16Color(t *testing.T) {
-	RegisterThemeStyles(ThemeDark, ColorMode16)
+	t.Parallel()
+	r := newStyleRegistry()
+	r.Register(ThemeDark, ColorMode16)
 
-	fg, bg, _ := Style("menubar").Decompose()
+	fg, bg, _ := r.Style("menubar").Decompose()
 	if fg != tcell.ColorBlack {
 		t.Errorf("16-color menubar fg = %v, want ColorBlack", fg)
 	}
@@ -270,20 +274,22 @@ func TestRegisterThemeStyles16Color(t *testing.T) {
 		t.Errorf("16-color menubar bg = %v, want ColorSilver (light gray)", bg)
 	}
 	// list_off_focus 16-color background is "dark gray" -> tcell.ColorGray.
-	if _, got, _ := Style("list_off_focus").Decompose(); got != tcell.ColorGray {
+	if _, got, _ := r.Style("list_off_focus").Decompose(); got != tcell.ColorGray {
 		t.Errorf("16-color list_off_focus bg = %v, want ColorGray (dark gray)", got)
 	}
 }
 
 func TestRegisterThemeStylesMono(t *testing.T) {
-	RegisterThemeStyles(ThemeDark, ColorModeMono)
+	t.Parallel()
+	r := newStyleRegistry()
+	r.Register(ThemeDark, ColorModeMono)
 
 	// "standout" (menubar mono) maps to reverse video.
-	if _, _, attr := Style("menubar").Decompose(); attr&tcell.AttrReverse == 0 {
+	if _, _, attr := r.Style("menubar").Decompose(); attr&tcell.AttrReverse == 0 {
 		t.Errorf("mono menubar attrs = %v, want AttrReverse set", attr)
 	}
 	// "default" (body_text mono) carries no attribute.
-	if _, _, attr := Style("body_text").Decompose(); attr != 0 {
+	if _, _, attr := r.Style("body_text").Decompose(); attr != 0 {
 		t.Errorf("mono body_text attrs = %v, want 0", attr)
 	}
 }

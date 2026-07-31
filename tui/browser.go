@@ -25,7 +25,7 @@ import (
 
 // BrowserDisplay provides URL-based page browsing.
 type BrowserDisplay struct {
-	app     *tview.Application
+	app     *App
 	widget  tview.Primitive
 	layout  *tview.Flex
 	urlBar  *ReadlineEdit
@@ -51,7 +51,7 @@ type BrowserDisplay struct {
 }
 
 // NewBrowserDisplay creates a new browser display.
-func NewBrowserDisplay(app *tview.Application) *BrowserDisplay {
+func NewBrowserDisplay(app *App) *BrowserDisplay {
 	bd := &BrowserDisplay{app: app}
 
 	// Title
@@ -62,7 +62,7 @@ func NewBrowserDisplay(app *tview.Application) *BrowserDisplay {
 		SetText("[::b]Browser[-]")
 
 	// URL bar
-	bd.urlBar = NewReadlineEdit("URL: ", "Enter RNS address or lxmf:// URI")
+	bd.urlBar = NewReadlineEdit(app.killRing, "URL: ", "Enter RNS address or lxmf:// URI")
 	bd.urlBar.SetFieldBackgroundColor(tcell.NewHexColor(0x222222))
 	bd.urlBar.SetFieldTextColor(tcell.NewHexColor(0xdddddd))
 
@@ -217,36 +217,6 @@ func (bd *BrowserDisplay) CurrentURL() string {
 // SetContent replaces the browser content area text.
 func (bd *BrowserDisplay) SetContent(text string) {
 	bd.content.SetText(text)
-}
-
-// PageCache stores cached Micron pages by URL.
-var PageCache = make(map[string][]byte)
-
-// CachePage stores page data in the in-memory cache.
-// Matches Python's Browser.cache_page at Browser.py:1615.
-func CachePage(url string, data []byte) {
-	PageCache[url] = data
-}
-
-// GetCached retrieves page data from cache, or nil if not cached.
-// Matches Python's Browser.get_cached at Browser.py:1564.
-func GetCached(url string) []byte {
-	return PageCache[url]
-}
-
-// CleanCache removes pages older than maxAge from the cache.
-// Matches Python's Browser.clean_cache at Browser.py:1598.
-func CleanCache(maxEntries int) {
-	if len(PageCache) <= maxEntries {
-		return
-	}
-	// Remove oldest entries (simple LRU approximation)
-	for k := range PageCache {
-		delete(PageCache, k)
-		if len(PageCache) <= maxEntries {
-			break
-		}
-	}
 }
 
 // HandleLink dispatches a link target based on its type.

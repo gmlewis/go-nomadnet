@@ -25,7 +25,7 @@ import (
 
 // ConfigDisplay shows the configuration file with an in-app editor.
 type ConfigDisplay struct {
-	app        *tview.Application
+	app        *App
 	widget     tview.Primitive
 	editor     *tview.TextArea
 	configPath string
@@ -33,7 +33,7 @@ type ConfigDisplay struct {
 
 // NewConfigDisplay creates a new config display with an editable text area.
 // Matches Python's ConfigDisplay at Config.py:25 with in-app editor.
-func NewConfigDisplay(app *tview.Application, configPath string) *ConfigDisplay {
+func NewConfigDisplay(app *App, configPath string) *ConfigDisplay {
 	cd := &ConfigDisplay{app: app, configPath: configPath}
 
 	// Title
@@ -104,7 +104,7 @@ func (cd *ConfigDisplay) showMessage(msg string) {
 	modal.SetText(msg)
 	modal.AddButtons([]string{"OK"})
 	modal.SetDoneFunc(func(buttonIndex int, buttonLabel string) {
-		cd.app.SetRoot(cd.widget, true)
+		cd.app.Application.SetRoot(cd.widget, true)
 	})
-	cd.app.SetRoot(modal, true)
+	cd.app.Application.SetRoot(modal, true)
 }

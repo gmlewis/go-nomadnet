@@ -27,7 +27,7 @@ import (
 
 // LogDisplay shows the tail of the log file with optional live tailing.
 type LogDisplay struct {
-	app     *tview.Application
+	app     *App
 	widget  tview.Primitive
 	logView *tview.TextView
 	logPath string
@@ -38,7 +38,7 @@ type LogDisplay struct {
 
 // NewLogDisplay creates a new log display that shows the last N lines
 // and optionally tails the file for live updates.
-func NewLogDisplay(app *tview.Application, logPath string, lines int) *LogDisplay {
+func NewLogDisplay(app *App, logPath string, lines int) *LogDisplay {
 	ld := &LogDisplay{
 		app:     app,
 		logPath: logPath,

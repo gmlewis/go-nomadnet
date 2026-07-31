@@ -18,7 +18,6 @@ package app
 import (
 	"os"
 	"path/filepath"
-	"sync"
 	"testing"
 	"time"
 
@@ -148,7 +147,7 @@ func TestNewAppPaths(t *testing.T) {
 }
 
 func TestAppInit(t *testing.T) {
-	// Not parallel — Init() modifies globalApp
+	// Not parallel — Init() starts real RNS/LXMF subsystems.
 
 	dir := tempDir(t)
 	a := NewApp(dir, "", false, false)
@@ -222,7 +221,7 @@ func TestAppApplyConfig(t *testing.T) {
 }
 
 func TestAppShutdown(t *testing.T) {
-	// Not parallel — Init() modifies globalApp
+	// Not parallel — Init() starts real RNS/LXMF subsystems.
 
 	dir := tempDir(t)
 	a := NewApp(dir, "", false, false)
@@ -277,30 +276,6 @@ func TestAppConversationListEmpty(t *testing.T) {
 	}
 }
 
-func TestSharedInstance(t *testing.T) {
-	// Not parallel — tests share globalApp
-
-	// Reset global state
-	globalMu.Lock()
-	globalApp = nil
-	appOnce = sync.Once{}
-	globalMu.Unlock()
-
-	if SharedInstance() != nil {
-		t.Error("SharedInstance() = non-nil before Init")
-	}
-
-	dir := tempDir(t)
-	a := NewApp(dir, "", false, false)
-	if err := a.Init(); err != nil {
-		t.Fatalf("Init: %v", err)
-	}
-
-	if SharedInstance() != a {
-		t.Error("SharedInstance() != a after Init")
-	}
-}
-
 func TestExpandUser(t *testing.T) {
 	t.Parallel()
 
@@ -350,7 +325,7 @@ func TestAppUIModeConstants(t *testing.T) {
 }
 
 func TestAppWithConfigFile(t *testing.T) {
-	// Not parallel — Init() modifies globalApp
+	// Not parallel — Init() starts real RNS/LXMF subsystems.
 
 	dir := tempDir(t)
 	configPath := filepath.Join(dir, "config")

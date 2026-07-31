@@ -37,8 +37,9 @@ type dialogEntry struct {
 // dialog and restores the previous focus. This replaces the old
 // app.SetRoot(dialog, true) approach that destroyed the underlying screen.
 //
-// One manager per process is held in the package-global dialogManager; it is
-// wired up by InitDialogManager (called from App.SetRoot).
+// A DialogManager is owned by App (App.Dialogs) and wired up by Init (called
+// from App.SetRoot). Keeping it off the package level lets parallel tests
+// each use an isolated manager.
 type DialogManager struct {
 	mu    sync.Mutex
 	app   *tview.Application
@@ -48,56 +49,53 @@ type DialogManager struct {
 	seq   int
 }
 
-var dialogManager = &DialogManager{}
-
-// InitDialogManager configures the package-global dialog manager with the
-// application and its main content primitive, and returns the tview.Pages
-// root that callers should pass to Application.SetRoot. The main content is
-// added as the always-present bottom page named "main".
-func InitDialogManager(app *tview.Application, main tview.Primitive) *tview.Pages {
+// Init configures the dialog manager with the application and its main
+// content primitive, and returns the tview.Pages root that callers should
+// pass to Application.SetRoot. The main content is added as the always-present
+// bottom page named "main".
+func (dm *DialogManager) Init(app *tview.Application, main tview.Primitive) *tview.Pages {
 	pages := tview.NewPages()
 	pages.AddPage("main", main, true, true)
 
-	dialogManager.mu.Lock()
-	defer dialogManager.mu.Unlock()
-	dialogManager.app = app
-	dialogManager.pages = pages
-	dialogManager.main = main
-	dialogManager.stack = nil
-	dialogManager.seq = 0
+	dm.mu.Lock()
+	defer dm.mu.Unlock()
+	dm.app = app
+	dm.pages = pages
+	dm.main = main
+	dm.stack = nil
+	dm.seq = 0
 	return pages
 }
 
-// DialogManagerPages returns the Pages root backing the dialog overlay, or
-// nil if InitDialogManager has not been called.
-func DialogManagerPages() *tview.Pages {
-	dialogManager.mu.Lock()
-	defer dialogManager.mu.Unlock()
-	return dialogManager.pages
+// Pages returns the tview.Pages root backing the dialog overlay, or nil if
+// Init has not been called.
+func (dm *DialogManager) Pages() *tview.Pages {
+	dm.mu.Lock()
+	defer dm.mu.Unlock()
+	return dm.pages
 }
 
-// DialogCount returns the number of currently-open dialogs on the stack.
-func DialogCount() int {
-	dialogManager.mu.Lock()
-	defer dialogManager.mu.Unlock()
-	return len(dialogManager.stack)
+// Count returns the number of currently-open dialogs on the stack.
+func (dm *DialogManager) Count() int {
+	dm.mu.Lock()
+	defer dm.mu.Unlock()
+	return len(dm.stack)
 }
 
-// DialogOpen reports whether any modal dialog is currently open.
-func DialogOpen() bool {
-	return DialogCount() > 0
+// Open reports whether any modal dialog is currently open.
+func (dm *DialogManager) Open() bool {
+	return dm.Count() > 0
 }
 
-// showDialogOverlay pushes a centered dialog onto the stack, records the
-// current focus for later restoration, mounts it as a new top page, and
-// focuses the dialog. It is the shared implementation behind ShowDialog.
-func showDialogOverlay(app *tview.Application, title string, content tview.Primitive, width, height int, onDismiss func()) {
-	dm := dialogManager
+// showOverlay pushes a centered dialog onto the stack, records the current
+// focus for later restoration, mounts it as a new top page, and focuses the
+// dialog. It is the shared implementation behind ShowDialog.
+func (dm *DialogManager) showOverlay(app *tview.Application, title string, content tview.Primitive, width, height int, onDismiss func()) {
 	dm.mu.Lock()
 	if dm.pages == nil || dm.app == nil {
 		dm.mu.Unlock()
-		// Not initialized (ad-hoc use without InitDialogManager): fall back
-		// to replacing the root so the dialog is at least visible.
+		// Not initialized (ad-hoc use without Init): fall back to replacing
+		// the root so the dialog is at least visible.
 		dialog := NewDialogLineBox(title, content, onDismiss)
 		app.SetRoot(centerDialog(dialog, width, height), true)
 		app.SetFocus(dialog)
@@ -105,7 +103,7 @@ func showDialogOverlay(app *tview.Application, title string, content tview.Primi
 	}
 
 	prevFocus := app.GetFocus()
-	dialog := NewDialogLineBox(title, content, func() { dismissTopDialog() })
+	dialog := NewDialogLineBox(title, content, func() { dm.dismissTop() })
 	entry := &dialogEntry{
 		pageName:  fmt.Sprintf("dialog-%d", dm.seq),
 		dialog:    dialog,
@@ -117,21 +115,19 @@ func showDialogOverlay(app *tview.Application, title string, content tview.Primi
 	dm.stack = append(dm.stack, entry)
 	pages := dm.pages
 	// Mutate the shared tview.Pages and app focus while holding the lock.
-	// tview.Pages (and its focus state) is not concurrency-safe, and the
-	// package-global dialogManager is shared across tests (and across any
-	// goroutines that call ShowDialog); serializing AddPage/SetFocus here
-	// prevents data races on tview's internal pages slice and Box.focus.
+	// tview.Pages (and its focus state) is not concurrency-safe; serializing
+	// AddPage/SetFocus here prevents data races on tview's internal pages
+	// slice and Box.focus.
 	pages.AddPage(entry.pageName, entry.overlay, true, true)
 	app.SetFocus(dialog)
 	dm.mu.Unlock()
 }
 
-// dismissTopDialog pops the top dialog off the stack, removes its page (so
-// the underlying content is revealed), and restores focus to the now-top
-// dialog or — when the stack is empty — to the focus that preceded the
-// first dialog. The closed dialog's user onDismiss callback is invoked last.
-func dismissTopDialog() {
-	dm := dialogManager
+// dismissTop pops the top dialog off the stack, removes its page (so the
+// underlying content is revealed), and restores focus to the now-top dialog
+// or — when the stack is empty — to the focus that preceded the first dialog.
+// The closed dialog's user onDismiss callback is invoked last.
+func (dm *DialogManager) dismissTop() {
 	dm.mu.Lock()
 	if len(dm.stack) == 0 {
 		dm.mu.Unlock()
@@ -151,8 +147,8 @@ func dismissTopDialog() {
 	}
 	onDismiss := top.onDismiss
 	// Remove the page and restore focus under the lock for the same
-	// concurrency-safety reasons as showDialogOverlay (shared tview.Pages
-	// and app focus are not safe for concurrent access).
+	// concurrency-safety reasons as showOverlay (shared tview.Pages and app
+	// focus are not safe for concurrent access).
 	pages.RemovePage(top.pageName)
 	if focus != nil && app != nil {
 		app.SetFocus(focus)
@@ -166,10 +162,10 @@ func dismissTopDialog() {
 	}
 }
 
-// DismissTopDialog closes the topmost open dialog (if any). This is the
+// DismissTop closes the topmost open dialog (if any). This is the
 // programmatic equivalent of pressing Esc on the focused dialog.
-func DismissTopDialog() {
-	dismissTopDialog()
+func (dm *DialogManager) DismissTop() {
+	dm.dismissTop()
 }
 
 // centerDialog wraps content in a full-screen Flex that centers it at the

@@ -19,13 +19,12 @@ import (
 	"testing"
 
 	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 )
 
 func TestHubInfoAreaCreation(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	hia := NewHubInfoArea(app, "MyHub")
 	if hia == nil {
 		t.Fatal("NewHubInfoArea returned nil")
@@ -35,7 +34,7 @@ func TestHubInfoAreaCreation(t *testing.T) {
 func TestHubInfoAreaHubName(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	hia := NewHubInfoArea(app, "MyHub")
 	if hia.HubName() != "MyHub" {
 		t.Errorf("HubName = %q, want %q", hia.HubName(), "MyHub")
@@ -45,7 +44,7 @@ func TestHubInfoAreaHubName(t *testing.T) {
 func TestHubInfoAreaKeyboardShortcuts(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	hia := NewHubInfoArea(app, "MyHub")
 
 	var fired []string
@@ -90,7 +89,7 @@ func TestHubInfoAreaKeyboardShortcuts(t *testing.T) {
 func TestHubInfoAreaSetMOTD(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	hia := NewHubInfoArea(app, "MyHub")
 
 	hia.SetMOTD("Welcome to the hub!")
@@ -102,7 +101,7 @@ func TestHubInfoAreaSetMOTD(t *testing.T) {
 func TestHubInfoAreaSetRooms(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	hia := NewHubInfoArea(app, "MyHub")
 
 	rooms := []string{"general", "random", "dev"}
@@ -115,7 +114,7 @@ func TestHubInfoAreaSetRooms(t *testing.T) {
 func TestHubInfoAreaSetAvailableRooms(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	hia := NewHubInfoArea(app, "MyHub")
 
 	available := []string{"general", "random", "dev", "test"}

@@ -21,13 +21,12 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/gmlewis/go-nomadnet/nomadnet/micron"
-	"github.com/rivo/tview"
 )
 
 func TestNewNetworkDisplay(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	nd := NewNetworkDisplay(app, nil, nil)
 
 	if nd == nil {
@@ -41,7 +40,7 @@ func TestNewNetworkDisplay(t *testing.T) {
 func TestNetworkDisplayWithEntries(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	announces := []AnnounceEntry{
 		{DisplayName: "Node1", Type: "node", Timestamp: time.Now()},
 		{DisplayName: "Peer1", Type: "peer", Timestamp: time.Now().Add(-time.Hour)},
@@ -99,7 +98,7 @@ func TestFormatAnnounce(t *testing.T) {
 func TestNewBrowserDisplay(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	bd := NewBrowserDisplay(app)
 
 	if bd == nil {
@@ -113,7 +112,7 @@ func TestNewBrowserDisplay(t *testing.T) {
 func TestBrowserLoadURL(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	bd := NewBrowserDisplay(app)
 
 	bd.LoadURL("http://example.com")
@@ -125,7 +124,7 @@ func TestBrowserLoadURL(t *testing.T) {
 func TestBrowserHistory(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	bd := NewBrowserDisplay(app)
 
 	bd.LoadURL("url1")
@@ -146,7 +145,7 @@ func TestBrowserHistory(t *testing.T) {
 func TestNewMicronViewDisplay(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	mvd := NewMicronViewDisplay(app)
 
 	if mvd == nil {
@@ -160,7 +159,7 @@ func TestNewMicronViewDisplay(t *testing.T) {
 func TestMicronViewRenderPage(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	mvd := NewMicronViewDisplay(app)
 
 	mvd.RenderPage("Hello World")
@@ -170,7 +169,7 @@ func TestMicronViewRenderPage(t *testing.T) {
 func TestMicronViewClear(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	mvd := NewMicronViewDisplay(app)
 
 	mvd.RenderPage("test")
@@ -215,7 +214,7 @@ func TestMapColor(t *testing.T) {
 func TestNetworkDisplayKeyboardShortcuts(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	nd := NewNetworkDisplay(app, nil, nil)
 
 	var fired []string
@@ -264,7 +263,7 @@ func TestNetworkDisplayKeyboardShortcuts(t *testing.T) {
 
 func TestShowLocalPeerDialog(t *testing.T) {
 	t.Parallel()
-	app := tview.NewApplication()
+	app := newTestApp()
 	nd := NewNetworkDisplay(app, nil, nil)
 
 	// Should not panic
@@ -273,7 +272,7 @@ func TestShowLocalPeerDialog(t *testing.T) {
 
 func TestShowLXMFPeersDialogEmpty(t *testing.T) {
 	t.Parallel()
-	app := tview.NewApplication()
+	app := newTestApp()
 	nd := NewNetworkDisplay(app, nil, nil)
 
 	nd.ShowLXMFPeersDialog(nil)
@@ -281,7 +280,7 @@ func TestShowLXMFPeersDialogEmpty(t *testing.T) {
 
 func TestShowLXMFPeersDialogWithPeers(t *testing.T) {
 	t.Parallel()
-	app := tview.NewApplication()
+	app := newTestApp()
 	nd := NewNetworkDisplay(app, nil, nil)
 
 	peers := []LXMFPeerEntry{

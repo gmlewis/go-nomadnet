@@ -19,13 +19,12 @@ import (
 	"testing"
 
 	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 )
 
 func TestNewChannelsDisplay(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	rooms := []ChannelInfo{
 		{Name: "general", Members: 10, Joined: true},
 		{Name: "random", Members: 5, Unread: true},
@@ -43,7 +42,7 @@ func TestNewChannelsDisplay(t *testing.T) {
 func TestChannelsDisplayEmpty(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	cd := NewChannelsDisplay(app, nil)
 
 	if cd == nil {
@@ -54,7 +53,7 @@ func TestChannelsDisplayEmpty(t *testing.T) {
 func TestChannelsDisplayShowMessages(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	cd := NewChannelsDisplay(app, nil)
 
 	msgs := []ChannelMessage{
@@ -70,7 +69,7 @@ func TestChannelsDisplayShowMessages(t *testing.T) {
 func TestChannelsDisplayShowMembers(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	cd := NewChannelsDisplay(app, nil)
 
 	members := []ChannelMember{
@@ -115,7 +114,7 @@ func TestNickColorDifferent(t *testing.T) {
 func TestChannelsDisplayKeyboardShortcuts(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	cd := NewChannelsDisplay(app, nil)
 
 	var fired []string
@@ -160,7 +159,7 @@ func TestChannelsDisplayKeyboardShortcuts(t *testing.T) {
 func TestChannelsDisplayChannelListVisibility(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	cd := NewChannelsDisplay(app, nil)
 
 	if !cd.ChannelListVisible() {
@@ -180,7 +179,7 @@ func TestChannelsDisplayChannelListVisibility(t *testing.T) {
 
 func TestShowUserInfoDialog(t *testing.T) {
 	t.Parallel()
-	app := tview.NewApplication()
+	app := newTestApp()
 	cd := NewChannelsDisplay(app, nil)
 
 	// Verify function exists and can be called without panic

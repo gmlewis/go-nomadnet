@@ -19,13 +19,12 @@ import (
 	"testing"
 
 	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 )
 
 func TestNewRoomWidget(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	rw := NewRoomWidget(app, "hub1", "general")
 	if rw == nil {
 		t.Fatal("NewRoomWidget returned nil")
@@ -38,7 +37,7 @@ func TestNewRoomWidget(t *testing.T) {
 func TestRoomWidgetSendMessage(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	rw := NewRoomWidget(app, "hub1", "general")
 
 	var sent string
@@ -58,7 +57,7 @@ func TestRoomWidgetSendMessage(t *testing.T) {
 func TestRoomWidgetSendMessageEmpty(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	rw := NewRoomWidget(app, "hub1", "general")
 
 	sent := false
@@ -73,7 +72,7 @@ func TestRoomWidgetSendMessageEmpty(t *testing.T) {
 func TestRoomWidgetSendMessageWhitespaceOnly(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	rw := NewRoomWidget(app, "hub1", "general")
 
 	sent := false
@@ -89,7 +88,7 @@ func TestRoomWidgetSendMessageWhitespaceOnly(t *testing.T) {
 func TestRoomWidgetSendMessageHubDisconnected(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	rw := NewRoomWidget(app, "hub1", "general")
 	rw.hubConnected = false
 
@@ -106,7 +105,7 @@ func TestRoomWidgetSendMessageHubDisconnected(t *testing.T) {
 func TestRoomWidgetSendMessageTooLong(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	rw := NewRoomWidget(app, "hub1", "general")
 	rw.maxMessageBytes = 10
 
@@ -125,7 +124,7 @@ func TestRoomWidgetSendMessageTooLong(t *testing.T) {
 func TestRoomWidgetSetHubConnected(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	rw := NewRoomWidget(app, "hub1", "general")
 
 	if !rw.HubConnected() {
@@ -141,7 +140,7 @@ func TestRoomWidgetSetHubConnected(t *testing.T) {
 func TestRoomWidgetSetMaxMessageBytes(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	rw := NewRoomWidget(app, "hub1", "general")
 
 	if rw.MaxMessageBytes() != 350 {
@@ -157,7 +156,7 @@ func TestRoomWidgetSetMaxMessageBytes(t *testing.T) {
 func TestRoomWidgetKeyboardShortcuts(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	rw := NewRoomWidget(app, "hub1", "general")
 
 	var fired []string
@@ -193,7 +192,7 @@ func TestRoomWidgetKeyboardShortcuts(t *testing.T) {
 func TestRoomWidgetSetMessages(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	rw := NewRoomWidget(app, "hub1", "general")
 
 	msgs := []ChannelMessage{
@@ -211,7 +210,7 @@ func TestRoomWidgetSetMessages(t *testing.T) {
 func TestRoomWidgetSetMembers(t *testing.T) {
 	t.Parallel()
 
-	app := tview.NewApplication()
+	app := newTestApp()
 	rw := NewRoomWidget(app, "hub1", "general")
 
 	members := []ChannelMember{
