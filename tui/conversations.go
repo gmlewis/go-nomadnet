@@ -52,6 +52,7 @@ type ConversationsDisplay struct {
 	showBlocked    bool // show blocked peers in untrusted tab
 	dialogOpen     bool
 	ingestURIValue string
+	shortcutFocus  string // "list" (default), "editor", or "body" — selects the shortcut bar (Conversations.py:1765-1779)
 
 	// Keyboard shortcut callbacks (Python: ConversationsArea.keypress)
 	OnEditPeerInfo     func()
@@ -138,15 +139,30 @@ func NewConversationsDisplay(app *App, convs []ConversationInfo) *ConversationsD
 	return cd
 }
 
-// GetShortcutText returns the appropriate shortcut bar text for the
-// current focus context. Matches Python's shortcuts() method at
-// Conversations.py:1765 which returns different shortcut sets based
-// on whether the list, body, or editor has focus.
+// SetShortcutFocus sets which of the three Conversations shortcut bars
+// GetShortcutText returns, matching the focus-path dispatch in Python
+// Conversations.py:1765-1779: "list" when the list pane has focus, "editor"
+// when the message editor (frame footer) has focus, "body" otherwise.
+func (cd *ConversationsDisplay) SetShortcutFocus(region string) {
+	cd.shortcutFocus = region
+}
+
+// GetShortcutText returns the appropriate shortcut bar text for the current
+// focus context. Matches Python's shortcuts() method at Conversations.py:1765
+// which returns list/editor/body shortcut sets based on which pane has focus.
+// An open dialog suppresses the bar.
 func (cd *ConversationsDisplay) GetShortcutText() string {
 	if cd.dialogOpen {
 		return ""
 	}
-	return "[C-e] Peer Info  [C-x] Delete  [C-r] Sync  [C-n] New  [C-u] Ingest URI  [C-o] Sort  [C-p] My LXMF  [C-g] Fullscreen"
+	switch cd.shortcutFocus {
+	case "editor":
+		return "[C-d] Send  [C-p] Paper Msg  [C-t] Title  [C-f] Attach  [C-s] Save  [Tab] ↑ Messages"
+	case "body":
+		return "[C-s] Save  [C-u] Purge  [C-o] Sort  [C-x] Clear History  [C-g] Fullscreen  [C-w] Close  [Tab] ↓ Editor"
+	default: // "list"
+		return "[C-e] Peer Info  [C-x] Delete  [C-r] Sync  [C-n] New  [C-u] Ingest URI  [C-o] Sort  [C-p] My LXMF  [C-g] Fullscreen"
+	}
 }
 
 // handleInput processes keyboard shortcuts for the conversations display.

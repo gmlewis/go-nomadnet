@@ -28,26 +28,26 @@ import (
 // MainDisplay is the top-level layout matching Python's MainFrame:
 // header=menu bar, body=content area, footer=shortcut bar.
 type MainDisplay struct {
-	app              *App
-	frame            *tview.Flex
-	menuBar          *tview.TextView
-	menuItems        []MenuItem
-	contentArea      *tview.Pages
-	shortcutBar      *tview.TextView
-	activeMenu       int    // focused menu button (highlight); not necessarily the displayed page
-	activePage       string // key of the currently displayed body page
-	focusRegion      string // "body" (default) or "menu" — mirrors MainFrame.focus_position
-	theme            int
-	glyphs           GlyphSet
-	onQuit           func()
-	onEsc            func() bool // display-specific Esc handler; returns true if consumed
-	shortcuts        map[string]string
-	shortcutCallback func() string // returns dynamic shortcut text for active display
-	quitCh           chan struct{}
-	mu               sync.Mutex
-	hideGuide        bool
-	unreadIndicator  bool  // true swaps the menu glyph to unread_menu (Main.py:220-230)
-	menuWidths       []int // pixel widths of each menu item for click detection
+	app               *App
+	frame             *tview.Flex
+	menuBar           *tview.TextView
+	menuItems         []MenuItem
+	contentArea       *tview.Pages
+	shortcutBar       *tview.TextView
+	activeMenu        int    // focused menu button (highlight); not necessarily the displayed page
+	activePage        string // key of the currently displayed body page
+	focusRegion       string // "body" (default) or "menu" — mirrors MainFrame.focus_position
+	theme             int
+	glyphs            GlyphSet
+	onQuit            func()
+	onEsc             func() bool // display-specific Esc handler; returns true if consumed
+	shortcuts         map[string]string
+	shortcutCallbacks map[string]func() string // per-page dynamic shortcut providers
+	quitCh            chan struct{}
+	mu                sync.Mutex
+	hideGuide         bool
+	unreadIndicator   bool  // true swaps the menu glyph to unread_menu (Main.py:220-230)
+	menuWidths        []int // pixel widths of each menu item for click detection
 }
 
 // NewMainDisplay creates the main display with Frame layout:
@@ -61,12 +61,13 @@ func NewMainDisplay(app *App, theme int, glyphSetName string) *MainDisplay {
 	colors := GetThemeColors(theme)
 
 	md := &MainDisplay{
-		app:         app,
-		theme:       theme,
-		glyphs:      glyphs,
-		shortcuts:   make(map[string]string),
-		quitCh:      make(chan struct{}),
-		focusRegion: "body",
+		app:               app,
+		theme:             theme,
+		glyphs:            glyphs,
+		shortcuts:         make(map[string]string),
+		shortcutCallbacks: make(map[string]func() string),
+		quitCh:            make(chan struct{}),
+		focusRegion:       "body",
 	}
 
 	// Filter menu items based on hideGuide setting
@@ -98,9 +99,12 @@ func NewMainDisplay(app *App, theme int, glyphSetName string) *MainDisplay {
 	md.contentArea = tview.NewPages()
 	md.contentArea.SetBackgroundColor(tcell.ColorDefault)
 
-	// Create shortcut bar (footer)
+	// Create shortcut bar (footer). It holds plain text (the Python original
+	// styles it via the "shortcutbar" attr, not inline color tags), so dynamic
+	// colors are OFF — otherwise tview would parse "[Tab]"/"[Enter]" tokens in
+	// the shortcut text as color tags and strip them.
 	md.shortcutBar = tview.NewTextView()
-	md.shortcutBar.SetDynamicColors(true)
+	md.shortcutBar.SetDynamicColors(false)
 	md.shortcutBar.SetTextColor(colors["menubar_fg"])
 	md.shortcutBar.SetBackgroundColor(colors["menubar_bg"])
 	md.shortcutBar.SetTextAlign(tview.AlignLeft)
@@ -153,13 +157,17 @@ func (md *MainDisplay) SetShortcut(key, text string) {
 	md.updateShortcutsLocked()
 }
 
-// SetShortcutCallback registers a function that returns the current
-// shortcut text for the active display. This enables dynamic shortcut
-// bar updates when focus changes within a display.
-func (md *MainDisplay) SetShortcutCallback(fn func() string) {
+// SetShortcutCallback registers a dynamic shortcut-bar provider for one page
+// key. The provider is consulted only when that page is the displayed
+// (activePage) one, so a display that switches bars by focus region (e.g.
+// Conversations: list/editor/body) can supply the right text without
+// overriding other pages' bars. This replaces the former single global
+// callback that always returned the Conversations bar.
+func (md *MainDisplay) SetShortcutCallback(key string, fn func() string) {
 	md.mu.Lock()
 	defer md.mu.Unlock()
-	md.shortcutCallback = fn
+	md.shortcutCallbacks[key] = fn
+	md.updateShortcutsLocked()
 }
 
 // updateShortcuts refreshes the shortcut bar for the active display.
@@ -171,10 +179,11 @@ func (md *MainDisplay) updateShortcuts() {
 
 // updateShortcutsLocked refreshes the shortcut bar. Caller must hold md.mu.
 // The footer follows the DISPLAYED page (Python Main.update_active_shortcuts),
-// not the focused menu button, so it keys off activePage.
+// not the focused menu button, so it keys off activePage. A registered
+// per-page callback wins over the static SetShortcut text.
 func (md *MainDisplay) updateShortcutsLocked() {
-	if md.shortcutCallback != nil {
-		if text := md.shortcutCallback(); text != "" {
+	if cb := md.shortcutCallbacks[md.activePage]; cb != nil {
+		if text := cb(); text != "" {
 			md.shortcutBar.SetText(text)
 			return
 		}

@@ -114,7 +114,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) {
 		networkDisplay.UpdateAnnounces(tuiConvs)
 	})
 	main.SetDisplay("network", networkDisplay.Widget())
-	main.SetShortcut("network", "[C-l] Nodes/Announces  [C-x] Remove  [C-w] Disconnect  [C-d] Back  [C-f] Forward  [C-r] Reload  [C-u] URL  [C-g] Fullscreen  [C-s] Save Node")
+	main.SetShortcut("network", "[C-l] Nodes/Announces  [C-x] Remove  [C-w] Disconnect  [C-d] Back  [C-f] Forward  [C-r] Reload  [C-u] URL  [C-g] Fullscreen  [C-s / C-b] Save Node")
 
 	// Wire Esc to go back from AnnounceInfo before quitting.
 	main.SetEscCallback(func() bool {
@@ -193,10 +193,11 @@ func wireDisplays(tuiApp *tui.App, a *app.App) {
 	}
 	conversationsDisplay := tui.NewConversationsDisplay(tuiApp, tuiConvs)
 	main.SetDisplay("conversations", conversationsDisplay.Widget())
-	main.SetShortcut("conversations", "[C-e] Peer Info  [C-x] Delete  [C-r] Sync  [C-n] New  [C-u] Ingest URI  [C-o] Sort  [C-p] My LXMF  [C-g] Fullscreen")
 
-	// Wire dynamic shortcut bar callback for conversations display
-	main.SetShortcutCallback(func() string {
+	// Conversations supplies its shortcut bar dynamically (it switches between
+	// the list/editor/body bars by focus region). Other pages use their static
+	// SetShortcut text. Registered per-page so it only applies to conversations.
+	main.SetShortcutCallback("conversations", func() string {
 		return conversationsDisplay.GetShortcutText()
 	})
 
@@ -443,7 +444,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) {
 	}
 	interfacesDisplay := tui.NewInterfacesDisplay(tuiApp, interfaces)
 	main.SetDisplay("interfaces", interfacesDisplay.Widget())
-	main.SetShortcut("interfaces", "[C-a] Add  [C-e] Edit  [C-x] Remove  [C-w] Config Editor")
+	main.SetShortcut("interfaces", "[C-a] Add Interface [C-e] Edit Interface [C-x] Remove Interface [Enter] Show Interface [C-w] Open Text Editor")
 
 	// Wire interfaces keyboard shortcuts
 	interfacesDisplay.OnAddInterface = func() {

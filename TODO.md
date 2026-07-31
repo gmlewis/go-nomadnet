@@ -259,12 +259,6 @@ test or a matching `parity.sh` summary):
 
 ### Phase 1 — Core interaction model (highest-impact TUI fixes; unblocks all page work)
 
-- [ ] **1.3 Per-page shortcut bar.** Remove the unconditional
-      `conversationsDisplay.GetShortcutText()` in `cmd/gonomadnet/textui.go:195`
-      / `tui/main.go:131-136`; each display supplies its own shortcut text
-      (§Per-page keybindings) and Conversations switches between its 3 bars by
-      focus region. Test: for each active page, `summary.py` `footer` matches the
-      original’s footer for that page (capture originals with `capture.sh`).
 - [ ] **1.4 Unread blink.** Make `StartUnreadBlink` (`tui/main.go:330-345`)
       actually redraw the menu indicator every 2 s when there are unread
       conversations. Test: feed an unread conversation, assert the indicator
