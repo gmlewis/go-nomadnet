@@ -5,9 +5,9 @@ This directory contains tooling to drive the **source-of-truth Python `nomadnet`
 each renders, and compare them so an agent can continuously verify **behavioral
 parity** while porting.
 
-It was built while producing [`TUI-ANALYSIS.md`](../../TUI-ANALYSIS.md), which
-documents the original's behavior and the Go port's current gaps. Use these
-tools to keep that analysis honest as the port progresses.
+The original's behavior and the Go port's current gaps are documented in the
+consolidated [`TODO.md`](../../TODO.md) ("Source of truth — reference facts"
+section). Use these tools to keep that analysis honest as the port progresses.
 
 ## Why this exists
 
@@ -86,7 +86,7 @@ avoid sending a bare comma (you rarely need to in these TUIs).
 
 ## How the original is driven (reference)
 
-The original's interaction model (from `TUI-ANALYSIS.md` §1.2):
+The original's interaction model (from `TODO.md`, "Source of truth — Menu model & global keybindings"):
 
 - From a page body, **`Up` at the top of the list** → focus the menu bar.
 - In the menu: **`Left`/`Right`** move between `[ Name ]` buttons, **`Enter`**
@@ -96,8 +96,8 @@ The original's interaction model (from `TUI-ANALYSIS.md` §1.2):
 
 So to reach the Network page from the default Conversations landing page:
 `--keys Up,Right,Enter`. To then reach Channels: append `Up,Right,Enter` again
-(the menu remembers its focus column), etc. See `TUI-ANALYSIS.md` §1.4 for the
-full page-walk sequence used to capture every page.
+(the menu remembers its focus column), etc. See `TODO.md`'s per-page
+keybinding tables for the full set of page-walk sequences.
 
 The Go port currently differs: `Left`/`Right` globally switch pages, so reaching
 Network is just `--keys Right` (from the default Network-first landing). This
@@ -117,7 +117,8 @@ The recommended loop while porting a page or feature:
    ```
    prints the original summary and the Go summary next to each other.
 
-3. **Eyeball the summaries** for the regressions called out in `TUI-ANALYSIS.md`:
+3. **Eyeball the summaries** for the regressions called out in `TODO.md`
+   ("CURRENT STATE SUMMARY" + "DEFINITION OF DONE"):
    - `menu_items` — 8 items, `[ Name ]` decoration, Conversations first?
    - `border_style` — `single` (┌) not `double` (╔)?
    - `footer` — the **page-correct** shortcut bar (not Conversations' on every page)?
@@ -177,9 +178,9 @@ python3 summary.py captures/guide_135x32_07_esc.txt
 - **Don't commit captures.** The `captures/` output dir is for local use; add it
   to `.gitignore` if you start keeping it inside the repo.
 
-## Reproducing the TUI-ANALYSIS.md evidence
+## Reproducing the reference evidence
 
-The frames quoted in `TUI-ANALYSIS.md` were produced with exactly this tooling
-(then stored under `/tmp/nn_capture/`). To re-derive any of them, run the
-matching `capture.sh` command from §"Useful one-off captures" above and decode
-with `ansiview.py`.
+The reference facts in `TODO.md` were derived with exactly this tooling (frames
+stored under `/tmp/nn_capture/`). To re-derive any of them, run the matching
+`capture.sh` command from §"Useful one-off captures" above and decode with
+`ansiview.py`.
