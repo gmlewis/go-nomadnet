@@ -257,12 +257,6 @@ test or a matching `parity.sh` summary):
 
 ### Phase 0 — Foundation & cross-cutting infrastructure (do first; everything depends on it)
 
-- [ ] **0.2 Theme/style map.** Port the full Python palette (§Colors) into
-      `tui/theme.go` as 5-tuples: `menubar`, `shortcutbar`, `list_focus`,
-      `list_off_focus`, `list_trusted/untrusted/unresponsive/unknown` + focus
-      variants, `msg_header_*`, `msg_warning_untrusted`, `irc_*`, `body_text`,
-      `heading*`, `browser_*`, `progress_*`, `error`. Test golden fg/bg per
-      style against Python `TextUI.py` THEMES.
 - [ ] **0.3 Glyph sets.** Port `GLYPHS` (`plain`/`unicode`/`nerdfont`) into a Go
       glyph registry; resolve by config. Test: each glyph name resolves to the
       expected rune for each set (capture from `ui/TextUI.py:140-172`).
