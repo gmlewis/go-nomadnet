@@ -110,9 +110,11 @@ type Node struct {
 	Align Alignment
 
 	// For NodePartial
-	PartialURL    string
-	PartialFields string
-	PartialID     string
+	PartialURL     string
+	PartialFields  []string
+	PartialID      string
+	PartialRefresh float64
+	HasRefresh     bool
 
 	// For NodeTable
 	TableRows     [][]string // raw cell text per row
@@ -355,36 +357,55 @@ func splitTableCells(s string) []string {
 }
 
 // parsePartial parses a partial reference line.
+// Matches Python MicronParser.parse_partial (MicronParser.py:149-195):
+// components are split on the backtick char, the second component is a
+// float refresh interval, and the third is a pipe-separated field list that
+// may carry a pid= entry. Any parse failure (missing brace, non-numeric
+// refresh) yields no node, mirroring the Python try/except → None.
 func parsePartial(line string) []*Node {
-	endpos := -1
-	for i, c := range line {
-		if c == '}' {
-			endpos = i
-			break
-		}
-	}
+	endpos := strings.IndexByte(line, '}')
 	if endpos == -1 {
 		return nil
 	}
 
 	partialData := line[:endpos]
-	components := splitPartial(partialData)
+	components := strings.Split(partialData, "`")
 
-	p := &Node{Type: NodePartial}
-	if len(components) >= 1 {
+	p := &Node{Type: NodePartial, PartialFields: []string{""}}
+
+	switch len(components) {
+	case 1:
 		p.PartialURL = components[0]
-	}
-	if len(components) >= 2 {
-		p.PartialFields = components[1]
-	}
-	if len(components) >= 3 {
-		// Check for pid= in fields
-		fields := splitPartial(components[2])
-		for _, f := range fields {
-			if len(f) > 4 && f[:4] == "pid=" {
+	case 2:
+		p.PartialURL = components[0]
+		refresh, err := strconv.ParseFloat(components[1], 64)
+		if err != nil {
+			return nil
+		}
+		p.PartialRefresh = refresh
+		p.HasRefresh = true
+	case 3:
+		p.PartialURL = components[0]
+		refresh, err := strconv.ParseFloat(components[1], 64)
+		if err != nil {
+			return nil
+		}
+		p.PartialRefresh = refresh
+		p.HasRefresh = true
+		p.PartialFields = strings.Split(components[2], "|")
+		for _, f := range p.PartialFields {
+			if strings.HasPrefix(f, "pid=") {
 				p.PartialID = f[4:]
 			}
 		}
+	default:
+		// Python's else branch: empty url, empty fields, no refresh.
+	}
+
+	// Python: refresh < 1 is treated as no refresh.
+	if p.HasRefresh && p.PartialRefresh < 1 {
+		p.HasRefresh = false
+		p.PartialRefresh = 0
 	}
 
 	if p.PartialURL != "" {
