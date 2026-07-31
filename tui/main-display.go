@@ -44,6 +44,7 @@ type MainDisplay struct {
 	quitCh           chan struct{}
 	mu               sync.Mutex
 	hideGuide        bool
+	unreadIndicator  bool  // true swaps the menu glyph to unread_menu (Main.py:220-230)
 	menuWidths       []int // pixel widths of each menu item for click detection
 }
 
@@ -179,18 +180,35 @@ func (md *MainDisplay) updateShortcutsLocked() {
 }
 
 // redrawMenuBar rebuilds the menu bar text and tracks item widths for
-// mouse click detection.
+// mouse click detection. It mirrors Python MenuDisplay (Main.py:178-211): a
+// leading menu-indicator glyph (decoration_menu / unread_menu) followed by the
+// MenuButton columns, each rendered as "[ Name ]" with a single space between
+// columns (urwid Columns dividechars=1).
 func (md *MainDisplay) redrawMenuBar() {
 	colors := GetThemeColors(md.theme)
 	fg := colors["menubar_fg"]
 	bg := colors["menubar_bg"]
 	focusBg := colors["list_focus_bg"]
 
-	var parts []string
+	var b strings.Builder
 	md.menuWidths = md.menuWidths[:0]
 
+	// Leading menu-indicator glyph column (Main.py:186-188, 226-230).
+	indicator := md.glyphs["decoration_menu"]
+	if md.unreadIndicator {
+		if g := md.glyphs["unread_menu"]; g != "" {
+			indicator = g
+		}
+	}
+	indicatorStyled := fmt.Sprintf("[#%06x:#%06x]%s[-:-]",
+		int32(fg), int32(bg), indicator)
+	b.WriteString(indicatorStyled)
+	md.menuWidths = append(md.menuWidths, len([]rune(indicator)))
+
 	for i, item := range md.menuItems {
-		label := " " + item.Label + " "
+		// "[ Name ]" matches urwid MenuButton (Main.py:35-37): button_left
+		// "[" + " "+label+" " + button_right "]".
+		label := "[ " + item.Label + " ]"
 		var styled string
 		if i == md.activeMenu {
 			styled = fmt.Sprintf("[#%06x:#%06x:b]%s[-:-:-]",
@@ -199,16 +217,26 @@ func (md *MainDisplay) redrawMenuBar() {
 			styled = fmt.Sprintf("[#%06x:#%06x]%s[-:-]",
 				int32(fg), int32(bg), label)
 		}
-		parts = append(parts, styled)
+		// dividechars=1: one space between columns.
+		b.WriteString(" ")
+		b.WriteString(styled)
 		md.menuWidths = append(md.menuWidths, len([]rune(label)))
 	}
 
-	text := strings.Join(parts, "")
-	md.menuBar.SetText(text)
+	md.menuBar.SetText(b.String())
 }
 
 // selectMenu highlights the given menu item and switches content.
 func (md *MainDisplay) selectMenu(index int) {
+	md.mu.Lock()
+	defer md.mu.Unlock()
+	md.selectMenuLocked(index)
+}
+
+// selectMenuLocked is the lock-free inner of selectMenu; the caller must hold
+// md.mu (used by SetHideGuide, which already holds the lock, to avoid a
+// self-deadlock via updateShortcuts).
+func (md *MainDisplay) selectMenuLocked(index int) {
 	if index < 0 || index >= len(md.menuItems) {
 		return
 	}
@@ -217,7 +245,7 @@ func (md *MainDisplay) selectMenu(index int) {
 	md.redrawMenuBar()
 	key := md.menuItems[index].Key
 	md.contentArea.SwitchToPage(key)
-	md.updateShortcuts()
+	md.updateShortcutsLocked()
 }
 
 // handleClick determines which menu item was clicked based on x position.
@@ -350,7 +378,7 @@ func (md *MainDisplay) SetHideGuide(hideGuide bool) {
 	if md.activeMenu >= len(md.menuItems) {
 		md.activeMenu = 0
 	}
-	md.selectMenu(md.activeMenu)
+	md.selectMenuLocked(md.activeMenu)
 }
 
 // BuildMenuBarText creates a formatted menu bar string for display.

@@ -259,12 +259,6 @@ test or a matching `parity.sh` summary):
 
 ### Phase 1 — Core interaction model (highest-impact TUI fixes; unblocks all page work)
 
-- [ ] **1.1 Menu structure.** In `tui/theme.go`/`tui/main.go`, set 8 items in
-      order `Conversations, Network, Channels, Log, Interfaces, Config, Guide,
-      Quit`; render each as `[ Name ]`; add the leading menu-indicator glyph
-      (0.3); remove `Directory`/`Map` from the top-level menu. Test via
-      `summary.py`: `menu_items` == the 8 names, `menu_raw` has `[ ]` and the
-      indicator glyph. Compare to `capture.sh --target orig` frame 00.
 - [ ] **1.2 Focus model / key dispatch.** Rewrite `MainDisplay.handleInput`
       (`tui/main.go:228-296`): remove the global `Left/Right` page-cycle and the
       `1`–`9` digit menu shortcuts; remove `Esc`/`q` as global quits (keep only

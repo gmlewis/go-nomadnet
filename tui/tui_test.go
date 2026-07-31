@@ -127,15 +127,15 @@ func TestGlyphSetCompleteness(t *testing.T) {
 func TestMenuItemCount(t *testing.T) {
 	t.Parallel()
 
-	// Should have 10 menu items
-	if len(MenuItems) != 10 {
-		t.Errorf("MenuItems len = %d, want 10", len(MenuItems))
+	// 8 top-level menu items, matching Python Main.py:201-204 (no Directory/Map).
+	if len(MenuItems) != 8 {
+		t.Errorf("MenuItems len = %d, want 8", len(MenuItems))
 	}
 
-	// Check key names
+	// Check key names in on-screen order.
 	expectedKeys := []string{
-		"network", "conversations", "channels", "directory", "map",
-		"log", "config", "interfaces", "guide", "quit",
+		"conversations", "network", "channels", "log",
+		"interfaces", "config", "guide", "quit",
 	}
 	for i, key := range expectedKeys {
 		if MenuItems[i].Key != key {
@@ -181,8 +181,8 @@ func TestNewMainDisplay(t *testing.T) {
 	if md.contentArea == nil {
 		t.Error("contentArea is nil")
 	}
-	if len(md.menuItems) != 10 {
-		t.Errorf("menuItems len = %d, want 10", len(md.menuItems))
+	if len(md.menuItems) != 8 {
+		t.Errorf("menuItems len = %d, want 8", len(md.menuItems))
 	}
 }
 

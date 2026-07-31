@@ -175,16 +175,18 @@ type MenuItem struct {
 	Key   string
 }
 
-// MenuItems defines the top-level menu bar entries.
+// MenuItems defines the top-level menu bar entries, transcribed from Python
+// nomadnet/ui/textui/Main.py:201-204. Directory and Map are deliberately absent
+// — they are SubDisplays but not top-level menu buttons. On-screen order is
+// Conversations, Network, Channels, Log, Interfaces, Config, Guide, Quit (the
+// Guide button is dropped by SetHideGuide when the config hides it).
 var MenuItems = []MenuItem{
-	{Label: "Network", Key: "network"},
 	{Label: "Conversations", Key: "conversations"},
+	{Label: "Network", Key: "network"},
 	{Label: "Channels", Key: "channels"},
-	{Label: "Directory", Key: "directory"},
-	{Label: "Map", Key: "map"},
 	{Label: "Log", Key: "log"},
-	{Label: "Config", Key: "config"},
 	{Label: "Interfaces", Key: "interfaces"},
+	{Label: "Config", Key: "config"},
 	{Label: "Guide", Key: "guide"},
 	{Label: "Quit", Key: "quit"},
 }
