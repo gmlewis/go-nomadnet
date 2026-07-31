@@ -111,20 +111,24 @@ func (d *DialogLineBox) InputHandler() func(event *tcell.EventKey, setFocus func
 }
 
 // ShowDialog creates and shows a centered dialog overlay on the application.
+// The dialog is pushed onto the modal dialog stack (see DialogManager), so the
+// underlying screen is preserved and focus is restored on dismiss. Esc on the
+// dialog closes it (not the app); DismissTopDialog closes it programmatically.
 func ShowDialog(app *tview.Application, title string, content tview.Primitive, width, height int, onDismiss func()) {
-	dialog := NewDialogLineBox(title, content, onDismiss)
-	app.SetRoot(dialog, true)
+	showDialogOverlay(app, title, content, width, height, onDismiss)
 }
 
 // ShowConfirmDialog shows a Yes/No confirmation dialog.
 func ShowConfirmDialog(app *tview.Application, message string, onYes, onNo func()) {
 	buttons := tview.NewFlex().SetDirection(tview.FlexColumn).
 		AddItem(tview.NewButton("Yes").SetSelectedFunc(func() {
+			DismissTopDialog()
 			if onYes != nil {
 				onYes()
 			}
 		}), 0, 1, true).
 		AddItem(tview.NewButton("No").SetSelectedFunc(func() {
+			DismissTopDialog()
 			if onNo != nil {
 				onNo()
 			}
@@ -151,11 +155,14 @@ func ShowInputDialog(app *tview.Application, title, label, defaultValue string, 
 
 	buttons := tview.NewFlex().SetDirection(tview.FlexColumn).
 		AddItem(tview.NewButton("Save").SetSelectedFunc(func() {
+			value := input.GetText()
+			DismissTopDialog()
 			if onSubmit != nil {
-				onSubmit(input.GetText())
+				onSubmit(value)
 			}
 		}), 0, 1, true).
 		AddItem(tview.NewButton("Cancel").SetSelectedFunc(func() {
+			DismissTopDialog()
 			if onCancel != nil {
 				onCancel()
 			}

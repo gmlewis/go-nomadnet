@@ -39,6 +39,11 @@ func TestIsWordChar(t *testing.T) {
 		{'-', false},
 		{'.', false},
 		{'@', false},
+		// Unicode letters are word chars, matching Python's str.isalnum()
+		// (ReadlineEdit._rl_is_word_char) — "café" is one word.
+		{'é', true},
+		{'ü', true},
+		{'ñ', true},
 	}
 
 	for _, tt := range tests {
@@ -71,9 +76,9 @@ func TestFindLineStart(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.text, func(t *testing.T) {
 			t.Parallel()
-			got := findLineStart(tt.text, tt.pos)
+			got := lineStart([]rune(tt.text), tt.pos)
 			if got != tt.want {
-				t.Errorf("findLineStart(%q, %d) = %d, want %d", tt.text, tt.pos, got, tt.want)
+				t.Errorf("lineStart(%q, %d) = %d, want %d", tt.text, tt.pos, got, tt.want)
 			}
 		})
 	}
@@ -98,9 +103,9 @@ func TestFindLineEnd(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.text, func(t *testing.T) {
 			t.Parallel()
-			got := findLineEnd(tt.text, tt.pos)
+			got := lineEnd([]rune(tt.text), tt.pos)
 			if got != tt.want {
-				t.Errorf("findLineEnd(%q, %d) = %d, want %d", tt.text, tt.pos, got, tt.want)
+				t.Errorf("lineEnd(%q, %d) = %d, want %d", tt.text, tt.pos, got, tt.want)
 			}
 		})
 	}
@@ -194,7 +199,7 @@ func TestReadlineEditCursorTracking(t *testing.T) {
 }
 
 func TestResetKillRing(t *testing.T) {
-	t.Parallel()
+	// No t.Parallel(): mutates the package-global kill ring.
 
 	globalKillRing.kill("test", true)
 	ResetKillRing()
@@ -208,7 +213,7 @@ func TestResetKillRing(t *testing.T) {
 }
 
 func TestBackwardWord(t *testing.T) {
-	t.Parallel()
+	// No t.Parallel(): handleKey mutates the package-global kill ring.
 
 	re := NewReadlineEdit("", "")
 	re.SetText("hello world foo")
@@ -242,7 +247,7 @@ func TestBackwardWord(t *testing.T) {
 }
 
 func TestForwardWord(t *testing.T) {
-	t.Parallel()
+	// No t.Parallel(): handleKey mutates the package-global kill ring.
 
 	re := NewReadlineEdit("", "")
 	re.SetText("hello world foo")
@@ -274,7 +279,7 @@ func TestForwardWord(t *testing.T) {
 }
 
 func TestWordMovementWithSpecialChars(t *testing.T) {
-	t.Parallel()
+	// No t.Parallel(): handleKey mutates the package-global kill ring.
 
 	re := NewReadlineEdit("", "")
 	re.SetText("hello-world_foo bar")

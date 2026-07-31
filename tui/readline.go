@@ -16,12 +16,17 @@
 package tui
 
 import (
+	"unicode"
+
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
-// killRing is a module-global kill buffer shared across all ReadlineEdit
-// widgets, mirroring GNU readline behavior.
+// killRing is a package-global kill buffer shared across all ReadlineEdit
+// instances, mirroring Python's module-global _KillRing (ReadlineEdit.py).
+// Consecutive kills accumulate into the same entry (forward kills append,
+// backward kills prepend); any non-kill keypress breaks the chain so the
+// next kill replaces the buffer.
 type killRing struct {
 	text        string
 	lastWasKill bool
@@ -33,6 +38,9 @@ func (kr *killRing) resetChain() {
 	kr.lastWasKill = false
 }
 
+// kill appends/prepends killed text to the shared buffer, following GNU
+// readline accumulation rules. direction is "forward" (append) or "backward"
+// (prepend), matching Python _KillRing.kill's `direction` argument.
 func (kr *killRing) kill(killed string, forward bool) {
 	if killed == "" {
 		return
@@ -49,21 +57,41 @@ func (kr *killRing) kill(killed string, forward bool) {
 	kr.lastWasKill = true
 }
 
-// ReadlineEdit is a tview.InputField wrapper with readline-style
-// editing key bindings:
+// killKeySet mirrors Python's _KILL_KEYS = {"ctrl u","ctrl k","ctrl w","ctrl l"}.
+// These are the only keys that do NOT break the kill chain.
+var killKeySet = map[tcell.Key]bool{
+	tcell.KeyCtrlU: true,
+	tcell.KeyCtrlK: true,
+	tcell.KeyCtrlW: true,
+	tcell.KeyCtrlL: true,
+}
+
+// ReadlineEdit is a tview.InputField with readline-style editing keys,
+// ported from Python's ReadlineMixin.keypress (ReadlineEdit.py). Bindings:
 //
 //	Ctrl-A        beginning of line
 //	Ctrl-E        end of line
-//	Ctrl-U        kill to beginning of line
-//	Ctrl-K        kill to end of line
-//	Ctrl-W        kill previous word
-//	Ctrl-L        kill whole buffer
-//	Ctrl-Y        yank (paste killed text)
-//	Ctrl-Left     backward word (alphanumeric boundary)
-//	Ctrl-Right    forward word (alphanumeric boundary)
+//	Ctrl-U        unix-line-discard (kill from cursor to beginning of line)
+//	Ctrl-K        kill-line (kill from cursor to end of line)
+//	Ctrl-W        unix-word-rubout (kill previous whitespace-delimited word)
+//	Ctrl-L        kill-whole-buffer (kill the entire edit buffer)
+//	Ctrl-Y        yank (insert most-recently-killed text)
+//	Ctrl-Left     backward-word (alphanumeric boundary)
+//	Ctrl-Right    forward-word (alphanumeric boundary)
+//
+// "Line" is the current logical line within the buffer (newline-delimited),
+// so on multiline edits these act on the line under the cursor.
+//
+// The kill buffer is shared across all ReadlineEdit instances.
+//
+// The edit model (text + cursorPos, both rune-based) is the source of truth
+// and is fully driven by handleKey; the embedded tview.InputField is synced
+// via SetText for display. tview's InputField exposes no public cursor
+// setter, so after a non-end cursor move the displayed caret may lag the
+// model cursor — the model itself (tested in readline_test.go) is correct.
 type ReadlineEdit struct {
 	*tview.InputField
-	cursorPos int
+	cursorPos int // rune offset, mirrors Python edit_pos
 }
 
 // NewReadlineEdit creates a new ReadlineEdit with the given label and placeholder.
@@ -78,137 +106,153 @@ func NewReadlineEdit(label, placeholder string) *ReadlineEdit {
 	return re
 }
 
-// handleKey processes readline-style key events.
+// SetText sets the edit buffer and positions the model cursor at the end,
+// matching Python's urwid.Edit.set_edit_text (which leaves edit_pos at end).
+func (re *ReadlineEdit) SetText(text string) {
+	re.cursorPos = len([]rune(text))
+	re.InputField.SetText(text)
+}
+
+// CursorPos returns the current model cursor position as a rune offset.
+func (re *ReadlineEdit) CursorPos() int {
+	return re.cursorPos
+}
+
+// SetCursorPos sets the model cursor position (clamped to the buffer length).
+func (re *ReadlineEdit) SetCursorPos(pos int) {
+	if pos < 0 {
+		pos = 0
+	}
+	if n := len([]rune(re.GetText())); pos > n {
+		pos = n
+	}
+	re.cursorPos = pos
+}
+
+// handleKey processes one key event, mirroring ReadlineMixin.keypress. It
+// returns nil when it consumes the event (readline keys and regular rune
+// insertion) or the event itself to let tview handle non-readline keys.
 func (re *ReadlineEdit) handleKey(event *tcell.EventKey) *tcell.EventKey {
-	text := re.GetText()
-	runes := []rune(text)
+	runes := []rune(re.GetText())
+	pos := re.cursorPos
+	if pos > len(runes) {
+		pos = len(runes)
+	}
+
+	killKey := false
+	consumed := true
 
 	switch event.Key() {
 	case tcell.KeyCtrlA:
-		// Beginning of line
-		bol := findLineStart(text, re.cursorPos)
-		re.cursorPos = bol
-		return nil
-
+		pos = lineStart(runes, pos)
 	case tcell.KeyCtrlE:
-		// End of line
-		eol := findLineEnd(text, re.cursorPos)
-		re.cursorPos = eol
-		return nil
-
+		pos = lineEnd(runes, pos)
 	case tcell.KeyCtrlU:
-		// Kill to beginning of line
-		bol := findLineStart(text, re.cursorPos)
-		killed := string(runes[bol:re.cursorPos])
-		globalKillRing.kill(killed, false)
-		newRunes := append(runes[:bol], runes[re.cursorPos:]...)
-		re.SetText(string(newRunes))
-		re.cursorPos = bol
-		return nil
-
+		killKey = true
+		bol := lineStart(runes, pos)
+		globalKillRing.kill(string(runes[bol:pos]), false)
+		runes = append(runes[:bol], runes[pos:]...)
+		pos = bol
 	case tcell.KeyCtrlK:
-		// Kill to end of line
-		eol := findLineEnd(text, re.cursorPos)
-		killed := string(runes[re.cursorPos:eol])
-		globalKillRing.kill(killed, true)
-		newRunes := append(runes[:re.cursorPos], runes[eol:]...)
-		re.SetText(string(newRunes))
-		return nil
-
+		killKey = true
+		eol := lineEnd(runes, pos)
+		globalKillRing.kill(string(runes[pos:eol]), true)
+		runes = append(runes[:pos], runes[eol:]...)
 	case tcell.KeyCtrlW:
-		// Kill previous word
-		p := re.cursorPos
-		// Skip trailing whitespace
-		for p > 0 && runes[p-1] == ' ' {
+		killKey = true
+		p := pos
+		for p > 0 && unicode.IsSpace(runes[p-1]) {
 			p--
 		}
-		// Skip word characters
-		for p > 0 && isWordChar(runes[p-1]) {
+		for p > 0 && !unicode.IsSpace(runes[p-1]) {
 			p--
 		}
-		killed := string(runes[p:re.cursorPos])
-		globalKillRing.kill(killed, false)
-		newRunes := append(runes[:p], runes[re.cursorPos:]...)
-		re.SetText(string(newRunes))
-		re.cursorPos = p
-		return nil
-
+		globalKillRing.kill(string(runes[p:pos]), false)
+		runes = append(runes[:p], runes[pos:]...)
+		pos = p
 	case tcell.KeyCtrlL:
-		// Kill whole buffer
-		globalKillRing.kill(text, true)
-		re.SetText("")
-		re.cursorPos = 0
-		return nil
-
+		killKey = true
+		globalKillRing.kill(string(runes), true)
+		runes = runes[:0]
+		pos = 0
 	case tcell.KeyCtrlY:
-		// Yank
-		if globalKillRing.text == "" {
-			return event
+		if globalKillRing.text != "" {
+			kr := []rune(globalKillRing.text)
+			newRunes := make([]rune, 0, len(runes)+len(kr))
+			newRunes = append(newRunes, runes[:pos]...)
+			newRunes = append(newRunes, kr...)
+			newRunes = append(newRunes, runes[pos:]...)
+			runes = newRunes
+			pos += len(kr)
 		}
-		killRunes := []rune(globalKillRing.text)
-		newRunes := make([]rune, 0, len(runes)+len(killRunes))
-		newRunes = append(newRunes, runes[:re.cursorPos]...)
-		newRunes = append(newRunes, killRunes...)
-		newRunes = append(newRunes, runes[re.cursorPos:]...)
-		re.SetText(string(newRunes))
-		re.cursorPos += len(killRunes)
-		globalKillRing.resetChain()
-		return nil
-
 	case tcell.KeyLeft:
-		// Ctrl-Left: backward word (some terminals report Ctrl+Left as Left with ModAlt)
 		if event.Modifiers()&(tcell.ModCtrl|tcell.ModAlt) != 0 {
-			pos := re.cursorPos
 			for pos > 0 && !isWordChar(runes[pos-1]) {
 				pos--
 			}
 			for pos > 0 && isWordChar(runes[pos-1]) {
 				pos--
 			}
-			re.cursorPos = pos
-			return nil
+		} else {
+			consumed = false
 		}
-		// Plain Left arrow
-		if re.cursorPos > 0 {
-			re.cursorPos--
-		}
-		return event
-
 	case tcell.KeyRight:
-		// Ctrl-Right: forward word
 		if event.Modifiers()&(tcell.ModCtrl|tcell.ModAlt) != 0 {
 			n := len(runes)
-			pos := re.cursorPos
 			for pos < n && !isWordChar(runes[pos]) {
 				pos++
 			}
 			for pos < n && isWordChar(runes[pos]) {
 				pos++
 			}
-			re.cursorPos = pos
-			return nil
+		} else {
+			consumed = false
 		}
-		// Plain Right arrow
-		if re.cursorPos < len(runes) {
-			re.cursorPos++
+	case tcell.KeyRune:
+		// Own regular character insertion so the model stays consistent with
+		// the buffer (tview's InputField has no readable cursor position).
+		ch := event.Rune()
+		newRunes := make([]rune, 0, len(runes)+1)
+		newRunes = append(newRunes, runes[:pos]...)
+		newRunes = append(newRunes, ch)
+		newRunes = append(newRunes, runes[pos:]...)
+		runes = newRunes
+		pos++
+	default:
+		consumed = false
+	}
+
+	// Match Python: any key that is NOT a kill key breaks the kill chain.
+	if !killKey {
+		globalKillRing.resetChain()
+	}
+
+	if !consumed {
+		// Let tview handle non-readline keys (Backspace, Delete, plain
+		// arrows, Enter, ...). Re-sync the model cursor on plain horizontal
+		// movement so subsequent readline kills use a sane position.
+		switch event.Key() {
+		case tcell.KeyLeft:
+			if pos > 0 {
+				pos--
+			}
+		case tcell.KeyRight:
+			if pos < len(runes) {
+				pos++
+			}
 		}
+		re.cursorPos = pos
 		return event
 	}
 
-	// Track cursor position on regular key input
-	if event.Key() == tcell.KeyRune {
-		re.cursorPos++
-		if re.cursorPos > len(runes) {
-			re.cursorPos = len(runes)
-		}
-	}
-
-	return event
+	re.cursorPos = pos
+	re.InputField.SetText(string(runes))
+	return nil
 }
 
-// findLineStart returns the position of the start of the current line.
-func findLineStart(text string, pos int) int {
-	runes := []rune(text)
+// lineStart returns the rune index of the start of the current logical line
+// (the rune after the previous newline, or 0), matching Python _rl_line_bounds bol.
+func lineStart(runes []rune, pos int) int {
 	for i := pos - 1; i >= 0; i-- {
 		if runes[i] == '\n' {
 			return i + 1
@@ -217,9 +261,9 @@ func findLineStart(text string, pos int) int {
 	return 0
 }
 
-// findLineEnd returns the position of the end of the current line.
-func findLineEnd(text string, pos int) int {
-	runes := []rune(text)
+// lineEnd returns the rune index of the end of the current logical line (the
+// next newline, or len(runes)), matching Python _rl_line_bounds eol.
+func lineEnd(runes []rune, pos int) int {
 	for i := pos; i < len(runes); i++ {
 		if runes[i] == '\n' {
 			return i
@@ -228,16 +272,26 @@ func findLineEnd(text string, pos int) int {
 	return len(runes)
 }
 
-// isWordChar returns true if the character is alphanumeric or underscore.
+// isWordChar reports whether ch is an alphanumeric or underscore character,
+// matching Python's _rl_is_word_char (ch.isalnum() or ch == '_'). Unicode
+// letters/digits are word chars, so "café" is one word.
 func isWordChar(ch rune) bool {
-	return (ch >= 'a' && ch <= 'z') ||
-		(ch >= 'A' && ch <= 'Z') ||
-		(ch >= '0' && ch <= '9') ||
-		ch == '_'
+	return unicode.IsLetter(ch) || unicode.IsDigit(ch) || ch == '_'
 }
 
-// ResetKillRing resets the global kill ring state.
+// KillRingText returns the current shared kill-ring contents (for testing).
+func KillRingText() string {
+	return globalKillRing.text
+}
+
+// KillRingLastWasKill reports whether the previous keypress was a kill
+// (i.e. the accumulation chain is still open) — for testing.
+func KillRingLastWasKill() bool {
+	return globalKillRing.lastWasKill
+}
+
+// ResetKillRing clears the shared kill ring state (text and chain flag).
 func ResetKillRing() {
-	globalKillRing.resetChain()
 	globalKillRing.text = ""
+	globalKillRing.lastWasKill = false
 }

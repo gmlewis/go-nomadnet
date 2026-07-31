@@ -54,9 +54,13 @@ func NewApp(theme int, glyphSet string, colorMode int) *App {
 	return a
 }
 
-// SetRoot sets the root primitive for the application.
+// SetRoot sets the root primitive for the application. The main display is
+// mounted as the bottom page of a tview.Pages root owned by the dialog
+// manager, so modal dialogs can overlay it without destroying the underlying
+// screen.
 func (a *App) SetRoot() {
-	a.Application.SetRoot(a.Main.Root(), true)
+	root := InitDialogManager(a.Application, a.Main.Root())
+	a.Application.SetRoot(root, true)
 }
 
 // Run starts the tview application event loop.

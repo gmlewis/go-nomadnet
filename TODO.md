@@ -257,16 +257,6 @@ test or a matching `parity.sh` summary):
 
 ### Phase 0 — Foundation & cross-cutting infrastructure (do first; everything depends on it)
 
-- [ ] **0.5 Dialog overlay infrastructure.** Replace `tui/dialog.go` `ShowDialog`’s
-      `app.SetRoot(dialog, true)` with a true overlay that preserves the
-      underlying screen and restores previous focus/page on dismiss. Add a
-      dialog stack. `Esc` closes the top dialog (not the app). Test: open a
-      dialog, assert the underlying page widget is still in the tree; dismiss
-      and assert focus is restored.
-- [ ] **0.6 Readline kill/yank + global kill ring.** Port `ReadlineMixin.keypress`
-      (`C-a/e/u/k/w/l/y`, `C-left/right`) into a Go `ReadlineEdit` with a
-      package-global kill ring shared across instances. Test each key against
-      Python `ReadlineEdit.py` golden buffer states.
 - [ ] **0.7 UTF-8 handling.** Fix the `U+FFFD` glitches (decode announce/source
       names as UTF-8, not byte-wise). Test: a fixture with non-ASCII names
       round-trips through the rendering path unchanged.
