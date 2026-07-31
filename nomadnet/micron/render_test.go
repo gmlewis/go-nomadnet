@@ -122,7 +122,7 @@ func TestRenderToTViewDividerCustomChar(t *testing.T) {
 func TestRenderToTViewLink(t *testing.T) {
 	t.Parallel()
 
-	nodes := Parse("[Click`http://example.com]")
+	nodes := Parse("`[Click`http://example.com]")
 	got := RenderToTView(nodes)
 	if !strings.Contains(got, "Click") {
 		t.Errorf("RenderToTView link missing label: %q", got)
@@ -176,7 +176,7 @@ func TestRenderToTViewMultiLine(t *testing.T) {
 func TestRenderToPlainText(t *testing.T) {
 	t.Parallel()
 
-	markup := ">Title\n`!Bold` text\n[Link`url]\n--"
+	markup := ">Title\n`!Bold` text\n`[Link`url]\n--"
 	nodes := Parse(markup)
 	got := RenderToPlainText(nodes)
 
@@ -216,7 +216,7 @@ func TestExpandColor6Digit(t *testing.T) {
 func TestRenderToTViewField(t *testing.T) {
 	t.Parallel()
 
-	nodes := Parse("<fieldname`default>")
+	nodes := Parse("`<fieldname`default>")
 	got := RenderToTView(nodes)
 	if !strings.Contains(got, "fieldname") {
 		t.Errorf("RenderToTView field missing name: %q", got)

@@ -3,6 +3,8 @@ PARITY-REPORT.md
 SKILLS.md
 TODO.md
 copyright_header.txt
+captures/
 /skills/
 /test-all.sh
 go.work*
+__pycache__

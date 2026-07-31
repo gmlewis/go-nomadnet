@@ -56,20 +56,36 @@ var serverForwardedCommands = map[string]bool{
 // ParseSlashCommand parses a chat input line and returns the command
 // name, argument, and whether it was a slash command.
 // Aliases are resolved: /j → join, /leave → part, /q → quit.
+//
+// Matches Python Channels.py _handle_slash_command parsing
+// (Channels.py:997-1003): the command name is lowercased and the line is
+// split on the first whitespace run (str.split(None, 1)), so any whitespace
+// (spaces or tabs) separates the command from its argument while internal
+// whitespace in the argument is preserved.
 func ParseSlashCommand(input string) (cmd, arg string, isCmd bool) {
 	input = strings.TrimSpace(input)
 	if !strings.HasPrefix(input, "/") {
 		return "", "", false
 	}
 
-	input = strings.TrimPrefix(input, "/")
-	parts := strings.SplitN(input, " ", 2)
-	cmd = strings.TrimSpace(parts[0])
+	body := strings.TrimPrefix(input, "/")
+	// Skip leading whitespace (Python's split(None, 1) collapses it).
+	i := 0
+	for i < len(body) && isMicronSpace(body[i]) {
+		i++
+	}
+	// The command word runs up to the next whitespace.
+	j := i
+	for j < len(body) && !isMicronSpace(body[j]) {
+		j++
+	}
+	cmd = body[i:j]
 	if cmd == "" {
 		return "", "", false
 	}
-	if len(parts) > 1 {
-		arg = strings.TrimSpace(parts[1])
+	cmd = strings.ToLower(cmd)
+	if j < len(body) {
+		arg = strings.TrimSpace(body[j:])
 	}
 
 	if alias, ok := CommandAlias[cmd]; ok {
@@ -77,6 +93,17 @@ func ParseSlashCommand(input string) (cmd, arg string, isCmd bool) {
 	}
 
 	return cmd, arg, true
+}
+
+// isMicronSpace reports whether b is an ASCII whitespace byte, matching the
+// separators used by Python's str.split(None) (space, tab, newline, carriage
+// return, form feed, vertical tab).
+func isMicronSpace(b byte) bool {
+	switch b {
+	case ' ', '\t', '\n', '\r', '\f', '\v':
+		return true
+	}
+	return false
 }
 
 // IsLocalCommand returns true if the command is handled locally

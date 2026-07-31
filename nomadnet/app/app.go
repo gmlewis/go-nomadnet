@@ -129,6 +129,9 @@ type App struct {
 	NodeAnnounceAtStart  bool
 	PagePath             string
 	FilePath             string
+	MaxPeers             *int
+	MessageStorageLimit  float64
+	PrioritisedLXMF      []string
 
 	// RRC settings
 	RRCHistoryPerRoomCap      int
@@ -526,10 +529,22 @@ func (a *App) applyConfig(cfg *config.Config) {
 	a.NotifyOnNewMessage = cfg.Client.NotifyOnNewMessage
 	a.ComposeMarkdown = cfg.Client.ComposeInMarkdown
 	a.DownloadsPath = expandUser(cfg.Client.DownloadsPath)
+	a.AttachmentSavePath = expandUser(cfg.Client.AttachmentSavePath)
+	a.PeerAnnounceAtStart = cfg.Client.AnnounceAtStart
+	a.applyUIMode(cfg.Client.UserInterface)
+	// Python stores these as floats (as_float); the App fields are *int KB
+	// values. The config package has already applied defaults and clamping.
+	a.LXMFMaxIncomingSize = intPtr(int(cfg.Client.MaxAcceptedSize))
+	a.LXMFMaxPropagationSize = intPtr(int(cfg.Node.MaxTransferSize))
+	a.LXMFMaxSyncSize = intPtr(int(cfg.Node.MaxSyncSize))
 	a.DisablePropagation = cfg.Node.DisablePropagation
 
-	a.PageRefreshInterval = 0
-	a.FileRefreshInterval = 0
+	a.PageRefreshInterval = cfg.Node.PageRefreshInterval
+	a.FileRefreshInterval = cfg.Node.FileRefreshInterval
+	a.StaticPeers = cfg.Node.StaticPeers
+	a.MaxPeers = cfg.Node.MaxPeers
+	a.MessageStorageLimit = cfg.Node.MessageStorageLimit
+	a.PrioritisedLXMF = cfg.Node.PrioritiseDestinations
 
 	a.RRCHistoryPerRoomCap = cfg.RRC.HistoryPerRoomCap
 	a.RRCFilterLoadedHistory = cfg.RRC.FilterLoadedHistory
@@ -537,6 +552,7 @@ func (a *App) applyConfig(cfg *config.Config) {
 	// holds minutes, so convert to seconds here to match Python.
 	a.RRCEphemeralNotices = int(cfg.RRC.EphemeralNotices) * 60
 	a.RRCNickColors = cfg.RRC.NickColors
+	a.RRCNickColorsTheme = cfg.RRC.NickColorsTheme
 	a.RRCMentionColor = cfg.RRC.MentionColor
 	a.RRCColorMentionTimestamps = cfg.RRC.ColorMentionTimestamps
 	a.RRCUIJustifyMsgs = cfg.RRC.JustifyMsgs
@@ -560,6 +576,94 @@ func (a *App) applyConfig(cfg *config.Config) {
 
 	a.PrintMessages = cfg.Printing.PrintMessages
 	a.PrintCommand = cfg.Printing.PrintCommand
+	a.applyPrintingFrom(cfg)
+}
+
+// printFromHashHexLen is the hex length of a destination hash
+// (RNS.Identity.TRUNCATED_HASHLENGTH/8*2 = 128/8*2 = 32), matching Python's
+// `len(...) == (RNS.Identity.TRUNCATED_HASHLENGTH//8)*2` check in applyConfig.
+const printFromHashHexLen = 32
+
+// applyPrintingFrom parses the printing.print_from setting when print_messages
+// is enabled, matching Python NomadNetworkApp.applyConfig
+// (NomadNetworkApp.py:1183-1218). A comma-separated value is treated as a
+// list; a single value of "everywhere", "trusted", or a 32-hex destination
+// hash selects the corresponding print scope.
+func (a *App) applyPrintingFrom(cfg *config.Config) {
+	a.PrintAllMessages = false
+	a.PrintTrustedMessages = false
+	a.AllowedMessagePrintDestinations = nil
+	a.PrintingTemplateMsg = ""
+
+	if !cfg.Printing.PrintMessages {
+		return
+	}
+
+	pf := cfg.Printing.PrintFrom
+	if pf == "" {
+		// Python: allowed_message_print_destinations = None
+	} else if strings.Contains(pf, ",") {
+		entries := splitCSV(pf)
+		a.AllowedMessagePrintDestinations = entries
+		for _, e := range entries {
+			if strings.ToLower(e) == "trusted" {
+				a.PrintTrustedMessages = true
+			}
+		}
+	} else {
+		switch lower := strings.ToLower(pf); {
+		case lower == "everywhere":
+			a.PrintAllMessages = true
+		case lower == "trusted":
+			a.PrintTrustedMessages = true
+		case len(pf) == printFromHashHexLen:
+			a.AllowedMessagePrintDestinations = []string{pf}
+		}
+	}
+
+	if cfg.Printing.MessageTemplate == "" {
+		a.PrintingTemplateMsg = defaultPrintingTemplate
+	} else {
+		path := expandUser(cfg.Printing.MessageTemplate)
+		if data, err := os.ReadFile(path); err == nil {
+			a.PrintingTemplateMsg = string(data)
+		} else {
+			// Python falls back to the default template when the file is
+			// missing or unreadable (and would create it with the default).
+			a.PrintingTemplateMsg = defaultPrintingTemplate
+		}
+	}
+}
+
+// splitCSV splits a comma-separated string into trimmed, non-empty fields,
+// matching the config package's as_list convention for list-valued keys.
+func splitCSV(s string) []string {
+	var out []string
+	for _, part := range strings.Split(s, ",") {
+		p := strings.TrimSpace(part)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// applyUIMode maps the user_interface config string to an App.UIMode constant,
+// matching Python applyConfig's uimode selection (NomadNetworkApp.py:904-982).
+// The config value is already lowercased by config.Load.
+func (a *App) applyUIMode(ui string) {
+	switch ui {
+	case "none":
+		a.UIMode = UINone
+	case "menu":
+		a.UIMode = UIMenu
+	case "text":
+		a.UIMode = UIText
+	case "graphical":
+		a.UIMode = UIGraphical
+	case "web":
+		a.UIMode = UIWeb
+	}
 }
 
 // Shutdown stops background jobs and persists state. It waits for any
@@ -692,6 +796,9 @@ func expandUser(path string) string {
 	}
 	return filepath.Join(home, path[1:])
 }
+
+// intPtr returns a pointer to n, for config fields stored as *int.
+func intPtr(n int) *int { return &n }
 
 // ensureStandaloneRNSConfig creates a standalone RNS config directory
 // with share_instance = No, matching gornphone's pattern. Each gonomadnet

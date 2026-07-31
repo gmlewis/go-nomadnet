@@ -208,7 +208,7 @@ func TestParseDividerLongLine(t *testing.T) {
 func TestParseLink(t *testing.T) {
 	t.Parallel()
 
-	nodes := Parse("[Click here`http://example.com]")
+	nodes := Parse("`[Click here`http://example.com]")
 	if len(nodes) != 1 {
 		t.Fatalf("Parse link len = %d, want 1", len(nodes))
 	}
@@ -226,7 +226,7 @@ func TestParseLink(t *testing.T) {
 func TestParseLinkWithFields(t *testing.T) {
 	t.Parallel()
 
-	nodes := Parse("[Link`target`field1|field2]")
+	nodes := Parse("`[Link`target`field1|field2]")
 	if len(nodes) != 1 {
 		t.Fatalf("Parse link len = %d, want 1", len(nodes))
 	}
@@ -238,7 +238,7 @@ func TestParseLinkWithFields(t *testing.T) {
 func TestParseLinkURLOnly(t *testing.T) {
 	t.Parallel()
 
-	nodes := Parse("[http://example.com]")
+	nodes := Parse("`[http://example.com]")
 	if len(nodes) != 1 {
 		t.Fatalf("Parse link len = %d, want 1", len(nodes))
 	}
@@ -253,7 +253,7 @@ func TestParseLinkURLOnly(t *testing.T) {
 func TestParseField(t *testing.T) {
 	t.Parallel()
 
-	nodes := Parse("<fieldname`default data>")
+	nodes := Parse("`<fieldname`default data>")
 	if len(nodes) != 1 {
 		t.Fatalf("Parse field len = %d, want 1", len(nodes))
 	}
@@ -271,7 +271,7 @@ func TestParseField(t *testing.T) {
 func TestParseFieldWithPipe(t *testing.T) {
 	t.Parallel()
 
-	nodes := Parse("text <32|myfield`value> more")
+	nodes := Parse("text `<32|myfield`value>` more")
 	// At least one field node should be present
 	if len(nodes) < 1 {
 		t.Fatalf("Parse field len = %d, want >= 1", len(nodes))
@@ -296,7 +296,7 @@ func TestParseFieldWithPipe(t *testing.T) {
 func TestParseFieldMasked(t *testing.T) {
 	t.Parallel()
 
-	nodes := Parse("<!|secret`password>")
+	nodes := Parse("`<!|secret`password>")
 	if len(nodes) != 1 {
 		t.Fatalf("Parse field len = %d, want 1", len(nodes))
 	}
@@ -308,7 +308,7 @@ func TestParseFieldMasked(t *testing.T) {
 func TestParseFieldCheckbox(t *testing.T) {
 	t.Parallel()
 
-	nodes := Parse("<?|agree`yes`I agree>")
+	nodes := Parse("`<?|agree`yes`I agree>")
 	if len(nodes) != 1 {
 		t.Fatalf("Parse field len = %d, want 1", len(nodes))
 	}
@@ -320,7 +320,7 @@ func TestParseFieldCheckbox(t *testing.T) {
 func TestParseFieldRadio(t *testing.T) {
 	t.Parallel()
 
-	nodes := Parse("<^|choice`opt1`Option 1>")
+	nodes := Parse("`<^|choice`opt1`Option 1>")
 	if len(nodes) != 1 {
 		t.Fatalf("Parse field len = %d, want 1", len(nodes))
 	}
@@ -332,16 +332,22 @@ func TestParseFieldRadio(t *testing.T) {
 func TestParseFieldIncomplete(t *testing.T) {
 	t.Parallel()
 
-	// No closing >
+	// No `< prefix: a bare "<" in text mode is a literal character, so no
+	// field node is produced.
 	nodes := Parse("text <fieldname`data more")
-	if len(nodes) != 1 {
-		t.Errorf("Parse incomplete field = %d nodes, want 1 (text only)", len(nodes))
+	for _, n := range nodes {
+		if n.Type == NodeField {
+			t.Errorf("Parse incomplete field produced a field node, want none")
+		}
 	}
 
-	// < at start of line is section reset, not field
+	// < at start of line is a section reset, not a field. The rest of the
+	// line is re-parsed as text (matching Python MicronParser.py:281-284).
 	nodes = Parse("<fieldname>")
-	if len(nodes) != 1 {
-		t.Errorf("Parse field no backtick = %d nodes, want 1 (section reset)", len(nodes))
+	for _, n := range nodes {
+		if n.Type == NodeField {
+			t.Errorf("Parse leading-< produced a field node, want section reset")
+		}
 	}
 }
 

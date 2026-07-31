@@ -96,11 +96,13 @@ type Node struct {
 	LinkFields string
 
 	// For NodeField
-	FieldName  string
-	FieldType  string // "field", "checkbox", "radio"
-	FieldWidth int
-	FieldData  string
-	FieldMask  bool
+	FieldName       string
+	FieldType       string // "field", "checkbox", "radio"
+	FieldWidth      int
+	FieldData       string // text fields: initial text; checkbox/radio: label
+	FieldMask       bool
+	FieldValue      string // checkbox/radio: selected value (field_value or label)
+	FieldPrechecked bool   // checkbox/radio: pre-checked ("*" flag)
 
 	// For NodeColor
 	FGColor string
@@ -210,6 +212,12 @@ func parseLine(line string, state *parseState) []*Node {
 
 	// Check for headings: >>>>, >>>, >>
 	if line[0] == '>' {
+		// Heading lines containing a field (`<) lose their heading status:
+		// the leading ">"s are stripped and the line is reclassified,
+		// matching Python MicronParser.parse_line (MicronParser.py:233-236).
+		if strings.Contains(line, "`<") {
+			return parseLine(strings.TrimLeft(line, ">"), state)
+		}
 		return parseHeading(line, state)
 	}
 
@@ -283,12 +291,12 @@ func parseLine(line string, state *parseState) []*Node {
 		return parsePartial(line[2:])
 	}
 
-	// Check for section reset: < (but not field pattern)
+	// Check for section reset: < resets section depth, then re-parses
+	// the rest of the line. Matches Python MicronParser.parse_line
+	// (MicronParser.py:281-284): a leading "<" always resets depth.
 	if line[0] == '<' {
-		if !isFieldPattern(line) {
-			state.depth = 0
-			return parseLine(line[1:], state)
-		}
+		state.depth = 0
+		return parseLine(line[1:], state)
 	}
 
 	// Parse inline formatting
@@ -299,7 +307,10 @@ func parseLine(line string, state *parseState) []*Node {
 	return nodes
 }
 
-// parseHeading parses heading lines starting with >.
+// parseHeading parses heading lines starting with >. The level is the count
+// of leading ">" characters and is not clamped, matching Python
+// MicronParser.parse_line (MicronParser.py:288-298): heading styles only
+// exist for levels 1-3, but the depth (and thus indent) grows unbounded.
 func parseHeading(line string, state *parseState) []*Node {
 	level := 0
 	for i, c := range line {
@@ -308,10 +319,6 @@ func parseHeading(line string, state *parseState) []*Node {
 		} else {
 			break
 		}
-	}
-
-	if level > 4 {
-		level = 4
 	}
 
 	state.depth = level
@@ -424,16 +431,24 @@ func parseInline(line string) []*Node {
 		c := line[i]
 
 		if c == '\\' {
-			// Escape next character
+			// Escape next character: the backslash and the following char
+			// are consumed and the char is taken literally. A trailing
+			// backslash with no following char contributes nothing,
+			// matching Python's escape flag (MicronParser.py:829-835).
 			if i+1 < len(line) {
 				part += string(line[i+1])
 				i += 2
 				continue
 			}
+			i++ // drop trailing backslash
+			continue
 		}
 
 		if c == '`' {
-			// Start of formatting
+			// Start of formatting. In Micron, links (`[) and fields (`<)
+			// are entered from formatting mode, never via bare brackets:
+			// bare "[" / "<" in text mode are literal characters, matching
+			// Python MicronParser.make_output (MicronParser.py:605-846).
 			if len(part) > 0 {
 				nodes = append(nodes, &Node{Type: NodeText, Text: part})
 				part = ""
@@ -442,36 +457,6 @@ func parseInline(line string) []*Node {
 			// Parse formatting command
 			formatNodes, consumed := parseFormatting(line, i)
 			nodes = append(nodes, formatNodes...)
-			i += consumed
-			continue
-		}
-
-		if c == '[' {
-			// Start of link
-			if len(part) > 0 {
-				nodes = append(nodes, &Node{Type: NodeText, Text: part})
-				part = ""
-			}
-
-			linkNode, consumed := parseLink(line, i)
-			if linkNode != nil {
-				nodes = append(nodes, linkNode)
-			}
-			i += consumed
-			continue
-		}
-
-		if c == '<' {
-			// Start of field
-			if len(part) > 0 {
-				nodes = append(nodes, &Node{Type: NodeText, Text: part})
-				part = ""
-			}
-
-			fieldNode, consumed := parseField(line, i)
-			if fieldNode != nil {
-				nodes = append(nodes, fieldNode)
-			}
 			i += consumed
 			continue
 		}
@@ -562,12 +547,35 @@ func parseFormatting(line string, start int) ([]*Node, int) {
 		if name != "" {
 			return []*Node{{Type: NodeAnchor, AnchorName: name}}, nameEnd - start
 		}
+	case '<': // input field: `<...`...>
+		field, fc := parseField(line, start+1)
+		if field != nil {
+			return []*Node{field}, 1 + fc
+		}
+		// Invalid field: parseField reports how far it got (just the
+		// bracket, or through a closing > if present); the rest of the
+		// line is treated as text, matching Python's `pass` + revert to
+		// text mode (MicronParser.py:676,733).
+		return nil, 1 + fc
+	case '[': // link: `[label`url`fields]
+		link, lc := parseLink(line, start+1)
+		if link != nil {
+			return []*Node{link}, 1 + lc
+		}
+		// Invalid link: parseLink reports how far it got (just the
+		// bracket, or through a closing ] if present); the rest is text.
+		return nil, 1 + lc
 	}
 
 	return nil, consumed
 }
 
-// parseLink parses a link starting with [.
+// parseLink parses a link starting with [. The bracket is at `start`.
+// Matches Python MicronParser.make_output's "[" branch
+// (MicronParser.py:763-822): link_data is split on the backtick char into
+// 1 (url only), 2 (label+url), or 3 (label+url+fields) components; any
+// other count yields an empty url and no link is emitted. A link is only
+// emitted when link_url is non-empty; an empty label falls back to the url.
 func parseLink(line string, start int) (*Node, int) {
 	endpos := -1
 	for i := start + 1; i < len(line); i++ {
@@ -578,25 +586,32 @@ func parseLink(line string, start int) (*Node, int) {
 	}
 
 	if endpos == -1 {
-		return nil, len(line) - start
+		// No closing ]: consume just the bracket; rest of line is text.
+		return nil, 1
 	}
 
 	linkData := line[start+1 : endpos]
 	components := splitOnChar(linkData, '`')
 
 	link := &Node{Type: NodeLink}
-	if len(components) >= 1 {
+	switch len(components) {
+	case 1:
+		link.LinkURL = components[0]
+	case 2:
 		link.LinkLabel = components[0]
-	}
-	if len(components) >= 2 {
 		link.LinkURL = components[1]
-	}
-	if len(components) >= 3 {
+	case 3:
+		link.LinkLabel = components[0]
+		link.LinkURL = components[1]
 		link.LinkFields = components[2]
+	default:
+		// Python: 4+ components → empty url/label/fields, no link emitted.
+		return nil, endpos - start + 1
 	}
 
 	if link.LinkURL == "" {
-		link.LinkURL = link.LinkLabel
+		// Python only appends a link when link_url is non-empty.
+		return nil, endpos - start + 1
 	}
 	if link.LinkLabel == "" {
 		link.LinkLabel = link.LinkURL
@@ -605,9 +620,18 @@ func parseLink(line string, start int) (*Node, int) {
 	return link, endpos - start + 1
 }
 
-// parseField parses an input field starting with <.
+// parseField parses an input field starting with <. The bracket is at
+// `start`. Matches Python MicronParser.make_output's "<" branch
+// (MicronParser.py:669-758): the content between "<" and the first inner
+// backtick is pipe-separated into [flags, name, value, check]; the text
+// after the inner backtick up to the closing ">" is field_data.
+//
+// For text fields, field_data is the initial text and width/masked apply;
+// value and prechecked are not emitted. For checkboxes/radios, field_data
+// is the label, the value is field_value (or the label when unset), the
+// prechecked flag comes from a "*" 4th component, and width is not emitted.
 func parseField(line string, start int) (*Node, int) {
-	// Find the backtick
+	// Find the inner backtick separating field content from field data.
 	backtickPos := -1
 	for i := start + 1; i < len(line); i++ {
 		if line[i] == '`' {
@@ -617,7 +641,8 @@ func parseField(line string, start int) (*Node, int) {
 	}
 
 	if backtickPos == -1 {
-		return nil, len(line) - start
+		// No inner backtick: invalid field, consume just the bracket.
+		return nil, 1
 	}
 
 	fieldContent := line[start+1 : backtickPos]
@@ -632,7 +657,8 @@ func parseField(line string, start int) (*Node, int) {
 	}
 
 	if fieldEnd == -1 {
-		return nil, len(line) - start
+		// No closing >: invalid field, consume just the bracket.
+		return nil, 1
 	}
 
 	fieldData := line[backtickPos+1 : fieldEnd]
@@ -643,21 +669,18 @@ func parseField(line string, start int) (*Node, int) {
 		FieldData:  fieldData,
 	}
 
-	// Parse field content with pipe separators
+	fieldValue := ""
+	fieldPrechecked := false
+
+	// Parse field content with pipe separators.
 	if contains(fieldContent, '|') {
 		parts := splitPartial(fieldContent)
-		flags := ""
-		if len(parts) >= 1 {
-			flags = parts[0]
-		}
+		flags := parts[0]
 		if len(parts) >= 2 {
 			field.FieldName = parts[1]
 		}
-		if len(parts) >= 3 {
-			field.FieldData = parts[2]
-		}
 
-		// Check for type indicators
+		// Type indicators (Python elif order: ^, then ?, then !).
 		if contains(flags, '^') {
 			field.FieldType = "radio"
 			flags = removeChar(flags, '^')
@@ -669,12 +692,31 @@ func parseField(line string, start int) (*Node, int) {
 			flags = removeChar(flags, '!')
 		}
 
-		// Parse width from flags
+		// Parse width from remaining flags.
 		if w, ok := parseInt(flags); ok {
 			field.FieldWidth = min(w, 256)
 		}
+
+		if len(parts) >= 3 {
+			fieldValue = parts[2]
+		}
+		if len(parts) >= 4 && parts[3] == "*" {
+			fieldPrechecked = true
+		}
 	} else {
 		field.FieldName = fieldContent
+	}
+
+	// Checkboxes and radios emit value/label/prechecked but no width.
+	if field.FieldType == "checkbox" || field.FieldType == "radio" {
+		field.FieldWidth = 0
+		field.FieldData = fieldData // label
+		if fieldValue != "" {
+			field.FieldValue = fieldValue
+		} else {
+			field.FieldValue = fieldData
+		}
+		field.FieldPrechecked = fieldPrechecked
 	}
 
 	return field, fieldEnd - start + 1
@@ -763,31 +805,6 @@ func parseInt(s string) (int, bool) {
 		}
 	}
 	return n, true
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-// isFieldPattern checks if a line starts with a field pattern: <...`...>
-func isFieldPattern(line string) bool {
-	if len(line) < 3 || line[0] != '<' {
-		return false
-	}
-	// Look for backtick and closing >
-	hasBacktick := false
-	for i := 1; i < len(line); i++ {
-		if line[i] == '`' {
-			hasBacktick = true
-		}
-		if line[i] == '>' && hasBacktick {
-			return true
-		}
-	}
-	return false
 }
 
 // Slugify converts Micron text to a URL-friendly slug.
