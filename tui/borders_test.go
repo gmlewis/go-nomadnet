@@ -35,9 +35,9 @@ import (
 func TestApplySingleLineBorders(t *testing.T) {
 	t.Parallel()
 
-	orig := tview.Borders
-	defer func() { tview.Borders = orig }()
-
+	// tview.Borders is a library-global applied once (sync.Once) by
+	// ApplySingleLineBorders / TestMain; tests must not save/restore it because
+	// that write would race with tview's Draw reads in parallel tests.
 	ApplySingleLineBorders()
 
 	cases := []struct {
@@ -68,8 +68,8 @@ func TestApplySingleLineBorders(t *testing.T) {
 func TestFocusedBoxRendersSingleLine(t *testing.T) {
 	t.Parallel()
 
-	orig := tview.Borders
-	defer func() { tview.Borders = orig }()
+	// Borders are applied once globally (see TestApplySingleLineBorders); do
+	// not save/restore tview.Borders here — that write would race with Draw.
 	ApplySingleLineBorders()
 
 	screen := tcell.NewSimulationScreen("UTF-8")

@@ -252,7 +252,7 @@ test or a matching `parity.sh` summary):
 
 ## TASK LIST (ordered for success — work top to bottom)
 
-> **Where to start:** Phase 0, Task 0.1. Each `[ ]` is one TDD unit. Remove it
+> **Where to start:** The first available task. Each `[ ]` is one TDD unit. Remove it
 > when green. Phases are prerequisites for the ones below them.
 
 ### Phase 0 — Foundation & cross-cutting infrastructure (do first; everything depends on it)

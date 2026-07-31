@@ -16,6 +16,8 @@
 package tui
 
 import (
+	"sync"
+
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
@@ -42,18 +44,29 @@ const (
 	BorderBottomRightRounded = '╯'
 )
 
+// applyBordersOnce guards the write to tview's library-global tview.Borders.
+// The values are constants, so applying them more than once is a no-op; the
+// sync.Once makes ApplySingleLineBorders idempotent and safe to call from
+// concurrent goroutines (e.g. parallel tests each calling NewApp). TestMain
+// fires it once before any parallel test runs, so no tview.Borders write
+// happens during the parallel phase — tview reads the global during Draw, and
+// a write there would race with those reads.
+var applyBordersOnce sync.Once
+
 // ApplySingleLineBorders overrides tview's default *Focus border characters
 // (double-line ╔═╗) with the single-line ┌─┐ set, so a focused box renders the
 // same single-line border the Python original (urwid LineBox) always uses.
-// tview's non-focus borders are already single-line. Call once at startup,
-// before any Box is drawn.
+// tview's non-focus borders are already single-line. Idempotent: safe to call
+// any number of times from any goroutine; the override is applied exactly once.
 func ApplySingleLineBorders() {
-	tview.Borders.HorizontalFocus = BorderHorizontal
-	tview.Borders.VerticalFocus = BorderVertical
-	tview.Borders.TopLeftFocus = BorderTopLeft
-	tview.Borders.TopRightFocus = BorderTopRight
-	tview.Borders.BottomLeftFocus = BorderBottomLeft
-	tview.Borders.BottomRightFocus = BorderBottomRight
+	applyBordersOnce.Do(func() {
+		tview.Borders.HorizontalFocus = BorderHorizontal
+		tview.Borders.VerticalFocus = BorderVertical
+		tview.Borders.TopLeftFocus = BorderTopLeft
+		tview.Borders.TopRightFocus = BorderTopRight
+		tview.Borders.BottomLeftFocus = BorderBottomLeft
+		tview.Borders.BottomRightFocus = BorderBottomRight
+	})
 }
 
 // BorderedBox wraps a tview.Primitive with a manually drawn border and

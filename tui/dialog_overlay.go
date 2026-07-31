@@ -116,10 +116,14 @@ func showDialogOverlay(app *tview.Application, title string, content tview.Primi
 	dm.seq++
 	dm.stack = append(dm.stack, entry)
 	pages := dm.pages
-	dm.mu.Unlock()
-
+	// Mutate the shared tview.Pages and app focus while holding the lock.
+	// tview.Pages (and its focus state) is not concurrency-safe, and the
+	// package-global dialogManager is shared across tests (and across any
+	// goroutines that call ShowDialog); serializing AddPage/SetFocus here
+	// prevents data races on tview's internal pages slice and Box.focus.
 	pages.AddPage(entry.pageName, entry.overlay, true, true)
 	app.SetFocus(dialog)
+	dm.mu.Unlock()
 }
 
 // dismissTopDialog pops the top dialog off the stack, removes its page (so
@@ -146,12 +150,17 @@ func dismissTopDialog() {
 		focus = top.prevFocus
 	}
 	onDismiss := top.onDismiss
-	dm.mu.Unlock()
-
+	// Remove the page and restore focus under the lock for the same
+	// concurrency-safety reasons as showDialogOverlay (shared tview.Pages
+	// and app focus are not safe for concurrent access).
 	pages.RemovePage(top.pageName)
 	if focus != nil && app != nil {
 		app.SetFocus(focus)
 	}
+	dm.mu.Unlock()
+
+	// The user callback runs outside the lock: it may re-enter ShowDialog
+	// (pushing a new dialog), which would otherwise self-deadlock on dm.mu.
 	if onDismiss != nil {
 		onDismiss()
 	}
