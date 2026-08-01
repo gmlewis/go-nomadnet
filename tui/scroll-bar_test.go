@@ -16,6 +16,7 @@
 package tui
 
 import (
+	"math"
 	"strings"
 	"testing"
 
@@ -152,5 +153,66 @@ func TestScrollBarScrolledDown(t *testing.T) {
 	if col[len(col)-1] != scrollBarThumb {
 		t.Errorf("last row rightmost = %q, want ┃ (thumb at bottom when scrolled to end): col=%q",
 			string(col[len(col)-1]), string(col))
+	}
+}
+
+// TestScrollBarThumbSizeWrappedContent is the regression test for the
+// height-dependent GetWrappedLineCount bug: with wrapped content that overflows
+// a small visible height, the thumb size must reflect the TRUE total wrapped row
+// count (as measured by a full-height parse), not the partial count
+// GetWrappedLineCount returns after a small-height Draw. The old code drew an
+// oversized thumb; this test pins the urwid thumb-size formula against the
+// ground-truth total.
+func TestScrollBarThumbSizeWrappedContent(t *testing.T) {
+	t.Parallel()
+	const contentW = 10 // ScrollBar content width (w=11 → cw=10)
+	tv := tview.NewTextView()
+	tv.SetScrollable(true)
+	tv.SetWrap(true)
+	tv.SetWordWrap(true)
+	// "word " is 5 cells; at width 10 two words fit per row ("word word"), so
+	// 50 words wrap to 25 rows — well over the visible height of 10.
+	tv.SetText(strings.Repeat("word ", 50))
+
+	// Ground truth: a full-height parse wraps every line, so
+	// GetWrappedLineCount is reliable here. At a small height it under-counts.
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatalf("screen.Init: %v", err)
+	}
+	screen.SetSize(contentW, 1000)
+	tv.SetRect(0, 0, contentW, 1000)
+	tv.Draw(screen)
+	trueRowsMax := tv.GetWrappedLineCount()
+	if trueRowsMax <= 0 {
+		t.Fatalf("trueRowsMax = %d, want > 0", trueRowsMax)
+	}
+
+	const h = 10
+	wantThumb := int(math.Round(math.Min(1.0, float64(h)/float64(trueRowsMax)) * float64(h)))
+	if wantThumb < 1 {
+		wantThumb = 1
+	}
+
+	s := NewScrollBar(tv)
+	rows := drawScrollBar(t, s, contentW+1, h)
+	col := scrollBarColumn(rows, contentW+1)
+
+	thumbStart, thumbEnd := -1, -1
+	for i, c := range col {
+		if c == scrollBarThumb {
+			if thumbStart < 0 {
+				thumbStart = i
+			}
+			thumbEnd = i
+		}
+	}
+	if thumbStart < 0 {
+		t.Fatalf("no thumb drawn; col=%q", string(col))
+	}
+	gotThumb := thumbEnd - thumbStart + 1
+	if gotThumb != wantThumb {
+		t.Errorf("thumb height = %d (rows %d-%d), want %d (h=%d trueRowsMax=%d); col=%q",
+			gotThumb, thumbStart, thumbEnd, wantThumb, h, trueRowsMax, string(col))
 	}
 }

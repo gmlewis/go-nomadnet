@@ -17,6 +17,7 @@ package tui
 
 import (
 	"math"
+	"strings"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -39,6 +40,7 @@ type scrollableText interface {
 	tview.Primitive
 	GetWrappedLineCount() int
 	GetScrollOffset() (int, int)
+	GetText(stripTags bool) string
 }
 
 // ScrollBar wraps a scrollable TextView with a right-edge scrollbar, mirroring
@@ -101,6 +103,30 @@ func (s *ScrollBar) contentWidth(w int) int {
 	return w
 }
 
+// wrappedRowCount returns the total number of wrapped display rows the given
+// text occupies at width, matching tview.TextView's wrapping: tview.WordWrap is
+// applied per "\n"-separated line (empty lines count as one row). See Draw for
+// why this is used instead of (*tview.TextView).GetWrappedLineCount.
+func wrappedRowCount(text string, width int) int {
+	if width <= 0 || text == "" {
+		return 0
+	}
+	total := 0
+	for _, line := range strings.Split(text, "\n") {
+		if line == "" {
+			total++
+			continue
+		}
+		wrapped := tview.WordWrap(line, width)
+		if len(wrapped) == 0 {
+			total++
+		} else {
+			total += len(wrapped)
+		}
+	}
+	return total
+}
+
 // Draw draws the wrapped TextView then, if the content overflows, the scrollbar
 // in the rightmost column. When the content fits the TextView is redrawn at the
 // full width and no bar is drawn.
@@ -111,12 +137,19 @@ func (s *ScrollBar) Draw(screen tcell.Screen) {
 		return
 	}
 
-	// First pass: render the TextView at width-1 and measure the wrapped row
-	// count, mirroring urwid's render-at-ow_size then rows_max(ow_size) check.
+	// First pass: render the TextView at width-1 and measure the total wrapped
+	// row count, mirroring urwid's render-at-ow_size then rows_max(ow_size)
+	// check. The total is computed from the stripped text via tview.WordWrap
+	// rather than GetWrappedLineCount: the latter is height-dependent (Draw only
+	// parseAheads to the visible window, textview.go:1141, and its resume-parse
+	// does not always reach the full end at small heights), which under-counts
+	// and makes the thumb too large. WordWrap at the content width yields the
+	// true total (verified to match GetWrappedLineCount after a full-height
+	// parse), so the thumb size matches urwid's.
 	cw := s.contentWidth(w)
 	s.Text.SetRect(x, y, cw, h)
 	s.Text.Draw(screen)
-	rowsMax := s.Text.GetWrappedLineCount()
+	rowsMax := wrappedRowCount(s.Text.GetText(true), cw)
 	pos, _ := s.Text.GetScrollOffset()
 
 	if rowsMax <= h || w < 2 {
