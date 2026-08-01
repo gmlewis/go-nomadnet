@@ -120,8 +120,10 @@ type Node struct {
 	PartialDescriptor string // "|"-joined raw components; the hash input (MicronParser.py:187)
 
 	// For NodeTable
-	TableRows     [][]string // raw cell text per row
-	TableAlign    Alignment  // table-level alignment
+	TableRows     [][]string // parsed cells (header + data rows; separator row skipped)
+	TableRawLines []string   // raw buffered markdown table lines (header/sep/data)
+	TableAlign    Alignment  // table-level alignment (l/c/r)
+	TableHasAlign bool       // true when the `t tag specified an alignment (else Python align=None)
 	TableMaxWidth int        // max table width in chars
 
 	// For NodeAnchor
@@ -137,12 +139,13 @@ const MaxTableWidth = 100
 // parseState holds cross-line parsing state for stateful features like
 // literal mode and table mode.
 type parseState struct {
-	literal    bool
-	depth      int
-	tableMode  bool
-	tableBuf   []string
-	tableAlign Alignment
-	tableMaxW  int
+	literal       bool
+	depth         int
+	tableMode     bool
+	tableBuf      []string
+	tableAlign    Alignment
+	tableHasAlign bool
+	tableMaxW     int
 }
 
 // Parse parses Micron markup text and returns a list of top-level nodes.
@@ -237,20 +240,25 @@ func parseLine(line string, state *parseState) []*Node {
 	// Check for table start/end: `t
 	if len(line) >= 2 && line[0] == '`' && line[1] == 't' {
 		if state.tableMode {
-			rows := parseTableRows(state.tableBuf)
+			rawLines := state.tableBuf
 			savedAlign := state.tableAlign
+			savedHasAlign := state.tableHasAlign
 			savedMaxW := state.tableMaxW
 			state.tableMode = false
 			state.tableBuf = nil
 			state.tableAlign = AlignLeft
+			state.tableHasAlign = false
 			state.tableMaxW = MaxTableWidth
-			if len(rows) < 2 {
+			// Python render_table: `if len(lines) < 2: return None`.
+			if len(rawLines) < 2 {
 				return nil
 			}
 			return []*Node{{
 				Type:          NodeTable,
-				TableRows:     rows,
+				TableRows:     parseTableRows(rawLines),
+				TableRawLines: rawLines,
 				TableAlign:    savedAlign,
+				TableHasAlign: savedHasAlign,
 				TableMaxWidth: savedMaxW,
 				Depth:         state.depth,
 			}}
@@ -258,8 +266,10 @@ func parseLine(line string, state *parseState) []*Node {
 
 		rest := line[2:]
 		align := AlignLeft
+		hasAlign := false
 		maxWidth := MaxTableWidth
 		if len(rest) > 0 && (rest[0] == 'l' || rest[0] == 'c' || rest[0] == 'r') {
+			hasAlign = true
 			switch rest[0] {
 			case 'c':
 				align = AlignCenter
@@ -277,6 +287,7 @@ func parseLine(line string, state *parseState) []*Node {
 		state.tableMode = true
 		state.tableBuf = nil
 		state.tableAlign = align
+		state.tableHasAlign = hasAlign
 		state.tableMaxW = maxWidth
 		return nil
 	}
@@ -338,30 +349,40 @@ func parseHeading(line string, state *parseState) []*Node {
 	}}
 }
 
-// parseTableRows splits buffered table lines into rows of cells.
-// Each line uses ! as cell separator: !cell1!cell2!cell3
+// parseTableRows splits buffered markdown table lines into rows of cells,
+// skipping the alignment separator row (| :--: | --: |). Mirrors the row
+// parsing in MarkdownToMicron.format_table_raw (util.py): rows[0] is the
+// header, rows[1] is the separator (skipped here), and the rest are data.
 func parseTableRows(lines []string) [][]string {
 	var rows [][]string
 	for _, line := range lines {
-		if len(line) == 0 {
+		if line == "" {
 			continue
 		}
-		// Skip lines that don't start with !
-		if line[0] != '!' {
-			continue
+		cells := parseTableRow(line)
+		if isTableSeparator(cells) {
+			continue // alignment separator row
 		}
-		cells := splitTableCells(line[1:])
 		rows = append(rows, cells)
 	}
 	return rows
 }
 
-// splitTableCells splits a table row on ! delimiters.
-func splitTableCells(s string) []string {
-	if len(s) == 0 {
-		return []string{""}
+// tableSeparatorCellRe matches a single separator cell: optional leading/trailing
+// ":" with one or more "-" between (MarkdownToMicron._is_table_separator).
+var tableSeparatorCellRe = regexp.MustCompile(`^:?-+:?$`)
+
+// isTableSeparator reports whether cells form a markdown table separator row.
+func isTableSeparator(cells []string) bool {
+	if len(cells) == 0 {
+		return false
 	}
-	return strings.Split(s, "!")
+	for _, c := range cells {
+		if !tableSeparatorCellRe.MatchString(strings.TrimSpace(c)) {
+			return false
+		}
+	}
+	return true
 }
 
 // parsePartial parses a partial reference line.

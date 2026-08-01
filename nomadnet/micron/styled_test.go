@@ -371,23 +371,50 @@ func TestRenderToStyledLinesAnchorDeclaration(t *testing.T) {
 	}
 }
 
-// TestRenderToStyledLinesTable asserts a table renders one StyledLine per row
-// with the header row bold (3.6 groundwork; row formatting via formatTableRow).
+// TestRenderToStyledLinesTable asserts a table renders via FormatTableRaw into
+// box-drawing styled lines (top border, header, separator, data rows, bottom
+// border), mirroring Python render_table (MicronParser.py:197-218). Python
+// applies no header bolding, so no span should be bold.
 func TestRenderToStyledLinesTable(t *testing.T) {
 	t.Parallel()
 
-	lines := RenderToStyledLines("`t\n!Name!Age\n!Alice!30\n`t", ThemeDark)
-	// Two data rows → two lines.
-	if len(lines) != 2 {
-		t.Fatalf("len(lines) = %v, want 2", len(lines))
+	lines := RenderToStyledLines("`t\n| Name | Age |\n| ---- | ---- |\n| Alice | 30 |\n`t", ThemeDark)
+	// 1 top border + 1 header + 1 separator + 1 data + 1 bottom border = 5.
+	if len(lines) != 5 {
+		t.Fatalf("len(lines) = %v, want 5", len(lines))
 	}
-	if !lines[0].Spans[0].Bold {
-		t.Error("header row should be bold")
+
+	// No header bolding in the parity model.
+	for i, l := range lines {
+		for j, s := range l.Spans {
+			if s.Bold {
+				t.Errorf("line[%v] span[%v] is bold; parity model has no header bold", i, j)
+			}
+		}
 	}
-	if lines[1].Spans[0].Bold {
-		t.Error("data row should not be bold")
+
+	// The header row (line 1, after the top border) contains "Name"; the data
+	// row (line 3, after the separator) contains "Alice".
+	if !strings.Contains(spanText(lines[1]), "Name") {
+		t.Errorf("header line[1] = %q, want contains Name", spanText(lines[1]))
 	}
-	if !strings.Contains(lines[0].Spans[0].Text, "Name") {
-		t.Errorf("header text = %q, want contains Name", lines[0].Spans[0].Text)
+	if !strings.Contains(spanText(lines[3]), "Alice") {
+		t.Errorf("data line[3] = %q, want contains Alice", spanText(lines[3]))
 	}
+
+	// No table-level align (`t, not `tc) → all lines AlignLeft.
+	for i, l := range lines {
+		if l.Align != AlignLeft {
+			t.Errorf("line[%v] align = %v, want AlignLeft", i, l.Align)
+		}
+	}
+}
+
+// spanText concatenates a line's span text for substring checks.
+func spanText(l *StyledLine) string {
+	var sb strings.Builder
+	for _, s := range l.Spans {
+		sb.WriteString(s.Text)
+	}
+	return sb.String()
 }

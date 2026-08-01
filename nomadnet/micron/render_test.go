@@ -266,7 +266,7 @@ func TestParseLiteralEscape(t *testing.T) {
 func TestParseTable(t *testing.T) {
 	t.Parallel()
 
-	markup := "`t\n!Name!Age!City\n!Alice!30!NYC\n`t"
+	markup := "`t\n| Name | Age | City |\n| ---- | ---- | ---- |\n| Alice | 30 | NYC |\n`t"
 	nodes := Parse(markup)
 	hasTable := false
 	for _, n := range nodes {
@@ -288,7 +288,7 @@ func TestParseTable(t *testing.T) {
 func TestParseTableTooFewRows(t *testing.T) {
 	t.Parallel()
 
-	markup := "`t\n!Name!Age\n`t"
+	markup := "`t\n| Name | Age |\n`t"
 	nodes := Parse(markup)
 	for _, n := range nodes {
 		if n.Type == NodeTable {
@@ -300,7 +300,7 @@ func TestParseTableTooFewRows(t *testing.T) {
 func TestRenderToTViewTable(t *testing.T) {
 	t.Parallel()
 
-	markup := "`t\n!Name!Age\n!Alice!30\n`t"
+	markup := "`t\n| Name | Age |\n| ---- | ---- |\n| Alice | 30 |\n`t"
 	nodes := Parse(markup)
 	got := RenderToTView(nodes)
 	if !strings.Contains(got, "Name") {
@@ -317,7 +317,7 @@ func TestRenderToTViewTable(t *testing.T) {
 func TestRenderToPlainTextTable(t *testing.T) {
 	t.Parallel()
 
-	markup := "`t\n!Name!Age\n!Bob!25\n`t"
+	markup := "`t\n| Name | Age |\n| ---- | ---- |\n| Bob | 25 |\n`t"
 	nodes := Parse(markup)
 	got := RenderToPlainText(nodes)
 	if !strings.Contains(got, "Name") {
@@ -331,7 +331,7 @@ func TestRenderToPlainTextTable(t *testing.T) {
 func TestParseTableAlign(t *testing.T) {
 	t.Parallel()
 
-	markup := "`tc\n!A!B\n!1!2\n`t"
+	markup := "`tc\n| A | B |\n| - | - |\n| 1 | 2 |\n`t"
 	nodes := Parse(markup)
 	for _, n := range nodes {
 		if n.Type == NodeTable {
@@ -345,7 +345,7 @@ func TestParseTableAlign(t *testing.T) {
 func TestParseTableMaxWidth(t *testing.T) {
 	t.Parallel()
 
-	markup := "`t80\n!A!B\n!1!2\n`t"
+	markup := "`t80\n| A | B |\n| - | - |\n| 1 | 2 |\n`t"
 	nodes := Parse(markup)
 	for _, n := range nodes {
 		if n.Type == NodeTable {

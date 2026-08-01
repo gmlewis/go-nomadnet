@@ -194,7 +194,7 @@ func renderLineNodes(nodes []*Node, rs *renderState, theme Theme, depth int) []*
 			out = append(out, sl)
 			sl = &StyledLine{Indent: leftIndent(depth)}
 		case NodeTable:
-			for _, row := range renderTableLines(node, rs) {
+			for _, row := range renderTableLines(node, rs, theme, depth) {
 				out = append(out, row)
 			}
 		case NodePartial:
@@ -352,26 +352,37 @@ func headingText(node *Node) string {
 	return sb.String()
 }
 
-// renderTableLines renders a table node as one StyledLine per row, with the
-// header (first) row bold — a port of Python render_table's column layout at
-// the span layer. Full markdown-table parity (format_table_raw) is task 3.6.
-func renderTableLines(node *Node, rs *renderState) []*StyledLine {
-	rows := node.TableRows
-	if len(rows) == 0 {
+// renderTableLines renders a table node by delegating to FormatTableRaw for the
+// box-drawing layout, then re-parsing each formatted micron line through
+// parseLine/renderLineNodes so the borders, `c/`a align tags, and inline cell
+// formatting (colors/bold) become properly styled spans — mirroring Python
+// render_table (MicronParser.py:197-218). Python applies no special header
+// bolding; the formatted lines carry their own formatting tags.
+func renderTableLines(node *Node, rs *renderState, theme Theme, depth int) []*StyledLine {
+	if len(node.TableRawLines) == 0 {
 		return nil
 	}
-	widths := tableColWidths(rows)
-	indent := leftIndent(node.Depth)
+	alignStr := ""
+	if node.TableHasAlign {
+		switch node.TableAlign {
+		case AlignCenter:
+			alignStr = "c"
+		case AlignRight:
+			alignStr = "r"
+		default:
+			alignStr = "l"
+		}
+	}
+	formatted := FormatTableRaw(node.TableRawLines, alignStr, node.TableMaxWidth)
+
+	// Re-parse each formatted micron line with table mode off (mirroring
+	// Python's state['table_mode']=False around the recursive parse_line) and
+	// render into the SHARED render state so align/color changes propagate.
+	tps := &parseState{depth: depth}
 	var out []*StyledLine
-	for i, row := range rows {
-		sl := &StyledLine{Indent: indent, Align: node.TableAlign}
-		sl.Spans = append(sl.Spans, StyledSpan{
-			Text: formatTableRow(row, widths, " "),
-			FG:   highColor(rs.fg),
-			BG:   highColor(rs.bg),
-			Bold: i == 0,
-		})
-		out = append(out, sl)
+	for _, line := range formatted {
+		nodes := parseLine(line, tps)
+		out = append(out, renderLineNodes(nodes, rs, theme, depth)...)
 	}
 	return out
 }

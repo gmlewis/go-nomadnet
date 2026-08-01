@@ -267,8 +267,6 @@ test or a matching `parity.sh` summary):
 
 ### Phase 3 — Micron interactive rendering (CRITICAL for Browser/Guide/Network pages)
 
-- [ ] **3.6 Tables.** Render `` `t[align][maxwidth] `` table blocks. Test layout
-      against Python `format_table_raw`.
 - [ ] **3.7 Code spans / images.** Render backtick code spans with a code style;
       render `{image_data}` placeholders. Test against Python.
 - [ ] **3.8 All-bold fix + heading styles.** Body text renders as `body_text`
