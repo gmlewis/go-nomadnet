@@ -523,6 +523,59 @@ func TestConversationList(t *testing.T) {
 	}
 }
 
+// TestConversationListUnreadFailedCount verifies ConversationList reads the
+// unread/failed flag file *content* as a count (Python Conversation.py:127-148):
+// a missing file → 0, an empty file → 1, a numeric file → that count.
+func TestConversationListUnreadFailedCount(t *testing.T) {
+	t.Parallel()
+
+	dir := tempDir(t)
+	convPath := filepath.Join(dir, "conversations")
+	hash := "0102030405060708010203040506070801020304050607080102030405060708"
+	if err := os.MkdirAll(filepath.Join(convPath, hash), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// unread file with content "3" → count 3; failed file empty → count 1.
+	if err := os.WriteFile(filepath.Join(convPath, hash, "unread"), []byte("3"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(convPath, hash, "failed"), []byte(""), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	list := ConversationList(convPath, nil, nil)
+	if len(list) != 1 {
+		t.Fatalf("ConversationList len = %d, want 1", len(list))
+	}
+	info := list[0]
+	if info.UnreadCount != 3 {
+		t.Errorf("UnreadCount = %d, want 3", info.UnreadCount)
+	}
+	if !info.Unread {
+		t.Error("Unread = false, want true (count > 0)")
+	}
+	if info.FailedCount != 1 {
+		t.Errorf("FailedCount = %d, want 1 (empty flag file)", info.FailedCount)
+	}
+	if !info.Failed {
+		t.Error("Failed = false, want true (count > 0)")
+	}
+
+	// Missing flag files → 0.
+	hash2 := "090a0b0c0d0e0f10090a0b0c0d0e0f10090a0b0c0d0e0f10090a0b0c0d0e0f10"
+	if err := os.MkdirAll(filepath.Join(convPath, hash2), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	list = ConversationList(convPath, nil, nil)
+	for _, info := range list {
+		if info.SourceHash == hash2 {
+			if info.UnreadCount != 0 || info.FailedCount != 0 {
+				t.Errorf("hash2 counts = unread %d failed %d, want 0/0", info.UnreadCount, info.FailedCount)
+			}
+		}
+	}
+}
+
 func TestDeleteConversation(t *testing.T) {
 	t.Parallel()
 

@@ -18,6 +18,7 @@ package tui
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -33,8 +34,10 @@ type ConversationInfo struct {
 	LastMessage  string
 	LastTime     time.Time
 	Unread       bool
+	UnreadCount  int
 	MessageCount int
 	Failed       bool
+	FailedCount  int
 	Pinned       bool
 	SortRank     *int
 }
@@ -42,17 +45,23 @@ type ConversationInfo struct {
 // ConversationsDisplay shows the conversation list and message view.
 // Matches Python's ConversationsDisplay with Trusted/Untrusted tabs.
 type ConversationsDisplay struct {
-	app            *App
-	widget         *tview.Flex
-	list           *tview.List
-	detail         *tview.TextView
-	conversations  []ConversationInfo
-	selected       int
-	showTrusted    bool // true = trusted tab, false = untrusted
-	showBlocked    bool // show blocked peers in untrusted tab
-	dialogOpen     bool
-	ingestURIValue string
-	shortcutFocus  string // "list" (default), "editor", or "body" — selects the shortcut bar (Conversations.py:1765-1779)
+	app                 *App
+	widget              *tview.Flex
+	content             *tview.Flex
+	leftPanel           *tview.Flex
+	list                *tview.List
+	detail              *tview.TextView
+	tabBar              *tview.TextView
+	conversations       []ConversationInfo
+	listWidth           int
+	fullscreen          bool
+	selected            int
+	showTrusted         bool   // true = trusted tab, false = untrusted
+	showBlocked         bool   // show blocked peers in untrusted tab
+	currentConversation string // source hash of the conversation shown in the right pane (suppresses its unread/failed badge); "" when none
+	dialogOpen          bool
+	ingestURIValue      string
+	shortcutFocus       string // "list" (default), "editor", or "body" — selects the shortcut bar (Conversations.py:1765-1779)
 
 	// Keyboard shortcut callbacks (Python: ConversationsArea.keypress)
 	OnEditPeerInfo     func()
@@ -82,22 +91,15 @@ func NewConversationsDisplay(app *App, convs []ConversationInfo) *ConversationsD
 	title.SetTextColor(tcell.NewHexColor(0xdddddd))
 	title.SetText("[::b]Conversations[-]")
 
-	// Tab bar: Trusted (N) | Untrusted (N)
-	trustedCount := 0
-	untrustedCount := 0
-	for _, c := range convs {
-		if c.TrustLevel == "trusted" {
-			trustedCount++
-		} else {
-			untrustedCount++
-		}
-	}
-	tabText := fmt.Sprintf("[yellow]1[-] Trusted (%d)  [yellow]2[-] Untrusted (%d)", trustedCount, untrustedCount)
+	// Tab bar: Trusted (N) | Untrusted (N) — no digit prefixes (the original
+	// has none); unread counts get an envelope glyph (Python _label,
+	// Conversations.py:461-465).
 	tabBar := tview.NewTextView()
 	tabBar.SetTextAlign(tview.AlignCenter)
 	tabBar.SetDynamicColors(true)
 	tabBar.SetTextColor(tcell.NewHexColor(0xdddddd))
-	tabBar.SetText(tabText)
+	cd.tabBar = tabBar
+	cd.refreshTabBar()
 
 	// Conversation list
 	cd.list = tview.NewList()
@@ -116,12 +118,15 @@ func NewConversationsDisplay(app *App, convs []ConversationInfo) *ConversationsD
 
 	// Layout: tab bar + list on left, detail on right
 	leftPanel := tview.NewFlex().SetDirection(tview.FlexRow)
-	leftPanel.AddItem(tabBar, 1, 0, false)
+	leftPanel.AddItem(cd.tabBar, 1, 0, false)
 	leftPanel.AddItem(cd.list, 0, 1, true)
+	cd.leftPanel = leftPanel
+	cd.listWidth = 52
 
 	content := tview.NewFlex().SetDirection(tview.FlexColumn)
-	content.AddItem(leftPanel, 52, 0, true)
+	content.AddItem(leftPanel, cd.listWidth, 0, true)
 	content.AddItem(cd.detail, 0, 1, false)
+	cd.content = content
 
 	cd.widget = tview.NewFlex().SetDirection(tview.FlexRow)
 	cd.widget.SetBorder(true)
@@ -195,9 +200,7 @@ func (cd *ConversationsDisplay) handleInput(event *tcell.EventKey) *tcell.EventK
 		}
 		return nil
 	case tcell.KeyCtrlG:
-		if cd.OnToggleFullscreen != nil {
-			cd.OnToggleFullscreen()
-		}
+		cd.ToggleFullscreen()
 		return nil
 	case tcell.KeyCtrlO:
 		if cd.OnToggleSort != nil {
@@ -241,6 +244,14 @@ func (cd *ConversationsDisplay) DisplayConversation(sourceHash string) {
 func (cd *ConversationsDisplay) populateList() {
 	cd.list.Clear()
 
+	var glyphs GlyphSet
+	if cd.app != nil {
+		glyphs = cd.app.Glyphs
+	}
+	if glyphs == nil {
+		glyphs = glyphsUnicode
+	}
+
 	for _, conv := range cd.conversations {
 		if cd.showTrusted && conv.TrustLevel != "trusted" {
 			continue
@@ -249,22 +260,9 @@ func (cd *ConversationsDisplay) populateList() {
 			continue
 		}
 
-		prefix := "  "
-		if conv.Unread {
-			prefix = "[!] "
-		}
-		if conv.Failed {
-			prefix = "[x] "
-		}
-		trustIcon := "○"
-		if conv.TrustLevel == "trusted" {
-			trustIcon = "●"
-		} else if conv.TrustLevel == "untrusted" {
-			trustIcon = "×"
-		}
-		text := fmt.Sprintf("%s%s %s", prefix, trustIcon, conv.DisplayName)
-		secondary := fmt.Sprintf("%s — %s", relativeTime(conv.LastTime), conv.LastMessage)
-		cd.list.AddItem(text, secondary, 0, nil)
+		main := conversationRowMain(conv, glyphs, cd.currentConversation)
+		secondary := conversationRowSecondary(conv)
+		cd.list.AddItem(main, secondary, 0, nil)
 	}
 
 	if cd.list.GetItemCount() == 0 {
@@ -274,6 +272,65 @@ func (cd *ConversationsDisplay) populateList() {
 		}
 		cd.list.AddItem("[gray]"+emptyMsg+"[-]", "", 0, nil)
 	}
+}
+
+// trustSymbol returns the trust-level glyph for a conversation row, mirroring
+// Python's conversation_list_widget symbol selection (Conversations.py:1697-
+// 1716): cross for untrusted, "?" for unknown, check for trusted, warning for
+// warning (and the same for any unrecognized level).
+func trustSymbol(trustLevel string, glyphs GlyphSet) string {
+	switch trustLevel {
+	case "untrusted":
+		return glyphs["cross"]
+	case "unknown":
+		return "?"
+	case "trusted":
+		return glyphs["check"]
+	case "warning":
+		return glyphs["warning"]
+	default:
+		return glyphs["warning"]
+	}
+}
+
+// conversationRowMain builds the first line of a conversation list row,
+// mirroring Python's conversation_list_widget (Conversations.py:1687-1755).
+// The line is: [pin] symbol [name] [<hash>] [badge] where <hash> is appended
+// for non-trusted peers, and the badge is " ⚠ (N)" for failed or " ✉ (N)" for
+// unread (failed takes precedence). The badge is suppressed for the
+// conversation currently displayed in the right pane (currentConversation).
+func conversationRowMain(conv ConversationInfo, glyphs GlyphSet, currentConversation string) string {
+	head := trustSymbol(conv.TrustLevel, glyphs)
+	if conv.Pinned {
+		pin, ok := glyphs["pin"]
+		if !ok || pin == "" {
+			pin = "*"
+		}
+		head = pin + " " + head
+	}
+	if conv.DisplayName != "" {
+		head += " " + conv.DisplayName
+	}
+	if conv.TrustLevel != "trusted" {
+		head += " <" + conv.SourceHash + ">"
+	}
+	if conv.FailedCount > 0 && conv.SourceHash != currentConversation {
+		head += " " + glyphs["warning"] + " (" + strconv.Itoa(conv.FailedCount) + ")"
+	} else if conv.UnreadCount > 0 && conv.SourceHash != currentConversation {
+		head += " " + glyphs["unread"] + " (" + strconv.Itoa(conv.UnreadCount) + ")"
+	}
+	return head
+}
+
+// conversationRowSecondary builds the second line of a conversation list row:
+// "  "+relative_time(last_activity), mirroring Python (Conversations.py:1751).
+// It returns "" when there is no last activity (last_activity <= 0), matching
+// Python's `if last_activity > 0` guard.
+func conversationRowSecondary(conv ConversationInfo) string {
+	if conv.LastTime.IsZero() {
+		return ""
+	}
+	return "  " + relativeTime(conv.LastTime)
 }
 
 // Widget returns the tview primitive for this display.
@@ -288,6 +345,14 @@ func (cd *ConversationsDisplay) showDetail(idx int) {
 	}
 
 	conv := cd.conversations[idx]
+	// Mark this conversation as the currently-displayed one so its
+	// unread/failed badge is suppressed in the list (Python parity,
+	// Conversations.py:1743-1749).
+	prev := cd.currentConversation
+	cd.currentConversation = conv.SourceHash
+	if prev != cd.currentConversation {
+		cd.populateList()
+	}
 	cd.detail.SetText(fmt.Sprintf(
 		"[::b]%s[-]\n\nTrust: %s\nMessages: %d\nLast: %s\n\n[gray]Select a message to read[-]",
 		conv.DisplayName,
@@ -387,6 +452,80 @@ func (cd *ConversationsDisplay) GetSelectedIndex() int {
 func (cd *ConversationsDisplay) SetConversations(convs []ConversationInfo) {
 	cd.conversations = convs
 	cd.populateList()
+	cd.refreshTabBar()
+}
+
+// ToggleFullscreen toggles the conversation list pane between its normal fixed
+// width and zero (detail pane fills the whole width), matching Python's
+// toggle_fullscreen (Conversations.py:1276-1282): when going fullscreen the
+// current list width is saved and the pane collapses to width 0; toggling
+// again restores it. OnToggleFullscreen fires after the flip.
+func (cd *ConversationsDisplay) ToggleFullscreen() {
+	cd.fullscreen = !cd.fullscreen
+	if cd.content != nil && cd.leftPanel != nil {
+		if cd.fullscreen {
+			cd.content.ResizeItem(cd.leftPanel, 0, 0)
+		} else {
+			cd.content.ResizeItem(cd.leftPanel, cd.listWidth, 0)
+		}
+	}
+	if cd.OnToggleFullscreen != nil {
+		cd.OnToggleFullscreen()
+	}
+}
+
+// Fullscreen reports whether the list pane is currently hidden (fullscreen
+// detail).
+func (cd *ConversationsDisplay) Fullscreen() bool { return cd.fullscreen }
+
+// ListWidth returns the normal (non-fullscreen) fixed width of the list pane.
+func (cd *ConversationsDisplay) ListWidth() int { return cd.listWidth }
+
+// tabBarText builds the Trusted/Untrusted tab label text, matching Python's
+// _label (Conversations.py:461-465) and the two-button tab_bar
+// (Conversations.py:392-398). There are no digit prefixes (the original has
+// none). When a tab has alert (unread or failed) conversations, an envelope
+// glyph and the alert count follow the total, e.g. "Trusted (3) ✉ 2".
+// unreadGlyph is the glyphs["unread"] string for the active glyph set.
+func tabBarText(convs []ConversationInfo, unreadGlyph string) string {
+	trustedCount, untrustedCount := 0, 0
+	trustedAlert, untrustedAlert := 0, 0
+	for _, c := range convs {
+		alert := c.Unread || c.Failed
+		if c.TrustLevel == "trusted" {
+			trustedCount++
+			if alert {
+				trustedAlert++
+			}
+		} else {
+			untrustedCount++
+			if alert {
+				untrustedAlert++
+			}
+		}
+	}
+	label := func(name string, total, unread int) string {
+		if unread > 0 {
+			return fmt.Sprintf("%s (%d) %s %d", name, total, unreadGlyph, unread)
+		}
+		return fmt.Sprintf("%s (%d)", name, total)
+	}
+	return label("Trusted", trustedCount, trustedAlert) + "  " + label("Untrusted", untrustedCount, untrustedAlert)
+}
+
+// refreshTabBar recomputes the tab label text from the current conversations
+// and writes it to the tab bar widget.
+func (cd *ConversationsDisplay) refreshTabBar() {
+	if cd.tabBar == nil {
+		return
+	}
+	glyph := "✉"
+	if cd.app != nil {
+		if g, ok := cd.app.Glyphs["unread"]; ok && g != "" {
+			glyph = g
+		}
+	}
+	cd.tabBar.SetText(tabBarText(cd.conversations, glyph))
 }
 
 // ToggleSort toggles between sort-by-time and sort-by-name.

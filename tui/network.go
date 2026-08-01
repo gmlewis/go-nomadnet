@@ -27,6 +27,7 @@ import (
 // AnnounceEntry holds a single announce for display.
 type AnnounceEntry struct {
 	Timestamp   time.Time
+	TimestampF  float64 // same instant as Timestamp, as the float64 seconds the directory stores
 	SourceHash  string
 	AppData     string
 	Type        string // "node", "peer", "pn"
@@ -57,6 +58,7 @@ type NetworkDisplay struct {
 	inInfoView   bool
 	displayMode  DisplayMode
 	announceData []AnnounceEntry
+	nodeData     []NodeEntry
 	onNavigate   func(url string)
 
 	// Keyboard shortcut callbacks (Python: NetworkDisplay.keypress)
@@ -68,6 +70,12 @@ type NetworkDisplay struct {
 	OnURLDialog        func()
 	OnSaveNode         func()
 	OnDeleteSelected   func()
+
+	// In-detail action callbacks (Python AnnounceInfo buttons). Each is no-arg;
+	// the wiring layer resolves the target via SelectedAnnounce/SelectedNode.
+	OnMsgOp    func() // [Msg Op] — message the node operator
+	OnUseAsPN  func() // [Use as default] — set default propagation node
+	OnConverse func() // [Converse] — open a conversation with the peer
 }
 
 // NewNetworkDisplay creates a new network display matching Python's layout.
@@ -79,6 +87,7 @@ func NewNetworkDisplay(app *App, announces []AnnounceEntry, nodes []NodeEntry) *
 	nd.announces.SetHighlightFullLine(true)
 	ApplyListFocusStyle(nd.announces, app.Theme)
 
+	nd.announceData = announces
 	for _, ann := range announces {
 		nd.addAnnounceEntry(ann)
 	}
@@ -88,6 +97,7 @@ func NewNetworkDisplay(app *App, announces []AnnounceEntry, nodes []NodeEntry) *
 	nd.nodes.SetHighlightFullLine(true)
 	ApplyListFocusStyle(nd.nodes, app.Theme)
 
+	nd.nodeData = nodes
 	for _, node := range nodes {
 		nd.addNodeEntry(node)
 	}
@@ -347,30 +357,36 @@ func (nd *NetworkDisplay) connectToNode(ann AnnounceEntry) {
 // Matches Python's msg_op(sender).
 func (nd *NetworkDisplay) msgOpNode(ann AnnounceEntry) {
 	nd.showAnnounceStream()
-	// TODO: Open conversation with the node's operator identity.
-	// Requires resolving the operator's LXMF delivery address from
-	// the node's source hash via RNS.Identity.
+	if nd.OnMsgOp != nil {
+		nd.OnMsgOp()
+	}
 }
 
 // saveNode saves the node to the directory.
 // Matches Python's save_node(sender).
 func (nd *NetworkDisplay) saveNode(ann AnnounceEntry) {
 	nd.showAnnounceStream()
-	// TODO: Save to directory via app.directory.remember().
+	if nd.OnSaveNode != nil {
+		nd.OnSaveNode()
+	}
 }
 
 // useAsPN sets the announce's source as the default propagation node.
 // Matches Python's use_pn(sender).
 func (nd *NetworkDisplay) useAsPN(ann AnnounceEntry) {
 	nd.showAnnounceStream()
-	// TODO: Set via app.set_user_selected_propagation_node().
+	if nd.OnUseAsPN != nil {
+		nd.OnUseAsPN()
+	}
 }
 
 // converseWith starts a conversation with a peer.
 // Matches Python's converse(sender).
 func (nd *NetworkDisplay) converseWith(ann AnnounceEntry) {
 	nd.showAnnounceStream()
-	// TODO: Open conversation with the peer.
+	if nd.OnConverse != nil {
+		nd.OnConverse()
+	}
 }
 
 // makeButton creates a tview.Button styled for the AnnounceInfo view.
@@ -413,6 +429,55 @@ func (nd *NetworkDisplay) UpdateAnnounces(announces []AnnounceEntry) {
 		nd.app.QueueUpdateDraw(func() {})
 	}
 }
+
+// SelectedAnnounce returns the announce currently selected in the announce
+// stream list, or ok=false if the stream is empty/not showing.
+func (nd *NetworkDisplay) SelectedAnnounce() (AnnounceEntry, bool) {
+	if nd.showingNodes || len(nd.announceData) == 0 {
+		return AnnounceEntry{}, false
+	}
+	idx := nd.announces.GetCurrentItem()
+	if idx < 0 || idx >= len(nd.announceData) {
+		return AnnounceEntry{}, false
+	}
+	return nd.announceData[idx], true
+}
+
+// SelectedNode returns the node currently selected in the saved-nodes list, or
+// ok=false if the nodes view is not active or empty.
+func (nd *NetworkDisplay) SelectedNode() (NodeEntry, bool) {
+	if !nd.showingNodes || len(nd.nodeData) == 0 {
+		return NodeEntry{}, false
+	}
+	idx := nd.nodes.GetCurrentItem()
+	if idx < 0 || idx >= len(nd.nodeData) {
+		return NodeEntry{}, false
+	}
+	return nd.nodeData[idx], true
+}
+
+// UpdateNodes replaces the saved-nodes list with the given entries.
+func (nd *NetworkDisplay) UpdateNodes(nodes []NodeEntry) {
+	nd.nodeData = nodes
+	current := nd.nodes.GetCurrentItem()
+	nd.nodes.Clear()
+	for _, node := range nodes {
+		nd.addNodeEntry(node)
+	}
+	if n := nd.nodes.GetItemCount(); n > 0 {
+		if current >= n {
+			current = n - 1
+		}
+		nd.nodes.SetCurrentItem(current)
+	}
+	if nd.app != nil {
+		nd.app.QueueUpdateDraw(func() {})
+	}
+}
+
+// ShowingNodes reports whether the saved-nodes list is currently displayed
+// (vs. the announce stream). Used by wiring to pick the right delete action.
+func (nd *NetworkDisplay) ShowingNodes() bool { return nd.showingNodes }
 
 // toggleList switches between announces and nodes views.
 func (nd *NetworkDisplay) toggleList() {

@@ -254,6 +254,26 @@ func (md *MainDisplay) selectMenu(index int) {
 	md.FocusBody()
 }
 
+// SelectPage switches the body to the menu page with the given key (e.g.
+// "conversations", "network") and drops focus to the body. It is the
+// programmatic equivalent of clicking that menu button, for cross-page actions
+// like Network's "Converse" opening the Conversations page. Unknown keys are a
+// no-op.
+func (md *MainDisplay) SelectPage(key string) {
+	md.mu.Lock()
+	idx := -1
+	for i, item := range md.menuItems {
+		if item.Key == key {
+			idx = i
+			break
+		}
+	}
+	md.mu.Unlock()
+	if idx >= 0 {
+		md.selectMenu(idx)
+	}
+}
+
 // selectMenuLocked is the lock-free inner of selectMenu; the caller must hold
 // md.mu (used by SetHideGuide, which already holds the lock, to avoid a
 // self-deadlock via updateShortcuts). It does NOT drop focus to the body.

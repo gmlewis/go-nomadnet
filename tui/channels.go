@@ -57,11 +57,16 @@ type ChannelsDisplay struct {
 	app                *App
 	widget             tview.Primitive
 	layout             *tview.Flex
+	content            *tview.Flex
+	leftPanel          *tview.Flex
+	chanGutter         tview.Primitive
+	leftWidth          int
 	rooms              *tview.List
 	messages           *tview.TextView
 	members            *tview.List
 	input              *ReadlineEdit
 	channelListVisible bool
+	collapseJoinPart   bool
 
 	// Keyboard shortcut callbacks (Python: ChannelsListArea.keypress, RoomFrame.keypress)
 	OnNewHub              func()
@@ -148,7 +153,7 @@ func NewChannelsDisplay(app *App, rooms []ChannelInfo) *ChannelsDisplay {
 
 	// Channel list gutter (right arrow) — toggles left panel visibility
 	chanGutter := NewChannelsExpandGutter(func() {
-		cd.channelListVisible = !cd.channelListVisible
+		cd.ToggleChannelListState()
 	})
 
 	content := tview.NewFlex().SetDirection(tview.FlexColumn).
@@ -163,6 +168,10 @@ func NewChannelsDisplay(app *App, rooms []ChannelInfo) *ChannelsDisplay {
 	layout.SetInputCapture(cd.handleInput)
 
 	cd.layout = layout
+	cd.content = content
+	cd.leftPanel = leftPanel
+	cd.chanGutter = chanGutter
+	cd.leftWidth = 36
 	cd.widget = layout
 
 	return cd
@@ -209,6 +218,7 @@ func (cd *ChannelsDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 		}
 		return nil
 	case tcell.KeyCtrlY:
+		cd.ToggleChannelListState()
 		if cd.OnToggleChannelList != nil {
 			cd.OnToggleChannelList()
 		}
@@ -219,9 +229,7 @@ func (cd *ChannelsDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 		}
 		return nil
 	case tcell.KeyF8:
-		if cd.OnToggleCollapse != nil {
-			cd.OnToggleCollapse()
-		}
+		cd.ToggleCollapse()
 		return nil
 	}
 
@@ -263,15 +271,53 @@ func (cd *ChannelsDisplay) ChannelListVisible() bool {
 	return cd.channelListVisible
 }
 
-// ToggleChannelListState toggles the channel list visibility state.
-// Matches Python's toggle_channel_list() at Channels.py:1531.
+// ToggleChannelListState toggles the channel list visibility state, removing
+// or re-adding the left panel + gutter from the content Flex so the pane
+// actually hides. Matches Python's toggle_channel_list() at Channels.py:1531.
 func (cd *ChannelsDisplay) ToggleChannelListState() {
 	cd.channelListVisible = !cd.channelListVisible
+	if cd.content == nil {
+		return
+	}
+	if cd.channelListVisible {
+		// Re-add left panel + gutter if absent.
+		hasLeft := false
+		for i := 0; i < cd.content.GetItemCount(); i++ {
+			if cd.content.GetItem(i) == cd.leftPanel {
+				hasLeft = true
+				break
+			}
+		}
+		if !hasLeft {
+			cd.content.AddItem(cd.leftPanel, cd.leftWidth, 0, true)
+			cd.content.AddItem(cd.chanGutter, 1, 0, false)
+		}
+	} else {
+		cd.content.RemoveItem(cd.leftPanel)
+		cd.content.RemoveItem(cd.chanGutter)
+	}
+	// No QueueUpdateDraw: this runs on the event loop (input handler or gutter
+	// callback), which redraws automatically afterwards, and QueueUpdateDraw
+	// would deadlock both there and in tests with no running event loop.
 }
 
 // SetMessages replaces the messages view content.
 func (cd *ChannelsDisplay) SetMessages(text string) {
 	cd.messages.SetText(text)
+}
+
+// ToggleCollapse flips the join/leave collapse flag, matching Python's
+// toggle_join_part_collapse (Channels.py:1537), then fires OnToggleCollapse.
+func (cd *ChannelsDisplay) ToggleCollapse() {
+	cd.collapseJoinPart = !cd.collapseJoinPart
+	if cd.OnToggleCollapse != nil {
+		cd.OnToggleCollapse()
+	}
+}
+
+// CollapseJoinPart reports whether join/leave system messages are collapsed.
+func (cd *ChannelsDisplay) CollapseJoinPart() bool {
+	return cd.collapseJoinPart
 }
 
 // ShowUserInfo displays a user info dialog for the selected member.
@@ -283,6 +329,9 @@ func (cd *ChannelsDisplay) ShowUserInfo(nick, hash string) {
 
 // ShowMessages displays messages for a room.
 func (cd *ChannelsDisplay) ShowMessages(msgs []ChannelMessage) {
+	if cd.collapseJoinPart {
+		msgs = CollapseJoinPartMessages(msgs)
+	}
 	var sb strings.Builder
 	for _, msg := range msgs {
 		switch {

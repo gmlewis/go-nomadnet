@@ -223,3 +223,54 @@ func TestRoomWidgetSetMembers(t *testing.T) {
 		t.Errorf("SetMembers: got %d, want 2", len(rw.members))
 	}
 }
+
+// TestRoomWidgetTabComplete verifies Tab completes a member nick in the editor,
+// cycling through matches on repeated presses, and excludes the local user's
+// own nick — mirroring Python's RoomMessageEdit._try_tab_complete
+// (Channels.py:458).
+func TestRoomWidgetTabComplete(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	rw := NewRoomWidget(app, "hub1", "general")
+	rw.SetMembers([]ChannelMember{
+		{Nick: "alice"},
+		{Nick: "alison"},
+		{Nick: "bob"},
+	})
+	rw.SetOwnNick("me")
+
+	// Type "al" and position cursor at end; Tab completes to the first match.
+	rw.editor.SetText("al")
+	rw.editor.SetCursorPos(2)
+	if !rw.doTabComplete() {
+		t.Fatal("first doTabComplete returned false")
+	}
+	if got := rw.editor.GetText(); got != "alice: " {
+		t.Errorf("after first tab: text=%q want %q", got, "alice: ")
+	}
+
+	// Second Tab cycles to the next match ("alison").
+	if !rw.doTabComplete() {
+		t.Fatal("second doTabComplete returned false")
+	}
+	if got := rw.editor.GetText(); got != "alison: " {
+		t.Errorf("after second tab: text=%q want %q", got, "alison: ")
+	}
+
+	// No token under the cursor → completion does not apply.
+	rw.editor.SetText("")
+	rw.editor.SetCursorPos(0)
+	rw.tabState = nil
+	if rw.doTabComplete() {
+		t.Error("doTabComplete on empty input should return false")
+	}
+
+	// No matching candidate → returns false, state cleared.
+	rw.editor.SetText("zz")
+	rw.editor.SetCursorPos(2)
+	rw.tabState = nil
+	if rw.doTabComplete() {
+		t.Error("doTabComplete with no match should return false")
+	}
+}

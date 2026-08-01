@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/gmlewis/go-nomadnet/nomadnet/app"
+	"github.com/gmlewis/go-nomadnet/nomadnet/directory"
 	"github.com/gmlewis/go-nomadnet/tui"
 	"github.com/rivo/tview"
 )
@@ -120,13 +121,16 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 
 	// Network display — use real announces from the app
 	networkDisplay := tui.NewNetworkDisplay(tuiApp, nil, nil)
-	// Wire up real announce data via callback
-	a.SetUIChangeCallback(func() {
+
+	// refreshAnnounces re-fetches the announce stream from the app and updates
+	// the network display's left pane.
+	refreshAnnounces := func() {
 		anns := a.GetAnnounces()
 		tuiConvs := make([]tui.AnnounceEntry, len(anns))
 		for i, ann := range anns {
 			tuiConvs[i] = tui.AnnounceEntry{
 				Timestamp:   ann.Timestamp,
+				TimestampF:  ann.TimestampF,
 				SourceHash:  fmt.Sprintf("%x", ann.SourceHash),
 				AppData:     string(ann.AppData),
 				Type:        ann.AnnounceType,
@@ -134,6 +138,39 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 			}
 		}
 		networkDisplay.UpdateAnnounces(tuiConvs)
+	}
+	// refreshNodes re-fetches the saved-node list from the app directory.
+	refreshNodes := func() {
+		entries := a.Dir.KnownNodes()
+		nodes := make([]tui.NodeEntry, 0, len(entries))
+		for _, e := range entries {
+			trustStr := "unknown"
+			switch e.TrustLevel {
+			case directory.TrustTrusted:
+				trustStr = "trusted"
+			case directory.TrustUntrusted:
+				trustStr = "untrusted"
+			case directory.TrustWarning:
+				trustStr = "warning"
+			}
+			delivery := "direct"
+			if e.PreferredDelivery == 0x01 {
+				delivery = "propagated"
+			}
+			nodes = append(nodes, tui.NodeEntry{
+				SourceHash:  fmt.Sprintf("%x", e.SourceHash),
+				DisplayName: e.DisplayName,
+				TrustLevel:  trustStr,
+				HostsNode:   e.HostsNode,
+				Delivery:    delivery,
+			})
+		}
+		networkDisplay.UpdateNodes(nodes)
+	}
+	// Wire up real announce data via callback
+	a.SetUIChangeCallback(func() {
+		refreshAnnounces()
+		refreshNodes()
 	})
 	main.SetDisplay("network", networkDisplay.Widget())
 	main.SetShortcut("network", "[C-l] Nodes/Announces  [C-x] Remove  [C-w] Disconnect  [C-d] Back  [C-f] Forward  [C-r] Reload  [C-u] URL  [C-g] Fullscreen  [C-s / C-b] Save Node")
@@ -153,7 +190,24 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	networkDisplay.OnDeleteSelected = func() {
 		tuiApp.Dialogs.ShowConfirmDialog("Delete selected entry?",
 			func() {
-				// TODO: Delete selected announce/node
+				if networkDisplay.ShowingNodes() {
+					node, ok := networkDisplay.SelectedNode()
+					if !ok {
+						return
+					}
+					hash, ok := app.SourceHashFromHex(node.SourceHash)
+					if ok {
+						a.ForgetNode(hash)
+					}
+					refreshNodes()
+				} else {
+					ann, ok := networkDisplay.SelectedAnnounce()
+					if !ok {
+						return
+					}
+					a.RemoveAnnounce(ann.TimestampF)
+					refreshAnnounces()
+				}
 			},
 			func() {},
 		)
@@ -180,7 +234,17 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	networkDisplay.OnSaveNode = func() {
 		tuiApp.Dialogs.ShowConfirmDialog("Save selected node?",
 			func() {
-				// TODO: Save node to directory
+				if ann, ok := networkDisplay.SelectedAnnounce(); ok {
+					hash, ok := app.SourceHashFromHex(ann.SourceHash)
+					if ok {
+						a.SaveNode(hash, ann.DisplayName)
+					}
+				} else if node, ok := networkDisplay.SelectedNode(); ok {
+					hash, ok := app.SourceHashFromHex(node.SourceHash)
+					if ok {
+						a.SaveNode(hash, node.DisplayName)
+					}
+				}
 			},
 			func() {},
 		)
@@ -211,6 +275,9 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 			TrustLevel:  trustStr,
 			LastTime:    lastTime,
 			Unread:      c.Unread,
+			UnreadCount: c.UnreadCount,
+			Failed:      c.Failed,
+			FailedCount: c.FailedCount,
 		}
 	}
 	conversationsDisplay := tui.NewConversationsDisplay(tuiApp, tuiConvs)
@@ -247,6 +314,9 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 				TrustLevel:  trustStr,
 				LastTime:    lastTime,
 				Unread:      c.Unread,
+				UnreadCount: c.UnreadCount,
+				Failed:      c.Failed,
+				FailedCount: c.FailedCount,
 			}
 		}
 		conversationsDisplay.SetConversations(tuiConvs)
@@ -261,9 +331,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		conv := tuiConvs[idx]
 		tuiApp.Dialogs.ShowConfirmDialog("Delete conversation with "+conv.DisplayName+"?",
 			func() {
-				// TODO: Call a.DeleteConversation(conv.SourceHash) when app method exists
-				_ = a
-				_ = conv
+				a.DeleteConversation(conv.SourceHash)
 				refreshConvs()
 			},
 			func() {},
@@ -276,8 +344,11 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 				if text == "" {
 					return
 				}
-				// TODO: Call a.CreateDirectoryEntry when app method exists
-				_ = text
+				hash, ok := app.SourceHashFromHex(text)
+				if !ok {
+					return
+				}
+				a.CreateDirectoryEntry(hash, "")
 				refreshConvs()
 			},
 			func() {},
@@ -287,11 +358,16 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		conversationsDisplay.ToggleSort()
 	}
 	conversationsDisplay.OnShowQR = func() {
+		addr := a.LXMFAddressHex()
+		text := "[gray]LXMF address display — not available[-]"
+		if addr != "" {
+			text = fmt.Sprintf("[lightblue]LXMF Address[-]\n\n[white]<%s>[-]", addr)
+		}
 		tuiApp.Dialogs.ShowDialog("LXMF Address",
 			tview.NewTextView().
 				SetDynamicColors(true).
 				SetTextAlign(tview.AlignCenter).
-				SetText("[gray]LXMF address display — TODO: wire to app identity[-]"),
+				SetText(text),
 			50, 8, nil)
 	}
 	conversationsDisplay.OnEditPeerInfo = func() {
@@ -302,8 +378,12 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		tuiApp.Dialogs.ShowInputDialog("Peer Info",
 			"Display name:", conv.DisplayName,
 			func(text string) {
-				_ = text
-				// TODO: Update directory entry when app method exists
+				hash, ok := app.SourceHashFromHex(conv.SourceHash)
+				if !ok {
+					return
+				}
+				a.SetPeerDisplayName(hash, text)
+				refreshConvs()
 			},
 			func() {},
 		)
@@ -315,8 +395,18 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 				if text == "" {
 					return
 				}
-				_ = text
-				// TODO: Parse and ingest LXM URI
+				if a.Router == nil {
+					return
+				}
+				if _, err := a.Router.IngestLXMURI(text); err != nil {
+					tuiApp.Dialogs.ShowDialog("Ingest message URI",
+						tview.NewTextView().
+							SetDynamicColors(true).
+							SetText(fmt.Sprintf("[red]Could not decode URI:[-]\n\n%s", err)),
+						50, 8, nil)
+					return
+				}
+				refreshConvs()
 			},
 			func() {},
 		)
@@ -327,15 +417,20 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 				SetDynamicColors(true).
 				SetText("[gray]Syncing conversations...[-]"),
 			40, 5, nil)
-		// TODO: Trigger actual LXMF sync via app.RequestLXMFSync()
+		a.RequestLXMFSync(0)
 	}
 
 	// Block/Unblock peer callbacks — used in conversation context
 	blockPeer := func(sourceHash string) {
 		tuiApp.Dialogs.ShowConfirmDialog("Block this peer?\nThis will blackhole their identity and delete this conversation.",
 			func() {
-				// TODO: Block peer via app when method exists
-				_ = sourceHash
+				hash, ok := app.SourceHashFromHex(sourceHash)
+				if !ok {
+					return
+				}
+				a.BlockDestination(hash, "blocked from conversations")
+				a.DeleteConversation(sourceHash)
+				refreshConvs()
 			},
 			func() {},
 		)
@@ -343,8 +438,11 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	unblockPeer := func(sourceHash string) {
 		tuiApp.Dialogs.ShowConfirmDialog("Unblock this peer?\nThis lifts the blackhole and removes them from your ignored list.",
 			func() {
-				// TODO: Unblock peer via app when method exists
-				_ = sourceHash
+				hash, ok := app.SourceHashFromHex(sourceHash)
+				if !ok {
+					return
+				}
+				a.UnblockDestination(hash)
 			},
 			func() {},
 		)
@@ -360,6 +458,27 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	_ = blockPeer
 	_ = unblockPeer
 	_ = pingPeer
+
+	// Network "Converse" / "Msg Op": open a conversation with the selected
+	// announce's identity — create a directory entry, refresh the conversation
+	// list, and switch to the Conversations page. (Python converse(msg) /
+	// msg_op resolve the operator's LXMF address; until RNS identity resolution
+	// is wired, both open a conversation with the announce's own identity.)
+	openConversationFromAnnounce := func() {
+		ann, ok := networkDisplay.SelectedAnnounce()
+		if !ok {
+			return
+		}
+		hash, ok := app.SourceHashFromHex(ann.SourceHash)
+		if !ok {
+			return
+		}
+		a.CreateDirectoryEntry(hash, ann.DisplayName)
+		refreshConvs()
+		main.SelectPage("conversations")
+	}
+	networkDisplay.OnConverse = openConversationFromAnnounce
+	networkDisplay.OnMsgOp = openConversationFromAnnounce
 
 	// Channels display
 	channelsDisplay := tui.NewChannelsDisplay(tuiApp, nil)

@@ -17,10 +17,56 @@ package tui
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
+
+// IsJoinPartSystem reports whether m is a join/leave system message that is
+// eligible for collapse, matching Python's _is_joinpart_system at
+// Channels.py:1240: the message must be a system message with non-empty text,
+// must not begin with "You " (those are the local user's own join/part notices
+// which Python keeps visible), and must end with " joined" or " left".
+func IsJoinPartSystem(m ChannelMessage) bool {
+	if !m.IsSystem {
+		return false
+	}
+	text := strings.TrimSpace(m.Text)
+	if text == "" || strings.HasPrefix(text, "You ") {
+		return false
+	}
+	return strings.HasSuffix(text, " joined") || strings.HasSuffix(text, " left")
+}
+
+// CollapseJoinPartMessages filters msgs, replacing each maximal run of
+// consecutive join/leave system messages with a single synthetic ChannelMessage
+// carrying the collapsed summary label (CollapsedJoinPartLabel). Non-join/part
+// messages flush any pending run and are kept verbatim. Mirrors the run/flush
+// logic in Python's RoomWidget.update_messages (Channels.py:758-776).
+func CollapseJoinPartMessages(msgs []ChannelMessage) []ChannelMessage {
+	out := make([]ChannelMessage, 0, len(msgs))
+	run := 0
+	flush := func() {
+		if run > 0 {
+			out = append(out, ChannelMessage{
+				IsSystem: true,
+				Text:     CollapsedJoinPartLabel(run),
+			})
+			run = 0
+		}
+	}
+	for _, m := range msgs {
+		if IsJoinPartSystem(m) {
+			run++
+			continue
+		}
+		flush()
+		out = append(out, m)
+	}
+	flush()
+	return out
+}
 
 // CollapsedJoinPartLabel builds the centered summary label for a run of n
 // collapsed join/leave events, matching Python's _collapsed_join_part_widget

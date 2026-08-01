@@ -47,6 +47,7 @@ import (
 // AnnounceEvent represents a received announce.
 type AnnounceEvent struct {
 	Timestamp    time.Time
+	TimestampF   float64 // same instant as Timestamp, as the float64 seconds the directory stores
 	SourceHash   []byte
 	AppData      []byte
 	AnnounceType string // "node", "peer", "pn"
@@ -971,9 +972,12 @@ func (a *App) handleLXMFAnnounce(destHash []byte, identity *rns.Identity, appDat
 	displayName, _ := lxmf.DisplayNameFromAppData(appData)
 	a.Logger.Info("LXMF announce received: hash=%x name=%q", destHash, displayName)
 
+	now := time.Now()
+	nowF := float64(now.UnixNano()) / 1e9
 	a.mu.Lock()
 	a.Announces = append(a.Announces, AnnounceEvent{
-		Timestamp:    time.Now(),
+		Timestamp:    now,
+		TimestampF:   nowF,
 		SourceHash:   destHash,
 		AppData:      appData,
 		AnnounceType: "peer",
@@ -982,7 +986,7 @@ func (a *App) handleLXMFAnnounce(destHash []byte, identity *rns.Identity, appDat
 	a.mu.Unlock()
 
 	a.Dir.PeerAnnounceReceived(directory.Announce{
-		Timestamp:    float64(time.Now().UnixNano()) / 1e9,
+		Timestamp:    nowF,
 		SourceHash:   destHash,
 		AppData:      appData,
 		AnnounceType: "peer",
@@ -1000,9 +1004,12 @@ func (a *App) handleNodeAnnounce(destHash []byte, identity *rns.Identity, appDat
 	displayName := string(appData)
 	a.Logger.Info("Node announce received: hash=%x name=%q", destHash, displayName)
 
+	now := time.Now()
+	nowF := float64(now.UnixNano()) / 1e9
 	a.mu.Lock()
 	a.Announces = append(a.Announces, AnnounceEvent{
-		Timestamp:    time.Now(),
+		Timestamp:    now,
+		TimestampF:   nowF,
 		SourceHash:   destHash,
 		AppData:      appData,
 		AnnounceType: "node",
@@ -1011,7 +1018,7 @@ func (a *App) handleNodeAnnounce(destHash []byte, identity *rns.Identity, appDat
 	a.mu.Unlock()
 
 	a.Dir.NodeAnnounceReceived(directory.Announce{
-		Timestamp:    float64(time.Now().UnixNano()) / 1e9,
+		Timestamp:    nowF,
 		SourceHash:   destHash,
 		AppData:      appData,
 		AnnounceType: "node",
@@ -1041,9 +1048,12 @@ func (a *App) handlePNAnnounce(destHash []byte, identity *rns.Identity, appData 
 	displayName, _ := lxmf.DisplayNameFromAppData(appData)
 	a.Logger.Info("PN announce received: hash=%x name=%q", destHash, displayName)
 
+	now := time.Now()
+	nowF := float64(now.UnixNano()) / 1e9
 	a.mu.Lock()
 	a.Announces = append(a.Announces, AnnounceEvent{
-		Timestamp:    time.Now(),
+		Timestamp:    now,
+		TimestampF:   nowF,
 		SourceHash:   destHash,
 		AppData:      appData,
 		AnnounceType: "pn",
@@ -1052,7 +1062,7 @@ func (a *App) handlePNAnnounce(destHash []byte, identity *rns.Identity, appData 
 	a.mu.Unlock()
 
 	a.Dir.PNAnnounceReceived(directory.Announce{
-		Timestamp:    float64(time.Now().UnixNano()) / 1e9,
+		Timestamp:    nowF,
 		SourceHash:   destHash,
 		AppData:      appData,
 		AnnounceType: "pn",

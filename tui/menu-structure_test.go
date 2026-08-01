@@ -119,3 +119,27 @@ func TestMenuStructureHideGuide(t *testing.T) {
 		}
 	}
 }
+
+// TestMainDisplaySelectPage verifies SelectPage switches the active body page
+// by menu key (the programmatic equivalent of clicking a menu button), and is
+// a no-op for an unknown key.
+func TestMainDisplaySelectPage(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	md := NewMainDisplay(app, ThemeDark, GlyphUnicode)
+
+	md.SelectPage("network")
+	if md.activePage != "network" {
+		t.Errorf("after SelectPage(network): activePage = %q, want network", md.activePage)
+	}
+	md.SelectPage("conversations")
+	if md.activePage != "conversations" {
+		t.Errorf("after SelectPage(conversations): activePage = %q, want conversations", md.activePage)
+	}
+	// Unknown key is a no-op.
+	md.SelectPage("does-not-exist")
+	if md.activePage != "conversations" {
+		t.Errorf("after unknown SelectPage: activePage = %q, want conversations", md.activePage)
+	}
+}

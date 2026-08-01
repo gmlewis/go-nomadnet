@@ -24,6 +24,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -197,8 +198,10 @@ type ConversationInfo struct {
 	TrustLevel   byte
 	SortName     string
 	Unread       bool
+	UnreadCount  int
 	LastActivity float64
 	Failed       bool
+	FailedCount  int
 }
 
 // ConversationList returns a sorted list of all conversations.
@@ -217,9 +220,13 @@ func ConversationList(conversationsPath string, displayNames map[string]string, 
 		hash := entry.Name()
 		convPath := filepath.Join(conversationsPath, hash)
 
-		// Check unread/failed flags
-		unread := fileExists(filepath.Join(convPath, "unread"))
-		failed := fileExists(filepath.Join(convPath, "failed"))
+		// Check unread/failed flags. Python (Conversation.py:127-148) reads the
+		// flag file *content* as the count (defaulting to 1 when the file exists
+		// but the content is empty/unparseable), not just file existence.
+		unreadCount := readCountFile(filepath.Join(convPath, "unread"))
+		failedCount := readCountFile(filepath.Join(convPath, "failed"))
+		unread := unreadCount > 0
+		failed := failedCount > 0
 
 		// Get last activity time
 		lastActivity := float64(0)
@@ -252,8 +259,10 @@ func ConversationList(conversationsPath string, displayNames map[string]string, 
 			TrustLevel:   trustLevel,
 			SortName:     sortName,
 			Unread:       unread,
+			UnreadCount:  unreadCount,
 			LastActivity: lastActivity,
 			Failed:       failed,
+			FailedCount:  failedCount,
 		})
 	}
 
@@ -268,6 +277,30 @@ func ConversationList(conversationsPath string, displayNames map[string]string, 
 func fileExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+// readCountFile reads an unread/failed flag file and returns its integer
+// content, mirroring Python's Conversation.conversation_list (Conversation.py:
+// 127-148): a missing file means 0; a present file whose content parses as an
+// int yields that count; a present but empty/unparseable file yields 1 (the
+// flag exists, so at least one unread/failed message is implied).
+func readCountFile(path string) int {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return 0
+	}
+	s := strings.TrimSpace(string(data))
+	if s == "" {
+		return 1
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		return 1
+	}
+	if n < 0 {
+		n = 0
+	}
+	return n
 }
 
 func isHexString(s string) bool {

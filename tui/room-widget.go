@@ -26,18 +26,21 @@ import (
 // RoomWidget displays a single RRC chat room with messages, users, and editor.
 // Matches Python's RoomWidget at Channels.py:590.
 type RoomWidget struct {
-	app             *App
-	hubName         string
-	roomName        string
-	widget          tview.Primitive
-	columns         *tview.Flex
-	chatBox         *tview.Flex
-	messages        *tview.TextView
-	usersList       *tview.List
-	editor          *ReadlineEdit
-	usersVisible    bool
-	hubConnected    bool
-	maxMessageBytes int
+	app              *App
+	hubName          string
+	roomName         string
+	widget           tview.Primitive
+	columns          *tview.Flex
+	chatBox          *tview.Flex
+	usersBox         *tview.Flex
+	messages         *tview.TextView
+	usersList        *tview.List
+	editor           *ReadlineEdit
+	usersVisible     bool
+	usersWidth       int
+	hubConnected     bool
+	maxMessageBytes  int
+	collapseJoinPart bool
 
 	// Callbacks
 	OnSendMessage    func(text string)
@@ -50,6 +53,11 @@ type RoomWidget struct {
 	// Message data
 	chatMessages []ChannelMessage
 	members      []ChannelMember
+
+	// Tab-completion cycling state (mirrors Python RoomMessageEdit._tab_state,
+	// Channels.py:458) and the local user's nick (excluded from candidates).
+	tabState *TabState
+	ownNick  string
 }
 
 // NewRoomWidget creates a chat room view for the given hub and room.
@@ -104,11 +112,13 @@ func NewRoomWidget(app *App, hubName, roomName string) *RoomWidget {
 	usersBox.AddItem(usersTitle, 1, 0, false)
 	usersBox.AddItem(rw.usersList, 0, 1, true)
 	usersBox.SetBorder(true)
+	rw.usersBox = usersBox
+	rw.usersWidth = 22
 
 	// Columns: chat + users
 	rw.columns = tview.NewFlex().SetDirection(tview.FlexColumn).
 		AddItem(rw.chatBox, 0, 1, true).
-		AddItem(usersBox, 22, 0, false)
+		AddItem(usersBox, rw.usersWidth, 0, false)
 
 	rw.widget = rw.columns
 	rw.widget.(*tview.Flex).SetInputCapture(rw.handleInput)
@@ -137,13 +147,11 @@ func (rw *RoomWidget) handleInput(event *tcell.EventKey) *tcell.EventKey {
 		rw.toggleUsers()
 		return nil
 	case tcell.KeyF8:
-		if rw.OnToggleCollapse != nil {
-			rw.OnToggleCollapse()
-		}
+		rw.toggleCollapse()
 		return nil
 	case tcell.KeyTab:
-		if rw.OnTabComplete != nil {
-			rw.OnTabComplete()
+		if rw.doTabComplete() {
+			return nil
 		}
 		return event
 	}
@@ -211,17 +219,60 @@ func (rw *RoomWidget) handleSlashCommand(text string) {
 	rw.editor.SetText("")
 }
 
-// toggleUsers shows/hides the users pane.
+// toggleUsers shows/hides the users pane, mirroring Python's
+// RoomWidget.toggle_user_list (Channels.py:749) which removes the user list
+// column entirely when toggled off.
 func (rw *RoomWidget) toggleUsers() {
 	rw.usersVisible = !rw.usersVisible
+	if rw.usersVisible {
+		// Re-add the users column if it is not present.
+		present := false
+		for i := 0; i < rw.columns.GetItemCount(); i++ {
+			if rw.columns.GetItem(i) == rw.usersBox {
+				present = true
+				break
+			}
+		}
+		if !present {
+			rw.columns.AddItem(rw.usersBox, rw.usersWidth, 0, false)
+		}
+	} else {
+		rw.columns.RemoveItem(rw.usersBox)
+	}
 	if rw.OnToggleUsers != nil {
 		rw.OnToggleUsers()
 	}
+	// tview redraws automatically after the input handler returns; calling
+	// QueueUpdateDraw here would deadlock when invoked from the input handler
+	// (the event loop is busy in this call and cannot drain the queue) and also
+	// blocks forever in tests where no event loop is running.
 }
 
 // SetMessages replaces the message list.
 func (rw *RoomWidget) SetMessages(msgs []ChannelMessage) {
 	rw.chatMessages = msgs
+	rw.renderMessages()
+}
+
+// toggleCollapse flips the join/leave collapse flag and re-renders, matching
+// Python's toggle_join_part_collapse (Channels.py:1537). The optional
+// OnToggleCollapse callback fires after the state flip.
+func (rw *RoomWidget) toggleCollapse() {
+	rw.collapseJoinPart = !rw.collapseJoinPart
+	rw.renderMessages()
+	if rw.OnToggleCollapse != nil {
+		rw.OnToggleCollapse()
+	}
+}
+
+// CollapseJoinPart reports whether join/leave system messages are collapsed.
+func (rw *RoomWidget) CollapseJoinPart() bool {
+	return rw.collapseJoinPart
+}
+
+// SetCollapseJoinPart sets the join/leave collapse flag and re-renders.
+func (rw *RoomWidget) SetCollapseJoinPart(v bool) {
+	rw.collapseJoinPart = v
 	rw.renderMessages()
 }
 
@@ -231,10 +282,52 @@ func (rw *RoomWidget) SetMembers(members []ChannelMember) {
 	rw.renderMembers()
 }
 
+// SetOwnNick sets the local user's nick, which is excluded from tab-completion
+// candidates (Python excludes the user's own nick in _candidates,
+// Channels.py:439).
+func (rw *RoomWidget) SetOwnNick(nick string) {
+	rw.ownNick = nick
+}
+
+// doTabComplete performs one nick tab-completion step in the editor, mirroring
+// Python's RoomMessageEdit._try_tab_complete (Channels.py:458). Candidates are
+// the deduplicated member nicks (minus the local user's own nick). Returns true
+// when a completion was applied (Tab consumed), false when there was no token
+// or no match (Tab propagates).
+func (rw *RoomWidget) doTabComplete() bool {
+	candidates := make([]string, 0, len(rw.members))
+	seen := make(map[string]bool, len(rw.members))
+	for _, m := range rw.members {
+		if m.Nick == "" || m.Nick == rw.ownNick {
+			continue
+		}
+		key := strings.ToLower(m.Nick)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		candidates = append(candidates, m.Nick)
+	}
+	text := rw.editor.GetText()
+	newText, newCursor, state, ok := TabComplete(text, rw.editor.CursorPos(), rw.tabState, candidates)
+	if !ok {
+		rw.tabState = nil
+		return false
+	}
+	rw.tabState = state
+	rw.editor.SetText(newText)
+	rw.editor.SetCursorPos(newCursor)
+	return true
+}
+
 // renderMessages renders all chat messages.
 func (rw *RoomWidget) renderMessages() {
+	msgs := rw.chatMessages
+	if rw.collapseJoinPart {
+		msgs = CollapseJoinPartMessages(msgs)
+	}
 	var sb strings.Builder
-	for _, msg := range rw.chatMessages {
+	for _, msg := range msgs {
 		switch {
 		case msg.IsSystem:
 			sb.WriteString(fmt.Sprintf("[gray]%s[-]\n", msg.Text))

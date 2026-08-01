@@ -116,3 +116,73 @@ func (a *App) CreateDirectoryEntry(sourceHash []byte, displayName string) *direc
 	a.Dir.Remember(entry)
 	return entry
 }
+
+// RemoveAnnounce removes the announce with the given float64 timestamp from
+// every announce stream, mirroring the Python Directory.remove_announce path
+// triggered by the Network page's C-x "remove entry" action.
+func (a *App) RemoveAnnounce(timestamp float64) {
+	if a.Dir == nil {
+		return
+	}
+	a.Dir.RemoveAnnounceWithTimestamp(timestamp)
+}
+
+// SaveNode remembers a directory entry for a node/peer at sourceHash with the
+// given display name, mirroring the Python Network "save node" (C-s/C-b) flow.
+// The entry defaults to the unknown trust level and direct delivery.
+func (a *App) SaveNode(sourceHash []byte, displayName string) *directory.Entry {
+	return a.CreateDirectoryEntry(sourceHash, displayName)
+}
+
+// ForgetNode removes the directory entry for sourceHash, mirroring the Python
+// Network "remove entry" (C-x) action on a saved node.
+func (a *App) ForgetNode(sourceHash []byte) {
+	if a.Dir == nil {
+		return
+	}
+	a.Dir.Forget(sourceHash)
+}
+
+// SetPeerDisplayName updates the display name of the directory entry for
+// sourceHash, creating it if absent. Mirrors the Python Conversations
+// "edit peer info" flow that updates the directory entry's name.
+func (a *App) SetPeerDisplayName(sourceHash []byte, displayName string) {
+	if a.Dir == nil {
+		a.Dir = directory.New()
+	}
+	entry := a.Dir.Find(sourceHash)
+	if entry == nil {
+		entry = directory.NewEntry(sourceHash)
+	}
+	entry.DisplayName = displayName
+	a.Dir.Remember(entry)
+}
+
+// PeerDisplayName returns the directory display name for sourceHash, or "" if
+// the peer is unknown.
+func (a *App) PeerDisplayName(sourceHash []byte) string {
+	if a.Dir == nil {
+		return ""
+	}
+	return a.Dir.DisplayName(sourceHash)
+}
+
+// LXMFAddressHex returns the user's LXMF delivery address as a lowercase hex
+// string, or "" if the LXMF destination is not ready. Used by the Conversations
+// "show my LXMF/QR" (C-p) action.
+func (a *App) LXMFAddressHex() string {
+	if a.LXMFDest == nil {
+		return ""
+	}
+	return hex.EncodeToString(a.LXMFDest.Hash)
+}
+
+// SourceHashFromHex decodes a hex source-hash string (as shown in the UI) to
+// bytes. It returns nil (and ok=false) for an invalid hex string.
+func SourceHashFromHex(s string) ([]byte, bool) {
+	b, err := hex.DecodeString(s)
+	if err != nil {
+		return nil, false
+	}
+	return b, true
+}

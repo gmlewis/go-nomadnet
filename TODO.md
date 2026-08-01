@@ -310,7 +310,14 @@ test or a matching `parity.sh` summary):
       (Separate borders + no outer border + mode-titled left pane done.)
 - [ ] `AnnounceStream` + `AnnounceStreamEntry` — list with search/display-mode
       toggle; `C-x` remove; `up`→menu. Verify vs Python.
-- [ ] `AnnounceInfo` — announce detail dialog (overlay per 0.5). Verify vs Python.
+- [ ] `AnnounceInfo` — announce detail view with Back/Connect/Msg Op/Save
+      (node), Use-as-default (pn), Converse (peer) buttons. The in-detail
+      actions fire callbacks (`OnSaveNode`/`OnMsgOp`/`OnUseAsPN`/`OnConverse`)
+      tested to pop back to the stream; `OnConverse`/`OnMsgOp` wired to create a
+      directory entry + switch to Conversations via `MainDisplay.SelectPage`.
+      `OnUseAsPN` still pending a `SetDefaultPropagationNode` app method.
+      Constructor bug fixed (`announceData` now stored so `SelectedAnnounce`/
+      detail work for constructor-supplied announces). Verify vs Python.
 - [ ] `KnownNodes` + `NodeEntry` — known nodes list; `C-x` delete; `up`→menu.
 - [ ] `KnownNodeInfo` — node detail dialog (name/sort edits, trust radios, default
       propagation node + identify checkboxes, Back/Connect/Msg/Save). Verify.
@@ -323,9 +330,18 @@ test or a matching `parity.sh` summary):
 
 #### 4.C Conversations (Python `Conversations.py`, 3093 lines)
 - [ ] `ConversationsDisplay` two-pane: list (52) + detail; `[ Trusted (0) ]
-      [ Untrusted (0) ]` sub-tabs (no digit prefixes). Verify layout vs original.
-- [ ] `updateListbox` / `conversationListWidget` — list + single row; verify
-      formatting vs Python `update_listbox`/`conversation_list_widget`.
+      [ Untrusted (0) ]` sub-tabs — digit prefixes removed and unread-glyph
+      alert counts added (golden-tested vs Python `_label`); the two tabs are
+      still a single centered TextView, not two clickable `TabButton`s.
+      Verify layout vs original.
+- [x] `updateListbox` / `conversationListWidget` — list + single row. Row text
+      matches Python `conversation_list_widget` (Conversations.py:1687-1755):
+      trust glyph (✓/✕/?/⚠), pin prefix (★), `<hash>` for non-trusted, badge
+      ` ⚠ (N)` failed / ` ✉ (N)` unread (failed wins, suppressed for the
+      currently-displayed conversation), second line `  +relative_time` only
+      when last_activity>0. Golden-tested vs live Python (`TestConversationRowMainPythonParity`,
+      `TestPopulateListRowText`). Unread/failed counts threaded from
+      `conversation.ConversationInfo`→app→tui model.
 - [ ] `ConversationWidget` — trust banner, messages, editor, footer; verify vs
       Python `ConversationWidget`.
 - [ ] `buildTrustBanner` + `blockPeer`/`unblock` — verify vs Python
@@ -340,22 +356,29 @@ test or a matching `parity.sh` summary):
 - [ ] `ingestLXMURI` (`C-u`) — parse `lxm://` + create message; verify vs Python.
 - [ ] `newConversation` (`C-n`) — overlay dialog Addr/Name/trust radios/Create/Back.
 - [ ] `editSelectedInDirectory` (`C-e`) — peer info editor overlay; verify.
-- [ ] `toggleFullscreen` (`C-g`) — left width → 0; verify.
+- [ ] `toggleFullscreen` (`C-g`) — wired: list pane collapses to width 0 via
+      `Flex.ResizeItem` and restores (draw-tested on a simulation screen);
+      remaining: visual verify via `parity.sh`.
 - [ ] Three shortcut bars by focus region (list/body/editor); verify via
       `summary.py` footer after focusing each region.
 
 #### 4.H Channels (Python `Channels.py`, 2285 lines)
 - [ ] `ChannelsDisplay` two-pane: list (36) + room; verify layout vs Python.
 - [ ] `composeListWidgets` — hub/room list; verify vs `_compose_list_widgets`.
-- [ ] `RoomWidget` — messages + users pane (`C-u` toggle) + editor; verify vs
-      Python `RoomWidget`.
-- [ ] `RoomWidget.sendMessage` (`C-d`) + `handleSlashCommand` (`tab` complete) +
-      `leaveRoom` (`C-x`); verify each slash command vs `_handle_slash_command`.
+- [ ] `RoomWidget` — messages + users pane (`C-u` toggle now removes/re-adds
+      the users column) + editor; verify vs Python `RoomWidget`.
+- [ ] `RoomWidget.sendMessage` (`C-d`) + `handleSlashCommand` + `leaveRoom`
+      (`C-x`); `tab` nick-complete is wired to `TabComplete` with member
+      candidates + own-nick exclusion (cycling tested). Verify each slash
+      command vs `_handle_slash_command`.
 - [ ] `updateMessages`/`appendMessage` + `_messageWidget` — message list; verify.
 - [ ] `newHubDialog`/`confirmNewHubDialog`/`editHubDialog`/`joinRoomDialog` +
       `showUserInfo` — overlay dialogs; verify vs Python.
 - [ ] `autoconnect` — `_maybe_autoconnect` on startup; verify.
-- [ ] `F8` join/part collapse; `C-y` toggle channel list; verify.
+- [ ] `F8` join/part collapse (logic wired + `IsJoinPartSystem`/
+      `CollapseJoinPartMessages` golden-tested vs Python) and `C-y` toggle
+      channel list (pane actually removes/re-adds) — remaining: visual verify
+      via `parity.sh` for the Channels page.
 
 #### 4.I Interfaces (Python `Interfaces.py`, 3214 lines)
 - [ ] `InterfaceDisplay` — list + add/edit/show/remove + config-editor actions;
@@ -391,20 +414,15 @@ test or a matching `parity.sh` summary):
 > Implement bottom-up as the underlying app methods land. Each wiring task
 > replaces a TODO with a real call into `app`/core and an end-to-end test.
 
-- [ ] Wire `networkDisplay` to live RNS announce/node/peer data (replace
-      hardcoded interfaces list).
+- [ ] Wire `networkDisplay` to live RNS announce/node/peer data (announces +
+      known nodes now live via UIChangeCallback; LXMF peers list still pending
+      the router peers accessor).
 - [ ] Wire network “Navigate” to the real browser over RNS.
-- [ ] Wire network “Delete selected entry” to `Directory.RemoveAnnounce…`.
-- [ ] Wire network “Save node” to `Directory.Remember`.
 - [ ] Wire network “Show peers” to the LXMF peers list from the router.
-- [ ] Wire `conversationsDisplay.OnDeleteConv` to `App.DeleteConversation`.
-- [ ] Wire `conversationsDisplay.OnNewConv` to `App.CreateDirectoryEntry`.
-- [ ] Wire `conversationsDisplay.OnShowQR` to the app identity LXMF address/QR.
-- [ ] Wire `conversationsDisplay.OnEditPeerInfo` to `Directory.Remember`.
 - [ ] Wire `conversationsDisplay.OnIngestURI` to `Conversation.Ingest` of an LXM URI.
-- [ ] Wire `conversationsDisplay.OnSync` to `App.RequestLXMFSync` with a progress dialog.
 - [ ] Wire block/unblock/ping peer callbacks to `App.BlockDestination`/
-      `UnblockDestination` and the RNS link ping.
+      `UnblockDestination` and the RNS link ping (block/unblock wired; ping
+      still pending the RNS link ping).
 - [ ] Wire `channelsDisplay` to a real `rrc.RRCManager` from the app.
 - [ ] Wire `channelsDisplay.OnNewHub`→`RRCManager.AddHub`;
       `OnJoinRoom`→`RRCHub.JoinRoom`; `OnRemoveHub`→`RRCManager.RemoveHub`;
@@ -427,11 +445,9 @@ test or a matching `parity.sh` summary):
       (13/14 interactions missing per PARITY-REPORT).
 - [ ] Background-thread marshaling: RRC/message callbacks marshal UI updates to
       the tview main loop (equivalent of `watch_pipe`).
-- [ ] `stty -ixon` on startup so `Ctrl-Q`/`Ctrl-S` reach the app; restore on exit.
-- [ ] 135×32 recommendation message + small-terminal reflow verification (capture
-      Go port at 80×24, confirm no crash and two-column body survives).
-- [ ] `go vet ./...` and `gofmt -l .` clean.
-- [ ] All packages have godoc package comments in a same-named file.
+- [ ] 135×32 recommendation message (small-terminal reflow verified: 80×24
+      no crash, two-column body survives, menu clips; Ctrl-Q reaches the app
+      via tcell raw mode which disables IXON).
 - [ ] Final: run `parity.sh` for every page + the New Conversation dialog;
       confirm each Go `summary.py` output matches the original’s.
 

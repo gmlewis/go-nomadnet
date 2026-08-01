@@ -55,6 +55,55 @@ func TestNetworkDisplayWithEntries(t *testing.T) {
 	}
 }
 
+// TestNetworkDetailActionCallbacks verifies the AnnounceInfo in-detail buttons
+// fire their callbacks and return to the stream view (Python's save_node /
+// msg_op / use_pn / converse all pop back to the announce stream).
+func TestNetworkDetailActionCallbacks(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	announces := []AnnounceEntry{
+		{DisplayName: "Node1", Type: "node", SourceHash: "aa", Timestamp: time.Now()},
+		{DisplayName: "PN1", Type: "pn", SourceHash: "bb", Timestamp: time.Now()},
+		{DisplayName: "Peer1", Type: "peer", SourceHash: "cc", Timestamp: time.Now()},
+	}
+	nd := NewNetworkDisplay(app, announces, nil)
+
+	var fired string
+	nd.OnSaveNode = func() { fired = "save" }
+	nd.OnMsgOp = func() { fired = "msgop" }
+	nd.OnUseAsPN = func() { fired = "useaspn" }
+	nd.OnConverse = func() { fired = "converse" }
+
+	cases := []struct {
+		name string
+		idx  int
+		call func()
+		want string
+	}{
+		{"save node", 0, func() { nd.saveNode(announces[0]) }, "save"},
+		{"msg op", 0, func() { nd.msgOpNode(announces[0]) }, "msgop"},
+		{"use as pn", 1, func() { nd.useAsPN(announces[1]) }, "useaspn"},
+		{"converse", 2, func() { nd.converseWith(announces[2]) }, "converse"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			fired = ""
+			nd.showAnnounceDetail(c.idx) // enter the AnnounceInfo detail view
+			if !nd.inInfoView {
+				t.Fatal("showAnnounceDetail did not enter info view")
+			}
+			c.call()
+			if fired != c.want {
+				t.Errorf("callback fired %q, want %q", fired, c.want)
+			}
+			if nd.inInfoView {
+				t.Error("expected to return to stream view after action")
+			}
+		})
+	}
+}
+
 func TestTruncateStr(t *testing.T) {
 	t.Parallel()
 

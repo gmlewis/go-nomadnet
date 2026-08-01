@@ -65,6 +65,184 @@ func TestConversationsDisplayEmpty(t *testing.T) {
 	}
 }
 
+// TestTabBarTextPythonParity verifies the Trusted/Untrusted tab label against
+// Python's _label (Conversations.py:461-465): no digit prefixes, an envelope
+// glyph + alert count when a tab has unread/failed conversations. The glyph
+// here is the unicode set's "✉" (glyphs["unread"]).
+func TestTabBarTextPythonParity(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		convs []ConversationInfo
+		want  string
+	}{
+		{
+			"empty",
+			nil,
+			"Trusted (0)  Untrusted (0)",
+		},
+		{
+			"no alerts",
+			[]ConversationInfo{
+				{TrustLevel: "trusted"},
+				{TrustLevel: "trusted"},
+				{TrustLevel: "unknown"},
+			},
+			"Trusted (2)  Untrusted (1)",
+		},
+		{
+			"trusted alerts",
+			[]ConversationInfo{
+				{TrustLevel: "trusted", Unread: true},
+				{TrustLevel: "trusted", Failed: true},
+				{TrustLevel: "trusted"},
+				{TrustLevel: "unknown"},
+			},
+			"Trusted (3) ✉ 2  Untrusted (1)",
+		},
+		{
+			"both alert",
+			[]ConversationInfo{
+				{TrustLevel: "trusted", Unread: true},
+				{TrustLevel: "trusted", Unread: true},
+				{TrustLevel: "trusted"},
+				{TrustLevel: "untrusted", Failed: true},
+			},
+			"Trusted (3) ✉ 2  Untrusted (1) ✉ 1",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := tabBarText(tt.convs, "✉")
+			if got != tt.want {
+				t.Errorf("tabBarText = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestConversationRowMainPythonParity checks the first line of a conversation
+// list row against golden values captured from Python's conversation_list_widget
+// (Conversations.py:1687-1755) run live. Glyphs are the unicode set
+// (check=✓ cross=✕ warning=⚠ unread=✉ pin=★).
+func TestConversationRowMainPythonParity(t *testing.T) {
+	t.Parallel()
+
+	glyphs := glyphsUnicode
+	// lastActivity 1000s after epoch — well over 30 days ago, so the date
+	// branch of relative_time applies; the secondary line uses the same
+	// Format call in both Go and Python.
+	old := time.Unix(1000, 0)
+	dateLine := "  " + old.Format("2006-01-02")
+
+	tests := []struct {
+		name          string
+		conv          ConversationInfo
+		current       string // currently-displayed conversation source hash
+		wantMain      string
+		wantSecondary string
+	}{
+		{
+			"trusted unread",
+			ConversationInfo{SourceHash: "aabbccdd", DisplayName: "Alice", TrustLevel: "trusted", UnreadCount: 3, LastTime: old},
+			"",
+			"✓ Alice ✉ (3)",
+			dateLine,
+		},
+		{
+			"untrusted",
+			ConversationInfo{SourceHash: "eeff0011", DisplayName: "Bob", TrustLevel: "untrusted", LastTime: old},
+			"",
+			"✕ Bob <eeff0011>",
+			dateLine,
+		},
+		{
+			"unknown no activity",
+			ConversationInfo{SourceHash: "22334455", DisplayName: "Carol", TrustLevel: "unknown"},
+			"",
+			"? Carol <22334455>",
+			"",
+		},
+		{
+			"warning failed",
+			ConversationInfo{SourceHash: "66778899", DisplayName: "Dave", TrustLevel: "warning", FailedCount: 2, LastTime: old},
+			"",
+			"⚠ Dave <66778899> ⚠ (2)",
+			dateLine,
+		},
+		{
+			"trusted empty name unread",
+			ConversationInfo{SourceHash: "aabbccdd", TrustLevel: "trusted", UnreadCount: 1, LastTime: old},
+			"",
+			"✓ ✉ (1)",
+			dateLine,
+		},
+		{
+			"pinned trusted",
+			ConversationInfo{SourceHash: "aabbccdd", DisplayName: "Pinned", TrustLevel: "trusted", Pinned: true, LastTime: old},
+			"",
+			"★ ✓ Pinned",
+			dateLine,
+		},
+		{
+			"full hash non-trusted",
+			ConversationInfo{SourceHash: "0102030405060708010203040506070801020304050607080102030405060708", DisplayName: "Bob", TrustLevel: "untrusted", LastTime: old},
+			"",
+			"✕ Bob <0102030405060708010203040506070801020304050607080102030405060708>",
+			dateLine,
+		},
+		{
+			"currently displayed suppresses badge",
+			ConversationInfo{SourceHash: "aabbccdd", DisplayName: "Alice", TrustLevel: "trusted", Pinned: true, UnreadCount: 3, LastTime: old},
+			"aabbccdd",
+			"★ ✓ Alice",
+			dateLine,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			gotMain := conversationRowMain(tt.conv, glyphs, tt.current)
+			if gotMain != tt.wantMain {
+				t.Errorf("conversationRowMain = %q, want %q", gotMain, tt.wantMain)
+			}
+			gotSec := conversationRowSecondary(tt.conv)
+			if gotSec != tt.wantSecondary {
+				t.Errorf("conversationRowSecondary = %q, want %q", gotSec, tt.wantSecondary)
+			}
+		})
+	}
+}
+
+// TestPopulateListRowText verifies the wired populateList produces the parity
+// row text (not just the helper) for a trusted unread conversation.
+func TestPopulateListRowText(t *testing.T) {
+	t.Parallel()
+	app := newTestApp()
+	old := time.Unix(1000, 0)
+	convs := []ConversationInfo{
+		{SourceHash: "aabbccdd", DisplayName: "Alice", TrustLevel: "trusted", UnreadCount: 3, LastTime: old},
+		{SourceHash: "eeff0011", DisplayName: "Bob", TrustLevel: "untrusted", LastTime: old},
+	}
+	cd := NewConversationsDisplay(app, convs)
+	cd.populateList()
+	// Tab defaults to trusted; only Alice should be present with the badge.
+	if cd.list.GetItemCount() != 1 {
+		t.Fatalf("item count = %d, want 1", cd.list.GetItemCount())
+	}
+	main, sec := cd.list.GetItemText(0)
+	if main != "✓ Alice ✉ (3)" {
+		t.Errorf("main = %q, want %q", main, "✓ Alice ✉ (3)")
+	}
+	wantSec := "  " + old.Format("2006-01-02")
+	if sec != wantSec {
+		t.Errorf("secondary = %q, want %q", sec, wantSec)
+	}
+}
+
 func TestNewComposeDisplay(t *testing.T) {
 	t.Parallel()
 
@@ -76,6 +254,71 @@ func TestNewComposeDisplay(t *testing.T) {
 	}
 	if cd.Widget() == nil {
 		t.Error("Widget() returned nil")
+	}
+}
+
+// TestConversationsToggleFullscreen verifies the list pane collapses to width
+// 0 (detail fills the row) and restores, matching Python's toggle_fullscreen
+// (Conversations.py:1276). It draws the content Flex to a simulation screen
+// and checks the detail text's "S" moves from the list-width column to column 0.
+func TestConversationsToggleFullscreen(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	cd := NewConversationsDisplay(app, nil)
+	// The detail's default text begins with "Select …".
+	cd.detail.SetText("Select a conversation to view")
+
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if screen == nil {
+		t.Fatal("nil simulation screen")
+	}
+	if err := screen.Init(); err != nil {
+		t.Fatalf("screen.Init: %v", err)
+	}
+	defer screen.Fini()
+	screen.SetSize(80, 12)
+
+	cell := func(x, y int) rune {
+		c, _, _, _ := screen.GetContent(x, y)
+		return c
+	}
+
+	// Non-fullscreen: the list pane occupies [0,listWidth), so the detail's
+	// first text column is listWidth.
+	cd.content.SetRect(0, 0, 80, 12)
+	screen.Clear()
+	cd.content.Draw(screen)
+	if cd.Fullscreen() {
+		t.Error("expected non-fullscreen initially")
+	}
+	if c := cell(cd.ListWidth(), 0); c != 'S' {
+		t.Errorf("normal detail cell(%d,0) = %q, want 'S'", cd.ListWidth(), c)
+	}
+	if c := cell(0, 0); c == 'S' {
+		t.Errorf("normal detail cell(0,0) = 'S', but list pane should occupy column 0")
+	}
+
+	// Toggle fullscreen: list pane collapses to width 0, detail starts at 0.
+	cd.ToggleFullscreen()
+	if !cd.Fullscreen() {
+		t.Error("expected fullscreen after toggle")
+	}
+	screen.Clear()
+	cd.content.Draw(screen)
+	if c := cell(0, 0); c != 'S' {
+		t.Errorf("fullscreen detail cell(0,0) = %q, want 'S'", c)
+	}
+
+	// Toggle back: detail returns to the list width.
+	cd.ToggleFullscreen()
+	if cd.Fullscreen() {
+		t.Error("expected non-fullscreen after second toggle")
+	}
+	screen.Clear()
+	cd.content.Draw(screen)
+	if c := cell(cd.ListWidth(), 0); c != 'S' {
+		t.Errorf("restored detail cell(%d,0) = %q, want 'S'", cd.ListWidth(), c)
 	}
 }
 
