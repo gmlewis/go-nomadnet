@@ -307,9 +307,30 @@ test or a matching `parity.sh` summary):
 - [ ] `NetworkDisplay` left-pane composition: `NetworkLeftPile` of Saved Nodes +
       `C-l` toggle Announce Stream/Known Nodes + LXMF Peers + LocalPeer (PACK) +
       NodeInfo + NetworkStats; right pane = Remote Node Browser (needs 4.E).
-      (Separate borders + no outer border + mode-titled left pane done.)
-- [ ] `AnnounceStream` + `AnnounceStreamEntry` — list with search/display-mode
-      toggle; `C-x` remove; `up`→menu. Verify vs Python.
+      (Separate borders + no outer border + mode-titled left pane done. Saved
+      Nodes is now the default — Python `list_display=1`, Network.py:1638 — and
+      the KnownNodes empty-state is ported: centered warning-colored info glyph +
+      "Currently, no nodes are saved\n\nCtrl+L to view the announce stream"
+      shown in place of the list when no nodes are saved, Network.py:833-882;
+      `nodesView()` swaps empty-state↔list, `refreshNodesView()` updates it on
+      `UpdateNodes`. Verified vs `pynet_80x24_03`: content matches; remaining
+      gaps: LocalPeer (PACK) panel below the list, right pane is still the detail
+      TextView not the Browser "Remote Node", and a 1-col centering offset on
+      the empty-state (urwid left-pads ceil, tview floors) — all need RNS/4.E.)
+- [x] `AnnounceStream` + `AnnounceStreamEntry` — list row formatter ported
+      (`tui/announce-entry.go` `FormatAnnounceStreamRow`, mirroring Network.py:
+      259-390): row = "{ts} {type_symbol} {display_str}" where ts is same-day
+      "15:04:05" or other-day "2006-01-02"; type_symbol = node "Ⓝ "/peer "Ⓟ "
+      /pn "↑"(sent glyph); display_str = sanitized (SanitizeName) or
+      modifier-stripped (StripModifiers) name per config, 34-rune truncation +
+      "…", show-destination full hex, empty→"<hex>" prettyhexrep fallback.
+      `AnnounceTrustStyle` maps trust→urwid list style names. Golden-tested vs
+      live Python (9 row cases + trust styles, stubbed-urwid capture
+      `TestFormatAnnounceStreamRowPythonParity`). `addAnnounceEntryWithMode`
+      now uses the parity row (single-line, no AppData secondary); display-mode
+      toggle + SanitizeNames config wired (`NetworkDisplay.SanitizeNames`←
+      `a.Config.TextUI.SanitizeNames`). Remaining: `C-x` remove + `up`→menu
+      visual verify via `parity.sh`; search/display-mode toggle key wiring.
 - [ ] `AnnounceInfo` — announce detail view with Back/Connect/Msg Op/Save
       (node), Use-as-default (pn), Converse (peer) buttons. The in-detail
       actions fire callbacks (`OnSaveNode`/`OnMsgOp`/`OnUseAsPN`/`OnConverse`)
@@ -318,7 +339,23 @@ test or a matching `parity.sh` summary):
       `OnUseAsPN` still pending a `SetDefaultPropagationNode` app method.
       Constructor bug fixed (`announceData` now stored so `SelectedAnnounce`/
       detail work for constructor-supplied announces). Verify vs Python.
-- [ ] `KnownNodes` + `NodeEntry` — known nodes list; `C-x` delete; `up`→menu.
+- [x] `KnownNodes` + `NodeEntry` — known-nodes list row formatter ported
+      (`tui/node-entry.go` `FormatNodeEntryRow`, mirroring Network.py:984-1015):
+      row = "{node_glyph} {display_str}" where node_glyph = g["node"] ("Ⓝ ",
+      trailing space → two spaces in the row). display_str mirrors
+      `Directory.simplest_display_str(source_hash, san=False)` (Directory.py:
+      277-300): strip_modifiers (NOT sanitize, since NodeEntry hardcodes
+      san=False), empty name→"<hex>" prettyhexrep, WARNING/UNTRUSTED append
+      " <hex>", TRUSTED/UNKNOWN show name alone. Python's per-trust `symbol`
+      (cross/check/unknown/warning) is computed but UNUSED in the row — not
+      reproduced. `NodeTrustStyle` (= `AnnounceTrustStyle`) maps trust→urwid
+      list style names. `addNodeEntry` now uses the parity row (single-line,
+      no Delivery secondary). Golden-tested vs live Python (8 row cases + 5
+      trust styles, real `Directory.simplest_display_str` bound to a fake dir,
+      `TestFormatNodeEntryRowPythonParity`/`TestNodeTrustStyleParity`,
+      harness `tooling/tui-parity/node_entry_golden.py`). 16-byte source hash
+      (`TRUNCATED_HASHLENGTH//8`) required by `DirectoryEntry`. Remaining:
+      `C-x` delete + `up`→menu visual verify via `parity.sh`.
 - [ ] `KnownNodeInfo` — node detail dialog (name/sort edits, trust radios, default
       propagation node + identify checkboxes, Back/Connect/Msg/Save). Verify.
 - [ ] `LXMFPeers`/`LXMFPeerEntry` — peers list; `C-x` unpeer, `C-r` delivery sync.
@@ -344,13 +381,33 @@ test or a matching `parity.sh` summary):
       `conversation.ConversationInfo`→app→tui model.
 - [ ] `ConversationWidget` — trust banner, messages, editor, footer; verify vs
       Python `ConversationWidget`.
-- [ ] `buildTrustBanner` + `blockPeer`/`unblock` — verify vs Python
-      `_build_trust_banner`/`_block_peer`/`_on_block_click`.
+- [x] `buildTrustBanner` + `blockPeer`/`unblock` — trust banner implemented:
+      ` ⚠ This peer isn't trusted yet.` + Trust/Block/Do nothing buttons on
+      dark-red `msg_warning_untrusted` bg (#800000/#111); shown for non-trusted
+      peers, hidden when trusted or dismissed (golden-tested vs Python
+      `_build_trust_banner`/`has_visible_trust_banner`). Peer-info bar fixed
+      to `msg_header_sent` colors (#111/#ddd) and parity text
+      ` {name}|<hash> | [Stamp: N]  {speed}{hops}` (golden-tested). Buttons
+      wired via `OnTrustPeer`/`OnBlockPeer`/`OnIgnorePeer` → app
+      `SetPeerTrustLevel`/`BlockDestination` (tested).
 - [ ] `sendMessage` (`C-d`) — send editor content; verify vs Python `send_message`.
 - [ ] `attachFile`/`fileBrowserClosed`/`saveFocusedAttachments` (`C-f`/`C-s`/`C-a`)
       — attachment flow; verify vs Python.
 - [ ] `paperMessage` (`C-p`) — print_qr/save_qr/save_uri; verify vs Python.
-- [ ] `LXMessageWidget` + `progressPoll` — single message render + progress; verify.
+- [x] `LXMessageWidget` header — single-message header title string + urwid
+      style ported (`tui/message-header.go` `LXMessageHeader`, mirroring
+      Conversations.py:2596-2670): relative_time + strftime timestamp +
+      encryption glyph; outbound state/method prefix (✓/✕/↑/▤/→ + arrow_r,
+      Rejected, propagated/paper/sent/pending branches); inbound ✓/⚠ + arrow_l
+      with signature-description continuation; title + attachment suffixes.
+      Golden-tested vs live Python (12 cases via stubbed-urwid capture,
+      `TestLXMessageHeaderPythonParity`); strftime→Go-layout converter
+      (`strftimeLayout`, `TestStrftimeLayout`); time-injected `relativeTimeAt`
+      (`TestRelativeTimeAtParity`). `renderMessages` now uses `LXMessageHeader`
+      + indented content (Python parity); `ConversationMessage` extended with
+      LXMF wire fields; `ConversationWidget.OwnHash`/`TimeFormat` injected by
+      wiring layer. `progressPoll` (live transfer bar) still pending — needs
+      real `message_router.pending_outbound` access.
 - [ ] `ClickableAttachment`/`FileBrowserDialog` — attachment save dialog; verify.
 - [ ] `syncConversations`/`updateSyncDialog` (`C-r`) — sync flow + progress; verify.
 - [ ] `ingestLXMURI` (`C-u`) — parse `lxm://` + create message; verify vs Python.
@@ -381,9 +438,22 @@ test or a matching `parity.sh` summary):
       via `parity.sh` for the Channels page.
 
 #### 4.I Interfaces (Python `Interfaces.py`, 3214 lines)
-- [ ] `InterfaceDisplay` — list + add/edit/show/remove + config-editor actions;
-      rounded border on detail. Verify layout vs Python.
-- [ ] `SelectableInterfaceItem` — single row; `up`→menu, `enter` show; verify.
+- [x] `InterfaceDisplay` — list + add/edit/show/remove + config-editor actions;
+      rounded border on detail. `interfaceListBox` (scrollable focus-cycling list
+      of rounded `SelectableInterfaceItem` boxes) replaces the flat TextView;
+      `C-a`/`C-e`/`C-x`/`C-w`/Enter/Up/Down/PgUp/PgDn/Home/End wired via
+      `handleInput`; `OnAddInterface`/`OnEditInterface`/`OnRemoveInterface`/
+      `OnConfigEditor`/`OnShowInterface` callbacks wired in textui.go (show =
+      detail dialog, edit/remove = placeholder dialogs). Draw-tested
+      (`TestInterfacesDisplayListFocusDraw`: ● focus glyph, Down moves focus,
+      Enter fires OnShowInterface(idx)). Remaining: visual verify via `parity.sh`.
+- [x] `SelectableInterfaceItem` — single row; `up`→menu, `enter` show. Custom
+      tview primitive (embedded `*tview.Box`, rounded border, 5 content rows via
+      runewidth-aware `printRow`/`padToWidth`). Row text golden-tested vs Python
+      `SelectableInterfaceItem` at width 60 (`TestInterfaceItemRowTextPythonParity`:
+      RNode focused + TCPClient disabled, display-width 54 incl. emoji icon ≷).
+      Draw-tested (`TestSelectableInterfaceItemDraw`: rounded corner + ● + icon
+      at expected cells). `up`→menu + `enter` show handled by InterfacesDisplay.
 - [ ] `ShowInterface` — detail with bandwidth charts, `h`/`v` horizontal/vertical
       by width, `tab`/`shift-tab` focus cycle; verify.
 - [ ] `AddInterfaceView`/`EditInterfaceView` — per-type forms; verify vs Python.

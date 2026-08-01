@@ -48,18 +48,22 @@ type NodeEntry struct {
 // Matches Python's NetworkDisplay with KnownNodes, AnnounceStream,
 // and toggle between them via ctrl-l.
 type NetworkDisplay struct {
-	app          *App
-	widget       *tview.Flex
-	leftPanel    *tview.Flex
-	announces    *tview.List
-	nodes        *tview.List
-	detail       *tview.TextView
-	showingNodes bool
-	inInfoView   bool
-	displayMode  DisplayMode
-	announceData []AnnounceEntry
-	nodeData     []NodeEntry
-	onNavigate   func(url string)
+	app           *App
+	widget        *tview.Flex
+	leftPanel     *tview.Flex
+	announces       *tview.List
+	announcesList   *IndicativeListBox
+	nodes           *tview.List
+	nodesList       *IndicativeListBox
+	nodeEmptyState  *tview.TextView
+	detail          *tview.TextView
+	showingNodes  bool
+	inInfoView    bool
+	displayMode   DisplayMode
+	SanitizeNames bool
+	announceData  []AnnounceEntry
+	nodeData      []NodeEntry
+	onNavigate    func(url string)
 
 	// Keyboard shortcut callbacks (Python: NetworkDisplay.keypress)
 	OnToggleFullscreen func()
@@ -80,11 +84,16 @@ type NetworkDisplay struct {
 
 // NewNetworkDisplay creates a new network display matching Python's layout.
 func NewNetworkDisplay(app *App, announces []AnnounceEntry, nodes []NodeEntry) *NetworkDisplay {
-	nd := &NetworkDisplay{app: app, showingNodes: false}
+	// Python defaults list_display=1 (KnownNodes shown first, Network.py:1638),
+	// so the left pane opens on "Saved Nodes", not the announce stream.
+	nd := &NetworkDisplay{app: app, showingNodes: true}
 
-	// Announces list
+	// Announces list. Python's AnnounceStreamEntry is a single-row ListEntry
+	// (urwid.Text), so disable tview's secondary-text row (blank line under
+	// every item) — the row text already carries the whole entry.
 	nd.announces = tview.NewList()
 	nd.announces.SetHighlightFullLine(true)
+	nd.announces.ShowSecondaryText(false)
 	ApplyListFocusStyle(nd.announces, app.Theme)
 
 	nd.announceData = announces
@@ -92,15 +101,33 @@ func NewNetworkDisplay(app *App, announces []AnnounceEntry, nodes []NodeEntry) *
 		nd.addAnnounceEntry(ann)
 	}
 
-	// Nodes list
+	// Nodes list. Same single-row ListEntry basis as the announce stream.
 	nd.nodes = tview.NewList()
 	nd.nodes.SetHighlightFullLine(true)
+	nd.nodes.ShowSecondaryText(false)
 	ApplyListFocusStyle(nd.nodes, app.Theme)
 
 	nd.nodeData = nodes
 	for _, node := range nodes {
 		nd.addNodeEntry(node)
 	}
+
+	// Wrap the lists with IndicativeListBox end-indicator bars (───/▲/▼),
+	// matching the original IndicativeListBox. The bare Lists remain the
+	// focus/manipulation targets; the wrappers are the layout children.
+	nd.announcesList = NewIndicativeListBox(nd.announces)
+	nd.nodesList = NewIndicativeListBox(nd.nodes)
+
+	// KnownNodes empty-state (Network.py:833-882): when no nodes are saved the
+	// "Saved Nodes" LineBox shows a centered warning-colored info glyph followed
+	// by "Currently, no nodes are saved\n\nCtrl+L to view the announce stream",
+	// in a TOP-filled Filler. The whole message uses the warning_text palette
+	// color (#ba4 → #bbaa44). Shown in place of the nodes list when it is empty.
+	nd.nodeEmptyState = tview.NewTextView()
+	nd.nodeEmptyState.SetTextAlign(tview.AlignCenter)
+	nd.nodeEmptyState.SetDynamicColors(false)
+	nd.nodeEmptyState.SetTextColor(GetThemeColors(app.Theme)["warning_text"])
+	nd.nodeEmptyState.SetText(nd.glyphs()["info"] + "\n\nCurrently, no nodes are saved\n\nCtrl+L to view the announce stream\n\n")
 
 	// Detail view
 	nd.detail = tview.NewTextView()
@@ -113,15 +140,16 @@ func NewNetworkDisplay(app *App, announces []AnnounceEntry, nodes []NodeEntry) *
 	// no outer box around the page.
 	nd.detail.SetBorder(true)
 
-	// Left panel: announces by default, nodes hidden. Python's left sub-widgets
-	// each carry their own titled LineBox — AnnounceStream is titled "Announce
-	// Stream" (Network.py:446), KnownNodes is titled "Saved Nodes"
-	// (Network.py:867). The panel border+title reflects the active list mode
-	// and is updated on toggle.
+	// Left panel: Saved Nodes by default (Python list_display=1). Python's left
+	// sub-widgets each carry their own titled LineBox — KnownNodes is titled
+	// "Saved Nodes" (Network.py:867), AnnounceStream is titled "Announce Stream"
+	// (Network.py:446). The panel border+title reflects the active list mode and
+	// is updated on toggle. When the saved-nodes list is empty the empty-state
+	// message is shown in its place.
 	nd.leftPanel = tview.NewFlex().SetDirection(tview.FlexRow)
 	nd.leftPanel.SetBorder(true)
-	nd.leftPanel.SetTitle("Announce Stream")
-	nd.leftPanel.AddItem(nd.announces, 0, 1, true)
+	SetTitledBorder(nd.leftPanel, "Saved Nodes")
+	nd.leftPanel.AddItem(nd.nodesView(), 0, 1, true)
 
 	// Content: left panel + detail. Python: self.widget = self.columns
 	// (Network.py:1666) — NO outer LineBox or title around the page; the two
@@ -202,22 +230,17 @@ func (nd *NetworkDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 
 // addAnnounceEntry adds a single announce to the list.
 func (nd *NetworkDisplay) addAnnounceEntry(ann AnnounceEntry) {
-	text := FormatAnnounceFull(ann, false)
-	secondary := fmt.Sprintf("%s — %s", ann.Timestamp.Format("15:04:05"), truncateStr(ann.AppData, 30))
-	nd.announces.AddItem(text, secondary, 0, nil)
+	nd.addAnnounceEntryWithMode(ann)
 }
 
-// addNodeEntry adds a single node to the list.
+// addNodeEntry adds a single node to the list. The row text mirrors Python's
+// NodeEntry (Network.py:984-1015): "{node_glyph} {display_str}" with no
+// secondary text. Per-item trust coloring (list_trusted/list_untrusted/...) is
+// applied via the palette/theme, not tview color tags, matching the
+// AnnounceStreamEntry wiring.
 func (nd *NetworkDisplay) addNodeEntry(node NodeEntry) {
-	trustIcon := "○"
-	if node.TrustLevel == "trusted" {
-		trustIcon = "●"
-	} else if node.TrustLevel == "untrusted" {
-		trustIcon = "×"
-	}
-	text := fmt.Sprintf("%s %s", trustIcon, node.DisplayName)
-	secondary := fmt.Sprintf("Delivery: %s", node.Delivery)
-	nd.nodes.AddItem(text, secondary, 0, nil)
+	text := FormatNodeEntryRow(node, nd.glyphs())
+	nd.nodes.AddItem(text, "", 0, nil)
 }
 
 // showAnnounceDetail replaces the left panel with an AnnounceInfo view
@@ -299,9 +322,9 @@ func (nd *NetworkDisplay) showAnnounceDetail(i int) {
 		AddItem(buttons, 1, 0, false)
 
 	// Swap into left panel
-	nd.leftPanel.RemoveItem(nd.announces)
-	nd.leftPanel.RemoveItem(nd.nodes)
-	nd.leftPanel.SetTitle("Announce Info")
+	nd.leftPanel.RemoveItem(nd.announcesList)
+	nd.leftPanel.RemoveItem(nd.nodesList)
+	SetTitledBorder(nd.leftPanel, "Announce Info")
 	nd.leftPanel.AddItem(infoView, 0, 1, true)
 	nd.inInfoView = true
 
@@ -325,11 +348,11 @@ func (nd *NetworkDisplay) showAnnounceStream() {
 
 	// Restore the appropriate list
 	if nd.showingNodes {
-		nd.leftPanel.AddItem(nd.nodes, 0, 1, true)
-		nd.leftPanel.SetTitle("Saved Nodes")
+		nd.leftPanel.AddItem(nd.nodesView(), 0, 1, true)
+		SetTitledBorder(nd.leftPanel, "Saved Nodes")
 	} else {
-		nd.leftPanel.AddItem(nd.announces, 0, 1, true)
-		nd.leftPanel.SetTitle("Announce Stream")
+		nd.leftPanel.AddItem(nd.announcesList, 0, 1, true)
+		SetTitledBorder(nd.leftPanel, "Announce Stream")
 	}
 	nd.inInfoView = false
 }
@@ -470,14 +493,41 @@ func (nd *NetworkDisplay) UpdateNodes(nodes []NodeEntry) {
 		}
 		nd.nodes.SetCurrentItem(current)
 	}
+	// If the saved-nodes view is currently shown, swap the empty-state message
+	// in/out so the pane reflects the new node count without a manual toggle.
+	nd.refreshNodesView()
 	if nd.app != nil {
 		nd.app.QueueUpdateDraw(func() {})
 	}
 }
 
+// refreshNodesView swaps the empty-state message in/out of the left pane when
+// the saved-nodes mode is active, so the pane matches the current node count
+// without a manual toggle. It is a no-op unless the saved-nodes list is the
+// current view. Split out of UpdateNodes so tests can drive the swap without
+// QueueUpdateDraw (which blocks forever with no event loop running).
+func (nd *NetworkDisplay) refreshNodesView() {
+	if !nd.showingNodes || nd.inInfoView {
+		return
+	}
+	nd.leftPanel.RemoveItem(nd.nodesList)
+	nd.leftPanel.RemoveItem(nd.nodeEmptyState)
+	nd.leftPanel.AddItem(nd.nodesView(), 0, 1, true)
+}
+
 // ShowingNodes reports whether the saved-nodes list is currently displayed
 // (vs. the announce stream). Used by wiring to pick the right delete action.
 func (nd *NetworkDisplay) ShowingNodes() bool { return nd.showingNodes }
+
+// nodesView returns the left-pane widget for the saved-nodes mode: the
+// IndicativeListBox when nodes exist, or the centered empty-state message when
+// none are saved (Python KnownNodes empty-state, Network.py:833-882).
+func (nd *NetworkDisplay) nodesView() tview.Primitive {
+	if nd.nodes.GetItemCount() == 0 {
+		return nd.nodeEmptyState
+	}
+	return nd.nodesList
+}
 
 // toggleList switches between announces and nodes views.
 func (nd *NetworkDisplay) toggleList() {
@@ -485,17 +535,18 @@ func (nd *NetworkDisplay) toggleList() {
 		nd.showAnnounceStream()
 	}
 
-	nd.leftPanel.RemoveItem(nd.announces)
-	nd.leftPanel.RemoveItem(nd.nodes)
+	nd.leftPanel.RemoveItem(nd.announcesList)
+	nd.leftPanel.RemoveItem(nd.nodesList)
+	nd.leftPanel.RemoveItem(nd.nodeEmptyState)
 
 	if nd.showingNodes {
-		nd.leftPanel.AddItem(nd.announces, 0, 1, true)
+		nd.leftPanel.AddItem(nd.announcesList, 0, 1, true)
 		nd.showingNodes = false
-		nd.leftPanel.SetTitle("Announce Stream")
+		SetTitledBorder(nd.leftPanel, "Announce Stream")
 	} else {
-		nd.leftPanel.AddItem(nd.nodes, 0, 1, true)
+		nd.leftPanel.AddItem(nd.nodesView(), 0, 1, true)
 		nd.showingNodes = true
-		nd.leftPanel.SetTitle("Saved Nodes")
+		SetTitledBorder(nd.leftPanel, "Saved Nodes")
 	}
 }
 
@@ -520,9 +571,16 @@ func (nd *NetworkDisplay) rebuildAnnounceList() {
 
 // addAnnounceEntryWithMode adds a single announce using the current display mode.
 func (nd *NetworkDisplay) addAnnounceEntryWithMode(ann AnnounceEntry) {
-	text := FormatAnnounceFull(ann, nd.displayMode == DisplayHash)
-	secondary := fmt.Sprintf("%s — %s", ann.Timestamp.Format("15:04:05"), truncateStr(ann.AppData, 30))
-	nd.announces.AddItem(text, secondary, 0, nil)
+	text := FormatAnnounceStreamRow(ann, time.Now(), nd.displayMode == DisplayHash, nd.SanitizeNames, nd.glyphs())
+	nd.announces.AddItem(text, "", 0, nil)
+}
+
+// glyphs returns the glyph set for this display, falling back to unicode.
+func (nd *NetworkDisplay) glyphs() GlyphSet {
+	if nd.app != nil && nd.app.Glyphs != nil {
+		return nd.app.Glyphs
+	}
+	return glyphsUnicode
 }
 
 // GetDisplayMode returns the current display mode.

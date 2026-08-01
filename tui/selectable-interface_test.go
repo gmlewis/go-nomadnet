@@ -16,7 +16,11 @@
 package tui
 
 import (
+	"strings"
 	"testing"
+
+	"github.com/gdamore/tcell/v2"
+	"github.com/mattn/go-runewidth"
 )
 
 func TestSelectableInterfaceItemStatusText(t *testing.T) {
@@ -99,5 +103,118 @@ func TestSelectableInterfaceItemByteFormatting(t *testing.T) {
 	}
 	if rxText != "1.0 MB" {
 		t.Errorf("RXText() = %q, want %q", rxText, "1.0 MB")
+	}
+}
+
+// TestInterfaceItemRowTextPythonParity checks the five content rows of an
+// interface box against golden values captured from Python's
+// SelectableInterfaceItem (Interfaces.py:1125) rendered at width 60 (content
+// width 54). It verifies both the meaningful content (TrimRight) and that each
+// row is padded to the full content display width, matching urwid's
+// left-aligned fill — including the wide emoji icon (🖧, display width 2).
+func TestInterfaceItemRowTextPythonParity(t *testing.T) {
+	t.Parallel()
+
+	const w = 60
+	const cw = w - 6 // 54
+
+	rnodeIcon := GetInterfaceIcon(GlyphUnicode, "RNodeInterface")
+	tcpIcon := GetInterfaceIcon(GlyphUnicode, "TCPClientInterface")
+
+	tests := []struct {
+		name string
+		item *SelectableInterfaceItem
+		// wantContent[i] is the meaningful (right-trimmed) content of row i;
+		// row index 3 is the divider (checked separately).
+		wantContent []string
+	}{
+		{
+			"rnode connected focused",
+			func() *SelectableInterfaceItem {
+				s := NewSelectableInterfaceItem("RNode Test", "RNodeInterface", true, true, 1234567, 89, rnodeIcon)
+				s.SetFocused(true)
+				return s
+			}(),
+			[]string{
+				"●   ᚱ  RNode Test",
+				"Status:   Enabled    | Connected",
+				"Type:     RNodeInterface",
+				"",
+				"TX:       1.2 MB         RX:       89 bytes",
+			},
+		},
+		{
+			"tcpclient disabled unfocused",
+			func() *SelectableInterfaceItem {
+				s := NewSelectableInterfaceItem("Michmesh", "TCPClientInterface", false, false, 0, 0, tcpIcon)
+				return s
+			}(),
+			[]string{
+				"○   🖧  Michmesh",
+				"Status:   Disabled   | Disconnected",
+				"Type:     TCPClientInterface",
+				"",
+				"TX:       0 bytes        RX:       0 bytes",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			rows := InterfaceItemRowText(tt.item, w)
+			if len(rows) != 5 {
+				t.Fatalf("got %d rows, want 5", len(rows))
+			}
+			for i, got := range rows {
+				if runewidth.StringWidth(got) != cw {
+					t.Errorf("row %d display width = %d, want %d (%q)", i, runewidth.StringWidth(got), cw, got)
+				}
+				if i == 3 {
+					want := strings.Repeat("-", cw)
+					if got != want {
+						t.Errorf("divider row = %q, want %q", got, want)
+					}
+					continue
+				}
+				if got := strings.TrimRight(rows[i], " "); got != tt.wantContent[i] {
+					t.Errorf("row %d content = %q, want %q", i, got, tt.wantContent[i])
+				}
+			}
+		})
+	}
+}
+
+// TestSelectableInterfaceItemDraw renders an item to a simulation screen and
+// checks the rounded border + selection glyph appear at the expected cells.
+func TestSelectableInterfaceItemDraw(t *testing.T) {
+	t.Parallel()
+
+	s := NewSelectableInterfaceItem("RNode Test", "RNodeInterface", true, true, 100, 200, "ᚱ")
+	s.SetFocused(true)
+	s.SetRect(0, 0, 60, InterfaceItemHeight)
+
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if screen == nil {
+		t.Fatal("nil simulation screen")
+	}
+	if err := screen.Init(); err != nil {
+		t.Fatalf("screen.Init: %v", err)
+	}
+	defer screen.Fini()
+	screen.SetSize(60, InterfaceItemHeight)
+	s.Draw(screen)
+
+	// Rounded top-left corner.
+	if main, _, _, _ := screen.GetContent(0, 0); main != BorderTopLeftRounded {
+		t.Errorf("top-left = %q, want %q", main, BorderTopLeftRounded)
+	}
+	// Focused selection glyph ● at content start (x=3, y=1).
+	if main, _, _, _ := screen.GetContent(3, 1); main != '●' {
+		t.Errorf("selection glyph = %q, want ●", main)
+	}
+	// Icon at x=7 (3 pad + 4-wide sel field).
+	if main, _, _, _ := screen.GetContent(7, 1); main != 'ᚱ' {
+		t.Errorf("icon = %q, want ᚱ", main)
 	}
 }

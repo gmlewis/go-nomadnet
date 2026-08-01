@@ -31,8 +31,24 @@ type ConversationWidget struct {
 	app    *App
 	source string // source hash hex
 
+	// Peer info data (injected by the caller; tui must not import the app
+	// package). DisplayName "" → falls back to <full hash> (RNS.prettyhexrep).
+	// StampCost nil → omit the "Stamp: N" segment. Hops nil → "unknown".
+	TrustLevel  string
+	DisplayName string
+	StampCost   *int
+	Hops        *int
+
+	// OwnHash is this app's LXMF destination hash (app.lxmf_destination.hash),
+	// injected by the wiring layer so LXMessageHeader can tell outbound from
+	// inbound. TimeFormat is the configured strftime format (default
+	// "%Y-%m-%d %H:%M:%S", Python app.time_format).
+	OwnHash    []byte
+	TimeFormat string
+
 	// Layout
 	frame          *tview.Flex
+	headerFlex     *tview.Flex
 	messageList    *tview.TextView
 	peerInfoBar    *tview.TextView
 	trustBanner    *tview.Flex
@@ -42,8 +58,9 @@ type ConversationWidget struct {
 	footerArea     *tview.Flex
 	widget         tview.Primitive
 
-	fullEditorActive bool
-	sortByTimestamp  bool
+	fullEditorActive     bool
+	sortByTimestamp      bool
+	trustBannerDismissed bool
 
 	// Callbacks
 	OnClose            func()
@@ -55,6 +72,11 @@ type ConversationWidget struct {
 	OnPaperMessage     func(action string)
 	OnAttachFiles      func(paths []string)
 	OnSaveAttachments  func(names []string)
+	// Trust banner button callbacks (Python _on_trust_click/_on_block_click/
+	// _on_ignore_click, Conversations.py:1989-2030).
+	OnTrust  func()
+	OnBlock  func()
+	OnIgnore func()
 
 	// Dialog state
 	dialogOpen bool
@@ -73,6 +95,18 @@ type ConversationMessage struct {
 	IsFailed    bool
 	HasAttach   bool
 	AttachCount int
+
+	// LXMF wire fields used by LXMessageHeader for Python-parity rendering
+	// (Conversations.py:2596-2670). When State/SourceHash are zero, the
+	// legacy IsSent/IsDelivered/IsFailed bools drive a fallback derivation.
+	State                int
+	Method               int
+	SourceHash           []byte
+	TransportEncrypted   bool
+	SignatureValidated   bool
+	SignatureDescription string
+	AttachmentTypes      []string
+	AttachmentNames      []string
 }
 
 // NewConversationWidget creates a conversation view for the given source hash.
@@ -83,21 +117,27 @@ func NewConversationWidget(app *App, sourceHash string) *ConversationWidget {
 		source: sourceHash,
 	}
 
-	// Peer info bar
+	// Peer info bar — style "msg_header_sent" (TextUI.py:35/88): true-color
+	// fg #111, bg #ddd.
 	cw.peerInfoBar = tview.NewTextView()
 	cw.peerInfoBar.SetDynamicColors(true)
-	cw.peerInfoBar.SetTextColor(tcell.NewHexColor(0xdddddd))
-	cw.peerInfoBar.SetBackgroundColor(tcell.NewHexColor(0x333333))
+	cw.peerInfoBar.SetTextColor(tcell.NewHexColor(0x111111))
+	cw.peerInfoBar.SetBackgroundColor(tcell.NewHexColor(0xdddddd))
 	cw.updatePeerInfo()
 
-	// Trust banner (hidden by default for trusted peers)
+	// Trust banner — style "msg_warning_untrusted" (TextUI.py:39/92): true-color
+	// fg #111, bg dark red (#800000). Hidden by default; refreshTrustBanner
+	// reveals it for non-trusted peers (Python _refresh_trust_banner,
+	// Conversations.py:1962).
 	cw.trustBanner = tview.NewFlex().SetDirection(tview.FlexColumn)
-	cw.trustBanner.SetBackgroundColor(tcell.NewHexColor(0x553300))
+	cw.trustBanner.SetBackgroundColor(tcell.NewHexColor(0x800000))
 
-	// Header: peer info + optional trust banner
+	// Header: peer info (1 row) + optional trust banner (0 rows when hidden).
 	header := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(cw.peerInfoBar, 1, 0, false).
 		AddItem(cw.trustBanner, 0, 0, false)
+	cw.headerFlex = header
+	cw.refreshTrustBanner()
 
 	// Message list
 	cw.messageList = tview.NewTextView()
@@ -236,41 +276,174 @@ func (cw *ConversationWidget) sendMessage() {
 	cw.ClearEditor()
 }
 
-// updatePeerInfo refreshes the peer info header bar.
+// updatePeerInfo refreshes the peer info header bar, mirroring Python's
+// _update_peer_info (Conversations.py:2084-2120): " {name} | {right} " where
+// name is the display name or <full hash> (RNS.prettyhexrep), and right joins
+// "Stamp: N" (when a stamp cost is known) and "{speed}{hops}" by two spaces.
+// hops is "N hop"/"N hops"/"unknown". RNS-dependent fields (stamp cost, hop
+// count, app-data-derived name) are injected by the caller via StampCost/Hops/
+// DisplayName; nil values yield the same fallbacks Python uses when RNS data
+// is unavailable.
 func (cw *ConversationWidget) updatePeerInfo() {
 	if cw.source == "" {
 		cw.peerInfoBar.SetText(" No conversation selected")
 		return
 	}
-	cw.peerInfoBar.SetText(fmt.Sprintf(" %s | %s", cw.source[:8]+"...", "unknown"))
+	name := cw.DisplayName
+	if name == "" {
+		name = "<" + cw.source + ">" // RNS.prettyhexrep
+	}
+
+	g := cw.app.Glyphs
+	if g == nil {
+		g = glyphsUnicode
+	}
+	speed := g["speed"]
+
+	var hopsStr string
+	switch {
+	case cw.Hops == nil:
+		hopsStr = "unknown"
+	case *cw.Hops == 1:
+		hopsStr = "1 hop"
+	default:
+		hopsStr = fmt.Sprintf("%d hops", *cw.Hops)
+	}
+
+	var rightParts []string
+	if cw.StampCost != nil {
+		rightParts = append(rightParts, fmt.Sprintf("Stamp: %d", *cw.StampCost))
+	}
+	rightParts = append(rightParts, speed+hopsStr)
+
+	cw.peerInfoBar.SetText(" " + name + " | " + strings.Join(rightParts, "  ") + " ")
+}
+
+// hasVisibleTrustBanner reports whether the trust banner should show,
+// mirroring Python's has_visible_trust_banner (Conversations.py:1953-1960):
+// false when dismissed or when the peer is trusted.
+func (cw *ConversationWidget) hasVisibleTrustBanner() bool {
+	if cw.trustBannerDismissed {
+		return false
+	}
+	return cw.TrustLevel != "trusted"
+}
+
+// refreshTrustBanner shows or hides the trust banner in the header pile,
+// mirroring Python's _refresh_trust_banner (Conversations.py:1962-1973).
+func (cw *ConversationWidget) refreshTrustBanner() {
+	if cw.hasVisibleTrustBanner() {
+		cw.buildTrustBanner()
+		cw.headerFlex.ResizeItem(cw.trustBanner, 1, 0)
+	} else {
+		cw.trustBanner.Clear()
+		cw.headerFlex.ResizeItem(cw.trustBanner, 0, 0)
+	}
+}
+
+// buildTrustBanner populates the trust banner row, mirroring Python's
+// _build_trust_banner (Conversations.py:1975-1987): a warning message on the
+// left followed by Trust / Block / Do nothing buttons, on the dark-red
+// "msg_warning_untrusted" background.
+func (cw *ConversationWidget) buildTrustBanner() {
+	cw.trustBanner.Clear()
+	g := cw.app.Glyphs
+	if g == nil {
+		g = glyphsUnicode
+	}
+	fg := tcell.NewHexColor(0x111111)
+	bg := tcell.NewHexColor(0x800000)
+
+	msg := tview.NewTextView()
+	msg.SetDynamicColors(true)
+	msg.SetText(" " + g["warning"] + " This peer isn't trusted yet.")
+	msg.SetTextColor(fg)
+	msg.SetBackgroundColor(bg)
+
+	button := func(label string, fn func()) *tview.Button {
+		b := tview.NewButton(label).SetSelectedFunc(fn)
+		b.SetBackgroundColor(bg)
+		b.SetLabelColor(fg)
+		b.SetLabelColorActivated(tcell.NewHexColor(0x800000))
+		b.SetBackgroundColorActivated(tcell.NewHexColor(0x111111))
+		return b
+	}
+	btnTrust := button("Trust", cw.trustClick)
+	btnBlock := button("Block", cw.blockClick)
+	btnNothing := button("Do nothing", cw.ignoreClick)
+	spacer := func() *tview.TextView {
+		s := tview.NewTextView()
+		s.SetBackgroundColor(bg)
+		return s
+	}
+
+	cw.trustBanner.SetDirection(tview.FlexColumn).
+		AddItem(msg, 0, 1, false).
+		AddItem(btnTrust, 8, 0, true).
+		AddItem(spacer(), 1, 0, false).
+		AddItem(btnBlock, 8, 0, false).
+		AddItem(spacer(), 1, 0, false).
+		AddItem(btnNothing, 13, 0, false).
+		AddItem(spacer(), 1, 0, false)
+	cw.trustBanner.SetBackgroundColor(bg)
+}
+
+// SetTrustLevel sets the peer's trust level and refreshes the trust banner
+// (so trusting/blocking/dismissing updates the header immediately).
+func (cw *ConversationWidget) SetTrustLevel(level string) {
+	cw.TrustLevel = level
+	cw.refreshTrustBanner()
+}
+
+// trustClick fires the OnTrust callback (Python _on_trust_click,
+// Conversations.py:1989).
+func (cw *ConversationWidget) trustClick() {
+	if cw.OnTrust != nil {
+		cw.OnTrust()
+	}
+}
+
+// blockClick fires the OnBlock callback (Python _on_block_click).
+func (cw *ConversationWidget) blockClick() {
+	if cw.OnBlock != nil {
+		cw.OnBlock()
+	}
+}
+
+// ignoreClick dismisses the trust banner and fires OnIgnore (Python
+// _on_ignore_click).
+func (cw *ConversationWidget) ignoreClick() {
+	cw.trustBannerDismissed = true
+	cw.refreshTrustBanner()
+	if cw.OnIgnore != nil {
+		cw.OnIgnore()
+	}
 }
 
 // renderMessages renders all messages into the message list.
+// renderMessages renders the message list into the messageList TextView. Each
+// message header (title string + style) is built by LXMessageHeader for
+// Python LXMessageWidget parity (Conversations.py:2576-2670); the message body
+// is the indented content (Python indents every line two columns).
 func (cw *ConversationWidget) renderMessages() {
 	var sb strings.Builder
 	for _, msg := range cw.messages {
-		ts := msg.Timestamp.Format("15:04:05")
-		status := ""
-		switch {
-		case msg.IsFailed:
-			status = "[red] [failed][-]"
-		case msg.IsDelivered:
-			status = " [green][delivered][-]"
-		case msg.IsSent:
-			status = " [yellow][sent][-]"
-		}
+		in := cw.headerInputs(msg)
+		title, style := LXMessageHeader(in)
+		// Header style colors are applied via tview tags mapped from the urwid
+		// style name; the title text is rendered on its own line(s).
+		sb.WriteString(styleHeader(title, style))
+		sb.WriteString("\n")
 
-		if msg.IsSent {
-			sb.WriteString(fmt.Sprintf("[#66cc55]%s[-] %s%s\n", ts, truncateStr(msg.Content, 200), status))
-		} else {
-			sb.WriteString(fmt.Sprintf("[#33ccdd]%s[-] %s%s\n", ts, truncateStr(msg.Content, 200), status))
+		// Body: indent every content line two columns (Python LXMessageWidget
+		// "  "+line for non-markdown content).
+		for _, line := range strings.Split(msg.Content, "\n") {
+			sb.WriteString("  ")
+			sb.WriteString(line)
+			sb.WriteString("\n")
 		}
-
-		if msg.Title != "" {
-			sb.WriteString(fmt.Sprintf("  [::b]%s[-]\n", msg.Title))
-		}
-		if msg.HasAttach {
-			sb.WriteString(fmt.Sprintf("  [gray]📎 %d attachment(s)[-]\n", msg.AttachCount))
+		if msg.HasAttach && len(msg.AttachmentNames) == 0 {
+			sb.WriteString(fmt.Sprintf("  [gray]%s %d attachment(s)[-]\n", cw.glyphs()["file"], msg.AttachCount))
 		}
 		sb.WriteString("\n")
 	}
@@ -280,6 +453,111 @@ func (cw *ConversationWidget) renderMessages() {
 	}
 
 	cw.messageList.SetText(sb.String())
+}
+
+// headerInputs builds MessageHeaderInputs for a message, deriving the LXMF
+// wire fields from the legacy Is* bools when State/SourceHash are unset so
+// older callers still render a sensible header.
+func (cw *ConversationWidget) headerInputs(msg ConversationMessage) MessageHeaderInputs {
+	in := MessageHeaderInputs{
+		Timestamp:            msg.Timestamp,
+		Now:                  time.Now(),
+		State:                msg.State,
+		Method:               msg.Method,
+		SourceHash:           msg.SourceHash,
+		OwnHash:              cw.OwnHash,
+		TransportEncrypted:   msg.TransportEncrypted,
+		Title:                msg.Title,
+		SignatureValidated:   msg.SignatureValidated,
+		SignatureDescription: msg.SignatureDescription,
+		AttachmentTypes:      msg.AttachmentTypes,
+		AttachmentNames:      msg.AttachmentNames,
+		TimeFormat:           cw.timeFormat(),
+		Glyphs:               cw.glyphs(),
+	}
+
+	// Legacy fallback when the LXMF wire fields are unset.
+	if in.State == 0 && in.SourceHash == nil && in.Method == 0 && !in.TransportEncrypted {
+		switch {
+		case msg.IsSent:
+			own := in.OwnHash
+			if own == nil {
+				own = []byte{0x00}
+			}
+			in.OwnHash = own
+			in.SourceHash = own
+			in.TransportEncrypted = true
+			switch {
+			case msg.IsFailed:
+				in.State = lxmfStateFailed
+			case msg.IsDelivered:
+				in.State = lxmfStateDelivered
+			default:
+				in.State = lxmfStateSent
+				in.Method = lxmfMethodPropagated
+			}
+		case msg.IsFailed:
+			in.State = lxmfStateFailed // failed_no_source
+		default:
+			in.SourceHash = []byte{0xff} // inbound, distinct from any own hash
+			in.SignatureValidated = true
+		}
+	}
+	return in
+}
+
+// styleHeader renders a header title with the urwid style name's tview color
+// mapping. The LXMessageWidget header styles map to background colors; here we
+// apply a foreground tag derived from the style so the title is visible on the
+// default background. The title may contain a "\n  " continuation (unvalidated
+// inbound signatures), which is preserved.
+func styleHeader(title, style string) string {
+	fg := headerStyleForeground(style)
+	if fg == "" {
+		return title + "\n"
+	}
+	return "[" + fg + "]" + title + "[-]\n"
+}
+
+// headerStyleForeground maps an LXMessageWidget urwid header style name to a
+// tview foreground color tag. The Python styles carry bg colors (e.g.
+// msg_header_sent bg #ddd); the port renders the header text with a
+// representative foreground so it is legible on the default background.
+func headerStyleForeground(style string) string {
+	switch style {
+	case "msg_header_failed":
+		return "red"
+	case "msg_header_delivered":
+		return "green"
+	case "msg_header_propagated":
+		return "yellow"
+	case "msg_header_sent":
+		return "#66cc55"
+	case "msg_header_ok":
+		return "#33ccdd"
+	case "msg_header_caution":
+		return "yellow"
+	default:
+		return ""
+	}
+}
+
+// glyphs returns the glyph set for this widget, falling back to the unicode
+// set when no app/glyphs are available.
+func (cw *ConversationWidget) glyphs() GlyphSet {
+	if cw.app != nil && cw.app.Glyphs != nil {
+		return cw.app.Glyphs
+	}
+	return glyphsUnicode
+}
+
+// timeFormat returns the configured strftime format, defaulting to the Python
+// app.time_format default.
+func (cw *ConversationWidget) timeFormat() string {
+	if cw.TimeFormat != "" {
+		return cw.TimeFormat
+	}
+	return "%Y-%m-%d %H:%M:%S"
 }
 
 // FormatQRText creates a text-based QR-like display for an address.

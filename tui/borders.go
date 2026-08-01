@@ -69,6 +69,19 @@ func ApplySingleLineBorders() {
 	})
 }
 
+// SetTitledBorder sets a bordered primitive's title with a leading and trailing
+// space, matching urwid's LineBox title rendering (which frames the title text
+// with " title " before centering it in the top border). tview's Box.SetTitle
+// centers the title without those spaces, so the unspaced form is off by one
+// dash on each side versus the original. An empty title is left empty.
+func SetTitledBorder(b interface{ SetTitle(string) *tview.Box }, title string) {
+	if title == "" {
+		b.SetTitle("")
+		return
+	}
+	b.SetTitle(" " + title + " ")
+}
+
 // BorderedBox wraps a tview.Primitive with a manually drawn border and
 // centered title, independent of the global tview.Borders. The border is
 // single-line by default and rounded (╭─╮╰─╯) when Rounded is true, matching

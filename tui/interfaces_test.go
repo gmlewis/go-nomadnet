@@ -304,3 +304,59 @@ func TestInterfacesDisplayShowRNSDisconnected(t *testing.T) {
 	// Should not panic
 	id.ShowRNSDisconnected()
 }
+
+// TestInterfacesDisplayListFocusDraw verifies the selectable interface list
+// renders rounded boxes, the first item is focused (●), Down moves focus to
+// the second (● moves, first reverts to ○), and Enter fires OnShowInterface
+// with the focused index.
+func TestInterfacesDisplayListFocusDraw(t *testing.T) {
+	t.Parallel()
+	app := newTestApp()
+	ifaces := []InterfaceInfo{
+		{Name: "RNode1", Type: "RNodeInterface", Status: "connected"},
+		{Name: "TCP1", Type: "TCPClientInterface", Status: "disconnected"},
+		{Name: "Auto1", Type: "AutoInterface", Status: "connected"},
+	}
+	id := NewInterfacesDisplay(app, ifaces)
+
+	var shown int
+	id.OnShowInterface = func(idx int) { shown = idx }
+
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatalf("screen.Init: %v", err)
+	}
+	defer screen.Fini()
+	screen.SetSize(80, 24)
+	id.layout.SetRect(0, 0, 80, 24)
+	id.layout.Draw(screen)
+
+	// Layout border(1) + title(2) ⇒ first box top at y=3, title row y=4.
+	// Box content starts at x = border(1) + pad(2) + 1 = 4.
+	if c, _, _, _ := screen.GetContent(4, 4); c != '●' {
+		t.Errorf("first item selection glyph = %q, want ●", c)
+	}
+	// Second box top at y=10, title row y=11; unfocused ⇒ ○.
+	if c, _, _, _ := screen.GetContent(4, 11); c != '○' {
+		t.Errorf("second item selection glyph = %q, want ○", c)
+	}
+
+	// Down moves focus to the second item.
+	id.handleInput(tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone))
+	id.layout.Draw(screen)
+	if c, _, _, _ := screen.GetContent(4, 4); c != '○' {
+		t.Errorf("after Down, first item glyph = %q, want ○", c)
+	}
+	if c, _, _, _ := screen.GetContent(4, 11); c != '●' {
+		t.Errorf("after Down, second item glyph = %q, want ●", c)
+	}
+	if id.SelectedIndex() != 1 {
+		t.Errorf("SelectedIndex = %d, want 1", id.SelectedIndex())
+	}
+
+	// Enter fires OnShowInterface with the focused index.
+	id.handleInput(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone))
+	if shown != 1 {
+		t.Errorf("OnShowInterface fired with %d, want 1", shown)
+	}
+}

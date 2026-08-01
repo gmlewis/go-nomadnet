@@ -167,6 +167,23 @@ func (a *App) PeerDisplayName(sourceHash []byte) string {
 	return a.Dir.DisplayName(sourceHash)
 }
 
+// SetPeerTrustLevel updates the trust level of the directory entry for
+// sourceHash, preserving any existing display name and preferred delivery,
+// mirroring Python's ConversationWidget _on_trust_click (Conversations.py:
+// 1989-2003): it looks up the existing entry, re-creates it as trusted, and
+// remembers it.
+func (a *App) SetPeerTrustLevel(sourceHash []byte, trustLevel byte) {
+	if a.Dir == nil {
+		a.Dir = directory.New()
+	}
+	entry := a.Dir.Find(sourceHash)
+	if entry == nil {
+		entry = directory.NewEntry(sourceHash)
+	}
+	entry.TrustLevel = trustLevel
+	a.Dir.Remember(entry)
+}
+
 // LXMFAddressHex returns the user's LXMF delivery address as a lowercase hex
 // string, or "" if the LXMF destination is not ready. Used by the Conversations
 // "show my LXMF/QR" (C-p) action.

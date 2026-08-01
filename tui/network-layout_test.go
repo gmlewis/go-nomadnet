@@ -16,6 +16,7 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/rivo/tview"
@@ -44,26 +45,61 @@ func TestNetworkDisplayNoOuterBorder(t *testing.T) {
 
 // TestNetworkDisplayLeftPaneTitled asserts the left pane carries its own titled
 // border matching the active list mode, mirroring Python's sub-widget LineBoxes:
-// AnnounceStream is titled "Announce Stream" (Network.py:446), KnownNodes is
-// titled "Saved Nodes" (Network.py:867). The default mode shows the announce
-// stream; toggling swaps to saved nodes and updates the title.
+// KnownNodes is titled "Saved Nodes" (Network.py:867), AnnounceStream is titled
+// "Announce Stream" (Network.py:446). Python defaults list_display=1
+// (Network.py:1638), so the pane opens on "Saved Nodes"; toggling swaps to the
+// announce stream and updates the title. The title is stored with a
+// leading/trailing space (SetTitledBorder) to match urwid LineBox rendering.
 func TestNetworkDisplayLeftPaneTitled(t *testing.T) {
 	t.Parallel()
 
 	app := newTestApp()
 	nd := NewNetworkDisplay(app, nil, nil)
 
-	if got := nd.leftPanel.GetTitle(); got != "Announce Stream" {
-		t.Errorf("default left pane title = %q, want Announce Stream", got)
+	if got := nd.leftPanel.GetTitle(); got != " Saved Nodes " {
+		t.Errorf("default left pane title = %q, want \" Saved Nodes \"", got)
 	}
 
-	nd.toggleList() // showingNodes -> true
-	if got := nd.leftPanel.GetTitle(); got != "Saved Nodes" {
-		t.Errorf("after toggle left pane title = %q, want Saved Nodes", got)
+	nd.toggleList() // showingNodes -> false (announce stream)
+	if got := nd.leftPanel.GetTitle(); got != " Announce Stream " {
+		t.Errorf("after toggle left pane title = %q, want \" Announce Stream \"", got)
 	}
 
-	nd.toggleList() // back to announces
-	if got := nd.leftPanel.GetTitle(); got != "Announce Stream" {
-		t.Errorf("after second toggle left pane title = %q, want Announce Stream", got)
+	nd.toggleList() // back to saved nodes
+	if got := nd.leftPanel.GetTitle(); got != " Saved Nodes " {
+		t.Errorf("after second toggle left pane title = %q, want \" Saved Nodes \"", got)
+	}
+}
+
+// TestNetworkDisplayNodesEmptyState asserts that with no saved nodes the left
+// pane shows the centered empty-state message (Python KnownNodes empty-state,
+// Network.py:833-882) in place of the list, and that adding nodes via
+// UpdateNodes swaps the list back in.
+func TestNetworkDisplayNodesEmptyState(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	nd := NewNetworkDisplay(app, nil, nil)
+
+	if nd.nodes.GetItemCount() != 0 {
+		t.Fatalf("precondition: nodes list should be empty")
+	}
+	if got := nd.nodeEmptyState.GetText(true); !strings.Contains(got, "Currently, no nodes are saved") {
+		t.Errorf("empty-state text = %q, want it to contain the no-nodes message", got)
+	}
+	if !strings.Contains(nd.nodeEmptyState.GetText(true), "Ctrl+L to view the announce stream") {
+		t.Errorf("empty-state text = %q, want it to contain the Ctrl+L hint", nd.nodeEmptyState.GetText(true))
+	}
+
+	// Adding a node and refreshing swaps the list in (nodesView returns the
+	// IndicativeListBox). addNodeEntry + refreshNodesView mirror the non-marshaling
+	// half of UpdateNodes, avoiding QueueUpdateDraw (which blocks with no loop).
+	nd.addNodeEntry(NodeEntry{SourceHash: "000102030405060708090a0b0c0d0e0f", TrustLevel: "unknown", DisplayName: "Alice"})
+	nd.refreshNodesView()
+	if nd.nodes.GetItemCount() != 1 {
+		t.Errorf("after add, item count = %d, want 1", nd.nodes.GetItemCount())
+	}
+	if nd.nodesView() != (tview.Primitive)(nd.nodesList) {
+		t.Errorf("nodesView after adding = %T, want nodesList", nd.nodesView())
 	}
 }

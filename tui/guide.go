@@ -107,7 +107,13 @@ type GuideDisplay struct {
 	app    *App
 	widget *tview.Flex
 	topics *tview.List
-	reader *guideReader
+	// topicsList wraps topics with IndicativeListBox end-indicator bars and is
+	// the primitive added to the layout / focused by the app.
+	topicsList *IndicativeListBox
+	reader     *guideReader
+	// scroll wraps reader with a right-edge scrollbar (urwid ScrollBar,
+	// Guide.py:232) and is the primitive added to the reader pane / focused.
+	scroll *ScrollBar
 
 	currentIdx   int // currently displayed topic, -1 = placeholder
 	links        []micron.LinkSpec
@@ -129,9 +135,12 @@ type GuideDisplay struct {
 func NewGuideDisplay(app *App) *GuideDisplay {
 	gd := &GuideDisplay{app: app, currentIdx: -1}
 
-	// Topic list (left pane).
+	// Topic list (left pane). Python's TopicList is an IndicativeListBox of
+	// single-row GuideEntry urwid.Text widgets, so disable tview's secondary-
+	// text row (which would otherwise render a blank line under every item).
 	gd.topics = tview.NewList()
 	gd.topics.SetHighlightFullLine(true)
+	gd.topics.ShowSecondaryText(false)
 	ApplyListFocusStyle(gd.topics, app.Theme)
 	for i := range guideTopics {
 		i := i
@@ -156,14 +165,21 @@ func NewGuideDisplay(app *App) *GuideDisplay {
 	})
 
 	// Each pane in its own LineBox (SetBorder), matching the original: Topics
-	// titled, reader untitled, no outer border around the columns.
+	// titled, reader untitled, no outer border around the columns. The topic
+	// list is wrapped in an IndicativeListBox so it shows the ───/▲/▼ end
+	// indicators like the original IndicativeListBox. The reader is wrapped in a
+	// ScrollBar so it shows the ┃ thumb on the right edge when content overflows
+	// (urwid ScrollBar, Guide.py:232).
+	gd.topicsList = NewIndicativeListBox(gd.topics)
 	topicsBox := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(gd.topics, 0, 1, true)
+		AddItem(gd.topicsList, 0, 1, true)
 	topicsBox.SetBorder(true)
-	topicsBox.SetTitle("Topics")
+	SetTitledBorder(topicsBox, "Topics")
 
+	gd.scroll = NewScrollBar(gd.reader)
+	gd.scroll.SetThumbColor(GetThemeColors(app.Theme)["scrollbar"])
 	readerBox := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(gd.reader, 0, 1, true)
+		AddItem(gd.scroll, 0, 1, true)
 	readerBox.SetBorder(true)
 
 	// Weights 1 : 2 ≈ 0.33 : 0.67 (Guide.py list_width = 0.33). The topics pane
@@ -187,21 +203,22 @@ func (gd *GuideDisplay) Widget() tview.Primitive {
 func (gd *GuideDisplay) ShowFirstRun() {
 	gd.showTopic(firstRunTopicIndex)
 	if gd.app != nil {
-		gd.app.SetFocus(gd.reader)
+		gd.app.SetFocus(gd.scroll)
 	}
 }
 
 // FocusTopics moves focus to the topic list (Guide.py focus_topics).
 func (gd *GuideDisplay) FocusTopics() {
 	if gd.app != nil {
-		gd.app.SetFocus(gd.topics)
+		gd.app.SetFocus(gd.topicsList)
 	}
 }
 
-// FocusReader moves focus to the reader (Guide.py focus_reader).
+// FocusReader moves focus to the reader (Guide.py focus_reader). Focus targets
+// the ScrollBar wrapper (the layout child); it forwards focus to the reader.
 func (gd *GuideDisplay) FocusReader() {
 	if gd.app != nil {
-		gd.app.SetFocus(gd.reader)
+		gd.app.SetFocus(gd.scroll)
 	}
 }
 

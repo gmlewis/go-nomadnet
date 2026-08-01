@@ -73,6 +73,12 @@ type ConversationsDisplay struct {
 	OnToggleSort       func()
 	OnShowQR           func()
 	OnSyncRequested    func(limit int)
+
+	// Trust banner button callbacks (fired by the in-conversation trust
+	// banner; Python _on_trust_click/_on_block_click/_on_ignore_click).
+	OnTrustPeer  func(sourceHash string)
+	OnBlockPeer  func(sourceHash string)
+	OnIgnorePeer func(sourceHash string)
 }
 
 // NewConversationsDisplay creates a new conversations display.
@@ -231,6 +237,34 @@ func (cd *ConversationsDisplay) GetSelectedConversation() (ConversationInfo, boo
 // Conversations.py:1630.
 func (cd *ConversationsDisplay) DisplayConversation(sourceHash string) {
 	cw := NewConversationWidget(cd.app, sourceHash)
+	// Seed peer-info + trust-banner data from the known conversation info.
+	for _, conv := range cd.conversations {
+		if conv.SourceHash == sourceHash {
+			cw.TrustLevel = conv.TrustLevel
+			cw.DisplayName = conv.DisplayName
+			break
+		}
+	}
+	cw.refreshTrustBanner()
+	cw.updatePeerInfo()
+	// Wire the trust banner buttons to the display-level peer callbacks so
+	// the app layer (which owns the directory) can trust/block the peer.
+	cw.OnTrust = func() {
+		if cd.OnTrustPeer != nil {
+			cd.OnTrustPeer(sourceHash)
+		}
+		cw.SetTrustLevel("trusted")
+	}
+	cw.OnBlock = func() {
+		if cd.OnBlockPeer != nil {
+			cd.OnBlockPeer(sourceHash)
+		}
+	}
+	cw.OnIgnore = func() {
+		if cd.OnIgnorePeer != nil {
+			cd.OnIgnorePeer(sourceHash)
+		}
+	}
 	cw.OnClose = func() {
 		// Restore the detail panel
 		cd.widget.RemoveItem(cd.widget.GetItem(1))

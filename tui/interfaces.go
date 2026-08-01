@@ -34,22 +34,31 @@ type InterfaceInfo struct {
 	Traffic   []float64 // recent traffic samples for chart
 }
 
-// InterfacesDisplay shows RNS interface status and bandwidth charts.
+// InterfacesDisplay shows RNS interface status as a list of selectable,
+// rounded bordered interface boxes (Python SelectableInterfaceItem), plus
+// add/edit/show/remove and config-editor actions.
 type InterfacesDisplay struct {
-	app    *App
-	widget tview.Primitive
-	layout *tview.Flex
+	app      *App
+	widget   tview.Primitive
+	layout   *tview.Flex
+	listBox  *interfaceListBox
+	items    []InterfaceInfo
+	glyphset string
 
 	// Keyboard shortcut callbacks (Python: InterfaceFiller.keypress)
 	OnAddInterface    func()
 	OnEditInterface   func()
 	OnRemoveInterface func()
 	OnConfigEditor    func()
+	OnShowInterface   func(idx int)
 }
 
 // NewInterfacesDisplay creates a new interfaces display.
 func NewInterfacesDisplay(app *App, interfaces []InterfaceInfo) *InterfacesDisplay {
 	id := &InterfacesDisplay{app: app}
+	if app != nil {
+		id.glyphset = app.GlyphSet
+	}
 
 	title := tview.NewTextView().
 		SetTextAlign(tview.AlignCenter).
@@ -57,15 +66,12 @@ func NewInterfacesDisplay(app *App, interfaces []InterfaceInfo) *InterfacesDispl
 		SetTextColor(tcell.NewHexColor(0xdddddd)).
 		SetText("[::b]Network Interfaces[-]")
 
-	content := tview.NewTextView().
-		SetDynamicColors(true).
-		SetScrollable(true).
-		SetTextColor(tcell.NewHexColor(0xbbbbbb)).
-		SetText(formatInterfaces(interfaces))
+	id.listBox = newInterfaceListBox(id.glyphset)
+	id.SetInterfaces(interfaces)
 
 	layout := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(title, 2, 0, false).
-		AddItem(content, 0, 1, true)
+		AddItem(id.listBox, 0, 1, true)
 	layout.SetBorder(true)
 	layout.SetInputCapture(id.handleInput)
 
@@ -74,8 +80,27 @@ func NewInterfacesDisplay(app *App, interfaces []InterfaceInfo) *InterfacesDispl
 	return id
 }
 
+// SetInterfaces replaces the interface list, rebuilding the selectable items.
+func (id *InterfacesDisplay) SetInterfaces(interfaces []InterfaceInfo) {
+	id.items = interfaces
+	items := make([]*SelectableInterfaceItem, 0, len(interfaces))
+	for _, iface := range interfaces {
+		connected := iface.Status == "connected"
+		icon := GetInterfaceIcon(id.glyphset, iface.Type)
+		items = append(items, NewSelectableInterfaceItem(iface.Name, iface.Type, connected, true, int64(iface.Bandwidth), 0, icon))
+	}
+	id.listBox.SetItems(items)
+}
+
+// SelectedIndex returns the focused interface index, or -1 if none.
+func (id *InterfacesDisplay) SelectedIndex() int {
+	return id.listBox.focusIdx
+}
+
 // handleInput processes keyboard shortcuts for the interfaces display.
-// Matches Python's InterfaceFiller.keypress() at Interfaces.py:1391.
+// Matches Python's InterfaceFiller.keypress() at Interfaces.py:1391. Up/Down
+// and Enter are forwarded to the selectable list (Python SelectableInterfaceItem
+// keypress: up/down move focus, enter shows the interface).
 func (id *InterfacesDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 	switch event.Key() {
 	case tcell.KeyCtrlA:
@@ -98,6 +123,14 @@ func (id *InterfacesDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey 
 			id.OnConfigEditor()
 		}
 		return nil
+	case tcell.KeyEnter:
+		if id.OnShowInterface != nil && id.listBox.focusIdx >= 0 {
+			id.OnShowInterface(id.listBox.focusIdx)
+		}
+		return nil
+	case tcell.KeyUp, tcell.KeyDown, tcell.KeyPgUp, tcell.KeyPgDn, tcell.KeyHome, tcell.KeyEnd:
+		id.listBox.HandleKey(event.Key())
+		return nil
 	}
 
 	return event
@@ -106,6 +139,143 @@ func (id *InterfacesDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey 
 // Widget returns the tview primitive for this display.
 func (id *InterfacesDisplay) Widget() tview.Primitive {
 	return id.widget
+}
+
+// interfaceListBox is a vertical, scrollable list of SelectableInterfaceItem
+// boxes with focus cycling, mirroring Python's IndicativeListBox of
+// SelectableInterfaceItem entries (Interfaces.py:1945/2886).
+type interfaceListBox struct {
+	*tview.Box
+	items      []*SelectableInterfaceItem
+	focusIdx   int
+	offset     int // index of the first visible item
+	glyphset   string
+	onActivate func(idx int)
+}
+
+func newInterfaceListBox(glyphset string) *interfaceListBox {
+	b := &interfaceListBox{Box: tview.NewBox(), glyphset: glyphset, focusIdx: -1}
+	return b
+}
+
+// SetItems replaces the list contents.
+func (b *interfaceListBox) SetItems(items []*SelectableInterfaceItem) {
+	b.items = items
+	if len(items) == 0 {
+		b.focusIdx = -1
+	} else if b.focusIdx < 0 {
+		b.focusIdx = 0
+	}
+	if b.focusIdx >= len(items) {
+		b.focusIdx = len(items) - 1
+	}
+	b.offset = 0
+	b.applyFocus()
+}
+
+func (b *interfaceListBox) applyFocus() {
+	for i, it := range b.items {
+		it.SetFocused(i == b.focusIdx)
+	}
+}
+
+// HandleKey moves focus for navigation keys.
+func (b *interfaceListBox) HandleKey(key tcell.Key) {
+	if len(b.items) == 0 {
+		return
+	}
+	switch key {
+	case tcell.KeyUp:
+		if b.focusIdx > 0 {
+			b.focusIdx--
+		}
+	case tcell.KeyDown:
+		if b.focusIdx < len(b.items)-1 {
+			b.focusIdx++
+		}
+	case tcell.KeyPgUp:
+		visible := b.visibleCount()
+		b.focusIdx -= visible
+		if b.focusIdx < 0 {
+			b.focusIdx = 0
+		}
+	case tcell.KeyPgDn:
+		visible := b.visibleCount()
+		b.focusIdx += visible
+		if b.focusIdx > len(b.items)-1 {
+			b.focusIdx = len(b.items) - 1
+		}
+	case tcell.KeyHome:
+		b.focusIdx = 0
+	case tcell.KeyEnd:
+		b.focusIdx = len(b.items) - 1
+	}
+	b.applyFocus()
+	b.scrollIntoView()
+}
+
+func (b *interfaceListBox) visibleCount() int {
+	_, _, _, h := b.GetRect()
+	if h <= 0 {
+		return 1
+	}
+	return h / InterfaceItemHeight
+}
+
+func (b *interfaceListBox) scrollIntoView() {
+	visible := b.visibleCount()
+	if visible < 1 {
+		visible = 1
+	}
+	if b.focusIdx < b.offset {
+		b.offset = b.focusIdx
+	}
+	if b.focusIdx >= b.offset+visible {
+		b.offset = b.focusIdx - visible + 1
+	}
+	if b.offset > len(b.items)-visible && len(b.items) >= visible {
+		b.offset = len(b.items) - visible
+	}
+	if b.offset < 0 {
+		b.offset = 0
+	}
+}
+
+// Draw renders the visible interface boxes.
+func (b *interfaceListBox) Draw(screen tcell.Screen) {
+	b.Box.DrawForSubclass(screen, b)
+	x, y, w, h := b.GetRect()
+	if w < 4 || h < InterfaceItemHeight || len(b.items) == 0 {
+		if len(b.items) == 0 {
+			tview.Print(screen, "No interfaces configured", x, y, w, tview.AlignCenter, tcell.ColorYellow)
+		}
+		return
+	}
+	b.scrollIntoView()
+	rowY := y
+	for i := b.offset; i < len(b.items); i++ {
+		if rowY+InterfaceItemHeight > y+h {
+			break
+		}
+		it := b.items[i]
+		it.SetRect(x, rowY, w, InterfaceItemHeight)
+		it.Draw(screen)
+		rowY += InterfaceItemHeight
+	}
+}
+
+// InputHandler delegates navigation keys to HandleKey.
+func (b *interfaceListBox) InputHandler() func(event *tcell.EventKey, setFocus func(tview.Primitive)) {
+	return b.WrapInputHandler(func(event *tcell.EventKey, setFocus func(tview.Primitive)) {
+		switch event.Key() {
+		case tcell.KeyUp, tcell.KeyDown, tcell.KeyPgUp, tcell.KeyPgDn, tcell.KeyHome, tcell.KeyEnd:
+			b.HandleKey(event.Key())
+		case tcell.KeyEnter:
+			if b.onActivate != nil && b.focusIdx >= 0 {
+				b.onActivate(b.focusIdx)
+			}
+		}
+	})
 }
 
 // formatInterfaces formats the interface list as text.

@@ -121,6 +121,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 
 	// Network display — use real announces from the app
 	networkDisplay := tui.NewNetworkDisplay(tuiApp, nil, nil)
+	networkDisplay.SanitizeNames = a.Config.TextUI.SanitizeNames
 
 	// refreshAnnounces re-fetches the announce stream from the app and updates
 	// the network display's left pane.
@@ -459,6 +460,24 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	_ = unblockPeer
 	_ = pingPeer
 
+	// Trust banner button wiring (Python _on_trust_click/_on_block_click/
+	// _on_ignore_click). Defined after blockPeer so it can delegate to it.
+	conversationsDisplay.OnTrustPeer = func(sourceHash string) {
+		hash, ok := app.SourceHashFromHex(sourceHash)
+		if !ok {
+			return
+		}
+		a.SetPeerTrustLevel(hash, directory.TrustTrusted)
+		refreshConvs()
+	}
+	conversationsDisplay.OnBlockPeer = func(sourceHash string) {
+		blockPeer(sourceHash)
+	}
+	conversationsDisplay.OnIgnorePeer = func(sourceHash string) {
+		// "Do nothing" just dismisses the banner; no app action.
+		_ = sourceHash
+	}
+
 	// Network "Converse" / "Msg Op": open a conversation with the selected
 	// announce's identity — create a directory entry, refresh the conversation
 	// list, and switch to the Conversations page. (Python converse(msg) /
@@ -610,6 +629,36 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 				SetText(fmt.Sprintf("[gray]Config file: %s[-]\n\n[gray]Edit this file with your text editor.[-]", configPath)),
 			60, 8, nil)
 	}
+	interfacesDisplay.OnEditInterface = func() {
+		tuiApp.Dialogs.ShowInputDialog("Edit Interface",
+			"Interface name:", "",
+			func(text string) {
+				_ = text
+				// TODO: Edit interface via RNS config
+			},
+			func() {},
+		)
+	}
+	interfacesDisplay.OnRemoveInterface = func() {
+		tuiApp.Dialogs.ShowConfirmDialog("Remove selected interface?",
+			func() {
+				// TODO: Remove interface via RNS config
+			},
+			func() {},
+		)
+	}
+	interfacesDisplay.OnShowInterface = func(idx int) {
+		if idx < 0 || idx >= len(interfaces) {
+			return
+		}
+		iface := interfaces[idx]
+		tuiApp.Dialogs.ShowDialog("Interface: "+iface.Name,
+			tview.NewTextView().
+				SetDynamicColors(true).
+				SetText(fmt.Sprintf("[::b]%s[-]\n\nType: %s\nStatus: %s\nTarget: %s",
+					iface.Name, iface.Type, iface.Status, iface.Target)),
+			50, 9, nil)
+	}
 
 	// Browser display (hidden by default, shown when navigating from network)
 	browserDisplay := tui.NewBrowserDisplay(tuiApp)
@@ -659,6 +708,15 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	// Intro/splash display
 	introDisplay := tui.NewIntroDisplay("Nomad Network", a.Version)
 	main.SetDisplay("quit", introDisplay.Widget())
+
+	// On first run, the original opens the Guide on the "First Run" topic
+	// (Main.py:27 `if app.firstrun: active_display = guide_display` +
+	// Guide.py:221-224 first_run_entry.display_topic). NewMainDisplay defaults
+	// to the Conversations page, so override that here.
+	if a.FirstRun {
+		guideDisplay.ShowFirstRun()
+		main.SelectPage("guide")
+	}
 
 	return logDisplay.StopTailing
 }

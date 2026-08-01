@@ -175,6 +175,40 @@ func TestAppCreateDirectoryEntry(t *testing.T) {
 	}
 }
 
+// TestAppSetPeerTrustLevel verifies SetPeerTrustLevel updates the trust level
+// while preserving the existing display name, mirroring Python's
+// _on_trust_click (Conversations.py:1989-2003).
+func TestAppSetPeerTrustLevel(t *testing.T) {
+	t.Parallel()
+	a := NewApp(tempDir(t), "", false, false)
+	a.setupPaths()
+	hash := []byte{0xaa, 0xbb}
+	a.CreateDirectoryEntry(hash, "Alice")
+
+	a.SetPeerTrustLevel(hash, directory.TrustTrusted)
+	entry := a.Dir.Find(hash)
+	if entry == nil {
+		t.Fatal("entry not found after SetPeerTrustLevel")
+	}
+	if entry.TrustLevel != directory.TrustTrusted {
+		t.Errorf("TrustLevel = %v, want trusted", entry.TrustLevel)
+	}
+	if entry.DisplayName != "Alice" {
+		t.Errorf("DisplayName = %q, want preserved Alice", entry.DisplayName)
+	}
+
+	// SetPeerTrustLevel on an unknown peer creates the entry.
+	hash2 := []byte{0xcc, 0xdd}
+	a.SetPeerTrustLevel(hash2, directory.TrustUntrusted)
+	if e := a.Dir.Find(hash2); e == nil || e.TrustLevel != directory.TrustUntrusted {
+		got := directory.TrustUnknown
+		if e != nil {
+			got = e.TrustLevel
+		}
+		t.Errorf("unknown peer TrustLevel = %v, want untrusted", got)
+	}
+}
+
 func TestAppDisplayName(t *testing.T) {
 	t.Parallel()
 	a := NewApp(tempDir(t), "", false, false)

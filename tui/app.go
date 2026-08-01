@@ -28,6 +28,7 @@ type App struct {
 	Theme     int
 	ColorMode int
 	Glyphs    GlyphSet
+	GlyphSet  string
 	Dialogs   *DialogManager
 	Styles    *StyleRegistry
 	killRing  *killRing
@@ -49,6 +50,7 @@ func NewApp(theme int, glyphSet string, colorMode int) *App {
 		Theme:       theme,
 		ColorMode:   colorMode,
 		Glyphs:      glyphs,
+		GlyphSet:    glyphSet,
 		Dialogs:     &DialogManager{},
 		Styles:      newStyleRegistry(),
 		killRing:    &killRing{},

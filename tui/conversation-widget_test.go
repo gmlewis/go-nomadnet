@@ -16,6 +16,8 @@
 package tui
 
 import (
+	"bytes"
+	"strings"
 	"testing"
 	"time"
 
@@ -157,6 +159,141 @@ func TestConversationWidgetKeyboardShortcuts(t *testing.T) {
 	}
 }
 
+// TestPeerInfoPythonParity checks the peer-info header bar text against golden
+// values captured from Python's _update_peer_info (Conversations.py:2084-2120).
+func TestPeerInfoPythonParity(t *testing.T) {
+	t.Parallel()
+
+	fullHash := "aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899"
+	stamp3 := 3
+	hops2 := 2
+	hops1 := 1
+
+	tests := []struct {
+		name string
+		cw   *ConversationWidget
+		want string
+	}{
+		{
+			"unknown peer",
+			func() *ConversationWidget {
+				cw := NewConversationWidget(newTestApp(), fullHash)
+				return cw
+			}(),
+			" <" + fullHash + "> | ◷ unknown ",
+		},
+		{
+			"named 2 hops stamp 3",
+			func() *ConversationWidget {
+				cw := NewConversationWidget(newTestApp(), fullHash)
+				cw.DisplayName = "Alice"
+				cw.StampCost = &stamp3
+				cw.Hops = &hops2
+				cw.updatePeerInfo()
+				return cw
+			}(),
+			" Alice | Stamp: 3  ◷ 2 hops ",
+		},
+		{
+			"named 1 hop",
+			func() *ConversationWidget {
+				cw := NewConversationWidget(newTestApp(), fullHash)
+				cw.DisplayName = "Alice"
+				cw.StampCost = &stamp3
+				cw.Hops = &hops1
+				cw.updatePeerInfo()
+				return cw
+			}(),
+			" Alice | Stamp: 3  ◷ 1 hop ",
+		},
+		{
+			"named no stamp unknown hops",
+			func() *ConversationWidget {
+				cw := NewConversationWidget(newTestApp(), fullHash)
+				cw.DisplayName = "Bob"
+				cw.updatePeerInfo()
+				return cw
+			}(),
+			" Bob | ◷ unknown ",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := tt.cw.peerInfoBar.GetText(false)
+			if got != tt.want {
+				t.Errorf("peerInfo = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestTrustBannerVisibility checks the trust banner shows for non-trusted
+// peers and is hidden for trusted / after dismissal (Python
+// has_visible_trust_banner, Conversations.py:1953-1960).
+func TestTrustBannerVisibility(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+
+	// Untrusted → banner visible.
+	cw := NewConversationWidget(app, "aabb1122")
+	cw.TrustLevel = "untrusted"
+	cw.refreshTrustBanner()
+	if !cw.hasVisibleTrustBanner() {
+		t.Error("untrusted: banner should be visible")
+	}
+
+	// Trusted → banner hidden.
+	cw.SetTrustLevel("trusted")
+	if cw.hasVisibleTrustBanner() {
+		t.Error("trusted: banner should be hidden")
+	}
+
+	// Unknown → visible.
+	cw.SetTrustLevel("unknown")
+	if !cw.hasVisibleTrustBanner() {
+		t.Error("unknown: banner should be visible")
+	}
+
+	// Warning → visible.
+	cw.SetTrustLevel("warning")
+	if !cw.hasVisibleTrustBanner() {
+		t.Error("warning: banner should be visible")
+	}
+}
+
+// TestTrustBannerButtonCallbacks verifies the Trust/Block/Do nothing buttons
+// fire their callbacks and "Do nothing" dismisses the banner.
+func TestTrustBannerButtonCallbacks(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	cw := NewConversationWidget(app, "aabb1122")
+	cw.TrustLevel = "unknown"
+	cw.refreshTrustBanner()
+
+	var fired []string
+	cw.OnTrust = func() { fired = append(fired, "trust") }
+	cw.OnBlock = func() { fired = append(fired, "block") }
+	cw.OnIgnore = func() { fired = append(fired, "ignore") }
+
+	cw.trustClick()
+	cw.blockClick()
+	if len(fired) != 2 || fired[0] != "trust" || fired[1] != "block" {
+		t.Errorf("trust/block fired %v, want [trust block]", fired)
+	}
+
+	cw.ignoreClick()
+	if !cw.trustBannerDismissed {
+		t.Error("ignoreClick should dismiss the banner")
+	}
+	if cw.hasVisibleTrustBanner() {
+		t.Error("after ignore, banner should be hidden")
+	}
+}
+
 func TestConversationWidgetToggleEditor(t *testing.T) {
 	t.Parallel()
 
@@ -198,6 +335,38 @@ func TestConversationWidgetRenderMessages(t *testing.T) {
 	text = cw.messageList.GetText(false)
 	if text == "" {
 		t.Error("Message list should have content after SetMessages")
+	}
+}
+
+// TestConversationWidgetRenderHeaderParity checks renderMessages emits the
+// LXMessageWidget header (prefix glyph + strftime timestamp + encryption glyph)
+// for a fully-specified LXMF message, matching the Python parity format.
+func TestConversationWidgetRenderHeaderParity(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	cw := NewConversationWidget(app, "aabb1122")
+	cw.OwnHash = bytes.Repeat([]byte{0x11}, 32)
+	cw.TimeFormat = "%Y-%m-%d %H:%M:%S"
+
+	ts := time.Unix(1699996400, 0).UTC()
+	cw.SetMessages([]ConversationMessage{{
+		Content:            "Hello world",
+		Timestamp:          ts,
+		State:              lxmfStateSent,
+		Method:             lxmfMethodPropagated,
+		SourceHash:         cw.OwnHash,
+		TransportEncrypted: true,
+		Title:              "My Subject",
+	}})
+
+	text := cw.messageList.GetText(false)
+	// Prefix "↑ → " (sent + arrow_r) and the deterministic strftime timestamp +
+	// encryption glyph must appear; relative_time is now-dependent so not asserted.
+	for _, want := range []string{"↑ → ", "2023-11-14 21:13:20 ⚿", "| My Subject", "  Hello world"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("rendered text missing %q\ngot: %s", want, text)
+		}
 	}
 }
 

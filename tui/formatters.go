@@ -27,7 +27,14 @@ import (
 // Python's relative_time() exactly. Includes the weeks range that
 // the previous Go implementation was missing.
 func RelativeTime(t time.Time) string {
-	delta := time.Since(t)
+	return relativeTimeAt(t, time.Now())
+}
+
+// relativeTimeAt is the time-injected core of RelativeTime, exposed for tests
+// so the age math is deterministic. Mirrors Python's relative_time() at
+// Conversations.py:28-44, using `now` in place of time.time().
+func relativeTimeAt(t, now time.Time) string {
+	delta := now.Sub(t)
 	switch {
 	case delta < 0:
 		return "just now"
