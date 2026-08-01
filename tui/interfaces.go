@@ -60,19 +60,24 @@ func NewInterfacesDisplay(app *App, interfaces []InterfaceInfo) *InterfacesDispl
 		id.glyphset = app.GlyphSet
 	}
 
+	// Centered "Interfaces" header (Python interface_header = urwid.Text(
+	// ("interface_title", "Interfaces"), align=CENTER), Interfaces.py:2917).
+	// interface_title is the default style (no bold, no fg color) in the dark
+	// palette, so no tview color/bold tags. A 2-row item renders the title on
+	// row 0 and a blank on row 1, matching Python's header + urwid.Divider().
 	title := tview.NewTextView().
 		SetTextAlign(tview.AlignCenter).
-		SetDynamicColors(true).
-		SetTextColor(tcell.NewHexColor(0xdddddd)).
-		SetText("[::b]Network Interfaces[-]")
+		SetText("Interfaces")
 
 	id.listBox = newInterfaceListBox(id.glyphset)
 	id.SetInterfaces(interfaces)
 
+	// No outer border (Python: pile = urwid.Pile([box_adapter]) wrapped in
+	// InterfaceFiller = urwid.Filler(TOP); the interface boxes are laid out
+	// directly in the body, each its own rounded LineBox, Interfaces.py:2932).
 	layout := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(title, 2, 0, false).
 		AddItem(id.listBox, 0, 1, true)
-	layout.SetBorder(true)
 	layout.SetInputCapture(id.handleInput)
 
 	id.layout = layout

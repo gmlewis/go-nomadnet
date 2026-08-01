@@ -286,6 +286,9 @@ test or a matching `parity.sh` summary):
         setter — see the Phase 0.5/0.6 note “tview InputField exposes no public
         cursor setter, displayed caret may lag”). Test that the reported caret
         column tracks `cursorPos` after a non-end cursor move.
+- [ ] Under the Network panel, the discovered nodes should be, by default, sorted by descending time.
+- [ ] Mouse clicks do not work because they appear to have no correlation with what is under the mouse click and needs to be fixed.
+- [ ] Go errors should NEVER be ignored.
 
 ### Phase 1 — Core interaction model (highest-impact TUI fixes; unblocks all page work)
 

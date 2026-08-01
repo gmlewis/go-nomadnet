@@ -331,23 +331,23 @@ func TestInterfacesDisplayListFocusDraw(t *testing.T) {
 	id.layout.SetRect(0, 0, 80, 24)
 	id.layout.Draw(screen)
 
-	// Layout border(1) + title(2) ⇒ first box top at y=3, title row y=4.
-	// Box content starts at x = border(1) + pad(2) + 1 = 4.
-	if c, _, _, _ := screen.GetContent(4, 4); c != '●' {
+	// No outer border (Python has none): title(2) ⇒ first box top at y=2, title
+	// row y=3. Box content starts at x = border(1) + pad(2) = 3.
+	if c, _, _, _ := screen.GetContent(3, 3); c != '●' {
 		t.Errorf("first item selection glyph = %q, want ●", c)
 	}
-	// Second box top at y=10, title row y=11; unfocused ⇒ ○.
-	if c, _, _, _ := screen.GetContent(4, 11); c != '○' {
+	// Second box top at y=9, title row y=10; unfocused ⇒ ○.
+	if c, _, _, _ := screen.GetContent(3, 10); c != '○' {
 		t.Errorf("second item selection glyph = %q, want ○", c)
 	}
 
 	// Down moves focus to the second item.
 	id.handleInput(tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone))
 	id.layout.Draw(screen)
-	if c, _, _, _ := screen.GetContent(4, 4); c != '○' {
+	if c, _, _, _ := screen.GetContent(3, 3); c != '○' {
 		t.Errorf("after Down, first item glyph = %q, want ○", c)
 	}
-	if c, _, _, _ := screen.GetContent(4, 11); c != '●' {
+	if c, _, _, _ := screen.GetContent(3, 10); c != '●' {
 		t.Errorf("after Down, second item glyph = %q, want ●", c)
 	}
 	if id.SelectedIndex() != 1 {
