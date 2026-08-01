@@ -372,3 +372,152 @@ func TestTrustStringAndStyleMapping(t *testing.T) {
 		}
 	}
 }
+
+// TestAnnounceInfoTopTrimClipsHeader pins the urwid Filler cursor-trim: when the
+// node AnnounceInfo Pile (11 rows) is rendered into a 9-row-inner slot (the
+// 80x24 left-pane slot), the TOP two rows (Time + Addr) are clipped to keep the
+// focused button row visible at the bottom (urwid/widget/filler.py:228-238).
+// The visible rows are Type, Name, Oprtr, Trust, divider, Announce Data:, data,
+// divider, buttons — and the button row lands on the last row.
+func TestAnnounceInfoTopTrimClipsHeader(t *testing.T) {
+	t.Parallel()
+	app := newTestApp()
+	app.Glyphs = GetGlyphSet(GlyphUnicode)
+	nd := NewNetworkDisplay(app, nil, nil)
+
+	ts := time.Date(2026, 1, 2, 15, 4, 5, 0, time.UTC)
+	hash := strings.Repeat("b", 32)
+	ann := AnnounceEntry{
+		Timestamp:   ts,
+		SourceHash:  hash,
+		AppData:     "Node app data string",
+		Type:        "node",
+		DisplayName: "MyNode",
+	}
+	data := AnnounceInfoData{
+		DisplayStr: "MyNode",
+		TrustStr:   "Trusted",
+		TrustStyle: "list_trusted",
+		OpStr:      "Unknown",
+	}
+
+	// 9-row-inner slot (height 9) forces a 2-row top-trim.
+	rows := renderAnnounceInfo(t, nd, ann, data, 50, 9)
+
+	// Time + Addr are clipped from the top.
+	if strings.HasPrefix(rows[0], "Time") {
+		t.Errorf("row 0 should be clipped (Time trimmed), got %q", rows[0])
+	}
+	// First visible row is Type.
+	if want := "Type  : Nomad Network Node Ⓝ"; rows[0] != want {
+		t.Errorf("row 0 = %q, want %q (Type after trim)", rows[0], want)
+	}
+	if want := "Name  : MyNode"; rows[1] != want {
+		t.Errorf("row 1 = %q, want %q", rows[1], want)
+	}
+	if want := "Oprtr : Unknown"; rows[2] != want {
+		t.Errorf("row 2 = %q, want %q", rows[2], want)
+	}
+	if want := "Trust : Trusted"; rows[3] != want {
+		t.Errorf("row 3 = %q, want %q", rows[3], want)
+	}
+	divider := strings.Repeat("┄", 50)
+	if rows[4] != divider {
+		t.Errorf("row 4 (divider) = %q, want %q", rows[4], divider)
+	}
+	if rows[5] != "Announce Data:" {
+		t.Errorf("row 5 = %q, want %q", rows[5], "Announce Data:")
+	}
+	if rows[6] != "Node app data string" {
+		t.Errorf("row 6 = %q, want %q", rows[6], "Node app data string")
+	}
+	if rows[7] != divider {
+		t.Errorf("row 7 (divider) = %q, want %q", rows[7], divider)
+	}
+	// Button row on the last visible row (row 8), focused/visible.
+	btnRow := rows[8]
+	if !strings.HasPrefix(btnRow, "< Back") {
+		t.Errorf("row 8 (buttons) = %q, want < Back ...", btnRow)
+	}
+	if !strings.HasSuffix(btnRow, ">") {
+		t.Errorf("row 8 (buttons) = %q, want suffix >", btnRow)
+	}
+}
+
+// TestAnnounceInfoPeerTopTrim pins the peer branch's 1-row top-trim: the peer
+// Pile is 10 rows; in a 9-row slot the top row (Time) is clipped, leaving Addr
+// as the first visible row and the button row at the bottom.
+func TestAnnounceInfoPeerTopTrim(t *testing.T) {
+	t.Parallel()
+	app := newTestApp()
+	app.Glyphs = GetGlyphSet(GlyphUnicode)
+	nd := NewNetworkDisplay(app, nil, nil)
+
+	ts := time.Date(2026, 1, 2, 15, 4, 5, 0, time.UTC)
+	hash := strings.Repeat("a", 32)
+	ann := AnnounceEntry{
+		Timestamp:   ts,
+		SourceHash:  hash,
+		AppData:     "Hello World",
+		Type:        "peer",
+		DisplayName: "",
+	}
+	data := AnnounceInfoData{
+		DisplayStr: "<" + hash + ">",
+		TrustStr:   "Unknown",
+		TrustStyle: "list_unknown",
+		OpStr:      "Unknown",
+	}
+
+	rows := renderAnnounceInfo(t, nd, ann, data, 50, 9)
+
+	// Time clipped; Addr is the first visible row.
+	if strings.HasPrefix(rows[0], "Time") {
+		t.Errorf("row 0 should be clipped (Time trimmed), got %q", rows[0])
+	}
+	if want := "Addr  : <" + hash + ">"; rows[0] != want {
+		t.Errorf("row 0 = %q, want %q (Addr after trim)", rows[0], want)
+	}
+	// Button row on the last row.
+	if !strings.HasPrefix(rows[8], "< Back") || !strings.HasSuffix(rows[8], ">") {
+		t.Errorf("row 8 (buttons) = %q, want < Back ... >", rows[8])
+	}
+}
+
+// TestPileFillerPadsBottomWhenContentFits verifies that when the content fits
+// the box (no overflow), the pile is top-aligned and the bottom rows are blank
+// (urwid Filler valign=TOP pads the bottom).
+func TestPileFillerPadsBottomWhenContentFits(t *testing.T) {
+	t.Parallel()
+	app := newTestApp()
+	app.Glyphs = GetGlyphSet(GlyphUnicode)
+	nd := NewNetworkDisplay(app, nil, nil)
+
+	ts := time.Date(2026, 1, 2, 15, 4, 5, 0, time.UTC)
+	ann := AnnounceEntry{
+		Timestamp: ts, SourceHash: strings.Repeat("c", 32), AppData: "",
+		Type: "pn", DisplayName: "",
+	}
+	data := AnnounceInfoData{
+		DisplayStr: "<c>", TrustStr: "Unknown", TrustStyle: "list_unknown",
+	}
+
+	// PN pile is 5 rows; render into 8 rows → top-aligned, 3 blank rows below.
+	rows := renderAnnounceInfo(t, nd, ann, data, 50, 8)
+	if want := "Time  : 2026-01-02 15:04:05"; rows[0] != want {
+		t.Errorf("row 0 = %q, want %q", rows[0], want)
+	}
+	divider := strings.Repeat("┄", 50)
+	if rows[3] != divider {
+		t.Errorf("row 3 (divider) = %q, want %q", rows[3], divider)
+	}
+	if !strings.HasPrefix(rows[4], "< Back") {
+		t.Errorf("row 4 (buttons) = %q, want < Back ...", rows[4])
+	}
+	// Rows 5-7 are blank (bottom padding).
+	for i := 5; i < 8; i++ {
+		if rows[i] != "" {
+			t.Errorf("row %d = %q, want blank (bottom pad)", i, rows[i])
+		}
+	}
+}

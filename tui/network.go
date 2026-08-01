@@ -92,6 +92,18 @@ type NetworkDisplay struct {
 	// simplest_display_str, op_str). Returns ok=false when no resolver is wired
 	// (the view then falls back to the AnnounceEntry's own fields).
 	OnResolveAnnounceInfo func(ann AnnounceEntry) (AnnounceInfoData, bool)
+
+	// OnResolveKnownNodeInfo resolves the directory-backed fields a KnownNodeInfo
+	// form needs at view time (Python KnownNodeInfo __init__: display_str,
+	// sort_rank, trust_level, op_str, hops, pn address, identify_on_connect).
+	// Returns ok=false when no resolver is wired (the form falls back to the
+	// node hash + Unknown defaults).
+	OnResolveKnownNodeInfo func(nodeHash string) (KnownNodeInfoData, bool)
+
+	// OnKnownNodeSave writes the edited KnownNodeInfo form state to the directory
+	// (Python save_node, Network.py:755-785): name, sort rank, trust, default-PN,
+	// identify-on-connect. The display collects the form data and passes it here.
+	OnKnownNodeSave func(nodeHash string, data KnownNodeInfoFormData)
 }
 
 // NewNetworkDisplay creates a new network display matching Python's layout.
@@ -210,9 +222,10 @@ func NewNetworkDisplay(app *App, announces []AnnounceEntry, nodes []NodeEntry) *
 		}
 		nd.showAnnounceDetailFor(ann)
 	})
-	nd.nodes.SetSelectedFunc(func(i int, mainText, secondaryText string, shortcut rune) {
-		nd.showNodeDetail(i)
-	})
+	// Saved-nodes list: Enter is a no-op (Python KnownNodes.node_list_selection
+	// is `pass`, Network.py:888). The editable KnownNodeInfo form is opened by
+	// Ctrl-E (NetworkLeftPile.keypress → selected_node_info, Network.py:1603),
+	// wired via OnEditNode → ShowKnownNodeInfo in the wiring layer.
 
 	return nd
 }
@@ -368,20 +381,68 @@ func trustStyleFromLevel(level string) string {
 	}
 }
 
-// showNodeDetail is an alias — nodes are selected from the nodes list.
-func (nd *NetworkDisplay) showNodeDetail(i int) {
-	if i < 0 || i >= len(nd.nodeData) {
-		return
+// ShowKnownNodeInfo opens the editable KnownNodeInfo form for the given saved
+// node hash (Python selected_node_info → KnownNodeInfo, Network.py:1697-1710,
+// triggered by Ctrl-E on the Saved Nodes list). The directory-backed fields
+// resolve at view time via OnResolveKnownNodeInfo; RNS-dependent fields (operator
+// string, hop distance, PN address) are stubs until Phase 5. Esc returns to the
+// saved-nodes list.
+func (nd *NetworkDisplay) ShowKnownNodeInfo(nodeHash string) {
+	data := KnownNodeInfoData{
+		DisplayStr:  "<" + nodeHash + ">",
+		SortStr:     "None",
+		TrustLevel:  "unknown",
+		OpStr:       "Unknown",
+		HopsStr:     "Unknown",
+		LXMFAddrStr: "No associated Propagation Node known",
 	}
-	// Saved-node selection reuses the AnnounceInfo layout with the node entry
-	// synthesized into an AnnounceEntry.
-	node := nd.nodeData[i]
-	nd.showAnnounceDetailFor(AnnounceEntry{
-		SourceHash:  node.SourceHash,
-		DisplayName: node.DisplayName,
-		Type:        "node",
-		TrustLevel:  node.TrustLevel,
-	})
+	if nd.OnResolveKnownNodeInfo != nil {
+		if resolved, ok := nd.OnResolveKnownNodeInfo(nodeHash); ok {
+			data = resolved
+		}
+	}
+	ki := newKnownNodeInfoDisplay(nd, nodeHash, data)
+	nd.setLeftList(ki.Widget(), "Node Info")
+	nd.inInfoView = true
+	nd.focusLeftList()
+}
+
+// showKnownNodes restores the left panel to the saved-nodes list from a
+// KnownNodeInfo/AnnounceInfo view (Python show_known_nodes, Network.py:690-693).
+func (nd *NetworkDisplay) showKnownNodes() {
+	nd.setLeftList(nd.nodesView(), "Saved Nodes")
+	nd.inInfoView = false
+	nd.showingPeers = false
+	nd.showingNodes = true
+	nd.focusLeftList()
+}
+
+// connectKnownNode initiates a browser connection to the node then returns to
+// the saved-nodes list (Python connect, Network.py:695-699).
+func (nd *NetworkDisplay) connectKnownNode(nodeHash string) {
+	nd.showKnownNodes()
+	if nd.onNavigate != nil {
+		nd.onNavigate(nodeHash)
+	}
+}
+
+// msgOpKnownNode starts a conversation with the node's operator then returns to
+// the saved-nodes list (Python msg_op, Network.py:707-731).
+func (nd *NetworkDisplay) msgOpKnownNode(nodeHash string) {
+	nd.showKnownNodes()
+	if nd.OnMsgOp != nil {
+		nd.OnMsgOp()
+	}
+}
+
+// saveKnownNode writes the edited KnownNodeInfo form to the directory then
+// returns to the saved-nodes list (Python save_node, Network.py:755-785).
+func (nd *NetworkDisplay) saveKnownNode(k *knownNodeInfoDisplay) {
+	data := k.FormData()
+	nd.showKnownNodes()
+	if nd.OnKnownNodeSave != nil {
+		nd.OnKnownNodeSave(k.nodeHash, data)
+	}
 }
 
 // showAnnounceStream restores the left panel to the announce/node list.

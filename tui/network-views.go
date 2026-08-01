@@ -23,56 +23,6 @@ import (
 	"github.com/rivo/tview"
 )
 
-// KnownNodeInfo displays detailed information about a known node.
-// Matches Python's KnownNodeInfo at Network.py:601.
-type KnownNodeInfo struct {
-	widget tview.Primitive
-}
-
-// NewKnownNodeInfo creates a node info panel for the given node entry.
-func NewKnownNodeInfo(entry *NodeEntryFull) *KnownNodeInfo {
-	dni := &KnownNodeInfo{}
-
-	trustColor := "gray"
-	trustStr := "Unknown"
-	switch entry.TrustLevel {
-	case "trusted":
-		trustColor = "green"
-		trustStr = "Trusted"
-	case "untrusted":
-		trustColor = "red"
-		trustStr = "Untrusted"
-	case "warning":
-		trustColor = "yellow"
-		trustStr = "Warning"
-	}
-
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("[::b]Name[-]  : %s\n", entry.DisplayName))
-	sb.WriteString(fmt.Sprintf("[::b]Addr[-]  : <[lightblue]%s[-]>\n", entry.SourceHash))
-	sb.WriteString("[::b]Type[-]  : Node Ⓝ\n")
-	sb.WriteString(fmt.Sprintf("[::b]Trust[-] : [%s]%s[-]\n", trustColor, trustStr))
-	if entry.PreferredDelivery != "" {
-		sb.WriteString(fmt.Sprintf("[::b]Delivery[-]: %s\n", entry.PreferredDelivery))
-	}
-	if entry.HostsNode {
-		sb.WriteString("[::b]Hosts[-] : Yes\n")
-	}
-
-	text := tview.NewTextView()
-	text.SetDynamicColors(true)
-	text.SetTextColor(tcell.NewHexColor(0xbbbbbb))
-	text.SetText(sb.String())
-
-	dni.widget = text
-	return dni
-}
-
-// Widget returns the tview primitive.
-func (dni *KnownNodeInfo) Widget() tview.Primitive {
-	return dni.widget
-}
-
 // NodeInfo displays detailed node statistics.
 // Matches Python's NodeInfo at Network.py:1357.
 type NodeInfo struct {

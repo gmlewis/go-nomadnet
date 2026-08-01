@@ -60,11 +60,18 @@ func trustPaletteHex(style string) string {
 // the announce type: node → Back/Connect/Msg Op/Save, pn → Back/Use as
 // default, peer → Back/Converse. Esc (handled by NetworkDisplay.HandleEsc)
 // returns to the announce stream.
+//
+// The Pile is wrapped in a pileFiller (urwid.Filler(valign=TOP, height=PACK))
+// so that when the natural content height overflows the bordered slot — e.g. a
+// node's 11-row Pile in the 9-row-inner slot at 80x24 — the top is trimmed to
+// keep the focused button row visible at the bottom, matching urwid's
+// Filler.render cursor-trim. Without this, tview's Flex would let the children
+// spill past the slot and corrupt the Local Peer Info panel below.
 type announceInfoDisplay struct {
 	nd   *NetworkDisplay
 	ann  AnnounceEntry
 	data AnnounceInfoData
-	pile *tview.Flex
+	pile *pileFiller
 }
 
 // newAnnounceInfoDisplay builds the AnnounceInfo Pile for the given announce.
@@ -104,33 +111,37 @@ func newAnnounceInfoDisplay(nd *NetworkDisplay, ann AnnounceEntry, data Announce
 		dataStr = string([]rune(dataStr)[:32]) + " [...]"
 	}
 
-	pile := tview.NewFlex().SetDirection(tview.FlexRow)
+	pile := newPileFiller()
 
 	// Common header rows (Network.py:236-239 / 227-230).
-	pile.AddItem(textRow("Time  : "+tsStr), 1, 0, false)
-	pile.AddItem(textRow("Addr  : "+addrStr), 1, 0, false)
-	pile.AddItem(textRow("Type  : "+typeString), 1, 0, false)
+	pile.AddItem(textRow("Time  : "+tsStr), 1, false)
+	pile.AddItem(textRow("Addr  : "+addrStr), 1, false)
+	pile.AddItem(textRow("Type  : "+typeString), 1, false)
 
 	if isPN {
 		// PN branch (Network.py:226-233): Time, Addr, Type, Divider, buttons.
-		pile.AddItem(newDividerRow(g["divider1"]), 1, 0, false)
-		pile.AddItem(ai.buttonRow(), 1, 0, true)
+		pile.AddItem(newDividerRow(g["divider1"]), 1, false)
+		pile.AddItem(ai.buttonRow(), 1, true)
 	} else {
 		// Non-PN branch (Network.py:235-246): Name, [Oprtr for nodes], Trust,
 		// Divider, Announce Data, Divider, buttons. Operator is inserted at
 		// index 4 (between Name and Trust) for nodes (Network.py:248-250).
-		pile.AddItem(textRow("Name  : "+displayStr), 1, 0, false)
+		pile.AddItem(textRow("Name  : "+displayStr), 1, false)
 		if isNode {
-			pile.AddItem(textRow("Oprtr : "+data.OpStr), 1, 0, false)
+			pile.AddItem(textRow("Oprtr : "+data.OpStr), 1, false)
 		}
-		pile.AddItem(ai.trustRow(), 1, 0, false)
-		pile.AddItem(newDividerRow(g["divider1"]), 1, 0, false)
-		pile.AddItem(ai.announceDataRow(dataStr), 2, 0, false)
-		pile.AddItem(newDividerRow(g["divider1"]), 1, 0, false)
-		pile.AddItem(ai.buttonRow(), 1, 0, true)
+		pile.AddItem(ai.trustRow(), 1, false)
+		pile.AddItem(newDividerRow(g["divider1"]), 1, false)
+		pile.AddItem(ai.announceDataRow(dataStr), 2, false)
+		pile.AddItem(newDividerRow(g["divider1"]), 1, false)
+		pile.AddItem(ai.buttonRow(), 1, true)
 	}
 
 	ai.pile = pile
+	// Esc dismisses back to the stream (Python AnnounceInfo.keypress,
+	// Network.py:60-65). The pileFiller intercepts Esc before forwarding to the
+	// focused widget, so Esc works even when focus is on the button row.
+	pile.SetEscHandler(func() { ai.nd.HandleEsc() })
 	return ai
 }
 

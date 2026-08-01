@@ -23,7 +23,6 @@
 package tui
 
 import (
-	"fmt"
 	"os"
 	"os/exec"
 	"runtime"
@@ -40,7 +39,7 @@ import (
 type ConfigDisplay struct {
 	app        *App
 	widget     *tview.Flex
-	explainer  *tview.TextView
+	explainer  *centeredText
 	configPath string
 	editorCmd  string
 
@@ -50,7 +49,18 @@ type ConfigDisplay struct {
 	OnOpenEditor func()
 }
 
-// NewConfigDisplay creates a config display centered on the explainer + button.
+// NewConfigDisplay builds the config page: a TOP-filled Pile (Python wraps the
+// pile in `urwid.Filler(pile, urwid.TOP)`, Config.py:46) of a 7-line centered
+// explainer (`urwid.Text(("body_text", …), align=CENTER)`, Config.py:38-44) and
+// a centered `< Open Editor >` button (`urwid.Padding(urwid.Button("Open
+// Editor"), width=15, align=CENTER)`, Config.py:45). No outer border — Python's
+// config_explainer is a bare Filler.
+//
+// urwid.Text(align=CENTER) is CEIL-left (extra column to the LEFT on odd slack)
+// while urwid.Padding(align=CENTER) is FLOOR-left, so the explainer uses the
+// ceil-left `centeredText` primitive and the button row uses a Flex of
+// [spacer, button(15), spacer] (tview's leftover-to-LAST gives left=floor,
+// right=ceil), matching Python's leading-space counts exactly.
 func NewConfigDisplay(app *App, configPath string) *ConfigDisplay {
 	cd := &ConfigDisplay{
 		app:        app,
@@ -58,32 +68,34 @@ func NewConfigDisplay(app *App, configPath string) *ConfigDisplay {
 		editorCmd:  resolveEditorCmdDefault("editor"),
 	}
 
-	cd.explainer = tview.NewTextView().
-		SetTextAlign(tview.AlignCenter).
-		SetDynamicColors(true).
-		SetTextColor(tcell.NewHexColor(0xbbbbbb)).
-		SetText(fmt.Sprintf(
-			"\nTo change the configuration, edit the config file located at:\n\n%s\n\n"+
-				"Restart Nomad Network for changes to take effect\n",
-			configPath,
-		))
+	// Explainer text (Config.py:38-44): leading/trailing blank + the
+	// blank-separated body lines, all body_text colored, ceil-left centered.
+	cd.explainer = newCenteredText(
+		tcell.NewHexColor(0xbbbbbb),
+		"",
+		"To change the configuration, edit the config file located at:",
+		"",
+		configPath,
+		"",
+		"Restart Nomad Network for changes to take effect",
+		"",
+	)
 
-	openBtn := tview.NewButton(" Open Editor ")
-	openBtn.SetLabelColor(tcell.NewHexColor(0xdddddd))
-	openBtn.SetBackgroundColor(tcell.NewHexColor(0x333333))
-	openBtn.SetSelectedFunc(func() { cd.openEditor() })
+	// "Open Editor" as a flat urwid "< Open Editor >" button (15 wide), then
+	// floor-left-center it in a Flex row (Padding CENTER is floor-left).
+	openBtn := NewUrwidButton("Open Editor").SetSelectedFunc(func() { cd.openEditor() })
+	buttonRow := tview.NewFlex().
+		AddItem(tview.NewBox(), 0, 1, false).
+		AddItem(openBtn, 15, 0, true).
+		AddItem(tview.NewBox(), 0, 1, false)
 
-	// Center the pile vertically: a top spacer (weight 1), the explainer + button
-	// (fixed heights), and a bottom spacer (weight 1). Python wraps the pile in
-	// a urwid.Filler (vertical center). No outer border (Python's config_explainer
-	// is a bare Filler, no LineBox).
+	// Pile [explainer(7), button(1)] = 8 rows, TOP-filled (blank below).
 	pile := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(cd.explainer, 5, 0, false).
-		AddItem(openBtn, 1, 0, false)
+		AddItem(cd.explainer, 7, 0, false).
+		AddItem(buttonRow, 1, 0, true)
 
 	cd.widget = tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(tview.NewBox(), 0, 1, false).
-		AddItem(pile, 7, 0, false).
+		AddItem(pile, 8, 0, true).
 		AddItem(tview.NewBox(), 0, 1, false)
 
 	return cd

@@ -324,8 +324,72 @@ test or a matching `parity.sh` summary):
       shortcut-bar wrap point is FIXED (see the wrap item below). Remaining
       gaps: right-pane Browser page FETCHING/rendering (Phase 5 RNS link — the
       disconnected boot state is parity).)
+      (AnnounceInfo detail view DONE + capture-verified: `tui/announce-info.go`
+      ports Python's AnnounceInfo Pile (Network.py:59-256) — labels/glyphs,
+      Oprtr row inserted at index 4 for nodes, trust palette color, flat <>
+      buttons with weights [11,2,11,2,11,2,11] (node) / [23,5,22] (pn/peer),
+      data truncation when not trusted, Esc→stream. Directory fields resolve
+      at view time via `OnResolveAnnounceInfo` (wired in textui.go); op_str is
+      "Unknown" until Phase 5 RNS identity recall. KEY fix: the Pile is wrapped
+      in a new `pileFiller` primitive (`tui/pile-filler.go`) replicating
+      urwid.Filler(valign=TOP, height=PACK) — when the natural Pile height
+      overflows the bordered slot (node = 11 rows vs 9-row-inner slot at
+      80x24), it trims the TOP to keep the focused button row visible at the
+      bottom (urwid Filler.render cursor-trim, filler.py:228-238), clipping
+      Time+Addr. tview's Flex does NOT clip overflow (children spill past their
+      allocation and corrupt the LocalPeer panel below), so the dedicated
+      primitive is required. Capture-verified at 80x24: Announce Info box shows
+      Type→Name→Oprtr→Trust→divider→Announce Data:→data→divider→buttons with
+      the button row on the last inner row and LocalPeer intact below.
+      `focusLeftList` (SetFocus the listBox after UI-thread swaps) makes Enter
+      open the detail view (tview dispatches keys to the ROOT primitive via a
+      top-down Flex cascade; a freshly-swapped item has no focused descendant
+      so Enter is lost without it). Pinned by TestAnnounceInfo*Layout/
+      DataTruncation/EscReturnsToStream/FallsBackWithoutResolver/
+      TopTrimClipsHeader/PeerTopTrim + TestPileFillerPadsBottomWhenContentFits
+      + TestTrustStringAndStyleMapping. The announce LIST content is per-run
+      (different announces received), so only STRUCTURE is verifiable, not
+      byte-identity.)
 - [ ] `KnownNodeInfo` — node detail dialog (name/sort edits, trust radios, default
       propagation node + identify checkboxes, Back/Connect/Msg/Save). Verify.
+      (DONE: `tui/known-node-info.go` ports Python's KnownNodeInfo
+      (Network.py:593-810) — opened by Ctrl-E on a saved node (NOT Enter;
+      Python `node_list_selection` is a no-op, Network.py:888, Ctrl-E →
+      selected_node_info → KnownNodeInfo, Network.py:1603). A TOP-filled Pile
+      (wrapped in the `pileFiller` from 4.N's AnnounceInfo work) of: Type /
+      Name(ReadlineEdit) / Node Addr / Operator / Distance / Sort
+      Rank(ReadlineEdit) / divider / centered LXMF-PN-address line / divider /
+      2 CheckBoxes (default PN / identify on connect) / divider / 3 trust
+      RadioButtons (Untrusted/Unknown/Trusted) / divider / weighted
+      Back/Connect/Msg Op/Save button row. Operator + Distance are inserted at
+      pile indices 3 and 4 (Network.py:789,797). Labels align the colon at
+      column 10 ("Type      : ", "Name      : ", "Node Addr : ", "Operator  :
+      ", "Distance  : ", "Sort Rank : "). pile.focus_position = last (button
+      row), button_columns.focus_position = 0 (Back) — replicated via
+      `pile.SetFocusIndexLast()`. Trust radios preselect by incoming
+      TrustLevel (untrusted/unknown/trusted); "warning" leaves none checked
+      (Python falls through). FormData() collects edited name/sort-rank, the
+      radio-selected trust (defaults "untrusted"; Unknown/Trusted override per
+      Python's if/elif chain, Network.py:755-785), and the two checkbox states.
+      Esc → showKnownNodes (the pileFiller intercepts Esc via onEsc, since the
+      app-level/page-level Esc forwarding doesn't reach the swapped left pane
+      — same gap AnnounceInfo hit). Tab/Up/Down cycle focus among the
+      selectable fields via the pileFiller's moveFocus (blur old + focus new).
+      Wired in `cmd/gonomadnet/textui.go`: `OnResolveKnownNodeInfo` (directory
+      DisplayStr/SortStr/TrustLevel/IdentifyOnConnect; op_str/hops/LXMF-PN
+      address/UseAsPN stubbed "Unknown"/"No associated …" until Phase 5 RNS),
+      `OnKnownNodeSave` (directory.NewEntry + Remember with edited name,
+      HostsNode=true, IdentifyOnConnect, TrustLevel switch, SortRank Atoi),
+      and `OnEditNode` (Ctrl-E → SelectedNode → ShowKnownNodeInfo). NOT
+      capture-reachable (neither seed dir has a `directory` file → Saved Nodes
+      empty, so no node to Ctrl-E); parity source-verified against
+      Network.py:593-810 + urwid Filler.render. Pinned by TestKnownNodeInfo
+      Structure/TrustPreselect/TrustWarningPreselectsNone/FormData/
+      FormDataTrustDefault/FocusOnButtonRow/EscReturnsToNodes + the
+      pileFiller tests. GAPS deferred to Phase 5: tview.Checkbox "(X) label"
+      vs urwid exact glyph (not capture-reachable), RNS-dependent fields
+      (op_str via Identity.recall, hops via Transport.hops_to, the PN address
+      hash, the current user-selected PN + autoselect).)
 - [ ] `LXMFPeers`/`LXMFPeerEntry` — peers list; `C-x` unpeer, `C-r` delivery sync.
 - [ ] `LocalPeer` / `NodeInfo` / `NetworkStats` — stat panels (1 s refresh).
       (NetworkStats widget done — bordered "Network Stats" panel, injected

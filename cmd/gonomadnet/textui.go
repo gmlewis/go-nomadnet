@@ -20,6 +20,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/gmlewis/go-nomadnet/nomadnet/app"
@@ -327,6 +328,83 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 			data.TrustStyle = "list_unknown"
 		}
 		return data, true
+	}
+
+	// OnResolveKnownNodeInfo resolves the directory-backed fields the
+	// KnownNodeInfo form needs (Python KnownNodeInfo __init__, Network.py:612-
+	// 740). The RNS-dependent fields (operator string via Identity.recall, hop
+	// distance via Transport.hops_to, the PN address hash, the current
+	// user-selected PN) need Phase 5 RNS and are stubbed here; identify-on-
+	// connect, display name, sort rank and trust come from the directory.
+	networkDisplay.OnResolveKnownNodeInfo = func(nodeHash string) (tui.KnownNodeInfoData, bool) {
+		data := tui.KnownNodeInfoData{
+			OpStr:       "Unknown",
+			HopsStr:     "Unknown",
+			LXMFAddrStr: "No associated Propagation Node known",
+		}
+		hash, ok := app.SourceHashFromHex(nodeHash)
+		if !ok {
+			data.DisplayStr = "<" + nodeHash + ">"
+			data.SortStr = "None"
+			data.TrustLevel = "unknown"
+			return data, true
+		}
+		data.DisplayStr = a.Dir.SimplestDisplayStr(hash)
+		if sr := a.Dir.SortRank(hash); sr == nil {
+			data.SortStr = "None"
+		} else {
+			data.SortStr = strconv.Itoa(*sr)
+		}
+		data.IdentifyOnConnect = a.Dir.ShouldIdentifyOnConnect(hash)
+		switch a.Dir.TrustLevel(hash, nil) {
+		case directory.TrustTrusted:
+			data.TrustLevel = "trusted"
+		case directory.TrustUntrusted:
+			data.TrustLevel = "untrusted"
+		case directory.TrustWarning:
+			data.TrustLevel = "warning"
+		default:
+			data.TrustLevel = "unknown"
+		}
+		return data, true
+	}
+
+	// OnKnownNodeSave writes the edited KnownNodeInfo form to the directory
+	// (Python save_node, Network.py:755-785). Phase 5 wiring: the default-PN
+	// toggle and autoselect need RNS (set_user_selected_propagation_node,
+	// autoselect_propagation_node) and are stubbed; trust/name/sort/identify
+	// are written to the directory entry.
+	networkDisplay.OnKnownNodeSave = func(nodeHash string, fd tui.KnownNodeInfoFormData) {
+		hash, ok := app.SourceHashFromHex(nodeHash)
+		if !ok {
+			return
+		}
+		entry := directory.NewEntry(hash)
+		entry.DisplayName = fd.Name
+		entry.HostsNode = true
+		entry.IdentifyOnConnect = fd.IdentifyOnConnect
+		switch fd.TrustLevel {
+		case "trusted":
+			entry.TrustLevel = directory.TrustTrusted
+		case "untrusted":
+			entry.TrustLevel = directory.TrustUntrusted
+		case "unknown":
+			entry.TrustLevel = directory.TrustUnknown
+		default:
+			entry.TrustLevel = directory.TrustWarning
+		}
+		if n, err := strconv.Atoi(fd.SortRank); err == nil && n >= 0 {
+			entry.SortRank = &n
+		}
+		a.Dir.Remember(entry)
+	}
+
+	// Ctrl-E opens the KnownNodeInfo form for the selected saved node (Python
+	// NetworkLeftPile.keypress ctrl e → selected_node_info, Network.py:1603).
+	networkDisplay.OnEditNode = func() {
+		if node, ok := networkDisplay.SelectedNode(); ok {
+			networkDisplay.ShowKnownNodeInfo(node.SourceHash)
+		}
 	}
 
 	// Conversations display
