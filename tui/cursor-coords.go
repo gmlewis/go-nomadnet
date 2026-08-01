@@ -254,7 +254,7 @@ func layoutSegments(text []rune, width int) [][]layoutSeg {
 			continue
 		}
 		// no space found: unwrap previous line's removed space if possible
-		if next, ok := unwrapPrevSpace(text, &segments, width, idx, nlPos); ok {
+		if next, ok := unwrapPrevSpace(text, &segments, width, nlPos); ok {
 			idx = next
 			continue
 		}
@@ -268,7 +268,7 @@ func layoutSegments(text []rune, width int) [][]layoutSeg {
 // unwrapPrevSpace implements the "unwrap previous line space if possible to fit
 // more text (we're breaking a word anyway)" branch of _calculate_segments. On
 // success it returns the new idx to resume from; otherwise (-1, false).
-func unwrapPrevSpace(text []rune, segments *[][]layoutSeg, width, idx, nlPos int) (int, bool) {
+func unwrapPrevSpace(text []rune, segments *[][]layoutSeg, width, nlPos int) (int, bool) {
 	last := len(*segments) - 1
 	if last < 0 {
 		return -1, false
@@ -294,7 +294,7 @@ func unwrapPrevSpace(text []rune, segments *[][]layoutSeg, width, idx, nlPos int
 	if pSc < width && hSc == 0 && hOff < len(text) && text[hOff] == ' ' {
 		// combine with the previous line
 		*segments = (*segments)[:last]
-		idx = pOff
+		idx := pOff
 		pos, sc := calcTextPos(text, idx, nlPos, width)
 		newLine := []layoutSeg{{sc: sc, offs: idx, end: pos}}
 		if idx < len(text) && (text[idx] == ' ' || text[idx] == '\n') {
