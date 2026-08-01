@@ -54,7 +54,7 @@ func NewDirectoryDisplay(app *App, entries []DirectoryEntry) *DirectoryDisplay {
 	// Peer list
 	dd.list = tview.NewList()
 	dd.list.SetHighlightFullLine(true)
-	dd.list.SetSelectedBackgroundColor(tcell.NewHexColor(0x666666))
+	ApplyListFocusStyle(dd.list, app.Theme)
 
 	for _, entry := range entries {
 		icon := NewTrustListItem(entry.DisplayName, entry.TrustLevel)

@@ -161,7 +161,8 @@ func NewLXMFPeersView(peers []LXMFPeerEntry) *LXMFPeersView {
 
 	lv.list = tview.NewList()
 	lv.list.SetHighlightFullLine(true)
-	lv.list.SetSelectedBackgroundColor(tcell.NewHexColor(0x666666))
+	// list_focus is #111/#aaa in both themes; this view has no theme ref.
+	ApplyListFocusStyle(lv.list, ThemeDark)
 
 	for _, p := range peers {
 		status := "[green]alive[-]"

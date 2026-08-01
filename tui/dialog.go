@@ -193,7 +193,9 @@ func (dm *DialogManager) ShowInputDialog(title, label, defaultValue string, onSu
 func (dm *DialogManager) ShowRadioDialog(title, message string, options []string, onSelect func(int)) {
 	list := tview.NewList()
 	list.SetHighlightFullLine(true)
-	list.SetSelectedBackgroundColor(tcell.NewHexColor(0x666666))
+	// list_focus is #111/#aaa in both dark and light themes; DialogManager has
+	// no theme reference, so ThemeDark yields the correct focus colors.
+	ApplyListFocusStyle(list, ThemeDark)
 
 	for i, opt := range options {
 		idx := i

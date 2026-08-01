@@ -93,7 +93,7 @@ func NewRoomWidget(app *App, hubName, roomName string) *RoomWidget {
 	// Users list
 	rw.usersList = tview.NewList()
 	rw.usersList.SetHighlightFullLine(true)
-	rw.usersList.SetSelectedBackgroundColor(tcell.NewHexColor(0x666666))
+	ApplyListFocusStyle(rw.usersList, app.Theme)
 
 	usersBox := tview.NewFlex().SetDirection(tview.FlexRow)
 	usersTitle := tview.NewTextView()

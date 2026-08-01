@@ -50,15 +50,43 @@ func TestGuideDisplayWidgetType(t *testing.T) {
 func TestGuideContent(t *testing.T) {
 	t.Parallel()
 
-	content := introContent()
+	// The Introduction topic is embedded verbatim from the Python Guide and
+	// rendered through the micron styled-line renderer. Its rendered plain
+	// text must mention Nomad Network and Reticulum (the original introContent
+	// checked the same substrings).
+	content := guideTopicPlainText(guideIntroduction, ThemeDark)
 	if len(content) == 0 {
-		t.Error("introContent() returned empty")
+		t.Error("introduction rendered text is empty")
 	}
-	if !containsStr(content, "NomadNet") {
-		t.Error("introContent() missing NomadNet section")
+	if !containsStr(content, "Nomad Network") {
+		t.Error("introduction missing 'Nomad Network'")
 	}
 	if !containsStr(content, "Reticulum") {
-		t.Error("introContent() missing Reticulum section")
+		t.Error("introduction missing 'Reticulum'")
+	}
+}
+
+// TestGuideTopicsCount verifies all 12 embedded topics are registered in the
+// canonical order from Python's TopicList (Guide.py:167-180), with "First Run"
+// at index 8.
+func TestGuideTopicsCount(t *testing.T) {
+	t.Parallel()
+
+	if len(guideTopics) != 12 {
+		t.Fatalf("guideTopics has %v entries, want 12", len(guideTopics))
+	}
+	if guideTopics[firstRunTopicIndex].label != "First Run" {
+		t.Errorf("index %v = %q, want First Run", firstRunTopicIndex, guideTopics[firstRunTopicIndex].label)
+	}
+	want := []string{
+		"Introduction", "Concepts & Terminology", "Channels & RRC", "Interfaces",
+		"Hosting a Node", "Configuration Options", "Keyboard Shortcuts", "Markup",
+		"First Run", "Network Configuration", "Display Test", "Credits & Licenses",
+	}
+	for i, w := range want {
+		if guideTopics[i].label != w {
+			t.Errorf("guideTopics[%v].label = %q, want %q", i, guideTopics[i].label, w)
+		}
 	}
 }
 

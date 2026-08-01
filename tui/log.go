@@ -13,6 +13,13 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+// Package tui implements the NomadNet terminal user interface.
+//
+// Log display: ports Python's Log.py. Python embeds an urwid.Terminal running
+// `tail -fn50`; tview has no embedded terminal widget, so this substitute tails
+// the file into a scrollable TextView. The "up" escape sequence that returns
+// focus to the menu (Log.py:55-58) is handled here.
+
 package tui
 
 import (
@@ -20,6 +27,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -36,8 +44,9 @@ type LogDisplay struct {
 	wg      sync.WaitGroup
 }
 
-// NewLogDisplay creates a new log display that shows the last N lines
-// and optionally tails the file for live updates.
+// NewLogDisplay creates a new log display that shows the last N lines and tails
+// the file for live updates. The view starts following the end (latest lines),
+// matching `tail -f`. Call StartTailing to begin watching.
 func NewLogDisplay(app *App, logPath string, lines int) *LogDisplay {
 	ld := &LogDisplay{
 		app:     app,
@@ -49,23 +58,20 @@ func NewLogDisplay(app *App, logPath string, lines int) *LogDisplay {
 	ld.logView = tview.NewTextView()
 	ld.logView.SetDynamicColors(true)
 	ld.logView.SetScrollable(true)
+	ld.logView.SetWrap(true)
 	ld.logView.SetTextColor(tcell.NewHexColor(0xbbbbbb))
 	ld.logView.SetBackgroundColor(tcell.ColorDefault)
 
-	// Load initial content
+	// Load initial content and follow the end (Python `tail -f` shows latest).
 	content := tailFile(logPath, lines)
 	ld.logView.SetText(content)
+	ld.logView.ScrollToEnd()
 
-	// Title with file path
-	title := tview.NewTextView()
-	title.SetTextAlign(tview.AlignCenter)
-	title.SetTextColor(tcell.NewHexColor(0xdddddd))
-	title.SetText("Log Viewer")
-
+	// Python LogTerminal = urwid.LineBox(log_term) — a border, NO title row.
 	layout := tview.NewFlex().SetDirection(tview.FlexRow)
-	layout.AddItem(title, 1, 0, false)
 	layout.AddItem(ld.logView, 0, 1, true)
 	layout.SetBorder(true)
+	layout.SetInputCapture(ld.handleInput)
 
 	ld.widget = layout
 	return ld
@@ -76,30 +82,71 @@ func (ld *LogDisplay) Widget() tview.Primitive {
 	return ld.widget
 }
 
-// StartTailing begins watching the log file for new lines.
+// handleInput implements the Python LogTerminal.keypress "up" escape
+// (Log.py:55-58): Up at the top of the log returns focus to the menu bar. The
+// centralized MainDisplay.bodyListAtTop only covers *tview.List, so this
+// TextView-based page owns the transition. Up elsewhere is forwarded so the
+// view scrolls up through history.
+func (ld *LogDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
+	if event == nil {
+		return event
+	}
+	if event.Key() == tcell.KeyUp && ld.logAtTop() {
+		if ld.app != nil && ld.app.Main != nil {
+			ld.app.Main.FocusMenu()
+		}
+		return nil
+	}
+	return event
+}
+
+// logAtTop reports whether the log view is scrolled to its top (so Up should
+// collapse focus to the menu). It is false while a modal dialog is open.
+func (ld *LogDisplay) logAtTop() bool {
+	if ld.app != nil && ld.app.Dialogs != nil && ld.app.Dialogs.Open() {
+		return false
+	}
+	row, _ := ld.logView.GetScrollOffset()
+	return row <= 0
+}
+
+// StartTailing begins watching the log file for new lines, appending them to the
+// view. It polls the file at a fixed interval (avoiding the CPU spin of a
+// busy-loop) and marshals each append onto the application event loop.
 func (ld *LogDisplay) StartTailing() {
 	file, err := os.Open(ld.logPath)
 	if err != nil {
 		return
 	}
-	// Seek to end to start tailing from here
+	// Seek to end to start tailing from here.
 	_, _ = file.Seek(0, 2)
 
 	ld.wg.Add(1)
 	go func() {
 		defer ld.wg.Done()
 		defer func() { _ = file.Close() }()
-		scanner := bufio.NewScanner(file)
+
+		ticker := time.NewTicker(500 * time.Millisecond)
+		defer ticker.Stop()
+
+		reader := bufio.NewReader(file)
 		for {
 			select {
 			case <-ld.stopCh:
 				return
-			default:
-				if scanner.Scan() {
-					line := scanner.Text()
-					ld.app.QueueUpdateDraw(func() {
-						ld.logView.SetText(ld.logView.GetText(false) + "\n" + line)
-					})
+			case <-ticker.C:
+				// Drain any lines available since the last poll.
+				for {
+					line, err := reader.ReadString('\n')
+					if line != "" {
+						chunk := strings.TrimSuffix(line, "\n")
+						ld.app.QueueUpdateDraw(func() {
+							_, _ = ld.logView.Write([]byte(chunk + "\n"))
+						})
+					}
+					if err != nil {
+						break
+					}
 				}
 			}
 		}
@@ -124,7 +171,7 @@ func tailFile(path string, n int) string {
 		return string(data)
 	}
 
-	// Return last n lines
+	// Return last n lines.
 	start := len(lines) - n
 	return strings.Join(lines[start:], "\n")
 }

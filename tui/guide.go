@@ -6,90 +6,173 @@
 // (at your option) any later version.
 //
 // This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// but WITHOUT ANY WARRANTY; without the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+// Package tui implements the NomadNet terminal user interface.
+//
+// Guide display: this file ports Python's Guide.py. The per-topic micron
+// source is embedded verbatim from the original nomadnet Guide.py (under
+// tui/guidetopics/*.mu) and rendered through the Phase-3 styled-line
+// renderer (micron.RenderToStyledLines) so body text is NOT all-bold.
+
 package tui
 
 import (
+	_ "embed"
+	"strings"
+
 	"github.com/gdamore/tcell/v2"
+	"github.com/gmlewis/go-nomadnet/nomadnet/micron"
 	"github.com/rivo/tview"
 )
 
-// GuideDisplay shows help content with topic list and scrollable reader.
+// Embedded guide topic micron source, extracted verbatim from the original
+// nomadnet/ui/textui/Guide.py TOPIC_* strings. Each file begins with a
+// suppressed `#`-comment copyright header (micron comments render no output),
+// so the first rendered line is the topic heading, matching the original.
+//
+//go:embed guidetopics/introduction.mu
+var guideIntroduction string
+
+//go:embed guidetopics/concepts.mu
+var guideConcepts string
+
+//go:embed guidetopics/channels.mu
+var guideChannels string
+
+//go:embed guidetopics/interfaces.mu
+var guideInterfaces string
+
+//go:embed guidetopics/hosting.mu
+var guideHosting string
+
+//go:embed guidetopics/config.mu
+var guideConfig string
+
+//go:embed guidetopics/shortcuts.mu
+var guideShortcuts string
+
+//go:embed guidetopics/markup.mu
+var guideMarkup string
+
+//go:embed guidetopics/firstrun.mu
+var guideFirstRun string
+
+//go:embed guidetopics/networks.mu
+var guideNetworks string
+
+//go:embed guidetopics/displaytest.mu
+var guideDisplayTest string
+
+//go:embed guidetopics/licenses.mu
+var guideLicenses string
+
+// guideTopics is the ordered topic list matching Python's TopicList (Guide.py
+// :167-180): 12 entries, "First Run" at position 9 (index 8). The label is the
+// text shown in the topic list; the markup is the micron source rendered into
+// the reader pane on selection.
+var guideTopics = []struct {
+	label  string
+	markup string
+}{
+	{"Introduction", guideIntroduction},
+	{"Concepts & Terminology", guideConcepts},
+	{"Channels & RRC", guideChannels},
+	{"Interfaces", guideInterfaces},
+	{"Hosting a Node", guideHosting},
+	{"Configuration Options", guideConfig},
+	{"Keyboard Shortcuts", guideShortcuts},
+	{"Markup", guideMarkup},
+	{"First Run", guideFirstRun},
+	{"Network Configuration", guideNetworks},
+	{"Display Test", guideDisplayTest},
+	{"Credits & Licenses", guideLicenses},
+}
+
+// firstRunTopicIndex is the index of the "First Run" topic in guideTopics,
+// whose content ("First Time Information") the original auto-displays on a
+// first run (Guide.py:200-224).
+const firstRunTopicIndex = 8
+
+// GuideDisplay shows help content with a topic list and a scrollable micron
+// reader, matching Python's GuideDisplay (Guide.py:197-284): a two-column
+// GuideColumns layout (Topics list weight 0.33, reader weight 0.67), each pane
+// in its own LineBox (Topics titled, reader untitled), no outer border.
 type GuideDisplay struct {
 	app    *App
 	widget *tview.Flex
 	topics *tview.List
-	reader *tview.TextView
+	reader *guideReader
+
+	currentIdx   int // currently displayed topic, -1 = placeholder
+	links        []micron.LinkSpec
+	currentLines []*micron.StyledLine // rendered lines of the current topic
+	anchors      micron.AnchorMap     // anchor name → line index (current topic)
+	lineTexts    []string             // per-line tview-tagged text (current topic)
+
+	// OnHandleLink is invoked when a link in the reader is activated (click or
+	// keyboard). The app wires this to the GuideLinkDelegate behavior
+	// (Guide.py:91-118): "#anchor" jumps in-page, external links switch to
+	// Network + browser.handle_link. nil ⇒ links are inert.
+	OnHandleLink func(target, fields string)
 }
 
-// NewGuideDisplay creates a new guide display with two-column layout.
+// NewGuideDisplay creates a new guide display with the two-column layout. On a
+// normal launch the reader shows the "No topic selected" placeholder and the
+// topic list has focus (Guide.py focus_column=0). Call ShowFirstRun to display
+// the first-run content with the reader focused.
 func NewGuideDisplay(app *App) *GuideDisplay {
-	gd := &GuideDisplay{app: app}
+	gd := &GuideDisplay{app: app, currentIdx: -1}
 
-	// Title
-	title := tview.NewTextView()
-	title.SetTextAlign(tview.AlignCenter)
-	title.SetDynamicColors(true)
-	title.SetTextColor(tcell.NewHexColor(0xdddddd))
-	title.SetText("[::b]Nomad Network Guide[-]")
-
-	// Topic list (left column)
+	// Topic list (left pane).
 	gd.topics = tview.NewList()
 	gd.topics.SetHighlightFullLine(true)
-	gd.topics.SetSelectedBackgroundColor(tcell.NewHexColor(0x666666))
-
-	topics := []struct {
-		name    string
-		content string
-	}{
-		{"Introduction", introContent()},
-		{"Concepts & Terminology", conceptsContent()},
-		{"Channels & RRC", channelsContent()},
-		{"Interfaces", interfacesContent()},
-		{"Hosting a Node", nodeContent()},
-		{"Configuration Options", configContent()},
-		{"Keyboard Shortcuts", shortcutsContent()},
-		{"Markup", markupContent()},
-		{"First Run", firstRunContent()},
-		{"Credits & Licenses", creditsContent()},
+	ApplyListFocusStyle(gd.topics, app.Theme)
+	for i := range guideTopics {
+		i := i
+		gd.topics.AddItem(guideTopics[i].label, "", 0, func() { gd.showTopic(i) })
 	}
 
-	for _, topic := range topics {
-		t := topic
-		gd.topics.AddItem(t.name, "", 0, func() {
-			gd.reader.SetText(t.content)
-		})
-	}
-
-	// Content reader (right column)
-	gd.reader = tview.NewTextView()
+	// Reader (right pane). A thin wrapper around tview.TextView overrides
+	// SetRect so horizontal dividers re-expand to the pane width on resize.
+	gd.reader = newGuideReader(gd)
 	gd.reader.SetDynamicColors(true)
+	gd.reader.SetRegions(true)
 	gd.reader.SetScrollable(true)
+	gd.reader.SetWrap(true)
 	gd.reader.SetTextColor(tcell.NewHexColor(0xbbbbbb))
-	gd.reader.SetTextAlign(tview.AlignLeft)
-	gd.reader.SetText(introContent())
+	gd.reader.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
+		if action == tview.MouseLeftClick {
+			if hl := gd.reader.GetHighlights(); len(hl) > 0 {
+				gd.activateLink(hl[0])
+			}
+		}
+		return action, event
+	})
 
-	// Layout: title on top, topics (33%) on left, reader (67%) on right
-	content := tview.NewFlex().SetDirection(tview.FlexColumn)
-	content.AddItem(gd.topics, 0, 1, true)
-	content.AddItem(gd.reader, 0, 2, false)
+	// Each pane in its own LineBox (SetBorder), matching the original: Topics
+	// titled, reader untitled, no outer border around the columns.
+	topicsBox := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(gd.topics, 0, 1, true)
+	topicsBox.SetBorder(true)
+	topicsBox.SetTitle("Topics")
 
-	gd.widget = tview.NewFlex().SetDirection(tview.FlexRow)
-	gd.widget.SetBorder(true)
-	gd.widget.AddItem(title, 2, 0, false)
-	gd.widget.AddItem(content, 0, 1, true)
+	readerBox := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(gd.reader, 0, 1, true)
+	readerBox.SetBorder(true)
 
-	// Auto-select first topic
-	if gd.topics.GetItemCount() > 0 {
-		gd.topics.SetCurrentItem(0)
-	}
+	// Weights 1 : 2 ≈ 0.33 : 0.67 (Guide.py list_width = 0.33). The topics pane
+	// is the initial focus (focus=true) on a normal launch.
+	gd.widget = tview.NewFlex().SetDirection(tview.FlexColumn).
+		AddItem(topicsBox, 0, 1, true).
+		AddItem(readerBox, 0, 2, false)
 
+	gd.showPlaceholder()
 	return gd
 }
 
@@ -98,261 +181,238 @@ func (gd *GuideDisplay) Widget() tview.Primitive {
 	return gd.widget
 }
 
-// introContent returns the Introduction topic content.
-func introContent() string {
-	return `[::b]Welcome to Nomad Network[-]
-
-NomadNet is a peer-to-peer information sharing system built on Reticulum.
-It provides encrypted messaging, relay chat, and a decentralized web of
-Micron pages hosted by community nodes.
-
-[::b]Getting Started[-]
-
-1. Configure your network interfaces in the Reticulum config
-2. Start NomadNet and wait for connection
-3. Browse the Network tab to discover peers
-4. Send messages via the Conversations tab
-5. Join chat rooms via the Channels tab
-
-[::b]Key Concepts[-]
-
-[yellow]Reticulum[-] - The encrypted network transport layer
-[yellow]LXMF[-] - Lightweight Extensible Message Format (messaging protocol)
-[yellow]RRC[-] - Reticulum Relay Chat (IRC-like chat rooms)
-[yellow]Micron[-] - Lightweight markup language for pages
-[yellow]Node[-] - A peer hosting pages and files`
+// ShowFirstRun displays the "First Time Information" content (the First Run
+// topic) and moves focus to the reader, matching the original first-run
+// behavior (Guide.py:221-224 entry.display_topic + focus_reader).
+func (gd *GuideDisplay) ShowFirstRun() {
+	gd.showTopic(firstRunTopicIndex)
+	if gd.app != nil {
+		gd.app.SetFocus(gd.reader)
+	}
 }
 
-// conceptsContent returns the Concepts & Terminology topic.
-func conceptsContent() string {
-	return `[::b]Concepts & Terminology[-]
-
-[::b]Trust Levels[-]
-  [green]● Trusted[-] - You have verified this peer's identity
-  [yellow]○ Unknown[-] - This peer has not been verified
-  [red]× Untrusted[-] - This peer has been flagged
-  [yellow]⚠ Warning[-] - Identity collision detected
-
-[::b]Delivery Methods[-]
-  [cyan]Direct[-] - Messages sent directly to recipient
-  [cyan]Propagated[-] - Messages forwarded through propagation nodes
-
-[::b]Propagation Nodes[-]
-  Special nodes that store and forward messages when direct
-  delivery is not possible. They help messages reach peers
-  that are not currently online.`
+// FocusTopics moves focus to the topic list (Guide.py focus_topics).
+func (gd *GuideDisplay) FocusTopics() {
+	if gd.app != nil {
+		gd.app.SetFocus(gd.topics)
+	}
 }
 
-// channelsContent returns the Channels & RRC topic.
-func channelsContent() string {
-	return `[::b]Channels & RRC[-]
-
-Reticulum Relay Chat (RRC) provides IRC-like chat rooms
-over the Reticulum network.
-
-[::b]Joining a Room[-]
-  1. Go to the Channels tab
-  2. Press [yellow]Ctrl-A[-] to join a room
-  3. Enter the room name (e.g., #general)
-  4. Press Enter to connect
-
-[::b]Slash Commands[-]
-  [yellow]/help[-]    Show help
-  [yellow]/ping[-]    Ping the hub
-  [yellow]/list[-]    List available rooms
-  [yellow]/join[-]    Join a room
-  [yellow]/part[-]    Leave a room
-  [yellow]/who[-]     List room members
-  [yellow]/nick[-]    Change your nickname
-  [yellow]/me[-]      Send an action message`
+// FocusReader moves focus to the reader (Guide.py focus_reader).
+func (gd *GuideDisplay) FocusReader() {
+	if gd.app != nil {
+		gd.app.SetFocus(gd.reader)
+	}
 }
 
-// interfacesContent returns the Interfaces topic.
-func interfacesContent() string {
-	return `[::b]Interfaces[-]
-
-NomadNet communicates over Reticulum, which supports many
-transport types:
-
-  [cyan]TCP/IP[-] - Standard internet connections
-  [cyan]Serial[-] - Direct serial/USB connections
-  [cyan]RNode[-]  - LoRa radio via RNode hardware
-  [cyan]I2P[-]    - Anonymous routing via I2P
-
-Configure interfaces in ~/.reticulum/config`
+// showPlaceholder shows the "No topic selected" placeholder
+// (Guide.py:204 urwid.Text("\n  No topic selected")).
+func (gd *GuideDisplay) showPlaceholder() {
+	gd.currentIdx = -1
+	gd.links = nil
+	gd.reader.SetText("\n  No topic selected")
 }
 
-// nodeContent returns the Hosting a Node topic.
-func nodeContent() string {
-	return `[::b]Hosting a Node[-]
-
-A NomadNet node serves Micron pages and files to the network.
-
-[::b]Setup[-]
-  1. Enable node in config: [yellow]enable_node = yes[-]
-  2. Create pages in [yellow]~/.nomadnetwork/storage/pages/[-]
-  3. Create files in [yellow]~/.nomadnetwork/storage/files/[-]
-  4. Restart NomadNet
-
-[::b]Page Files[-]
-  Pages use Micron markup (.mu extension)
-  Place index.mu for the home page
-  Use .allowed files for access control
-
-[::b]File Serving[-]
-  Files are served directly to requesting peers
-  Supports any file type`
+// showTopic renders the given topic's micron source into the reader and syncs
+// the topic-list selection (Guide.py GuideEntry.display_topic).
+func (gd *GuideDisplay) showTopic(idx int) {
+	if idx < 0 || idx >= len(guideTopics) {
+		return
+	}
+	gd.currentIdx = idx
+	gd.renderMarkup(guideTopics[idx].markup)
+	gd.topics.SetCurrentItem(idx)
 }
 
-// configContent returns the Configuration Options topic.
-func configContent() string {
-	return `[::b]Configuration Options[-]
-
-Config file: [yellow]~/.nomadnetwork/config[-]
-
-[::b][logging][-]
-  loglevel = 4        (0-7, higher = more verbose)
-  destination = file  (file or stdout)
-
-[::b][client][-]
-  enable_client = yes
-  user_interface = text
-  downloads_path = ~/Downloads
-  announce_interval = 360  (minutes)
-  lxmf_sync_interval = 360 (minutes)
-
-[::b][textui][-]
-  theme = dark     (dark or light)
-  glyphs = unicode (plain, unicode, nerdfont)
-  editor = nano
-
-[::b][rrc][-]
-  history_per_room_cap = 500
-  nick_colors = yes
-  render_micron = yes
-
-[::b][node][-]
-  enable_node = no
-  announce_interval = 360`
+// showMarkupForTest renders arbitrary micron markup into the reader (for
+// unit-testing jumpToAnchor/handleLink without going through the embedded topic
+// list). Production uses showTopic.
+func (gd *GuideDisplay) showMarkupForTest(markup string) {
+	gd.currentIdx = 0 // mark "a topic is shown" so jumpToAnchor/rerender act
+	gd.renderMarkup(markup)
 }
 
-// shortcutsContent returns the Keyboard Shortcuts topic.
-func shortcutsContent() string {
-	return `[::b]Keyboard Shortcuts[-]
-
-[::b]Global[-]
-  [yellow]q[-] or [yellow]Esc[-]  Quit
-  [yellow]Tab[-]          Switch menu items
-  [yellow]1-9[-], [yellow]0[-]     Jump to menu item
-
-[::b]Text Editing[-]
-  [yellow]Ctrl-A[-]  Beginning of line
-  [yellow]Ctrl-E[-]  End of line
-  [yellow]Ctrl-U[-]  Kill to start
-  [yellow]Ctrl-K[-]  Kill to end
-  [yellow]Ctrl-W[-]  Delete word
-  [yellow]Ctrl-Y[-]  Yank (paste)
-
-[::b]Network[-]
-  [yellow]Ctrl-L[-]  Toggle Nodes/Announces
-  [yellow]Ctrl-G[-]  Fullscreen toggle
-  [yellow]Ctrl-X[-]  Delete selected
-  [yellow]Ctrl-E[-]  Edit selected
-
-[::b]Conversations[-]
-  [yellow]Ctrl-N[-]  New conversation
-  [yellow]Ctrl-O[-]  Toggle sort
-  [yellow]Ctrl-R[-]  Sync conversations
-  [yellow]Ctrl-X[-]  Delete conversation
-
-[::b]Channels[-]
-  [yellow]Ctrl-N[-]  New hub
-  [yellow]Ctrl-A[-]  Join room
-  [yellow]Ctrl-R[-]  Connect hub
-  [yellow]Ctrl-D[-]  Send message`
+// renderMarkup is the shared render path: micron-render the markup, convert to
+// tview tags at the reader's current width, push it to the reader, and cache
+// the line data (anchor map + per-line text) that jumpToAnchor needs.
+func (gd *GuideDisplay) renderMarkup(markup string) {
+	lines := micron.RenderToStyledLines(markup, micronTheme(gd.app.Theme))
+	text, links := StyledLinesToTviewText(lines, gd.readerWidth())
+	gd.currentLines = lines
+	gd.links = links
+	gd.anchors = micron.BuildAnchorMap(lines)
+	gd.lineTexts = splitLineTexts(text)
+	gd.reader.SetText(text)
 }
 
-// markupContent returns the Micron Markup topic.
-func markupContent() string {
-	return `[::b]Micron Markup[-]
-
-NomadNet uses Micron, a lightweight markup language.
-
-[::b]Headings[-]
-  [yellow]>>[-]  Heading level 1
-  [yellow]>>>[-]  Heading level 2
-  [yellow]>>>>[-] Heading level 3
-
-[::b]Formatting[-]
-  [yellow]` + "`!" + `bold text` + "`!" + `[-]    Bold
-  [yellow]` + "`_" + `underline` + "`_" + `[-]  Underline
-  [yellow]` + "`*" + `italic` + "`*" + `[-]    Italic
-  [yellow]` + "``" + `[-]           Reset all formatting
-
-[::b]Colors[-]
-  [yellow]` + "`F" + `RRGGBB` + "`" + `[-]  Set foreground color
-  [yellow]` + "`B" + `RRGGBB` + "`" + `[-]  Set background color
-  [yellow]` + "`f" + `[-]            Reset foreground
-  [yellow]` + "`b" + `[-]            Reset background
-
-[::b]Links[-]
-  [yellow]["link text":url]` + `[-]  Hyperlink
-  [yellow][#anchor-name]` + `[-]  Internal anchor
-
-[::b]Other[-]
-  [yellow]` + "---" + `[-]       Horizontal divider
-  [yellow]` + "`<" + `[-]         Begin field
-  [yellow]` + "`>" + `[-]         End field
-  [yellow]` + "`{" + `partial_url` + "}`" + `[-]  Include partial page`
+// splitLineTexts splits a StyledLinesToTviewText result into one entry per
+// rendered line (dropping the trailing newline), so jumpToAnchor can measure
+// each line's wrapped height independently.
+func splitLineTexts(text string) []string {
+	text = strings.TrimSuffix(text, "\n")
+	if text == "" {
+		return nil
+	}
+	return strings.Split(text, "\n")
 }
 
-// firstRunContent returns the First Run topic.
-func firstRunContent() string {
-	return `[::b]First Run[-]
-
-Welcome to NomadNet! This is your first time running the application.
-
-[::b]Initial Setup[-]
-
-1. NomadNet will create configuration files in [yellow]~/.nomadnetwork/[-]
-2. A Reticulum identity will be generated automatically
-3. Network interfaces will be configured from ~/.reticulum/config
-
-[::b]Next Steps[-]
-
-  1. Check the [yellow]Interfaces[-] tab to verify network connectivity
-  2. Browse the [yellow]Network[-] tab to discover peers
-  3. Send your first message via [yellow]Conversations[-]
-  4. Join a chat room via [yellow]Channels[-]
-
-[::b]Getting Help[-]
-
-  - This Guide tab contains detailed documentation
-  - Press [yellow]?[-] in any input field for context help
-  - Visit the NomadNet community for support`
+// rerender re-renders the currently-displayed topic at the given width. Called
+// by guideReader.SetRect on resize so horizontal dividers re-expand. No-op for
+// the placeholder.
+func (gd *GuideDisplay) rerender(width int) {
+	if gd.currentIdx < 0 {
+		return
+	}
+	lines := micron.RenderToStyledLines(guideTopics[gd.currentIdx].markup, micronTheme(gd.app.Theme))
+	text, links := StyledLinesToTviewText(lines, width)
+	gd.currentLines = lines
+	gd.links = links
+	gd.anchors = micron.BuildAnchorMap(lines)
+	gd.lineTexts = splitLineTexts(text)
+	gd.reader.SetText(text)
 }
 
-// creditsContent returns the Credits & Licenses topic.
-func creditsContent() string {
-	return `[::b]Credits & Licenses[-]
+// readerWidth is the reader's current inner column count (the wrap/divider
+// width). The reader is a borderless TextView laid out inside the readerBox
+// LineBox, so its GetInnerRect already excludes the readerBox border — no
+// further subtraction. It falls back to 80 before the first layout.
+func (gd *GuideDisplay) readerWidth() int {
+	_, _, w, _ := gd.reader.GetInnerRect()
+	if w <= 0 {
+		return 80
+	}
+	return w
+}
 
-[::b]NomadNet[-]
-  Created by Mark Qvist
-  https://github.com/markqvist/nomadnet
-  Licensed under the Reticulum License
+// jumpToAnchor scrolls the reader so the named anchor's line sits at the top,
+// mirroring Python's Guide.jump_to_anchor (Guide.py:236-261): the scroll target
+// is _rows_above(attrmaps, target_idx, cols) — the count of wrapped display
+// rows preceding the anchor line. Unknown anchors are a no-op (Python:
+// target_idx is None → return).
+func (gd *GuideDisplay) jumpToAnchor(name string) {
+	if gd.currentIdx < 0 || gd.anchors == nil {
+		return
+	}
+	targetIdx, ok := gd.anchors.JumpTarget(name)
+	if !ok {
+		return
+	}
+	gd.reader.ScrollTo(gd.rowsAbove(targetIdx), 0)
+}
 
-[::b]Go Port[-]
-  Ported by Glenn Lewis
-  https://github.com/gmlewis/go-nomadnet
-  Licensed under GPL-3.0
+// rowsAbove returns the number of wrapped display rows preceding line idx,
+// mirroring Python's _rows_above (Guide.py:63-72). Each preceding line's row
+// count is len(tview.WordWrap(lineText, innerWidth)) — the same word-wrap
+// tview's TextView uses to draw — so the computed offset tracks the real
+// rendered layout.
+func (gd *GuideDisplay) rowsAbove(idx int) int {
+	if idx <= 0 || len(gd.lineTexts) == 0 {
+		return 0
+	}
+	_, _, innerW, _ := gd.reader.GetInnerRect()
+	if innerW <= 0 {
+		innerW = gd.readerWidth()
+	}
+	total := 0
+	for i := 0; i < idx && i < len(gd.lineTexts); i++ {
+		rows := 1
+		if innerW > 0 {
+			if w := len(tview.WordWrap(gd.lineTexts[i], innerW)); w > 0 {
+				rows = w
+			}
+		}
+		total += rows
+	}
+	return total
+}
 
-[::b]Reticulum[-]
-  https://reticulum.network
-  Reticulum License
+// handleLink implements GuideLinkDelegate.handle_link (Guide.py:103-118): a
+// "#name" URL jumps in-page to that anchor; any other URL is an external link
+// handed to OnHandleLink (which the app wires to show_network +
+// browser.handle_link). An empty target is a no-op.
+func (gd *GuideDisplay) handleLink(target, fields string) {
+	if target == "" {
+		return
+	}
+	if strings.HasPrefix(target, "#") {
+		gd.jumpToAnchor(target[1:])
+		return
+	}
+	if gd.OnHandleLink != nil {
+		gd.OnHandleLink(target, fields)
+	}
+}
 
-[::b]Go Libraries[-]
-  tview - Terminal UI (MIT License)
-  tcell - Terminal cells (Apache 2.0)
-  cbor  - CBOR codec (MIT License)
-  msgpack - Msgpack codec (MIT License)`
+// activateLink resolves a tview region id to a registered link and dispatches
+// handleLink (Guide.py GuideLinkDelegate.handle_link).
+func (gd *GuideDisplay) activateLink(regionID string) {
+	idx := 0
+	for _, c := range regionID {
+		if c >= '0' && c <= '9' {
+			idx = idx*10 + int(c-'0')
+		} else {
+			return
+		}
+	}
+	if idx < 0 || idx >= len(gd.links) {
+		return
+	}
+	gd.handleLink(gd.links[idx].URL, gd.links[idx].Fields)
+}
+
+// micronTheme maps a tui theme constant to the micron Theme used by
+// RenderToStyledLines.
+func micronTheme(theme int) micron.Theme {
+	if theme == ThemeLight {
+		return micron.ThemeLight
+	}
+	return micron.ThemeDark
+}
+
+// guideReader wraps tview.TextView to re-expand horizontal dividers on resize.
+type guideReader struct {
+	*tview.TextView
+	gd    *GuideDisplay
+	lastW int
+}
+
+// newGuideReader creates a reader wrapper bound to its owning GuideDisplay.
+func newGuideReader(gd *GuideDisplay) *guideReader {
+	return &guideReader{TextView: tview.NewTextView(), gd: gd}
+}
+
+// SetRect overrides tview.TextView.SetRect to re-render the current topic when
+// the width changes, so micron horizontal dividers always fill the pane.
+func (gr *guideReader) SetRect(x, y, w, h int) {
+	gr.TextView.SetRect(x, y, w, h)
+	// w is the reader's own width (already inside the readerBox border), so it
+	// is the wrap/divider width directly — no further border subtraction.
+	if w > 0 && w != gr.lastW {
+		gr.lastW = w
+		gr.gd.rerender(w)
+	}
+}
+
+// guideTopicPlainText returns the rendered plain text of a topic (for tests),
+// with tview color/region tags removed. It strips tags by re-collecting only
+// the StyledSpan Text of each rendered line (which already excludes tag chars
+// via micron parsing), so it needs no tview tag stripper.
+func guideTopicPlainText(markup string, theme int) string {
+	lines := micron.RenderToStyledLines(markup, micronTheme(theme))
+	var b strings.Builder
+	for _, line := range lines {
+		if line == nil {
+			b.WriteByte('\n')
+			continue
+		}
+		if line.Divider {
+			b.WriteByte('\n')
+			continue
+		}
+		for _, span := range line.Spans {
+			b.WriteString(span.Text)
+		}
+		b.WriteByte('\n')
+	}
+	return b.String()
 }

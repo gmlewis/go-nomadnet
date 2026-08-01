@@ -13,98 +13,116 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+// Package tui implements the NomadNet terminal user interface.
+//
+// Config display: ports Python's Config.py. The page shows an explainer (where
+// the config file lives + "restart" notice) and an "Open Editor" button that
+// launches $EDITOR on the config path (nano on Darwin when the editor is the
+// "editor" alias), mirroring Python's open_editor → EditorTerminal.
+
 package tui
 
 import (
 	"fmt"
 	"os"
+	"os/exec"
+	"runtime"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
-// ConfigDisplay shows the configuration file with an in-app editor.
+// ConfigDisplay shows the config-file explainer and an "Open Editor" button,
+// matching Python's ConfigDisplay (Config.py:25-48). Python embeds an
+// urwid.Terminal running the editor; tview has no embedded terminal widget, so
+// the button launches $EDITOR via Application.Suspend (screen paused, editor
+// runs on the real terminal, then the TUI resumes) — same user-visible effect.
 type ConfigDisplay struct {
 	app        *App
-	widget     tview.Primitive
-	editor     *tview.TextArea
+	widget     *tview.Flex
+	explainer  *tview.TextView
 	configPath string
+	editorCmd  string
+
+	// OnOpenEditor, if set, is invoked by openEditor instead of launching the
+	// editor. The app can use it to customize launch; tests use it to avoid
+	// spawning a real process.
+	OnOpenEditor func()
 }
 
-// NewConfigDisplay creates a new config display with an editable text area.
-// Matches Python's ConfigDisplay at Config.py:25 with in-app editor.
+// NewConfigDisplay creates a config display centered on the explainer + button.
 func NewConfigDisplay(app *App, configPath string) *ConfigDisplay {
-	cd := &ConfigDisplay{app: app, configPath: configPath}
-
-	// Title
-	title := tview.NewTextView()
-	title.SetTextAlign(tview.AlignCenter)
-	title.SetDynamicColors(true)
-	title.SetTextColor(tcell.NewHexColor(0xdddddd))
-	title.SetText("[::b]Configuration[-]")
-
-	// Load config file content
-	content := ""
-	data, err := os.ReadFile(configPath)
-	if err == nil {
-		content = string(data)
-	} else {
-		content = fmt.Sprintf("# Error reading config: %v\n# File: %s", err, configPath)
+	cd := &ConfigDisplay{
+		app:        app,
+		configPath: configPath,
+		editorCmd:  resolveEditorCmdDefault("editor"),
 	}
 
-	// Editor
-	cd.editor = tview.NewTextArea()
-	cd.editor.SetText(content, true)
-	cd.editor.SetBackgroundColor(tcell.NewHexColor(0x1a1a1a))
-	cd.editor.SetTextStyle(tcell.StyleDefault.Foreground(tcell.NewHexColor(0xbbbbbb)))
+	cd.explainer = tview.NewTextView().
+		SetTextAlign(tview.AlignCenter).
+		SetDynamicColors(true).
+		SetTextColor(tcell.NewHexColor(0xbbbbbb)).
+		SetText(fmt.Sprintf(
+			"\nTo change the configuration, edit the config file located at:\n\n%s\n\n"+
+				"Restart Nomad Network for changes to take effect\n",
+			configPath,
+		))
 
-	// Status bar
-	statusBar := tview.NewTextView()
-	statusBar.SetDynamicColors(true)
-	statusBar.SetTextColor(tcell.NewHexColor(0x999999))
-	statusBar.SetText(fmt.Sprintf("[yellow]Ctrl-S[-] Save  [yellow]Ctrl-Q[-] Back  [gray]%s[-]", configPath))
+	openBtn := tview.NewButton(" Open Editor ")
+	openBtn.SetLabelColor(tcell.NewHexColor(0xdddddd))
+	openBtn.SetBackgroundColor(tcell.NewHexColor(0x333333))
+	openBtn.SetSelectedFunc(func() { cd.openEditor() })
 
-	// Save button
-	saveBtn := tview.NewButton("[Save]")
-	saveBtn.SetBackgroundColor(tcell.NewHexColor(0x444444))
-	saveBtn.SetLabelColor(tcell.NewHexColor(0xdddddd))
-	saveBtn.SetSelectedFunc(func() {
-		cd.saveConfig()
-	})
+	// Center the pile vertically: a top spacer (weight 1), the explainer + button
+	// (fixed heights), and a bottom spacer (weight 1). Python wraps the pile in
+	// a urwid.Filler (vertical center). No outer border (Python's config_explainer
+	// is a bare Filler, no LineBox).
+	pile := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(cd.explainer, 5, 0, false).
+		AddItem(openBtn, 1, 0, false)
 
-	layout := tview.NewFlex().SetDirection(tview.FlexRow)
-	layout.AddItem(title, 1, 0, false)
-	layout.AddItem(cd.editor, 0, 1, true)
-	layout.AddItem(statusBar, 1, 0, false)
-	layout.SetBorder(true)
+	cd.widget = tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(tview.NewBox(), 0, 1, false).
+		AddItem(pile, 7, 0, false).
+		AddItem(tview.NewBox(), 0, 1, false)
 
-	cd.widget = layout
 	return cd
 }
 
-// Widget returns the tview primitive.
+// Widget returns the tview primitive for this display.
 func (cd *ConfigDisplay) Widget() tview.Primitive {
 	return cd.widget
 }
 
-// saveConfig writes the editor content to the config file.
-func (cd *ConfigDisplay) saveConfig() {
-	content := cd.editor.GetText()
-	err := os.WriteFile(cd.configPath, []byte(content), 0o644)
-	if err != nil {
-		cd.showMessage(fmt.Sprintf("Error saving: %v", err))
+// openEditor launches the configured editor on the config file. If OnOpenEditor
+// is set it is called instead (test/app seam). Otherwise the editor is run with
+// the screen suspended via Application.Suspend so it owns the real terminal,
+// matching Python's EditorTerminal (Config.py:50-71).
+func (cd *ConfigDisplay) openEditor() {
+	if cd.OnOpenEditor != nil {
+		cd.OnOpenEditor()
 		return
 	}
-	cd.showMessage("Config saved. Restart Nomad Network for changes to take effect.")
+	if cd.app == nil || cd.app.Application == nil {
+		return
+	}
+	editor := cd.editorCmd
+	configPath := cd.configPath
+	cd.app.Application.Suspend(func() {
+		cmd := exec.Command(editor, configPath)
+		cmd.Stdin = os.Stdin
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		_ = cmd.Run()
+	})
 }
 
-// showMessage displays a temporary message.
-func (cd *ConfigDisplay) showMessage(msg string) {
-	modal := tview.NewModal()
-	modal.SetText(msg)
-	modal.AddButtons([]string{"OK"})
-	modal.SetDoneFunc(func(buttonIndex int, buttonLabel string) {
-		cd.app.Application.SetRoot(cd.widget, true)
-	})
-	cd.app.Application.SetRoot(modal, true)
+// resolveEditorCmdDefault resolves the editor command the way Python's
+// EditorTerminal does (Config.py:60-68): the configured editor is used as-is,
+// except on Darwin the unavailable "editor" alias is replaced with "nano".
+func resolveEditorCmdDefault(editor string) string {
+	if runtime.GOOS == "darwin" && editor == "editor" {
+		return "nano"
+	}
+	return editor
 }

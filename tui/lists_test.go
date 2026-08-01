@@ -104,3 +104,43 @@ func TestFocusFirstChildNil(t *testing.T) {
 	// Should not panic
 	FocusFirstChild(nil)
 }
+
+// TestListFocusColors asserts the list selection colors come from the theme's
+// list_focus_fg/list_focus_bg entries (Python TextUI.py: list_focus is
+// #111 on #aaa in both dark and light), NOT the hardcoded #666 the port
+// previously used.
+func TestListFocusColors(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		theme  int
+		wantFg uint32
+		wantBg uint32
+	}{
+		{ThemeDark, 0x111111, 0xaaaaaa},
+		{ThemeLight, 0x111111, 0xaaaaaa},
+	}
+	for _, tc := range cases {
+		fg, bg := ListFocusColors(tc.theme)
+		if uint32(fg.Hex()) != tc.wantFg {
+			t.Errorf("theme %v fg = #%06x, want #%06x", tc.theme, uint32(fg.Hex()), tc.wantFg)
+		}
+		if uint32(bg.Hex()) != tc.wantBg {
+			t.Errorf("theme %v bg = #%06x, want #%06x", tc.theme, uint32(bg.Hex()), tc.wantBg)
+		}
+	}
+}
+
+// TestApplyListFocusStyle asserts ApplyListFocusStyle does not panic and that
+// the list focus colors differ from the old hardcoded #666.
+func TestApplyListFocusStyle(t *testing.T) {
+	t.Parallel()
+
+	list := tview.NewList()
+	ApplyListFocusStyle(list, ThemeDark)
+	fg, bg := ListFocusColors(ThemeDark)
+	if uint32(bg.Hex()) == 0x666666 {
+		t.Error("focus bg still hardcoded #666; want theme list_focus_bg #aaa")
+	}
+	_ = fg
+}

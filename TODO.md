@@ -273,23 +273,11 @@ test or a matching `parity.sh` summary):
 > `tview.Application`. Capture expected layout/keys with `capture.sh --target
 > orig` and compare with `summary.py`.
 
-#### 4.G Guide (Python `Guide.py`, 1937 lines — simplest page; do first)
-- [ ] `GuideDisplay` two-pane: `Topics` list (weight .33) + reader (.67), single-
-      line borders. Verify layout vs original.
-- [ ] `TopicList` — `up` at first→menu, `enter`/click opens topic; focus
-      highlight `list_focus`. Verify vs Python `TopicList`.
-- [ ] `GuideEntry` — topic entry widget; verify vs Python.
-- [ ] `GuideLinkDelegate.handleLink` — `#anchor` jumps in-page, external links
-      switch to Network + `browser.handle_link`. Verify vs Python.
-- [ ] `jumpToAnchor` — scroll reader to anchor; verify vs Python.
-- [ ] Guide topic content — port each topic’s micron content from the Python
-      guide source; render via Phase 3 (no all-bold). Verify each topic vs
-      original capture.
-
 #### 4.N Network (Python `Network.py`, 1974 lines)
-- [ ] `NetworkDisplay` — left pane (Saved Nodes + `C-l` toggle Announce
-      Stream/Known Nodes + LXMF Peers + LocalPeer + NodeInfo + NetworkStats) and
-      right Remote Node browser pane; separate borders. Verify layout vs Python.
+- [ ] `NetworkDisplay` left-pane composition: `NetworkLeftPile` of Saved Nodes +
+      `C-l` toggle Announce Stream/Known Nodes + LXMF Peers + LocalPeer (PACK) +
+      NodeInfo + NetworkStats; right pane = Remote Node Browser (needs 4.E).
+      (Separate borders + no outer border + mode-titled left pane done.)
 - [ ] `AnnounceStream` + `AnnounceStreamEntry` — list with search/display-mode
       toggle; `C-x` remove; `up`→menu. Verify vs Python.
 - [ ] `AnnounceInfo` — announce detail dialog (overlay per 0.5). Verify vs Python.
@@ -298,6 +286,9 @@ test or a matching `parity.sh` summary):
       propagation node + identify checkboxes, Back/Connect/Msg/Save). Verify.
 - [ ] `LXMFPeers`/`LXMFPeerEntry` — peers list; `C-x` unpeer, `C-r` delivery sync.
 - [ ] `LocalPeer` / `NodeInfo` / `NetworkStats` — stat panels (1 s refresh).
+      (NetworkStats widget done — bordered “Network Stats” panel, injected
+      count providers, 5 s refresh; LocalPeer/NodeInfo still pending, need RNS
+      data + ReadlineEdit name field + save/announce dialogs.)
 - [ ] `BrowserFrame.keypress` — `C-w/d/f/r/u/s/b/y/g` per §Network; `up`→menu.
 
 #### 4.C Conversations (Python `Conversations.py`, 3093 lines)
@@ -348,14 +339,6 @@ test or a matching `parity.sh` summary):
 - [ ] `getPortInfo`/`getPortField` — serial port detection; verify.
 - [ ] `openConfigEditor` (`C-w`) — launch `$EDITOR` on RNS config and return;
       verify vs Python.
-
-#### 4.L Log / 4.X Config / 4.E Extras
-- [ ] `LogDisplay` — live `tail -f` (not static read); `up` escapes to menu;
-      verify vs Python `Log.py`.
-- [ ] `ConfigDisplay` — config path + “Open Editor” launching `$EDITOR` on
-      configpath (Darwin → `nano`); verify vs Python `Config.py`.
-- [ ] `Extras.IntroDisplay` — 1 s “Nomad Network” big-text splash; verify vs
-      `Extras.py`.
 
 #### 4.B Browser (Python `Browser.py`, 1848 lines — needs Phase 3 micron + Phase 5 RNS)
 - [ ] `BrowserDisplay.retrieveURL` — fetch a page over RNS (link establish,

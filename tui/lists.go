@@ -32,8 +32,26 @@ func NewSelectableList() *SelectableList {
 		List: tview.NewList(),
 	}
 	sl.SetHighlightFullLine(true)
-	sl.SetSelectedBackgroundColor(tcell.NewHexColor(0x666666))
+	ApplyListFocusStyle(sl.List, ThemeDark)
 	return sl
+}
+
+// ListFocusColors returns the (foreground, background) colors for a selected
+// list row under the given theme, matching Python's list_focus style
+// (TextUI.py: #111 on #aaa in both dark and light). Use instead of a
+// hardcoded #666.
+func ListFocusColors(theme int) (tcell.Color, tcell.Color) {
+	colors := GetThemeColors(theme)
+	return colors["list_focus_fg"], colors["list_focus_bg"]
+}
+
+// ApplyListFocusStyle sets a tview.List's selected-foreground and
+// selected-background to the theme's list_focus colors. Every list in the port
+// must use this instead of a hardcoded #666 selection background.
+func ApplyListFocusStyle(list *tview.List, theme int) {
+	fg, bg := ListFocusColors(theme)
+	list.SetSelectedTextColor(fg)
+	list.SetSelectedBackgroundColor(bg)
 }
 
 // SetOnSelect sets the callback for item selection.

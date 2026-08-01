@@ -16,6 +16,8 @@
 package tui
 
 import (
+	"time"
+
 	"github.com/rivo/tview"
 )
 
@@ -71,6 +73,24 @@ func (a *App) SetRoot() {
 // Run starts the tview application event loop.
 func (a *App) Run() error {
 	return a.Application.Run()
+}
+
+// ShowIntro displays the intro/splash widget as the root for the given number
+// of seconds, then swaps to the main display root (SetRoot), matching Python's
+// TextUI.py:223-232 (intro_display shown for intro_time, then display_main).
+// A non-positive seconds shows the main display immediately.
+func (a *App) ShowIntro(intro tview.Primitive, seconds float64) {
+	if seconds <= 0 {
+		a.SetRoot()
+		return
+	}
+	a.Application.SetRoot(intro, true)
+	duration := time.Duration(seconds * float64(time.Second))
+	time.AfterFunc(duration, func() {
+		a.QueueUpdateDraw(func() {
+			a.SetRoot()
+		})
+	})
 }
 
 // Stop stops the tview application event loop.

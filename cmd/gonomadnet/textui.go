@@ -76,14 +76,19 @@ func runTextUI(configDir, rnsConfigDir string) {
 
 	// Create and run the TUI
 	tuiApp := tui.NewApp(theme, glyphSet, colorMode)
+
+	// Wire up real displays BEFORE setting root. The returned cleanup releases
+	// background resources (log tail) on shutdown.
+	logCleanup := wireDisplays(tuiApp, a)
+
 	tuiApp.SetQuitCallback(func() {
 		tuiApp.Main.StopUnreadBlink()
+		if logCleanup != nil {
+			logCleanup()
+		}
 		a.Shutdown()
 		tuiApp.Stop()
 	})
-
-	// Wire up real displays BEFORE setting root
-	wireDisplays(tuiApp, a)
 
 	// Probe unread conversations every 2 s and swap the menu indicator glyph
 	// (Python MenuDisplay.update_display job, Main.py:216-230). The app injects
@@ -91,8 +96,15 @@ func runTextUI(configDir, rnsConfigDir string) {
 	tuiApp.Main.SetUnreadCheck(func() bool { return a.HasUnreadConversations() })
 	tuiApp.Main.StartUnreadBlink()
 
-	// Set root after all displays are wired up
-	tuiApp.SetRoot()
+	// Show the intro splash for intro_time seconds (default 1), then swap to
+	// the main display — matching Python's TextUI.py:223-232. intro_time <= 0
+	// skips the splash and shows the main display immediately.
+	introTime := 1.0
+	if a.Config != nil {
+		introTime = a.Config.TextUI.IntroTime
+	}
+	intro := tui.NewIntroDisplay("Nomad Network", a.Version)
+	tuiApp.ShowIntro(intro.Widget(), introTime)
 
 	if err := tuiApp.Run(); err != nil {
 		log.Fatalf("TUI error: %v", err)
@@ -100,7 +112,10 @@ func runTextUI(configDir, rnsConfigDir string) {
 }
 
 // wireDisplays connects the app data to the TUI display widgets.
-func wireDisplays(tuiApp *tui.App, a *app.App) {
+// wireDisplays builds and registers all body-page displays. It returns a
+// cleanup function that must be invoked on shutdown to release background
+// resources (e.g. the log live-tail goroutine).
+func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	main := tuiApp.Main
 
 	// Network display — use real announces from the app
@@ -440,6 +455,11 @@ func wireDisplays(tuiApp *tui.App, a *app.App) {
 	main.SetDisplay("log", logDisplay.Widget())
 	main.SetShortcut("log", "")
 
+	// Begin live tailing (Python's LogTerminal runs `tail -fn50` continuously
+	// while the page exists). It is a no-op when the log file is absent. The
+	// returned cleanup stops the goroutine on shutdown.
+	logDisplay.StartTailing()
+
 	// Guide display
 	guideDisplay := tui.NewGuideDisplay(tuiApp)
 	main.SetDisplay("guide", guideDisplay.Widget())
@@ -520,4 +540,6 @@ func wireDisplays(tuiApp *tui.App, a *app.App) {
 	// Intro/splash display
 	introDisplay := tui.NewIntroDisplay("Nomad Network", a.Version)
 	main.SetDisplay("quit", introDisplay.Widget())
+
+	return logDisplay.StopTailing
 }

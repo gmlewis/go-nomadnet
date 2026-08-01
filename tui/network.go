@@ -74,17 +74,10 @@ type NetworkDisplay struct {
 func NewNetworkDisplay(app *App, announces []AnnounceEntry, nodes []NodeEntry) *NetworkDisplay {
 	nd := &NetworkDisplay{app: app, showingNodes: false}
 
-	// Title
-	title := tview.NewTextView()
-	title.SetTextAlign(tview.AlignCenter)
-	title.SetDynamicColors(true)
-	title.SetTextColor(tcell.NewHexColor(0xdddddd))
-	title.SetText("[::b]Network[-]")
-
 	// Announces list
 	nd.announces = tview.NewList()
 	nd.announces.SetHighlightFullLine(true)
-	nd.announces.SetSelectedBackgroundColor(tcell.NewHexColor(0x666666))
+	ApplyListFocusStyle(nd.announces, app.Theme)
 
 	for _, ann := range announces {
 		nd.addAnnounceEntry(ann)
@@ -93,7 +86,7 @@ func NewNetworkDisplay(app *App, announces []AnnounceEntry, nodes []NodeEntry) *
 	// Nodes list
 	nd.nodes = tview.NewList()
 	nd.nodes.SetHighlightFullLine(true)
-	nd.nodes.SetSelectedBackgroundColor(tcell.NewHexColor(0x666666))
+	ApplyListFocusStyle(nd.nodes, app.Theme)
 
 	for _, node := range nodes {
 		nd.addNodeEntry(node)
@@ -105,21 +98,28 @@ func NewNetworkDisplay(app *App, announces []AnnounceEntry, nodes []NodeEntry) *
 	nd.detail.SetScrollable(true)
 	nd.detail.SetTextColor(tcell.NewHexColor(0xbbbbbb))
 	nd.detail.SetText("[gray]Select an announce or node to view details[-]")
+	// Python's right pane is the Browser display (a LineBox); the detail pane
+	// carries its own border so the two panes render with separate borders and
+	// no outer box around the page.
+	nd.detail.SetBorder(true)
 
-	// Left panel: announces by default, nodes hidden
+	// Left panel: announces by default, nodes hidden. Python's left sub-widgets
+	// each carry their own titled LineBox — AnnounceStream is titled "Announce
+	// Stream" (Network.py:446), KnownNodes is titled "Saved Nodes"
+	// (Network.py:867). The panel border+title reflects the active list mode
+	// and is updated on toggle.
 	nd.leftPanel = tview.NewFlex().SetDirection(tview.FlexRow)
+	nd.leftPanel.SetBorder(true)
+	nd.leftPanel.SetTitle("Announce Stream")
 	nd.leftPanel.AddItem(nd.announces, 0, 1, true)
 
-	// Content: left panel + detail
-	content := tview.NewFlex().SetDirection(tview.FlexColumn)
-	content.AddItem(nd.leftPanel, 52, 0, true)
-	content.AddItem(nd.detail, 0, 1, false)
-
-	nd.widget = tview.NewFlex().SetDirection(tview.FlexRow)
-	nd.widget.SetBorder(true)
+	// Content: left panel + detail. Python: self.widget = self.columns
+	// (Network.py:1666) — NO outer LineBox or title around the page; the two
+	// columns sit directly in the body.
+	nd.widget = tview.NewFlex().SetDirection(tview.FlexColumn)
 	nd.widget.SetInputCapture(nd.handleInput)
-	nd.widget.AddItem(title, 2, 0, false)
-	nd.widget.AddItem(content, 0, 1, true)
+	nd.widget.AddItem(nd.leftPanel, 52, 0, true)
+	nd.widget.AddItem(nd.detail, 0, 1, false)
 
 	// Set up list callbacks
 	nd.announces.SetSelectedFunc(func(i int, mainText, secondaryText string, shortcut rune) {
@@ -281,16 +281,17 @@ func (nd *NetworkDisplay) showAnnounceDetail(i int) {
 			AddItem(nd.makeButton("[Converse]", func() { nd.converseWith(ann) }), 14, 1, false)
 	}
 
-	// Layout: info + divider + buttons
+	// Layout: info + divider + buttons. The info view uses the left panel's
+	// own border (no separate border → no nested borders); the panel title
+	// switches to "Announce Info" while the detail is shown.
 	infoView := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(infoText, 0, 1, false).
 		AddItem(buttons, 1, 0, false)
-	infoView.SetBorder(true)
-	infoView.SetBorderColor(tcell.NewHexColor(0x888888))
 
 	// Swap into left panel
 	nd.leftPanel.RemoveItem(nd.announces)
 	nd.leftPanel.RemoveItem(nd.nodes)
+	nd.leftPanel.SetTitle("Announce Info")
 	nd.leftPanel.AddItem(infoView, 0, 1, true)
 	nd.inInfoView = true
 
@@ -315,8 +316,10 @@ func (nd *NetworkDisplay) showAnnounceStream() {
 	// Restore the appropriate list
 	if nd.showingNodes {
 		nd.leftPanel.AddItem(nd.nodes, 0, 1, true)
+		nd.leftPanel.SetTitle("Saved Nodes")
 	} else {
 		nd.leftPanel.AddItem(nd.announces, 0, 1, true)
+		nd.leftPanel.SetTitle("Announce Stream")
 	}
 	nd.inInfoView = false
 }
@@ -423,9 +426,11 @@ func (nd *NetworkDisplay) toggleList() {
 	if nd.showingNodes {
 		nd.leftPanel.AddItem(nd.announces, 0, 1, true)
 		nd.showingNodes = false
+		nd.leftPanel.SetTitle("Announce Stream")
 	} else {
 		nd.leftPanel.AddItem(nd.nodes, 0, 1, true)
 		nd.showingNodes = true
+		nd.leftPanel.SetTitle("Saved Nodes")
 	}
 }
 
@@ -569,7 +574,7 @@ func (nd *NetworkDisplay) ShowLocalPeerDialog(lxmfAddr, identityHash, name strin
 func (nd *NetworkDisplay) ShowLXMFPeersDialog(peers []LXMFPeerEntry) {
 	list := tview.NewList()
 	list.SetHighlightFullLine(true)
-	list.SetSelectedBackgroundColor(tcell.NewHexColor(0x666666))
+	ApplyListFocusStyle(list, nd.app.Theme)
 
 	for _, peer := range peers {
 		status := "[green]alive[-]"

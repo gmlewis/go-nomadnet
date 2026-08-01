@@ -348,9 +348,37 @@ func (md *MainDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 	if md.focusRegion == "menu" {
 		return md.handleMenuInput(event)
 	}
-	// Body region: forward everything (pane focus, Up-at-top→menu, Esc→dialog,
-	// per-page keybindings) to the focused page widget.
+	// Body region. Up at the top of the focused list collapses focus to the
+	// menu bar (MainFrame.focus_position = "header"), matching Python's
+	// MainFrame where Up at the top of the body pile moves focus to the header
+	// (Main.py MainFrame:80-86). tview.List clamps silently at the top — it
+	// does NOT fire SetDoneFunc on Up-at-top (only on Escape) — so no page can
+	// detect this on its own; the dispatcher must own the transition. Anything
+	// else is forwarded to the page (pane focus, Esc→dialog, per-page keys).
+	if event.Key() == tcell.KeyUp && md.bodyListAtTop() {
+		md.FocusMenu()
+		return nil
+	}
 	return event
+}
+
+// bodyListAtTop reports whether the currently-focused primitive is a *tview.List
+// sitting at item 0 — the condition under which Up collapses focus to the menu.
+// It is false for non-list primitives (TextView/Form/InputField), for lists not
+// at the top, and whenever a modal dialog overlay is open (the dispatcher must
+// not steal focus from an open dialog).
+func (md *MainDisplay) bodyListAtTop() bool {
+	if md.app == nil {
+		return false
+	}
+	if md.app.Dialogs != nil && md.app.Dialogs.Open() {
+		return false
+	}
+	list, ok := md.app.GetFocus().(*tview.List)
+	if !ok {
+		return false
+	}
+	return list.GetCurrentItem() == 0
 }
 
 // handleMenuInput dispatches keys while the menu bar is focused.

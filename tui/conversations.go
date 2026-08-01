@@ -102,7 +102,7 @@ func NewConversationsDisplay(app *App, convs []ConversationInfo) *ConversationsD
 	// Conversation list
 	cd.list = tview.NewList()
 	cd.list.SetHighlightFullLine(true)
-	cd.list.SetSelectedBackgroundColor(tcell.NewHexColor(0x666666))
+	ApplyListFocusStyle(cd.list, cd.app.Theme)
 
 	cd.populateList()
 
@@ -658,7 +658,7 @@ func (cd *ConversationsDisplay) SaveAttachmentsDialog(attachments []string, onSa
 	cd.dialogOpen = true
 	list := tview.NewList()
 	list.SetHighlightFullLine(true)
-	list.SetSelectedBackgroundColor(tcell.NewHexColor(0x666666))
+	ApplyListFocusStyle(list, cd.app.Theme)
 
 	for _, att := range attachments {
 		list.AddItem(att, "", 0, nil)
@@ -722,7 +722,7 @@ func (cd *ConversationsDisplay) ShowPeerInfoDialog(entry PeerInfoEntry, onSave f
 	// Trust level selection via list
 	trustList := tview.NewList()
 	trustList.SetHighlightFullLine(true)
-	trustList.SetSelectedBackgroundColor(tcell.NewHexColor(0x666666))
+	ApplyListFocusStyle(trustList, cd.app.Theme)
 	trustLevels := []string{TrustUntrusted, TrustUnknown, TrustTrusted}
 	trustList.AddItem(TrustUntrusted, "", 0, nil)
 	trustList.AddItem(TrustUnknown, "", 0, nil)
@@ -740,7 +740,7 @@ func (cd *ConversationsDisplay) ShowPeerInfoDialog(entry PeerInfoEntry, onSave f
 	// Delivery mode via list
 	deliveryList := tview.NewList()
 	deliveryList.SetHighlightFullLine(true)
-	deliveryList.SetSelectedBackgroundColor(tcell.NewHexColor(0x666666))
+	ApplyListFocusStyle(deliveryList, cd.app.Theme)
 	deliveryList.AddItem("Deliver directly", "", 0, nil)
 	deliveryList.AddItem("Use propagation nodes", "", 0, nil)
 	if entry.PreferredDelivery == "propagated" {
@@ -831,7 +831,7 @@ func (cd *ConversationsDisplay) ShowSyncDialog(
 	// Mode selection via list
 	modeList := tview.NewList()
 	modeList.SetHighlightFullLine(true)
-	modeList.SetSelectedBackgroundColor(tcell.NewHexColor(0x666666))
+	ApplyListFocusStyle(modeList, cd.app.Theme)
 	modeList.AddItem("Download all", "", 0, nil)
 	modeList.AddItem("Limit to:", "", 0, nil)
 

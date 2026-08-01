@@ -93,9 +93,9 @@ func NewChannelsDisplay(app *App, rooms []ChannelInfo) *ChannelsDisplay {
 		SetText("[::b]Channels[-]")
 
 	// Rooms list
-	cd.rooms = tview.NewList().
-		SetHighlightFullLine(true).
-		SetSelectedBackgroundColor(tcell.NewHexColor(0x666666))
+	cd.rooms = tview.NewList()
+	cd.rooms.SetHighlightFullLine(true)
+	ApplyListFocusStyle(cd.rooms, app.Theme)
 
 	cd.rooms.SetSelectedFunc(func(i int, mainText, secondaryText string, shortcut rune) {
 		// Room selected — could load messages for that room
@@ -122,9 +122,9 @@ func NewChannelsDisplay(app *App, rooms []ChannelInfo) *ChannelsDisplay {
 		SetText("[gray]Select a room to view messages[-]")
 
 	// Members list
-	cd.members = tview.NewList().
-		SetHighlightFullLine(true).
-		SetSelectedBackgroundColor(tcell.NewHexColor(0x666666))
+	cd.members = tview.NewList()
+	cd.members.SetHighlightFullLine(true)
+	ApplyListFocusStyle(cd.members, app.Theme)
 
 	cd.members.SetSelectedFunc(func(i int, mainText, secondaryText string, shortcut rune) {
 		if cd.OnMemberClick != nil {

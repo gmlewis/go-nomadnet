@@ -18,7 +18,10 @@ package tui
 import (
 	"fmt"
 	"strconv"
+	"sync"
 	"time"
+
+	"github.com/rivo/tview"
 )
 
 // AnnounceTimeLabel builds the "Announced : <when>" status line for the local
@@ -108,4 +111,124 @@ func NodeTotalFilesLabel(files int, hasNode bool) string {
 		s = strconv.Itoa(files)
 	}
 	return "Served Files   : " + s
+}
+
+// NetworkStats is the bordered "Network Stats" panel showing two refreshing
+// lines — "Heard Peers: <n> (30m)" and "Known Nodes: <n>" — matching Python's
+// NetworkStats (Network.py:1570-1603). The counts come from two injected
+// providers so the widget need not import the app/directory. The refresh
+// interval matches UpdatingText.timeout = animation_interval*5 (Network.py:1543),
+// i.e. 5 s at the default 1 s animation_interval.
+type NetworkStats struct {
+	app      *App
+	view     *tview.TextView
+	numPeers func() int
+	numNodes func() int
+	interval time.Duration
+
+	mu      sync.Mutex
+	stopCh  chan struct{}
+	wg      sync.WaitGroup
+	started bool
+}
+
+// NewNetworkStats creates a NetworkStats panel that reads counts from the given
+// providers. refresh is called once immediately so the panel is populated
+// before the first tick. interval is the refresh period (use 5*
+// animation_interval to match Python).
+func NewNetworkStats(app *App, numPeers, numNodes func() int, interval time.Duration) *NetworkStats {
+	ns := &NetworkStats{
+		app:      app,
+		numPeers: numPeers,
+		numNodes: numNodes,
+		interval: interval,
+	}
+	ns.view = tview.NewTextView().
+		SetDynamicColors(false)
+	ns.view.SetBorder(true)
+	ns.view.SetTitle("Network Stats")
+	ns.refresh()
+	return ns
+}
+
+// Widget returns the bordered tview primitive.
+func (ns *NetworkStats) Widget() tview.Primitive { return ns.view }
+
+// refresh re-reads the count providers and updates the displayed text,
+// matching UpdatingText.update (Network.py:1546-1548): title + str(value) +
+// append_text for each line. The view mutation is guarded by ns.mu so the
+// refresh goroutine does not race with concurrent readers (e.g. tests reading
+// ViewText while the ticker fires).
+func (ns *NetworkStats) refresh() {
+	peers := 0
+	nodes := 0
+	if ns.numPeers != nil {
+		peers = ns.numPeers()
+	}
+	if ns.numNodes != nil {
+		nodes = ns.numNodes()
+	}
+	ns.mu.Lock()
+	ns.view.SetText(fmt.Sprintf("Heard Peers: %v (30m)\nKnown Nodes: %v", peers, nodes))
+	ns.mu.Unlock()
+}
+
+// ViewText returns the panel's current text under ns.mu, safe to call
+// concurrently with the refresh goroutine.
+func (ns *NetworkStats) ViewText() string {
+	ns.mu.Lock()
+	defer ns.mu.Unlock()
+	return ns.view.GetText(true)
+}
+
+// start launches the refresh goroutine. When marshal is true each refresh is
+// queued onto the application event loop via QueueUpdateDraw (production); when
+// false it runs synchronously (tests, where no event loop is running and
+// QueueUpdateDraw would block forever on an undrained channel). Idempotent.
+func (ns *NetworkStats) start(marshal bool) {
+	ns.mu.Lock()
+	if ns.started {
+		ns.mu.Unlock()
+		return
+	}
+	ns.stopCh = make(chan struct{})
+	stop := ns.stopCh
+	ns.started = true
+	ns.mu.Unlock()
+
+	ns.wg.Add(1)
+	go func() {
+		defer ns.wg.Done()
+		ticker := time.NewTicker(ns.interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-ticker.C:
+				if marshal && ns.app != nil {
+					ns.app.QueueUpdateDraw(ns.refresh)
+				} else {
+					ns.refresh()
+				}
+			}
+		}
+	}()
+}
+
+// Start launches the refresh goroutine, marshaling updates onto the event loop
+// (production), matching NetworkStats.start (Network.py:1605-1607).
+func (ns *NetworkStats) Start() { ns.start(true) }
+
+// Stop halts the refresh goroutine. Idempotent.
+func (ns *NetworkStats) Stop() {
+	ns.mu.Lock()
+	ns.started = false
+	ch := ns.stopCh
+	ns.stopCh = nil
+	ns.mu.Unlock()
+	if ch != nil {
+		close(ch)
+	}
+	ns.wg.Wait()
 }
