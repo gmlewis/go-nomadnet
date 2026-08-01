@@ -265,15 +265,6 @@ test or a matching `parity.sh` summary):
       5.x — add a TDD task per method as they become prerequisites. Capture
       expected behavior from the Python `nomadnet/` core.)*
 
-### Phase 3 — Micron interactive rendering (CRITICAL for Browser/Guide/Network pages)
-
-- [ ] **3.7 Code spans / images.** Render backtick code spans with a code style;
-      render `{image_data}` placeholders. Test against Python.
-- [ ] **3.8 All-bold fix + heading styles.** Body text renders as `body_text`
-      (normal); only headings use `headingN` by section depth. Test: a Guide
-      fixture’s body runs are not bold and headings match `heading1/2/3`.
-      Verify with `summary.py` `body_bold_run_fraction` ≈ the original’s (<0.1).
-
 ### Phase 4 — TUI page widgets (two-pane layouts, per-widget keys, mouse)
 
 > For each page: build the two-pane layout (fixed list + weighted detail, single-

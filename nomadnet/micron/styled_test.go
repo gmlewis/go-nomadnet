@@ -418,3 +418,61 @@ func spanText(l *StyledLine) string {
 	}
 	return sb.String()
 }
+
+// TestBodyBoldRunFraction mirrors the summary.py `body_bold_run_fraction`
+// heuristic (tooling/tui-parity/summary.py:118-131) at the unit level: across a
+// Guide-like fixture of headings + body paragraphs + a link, the fraction of
+// body content runs (non-heading, non-divider spans with non-space text) that
+// are bold must be < 0.1 — the "all-bold body" regression guard for task 3.8.
+// Headings must use their headingN fg/bg (not bold); body must be plain.
+func TestBodyBoldRunFraction(t *testing.T) {
+	t.Parallel()
+
+	markup := ">Guide Title\n" +
+		"Welcome to the guide. This is normal body text.\n" +
+		"Second line of plain body, also not bold.\n" +
+		">>A Section\n" +
+		"Section body with a `[link`/path`f1] in it.\n" +
+		"Final plain line.\n"
+	lines := RenderToStyledLines(markup, ThemeDark)
+
+	var bodyRuns, boldRuns int
+	headingStyles := map[int][2]string{1: {"#222222", "#bbbbbb"}, 2: {"#111111", "#999999"}}
+	for _, l := range lines {
+		if l.HeadingLevel > 0 {
+			// Headings carry the headingN fg/bg and are NOT bold.
+			want, ok := headingStyles[l.HeadingLevel]
+			if !ok {
+				continue
+			}
+			for _, s := range l.Spans {
+				if s.Bold {
+					t.Errorf("heading level %v span %q is bold; headings use headingN, not bold", l.HeadingLevel, s.Text)
+				}
+				if s.FG != want[0] || s.BG != want[1] {
+					t.Errorf("heading level %v span style = fg %q bg %q, want fg %q bg %q", l.HeadingLevel, s.FG, s.BG, want[0], want[1])
+				}
+			}
+			continue
+		}
+		if l.Divider {
+			continue
+		}
+		for _, s := range l.Spans {
+			if strings.TrimSpace(s.Text) == "" {
+				continue
+			}
+			bodyRuns++
+			if s.Bold {
+				boldRuns++
+			}
+		}
+	}
+	if bodyRuns == 0 {
+		t.Fatal("expected body runs, got 0")
+	}
+	frac := float64(boldRuns) / float64(bodyRuns)
+	if frac >= 0.1 {
+		t.Errorf("body_bold_run_fraction = %v (%v/%v bold), want < 0.1 (all-bold regression)", frac, boldRuns, bodyRuns)
+	}
+}
