@@ -60,7 +60,7 @@ func renderNodeInfo(t *testing.T, ni *NodeInfoDisplay, width, height int) []stri
 //
 // Centering parity: urwid.Text(align=CENTER) is ceil-left (extra col to the
 // LEFT on odd slack) → the glyph and message use centeredText. urwid
-//.Padding(CENTER, PACK) is floor-left (extra col to the RIGHT) → the Back
+// .Padding(CENTER, PACK) is floor-left (extra col to the RIGHT) → the Back
 // button uses a two-equal-spacer Flex row. With a 48-wide inner:
 //
 //	glyph (width 1):   leftPad = (48-1+1)/2 = 24  → col 25  (ceil-left)

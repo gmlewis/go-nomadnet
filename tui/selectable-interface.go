@@ -109,29 +109,28 @@ func (s *SelectableInterfaceItem) UpdateStats(tx, rx int64) {
 // with 2-col padding, then title (selection glyph + icon + name), status
 // (Enabled/Disabled | Connected/Disconnected), type, a dashed divider, and
 // TX/RX byte counts.
+//
+// When the allocated height is less than InterfaceItemHeight the box is drawn
+// PARTIAL — only the top rows that fit, with no bottom border — matching urwid's
+// ListBox, which renders a bottom-clipped last visible item (the off-screen rows
+// including the bottom border are simply not drawn).
 func (s *SelectableInterfaceItem) Draw(screen tcell.Screen) {
 	if s.Box == nil {
 		s.Box = tview.NewBox()
 	}
 	s.Box.DrawForSubclass(screen, s)
 	x, y, w, h := s.GetRect()
-	if w < 4 || h < InterfaceItemHeight {
+	if w < 4 || h < 1 {
 		return
 	}
 	style := tcell.StyleDefault
+	full := h >= InterfaceItemHeight
 
-	// Rounded border.
+	// Top border (row 0), always drawn.
 	screen.SetContent(x, y, BorderTopLeftRounded, nil, style)
 	screen.SetContent(x+w-1, y, BorderTopRightRounded, nil, style)
-	screen.SetContent(x, y+h-1, BorderBottomLeftRounded, nil, style)
-	screen.SetContent(x+w-1, y+h-1, BorderBottomRightRounded, nil, style)
 	for i := 1; i < w-1; i++ {
 		screen.SetContent(x+i, y, BorderHorizontal, nil, style)
-		screen.SetContent(x+i, y+h-1, BorderHorizontal, nil, style)
-	}
-	for i := 1; i < h-1; i++ {
-		screen.SetContent(x, y+i, BorderVertical, nil, style)
-		screen.SetContent(x+w-1, y+i, BorderVertical, nil, style)
 	}
 
 	// Content area: border(1) + pad(2) on each side.
@@ -142,21 +141,37 @@ func (s *SelectableInterfaceItem) Draw(screen tcell.Screen) {
 	if s.focused {
 		sel = "●"
 	}
+	contentRows := []string{
+		fmt.Sprintf("%-4s%s  %s", sel, s.Icon, s.Name),
+		fmt.Sprintf("%-10s%-10s | %s", "Status: ", s.StatusText(), s.ConnectedText()),
+		fmt.Sprintf("%-10s%s", "Type:", s.IfaceType),
+		strings.Repeat("-", cw),
+		fmt.Sprintf("%-10s%-15s%-10s%s", "TX:", s.TXText(), "RX:", s.RXText()),
+	}
 
-	title := fmt.Sprintf("%-4s%s  %s", sel, s.Icon, s.Name)
-	s.printRow(screen, cx, y+1, cw, title, style)
+	// Render rows 1..h-1. For a full box the last row is the bottom border; for
+	// a partial box every row below the top border is an interior content row
+	// flanked by verticals (the bottom border is off-screen / clipped).
+	lastContentRow := h - 1 // index of the last row to fill
+	if full {
+		lastContentRow = h - 2 // reserve the last row for the bottom border
+	}
+	for r := 1; r <= lastContentRow; r++ {
+		screen.SetContent(x, y+r, BorderVertical, nil, style)
+		screen.SetContent(x+w-1, y+r, BorderVertical, nil, style)
+		if r-1 < len(contentRows) {
+			s.printRow(screen, cx, y+r, cw, contentRows[r-1], style)
+		}
+	}
 
-	status := fmt.Sprintf("%-10s%-10s | %s", "Status: ", s.StatusText(), s.ConnectedText())
-	s.printRow(screen, cx, y+2, cw, status, style)
-
-	typeRow := fmt.Sprintf("%-10s%s", "Type:", s.IfaceType)
-	s.printRow(screen, cx, y+3, cw, typeRow, style)
-
-	div := strings.Repeat("-", cw)
-	s.printRow(screen, cx, y+4, cw, div, style)
-
-	txrx := fmt.Sprintf("%-10s%-15s%-10s%s", "TX:", s.TXText(), "RX:", s.RXText())
-	s.printRow(screen, cx, y+5, cw, txrx, style)
+	// Bottom border, only for a full (unclipped) box.
+	if full {
+		screen.SetContent(x, y+h-1, BorderBottomLeftRounded, nil, style)
+		screen.SetContent(x+w-1, y+h-1, BorderBottomRightRounded, nil, style)
+		for i := 1; i < w-1; i++ {
+			screen.SetContent(x+i, y+h-1, BorderHorizontal, nil, style)
+		}
+	}
 }
 
 // printRow writes s left-aligned at (x,y) padded to width w with spaces,

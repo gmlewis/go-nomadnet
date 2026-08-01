@@ -88,12 +88,18 @@ func (d *DialogLineBox) Draw(screen tcell.Screen) {
 		set(x+w, y+i, '│', style)
 	}
 
-	// Title
+	// Title — urwid LineBox.format_title wraps the text in a leading and
+	// trailing space (" title ") and centers it (title_align=CENTER default,
+	// line_box.py:189) over the top border, with the ─ tline filling both
+	// sides (left=floor, right=ceil, the urwid Columns leftover-to-last). The
+	// top-border ─ loop above already drew the full line; writing the spaced
+	// title segment centered here overwrites just the title portion, leaving
+	// the ─ fill on either side.
 	if d.title != "" {
 		titleStyle := style.Foreground(tcell.NewHexColor(0xdddddd))
-		titleRunes := []rune(d.title)
-		titleX := x + (w-len(titleRunes))/2
-		for i, r := range titleRunes {
+		seg := []rune(" " + d.title + " ")
+		titleX := x + (w-len(seg))/2 // floor division → left ─ = floor, right = ceil
+		for i, r := range seg {
 			set(titleX+i, y-1, r, titleStyle)
 		}
 	}

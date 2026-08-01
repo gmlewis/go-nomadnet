@@ -26,7 +26,8 @@ import (
 // inner width the LEFT button gets the extra column (urwid Columns distributes
 // leftover left-to-right), so the trusted tab is one wider than the untrusted
 // tab — matching the Python capture `[ Trusted (0)           ] [ Untrusted (0)
-//        ]` (25 + 1 divider + 24 = 50).
+//
+//	]` (25 + 1 divider + 24 = 50).
 func TestTabBarWidgetWidthDistribution(t *testing.T) {
 	t.Parallel()
 	left := NewTabButton("Trusted (0)")

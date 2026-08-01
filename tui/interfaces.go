@@ -26,10 +26,17 @@ import (
 
 // InterfaceInfo holds status information for a network interface.
 type InterfaceInfo struct {
-	Name      string
-	Type      string
-	Status    string // "connected" or "disconnected"
+	Name   string
+	Type   string
+	Status string // "connected" or "disconnected" — legacy field used by
+	// interface-store and the text formatters; the SelectableInterfaceItem list
+	// driven by the live transport uses Connected/Enabled/TX/RX instead.
+	Connected bool // live link online (RNS Interface.Status)
+	Enabled   bool // interface running / not detached
 	Target    string
+	Bitrate   int
+	TX        int64 // cumulative bytes sent
+	RX        int64 // cumulative bytes received
 	Bandwidth float64
 	Traffic   []float64 // recent traffic samples for chart
 }
@@ -63,11 +70,12 @@ func NewInterfacesDisplay(app *App, interfaces []InterfaceInfo) *InterfacesDispl
 	// Centered "Interfaces" header (Python interface_header = urwid.Text(
 	// ("interface_title", "Interfaces"), align=CENTER), Interfaces.py:2917).
 	// interface_title is the default style (no bold, no fg color) in the dark
-	// palette, so no tview color/bold tags. A 2-row item renders the title on
-	// row 0 and a blank on row 1, matching Python's header + urwid.Divider().
-	title := tview.NewTextView().
-		SetTextAlign(tview.AlignCenter).
-		SetText("Interfaces")
+	// palette, so ColorDefault (terminal default) and no bold. urwid
+	// Text(align=CENTER) is CEIL-left (extra col to the left on odd slack);
+	// tview.AlignCenter floors left, so use centeredText for parity. A 2-row
+	// item renders the title on row 0 and a blank on row 1, matching Python's
+	// header + urwid.Divider().
+	title := newCenteredText(tcell.ColorDefault, "Interfaces", "")
 
 	id.listBox = newInterfaceListBox(id.glyphset)
 	id.SetInterfaces(interfaces)
@@ -90,9 +98,8 @@ func (id *InterfacesDisplay) SetInterfaces(interfaces []InterfaceInfo) {
 	id.items = interfaces
 	items := make([]*SelectableInterfaceItem, 0, len(interfaces))
 	for _, iface := range interfaces {
-		connected := iface.Status == "connected"
 		icon := GetInterfaceIcon(id.glyphset, iface.Type)
-		items = append(items, NewSelectableInterfaceItem(iface.Name, iface.Type, connected, true, int64(iface.Bandwidth), 0, icon))
+		items = append(items, NewSelectableInterfaceItem(iface.Name, iface.Type, iface.Connected, iface.Enabled, iface.TX, iface.RX, icon))
 	}
 	id.listBox.SetItems(items)
 }
@@ -100,6 +107,14 @@ func (id *InterfacesDisplay) SetInterfaces(interfaces []InterfaceInfo) {
 // SelectedIndex returns the focused interface index, or -1 if none.
 func (id *InterfacesDisplay) SelectedIndex() int {
 	return id.listBox.focusIdx
+}
+
+// Items returns the current interface info slice backing the list (the live
+// transport snapshot most recently passed to SetInterfaces). Callers that need
+// to reflect a freshly-refreshed list (e.g. the Show-Interface handler) read
+// this instead of a captured local so they see the current data.
+func (id *InterfacesDisplay) Items() []InterfaceInfo {
+	return id.items
 }
 
 // handleInput processes keyboard shortcuts for the interfaces display.
@@ -163,16 +178,21 @@ func newInterfaceListBox(glyphset string) *interfaceListBox {
 	return b
 }
 
-// SetItems replaces the list contents.
+// SetItems replaces the list contents. Focus is preserved when it points at a
+// still-valid item; otherwise it stays at -1 (no item focused). This matches
+// Python's interface list, whose ListBox focus defaults to the non-selectable
+// header (Interfaces.py:2905-2910 — [interface_header, Divider] lead the
+// walker), so NO interface item shows the ● selection glyph until the user
+// presses Down to move focus onto the first item.
 func (b *interfaceListBox) SetItems(items []*SelectableInterfaceItem) {
 	b.items = items
-	if len(items) == 0 {
+	switch {
+	case len(items) == 0:
 		b.focusIdx = -1
-	} else if b.focusIdx < 0 {
-		b.focusIdx = 0
-	}
-	if b.focusIdx >= len(items) {
-		b.focusIdx = len(items) - 1
+	case b.focusIdx < 0 || b.focusIdx >= len(items):
+		// No valid focus yet (initial set or the focused item vanished in a
+		// refresh) — stay unfocused rather than silently focusing item 0.
+		b.focusIdx = -1
 	}
 	b.offset = 0
 	b.applyFocus()
@@ -195,17 +215,25 @@ func (b *interfaceListBox) HandleKey(key tcell.Key) {
 			b.focusIdx--
 		}
 	case tcell.KeyDown:
-		if b.focusIdx < len(b.items)-1 {
+		if b.focusIdx < 0 {
+			b.focusIdx = 0
+		} else if b.focusIdx < len(b.items)-1 {
 			b.focusIdx++
 		}
 	case tcell.KeyPgUp:
 		visible := b.visibleCount()
+		if b.focusIdx < 0 {
+			b.focusIdx = 0
+		}
 		b.focusIdx -= visible
 		if b.focusIdx < 0 {
 			b.focusIdx = 0
 		}
 	case tcell.KeyPgDn:
 		visible := b.visibleCount()
+		if b.focusIdx < 0 {
+			b.focusIdx = 0
+		}
 		b.focusIdx += visible
 		if b.focusIdx > len(b.items)-1 {
 			b.focusIdx = len(b.items) - 1
@@ -259,13 +287,22 @@ func (b *interfaceListBox) Draw(screen tcell.Screen) {
 	b.scrollIntoView()
 	rowY := y
 	for i := b.offset; i < len(b.items); i++ {
-		if rowY+InterfaceItemHeight > y+h {
+		if rowY >= y+h {
 			break
 		}
+		itemH := InterfaceItemHeight
+		if itemH > y+h-rowY {
+			// Bottom-clipped last item: urwid's ListBox renders the visible top
+			// portion of a partially-fit item rather than skipping it entirely.
+			itemH = y + h - rowY
+		}
 		it := b.items[i]
-		it.SetRect(x, rowY, w, InterfaceItemHeight)
+		it.SetRect(x, rowY, w, itemH)
 		it.Draw(screen)
-		rowY += InterfaceItemHeight
+		rowY += itemH
+		if itemH < InterfaceItemHeight {
+			break // the clipped last item consumed the remaining height
+		}
 	}
 }
 

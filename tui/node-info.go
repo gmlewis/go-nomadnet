@@ -35,15 +35,15 @@ type NodeInfoData struct {
 	// Stat-line providers for the hosting branch (Phase 5). Each returns the
 	// text shown after its label; nil providers yield the "None"/"Never"
 	// fallbacks the Python UpdatingText widgets show before the node reports.
-	LastAnnounce   func() string
-	StorageStats   func() string
-	ActiveLinks    func() string
-	TotalConnects  func() string
-	TotalPages     func() string
-	TotalFiles     func() string
-	OnBrowse       func()
-	OnResetStats   func()
-	OnAnnounce     func()
+	LastAnnounce  func() string
+	StorageStats  func() string
+	ActiveLinks   func() string
+	TotalConnects func() string
+	TotalPages    func() string
+	TotalFiles    func() string
+	OnBrowse      func()
+	OnResetStats  func()
+	OnAnnounce    func()
 }
 
 // NodeInfoDisplay is the "Local Node Info" panel that replaces the Local Peer

@@ -218,3 +218,82 @@ func TestSelectableInterfaceItemDraw(t *testing.T) {
 		t.Errorf("icon = %q, want ᚱ", main)
 	}
 }
+
+// TestSelectableInterfaceItemPartialDraw verifies a bottom-clipped item (height
+// < InterfaceItemHeight, as the list renders for the last visible item) draws
+// its top rows flanked by verticals with NO bottom border — matching urwid's
+// ListBox, which renders the visible top portion and leaves the off-screen
+// bottom border undrawn.
+func TestSelectableInterfaceItemPartialDraw(t *testing.T) {
+	t.Parallel()
+
+	s := NewSelectableInterfaceItem("Iface", "TCPClientInterface", true, true, 10, 20, "󰈀")
+	s.SetRect(0, 0, 60, 5) // 5 of 7 rows: top border + 4 content rows, bottom clipped
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if screen == nil {
+		t.Fatal("nil simulation screen")
+	}
+	if err := screen.Init(); err != nil {
+		t.Fatalf("screen.Init: %v", err)
+	}
+	defer screen.Fini()
+	screen.SetSize(60, 5)
+	s.Draw(screen)
+
+	// Top border present.
+	if main, _, _, _ := screen.GetContent(0, 0); main != BorderTopLeftRounded {
+		t.Errorf("top-left = %q, want %q", main, BorderTopLeftRounded)
+	}
+	// Last visible row (y=4) is the divider content row flanked by verticals,
+	// NOT a bottom border.
+	if main, _, _, _ := screen.GetContent(0, 4); main != BorderVertical {
+		t.Errorf("last row left = %q, want %v (vertical, no bottom border when clipped)", main, BorderVertical)
+	}
+	if main, _, _, _ := screen.GetContent(59, 4); main != BorderVertical {
+		t.Errorf("last row right = %q, want %v", main, BorderVertical)
+	}
+	// Title row (y=1) content present.
+	if main, _, _, _ := screen.GetContent(3, 1); main != '○' {
+		t.Errorf("selection glyph = %q, want ○", main)
+	}
+}
+
+// TestInterfaceListBoxPartialLastItem verifies the list draws a bottom-clipped
+// partial last item into the remaining height rather than skipping it, matching
+// urwid's ListBox render of a partially-fit final item.
+func TestInterfaceListBoxPartialLastItem(t *testing.T) {
+	t.Parallel()
+
+	items := []*SelectableInterfaceItem{
+		NewSelectableInterfaceItem("A", "TCPClientInterface", true, true, 0, 0, "󰈀"),
+		NewSelectableInterfaceItem("B", "TCPClientInterface", true, true, 0, 0, "󰈀"),
+		NewSelectableInterfaceItem("C", "TCPClientInterface", true, true, 0, 0, "󰈀"),
+	}
+	b := newInterfaceListBox("")
+	b.SetItems(items)
+	// Height fits 2 full boxes (14) + 3 rows of a partial 3rd.
+	b.SetRect(0, 0, 60, 17)
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if screen == nil {
+		t.Fatal("nil simulation screen")
+	}
+	if err := screen.Init(); err != nil {
+		t.Fatalf("screen.Init: %v", err)
+	}
+	defer screen.Fini()
+	screen.SetSize(60, 17)
+	b.Draw(screen)
+
+	// Box A top border at y=0, Box B top border at y=7, Box C top border at y=14.
+	if main, _, _, _ := screen.GetContent(0, 14); main != BorderTopLeftRounded {
+		t.Errorf("partial box C top-left at y=14 = %q, want %q", main, BorderTopLeftRounded)
+	}
+	// Box C last visible row (y=16) is a vertical (clipped, no bottom border).
+	if main, _, _, _ := screen.GetContent(0, 16); main != BorderVertical {
+		t.Errorf("partial box C last row y=16 = %q, want %v (clipped, no bottom border)", main, BorderVertical)
+	}
+	// Box C title row (y=15) shows the name.
+	if main, _, _, _ := screen.GetContent(3, 15); main != '○' {
+		t.Errorf("partial box C selection glyph y=15 = %q, want ○", main)
+	}
+}

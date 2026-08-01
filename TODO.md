@@ -237,6 +237,20 @@ test or a matching `parity.sh` summary):
       with footer peek, input fields, tables, partials, `#anchor` jumps; body
       text not all-bold.
 - [ ] Dialogs are true overlays preserving background; `Esc` closes; full forms.
+      (Done: `Esc` closes via DialogLineBox; full forms ported — New Conversation
+      Addr/Name/trust radios/Create/Back, KnownNodeInfo, etc. DialogLineBox title
+      spacing fixed 2026-08-01: urwid `LineBox.format_title` wraps the title in
+      spaces (`" title "`) centered floor-left/ceil-right over the top border;
+      `DialogLineBox.Draw` now writes `" "+title+" "` centered — capture-verified
+      byte-identical title segment `┌──…── New Conversation ──…──┐` vs Python.
+      REMAINING GAP — dialog PLACEMENT: Python places every page dialog as
+      `urwid.Overlay(dialog, bottom=self.listbox, align=CENTER, width=RELATIVE_100,
+      valign=MIDDLE, height=PACK, left=2, right=2)` WITHIN the page's LEFT pane
+      (replacing `columns_widget.contents[0]`); Go's DialogManager centers dialogs
+      on the FULL SCREEN via `centerDialog` + shared `tview.Pages`. So Go's New
+      Conversation `┌` lands at col 15 (full-screen center) vs Python col 2
+      (in-pane). Affects ALL page dialogs; broad architectural change to
+      DialogManager + every host page + focus-restore — deferred, not overnight.)
 - [ ] Readline kill/yank with a global kill ring in every input.
 - [ ] Mouse: click menu, list entries, links, pane gutters, expand gutters.
 - [ ] UTF-8 clean; reflows at 80×24; no resize crash; 1 s intro splash.
@@ -437,6 +451,54 @@ test or a matching `parity.sh` summary):
       via `parity.sh` for the Channels page.
 
 #### 4.I Interfaces (Python `Interfaces.py`, 3214 lines)
+      (Layout parity fix DONE: the page no longer wraps the interface list in an
+      outer `┌─Network Interfaces─┐` LineBox — Python's `InterfaceDisplay` is a
+      `urwid.Filler(urwid.Pile([box_adapter]))` with NO outer border, each
+      interface its own rounded `╭─╮` LineBox laid out directly in the body
+      (Interfaces.py:2932). The header is a centered plain "Interfaces" text
+      (`interface_title` = default style, NOT bold, NOT "Network Interfaces")
+      followed by a `urwid.Divider()`, replicated as a 2-row centered TextView.
+      Capture-verified structural match at 80×24 (centered "Interfaces" title +
+      full-width rounded interface boxes). REAL-DATA WIRING DONE (2026-08-01):
+      `app.InterfaceStats()` parses the RNS config file in FILE ORDER (via
+      `parseInterfaceConfig`, since `rns.LoadConfig` is an unordered map) so
+      disabled-in-config interfaces appear (e.g. `Michmesh Testnet` with
+      `interface_enabled = false` renders "Disabled | Disconnected"), and merges
+      live Connected/TX/RX/Bitrate from `a.Transport.GetInterfaces()` by name.
+      `cmd/gonomadnet/textui.go` wires a 1 s ticker → `SetInterfaces`; the
+      initial populate mutates directly (QueueUpdateDraw would deadlock before
+      Run). Capture at 80×50 shows all 6 interfaces in config order (Michmesh,
+      Beleth, g00n, mobilefabrik, Quortal, Sydney) with correct icon `󰈀`, type
+      `TCPClientInterface`, enabled/disabled + live TX/RX (g00n & Quortal
+      Connected with real traffic). Remaining Go-vs-Python diffs are NOT code
+      bugs: (a) FIRST-ITEM `●`→`○` FIXED (2026-08-01): `interfaceListBox` no
+      longer defaults `focusIdx=0` on `SetItems` (kept -1) — Python's ListBox
+      focus defaults to the non-selectable header (Interfaces.py:2905-2910),
+      so NO interface item shows ● until the user presses Down (first Down →
+      item 0). Capture at 80×24 now shows `○` on Michmesh/Beleth/g00n matching
+      Python. (b) per-item Connected/Disconnected — live network state, varies
+      run-to-run (same class as the per-seed data diffs); (c) PARTIAL-BOX
+      CLIPPING NOW DONE
+      (2026-08-01): `interfaceListBox.Draw` draws a bottom-clipped last item
+      into the remaining height (was: skipped incomplete boxes) and
+      `SelectableInterfaceItem.Draw` renders its top rows with no bottom border
+      when given a partial height (urwid ListBox clips the bottom) — capture at
+      80×24 now shows the 3rd box (g00n) partially, matching Python. (d) TITLE
+      CENTERING FIXED (2026-08-01): the "Interfaces" header now uses
+      `centeredText` (urwid `Text(align=CENTER)` is CEIL-left;
+      tview.AlignCenter floors left) with `ColorDefault` (matches the
+      dark-palette `interface_title` = default style) — verified at
+      135×32 (odd slack 125 → the 1-col title shift is gone).
+      REMAINING 1-row sizing nuance DEFERRED: Python sizes its BoxAdapter to
+      `screen_rows - iface_row_offset` (constant `iface_row_offset = 4`,
+      Interfaces.py:2837) with the 2-row header INSIDE the list, giving
+      `items = screen_rows - 6` rows + 1 blank buffer row at 80×24; Go's list
+      fills all 19 remaining rows so it shows 1 extra partial row (the divider)
+      vs Python's 4 content rows — matching would need a magic-`6` height cap
+      coupled to menu/header/footer heights, fragile at other sizes. GAP:
+      RNodeMultiInterface `[[[/]]]` sub-interface expansion (Interfaces.py:
+      2843-2856) is not handled by `parseInterfaceConfig` — deferred. Remaining
+      4.I items below are Phase 5 RNS-dependent.)
 - [ ] `ShowInterface` — detail with bandwidth charts, `h`/`v` horizontal/vertical
       by width, `tab`/`shift-tab` focus cycle; verify.
 - [ ] `AddInterfaceView`/`EditInterfaceView` — per-type forms; verify vs Python.

@@ -109,8 +109,8 @@ func TestInterfacesDisplayWithInterfaces(t *testing.T) {
 
 	app := newTestApp()
 	interfaces := []InterfaceInfo{
-		{Name: "TCP", Type: "TCPClientInterface", Status: "connected", Target: "192.168.1.1:4173"},
-		{Name: "LoRa", Type: "RNodeInterface", Status: "disconnected", Target: "/dev/ttyUSB0"},
+		{Name: "TCP", Type: "TCPClientInterface", Status: "connected", Connected: true, Enabled: true, Target: "192.168.1.1:4173"},
+		{Name: "LoRa", Type: "RNodeInterface", Status: "disconnected", Connected: false, Enabled: true, Target: "/dev/ttyUSB0"},
 	}
 
 	id := NewInterfacesDisplay(app, interfaces)

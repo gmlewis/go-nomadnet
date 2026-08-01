@@ -34,9 +34,9 @@ import (
 // focus this primitive exactly as it would a bare *tview.List.
 type IndicativeListBox struct {
 	*tview.Box
-	List         *tview.List
-	emptyText    string        // centered placeholder drawn when the List has no items
-	emptyWidget  tview.Primitive // optional widget drawn in the list area when empty
+	List        *tview.List
+	emptyText   string          // centered placeholder drawn when the List has no items
+	emptyWidget tview.Primitive // optional widget drawn in the list area when empty
 }
 
 // NewIndicativeListBox wraps the given List with indicator bars. If list is

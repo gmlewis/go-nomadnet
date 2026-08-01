@@ -353,8 +353,14 @@ func (a *App) Init() error {
 func (a *App) initRNS() {
 	a.Logger.Info("Initializing RNS transport...")
 
-	a.Transport = rns.NewTransportSystem(a.Logger)
-	a.Dir.SetTransport(a.Transport)
+	// Publish the transport under a.mu so readers in other goroutines (e.g.
+	// InterfaceStats, polled from a UI ticker) see the pointer safely; the
+	// pointer is assigned once here and never reassigned.
+	transport := rns.NewTransportSystem(a.Logger)
+	a.mu.Lock()
+	a.Transport = transport
+	a.mu.Unlock()
+	a.Dir.SetTransport(transport)
 	rnsConfigDir := a.RNSConfigDir
 	if rnsConfigDir == "" {
 		rnsConfigDir = a.ensureStandaloneRNSConfig()

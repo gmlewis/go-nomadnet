@@ -772,13 +772,57 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	main.SetDisplay("guide", guideDisplay.Widget())
 	main.SetShortcut("guide", "")
 
-	// Interfaces display
-	interfaces := []tui.InterfaceInfo{
-		{Name: "Michmesh Testnet", Type: "TCPClientInterface", Status: "connected", Target: "RNS.MichMesh.net:7822"},
-	}
-	interfacesDisplay := tui.NewInterfacesDisplay(tuiApp, interfaces)
+	// Interfaces display — wired to the live RNS transport. Python builds the
+	// list from the RNS config + app.rns.get_interface_stats() (Interfaces.py:
+	// 2864-2897) and refreshes TX/RX every 1 s (poll_stats, set_alarm_in(1)).
+	// Go reads App.InterfaceStats() (Transport.GetInterfaces: name/type, live
+	// Status, BytesSent/Received) which returns the running interfaces. RNS init
+	// is asynchronous, so the list is empty until initRNS completes; a 1 s ticker
+	// then populates it and keeps TX/RX/status live. Disabled-in-config
+	// interfaces are skipped by RNS (rns.go: ifaceEnabled gate) and so do not
+	// appear here — a known gap vs Python, which enumerates them from the config.
+	interfacesDisplay := tui.NewInterfacesDisplay(tuiApp, nil)
 	main.SetDisplay("interfaces", interfacesDisplay.Widget())
 	main.SetShortcut("interfaces", "[C-a] Add Interface [C-e] Edit Interface [C-x] Remove Interface [Enter] Show Interface [C-w] Open Text Editor")
+
+	// interfaceInfos snapshots the live transport interfaces into the
+	// InterfaceInfo shape the display consumes.
+	interfaceInfos := func() []tui.InterfaceInfo {
+		stats := a.InterfaceStats()
+		infos := make([]tui.InterfaceInfo, 0, len(stats))
+		for _, s := range stats {
+			infos = append(infos, tui.InterfaceInfo{
+				Name:      s.Name,
+				Type:      s.Type,
+				Enabled:   s.Enabled,
+				Connected: s.Connected,
+				TX:        s.TX,
+				RX:        s.RX,
+				Bitrate:   s.Bitrate,
+			})
+		}
+		return infos
+	}
+	// refreshInterfaces is called from the 1 s ticker goroutine, so it must
+	// marshal the SetInterfaces call onto the UI loop via QueueUpdateDraw.
+	refreshInterfaces := func() {
+		infos := interfaceInfos()
+		tuiApp.QueueUpdateDraw(func() { interfacesDisplay.SetInterfaces(infos) })
+	}
+	// Initial populate. wireDisplays runs on the goroutine that will become the
+	// UI loop, BEFORE tuiApp.Run starts the event loop, so QueueUpdateDraw
+	// (which blocks until the loop drains it) cannot be used here — it would
+	// deadlock and Run would never start. Populate directly instead; the
+	// transport may still be nil at this point (initRNS is async), in which
+	// case this is a no-op and the ticker below picks the list up once initRNS
+	// completes.
+	interfacesDisplay.SetInterfaces(interfaceInfos())
+	ifaceTicker := time.NewTicker(1 * time.Second)
+	go func() {
+		for range ifaceTicker.C {
+			refreshInterfaces()
+		}
+	}()
 
 	// Wire interfaces keyboard shortcuts
 	interfacesDisplay.OnAddInterface = func() {
@@ -817,15 +861,20 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		)
 	}
 	interfacesDisplay.OnShowInterface = func(idx int) {
-		if idx < 0 || idx >= len(interfaces) {
+		items := interfacesDisplay.Items()
+		if idx < 0 || idx >= len(items) {
 			return
 		}
-		iface := interfaces[idx]
+		iface := items[idx]
+		status := "disconnected"
+		if iface.Connected {
+			status = "connected"
+		}
 		tuiApp.Dialogs.ShowDialog("Interface: "+iface.Name,
 			tview.NewTextView().
 				SetDynamicColors(true).
 				SetText(fmt.Sprintf("[::b]%s[-]\n\nType: %s\nStatus: %s\nTarget: %s",
-					iface.Name, iface.Type, iface.Status, iface.Target)),
+					iface.Name, iface.Type, status, iface.Target)),
 			50, 9, nil)
 	}
 
@@ -887,5 +936,8 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		main.SelectPage("guide")
 	}
 
-	return logDisplay.StopTailing
+	return func() {
+		logDisplay.StopTailing()
+		ifaceTicker.Stop()
+	}
 }

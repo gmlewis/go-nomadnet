@@ -186,8 +186,8 @@ func TestKnownNodeInfoTrustPreselect(t *testing.T) {
 	nd := NewNetworkDisplay(app, nil, nil)
 
 	cases := []struct {
-		trust  string
-		want   string // the radio label that should be "(X)"
+		trust string
+		want  string // the radio label that should be "(X)"
 	}{
 		{"untrusted", "Untrusted"},
 		{"unknown", "Unknown"},

@@ -225,6 +225,34 @@ func TestFormatMessageMention(t *testing.T) {
 	}
 }
 
+// TestInterfacesDisplayTitleCeilLeftCentering verifies the "Interfaces" header
+// is CEIL-left centered (urwid Text(align=CENTER) puts the extra column on the
+// LEFT when the slack is odd; tview.AlignCenter floors it). At width 81 the
+// 10-char title has slack 71 -> ceil-left leftPad 36, floor 35, so the 'I' must
+// land at column 36, not 35.
+func TestInterfacesDisplayTitleCeilLeftCentering(t *testing.T) {
+	t.Parallel()
+	app := newTestApp()
+	id := NewInterfacesDisplay(app, nil)
+
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatalf("screen.Init: %v", err)
+	}
+	defer screen.Fini()
+	screen.SetSize(81, 24)
+	id.layout.SetRect(0, 0, 81, 24)
+	id.layout.Draw(screen)
+
+	// 'I' of "Interfaces" on row 0 at the ceil-left column (36).
+	if main, _, _, _ := screen.GetContent(36, 0); main != 'I' {
+		t.Errorf("title 'I' at col 36 = %q, want 'I' (ceil-left)", main)
+	}
+	if main, _, _, _ := screen.GetContent(35, 0); main == 'I' {
+		t.Errorf("title 'I' found at col 35 (floor-left); want ceil-left at 36")
+	}
+}
+
 func TestInterfacesDisplayKeyboardShortcuts(t *testing.T) {
 	t.Parallel()
 
@@ -306,16 +334,17 @@ func TestInterfacesDisplayShowRNSDisconnected(t *testing.T) {
 }
 
 // TestInterfacesDisplayListFocusDraw verifies the selectable interface list
-// renders rounded boxes, the first item is focused (●), Down moves focus to
-// the second (● moves, first reverts to ○), and Enter fires OnShowInterface
-// with the focused index.
+// renders rounded boxes with NO item focused at boot (○ on all, matching
+// Python's ListBox whose focus defaults to the non-selectable header), Down
+// focuses the first item (●), a second Down moves ● to the second, and Enter
+// fires OnShowInterface with the focused index.
 func TestInterfacesDisplayListFocusDraw(t *testing.T) {
 	t.Parallel()
 	app := newTestApp()
 	ifaces := []InterfaceInfo{
-		{Name: "RNode1", Type: "RNodeInterface", Status: "connected"},
-		{Name: "TCP1", Type: "TCPClientInterface", Status: "disconnected"},
-		{Name: "Auto1", Type: "AutoInterface", Status: "connected"},
+		{Name: "RNode1", Type: "RNodeInterface", Status: "connected", Connected: true, Enabled: true},
+		{Name: "TCP1", Type: "TCPClientInterface", Status: "disconnected", Connected: false, Enabled: true},
+		{Name: "Auto1", Type: "AutoInterface", Status: "connected", Connected: true, Enabled: true},
 	}
 	id := NewInterfacesDisplay(app, ifaces)
 
@@ -331,27 +360,43 @@ func TestInterfacesDisplayListFocusDraw(t *testing.T) {
 	id.layout.SetRect(0, 0, 80, 24)
 	id.layout.Draw(screen)
 
-	// No outer border (Python has none): title(2) ⇒ first box top at y=2, title
-	// row y=3. Box content starts at x = border(1) + pad(2) = 3.
-	if c, _, _, _ := screen.GetContent(3, 3); c != '●' {
-		t.Errorf("first item selection glyph = %q, want ●", c)
+	// No outer border (Python has none): title(2) => first box top at y=2, title
+	// row y=3. Box content starts at x = border(1) + pad(2) = 3. No item is
+	// focused at boot (Python's list focus is on the header) => ○ on all.
+	if c, _, _, _ := screen.GetContent(3, 3); c != '○' {
+		t.Errorf("first item selection glyph at boot = %q, want ○", c)
 	}
-	// Second box top at y=9, title row y=10; unfocused ⇒ ○.
 	if c, _, _, _ := screen.GetContent(3, 10); c != '○' {
-		t.Errorf("second item selection glyph = %q, want ○", c)
+		t.Errorf("second item selection glyph at boot = %q, want ○", c)
+	}
+	if id.SelectedIndex() != -1 {
+		t.Errorf("SelectedIndex at boot = %d, want -1", id.SelectedIndex())
 	}
 
-	// Down moves focus to the second item.
+	// First Down focuses the first item (Python: Down from header -> item 0).
+	id.handleInput(tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone))
+	id.layout.Draw(screen)
+	if c, _, _, _ := screen.GetContent(3, 3); c != '●' {
+		t.Errorf("after first Down, first item glyph = %q, want ●", c)
+	}
+	if c, _, _, _ := screen.GetContent(3, 10); c != '○' {
+		t.Errorf("after first Down, second item glyph = %q, want ○", c)
+	}
+	if id.SelectedIndex() != 0 {
+		t.Errorf("SelectedIndex after first Down = %d, want 0", id.SelectedIndex())
+	}
+
+	// A second Down moves focus to the second item.
 	id.handleInput(tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone))
 	id.layout.Draw(screen)
 	if c, _, _, _ := screen.GetContent(3, 3); c != '○' {
-		t.Errorf("after Down, first item glyph = %q, want ○", c)
+		t.Errorf("after second Down, first item glyph = %q, want ○", c)
 	}
 	if c, _, _, _ := screen.GetContent(3, 10); c != '●' {
-		t.Errorf("after Down, second item glyph = %q, want ●", c)
+		t.Errorf("after second Down, second item glyph = %q, want ●", c)
 	}
 	if id.SelectedIndex() != 1 {
-		t.Errorf("SelectedIndex = %d, want 1", id.SelectedIndex())
+		t.Errorf("SelectedIndex after second Down = %d, want 1", id.SelectedIndex())
 	}
 
 	// Enter fires OnShowInterface with the focused index.
