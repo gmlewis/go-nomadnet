@@ -48,22 +48,28 @@ type NodeEntry struct {
 // Matches Python's NetworkDisplay with KnownNodes, AnnounceStream,
 // and toggle between them via ctrl-l.
 type NetworkDisplay struct {
-	app           *App
-	widget        *tview.Flex
-	leftPanel     *tview.Flex
-	announces       *tview.List
-	announcesList   *IndicativeListBox
-	nodes           *tview.List
-	nodesList       *IndicativeListBox
-	nodeEmptyState  *tview.TextView
-	detail          *tview.TextView
-	showingNodes  bool
-	inInfoView    bool
-	displayMode   DisplayMode
-	SanitizeNames bool
-	announceData  []AnnounceEntry
-	nodeData      []NodeEntry
-	onNavigate    func(url string)
+	app            *App
+	widget         *tview.Flex
+	leftPanel      *tview.Flex
+	announces      *tview.List
+	announcesList  *IndicativeListBox
+	announceStream *announceStreamDisplay
+	nodes          *tview.List
+	nodesList      *IndicativeListBox
+	nodeEmptyState *centeredText
+	listBox        *tview.Flex // bordered, titled list slot (Saved Nodes/Announce Stream/Announce Info/…)
+	localPeer      *LocalPeerDisplay
+	nodeInfo       *NodeInfoDisplay
+	lxmfPeers      *LXMFPeersDisplay
+	browser        *BrowserPane
+	showingNodes   bool
+	showingPeers   bool
+	inInfoView     bool
+	displayMode    DisplayMode
+	SanitizeNames  bool
+	announceData   []AnnounceEntry
+	nodeData       []NodeEntry
+	onNavigate     func(url string)
 
 	// Keyboard shortcut callbacks (Python: NetworkDisplay.keypress)
 	OnToggleFullscreen func()
@@ -80,6 +86,12 @@ type NetworkDisplay struct {
 	OnMsgOp    func() // [Msg Op] — message the node operator
 	OnUseAsPN  func() // [Use as default] — set default propagation node
 	OnConverse func() // [Converse] — open a conversation with the peer
+
+	// OnResolveAnnounceInfo resolves the directory-backed fields an AnnounceInfo
+	// view needs at view time (Python AnnounceInfo __init__: trust_level,
+	// simplest_display_str, op_str). Returns ok=false when no resolver is wired
+	// (the view then falls back to the AnnounceEntry's own fields).
+	OnResolveAnnounceInfo func(ann AnnounceEntry) (AnnounceInfoData, bool)
 }
 
 // NewNetworkDisplay creates a new network display matching Python's layout.
@@ -97,9 +109,6 @@ func NewNetworkDisplay(app *App, announces []AnnounceEntry, nodes []NodeEntry) *
 	ApplyListFocusStyle(nd.announces, app.Theme)
 
 	nd.announceData = announces
-	for _, ann := range announces {
-		nd.addAnnounceEntry(ann)
-	}
 
 	// Nodes list. Same single-row ListEntry basis as the announce stream.
 	nd.nodes = tview.NewList()
@@ -116,6 +125,12 @@ func NewNetworkDisplay(app *App, announces []AnnounceEntry, nodes []NodeEntry) *
 	// matching the original IndicativeListBox. The bare Lists remain the
 	// focus/manipulation targets; the wrappers are the layout children.
 	nd.announcesList = NewIndicativeListBox(nd.announces)
+
+	// AnnounceStream Pile (tab bar + search/display-toggle + list), mirroring
+	// Python's AnnounceStream (Network.py:394-551). Built after the
+	// IndicativeListBox so it can wrap it; its update() populates the announce
+	// list from announceData (counting/filtering by type + search text).
+	nd.announceStream = newAnnounceStreamDisplay(nd)
 	nd.nodesList = NewIndicativeListBox(nd.nodes)
 
 	// KnownNodes empty-state (Network.py:833-882): when no nodes are saved the
@@ -123,22 +138,28 @@ func NewNetworkDisplay(app *App, announces []AnnounceEntry, nodes []NodeEntry) *
 	// by "Currently, no nodes are saved\n\nCtrl+L to view the announce stream",
 	// in a TOP-filled Filler. The whole message uses the warning_text palette
 	// color (#ba4 → #bbaa44). Shown in place of the nodes list when it is empty.
-	nd.nodeEmptyState = tview.NewTextView()
-	nd.nodeEmptyState.SetTextAlign(tview.AlignCenter)
-	nd.nodeEmptyState.SetDynamicColors(false)
-	nd.nodeEmptyState.SetTextColor(GetThemeColors(app.Theme)["warning_text"])
-	nd.nodeEmptyState.SetText(nd.glyphs()["info"] + "\n\nCurrently, no nodes are saved\n\nCtrl+L to view the announce stream\n\n")
+	// KnownNodes empty-state (Network.py:833-882): when no nodes are saved the
+	// "Saved Nodes" LineBox shows a centered warning-colored info glyph followed
+	// by "Currently, no nodes are saved\n\nCtrl+L to view the announce stream",
+	// in a TOP-filled Filler. The whole message uses the warning_text palette
+	// color (#ba4 → #bbaa44). Shown in place of the nodes list when it is empty.
+	// centeredText ceil-left-centers each line to match urwid (tview's
+	// AlignCenter floors, landing 1 col right of the original on odd slack).
+	nd.nodeEmptyState = newCenteredText(
+		GetThemeColors(app.Theme)["warning_text"],
+		nd.glyphs()["info"], "",
+		"Currently, no nodes are saved", "",
+		"Ctrl+L to view the announce stream", "", "",
+	)
 
-	// Detail view
-	nd.detail = tview.NewTextView()
-	nd.detail.SetDynamicColors(true)
-	nd.detail.SetScrollable(true)
-	nd.detail.SetTextColor(tcell.NewHexColor(0xbbbbbb))
-	nd.detail.SetText("[gray]Select an announce or node to view details[-]")
-	// Python's right pane is the Browser display (a LineBox); the detail pane
-	// carries its own border so the two panes render with separate borders and
-	// no outer box around the page.
-	nd.detail.SetBorder(true)
+	// Right pane: the "Remote Node" browser (Python self.browser.display_widget,
+	// Browser.py:486). Boot state is the disconnected view — a bordered "Remote
+	// Node" LineBox with a centered "Disconnected / ←  →" (browser_inactive
+	// #444). URL fetching / page rendering arrive in Phase 5 (the RNS link);
+	// until then this matches Python's boot appearance. The pane carries its
+	// own border so the two panes render with separate borders and no outer box
+	// around the page.
+	nd.browser = NewBrowserPane(app)
 
 	// Left panel: Saved Nodes by default (Python list_display=1). Python's left
 	// sub-widgets each carry their own titled LineBox — KnownNodes is titled
@@ -146,10 +167,30 @@ func NewNetworkDisplay(app *App, announces []AnnounceEntry, nodes []NodeEntry) *
 	// (Network.py:446). The panel border+title reflects the active list mode and
 	// is updated on toggle. When the saved-nodes list is empty the empty-state
 	// message is shown in its place.
+	// Local Peer Info panel, PACKed below the list in the left pane
+	// (Network.py:1641-1644: left_pile = [(WEIGHT 1, known_nodes), (PACK,
+	// local_peer)]). Created with empty data; the wiring layer fills it via
+	// UpdateLocalPeer once the app's identity/LXMF destination are ready.
+	nd.localPeer = NewLocalPeerDisplay(app, "", "", "", time.Time{})
+
+	// LXMF Propagation Peers list (Python LXMFPeers, Network.py:1752). Built
+	// with no peered nodes (the no-content branch) until the wiring layer
+	// populates it via UpdateLXMFPeers in Phase 5 (the LXMF message router is
+	// not wired yet). C-p swaps it into the left-pane list slot.
+	nd.lxmfPeers = NewLXMFPeersDisplay(app)
+
+	// The left pane is a PILE of two separately-bordered LineBoxes — the
+	// mode-titled list (Saved Nodes/Announce Stream/Announce Info/…) and the
+	// Local Peer Info panel — with NO outer border around the pile, matching
+	// Python's NetworkLeftPile (Network.py:1641, 867, 446, 256). listBox carries
+	// the list slot's border+title; setLeftList swaps its content and title.
+	nd.listBox = tview.NewFlex().SetDirection(tview.FlexRow)
+	nd.listBox.SetBorder(true)
+	nd.setLeftList(nd.nodesView(), "Saved Nodes")
+
 	nd.leftPanel = tview.NewFlex().SetDirection(tview.FlexRow)
-	nd.leftPanel.SetBorder(true)
-	SetTitledBorder(nd.leftPanel, "Saved Nodes")
-	nd.leftPanel.AddItem(nd.nodesView(), 0, 1, true)
+	nd.leftPanel.AddItem(nd.listBox, 0, 1, true)
+	nd.leftPanel.AddItem(nd.localPeer.Widget(), nd.localPeer.Height(), 0, false)
 
 	// Content: left panel + detail. Python: self.widget = self.columns
 	// (Network.py:1666) — NO outer LineBox or title around the page; the two
@@ -157,11 +198,17 @@ func NewNetworkDisplay(app *App, announces []AnnounceEntry, nodes []NodeEntry) *
 	nd.widget = tview.NewFlex().SetDirection(tview.FlexColumn)
 	nd.widget.SetInputCapture(nd.handleInput)
 	nd.widget.AddItem(nd.leftPanel, 52, 0, true)
-	nd.widget.AddItem(nd.detail, 0, 1, false)
+	nd.widget.AddItem(nd.browser.Widget(), 0, 1, false)
 
-	// Set up list callbacks
+	// Set up list callbacks. The announce list shows only the active tab's
+	// filtered entries, so resolve the selected entry through the AnnounceStream
+	// (its entries slice maps 1:1 to list rows).
 	nd.announces.SetSelectedFunc(func(i int, mainText, secondaryText string, shortcut rune) {
-		nd.showAnnounceDetail(i)
+		ann, ok := nd.announceStream.entryAt(i)
+		if !ok {
+			return
+		}
+		nd.showAnnounceDetailFor(ann)
 	})
 	nd.nodes.SetSelectedFunc(func(i int, mainText, secondaryText string, shortcut rune) {
 		nd.showNodeDetail(i)
@@ -199,9 +246,14 @@ func (nd *NetworkDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 		}
 		return nil
 	case tcell.KeyCtrlP:
+		// Python ctrl p: reinit_lxmf_peers() then show_peers()
+		// (Network.py:1608-1609). OnShowPeers lets the wiring layer refresh
+		// the peer set from the LXMF message router (Phase 5); showPeers
+		// swaps the left-pane slot to the peers list regardless.
 		if nd.OnShowPeers != nil {
 			nd.OnShowPeers()
 		}
+		nd.showPeers()
 		return nil
 	case tcell.KeyCtrlW:
 		if nd.OnDisconnect != nil {
@@ -228,11 +280,6 @@ func (nd *NetworkDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 	return event
 }
 
-// addAnnounceEntry adds a single announce to the list.
-func (nd *NetworkDisplay) addAnnounceEntry(ann AnnounceEntry) {
-	nd.addAnnounceEntryWithMode(ann)
-}
-
 // addNodeEntry adds a single node to the list. The row text mirrors Python's
 // NodeEntry (Network.py:984-1015): "{node_glyph} {display_str}" with no
 // secondary text. Per-item trust coloring (list_trusted/list_untrusted/...) is
@@ -243,98 +290,98 @@ func (nd *NetworkDisplay) addNodeEntry(node NodeEntry) {
 	nd.nodes.AddItem(text, "", 0, nil)
 }
 
-// showAnnounceDetail replaces the left panel with an AnnounceInfo view
-// matching Python's AnnounceInfo widget. Shows Time, Addr, Type, Name,
-// Trust, Operator (for nodes), Announce Data, and action buttons.
+// showAnnounceDetail is retained for backward compatibility (tests); it looks
+// up the entry in the full announce data by index. New callers should use
+// showAnnounceDetailFor with the entry resolved through the AnnounceStream.
 func (nd *NetworkDisplay) showAnnounceDetail(i int) {
 	if i < 0 || i >= len(nd.announceData) {
 		return
 	}
-	ann := nd.announceData[i]
+	nd.showAnnounceDetailFor(nd.announceData[i])
+}
 
-	isNode := ann.Type == "node"
-	isPN := ann.Type == "pn"
-
-	// Build info text
-	var sb strings.Builder
-	tsStr := ann.Timestamp.Format("2006-01-02 15:04:05")
-
-	typeStr := "Peer Ⓟ"
-	if isNode {
-		typeStr = "Nomad Network Node Ⓝ"
-	} else if isPN {
-		typeStr = "LXMF Propagation Node ↑"
+// showAnnounceDetailFor replaces the left panel with an AnnounceInfo view
+// matching Python's AnnounceInfo widget (Network.py:59-256): a TOP-filled Pile
+// of Time/Addr/Type/Name/[Oprtr]/Trust rows, divider lines, the announce data
+// block, and a weighted button row (node: Back/Connect/Msg Op/Save; pn:
+// Back/Use as default; peer: Back/Converse). Directory-backed fields (trust,
+// display string, operator) are resolved via OnResolveAnnounceInfo when wired.
+func (nd *NetworkDisplay) showAnnounceDetailFor(ann AnnounceEntry) {
+	data := AnnounceInfoData{
+		DisplayStr: ann.DisplayName,
+		TrustStr:   trustStringFromLevel(ann.TrustLevel),
+		TrustStyle: trustStyleFromLevel(ann.TrustLevel),
+		OpStr:      "Unknown",
+	}
+	if nd.OnResolveAnnounceInfo != nil {
+		if resolved, ok := nd.OnResolveAnnounceInfo(ann); ok {
+			data = resolved
+		}
 	}
 
-	addrStr := "<" + ann.SourceHash + ">"
-	displayStr := ann.DisplayName
-	if displayStr == "" {
-		displayStr = ann.SourceHash
-	}
-
-	sb.WriteString(fmt.Sprintf("[::b]Time  :[-]  %s\n", tsStr))
-	sb.WriteString(fmt.Sprintf("[::b]Addr  :[-]  [lightblue]%s[-]\n", addrStr))
-	sb.WriteString(fmt.Sprintf("[::b]Type  :[-]  %s\n", typeStr))
-	sb.WriteString(fmt.Sprintf("[::b]Name  :[-]  %s\n", displayStr))
-
-	if isNode {
-		sb.WriteString(fmt.Sprintf("[::b]Trust :[-]  %s\n", ann.TrustLevel))
-	}
-
-	if ann.AppData != "" {
-		dataStr := truncateStr(ann.AppData, 120)
-		sb.WriteString(fmt.Sprintf("\n[::b]Announce Data:[-]\n%s\n", dataStr))
-	}
-
-	infoText := tview.NewTextView().
-		SetDynamicColors(true).
-		SetTextColor(tcell.NewHexColor(0xbbbbbb)).
-		SetText(sb.String())
-
-	// Build buttons matching Python's layout
-	var buttons *tview.Flex
-	if isNode {
-		buttons = tview.NewFlex().SetDirection(tview.FlexColumn).
-			AddItem(nd.makeButton("[Back]", func() { nd.showAnnounceStream() }), 8, 1, false).
-			AddItem(tview.NewTextView().SetText(" "), 1, 0, false).
-			AddItem(nd.makeButton("[Connect]", func() { nd.connectToNode(ann) }), 12, 1, false).
-			AddItem(tview.NewTextView().SetText(" "), 1, 0, false).
-			AddItem(nd.makeButton("[Msg Op]", func() { nd.msgOpNode(ann) }), 11, 1, false).
-			AddItem(tview.NewTextView().SetText(" "), 1, 0, false).
-			AddItem(nd.makeButton("[Save]", func() { nd.saveNode(ann) }), 9, 1, false)
-	} else if isPN {
-		buttons = tview.NewFlex().SetDirection(tview.FlexColumn).
-			AddItem(nd.makeButton("[Back]", func() { nd.showAnnounceStream() }), 8, 1, false).
-			AddItem(tview.NewTextView().SetText(" "), 1, 0, false).
-			AddItem(nd.makeButton("[Use as default]", func() { nd.useAsPN(ann) }), 20, 1, false)
-	} else {
-		buttons = tview.NewFlex().SetDirection(tview.FlexColumn).
-			AddItem(nd.makeButton("[Back]", func() { nd.showAnnounceStream() }), 8, 1, false).
-			AddItem(tview.NewTextView().SetText(" "), 1, 0, false).
-			AddItem(nd.makeButton("[Converse]", func() { nd.converseWith(ann) }), 14, 1, false)
-	}
-
-	// Layout: info + divider + buttons. The info view uses the left panel's
-	// own border (no separate border → no nested borders); the panel title
-	// switches to "Announce Info" while the detail is shown.
-	infoView := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(infoText, 0, 1, false).
-		AddItem(buttons, 1, 0, false)
-
-	// Swap into left panel
-	nd.leftPanel.RemoveItem(nd.announcesList)
-	nd.leftPanel.RemoveItem(nd.nodesList)
-	SetTitledBorder(nd.leftPanel, "Announce Info")
-	nd.leftPanel.AddItem(infoView, 0, 1, true)
+	ai := newAnnounceInfoDisplay(nd, ann, data)
+	nd.setLeftList(ai.Widget(), "Announce Info")
 	nd.inInfoView = true
+	// Focus the AnnounceInfo button row (Python pile.focus_position = last =
+	// buttons; button_columns.focus_position = 0 = Back), so Enter/click reach
+	// the buttons.
+	nd.focusLeftList()
 
-	// Show announce detail in the right panel
-	nd.detail.SetText(formatAnnounce(ann))
+	// The right pane stays the "Remote Node" browser (Python keeps the browser
+	// in the right pane; AnnounceInfo is an overlay/left-swap, not a right-pane
+	// detail). The announce fields are all in the left-pane AnnounceInfo view.
+}
+
+// trustStringFromLevel maps a Go trust-level string ("trusted"/"untrusted"/
+// "unknown"/"warning", as produced by the wiring layer) to the display string
+// Python's AnnounceInfo uses (Network.py:103-122). An empty level (announces
+// carry no trust until resolved) defaults to Unknown.
+func trustStringFromLevel(level string) string {
+	switch level {
+	case "trusted":
+		return "Trusted"
+	case "untrusted":
+		return "Untrusted"
+	case "warning":
+		return "Warning"
+	case "unknown":
+		return "Unknown"
+	default:
+		return "Unknown"
+	}
+}
+
+// trustStyleFromLevel maps a Go trust-level string to the palette style key
+// Python's AnnounceInfo uses for the trust string (Network.py:103-122).
+func trustStyleFromLevel(level string) string {
+	switch level {
+	case "trusted":
+		return "list_trusted"
+	case "untrusted":
+		return "list_untrusted"
+	case "warning":
+		return "list_untrusted" // Python's else-branch falls back to list_untrusted
+	case "unknown":
+		return "list_unknown"
+	default:
+		return "list_unknown"
+	}
 }
 
 // showNodeDetail is an alias — nodes are selected from the nodes list.
 func (nd *NetworkDisplay) showNodeDetail(i int) {
-	nd.showAnnounceDetail(i)
+	if i < 0 || i >= len(nd.nodeData) {
+		return
+	}
+	// Saved-node selection reuses the AnnounceInfo layout with the node entry
+	// synthesized into an AnnounceEntry.
+	node := nd.nodeData[i]
+	nd.showAnnounceDetailFor(AnnounceEntry{
+		SourceHash:  node.SourceHash,
+		DisplayName: node.DisplayName,
+		Type:        "node",
+		TrustLevel:  node.TrustLevel,
+	})
 }
 
 // showAnnounceStream restores the left panel to the announce/node list.
@@ -344,17 +391,14 @@ func (nd *NetworkDisplay) showAnnounceStream() {
 	}
 
 	// Remove info view from left panel
-	nd.leftPanel.Clear()
-
-	// Restore the appropriate list
 	if nd.showingNodes {
-		nd.leftPanel.AddItem(nd.nodesView(), 0, 1, true)
-		SetTitledBorder(nd.leftPanel, "Saved Nodes")
+		nd.setLeftList(nd.nodesView(), "Saved Nodes")
 	} else {
-		nd.leftPanel.AddItem(nd.announcesList, 0, 1, true)
-		SetTitledBorder(nd.leftPanel, "Announce Stream")
+		nd.setLeftList(nd.announceStream.Widget(), "Announce Stream")
 	}
 	nd.inInfoView = false
+	nd.showingPeers = false
+	nd.focusLeftList()
 }
 
 // HandleEsc returns from AnnounceInfo to the list. Returns true if the
@@ -412,15 +456,6 @@ func (nd *NetworkDisplay) converseWith(ann AnnounceEntry) {
 	}
 }
 
-// makeButton creates a tview.Button styled for the AnnounceInfo view.
-func (nd *NetworkDisplay) makeButton(label string, action func()) *tview.Button {
-	btn := tview.NewButton(label)
-	btn.SetBackgroundColor(tcell.NewHexColor(0x444444))
-	btn.SetLabelColor(tcell.NewHexColor(0xdddddd))
-	btn.SetSelectedFunc(action)
-	return btn
-}
-
 // Widget returns the tview primitive for this display.
 func (nd *NetworkDisplay) Widget() tview.Primitive {
 	return nd.widget
@@ -434,10 +469,7 @@ func (nd *NetworkDisplay) UpdateAnnounces(announces []AnnounceEntry) {
 	// Save current position before clearing.
 	currentItem := nd.announces.GetCurrentItem()
 
-	nd.announces.Clear()
-	for _, ann := range announces {
-		nd.addAnnounceEntryWithMode(ann)
-	}
+	nd.announceStream.update()
 
 	// Restore position, clamping to valid range.
 	newCount := nd.announces.GetItemCount()
@@ -456,14 +488,10 @@ func (nd *NetworkDisplay) UpdateAnnounces(announces []AnnounceEntry) {
 // SelectedAnnounce returns the announce currently selected in the announce
 // stream list, or ok=false if the stream is empty/not showing.
 func (nd *NetworkDisplay) SelectedAnnounce() (AnnounceEntry, bool) {
-	if nd.showingNodes || len(nd.announceData) == 0 {
+	if nd.showingNodes {
 		return AnnounceEntry{}, false
 	}
-	idx := nd.announces.GetCurrentItem()
-	if idx < 0 || idx >= len(nd.announceData) {
-		return AnnounceEntry{}, false
-	}
-	return nd.announceData[idx], true
+	return nd.announceStream.selectedEntry()
 }
 
 // SelectedNode returns the node currently selected in the saved-nodes list, or
@@ -510,14 +538,92 @@ func (nd *NetworkDisplay) refreshNodesView() {
 	if !nd.showingNodes || nd.inInfoView {
 		return
 	}
-	nd.leftPanel.RemoveItem(nd.nodesList)
-	nd.leftPanel.RemoveItem(nd.nodeEmptyState)
-	nd.leftPanel.AddItem(nd.nodesView(), 0, 1, true)
+	nd.setLeftList(nd.nodesView(), "Saved Nodes")
 }
 
 // ShowingNodes reports whether the saved-nodes list is currently displayed
 // (vs. the announce stream). Used by wiring to pick the right delete action.
 func (nd *NetworkDisplay) ShowingNodes() bool { return nd.showingNodes }
+
+// setLeftList swaps the content and title of the bordered list slot
+// (nd.listBox) — the first, weight-1 item of the left pane — while the Local
+// Peer Info panel stays packed below it. Mirrors Python's left_pile, where
+// contents[0] swaps between KnownNodes/AnnounceStream/AnnounceInfo/KnownNodeInfo
+// but the LocalPeer (contents[1]) stays put (Network.py:1641, 1705, 335).
+//
+// It does NOT establish keyboard focus on the swapped item — that is the
+// caller's responsibility via focusLeftList (see below). tview dispatches keys
+// to the root primitive, which cascades through the Flex chain to the focused
+// descendant; a freshly swapped item has no focused descendant (HasFocus is
+// false), so without an explicit SetFocus the cascade has nowhere to deliver
+// Enter/arrows. focusLeftList fixes that for UI-thread-driven swaps.
+func (nd *NetworkDisplay) setLeftList(item tview.Primitive, title string) {
+	nd.listBox.Clear()
+	nd.listBox.AddItem(item, 0, 1, true)
+	SetTitledBorder(nd.listBox, title)
+}
+
+// focusLeftList establishes keyboard focus on the primitive currently swapped
+// into the bordered list slot, so subsequent keys (Enter/arrows/button
+// activation) cascade to it via the root InputHandler. Mirrors Python's
+// left_pile.focus_position = 0 (the list slot is the focused region; the
+// AnnounceStream/KnownNodes list — or the AnnounceInfo button row — receives
+// focus). MUST be called on the UI thread (it calls app.SetFocus, which locks
+// the application); background-driven swaps (refreshNodesView from the RNS
+// init goroutine) must NOT call it — use QueueUpdateDraw instead, or leave
+// focus untouched.
+func (nd *NetworkDisplay) focusLeftList() {
+	if nd.app == nil {
+		return
+	}
+	nd.app.SetFocus(nd.listBox)
+}
+
+// UpdateLocalPeer fills the Local Peer Info panel with the app's real identity
+// data. lxmfAddr and identityHash are prettyhexrep-formatted ("<hex>"); name
+// is the current display name; lastAnnounce is the last announce time (zero →
+// "Never"). Called by the wiring layer once the app's RNS identity is ready.
+func (nd *NetworkDisplay) UpdateLocalPeer(lxmfAddr, identityHash, name string, lastAnnounce time.Time) {
+	if nd.localPeer == nil {
+		return
+	}
+	nd.localPeer.SetData(lxmfAddr, identityHash, name, lastAnnounce)
+}
+
+// SetLocalPeerHandlers wires the Save / Announce Now / Node Info button
+// callbacks on the Local Peer Info panel. The wiring layer connects these to
+// the app's set_display_name / announce_now / NodeInfo-panel actions.
+func (nd *NetworkDisplay) SetLocalPeerHandlers(onSave func(name string), onAnnounce, onNodeInfo func()) {
+	if nd.localPeer == nil {
+		return
+	}
+	nd.localPeer.OnSave = onSave
+	nd.localPeer.OnAnnounce = onAnnounce
+	nd.localPeer.OnNodeInfo = onNodeInfo
+}
+
+// ShowNodeInfo swaps the bottom of the left pane from the Local Peer Info panel
+// to the Local Node Info panel (Python node_info_query, Network.py:1399-1401),
+// building it lazily from the given data. The list slot above is unaffected.
+// The NodeInfo panel's Back button swaps back via ShowLocalPeer.
+func (nd *NetworkDisplay) ShowNodeInfo(data NodeInfoData) {
+	if nd.nodeInfo == nil {
+		nd.nodeInfo = NewNodeInfoDisplay(nd.app, data)
+		nd.nodeInfo.OnBack = nd.ShowLocalPeer
+	}
+	nd.leftPanel.RemoveItem(nd.localPeer.Widget())
+	nd.leftPanel.AddItem(nd.nodeInfo.Widget(), nd.nodeInfo.Height(), 0, false)
+}
+
+// ShowLocalPeer swaps the bottom of the left pane back to the Local Peer Info
+// panel (Python show_peer_info, Network.py:1396-1398), removing the NodeInfo
+// panel if it was shown.
+func (nd *NetworkDisplay) ShowLocalPeer() {
+	if nd.nodeInfo != nil {
+		nd.leftPanel.RemoveItem(nd.nodeInfo.Widget())
+	}
+	nd.leftPanel.AddItem(nd.localPeer.Widget(), nd.localPeer.Height(), 0, false)
+}
 
 // nodesView returns the left-pane widget for the saved-nodes mode: the
 // IndicativeListBox when nodes exist, or the centered empty-state message when
@@ -535,44 +641,64 @@ func (nd *NetworkDisplay) toggleList() {
 		nd.showAnnounceStream()
 	}
 
-	nd.leftPanel.RemoveItem(nd.announcesList)
-	nd.leftPanel.RemoveItem(nd.nodesList)
-	nd.leftPanel.RemoveItem(nd.nodeEmptyState)
-
 	if nd.showingNodes {
-		nd.leftPanel.AddItem(nd.announcesList, 0, 1, true)
+		nd.setLeftList(nd.announceStream.Widget(), "Announce Stream")
 		nd.showingNodes = false
-		SetTitledBorder(nd.leftPanel, "Announce Stream")
 	} else {
-		nd.leftPanel.AddItem(nd.nodesView(), 0, 1, true)
+		nd.setLeftList(nd.nodesView(), "Saved Nodes")
 		nd.showingNodes = true
-		SetTitledBorder(nd.leftPanel, "Saved Nodes")
+	}
+	nd.showingPeers = false
+	nd.focusLeftList()
+}
+
+// showPeers swaps the left-pane list slot to the LXMF Propagation Peers list
+// (Python show_peers, Network.py:1688). Python's show_peers also flips
+// list_display so a subsequent ctrl-l (toggle_list) returns to whichever of
+// Saved Nodes/Announce Stream was showing before; the flip of showingNodes
+// here reproduces that (toggleList shows the opposite of showingNodes).
+func (nd *NetworkDisplay) showPeers() {
+	if nd.inInfoView {
+		nd.inInfoView = false
+	}
+	nd.showingNodes = !nd.showingNodes
+	nd.showingPeers = true
+	nd.setLeftList(nd.lxmfPeers.Widget(), nd.lxmfPeers.Title())
+	nd.focusLeftList()
+}
+
+// UpdateLXMFPeers repopulates the LXMF Propagation Peers list (Python
+// reinit_lxmf_peers, Network.py:1717). Called by the wiring layer in Phase 5
+// once the LXMF message router's peer set is known; until then the no-content
+// branch renders.
+func (nd *NetworkDisplay) UpdateLXMFPeers(peers []LXMFPeerEntry) {
+	if nd.lxmfPeers == nil {
+		return
+	}
+	nd.lxmfPeers.SetPeers(peers)
+	if nd.showingPeers {
+		nd.setLeftList(nd.lxmfPeers.Widget(), nd.lxmfPeers.Title())
 	}
 }
+
+// ShowingPeers reports whether the LXMF peers list is currently displayed.
+func (nd *NetworkDisplay) ShowingPeers() bool { return nd.showingPeers }
 
 // ToggleDisplayMode toggles between showing display names and
 // destination hashes in the announce stream.
 func (nd *NetworkDisplay) ToggleDisplayMode() {
 	nd.displayMode = ToggleDisplayMode(nd.displayMode)
-	nd.rebuildAnnounceList()
+	nd.announceStream.toggle.SetLabel(nd.DisplayModeLabel())
+	nd.announceStream.update()
 }
 
-// rebuildAnnounceList repopulates the announce list using the
-// current display mode.
+// rebuildAnnounceList repopulates the announce list via the AnnounceStream
+// (retained as a thin wrapper for callers that predate the AnnounceStream Pile).
 func (nd *NetworkDisplay) rebuildAnnounceList() {
-	nd.announces.Clear()
-	for _, ann := range nd.announceData {
-		nd.addAnnounceEntryWithMode(ann)
-	}
+	nd.announceStream.update()
 	if nd.app != nil {
 		nd.app.QueueUpdateDraw(func() {})
 	}
-}
-
-// addAnnounceEntryWithMode adds a single announce using the current display mode.
-func (nd *NetworkDisplay) addAnnounceEntryWithMode(ann AnnounceEntry) {
-	text := FormatAnnounceStreamRow(ann, time.Now(), nd.displayMode == DisplayHash, nd.SanitizeNames, nd.glyphs())
-	nd.announces.AddItem(text, "", 0, nil)
 }
 
 // glyphs returns the glyph set for this display, falling back to unicode.

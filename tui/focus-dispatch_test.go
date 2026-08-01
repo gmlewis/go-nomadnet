@@ -27,8 +27,9 @@ import (
 //
 //   - Ctrl-Q is the ONLY global quit (Esc/q/digits are NOT quits).
 //   - In the menu region: Left/Right move focus between buttons WITHOUT
-//     switching the body page; Enter/Space activate (switch page + drop to
-//     body); Tab/Down drop to body without switching.
+//     switching the body page; Enter/Space activate (switch page, focus STAYS
+//     in the menu — Python's show_* does not move focus_position);
+//     Tab/Down drop to body without switching.
 //   - In the body region: Left/Right/Up/Tab/Esc are forwarded to the page
 //     (returned unconsumed) so the page can do pane focus / Esc-to-dialog /
 //     Up-at-top→menu. The body page is unchanged by the main dispatcher.
@@ -107,12 +108,12 @@ func TestFocusDispatch(t *testing.T) {
 		{"menu/right at end wraps", "menu", last, "conversations",
 			tcell.NewEventKey(tcell.KeyRight, 0, tcell.ModNone),
 			"menu", 0, "conversations", true, false},
-		{"menu/enter activates page + drops to body", "menu", 1, "conversations",
+		{"menu/enter activates page, keeps menu focus", "menu", 1, "conversations",
 			tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone),
-			"body", 1, "network", true, false},
-		{"menu/space activates page + drops to body", "menu", 2, "conversations",
+			"menu", 1, "network", true, false},
+		{"menu/space activates page, keeps menu focus", "menu", 2, "conversations",
 			tcell.NewEventKey(tcell.KeyRune, ' ', tcell.ModNone),
-			"body", 2, "channels", true, false},
+			"menu", 2, "channels", true, false},
 		{"menu/tab drops to body, no switch", "menu", 1, "conversations",
 			tcell.NewEventKey(tcell.KeyTab, 0, tcell.ModNone),
 			"body", 1, "conversations", true, false},

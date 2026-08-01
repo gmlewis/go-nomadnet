@@ -1,0 +1,81 @@
+// Copyright 2026 Glenn Lewis. All rights reserved.
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+package tui
+
+import "testing"
+
+// TestUrwidSpaceWrap pins the shortcut-bar wrapping against urwid's "space"
+// wrap algorithm (urwid/text_layout.py:240-352), which the Python footer uses.
+// Expected lines were derived from the urwid algorithm and cross-checked
+// against capture.sh output of the Python original:
+//
+//   - Network bar at 80 cols: urwid fills line 1 to exactly 80 cols
+//     ("...[C-f] Forward" — "Forward" ENDS at col 80), then breaks at the space
+//     AT the fill column ("perfect space wrap"), dropping that space and
+//     starting line 2 with the remaining one of the double-space (" [C-r]…").
+//     tview's WordWrap instead breaks at the LAST space before overflow (before
+//     "Forward"), which is the bug this replaces.
+//   - Conversations list bar at 80 cols: the fill column lands inside "Sort",
+//     so urwid walks back to the space after "[C-o]" → line 1 ends "[C-o]",
+//     line 2 starts "Sort  [C-p] My LXMF  [C-g] Fullscreen".
+func TestUrwidSpaceWrap(t *testing.T) {
+	t.Parallel()
+	networkBar := "[C-l] Nodes/Announces  [C-x] Remove  [C-w] Disconnect  [C-d] Back  [C-f] Forward  [C-r] Reload  [C-u] URL  [C-g] Fullscreen  [C-s / C-b] Save Node"
+	listBar := "[C-e] Peer Info  [C-x] Delete  [C-r] Sync  [C-n] New  [C-u] Ingest URI  [C-o] Sort  [C-p] My LXMF  [C-g] Fullscreen"
+	tests := []struct {
+		name  string
+		text  string
+		width int
+		want  []string
+	}{
+		{
+			"network bar at 80 — Forward stays on line 1",
+			networkBar, 80,
+			[]string{
+				"[C-l] Nodes/Announces  [C-x] Remove  [C-w] Disconnect  [C-d] Back  [C-f] Forward",
+				" [C-r] Reload  [C-u] URL  [C-g] Fullscreen  [C-s / C-b] Save Node",
+			},
+		},
+		{
+			"conversations list bar at 80 — breaks after [C-o]",
+			listBar, 80,
+			[]string{
+				"[C-e] Peer Info  [C-x] Delete  [C-r] Sync  [C-n] New  [C-u] Ingest URI  [C-o]",
+				"Sort  [C-p] My LXMF  [C-g] Fullscreen",
+			},
+		},
+		{"network bar at 200 fits one row", networkBar, 200, []string{networkBar}},
+		{"empty yields one empty line", "", 80, []string{""}},
+		{"short fits one row", "[C-d] Back  [C-f] Forward", 80, []string{"[C-d] Back  [C-f] Forward"}},
+		{"zero width yields one line", listBar, 0, []string{listBar}},
+		{"embedded newline honored", "a\nbc", 80, []string{"a", "bc"}},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := urwidSpaceWrap(tt.text, tt.width)
+			if len(got) != len(tt.want) {
+				t.Fatalf("urwidSpaceWrap(%q, %d) = %d lines, want %d\n got=%#v", tt.text, tt.width, len(got), len(tt.want), got)
+			}
+			for i := range tt.want {
+				if got[i] != tt.want[i] {
+					t.Errorf("urwidSpaceWrap(%q, %d) line %d = %q, want %q", tt.text, tt.width, i, got[i], tt.want[i])
+				}
+			}
+		})
+	}
+}

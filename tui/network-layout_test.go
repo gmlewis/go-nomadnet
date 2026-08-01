@@ -56,18 +56,18 @@ func TestNetworkDisplayLeftPaneTitled(t *testing.T) {
 	app := newTestApp()
 	nd := NewNetworkDisplay(app, nil, nil)
 
-	if got := nd.leftPanel.GetTitle(); got != " Saved Nodes " {
-		t.Errorf("default left pane title = %q, want \" Saved Nodes \"", got)
+	if got := nd.listBox.GetTitle(); got != " Saved Nodes " {
+		t.Errorf("default list box title = %q, want \" Saved Nodes \"", got)
 	}
 
 	nd.toggleList() // showingNodes -> false (announce stream)
-	if got := nd.leftPanel.GetTitle(); got != " Announce Stream " {
-		t.Errorf("after toggle left pane title = %q, want \" Announce Stream \"", got)
+	if got := nd.listBox.GetTitle(); got != " Announce Stream " {
+		t.Errorf("after toggle list box title = %q, want \" Announce Stream \"", got)
 	}
 
 	nd.toggleList() // back to saved nodes
-	if got := nd.leftPanel.GetTitle(); got != " Saved Nodes " {
-		t.Errorf("after second toggle left pane title = %q, want \" Saved Nodes \"", got)
+	if got := nd.listBox.GetTitle(); got != " Saved Nodes " {
+		t.Errorf("after second toggle list box title = %q, want \" Saved Nodes \"", got)
 	}
 }
 
@@ -84,11 +84,11 @@ func TestNetworkDisplayNodesEmptyState(t *testing.T) {
 	if nd.nodes.GetItemCount() != 0 {
 		t.Fatalf("precondition: nodes list should be empty")
 	}
-	if got := nd.nodeEmptyState.GetText(true); !strings.Contains(got, "Currently, no nodes are saved") {
+	if got := nd.nodeEmptyState.GetText(); !strings.Contains(got, "Currently, no nodes are saved") {
 		t.Errorf("empty-state text = %q, want it to contain the no-nodes message", got)
 	}
-	if !strings.Contains(nd.nodeEmptyState.GetText(true), "Ctrl+L to view the announce stream") {
-		t.Errorf("empty-state text = %q, want it to contain the Ctrl+L hint", nd.nodeEmptyState.GetText(true))
+	if !strings.Contains(nd.nodeEmptyState.GetText(), "Ctrl+L to view the announce stream") {
+		t.Errorf("empty-state text = %q, want it to contain the Ctrl+L hint", nd.nodeEmptyState.GetText())
 	}
 
 	// Adding a node and refreshing swaps the list in (nodesView returns the
@@ -101,5 +101,121 @@ func TestNetworkDisplayNodesEmptyState(t *testing.T) {
 	}
 	if nd.nodesView() != (tview.Primitive)(nd.nodesList) {
 		t.Errorf("nodesView after adding = %T, want nodesList", nd.nodesView())
+	}
+}
+
+// TestNetworkDisplayShowNodeInfoSwap verifies the bottom of the left pane swaps
+// from the Local Peer Info panel to the Local Node Info panel and back,
+// matching Python's node_info_query/show_peer_info (Network.py:1399-1401,
+// 1396-1398) which replace left_pile.contents[1]. The list slot (contents[0])
+// stays put; only the PACK bottom slot changes.
+func TestNetworkDisplayShowNodeInfoSwap(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	app.Glyphs = GetGlyphSet(GlyphUnicode)
+	app.GlyphSet = GlyphUnicode
+	nd := NewNetworkDisplay(app, nil, nil)
+
+	// Initially the bottom slot is the Local Peer Info panel.
+	if nd.leftPanel.GetItem(1) != nd.localPeer.Widget() {
+		t.Errorf("initial bottom slot = %T, want localPeer.Widget", nd.leftPanel.GetItem(1))
+	}
+
+	// ShowNodeInfo swaps the bottom slot to the NodeInfo panel without
+	// touching the list slot (index 0 remains listBox).
+	nd.ShowNodeInfo(NodeInfoData{HasNode: false})
+	if nd.nodeInfo == nil {
+		t.Fatal("ShowNodeInfo did not create the NodeInfo panel")
+	}
+	if nd.leftPanel.GetItem(1) != nd.nodeInfo.Widget() {
+		t.Errorf("after ShowNodeInfo bottom slot = %T, want nodeInfo.Widget", nd.leftPanel.GetItem(1))
+	}
+	if nd.leftPanel.GetItem(0) != nd.listBox {
+		t.Errorf("list slot changed after ShowNodeInfo; want listBox unchanged")
+	}
+
+	// ShowLocalPeer swaps back to the Local Peer Info panel.
+	nd.ShowLocalPeer()
+	if nd.leftPanel.GetItem(1) != nd.localPeer.Widget() {
+		t.Errorf("after ShowLocalPeer bottom slot = %T, want localPeer.Widget", nd.leftPanel.GetItem(1))
+	}
+}
+
+// TestNetworkDisplayShowPeersSwap pins the C-p (show_peers) left-pane swap and
+// the ctrl-l toggle-back, matching Python's show_peers + toggle_list
+// (Network.py:1688, 1668). C-p swaps the list slot to the LXMF peers list
+// (titled "LXMF Propagation Peers (0)"); a subsequent ctrl-l returns to the
+// mode that was showing before C-p (because show_peers flips the toggle state).
+func TestNetworkDisplayShowPeersSwap(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	app.Glyphs = GetGlyphSet(GlyphUnicode)
+	nd := NewNetworkDisplay(app, nil, nil)
+
+	// Boot: Saved Nodes (showingNodes=true).
+	if got := nd.listBox.GetTitle(); got != " Saved Nodes " {
+		t.Fatalf("boot title = %q, want ' Saved Nodes '", got)
+	}
+	if nd.ShowingPeers() {
+		t.Error("boot: ShowingPeers should be false")
+	}
+
+	// C-p → peers list. The list slot's first child becomes the peers content.
+	nd.showPeers()
+	if !nd.ShowingPeers() {
+		t.Error("after showPeers: ShowingPeers should be true")
+	}
+	if got := nd.listBox.GetTitle(); got != " LXMF Propagation Peers (0) " {
+		t.Errorf("after showPeers title = %q, want ' LXMF Propagation Peers (0) '", got)
+	}
+
+	// ctrl-l from peers returns to Saved Nodes (show_peers flipped showingNodes
+	// from true→false; toggleList shows the opposite of showingNodes=false →
+	// Saved Nodes, and flips showingNodes back to true).
+	nd.toggleList()
+	if nd.ShowingPeers() {
+		t.Error("after toggleList from peers: ShowingPeers should be false")
+	}
+	if got := nd.listBox.GetTitle(); got != " Saved Nodes " {
+		t.Errorf("after toggleList title = %q, want ' Saved Nodes '", got)
+	}
+
+	// From Announce Stream, C-p then ctrl-l returns to Announce Stream.
+	nd.toggleList() // Saved Nodes → Announce Stream
+	if got := nd.listBox.GetTitle(); got != " Announce Stream " {
+		t.Fatalf("expected Announce Stream, got %q", got)
+	}
+	nd.showPeers()
+	if got := nd.listBox.GetTitle(); got != " LXMF Propagation Peers (0) " {
+		t.Errorf("after showPeers (from announce) title = %q", got)
+	}
+	nd.toggleList() // showingNodes was flipped false→true by showPeers; toggle → Announce Stream
+	if got := nd.listBox.GetTitle(); got != " Announce Stream " {
+		t.Errorf("after toggleList (from announce path) title = %q, want ' Announce Stream '", got)
+	}
+}
+
+// TestNetworkDisplayUpdateLXMFPeersRefreshesTitle verifies UpdateLXMFPeers
+// updates the slot title while the peers list is displayed.
+func TestNetworkDisplayUpdateLXMFPeersRefreshesTitle(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	app.Glyphs = GetGlyphSet(GlyphUnicode)
+	nd := NewNetworkDisplay(app, nil, nil)
+
+	nd.showPeers()
+	if got := nd.listBox.GetTitle(); got != " LXMF Propagation Peers (0) " {
+		t.Fatalf("title = %q, want count 0", got)
+	}
+
+	nd.UpdateLXMFPeers([]LXMFPeerEntry{{Hash: "abcdef", Name: "node1", Alive: true}})
+	if got := nd.lxmfPeers.Count(); got != 1 {
+		t.Errorf("Count = %d, want 1", got)
+	}
+	if got := nd.listBox.GetTitle(); got != " LXMF Propagation Peers (1) " {
+		t.Errorf("title after update = %q, want count 1", got)
 	}
 }

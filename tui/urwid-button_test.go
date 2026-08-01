@@ -106,3 +106,45 @@ func TestUrwidButtonClick(t *testing.T) {
 		t.Errorf("left click: consumed=%v fired=%v, want true/true", consumed, fired)
 	}
 }
+
+// TestTabButtonRenderFlat pins the TabButton rendering: "[ label ]" — identical
+// to UrwidButton but with "[" / "]" brackets (Python TabButton, Conversations.py
+// :82-84, is a urwid.Button subclass overriding button_left="[", button_right=
+// "]"). The label is left-justified and padded so "]" sits at the right edge,
+// matching the original's Columns layout (each tab is weight 1 in the tab_bar
+// Columns with dividechars=1, Conversations.py:395-398).
+func TestTabButtonRenderFlat(t *testing.T) {
+	t.Parallel()
+	wantTab := func(label string, w int) string {
+		labelW := w - 2 - 2*urwidButtonDivideChars
+		padded := label
+		if len([]rune(padded)) < labelW {
+			padded += strings.Repeat(" ", labelW-len([]rune(padded)))
+		}
+		return "[" + " " + padded + " " + "]"
+	}
+	// "Trusted (0)" (11 chars) in a 25-wide tab → "[ Trusted (0)           ]".
+	b := NewTabButton("Trusted (0)")
+	if got := drawUrwidButtonAt(t, b, 25); got != wantTab("Trusted (0)", 25) {
+		t.Errorf("tab render width 25 = %q, want %q", got, wantTab("Trusted (0)", 25))
+	}
+	// "Untrusted (0)" (13 chars) in a 24-wide tab → "[ Untrusted (0)        ]".
+	b2 := NewTabButton("Untrusted (0)")
+	if got := drawUrwidButtonAt(t, b2, 24); got != wantTab("Untrusted (0)", 24) {
+		t.Errorf("tab render width 24 = %q, want %q", got, wantTab("Untrusted (0)", 24))
+	}
+}
+
+// TestTabButtonActivate verifies the TabButton fires on Enter/Space/click like
+// the flat button (it drives the Conversations tab filter switch).
+func TestTabButtonActivate(t *testing.T) {
+	t.Parallel()
+	fired := 0
+	b := NewTabButton("Untrusted (0)").SetSelectedFunc(func() { fired++ })
+	h := b.InputHandler()
+	h(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone), func(p tview.Primitive) {})
+	h(tcell.NewEventKey(tcell.KeyRune, ' ', tcell.ModNone), func(p tview.Primitive) {})
+	if fired != 2 {
+		t.Errorf("tab fired %d times after Enter+Space, want 2", fired)
+	}
+}

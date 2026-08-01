@@ -105,6 +105,33 @@ func (d *DialogLineBox) Draw(screen tcell.Screen) {
 	}
 }
 
+// Focus delegates to the dialog's content so the content's first focusable
+// widget receives focus when the application focuses the dialog
+// (tview.Application.SetFocus calls Focus with a SetFocus delegate). Without
+// this override the embedded *tview.Box.Focus would only flag the dialog
+// itself and no inner field would ever gain focus, leaving every dialog
+// keyboard-uneditable (only mouse clicks could focus a field).
+func (d *DialogLineBox) Focus(delegate func(p tview.Primitive)) {
+	if d.content != nil {
+		d.content.Focus(delegate)
+		return
+	}
+	d.Box.Focus(delegate)
+}
+
+// HasFocus reports whether the dialog or any of its content has focus. tview
+// dispatches key events to the root only when root.HasFocus() is true, and
+// Flex/Pages.HasFocus recurses through their items; without this override a
+// focused inner field (whose intermediate containers do not set their own
+// hasFocus flag) would leave the whole focus chain reporting false, so no key
+// events would reach the field.
+func (d *DialogLineBox) HasFocus() bool {
+	if d.content != nil && d.content.HasFocus() {
+		return true
+	}
+	return d.Box.HasFocus()
+}
+
 // InputHandler handles key events, dismissing on Escape.
 func (d *DialogLineBox) InputHandler() func(event *tcell.EventKey, setFocus func(tview.Primitive)) {
 	return d.WrapInputHandler(func(event *tcell.EventKey, setFocus func(tview.Primitive)) {

@@ -34,7 +34,9 @@ import (
 // focus this primitive exactly as it would a bare *tview.List.
 type IndicativeListBox struct {
 	*tview.Box
-	List *tview.List
+	List         *tview.List
+	emptyText    string        // centered placeholder drawn when the List has no items
+	emptyWidget  tview.Primitive // optional widget drawn in the list area when empty
 }
 
 // NewIndicativeListBox wraps the given List with indicator bars. If list is
@@ -46,6 +48,19 @@ func NewIndicativeListBox(list *tview.List) *IndicativeListBox {
 	}
 	return &IndicativeListBox{Box: tview.NewBox(), List: list}
 }
+
+// SetEmptyText sets the centered placeholder drawn in the list area when the
+// wrapped List has no items, mirroring nomadnet's empty list body
+// `[urwid.Text(empty_label, align='center')]` (Conversations.py:496). Without a
+// real item the indicator bars still render "───" above and below it.
+func (i *IndicativeListBox) SetEmptyText(text string) { i.emptyText = text }
+
+// SetEmptyWidget sets a widget drawn in the list area (between the indicator
+// bars) when the wrapped List has no items, mirroring nomadnet's IndicativeListBox
+// which holds arbitrary widgets — e.g. the Channels "No hubs yet…" Text
+// (Channels.py:1604) is a single Text widget as the only list entry. The widget
+// is laid out to the list rect each draw. A non-empty List takes precedence.
+func (i *IndicativeListBox) SetEmptyWidget(w tview.Primitive) { i.emptyWidget = w }
 
 // SetRect lays out the wrapped List one row below the top and one row above the
 // bottom (reserving space for the indicator bars) when there is room, otherwise
@@ -74,6 +89,19 @@ func (i *IndicativeListBox) Draw(screen tcell.Screen) {
 		return
 	}
 	i.List.Draw(screen)
+
+	// When the list is empty, draw either the empty widget (a free-form
+	// primitive, e.g. the Channels "No hubs yet…" Text) or the centered
+	// placeholder text in the list area between the indicator bars.
+	if i.List.GetItemCount() == 0 {
+		lx, ly, lw, lh := i.listRect()
+		if i.emptyWidget != nil {
+			i.emptyWidget.SetRect(lx, ly, lw, lh)
+			i.emptyWidget.Draw(screen)
+		} else if i.emptyText != "" {
+			tview.Print(screen, i.emptyText, lx, ly, lw, tview.AlignCenter, tcell.ColorDefault)
+		}
+	}
 
 	top, bottom := i.indicators()
 	if h >= 3 {

@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
@@ -168,16 +169,38 @@ func (dm *DialogManager) DismissTop() {
 	dm.dismissTop()
 }
 
+// transparentBox is a spacer that draws nothing. Unlike tview.NewBox, whose
+// DrawForSubclass fills its rect with the background color (clearing it), a
+// transparentBox leaves the underlying screen untouched. centerDialog uses it
+// for the dialog margin spacers so that a centered dialog's right/bottom border
+// — which sits one cell outside the dialog box, inside the trailing margin's
+// rect — is not overwritten when the margin is drawn after the dialog. (tview
+// Flex.Draw only defers the focused item's draw to last; when focus is on a
+// dialog's inner field rather than the dialog itself, the trailing margins
+// would otherwise clear the border.)
+type transparentBox struct {
+	*tview.Box
+}
+
+// newTransparentBox returns a non-clearing spacer.
+func newTransparentBox() *transparentBox {
+	return &transparentBox{Box: tview.NewBox()}
+}
+
+// Draw does nothing — the spacer is transparent and does not clear its rect.
+func (t *transparentBox) Draw(screen tcell.Screen) {}
+
 // centerDialog wraps content in a full-screen Flex that centers it at the
-// given width and height. The surrounding space is transparent so the
-// underlying page shows through.
+// given width and height. The surrounding space is transparent (non-clearing)
+// so the underlying page shows through and the dialog's borders survive
+// regardless of which inner widget holds focus.
 func centerDialog(content tview.Primitive, width, height int) tview.Primitive {
 	row := tview.NewFlex().
-		AddItem(tview.NewBox(), 0, 1, false).
+		AddItem(newTransparentBox(), 0, 1, false).
 		AddItem(content, width, 0, true).
-		AddItem(tview.NewBox(), 0, 1, false)
+		AddItem(newTransparentBox(), 0, 1, false)
 	return tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(tview.NewBox(), 0, 1, false).
+		AddItem(newTransparentBox(), 0, 1, false).
 		AddItem(row, height, 0, true).
-		AddItem(tview.NewBox(), 0, 1, false)
+		AddItem(newTransparentBox(), 0, 1, false)
 }

@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/gdamore/tcell/v2"
+	"github.com/mattn/go-runewidth"
 	"github.com/rivo/tview"
 )
 
@@ -34,6 +35,9 @@ type MainDisplay struct {
 	menuItems         []MenuItem
 	contentArea       *tview.Pages
 	shortcutBar       *tview.TextView
+	shortcutTextRaw   string // raw (unwrapped) shortcut text; the bar renders a pre-wrapped copy
+	shortcutWrapSrc   string // raw text last wrapped into the bar (cache invalidation)
+	shortcutWrapW     int    // width last wrapped at (-1 ⇒ cache cold)
 	activeMenu        int    // focused menu button (highlight); not necessarily the displayed page
 	activePage        string // key of the currently displayed body page
 	focusRegion       string // "body" (default) or "menu" — mirrors MainFrame.focus_position
@@ -109,6 +113,17 @@ func NewMainDisplay(app *App, theme int, glyphSetName string) *MainDisplay {
 	md.shortcutBar.SetTextColor(colors["menubar_fg"])
 	md.shortcutBar.SetBackgroundColor(colors["menubar_bg"])
 	md.shortcutBar.SetTextAlign(tview.AlignLeft)
+	// The Python footer is a wrapping urwid.Text whose height grows to the
+	// wrapped row count (e.g. 2 rows for the long Conversations list bar at 80
+	// cols). We pre-wrap the text ourselves with urwidSpaceWrap (matching
+	// urwid's "space" wrap algorithm — see resizeShortcutBar) and feed the bar
+	// newline-broken lines, so WordWrap is OFF: tview's WordWrap breaks at the
+	// last space before a line overflows, which drops a word urwid fits exactly
+	// (the Network bar's "Forward" at 80 cols). Wrap stays ON as a safety net
+	// for any line that somehow exceeds the width.
+	md.shortcutBar.SetWrap(true)
+	md.shortcutBar.SetWordWrap(false)
+	md.shortcutWrapW = -1
 
 	// Add placeholder content for each menu item
 	for _, item := range md.menuItems {
@@ -125,6 +140,15 @@ func NewMainDisplay(app *App, theme int, glyphSetName string) *MainDisplay {
 		AddItem(md.menuBar, 1, 0, false).
 		AddItem(md.contentArea, 0, 1, true).
 		AddItem(md.shortcutBar, 1, 0, false)
+	// Resize the shortcut bar to its wrapped row count before the Flex lays
+	// out its items each frame. The DrawFunc runs inside DrawForSubclass
+	// (before Flex.Draw computes item rects), so the new fixed height takes
+	// effect for this draw. Returning the rect unchanged leaves the inner
+	// rect as-is (the frame has no border/padding).
+	md.frame.SetDrawFunc(func(screen tcell.Screen, x, y, w, h int) (int, int, int, int) {
+		md.resizeShortcutBar(w)
+		return x, y, w, h
+	})
 
 	// Set up input handling
 	app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
@@ -135,6 +159,10 @@ func NewMainDisplay(app *App, theme int, glyphSetName string) *MainDisplay {
 	if len(md.menuItems) > 0 {
 		md.selectMenu(0)
 	}
+	// Boot focus is the body (Python's MainFrame defaults focus_position to
+	// "body"). selectMenu no longer drops focus (it stays in the menu on Enter,
+	// matching Python's show_*), so establish the initial body focus explicitly.
+	md.FocusBody()
 
 	return md
 }
@@ -183,17 +211,153 @@ func (md *MainDisplay) updateShortcuts() {
 // not the focused menu button, so it keys off activePage. A registered
 // per-page callback wins over the static SetShortcut text.
 func (md *MainDisplay) updateShortcutsLocked() {
+	text := ""
 	if cb := md.shortcutCallbacks[md.activePage]; cb != nil {
-		if text := cb(); text != "" {
-			md.shortcutBar.SetText(text)
-			return
+		text = cb()
+	}
+	if text == "" {
+		if t, ok := md.shortcuts[md.activePage]; ok {
+			text = t
 		}
 	}
-	if text, ok := md.shortcuts[md.activePage]; ok {
-		md.shortcutBar.SetText(text)
-	} else {
-		md.shortcutBar.SetText("")
+	if text == md.shortcutTextRaw {
+		return // no change; keep the cached wrapped text
 	}
+	md.shortcutTextRaw = text
+	md.shortcutWrapW = -1 // invalidate; resizeShortcutBar re-wraps at next draw
+}
+
+// resizeShortcutBar wraps the current shortcut text to width using urwid's
+// "space" wrap algorithm (so the breaks land on the same columns as the Python
+// footer), feeds the newline-broken lines to the bar, and sizes the Flex item
+// to the wrapped row count (minimum 1). Called from the frame DrawFunc each
+// draw; the (src,width) cache avoids re-wrapping when nothing changed. The
+// DrawFunc runs inside Flex.Draw's DrawForSubclass — before Flex lays out and
+// draws its children — so both the new text and the new fixed height take
+// effect for this draw.
+func (md *MainDisplay) resizeShortcutBar(width int) {
+	if md.frame == nil || md.shortcutBar == nil {
+		return
+	}
+	if md.shortcutTextRaw == md.shortcutWrapSrc && width == md.shortcutWrapW {
+		return // cached; nothing to do
+	}
+	lines := urwidSpaceWrap(md.shortcutTextRaw, width)
+	rows := len(lines)
+	if rows < 1 {
+		rows = 1
+	}
+	md.shortcutBar.SetText(strings.Join(lines, "\n"))
+	md.frame.ResizeItem(md.shortcutBar, rows, 0)
+	md.shortcutWrapSrc = md.shortcutTextRaw
+	md.shortcutWrapW = width
+}
+
+// urwidSpaceWrap wraps text to width using urwid's "space" wrap algorithm
+// (urwid/text_layout.py:240-352), so the shortcut bar breaks at the SAME
+// columns as the Python footer. urwid fills each line to exactly `width`
+// columns, then:
+//   - if the rune at that column is a space, breaks there ("perfect space
+//     wrap") — the break space is dropped and the next line starts after it;
+//   - otherwise walks back to the previous space and breaks there (the break
+//     space dropped);
+//   - otherwise (no space on the line) hard-breaks at the fill column.
+//
+// This differs from tview's WordWrap, which breaks at the LAST space before a
+// line would overflow — that drops a word urwid fits exactly (e.g. the Network
+// bar's "Forward" landing at column 80). Embedded newlines are honored. The
+// shortcut bar renders brackets literally (dynamic colors off), so there are no
+// style tags to skip.
+func urwidSpaceWrap(text string, width int) []string {
+	if width <= 0 {
+		return []string{text}
+	}
+	var lines []string
+	for _, seg := range strings.Split(text, "\n") {
+		lines = append(lines, urwidWrapSegment(seg, width)...)
+	}
+	if len(lines) == 0 {
+		lines = []string{""}
+	}
+	return lines
+}
+
+// urwidWrapSegment wraps a single newline-free segment per urwid's space wrap.
+func urwidWrapSegment(seg string, width int) []string {
+	runes := []rune(seg)
+	if len(runes) == 0 {
+		return []string{""}
+	}
+	var lines []string
+	idx := 0
+	for idx < len(runes) {
+		// Width of the remaining runes.
+		remW := 0
+		for _, r := range runes[idx:] {
+			remW += cellWidth(r)
+		}
+		if remW <= width {
+			lines = append(lines, string(runes[idx:]))
+			return lines
+		}
+		// Position at which `width` columns have been consumed (urwid
+		// calc_text_pos): a wide rune that would cross the boundary is left for
+		// the next line.
+		pos, _ := urwidCalcTextPos(runes, idx, width)
+		if pos == idx {
+			pos = idx + 1 // pathological: a rune wider than `width`; emit it
+		}
+		if runes[pos] == ' ' {
+			// Perfect space wrap: break here, drop the break space.
+			lines = append(lines, string(runes[idx:pos]))
+			idx = pos + 1
+			continue
+		}
+		// Walk back to the previous space.
+		prev := -1
+		for p := pos - 1; p > idx; p-- {
+			if runes[p] == ' ' {
+				prev = p
+				break
+			}
+		}
+		if prev >= 0 {
+			lines = append(lines, string(runes[idx:prev]))
+			idx = prev + 1
+			continue
+		}
+		// No space on this line: hard-break at the fill column (any-wrap).
+		lines = append(lines, string(runes[idx:pos]))
+		idx = pos
+	}
+	return lines
+}
+
+// urwidCalcTextPos returns the index pos (into runes) at which `width` screen
+// columns have been consumed starting from idx, plus the column count up to
+// pos. A wide rune that would cross the boundary stops before it, matching
+// urwid calc_text_pos.
+func urwidCalcTextPos(runes []rune, idx, width int) (pos, cols int) {
+	w := 0
+	for p := idx; p < len(runes); p++ {
+		cw := cellWidth(runes[p])
+		if w+cw > width {
+			return p, w
+		}
+		w += cw
+		pos = p + 1
+		cols = w
+	}
+	return pos, cols
+}
+
+// cellWidth returns the screen-column width of r, treating zero-width/combining
+// runes as 1 so they always occupy a cell in the shortcut bar.
+func cellWidth(r rune) int {
+	if w := runewidth.RuneWidth(r); w >= 1 {
+		return w
+	}
+	return 1
 }
 
 // redrawMenuBar rebuilds the menu bar text and tracks item widths for
@@ -243,15 +407,18 @@ func (md *MainDisplay) redrawMenuBar() {
 	md.menuBar.SetText(b.String())
 }
 
-// selectMenu ACTIVATES the given menu item: it becomes the focused button AND
-// the displayed body page, then focus drops to the body. This mirrors a urwid
-// MenuButton press (Main.py show_* + update_active_sub_display) — used for
-// Enter/Space, mouse click, and programmatic page switches.
+// selectMenu ACTIVATES the given menu item: it becomes the highlighted button
+// and the displayed body page, but focus is NOT moved to the body. This mirrors
+// a urwid MenuButton press (Main.py show_* + update_active_sub_display), which
+// swaps the body content but never touches MainFrame.focus_position — focus
+// stays in the menu (header) until the user presses Tab/Down (Main.py
+// MenuColumns:172-176). Used for Enter/Space, mouse click, and programmatic
+// page switches; when focus is already in the body (e.g. a body action calling
+// SelectPage) it remains in the body, pointing at the new page.
 func (md *MainDisplay) selectMenu(index int) {
 	md.mu.Lock()
 	md.selectMenuLocked(index)
 	md.mu.Unlock()
-	md.FocusBody()
 }
 
 // SelectPage switches the body to the menu page with the given key (e.g.
@@ -346,7 +513,8 @@ func (md *MainDisplay) handleClick(x int) {
 //
 // Menu region (MainFrame.focus_position == "header", Main.py MenuColumns:171-176):
 // Left/Right move the button highlight WITHOUT switching the body page;
-// Enter/Space activate the focused button (switch page + drop to body);
+// Enter/Space activate the focused button (switch page, focus STAYS in the
+// menu — Python's show_* does not move focus_position);
 // Tab/Down drop to the body without switching.
 //
 // Body region: Left/Right/Up/Tab are forwarded to the page (returned
@@ -382,11 +550,15 @@ func (md *MainDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 	return event
 }
 
-// bodyListAtTop reports whether the currently-focused primitive is a *tview.List
-// sitting at item 0 — the condition under which Up collapses focus to the menu.
-// It is false for non-list primitives (TextView/Form/InputField), for lists not
-// at the top, and whenever a modal dialog overlay is open (the dispatcher must
-// not steal focus from an open dialog).
+// bodyListAtTop reports whether the currently-focused primitive is a list
+// sitting at item 0 — the condition under which Up collapses focus to the
+// menu. It recognizes both a bare *tview.List and an *IndicativeListBox (which
+// wraps a List and is what the Conversations page actually focuses, since
+// FocusBody chains SetFocus down through the Flex/Pages to the wrapped list).
+// It is false for non-list primitives (TextView/Form/InputField), for lists
+// not at the top, and whenever a modal dialog overlay is open (the dispatcher
+// must not steal focus from an open dialog). An empty list reports item 0, so
+// Up on an empty Conversations list still reaches the menu (matching Python).
 func (md *MainDisplay) bodyListAtTop() bool {
 	if md.app == nil {
 		return false
@@ -394,8 +566,16 @@ func (md *MainDisplay) bodyListAtTop() bool {
 	if md.app.Dialogs != nil && md.app.Dialogs.Open() {
 		return false
 	}
-	list, ok := md.app.GetFocus().(*tview.List)
-	if !ok {
+	var list *tview.List
+	switch v := md.app.GetFocus().(type) {
+	case *tview.List:
+		list = v
+	case *IndicativeListBox:
+		list = v.List
+	default:
+		return false
+	}
+	if list == nil {
 		return false
 	}
 	return list.GetCurrentItem() == 0

@@ -123,6 +123,48 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	networkDisplay := tui.NewNetworkDisplay(tuiApp, nil, nil)
 	networkDisplay.SanitizeNames = a.Config.TextUI.SanitizeNames
 
+	// localPeerInfo formats the app's identity/LXMF hashes + display name +
+	// last-announce time for the Local Peer Info panel (Python LocalPeer,
+	// Network.py:1259). prettyhexrep = "<" + lowercase hex + ">".
+	localPeerInfo := func() (lxmfAddr, identityHash, name string, lastAnnounce time.Time) {
+		lxmfAddr = "<" + a.LXMFAddressHex() + ">"
+		if a.Identity != nil {
+			identityHash = "<" + fmt.Sprintf("%x", a.Identity.Hash) + ">"
+		}
+		return lxmfAddr, identityHash, a.GetDisplayName(), a.LastAnnounce
+	}
+	lxmf, idhash, dname, lann := localPeerInfo()
+	networkDisplay.UpdateLocalPeer(lxmf, idhash, dname, lann)
+	networkDisplay.SetLocalPeerHandlers(
+		func(name string) {
+			a.SetDisplayName(name)
+			tuiApp.Dialogs.ShowDialog("Saved",
+				tview.NewTextView().
+					SetDynamicColors(true).
+					SetTextAlign(tview.AlignCenter).
+					SetText("\n\n\nSaved\n\n"),
+				40, 9, nil)
+		},
+		func() {
+			a.AnnounceNow()
+			lxmf, idhash, dname, lann = localPeerInfo()
+			networkDisplay.UpdateLocalPeer(lxmf, idhash, dname, lann)
+			tuiApp.Dialogs.ShowDialog("Announce Sent",
+				tview.NewTextView().
+					SetDynamicColors(true).
+					SetTextAlign(tview.AlignCenter).
+					SetText("\n\n\nAnnounce Sent\n\n\n"),
+				40, 10, nil)
+		},
+		func() {
+			// Swap the left pile's PACK slot from Local Peer Info to the Local
+			// Node Info panel (Python node_info_query, Network.py:1399-1401).
+			// Node hosting is not yet wired in the Go port (no app.Node server;
+			// Phase 5), so the panel renders the "not hosting a node" branch.
+			networkDisplay.ShowNodeInfo(tui.NodeInfoData{HasNode: false})
+		},
+	)
+
 	// refreshAnnounces re-fetches the announce stream from the app and updates
 	// the network display's left pane.
 	refreshAnnounces := func() {
@@ -172,6 +214,13 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	a.SetUIChangeCallback(func() {
 		refreshAnnounces()
 		refreshNodes()
+		// RNS init runs asynchronously in a goroutine, so the identity/LXMF
+		// destination are nil when wireDisplays first runs. Re-filling the
+		// Local Peer Info panel on each UI change picks them up once initRNS
+		// completes (it fires UIChangeCallback at the end), and also refreshes
+		// the "Announced : …" line as the announce age advances.
+		lxmf, idhash, dname, lann := localPeerInfo()
+		networkDisplay.UpdateLocalPeer(lxmf, idhash, dname, lann)
 	})
 	main.SetDisplay("network", networkDisplay.Widget())
 	main.SetShortcut("network", "[C-l] Nodes/Announces  [C-x] Remove  [C-w] Disconnect  [C-d] Back  [C-f] Forward  [C-r] Reload  [C-u] URL  [C-g] Fullscreen  [C-s / C-b] Save Node")
@@ -214,12 +263,11 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		)
 	}
 	networkDisplay.OnShowPeers = func() {
-		tuiApp.Dialogs.ShowDialog("LXMF Peers",
-			tview.NewTextView().
-				SetDynamicColors(true).
-				SetTextAlign(tview.AlignCenter).
-				SetText("[gray]LXMF Peers list — TODO: wire to propagation peers[-]"),
-			50, 10, nil)
+		// Python reinit_lxmf_peers (Network.py:1717): rebuild the peer list
+		// from the LXMF message router before show_peers swaps it in. The
+		// message router's peer set is not wired until Phase 5, so refresh
+		// with the (currently empty) set; the no-content branch renders.
+		networkDisplay.UpdateLXMFPeers(nil)
 	}
 	networkDisplay.OnURLDialog = func() {
 		tuiApp.Dialogs.ShowInputDialog("Navigate",
@@ -249,6 +297,36 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 			},
 			func() {},
 		)
+	}
+	// Resolve directory-backed fields for the AnnounceInfo view (Python
+	// AnnounceInfo __init__: trust_level, simplest_display_str, op_str). The
+	// operator string needs RNS identity recall to compute the lxmf.delivery
+	// hash (Phase 5), so it is "Unknown" until then.
+	networkDisplay.OnResolveAnnounceInfo = func(ann tui.AnnounceEntry) (tui.AnnounceInfoData, bool) {
+		data := tui.AnnounceInfoData{OpStr: "Unknown"}
+		hash, ok := app.SourceHashFromHex(ann.SourceHash)
+		if !ok {
+			data.DisplayStr = ann.DisplayName
+			data.TrustStr = "Unknown"
+			data.TrustStyle = "list_unknown"
+			return data, true
+		}
+		data.DisplayStr = a.Dir.SimplestDisplayStr(hash)
+		switch a.Dir.TrustLevel(hash, nil) {
+		case directory.TrustTrusted:
+			data.TrustStr = "Trusted"
+			data.TrustStyle = "list_trusted"
+		case directory.TrustUntrusted:
+			data.TrustStr = "Untrusted"
+			data.TrustStyle = "list_untrusted"
+		case directory.TrustWarning:
+			data.TrustStr = "Warning"
+			data.TrustStyle = "list_untrusted"
+		default:
+			data.TrustStr = "Unknown"
+			data.TrustStyle = "list_unknown"
+		}
+		return data, true
 	}
 
 	// Conversations display
@@ -339,21 +417,34 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		)
 	}
 	conversationsDisplay.OnNewConv = func() {
-		tuiApp.Dialogs.ShowInputDialog("New Conversation",
-			"Address (hex hash):", "",
-			func(text string) {
-				if text == "" {
-					return
-				}
-				hash, ok := app.SourceHashFromHex(text)
-				if !ok {
-					return
-				}
-				a.CreateDirectoryEntry(hash, "")
-				refreshConvs()
-			},
-			func() {},
-		)
+		conversationsDisplay.ShowNewConversationDialog(func(addrHex, name, trust string) bool {
+			if addrHex == "" {
+				return false
+			}
+			hash, ok := app.SourceHashFromHex(addrHex)
+			if !ok {
+				return false
+			}
+			a.CreateDirectoryEntry(hash, name)
+			var trustByte byte
+			switch trust {
+			case "trusted":
+				trustByte = directory.TrustTrusted
+			case "unknown":
+				trustByte = directory.TrustUnknown
+			default:
+				trustByte = directory.TrustUntrusted
+			}
+			a.SetPeerTrustLevel(hash, trustByte)
+			// Reveal the new entry: switch to the Untrusted tab unless the
+			// entry was created trusted (Conversations.py:1066-1068).
+			if trust != "trusted" {
+				conversationsDisplay.SetShowTrusted(false)
+			}
+			refreshConvs()
+			conversationsDisplay.DisplayConversation(addrHex)
+			return true
+		})
 	}
 	conversationsDisplay.OnToggleSort = func() {
 		conversationsDisplay.ToggleSort()

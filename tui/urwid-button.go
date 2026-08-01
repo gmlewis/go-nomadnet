@@ -28,6 +28,14 @@ const (
 	urwidButtonRight = ">"
 )
 
+// tabButtonLeft and tabButtonRight are the brackets nomadnet's TabButton uses
+// (Conversations.py:82-84: a urwid.Button subclass with button_left="[",
+// button_right="]"), so a tab renders "[ label ]".
+const (
+	tabButtonLeft  = "["
+	tabButtonRight = "]"
+)
+
 // urwidButtonDivideChars is urwid's Button.dividechars default (1): one blank
 // column between each bracket and the label, so the row is
 // "<" + " " + label + " " + ">".
@@ -41,18 +49,38 @@ const urwidButtonDivideChars = 1
 // urwid.Button), so the row is drawn in the default text style whether or not
 // it has focus; focus is indicated by a hardware cursor on the first label
 // cell (urwid's SelectableIcon cursor position 0), shown via screen.ShowCursor.
+//
+// The bracket strings are configurable so the same primitive backs TabButton
+// (Conversations.py:82), which only overrides the brackets to "[" / "]".
 type UrwidButton struct {
 	*tview.Box
-	label    string
-	selected func()
+	label        string
+	leftBracket  string
+	rightBracket string
+	selected     func()
 }
 
 // NewUrwidButton creates a flat "< label >" button with no selected handler.
 // Chain SetSelectedFunc to install the activate callback.
 func NewUrwidButton(label string) *UrwidButton {
 	return &UrwidButton{
-		Box:   tview.NewBox(),
-		label: label,
+		Box:          tview.NewBox(),
+		label:        label,
+		leftBracket:  urwidButtonLeft,
+		rightBracket: urwidButtonRight,
+	}
+}
+
+// NewTabButton creates a flat "[ label ]" button matching nomadnet's TabButton
+// (Conversations.py:82-84), used for the Conversations Trusted/Untrusted tab
+// bar. Activation (Enter/Space/click) is wired via SetSelectedFunc to the
+// filter-switch callback, like urwid's TabButton on_press → _set_filter.
+func NewTabButton(label string) *UrwidButton {
+	return &UrwidButton{
+		Box:          tview.NewBox(),
+		label:        label,
+		leftBracket:  tabButtonLeft,
+		rightBracket: tabButtonRight,
 	}
 }
 
@@ -66,10 +94,26 @@ func (b *UrwidButton) SetSelectedFunc(fn func()) *UrwidButton {
 // Label returns the button's label text.
 func (b *UrwidButton) Label() string { return b.label }
 
-// Draw renders "< label >" filling the box width in the default text style.
-// The label cell is w - 2*dividechars - 2 cells wide (one per bracket); the
-// label is left-justified and padded with spaces so the ">" sits at the right
-// edge, matching urwid's Columns layout (brackets PACK, label absorbs the rest).
+// SetLabel updates the button's label text (used to refresh tab counts without
+// rebuilding the button).
+func (b *UrwidButton) SetLabel(label string) *UrwidButton { b.label = label; return b }
+
+// Draw renders the bracketed, wrapped label filling the box width in the
+// default text style. The label cell is w - 2*dividechars - 2 cells wide (one
+// per bracket); the label is left-justified, space-wrapped (urwid SelectableIcon
+// wrap=SPACE) and right-padded so the right bracket sits at the right edge,
+// matching urwid's Columns layout (brackets PACK, label absorbs the rest). When
+// the label wraps, the 1-row bracket Texts are top-aligned and blank-filled
+// below, so the brackets appear ONLY on the first row and subsequent rows show
+// the wrapped label text — producing, for "Nodes (3)" in a 10-wide button:
+//
+//	[ Nodes  ]
+//	  (3)
+//
+// (label area 6; "Nodes (3)" wraps to "Nodes" + "(3)"). urwid applies no color
+// to a plain Button, so the row is drawn in the default text style. The
+// SelectableIcon cursor (label position 0) is shown on the first row when
+// focused (Phase 0 hardware-cursor parity).
 func (b *UrwidButton) Draw(screen tcell.Screen) {
 	b.Box.DrawForSubclass(screen, b)
 	x, y, w, h := b.GetInnerRect()
@@ -77,49 +121,113 @@ func (b *UrwidButton) Draw(screen tcell.Screen) {
 		return
 	}
 	style := tcell.StyleDefault
-	setRune := func(col int, r rune) {
-		if col >= x && col < x+w {
-			screen.SetContent(col, y, r, nil, style)
+	setRune := func(col, row int, r rune) {
+		if col >= x && col < x+w && row >= y && row < y+h {
+			screen.SetContent(col, row, r, nil, style)
 		}
 	}
-	// Left bracket + dividechars blank.
-	px := x
-	for _, r := range urwidButtonLeft {
-		setRune(px, r)
-		px++
-	}
-	for i := 0; i < urwidButtonDivideChars; i++ {
-		setRune(px, ' ')
-		px++
-	}
-	// Label cell width = w - 2 (brackets) - 2*dividechars.
-	labelW := w - 2 - 2*urwidButtonDivideChars
+	// Label cell width = w - brackets - 2*dividechars (one blank each side).
+	labelW := w - len([]rune(b.leftBracket)) - len([]rune(b.rightBracket)) - 2*urwidButtonDivideChars
 	if labelW < 0 {
 		labelW = 0
 	}
-	labelRunes := []rune(b.label)
-	for i := 0; i < labelW; i++ {
-		var r rune = ' '
-		if i < len(labelRunes) {
-			r = labelRunes[i]
+	lines := urwidSpaceWrap(b.label, labelW)
+	if len(lines) == 0 {
+		lines = []string{""}
+	}
+	for r := 0; r < h; r++ {
+		var line string
+		if r < len(lines) {
+			line = lines[r]
 		}
-		setRune(px, r)
-		px++
-	}
-	// dividechars blank + right bracket.
-	for i := 0; i < urwidButtonDivideChars; i++ {
-		setRune(px, ' ')
-		px++
-	}
-	for _, r := range urwidButtonRight {
-		setRune(px, r)
-		px++
+		if sw := stringWidth(line); sw < labelW {
+			line += spaces(labelW - sw)
+		}
+		px := x
+		// Left bracket on row 0 only; blank below.
+		if r == 0 {
+			for _, br := range b.leftBracket {
+				setRune(px, y+r, br)
+				px++
+			}
+		} else {
+			for range b.leftBracket {
+				setRune(px, y+r, ' ')
+				px++
+			}
+		}
+		for i := 0; i < urwidButtonDivideChars; i++ {
+			setRune(px, y+r, ' ')
+			px++
+		}
+		// Label line (left-justified, padded to labelW).
+		for i, ch := range line {
+			if i >= labelW {
+				break
+			}
+			setRune(px, y+r, ch)
+			px++
+		}
+		for i := stringWidth(line); i < labelW; i++ {
+			setRune(px, y+r, ' ')
+			px++
+		}
+		// Right dividechars blank.
+		for i := 0; i < urwidButtonDivideChars; i++ {
+			setRune(px, y+r, ' ')
+			px++
+		}
+		// Right bracket on row 0 only; blank below.
+		if r == 0 {
+			for _, br := range b.rightBracket {
+				setRune(px, y+r, br)
+				px++
+			}
+		} else {
+			for range b.rightBracket {
+				setRune(px, y+r, ' ')
+				px++
+			}
+		}
 	}
 	// urwid's SelectableIcon places the cursor at label position 0; show it
 	// when focused so the hardware cursor matches the original (Phase 0).
 	if b.HasFocus() {
-		screen.ShowCursor(x+1+urwidButtonDivideChars, y)
+		screen.ShowCursor(x+len([]rune(b.leftBracket))+urwidButtonDivideChars, y)
 	}
+}
+
+// RequiredHeight returns the number of rows the wrapped label needs at width w,
+// matching urwid Columns render height (the max child height) for a button
+// placed in a column of that width. Used by urwidColumns to size the tab bar.
+func (b *UrwidButton) RequiredHeight(w int) int {
+	labelW := w - len([]rune(b.leftBracket)) - len([]rune(b.rightBracket)) - 2*urwidButtonDivideChars
+	if labelW < 1 {
+		return 1
+	}
+	return len(urwidSpaceWrap(b.label, labelW))
+}
+
+// stringWidth returns the display width of s using rune widths (min 1 per
+// rune), matching urwid's text width accounting.
+func stringWidth(s string) int {
+	w := 0
+	for _, r := range s {
+		w += cellWidth(r)
+	}
+	return w
+}
+
+// spaces returns a string of n space characters.
+func spaces(n int) string {
+	if n <= 0 {
+		return ""
+	}
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = ' '
+	}
+	return string(b)
 }
 
 // InputHandler activates the button on Space/Enter (urwid Button maps both

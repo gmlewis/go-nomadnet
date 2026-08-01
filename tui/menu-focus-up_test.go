@@ -94,6 +94,41 @@ func TestFocusUpAtTopToMenu(t *testing.T) {
 		}
 	})
 
+	// The Conversations page focuses an *IndicativeListBox (a List wrapper),
+	// not a bare *tview.List, so the dispatcher must see through the wrapper.
+	t.Run("indicative listbox at top focuses menu", func(t *testing.T) {
+		list := tview.NewList()
+		list.AddItem("a", "", 0, nil)
+		ilb := NewIndicativeListBox(list)
+		app.SetFocus(ilb)
+		md.focusRegion = "body"
+
+		got := md.handleInput(up)
+		if got != nil {
+			t.Errorf("handleInput(Up) = %v, want nil (consumed)", got)
+		}
+		if md.focusRegion != "menu" {
+			t.Errorf("focusRegion = %q, want menu", md.focusRegion)
+		}
+	})
+
+	// An empty Conversations list (no items) still reports "at top" so Up
+	// reaches the menu, matching Python (the capture navigates with Up on an
+	// empty trusted-conversations list).
+	t.Run("empty indicative listbox focuses menu", func(t *testing.T) {
+		ilb := NewIndicativeListBox(nil)
+		app.SetFocus(ilb)
+		md.focusRegion = "body"
+
+		got := md.handleInput(up)
+		if got != nil {
+			t.Errorf("handleInput(Up) = %v, want nil (consumed)", got)
+		}
+		if md.focusRegion != "menu" {
+			t.Errorf("focusRegion = %q, want menu", md.focusRegion)
+		}
+	})
+
 	t.Run("dialog open does not steal focus", func(t *testing.T) {
 		list := tview.NewList()
 		list.AddItem("a", "", 0, nil)

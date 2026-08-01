@@ -16,6 +16,7 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/gdamore/tcell/v2"
@@ -187,4 +188,70 @@ func TestShowUserInfoDialog(t *testing.T) {
 
 	// Verify self-user case
 	cd.ShowUserInfoDialog("Bob", "aabb1122334455667788", true, nil)
+}
+
+// TestChannelsDisplayBootLayout pins the Channels page boot (no-hubs) layout
+// against the Python original (Channels.py:1459-1468, 1590-1607): a two-pane
+// Columns with NO outer border — a bordered "Channels" left pane (width 36)
+// holding an IndicativeListBox ("───" indicators + the left-aligned "No hubs
+// yet…" empty state), and a bordered untitled right pane holding a top-filled,
+// centered "Select or add a hub to begin" placeholder. Capture-verified
+// byte-identical to Python at 80x24.
+func TestChannelsDisplayBootLayout(t *testing.T) {
+	t.Parallel()
+	app := newTestApp()
+	app.Glyphs = GetGlyphSet(GlyphUnicode)
+	cd := NewChannelsDisplay(app, nil)
+
+	rows := renderPrimitive(t, cd.Widget(), 80, 24)
+
+	// Row 0: left border carries the "Channels" title; the right pane's border
+	// begins at column 36 (no title, no outer border).
+	if !strings.Contains(rows[0], "Channels") {
+		t.Errorf("row 0 = %q, want the left-pane border titled 'Channels'", rows[0])
+	}
+	if c := cellAt(rows, 36, 0); c != "┌" {
+		t.Errorf("right-pane top-left border at (36,0) = %q, want '┌'", c)
+	}
+
+	// Row 1: the IndicativeListBox top indicator "───", centered in the left
+	// pane (inner 34 → starts at col 17).
+	if !strings.Contains(rows[1], "───") {
+		t.Errorf("row 1 = %q, want the top '───' indicator", rows[1])
+	}
+	if c := cellAt(rows, 17, 1); c != "─" {
+		t.Errorf("top indicator '─' at (17,1) = %q, want '─' (row1=%q)", c, rows[1])
+	}
+
+	// Row 2: left pane blank (the leading newline of the empty-state text);
+	// right pane shows the centered "  Select or add a hub to begin" (the text
+	// has 2 leading spaces, 30 cols, centered in inner 42 → ceil-left
+	// (42-30+1)/2 = 6 left pad + 2 from the text → 'S' at col 36+1+6+2 = 45).
+	if c := cellAt(rows, 45, 2); c != "S" {
+		t.Errorf("'S' of 'Select…' at (45,2) = %q, want 'S' (row2=%q)", c, rows[2])
+	}
+	if !strings.Contains(rows[2], "Select or add a hub to begin") {
+		t.Errorf("row 2 = %q, want 'Select or add a hub to begin'", rows[2])
+	}
+
+	// Rows 3-4: the wrapped no-hubs text, left-aligned with a 2-space indent.
+	if !strings.Contains(rows[3], "No hubs yet. Press Ctrl-N to add") {
+		t.Errorf("row 3 = %q, want '  No hubs yet. Press Ctrl-N to add'", rows[3])
+	}
+	if !strings.Contains(rows[4], "one.") {
+		t.Errorf("row 4 = %q, want 'one.'", rows[4])
+	}
+
+	// Row 22: the bottom "───" indicator (last inner row before the border).
+	if !strings.Contains(rows[22], "───") {
+		t.Errorf("row 22 = %q, want the bottom '───' indicator", rows[22])
+	}
+
+	// Row 23: both panes' bottom borders.
+	if c := cellAt(rows, 0, 23); c != "└" {
+		t.Errorf("left-pane bottom-left border at (0,23) = %q, want '└'", c)
+	}
+	if c := cellAt(rows, 36, 23); c != "└" {
+		t.Errorf("right-pane bottom-left border at (36,23) = %q, want '└'", c)
+	}
 }

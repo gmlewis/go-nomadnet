@@ -81,7 +81,10 @@ func TestShortcutBarPerPage(t *testing.T) {
 			md.updateShortcutsLocked()
 			md.mu.Unlock()
 
-			if got := md.shortcutBar.GetText(true); got != c.want {
+			// The raw (unwrapped) shortcut text for the active page is stored
+			// on the display; the bar itself is fed a pre-wrapped copy at draw
+			// time (see resizeShortcutBar), so we assert against the raw field.
+			if got := md.shortcutTextRaw; got != c.want {
 				t.Errorf("page %q footer = %q, want %q", c.page, got, c.want)
 			}
 		})

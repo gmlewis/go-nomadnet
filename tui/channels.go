@@ -52,13 +52,21 @@ type ChannelInfo struct {
 	Joined  bool
 }
 
+// channelsListInnerWidth is the inner width of the bordered "Channels" list
+// pane: given_list_width (36, Channels.py:1437) minus the 2 LineBox border
+// columns. The no-hubs empty-state text is pre-wrapped to this width.
+const channelsListInnerWidth = 34
+
 // ChannelsDisplay shows the RRC chat interface.
 type ChannelsDisplay struct {
 	app                *App
 	widget             tview.Primitive
-	layout             *tview.Flex
 	content            *tview.Flex
 	leftPanel          *tview.Flex
+	rightPane          *tview.Flex
+	placeholder        *tview.TextView
+	ilb                *IndicativeListBox
+	noHubsText         *tview.TextView
 	chanGutter         tview.Primitive
 	leftWidth          int
 	rooms              *tview.List
@@ -88,24 +96,92 @@ func NewChannelsDisplay(app *App, rooms []ChannelInfo) *ChannelsDisplay {
 	cd := &ChannelsDisplay{
 		app:                app,
 		channelListVisible: true,
+		leftWidth:          36, // given_list_width (Channels.py:1437)
 	}
 
-	// Title
-	title := tview.NewTextView().
-		SetTextAlign(tview.AlignCenter).
-		SetDynamicColors(true).
-		SetTextColor(tcell.NewHexColor(0xdddddd)).
-		SetText("[::b]Channels[-]")
-
-	// Rooms list
+	// Hub/room list (left pane), wrapped in an IndicativeListBox so the
+	// centered "───"/"▲"/"▼" scroll indicators render above and below it
+	// (Python IndicativeListBox, Channels.py:1590).
 	cd.rooms = tview.NewList()
 	cd.rooms.SetHighlightFullLine(true)
 	ApplyListFocusStyle(cd.rooms, app.Theme)
-
 	cd.rooms.SetSelectedFunc(func(i int, mainText, secondaryText string, shortcut rune) {
-		// Room selected — could load messages for that room
+		// Room selected — load its messages (wired by the app layer).
 	})
+	cd.ilb = NewIndicativeListBox(cd.rooms)
 
+	// No-hubs empty state (Python _compose_list_widgets, Channels.py:1603-1607):
+	// a single left-aligned "No hubs yet. Press Ctrl-N to add one." Text in the
+	// list_unknown color with a leading blank line, wrapped inside the list area
+	// between the indicator bars. Pre-wrapped with urwidSpaceWrap at the fixed
+	// inner width (given_list_width 36 − 2 borders = 34) so the break lands where
+	// urwid breaks (after "add"), not where tview's WordWrap breaks (after "to").
+	colors := GetThemeColors(app.Theme)
+	const noHubsRaw = "\n  No hubs yet. Press Ctrl-N to add one."
+	cd.noHubsText = tview.NewTextView().
+		SetTextColor(colors["list_unknown"]).
+		SetTextAlign(tview.AlignLeft).
+		SetWrap(true).
+		SetWordWrap(false)
+	cd.noHubsText.SetText(strings.Join(urwidSpaceWrap(noHubsRaw, channelsListInnerWidth), "\n"))
+	cd.ilb.SetEmptyWidget(cd.noHubsText)
+	cd.populateRooms(rooms)
+
+	// Left pane: bordered "Channels" LineBox wrapping the IndicativeListBox
+	// (Python ChannelsListArea, Channels.py:342/1596).
+	cd.leftPanel = tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(cd.ilb, 0, 1, true)
+	cd.leftPanel.SetBorder(true)
+	SetTitledBorder(cd.leftPanel, "Channels")
+
+	// Right pane placeholder (Python Channels.py:1459): a bordered, untitled
+	// LineBox wrapping a top-filled, centered "Select or add a hub to begin"
+	// with a leading blank line. A TextView is top-aligned by default, matching
+	// urwid Filler("top"); AlignCenter handles the horizontal centering.
+	cd.placeholder = tview.NewTextView().
+		SetTextAlign(tview.AlignCenter).
+		SetWrap(false)
+	cd.placeholder.SetText("\n  Select or add a hub to begin")
+	cd.rightPane = tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(cd.placeholder, 0, 1, false)
+	cd.rightPane.SetBorder(true)
+
+	// Message view, members list and compose editor are created up front so the
+	// Show* methods are safe to call before a room is opened; they are not part
+	// of the boot layout (the right pane shows the placeholder until a room is
+	// selected, Phase 5 RRC).
+	cd.messages = tview.NewTextView().
+		SetDynamicColors(true).
+		SetScrollable(true).
+		SetTextColor(tcell.NewHexColor(0xbbbbbb))
+	cd.members = tview.NewList()
+	cd.members.SetHighlightFullLine(true)
+	ApplyListFocusStyle(cd.members, app.Theme)
+	cd.members.SetSelectedFunc(func(i int, mainText, secondaryText string, shortcut rune) {
+		if cd.OnMemberClick != nil {
+			cd.OnMemberClick(mainText, secondaryText)
+		}
+	})
+	cd.input = NewReadlineEdit(app.killRing, "", "Type a message...")
+	cd.input.SetFieldBackgroundColor(tcell.NewHexColor(0x222222))
+	cd.input.SetFieldTextColor(tcell.NewHexColor(0xdddddd))
+
+	// Two-pane Columns: left list (given 36) + right pane (weight 1). No outer
+	// border — each pane carries its own (Python columns_widget, Channels.py:
+	// 1462-1468). The expand gutter is shown only when the list is hidden.
+	cd.chanGutter = NewChannelsExpandGutter(func() { cd.ToggleChannelListState() })
+	cd.content = tview.NewFlex().SetDirection(tview.FlexColumn).
+		AddItem(cd.leftPanel, cd.leftWidth, 0, true).
+		AddItem(cd.rightPane, 0, 1, false)
+	cd.content.SetInputCapture(cd.handleInput)
+	cd.widget = cd.content
+
+	return cd
+}
+
+// populateRooms fills the room list from the given channel infos.
+func (cd *ChannelsDisplay) populateRooms(rooms []ChannelInfo) {
+	cd.rooms.Clear()
 	for _, room := range rooms {
 		prefix := "  "
 		if room.Unread {
@@ -118,63 +194,6 @@ func NewChannelsDisplay(app *App, rooms []ChannelInfo) *ChannelsDisplay {
 		secondary := fmt.Sprintf("%d members — %s", room.Members, room.Topic)
 		cd.rooms.AddItem(text, secondary, 0, nil)
 	}
-
-	// Messages view
-	cd.messages = tview.NewTextView().
-		SetDynamicColors(true).
-		SetScrollable(true).
-		SetTextColor(tcell.NewHexColor(0xbbbbbb)).
-		SetText("[gray]Select a room to view messages[-]")
-
-	// Members list
-	cd.members = tview.NewList()
-	cd.members.SetHighlightFullLine(true)
-	ApplyListFocusStyle(cd.members, app.Theme)
-
-	cd.members.SetSelectedFunc(func(i int, mainText, secondaryText string, shortcut rune) {
-		if cd.OnMemberClick != nil {
-			cd.OnMemberClick(mainText, secondaryText)
-		}
-	})
-
-	// Input field
-	cd.input = NewReadlineEdit(app.killRing, "", "Type a message...")
-	cd.input.SetFieldBackgroundColor(tcell.NewHexColor(0x222222))
-	cd.input.SetFieldTextColor(tcell.NewHexColor(0xdddddd))
-
-	// Layout: rooms on left, messages+members on right
-	leftPanel := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(cd.rooms, 0, 1, true)
-
-	rightPanel := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(cd.messages, 0, 3, false).
-		AddItem(cd.members, 5, 0, false).
-		AddItem(cd.input, 1, 0, true)
-
-	// Channel list gutter (right arrow) — toggles left panel visibility
-	chanGutter := NewChannelsExpandGutter(func() {
-		cd.ToggleChannelListState()
-	})
-
-	content := tview.NewFlex().SetDirection(tview.FlexColumn).
-		AddItem(leftPanel, 36, 0, true).
-		AddItem(chanGutter, 1, 0, false).
-		AddItem(rightPanel, 0, 1, false)
-
-	layout := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(title, 2, 0, false).
-		AddItem(content, 0, 1, true)
-	layout.SetBorder(true)
-	layout.SetInputCapture(cd.handleInput)
-
-	cd.layout = layout
-	cd.content = content
-	cd.leftPanel = leftPanel
-	cd.chanGutter = chanGutter
-	cd.leftWidth = 36
-	cd.widget = layout
-
-	return cd
 }
 
 // handleInput processes keyboard shortcuts for the channels display.
@@ -271,30 +290,22 @@ func (cd *ChannelsDisplay) ChannelListVisible() bool {
 	return cd.channelListVisible
 }
 
-// ToggleChannelListState toggles the channel list visibility state, removing
-// or re-adding the left panel + gutter from the content Flex so the pane
-// actually hides. Matches Python's toggle_channel_list() at Channels.py:1531.
+// ToggleChannelListState toggles the channel list visibility state, rebuilding
+// the content Flex so the pane actually hides. Matches Python's
+// _apply_channel_list_visibility (Channels.py:1545-1568): [left(36), right(1)]
+// when visible; [gutter(1), right(1)] when hidden (show_gutters defaults True).
 func (cd *ChannelsDisplay) ToggleChannelListState() {
 	cd.channelListVisible = !cd.channelListVisible
 	if cd.content == nil {
 		return
 	}
+	cd.content.Clear()
 	if cd.channelListVisible {
-		// Re-add left panel + gutter if absent.
-		hasLeft := false
-		for i := 0; i < cd.content.GetItemCount(); i++ {
-			if cd.content.GetItem(i) == cd.leftPanel {
-				hasLeft = true
-				break
-			}
-		}
-		if !hasLeft {
-			cd.content.AddItem(cd.leftPanel, cd.leftWidth, 0, true)
-			cd.content.AddItem(cd.chanGutter, 1, 0, false)
-		}
+		cd.content.AddItem(cd.leftPanel, cd.leftWidth, 0, true)
+		cd.content.AddItem(cd.rightPane, 0, 1, false)
 	} else {
-		cd.content.RemoveItem(cd.leftPanel)
-		cd.content.RemoveItem(cd.chanGutter)
+		cd.content.AddItem(cd.chanGutter, 1, 0, false)
+		cd.content.AddItem(cd.rightPane, 0, 1, false)
 	}
 	// No QueueUpdateDraw: this runs on the event loop (input handler or gutter
 	// callback), which redraws automatically afterwards, and QueueUpdateDraw

@@ -476,6 +476,129 @@ func TestConversationWidgetPaperMessageDialogCancel(t *testing.T) {
 	}
 }
 
+// TestConversationWidgetCtrlSavesAttachments pins the C-s keypress parity:
+// Python's ConversationWidget.keypress (Conversations.py:2235-2236) maps
+// "ctrl s" to save_focused_attachments(), which is DISTINCT from "ctrl a"
+// (attach_file). The Go handler must fire the save-attachments entry callback
+// (collecting attachment refs from messages, sorted by sort_timestamp desc —
+// Python _collect_attachment_refs at Conversations.py:2300), and must NOT fire
+// OnAttach.
+// TestConversationWidgetCtrlPCtrlFParity pins that C-p and C-f are handled at
+// the frame level (matching Python's MessageEdit.keypress at
+// Conversations.py:1809-1814, where ctrl p → paper_message and ctrl f →
+// attach_file). Without the frame capture these fall through to the
+// ReadlineEdit's readline bindings (C-p=prev-history, C-f=forward-char) and
+// never reach the conversation actions.
+func TestConversationWidgetCtrlPCtrlFParity(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	cw := NewConversationWidget(app, "aabb1122")
+
+	var paperFired bool
+	cw.OnPaperMessage = func(action string) { paperFired = true }
+
+	var attachFired bool
+	cw.OnAttach = func() { attachFired = true }
+
+	// C-p opens the paper-message dialog (paper_message).
+	if cw.handleInput(tcell.NewEventKey(tcell.KeyCtrlP, 0, tcell.ModNone)) != nil {
+		t.Error("C-p was not consumed")
+	}
+	if !cw.DialogOpen() {
+		t.Error("C-p should open the paper message dialog")
+	}
+	cw.DismissPaperMessageDialog()
+
+	// C-f triggers attach_file (same as C-a in Python's frame keypress).
+	if cw.handleInput(tcell.NewEventKey(tcell.KeyCtrlF, 0, tcell.ModNone)) != nil {
+		t.Error("C-f was not consumed")
+	}
+	if !attachFired {
+		t.Error("C-f should fire OnAttach (attach_file)")
+	}
+	// C-p must not have fired the paper callback just from opening the dialog
+	// (the callback fires on a chosen action, not on dialog open).
+	if paperFired {
+		t.Error("opening the paper dialog should not fire OnPaperMessage")
+	}
+}
+
+func TestConversationWidgetCtrlSavesAttachments(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	cw := NewConversationWidget(app, "aabb1122")
+
+	base := time.Unix(1700000000, 0).UTC()
+	cw.SetMessages([]ConversationMessage{
+		{Content: "old", Timestamp: base, IsSent: true, HasAttach: true,
+			AttachmentTypes: []string{"file"}, AttachmentNames: []string{"old.txt"}},
+		{Content: "no attach here", Timestamp: base.Add(time.Minute), IsSent: false},
+		{Content: "newest", Timestamp: base.Add(2 * time.Minute), IsSent: true, HasAttach: true,
+			AttachmentTypes: []string{"file", "image"}, AttachmentNames: []string{"new.pdf", "pic.png"}},
+	})
+
+	attachFired := false
+	cw.OnAttach = func() { attachFired = true }
+
+	var gotRefs []AttachmentRef
+	cw.OnSaveFocusedAttachments = func(refs []AttachmentRef) { gotRefs = refs }
+
+	result := cw.handleInput(tcell.NewEventKey(tcell.KeyCtrlS, 0, tcell.ModNone))
+	if result != nil {
+		t.Errorf("C-s was not consumed (returned %v)", result)
+	}
+	if attachFired {
+		t.Error("C-s must NOT fire OnAttach (that is C-a's behavior)")
+	}
+	if !cw.DialogOpen() {
+		t.Error("C-s should mark the dialog open (save_focused_attachments sets dialog_active)")
+	}
+	// Sorted by timestamp desc: newest message's two attachments first, then old.
+	want := []AttachmentRef{
+		{Name: "new.pdf", Type: "file"},
+		{Name: "pic.png", Type: "image"},
+		{Name: "old.txt", Type: "file"},
+	}
+	if len(gotRefs) != len(want) {
+		t.Fatalf("got %d refs %v, want %d %v", len(gotRefs), gotRefs, len(want), want)
+	}
+	for i, w := range want {
+		if gotRefs[i] != w {
+			t.Errorf("ref[%d] = %+v, want %+v", i, gotRefs[i], w)
+		}
+	}
+}
+
+// TestConversationWidgetCtrlSNoAttachments still fires the entry callback with
+// an empty ref list (Python save_focused_attachments shows a "No attachments"
+// dialog rather than silently no-op'ing).
+func TestConversationWidgetCtrlSNoAttachments(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	cw := NewConversationWidget(app, "aabb1122")
+	cw.SetMessages([]ConversationMessage{
+		{Content: "nothing attached", Timestamp: time.Now(), IsSent: true},
+	})
+
+	called := false
+	cw.OnSaveFocusedAttachments = func(refs []AttachmentRef) {
+		called = true
+		if len(refs) != 0 {
+			t.Errorf("empty conversation refs = %v, want empty", refs)
+		}
+	}
+
+	if cw.handleInput(tcell.NewEventKey(tcell.KeyCtrlS, 0, tcell.ModNone)) != nil {
+		t.Error("C-s was not consumed")
+	}
+	if !called {
+		t.Error("C-s with no attachments should still fire OnSaveFocusedAttachments (empty)")
+	}
+}
+
 func TestConversationWidgetSaveAttachmentsNoAttachments(t *testing.T) {
 	t.Parallel()
 

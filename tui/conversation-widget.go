@@ -17,6 +17,7 @@ package tui
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -63,15 +64,17 @@ type ConversationWidget struct {
 	trustBannerDismissed bool
 
 	// Callbacks
-	OnClose            func()
-	OnPurgeFailed      func()
-	OnClearHistory     func()
-	OnSend             func(content, title string)
-	OnAttach           func()
-	OnToggleFullscreen func()
-	OnPaperMessage     func(action string)
-	OnAttachFiles      func(paths []string)
-	OnSaveAttachments  func(names []string)
+	OnClose                  func()
+	OnPurgeFailed            func()
+	OnClearHistory           func()
+	OnSend                   func(content, title string)
+	OnAttach                 func()
+	OnToggleFullscreen       func()
+	OnPaperMessage           func(action string)
+	OnPaperMessageRequested  func()
+	OnAttachFiles            func(paths []string)
+	OnSaveAttachments        func(names []string)
+	OnSaveFocusedAttachments func(refs []AttachmentRef)
 	// Trust banner button callbacks (Python _on_trust_click/_on_block_click/
 	// _on_ignore_click, Conversations.py:1989-2030).
 	OnTrust  func()
@@ -228,10 +231,22 @@ func (cw *ConversationWidget) handleInput(event *tcell.EventKey) *tcell.EventKey
 			cw.OnAttach()
 		}
 		return nil
-	case tcell.KeyCtrlS:
+	case tcell.KeyCtrlF:
+		// C-f → attach_file, same as C-a. Python's MessageEdit.keypress
+		// (Conversations.py:1813) binds ctrl f to attach_file; the frame
+		// keypress binds ctrl a (Conversations.py:2237). Both reach the same
+		// action, so bind both here.
 		if cw.OnAttach != nil {
 			cw.OnAttach()
 		}
+		return nil
+	case tcell.KeyCtrlS:
+		cw.saveFocusedAttachments()
+		return nil
+	case tcell.KeyCtrlP:
+		// C-p → paper_message (Python MessageEdit.keypress,
+		// Conversations.py:1811). Opens the paper-message dialog.
+		cw.PaperMessageDialog()
 		return nil
 	case tcell.KeyCtrlD:
 		cw.sendMessage()
@@ -604,9 +619,15 @@ func (cw *ConversationWidget) DialogOpen() bool {
 
 // PaperMessageDialog shows a dialog for choosing how to output a
 // paper message: Print QR, Save QR, Save URI, or Cancel.
-// Matches Python's paper_message() at Conversations.py:2505.
+// Matches Python's paper_message() at Conversations.py:2505. The widget marks
+// its dialog state open and delegates the actual dialog rendering to the
+// wiring layer via OnPaperMessageRequested (the display's PaperMessageDialog
+// shows the real button overlay).
 func (cw *ConversationWidget) PaperMessageDialog() {
 	cw.dialogOpen = true
+	if cw.OnPaperMessageRequested != nil {
+		cw.OnPaperMessageRequested()
+	}
 }
 
 // PaperMessagePrintQR fires the OnPaperMessage callback with "PrintQR"
@@ -665,10 +686,51 @@ func (cw *ConversationWidget) DismissAttachFileDialog() {
 }
 
 // AttachmentRef represents a single attachment in a conversation.
-// Matches Python's _collect_attachment_refs() at Conversations.py:2270.
+// Matches Python's _collect_attachment_refs() at Conversations.py:2300.
 type AttachmentRef struct {
 	Name string
 	Type string
+}
+
+// collectAttachmentRefs gathers every attachment across all messages, ordered
+// by sort_timestamp descending (newest message first). Matches Python's
+// _collect_attachment_refs() at Conversations.py:2300-2322: it iterates the
+// conversation's messages sorted by sort_timestamp reverse and emits one ref
+// per attachment (file or otherwise) on every message that has attachments.
+func (cw *ConversationWidget) collectAttachmentRefs() []AttachmentRef {
+	sorted := make([]ConversationMessage, len(cw.messages))
+	copy(sorted, cw.messages)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		return sorted[i].Timestamp.After(sorted[j].Timestamp)
+	})
+
+	var refs []AttachmentRef
+	for _, msg := range sorted {
+		if !msg.HasAttach || len(msg.AttachmentNames) == 0 {
+			continue
+		}
+		for i, name := range msg.AttachmentNames {
+			atype := "file"
+			if i < len(msg.AttachmentTypes) && msg.AttachmentTypes[i] != "" {
+				atype = msg.AttachmentTypes[i]
+			}
+			refs = append(refs, AttachmentRef{Name: name, Type: atype})
+		}
+	}
+	return refs
+}
+
+// saveFocusedAttachments opens the save-attachments flow for the current
+// conversation. Matches Python's save_focused_attachments() at
+// Conversations.py:2324: it sets dialog_active, collects the attachment refs,
+// and hands them to the delegate (wiring layer) to render the save dialog.
+// Distinct from C-a/attach_file.
+func (cw *ConversationWidget) saveFocusedAttachments() {
+	cw.dialogOpen = true
+	refs := cw.collectAttachmentRefs()
+	if cw.OnSaveFocusedAttachments != nil {
+		cw.OnSaveFocusedAttachments(refs)
+	}
 }
 
 // SaveAttachmentsDialog shows a dialog with checkboxes for each

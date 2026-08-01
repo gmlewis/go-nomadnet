@@ -43,15 +43,26 @@ type ConversationInfo struct {
 }
 
 // ConversationsDisplay shows the conversation list and message view.
-// Matches Python's ConversationsDisplay with Trusted/Untrusted tabs.
+// Matches Python's ConversationsDisplay (Conversations.py:205-236): a two-pane
+// Columns layout — a bordered left pane titled "Conversations" holding the
+// Trusted/Untrusted tab buttons, the conversation list (an IndicativeListBox
+// with "───"/"▲"/"▼" scroll indicators) and a "Last sync:" footer; and a
+// bordered right pane showing the selected conversation (or "No conversation
+// selected" when none). There is NO outer border around the two panes; each
+// pane carries its own LineBox, matching the original.
 type ConversationsDisplay struct {
 	app                 *App
 	widget              *tview.Flex
 	content             *tview.Flex
 	leftPanel           *tview.Flex
 	list                *tview.List
+	ilb                 *IndicativeListBox
 	detail              *tview.TextView
-	tabBar              *tview.TextView
+	tabBar              *tabBarWidget
+	tabTrusted          *UrwidButton
+	tabUntrusted        *UrwidButton
+	showBlockedCheckbox *tview.Checkbox
+	syncStatus          *tview.TextView
 	conversations       []ConversationInfo
 	listWidth           int
 	fullscreen          bool
@@ -90,54 +101,69 @@ func NewConversationsDisplay(app *App, convs []ConversationInfo) *ConversationsD
 		showTrusted:   true,
 	}
 
-	// Title
-	title := tview.NewTextView()
-	title.SetTextAlign(tview.AlignCenter)
-	title.SetDynamicColors(true)
-	title.SetTextColor(tcell.NewHexColor(0xdddddd))
-	title.SetText("[::b]Conversations[-]")
+	// Tab bar: two TabButtons "[ Trusted (N) ]" / "[ Untrusted (N) ]" in a
+	// single Columns row with one dividing space, matching Python's tab_bar
+	// (Conversations.py:392-398). No digit prefixes; unread/failed counts get
+	// an envelope glyph (Python _label, Conversations.py:458-465). Each button
+	// is weight 1 so the brackets fill the left-pane inner width.
+	cd.tabTrusted = NewTabButton("Trusted (0)")
+	cd.tabTrusted.SetSelectedFunc(func() { cd.SetShowTrusted(true) })
+	cd.tabUntrusted = NewTabButton("Untrusted (0)")
+	cd.tabUntrusted.SetSelectedFunc(func() { cd.SetShowTrusted(false) })
+	cd.tabBar = newTabBarWidget(cd.tabTrusted, cd.tabUntrusted)
 
-	// Tab bar: Trusted (N) | Untrusted (N) — no digit prefixes (the original
-	// has none); unread counts get an envelope glyph (Python _label,
-	// Conversations.py:461-465).
-	tabBar := tview.NewTextView()
-	tabBar.SetTextAlign(tview.AlignCenter)
-	tabBar.SetDynamicColors(true)
-	tabBar.SetTextColor(tcell.NewHexColor(0xdddddd))
-	cd.tabBar = tabBar
-	cd.refreshTabBar()
-
-	// Conversation list
+	// Conversation list, wrapped in an IndicativeListBox so the centered
+	// "───"/"▲"/"▼" scroll indicators render above and below it (Python
+	// IndicativeListBox, Conversations.py:403-408).
 	cd.list = tview.NewList()
 	cd.list.SetHighlightFullLine(true)
 	ApplyListFocusStyle(cd.list, cd.app.Theme)
+	cd.ilb = NewIndicativeListBox(cd.list)
 
 	cd.populateList()
+	cd.refreshTabBar()
 
-	// Detail view (right side)
+	// "Show blocked (N)" checkbox, shown only in the Untrusted tab (Python
+	// _apply_pile_layout, Conversations.py:317-318).
+	cd.showBlockedCheckbox = tview.NewCheckbox().
+		SetLabel("Show blocked (0)").
+		SetChangedFunc(func(checked bool) { cd.SetShowBlocked(checked) })
+
+	// "Last sync: never" footer (Python _sync_status_line, Conversations.py:
+	// 517-545), left-aligned in the shortcutbar style.
+	cd.syncStatus = tview.NewTextView()
+	cd.syncStatus.SetTextAlign(tview.AlignLeft)
+	cd.syncStatus.SetTextColor(tcell.NewHexColor(0xaaaaaa))
+	cd.syncStatus.SetText(cd.syncStatusLine())
+
+	// Detail view (right pane). Empty state matches Python's ConversationWidget
+	// (None): a bordered LineBox with "\n  No conversation selected"
+	// (Conversations.py:1884-1886).
 	cd.detail = tview.NewTextView()
 	cd.detail.SetDynamicColors(true)
 	cd.detail.SetScrollable(true)
 	cd.detail.SetTextColor(tcell.NewHexColor(0xbbbbbb))
 	cd.detail.SetTextAlign(tview.AlignLeft)
-	cd.detail.SetText("[gray]Select a conversation to view[-]")
+	cd.detail.SetBorder(true)
+	cd.detail.SetText("\n  No conversation selected")
 
-	// Layout: tab bar + list on left, detail on right
+	// Left pane: bordered, titled "Conversations", holding the tab bar, the
+	// (optional) show-blocked checkbox, the list, and the sync footer.
 	leftPanel := tview.NewFlex().SetDirection(tview.FlexRow)
-	leftPanel.AddItem(cd.tabBar, 1, 0, false)
-	leftPanel.AddItem(cd.list, 0, 1, true)
+	leftPanel.SetBorder(true)
+	SetTitledBorder(leftPanel, "Conversations")
 	cd.leftPanel = leftPanel
 	cd.listWidth = 52
+	cd.applyPileLayout()
 
+	// Two-pane Columns: left list pane (fixed 52) + right detail pane. No outer
+	// border — each pane carries its own, matching Python's columns_widget
+	// (Conversations.py:221-229).
 	content := tview.NewFlex().SetDirection(tview.FlexColumn)
 	content.AddItem(leftPanel, cd.listWidth, 0, true)
 	content.AddItem(cd.detail, 0, 1, false)
 	cd.content = content
-
-	cd.widget = tview.NewFlex().SetDirection(tview.FlexRow)
-	cd.widget.SetBorder(true)
-	cd.widget.AddItem(title, 2, 0, false)
-	cd.widget.AddItem(content, 0, 1, true)
+	cd.widget = content
 
 	// Set up list callback
 	cd.list.SetSelectedFunc(func(i int, mainText, secondaryText string, shortcut rune) {
@@ -266,12 +292,47 @@ func (cd *ConversationsDisplay) DisplayConversation(sourceHash string) {
 		}
 	}
 	cw.OnClose = func() {
-		// Restore the detail panel
-		cd.widget.RemoveItem(cd.widget.GetItem(1))
-		cd.widget.AddItem(cd.detail, 0, 2, false)
+		// Restore the empty detail pane: remove the conversation widget (the
+		// content Flex's index-1 item) and re-add the bordered detail view.
+		cd.content.RemoveItem(cd.content.GetItem(1))
+		cd.content.AddItem(cd.detail, 0, 1, false)
 	}
-	cd.widget.RemoveItem(cd.detail)
-	cd.widget.AddItem(cw.Widget(), 0, 1, true)
+	cw.OnSaveFocusedAttachments = func(refs []AttachmentRef) {
+		// Python save_focused_attachments hands the collected refs to a dialog.
+		// The display-level SaveAttachmentsDialog renders the checkbox list;
+		// ConfirmSaveAttachments fires OnSaveAttachments with the selection.
+		var names []string
+		for _, r := range refs {
+			names = append(names, r.Name)
+		}
+		cd.SaveAttachmentsDialog(names, func(selected []string) {
+			cw.ConfirmSaveAttachments(selected)
+		})
+	}
+	cw.OnAttach = func() {
+		// Python attach_file (Conversations.py:2438) opens a file browser; the
+		// display's AttachFileDialog is the input-dialog equivalent. On
+		// selection, ConfirmAttachFile fires OnAttachFiles so the app layer can
+		// stage the pending attachment.
+		cd.AttachFileDialog("", func(path string) {
+			if path == "" {
+				return
+			}
+			cw.ConfirmAttachFile([]string{path})
+		})
+	}
+	cw.OnPaperMessageRequested = func() {
+		// Python paper_message (Conversations.py:2505) shows the output-method
+		// dialog; the display renders it. Each choice fires the matching widget
+		// action, which calls OnPaperMessage for the app layer to act on.
+		cd.PaperMessageDialog(
+			func() { cw.PaperMessagePrintQR() },
+			func() { cw.PaperMessageSaveQR() },
+			func() { cw.PaperMessageSaveURI() },
+		)
+	}
+	cd.content.RemoveItem(cd.detail)
+	cd.content.AddItem(cw.Widget(), 0, 1, true)
 }
 
 // populateList fills the list based on current tab (trusted/untrusted).
@@ -304,7 +365,15 @@ func (cd *ConversationsDisplay) populateList() {
 		if !cd.showTrusted {
 			emptyMsg = "No untrusted conversations"
 		}
-		cd.list.AddItem("[gray]"+emptyMsg+"[-]", "", 0, nil)
+		// Leave the List empty and render the message as a centered
+		// placeholder (matching Python's `[urwid.Text(empty_label,
+		// align='center')]` body, Conversations.py:496) rather than a
+		// left-aligned list item.
+		if cd.ilb != nil {
+			cd.ilb.SetEmptyText(emptyMsg)
+		}
+	} else if cd.ilb != nil {
+		cd.ilb.SetEmptyText("")
 	}
 }
 
@@ -512,16 +581,38 @@ func (cd *ConversationsDisplay) ToggleFullscreen() {
 // detail).
 func (cd *ConversationsDisplay) Fullscreen() bool { return cd.fullscreen }
 
+// SetShowTrusted switches the conversation list between the Trusted tab
+// (showTrusted=true) and the Untrusted tab (showTrusted=false) and repopulates
+// the list, mirroring Python's ConversationsDisplay._set_filter
+// (Conversations.py:606-618). Used by the New Conversation dialog to reveal a
+// freshly-created untrusted/unknown entry (Python switches to LIST_FILTER_UNTRUSTED
+// when the new entry is not trusted, Conversations.py:1066-1068).
+func (cd *ConversationsDisplay) SetShowTrusted(show bool) {
+	cd.showTrusted = show
+	cd.populateList()
+	cd.refreshTabBar()
+	cd.applyPileLayout()
+}
+
 // ListWidth returns the normal (non-fullscreen) fixed width of the list pane.
 func (cd *ConversationsDisplay) ListWidth() int { return cd.listWidth }
 
-// tabBarText builds the Trusted/Untrusted tab label text, matching Python's
-// _label (Conversations.py:461-465) and the two-button tab_bar
+// tabBarText builds the combined Trusted/Untrusted tab label text, matching
+// Python's _label (Conversations.py:461-465) and the two-button tab_bar
 // (Conversations.py:392-398). There are no digit prefixes (the original has
 // none). When a tab has alert (unread or failed) conversations, an envelope
 // glyph and the alert count follow the total, e.g. "Trusted (3) ✉ 2".
-// unreadGlyph is the glyphs["unread"] string for the active glyph set.
+// unreadGlyph is the glyphs["unread"] string for the active glyph set. The two
+// labels are joined by two spaces (the dividechars=1 Columns gap plus one
+// space from each button's trailing padding).
 func tabBarText(convs []ConversationInfo, unreadGlyph string) string {
+	trusted, untrusted := tabButtonLabels(convs, unreadGlyph)
+	return trusted + "  " + untrusted
+}
+
+// tabButtonLabels returns the per-button labels for the Trusted and Untrusted
+// tab buttons, matching Python's _label (Conversations.py:458-465).
+func tabButtonLabels(convs []ConversationInfo, unreadGlyph string) (trusted, untrusted string) {
 	trustedCount, untrustedCount := 0, 0
 	trustedAlert, untrustedAlert := 0, 0
 	for _, c := range convs {
@@ -544,13 +635,15 @@ func tabBarText(convs []ConversationInfo, unreadGlyph string) string {
 		}
 		return fmt.Sprintf("%s (%d)", name, total)
 	}
-	return label("Trusted", trustedCount, trustedAlert) + "  " + label("Untrusted", untrustedCount, untrustedAlert)
+	return label("Trusted", trustedCount, trustedAlert), label("Untrusted", untrustedCount, untrustedAlert)
 }
 
-// refreshTabBar recomputes the tab label text from the current conversations
-// and writes it to the tab bar widget.
+// refreshTabBar recomputes the two tab-button labels from the current
+// conversations and updates the tab buttons, matching Python's update_listbox
+// which calls tab_trusted.set_label / tab_untrusted.set_label
+// (Conversations.py:463-464).
 func (cd *ConversationsDisplay) refreshTabBar() {
-	if cd.tabBar == nil {
+	if cd.tabTrusted == nil || cd.tabUntrusted == nil {
 		return
 	}
 	glyph := "✉"
@@ -559,7 +652,34 @@ func (cd *ConversationsDisplay) refreshTabBar() {
 			glyph = g
 		}
 	}
-	cd.tabBar.SetText(tabBarText(cd.conversations, glyph))
+	trusted, untrusted := tabButtonLabels(cd.conversations, glyph)
+	cd.tabTrusted.SetLabel(trusted)
+	cd.tabUntrusted.SetLabel(untrusted)
+}
+
+// syncStatusLine returns the left-pane sync footer text, matching Python's
+// _sync_status_line (Conversations.py:517-545): " Last sync: <when>" (with a
+// leading space), where <when> is "never" when no sync has been recorded.
+// The propagation-node label suffix is omitted until RNS wiring supplies it.
+func (cd *ConversationsDisplay) syncStatusLine() string {
+	return " Last sync: never"
+}
+
+// applyPileLayout rebuilds the left-pane item stack, matching Python's
+// _apply_pile_layout (Conversations.py:313-330): the tab bar on top, the
+// "Show blocked" checkbox only in the Untrusted filter, the list (weight 1)
+// in the middle, and the sync footer at the bottom.
+func (cd *ConversationsDisplay) applyPileLayout() {
+	if cd.leftPanel == nil {
+		return
+	}
+	cd.leftPanel.Clear()
+	cd.leftPanel.AddItem(cd.tabBar, 1, 0, false)
+	if !cd.showTrusted && cd.showBlockedCheckbox != nil {
+		cd.leftPanel.AddItem(cd.showBlockedCheckbox, 1, 0, false)
+	}
+	cd.leftPanel.AddItem(cd.ilb, 0, 1, true)
+	cd.leftPanel.AddItem(cd.syncStatus, 1, 0, false)
 }
 
 // ToggleSort toggles between sort-by-time and sort-by-name.
@@ -970,6 +1090,120 @@ func (cd *ConversationsDisplay) ShowPeerInfoDialog(entry PeerInfoEntry, onSave f
 	cd.app.Dialogs.ShowDialog("Peer Info", layout, 50, 14, func() {
 		cd.dialogOpen = false
 	})
+}
+
+// ShowNewConversationDialog opens the "New Conversation" dialog
+// (Conversations.py:1024-1120): Addr and Name ReadlineEdit fields, a
+// Untrusted/Unknown/Trusted radio group, and flat Create/Back buttons. Create
+// calls onCreate(addrHex, name, trust); on success the dialog dismisses, on
+// failure it re-shows with the centered "Could not start conversation. Check
+// your input." error text (the nomadnet "error_text" style, dark red). Back or
+// Esc dismisses without action.
+//
+// Per urwid's RadioButton construction quirk the dialog opens with BOTH
+// "Untrusted" and "Unknown" showing "(X)" (the first radio defaults to checked
+// via "first True", and an explicitly-checked radio does not uncheck its
+// siblings during construction). Python's confirmed() checks r_unknown first,
+// so a fresh dialog with no toggling creates the entry with the Unknown trust
+// level — reproduced verbatim (bug-for-bug).
+//
+// Layout parity: the bordered dialog is 48 columns wide and 10 rows tall (8
+// content rows), matching the original whose overlay sits in the 52-column
+// left pane with left=right=2 padding (Conversations.py:1108-1113). The Go
+// DialogManager centers the overlay on the WHOLE screen rather than the left
+// pane, a known position parity gap; the width/height/content match exactly.
+func (cd *ConversationsDisplay) ShowNewConversationDialog(onCreate func(addrHex, name, trust string) bool) {
+	cd.showNewConversationDialog("", "", false, onCreate)
+}
+
+// showNewConversationDialog is the recursive builder for the New Conversation
+// dialog. addr/name pre-fill the fields (used when re-showing after a failed
+// Create so the typed input is preserved); showError appends the error row.
+func (cd *ConversationsDisplay) showNewConversationDialog(addr, name string, showError bool, onCreate func(addrHex, name, trust string) bool) {
+	cd.dialogOpen = true
+
+	eID := NewReadlineEdit(cd.app.killRing, "Addr : ", "")
+	eID.SetText(addr)
+	eName := NewReadlineEdit(cd.app.killRing, "Name : ", "")
+	eName.SetText(name)
+
+	group := &DialogRadioGroup{}
+	rUntrusted := NewRadioButton(group, "Untrusted", false, true)
+	rUnknown := NewRadioButton(group, "Unknown", true, false)
+	rTrusted := NewRadioButton(group, "Trusted", false, true)
+
+	createBtn := NewUrwidButton("Create")
+	backBtn := NewUrwidButton("Back")
+
+	// Blank 1-row spacer, matching the urwid.Text("") separators in the pile.
+	blank := func() tview.Primitive { return tview.NewTextView() }
+
+	// Button row: Create 21 / gap 5 / Back 20 = 46 (the inner content width),
+	// matching the original Columns weights 0.45/0.1/0.45 at width 46.
+	buttons := tview.NewFlex().SetDirection(tview.FlexColumn).
+		AddItem(createBtn, 21, 0, true).
+		AddItem(blank(), 5, 0, false).
+		AddItem(backBtn, 20, 0, false)
+
+	pile := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(eID, 1, 0, true).
+		AddItem(eName, 1, 0, false).
+		AddItem(blank(), 1, 0, false).
+		AddItem(rUntrusted, 1, 0, false).
+		AddItem(rUnknown, 1, 0, false).
+		AddItem(rTrusted, 1, 0, false).
+		AddItem(blank(), 1, 0, false).
+		AddItem(buttons, 1, 0, false)
+
+	// Inner content width 46 → bordered dialog 48 wide (DialogLineBox draws
+	// its border one cell outside the box). 8 content rows → 10 rows tall.
+	width, height := 46, 8
+	if showError {
+		errText := tview.NewTextView().SetDynamicColors(true)
+		errText.SetTextAlign(tview.AlignCenter)
+		errText.SetWrap(true)
+		errText.SetWordWrap(true)
+		errText.SetText("[red]Could not start conversation. Check your input.[-]")
+		// The error text is 47 chars and wraps to 2 lines at width 46
+		// (urwid renders it PACK, 2 centered lines); reserve 2 rows so both
+		// wrapped lines are visible, plus the leading blank separator.
+		pile.AddItem(blank(), 1, 0, false).
+			AddItem(errText, 2, 0, false)
+		height = 11
+	}
+
+	dismiss := func() { cd.app.Dialogs.DismissTop() }
+
+	createBtn.SetSelectedFunc(func() {
+		addrHex := strings.TrimSpace(eID.GetText())
+		displayName := eName.GetText()
+		trust := "untrusted"
+		if rUnknown.Checked() {
+			trust = "unknown"
+		} else if rTrusted.Checked() {
+			trust = "trusted"
+		}
+		if onCreate(addrHex, displayName, trust) {
+			dismiss()
+			return
+		}
+		// Re-show with the preserved inputs and the error row. The dialog is
+		// fixed-height, so the error row cannot be added in place; rebuilding
+		// preserves the typed Addr/Name. Python appends the error without
+		// rebuilding (so focus stays on Create there) — a minor parity gap not
+		// visible in static captures (the tmux capture cannot see the cursor).
+		cd.app.Dialogs.DismissTop()
+		cd.showNewConversationDialog(addrHex, displayName, true, onCreate)
+	})
+	backBtn.SetSelectedFunc(dismiss)
+
+	items := []tview.Primitive{eID, eName, rUntrusted, rUnknown, rTrusted, createBtn, backBtn}
+	cd.app.Dialogs.ShowDialog("New Conversation", pile, width, height, func() {
+		cd.dialogOpen = false
+	})
+	// Wire urwid-Pile-style Tab/Up/Down/Esc traversal and focus the Addr field
+	// (the dialog's first focusable widget, matching the original).
+	wireDialogNav(cd.app, dismiss, items)
 }
 
 // SyncMode represents the conversation sync download mode.

@@ -259,14 +259,15 @@ func TestNewComposeDisplay(t *testing.T) {
 
 // TestConversationsToggleFullscreen verifies the list pane collapses to width
 // 0 (detail fills the row) and restores, matching Python's toggle_fullscreen
-// (Conversations.py:1276). It draws the content Flex to a simulation screen
-// and checks the detail text's "S" moves from the list-width column to column 0.
+// (Conversations.py:1276). The detail pane is bordered, so its text begins one
+// column inside the border; the test checks the detail text's "S" sits at
+// listWidth+1 normally and at column 1 in fullscreen.
 func TestConversationsToggleFullscreen(t *testing.T) {
 	t.Parallel()
 
 	app := newTestApp()
 	cd := NewConversationsDisplay(app, nil)
-	// The detail's default text begins with "Select …".
+	// Override the empty-state text with a known "Select …" string.
 	cd.detail.SetText("Select a conversation to view")
 
 	screen := tcell.NewSimulationScreen("UTF-8")
@@ -284,30 +285,31 @@ func TestConversationsToggleFullscreen(t *testing.T) {
 		return c
 	}
 
-	// Non-fullscreen: the list pane occupies [0,listWidth), so the detail's
-	// first text column is listWidth.
+	// Non-fullscreen: the list pane occupies [0,listWidth); the bordered detail
+	// pane starts at listWidth, so its text's "S" is at column listWidth+1.
 	cd.content.SetRect(0, 0, 80, 12)
 	screen.Clear()
 	cd.content.Draw(screen)
 	if cd.Fullscreen() {
 		t.Error("expected non-fullscreen initially")
 	}
-	if c := cell(cd.ListWidth(), 0); c != 'S' {
-		t.Errorf("normal detail cell(%d,0) = %q, want 'S'", cd.ListWidth(), c)
+	if c := cell(cd.ListWidth()+1, 1); c != 'S' {
+		t.Errorf("normal detail cell(%d,1) = %q, want 'S'", cd.ListWidth()+1, c)
 	}
-	if c := cell(0, 0); c == 'S' {
-		t.Errorf("normal detail cell(0,0) = 'S', but list pane should occupy column 0")
+	if c := cell(0, 1); c == 'S' {
+		t.Errorf("normal detail cell(0,1) = 'S', but list pane should occupy column 0")
 	}
 
-	// Toggle fullscreen: list pane collapses to width 0, detail starts at 0.
+	// Toggle fullscreen: list pane collapses to width 0, the bordered detail
+	// pane fills the row, so its "S" is at column 1.
 	cd.ToggleFullscreen()
 	if !cd.Fullscreen() {
 		t.Error("expected fullscreen after toggle")
 	}
 	screen.Clear()
 	cd.content.Draw(screen)
-	if c := cell(0, 0); c != 'S' {
-		t.Errorf("fullscreen detail cell(0,0) = %q, want 'S'", c)
+	if c := cell(1, 1); c != 'S' {
+		t.Errorf("fullscreen detail cell(1,1) = %q, want 'S'", c)
 	}
 
 	// Toggle back: detail returns to the list width.
@@ -317,8 +319,8 @@ func TestConversationsToggleFullscreen(t *testing.T) {
 	}
 	screen.Clear()
 	cd.content.Draw(screen)
-	if c := cell(cd.ListWidth(), 0); c != 'S' {
-		t.Errorf("restored detail cell(%d,0) = %q, want 'S'", cd.ListWidth(), c)
+	if c := cell(cd.ListWidth()+1, 1); c != 'S' {
+		t.Errorf("restored detail cell(%d,1) = %q, want 'S'", cd.ListWidth()+1, c)
 	}
 }
 

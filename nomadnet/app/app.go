@@ -63,6 +63,11 @@ const (
 	UIMenu      = 4
 )
 
+// startAnnounceDelay mirrors Python's NomadNetworkApp.START_ANNOUNCE_DELAY = 3
+// (NomadNetworkApp.py:36): when peer_announce_at_start is set, a daemon thread
+// sleeps this long after RNS init before sending the first announce.
+const startAnnounceDelay = 3 * time.Second
+
 // App is the central NomadNetworkApp singleton that holds all state.
 type App struct {
 	// Core settings
@@ -406,6 +411,27 @@ func (a *App) initRNS() {
 		ReceivedAnnounceWithContext: a.handlePNAnnounce,
 	})
 	a.Logger.Info("Announce handlers registered")
+
+	// RNS is now ready (identity + LXMF destination loaded): notify the UI so
+	// widgets that need identity data (e.g. the Local Peer Info panel) can
+	// populate now, even though initRNS ran asynchronously after Init returned.
+	if a.UIChangeCallback != nil {
+		a.UIChangeCallback()
+	}
+
+	// Announce at start (Python peer_announce_at_start, NomadNetworkApp.py:415-
+	// 421): a daemon thread sleeps START_ANNOUNCE_DELAY then sends the first
+	// announce so the Local Peer Info "Announced : …" line reads "just now"
+	// shortly after boot instead of "Never".
+	if a.PeerAnnounceAtStart {
+		go func() {
+			time.Sleep(startAnnounceDelay)
+			a.AnnounceNow()
+			if a.UIChangeCallback != nil {
+				a.UIChangeCallback()
+			}
+		}()
+	}
 
 	// Start background jobs
 	go a.jobs()
