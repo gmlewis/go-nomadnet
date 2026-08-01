@@ -262,6 +262,251 @@ while True:
     time.sleep(1)
 `
 
+// pythonRRCClientScript drives the REAL nomadnet.RRC.RRCHub client against a
+// Go RRC server (task 2.2 reverses the 2.1 roles). It:
+//   - brings up RNS over a config-supplied TCPServerInterface,
+//   - mints a local RNS.Identity and a minimal app/manager so the real RRCManager
+//   - RRCHub client logic runs unchanged (only nomadnet's own code sends/receives),
+//   - prints READY=1, then polls a hash file published by the Go test for the Go
+//     server's rrc.chat destination hash,
+//   - registers a message callback that prints RECV_MSG=<text> for any message
+//     whose src is NOT the local identity (so local echoes / own sends are filtered),
+//   - add_hub(hash, "rrc.chat", "GoHub").connect(), waits for WELCOME, prints
+//     WELCOMED=1 + HUB_NAME=,
+//   - send_message("general", "Hello from Python!") and prints MSG_SENT=1,
+//   - then waits up to 30 s for the Go server to send a MSG (printed as RECV_MSG=).
+//
+// Using the real nomadnet.RRC client (not a hand-rolled script) is the point of
+// task 2.2: it exercises the actual Python _connect_worker, link.identify,
+// _send_hello, _on_packet T_MSG/T_WELCOME paths against the Go server.
+const pythonRRCClientScript = `
+import sys, os, time, threading
+import RNS
+from nomadnet.vendor import cbor
+import nomadnet.RRC as rrc
+
+configdir = sys.argv[1]
+hash_file = sys.argv[2]
+storagepath = sys.argv[3]
+
+reticulum = RNS.Reticulum(configdir)
+identity = RNS.Identity()
+own_hash = bytes(identity.hash)
+
+class FakeApp:
+    def __init__(self, ident, nick, storage):
+        self.identity = ident
+        self.peer_settings = {"display_name": nick}
+        self.storagepath = storage
+
+app = FakeApp(identity, "PyClient", storagepath)
+mgr = rrc.RRCManager(app)
+
+def on_msg(hub, msg):
+    try:
+        src = msg.src
+        if src is not None and bytes(src) == own_hash:
+            return
+        print("RECV_MSG=" + str(msg.text), flush=True)
+    except Exception as e:
+        print("RECV_ERR=" + str(e), flush=True)
+
+mgr.set_message_callback(on_msg)
+
+print("READY=1", flush=True)
+
+# Wait for the Go test to publish the server destination hash.
+hub_hash = None
+deadline = time.monotonic() + 30.0
+while time.monotonic() < deadline:
+    try:
+        with open(hash_file, "r") as f:
+            h = f.read().strip()
+        if h:
+            hub_hash = bytes.fromhex(h)
+            break
+    except Exception:
+        pass
+    time.sleep(0.2)
+
+if hub_hash is None:
+    print("HASH_TIMEOUT=1", flush=True)
+    sys.exit(1)
+
+hub = mgr.add_hub(hub_hash, dest_name="rrc.chat", name="GoHub")
+hub.connect()
+
+deadline = time.monotonic() + 30.0
+while time.monotonic() < deadline:
+    if hub.welcomed:
+        break
+    time.sleep(0.1)
+
+if not hub.welcomed:
+    print("WELCOME_TIMEOUT=1", flush=True)
+    sys.exit(1)
+print("WELCOMED=1", flush=True)
+print("HUB_NAME=" + str(hub.hub_name), flush=True)
+
+try:
+    hub.send_message("general", "Hello from Python!")
+    print("MSG_SENT=1", flush=True)
+except Exception as e:
+    print("MSG_SEND_ERR=" + str(e), flush=True)
+    sys.exit(1)
+
+# Wait to receive a MSG from the Go server.
+deadline = time.monotonic() + 30.0
+while time.monotonic() < deadline:
+    time.sleep(0.2)
+print("CLIENT_DONE=1", flush=True)
+`
+
+// TestIntegrationXProcessMSGRoundTrip verifies a full RRC MSG round-trip across a
+// real Go↔Python RNS link bridged by a TCP RNS transport (task 2.2), with roles
+// reversed from 2.1: the Go side is the RRC *server* and the Python side drives
+// the real nomadnet.RRC.RRCHub *client*.
+//
+//   - Python subprocess: TCPServerInterface + real RRCManager/RRCHub client.
+//   - Go side: TCPClientInterface + a real RRCHub acting as server (announces
+//     rrc.chat, handles HELLO→WELCOME, records inbound MSG, sends an outbound MSG).
+//
+// Direction 1 (Python client → Go server): the Python client send_message's
+// "Hello from Python!"; the Go server's HandleData records it and the test
+// asserts serverHub.GetMessages("general") contains the text.
+//
+// Direction 2 (Go server → Python client): the Go server SendMessage's
+// "Hello from Go!"; the Python client's message callback prints RECV_MSG= and
+// the test asserts the text matches.
+func TestIntegrationXProcessMSGRoundTrip(t *testing.T) {
+	testutils.SkipShortIntegration(t)
+	pyPath := findRNSPython(t)
+
+	pyPort := reserveTCPPortXProc(t)
+	pyCfgDir := filepath.Join(testutils.TempDir(t, "nomadnet-rrc-xproc-py"), "config")
+	writePythonRNSConfigWithTCPServer(t, pyCfgDir, pyPort)
+
+	pyStorage := testutils.TempDir(t, "nomadnet-rrc-xproc-py-storage")
+	hashDir := testutils.TempDir(t, "nomadnet-rrc-xproc-hash")
+	hashFile := filepath.Join(hashDir, "hubhash")
+
+	scriptPath := filepath.Join(filepath.Dir(pyCfgDir), "rrc_client.py")
+	if err := os.WriteFile(scriptPath, []byte(pythonRRCClientScript), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := exec.Command(pyPath, scriptPath, pyCfgDir, hashFile, pyStorage)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatalf("stdout pipe: %v", err)
+	}
+	cmd.Stderr = os.Stderr
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start python: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = cmd.Process.Kill()
+		_, _ = cmd.Process.Wait()
+	})
+
+	lb := &lineBuffer{}
+	go func() {
+		scanner := bufio.NewScanner(stdout)
+		scanner.Buffer(make([]byte, 64*1024), 1024*1024)
+		for scanner.Scan() {
+			lb.push(scanner.Text())
+		}
+	}()
+
+	// Wait for the Python TCP server to be up before connecting the Go client.
+	lb.waitForLine(t, "READY=", 10*time.Second)
+
+	ts, tsCleanup := newStartedTSWithTCPClient(t, "127.0.0.1", pyPort)
+	defer tsCleanup()
+	// Give the TCP client a moment to connect before announcing.
+	time.Sleep(500 * time.Millisecond)
+
+	serverDest, err := rns.NewDestination(ts, ts.Identity(), rns.DestinationIn, rns.DestinationSingle, "rrc", "chat")
+	if err != nil {
+		t.Fatalf("server dest error: %v", err)
+	}
+
+	serverMgr := NewManager(tempDirRRC(t), func() []byte { return ts.Identity().Hash })
+	serverMgr.SetNickname("GoHub")
+	serverHub := serverMgr.AddHub(serverDest.Hash, "rrc.chat", "GoHub")
+
+	serverLinkCh := make(chan *rns.Link, 1)
+	serverDest.SetLinkEstablishedCallback(func(l *rns.Link) {
+		serverHub.SetLink(l)
+		l.SetPacketCallback(func(data []byte, _ *rns.Packet) { serverHub.HandleData(data) })
+		select {
+		case serverLinkCh <- l:
+		default:
+		}
+	})
+
+	// Publish the Go server destination hash so the Python client can dial it.
+	if err := os.WriteFile(hashFile, []byte(hex.EncodeToString(serverDest.Hash)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Announce the Go RRC destination in a loop so the Python client can recall
+	// the Go identity and establish an RNS Link to it.
+	stopAnn := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case <-stopAnn:
+				return
+			default:
+				_ = serverDest.Announce(nil)
+				time.Sleep(2 * time.Second)
+			}
+		}
+	}()
+	defer close(stopAnn)
+
+	// Wait for the Python client to complete the HELLO/WELCOME handshake.
+	lb.waitForLine(t, "WELCOMED=", 40*time.Second)
+
+	// Wait for the link to be established on the Go side too.
+	select {
+	case <-serverLinkCh:
+	case <-time.After(20 * time.Second):
+		t.Fatal("timeout waiting for server-side link establishment")
+	}
+
+	// Wait for the Python client to send its MSG.
+	lb.waitForLine(t, "MSG_SENT=", 10*time.Second)
+
+	// Direction 1: the Go server should have recorded the Python-sent MSG.
+	deadline := time.Now().Add(20 * time.Second)
+	var foundPy bool
+	for time.Now().Before(deadline) {
+		for _, m := range serverHub.GetMessages("general") {
+			if m.Text == "Hello from Python!" {
+				foundPy = true
+				break
+			}
+		}
+		if foundPy {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if !foundPy {
+		t.Fatal("Go server did not record the Python-sent MSG \"Hello from Python!\"")
+	}
+
+	// Direction 2: the Go server sends a MSG to the Python client.
+	serverHub.SendMessage("general", "Hello from Go!")
+
+	recv := lb.waitForLine(t, "RECV_MSG=", 20*time.Second)
+	if strings.TrimSpace(recv) != "Hello from Go!" {
+		t.Errorf("Python received RECV_MSG = %q, want %q", recv, "Hello from Go!")
+	}
+}
+
 // TestIntegrationXProcessHelloWelcome verifies the RRC HELLO/WELCOME handshake
 // across a real Go↔Python RNS link bridged by a TCP RNS transport (task 2.1):
 //

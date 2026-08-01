@@ -261,9 +261,6 @@ test or a matching `parity.sh` summary):
 
 ### Phase 2 — Core library prerequisites (needed by the TUI wiring in Phase 5)
 
-- [ ] **2.2 rrc MSG round-trip.** Integration test: Python RRC client sends MSG,
-      Go hub receives and records it; and Go hub sends MSG, Python client
-      receives it.
 - [ ] *(Plus the app/conversation/directory methods referenced by Phase 5 wiring
       5.x — add a TDD task per method as they become prerequisites. Capture
       expected behavior from the Python `nomadnet/` core.)*
