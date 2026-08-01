@@ -49,10 +49,10 @@
 1. Capture the original with `tooling/tui-parity/capture.sh --target orig ...`
    and the Go port with `--target go ...` (or both at once via `parity.sh`).
 2. Compare with `tooling/tui-parity/summary.py` (menu items, border style,
-  footer, focus-row bg colors, all-bold heuristic) and `ansiview.py --focus`.
+   footer, focus-row bg colors, all-bold heuristic) and `ansiview.py --focus`.
 3. For widget *logic*, unit-test with a mocked `tview.Application` (no real
-  terminal) asserting on the widget tree / callbacks, with expected values
-  captured from the Python original.
+   terminal) asserting on the widget tree / callbacks, with expected values
+   captured from the Python original.
 
 **Cross-process** (RNS fetch, LXMF, RRC): integration test with a temporary TCP
 RNS transport between a Go process and a Python subprocess; assert byte-for-byte
@@ -60,11 +60,38 @@ RNS transport between a Go process and a Python subprocess; assert byte-for-byte
 
 ---
 
-## Source of truth — reference facts (inline so you never need TUI-ANALYSIS.md)
+## go-reticulum dependency (read this before any “RNS-blocked” assumption)
 
-> These facts are the spec. Tests should assert against them. They are condensed
-> from a live headless analysis of the original (urwid 4.0.3, default dark theme
-> + 24-bit colormode + Nerd Font glyphs) and from the Python source.
+The sibling repo `../go-reticulum` (required as `github.com/gmlewis/go-reticulum`
+via `go.work`) is **near-complete**: it already implements and this port already
+consumes — `Identity`/`RecallIdentity`, `Destination` (+ `RegisterRequestHandler`,
+link-established callbacks), `Link` (`NewLink`/`Establish`/`Request`/handshake/
+keepalive/teardown), `Packet`, `RequestReceipt`, `Resource`/`ResourceAdvertisement`,
+`AnnounceHandler`, `TransportSystem` (`HopsTo`, `GetInterfaces`, `RegisterInterface`,
+`RemoveInterface`, `RegisterAnnounceHandler`), `Reticulum` (`HaltInterface`,
+`ResumeInterface`, `ReloadInterface`), `LoadConfig`, and the full `lxmf` package
+(`Message`, `Router`, `NewMessage`, `NewRouter`, `IngestLXMURI`, `RequestLXMFSync`,
+delivery/propagation states, fields, stamps). All exercised by go-reticulum’s
+`rns-int-*` / `lxmf-int-*` cross-process suites.
+
+**Consequence:** almost everything previously labelled “Phase 5 / RNS-blocked” is
+**not** blocked on go-reticulum — it is go-nomadnet-side *wiring* (calling the
+existing primitives, instantiating `node.Node`, wiring callbacks). Two tasks
+genuinely require go-reticulum work and are tagged below:
+- `[needs go-reticulum A]` — the Network “Show peers” list needs the LXMF
+  `Router.Peers()`/`Unpeer()` accessors + exported `Peer` field getters (go-
+  reticulum TODO Phase A).
+- `[needs go-reticulum B]` — the “ping peer” callback needs `Link.Ping()`
+  (go-reticulum TODO Phase B).
+
+Everything else proceeds against the already-available primitives.
+
+---
+
+## Source of truth — reference facts (the spec; assert against these)
+
+> Condensed from a live headless analysis of the original (urwid 4.0.3, default
+> dark theme + 24-bit colormode + Nerd Font glyphs) and from the Python source.
 
 ### Locations
 - **Python source (READ-ONLY):**
@@ -85,9 +112,9 @@ leading Nerd Font menu-indicator glyph), **body** = the active sub-display,
 have a filled background (`menubar`/`shortcutbar`: `#111` on `#bbb`). First run
 opens the **Guide**; otherwise **Conversations**. A 1 s intro splash precedes it.
 
-### Menu model & global keybindings (the part the port gets most wrong)
-- From the body, **`Up` at the top of any list** → focus the menu header. This is
-  repeated in *every* page’s list `keypress`.
+### Menu model & global keybindings
+- From the body, **`Up` at the top of any list** → focus the menu header. Repeated
+  in *every* page’s list `keypress`.
 - In the menu: **`Left`/`Right`** move between `[ Name ]` buttons; **`Enter`/`Space`**
   activates; **`Tab`/`Down`** → back to body.
 - **`Left`/`Right` inside a page move focus between its panes** (list↔detail,
@@ -96,7 +123,7 @@ opens the **Guide**; otherwise **Conversations**. A 1 s intro splash precedes it
 - **No digit-prefix menu shortcuts** exist in the original.
 - Menu items, on-screen order, **8 items**: `[ Conversations ] [ Network ]
   [ Channels ] [ Log ] [ Interfaces ] [ Config ] [ Guide ] [ Quit ]`. `Directory`
-  and `Map` are **not** top-level pages (remove them from the Go menu).
+  and `Map` are **not** top-level pages.
 
 ### Per-page keybindings (spec for the Go handlers)
 **Conversations** — list: `C-e` peer info · `C-x` delete · `C-n` new · `C-u`
@@ -137,8 +164,8 @@ indicators show scroll position.
   selected by config `colormode` (`monochrome/16/88/256/24bit`; shipped default
   **24-bit**). Below 256, reset/restore the terminal palette. **Micron styles
   are synthesized per-depth** from the 5-tuple at render time
-  (`MicronParser.make_style`). The Go `nomadnet/micron/color-depth.go` already
-  implements `monoColor/lowColor/highColor` — the TUI must **wire it in**.
+  (`MicronParser.make_style`). `nomadnet/micron/color-depth.go` implements
+  `monoColor/lowColor/highColor` — the TUI must wire it in.
 - Key truecolor (dark) styles: `menubar`/`shortcutbar` `#111`/`#bbb`;
   `list_focus` `#111`/`#aaa`; `list_off_focus` `#111`/`#777`; trust row colors
   `list_trusted` `#6b2`, `list_untrusted` `#a22`, `list_unresponsive` `#b92`,
@@ -151,8 +178,7 @@ indicators show scroll position.
 - **Glyphs** (`ui/TextUI.py:140-172`): `plain`/`unicode`/`nerdfont` sets (shipped
   default **nerdfont**). Menu indicator `󰐻` (or `unread_menu` when unread,
   refreshed every 2 s); node glyph `󰙎`; `check` ✓, `cross` ✕, `unread` ✉, etc.
-- **Borders:** single-line `┌─┐` `│` `└─┘` (the port wrongly uses double-line
-  `╔═╗`). Interfaces detail uses rounded `╭─╮`.
+- **Borders:** single-line `┌─┐` `│` `└─┘`. Interfaces detail uses rounded `╭─╮`.
 
 ### Micron markup (spec for `nomadnet/micron` + `tui/micron-view.go`)
 Backtick-based markup. `>` headings (depth = count; heading slug auto-anchor);
@@ -182,37 +208,11 @@ trust radios `( ) Untrusted / ( ) Unknown / ( ) Trusted`, `< Create >  < Back >`
 - Widgets reflow to terminal size; no enforced minimum, but the Guide recommends
   **135×32**. At **80×24** the original still works (menu clips, two-column body
   survives, shortcut bar wraps to two lines). **The Go port must not crash on
-  resize** (it currently does).
-- `stty -ixon` so `Ctrl-Q`/`Ctrl-S` reach the app.
-- Background threads wake the UI loop via `watch_pipe` (Go equivalent: marshal
-  to the tview main loop). Periodic jobs: 2 s menu unread indicator, announce
+  resize.**
+- `stty -ixon` so `Ctrl-Q`/`Ctrl-S` reach the app (tcell raw mode disables IXON).
+- Background threads wake the UI loop via `watch_pipe` (Go equivalent: marshal to
+  the tview main loop). Periodic jobs: 2 s menu unread indicator, announce
   stream, 30 s sync status, 1 s bandwidth charts.
-
----
-
-## CURRENT STATE SUMMARY (as of consolidation)
-
-- ~40k lines of Go across 14 packages; existing tests pass; `go build`/`go vet`
-  clean. The port compiles, runs, and streams real RNS announce data.
-- **Core library** packages are partially implemented with major gaps in
-  conversation message I/O, directory persistence, app orchestration, RRC
-  networking, and micron interactive rendering.
-- **The TUI is a non-functional scaffold behaviorally.** `cmd/gonomadnet/textui.go`
-  has ~25 TODO markers; most menu actions show placeholder dialogs. The browser
-  does not fetch over RNS, channels do not connect to hubs, conversations cannot
-  send messages, interfaces show hardcoded data.
-- **Top behavioral regressions to fix first** (verified by live capture):
-  1. `Left`/`Right` are globally hijacked to switch pages (`tui/main.go:247-258`)
-     — must move focus between panes instead.
-  2. Menu is 10 items, wrong order, no `[ Name ]`, no indicator glyph, adds
-     `Directory`/`Map` top-level (`tui/theme.go:296-307`).
-  3. Dialogs are `SetRoot` root-swaps, not overlays; forms stripped (`tui/dialog.go`).
-  4. Selection bg is hardcoded `#666` not `#aaa`; no trust row coloring; no
-     color-depth detection (`RegisterThemeStyles` is a no-op).
-  5. Wrong shortcut bar on every page (`textui.go:195` returns Conversations bar).
-  6. Micron is one flat all-bold `TextView`; links inert; no fields/tables/
-     partials/anchors.
-  7. UTF-8 `U+FFFD` glitches; double-line borders; resize crash.
 
 ---
 
@@ -236,31 +236,17 @@ test or a matching `parity.sh` summary):
 - [ ] Micron: structured styled rows, clickable links (`LinkableText`/`LinkSpec`)
       with footer peek, input fields, tables, partials, `#anchor` jumps; body
       text not all-bold.
-- [ ] Dialogs are true overlays preserving background; `Esc` closes; full forms.
-      (Done: `Esc` closes via DialogLineBox; full forms ported — New Conversation
-      Addr/Name/trust radios/Create/Back, KnownNodeInfo, etc. DialogLineBox title
-      spacing fixed 2026-08-01: urwid `LineBox.format_title` wraps the title in
-      spaces (`" title "`) centered floor-left/ceil-right over the top border;
-      `DialogLineBox.Draw` now writes `" "+title+" "` centered — capture-verified
-      byte-identical title segment `┌──…── New Conversation ──…──┐` vs Python.
-      REMAINING GAP — dialog PLACEMENT: Python places every page dialog as
-      `urwid.Overlay(dialog, bottom=self.listbox, align=CENTER, width=RELATIVE_100,
-      valign=MIDDLE, height=PACK, left=2, right=2)` WITHIN the page's LEFT pane
-      (replacing `columns_widget.contents[0]`); Go's DialogManager centers dialogs
-      on the FULL SCREEN via `centerDialog` + shared `tview.Pages`. So Go's New
-      Conversation `┌` lands at col 15 (full-screen center) vs Python col 2
-      (in-pane). Affects ALL page dialogs; broad architectural change to
-      DialogManager + every host page + focus-restore — deferred, not overnight.)
+- [ ] Dialogs are true in-pane overlays (see Known gaps) preserving background;
+      `Esc` closes; full forms.
 - [ ] Readline kill/yank with a global kill ring in every input.
 - [ ] Mouse: click menu, list entries, links, pane gutters, expand gutters.
 - [ ] UTF-8 clean; reflows at 80×24; no resize crash; 1 s intro splash.
 - [ ] Terminal hardware cursor positioned on focused micron pages (`LinkableText`)
-      and text inputs (`ReadlineEdit`) so the green block cursor matches the
-      original (capture-invisible — verified by a `calc_coords` golden test, not
-      `parity.sh`).
+      and text inputs (`ReadlineEdit`) (capture-invisible — verified by a
+      `calc_coords` golden test, not `parity.sh`).
 - [ ] All pages functional (Conversations send/attach/trust; Browser fetches over
       RNS; Channels connect via RRC; Interfaces real enumeration + forms; Config
-      editor; Log live tail).
+      editor; Log live tail; node hosting serves pages).
 - [ ] Cross-process integration tests green (RNS page fetch, LXMF ingest, RRC
       HELLO/MSG).
 - [ ] `go test ./...`, `go vet ./...`, `gofmt -l .` clean; every package has a
@@ -270,301 +256,237 @@ test or a matching `parity.sh` summary):
 
 ## TASK LIST (ordered for success — work top to bottom)
 
-> **Where to start:** The first available task. Each `[ ]` is one TDD unit. Remove it
-> when green. Phases are prerequisites for the ones below them.
+> **Where to start:** The first available task. Each `[ ]` is one TDD unit. Remove
+> it when green. Phases are prerequisites for the ones below them.
 
-### Phase 0 — Foundation & cross-cutting infrastructure (do first; everything depends on it)
+### Phase 0 — Foundation & cross-cutting gaps
 
 - [ ] **Terminal cursor parity (the “solid green rectangle”).** The green cursor
-      the user sees in the Python original is the **terminal emulator’s hardware
-      cursor**, which urwid positions by setting `canvas.cursor = (x, y)` on a
-      focused widget’s render output — `LinkableText.render` (MicronParser.py:982-
-      992) does `c.cursor = self.get_cursor_coords(size)` (maps `_cursor_position`
-      → `(x,y)` via urwid `calc_coords`), and `urwid.Edit`/`ReadlineEdit` position
-      it at `edit_pos`. The Go port tracks the cursor **offset** (`tui/linkable-
-      text.go`: `cursor`/`CursorVisible()`; `tui/readline.go`: `cursorPos`) but
-      **never calls `screen.ShowCursor`** (`grep ShowCursor tui/*.go` is empty), so
-      no hardware cursor ever appears. This was missed because `tmux capture-pane`
-      records the cell buffer, not the terminal cursor overlay — the cursor is
-      invisible to captures in *both* versions. Split into:
+      in the Python original is the **terminal emulator’s hardware cursor**,
+      which urwid positions via `canvas.cursor = (x, y)` on a focused widget’s
+      render output — `LinkableText.render` (MicronParser.py:982-992) maps
+      `_cursor_position` → `(x,y)` via urwid `calc_coords`; `urwid.Edit`/
+      `ReadlineEdit` position it at `edit_pos`. The Go port tracks the cursor
+      **offset** (`tui/linkable-text.go`: `cursor`/`CursorVisible()`;
+      `tui/readline.go`: `cursorPos`) but **never calls `screen.ShowCursor`**
+      (`grep ShowCursor tui/*.go` is empty). tmux `capture-pane` records the cell
+      buffer, not the cursor overlay, so this is invisible to captures in *both*
+      versions. Split into:
   - [ ] `LinkableText` / micron pages: in the focused page’s `Draw`, when
         `CursorVisible(now, focused)` is true, port urwid `calc_coords` over the
         line-wrapped styled text to map the `cursor` rune offset → `(x, y)` and
         call `screen.ShowCursor(x, y)`. tview’s `Application.Draw` calls
         `HideCursor` each frame, so the cursor must be re-shown on every focused
-        draw. Golden `(x,y)` table captured from Python `calc_coords` over a known
-        wrapped string (unit test — capture cannot see the cursor).
+        draw. Golden `(x,y)` table captured from Python `calc_coords` over a
+        known wrapped string (unit test — capture cannot see the cursor).
   - [ ] `ReadlineEdit` visible caret: wire the model `cursorPos` to a shown
-        hardware cursor (tview `InputField`/`textArea` calls `ShowCursor`
-        internally when it has focus, but our wrapper bypasses the public cursor
-        setter — see the Phase 0.5/0.6 note “tview InputField exposes no public
-        cursor setter, displayed caret may lag”). Test that the reported caret
-        column tracks `cursorPos` after a non-end cursor move.
-- [ ] Under the Network panel, the discovered nodes should be, by default, sorted by descending time.
-- [ ] Mouse clicks do not work because they appear to have no correlation with what is under the mouse click and needs to be fixed.
-- [ ] Go errors should NEVER be ignored.
+        hardware cursor (the wrapper bypasses tview’s public cursor setter — see
+        the memory note “tview InputField exposes no public cursor setter”).
+        Test that the reported caret column tracks `cursorPos` after a non-end
+        cursor move.
+- [ ] Under the Network panel, discovered nodes should by default be sorted by
+      descending time (newest first).
+- [ ] Mouse clicks have no correlation with what is under the cursor — fix mouse
+      coordinate mapping so clicks hit the right menu/list/link/pane gutter.
+- [ ] Go errors must NEVER be ignored (audit `_ =` / bare calls; log or handle
+      every error).
 
-### Phase 1 — Core interaction model (highest-impact TUI fixes; unblocks all page work)
+### Phase 1 — Conversations page (Python `Conversations.py`, 3093 lines)
 
-### Phase 2 — Core library prerequisites (needed by the TUI wiring in Phase 5)
+> The biggest missing functional piece: **message send is fully unwired**.
+> `conversation.Send` + `Conversation.SetSendDeps` exist but `SetSendDeps` is never
+> called in production and `ConversationWidget.OnSend` is never set, so `C-d` in
+> the composer fires a nil callback — no message is composed or dispatched. The
+> LXMF primitives (`lxmf.Message`/`Router`, `rns.Destination`, `rns.Link`) all
+> exist in go-reticulum. Capture expected behavior from `Conversations.py`.
 
-- [ ] *(Plus the app/conversation/directory methods referenced by Phase 5 wiring
-      5.x — add a TDD task per method as they become prerequisites. Capture
-      expected behavior from the Python `nomadnet/` core.)*
-
-### Phase 4 — TUI page widgets (two-pane layouts, per-widget keys, mouse)
-
-> For each page: build the two-pane layout (fixed list + weighted detail, single-
-> line borders per 0.4), the per-sub-widget `SetInputCapture` handlers (§Per-page
-> keybindings), mouse handlers, and unit-test widget logic with a mocked
-> `tview.Application`. Capture expected layout/keys with `capture.sh --target
-> orig` and compare with `summary.py`.
-
-#### 4.N Network (Python `Network.py`, 1974 lines)
-- [ ] `NetworkDisplay` left-pane composition: `NetworkLeftPile` of Saved Nodes +
-      `C-l` toggle Announce Stream/Known Nodes + LXMF Peers + LocalPeer (PACK) +
-      NodeInfo + NetworkStats; right pane = Remote Node Browser (needs 4.E).
-      (Done: the left pane is now a PILE of two separately-bordered LineBoxes —
-      the mode-titled list box (Saved Nodes/Announce Stream/Announce Info) and
-      the Local Peer Info panel — with NO outer border, matching Python's
-      NetworkLeftPile (Network.py:1641, 867, 446, 256). `listBox` carries the
-      list slot's border+title; `setLeftList` swaps content+title; `leftPanel`
-      is the unbordered `[listBox(weight), localPeer(pack 10)]` stack. Saved
-      Nodes is the default — Python `list_display=1`, Network.py:1638. The
-      KnownNodes empty-state is ported via `centeredText` (ceil-left centering,
-      matching urwid; tview AlignCenter floors → was 1 col off), Network.py:833-
-      882. Capture-verified at 80x24 (`Up,Right,Enter`): the WHOLE Network page
-      is now byte-identical to Python (left pane Saved Nodes empty-state +
-      Local Peer Info; right pane "Remote Node" browser disconnected; shortcut
-      bar wraps identically) EXCEPT the identity/LXMF hashes (different seeded
-      identity files — expected) and the announce age (capture-timing). The
-      shortcut-bar wrap point is FIXED (see the wrap item below). Remaining
-      gaps: right-pane Browser page FETCHING/rendering (Phase 5 RNS link — the
-      disconnected boot state is parity).)
-      (AnnounceInfo detail view DONE + capture-verified: `tui/announce-info.go`
-      ports Python's AnnounceInfo Pile (Network.py:59-256) — labels/glyphs,
-      Oprtr row inserted at index 4 for nodes, trust palette color, flat <>
-      buttons with weights [11,2,11,2,11,2,11] (node) / [23,5,22] (pn/peer),
-      data truncation when not trusted, Esc→stream. Directory fields resolve
-      at view time via `OnResolveAnnounceInfo` (wired in textui.go); op_str is
-      "Unknown" until Phase 5 RNS identity recall. KEY fix: the Pile is wrapped
-      in a new `pileFiller` primitive (`tui/pile-filler.go`) replicating
-      urwid.Filler(valign=TOP, height=PACK) — when the natural Pile height
-      overflows the bordered slot (node = 11 rows vs 9-row-inner slot at
-      80x24), it trims the TOP to keep the focused button row visible at the
-      bottom (urwid Filler.render cursor-trim, filler.py:228-238), clipping
-      Time+Addr. tview's Flex does NOT clip overflow (children spill past their
-      allocation and corrupt the LocalPeer panel below), so the dedicated
-      primitive is required. Capture-verified at 80x24: Announce Info box shows
-      Type→Name→Oprtr→Trust→divider→Announce Data:→data→divider→buttons with
-      the button row on the last inner row and LocalPeer intact below.
-      `focusLeftList` (SetFocus the listBox after UI-thread swaps) makes Enter
-      open the detail view (tview dispatches keys to the ROOT primitive via a
-      top-down Flex cascade; a freshly-swapped item has no focused descendant
-      so Enter is lost without it). Pinned by TestAnnounceInfo*Layout/
-      DataTruncation/EscReturnsToStream/FallsBackWithoutResolver/
-      TopTrimClipsHeader/PeerTopTrim + TestPileFillerPadsBottomWhenContentFits
-      + TestTrustStringAndStyleMapping. The announce LIST content is per-run
-      (different announces received), so only STRUCTURE is verifiable, not
-      byte-identity.)
-- [ ] `KnownNodeInfo` — node detail dialog (name/sort edits, trust radios, default
-      propagation node + identify checkboxes, Back/Connect/Msg/Save). Verify.
-      (DONE: `tui/known-node-info.go` ports Python's KnownNodeInfo
-      (Network.py:593-810) — opened by Ctrl-E on a saved node (NOT Enter;
-      Python `node_list_selection` is a no-op, Network.py:888, Ctrl-E →
-      selected_node_info → KnownNodeInfo, Network.py:1603). A TOP-filled Pile
-      (wrapped in the `pileFiller` from 4.N's AnnounceInfo work) of: Type /
-      Name(ReadlineEdit) / Node Addr / Operator / Distance / Sort
-      Rank(ReadlineEdit) / divider / centered LXMF-PN-address line / divider /
-      2 CheckBoxes (default PN / identify on connect) / divider / 3 trust
-      RadioButtons (Untrusted/Unknown/Trusted) / divider / weighted
-      Back/Connect/Msg Op/Save button row. Operator + Distance are inserted at
-      pile indices 3 and 4 (Network.py:789,797). Labels align the colon at
-      column 10 ("Type      : ", "Name      : ", "Node Addr : ", "Operator  :
-      ", "Distance  : ", "Sort Rank : "). pile.focus_position = last (button
-      row), button_columns.focus_position = 0 (Back) — replicated via
-      `pile.SetFocusIndexLast()`. Trust radios preselect by incoming
-      TrustLevel (untrusted/unknown/trusted); "warning" leaves none checked
-      (Python falls through). FormData() collects edited name/sort-rank, the
-      radio-selected trust (defaults "untrusted"; Unknown/Trusted override per
-      Python's if/elif chain, Network.py:755-785), and the two checkbox states.
-      Esc → showKnownNodes (the pileFiller intercepts Esc via onEsc, since the
-      app-level/page-level Esc forwarding doesn't reach the swapped left pane
-      — same gap AnnounceInfo hit). Tab/Up/Down cycle focus among the
-      selectable fields via the pileFiller's moveFocus (blur old + focus new).
-      Wired in `cmd/gonomadnet/textui.go`: `OnResolveKnownNodeInfo` (directory
-      DisplayStr/SortStr/TrustLevel/IdentifyOnConnect; op_str/hops/LXMF-PN
-      address/UseAsPN stubbed "Unknown"/"No associated …" until Phase 5 RNS),
-      `OnKnownNodeSave` (directory.NewEntry + Remember with edited name,
-      HostsNode=true, IdentifyOnConnect, TrustLevel switch, SortRank Atoi),
-      and `OnEditNode` (Ctrl-E → SelectedNode → ShowKnownNodeInfo). NOT
-      capture-reachable (neither seed dir has a `directory` file → Saved Nodes
-      empty, so no node to Ctrl-E); parity source-verified against
-      Network.py:593-810 + urwid Filler.render. Pinned by TestKnownNodeInfo
-      Structure/TrustPreselect/TrustWarningPreselectsNone/FormData/
-      FormDataTrustDefault/FocusOnButtonRow/EscReturnsToNodes + the
-      pileFiller tests. GAPS deferred to Phase 5: tview.Checkbox "(X) label"
-      vs urwid exact glyph (not capture-reachable), RNS-dependent fields
-      (op_str via Identity.recall, hops via Transport.hops_to, the PN address
-      hash, the current user-selected PN + autoselect).)
-- [ ] `LXMFPeers`/`LXMFPeerEntry` — peers list; `C-x` unpeer, `C-r` delivery sync.
-- [ ] `LocalPeer` / `NodeInfo` / `NetworkStats` — stat panels (1 s refresh).
-      (NetworkStats widget done — bordered "Network Stats" panel, injected
-      count providers, 5 s refresh; LocalPeer DONE — see above; NodeInfo
-      not-hosting branch DONE — see above; the NodeInfo HOSTING stat lines
-      (Last Announce/Storage/Active Links/Total Connects/Pages/Files, 1 s
-      refresh) still pending — blocked on Phase 5 node hosting.)
-- [ ] `BrowserFrame.keypress` — `C-w/d/f/r/u/s/b/y/g` per §Network; `up`→menu.
-
-#### 4.C Conversations (Python `Conversations.py`, 3093 lines)
+- [ ] **Wire conversation send.** Build the outbound `lxmf.Message` against the
+      peer `rns.Destination`, choose delivery method
+      (`DeliveryLinkAvailable`/`OutboundPropagationNode`), dispatch via
+      `lxmf.Router.HandleOutbound`; set `Conversation.SetSendDeps` in production
+      wiring and wire `ConversationWidget.OnSend` in `cmd/gonomadnet/textui.go`.
+      Test: composing + `C-d` produces a message byte-identical to Python’s.
 - [ ] `ConversationWidget` — trust banner, messages, editor, footer; verify vs
       Python `ConversationWidget`.
 - [ ] `attachFile`/`fileBrowserClosed`/`saveFocusedAttachments` (`C-f`/`C-s`/`C-a`)
       — attachment flow; verify vs Python.
-- [ ] `paperMessage` (`C-p`) — print_qr/save_qr/save_uri; verify vs Python.
+- [ ] `paperMessage` (`C-p`) — print_qr/save_qr/save_uri; verify vs Python
+      (`conversation.PaperOutput` exists but is not wired to the TUI).
 - [ ] `ClickableAttachment`/`FileBrowserDialog` — attachment save dialog; verify.
 - [ ] `syncConversations`/`updateSyncDialog` (`C-r`) — sync flow + progress; verify.
+      (`OnSync` → `a.RequestLXMFSync` is wired; complete the progress UI.)
 - [ ] `ingestLXMURI` (`C-u`) — parse `lxm://` + create message; verify vs Python.
+      (`OnIngestURI` → `a.Router.IngestLXMURI` is wired; verify end-to-end.)
 - [ ] `editSelectedInDirectory` (`C-e`) — peer info editor overlay; verify.
+- [ ] **Peer-info bar RNS fields.** `updatePeerInfo` (`tui/conversation-widget.go`)
+      leaves hop count / stamp cost as “unknown” — inject `rns.Transport.HopsTo`
+      and router stamp cost from the wiring layer. Verify vs Python.
 - [ ] Three shortcut bars by focus region (list/body/editor); verify via
       `summary.py` footer after focusing each region. `SetShortcutFocus` must be
       wired on every region focus change so the footer text + height track the
       active region.
 
-#### 4.H Channels (Python `Channels.py`, 2285 lines)
-- [ ] `composeListWidgets` — hub/room list; verify vs `_compose_list_widgets`
-      (the populated-hubs branch — Phase 5 RRC; the no-hubs empty state is DONE
-      above).
-- [ ] `RoomWidget` — messages + users pane (`C-u` toggle now removes/re-adds
-      the users column) + editor; verify vs Python `RoomWidget`.
-- [ ] `RoomWidget.sendMessage` (`C-d`) + `handleSlashCommand` + `leaveRoom`
-      (`C-x`); `tab` nick-complete is wired to `TabComplete` with member
-      candidates + own-nick exclusion (cycling tested). Verify each slash
-      command vs `_handle_slash_command`.
-- [ ] `updateMessages`/`appendMessage` + `_messageWidget` — message list; verify.
-- [ ] `newHubDialog`/`confirmNewHubDialog`/`editHubDialog`/`joinRoomDialog` +
-      `showUserInfo` — overlay dialogs; verify vs Python.
-- [ ] `autoconnect` — `_maybe_autoconnect` on startup; verify.
-- [ ] `F8` join/part collapse (logic wired + `IsJoinPartSystem`/
-      `CollapseJoinPartMessages` golden-tested vs Python) and `C-y` toggle
-      channel list (pane actually removes/re-adds) — remaining: visual verify
-      via `parity.sh` for the Channels page.
+### Phase 2 — Browser page over RNS (Python `Browser.py`, 1848 lines)
 
-#### 4.I Interfaces (Python `Interfaces.py`, 3214 lines)
-      (Layout parity fix DONE: the page no longer wraps the interface list in an
-      outer `┌─Network Interfaces─┐` LineBox — Python's `InterfaceDisplay` is a
-      `urwid.Filler(urwid.Pile([box_adapter]))` with NO outer border, each
-      interface its own rounded `╭─╮` LineBox laid out directly in the body
-      (Interfaces.py:2932). The header is a centered plain "Interfaces" text
-      (`interface_title` = default style, NOT bold, NOT "Network Interfaces")
-      followed by a `urwid.Divider()`, replicated as a 2-row centered TextView.
-      Capture-verified structural match at 80×24 (centered "Interfaces" title +
-      full-width rounded interface boxes). REAL-DATA WIRING DONE (2026-08-01):
-      `app.InterfaceStats()` parses the RNS config file in FILE ORDER (via
-      `parseInterfaceConfig`, since `rns.LoadConfig` is an unordered map) so
-      disabled-in-config interfaces appear (e.g. `Michmesh Testnet` with
-      `interface_enabled = false` renders "Disabled | Disconnected"), and merges
-      live Connected/TX/RX/Bitrate from `a.Transport.GetInterfaces()` by name.
-      `cmd/gonomadnet/textui.go` wires a 1 s ticker → `SetInterfaces`; the
-      initial populate mutates directly (QueueUpdateDraw would deadlock before
-      Run). Capture at 80×50 shows all 6 interfaces in config order (Michmesh,
-      Beleth, g00n, mobilefabrik, Quortal, Sydney) with correct icon `󰈀`, type
-      `TCPClientInterface`, enabled/disabled + live TX/RX (g00n & Quortal
-      Connected with real traffic). Remaining Go-vs-Python diffs are NOT code
-      bugs: (a) FIRST-ITEM `●`→`○` FIXED (2026-08-01): `interfaceListBox` no
-      longer defaults `focusIdx=0` on `SetItems` (kept -1) — Python's ListBox
-      focus defaults to the non-selectable header (Interfaces.py:2905-2910),
-      so NO interface item shows ● until the user presses Down (first Down →
-      item 0). Capture at 80×24 now shows `○` on Michmesh/Beleth/g00n matching
-      Python. (b) per-item Connected/Disconnected — live network state, varies
-      run-to-run (same class as the per-seed data diffs); (c) PARTIAL-BOX
-      CLIPPING NOW DONE
-      (2026-08-01): `interfaceListBox.Draw` draws a bottom-clipped last item
-      into the remaining height (was: skipped incomplete boxes) and
-      `SelectableInterfaceItem.Draw` renders its top rows with no bottom border
-      when given a partial height (urwid ListBox clips the bottom) — capture at
-      80×24 now shows the 3rd box (g00n) partially, matching Python. (d) TITLE
-      CENTERING FIXED (2026-08-01): the "Interfaces" header now uses
-      `centeredText` (urwid `Text(align=CENTER)` is CEIL-left;
-      tview.AlignCenter floors left) with `ColorDefault` (matches the
-      dark-palette `interface_title` = default style) — verified at
-      135×32 (odd slack 125 → the 1-col title shift is gone).
-      REMAINING 1-row sizing nuance DEFERRED: Python sizes its BoxAdapter to
-      `screen_rows - iface_row_offset` (constant `iface_row_offset = 4`,
-      Interfaces.py:2837) with the 2-row header INSIDE the list, giving
-      `items = screen_rows - 6` rows + 1 blank buffer row at 80×24; Go's list
-      fills all 19 remaining rows so it shows 1 extra partial row (the divider)
-      vs Python's 4 content rows — matching would need a magic-`6` height cap
-      coupled to menu/header/footer heights, fragile at other sizes. GAP:
-      RNodeMultiInterface `[[[/]]]` sub-interface expansion (Interfaces.py:
-      2843-2856) is not handled by `parseInterfaceConfig` — deferred. Remaining
-      4.I items below are Phase 5 RNS-dependent.)
-- [ ] `ShowInterface` — detail with bandwidth charts, `h`/`v` horizontal/vertical
-      by width, `tab`/`shift-tab` focus cycle; verify.
-- [ ] `AddInterfaceView`/`EditInterfaceView` — per-type forms; verify vs Python.
-- [ ] `RNodeCalculator` + `InterfaceBandwidthChart` — field updates + sparkline;
-      verify vs Python.
-- [ ] `getPortInfo`/`getPortField` — serial port detection; verify.
-- [ ] `openConfigEditor` (`C-w`) — launch `$EDITOR` on RNS config and return;
-      verify vs Python.
+> No `nomadnet/browser` core fetch backend exists — the browser is TUI-only with
+> `displayURL` rendering a hardcoded placeholder. Build the fetch backend on the
+> existing go-reticulum `rns.Link.Establish` + `Link.Request` + `Resource`
+> primitives (the node side already serves pages via `node.Node.registerRequestHandlers`
+> using `Destination.RegisterRequestHandler`). Capture expected behavior from
+> `Browser.py`.
 
-#### 4.B Browser (Python `Browser.py`, 1848 lines — needs Phase 3 micron + Phase 5 RNS)
-- [ ] `BrowserDisplay.retrieveURL` — fetch a page over RNS (link establish,
-      request, response); test with mocked transport asserting request bytes.
-- [ ] `loadPage` — render a retrieved Micron page (Phase 3); verify vs
-      Python `load_page`.
+- [ ] `BrowserDisplay.retrieveURL` — parse the RNS address, establish a link,
+      request the page, handle the response; test with mocked transport
+      asserting request bytes.
+- [ ] `loadPage` — render a retrieved Micron page (Phase 3 micron renderer); verify
+      vs Python `load_page`.
 - [ ] `downloadFile` — download over RNS; verify vs `download_file`.
 - [ ] `partialReceived`/`partialProgressed`/`partialFailed`/`updatePartials` —
       partial handlers; verify vs Python.
-- [ ] `cachePage`/`getCached`/`cleanCache`/`uncachePage` — cache management;
-      audit limits/eviction vs Python.
+- [ ] `cachePage`/`getCached`/`cleanCache`/`uncachePage` — cache management; audit
+      limits/eviction vs Python.
 - [ ] `identify`/`disconnect` — link identity + disconnect; verify.
-- [ ] `saveNodeDialog`/`urlDialog` — overlay dialogs; verify.
+- [ ] `saveNodeDialog`/`urlDialog` — overlay dialogs; verify. Wire
+      `browserDisplay.OnSaveNode` (currently `func(){ /* TODO */ }`).
 - [ ] `markedLink`/`copyUrl` — link mark + clipboard (OSC52); verify.
 - [ ] `responseReceived`/`requestFailed`/`requestTimeout`/`responseProgressed`/
       `statusText` — request lifecycle; verify.
 - [ ] `jumpToAnchor` — scroll to anchor; verify.
+- [ ] Wire `browserDisplay` callbacks in `cmd/gonomadnet/textui.go`:
+      `OnRetrieveURL`/`OnPartialUpdate`/`OnJumpAnchor`/`OnOpenLXMF`/`OnOpenRRC`/
+      `OnBrowserError` (declared `tui/browser.go`, currently never wired) and
+      `OnToggleFullscreen` (currently `// TODO`). Wire network “Navigate” to the
+      real browser.
 
-### Phase 5 — Wiring the TUI to the core (`cmd/gonomadnet/textui.go`, ~25 TODOs)
-> Implement bottom-up as the underlying app methods land. Each wiring task
-> replaces a TODO with a real call into `app`/core and an end-to-end test.
+### Phase 3 — Channels page / RRC (Python `Channels.py`, 2285 lines)
 
-- [ ] Wire `networkDisplay` to live RNS announce/node/peer data (announces +
-      known nodes now live via UIChangeCallback; LXMF peers list still pending
-      the router peers accessor).
-- [ ] Wire network “Navigate” to the real browser over RNS.
-- [ ] Wire network “Show peers” to the LXMF peers list from the router.
-- [ ] Wire `conversationsDisplay.OnIngestURI` to `Conversation.Ingest` of an LXM URI.
-- [ ] Wire block/unblock/ping peer callbacks to `App.BlockDestination`/
-      `UnblockDestination` and the RNS link ping (block/unblock wired; ping
-      still pending the RNS link ping).
-- [ ] Wire `channelsDisplay` to a real `rrc.RRCManager` from the app.
-- [ ] Wire `channelsDisplay.OnNewHub`→`RRCManager.AddHub`;
+> `rrc.RRCManager`/`RRCHub` are fully functional at the core layer (real
+> `rns.NewLink`/`rns.RecallIdentity`/`link.SendPacket`) but the TUI channels page
+> is built with `nil` rooms and never bound to `a.RRC`. `a.RRC = rrc.NewManager(...)`
+> exists; wire it. Capture expected behavior from `Channels.py`.
+
+- [ ] Wire `channelsDisplay` to `a.RRC` in `cmd/gonomadnet/textui.go` and populate
+      the room list from the manager.
+- [ ] `composeListWidgets` — hub/room list; verify vs `_compose_list_widgets`
+      (populated-hubs branch; the no-hubs empty state is already done).
+- [ ] `RoomWidget` — messages + users pane (`C-u` toggle removes/re-adds the
+      users column) + editor; verify vs Python `RoomWidget`.
+- [ ] `RoomWidget.sendMessage` (`C-d`) + `handleSlashCommand` + `leaveRoom`
+      (`C-x`); `tab` nick-complete is wired to `TabComplete` (cycling tested).
+      Verify each slash command vs `_handle_slash_command`.
+- [ ] `updateMessages`/`appendMessage` + `_messageWidget` — message list; verify.
+- [ ] `newHubDialog`/`confirmNewHubDialog`/`editHubDialog`/`joinRoomDialog` +
+      `showUserInfo` — overlay dialogs; verify vs Python.
+- [ ] `autoconnect` — `_maybe_autoconnect` on startup; verify.
+- [ ] Wire all channel callbacks: `OnNewHub`→`RRCManager.AddHub`;
       `OnJoinRoom`→`RRCHub.JoinRoom`; `OnRemoveHub`→`RRCManager.RemoveHub`;
       `OnEditHub`→`RRCHub` display-name update; `OnConnect`/`OnDisconnect`→
-      `RRCHub.Connect`/`Disconnect`; `OnToggleAutoReconnect`→`RRCHub.SetAutoReconnect`.
-- [ ] Wire `interfacesDisplay` to the real RNS `TransportSystem` interface list;
-      `OnAddInterface`→RNS config addition; `OnConfigEditor`→launch external editor.
-- [ ] Wire `browserDisplay` to a real `Browser` over RNS (fetch, history, cache,
-      save-node, identify, disconnect); `OnToggleFullscreen`→main display toggle.
+      `RRCHub.Connect`/`Disconnect`; `OnToggleAutoReconnect`→`RRCHub.SetAutoReconnect`;
+      plus `OnSendMessage`/`OnLeaveRoom`/`OnToggleCollapse`/`OnToggleChannelList`/
+      `OnMemberClick` (declared `tui/channels.go`, currently never wired).
+- [ ] `F8` join/part collapse (logic wired + golden-tested) and `C-y` toggle
+      channel list (pane removes/re-adds) — visual verify via `parity.sh` for the
+      Channels page.
+
+### Phase 4 — Network page remaining (Python `Network.py`, 1974 lines)
+
+> Left-pane list/LocalPeer/NetworkStats/AnnounceInfo/KnownNodeInfo layout is done
+> and capture-verified. Remaining items:
+
+- [ ] `LXMFPeers`/`LXMFPeerEntry` — peers list; `C-x` unpeer, `C-r` delivery sync.
+      **`[needs go-reticulum A]`** — needs `lxmf.Router.Peers()`/`Unpeer()` +
+      exported `Peer` field getters (sort by `(pn_trust_level, sync_transfer_rate)`,
+      Network.py:1865). Build the widget now; populate once go-reticulum Phase A
+      is imported.
+- [ ] `NodeInfo` hosting stat lines (Last Announce / Storage / Active Links / Total
+      Connects / Total Pages / Total Files, 1 s refresh) — blocked on Phase 6
+      node-hosting wiring, not on go-reticulum.
+- [ ] `BrowserFrame.keypress` — `C-w/d/f/r/u/s/b/y/g` per §Network; `up`→menu.
+- [ ] **KnownNodeInfo / AnnounceInfo RNS-field wiring.** `OnResolveAnnounceInfo`
+      and `OnResolveKnownNodeInfo` currently stub `OpStr`/`HopsStr`/`LXMFAddrStr`
+      as "Unknown". Implement using the existing primitives: `rns.RecallIdentity`
+      of the announce source → derive the `lxmf.delivery` hash → look up the
+      operator display; `rns.TransportSystem.HopsTo` for hop distance; the PN
+      address hash; wire `SetUserSelectedPropagationNode`/`AutoSelectPropagationNode`
+      (already implemented in `app/propagation.go` using real `HopsTo`, just never
+      called from the TUI) for the default-PN toggle + autoselect. Verify vs
+      Network.py:593-810 and 59-256.
+
+### Phase 5 — Interfaces page remaining (Python `Interfaces.py`, 3214 lines)
+
+> List/data wiring, partial-box clipping, first-item ○, and title centering are
+> done and capture-verified. Remaining items:
+
+- [ ] `ShowInterface` — detail with bandwidth charts, `h`/`v` horizontal/vertical
+      by width, `tab`/`shift-tab` focus cycle; verify.
+- [ ] `AddInterfaceView`/`EditInterfaceView` — per-type forms; verify vs Python.
+      Wire `OnAddInterface`/`OnEditInterface`/`OnRemoveInterface` (currently
+      `// TODO`): edit the RNS config file then `Reticulum.ReloadInterface`
+      (go-reticulum provides it).
+- [ ] `RNodeCalculator` + `InterfaceBandwidthChart` — field updates + sparkline;
+      verify vs Python.
+- [ ] `getPortInfo`/`getPortField` — serial port detection; verify.
+- [ ] `openConfigEditor` (`C-w`) — launch `$EDITOR` on the **RNS config** (via
+      `app.rnsConfigPath()`) and return; the Config page’s editor already launches
+      `$EDITOR` via `Application.Suspend` — reuse that path on the RNS config.
+      (Currently `OnConfigEditor` shows a static dialog instead.) Verify vs Python
+      `open_config_editor`.
+- [ ] `parseInterfaceConfig`: handle `RNodeMultiInterface [[[ / ]]]` sub-interface
+      expansion (Interfaces.py:2843-2856) — currently skipped.
+
+### Phase 6 — App wiring, node hosting & cross-process integration
+
+- [ ] **Node hosting.** `nomadnet/node/node.go` implements `Start`/`Announce`/
+      `Jobs`/`registerRequestHandlers` with real `rns.NewDestination`/
+      `RegisterRequestHandler`, but `App` never instantiates or starts it. Add
+      `App.Node`, start it in `initRNS`, run its job loop, and feed NodeInfo
+      hosting stats (unblocks Phase 4 NodeInfo hosting lines).
+- [ ] **Ping peer.** `[needs go-reticulum B]` — wire the “ping peer” callback to
+      `rns.Link.Ping()` (go-reticulum TODO Phase B). Block/unblock are already
+      wired (`App.BlockDestination`/`UnblockDestination`).
 - [ ] Wire the splash/quit display to the real intro content and graceful shutdown.
 - [ ] End-to-end smoke: start `-daemon` with a temp config, verify it registers
       destinations and stays alive until SIGTERM.
-
-### Phase 6 — Integration, mouse & final polish
+- [ ] **Background-thread marshaling.** RRC/message/announce callbacks must marshal
+      UI updates to the tview main loop (the `watch_pipe` equivalent). Watch the
+      QueueUpdateDraw-before-`Run` deadlock gotcha: at wire-time mutate UI
+      primitives directly; only background goroutines (tickers) use
+      QueueUpdateDraw.
 - [ ] Integration: Go node serves a Micron page, a Python node fetches it over a
       temp TCP RNS transport and the bytes match.
 - [ ] Integration: Go app receives an LXMF message from a Python sender and
       ingests it into a conversation identical to Python’s on-disk layout.
-- [ ] Mouse parity: click list entries, links, pane gutters, expand gutters
-      (13/14 interactions missing per PARITY-REPORT).
-- [ ] Background-thread marshaling: RRC/message callbacks marshal UI updates to
-      the tview main loop (equivalent of `watch_pipe`).
-- [ ] 135×32 recommendation message (small-terminal reflow verified: 80×24
-      no crash, two-column body survives, menu clips; Ctrl-Q reaches the app
-      via tcell raw mode which disables IXON).
+- [ ] Integration: RRC HELLO/MSG round-trip Go↔Python over TCP RNS (harness
+      exists from Phase 2 cross-process work).
+
+### Phase 7 — Mouse & final polish
+
+- [ ] Mouse parity: click list entries, links, pane gutters, expand gutters.
+- [ ] 135×32 recommendation message (small-terminal reflow verified: 80×24 no
+      crash, two-column body survives, menu clips).
+- [ ] **Dialog in-pane placement.** Python places every page dialog as
+      `urwid.Overlay(dialog, bottom=self.listbox, align=CENTER, width=RELATIVE_100,
+      valign=MIDDLE, height=PACK, left=2, right=2)` WITHIN the page’s LEFT pane;
+      Go’s `DialogManager` centers dialogs on the FULL SCREEN via `centerDialog`
+      + shared `tview.Pages` (Go’s New Conversation `┌` lands at col 15 vs Python
+      col 2). Affects ALL page dialogs — broad change to DialogManager + every
+      host page + focus-restore. Capture-verify each page after.
 - [ ] Final: run `parity.sh` for every page + the New Conversation dialog;
       confirm each Go `summary.py` output matches the original’s.
+
+---
+
+## Known deferred gaps (lower priority; not blocking, but needed for 100%)
+
+- **Interfaces 1-row sizing nuance:** Python sizes its BoxAdapter to
+  `screen_rows - iface_row_offset` (constant `iface_row_offset = 4`,
+  Interfaces.py:2837) with the 2-row header INSIDE the list → `items =
+  screen_rows - 6` + 1 blank buffer row at 80×24; Go fills all 19 remaining rows
+  so it shows 1 extra partial row. Matching needs a height cap coupled to
+  menu/header/footer heights (fragile at other sizes).
+- **tview Checkbox glyph:** Go’s `(X) label` vs urwid’s exact checkbox glyph (not
+  capture-reachable; affects KnownNodeInfo checkboxes).
+- **RNodeMultiInterface sub-interface expansion:** see Phase 5.
 
 ---
 
