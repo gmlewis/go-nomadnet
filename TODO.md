@@ -267,9 +267,6 @@ test or a matching `parity.sh` summary):
 
 ### Phase 3 — Micron interactive rendering (CRITICAL for Browser/Guide/Network pages)
 
-- [ ] **3.3 Fields.** Render `` `<[flags|]name[value]> `` as
-      `InputField`/`CheckBox`/`RadioButton` (flag `!` masked, `?` checkbox, `^`
-      radio; width default 24). Test against `micron_inline.py` field output.
 - [ ] **3.4 Anchors.** Render `` `:name `` anchors + `#name` URL jumps; implement
       `jumpToAnchor`. Test anchor map + jump target against Python.
 - [ ] **3.5 Partials.** Render `` `{url`refresh`fields} `` with placeholder +
