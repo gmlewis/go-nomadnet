@@ -267,11 +267,6 @@ test or a matching `parity.sh` summary):
 
 ### Phase 3 — Micron interactive rendering (CRITICAL for Browser/Guide/Network pages)
 
-- [ ] **3.4 Anchors.** Render `` `:name `` anchors + `#name` URL jumps; implement
-      `jumpToAnchor`. Test anchor map + jump target against Python.
-- [ ] **3.5 Partials.** Render `` `{url`refresh`fields} `` with placeholder +
-      refresh flow (`partialReceived/Progressed/Failed`, `updatePartials`). Test
-      against Python `parse_partial`.
 - [ ] **3.6 Tables.** Render `` `t[align][maxwidth] `` table blocks. Test layout
       against Python `format_table_raw`.
 - [ ] **3.7 Code spans / images.** Render backtick code spans with a code style;

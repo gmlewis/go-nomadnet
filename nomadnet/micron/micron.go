@@ -112,11 +112,12 @@ type Node struct {
 	Align Alignment
 
 	// For NodePartial
-	PartialURL     string
-	PartialFields  []string
-	PartialID      string
-	PartialRefresh float64
-	HasRefresh     bool
+	PartialURL        string
+	PartialFields     []string
+	PartialID         string
+	PartialRefresh    float64
+	HasRefresh        bool
+	PartialDescriptor string // "|"-joined raw components; the hash input (MicronParser.py:187)
 
 	// For NodeTable
 	TableRows     [][]string // raw cell text per row
@@ -379,6 +380,9 @@ func parsePartial(line string) []*Node {
 	components := strings.Split(partialData, "`")
 
 	p := &Node{Type: NodePartial, PartialFields: []string{""}}
+	// partial_descriptor = "|".join(partial_components) — the hash input
+	// (MicronParser.py:187). Built from the raw components before field parsing.
+	p.PartialDescriptor = strings.Join(components, "|")
 
 	switch len(components) {
 	case 1:

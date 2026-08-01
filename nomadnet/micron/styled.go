@@ -199,7 +199,7 @@ func renderLineNodes(nodes []*Node, rs *renderState, theme Theme, depth int) []*
 			}
 		case NodePartial:
 			sl.Spans = append(sl.Spans, StyledSpan{
-				Text: "⧖", // ⧖ hourglass placeholder (Python parse_partial)
+				Text: partialPlaceholder, // ⧖ hourglass (Python parse_partial)
 				FG:   highColor(rs.fg), BG: highColor(rs.bg),
 				Bold: rs.bold, Underline: rs.underline, Italic: rs.italic,
 			})
