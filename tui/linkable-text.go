@@ -16,7 +16,10 @@
 package tui
 
 import (
+	"time"
+
 	"github.com/gdamore/tcell/v2"
+	"github.com/gmlewis/go-nomadnet/nomadnet/micron"
 	"github.com/rivo/tview"
 )
 
@@ -28,14 +31,46 @@ type LinkSpec struct {
 	Fields string
 }
 
+// LinkDelegate mirrors the Python url_delegate interface used by LinkableText
+// (MicronParser.py:881-918): link activation, footer link-peek, and focus
+// release back to the owning micron view. MarkedLink with an empty target
+// clears the peek (Python marked_link(None)).
+type LinkDelegate interface {
+	HandleLink(target, fields string)
+	MarkedLink(target, fields string)
+	MicronReleasedFocus()
+}
+
+// linkPart is one navigable run of a LinkableText line: a text run plus an
+// optional link spec. It is the Go equivalent of one urwid (style, length)
+// run from LinkableText.get_text (MicronParser.py:921-929).
+type linkPart struct {
+	Text string
+	Link *micron.LinkSpec
+}
+
 // LinkableText displays text with embedded clickable link regions.
 // It wraps tview.TextView and tracks link positions so that mouse
 // clicks can resolve and dispatch the correct link action.
 // Matches Python's LinkableText at MicronParser.py:866.
+//
+// The nav* fields implement the Python cursor-navigation model: the cursor
+// steps through part positions (plain runs AND links), left at position 0
+// releases focus, and a 2s key-timeout governs cursor visibility + footer
+// peek (MicronParser.py:910-977,982-992).
 type LinkableText struct {
 	*tview.TextView
 	links    []LinkSpec
 	onHandle func(target, fields string)
+
+	// Cursor-navigation state (mirrors LinkableText keypress/render).
+	parts        []linkPart
+	cursor       int
+	inColumns    bool
+	delegate     LinkDelegate
+	keyTimeout   time.Duration
+	lastKeypress time.Time
+	hasKeypress  bool
 }
 
 // NewLinkableText creates a selectable text view with link support.
@@ -48,7 +83,8 @@ func NewLinkableText(onHandle func(target, fields string)) *LinkableText {
 			SetScrollable(true).
 			SetRegions(true).
 			SetTextColor(tcell.NewHexColor(0xbbbbbb)),
-		onHandle: onHandle,
+		onHandle:   onHandle,
+		keyTimeout: 2 * time.Second, // Python key_timeout = 2
 	}
 
 	lt.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
@@ -152,4 +188,227 @@ func (lt *LinkableText) activateRegion(regionID string) {
 		}
 	}
 	lt.HandleLinkByIndex(idx)
+}
+
+// NewLinkableTextFromSpans builds a LinkableText whose navigable parts are the
+// given styled spans (the real part structure from micron.RenderToStyledLines),
+// wired to a LinkDelegate for link activation, footer peek, and focus release.
+// This is the Python-parity constructor: the cursor steps through every part
+// (plain runs and links), mirroring LinkableText.get_text's (style, length)
+// runs (MicronParser.py:921-929).
+func NewLinkableTextFromSpans(spans []micron.StyledSpan, delegate LinkDelegate) *LinkableText {
+	lt := &LinkableText{
+		TextView: tview.NewTextView().
+			SetDynamicColors(true).
+			SetScrollable(true).
+			SetRegions(true),
+		delegate:   delegate,
+		keyTimeout: 2 * time.Second, // Python key_timeout = 2
+	}
+	lt.SetSpans(spans)
+	return lt
+}
+
+// SetSpans rebuilds the navigable parts from styled spans. Each span becomes
+// one linkPart carrying its text and optional link spec.
+func (lt *LinkableText) SetSpans(spans []micron.StyledSpan) {
+	lt.parts = make([]linkPart, 0, len(spans))
+	for _, s := range spans {
+		lt.parts = append(lt.parts, linkPart{Text: s.Text, Link: s.Link})
+	}
+	lt.cursor = 0
+	lt.hasKeypress = false
+}
+
+// SetDelegate installs the LinkDelegate used for activation, peek, and focus
+// release.
+func (lt *LinkableText) SetDelegate(d LinkDelegate) { lt.delegate = d }
+
+// Text returns the concatenated text of all parts (the plain-text content of
+// the line, mirroring urwid Text.get_text's text component).
+func (lt *LinkableText) Text() string {
+	var n int
+	for _, p := range lt.parts {
+		n += len(p.Text)
+	}
+	b := make([]byte, 0, n)
+	for _, p := range lt.parts {
+		b = append(b, p.Text...)
+	}
+	return string(b)
+}
+
+// Cursor returns the current cursor position (a char offset into Text).
+func (lt *LinkableText) Cursor() int { return lt.cursor }
+
+// SetCursor sets the cursor position directly (e.g. from a mouse click).
+func (lt *LinkableText) SetCursor(n int) {
+	if n < 0 {
+		n = 0
+	}
+	lt.cursor = n
+}
+
+// SetInColumns toggles columnar-layout mode, where left/right propagate the
+// key instead of wrapping/stepping (MicronParser.py:956-957,966-967).
+func (lt *LinkableText) SetInColumns(v bool) { lt.inColumns = v }
+
+// PartPositions returns the cumulative part-position table: [0] followed by
+// each part's length + running total. Mirrors LinkableText.keypress's
+// part_positions build (MicronParser.py:921-929).
+func (lt *LinkableText) PartPositions() []int {
+	pos := []int{0}
+	total := 0
+	for _, p := range lt.parts {
+		total += len(p.Text)
+		pos = append(pos, total)
+	}
+	return pos
+}
+
+// findNextPartPos returns the first part position greater than pos, or pos if
+// none. Mirrors find_next_part_pos (MicronParser.py:885-889).
+func findNextPartPos(pos int, positions []int) int {
+	for _, p := range positions {
+		if p > pos {
+			return p
+		}
+	}
+	return pos
+}
+
+// findPrevPartPos returns the last part position less than pos, or pos if none.
+// Mirrors find_prev_part_pos (MicronParser.py:891-896).
+func findPrevPartPos(pos int, positions []int) int {
+	next := pos
+	for _, p := range positions {
+		if p < pos {
+			next = p
+		}
+	}
+	return next
+}
+
+// findItemAtPos returns the part whose char range contains pos, or nil.
+// Mirrors find_item_at_pos (MicronParser.py:898-908): total <= pos < total+len.
+func (lt *LinkableText) findItemAtPos(pos int) *linkPart {
+	total := 0
+	for i := range lt.parts {
+		length := len(lt.parts[i].Text)
+		if total <= pos && pos < total+length {
+			return &lt.parts[i]
+		}
+		total += length
+	}
+	return nil
+}
+
+// LinkAtCursor returns the link spec at the current cursor position, or nil if
+// the cursor is on a plain (non-link) part. This exposes both the target URL
+// and the display label text (task 3.2 target/display-text).
+func (lt *LinkableText) LinkAtCursor() *micron.LinkSpec {
+	if part := lt.findItemAtPos(lt.cursor); part != nil {
+		return part.Link
+	}
+	return nil
+}
+
+// Activate dispatches the link at the cursor (if any) to the delegate — the
+// ACTIVATE/enter path. Returns true when a link was at the cursor.
+// Mirrors MicronParser.py:937-941 + handle_link (881-883).
+func (lt *LinkableText) Activate() bool {
+	link := lt.LinkAtCursor()
+	if link == nil {
+		return false
+	}
+	if lt.delegate != nil {
+		lt.delegate.HandleLink(link.URL, link.Fields)
+	}
+	return true
+}
+
+// PeekLink reports the focused link's target+fields to the delegate via
+// MarkedLink, or clears the peek (empty target) when the cursor is on a plain
+// part. Mirrors peek_link (MicronParser.py:910-918).
+func (lt *LinkableText) PeekLink() {
+	if lt.delegate == nil {
+		return
+	}
+	if link := lt.LinkAtCursor(); link != nil {
+		lt.delegate.MarkedLink(link.URL, link.Fields)
+	} else {
+		lt.delegate.MarkedLink("", "")
+	}
+}
+
+// CursorVisible reports whether the cursor should be rendered, mirroring the
+// render focus condition (MicronParser.py:982-992): visible only when focused,
+// and (with a delegate) only within key_timeout of the last keypress. Without a
+// delegate the cursor is always visible when focused.
+func (lt *LinkableText) CursorVisible(now time.Time, focused bool) bool {
+	if !focused {
+		return false
+	}
+	if lt.delegate == nil {
+		return true
+	}
+	if !lt.hasKeypress {
+		return false // delegate.last_keypress == 0 → now >= 0+timeout
+	}
+	return now.Before(lt.lastKeypress.Add(lt.keyTimeout))
+}
+
+// HandleKey processes one keystroke and returns either "" (consumed) or the
+// key name to propagate to the parent. now is the keystroke timestamp, used
+// for the key-timeout cursor-visibility model. Mirrors LinkableText.keypress
+// (MicronParser.py:921-977).
+func (lt *LinkableText) HandleKey(key string, now time.Time) string {
+	if lt.delegate != nil {
+		lt.lastKeypress = now
+		lt.hasKeypress = true
+	}
+
+	positions := lt.PartPositions()
+
+	switch key {
+	case "enter":
+		lt.Activate()
+		return ""
+
+	case "up":
+		lt.cursor = 0
+		return "up"
+
+	case "down":
+		lt.cursor = 0
+		return "down"
+
+	case "right":
+		old := lt.cursor
+		lt.cursor = findNextPartPos(lt.cursor, positions)
+		if lt.cursor == old {
+			if lt.inColumns {
+				return "right"
+			}
+			lt.cursor = 0
+			return "down"
+		}
+		return ""
+
+	case "left":
+		if lt.cursor > 0 {
+			if lt.inColumns {
+				return "left"
+			}
+			lt.cursor = findPrevPartPos(lt.cursor, positions)
+			return ""
+		}
+		if lt.delegate != nil {
+			lt.delegate.MicronReleasedFocus()
+		}
+		return ""
+
+	default:
+		return key
+	}
 }

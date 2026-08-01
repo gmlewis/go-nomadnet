@@ -504,34 +504,29 @@ func parseFormatting(line string, start int) ([]*Node, int) {
 	case 'a': // reset align
 		return []*Node{{Type: NodeAlign, Align: AlignLeft}}, 2
 	case 'F': // foreground color
-		if start+4 <= len(line) {
-			if start+2 < len(line) && line[start+2] == 'T' {
-				// 24-bit color: `FTRRGGBB
-				if start+8 <= len(line) {
-					color := line[start+3 : start+9]
-					return []*Node{{Type: NodeColor, FGColor: color}}, 9
-				}
+		// Python make_output (MicronParser.py:617-626): the guard is
+		// len(line) >= i+4 where i is the index of 'F' (start+1 here), i.e.
+		// start+5. The 24-bit `FTRRGGBB form is taken only when 'T' is present
+		// AND there are 6 trailing digits (start+9); otherwise it falls back
+		// to the 12-bit `FRRGGB form. consumed covers backtick+F+3 digits = 5
+		// (Python skip=3 from 'F'); the prior value of 4 left the last digit
+		// in the following text.
+		if start+5 <= len(line) {
+			if line[start+2] == 'T' && start+9 <= len(line) {
+				color := line[start+3 : start+9]
+				return []*Node{{Type: NodeColor, FGColor: color}}, 9
 			}
-			// 12-bit color: `FRRGGB
-			if start+4 <= len(line) {
-				color := line[start+2 : start+5]
-				return []*Node{{Type: NodeColor, FGColor: color}}, 4
-			}
+			color := line[start+2 : start+5]
+			return []*Node{{Type: NodeColor, FGColor: color}}, 5
 		}
 	case 'B': // background color
-		if start+4 <= len(line) {
-			if start+2 < len(line) && line[start+2] == 'T' {
-				// 24-bit color: `BTRRGGBB
-				if start+8 <= len(line) {
-					color := line[start+3 : start+9]
-					return []*Node{{Type: NodeColor, BGColor: color}}, 9
-				}
+		if start+5 <= len(line) {
+			if line[start+2] == 'T' && start+9 <= len(line) {
+				color := line[start+3 : start+9]
+				return []*Node{{Type: NodeColor, BGColor: color}}, 9
 			}
-			// 12-bit color: `BRRGGB
-			if start+4 <= len(line) {
-				color := line[start+2 : start+5]
-				return []*Node{{Type: NodeColor, BGColor: color}}, 4
-			}
+			color := line[start+2 : start+5]
+			return []*Node{{Type: NodeColor, BGColor: color}}, 5
 		}
 	case ':': // anchor declaration
 		nameEnd := start + 2

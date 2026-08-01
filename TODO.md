@@ -267,16 +267,6 @@ test or a matching `parity.sh` summary):
 
 ### Phase 3 — Micron interactive rendering (CRITICAL for Browser/Guide/Network pages)
 
-- [ ] **3.1 `micron.RenderToTView` styled spans.** Render a parsed document to a
-      list of styled tview spans with full fg/bg (not plain text). Test a
-      fixture with colors/headings/links/fields against Python
-      `markup_to_attrmaps` (capture via `tooling/micron-parity/micron_inline.py`).
-- [ ] **3.2 Links (`LinkableText`/`LinkSpec`).** Render `` `[label`url] `` as a
-      focusable span carrying target+fields; `left/right` move cursor between
-      parts; `enter`/click activates → `handle_link`; `up/down` scroll; `left` at
-      position 0 releases focus; 2 s key-timeout cursor show/hide + footer peek
-      (“Link to …”). Test target/display-text and cursor navigation against
-      Python `LinkableText` (`MicronParser.py:866-1048`).
 - [ ] **3.3 Fields.** Render `` `<[flags|]name[value]> `` as
       `InputField`/`CheckBox`/`RadioButton` (flag `!` masked, `?` checkbox, `^`
       radio; width default 24). Test against `micron_inline.py` field output.
