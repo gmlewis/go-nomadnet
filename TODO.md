@@ -240,6 +240,10 @@ test or a matching `parity.sh` summary):
 - [ ] Readline kill/yank with a global kill ring in every input.
 - [ ] Mouse: click menu, list entries, links, pane gutters, expand gutters.
 - [ ] UTF-8 clean; reflows at 80×24; no resize crash; 1 s intro splash.
+- [ ] Terminal hardware cursor positioned on focused micron pages (`LinkableText`)
+      and text inputs (`ReadlineEdit`) so the green block cursor matches the
+      original (capture-invisible — verified by a `calc_coords` golden test, not
+      `parity.sh`).
 - [ ] All pages functional (Conversations send/attach/trust; Browser fetches over
       RNS; Channels connect via RRC; Interfaces real enumeration + forms; Config
       editor; Log live tail).
@@ -256,6 +260,32 @@ test or a matching `parity.sh` summary):
 > when green. Phases are prerequisites for the ones below them.
 
 ### Phase 0 — Foundation & cross-cutting infrastructure (do first; everything depends on it)
+
+- [ ] **Terminal cursor parity (the “solid green rectangle”).** The green cursor
+      the user sees in the Python original is the **terminal emulator’s hardware
+      cursor**, which urwid positions by setting `canvas.cursor = (x, y)` on a
+      focused widget’s render output — `LinkableText.render` (MicronParser.py:982-
+      992) does `c.cursor = self.get_cursor_coords(size)` (maps `_cursor_position`
+      → `(x,y)` via urwid `calc_coords`), and `urwid.Edit`/`ReadlineEdit` position
+      it at `edit_pos`. The Go port tracks the cursor **offset** (`tui/linkable-
+      text.go`: `cursor`/`CursorVisible()`; `tui/readline.go`: `cursorPos`) but
+      **never calls `screen.ShowCursor`** (`grep ShowCursor tui/*.go` is empty), so
+      no hardware cursor ever appears. This was missed because `tmux capture-pane`
+      records the cell buffer, not the terminal cursor overlay — the cursor is
+      invisible to captures in *both* versions. Split into:
+  - [ ] `LinkableText` / micron pages: in the focused page’s `Draw`, when
+        `CursorVisible(now, focused)` is true, port urwid `calc_coords` over the
+        line-wrapped styled text to map the `cursor` rune offset → `(x, y)` and
+        call `screen.ShowCursor(x, y)`. tview’s `Application.Draw` calls
+        `HideCursor` each frame, so the cursor must be re-shown on every focused
+        draw. Golden `(x,y)` table captured from Python `calc_coords` over a known
+        wrapped string (unit test — capture cannot see the cursor).
+  - [ ] `ReadlineEdit` visible caret: wire the model `cursorPos` to a shown
+        hardware cursor (tview `InputField`/`textArea` calls `ShowCursor`
+        internally when it has focus, but our wrapper bypasses the public cursor
+        setter — see the Phase 0.5/0.6 note “tview InputField exposes no public
+        cursor setter, displayed caret may lag”). Test that the reported caret
+        column tracks `cursorPos` after a non-end cursor move.
 
 ### Phase 1 — Core interaction model (highest-impact TUI fixes; unblocks all page work)
 
