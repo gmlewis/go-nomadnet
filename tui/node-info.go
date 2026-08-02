@@ -16,6 +16,7 @@
 package tui
 
 import (
+	"sync"
 	"time"
 
 	"github.com/gdamore/tcell/v2"
@@ -82,8 +83,10 @@ type NodeInfoDisplay struct {
 	resetBtn    *UrwidButton
 	announceBtn *UrwidButton
 
-	ticker *time.Ticker
-	stopCh chan struct{}
+	mu      sync.Mutex
+	started bool
+	stopCh  chan struct{}
+	wg      sync.WaitGroup
 }
 
 // NewNodeInfoDisplay builds the Local Node Info panel for the given data. Until
@@ -259,18 +262,26 @@ func (ni *NodeInfoDisplay) Start() { ni.start(true) }
 // QueueUpdateDraw would block forever on an undrained channel — same pattern as
 // NetworkStats.start). Idempotent.
 func (ni *NodeInfoDisplay) start(marshal bool) {
-	if !ni.data.HasNode || ni.ticker != nil {
+	ni.mu.Lock()
+	if !ni.data.HasNode || ni.started {
+		ni.mu.Unlock()
 		return
 	}
-	ni.ticker = time.NewTicker(animationInterval())
 	ni.stopCh = make(chan struct{})
 	stop := ni.stopCh
+	ni.started = true
+	ni.mu.Unlock()
+
+	ni.wg.Add(1)
 	go func() {
+		defer ni.wg.Done()
+		ticker := time.NewTicker(animationInterval())
+		defer ticker.Stop()
 		for {
 			select {
 			case <-stop:
 				return
-			case <-ni.ticker.C:
+			case <-ticker.C:
 				if marshal && ni.app != nil {
 					ni.app.QueueUpdateDraw(ni.refreshStats)
 				} else {
@@ -284,11 +295,14 @@ func (ni *NodeInfoDisplay) start(marshal bool) {
 // Stop halts the periodic stat refresh. It is idempotent and safe to call when
 // no ticker is running.
 func (ni *NodeInfoDisplay) Stop() {
-	if ni.ticker != nil {
-		ni.ticker.Stop()
-		close(ni.stopCh)
-		ni.ticker = nil
-		ni.stopCh = nil
+	ni.mu.Lock()
+	ni.started = false
+	ch := ni.stopCh
+	ni.stopCh = nil
+	ni.mu.Unlock()
+	if ch != nil {
+		close(ch)
+		ni.wg.Wait()
 	}
 }
 

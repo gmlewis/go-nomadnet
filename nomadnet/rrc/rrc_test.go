@@ -485,7 +485,7 @@ func TestManagerHubsSnapshot(t *testing.T) {
 	}
 
 	// Mutating the snapshot must not affect the manager.
-	snap = append(snap, nil)
+	_ = append(snap, nil)
 	if len(mgr.Hubs) != 2 {
 		t.Errorf("manager Hubs len after snapshot append = %d, want 2", len(mgr.Hubs))
 	}
