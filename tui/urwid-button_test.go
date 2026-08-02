@@ -148,3 +148,24 @@ func TestTabButtonActivate(t *testing.T) {
 		t.Errorf("tab fired %d times after Enter+Space, want 2", fired)
 	}
 }
+
+func TestUrwidButtonFocusedStyle(t *testing.T) {
+	t.Parallel()
+	b := NewUrwidButton("Create")
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatalf("screen.Init: %v", err)
+	}
+	screen.SetSize(12, 1)
+	b.SetRect(0, 0, 12, 1)
+	b.Focus(func(p tview.Primitive) {})
+	b.Draw(screen)
+	screen.Sync()
+
+	_, _, style, _ := screen.GetContent(0, 0)
+	fg, bg, _ := style.Decompose()
+	if bg != tcell.ColorGreen || fg != tcell.ColorBlack {
+		t.Errorf("focused button style = fg:%v bg:%v, want fg:Black bg:Green", fg, bg)
+	}
+}
+

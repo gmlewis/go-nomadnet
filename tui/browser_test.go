@@ -305,3 +305,24 @@ func TestBrowserDisplayDisconnect(t *testing.T) {
 		t.Errorf("after Disconnect CurrentDest = %v, want nil", bd.CurrentDest())
 	}
 }
+
+func TestBrowserDisplayMarkedLink(t *testing.T) {
+	t.Parallel()
+	app := NewApp(ThemeDark, GlyphUnicode, ColorModeTrue)
+	bd := NewBrowserDisplay(app)
+	app.Main.SetDisplay("browser", bd.Widget())
+	app.Main.activePage = "browser"
+
+	bd.MarkedLink("http://example.com", "f1|f2")
+	got := app.Main.GetShortcutText()
+	if got != "Link to http://example.com`f1|f2" {
+		t.Errorf("MarkedLink target = %q, want 'Link to http://example.com`f1|f2'", got)
+	}
+
+	bd.MarkedLink("", "")
+	gotCleared := app.Main.GetShortcutText()
+	if gotCleared == "Link to http://example.com`f1|f2" {
+		t.Errorf("MarkedLink empty did not clear footer target")
+	}
+}
+

@@ -164,3 +164,28 @@ func TestDialogOpenFlag(t *testing.T) {
 		t.Error("Open = true after dismissing all dialogs")
 	}
 }
+
+func TestCenterDialogInPanePlacement(t *testing.T) {
+	t.Parallel()
+	dlg := NewDialogLineBox("Test", tview.NewTextView().SetText("body"), nil)
+	flex := centerDialog(dlg, 0, 5)
+
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatalf("screen.Init: %v", err)
+	}
+	defer screen.Fini()
+	screen.SetSize(80, 24)
+	flex.SetRect(0, 0, 80, 24)
+	flex.Draw(screen)
+
+	c, _, _, _ := screen.GetContent(1, 8)
+	if c != '┌' {
+		t.Errorf("dialog top-left corner at (1,8) = %q, want '┌'", c)
+	}
+	cSide, _, _, _ := screen.GetContent(1, 9)
+	if cSide != '│' {
+		t.Errorf("dialog side border at (1,9) = %q, want '│'", cSide)
+	}
+}
+

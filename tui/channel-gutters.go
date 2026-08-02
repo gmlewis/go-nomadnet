@@ -66,7 +66,10 @@ func newExpandGutter(dir GutterDirection, onToggle func()) *ExpandGutter {
 	}
 	g.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
 		if action&tview.MouseLeftClick != 0 {
-			g.HandleMouseLeftClick()
+			x, y := event.Position()
+			if g.InRect(x, y) {
+				g.HandleMouseLeftClick()
+			}
 		}
 		return action, event
 	})

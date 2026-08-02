@@ -18,6 +18,7 @@ package tui
 import (
 	"testing"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
@@ -96,3 +97,43 @@ func TestDialogLineBoxNilDismiss(t *testing.T) {
 		d.onDismiss()
 	}
 }
+
+func TestButtonRowFocusCycling(t *testing.T) {
+	t.Parallel()
+	b1 := tview.NewButton("Button 1")
+	b2 := tview.NewButton("Button 2")
+	row := CreateButtonRow(b1, b2)
+
+	if row == nil {
+		t.Fatal("CreateButtonRow returned nil")
+	}
+
+	b1.Focus(func(p tview.Primitive) {})
+
+	// Simulate Right arrow key event on b1
+	h1 := b1.GetInputCapture()
+	if h1 == nil {
+		t.Fatal("b1 input capture is nil")
+	}
+	res1 := h1(tcell.NewEventKey(tcell.KeyRight, 0, tcell.ModNone))
+	if res1 != nil {
+		t.Errorf("KeyRight on b1 was not consumed")
+	}
+	if !b2.HasFocus() {
+		t.Errorf("after KeyRight on b1, b2 HasFocus = false, want true")
+	}
+
+	// Simulate Left arrow key event on b2
+	h2 := b2.GetInputCapture()
+	if h2 == nil {
+		t.Fatal("b2 input capture is nil")
+	}
+	res2 := h2(tcell.NewEventKey(tcell.KeyLeft, 0, tcell.ModNone))
+	if res2 != nil {
+		t.Errorf("KeyLeft on b2 was not consumed")
+	}
+	if !b1.HasFocus() {
+		t.Errorf("after KeyLeft on b2, b1 HasFocus = false, want true")
+	}
+}
+

@@ -15,7 +15,12 @@
 
 package tui
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
+)
 
 // TestUrwidSpaceWrap pins the shortcut-bar wrapping against urwid's "space"
 // wrap algorithm (urwid/text_layout.py:240-352), which the Python footer uses.
@@ -122,3 +127,22 @@ func TestMenuMouseClick(t *testing.T) {
 		}
 	}
 }
+
+func TestMenuMouseClickIgnoresNonZeroY(t *testing.T) {
+	t.Parallel()
+	app := newTestApp()
+	md := NewMainDisplay(app, ThemeDark, GlyphUnicode)
+	md.menuBar.SetRect(0, 0, 80, 1)
+	md.selectMenu(0) // active page = "conversations"
+
+	// Simulate MouseLeftClick on menuBar mouse capture at y=5, x=22
+	handler := md.menuBar.GetMouseCapture()
+	if handler != nil {
+		event := tcell.NewEventMouse(22, 5, tcell.Button1, 0)
+		handler(tview.MouseLeftClick, event)
+		if md.activePage != "conversations" {
+			t.Errorf("click at y=5 changed page to %q, want 'conversations' (mouse click on y=5 should not trigger menu)", md.activePage)
+		}
+	}
+}
+

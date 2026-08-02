@@ -580,6 +580,29 @@ func (bd *BrowserDisplay) CurrentDest() []byte { return bd.currentDest }
 // subsequent relative URLs resolve against it.
 func (bd *BrowserDisplay) SetCurrentDest(dest []byte) { bd.currentDest = dest }
 
+// MarkedLink updates the footer link peek display.
+// Matches Python's Browser.marked_link_job (Browser.py:181-204).
+func (bd *BrowserDisplay) MarkedLink(target, fields string) {
+	if bd.app == nil || bd.app.Main == nil {
+		return
+	}
+	if target == "" {
+		bd.app.Main.SetShortcut("browser", "[C-d] Back  [C-f] Forward  [C-r] Reload  [C-u] URL  [C-s] Save  [C-w] Disconnect")
+		return
+	}
+	var f []string
+	if fields != "" {
+		f = strings.Split(fields, "|")
+	}
+	t := browser.MarkedLinkTarget(target, f)
+	bd.app.Main.SetShortcut("browser", "Link to "+t)
+}
+
+// MicronReleasedFocus handles focus release from the micron text area.
+func (bd *BrowserDisplay) MicronReleasedFocus() {
+	bd.MarkedLink("", "")
+}
+
 // HandleLink dispatches a link target based on its type.
 // Matches Python's Browser.handle_link at Browser.py:216.
 // Returns (destType, hash, err).

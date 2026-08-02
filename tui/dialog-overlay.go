@@ -195,10 +195,18 @@ func (t *transparentBox) Draw(screen tcell.Screen) {}
 // so the underlying page shows through and the dialog's borders survive
 // regardless of which inner widget holds focus.
 func centerDialog(content tview.Primitive, width, height int) tview.Primitive {
-	row := tview.NewFlex().
-		AddItem(newTransparentBox(), 0, 1, false).
-		AddItem(content, width, 0, true).
-		AddItem(newTransparentBox(), 0, 1, false)
+	var row *tview.Flex
+	if width <= 0 {
+		row = tview.NewFlex().
+			AddItem(newTransparentBox(), 2, 0, false).
+			AddItem(content, 0, 1, true).
+			AddItem(newTransparentBox(), 2, 0, false)
+	} else {
+		row = tview.NewFlex().
+			AddItem(newTransparentBox(), 0, 1, false).
+			AddItem(content, width, 0, true).
+			AddItem(newTransparentBox(), 0, 1, false)
+	}
 	return tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(newTransparentBox(), 0, 1, false).
 		AddItem(row, height, 0, true).

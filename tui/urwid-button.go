@@ -121,6 +121,9 @@ func (b *UrwidButton) Draw(screen tcell.Screen) {
 		return
 	}
 	style := tcell.StyleDefault
+	if b.HasFocus() {
+		style = tcell.StyleDefault.Background(tcell.ColorGreen).Foreground(tcell.ColorBlack)
+	}
 	setRune := func(col, row int, r rune) {
 		if col >= x && col < x+w && row >= y && row < y+h {
 			screen.SetContent(col, row, r, nil, style)

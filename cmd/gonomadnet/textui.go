@@ -139,6 +139,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	// make_peer_widgets 1863-1869): peers sorted by (pn_trust_level,
 	// sync_transfer_rate) descending; each row is the peer_info_str from
 	// FormatLXMFPeerEntry. No router (early boot) ⇒ empty (no-content branch).
+	var refreshConvs func()
 	refreshLXMFPeers := func() {
 		if a.Router == nil {
 			networkDisplay.UpdateLXMFPeers(nil)
@@ -278,15 +279,18 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	}
 	// Wire up real announce data via callback
 	a.SetUIChangeCallback(func() {
-		refreshAnnounces()
-		refreshNodes()
-		// RNS init runs asynchronously in a goroutine, so the identity/LXMF
-		// destination are nil when wireDisplays first runs. Re-filling the
-		// Local Peer Info panel on each UI change picks them up once initRNS
-		// completes (it fires UIChangeCallback at the end), and also refreshes
-		// the "Announced : …" line as the announce age advances.
-		lxmfAddr, idhash, dname, lann := localPeerInfo()
-		networkDisplay.UpdateLocalPeer(lxmfAddr, idhash, dname, lann)
+		tuiApp.QueueUpdateDraw(func() {
+			refreshAnnounces()
+			refreshNodes()
+			refreshConvs()
+			// RNS init runs asynchronously in a goroutine, so the identity/LXMF
+			// destination are nil when wireDisplays first runs. Re-filling the
+			// Local Peer Info panel on each UI change picks them up once initRNS
+			// completes (it fires UIChangeCallback at the end), and also refreshes
+			// the "Announced : …" line as the announce age advances.
+			lxmfAddr, idhash, dname, lann := localPeerInfo()
+			networkDisplay.UpdateLocalPeer(lxmfAddr, idhash, dname, lann)
+		})
 	})
 	main.SetDisplay("network", networkDisplay.Widget())
 	main.SetShortcut("network", "[C-l] Nodes/Announces  [C-x] Remove  [C-w] Disconnect  [C-d] Back  [C-f] Forward  [C-r] Reload  [C-u] URL  [C-g] Fullscreen  [C-s / C-b] Save Node")
@@ -581,7 +585,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	})
 
 	// refreshConvs updates the conversation list from the app.
-	refreshConvs := func() {
+	refreshConvs = func() {
 		newConvs := a.ConversationList()
 		tuiConvs = make([]tui.ConversationInfo, len(newConvs))
 		for i, c := range newConvs {
@@ -1175,10 +1179,31 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	// Wire interfaces keyboard shortcuts
 	interfacesDisplay.OnAddInterface = func() {
 		tuiApp.Dialogs.ShowInputDialog("Add Interface",
-			"Interface type:", "",
-			func(text string) {
-				_ = text
-				// TODO: Add interface via RNS config
+			"Interface name:", "",
+			func(name string) {
+				name = strings.TrimSpace(name)
+				if name == "" {
+					return
+				}
+				tuiApp.Dialogs.ShowInputDialog("Interface Type",
+					"Type (e.g. AutoInterface, TCPClientInterface):", "AutoInterface",
+					func(ifType string) {
+						ifType = strings.TrimSpace(ifType)
+						if ifType == "" {
+							ifType = "AutoInterface"
+						}
+						formData := tui.NewInterfaceFormData(ifType)
+						formData.Fields["name"].Value = name
+						cfg := formData.BuildConfig()
+						if err := a.AddInterfaceConfig(name, cfg); err != nil {
+							interfacesDisplay.ShowInterfaceError(err.Error())
+							return
+						}
+						refreshInterfaces()
+						interfacesDisplay.ShowRestartRequired()
+					},
+					func() {},
+				)
 			},
 			func() {},
 		)
@@ -1208,19 +1233,53 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		})
 	}
 	interfacesDisplay.OnEditInterface = func() {
-		tuiApp.Dialogs.ShowInputDialog("Edit Interface",
-			"Interface name:", "",
-			func(text string) {
-				_ = text
-				// TODO: Edit interface via RNS config
+		idx := interfacesDisplay.SelectedIndex()
+		items := interfacesDisplay.Items()
+		if idx < 0 || idx >= len(items) {
+			return
+		}
+		iface := items[idx]
+		tuiApp.Dialogs.ShowInputDialog("Edit Interface: "+iface.Name,
+			"New interface name:", iface.Name,
+			func(newName string) {
+				newName = strings.TrimSpace(newName)
+				if newName == "" {
+					newName = iface.Name
+				}
+				existingCfg, err := a.GetInterfaceConfigMap(iface.Name)
+				if err != nil {
+					interfacesDisplay.ShowInterfaceError(err.Error())
+					return
+				}
+				formData := tui.NewInterfaceFormData(iface.Type)
+				formData.PopulateFromConfig(iface.Name, existingCfg)
+				formData.Fields["name"].Value = newName
+				cfg := formData.BuildConfig()
+				if err := a.EditInterfaceConfig(iface.Name, newName, cfg); err != nil {
+					interfacesDisplay.ShowInterfaceError(err.Error())
+					return
+				}
+				refreshInterfaces()
+				interfacesDisplay.ShowRestartRequired()
 			},
 			func() {},
 		)
 	}
 	interfacesDisplay.OnRemoveInterface = func() {
-		tuiApp.Dialogs.ShowConfirmDialog("Remove selected interface?",
+		idx := interfacesDisplay.SelectedIndex()
+		items := interfacesDisplay.Items()
+		if idx < 0 || idx >= len(items) {
+			return
+		}
+		iface := items[idx]
+		tuiApp.Dialogs.ShowConfirmDialog("Remove interface "+iface.Name+"?",
 			func() {
-				// TODO: Remove interface via RNS config
+				if err := a.RemoveInterfaceConfig(iface.Name); err != nil {
+					interfacesDisplay.ShowInterfaceError(err.Error())
+					return
+				}
+				refreshInterfaces()
+				interfacesDisplay.ShowRestartRequired()
 			},
 			func() {},
 		)

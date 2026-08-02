@@ -94,8 +94,11 @@ func NewMainDisplay(app *App, theme int, glyphSetName string) *MainDisplay {
 	md.menuBar.SetTextAlign(tview.AlignLeft)
 	md.menuBar.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
 		if action&tview.MouseLeftClick != 0 {
-			x, _ := event.Position()
-			md.handleClick(x)
+			x, y := event.Position()
+			bx, by, bw, bh := md.menuBar.GetRect()
+			if x >= bx && x < bx+bw && y >= by && y < by+bh {
+				md.handleClick(x - bx)
+			}
 		}
 		return action, event
 	})
@@ -241,6 +244,13 @@ func (md *MainDisplay) updateShortcutsLocked() {
 	}
 	md.shortcutTextRaw = text
 	md.shortcutWrapW = -1 // invalidate; resizeShortcutBar re-wraps at next draw
+}
+
+// GetShortcutText returns the raw (unwrapped) shortcut bar text currently active.
+func (md *MainDisplay) GetShortcutText() string {
+	md.mu.Lock()
+	defer md.mu.Unlock()
+	return md.shortcutTextRaw
 }
 
 // resizeShortcutBar wraps the current shortcut text to width using urwid's

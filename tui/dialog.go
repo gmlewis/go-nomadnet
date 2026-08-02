@@ -165,21 +165,54 @@ func (dm *DialogManager) ShowDialog(title string, content tview.Primitive, width
 	dm.showOverlay(dm.app, title, content, width, height, onDismiss)
 }
 
+// CreateButtonRow creates a horizontal row of buttons with Left/Right arrow key
+// focus navigation and solid green active styling when focused.
+func CreateButtonRow(buttons ...*tview.Button) *tview.Flex {
+	flex := tview.NewFlex().SetDirection(tview.FlexColumn)
+	for i, btn := range buttons {
+		idx := i
+		btn.SetBackgroundColor(tcell.ColorBlack)
+		btn.SetLabelColor(tcell.ColorWhite)
+		btn.SetBackgroundColorActivated(tcell.ColorGreen)
+		btn.SetLabelColorActivated(tcell.ColorBlack)
+
+		btn.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+			switch event.Key() {
+			case tcell.KeyLeft, tcell.KeyBacktab:
+				if idx > 0 {
+					buttons[idx-1].Focus(func(p tview.Primitive) {})
+					return nil
+				}
+			case tcell.KeyRight, tcell.KeyTab:
+				if idx < len(buttons)-1 {
+					buttons[idx+1].Focus(func(p tview.Primitive) {})
+					return nil
+				}
+			}
+			return event
+		})
+
+		flex.AddItem(btn, 0, 1, i == 0)
+	}
+
+	return flex
+}
+
 // ShowConfirmDialog shows a Yes/No confirmation dialog.
 func (dm *DialogManager) ShowConfirmDialog(message string, onYes, onNo func()) {
-	buttons := tview.NewFlex().SetDirection(tview.FlexColumn).
-		AddItem(tview.NewButton("Yes").SetSelectedFunc(func() {
-			dm.DismissTop()
-			if onYes != nil {
-				onYes()
-			}
-		}), 0, 1, true).
-		AddItem(tview.NewButton("No").SetSelectedFunc(func() {
-			dm.DismissTop()
-			if onNo != nil {
-				onNo()
-			}
-		}), 0, 1, false)
+	yesBtn := tview.NewButton("Yes").SetSelectedFunc(func() {
+		dm.DismissTop()
+		if onYes != nil {
+			onYes()
+		}
+	})
+	noBtn := tview.NewButton("No").SetSelectedFunc(func() {
+		dm.DismissTop()
+		if onNo != nil {
+			onNo()
+		}
+	})
+	buttons := CreateButtonRow(yesBtn, noBtn)
 
 	layout := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(tview.NewTextView().
@@ -200,20 +233,20 @@ func (dm *DialogManager) ShowInputDialog(title, label, defaultValue string, onSu
 	input.SetFieldBackgroundColor(tcell.NewHexColor(0x222222))
 	input.SetFieldTextColor(tcell.NewHexColor(0xdddddd))
 
-	buttons := tview.NewFlex().SetDirection(tview.FlexColumn).
-		AddItem(tview.NewButton("Save").SetSelectedFunc(func() {
-			value := input.GetText()
-			dm.DismissTop()
-			if onSubmit != nil {
-				onSubmit(value)
-			}
-		}), 0, 1, true).
-		AddItem(tview.NewButton("Cancel").SetSelectedFunc(func() {
-			dm.DismissTop()
-			if onCancel != nil {
-				onCancel()
-			}
-		}), 0, 1, false)
+	saveBtn := tview.NewButton("Save").SetSelectedFunc(func() {
+		value := input.GetText()
+		dm.DismissTop()
+		if onSubmit != nil {
+			onSubmit(value)
+		}
+	})
+	cancelBtn := tview.NewButton("Cancel").SetSelectedFunc(func() {
+		dm.DismissTop()
+		if onCancel != nil {
+			onCancel()
+		}
+	})
+	buttons := CreateButtonRow(saveBtn, cancelBtn)
 
 	layout := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(input, 1, 0, true).
