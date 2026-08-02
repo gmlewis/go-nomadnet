@@ -536,6 +536,19 @@ func (nd *NetworkDisplay) converseWith(ann AnnounceEntry) {
 	}
 }
 
+// BrowserPane returns the right-pane BrowserPane.
+func (nd *NetworkDisplay) BrowserPane() *BrowserPane {
+	return nd.browser
+}
+
+// BrowserDisplay returns the underlying BrowserDisplay inside the right pane.
+func (nd *NetworkDisplay) BrowserDisplay() *BrowserDisplay {
+	if nd.browser != nil {
+		return nd.browser.BrowserDisplay()
+	}
+	return nil
+}
+
 // Widget returns the tview primitive for this display.
 func (nd *NetworkDisplay) Widget() tview.Primitive {
 	return nd.widget

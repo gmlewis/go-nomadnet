@@ -432,6 +432,25 @@ func (md *MainDisplay) redrawMenuBar() {
 	}
 
 	md.menuBar.SetText(b.String())
+
+	if (md.focusRegion == "menu" || md.menuBar.HasFocus()) {
+		indicator := md.glyphs["decoration_menu"]
+		if md.unreadIndicator {
+			if g := md.glyphs["unread_menu"]; g != "" {
+				indicator = g
+			}
+		}
+		cx := runewidth.StringWidth(indicator)
+		for i := 0; i < md.activeMenu && i < len(md.menuWidths); i++ {
+			cx += md.menuWidths[i]
+		}
+		md.menuBar.SetDrawFunc(func(screen tcell.Screen, x, y, w, h int) (int, int, int, int) {
+			screen.ShowCursor(x+cx+3, y)
+			return x, y, w, h
+		})
+	} else {
+		md.menuBar.SetDrawFunc(nil)
+	}
 }
 
 // selectMenu ACTIVATES the given menu item: it becomes the highlighted button

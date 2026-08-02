@@ -110,6 +110,19 @@ func (i *IndicativeListBox) Draw(screen tcell.Screen) {
 	} else if h == 2 {
 		tview.Print(screen, top, x, y, w, tview.AlignCenter, tcell.ColorDefault)
 	}
+
+	if i.HasFocus() {
+		count := i.List.GetItemCount()
+		if count > 0 {
+			current := i.List.GetCurrentItem()
+			offset, _ := i.List.GetOffset()
+			lx, ly, _, lh := i.listRect()
+			row := current - offset
+			if row >= 0 && row < lh {
+				screen.ShowCursor(lx, ly+row)
+			}
+		}
+	}
 }
 
 // indicators returns the (top, bottom) bar strings for the List's current
@@ -140,17 +153,17 @@ func (i *IndicativeListBox) indicators() (top, bottom string) {
 
 // Focus forwards to the wrapped List so its focus highlight tracks correctly.
 func (i *IndicativeListBox) Focus(delegate func(p tview.Primitive)) {
+	i.Box.Focus(delegate)
 	i.List.Focus(delegate)
 }
 
-// Blur forwards to the wrapped List.
 func (i *IndicativeListBox) Blur() {
+	i.Box.Blur()
 	i.List.Blur()
 }
 
-// HasFocus reports the wrapped List's focus state.
 func (i *IndicativeListBox) HasFocus() bool {
-	return i.List.HasFocus()
+	return i.Box.HasFocus() || i.List.HasFocus()
 }
 
 // InputHandler delegates to the wrapped List.

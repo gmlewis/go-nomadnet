@@ -94,6 +94,18 @@ func (b *UrwidButton) SetSelectedFunc(fn func()) *UrwidButton {
 // Label returns the button's label text.
 func (b *UrwidButton) Label() string { return b.label }
 
+func (b *UrwidButton) Focus(delegate func(p tview.Primitive)) {
+	b.Box.Focus(delegate)
+}
+
+func (b *UrwidButton) Blur() {
+	b.Box.Blur()
+}
+
+func (b *UrwidButton) HasFocus() bool {
+	return b.Box.HasFocus()
+}
+
 // SetLabel updates the button's label text (used to refresh tab counts without
 // rebuilding the button).
 func (b *UrwidButton) SetLabel(label string) *UrwidButton { b.label = label; return b }
@@ -121,9 +133,6 @@ func (b *UrwidButton) Draw(screen tcell.Screen) {
 		return
 	}
 	style := tcell.StyleDefault
-	if b.HasFocus() {
-		style = tcell.StyleDefault.Background(tcell.ColorGreen).Foreground(tcell.ColorBlack)
-	}
 	setRune := func(col, row int, r rune) {
 		if col >= x && col < x+w && row >= y && row < y+h {
 			screen.SetContent(col, row, r, nil, style)

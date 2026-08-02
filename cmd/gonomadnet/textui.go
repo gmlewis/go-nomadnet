@@ -1497,67 +1497,59 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	// Micron page (or an error) back to the browser via QueueUpdateDraw. On a
 	// successful fetch the page is cached for its #!c=<seconds> header
 	// (response_received, Browser.py:1524-1546) unless that header is 0.
-	browserDisplay.OnRetrieveURL = func(url string) {
-		dest, path, rd, err := browser.ParseURL(url, browserDisplay.CurrentDest(), nil)
-		if err != nil {
-			tuiApp.QueueUpdateDraw(func() {
-				browserDisplay.SetContent(fmt.Sprintf("[red]Invalid URL: %v[-]", err))
-			})
+	wireBrowser := func(bd *tui.BrowserDisplay) {
+		if bd == nil {
 			return
 		}
-		browserDisplay.SetCurrentDest(dest)
-		// The cache key is the canonical current_url() form (hexrep(dest):path)
-		// — Python caches current_url(), not the raw input. request_data is
-		// absent here, so no `var=...` suffix is appended.
-		canonURL := fmt.Sprintf("%x:%s", dest, path)
-		// Cache lookup only when no request_data is attached (Python load_page
-		// guards on request_data == None). A hit short-circuits the network.
-		if rd == nil {
-			if cached := pageCache.GetCached(canonURL); cached != nil {
+		bd.OnRetrieveURL = func(url string) {
+			dest, path, rd, err := browser.ParseURL(url, bd.CurrentDest(), nil)
+			if err != nil {
 				tuiApp.QueueUpdateDraw(func() {
-					browserDisplay.RenderPage(string(cached))
+					bd.SetContent(fmt.Sprintf("[red]Invalid URL: %v[-]", err))
 				})
 				return
 			}
-		}
-		go func() {
-			data, ferr := browser.FetchPage(a.Transport, dest, path, rd,
-				time.Duration(browser.DefaultTimeout)*time.Second, nil,
-				identifyOnConnect(dest))
-			tuiApp.QueueUpdateDraw(func() {
-				if ferr != nil {
-					// Surface Python's status string for the failure mode
-					// (Browser.status_text, Browser.py:1756-1802) instead of a
-					// generic "Could not load page" — e.g. "No path to
-					// destination known", "Link establishment timed out",
-					// "Request failed", "Request timed out". Python shows this in
-					// the browser footer; the Go port has no footer slot, so the
-					// content area carries the message (the faithful single-place
-					// surface for a page-load error). OnBrowserError is NOT fired
-					// here — it is reserved for link-dispatch errors
-					// (handle_link/handle_lxmf_link/handle_rrc_link) that have no
-					// content surface of their own, where the app shows a dialog.
-					browserDisplay.SetContent(fmt.Sprintf("[red]%s[-]", browser.StatusText(browser.ErrToStatus(ferr))))
+			bd.SetCurrentDest(dest)
+			canonURL := fmt.Sprintf("%x:%s", dest, path)
+			if rd == nil {
+				if cached := pageCache.GetCached(canonURL); cached != nil {
+					tuiApp.QueueUpdateDraw(func() {
+						bd.RenderPage(string(cached))
+					})
 					return
 				}
-				// Cache the fetched page for its #!c= header lifetime, unless
-				// the page opts out with #!c=0. Only pages fetched without
-				// request_data are cached (Python only caches in this path and
-				// only request_data-None loads check the cache).
-				if rd == nil {
-					if ct := tui.CacheTimeFromMarkup(string(data)); ct != 0 {
-						pageCache.CachePage(canonURL, data,
-							float64(time.Now().UnixNano())/1e9+float64(ct))
+			}
+			go func() {
+				data, ferr := browser.FetchPage(a.Transport, dest, path, rd,
+					time.Duration(browser.DefaultTimeout)*time.Second, nil,
+					identifyOnConnect(dest))
+				tuiApp.QueueUpdateDraw(func() {
+					if ferr != nil {
+						bd.SetContent(fmt.Sprintf("[red]%s[-]", browser.StatusText(browser.ErrToStatus(ferr))))
+						return
 					}
-				}
-				browserDisplay.RenderPage(string(data))
-			})
-		}()
+					if rd == nil {
+						if ct := tui.CacheTimeFromMarkup(string(data)); ct != 0 {
+							pageCache.CachePage(canonURL, data,
+								float64(time.Now().UnixNano())/1e9+float64(ct))
+						}
+					}
+					bd.RenderPage(string(data))
+				})
+			}()
+		}
 	}
 
-	// Wire network connect to browser
+	wireBrowser(browserDisplay)
+	if ndBd := networkDisplay.BrowserDisplay(); ndBd != nil {
+		wireBrowser(ndBd)
+	}
+
+	// Wire network connect to browser (loads page in Network display's Remote Node pane and full browser)
 	navigateTo = func(url string) {
-		main.SelectPage("browser")
+		if ndBp := networkDisplay.BrowserPane(); ndBp != nil {
+			ndBp.LoadURL(url)
+		}
 		browserDisplay.LoadURL(url)
 	}
 	networkDisplay.SetNavigateCallback(navigateTo)

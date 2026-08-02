@@ -269,9 +269,13 @@ func TestAnnounceStreamFocusNavigation(t *testing.T) {
 		{DisplayName: "Node1", Type: "node", SourceHash: "aa", Timestamp: time.Now(), AppData: "Data1"},
 	}, nil)
 	as := nd.announceStream
+	as.update()
 
-	tapp := newTestApp()
-	setFocus := func(p tview.Primitive) { tapp.Application.SetFocus(p) }
+	setFocus := func(p tview.Primitive) {
+		if p != nil {
+			p.Focus(func(tview.Primitive) {})
+		}
+	}
 
 	as.Widget().Focus(setFocus)
 

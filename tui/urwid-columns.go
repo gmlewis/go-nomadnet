@@ -271,6 +271,15 @@ func (c *urwidColumns) Focus(delegate func(p tview.Primitive)) {
 	}
 }
 
+func (c *urwidColumns) Blur() {
+	c.Box.Blur()
+	for _, child := range c.children {
+		if bl, ok := child.(interface{ Blur() }); ok {
+			bl.Blur()
+		}
+	}
+}
+
 func (c *urwidColumns) HasFocus() bool {
 	for _, child := range c.children {
 		if child.HasFocus() {

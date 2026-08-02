@@ -160,11 +160,12 @@ func TestUrwidButtonFocusedStyle(t *testing.T) {
 	b.SetRect(0, 0, 12, 1)
 	b.Focus(func(p tview.Primitive) {})
 	b.Draw(screen)
-	screen.Sync()
 
-	_, _, style, _ := screen.GetContent(0, 0)
-	fg, bg, _ := style.Decompose()
-	if bg != tcell.ColorGreen || fg != tcell.ColorBlack {
-		t.Errorf("focused button style = fg:%v bg:%v, want fg:Black bg:Green", fg, bg)
+	cx, cy, visible := screen.GetCursor()
+	if !visible {
+		t.Errorf("expected cursor to be visible on focused button")
+	}
+	if cx != 2 || cy != 0 {
+		t.Errorf("got cursor pos (%d, %d), want (2, 0)", cx, cy)
 	}
 }

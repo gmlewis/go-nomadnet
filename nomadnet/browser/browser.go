@@ -328,6 +328,11 @@ func fetchBytes(ts *rns.TransportSystem, destHash []byte, path string, requestDa
 	if timeout <= 0 {
 		timeout = time.Duration(DefaultTimeout) * time.Second
 	}
+	if ts != nil {
+		if hops := ts.HopsTo(destHash); hops > 0 && hops < 128 {
+			timeout += time.Duration(hops*3) * time.Second
+		}
+	}
 
 	// 1. Path resolution.
 	if !ts.HasPath(destHash) {

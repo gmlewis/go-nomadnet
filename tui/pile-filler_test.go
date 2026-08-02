@@ -110,19 +110,19 @@ func TestPileFillerFocusCyclingTab(t *testing.T) {
 		t.Error("A should be focused after wrap")
 	}
 
-	// Up (Backtab) from A wraps → C.
-	pfKey(p, tcell.KeyUp)
+	// Backtab from A wraps → C.
+	pfKey(p, tcell.KeyBacktab)
 	if p.FocusIndex() != 2 {
-		t.Errorf("after Up from A focusIndex = %d, want 2 (wrap)", p.FocusIndex())
+		t.Errorf("after Backtab from A focusIndex = %d, want 2 (wrap)", p.FocusIndex())
 	}
 	if !c.HasFocus() {
-		t.Error("C should be focused after Up wrap")
+		t.Error("C should be focused after Backtab wrap")
 	}
 
-	// Down moves forward too.
-	pfKey(p, tcell.KeyDown)
+	// Tab moves forward to wrap → A.
+	pfKey(p, tcell.KeyTab)
 	if p.FocusIndex() != 0 {
-		t.Errorf("after Down from C focusIndex = %d, want 0 (wrap)", p.FocusIndex())
+		t.Errorf("after Tab from C focusIndex = %d, want 0 (wrap)", p.FocusIndex())
 	}
 }
 

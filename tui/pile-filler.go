@@ -275,6 +275,15 @@ func (p *pileFiller) HasFocus() bool {
 	return false
 }
 
+func (p *pileFiller) syncFocusIndex() {
+	for idx, selIdx := range p.selectable {
+		if p.items[selIdx].widget.HasFocus() {
+			p.focusIndex = idx
+			return
+		}
+	}
+}
+
 // InputHandler implements urwid-Pile-style focus traversal: Tab/Down moves
 // focus to the next selectable item, BackTab/Up to the previous (wrapping),
 // and all other keys are forwarded to the focused item's own handler.
@@ -288,6 +297,7 @@ func (p *pileFiller) InputHandler() func(event *tcell.EventKey, setFocus func(p 
 			return
 		}
 
+		p.syncFocusIndex()
 		fi := p.focusedItem()
 
 		// If focused item is a List or IndicativeListBox, allow Up/Down to scroll items in the list
@@ -329,12 +339,22 @@ func (p *pileFiller) InputHandler() func(event *tcell.EventKey, setFocus func(p 
 		}
 
 		switch event.Key() {
-		case tcell.KeyTab, tcell.KeyDown:
+		case tcell.KeyTab:
 			p.moveFocus(1, setFocus)
 			return
-		case tcell.KeyBacktab, tcell.KeyUp:
+		case tcell.KeyBacktab:
 			p.moveFocus(-1, setFocus)
 			return
+		case tcell.KeyDown:
+			if p.focusIndex < len(p.selectable)-1 {
+				p.moveFocus(1, setFocus)
+				return
+			}
+		case tcell.KeyUp:
+			if p.focusIndex > 0 {
+				p.moveFocus(-1, setFocus)
+				return
+			}
 		}
 
 		if fi != nil {

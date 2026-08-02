@@ -27,14 +27,15 @@ import (
 // (browser_inactive fg #444). URL fetching / page rendering arrive in Phase 5
 // (the RNS link); until then the disconnected state is the boot appearance.
 type BrowserPane struct {
-	app    *App
-	widget *tview.Flex
-	body   *centeredText
+	app     *App
+	widget  *tview.Flex
+	body    *centeredText
+	display *BrowserDisplay
 }
 
 // NewBrowserPane creates a "Remote Node" pane in the disconnected state.
 func NewBrowserPane(app *App) *BrowserPane {
-	bp := &BrowserPane{app: app}
+	bp := &BrowserPane{app: app, display: NewBrowserDisplay(app)}
 	bp.setDisconnected()
 	return bp
 }
@@ -66,6 +67,20 @@ func (bp *BrowserPane) setDisconnected() {
 		AddItem(tview.NewBox(), 0, 1, false)
 	bp.widget.SetBorder(true)
 	SetTitledBorder(bp.widget, "Remote Node")
+}
+
+// LoadURL loads a URL and displays the content inside the Remote Node pane.
+func (bp *BrowserPane) LoadURL(url string) {
+	if bp.display != nil {
+		bp.widget.Clear()
+		bp.widget.AddItem(bp.display.Widget(), 0, 1, true)
+		bp.display.LoadURL(url)
+	}
+}
+
+// BrowserDisplay returns the underlying BrowserDisplay instance for wiring.
+func (bp *BrowserPane) BrowserDisplay() *BrowserDisplay {
+	return bp.display
 }
 
 // Widget returns the bordered "Remote Node" primitive.
