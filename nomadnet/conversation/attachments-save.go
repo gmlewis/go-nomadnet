@@ -138,12 +138,12 @@ func startsWithDir(path, baseDir string) bool {
 
 // copyFile copies the contents and mode of src to dst, mirroring shutil.copy2
 // (content + permission bits). It does not preserve mtime/atime.
-func copyFile(src, dst string) error {
+func copyFile(src, dst string) (err error) {
 	in, err := os.Open(src)
 	if err != nil {
 		return err
 	}
-	defer in.Close()
+	defer func() { err = in.Close() }()
 	info, err := in.Stat()
 	if err != nil {
 		return err
@@ -153,7 +153,7 @@ func copyFile(src, dst string) error {
 		return err
 	}
 	if _, err := io.Copy(out, in); err != nil {
-		out.Close()
+		_ = out.Close()
 		return err
 	}
 	return out.Close()

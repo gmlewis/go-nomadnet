@@ -309,7 +309,7 @@ func (cw *ConversationWidget) buildFooter() {
 		for i, p := range cw.pendingAttachments {
 			names[i] = filepath.Base(p)
 		}
-		fmt.Fprintf(cw.attachmentIndicator, "%s %d file(s): %s", g["file"], len(cw.pendingAttachments), strings.Join(names, ", "))
+		_, _ = fmt.Fprintf(cw.attachmentIndicator, "%v %v file(s): %v", g["file"], len(cw.pendingAttachments), strings.Join(names, ", "))
 		cw.footerArea.AddItem(cw.attachmentIndicator, 1, 0, false)
 		rows++
 	}

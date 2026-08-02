@@ -23,11 +23,11 @@ if [[ -z "${ERRCHECK_BIN}" ]]; then
 	ERRCHECK_BIN="$(go env GOPATH)/bin/errcheck"
 fi
 
-GOIMPORTS_BIN="$(command -v goimports || true)"
-if [[ -z "${GOIMPORTS_BIN}" ]]; then
-	go install golang.org/x/tools/cmd/goimports@latest
-	GOIMPORTS_BIN="$(go env GOPATH)/bin/goimports"
-fi
+# GOIMPORTS_BIN="$(command -v goimports || true)"
+# if [[ -z "${GOIMPORTS_BIN}" ]]; then
+# 	go install golang.org/x/tools/cmd/goimports@latest
+# 	GOIMPORTS_BIN="$(go env GOPATH)/bin/goimports"
+# fi
 
 STATICCHECK_BIN="$(command -v staticcheck || true)"
 if [[ -z "${STATICCHECK_BIN}" ]]; then
@@ -68,8 +68,9 @@ fi
 
 cd "${REPO_ROOT}"
 
-echo "Running goimports..."
-"${GOIMPORTS_BIN}" -w .
+echo "Running gofmt..."
+# "${GOIMPORTS_BIN}" -w .
+gofmt -s -w .
 
 echo "Running integration tests..."
 go test "${GO_TEST_ARGS[@]}" -race -tags="${GO_TEST_TAGS}" -count=1 -timeout "${GO_TEST_TIMEOUT}" "$@" ./...

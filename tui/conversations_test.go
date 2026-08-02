@@ -492,9 +492,9 @@ func TestReloadCurrentMessages(t *testing.T) {
 	if loads != 1 {
 		t.Errorf("expected 1 load on display, got %d", loads)
 	}
-	if cd.currentWidget.messageList.GetText(true) != "" && cd.currentWidget.messages != nil {
-		// initial empty is acceptable
-	}
+	// if cd.currentWidget.messageList.GetText(true) != "" && cd.currentWidget.messages != nil {
+	// 	// initial empty is acceptable
+	// }
 
 	cd.ReloadCurrentMessages()
 	if loads != 2 {
