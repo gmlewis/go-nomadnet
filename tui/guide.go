@@ -257,9 +257,10 @@ func (gd *GuideDisplay) showTopic(idx int) {
 	}
 	gd.currentIdx = idx
 	gd.renderMarkup(guideTopics[idx].markup)
-	if gd.topics.GetCurrentItem() != idx {
-		gd.topics.SetCurrentItem(idx)
-	}
+	// NB: tview.List tracks the current item internally when ChangedFunc fires.
+	// Do NOT call SetCurrentItem here — it triggers another ChangedFunc and
+	// causes an infinite recursion (tview.List's internal state is not yet
+	// updated when our callback runs, so GetCurrentItem never matches).
 }
 
 // showMarkupForTest renders arbitrary micron markup into the reader (for
