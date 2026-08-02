@@ -23,6 +23,7 @@ import (
 	"github.com/gmlewis/go-nomadnet/nomadnet/conversation"
 	"github.com/gmlewis/go-nomadnet/nomadnet/directory"
 	"github.com/gmlewis/go-reticulum/lxmf"
+	"github.com/gmlewis/go-reticulum/rns"
 )
 
 // Conversations returns the list of known conversations, mirroring the
@@ -182,6 +183,135 @@ func (a *App) SetPeerTrustLevel(sourceHash []byte, trustLevel byte) {
 	}
 	entry.TrustLevel = trustLevel
 	a.Dir.Remember(entry)
+}
+
+// PeerInfoData holds the editable peer-directory fields the Conversations
+// "Peer Info" dialog (Python edit_selected_in_directory, Conversations.py:821)
+// reads and writes. It is the Go counterpart to the subset of DirectoryEntry
+// fields the dialog touches.
+type PeerInfoData struct {
+	DisplayName       string
+	TrustLevel        byte
+	PreferredDelivery byte
+	Pinned            bool
+	Notes             string
+	Known             bool
+}
+
+// PeerInfoLoad reads the current directory entry for sourceHash, returning the
+// editable fields the Peer Info dialog should pre-fill, mirroring Python's
+// existing_entry lookup in edit_selected_in_directory (Conversations.py:844-
+// 876). A missing entry yields the Python defaults: Unknown trust, direct
+// delivery, unpinned, empty notes. Known reflects directory.is_known.
+func (a *App) PeerInfoLoad(sourceHash []byte) PeerInfoData {
+	d := PeerInfoData{
+		TrustLevel:        directory.TrustUnknown,
+		PreferredDelivery: directory.DeliveryDirect,
+	}
+	if a.Dir == nil {
+		return d
+	}
+	d.Known = a.Dir.IsKnown(sourceHash)
+	if entry := a.Dir.Find(sourceHash); entry != nil {
+		d.DisplayName = entry.DisplayName
+		d.TrustLevel = entry.TrustLevel
+		d.PreferredDelivery = entry.PreferredDelivery
+		d.Pinned = entry.SortRank != nil
+		d.Notes = entry.Notes
+	}
+	return d
+}
+
+// RememberPeerInfo writes the full set of peer-directory fields edited by the
+// Peer Info dialog, mirroring Python's confirmed() (Conversations.py:901-929):
+// it builds a DirectoryEntry from the dialog values and remembers it,
+// preserving any existing HostsNode/IdentifyOnConnect flags. Pinned maps to a
+// sort_rank of 0; unpinned maps to a nil sort_rank (sorted below pinned
+// entries). Returns the remembered entry.
+func (a *App) RememberPeerInfo(sourceHash []byte, data PeerInfoData) *directory.Entry {
+	if a.Dir == nil {
+		a.Dir = directory.New()
+	}
+	entry := a.Dir.Find(sourceHash)
+	if entry == nil {
+		entry = directory.NewEntry(sourceHash)
+	}
+	entry.SourceHash = sourceHash
+	entry.DisplayName = data.DisplayName
+	entry.TrustLevel = data.TrustLevel
+	entry.PreferredDelivery = data.PreferredDelivery
+	if data.Pinned {
+		zero := 0
+		entry.SortRank = &zero
+	} else {
+		entry.SortRank = nil
+	}
+	entry.Notes = data.Notes
+	a.Dir.Remember(entry)
+	return entry
+}
+
+// QueryForPeer requests the network for the given peer's identity/path,
+// mirroring Python's Conversation.query_for_peer (Conversation.py:49-52) which
+// calls RNS.Transport.request_path. It is a no-op when no transport is
+// available. Used by the Peer Info dialog's "Query network for keys" action
+// (Conversations.py:962-979).
+func (a *App) QueryForPeer(destHash []byte) {
+	if a.Transport == nil || destHash == nil {
+		return
+	}
+	_ = a.Transport.RequestPath(destHash)
+}
+
+// BlockPeer blocks the given destination: it blackholes the peer's identity on
+// the transport, adds the hash to the ignored list, and instructs the LXMF
+// router to ignore it, mirroring Python's block_destination as invoked from the
+// Peer Info dialog's Block action (_block_peer_from_dialog, Conversations.py:
+// 769-800). The reason is recorded with the block.
+func (a *App) BlockPeer(destHash []byte, reason string) bool {
+	return a.BlockDestination(destHash, reason)
+}
+
+// PeerStampCost returns the outbound stamp cost for the peer, mirroring Python
+// _update_peer_info's stamp_cost resolution (Conversations.py:2103-2105): the
+// LXMF router's get_outbound_stamp_cost, falling back to
+// LXMF.stamp_cost_from_app_data on the recalled identity's app_data when the
+// router has no value. Returns nil when no stamp cost is known (the dialog
+// then omits the "Stamp: N" segment, matching Python stamp_cost is None).
+func (a *App) PeerStampCost(destHash []byte) *int {
+	if destHash == nil {
+		return nil
+	}
+	if a.Router != nil {
+		if sc, ok := a.Router.OutboundStampCost(destHash); ok {
+			return &sc
+		}
+	}
+	// Fallback: derive the stamp cost from the peer's recalled announce
+	// app_data, matching Python's LXMF.stamp_cost_from_app_data branch.
+	if a.Transport != nil {
+		if id := rns.RecallIdentity(a.Transport, destHash); id != nil && len(id.AppData) > 0 {
+			if sc, ok, err := lxmf.StampCostFromAppData(id.AppData); err == nil && ok {
+				return &sc
+			}
+		}
+	}
+	return nil
+}
+
+// PeerHops returns the transport hop count to the peer, or nil when the path
+// is unknown, mirroring Python _update_peer_info (Conversations.py:2107-2112):
+// RNS.Transport.hops_to returns >= PATHFINDER_M for unknown paths, which the
+// dialog renders as "unknown".
+func (a *App) PeerHops(destHash []byte) *int {
+	if a.Transport == nil || destHash == nil {
+		return nil
+	}
+	h := a.Transport.HopsTo(destHash)
+	if h >= rns.PathfinderM {
+		return nil
+	}
+	return &h
 }
 
 // LXMFAddressHex returns the user's LXMF delivery address as a lowercase hex

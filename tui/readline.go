@@ -19,6 +19,7 @@ import (
 	"unicode"
 
 	"github.com/gdamore/tcell/v2"
+	"github.com/mattn/go-runewidth"
 	"github.com/rivo/tview"
 )
 
@@ -132,6 +133,39 @@ func (re *ReadlineEdit) SetCursorPos(pos int) {
 		pos = n
 	}
 	re.cursorPos = pos
+}
+
+// Draw overrides tview.InputField.Draw to reposition the terminal hardware
+// cursor at the model cursorPos. tview's InputField wraps an internal TextArea
+// whose cursor stays at the end after SetText (there is no public cursor
+// setter), so a non-end model cursor (e.g. after Ctrl-A) would otherwise show
+// the caret at the wrong column. tview's Application.Draw hides the cursor each
+// frame, so the focused field must re-show it on every draw. This mirrors the
+// Python original, where urwid positions the hardware cursor at edit_pos
+// (ReadlineEdit.py / urwid.Edit.render → canvas.cursor).
+//
+// The caret column is the inner-rect origin plus the label width plus the
+// display width of the text before the cursor. For text that fits the field
+// width (the common case for nomadnet's short single-line inputs) this matches
+// the rendered glyph exactly; when the field horizontally scrolls the position
+// is best-effort (tview's scroll offset is internal and not exposed).
+func (re *ReadlineEdit) Draw(screen tcell.Screen) {
+	re.InputField.Draw(screen)
+	if !re.InputField.HasFocus() {
+		return
+	}
+	x, y, _, _ := re.GetInnerRect()
+	labelW := tview.TaggedStringWidth(re.GetLabel())
+	runes := []rune(re.GetText())
+	pos := re.cursorPos
+	if pos < 0 {
+		pos = 0
+	}
+	if pos > len(runes) {
+		pos = len(runes)
+	}
+	col := runewidth.StringWidth(string(runes[:pos]))
+	screen.ShowCursor(x+labelW+col, y)
 }
 
 // handleKey processes one key event, mirroring ReadlineMixin.keypress. It

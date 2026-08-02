@@ -84,7 +84,7 @@ func TestConversationWidgetSendMessage(t *testing.T) {
 	cw := NewConversationWidget(app, "aabb1122")
 
 	var sentContent string
-	cw.OnSend = func(content, title string) {
+	cw.OnSend = func(content, title string, _ []string) {
 		sentContent = content
 	}
 
@@ -106,7 +106,7 @@ func TestConversationWidgetSendMessageEmpty(t *testing.T) {
 	cw := NewConversationWidget(app, "aabb1122")
 
 	sent := false
-	cw.OnSend = func(content, title string) { sent = true }
+	cw.OnSend = func(content, title string, _ []string) { sent = true }
 	cw.sendMessage()
 
 	if sent {
@@ -427,16 +427,24 @@ func TestConversationWidgetPaperMessageDialog(t *testing.T) {
 	}
 }
 
+// TestConversationWidgetPaperMessageDialogActions pins the paper-message
+// action handlers parity (Python print_paper_message_qr / save_paper_message_qr
+// / save_paper_message_uri, Conversations.py:2474-2503): each handler reads the
+// editor content+title, fires OnPaperMessage(action, content, title) returning
+// (path, ok), and on success clears the editor (SaveQR/SaveURI also fire
+// OnPaperMessageSaved with the path; PrintQR does not), while failure fires
+// OnPaperMessageFailed and leaves the editor intact.
 func TestConversationWidgetPaperMessageDialogActions(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name   string
 		action func(cw *ConversationWidget)
+		saved  bool // whether OnPaperMessageSaved should fire (save modes only)
 	}{
-		{"PrintQR", func(cw *ConversationWidget) { cw.PaperMessagePrintQR() }},
-		{"SaveQR", func(cw *ConversationWidget) { cw.PaperMessageSaveQR() }},
-		{"SaveURI", func(cw *ConversationWidget) { cw.PaperMessageSaveURI() }},
+		{"PrintQR", func(cw *ConversationWidget) { cw.PaperMessagePrintQR() }, false},
+		{"SaveQR", func(cw *ConversationWidget) { cw.PaperMessageSaveQR() }, true},
+		{"SaveURI", func(cw *ConversationWidget) { cw.PaperMessageSaveURI() }, true},
 	}
 
 	for _, tt := range tests {
@@ -445,9 +453,18 @@ func TestConversationWidgetPaperMessageDialogActions(t *testing.T) {
 
 			app := newTestApp()
 			cw := NewConversationWidget(app, "aabb1122")
+			cw.editor.SetText("paper body")
+			cw.titleEditor.SetText("paper title")
 
-			var actionFired string
-			cw.OnPaperMessage = func(action string) { actionFired = action }
+			var gotAction, gotContent, gotTitle string
+			cw.OnPaperMessage = func(action, content, title string) (string, bool) {
+				gotAction, gotContent, gotTitle = action, content, title
+				return "/dl/saved.lxm", true
+			}
+			var savedPath string
+			cw.OnPaperMessageSaved = func(path string) { savedPath = path }
+			var failedFired bool
+			cw.OnPaperMessageFailed = func() { failedFired = true }
 
 			cw.PaperMessageDialog()
 			tt.action(cw)
@@ -455,10 +472,80 @@ func TestConversationWidgetPaperMessageDialogActions(t *testing.T) {
 			if cw.DialogOpen() {
 				t.Error("action should close dialog")
 			}
-			if actionFired != tt.name {
-				t.Errorf("OnPaperMessage = %q, want %q", actionFired, tt.name)
+			if gotAction != tt.name {
+				t.Errorf("OnPaperMessage action = %q, want %q", gotAction, tt.name)
+			}
+			if gotContent != "paper body" {
+				t.Errorf("OnPaperMessage content = %q, want %q", gotContent, "paper body")
+			}
+			if gotTitle != "paper title" {
+				t.Errorf("OnPaperMessage title = %q, want %q", gotTitle, "paper title")
+			}
+			if failedFired {
+				t.Error("success should not fire OnPaperMessageFailed")
+			}
+			if cw.editor.GetText() != "" {
+				t.Error("success should clear the editor")
+			}
+			if tt.saved {
+				if savedPath != "/dl/saved.lxm" {
+					t.Errorf("OnPaperMessageSaved = %q, want %q", savedPath, "/dl/saved.lxm")
+				}
+			} else if savedPath != "" {
+				t.Error("PrintQR success should not fire OnPaperMessageSaved")
 			}
 		})
+	}
+}
+
+// TestConversationWidgetPaperMessageFailure pins the failure branch: an !ok
+// result fires OnPaperMessageFailed and leaves the editor content intact
+// (Python paper_message_failed, Conversations.py:2480-2481,2491-2492,2502-2503).
+func TestConversationWidgetPaperMessageFailure(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	cw := NewConversationWidget(app, "aabb1122")
+	cw.editor.SetText("keep me")
+
+	cw.OnPaperMessage = func(action, content, title string) (string, bool) {
+		return "", false
+	}
+	var failedFired bool
+	var savedFired bool
+	cw.OnPaperMessageFailed = func() { failedFired = true }
+	cw.OnPaperMessageSaved = func(path string) { savedFired = true }
+
+	cw.PaperMessageSaveQR()
+
+	if !failedFired {
+		t.Error("failure should fire OnPaperMessageFailed")
+	}
+	if savedFired {
+		t.Error("failure should not fire OnPaperMessageSaved")
+	}
+	if cw.editor.GetText() != "keep me" {
+		t.Error("failure should leave the editor content intact")
+	}
+}
+
+// TestConversationWidgetPaperMessageEmptyContent pins the Python guard
+// `if not content == ""`: an empty editor short-circuits the action without
+// firing OnPaperMessage (Conversations.py:2477,2486,2497).
+func TestConversationWidgetPaperMessageEmptyContent(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	cw := NewConversationWidget(app, "aabb1122")
+
+	called := false
+	cw.OnPaperMessage = func(action, content, title string) (string, bool) {
+		called = true
+		return "", true
+	}
+	cw.PaperMessagePrintQR()
+	if called {
+		t.Error("empty editor should short-circuit without firing OnPaperMessage")
 	}
 }
 
@@ -496,7 +583,10 @@ func TestConversationWidgetCtrlPCtrlFParity(t *testing.T) {
 	cw := NewConversationWidget(app, "aabb1122")
 
 	var paperFired bool
-	cw.OnPaperMessage = func(action string) { paperFired = true }
+	cw.OnPaperMessage = func(action, content, title string) (string, bool) {
+		paperFired = true
+		return "", true
+	}
 
 	var attachFired bool
 	cw.OnAttach = func() { attachFired = true }
@@ -555,17 +645,18 @@ func TestConversationWidgetCtrlSavesAttachments(t *testing.T) {
 	if !cw.DialogOpen() {
 		t.Error("C-s should mark the dialog open (save_focused_attachments sets dialog_active)")
 	}
-	// Sorted by timestamp desc: newest message's two attachments first, then old.
+	// Sorted by timestamp desc: newest message's two attachments first, then
+	// old. FieldIndex is the per-message attachment index (0..).
 	want := []AttachmentRef{
-		{Name: "new.pdf", Type: "file"},
-		{Name: "pic.png", Type: "image"},
-		{Name: "old.txt", Type: "file"},
+		{Name: "new.pdf", Type: "file", FieldIndex: 0},
+		{Name: "pic.png", Type: "image", FieldIndex: 1},
+		{Name: "old.txt", Type: "file", FieldIndex: 0},
 	}
 	if len(gotRefs) != len(want) {
 		t.Fatalf("got %d refs %v, want %d %v", len(gotRefs), gotRefs, len(want), want)
 	}
 	for i, w := range want {
-		if gotRefs[i] != w {
+		if gotRefs[i].Name != w.Name || gotRefs[i].Type != w.Type || gotRefs[i].FieldIndex != w.FieldIndex {
 			t.Errorf("ref[%d] = %+v, want %+v", i, gotRefs[i], w)
 		}
 	}
@@ -627,14 +718,14 @@ func TestConversationWidgetSaveAttachmentsWithItems(t *testing.T) {
 		t.Error("SaveAttachmentsDialog should set dialog open")
 	}
 
-	var saved []string
-	cw.OnSaveAttachments = func(names []string) { saved = names }
+	var saved []AttachmentRef
+	cw.OnSaveAttachments = func(refs []AttachmentRef) { saved = refs }
 
-	cw.ConfirmSaveAttachments([]string{"photo.jpg"})
+	cw.ConfirmSaveAttachments([]AttachmentRef{attachments[0]})
 	if cw.DialogOpen() {
 		t.Error("ConfirmSaveAttachments should close dialog")
 	}
-	if len(saved) != 1 || saved[0] != "photo.jpg" {
+	if len(saved) != 1 || saved[0].Name != "photo.jpg" {
 		t.Errorf("OnSaveAttachments = %v, want [photo.jpg]", saved)
 	}
 }
@@ -650,5 +741,43 @@ func TestConversationWidgetDismissSaveAttachments(t *testing.T) {
 
 	if cw.DialogOpen() {
 		t.Error("DismissSaveAttachmentsDialog should close dialog")
+	}
+}
+
+// TestConversationWidgetFooterAttachmentIndicator pins the pending-attachments
+// footer indicator parity: Python's _build_footer (Conversations.py:2160-2177)
+// shows "{file-glyph} N file(s): {basenames joined by ', '}" above the editor
+// when pending_attachments is non-empty, and just the editor otherwise.
+func TestConversationWidgetFooterAttachmentIndicator(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	cw := NewConversationWidget(app, "aabb1122")
+
+	// No pending attachments → no indicator row.
+	cw.buildFooter()
+	if cw.footerIndicatorText() != "" {
+		t.Errorf("empty pending: indicator = %q, want empty", cw.footerIndicatorText())
+	}
+
+	// Stage two attachments → indicator lists basenames, comma-separated.
+	cw.pendingAttachments = []string{"/tmp/notes.txt", "/tmp/pic.png"}
+	cw.buildFooter()
+	g := cw.glyphs()
+	want := g["file"] + " 2 file(s): notes.txt, pic.png"
+	if got := cw.footerIndicatorText(); got != want {
+		t.Errorf("indicator = %q, want %q", got, want)
+	}
+
+	// ClearEditor clears pending attachments and rebuilds the footer.
+	cw.ClearEditor()
+	if cw.footerIndicatorText() != "" {
+		t.Errorf("after ClearEditor: indicator = %q, want empty", cw.footerIndicatorText())
+	}
+
+	// ConfirmAttachFile stages paths and rebuilds the footer.
+	cw.ConfirmAttachFile([]string{"/tmp/a.bin"})
+	if got := cw.footerIndicatorText(); got != g["file"]+" 1 file(s): a.bin" {
+		t.Errorf("after ConfirmAttachFile: indicator = %q, want %q", got, g["file"]+" 1 file(s): a.bin")
 	}
 }

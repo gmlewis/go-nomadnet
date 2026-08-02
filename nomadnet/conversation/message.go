@@ -76,6 +76,7 @@ type Message struct {
 	CachedTitle               string
 	CachedContent             string
 	CachedSourceHash          []byte
+	CachedRawState            int // raw LXMF state int (lxm.State), for header rendering
 	CachedTransportEncrypted  bool
 	CachedTransportEncryption string
 	CachedSignatureValidated  *bool
@@ -347,6 +348,7 @@ func (m *Message) Load() {
 	if len(lxm.SourceHash) > 0 {
 		m.CachedSourceHash = lxm.SourceHash
 	}
+	m.CachedRawState = lxm.State
 	m.CachedTitle = lxm.TitleString()
 	m.CachedContent = lxm.ContentString()
 	m.CachedTransportEncrypted = lxm.TransportEncrypted

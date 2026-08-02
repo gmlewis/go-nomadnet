@@ -17,6 +17,7 @@ package tui
 
 import (
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -57,7 +58,10 @@ type ConversationWidget struct {
 	titleEditor    *ReadlineEdit
 	fullEditorArea *tview.Flex
 	footerArea     *tview.Flex
-	widget         tview.Primitive
+	// attachmentIndicator is the pending-attachments footer line (Python
+	// _build_footer, Conversations.py:2167-2175). Lazily created by buildFooter.
+	attachmentIndicator *tview.TextView
+	widget              tview.Primitive
 
 	fullEditorActive     bool
 	sortByTimestamp      bool
@@ -67,13 +71,15 @@ type ConversationWidget struct {
 	OnClose                  func()
 	OnPurgeFailed            func()
 	OnClearHistory           func()
-	OnSend                   func(content, title string)
+	OnSend                   func(content, title string, attachments []string)
 	OnAttach                 func()
 	OnToggleFullscreen       func()
-	OnPaperMessage           func(action string)
+	OnPaperMessage           func(action, content, title string) (path string, ok bool)
+	OnPaperMessageSaved      func(path string)
+	OnPaperMessageFailed     func()
 	OnPaperMessageRequested  func()
 	OnAttachFiles            func(paths []string)
-	OnSaveAttachments        func(names []string)
+	OnSaveAttachments        func(refs []AttachmentRef)
 	OnSaveFocusedAttachments func(refs []AttachmentRef)
 	// Trust banner button callbacks (Python _on_trust_click/_on_block_click/
 	// _on_ignore_click, Conversations.py:1989-2030).
@@ -83,6 +89,12 @@ type ConversationWidget struct {
 
 	// Dialog state
 	dialogOpen bool
+
+	// pendingAttachments is the list of staged file paths to attach to the
+	// next sent message (Python ConversationWidget.pending_attachments,
+	// Conversations.py:1891,2167). Populated by ConfirmAttachFile (the file
+	// browser selection); consumed and cleared by sendMessage.
+	pendingAttachments []string
 
 	// Message data
 	messages []ConversationMessage
@@ -105,6 +117,7 @@ type ConversationMessage struct {
 	State                int
 	Method               int
 	SourceHash           []byte
+	Hash                 []byte // LXMF message hash — locates extracted attachments for C-s save
 	TransportEncrypted   bool
 	SignatureValidated   bool
 	SignatureDescription string
@@ -165,9 +178,11 @@ func NewConversationWidget(app *App, sourceHash string) *ConversationWidget {
 		AddItem(cw.titleEditor, 1, 0, false).
 		AddItem(cw.editor, 0, 1, true)
 
-	// Footer area switches between minimal and full editor
-	cw.footerArea = tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(cw.editor, 1, 0, true)
+	// Footer area switches between minimal and full editor, optionally
+	// prepending the pending-attachments indicator (Python _build_footer,
+	// Conversations.py:2160-2177). Populated by buildFooter after the frame
+	// exists (it resizes the frame's footer slot).
+	cw.footerArea = tview.NewFlex().SetDirection(tview.FlexRow)
 
 	// Main frame: header | messages | editor
 	cw.frame = tview.NewFlex().SetDirection(tview.FlexRow).
@@ -175,6 +190,7 @@ func NewConversationWidget(app *App, sourceHash string) *ConversationWidget {
 		AddItem(cw.messageList, 0, 1, false).
 		AddItem(cw.footerArea, 1, 0, true)
 	cw.frame.SetBorder(true)
+	cw.buildFooter()
 
 	// Wire up keyboard shortcuts matching Python's ConversationWidget.keypress()
 	cw.frame.SetInputCapture(cw.handleInput)
@@ -198,6 +214,8 @@ func (cw *ConversationWidget) SetMessages(msgs []ConversationMessage) {
 func (cw *ConversationWidget) ClearEditor() {
 	cw.editor.SetText("")
 	cw.titleEditor.SetText("")
+	cw.pendingAttachments = nil
+	cw.buildFooter()
 }
 
 // handleInput processes keyboard shortcuts for the conversation widget.
@@ -267,12 +285,53 @@ func (cw *ConversationWidget) handleInput(event *tcell.EventKey) *tcell.EventKey
 // toggleEditor switches between minimal and full editor modes.
 func (cw *ConversationWidget) toggleEditor() {
 	cw.fullEditorActive = !cw.fullEditorActive
+	cw.buildFooter()
+}
+
+// buildFooter rebuilds the footer area, mirroring Python's _build_footer
+// (Conversations.py:2160-2177): a pending-attachments indicator line
+// ("{file-glyph} N file(s): {basenames}") sits above the editor when
+// pendingAttachments is non-empty; otherwise only the editor shows. The frame's
+// footer slot is resized to the total row count.
+func (cw *ConversationWidget) buildFooter() {
 	cw.footerArea.Clear()
+	if cw.attachmentIndicator != nil {
+		cw.attachmentIndicator.Clear()
+	}
+	rows := 0
+	if len(cw.pendingAttachments) > 0 {
+		if cw.attachmentIndicator == nil {
+			cw.attachmentIndicator = tview.NewTextView()
+		}
+		cw.attachmentIndicator.Clear()
+		g := cw.glyphs()
+		names := make([]string, len(cw.pendingAttachments))
+		for i, p := range cw.pendingAttachments {
+			names[i] = filepath.Base(p)
+		}
+		fmt.Fprintf(cw.attachmentIndicator, "%s %d file(s): %s", g["file"], len(cw.pendingAttachments), strings.Join(names, ", "))
+		cw.footerArea.AddItem(cw.attachmentIndicator, 1, 0, false)
+		rows++
+	}
 	if cw.fullEditorActive {
 		cw.footerArea.AddItem(cw.fullEditorArea, 2, 0, true)
+		rows += 2
 	} else {
 		cw.footerArea.AddItem(cw.editor, 1, 0, true)
+		rows++
 	}
+	if cw.frame != nil {
+		cw.frame.ResizeItem(cw.footerArea, rows, 0)
+	}
+}
+
+// footerIndicatorText returns the current pending-attachments indicator text
+// (empty when no attachments are staged), for testing/parity verification.
+func (cw *ConversationWidget) footerIndicatorText() string {
+	if cw.attachmentIndicator == nil {
+		return ""
+	}
+	return cw.attachmentIndicator.GetText(true)
 }
 
 // sendMessage sends the current editor content.
@@ -285,8 +344,14 @@ func (cw *ConversationWidget) sendMessage() {
 	if cw.fullEditorActive {
 		title = cw.titleEditor.GetText()
 	}
+	// Hand off the staged attachments (file paths) to the wiring layer so
+	// it can build the LXMF FIELD_FILE_ATTACHMENTS field, then clear the
+	// staging list (Python send_message + clear_editor,
+	// Conversations.py:2412-2436,2294-2298).
+	attachments := cw.pendingAttachments
+	cw.pendingAttachments = nil
 	if cw.OnSend != nil {
-		cw.OnSend(content, title)
+		cw.OnSend(content, title, attachments)
 	}
 	cw.ClearEditor()
 }
@@ -630,32 +695,44 @@ func (cw *ConversationWidget) PaperMessageDialog() {
 	}
 }
 
-// PaperMessagePrintQR fires the OnPaperMessage callback with "PrintQR"
-// and closes the dialog.
-func (cw *ConversationWidget) PaperMessagePrintQR() {
+// paperAction runs a paper-message output action, mirroring Python's
+// print_paper_message_qr / save_paper_message_qr / save_paper_message_uri
+// (Conversations.py:2474-2503): read the editor content+title, short-circuit on
+// empty content, fire OnPaperMessage(action, content, title) which returns the
+// saved path and ok, then on success clear the editor (and for the save modes
+// fire OnPaperMessageSaved with the path) or on failure fire
+// OnPaperMessageFailed and leave the editor intact.
+func (cw *ConversationWidget) paperAction(action string, saved bool) {
 	cw.dialogOpen = false
-	if cw.OnPaperMessage != nil {
-		cw.OnPaperMessage("PrintQR")
+	content := cw.editor.GetText()
+	if content == "" {
+		return
+	}
+	title := cw.titleEditor.GetText()
+	if cw.OnPaperMessage == nil {
+		return
+	}
+	path, ok := cw.OnPaperMessage(action, content, title)
+	if !ok {
+		if cw.OnPaperMessageFailed != nil {
+			cw.OnPaperMessageFailed()
+		}
+		return
+	}
+	cw.ClearEditor()
+	if saved && cw.OnPaperMessageSaved != nil {
+		cw.OnPaperMessageSaved(path)
 	}
 }
 
-// PaperMessageSaveQR fires the OnPaperMessage callback with "SaveQR"
-// and closes the dialog.
-func (cw *ConversationWidget) PaperMessageSaveQR() {
-	cw.dialogOpen = false
-	if cw.OnPaperMessage != nil {
-		cw.OnPaperMessage("SaveQR")
-	}
-}
+// PaperMessagePrintQR fires OnPaperMessage with "PrintQR" and closes the dialog.
+func (cw *ConversationWidget) PaperMessagePrintQR() { cw.paperAction("PrintQR", false) }
 
-// PaperMessageSaveURI fires the OnPaperMessage callback with "SaveURI"
-// and closes the dialog.
-func (cw *ConversationWidget) PaperMessageSaveURI() {
-	cw.dialogOpen = false
-	if cw.OnPaperMessage != nil {
-		cw.OnPaperMessage("SaveURI")
-	}
-}
+// PaperMessageSaveQR fires OnPaperMessage with "SaveQR" and closes the dialog.
+func (cw *ConversationWidget) PaperMessageSaveQR() { cw.paperAction("SaveQR", true) }
+
+// PaperMessageSaveURI fires OnPaperMessage with "SaveURI" and closes the dialog.
+func (cw *ConversationWidget) PaperMessageSaveURI() { cw.paperAction("SaveURI", true) }
 
 // DismissPaperMessageDialog closes the paper message dialog
 // without taking action.
@@ -674,6 +751,11 @@ func (cw *ConversationWidget) OpenAttachFileDialog(startDir string) {
 // OnAttachFiles callback, and closes the dialog.
 func (cw *ConversationWidget) ConfirmAttachFile(paths []string) {
 	cw.dialogOpen = false
+	// Stage the selected file paths for the next send (Python appends to
+	// pending_attachments in the file-browser selection handler,
+	// Conversations.py:3057-3060).
+	cw.pendingAttachments = append(cw.pendingAttachments, paths...)
+	cw.buildFooter()
 	if cw.OnAttachFiles != nil {
 		cw.OnAttachFiles(paths)
 	}
@@ -686,10 +768,15 @@ func (cw *ConversationWidget) DismissAttachFileDialog() {
 }
 
 // AttachmentRef represents a single attachment in a conversation.
-// Matches Python's _collect_attachment_refs() at Conversations.py:2300.
+// Matches Python's _collect_attachment_refs() at Conversations.py:2300: each
+// ref carries the attachment's display name, field type, the owning message's
+// LXMF hash (to locate the extracted attachment directory), and the field index
+// within that message (to select the extracted file_ N).
 type AttachmentRef struct {
-	Name string
-	Type string
+	Name        string
+	Type        string
+	MessageHash []byte
+	FieldIndex  int
 }
 
 // collectAttachmentRefs gathers every attachment across all messages, ordered
@@ -714,7 +801,12 @@ func (cw *ConversationWidget) collectAttachmentRefs() []AttachmentRef {
 			if i < len(msg.AttachmentTypes) && msg.AttachmentTypes[i] != "" {
 				atype = msg.AttachmentTypes[i]
 			}
-			refs = append(refs, AttachmentRef{Name: name, Type: atype})
+			refs = append(refs, AttachmentRef{
+				Name:        name,
+				Type:        atype,
+				MessageHash: msg.Hash,
+				FieldIndex:  i,
+			})
 		}
 	}
 	return refs
@@ -742,11 +834,11 @@ func (cw *ConversationWidget) SaveAttachmentsDialog(attachments []AttachmentRef)
 }
 
 // ConfirmSaveAttachments saves the selected attachments, fires
-// the OnSaveAttachments callback, and closes the dialog.
-func (cw *ConversationWidget) ConfirmSaveAttachments(names []string) {
+// the OnSaveAttachments callback with the selected refs, and closes the dialog.
+func (cw *ConversationWidget) ConfirmSaveAttachments(refs []AttachmentRef) {
 	cw.dialogOpen = false
 	if cw.OnSaveAttachments != nil {
-		cw.OnSaveAttachments(names)
+		cw.OnSaveAttachments(refs)
 	}
 }
 

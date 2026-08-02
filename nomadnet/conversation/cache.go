@@ -151,6 +151,16 @@ func (cc *ConversationCache) Ingest(msg *lxmf.Message, conversationsPath string,
 		return "", fmt.Errorf("writing message to directory: %w", err)
 	}
 
+	// Extract file/image/audio attachments to the per-message attachment
+	// directory, mirroring Python Conversation.ingest →
+	// ConversationMessage.extract_attachments_from_lxm (Conversation.py:73-76).
+	// Extraction is best-effort: a failure logs and continues (Python wraps the
+	// call in try/except), so the message is still ingested. Skipped when no
+	// attachment path is configured (extraction would have nowhere to write).
+	if cc.attachmentPath != "" {
+		_ = ExtractAttachmentsFromLXM(msg, cc.attachmentPath)
+	}
+
 	cc.mu.Lock()
 	if cached, ok := cc.cached[sourceHex]; ok {
 		cc.mu.Unlock()

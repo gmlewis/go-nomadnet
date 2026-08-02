@@ -279,50 +279,10 @@ test or a matching `parity.sh` summary):
         `HideCursor` each frame, so the cursor must be re-shown on every focused
         draw. Golden `(x,y)` table captured from Python `calc_coords` over a
         known wrapped string (unit test — capture cannot see the cursor).
-  - [ ] `ReadlineEdit` visible caret: wire the model `cursorPos` to a shown
-        hardware cursor (the wrapper bypasses tview’s public cursor setter — see
-        the memory note “tview InputField exposes no public cursor setter”).
-        Test that the reported caret column tracks `cursorPos` after a non-end
-        cursor move.
 - [ ] Mouse clicks have no correlation with what is under the cursor — fix mouse
       coordinate mapping so clicks hit the right menu/list/link/pane gutter.
 - [ ] Go errors must NEVER be ignored (audit `_ =` / bare calls; log or handle
       every error).
-
-### Phase 1 — Conversations page (Python `Conversations.py`, 3093 lines)
-
-> The biggest missing functional piece: **message send is fully unwired**.
-> `conversation.Send` + `Conversation.SetSendDeps` exist but `SetSendDeps` is never
-> called in production and `ConversationWidget.OnSend` is never set, so `C-d` in
-> the composer fires a nil callback — no message is composed or dispatched. The
-> LXMF primitives (`lxmf.Message`/`Router`, `rns.Destination`, `rns.Link`) all
-> exist in go-reticulum. Capture expected behavior from `Conversations.py`.
-
-- [ ] **Wire conversation send.** Build the outbound `lxmf.Message` against the
-      peer `rns.Destination`, choose delivery method
-      (`DeliveryLinkAvailable`/`OutboundPropagationNode`), dispatch via
-      `lxmf.Router.HandleOutbound`; set `Conversation.SetSendDeps` in production
-      wiring and wire `ConversationWidget.OnSend` in `cmd/gonomadnet/textui.go`.
-      Test: composing + `C-d` produces a message byte-identical to Python’s.
-- [ ] `ConversationWidget` — trust banner, messages, editor, footer; verify vs
-      Python `ConversationWidget`.
-- [ ] `attachFile`/`fileBrowserClosed`/`saveFocusedAttachments` (`C-f`/`C-s`/`C-a`)
-      — attachment flow; verify vs Python.
-- [ ] `paperMessage` (`C-p`) — print_qr/save_qr/save_uri; verify vs Python
-      (`conversation.PaperOutput` exists but is not wired to the TUI).
-- [ ] `ClickableAttachment`/`FileBrowserDialog` — attachment save dialog; verify.
-- [ ] `syncConversations`/`updateSyncDialog` (`C-r`) — sync flow + progress; verify.
-      (`OnSync` → `a.RequestLXMFSync` is wired; complete the progress UI.)
-- [ ] `ingestLXMURI` (`C-u`) — parse `lxm://` + create message; verify vs Python.
-      (`OnIngestURI` → `a.Router.IngestLXMURI` is wired; verify end-to-end.)
-- [ ] `editSelectedInDirectory` (`C-e`) — peer info editor overlay; verify.
-- [ ] **Peer-info bar RNS fields.** `updatePeerInfo` (`tui/conversation-widget.go`)
-      leaves hop count / stamp cost as “unknown” — inject `rns.Transport.HopsTo`
-      and router stamp cost from the wiring layer. Verify vs Python.
-- [ ] Three shortcut bars by focus region (list/body/editor); verify via
-      `summary.py` footer after focusing each region. `SetShortcutFocus` must be
-      wired on every region focus change so the footer text + height track the
-      active region.
 
 ### Phase 2 — Browser page over RNS (Python `Browser.py`, 1848 lines)
 

@@ -17,9 +17,11 @@ package tui
 
 import (
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gdamore/tcell/v2"
@@ -90,6 +92,73 @@ type ConversationsDisplay struct {
 	OnTrustPeer  func(sourceHash string)
 	OnBlockPeer  func(sourceHash string)
 	OnIgnorePeer func(sourceHash string)
+
+	// OnSend is the display-level send hook fired by the conversation
+	// widget's composer (C-d). The wiring layer (cmd/gonomadnet/textui.go)
+	// connects it to App.SendConversation so a composed message is built
+	// into an outbound lxmf.Message and dispatched through the router.
+	// The source hash of the open conversation is forwarded along with the
+	// composed content/title.
+	OnSend func(sourceHash, content, title string, attachments []string)
+
+	// OnLoadMessages supplies the ConversationMessages for an open
+	// conversation (the wiring layer maps App.ConversationMessages →
+	// []ConversationMessage). Called from DisplayConversation to populate
+	// the widget, and from ReloadCurrentMessages after a send so the new
+	// message appears.
+	OnLoadMessages func(sourceHash string) []ConversationMessage
+	// OnOwnHash supplies this app's LXMF destination hash so the
+	// LXMessageWidget header can distinguish outbound (source==own) from
+	// inbound messages (Python compares app.lxmf_destination.hash,
+	// Conversations.py:2607).
+	OnOwnHash func() []byte
+	// OnTimeFormat supplies the configured strftime format (Python
+	// app.time_format). When nil the widget's "%Y-%m-%d %H:%M:%S" default
+	// applies.
+	OnTimeFormat func() string
+	// OnStampCost supplies the peer's outbound LXMF stamp cost for the peer-info
+	// header bar (Python _update_peer_info, Conversations.py:2103-2105). nil
+	// omits the "Stamp: N" segment.
+	OnStampCost func(sourceHash string) *int
+	// OnHops supplies the transport hop count to the peer for the peer-info
+	// header bar (Python _update_peer_info, Conversations.py:2107-2112). nil
+	// renders "unknown".
+	OnHops func(sourceHash string) *int
+
+	// OnPaperMessage performs a paper (offline) message output for the open
+	// conversation (Python paper_output, Conversations.py:2474-2503). The
+	// wiring layer maps action ("PrintQR"/"SaveQR"/"SaveURI") to
+	// App.PaperMessage and returns the saved path + ok. OnPaperMessageSaved /
+	// OnPaperMessageFailed render the result dialogs (paper_message_saved /
+	// paper_message_failed).
+	OnPaperMessage       func(sourceHash, action, content, title string) (path string, ok bool)
+	OnPaperMessageSaved  func(path string)
+	OnPaperMessageFailed func()
+	// OnSaveAttachments copies the selected received attachments to the
+	// download directory (Python do_save / _copy_attachment_to_dest,
+	// Conversations.py:2368-2394). The wiring layer maps the selected refs
+	// (each carrying the owning message's LXMF hash + field index) to
+	// App.SaveConversationAttachments and reports the saved paths for the
+	// status dialog.
+	OnSaveAttachments func(sourceHash string, refs []AttachmentRef) (saved []string, failed int)
+
+	// currentWidget is the ConversationWidget currently shown in the right
+	// pane (nil when the empty detail placeholder is shown). Kept so the
+	// wiring layer can refresh the open conversation after a send and so
+	// tests can drive the composer.
+	currentWidget *ConversationWidget
+
+	// Sync dialog live-refresh state (Python update_sync_dialog,
+	// Conversations.py:1566-1575). The status/progress widgets are held so
+	// updateSyncProgress can mutate them in place each tick; syncHooks supplies
+	// the live values; syncStop cancels the refresh goroutine on dismiss.
+	syncStatusText  *tview.TextView
+	syncProgressBox *tview.TextView
+	syncSyncBtn     *tview.Button
+	syncHooks       SyncDialogHooks
+	syncStop        chan struct{}
+	syncWG          sync.WaitGroup
+	syncMutex       sync.Mutex
 }
 
 // NewConversationsDisplay creates a new conversations display.
@@ -173,6 +242,17 @@ func NewConversationsDisplay(app *App, convs []ConversationInfo) *ConversationsD
 	// Set up keyboard shortcuts matching Python's ConversationsArea.keypress()
 	cd.widget.SetInputCapture(cd.handleInput)
 
+	// Wire focus-region shortcut bars: every focusable list-pane primitive
+	// switches the footer to the "list" shortcut bar when it gains focus
+	// (Python shortcuts() focus_path[0]!=1 → list_shortcuts,
+	// Conversations.py:1765-1779). The conversation widget's editor/body
+	// primitives get their own focus funcs in DisplayConversation.
+	listFocus := func() { cd.setShortcutRegion("list") }
+	cd.list.SetFocusFunc(listFocus)
+	cd.tabTrusted.SetFocusFunc(listFocus)
+	cd.tabUntrusted.SetFocusFunc(listFocus)
+	cd.showBlockedCheckbox.SetFocusFunc(listFocus)
+
 	return cd
 }
 
@@ -182,6 +262,23 @@ func NewConversationsDisplay(app *App, convs []ConversationInfo) *ConversationsD
 // when the message editor (frame footer) has focus, "body" otherwise.
 func (cd *ConversationsDisplay) SetShortcutFocus(region string) {
 	cd.shortcutFocus = region
+}
+
+// setShortcutRegion records the active focus region and refreshes the main
+// display's shortcut bar so the footer text + wrapped height track the focused
+// pane, mirroring Python's focus-path dispatch (Conversations.py:1765-1779)
+// feeding Main.update_active_shortcuts. It is wired as the SetFocusFunc of
+// every focusable Conversations primitive (list pane → "list"; conversation
+// editor → "editor"; message body → "body") so the bar follows focus
+// automatically with no per-key handling.
+func (cd *ConversationsDisplay) setShortcutRegion(region string) {
+	cd.shortcutFocus = region
+	if cd.app != nil && cd.app.Main != nil {
+		// refreshShortcuts (TryLock) avoids deadlocking when the callback
+		// fires while MainDisplay.mu is held — notably from SetDisplay's
+		// SwitchToPage focus chain during boot wiring.
+		cd.app.Main.refreshShortcuts()
+	}
 }
 
 // GetShortcutText returns the appropriate shortcut bar text for the current
@@ -272,7 +369,6 @@ func (cd *ConversationsDisplay) DisplayConversation(sourceHash string) {
 		}
 	}
 	cw.refreshTrustBanner()
-	cw.updatePeerInfo()
 	// Wire the trust banner buttons to the display-level peer callbacks so
 	// the app layer (which owns the directory) can trust/block the peer.
 	cw.OnTrust = func() {
@@ -299,15 +395,12 @@ func (cd *ConversationsDisplay) DisplayConversation(sourceHash string) {
 	}
 	cw.OnSaveFocusedAttachments = func(refs []AttachmentRef) {
 		// Python save_focused_attachments hands the collected refs to a dialog.
-		// The display-level SaveAttachmentsDialog renders the checkbox list;
-		// ConfirmSaveAttachments fires OnSaveAttachments with the selection.
-		var names []string
-		for _, r := range refs {
-			names = append(names, r.Name)
-		}
-		cd.SaveAttachmentsDialog(names, func(selected []string) {
-			cw.ConfirmSaveAttachments(selected)
-		})
+		// The display-level SaveAttachmentsDialog renders the checkbox list and
+		// performs the copy directly via OnSaveAttachments (each ref carries its
+		// MessageHash + FieldIndex so the app layer can locate the extracted
+		// attachment file), keeping the dialog open to show the result status
+		// (Python do_save, Conversations.py:2368-2391).
+		cd.SaveAttachmentsDialog(sourceHash, refs)
 	}
 	cw.OnAttach = func() {
 		// Python attach_file (Conversations.py:2438) opens a file browser; the
@@ -331,8 +424,81 @@ func (cd *ConversationsDisplay) DisplayConversation(sourceHash string) {
 			func() { cw.PaperMessageSaveURI() },
 		)
 	}
+	cw.OnPaperMessage = func(action, content, title string) (string, bool) {
+		// Forward the open conversation's source hash so the wiring layer can
+		// build the paper LXMF message via App.PaperMessage (the C-p path,
+		// Conversations.py:2474-2503).
+		if cd.OnPaperMessage != nil {
+			return cd.OnPaperMessage(sourceHash, action, content, title)
+		}
+		return "", false
+	}
+	cw.OnPaperMessageSaved = func(path string) {
+		if cd.OnPaperMessageSaved != nil {
+			cd.OnPaperMessageSaved(path)
+		}
+	}
+	cw.OnPaperMessageFailed = func() {
+		if cd.OnPaperMessageFailed != nil {
+			cd.OnPaperMessageFailed()
+		}
+	}
+	cw.OnSend = func(content, title string, attachments []string) {
+		// Forward the open conversation's source hash so the wiring layer can
+		// build and dispatch the outbound message via App.SendConversation
+		// (the C-d send path, Conversations.py:1834-1841).
+		if cd.OnSend != nil {
+			cd.OnSend(sourceHash, content, title, attachments)
+		}
+	}
+	// Inject the app's own LXMF hash and time format so the LXMessageWidget
+	// header can tell outbound from inbound and format timestamps like the
+	// Python original.
+	if cd.OnOwnHash != nil {
+		cw.OwnHash = cd.OnOwnHash()
+	}
+	if cd.OnTimeFormat != nil {
+		cw.TimeFormat = cd.OnTimeFormat()
+	}
+	// Inject the RNS-dependent peer-info fields (Python _update_peer_info,
+	// Conversations.py:2103-2112): the outbound stamp cost and the transport
+	// hop count. The wiring layer resolves these from the LXMF router and RNS
+	// transport; nil leaves the "Stamp:" segment off / hops as "unknown".
+	if cd.OnStampCost != nil {
+		cw.StampCost = cd.OnStampCost(sourceHash)
+	}
+	if cd.OnHops != nil {
+		cw.Hops = cd.OnHops(sourceHash)
+	}
+	cw.updatePeerInfo()
+	// Wire focus-region shortcut bars for the conversation widget's editor and
+	// message body (Python shortcuts() frame.focus_position dispatch,
+	// Conversations.py:1772-1779): editor/title editor (frame footer) →
+	// "editor"; message list (frame body) → "body".
+	cw.editor.SetFocusFunc(func() { cd.setShortcutRegion("editor") })
+	cw.titleEditor.SetFocusFunc(func() { cd.setShortcutRegion("editor") })
+	cw.messageList.SetFocusFunc(func() { cd.setShortcutRegion("body") })
+	// Populate the message list from the wiring layer (mirrors Python
+	// ConversationWidget.__init__ calling update_message_widgets,
+	// Conversations.py:1894).
+	if cd.OnLoadMessages != nil {
+		cw.SetMessages(cd.OnLoadMessages(sourceHash))
+	}
+	cd.currentWidget = cw
 	cd.content.RemoveItem(cd.detail)
 	cd.content.AddItem(cw.Widget(), 0, 1, true)
+}
+
+// ReloadCurrentMessages re-fetches and re-renders the message list for the
+// currently-open conversation. The wiring layer calls this after a send (and
+// on any conversation-changed callback) so a just-sent message appears in the
+// open view without re-opening it. No-op when no conversation is open or no
+// loader is wired.
+func (cd *ConversationsDisplay) ReloadCurrentMessages() {
+	if cd.currentWidget == nil || cd.OnLoadMessages == nil {
+		return
+	}
+	cd.currentWidget.SetMessages(cd.OnLoadMessages(cd.currentWidget.source))
 }
 
 // populateList fills the list based on current tab (trusted/untrusted).
@@ -818,17 +984,10 @@ func (cd *ConversationsDisplay) IngestURIDialog(onSubmit func(uri string)) {
 }
 
 // ShowIngestResult shows the result of an LXM URI ingest operation.
+// Matches Python's ingest_lxm_uri result dialogs (Conversations.py:1143-1237).
 func (cd *ConversationsDisplay) ShowIngestResult(result IngestResult) {
 	cd.dialogOpen = true
-	var msg string
-	switch result {
-	case IngestSuccess:
-		msg = "Message was decoded, decrypted successfully, and added to your conversation list."
-	case IngestDuplicate:
-		msg = "The decoded message has already been processed by the LXMF Router, and will not be ingested again."
-	case IngestError:
-		msg = "The URI contained no decodable messages"
-	}
+	msg := IngestResultText(result)
 
 	buttons := tview.NewFlex().SetDirection(tview.FlexColumn).
 		AddItem(tview.NewButton("OK").SetSelectedFunc(func() {
@@ -848,6 +1007,25 @@ func (cd *ConversationsDisplay) ShowIngestResult(result IngestResult) {
 	})
 }
 
+// IngestResultText returns the verbatim dialog text Python nomadnet shows for
+// each ingest outcome (Conversations.py:1143-1237). The error text preserves
+// Python's "Could ingest" typo.
+func IngestResultText(result IngestResult) string {
+	switch result {
+	case IngestSuccess:
+		return "Message was decoded, decrypted successfully, and added to your conversation list."
+	case IngestDuplicate:
+		return "The decoded message has already been processed by the LXMF Router, and will not be ingested again."
+	case IngestPropagated:
+		return "The decoded message was not addressed to this LXMF address, but has been added to the propagation node queues, and will be distributed on the propagation network."
+	case IngestDiscarded:
+		return "The decoded message was not addressed to this LXMF address, and has been discarded."
+	case IngestError:
+		return "Could ingest LXM from URI data. Check your input."
+	}
+	return ""
+}
+
 // IngestResult represents the result of an LXM URI ingest operation.
 type IngestResult int
 
@@ -858,6 +1036,12 @@ const (
 	IngestDuplicate
 	// IngestError means the URI contained no decodable messages.
 	IngestError
+	// IngestPropagated means the message was not local but stored to the
+	// propagation node queue.
+	IngestPropagated
+	// IngestDiscarded means the message was not local and this node is not
+	// hosting a propagation node, so the message was discarded.
+	IngestDiscarded
 )
 
 // PaperMessageDialog shows the paper message output options.
@@ -928,6 +1112,29 @@ func (cd *ConversationsDisplay) PaperMessageFailed() {
 	})
 }
 
+// PaperMessageSaved shows the saved-path confirmation for a paper message,
+// matching Python's paper_message_saved() at Conversations.py:2451-2472.
+func (cd *ConversationsDisplay) PaperMessageSaved(path string) {
+	cd.dialogOpen = true
+
+	buttons := tview.NewFlex().SetDirection(tview.FlexColumn).
+		AddItem(tview.NewButton("OK").SetSelectedFunc(func() {
+			cd.dialogOpen = false
+		}), 0, 1, false)
+
+	layout := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(tview.NewTextView().
+			SetDynamicColors(true).
+			SetTextColor(tcell.NewHexColor(0xdddddd)).
+			SetTextAlign(tview.AlignCenter).
+			SetText("The paper message was saved to:\n\n"+path+"\n"), 4, 0, false).
+		AddItem(buttons, 1, 0, false)
+
+	cd.app.Dialogs.ShowDialog("Paper Message", layout, 60, 6, func() {
+		cd.dialogOpen = false
+	})
+}
+
 // AttachFileDialog shows a file browser dialog for selecting files.
 // Matches Python's attach_file() at Conversations.py:2438.
 func (cd *ConversationsDisplay) AttachFileDialog(directory string, onSelect func(path string)) {
@@ -945,16 +1152,19 @@ func (cd *ConversationsDisplay) AttachFileDialog(directory string, onSelect func
 	)
 }
 
-// SaveAttachmentsDialog shows a dialog for saving attachments.
-// Matches Python's save_focused_attachments() at Conversations.py:2324.
-func (cd *ConversationsDisplay) SaveAttachmentsDialog(attachments []string, onSave func(selected []string)) {
+// SaveAttachmentsDialog shows a dialog with checkboxes for each attachment in
+// the conversation, allowing the user to select which to copy to the download
+// directory. Matches Python's save_focused_attachments() / do_save
+// (Conversations.py:2324-2410): the dialog stays open after "Copy to Downloads"
+// so the in-dialog status text reports the result; "Close" dismisses it.
+func (cd *ConversationsDisplay) SaveAttachmentsDialog(sourceHash string, refs []AttachmentRef) {
 	cd.dialogOpen = true
+
 	list := tview.NewList()
 	list.SetHighlightFullLine(true)
 	ApplyListFocusStyle(list, cd.app.Theme)
-
-	for _, att := range attachments {
-		list.AddItem(att, "", 0, nil)
+	for _, r := range refs {
+		list.AddItem(r.Name, "", 0, nil)
 	}
 
 	selected := make(map[int]bool)
@@ -967,18 +1177,38 @@ func (cd *ConversationsDisplay) SaveAttachmentsDialog(attachments []string, onSa
 		}
 	})
 
+	statusText := tview.NewTextView().
+		SetDynamicColors(true).
+		SetTextColor(tcell.NewHexColor(0xdddddd))
+
 	buttons := tview.NewFlex().SetDirection(tview.FlexColumn).
 		AddItem(tview.NewButton("Copy to Downloads").SetSelectedFunc(func() {
-			cd.dialogOpen = false
-			var chosen []string
-			for i, att := range attachments {
+			var chosen []AttachmentRef
+			for i := range refs {
 				if selected[i] {
-					chosen = append(chosen, att)
+					chosen = append(chosen, refs[i])
 				}
 			}
-			if onSave != nil {
-				onSave(chosen)
+			if cd.OnSaveAttachments == nil {
+				return
 			}
+			saved, failed := cd.OnSaveAttachments(sourceHash, chosen)
+			g := cd.app.Glyphs
+			var lines []string
+			if len(saved) > 0 {
+				lines = append(lines, fmt.Sprintf("%s Copied %d file(s) to %s:", g["check"], len(saved), saveDirOf(saved)))
+				for _, p := range saved {
+					lines = append(lines, "  "+filepath.Base(p))
+				}
+				if failed > 0 {
+					lines = append(lines, fmt.Sprintf("%s %d failed", g["cross"], failed))
+				}
+			} else if failed > 0 {
+				lines = append(lines, fmt.Sprintf("%s Failed: %d file(s)", g["cross"], failed))
+			} else {
+				lines = append(lines, "No files selected")
+			}
+			statusText.SetText(strings.Join(lines, "\n"))
 		}), 0, 1, true).
 		AddItem(tview.NewButton("Close").SetSelectedFunc(func() {
 			cd.dialogOpen = false
@@ -986,110 +1216,235 @@ func (cd *ConversationsDisplay) SaveAttachmentsDialog(attachments []string, onSa
 
 	layout := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(list, 0, 1, true).
+		AddItem(statusText, 2, 0, false).
 		AddItem(buttons, 1, 0, false)
 
-	cd.app.Dialogs.ShowDialog("Attachments", layout, 50, 12, func() {
+	cd.app.Dialogs.ShowDialog("Attachments", layout, 50, 14, func() {
 		cd.dialogOpen = false
 	})
 }
 
-// ShowPeerInfoDialog shows the Peer Info dialog with editable fields
-// for name, trust level, delivery mode, pin, and notes.
-// Matches Python's edit_selected_in_directory() at Conversations.py:821-1020.
-func (cd *ConversationsDisplay) ShowPeerInfoDialog(entry PeerInfoEntry, onSave func(PeerInfoEntry)) {
+// saveDirOf returns the common directory of the saved paths (for the status
+// line), or the first path's directory when they differ.
+func saveDirOf(paths []string) string {
+	if len(paths) == 0 {
+		return ""
+	}
+	return filepath.Dir(paths[0])
+}
+
+// PeerInfoDialogHooks supplies the wiring-layer behavior for the Peer Info
+// dialog's action buttons and the known-section query, mirroring Python's
+// edit_selected_in_directory (Conversations.py:957-1000) ping/block/qr/query
+// actions. Any nil hook disables its control (the button is still drawn for
+// layout parity but is a no-op).
+type PeerInfoDialogHooks struct {
+	// IsKnown reports whether the peer's identity is known on the network
+	// (Python directory.is_known). When false the dialog shows the "Query
+	// network for keys" section; when true it shows only a divider.
+	IsKnown func(sourceHash string) bool
+	// OnQueryKeys queries the network for the peer's identity (Python
+	// Conversation.query_for_peer) and dismisses the dialog.
+	OnQueryKeys func(sourceHash string)
+	// OnPing pings the peer and reports the outcome via setStatus, which
+	// updates the dialog's centered action-status line (Python
+	// _ping_peer_from_dialog).
+	OnPing func(sourceHash string, setStatus func(string))
+	// OnBlock blocks the peer (Python _block_peer_from_dialog).
+	OnBlock func(sourceHash string)
+	// OnLXMFQR shows the LXMF QR dialog for the peer (Python show_qr_dialog).
+	OnLXMFQR func(sourceHash string, title string)
+}
+
+// ShowPeerInfoDialog shows the Peer Info dialog with editable fields for name,
+// copy, trust level, delivery mode, pin, and notes, plus the known-section and
+// Ping/Block/LXMF action row. Matches Python's edit_selected_in_directory()
+// at Conversations.py:821-1020. onSave fires with the edited entry on Save.
+func (cd *ConversationsDisplay) ShowPeerInfoDialog(entry PeerInfoEntry, hooks PeerInfoDialogHooks, onSave func(PeerInfoEntry)) {
 	cd.dialogOpen = true
+	g := cd.app.Glyphs
+	divider := "-"
+	if g != nil {
+		divider = g["divider1"]
+	}
 
-	// Name field
-	nameInput := tview.NewInputField()
-	nameInput.SetLabel("Name : ")
-	nameInput.SetText(entry.DisplayName)
-	nameInput.SetFieldBackgroundColor(tcell.NewHexColor(0x222222))
-	nameInput.SetFieldTextColor(tcell.NewHexColor(0xdddddd))
-
-	// Address (read-only)
+	// Address (read-only): urwid.Text("Addr : "+hash), Python selected_id_widget.
 	addrText := tview.NewTextView()
 	addrText.SetDynamicColors(true)
-	addrText.SetTextColor(tcell.NewHexColor(0xdddddd))
 	addrText.SetText("Addr : " + entry.SourceHash)
 
-	// Trust level selection via list
-	trustList := tview.NewList()
-	trustList.SetHighlightFullLine(true)
-	ApplyListFocusStyle(trustList, cd.app.Theme)
-	trustLevels := []string{TrustUntrusted, TrustUnknown, TrustTrusted}
-	trustList.AddItem(TrustUntrusted, "", 0, nil)
-	trustList.AddItem(TrustUnknown, "", 0, nil)
-	trustList.AddItem(TrustTrusted, "", 0, nil)
+	// Name (editable): ReadlineEdit "Name : ".
+	eName := NewReadlineEdit(cd.app.killRing, "Name : ", "")
+	eName.SetText(entry.DisplayName)
+	eName.SetFieldBackgroundColor(tcell.NewHexColor(0x222222))
+	eName.SetFieldTextColor(tcell.NewHexColor(0xdddddd))
 
-	// Select current trust level
-	selectedTrust := entry.TrustLevelValue()
-	for i, tl := range trustLevels {
-		if tl == selectedTrust {
-			trustList.SetCurrentItem(i)
-			break
+	// Copy (editable): ReadlineEdit "Copy : ", pre-filled with the hash.
+	eCopy := NewReadlineEdit(cd.app.killRing, "Copy : ", "")
+	eCopy.SetText(entry.SourceHash)
+	eCopy.SetFieldBackgroundColor(tcell.NewHexColor(0x222222))
+	eCopy.SetFieldTextColor(tcell.NewHexColor(0xdddddd))
+
+	// Trust radio group (Untrusted/Unknown/Trusted). Defaults: Unknown selected,
+	// matching Python (unknown_selected=True).
+	utrust := entry.TrustLevelValue()
+	untrustedSel := false
+	unknownSel := true
+	trustedSel := false
+	switch utrust {
+	case TrustUntrusted:
+		untrustedSel, unknownSel, trustedSel = true, false, false
+	case TrustTrusted:
+		untrustedSel, unknownSel, trustedSel = false, false, true
+	}
+	trustGroup := &DialogRadioGroup{}
+	rUntrusted := NewRadioButton(trustGroup, "Untrusted", untrustedSel, true)
+	rUnknown := NewRadioButton(trustGroup, "Unknown", unknownSel, false)
+	rTrusted := NewRadioButton(trustGroup, "Trusted", trustedSel, true)
+
+	// Delivery radio group (Deliver directly/Use propagation nodes). Default:
+	// direct, matching Python (direct_selected=True).
+	propagatedSel := entry.PreferredDelivery == "propagated"
+	methodGroup := &DialogRadioGroup{}
+	rDirect := NewRadioButton(methodGroup, "Deliver directly", !propagatedSel, true)
+	rPropagated := NewRadioButton(methodGroup, "Use propagation nodes", propagatedSel, false)
+
+	// Pin checkbox ("Pin to top").
+	cbPin := tview.NewCheckbox().SetLabel("Pin to top")
+	cbPin.SetChecked(entry.Pinned)
+
+	// Notes (ReadlineEdit "Notes: ").
+	eNotes := NewReadlineEdit(cd.app.killRing, "Notes: ", "")
+	eNotes.SetText(entry.Notes)
+	eNotes.SetFieldBackgroundColor(tcell.NewHexColor(0x222222))
+	eNotes.SetFieldTextColor(tcell.NewHexColor(0xdddddd))
+
+	// Known-section: divider if the peer identity is known, else the "Query
+	// network for keys" section (Python Conversations.py:957-983).
+	known := true
+	if hooks.IsKnown != nil {
+		known = hooks.IsKnown(entry.SourceHash)
+	}
+	var knownSection tview.Primitive
+	if known {
+		knownSection = newDividerRow(divider)
+	} else {
+		queryBtn := NewUrwidButton("Query network for keys")
+		queryBtn.SetSelectedFunc(func() {
+			if hooks.OnQueryKeys != nil {
+				hooks.OnQueryKeys(entry.SourceHash)
+			}
+		})
+		infoText := tview.NewTextView()
+		infoText.SetDynamicColors(true)
+		infoText.SetTextAlign(tview.AlignCenter)
+		infoText.SetWrap(true)
+		infoText.SetText("The identity of this peer is not known, and you cannot currently send messages to it. You can query the network to obtain the identity.")
+		knownSection = tview.NewFlex().SetDirection(tview.FlexRow).
+			AddItem(newDividerRow(divider), 1, 0, false).
+			AddItem(infoText, 3, 0, false).
+			AddItem(queryBtn, 1, 0, false).
+			AddItem(newDividerRow(divider), 1, 0, false)
+	}
+
+	// Action status line + Ping/Block/LXMF buttons (Python actions_row).
+	actionStatus := tview.NewTextView()
+	actionStatus.SetDynamicColors(true)
+	actionStatus.SetTextAlign(tview.AlignCenter)
+	setStatus := func(s string) { actionStatus.SetText(s) }
+
+	pingBtn := NewUrwidButton("Ping")
+	pingBtn.SetSelectedFunc(func() {
+		if hooks.OnPing != nil {
+			hooks.OnPing(entry.SourceHash, setStatus)
 		}
-	}
+	})
+	blockBtn := NewUrwidButton("Block")
+	blockBtn.SetSelectedFunc(func() {
+		if hooks.OnBlock != nil {
+			hooks.OnBlock(entry.SourceHash)
+		}
+	})
+	qrBtn := NewUrwidButton("LXMF")
+	qrBtn.SetSelectedFunc(func() {
+		if hooks.OnLXMFQR != nil {
+			title := entry.DisplayName
+			if title == "" {
+				title = entry.SourceHash
+			}
+			hooks.OnLXMFQR(entry.SourceHash, title)
+		}
+	})
+	blank := func() tview.Primitive { return tview.NewTextView() }
+	actionsRow := tview.NewFlex().SetDirection(tview.FlexColumn).
+		AddItem(pingBtn, 0, 1, true).
+		AddItem(blank(), 1, 0, false).
+		AddItem(blockBtn, 0, 1, false).
+		AddItem(blank(), 1, 0, false).
+		AddItem(qrBtn, 0, 1, false)
 
-	// Delivery mode via list
-	deliveryList := tview.NewList()
-	deliveryList.SetHighlightFullLine(true)
-	ApplyListFocusStyle(deliveryList, cd.app.Theme)
-	deliveryList.AddItem("Deliver directly", "", 0, nil)
-	deliveryList.AddItem("Use propagation nodes", "", 0, nil)
-	if entry.PreferredDelivery == "propagated" {
-		deliveryList.SetCurrentItem(1)
-	}
+	dismiss := func() { cd.app.Dialogs.DismissTop() }
 
-	// Notes field
-	notesInput := tview.NewInputField()
-	notesInput.SetLabel("Notes: ")
-	notesInput.SetText(entry.Notes)
-	notesInput.SetFieldBackgroundColor(tcell.NewHexColor(0x222222))
-	notesInput.SetFieldTextColor(tcell.NewHexColor(0xdddddd))
-
-	// Save/Back buttons
-	saveBtn := tview.NewButton("Save")
+	// Save builds the edited PeerInfoEntry and fires onSave, mirroring Python's
+	// confirmed() (Conversations.py:901-929).
+	saveBtn := NewUrwidButton("Save")
 	saveBtn.SetSelectedFunc(func() {
-		cd.dialogOpen = false
 		result := PeerInfoEntry{
-			SourceHash:  entry.SourceHash,
-			DisplayName: nameInput.GetText(),
-			TrustLevel:  trustLevels[trustList.GetCurrentItem()],
-			Pinned:      entry.Pinned,
-			Notes:       notesInput.GetText(),
+			SourceHash:        entry.SourceHash,
+			DisplayName:       eName.GetText(),
+			PreferredDelivery: "direct",
+			Pinned:            cbPin.IsChecked(),
+			Notes:             eNotes.GetText(),
 		}
-		if deliveryList.GetCurrentItem() == 1 {
+		if rPropagated.Checked() {
 			result.PreferredDelivery = "propagated"
-		} else {
-			result.PreferredDelivery = "direct"
+		}
+		switch {
+		case rUnknown.Checked():
+			result.TrustLevel = TrustUnknown
+		case rTrusted.Checked():
+			result.TrustLevel = TrustTrusted
+		default:
+			result.TrustLevel = TrustUntrusted
 		}
 		if onSave != nil {
 			onSave(result)
 		}
 	})
 
-	backBtn := tview.NewButton("Back")
-	backBtn.SetSelectedFunc(func() {
-		cd.dialogOpen = false
-	})
+	backBtn := NewUrwidButton("Back")
+	backBtn.SetSelectedFunc(dismiss)
 
 	buttons := tview.NewFlex().SetDirection(tview.FlexColumn).
 		AddItem(saveBtn, 0, 1, true).
+		AddItem(blank(), 1, 0, false).
 		AddItem(backBtn, 0, 1, false)
 
 	layout := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(addrText, 1, 0, false).
-		AddItem(nameInput, 1, 0, true).
-		AddItem(tview.NewTextView().SetText("Trust Level:"), 1, 0, false).
-		AddItem(trustList, 3, 0, false).
-		AddItem(tview.NewTextView().SetText("Delivery:"), 1, 0, false).
-		AddItem(deliveryList, 2, 0, false).
-		AddItem(notesInput, 1, 0, false).
+		AddItem(eName, 1, 0, true).
+		AddItem(eCopy, 1, 0, false).
+		AddItem(newDividerRow(divider), 1, 0, false).
+		AddItem(rUntrusted, 1, 0, false).
+		AddItem(rUnknown, 1, 0, false).
+		AddItem(rTrusted, 1, 0, false).
+		AddItem(newDividerRow(divider), 1, 0, false).
+		AddItem(rDirect, 1, 0, false).
+		AddItem(rPropagated, 1, 0, false).
+		AddItem(newDividerRow(divider), 1, 0, false).
+		AddItem(cbPin, 1, 0, false).
+		AddItem(eNotes, 1, 0, false).
+		AddItem(knownSection, 0, 1, false).
+		AddItem(actionsRow, 1, 0, false).
+		AddItem(actionStatus, 1, 0, false).
+		AddItem(newDividerRow(divider), 1, 0, false).
 		AddItem(buttons, 1, 0, false)
 
-	cd.app.Dialogs.ShowDialog("Peer Info", layout, 50, 14, func() {
+	items := []tview.Primitive{eName, eCopy, rUntrusted, rUnknown, rTrusted, rDirect, rPropagated, cbPin, eNotes, pingBtn, blockBtn, qrBtn, saveBtn, backBtn}
+	cd.app.Dialogs.ShowDialog("Peer Info", layout, 50, 24, func() {
 		cd.dialogOpen = false
 	})
+	wireDialogNav(cd.app, dismiss, items)
 }
 
 // ShowNewConversationDialog opens the "New Conversation" dialog
@@ -1223,16 +1578,33 @@ type SyncDialogResult struct {
 	Action string // "sync", "cancel", or "dismiss"
 }
 
-// ShowSyncDialog shows the sync configuration dialog with propagation
-// node selection and download limit options.
-// Matches Python's sync_conversations() at Conversations.py:1359-1500.
+// SyncDialogHooks supplies the live sync state the dialog polls while open,
+// mirroring Python's update_sync_dialog (Conversations.py:1566-1575) reading
+// app.get_sync_progress / get_sync_status. Progress is a 0..1 fraction; Status
+// is the human-readable transfer state; ShowPercent reports whether the
+// percent should be appended to the status line (true only while actively
+// receiving, Python sync_status_show_percent).
+type SyncDialogHooks struct {
+	Progress    func() float64
+	Status      func() string
+	ShowPercent func() bool
+}
+
+// ShowSyncDialog shows the sync configuration dialog with propagation node
+// selection, download limit, and a live-refreshing status/progress line.
+// Matches Python's sync_conversations() (Conversations.py:1359-1500) plus
+// update_sync_dialog (Conversations.py:1566-1575): the status line + the
+// Sync Now/Cancel Sync button toggle from the live hooks each refresh tick
+// (200ms) while the dialog is open.
 func (cd *ConversationsDisplay) ShowSyncDialog(
 	currentPN string,
 	pnOptions []string,
-	progress float64,
+	hooks SyncDialogHooks,
 	onSync func(result SyncDialogResult),
 ) {
+	cd.stopSyncRefresh()
 	cd.dialogOpen = true
+	cd.syncHooks = hooks
 	mode := SyncAll
 
 	// Mode selection via list
@@ -1241,6 +1613,14 @@ func (cd *ConversationsDisplay) ShowSyncDialog(
 	ApplyListFocusStyle(modeList, cd.app.Theme)
 	modeList.AddItem("Download all", "", 0, nil)
 	modeList.AddItem("Limit to:", "", 0, nil)
+	modeList.SetSelectedFunc(func(i int, _ string, _ string, _ rune) {
+		switch i {
+		case 0:
+			mode = SyncAll
+		case 1:
+			mode = SyncLimited
+		}
+	})
 
 	// Limit input
 	limitInput := tview.NewInputField()
@@ -1249,11 +1629,13 @@ func (cd *ConversationsDisplay) ShowSyncDialog(
 	limitInput.SetFieldBackgroundColor(tcell.NewHexColor(0x222222))
 	limitInput.SetFieldTextColor(tcell.NewHexColor(0xdddddd))
 
-	// Progress bar (simplified as text)
-	progressBar := tview.NewTextView()
-	progressBar.SetDynamicColors(true)
-	progressBar.SetTextColor(tcell.NewHexColor(0xdddddd))
-	progressBar.SetText(fmt.Sprintf("Progress: %.0f%%", progress*100))
+	// Live status/progress line (refreshed by updateSyncProgress).
+	cd.syncStatusText = tview.NewTextView()
+	cd.syncStatusText.SetDynamicColors(true)
+	cd.syncStatusText.SetTextColor(tcell.NewHexColor(0xdddddd))
+	cd.syncProgressBox = tview.NewTextView()
+	cd.syncProgressBox.SetDynamicColors(true)
+	cd.syncProgressBox.SetTextColor(tcell.NewHexColor(0xdddddd))
 
 	// Propagation node display
 	pnText := tview.NewTextView()
@@ -1265,54 +1647,161 @@ func (cd *ConversationsDisplay) ShowSyncDialog(
 		pnText.SetText("[gray]No propagation node selected[-]")
 	}
 
-	// Sync Now / Close buttons
-	syncBtn := tview.NewButton("Sync Now")
-	syncBtn.SetSelectedFunc(func() {
-		cd.dialogOpen = false
-		if onSync != nil {
-			result := SyncDialogResult{Mode: mode, Action: "sync"}
-			if mode == SyncLimited {
-				_, _ = fmt.Sscanf(limitInput.GetText(), "%d", &result.Limit)
+	// The Sync Now / Cancel Sync button label toggles with transfer state
+	// (Python swaps real_sync_button / hidden_sync_button, Conversations.py:1393-1396).
+	cd.syncSyncBtn = tview.NewButton("Sync Now")
+	cd.syncSyncBtn.SetSelectedFunc(func() {
+		if cd.isSyncActive() {
+			// Currently a transfer is in progress → this is "Cancel Sync".
+			if onSync != nil {
+				onSync(SyncDialogResult{Action: "cancel"})
 			}
-			onSync(result)
+			return
 		}
-	})
-
-	cancelBtn := tview.NewButton("Cancel Sync")
-	cancelBtn.SetSelectedFunc(func() {
-		cd.dialogOpen = false
+		result := SyncDialogResult{Mode: mode, Action: "sync"}
+		if mode == SyncLimited {
+			_, _ = fmt.Sscanf(limitInput.GetText(), "%d", &result.Limit)
+		}
 		if onSync != nil {
-			onSync(SyncDialogResult{Action: "cancel"})
+			onSync(result)
 		}
 	})
 
 	closeBtn := tview.NewButton("Close")
 	closeBtn.SetSelectedFunc(func() {
 		cd.dialogOpen = false
+		cd.stopSyncRefresh()
 		if onSync != nil {
 			onSync(SyncDialogResult{Action: "dismiss"})
 		}
 	})
 
 	buttons := tview.NewFlex().SetDirection(tview.FlexColumn).
-		AddItem(syncBtn, 0, 1, true).
-		AddItem(cancelBtn, 0, 1, false).
+		AddItem(cd.syncSyncBtn, 0, 1, true).
+		AddItem(tview.NewTextView().SetText("  "), 1, 0, false).
 		AddItem(closeBtn, 0, 1, false)
 
 	// Layout
 	layout := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(pnText, 1, 0, false).
-		AddItem(progressBar, 1, 0, false).
+		AddItem(cd.syncStatusText, 1, 0, false).
+		AddItem(cd.syncProgressBox, 1, 0, false).
 		AddItem(tview.NewTextView().SetText("Download mode:"), 1, 0, false).
 		AddItem(modeList, 2, 0, false).
 		AddItem(limitInput, 1, 0, false).
 		AddItem(tview.NewTextView().SetText(""), 1, 0, false).
 		AddItem(buttons, 1, 0, false)
 
-	cd.app.Dialogs.ShowDialog("Sync", layout, 50, 10, func() {
+	cd.updateSyncProgress()
+	cd.app.Dialogs.ShowDialog("Sync", layout, 50, 11, func() {
 		cd.dialogOpen = false
+		cd.stopSyncRefresh()
 		if onSync != nil {
 			onSync(SyncDialogResult{Action: "dismiss"})
 		}
 	})
+}
+
+// isSyncActive reports whether a transfer is currently in progress, mirroring
+// Python's check that the status is not Idle and not yet PR_COMPLETE
+// (Conversations.py:1393,1570).
+func (cd *ConversationsDisplay) isSyncActive() bool {
+	if cd.syncHooks.Status == nil {
+		return false
+	}
+	status := cd.syncHooks.Status()
+	return status != "Idle" && !strings.HasPrefix(status, "Done") && !strings.HasPrefix(status, "Downloaded")
+}
+
+// updateSyncProgress refreshes the status line, progress bar, and Sync Now /
+// Cancel Sync button label from the live hooks, mirroring Python's
+// update_sync_dialog (Conversations.py:1566-1575). Synchronous (no event-loop
+// marshalling) so it is unit-testable; the refresh goroutine wraps it in
+// QueueUpdateDraw in production.
+func (cd *ConversationsDisplay) updateSyncProgress() {
+	if cd.syncStatusText == nil {
+		return
+	}
+	var status string
+	if cd.syncHooks.Status != nil {
+		status = cd.syncHooks.Status()
+	}
+	var prog float64
+	if cd.syncHooks.Progress != nil {
+		prog = cd.syncHooks.Progress()
+	}
+	showPercent := false
+	if cd.syncHooks.ShowPercent != nil {
+		showPercent = cd.syncHooks.ShowPercent()
+	}
+
+	if showPercent {
+		cd.syncStatusText.SetText(fmt.Sprintf("%s (%.0f%%)", status, prog*100))
+	} else {
+		cd.syncStatusText.SetText(status)
+	}
+	// The progress bar always shows the numeric progress so the bar is visible
+	// even when the status line suppresses the percent (e.g. while connecting).
+	cd.syncProgressBox.SetText(fmt.Sprintf("[%.0f%%]", prog*100))
+
+	if cd.syncSyncBtn != nil {
+		if cd.isSyncActive() {
+			cd.syncSyncBtn.SetLabel("Cancel Sync")
+		} else {
+			cd.syncSyncBtn.SetLabel("Sync Now")
+		}
+	}
+}
+
+// SetSyncShowPercentHook replaces the ShowPercent hook (test helper to flip
+// the percent display without rebuilding the dialog).
+func (cd *ConversationsDisplay) SetSyncShowPercentHook(f func() bool) {
+	cd.syncMutex.Lock()
+	cd.syncHooks.ShowPercent = f
+	cd.syncMutex.Unlock()
+}
+
+// startSyncRefresh launches the 200ms progress-refresh goroutine, mirroring
+// Python's set_alarm_in(0.2, update_sync_dialog) loop
+// (Conversations.py:1575). marshal=true queues updates onto the running
+// application event loop (production); false runs synchronously (tests, where
+// QueueUpdateDraw would block). Idempotent.
+func (cd *ConversationsDisplay) StartSyncRefresh(marshal bool) {
+	cd.syncMutex.Lock()
+	if cd.syncStop != nil {
+		cd.syncMutex.Unlock()
+		return
+	}
+	cd.syncStop = make(chan struct{})
+	stop := cd.syncStop
+	cd.syncMutex.Unlock()
+
+	cd.syncWG.Go(func() {
+		ticker := time.NewTicker(200 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-ticker.C:
+				if marshal && cd.app != nil {
+					cd.app.QueueUpdateDraw(cd.updateSyncProgress)
+				} else {
+					cd.updateSyncProgress()
+				}
+			}
+		}
+	})
+}
+
+// stopSyncRefresh stops the progress-refresh goroutine. Idempotent.
+func (cd *ConversationsDisplay) stopSyncRefresh() {
+	cd.syncMutex.Lock()
+	stop := cd.syncStop
+	cd.syncStop = nil
+	cd.syncMutex.Unlock()
+	if stop != nil {
+		close(stop)
+		cd.syncWG.Wait()
+	}
 }

@@ -26,6 +26,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/gmlewis/go-reticulum/rns"
 )
 
 // Conversation represents an LXMF conversation with a single peer.
@@ -38,6 +40,14 @@ type Conversation struct {
 	SourceBlocked bool
 	Unread        bool
 	TrustLevel    byte
+
+	// Transport, when set, lets ScanStorage-created messages parse their LXMF
+	// envelope from disk (recalling the sender identity for signature
+	// verification). It mirrors Python's implicit access to the shared app
+	// transport via NomadNetworkApp.get_shared_instance(). Stamp it with
+	// SetTransport before ScanStorage/DisplayMessages so loaded messages
+	// carry title/content/state/source-hash for display.
+	Transport rns.Transport
 
 	changedCallback func()
 	sendDeps        SendDeps
@@ -62,6 +72,17 @@ func NewConversation(sourceHash, messagesPath string) *Conversation {
 // SetChangedCallback registers a callback invoked when the conversation changes.
 func (c *Conversation) SetChangedCallback(fn func()) {
 	c.changedCallback = fn
+}
+
+// SetTransport stamps the RNS transport onto the conversation and all of its
+// already-scanned messages so their LXMF envelopes can be parsed on Load. It
+// must be called before ScanStorage/DisplayMessages for the parsed fields
+// (title, content, state, source hash) to be available.
+func (c *Conversation) SetTransport(t rns.Transport) {
+	c.Transport = t
+	for _, m := range c.Messages {
+		m.Transport = t
+	}
 }
 
 // ScanStorage reads the conversation directory and updates the message list.
@@ -120,6 +141,7 @@ func (c *Conversation) ScanStorage() error {
 
 		msg := NewMessage(filePath)
 		msg.AttachmentPath = c.attachmentPath
+		msg.Transport = c.Transport
 
 		// Restore from index if available
 		if indexEntry, ok := index[name]; ok {

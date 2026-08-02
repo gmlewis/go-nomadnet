@@ -24,8 +24,10 @@ import (
 	"time"
 
 	"github.com/gmlewis/go-nomadnet/nomadnet/app"
+	"github.com/gmlewis/go-nomadnet/nomadnet/conversation"
 	"github.com/gmlewis/go-nomadnet/nomadnet/directory"
 	"github.com/gmlewis/go-nomadnet/tui"
+	"github.com/gmlewis/go-reticulum/lxmf"
 	"github.com/rivo/tview"
 )
 
@@ -134,8 +136,8 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		}
 		return lxmfAddr, identityHash, a.GetDisplayName(), a.LastAnnounce
 	}
-	lxmf, idhash, dname, lann := localPeerInfo()
-	networkDisplay.UpdateLocalPeer(lxmf, idhash, dname, lann)
+	lxmfAddr, idhash, dname, lann := localPeerInfo()
+	networkDisplay.UpdateLocalPeer(lxmfAddr, idhash, dname, lann)
 	networkDisplay.SetLocalPeerHandlers(
 		func(name string) {
 			a.SetDisplayName(name)
@@ -148,8 +150,8 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		},
 		func() {
 			a.AnnounceNow()
-			lxmf, idhash, dname, lann = localPeerInfo()
-			networkDisplay.UpdateLocalPeer(lxmf, idhash, dname, lann)
+			lxmfAddr, idhash, dname, lann = localPeerInfo()
+			networkDisplay.UpdateLocalPeer(lxmfAddr, idhash, dname, lann)
 			tuiApp.Dialogs.ShowDialog("Announce Sent",
 				tview.NewTextView().
 					SetDynamicColors(true).
@@ -198,7 +200,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 				trustStr = "warning"
 			}
 			delivery := "direct"
-			if e.PreferredDelivery == 0x01 {
+			if e.PreferredDelivery == directory.DeliveryPropagated {
 				delivery = "propagated"
 			}
 			nodes = append(nodes, tui.NodeEntry{
@@ -220,8 +222,8 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		// Local Peer Info panel on each UI change picks them up once initRNS
 		// completes (it fires UIChangeCallback at the end), and also refreshes
 		// the "Announced : …" line as the announce age advances.
-		lxmf, idhash, dname, lann := localPeerInfo()
-		networkDisplay.UpdateLocalPeer(lxmf, idhash, dname, lann)
+		lxmfAddr, idhash, dname, lann := localPeerInfo()
+		networkDisplay.UpdateLocalPeer(lxmfAddr, idhash, dname, lann)
 	})
 	main.SetDisplay("network", networkDisplay.Widget())
 	main.SetShortcut("network", "[C-l] Nodes/Announces  [C-x] Remove  [C-w] Disconnect  [C-d] Back  [C-f] Forward  [C-r] Reload  [C-u] URL  [C-g] Fullscreen  [C-s / C-b] Save Node")
@@ -545,18 +547,116 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		if !ok {
 			return
 		}
-		tuiApp.Dialogs.ShowInputDialog("Peer Info",
-			"Display name:", conv.DisplayName,
-			func(text string) {
-				hash, ok := app.SourceHashFromHex(conv.SourceHash)
-				if !ok {
-					return
+		hash, ok := app.SourceHashFromHex(conv.SourceHash)
+		if !ok {
+			return
+		}
+		// Load the current directory entry to pre-fill the dialog (Python
+		// edit_selected_in_directory existing_entry lookup, Conversations.py:
+		// 844-876).
+		data := a.PeerInfoLoad(hash)
+		entry := tui.PeerInfoEntry{
+			SourceHash:  conv.SourceHash,
+			DisplayName: data.DisplayName,
+			Pinned:      data.Pinned,
+			Notes:       data.Notes,
+		}
+		switch data.TrustLevel {
+		case directory.TrustTrusted:
+			entry.TrustLevel = tui.TrustTrusted
+		case directory.TrustUntrusted:
+			entry.TrustLevel = tui.TrustUntrusted
+		default:
+			entry.TrustLevel = tui.TrustUnknown
+		}
+		if data.PreferredDelivery == directory.DeliveryPropagated {
+			entry.PreferredDelivery = "propagated"
+		} else {
+			entry.PreferredDelivery = "direct"
+		}
+
+		conversationsDisplay.ShowPeerInfoDialog(entry, tui.PeerInfoDialogHooks{
+			IsKnown: func(sourceHash string) bool {
+				if h, ok := app.SourceHashFromHex(sourceHash); ok {
+					return a.Dir.IsKnown(h)
 				}
-				a.SetPeerDisplayName(hash, text)
-				refreshConvs()
+				return false
 			},
-			func() {},
-		)
+			OnQueryKeys: func(sourceHash string) {
+				tuiApp.Dialogs.DismissTop()
+				if h, ok := app.SourceHashFromHex(sourceHash); ok {
+					a.QueryForPeer(h)
+				}
+			},
+			// Ping requires a full RNS link-establishment flow with async
+			// established/closed callbacks and a timeout (Python
+			// _ping_peer_from_dialog, Conversations.py:705-768). It is wired in
+			// a later parity pass; the button is drawn for layout parity.
+			OnPing: nil,
+			OnBlock: func(sourceHash string) {
+				// Python _block_peer_from_dialog shows a confirm sub-dialog,
+				// then block_destination + delete_conversation (Conversations.py:
+				// 769-800). We confirm then block + delete the conversation.
+				who := sourceHash
+				tuiApp.Dialogs.DismissTop()
+				tuiApp.Dialogs.ShowConfirmDialog("Block "+who+"?", func() {
+					if h, ok := app.SourceHashFromHex(sourceHash); ok {
+						a.BlockPeer(h, "user-blocked from peer info dialog")
+						a.DeleteConversation(sourceHash)
+						refreshConvs()
+					}
+				}, func() {})
+			},
+			OnLXMFQR: func(sourceHash, title string) {
+				tuiApp.Dialogs.DismissTop()
+				dialogTitle := "LXMF"
+				if title != "" {
+					dialogTitle = title
+				}
+				qr, err := tui.GenerateQRASCII(sourceHash)
+				body := tview.NewTextView().
+					SetDynamicColors(true).
+					SetTextAlign(tview.AlignCenter)
+				if err != nil || qr == "" {
+					body.SetText("[gray]" + sourceHash + "[-]")
+				} else {
+					body.SetText("[white]" + qr + "[-]")
+				}
+				tuiApp.Dialogs.ShowDialog(dialogTitle, body, 50, 16, nil)
+			},
+		}, func(result tui.PeerInfoEntry) {
+			h, ok := app.SourceHashFromHex(result.SourceHash)
+			if !ok {
+				return
+			}
+			var trust byte
+			switch result.TrustLevel {
+			case tui.TrustTrusted:
+				trust = directory.TrustTrusted
+			case tui.TrustUntrusted:
+				trust = directory.TrustUntrusted
+			default:
+				trust = directory.TrustUnknown
+			}
+			delivery := directory.DeliveryDirect
+			if result.PreferredDelivery == "propagated" {
+				delivery = directory.DeliveryPropagated
+			}
+			a.RememberPeerInfo(h, app.PeerInfoData{
+				DisplayName:       result.DisplayName,
+				TrustLevel:        trust,
+				PreferredDelivery: delivery,
+				Pinned:            result.Pinned,
+				Notes:             result.Notes,
+			})
+			// Python confirmed(): refresh the open conversation widget, the
+			// conversation list, and fire directory_change_callback (which
+			// reloads the network announce/nodes panes).
+			refreshConvs()
+			refreshAnnounces()
+			refreshNodes()
+			tuiApp.Dialogs.DismissTop()
+		})
 	}
 	conversationsDisplay.OnIngestURI = func() {
 		tuiApp.Dialogs.ShowInputDialog("Ingest LXM URI",
@@ -566,28 +666,76 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 					return
 				}
 				if a.Router == nil {
+					conversationsDisplay.ShowIngestResult(tui.IngestError)
 					return
 				}
-				if _, err := a.Router.IngestLXMURI(text); err != nil {
-					tuiApp.Dialogs.ShowDialog("Ingest message URI",
-						tview.NewTextView().
-							SetDynamicColors(true).
-							SetText(fmt.Sprintf("[red]Could not decode URI:[-]\n\n%s", err)),
-						50, 8, nil)
+				outcome, err := a.Router.IngestLXMURIOutcome(text)
+				if err != nil || outcome == lxmf.IngestOutcomeNone {
+					conversationsDisplay.ShowIngestResult(tui.IngestError)
 					return
 				}
-				refreshConvs()
+				var result tui.IngestResult
+				switch outcome {
+				case lxmf.IngestOutcomeLocalDelivery:
+					result = tui.IngestSuccess
+				case lxmf.IngestOutcomeDuplicate:
+					result = tui.IngestDuplicate
+				case lxmf.IngestOutcomePropagated:
+					result = tui.IngestPropagated
+				case lxmf.IngestOutcomeDiscarded:
+					result = tui.IngestDiscarded
+				default:
+					result = tui.IngestError
+				}
+				conversationsDisplay.ShowIngestResult(result)
+				if outcome == lxmf.IngestOutcomeLocalDelivery {
+					refreshConvs()
+					conversationsDisplay.ReloadCurrentMessages()
+				}
 			},
 			func() {},
 		)
 	}
 	conversationsDisplay.OnSync = func() {
-		tuiApp.Dialogs.ShowDialog("Sync",
-			tview.NewTextView().
-				SetDynamicColors(true).
-				SetText("[gray]Syncing conversations...[-]"),
-			40, 5, nil)
-		a.RequestLXMFSync(0)
+		// Propagation node display label: the node hash currently in use, if any.
+		currentPN := ""
+		if h := a.GetDefaultPropagationNode(); len(h) > 0 {
+			currentPN = fmt.Sprintf("%x", h)
+		}
+		conversationsDisplay.ShowSyncDialog(
+			currentPN,
+			nil,
+			tui.SyncDialogHooks{
+				Progress:    a.GetSyncProgress,
+				Status:      a.GetSyncStatus,
+				ShowPercent: a.SyncStatusShowPercent,
+			},
+			func(result tui.SyncDialogResult) {
+				switch result.Action {
+				case "sync":
+					limit := 0
+					if result.Mode == tui.SyncLimited {
+						limit = result.Limit
+					}
+					a.RequestLXMFSync(limit)
+				case "cancel":
+					a.CancelLXMFSync()
+				case "dismiss":
+					// Python dismiss_dialog cancels the sync if it had already
+					// completed (transfer_state >= PR_COMPLETE), since there is
+					// nothing left to receive but the state is non-idle.
+					if a.Router != nil {
+						st := a.Router.PropagationTransferState()
+						if st >= lxmf.PRComplete {
+							a.CancelLXMFSync()
+						}
+					}
+					refreshConvs()
+				}
+			},
+		)
+		// Start the live progress refresh (200ms) on the running event loop.
+		conversationsDisplay.StartSyncRefresh(true)
 	}
 
 	// Block/Unblock peer callbacks — used in conversation context
@@ -645,6 +793,85 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	conversationsDisplay.OnIgnorePeer = func(sourceHash string) {
 		// "Do nothing" just dismisses the banner; no app action.
 		_ = sourceHash
+	}
+
+	// Send hook: C-d in the open conversation's composer builds the outbound
+	// LXMF message (App.SendConversation wires Conversation.SetSendDeps and
+	// dispatches via the router) and refreshes the list so the new message's
+	// last-activity/unread state shows. This closes the "Wire conversation
+	// send" gap (TODO Phase 1).
+	conversationsDisplay.OnSend = func(sourceHash, content, title string, attachments []string) {
+		a.SendConversation(sourceHash, content, title, attachments...)
+		refreshConvs()
+		conversationsDisplay.ReloadCurrentMessages()
+	}
+
+	// Message-loading hooks: supply the open conversation's messages (parsed
+	// from disk via App.ConversationMessages), this app's own LXMF hash (so
+	// the LXMessageWidget header can tell outbound from inbound), and the
+	// configured time format. Together these let the ConversationWidget render
+	// Python-parity message headers + bodies (TODO Phase 1 "ConversationWidget
+	// — messages").
+	conversationsDisplay.OnLoadMessages = func(sourceHash string) []tui.ConversationMessage {
+		return toConversationMessages(a.ConversationMessages(sourceHash))
+	}
+	conversationsDisplay.OnOwnHash = func() []byte {
+		if a.LXMFDest == nil {
+			return nil
+		}
+		return a.LXMFDest.Hash
+	}
+	// Peer-info bar RNS fields (Python _update_peer_info, Conversations.py:
+	// 2103-2112): the outbound stamp cost (router + recalled-app-data fallback)
+	// and the transport hop count. nil leaves the "Stamp:" segment off / hops
+	// as "unknown", exactly as Python renders when the data is unavailable.
+	conversationsDisplay.OnStampCost = func(sourceHash string) *int {
+		if h, ok := app.SourceHashFromHex(sourceHash); ok {
+			return a.PeerStampCost(h)
+		}
+		return nil
+	}
+	conversationsDisplay.OnHops = func(sourceHash string) *int {
+		if h, ok := app.SourceHashFromHex(sourceHash); ok {
+			return a.PeerHops(h)
+		}
+		return nil
+	}
+	// Paper message hook: C-p in the open conversation's composer builds the
+	// paper (offline) LXMF message via App.PaperMessage (print_qr / save_qr /
+	// save_uri). On success the saved-path / failure dialogs are rendered by the
+	// display; a successful send also refreshes the conversation list so the
+	// ingested paper message shows.
+	conversationsDisplay.OnPaperMessage = func(sourceHash, action, content, title string) (string, bool) {
+		path, ok := a.PaperMessage(sourceHash, action, content, title)
+		if ok {
+			refreshConvs()
+			conversationsDisplay.ReloadCurrentMessages()
+		}
+		return path, ok
+	}
+	conversationsDisplay.OnPaperMessageSaved = func(path string) {
+		conversationsDisplay.PaperMessageSaved(path)
+	}
+	conversationsDisplay.OnPaperMessageFailed = func() {
+		conversationsDisplay.PaperMessageFailed()
+	}
+	// Save-attachments hook: C-s collects received-attachment refs (each
+	// carrying the owning message hash + field index); "Copy to Downloads" in
+	// the save dialog copies the extracted attachment files to the download
+	// directory via App.SaveConversationAttachments (Python do_save,
+	// Conversations.py:2368-2391).
+	conversationsDisplay.OnSaveAttachments = func(sourceHash string, refs []tui.AttachmentRef) ([]string, int) {
+		selections := make([]conversation.SaveAttachmentSelection, len(refs))
+		for i, r := range refs {
+			selections[i] = conversation.SaveAttachmentSelection{
+				MessageHash: r.MessageHash,
+				FieldType:   r.Type,
+				FieldIndex:  r.FieldIndex,
+				Name:        r.Name,
+			}
+		}
+		return a.SaveConversationAttachments(sourceHash, selections)
 	}
 
 	// Network "Converse" / "Msg Op": open a conversation with the selected
@@ -940,4 +1167,44 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		logDisplay.StopTailing()
 		ifaceTicker.Stop()
 	}
+}
+
+// toConversationMessages maps the app's pure-data message view
+// (conversation.MessageDisplayData, parsed from each message's LXMF envelope
+// on disk) onto the TUI's ConversationMessage, which drives the
+// LXMessageWidget header (LXMessageHeader) and indented body rendering. The
+// raw LXMF state int and method are passed through unchanged so the header
+// logic compares against the raw LXMF constants, exactly like the Python
+// original (Conversations.py:2609-2626).
+func toConversationMessages(in []conversation.MessageDisplayData) []tui.ConversationMessage {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]tui.ConversationMessage, len(in))
+	for i, m := range in {
+		var ts time.Time
+		if m.Timestamp > 0 {
+			// Timestamp is Unix seconds (float, Python get_timestamp).
+			sec := int64(m.Timestamp)
+			nsec := int64((m.Timestamp - float64(sec)) * 1e9)
+			ts = time.Unix(sec, nsec)
+		}
+		out[i] = tui.ConversationMessage{
+			Content:              m.Content,
+			Title:                m.Title,
+			Timestamp:            ts,
+			State:                m.State,
+			Method:               m.Method,
+			SourceHash:           m.SourceHash,
+			Hash:                 m.Hash,
+			TransportEncrypted:   m.TransportEncrypted,
+			SignatureValidated:   m.SignatureValidated,
+			SignatureDescription: m.SignatureDescription,
+			HasAttach:            m.HasAttachments,
+			AttachCount:          len(m.AttachmentNames),
+			AttachmentTypes:      m.AttachmentTypes,
+			AttachmentNames:      m.AttachmentNames,
+		}
+	}
+	return out
 }

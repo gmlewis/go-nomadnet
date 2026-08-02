@@ -16,6 +16,7 @@
 package tui
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 	"time"
@@ -324,6 +325,300 @@ func TestConversationsToggleFullscreen(t *testing.T) {
 	}
 }
 
+// TestDisplayConversationWiresOnSend verifies that DisplayConversation wires
+// the ConversationWidget's OnSend to delegate to the display-level OnSend,
+// forwarding the conversation's source hash plus the composed content/title.
+// This pins the TUI-side of the "Wire conversation send" task (TODO Phase 1):
+// C-d in the composer must reach the display's OnSend(sourceHash, content,
+// title), which the wiring layer (cmd/gonomadnet/textui.go) connects to
+// App.SendConversation. The C-d key path itself (handleInput → sendMessage →
+// OnSend) is exercised by dispatching a KeyCtrlD through the widget's input
+// capture, mirroring a real keypress.
+func TestDisplayConversationWiresOnSend(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	const hash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	convs := []ConversationInfo{
+		{SourceHash: hash, DisplayName: "Alice", TrustLevel: "trusted"},
+	}
+	cd := NewConversationsDisplay(app, convs)
+
+	var gotSource, gotContent, gotTitle string
+	var fired bool
+	cd.OnSend = func(sourceHash, content, title string, _ []string) {
+		fired = true
+		gotSource, gotContent, gotTitle = sourceHash, content, title
+	}
+
+	cd.DisplayConversation(hash)
+	if cd.currentWidget == nil {
+		t.Fatal("DisplayConversation did not set currentWidget")
+	}
+
+	// Type into the composer and dispatch C-d through the frame's input
+	// capture (the same path tview takes on a real keypress).
+	cd.currentWidget.editor.SetText("hello there")
+
+	if ret := cd.currentWidget.handleInput(tcell.NewEventKey(tcell.KeyCtrlD, 0, tcell.ModNone)); ret != nil {
+		t.Errorf("KeyCtrlD was not consumed by handleInput")
+	}
+
+	if !fired {
+		t.Fatal("OnSend was not fired by C-d")
+	}
+	if gotSource != hash {
+		t.Errorf("OnSend sourceHash = %q, want %q", gotSource, hash)
+	}
+	if gotContent != "hello there" {
+		t.Errorf("OnSend content = %q, want %q", gotContent, "hello there")
+	}
+	if gotTitle != "" {
+		t.Errorf("OnSend title = %q, want empty (minimal editor)", gotTitle)
+	}
+
+	// The editor must be cleared after a successful send.
+	if cd.currentWidget.editor.GetText() != "" {
+		t.Errorf("editor not cleared after send: %q", cd.currentWidget.editor.GetText())
+	}
+}
+
+// TestDisplayConversationOnSendForwardsTitle verifies the title is forwarded
+// when the full editor (C-t) is active, matching Python's send path which
+// includes the title field when present.
+func TestDisplayConversationOnSendForwardsTitle(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	const hash = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	convs := []ConversationInfo{
+		{SourceHash: hash, DisplayName: "Bob", TrustLevel: "trusted"},
+	}
+	cd := NewConversationsDisplay(app, convs)
+
+	var gotTitle string
+	cd.OnSend = func(sourceHash, content, title string, _ []string) {
+		gotTitle = title
+	}
+
+	cd.DisplayConversation(hash)
+	cd.currentWidget.toggleEditor() // switch to full editor (title + content)
+	cd.currentWidget.titleEditor.SetText("Greetings")
+	cd.currentWidget.editor.SetText("body")
+
+	cd.currentWidget.handleInput(tcell.NewEventKey(tcell.KeyCtrlD, 0, tcell.ModNone))
+
+	if gotTitle != "Greetings" {
+		t.Errorf("OnSend title = %q, want %q", gotTitle, "Greetings")
+	}
+}
+
+// TestDisplayConversationLoadsMessages verifies DisplayConversation calls the
+// display-level OnLoadMessages hook to populate the conversation widget's
+// message list, and injects OnOwnHash so the LXMessageWidget header can tell
+// inbound from outbound. This pins the TUI side of message loading (TODO
+// Phase 1 "ConversationWidget — messages").
+func TestDisplayConversationLoadsMessages(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	const hash = "cccccccccccccccccccccccccccccccccccccccc"
+	convs := []ConversationInfo{
+		{SourceHash: hash, DisplayName: "Carol", TrustLevel: "trusted"},
+	}
+	cd := NewConversationsDisplay(app, convs)
+
+	ownHash := []byte{0x11, 0x22, 0x33}
+	cd.OnOwnHash = func() []byte { return ownHash }
+	cd.OnTimeFormat = func() string { return "%Y-%m-%d %H:%M:%S" }
+	cd.OnLoadMessages = func(sourceHash string) []ConversationMessage {
+		if sourceHash != hash {
+			t.Errorf("OnLoadMessages sourceHash = %q, want %q", sourceHash, hash)
+		}
+		return []ConversationMessage{
+			{Content: "hello world", Title: "Greeting", State: 0x04, SourceHash: []byte{0xff}},
+			{Content: "second msg", State: 0x08, SourceHash: ownHash},
+		}
+	}
+
+	cd.DisplayConversation(hash)
+	cw := cd.currentWidget
+	if cw == nil {
+		t.Fatal("DisplayConversation did not set currentWidget")
+	}
+	if !bytes.Equal(cw.OwnHash, ownHash) {
+		t.Errorf("cw.OwnHash = %x, want %x", cw.OwnHash, ownHash)
+	}
+	if len(cw.messages) != 2 {
+		t.Fatalf("loaded %d messages, want 2", len(cw.messages))
+	}
+	if cw.messages[0].Content != "hello world" {
+		t.Errorf("messages[0].Content = %q, want %q", cw.messages[0].Content, "hello world")
+	}
+
+	// The rendered message list must contain the message bodies.
+	body := cw.messageList.GetText(true)
+	if !strings.Contains(body, "hello world") {
+		t.Errorf("messageList missing %q; got: %s", "hello world", body)
+	}
+	if !strings.Contains(body, "second msg") {
+		t.Errorf("messageList missing %q; got: %s", "second msg", body)
+	}
+}
+
+// TestReloadCurrentMessages verifies ReloadCurrentMessages re-fetches the
+// message list from OnLoadMessages and re-renders, so a just-sent message
+// appears in the open conversation view.
+func TestReloadCurrentMessages(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	const hash = "dddddddddddddddddddddddddddddddddddddddd"
+	convs := []ConversationInfo{
+		{SourceHash: hash, DisplayName: "Dave", TrustLevel: "trusted"},
+	}
+	cd := NewConversationsDisplay(app, convs)
+
+	loads := 0
+	cd.OnLoadMessages = func(sourceHash string) []ConversationMessage {
+		loads++
+		if loads == 1 {
+			return nil // initially empty
+		}
+		return []ConversationMessage{{Content: "freshly sent"}}
+	}
+
+	cd.DisplayConversation(hash)
+	if loads != 1 {
+		t.Errorf("expected 1 load on display, got %d", loads)
+	}
+	if cd.currentWidget.messageList.GetText(true) != "" && cd.currentWidget.messages != nil {
+		// initial empty is acceptable
+	}
+
+	cd.ReloadCurrentMessages()
+	if loads != 2 {
+		t.Errorf("expected 2 loads after reload, got %d", loads)
+	}
+	if !strings.Contains(cd.currentWidget.messageList.GetText(true), "freshly sent") {
+		t.Errorf("reload did not render the new message: %s", cd.currentWidget.messageList.GetText(true))
+	}
+}
+
+// TestDisplayConversationWiresPaperMessage verifies the paper-message wiring
+// (Python paper_message, Conversations.py:2474-2503): the widget's
+// OnPaperMessage forwards the open conversation's source hash + action +
+// content + title to cd.OnPaperMessage; the saved/failed result callbacks
+// route to the display's dialog methods.
+func TestDisplayConversationWiresPaperMessage(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	const hash = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+	convs := []ConversationInfo{
+		{SourceHash: hash, DisplayName: "Eve", TrustLevel: "trusted"},
+	}
+	cd := NewConversationsDisplay(app, convs)
+
+	var gotSource, gotAction, gotContent, gotTitle string
+	cd.OnPaperMessage = func(sourceHash, action, content, title string) (string, bool) {
+		gotSource, gotAction, gotContent, gotTitle = sourceHash, action, content, title
+		return "/dl/paper.lxm", true
+	}
+	var savedPath string
+	cd.OnPaperMessageSaved = func(path string) { savedPath = path }
+	var failedFired bool
+	cd.OnPaperMessageFailed = func() { failedFired = true }
+
+	cd.DisplayConversation(hash)
+	if cd.currentWidget == nil {
+		t.Fatal("DisplayConversation did not set currentWidget")
+	}
+	cd.currentWidget.editor.SetText("paper body")
+	cd.currentWidget.titleEditor.SetText("paper title")
+
+	cd.currentWidget.PaperMessageSaveQR()
+
+	if gotSource != hash {
+		t.Errorf("OnPaperMessage sourceHash = %q, want %q", gotSource, hash)
+	}
+	if gotAction != "SaveQR" {
+		t.Errorf("OnPaperMessage action = %q, want SaveQR", gotAction)
+	}
+	if gotContent != "paper body" || gotTitle != "paper title" {
+		t.Errorf("OnPaperMessage content/title = %q/%q, want paper body/paper title", gotContent, gotTitle)
+	}
+	if savedPath != "/dl/paper.lxm" {
+		t.Errorf("OnPaperMessageSaved = %q, want /dl/paper.lxm", savedPath)
+	}
+	if failedFired {
+		t.Error("success should not fire OnPaperMessageFailed")
+	}
+
+	// Failure path routes to OnPaperMessageFailed.
+	cd.OnPaperMessage = func(sourceHash, action, content, title string) (string, bool) {
+		return "", false
+	}
+	cd.currentWidget.editor.SetText("try again")
+	failedFired = false
+	savedPath = ""
+	cd.currentWidget.PaperMessagePrintQR()
+	if !failedFired {
+		t.Error("failure should fire OnPaperMessageFailed")
+	}
+	if savedPath != "" {
+		t.Error("failure should not fire OnPaperMessageSaved")
+	}
+}
+
+// TestConversationWidgetPendingAttachments verifies the compose-side
+// attachment flow: ConfirmAttachFile stages file paths on the widget, and
+// C-d (sendMessage) forwards them through OnSend along with the content,
+// then clears the staged list (Python send_message, Conversations.py:2412-
+// 2436 + clear_editor). This pins the TUI side of the "attachFile" TODO
+// (Phase 1).
+func TestConversationWidgetPendingAttachments(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	const hash = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+	convs := []ConversationInfo{
+		{SourceHash: hash, DisplayName: "Eve", TrustLevel: "trusted"},
+	}
+	cd := NewConversationsDisplay(app, convs)
+
+	var gotAttachments []string
+	var gotContent string
+	cd.OnSend = func(sourceHash, content, title string, attachments []string) {
+		gotContent = content
+		gotAttachments = attachments
+	}
+
+	cd.DisplayConversation(hash)
+	cw := cd.currentWidget
+
+	// Stage two attachments (as the file browser would on selection).
+	cw.ConfirmAttachFile([]string{"/tmp/alpha.txt", "/tmp/beta.txt"})
+	if len(cw.pendingAttachments) != 2 {
+		t.Fatalf("pendingAttachments = %v, want 2 entries", cw.pendingAttachments)
+	}
+
+	cw.editor.SetText("with files")
+	cw.handleInput(tcell.NewEventKey(tcell.KeyCtrlD, 0, tcell.ModNone))
+
+	if gotContent != "with files" {
+		t.Errorf("content = %q, want %q", gotContent, "with files")
+	}
+	if len(gotAttachments) != 2 || gotAttachments[0] != "/tmp/alpha.txt" || gotAttachments[1] != "/tmp/beta.txt" {
+		t.Errorf("attachments = %v, want [/tmp/alpha.txt /tmp/beta.txt]", gotAttachments)
+	}
+	// The staged list must be cleared after the send (Python clear_editor
+	// resets pending_attachments).
+	if len(cw.pendingAttachments) != 0 {
+		t.Errorf("pendingAttachments not cleared after send: %v", cw.pendingAttachments)
+	}
+}
+
 func TestComposeDisplayGetSetText(t *testing.T) {
 	t.Parallel()
 
@@ -548,6 +843,121 @@ func TestConversationsDisplayEditSelectedNoSelection(t *testing.T) {
 	result := cd.EditSelectedInDirectory()
 	if result.SourceHash != "" {
 		t.Errorf("with no selection, SourceHash should be empty, got %q", result.SourceHash)
+	}
+}
+
+// TestDisplayConversationInjectsPeerInfoRNS verifies DisplayConversation consults
+// the OnStampCost/OnHops callbacks and feeds them into the open conversation
+// widget's peer-info header bar, mirroring Python _update_peer_info
+// (Conversations.py:2103-2112). With both supplied the bar shows "Stamp: N"
+// and "M hops"; with both nil it shows "unknown" hops and no stamp segment.
+func TestDisplayConversationInjectsPeerInfoRNS(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	app.Glyphs = GetGlyphSet(GlyphUnicode)
+	convs := []ConversationInfo{
+		{SourceHash: "aabbccddeeff0011", DisplayName: "Alice", TrustLevel: "trusted"},
+	}
+	cd := NewConversationsDisplay(app, convs)
+	cd.OnLoadMessages = func(string) []ConversationMessage { return nil }
+
+	stamp := 4
+	hops := 3
+	cd.OnStampCost = func(sourceHash string) *int { return &stamp }
+	cd.OnHops = func(sourceHash string) *int { return &hops }
+
+	cd.DisplayConversation("aabbccddeeff0011")
+	cw := cd.currentWidget
+	if cw == nil {
+		t.Fatal("currentWidget not set after DisplayConversation")
+	}
+	bar := cw.peerInfoBar.GetText(false)
+	if !strings.Contains(bar, "Stamp: 4") {
+		t.Errorf("peer-info bar missing injected stamp cost: %q", bar)
+	}
+	if !strings.Contains(bar, "3 hops") {
+		t.Errorf("peer-info bar missing injected hop count: %q", bar)
+	}
+
+	// nil callbacks fall back to "unknown" hops and no stamp segment.
+	app2 := newTestApp()
+	app2.Glyphs = GetGlyphSet(GlyphUnicode)
+	cd2 := NewConversationsDisplay(app2, convs)
+	cd2.OnLoadMessages = func(string) []ConversationMessage { return nil }
+	cd2.DisplayConversation("aabbccddeeff0011")
+	bar2 := cd2.currentWidget.peerInfoBar.GetText(false)
+	if strings.Contains(bar2, "Stamp:") {
+		t.Errorf("peer-info bar should omit Stamp segment when OnStampCost is nil: %q", bar2)
+	}
+	if !strings.Contains(bar2, "unknown") {
+		t.Errorf("peer-info bar should show unknown hops when OnHops is nil: %q", bar2)
+	}
+}
+
+// TestShortcutFocusByRegion verifies the footer shortcut bar follows the focused
+// region, mirroring Python's shortcuts() focus-path dispatch
+// (Conversations.py:1765-1779): list pane → the list bar; conversation editor
+// → the editor bar; message body → the body bar. Each focusable primitive's
+// SetFocusFunc drives setShortcutRegion, so gaining focus switches the bar.
+func TestShortcutFocusByRegion(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	convs := []ConversationInfo{
+		{SourceHash: "aabbccddeeff0011", DisplayName: "Alice", TrustLevel: "trusted"},
+	}
+	cd := NewConversationsDisplay(app, convs)
+	cd.OnLoadMessages = func(string) []ConversationMessage { return nil }
+
+	listBar := "[C-e] Peer Info  [C-x] Delete  [C-r] Sync  [C-n] New  [C-u] Ingest URI  [C-o] Sort  [C-p] My LXMF  [C-g] Fullscreen"
+	editorBar := "[C-d] Send  [C-p] Paper Msg  [C-t] Title  [C-f] Attach  [C-s] Save  [Tab] ↑ Messages"
+	bodyBar := "[C-s] Save  [C-u] Purge  [C-o] Sort  [C-x] Clear History  [C-g] Fullscreen  [C-w] Close  [Tab] ↓ Editor"
+
+	// Default region is "list".
+	if got := cd.GetShortcutText(); got != listBar {
+		t.Errorf("default shortcut bar = %q, want list bar", got)
+	}
+
+	// Focusing a list-pane primitive switches to the list bar.
+	cd.list.Focus(func(tview.Primitive) {})
+	if got := cd.GetShortcutText(); got != listBar {
+		t.Errorf("after list focus, shortcut bar = %q, want list bar", got)
+	}
+
+	// Open a conversation and focus the editor → editor bar.
+	cd.DisplayConversation("aabbccddeeff0011")
+	cw := cd.currentWidget
+	if cw == nil {
+		t.Fatal("currentWidget not set")
+	}
+	cw.editor.Focus(func(tview.Primitive) {})
+	if got := cd.GetShortcutText(); got != editorBar {
+		t.Errorf("after editor focus, shortcut bar = %q, want editor bar", got)
+	}
+
+	// Focus the message body → body bar.
+	cw.messageList.Focus(func(tview.Primitive) {})
+	if got := cd.GetShortcutText(); got != bodyBar {
+		t.Errorf("after body focus, shortcut bar = %q, want body bar", got)
+	}
+
+	// Title editor (full-editor mode) → editor bar.
+	cw.titleEditor.Focus(func(tview.Primitive) {})
+	if got := cd.GetShortcutText(); got != editorBar {
+		t.Errorf("after title editor focus, shortcut bar = %q, want editor bar", got)
+	}
+
+	// Focus returns to the list → list bar.
+	cd.list.Focus(func(tview.Primitive) {})
+	if got := cd.GetShortcutText(); got != listBar {
+		t.Errorf("after returning to list, shortcut bar = %q, want list bar", got)
+	}
+
+	// An open dialog suppresses the bar regardless of region.
+	cd.dialogOpen = true
+	if got := cd.GetShortcutText(); got != "" {
+		t.Errorf("with dialog open, shortcut bar = %q, want empty", got)
 	}
 }
 
@@ -845,8 +1255,12 @@ func TestSaveAttachmentsDialog(t *testing.T) {
 	app := newTestApp()
 	cd := NewConversationsDisplay(app, nil)
 
-	attachments := []string{"file1.pdf", "image.png", "doc.txt"}
-	cd.SaveAttachmentsDialog(attachments, func(selected []string) {})
+	refs := []AttachmentRef{
+		{Name: "file1.pdf", Type: "file"},
+		{Name: "image.png", Type: "image"},
+		{Name: "doc.txt", Type: "file"},
+	}
+	cd.SaveAttachmentsDialog("aabb1122", refs)
 
 	if !cd.dialogOpen {
 		t.Error("dialog should be open")
@@ -869,12 +1283,174 @@ func TestShowPeerInfoDialog(t *testing.T) {
 	}
 
 	var saved bool
-	cd.ShowPeerInfoDialog(entry, func(e PeerInfoEntry) {
+	cd.ShowPeerInfoDialog(entry, PeerInfoDialogHooks{}, func(e PeerInfoEntry) {
 		saved = true
 		if e.DisplayName != "TestPeer" {
 			t.Errorf("DisplayName = %q, want TestPeer", e.DisplayName)
 		}
 	})
+
+	if !cd.dialogOpen {
+		t.Error("dialog should be open")
+	}
+	_ = saved
+}
+
+// TestShowPeerInfoDialogGolden pins the verbatim Python dialog field labels,
+// button labels, the read-only Addr caption, and the known-section info text
+// against Conversations.py:821-1020. These are the exact urwid caption/label
+// strings the original shows; the dialog is an interactive overlay so capture
+// tooling cannot snapshot it — the golden strings are the parity measure.
+func TestShowPeerInfoDialogGolden(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	cd := NewConversationsDisplay(app, nil)
+	pages := app.Dialogs.Init(app.Application, cd.Widget())
+	app.Application.SetRoot(pages, true)
+	app.Application.SetFocus(cd.Widget())
+
+	entry := PeerInfoEntry{
+		SourceHash:        "aabb112233445566",
+		DisplayName:       "TestPeer",
+		TrustLevel:        TrustUnknown,
+		PreferredDelivery: "direct",
+	}
+
+	var knownReported bool
+	cd.ShowPeerInfoDialog(entry, PeerInfoDialogHooks{
+		IsKnown: func(_ string) bool {
+			knownReported = true
+			return false // forces the "Query network for keys" section
+		},
+	}, func(PeerInfoEntry) {})
+
+	if !knownReported {
+		t.Error("IsKnown hook was not consulted")
+	}
+	if !cd.dialogOpen {
+		t.Error("dialog should be open")
+	}
+
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatalf("screen.Init: %v", err)
+	}
+	defer screen.Fini()
+	screen.SetSize(80, 30)
+	pages.SetRect(0, 0, 80, 30)
+	pages.Draw(screen)
+	screen.Sync()
+
+	rows := make([]string, 30)
+	for y := 0; y < 30; y++ {
+		var b strings.Builder
+		for x := 0; x < 80; x++ {
+			c, _, _, _ := screen.GetContent(x, y)
+			b.WriteRune(c)
+		}
+		rows[y] = b.String()
+	}
+
+	// Golden strings verbatim from Python edit_selected_in_directory.
+	golden := []string{
+		"Addr : aabb112233445566", // selected_id_widget caption
+		"Name : ",                 // e_name caption
+		"Copy : ",                 // e_copy caption
+		"Untrusted",               // trust radio
+		"Unknown",                 // trust radio
+		"Trusted",                 // trust radio
+		"Deliver directly",        // delivery radio
+		"Use propagation nodes",   // delivery radio
+		"Pin to top",              // cb_pin label
+		"Notes: ",                 // e_notes caption
+		"Query network for keys",  // query button
+		"Ping",                    // action button
+		"Block",                   // action button
+		"LXMF",                    // action button (qr_button label)
+		"Save",                    // save button
+		"Back",                    // back button
+	}
+	for _, want := range golden {
+		if !containsRow(rows, want) {
+			t.Errorf("dialog text missing golden %q", want)
+		}
+	}
+	// The known-section info text wraps across rows; assert the distinctive
+	// phrases that fit on a single wrapped line appear in the rendered output.
+	for _, want := range []string{
+		"The identity of this peer is not known",
+		"query the network to obtain the identity.",
+	} {
+		if !containsRow(rows, want) {
+			t.Errorf("known-section info text missing %q", want)
+		}
+	}
+}
+
+// TestShowPeerInfoDialogKnownDivider verifies that when the peer identity IS
+// known the known-section collapses to a divider (no "Query network for keys"
+// button), mirroring Python (Conversations.py:957-959).
+func TestShowPeerInfoDialogKnownDivider(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	cd := NewConversationsDisplay(app, nil)
+	pages := app.Dialogs.Init(app.Application, cd.Widget())
+	app.Application.SetRoot(pages, true)
+	app.Application.SetFocus(cd.Widget())
+
+	cd.ShowPeerInfoDialog(PeerInfoEntry{SourceHash: "abc", TrustLevel: TrustUnknown}, PeerInfoDialogHooks{
+		IsKnown: func(_ string) bool { return true },
+	}, func(PeerInfoEntry) {})
+
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatalf("screen.Init: %v", err)
+	}
+	defer screen.Fini()
+	screen.SetSize(80, 30)
+	pages.SetRect(0, 0, 80, 30)
+	pages.Draw(screen)
+	screen.Sync()
+
+	rows := make([]string, 30)
+	for y := 0; y < 30; y++ {
+		var b strings.Builder
+		for x := 0; x < 80; x++ {
+			c, _, _, _ := screen.GetContent(x, y)
+			b.WriteRune(c)
+		}
+		rows[y] = b.String()
+	}
+	if containsRow(rows, "Query network for keys") {
+		t.Error("Query button should NOT appear when peer is known")
+	}
+}
+
+// TestShowPeerInfoDialogSaveValues verifies Save maps the dialog fields to the
+// PeerInfoEntry, mirroring Python's confirmed() (Conversations.py:901-929):
+// trust radio → TrustLevel, delivery radio → PreferredDelivery, pin checkbox
+// → Pinned, name → DisplayName, notes → Notes. The dialog primitives are not
+// directly addressable from the test, so the trust/delivery/pin mapping is
+// exercised via the wiring-layer app test (app.TestRememberPeerInfoRoundTrip).
+func TestShowPeerInfoDialogSaveValues(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	cd := NewConversationsDisplay(app, nil)
+
+	entry := PeerInfoEntry{
+		SourceHash:        "deadbeef",
+		DisplayName:       "Orig",
+		TrustLevel:        TrustUnknown,
+		PreferredDelivery: "direct",
+	}
+
+	var saved PeerInfoEntry
+	cd.ShowPeerInfoDialog(entry, PeerInfoDialogHooks{
+		IsKnown: func(_ string) bool { return true }, // divider, not query section
+	}, func(e PeerInfoEntry) { saved = e })
 
 	if !cd.dialogOpen {
 		t.Error("dialog should be open")
@@ -915,7 +1491,11 @@ func TestShowSyncDialog(t *testing.T) {
 	cd := NewConversationsDisplay(app, nil)
 
 	var result SyncDialogResult
-	cd.ShowSyncDialog("aabb112233445566", nil, 0.5, func(r SyncDialogResult) {
+	cd.ShowSyncDialog("aabb112233445566", nil, SyncDialogHooks{
+		Progress:    func() float64 { return 0.5 },
+		Status:      func() string { return "Idle" },
+		ShowPercent: func() bool { return false },
+	}, func(r SyncDialogResult) {
 		result = r
 	})
 
@@ -923,6 +1503,52 @@ func TestShowSyncDialog(t *testing.T) {
 		t.Error("dialog should be open")
 	}
 	_ = result
+}
+
+// TestShowSyncDialogLiveProgress verifies the progress UI refresh
+// (Python update_sync_dialog, Conversations.py:1566-1575): the dialog's status
+// line + button reflect the live hooks on each updateSyncProgress call.
+// "Idle"/"Done*" shows the Sync Now button; an active transfer shows Cancel Sync
+// and, when showPercent, appends "(NN%)" to the status line.
+func TestShowSyncDialogLiveProgress(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	cd := NewConversationsDisplay(app, nil)
+
+	prog := 0.0
+	stat := "Idle"
+	cd.ShowSyncDialog("aabb", nil, SyncDialogHooks{
+		Progress:    func() float64 { return prog },
+		Status:      func() string { return stat },
+		ShowPercent: func() bool { return true },
+	}, func(SyncDialogResult) {})
+
+	cd.updateSyncProgress()
+	if got := cd.syncStatusText.GetText(true); got != "Idle (0%)" {
+		t.Errorf("idle status = %q, want %q", got, "Idle (0%)")
+	}
+	if cd.syncSyncBtn.GetLabel() != "Sync Now" {
+		t.Errorf("idle button = %q, want Sync Now", cd.syncSyncBtn.GetLabel())
+	}
+
+	prog = 0.73
+	stat = "Receiving messages"
+	cd.updateSyncProgress()
+	if got := cd.syncStatusText.GetText(true); got != "Receiving messages (73%)" {
+		t.Errorf("active status = %q, want %q", got, "Receiving messages (73%)")
+	}
+	if cd.syncSyncBtn.GetLabel() != "Cancel Sync" {
+		t.Errorf("active button = %q, want Cancel Sync", cd.syncSyncBtn.GetLabel())
+	}
+
+	// A non-percent status omits the parenthetical.
+	stat = "Link established"
+	cd.SetSyncShowPercentHook(func() bool { return false })
+	cd.updateSyncProgress()
+	if got := cd.syncStatusText.GetText(true); got != "Link established" {
+		t.Errorf("no-percent status = %q, want %q", got, "Link established")
+	}
 }
 
 func TestSyncDialogResult(t *testing.T) {

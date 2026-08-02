@@ -76,6 +76,112 @@ func TestSetPeerDisplayName(t *testing.T) {
 	}
 }
 
+// TestRememberPeerInfoRoundTrip verifies RememberPeerInfo writes the full set
+// of editable Peer Info fields and PeerInfoLoad reads them back, mirroring
+// Python's confirmed() save and the existing_entry pre-fill lookup
+// (Conversations.py:844-929). It also confirms that the sort_rank (Pin) and
+// HostsNode/IdentifyOnConnect flags round-trip correctly.
+func TestRememberPeerInfoRoundTrip(t *testing.T) {
+	t.Parallel()
+	a := NewApp(tempDir(t), "", false, false)
+	a.setupPaths()
+	hash := []byte{0xaa, 0xbb, 0xcc}
+
+	// A peer with no entry loads the Python defaults: Unknown trust, direct
+	// delivery, unpinned, empty notes.
+	loaded := a.PeerInfoLoad(hash)
+	if loaded.TrustLevel != directory.TrustUnknown {
+		t.Errorf("default TrustLevel=%x want %x", loaded.TrustLevel, directory.TrustUnknown)
+	}
+	if loaded.PreferredDelivery != directory.DeliveryDirect {
+		t.Errorf("default PreferredDelivery=%x want %x", loaded.PreferredDelivery, directory.DeliveryDirect)
+	}
+	if loaded.Pinned {
+		t.Error("default Pinned should be false")
+	}
+	if loaded.Notes != "" {
+		t.Errorf("default Notes=%q want empty", loaded.Notes)
+	}
+
+	// Save the full peer-info edit.
+	a.RememberPeerInfo(hash, PeerInfoData{
+		DisplayName:       "Alice",
+		TrustLevel:        directory.TrustTrusted,
+		PreferredDelivery: directory.DeliveryPropagated,
+		Pinned:            true,
+		Notes:             "a note",
+	})
+
+	loaded = a.PeerInfoLoad(hash)
+	if loaded.DisplayName != "Alice" {
+		t.Errorf("DisplayName=%q want Alice", loaded.DisplayName)
+	}
+	if loaded.TrustLevel != directory.TrustTrusted {
+		t.Errorf("TrustLevel=%x want %x", loaded.TrustLevel, directory.TrustTrusted)
+	}
+	if loaded.PreferredDelivery != directory.DeliveryPropagated {
+		t.Errorf("PreferredDelivery=%x want %x", loaded.PreferredDelivery, directory.DeliveryPropagated)
+	}
+	if !loaded.Pinned {
+		t.Error("Pinned should be true")
+	}
+	if loaded.Notes != "a note" {
+		t.Errorf("Notes=%q want %q", loaded.Notes, "a note")
+	}
+
+	// The remembered entry carries the SortRank pointer for a pinned peer.
+	entry := a.Dir.Find(hash)
+	if entry == nil || entry.SortRank == nil {
+		t.Fatal("pinned entry should have a non-nil SortRank")
+	}
+	if *entry.SortRank != 0 {
+		t.Errorf("SortRank=%d want 0", *entry.SortRank)
+	}
+
+	// Unpinning the peer clears the SortRank (sort_rank=None in Python).
+	a.RememberPeerInfo(hash, PeerInfoData{
+		DisplayName:       "Alice",
+		TrustLevel:        directory.TrustTrusted,
+		PreferredDelivery: directory.DeliveryDirect,
+		Pinned:            false,
+		Notes:             "a note",
+	})
+	if entry := a.Dir.Find(hash); entry == nil || entry.SortRank != nil {
+		t.Fatal("unpinned entry should have a nil SortRank")
+	}
+}
+
+// TestRememberPeerInfoPreservesNodeFlags verifies that RememberPeerInfo
+// preserves the HostsNode and IdentifyOnConnect flags of an existing entry,
+// mirroring Python's remember() node-entry merge (Directory.py:198-202).
+func TestRememberPeerInfoPreservesNodeFlags(t *testing.T) {
+	t.Parallel()
+	a := NewApp(tempDir(t), "", false, false)
+	a.setupPaths()
+	a.Dir = directory.New()
+	hash := []byte{0x01, 0x02, 0x03}
+
+	entry := directory.NewEntry(hash)
+	entry.HostsNode = true
+	entry.IdentifyOnConnect = true
+	a.Dir.Remember(entry)
+
+	a.RememberPeerInfo(hash, PeerInfoData{
+		DisplayName: "NodePeer",
+		TrustLevel:  directory.TrustTrusted,
+	})
+	after := a.Dir.Find(hash)
+	if after == nil {
+		t.Fatal("entry missing after RememberPeerInfo")
+	}
+	if !after.HostsNode {
+		t.Error("HostsNode flag not preserved")
+	}
+	if !after.IdentifyOnConnect {
+		t.Error("IdentifyOnConnect flag not preserved")
+	}
+}
+
 func TestRemoveAnnounce(t *testing.T) {
 	t.Parallel()
 	a := NewApp(tempDir(t), "", false, false)
@@ -115,5 +221,40 @@ func TestLXMFAddressHex(t *testing.T) {
 	a.setupPaths()
 	if got := a.LXMFAddressHex(); got != "" {
 		t.Fatalf("expected empty when LXMFDest is nil, got %q", got)
+	}
+}
+
+// TestPeerStampCostNilGuards verifies PeerStampCost returns nil (omit the
+// "Stamp:" segment, matching Python stamp_cost is None) when no router or
+// transport is available and no app_data can be recalled. The realistic RNS
+// resolution path is exercised by integration tests; this pins the guards.
+func TestPeerStampCostNilGuards(t *testing.T) {
+	t.Parallel()
+	a := NewApp(tempDir(t), "", false, false)
+	a.setupPaths()
+	hash := []byte{0xaa, 0xbb, 0xcc}
+
+	if got := a.PeerStampCost(hash); got != nil {
+		t.Errorf("PeerStampCost with no router/transport = %v, want nil", *got)
+	}
+	if got := a.PeerStampCost(nil); got != nil {
+		t.Errorf("PeerStampCost(nil) = %v, want nil", *got)
+	}
+}
+
+// TestPeerHopsNilGuards verifies PeerHops returns nil ("unknown") when no
+// transport is available. The PathfinderM→nil mapping (unknown path) is
+// exercised by integration tests; this pins the no-transport guard.
+func TestPeerHopsNilGuards(t *testing.T) {
+	t.Parallel()
+	a := NewApp(tempDir(t), "", false, false)
+	a.setupPaths()
+	hash := []byte{0xaa, 0xbb, 0xcc}
+
+	if got := a.PeerHops(hash); got != nil {
+		t.Errorf("PeerHops with no transport = %v, want nil", *got)
+	}
+	if got := a.PeerHops(nil); got != nil {
+		t.Errorf("PeerHops(nil) = %v, want nil", *got)
 	}
 }

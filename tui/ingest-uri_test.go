@@ -110,4 +110,35 @@ func TestIngestResultConstants(t *testing.T) {
 	if IngestError != 2 {
 		t.Errorf("IngestError = %d, want 2", IngestError)
 	}
+	if IngestPropagated != 3 {
+		t.Errorf("IngestPropagated = %d, want 3", IngestPropagated)
+	}
+	if IngestDiscarded != 4 {
+		t.Errorf("IngestDiscarded = %d, want 4", IngestDiscarded)
+	}
+}
+
+// TestIngestResultTextGolden pins the exact ingest-result dialog text against
+// the Python nomadnet source (Conversations.py:1143-1237). The success,
+// duplicate, propagated, and discarded texts are the verbatim urwid.Text
+// strings Python shows; the error text preserves Python's "Could ingest" typo
+// (Conversations.py:1233).
+func TestIngestResultTextGolden(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		result IngestResult
+		want   string
+	}{
+		{IngestSuccess, "Message was decoded, decrypted successfully, and added to your conversation list."},
+		{IngestDuplicate, "The decoded message has already been processed by the LXMF Router, and will not be ingested again."},
+		{IngestPropagated, "The decoded message was not addressed to this LXMF address, but has been added to the propagation node queues, and will be distributed on the propagation network."},
+		{IngestDiscarded, "The decoded message was not addressed to this LXMF address, and has been discarded."},
+		{IngestError, "Could ingest LXM from URI data. Check your input."},
+	}
+	for _, tc := range tests {
+		if got := IngestResultText(tc.result); got != tc.want {
+			t.Errorf("IngestResultText(%d) = %q, want %q", tc.result, got, tc.want)
+		}
+	}
 }

@@ -175,6 +175,12 @@ func (md *MainDisplay) SetDisplay(key string, widget tview.Primitive) {
 	md.contentArea.AddPage(key, widget, true, false)
 	if key == md.activePage {
 		md.contentArea.SwitchToPage(key)
+		// SwitchToPage drives the focus chain, which fires SetFocusFunc
+		// callbacks (e.g. ConversationsDisplay.setShortcutRegion). Those
+		// callbacks call refreshShortcuts, whose TryLock cannot re-acquire
+		// the mu we hold here, so they skip — refresh the cached shortcut
+		// text ourselves now that the focus callbacks have run.
+		md.updateShortcutsLocked()
 	}
 }
 
@@ -199,9 +205,19 @@ func (md *MainDisplay) SetShortcutCallback(key string, fn func() string) {
 	md.updateShortcutsLocked()
 }
 
-// updateShortcuts refreshes the shortcut bar for the active display.
-func (md *MainDisplay) updateShortcuts() {
-	md.mu.Lock()
+// refreshShortcuts updates the cached shortcut bar text without blocking. It
+// is intended for focus callbacks (SetFocusFunc) that may fire while md.mu is
+// already held by the caller on this goroutine — e.g. SetDisplay holds mu
+// across SwitchToPage, which drives the focus chain and fires a display's
+// setShortcutRegion callback. A plain updateShortcuts would deadlock trying to
+// re-acquire the non-reentrant mu, so refreshShortcuts uses TryLock: when the
+// lock is free (the normal event-loop focus change) it refreshes immediately;
+// when it is held (the SetDisplay re-entrant case) it skips, and the holder
+// refreshes via updateShortcutsLocked before releasing.
+func (md *MainDisplay) refreshShortcuts() {
+	if !md.mu.TryLock() {
+		return
+	}
 	defer md.mu.Unlock()
 	md.updateShortcutsLocked()
 }
@@ -443,7 +459,7 @@ func (md *MainDisplay) SelectPage(key string) {
 
 // selectMenuLocked is the lock-free inner of selectMenu; the caller must hold
 // md.mu (used by SetHideGuide, which already holds the lock, to avoid a
-// self-deadlock via updateShortcuts). It does NOT drop focus to the body.
+// self-deadlock re-acquiring it). It does NOT drop focus to the body.
 func (md *MainDisplay) selectMenuLocked(index int) {
 	if index < 0 || index >= len(md.menuItems) {
 		return
