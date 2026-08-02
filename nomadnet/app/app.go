@@ -779,6 +779,17 @@ func (a *App) GetAnnounces() []AnnounceEvent {
 	return result
 }
 
+// prependAnnounce inserts ev at the front of the announce stream, mirroring
+// Python's Directory per-type list.insert(0, ...) (Directory.py:171,195,236):
+// each received announce is newest-first. The Network panel's AnnounceStream
+// filters by tab, so prepending (rather than appending) makes the displayed
+// list descending by time, matching the original. Callers must NOT hold a.mu.
+func (a *App) prependAnnounce(ev AnnounceEvent) {
+	a.mu.Lock()
+	a.Announces = append([]AnnounceEvent{ev}, a.Announces...)
+	a.mu.Unlock()
+}
+
 // AnnounceCount returns the number of announces received.
 func (a *App) AnnounceCount() int {
 	a.mu.Lock()
@@ -1006,8 +1017,7 @@ func (a *App) handleLXMFAnnounce(destHash []byte, identity *rns.Identity, appDat
 
 	now := time.Now()
 	nowF := float64(now.UnixNano()) / 1e9
-	a.mu.Lock()
-	a.Announces = append(a.Announces, AnnounceEvent{
+	a.prependAnnounce(AnnounceEvent{
 		Timestamp:    now,
 		TimestampF:   nowF,
 		SourceHash:   destHash,
@@ -1015,7 +1025,6 @@ func (a *App) handleLXMFAnnounce(destHash []byte, identity *rns.Identity, appDat
 		AnnounceType: "peer",
 		DisplayName:  displayName,
 	})
-	a.mu.Unlock()
 
 	a.Dir.PeerAnnounceReceived(directory.Announce{
 		Timestamp:    nowF,
@@ -1038,8 +1047,7 @@ func (a *App) handleNodeAnnounce(destHash []byte, identity *rns.Identity, appDat
 
 	now := time.Now()
 	nowF := float64(now.UnixNano()) / 1e9
-	a.mu.Lock()
-	a.Announces = append(a.Announces, AnnounceEvent{
+	a.prependAnnounce(AnnounceEvent{
 		Timestamp:    now,
 		TimestampF:   nowF,
 		SourceHash:   destHash,
@@ -1047,7 +1055,6 @@ func (a *App) handleNodeAnnounce(destHash []byte, identity *rns.Identity, appDat
 		AnnounceType: "node",
 		DisplayName:  displayName,
 	})
-	a.mu.Unlock()
 
 	a.Dir.NodeAnnounceReceived(directory.Announce{
 		Timestamp:    nowF,
@@ -1082,8 +1089,7 @@ func (a *App) handlePNAnnounce(destHash []byte, identity *rns.Identity, appData 
 
 	now := time.Now()
 	nowF := float64(now.UnixNano()) / 1e9
-	a.mu.Lock()
-	a.Announces = append(a.Announces, AnnounceEvent{
+	a.prependAnnounce(AnnounceEvent{
 		Timestamp:    now,
 		TimestampF:   nowF,
 		SourceHash:   destHash,
@@ -1091,7 +1097,6 @@ func (a *App) handlePNAnnounce(destHash []byte, identity *rns.Identity, appData 
 		AnnounceType: "pn",
 		DisplayName:  displayName,
 	})
-	a.mu.Unlock()
 
 	a.Dir.PNAnnounceReceived(directory.Announce{
 		Timestamp:    nowF,
@@ -1113,14 +1118,12 @@ func (a *App) handleRRCAnnounce(destHash []byte, identity *rns.Identity, appData
 		a.RRC.AddHub(destHash, "rrc.chat", "")
 	}
 
-	a.mu.Lock()
-	a.Announces = append(a.Announces, AnnounceEvent{
+	a.prependAnnounce(AnnounceEvent{
 		Timestamp:    time.Now(),
 		SourceHash:   destHash,
 		AppData:      appData,
 		AnnounceType: "rrc",
 	})
-	a.mu.Unlock()
 
 	if a.UIChangeCallback != nil {
 		a.UIChangeCallback()

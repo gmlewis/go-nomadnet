@@ -452,6 +452,72 @@ func TestInitWithTransportReceivesAnnounces(t *testing.T) {
 	}
 }
 
+// TestAnnounceStreamNewestFirst pins Python's announce-stream ordering
+// (Directory.py: the per-type lists use list.insert(0, ...), so each type is
+// newest-first; announce_stream = _node_announces+_peer_announces+_pn_announces).
+// The Network panel's AnnounceStream filters by tab, so within each type the
+// most-recently-received announce must come first. The app-level Announces list
+// feeds the TUI via GetAnnounces, so it must preserve newest-first per type
+// (a prepend, matching the directory), not oldest-first (an append).
+func TestAnnounceStreamNewestFirst(t *testing.T) {
+	t.Parallel()
+
+	dir := tempDir(t)
+	ts := rns.NewTransportSystem(nil)
+	id, err := rns.NewIdentity(true, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := NewAppWithTransport(dir, WithTransport(ts), WithIdentity(id))
+	if err := a.InitWithTransport(ts, id); err != nil {
+		t.Fatalf("InitWithTransport error: %v", err)
+	}
+	defer a.Shutdown()
+
+	// Receive node announces oldest -> newest (distinct source hashes so they
+	// are not compacted away).
+	old := []byte{0xaa, 0xaa, 0xaa, 0xaa}
+	newer := []byte{0xbb, 0xbb, 0xbb, 0xbb}
+	a.handleNodeAnnounce(old, nil, []byte("OldNode"), false)
+	a.handleNodeAnnounce(newer, nil, []byte("NewNode"), false)
+
+	got := a.GetAnnounces()
+	if len(got) != 2 {
+		t.Fatalf("GetAnnounces len = %d, want 2", len(got))
+	}
+	// Newest-first: the second-received ("NewNode") must be at index 0.
+	if string(got[0].AppData) != "NewNode" || string(got[1].AppData) != "OldNode" {
+		t.Errorf("GetAnnounces order = %q, %q; want newest-first %q, %q",
+			got[0].AppData, got[1].AppData, "NewNode", "OldNode")
+	}
+
+	// Per-type newest-first must hold across mixed types: a peer announce
+	// received between two node announces must not displace the node ordering
+	// when filtered to the node tab (Python groups by type, each newest-first).
+	peerHash := []byte{0xcc, 0xcc, 0xcc, 0xcc}
+	// Raw UTF-8 app_data is the original LXMF announce format
+	// (DisplayNameFromAppData's non-msgpack branch returns it verbatim).
+	a.handleLXMFAnnounce(peerHash, nil, []byte("PeerOne"), false)
+
+	got = a.GetAnnounces()
+	// Nodes newest-first among node entries, peer newest among peer entries.
+	var nodes, peers []string
+	for _, ev := range got {
+		switch ev.AnnounceType {
+		case "node":
+			nodes = append(nodes, string(ev.AppData))
+		case "peer":
+			peers = append(peers, string(ev.AppData))
+		}
+	}
+	if len(nodes) != 2 || nodes[0] != "NewNode" || nodes[1] != "OldNode" {
+		t.Errorf("node entries = %v, want newest-first [NewNode OldNode]", nodes)
+	}
+	if len(peers) != 1 || peers[0] != "PeerOne" {
+		t.Errorf("peer entries = %v, want [PeerOne]", peers)
+	}
+}
+
 // TestInitWithTransportSetsRRCIdentity verifies the App wires its identity
 // into the RRC manager, mirroring Python RRCManager.identity (a @property that
 // returns self.app.identity). After init, a.RRC.Identity() must be the very

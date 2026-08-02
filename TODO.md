@@ -284,8 +284,6 @@ test or a matching `parity.sh` summary):
         the memory note “tview InputField exposes no public cursor setter”).
         Test that the reported caret column tracks `cursorPos` after a non-end
         cursor move.
-- [ ] Under the Network panel, discovered nodes should by default be sorted by
-      descending time (newest first).
 - [ ] Mouse clicks have no correlation with what is under the cursor — fix mouse
       coordinate mapping so clicks hit the right menu/list/link/pane gutter.
 - [ ] Go errors must NEVER be ignored (audit `_ =` / bare calls; log or handle
