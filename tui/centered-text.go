@@ -19,7 +19,6 @@ import (
 	"strings"
 
 	"github.com/gdamore/tcell/v2"
-	"github.com/mattn/go-runewidth"
 	"github.com/rivo/tview"
 )
 
@@ -57,7 +56,7 @@ func (c *centeredText) Draw(screen tcell.Screen) {
 		if i >= h {
 			break
 		}
-		rw := runewidth.StringWidth(line)
+		rw := tview.TaggedStringWidth(line)
 		// urwid ceil-left centering: leftPad = ceil((w - rw) / 2).
 		leftPad := (w - rw + 1) / 2
 		if leftPad < 0 {

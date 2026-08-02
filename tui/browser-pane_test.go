@@ -18,6 +18,8 @@ package tui
 import (
 	"strings"
 	"testing"
+
+	"github.com/rivo/tview"
 )
 
 // TestBrowserPaneDisconnectedLayout pins the Network right-pane browser's
@@ -58,13 +60,44 @@ func TestBrowserPaneDisconnectedLayout(t *testing.T) {
 	}
 	// Rows above (1-9) and below (12-20) are blank inside the border.
 	for _, y := range []int{1, 5, 9, 12, 16, 20} {
-		r := []rune(rows[y])
-		inner := ""
-		if len(r) >= 2 {
-			inner = string(r[1 : len(r)-1]) // strip the │ borders
+		if strings.TrimSpace(rows[y]) != "│                          │" {
+			t.Errorf("row %d = %q, want empty border row", y, rows[y])
 		}
-		if strings.TrimSpace(inner) != "" {
-			t.Errorf("row %d inner should be blank, got %q", y, rows[y])
+	}
+}
+
+func TestFormatRemoteNodeTitle(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		url  string
+		want string
+	}{
+		{"", "Remote Node"},
+		{"nomadnetwork://44f0dbf2ec1c2ac47277995475217aed/page/status.mu", "<44f0dbf2ec1c2ac47277995475217aed>"},
+		{"44f0dbf2ec1c2ac47277995475217aed", "<44f0dbf2ec1c2ac47277995475217aed>"},
+		{"my-node-alias", "my-node-alias"},
+	}
+
+	for _, tt := range tests {
+		if got := FormatRemoteNodeTitle(tt.url); got != tt.want {
+			t.Errorf("FormatRemoteNodeTitle(%q) = %q, want %q", tt.url, got, tt.want)
 		}
+	}
+}
+
+func TestBrowserPaneLoadURLTitle(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	bp := NewBrowserPane(app)
+
+	bp.LoadURL("nomadnetwork://44f0dbf2ec1c2ac47277995475217aed/page/status.mu")
+	flex, ok := bp.Widget().(*tview.Flex)
+	if !ok {
+		t.Fatalf("expected *tview.Flex")
+	}
+	if got := flex.GetTitle(); got != " <44f0dbf2ec1c2ac47277995475217aed> " {
+		t.Errorf("title after LoadURL = %q, want ' <44f0dbf2ec1c2ac47277995475217aed> '", got)
 	}
 }

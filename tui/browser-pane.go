@@ -69,11 +69,37 @@ func (bp *BrowserPane) setDisconnected() {
 	SetTitledBorder(bp.widget, "Remote Node")
 }
 
+// FormatRemoteNodeTitle formats the Remote Node pane title from a URL or hash,
+// matching Python's Browser.py:569-576 (simplest_display_str -> <hash>).
+func FormatRemoteNodeTitle(url string) string {
+	if url == "" {
+		return "Remote Node"
+	}
+	s := url
+	for _, prefix := range []string{"nomadnetwork://", "lxmf://", "node://"} {
+		if len(s) > len(prefix) && s[:len(prefix)] == prefix {
+			s = s[len(prefix):]
+			break
+		}
+	}
+	for i, r := range s {
+		if r == '/' || r == ':' {
+			s = s[:i]
+			break
+		}
+	}
+	if len(s) == 32 {
+		return "<" + s + ">"
+	}
+	return s
+}
+
 // LoadURL loads a URL and displays the content inside the Remote Node pane.
 func (bp *BrowserPane) LoadURL(url string) {
 	if bp.display != nil {
 		bp.widget.Clear()
 		bp.widget.AddItem(bp.display.Widget(), 0, 1, true)
+		SetTitledBorder(bp.widget, FormatRemoteNodeTitle(url))
 		bp.display.LoadURL(url)
 	}
 }
