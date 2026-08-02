@@ -231,6 +231,11 @@ test or a matching `parity.sh` summary):
 > **Where to start:** The first available task. Each `[ ]` is one TDD unit. Remove
 > it when green. Phases are prerequisites for the ones below them.
 
+- [ ] **Fix TCP Interface Auto-Reconnection in Reticulum**: Ensure TCP client interfaces automatically attempt background socket reconnection when connections are dropped or reset, preventing `use of closed network connection` and `interface is not running` errors during node connections.
+- [ ] **Fix `nodeEmptyState` Centered Text Rendering**: Fix line margin calculation in `newCenteredText` in `tui/network.go` to prevent scrambled text wrapping in the Saved Nodes empty state box.
+- [ ] **Update Remote Node LineBox Header on Connection**: Update `NetworkDisplay` and `BrowserPane` so connecting to a node dynamically sets the right pane LineBox title to `<node_hash>` (matching Python `Network.py`).
+- [ ] **Fix Micron Page Header & Rendering in Remote Node Pane**: Ensure Micron page headers (`Ⓝ url`) and styled Micron elements render in the Remote Node pane upon successful link retrieval.
+
 
 ---
 
