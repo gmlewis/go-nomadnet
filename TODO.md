@@ -60,34 +60,6 @@ RNS transport between a Go process and a Python subprocess; assert byte-for-byte
 
 ---
 
-## go-reticulum dependency (read this before any “RNS-blocked” assumption)
-
-The sibling repo `../go-reticulum` (required as `github.com/gmlewis/go-reticulum`
-via `go.work`) is **near-complete**: it already implements and this port already
-consumes — `Identity`/`RecallIdentity`, `Destination` (+ `RegisterRequestHandler`,
-link-established callbacks), `Link` (`NewLink`/`Establish`/`Request`/handshake/
-keepalive/teardown), `Packet`, `RequestReceipt`, `Resource`/`ResourceAdvertisement`,
-`AnnounceHandler`, `TransportSystem` (`HopsTo`, `GetInterfaces`, `RegisterInterface`,
-`RemoveInterface`, `RegisterAnnounceHandler`), `Reticulum` (`HaltInterface`,
-`ResumeInterface`, `ReloadInterface`), `LoadConfig`, and the full `lxmf` package
-(`Message`, `Router`, `NewMessage`, `NewRouter`, `IngestLXMURI`, `RequestLXMFSync`,
-delivery/propagation states, fields, stamps). All exercised by go-reticulum’s
-`rns-int-*` / `lxmf-int-*` cross-process suites.
-
-**Consequence:** almost everything previously labelled “Phase 5 / RNS-blocked” is
-**not** blocked on go-reticulum — it is go-nomadnet-side *wiring* (calling the
-existing primitives, instantiating `node.Node`, wiring callbacks). Two tasks
-genuinely require go-reticulum work and are tagged below:
-- `[needs go-reticulum A]` — the Network “Show peers” list needs the LXMF
-  `Router.Peers()`/`Unpeer()` accessors + exported `Peer` field getters (go-
-  reticulum TODO Phase A).
-- `[needs go-reticulum B]` — the “ping peer” callback needs `Link.Ping()`
-  (go-reticulum TODO Phase B).
-
-Everything else proceeds against the already-available primitives.
-
----
-
 ## Source of truth — reference facts (the spec; assert against these)
 
 > Condensed from a live headless analysis of the original (urwid 4.0.3, default
@@ -280,9 +252,8 @@ test or a matching `parity.sh` summary):
         draw. Golden `(x,y)` table captured from Python `calc_coords` over a
         known wrapped string (unit test — capture cannot see the cursor).
 - [ ] Mouse clicks have no correlation with what is under the cursor — fix mouse
-      coordinate mapping so clicks hit the right menu/list/link/pane gutter.
-- [ ] Go errors must NEVER be ignored (audit `_ =` / bare calls; log or handle
-      every error).
+      coordinate mapping so clicks hit the right menu/list/link/pane gutter and
+	  eliminate off-by-one errors.
 
 ### Phase 2 — Browser page over RNS (Python `Browser.py`, 1848 lines)
 
@@ -352,10 +323,6 @@ test or a matching `parity.sh` summary):
 > and capture-verified. Remaining items:
 
 - [ ] `LXMFPeers`/`LXMFPeerEntry` — peers list; `C-x` unpeer, `C-r` delivery sync.
-      **`[needs go-reticulum A]`** — needs `lxmf.Router.Peers()`/`Unpeer()` +
-      exported `Peer` field getters (sort by `(pn_trust_level, sync_transfer_rate)`,
-      Network.py:1865). Build the widget now; populate once go-reticulum Phase A
-      is imported.
 - [ ] `NodeInfo` hosting stat lines (Last Announce / Storage / Active Links / Total
       Connects / Total Pages / Total Files, 1 s refresh) — blocked on Phase 6
       node-hosting wiring, not on go-reticulum.
@@ -399,8 +366,8 @@ test or a matching `parity.sh` summary):
       `RegisterRequestHandler`, but `App` never instantiates or starts it. Add
       `App.Node`, start it in `initRNS`, run its job loop, and feed NodeInfo
       hosting stats (unblocks Phase 4 NodeInfo hosting lines).
-- [ ] **Ping peer.** `[needs go-reticulum B]` — wire the “ping peer” callback to
-      `rns.Link.Ping()` (go-reticulum TODO Phase B). Block/unblock are already
+- [ ] **Ping peer.** — wire the “ping peer” callback to
+      `rns.Link.Ping()` Block/unblock are already
       wired (`App.BlockDestination`/`UnblockDestination`).
 - [ ] Wire the splash/quit display to the real intro content and graceful shutdown.
 - [ ] End-to-end smoke: start `-daemon` with a temp config, verify it registers
