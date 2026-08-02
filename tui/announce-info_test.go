@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
@@ -519,5 +520,45 @@ func TestPileFillerPadsBottomWhenContentFits(t *testing.T) {
 		if rows[i] != "" {
 			t.Errorf("row %d = %q, want blank (bottom pad)", i, rows[i])
 		}
+	}
+}
+
+func TestAnnounceInfoNodeButtonNavigation(t *testing.T) {
+	t.Parallel()
+	app := newTestApp()
+	app.Glyphs = GetGlyphSet(GlyphUnicode)
+	nd := NewNetworkDisplay(app, nil, nil)
+
+	var connectedHash string
+	nd.SetNavigateCallback(func(url string) {
+		connectedHash = url
+	})
+
+	hash := "1234567890abcdef1234567890abcdef"
+	ann := AnnounceEntry{
+		Timestamp:   time.Now(),
+		SourceHash:  hash,
+		AppData:     "Test Node",
+		Type:        "node",
+		DisplayName: "Test Node",
+	}
+
+	nd.showAnnounceDetailFor(ann)
+
+	btnRow, ok := nd.listBox.GetItem(0).(*pileFiller)
+	if !ok {
+		t.Fatalf("expected pileFiller in listBox")
+	}
+
+	setFocus := func(p tview.Primitive) { app.Application.SetFocus(p) }
+
+	// RightArrow moves focus from Back to Connect
+	btnRow.InputHandler()(tcell.NewEventKey(tcell.KeyRight, 0, tcell.ModNone), setFocus)
+
+	// Enter activates Connect button
+	btnRow.InputHandler()(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone), setFocus)
+
+	if connectedHash != hash {
+		t.Errorf("got connectedHash %q, want %q", connectedHash, hash)
 	}
 }

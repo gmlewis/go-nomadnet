@@ -98,6 +98,7 @@ type urwidColumns struct {
 	children    []tview.Primitive
 	weights     []int
 	dividechars int
+	focusIndex  int
 }
 
 // newURWIDColumns builds a urwid-style Columns row of the given weighted
@@ -112,6 +113,89 @@ func newURWIDColumns(dividechars int, children ...tview.Primitive) *urwidColumns
 		children:    children,
 		weights:     weights,
 		dividechars: dividechars,
+		focusIndex:  -1,
+	}
+}
+
+// isFocusable returns true if child can receive focus (e.g. UrwidButton, ReadlineEdit, RadioButton, Checkbox).
+// Plain layout spacers like *tview.Box or static *tview.TextView return false.
+func isFocusable(p tview.Primitive) bool {
+	if p == nil {
+		return false
+	}
+	if s, ok := p.(interface{ IsSelectable() bool }); ok {
+		return s.IsSelectable()
+	}
+	// Plain *tview.Box (created with tview.NewBox()) is a layout spacer.
+	if _, isBox := p.(*tview.Box); isBox {
+		return false
+	}
+	return p.InputHandler() != nil
+}
+
+// FocusIndex returns the index of the currently focused child, or -1.
+func (c *urwidColumns) FocusIndex() int {
+	return c.focusIndex
+}
+
+// SetFocusIndex sets the focused child index if valid and focusable.
+func (c *urwidColumns) SetFocusIndex(index int) *urwidColumns {
+	if index >= 0 && index < len(c.children) && isFocusable(c.children[index]) {
+		if c.focusIndex >= 0 && c.focusIndex < len(c.children) && c.children[c.focusIndex] != c.children[index] {
+			if bl, ok := c.children[c.focusIndex].(interface{ Blur() }); ok {
+				bl.Blur()
+			}
+		}
+		c.focusIndex = index
+	}
+	return c
+}
+
+// moveFocus shifts focus by delta among focusable children.
+func (c *urwidColumns) moveFocus(delta int, setFocus func(p tview.Primitive)) {
+	n := len(c.children)
+	if n == 0 {
+		return
+	}
+	var focusable []int
+	for i, child := range c.children {
+		if isFocusable(child) {
+			focusable = append(focusable, i)
+		}
+	}
+	if len(focusable) == 0 {
+		return
+	}
+
+	if c.focusIndex >= 0 && c.focusIndex < n {
+		if bl, ok := c.children[c.focusIndex].(interface{ Blur() }); ok {
+			bl.Blur()
+		}
+	}
+
+	currPos := -1
+	for pos, idx := range focusable {
+		if idx == c.focusIndex {
+			currPos = pos
+			break
+		}
+	}
+	if currPos == -1 {
+		if delta >= 0 {
+			currPos = 0
+		} else {
+			currPos = len(focusable) - 1
+		}
+	} else {
+		currPos = (currPos + delta%len(focusable) + len(focusable)) % len(focusable)
+	}
+
+	c.focusIndex = focusable[currPos]
+	nw := c.children[c.focusIndex]
+	if setFocus != nil {
+		setFocus(nw)
+	} else {
+		nw.Focus(func(tview.Primitive) {})
 	}
 }
 
@@ -170,8 +254,20 @@ func (c *urwidColumns) requiredHeightAt(w int) int {
 // so the row behaves like a single selectable group (urwid Columns forwards
 // focus to focus_position).
 func (c *urwidColumns) Focus(delegate func(p tview.Primitive)) {
-	if len(c.children) > 0 {
-		c.children[0].Focus(delegate)
+	if len(c.children) == 0 {
+		return
+	}
+	if c.focusIndex < 0 || c.focusIndex >= len(c.children) || !isFocusable(c.children[c.focusIndex]) {
+		c.focusIndex = -1
+		for i, child := range c.children {
+			if isFocusable(child) {
+				c.focusIndex = i
+				break
+			}
+		}
+	}
+	if c.focusIndex >= 0 && c.focusIndex < len(c.children) {
+		c.children[c.focusIndex].Focus(delegate)
 	}
 }
 
@@ -186,13 +282,54 @@ func (c *urwidColumns) HasFocus() bool {
 
 func (c *urwidColumns) InputHandler() func(event *tcell.EventKey, setFocus func(p tview.Primitive)) {
 	return func(event *tcell.EventKey, setFocus func(p tview.Primitive)) {
-		for _, child := range c.children {
+		if len(c.children) == 0 {
+			return
+		}
+
+		for i, child := range c.children {
 			if child.HasFocus() {
-				if h := child.InputHandler(); h != nil {
-					h(event, setFocus)
-				}
+				c.focusIndex = i
+				break
+			}
+		}
+
+		if c.focusIndex < 0 || c.focusIndex >= len(c.children) {
+			return
+		}
+
+		focusedChild := c.children[c.focusIndex]
+
+		// For text input fields (e.g. ReadlineEdit or tview.InputField), plain KeyLeft and KeyRight move the text cursor.
+		// Tab and Backtab move column focus.
+		// For other widgets (e.g. UrwidButton), KeyLeft, KeyRight, KeyTab, KeyBacktab all move column focus.
+		isTextInput := false
+		if _, isRL := focusedChild.(*ReadlineEdit); isRL {
+			isTextInput = true
+		} else if _, isIF := focusedChild.(*tview.InputField); isIF {
+			isTextInput = true
+		}
+
+		switch event.Key() {
+		case tcell.KeyRight:
+			if !isTextInput {
+				c.moveFocus(1, setFocus)
 				return
 			}
+		case tcell.KeyLeft:
+			if !isTextInput {
+				c.moveFocus(-1, setFocus)
+				return
+			}
+		case tcell.KeyTab:
+			c.moveFocus(1, setFocus)
+			return
+		case tcell.KeyBacktab:
+			c.moveFocus(-1, setFocus)
+			return
+		}
+
+		if h := focusedChild.InputHandler(); h != nil {
+			h(event, setFocus)
 		}
 	}
 }
