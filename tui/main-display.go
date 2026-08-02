@@ -431,8 +431,28 @@ func (md *MainDisplay) redrawMenuBar() {
 // MenuColumns:172-176). Used for Enter/Space, mouse click, and programmatic
 // page switches; when focus is already in the body (e.g. a body action calling
 // SelectPage) it remains in the body, pointing at the new page.
+//
+// The "quit" item is the exception: Python's handler.quit (Main.py:158-168)
+// raises urwid.ExitMainLoop so the atexit-registered exit_handler runs the
+// graceful shutdown (save directory, tear down RRC). It shows no page. So
+// activating "quit" invokes the quit callback (which performs App.Shutdown +
+// stops the UI) instead of switching the body. The callback runs OUTSIDE md.mu
+// because it drives the full shutdown (Stop, which may re-enter the app).
 func (md *MainDisplay) selectMenu(index int) {
 	md.mu.Lock()
+	if index < 0 || index >= len(md.menuItems) {
+		md.mu.Unlock()
+		return
+	}
+	key := md.menuItems[index].Key
+	if key == "quit" {
+		onQuit := md.onQuit
+		md.mu.Unlock()
+		if onQuit != nil {
+			onQuit()
+		}
+		return
+	}
 	md.selectMenuLocked(index)
 	md.mu.Unlock()
 }

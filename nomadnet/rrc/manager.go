@@ -259,6 +259,17 @@ func (m *RRCManager) RemoveHub(hub *RRCHub) {
 	}
 }
 
+// HubsSnapshot returns a locked copy of the hub slice, for the TUI to render
+// the channels list without racing AddHub/RemoveHub mutations. The returned
+// slice is a copy; mutating it does not affect the manager.
+func (m *RRCManager) HubsSnapshot() []*RRCHub {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	out := make([]*RRCHub, len(m.Hubs))
+	copy(out, m.Hubs)
+	return out
+}
+
 // FindHub looks up a hub by hash and destination name.
 func (m *RRCManager) FindHub(hubHash []byte, destName string) *RRCHub {
 	m.lock.Lock()

@@ -74,16 +74,15 @@ func TestIntegrationNodeAnnounceReceivedByPeer(t *testing.T) {
 
 func newStartedTS(t *testing.T) (*rns.TransportSystem, func()) {
 	t.Helper()
-	dir, cleanup := testutils.TempDir(t, "nomadnet-node-int-ts")
+	dir := testutils.TempDir(t, "nomadnet-node-int-ts")
 	cfgDir := filepath.Join(dir, "config")
 	writeRNSConfig(t, cfgDir)
 	ts := rns.NewTransportSystem(nil)
 	_, err := rns.NewReticulum(ts, cfgDir)
 	if err != nil {
-		cleanup()
 		t.Fatalf("NewReticulum error: %v", err)
 	}
-	return ts, cleanup
+	return ts, func() { ts.Stop() }
 }
 
 func writeRNSConfig(t *testing.T, configDir string) {

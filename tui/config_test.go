@@ -68,21 +68,21 @@ func TestConfigDisplayOpenEditor(t *testing.T) {
 func TestResolveEditorCmdDefault(t *testing.T) {
 	t.Parallel()
 
-	got := resolveEditorCmdDefault("editor")
+	got := ResolveEditorCmd("editor")
 	switch runtime.GOOS {
 	case "darwin":
 		if got != "nano" {
-			t.Errorf("resolveEditorCmdDefault(editor) on darwin = %q, want nano", got)
+			t.Errorf("ResolveEditorCmd(editor) on darwin = %q, want nano", got)
 		}
 	default:
 		if got != "editor" {
-			t.Errorf("resolveEditorCmdDefault(editor) = %q, want editor", got)
+			t.Errorf("ResolveEditorCmd(editor) = %q, want editor", got)
 		}
 	}
 
 	// A custom editor is never rewritten to nano.
-	if got := resolveEditorCmdDefault("vim"); got != "vim" {
-		t.Errorf("resolveEditorCmdDefault(vim) = %q, want vim", got)
+	if got := ResolveEditorCmd("vim"); got != "vim" {
+		t.Errorf("ResolveEditorCmd(vim) = %q, want vim", got)
 	}
 }
 

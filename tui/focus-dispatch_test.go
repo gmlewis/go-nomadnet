@@ -114,6 +114,16 @@ func TestFocusDispatch(t *testing.T) {
 		{"menu/space activates page, keeps menu focus", "menu", 2, "conversations",
 			tcell.NewEventKey(tcell.KeyRune, ' ', tcell.ModNone),
 			"menu", 2, "channels", true, false},
+		// The Quit menu item (index 7, key "quit") triggers graceful shutdown
+		// (Python Main.py:158 handler.quit raises urwid.ExitMainLoop → NomadNetworkApp
+		// atexit exit_handler saves directory + tears down RRC). It must NOT switch
+		// the body to the "quit" page — Python shows no page on quit.
+		{"menu/enter on quit triggers shutdown", "menu", last, "conversations",
+			tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone),
+			"menu", last, "conversations", true, true},
+		{"menu/space on quit triggers shutdown", "menu", last, "conversations",
+			tcell.NewEventKey(tcell.KeyRune, ' ', tcell.ModNone),
+			"menu", last, "conversations", true, true},
 		{"menu/tab drops to body, no switch", "menu", 1, "conversations",
 			tcell.NewEventKey(tcell.KeyTab, 0, tcell.ModNone),
 			"body", 1, "conversations", true, false},

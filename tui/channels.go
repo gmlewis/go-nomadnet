@@ -76,6 +76,17 @@ type ChannelsDisplay struct {
 	channelListVisible bool
 	collapseJoinPart   bool
 
+	// hubEntries is the last ComposeHubList output rendered by SetHubs, indexed
+	// 1:1 with the rooms list. selectEntry uses it to dispatch hub/room
+	// selection. Mirrors Python's list_widgets (Channels.py:1599-1662).
+	hubEntries []HubListEntry
+
+	// Selection callbacks, mirroring Python's _select_hub / _select_room
+	// (Channels.py:1672-1729): selecting a hub header opens/activates the hub;
+	// selecting a room opens the room.
+	OnSelectHub  func(hubIdx int)
+	OnSelectRoom func(hubIdx int, room string)
+
 	// Keyboard shortcut callbacks (Python: ChannelsListArea.keypress, RoomFrame.keypress)
 	OnNewHub              func()
 	OnJoinRoom            func()
@@ -106,7 +117,7 @@ func NewChannelsDisplay(app *App, rooms []ChannelInfo) *ChannelsDisplay {
 	cd.rooms.SetHighlightFullLine(true)
 	ApplyListFocusStyle(cd.rooms, app.Theme)
 	cd.rooms.SetSelectedFunc(func(i int, mainText, secondaryText string, shortcut rune) {
-		// Room selected — load its messages (wired by the app layer).
+		cd.selectEntry(i)
 	})
 	cd.ilb = NewIndicativeListBox(cd.rooms)
 
@@ -193,6 +204,44 @@ func (cd *ChannelsDisplay) populateRooms(rooms []ChannelInfo) {
 		text := fmt.Sprintf("%s#%s", prefix, room.Name)
 		secondary := fmt.Sprintf("%d members — %s", room.Members, room.Topic)
 		cd.rooms.AddItem(text, secondary, 0, nil)
+	}
+}
+
+// SetHubs repopulates the channels hub/room list from the given hubs, mirroring
+// Python's _compose_list_widgets (Channels.py:1599-1662). Each hub becomes a
+// status-glyph + name header row; the sorted union of its joined and
+// message-bearing rooms becomes "   <marker> #<room>" rows; a blank spacer row
+// separates consecutive hubs. Rows carry their style's palette color as a
+// tview color tag so the unfocused list matches Python's per-row AttrMap
+// coloring. The empty (no-hubs) state is rendered by the list's empty widget.
+func (cd *ChannelsDisplay) SetHubs(hubs []HubView) {
+	colors := GetThemeColors(cd.app.Theme)
+	glyphs := cd.app.Glyphs
+	entries := ComposeHubList(hubs, glyphs)
+	cd.hubEntries = entries
+	cd.rooms.Clear()
+	for _, e := range entries {
+		cd.rooms.AddItem(HubListRowText(e, colors), "", 0, nil)
+	}
+}
+
+// selectEntry dispatches a list-row selection to the hub/room selection
+// callback for the entry at the given index, mirroring Python's _select_hub /
+// _select_room (Channels.py:1672-1729). Spacer rows are ignored.
+func (cd *ChannelsDisplay) selectEntry(idx int) {
+	if idx < 0 || idx >= len(cd.hubEntries) {
+		return
+	}
+	e := cd.hubEntries[idx]
+	switch e.Kind {
+	case RowHub:
+		if cd.OnSelectHub != nil {
+			cd.OnSelectHub(e.HubIdx)
+		}
+	case RowRoom:
+		if cd.OnSelectRoom != nil {
+			cd.OnSelectRoom(e.HubIdx, e.Room)
+		}
 	}
 }
 

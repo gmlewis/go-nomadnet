@@ -37,6 +37,7 @@ import (
 	"github.com/gmlewis/go-nomadnet/nomadnet/config"
 	"github.com/gmlewis/go-nomadnet/nomadnet/conversation"
 	"github.com/gmlewis/go-nomadnet/nomadnet/directory"
+	"github.com/gmlewis/go-nomadnet/nomadnet/node"
 	"github.com/gmlewis/go-nomadnet/nomadnet/peersettings"
 	"github.com/gmlewis/go-nomadnet/nomadnet/rrc"
 	"github.com/gmlewis/go-nomadnet/nomadnet/storage"
@@ -186,6 +187,11 @@ type App struct {
 	RNSConfigDir     string
 	standaloneRNSDir string
 
+	// Node is the hosted Nomad Network node (nomadnet/node.Node), started when
+	// EnableNode is true. Mirrors Python NomadNetworkApp.py:399
+	// self.node = nomadnet.Node(self). It is nil when node hosting is disabled.
+	Node *node.Node
+
 	// Announce state
 	LastAnnounce    time.Time
 	LastLXMFSync    time.Time
@@ -332,6 +338,11 @@ func (a *App) Init() error {
 	// Initialize non-blocking subsystems
 	a.Dir = directory.New()
 	a.Dir.SanitizeNames = a.Config.TextUI.SanitizeNames
+	// Restore the persisted directory (Python Directory.__init__ →
+	// load_from_disk, Directory.py:82). A missing file is not an error.
+	if err := a.Dir.LoadFromDisk(a.DirectoryPath); err != nil {
+		a.Logger.Error("Could not load directory from %s: %v", a.DirectoryPath, err)
+	}
 	a.RRC = rrc.NewManager(a.StoragePath, nil)
 	a.loadPeerSettings()
 	a.loadIgnoredList()
@@ -418,6 +429,13 @@ func (a *App) initRNS() {
 	})
 	a.Logger.Info("Announce handlers registered")
 
+	// Start the hosted node when enable_node is set (Python
+	// NomadNetworkApp.py:399 self.node = nomadnet.Node(self)). A start failure is
+	// logged but does not abort the client, matching Python's daemon resilience.
+	if err := a.startNode(); err != nil {
+		a.Logger.Error("Could not start node: %v", err)
+	}
+
 	// RNS is now ready (identity + LXMF destination loaded): notify the UI so
 	// widgets that need identity data (e.g. the Local Peer Info panel) can
 	// populate now, even though initRNS ran asynchronously after Init returned.
@@ -469,6 +487,12 @@ func (a *App) InitWithTransport(ts *rns.TransportSystem, identity *rns.Identity)
 	a.Dir = directory.New()
 	a.Dir.SanitizeNames = a.Config.TextUI.SanitizeNames
 	a.Dir.SetTransport(ts)
+	// Restore the persisted directory (Python Directory.__init__ →
+	// load_from_disk, Directory.py:82) so known peers, trust levels, and the
+	// announce stream survive a restart. A missing file is not an error.
+	if err := a.Dir.LoadFromDisk(a.DirectoryPath); err != nil {
+		a.Logger.Error("Could not load directory from %s: %v", a.DirectoryPath, err)
+	}
 	a.RRC = rrc.NewManager(a.StoragePath, nil)
 	a.RRC.SetIdentity(a.Identity)
 	a.RRC.SetHistoryConfig(a.RRCHistoryPerRoomCap, a.RRCFilterLoadedHistory, a.RRCEphemeralNotices)
@@ -503,6 +527,11 @@ func (a *App) InitWithTransport(ts *rns.TransportSystem, identity *rns.Identity)
 		AspectFilter:                "rrc.chat",
 		ReceivedAnnounceWithContext: a.handleRRCAnnounce,
 	})
+
+	// Start the hosted node when enable_node is set (mirrors initRNS).
+	if err := a.startNode(); err != nil {
+		return fmt.Errorf("starting node: %w", err)
+	}
 
 	return nil
 }
@@ -691,6 +720,20 @@ func (a *App) Shutdown() {
 	defer a.mu.Unlock()
 
 	a.ShouldRunJobs = false
+
+	// Persist the in-memory directory (known peers, trust levels, announce
+	// stream) to disk before tearing anything down — Python's exit_handler does
+	// self.directory.save_to_disk() first (NomadNetworkApp.py:42). Without this
+	// the directory is ephemeral and every known peer is lost on restart.
+	if a.Dir != nil {
+		if err := a.Dir.SaveToDisk(a.DirectoryPath); err != nil {
+			a.Logger.Error("Could not save directory to %s: %v", a.DirectoryPath, err)
+		}
+	}
+
+	// Stop the hosted node's background job loop (Python exit_handler sets
+	// should_run_jobs false, which halts Node.__jobs).
+	a.stopNode()
 
 	if a.RRC != nil {
 		a.RRC.Shutdown()

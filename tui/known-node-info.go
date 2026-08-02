@@ -47,6 +47,7 @@ type KnownNodeInfoFormData struct {
 	SortRank          string
 	TrustLevel        string
 	UseAsPN           bool
+	UseAsPNChanged    bool // true iff the user toggled the PN checkbox (Python pn_changed)
 	IdentifyOnConnect bool
 }
 
@@ -78,6 +79,7 @@ type knownNodeInfoDisplay struct {
 	rUnknown   *RadioButton
 	rTrusted   *RadioButton
 	pile       *pileFiller
+	pnChanged  bool // set when the PN checkbox is toggled (Python pn_changed)
 }
 
 // newKnownNodeInfoDisplay builds the KnownNodeInfo form for the given node hash.
@@ -108,10 +110,13 @@ func newKnownNodeInfoDisplay(nd *NetworkDisplay, nodeHash string, data KnownNode
 	k.rUnknown = NewRadioButton(group, "Unknown", data.TrustLevel == "unknown", false)
 	k.rTrusted = NewRadioButton(group, "Trusted", data.TrustLevel == "trusted", false)
 
-	// CheckBoxes (Network.py:727-728).
+	// CheckBoxes (Network.py:727-728). The PN checkbox records whether the user
+	// toggled it (pn_changed, Network.py:720-721) so Save only acts on it when
+	// the user actually changed it, matching Python.
 	k.pnCheck = tview.NewCheckbox().
 		SetLabel("Use as default propagation node").
-		SetChecked(data.UseAsPN)
+		SetChecked(data.UseAsPN).
+		SetChangedFunc(func(checked bool) { k.pnChanged = true })
 	k.idCheck = tview.NewCheckbox().
 		SetLabel("Identify when connecting").
 		SetChecked(data.IdentifyOnConnect)
@@ -176,6 +181,7 @@ func (k *knownNodeInfoDisplay) FormData() KnownNodeInfoFormData {
 		SortRank:          k.sortEdit.GetText(),
 		TrustLevel:        trust,
 		UseAsPN:           k.pnCheck.IsChecked(),
+		UseAsPNChanged:    k.pnChanged,
 		IdentifyOnConnect: k.idCheck.IsChecked(),
 	}
 }

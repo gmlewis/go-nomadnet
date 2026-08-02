@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -461,6 +462,32 @@ func TestManagerAddRemoveHub(t *testing.T) {
 	mgr.RemoveHub(hub1)
 	if len(mgr.Hubs) != 1 {
 		t.Errorf("Hubs len after remove = %d, want 1", len(mgr.Hubs))
+	}
+}
+
+// TestManagerHubsSnapshot pins HubsSnapshot: a locked copy of the hubs slice
+// the TUI reads to render the channels list. Mutating the returned slice must
+// not affect the manager's internal slice.
+func TestManagerHubsSnapshot(t *testing.T) {
+	t.Parallel()
+
+	dir := tempDir(t)
+	mgr := NewManager(dir, nil)
+	mgr.AddHub([]byte{0x01, 0x02, 0x03, 0x04}, "rrc.hub", "Hub 1")
+	mgr.AddHub([]byte{0x05, 0x06, 0x07, 0x08}, "rrc.hub", "Hub 2")
+
+	snap := mgr.HubsSnapshot()
+	if len(snap) != 2 {
+		t.Fatalf("HubsSnapshot len = %d, want 2", len(snap))
+	}
+	if snap[0].GetHubName() != "Hub 1" || snap[1].GetHubName() != "Hub 2" {
+		t.Errorf("HubsSnapshot names = %q, %q, want Hub 1, Hub 2", snap[0].GetHubName(), snap[1].GetHubName())
+	}
+
+	// Mutating the snapshot must not affect the manager.
+	snap = append(snap, nil)
+	if len(mgr.Hubs) != 2 {
+		t.Errorf("manager Hubs len after snapshot append = %d, want 2", len(mgr.Hubs))
 	}
 }
 
@@ -2158,5 +2185,48 @@ func TestHandleWelcomeParsesFieldsAfterCBORRoundTrip(t *testing.T) {
 	}
 	if rate != 240 {
 		t.Errorf("RateLimitMsgsPerMin = %v, want 240", rate)
+	}
+}
+
+// TestHubListViewAccessors pins the locked read accessors used by the TUI
+// HubView adapter to render the channels hub/room list (mirroring Python
+// Channels._compose_list_widgets, Channels.py:1599-1662, reading hub.name,
+// hub.status, hub.rooms, hub.messages, hub.unread_rooms, hub.mention_rooms).
+// The accessors return sorted lists so ComposeHubList's sorted union is stable.
+func TestHubListViewAccessors(t *testing.T) {
+	t.Parallel()
+
+	hub := NewHub(nil, []byte{0x01, 0x02, 0x03, 0x04}, "rrc.hub", "My Hub")
+	hub.SetStatus(StatusConnected, "ok")
+
+	hub.AddRoom("random")
+	hub.AddRoom("general")
+
+	// A message-bearing but not-joined room appears via Messages keys.
+	hub.lock.Lock()
+	hub.Messages["zzz"] = []*RRCMessage{{Text: "hi"}}
+	hub.UnreadRooms["onlymsg"] = true
+	hub.MentionRooms["joined"] = true
+	hub.lock.Unlock()
+
+	if got := hub.GetHubName(); got != "My Hub" {
+		t.Errorf("GetHubName = %q, want %q", got, "My Hub")
+	}
+	if got := hub.GetHubStatus(); got != StatusConnected {
+		t.Errorf("GetHubStatus = %d, want %d", got, StatusConnected)
+	}
+	if got, want := hub.JoinedRoomList(), []string{"general", "random"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("JoinedRoomList = %v, want %v", got, want)
+	}
+	// MessageRoomList includes both joined rooms (which get an empty Messages
+	// slice on AddRoom) and the explicit zzz room.
+	if got, want := hub.MessageRoomList(), []string{"general", "random", "zzz"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("MessageRoomList = %v, want %v", got, want)
+	}
+	if got, want := hub.UnreadRoomList(), []string{"onlymsg"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("UnreadRoomList = %v, want %v", got, want)
+	}
+	if got, want := hub.MentionRoomList(), []string{"joined"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("MentionRoomList = %v, want %v", got, want)
 	}
 }

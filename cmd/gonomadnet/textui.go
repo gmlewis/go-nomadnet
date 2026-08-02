@@ -16,18 +16,24 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gmlewis/go-nomadnet/nomadnet/app"
+	"github.com/gmlewis/go-nomadnet/nomadnet/browser"
 	"github.com/gmlewis/go-nomadnet/nomadnet/conversation"
 	"github.com/gmlewis/go-nomadnet/nomadnet/directory"
 	"github.com/gmlewis/go-nomadnet/tui"
 	"github.com/gmlewis/go-reticulum/lxmf"
+	"github.com/gmlewis/go-reticulum/rns"
 	"github.com/rivo/tview"
 )
 
@@ -126,6 +132,42 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	networkDisplay := tui.NewNetworkDisplay(tuiApp, nil, nil)
 	networkDisplay.SanitizeNames = a.Config.TextUI.SanitizeNames
 
+	// refreshLXMFPeers rebuilds the LXMF Propagation Peers list from the app's
+	// LXMF message router (Python reinit_lxmf_peers, Network.py:1717 +
+	// make_peer_widgets 1863-1869): peers sorted by (pn_trust_level,
+	// sync_transfer_rate) descending; each row is the peer_info_str from
+	// FormatLXMFPeerEntry. No router (early boot) ⇒ empty (no-content branch).
+	refreshLXMFPeers := func() {
+		if a.Router == nil {
+			networkDisplay.UpdateLXMFPeers(nil)
+			return
+		}
+		peers := a.Router.Peers()
+		sym := tuiApp.Glyphs["sent"]
+		entries := make([]tui.LXMFPeerEntry, 0, len(peers))
+		// Sort by (pn_trust_level, sync_transfer_rate) descending (Python: sorted
+		// ... reverse=True). Trust bytes: Trusted=0xFF > Unknown=0x02 >
+		// Untrusted=0x01 > Warning=0x00, so plain descending byte order matches.
+		sort.SliceStable(peers, func(i, j int) bool {
+			hi := peers[i].DestinationHash()
+			hj := peers[j].DestinationHash()
+			ti, _ := a.Dir.PNTrustLevel(hi)
+			tj, _ := a.Dir.PNTrustLevel(hj)
+			if ti != tj {
+				return ti > tj
+			}
+			return peers[i].SyncTransferRate() > peers[j].SyncTransferRate()
+		})
+		for _, peer := range peers {
+			displayStr := tui.ResolvePeerDisplayStr(peer.DestinationHash(), peer.Identity(), a.Dir.AllegedDisplayStr)
+			data := tui.BuildPeerEntryData(peer, displayStr, sym)
+			entries = append(entries, tui.LXMFPeerEntry{
+				DisplayText:     tui.FormatLXMFPeerEntry(data, time.Now()),
+				DestinationHash: peer.DestinationHash(),
+			})
+		}
+		networkDisplay.UpdateLXMFPeers(entries)
+	}
 	// localPeerInfo formats the app's identity/LXMF hashes + display name +
 	// last-announce time for the Local Peer Info panel (Python LocalPeer,
 	// Network.py:1259). prettyhexrep = "<" + lowercase hex + ">".
@@ -138,6 +180,16 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	}
 	lxmfAddr, idhash, dname, lann := localPeerInfo()
 	networkDisplay.UpdateLocalPeer(lxmfAddr, idhash, dname, lann)
+
+	// navigateTo is assigned once the browser display is constructed (below),
+	// then invoked both by the network list's connect handler and by the Local
+	// Node Info "Browse" button (Python connect_query,
+	// Network.py:1402-1404/browse_own). It is captured here so the node-info
+	// callback — wired before the browser exists — can close over it and call
+	// the live value at click time.
+	navigateTo := func(string) {}
+	_ = navigateTo
+
 	networkDisplay.SetLocalPeerHandlers(
 		func(name string) {
 			a.SetDisplayName(name)
@@ -161,10 +213,19 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		},
 		func() {
 			// Swap the left pile's PACK slot from Local Peer Info to the Local
-			// Node Info panel (Python node_info_query, Network.py:1399-1401).
-			// Node hosting is not yet wired in the Go port (no app.Node server;
-			// Phase 5), so the panel renders the "not hosting a node" branch.
-			networkDisplay.ShowNodeInfo(tui.NodeInfoData{HasNode: false})
+			// Node Info panel (Python node_info_query, Network.py:1399-1401),
+			// building the panel from the hosted node's live state. When no node
+			// is hosted (EnableNode false) the panel renders the "not hosting a
+			// node" branch (Python NodeInfo else-branch, Network.py:1541-1551).
+			data := buildNodeInfoData(a, navigateTo, func() {
+				tuiApp.Dialogs.ShowDialog("Announce Sent",
+					tview.NewTextView().
+						SetDynamicColors(true).
+						SetTextAlign(tview.AlignCenter).
+						SetText("\n\n\nAnnounce Sent\n\n\n"),
+					40, 10, nil)
+			})
+			networkDisplay.ShowNodeInfo(data)
 		},
 	)
 
@@ -233,12 +294,6 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		return networkDisplay.HandleEsc()
 	})
 
-	// Wire node connect to open the browser.
-	networkDisplay.SetNavigateCallback(func(url string) {
-		// TODO: Switch to browser display and load the URL.
-		_ = url
-	})
-
 	// Wire network keyboard shortcuts
 	networkDisplay.OnDeleteSelected = func() {
 		tuiApp.Dialogs.ShowConfirmDialog("Delete selected entry?",
@@ -267,10 +322,51 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	}
 	networkDisplay.OnShowPeers = func() {
 		// Python reinit_lxmf_peers (Network.py:1717): rebuild the peer list
-		// from the LXMF message router before show_peers swaps it in. The
-		// message router's peer set is not wired until Phase 5, so refresh
-		// with the (currently empty) set; the no-content branch renders.
-		networkDisplay.UpdateLXMFPeers(nil)
+		// from the LXMF message router before show_peers swaps it in.
+		refreshLXMFPeers()
+	}
+	networkDisplay.OnLXMFPeerUnpeer = func(destinationHash []byte) {
+		// Python LXMFPeers.delete_selected_entry (Network.py:1800-1806):
+		// unpeer then reinit+show. The router guards out-of-order unpeers by
+		// the peer's peering_timebase. The peers slot is already displayed
+		// (C-x is pressed on it), so UpdateLXMFPeers refreshes it in place.
+		if a.Router != nil {
+			a.Router.Unpeer(destinationHash)
+		}
+		refreshLXMFPeers()
+	}
+	networkDisplay.OnLXMFPeerSync = func(destinationHash []byte) {
+		// Python LXMFPeers.sync_selected_entry (Network.py:1808-1834): honor a
+		// 10 s sync-grace window, then trigger peer.sync() in a goroutine and
+		// show the "delivery sync requested" dialog (OK dismisses via
+		// close_list_dialogs = reinit+show_peers).
+		if a.Router == nil {
+			return
+		}
+		peer := a.Router.PeerByHash(destinationHash)
+		if peer == nil {
+			return
+		}
+		const syncGrace = 10.0
+		now := float64(time.Now().UnixNano()) / float64(time.Second)
+		if now <= peer.LastSyncAttempt()+syncGrace {
+			return
+		}
+		// Peer.Sync blocks on link requests; mirror Python's
+		// threading.Thread(target=peer.sync).
+		go peer.Sync()
+		msg := tview.NewTextView().
+			SetDynamicColors(true).
+			SetTextAlign(tview.AlignCenter).
+			SetText("\nA delivery sync of all unhandled LXMs was manually requested for the selected node\n")
+		okBtn := tview.NewButton("OK").SetSelectedFunc(func() {
+			tuiApp.Dialogs.DismissTop()
+			refreshLXMFPeers()
+		})
+		layout := tview.NewFlex().SetDirection(tview.FlexRow).
+			AddItem(msg, 0, 1, false).
+			AddItem(okBtn, 1, 0, true)
+		tuiApp.Dialogs.ShowDialog("!", layout, 60, 6, nil)
 	}
 	networkDisplay.OnURLDialog = func() {
 		tuiApp.Dialogs.ShowInputDialog("Navigate",
@@ -303,8 +399,9 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	}
 	// Resolve directory-backed fields for the AnnounceInfo view (Python
 	// AnnounceInfo __init__: trust_level, simplest_display_str, op_str). The
-	// operator string needs RNS identity recall to compute the lxmf.delivery
-	// hash (Phase 5), so it is "Unknown" until then.
+	// operator string for a node announce recalls the identity and derives the
+	// lxmf.delivery hash (Network.py:138-144); a non-recallable identity falls
+	// back to "Unknown" (Python raises; the TUI surfaces "Unknown" gracefully).
 	networkDisplay.OnResolveAnnounceInfo = func(ann tui.AnnounceEntry) (tui.AnnounceInfoData, bool) {
 		data := tui.AnnounceInfoData{OpStr: "Unknown"}
 		hash, ok := app.SourceHashFromHex(ann.SourceHash)
@@ -315,6 +412,9 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 			return data, true
 		}
 		data.DisplayStr = a.Dir.SimplestDisplayStr(hash)
+		if ann.Type == "node" {
+			data.OpStr = a.NodeOperatorDisplay(hash)
+		}
 		switch a.Dir.TrustLevel(hash, nil) {
 		case directory.TrustTrusted:
 			data.TrustStr = "Trusted"
@@ -358,6 +458,19 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 			data.SortStr = strconv.Itoa(*sr)
 		}
 		data.IdentifyOnConnect = a.Dir.ShouldIdentifyOnConnect(hash)
+		// RNS-derived fields (Network.py:629-634,681-688,791-800): operator display
+		// (lxmf.delivery hash), hop distance (Transport.hops_to), the centered
+		// LXMF Propagation Node address line (lxmf.propagation hash), and the
+		// default-PN checkbox preselection (current user-selected PN == pn_hash).
+		data.OpStr = a.NodeOperatorDisplay(hash)
+		data.HopsStr = tui.FormatHopsStr(a.PeerHops(hash))
+		pnHash := a.NodePropagationHash(hash)
+		data.LXMFAddrStr = tui.FormatLXMFAddrStr(pnHash, tuiApp.Glyphs["sent"])
+		if pnHash != nil {
+			if sel := a.GetUserSelectedPropagationNode(); sel != nil && bytes.Equal(sel, pnHash) {
+				data.UseAsPN = true
+			}
+		}
 		switch a.Dir.TrustLevel(hash, nil) {
 		case directory.TrustTrusted:
 			data.TrustLevel = "trusted"
@@ -399,6 +512,22 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 			entry.SortRank = &n
 		}
 		a.Dir.Remember(entry)
+		// Default-PN toggle (Python save_node, Network.py:730-734): only act if
+		// the user toggled the checkbox. Checked → set the PN to this node's
+		// lxmf.propagation hash; unchecked → clear the selection.
+		if fd.UseAsPNChanged {
+			if fd.UseAsPN {
+				if pn := a.NodePropagationHash(hash); pn != nil {
+					a.SetUserSelectedPropagationNode(pn)
+				}
+			} else {
+				a.SetUserSelectedPropagationNode(nil)
+			}
+		}
+		// autoselect runs when the saved trust becomes Trusted (Network.py:757-758).
+		if entry.TrustLevel == directory.TrustTrusted {
+			a.AutoSelectPropagationNode()
+		}
 	}
 
 	// Ctrl-E opens the KnownNodeInfo form for the selected saved node (Python
@@ -588,11 +717,18 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 					a.QueryForPeer(h)
 				}
 			},
-			// Ping requires a full RNS link-establishment flow with async
-			// established/closed callbacks and a timeout (Python
-			// _ping_peer_from_dialog, Conversations.py:705-768). It is wired in
-			// a later parity pass; the button is drawn for layout parity.
-			OnPing: nil,
+			// Ping opens an outbound lxmf.delivery link to the peer and reports
+			// "Pong in N ms (M hops)" on establishment (Python
+			// _ping_peer_from_dialog, Conversations.py:705-768). PingPeer's link
+			// established/closed callbacks run on the RNS worker goroutine, but
+			// setStatus updates a tview TextView, so marshal every update onto
+			// the UI thread via QueueUpdateDraw (matches Python's schedule_ui).
+			OnPing: func(sourceHash string, setStatus func(string)) {
+				marshaled := func(s string) {
+					tuiApp.QueueUpdateDraw(func() { setStatus(s) })
+				}
+				a.PingPeer(sourceHash, marshaled)
+			},
 			OnBlock: func(sourceHash string) {
 				// Python _block_peer_from_dialog shows a confirm sub-dialog,
 				// then block_destination + delete_conversation (Conversations.py:
@@ -900,6 +1036,21 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	main.SetDisplay("channels", channelsDisplay.Widget())
 	main.SetShortcut("channels", "[C-n] New Hub  [C-a] Add Room  [C-r] Connect  [C-w] Disconnect  [C-t] Auto-reconnect  [C-e] Edit Hub  [C-x] Remove")
 
+	// Populate the hub/room list from the RRC manager (mirrors Python
+	// _compose_list_widgets, Channels.py:1599-1662). The initial populate runs
+	// directly on the UI goroutine before tuiApp.Run starts the event loop, so
+	// QueueUpdateDraw (which blocks until the loop drains it) cannot be used
+	// here. The RRC change callback (fired on the RRC worker goroutine when a
+	// hub is added/removed/connected/status-changed) re-populates via
+	// QueueUpdateDraw, marshaling onto the UI loop.
+	refreshChannels := func() { channelsDisplay.SetHubs(a.HubViews()) }
+	refreshChannels()
+	if a.RRC != nil {
+		a.RRC.SetChangeCallback(func() {
+			tuiApp.QueueUpdateDraw(refreshChannels)
+		})
+	}
+
 	// Wire channel keyboard shortcuts
 	channelsDisplay.OnNewHub = func() {
 		tuiApp.Dialogs.ShowInputDialog("New Hub",
@@ -1063,11 +1214,28 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		)
 	}
 	interfacesDisplay.OnConfigEditor = func() {
-		tuiApp.Dialogs.ShowDialog("Config Editor",
-			tview.NewTextView().
-				SetDynamicColors(true).
-				SetText(fmt.Sprintf("[gray]Config file: %s[-]\n\n[gray]Edit this file with your text editor.[-]", configPath)),
-			60, 8, nil)
+		// Python's open_config_editor (Interfaces.py:3160-3185) runs $EDITOR
+		// on the RNS config (self.app.rns.configpath), titled "Editing RNS
+		// Config". tview has no embedded terminal widget, so suspend the screen
+		// and let the editor own the real terminal — the same path the Config
+		// page's "Open Editor" button uses (ConfigDisplay.openEditor).
+		rnsPath := a.RNSConfigPath()
+		if rnsPath == "" {
+			tuiApp.Dialogs.ShowDialog("Config Editor",
+				tview.NewTextView().
+					SetDynamicColors(true).
+					SetText("[gray]The Reticulum config is not available yet — RNS is still initializing. Try again in a moment.[-]"),
+				60, 6, nil)
+			return
+		}
+		editor := tui.ResolveEditorCmd(a.Config.TextUI.Editor)
+		tuiApp.Application.Suspend(func() {
+			cmd := exec.Command(editor, rnsPath)
+			cmd.Stdin = os.Stdin
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			_ = cmd.Run()
+		})
 	}
 	interfacesDisplay.OnEditInterface = func() {
 		tuiApp.Dialogs.ShowInputDialog("Edit Interface",
@@ -1110,49 +1278,239 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	main.SetDisplay("browser", browserDisplay.Widget())
 	main.SetShortcut("browser", "[C-d] Back  [C-f] Forward  [C-r] Reload  [C-u] URL  [C-s] Save  [C-y] Copy URL  [C-g] Fullscreen")
 
+	// On-disk page cache (Python app.cachepath = configdir/storage/cache,
+	// NomadNetworkApp.py:113). Browser.load_page checks get_cached when no
+	// request_data is attached (Browser.py:1237-1244); response_received caches
+	// a freshly fetched page for #!c=<seconds> (Browser.py:1524-1546). Reload
+	// uncaches the current URL first (Browser.py:1100) to force a re-fetch.
+	pageCache := tui.NewBrowserCache(a.CachePath)
+
 	// Wire browser keyboard shortcuts
 	browserDisplay.OnBack = func() { browserDisplay.GoBack() }
 	browserDisplay.OnForward = func() { browserDisplay.GoForward() }
-	browserDisplay.OnReload = func() { browserDisplay.Reload() }
+	browserDisplay.OnReload = func() {
+		// Python reload() uncaches the current URL then re-loads, so a reload
+		// always re-fetches instead of returning a stale cache hit.
+		pageCache.UncachePage(browserDisplay.CurrentURL())
+		browserDisplay.Reload()
+	}
 	browserDisplay.OnCopyURL = func() {
-		url := browserDisplay.CurrentURL()
-		if url != "" {
-			_ = tui.CopyToClipboard(url)
+		// Python BrowserFrame.keypress ctrl y (Browser.py:38-40) only calls
+		// copy_url when config.textui.clipboard_copy is enabled, and copy_url
+		// (Browser.py:1103-1133) copies the current URL via the OSC 52 escape
+		// sequence (osc52_copy) — no platform clipboard tool. With no URL or
+		// the feature disabled, C-y is a no-op.
+		if a.Config == nil || !a.Config.TextUI.ClipboardCopy {
+			return
 		}
+		url := browserDisplay.CurrentURL()
+		if url == "" {
+			return
+		}
+		_ = tui.OSC52Copy(url)
 	}
 	browserDisplay.OnURLDialog = func() {
-		tuiApp.Dialogs.ShowInputDialog("Navigate",
-			"Enter URL:", "",
+		// Python Browser.url_dialog (Browser.py:1135-1182): pre-fill the
+		// current URL, let the user edit it, and on "Go" apply the "|"`→"`"
+		// normalization (a user can type "hash:path|x=1" instead of using a
+		// backtick) then retrieve_url.
+		tuiApp.Dialogs.ShowInputDialog("Enter URL",
+			"URL : ", browserDisplay.CurrentURL(),
 			func(text string) {
-				if text != "" {
-					browserDisplay.LoadURL(text)
+				text = strings.TrimSpace(text)
+				if text == "" {
+					return
 				}
+				browserDisplay.LoadURL(browser.NormalizeEnteredURL(text))
 			},
 			func() {},
 		)
 	}
 	browserDisplay.OnSaveNode = func() {
-		tuiApp.Dialogs.ShowConfirmDialog("Save connected node to directory?",
-			func() { /* TODO */ },
-			func() {},
-		)
+		// Python Browser.save_node_dialog (Browser.py:1184-1234): only when a
+		// destination is connected; recall the announced app_data display name;
+		// confirm "Save connected node "<name>" <prettyhex> to Known Nodes?";
+		// on Save, remember a DirectoryEntry(hosts_node=True) and fire the
+		// directory-change callback (refresh the network known-nodes pane).
+		dest := browserDisplay.CurrentDest()
+		if len(dest) == 0 {
+			return
+		}
+		dispName := ""
+		if id := a.Transport.Recall(dest); id != nil && len(id.AppData) > 0 {
+			dispName = string(id.AppData)
+		}
+		namePart := ""
+		if dispName != "" {
+			namePart = " \"" + dispName + "\""
+		}
+		msg := "Save connected node" + namePart + " " + rns.PrettyHexRep(dest) + " to Known Nodes?\n"
+		tuiApp.Dialogs.ShowConfirmDialog(msg, func() {
+			a.SaveConnectedNode(dest, dispName)
+			refreshNodes()
+		}, func() {})
 	}
 	browserDisplay.OnDisconnect = func() {
-		browserDisplay.SetContent("[gray]Disconnected.[-]")
+		// Python Browser.disconnect (Browser.py:862-881) clears history, resets
+		// the pointer, and drops the current-destination hint — the BrowserDisplay
+		// owns that state; the link itself is one-shot per fetch in the Go port
+		// (no persistent self.link to tear down).
+		browserDisplay.Disconnect()
+	}
+	browserDisplay.OnJumpAnchor = func(name string) {
+		// Python Browser._jump_to_anchor (Browser.py:324-357): scroll the page
+		// content to the named anchor (or the next heading below the cursor for
+		// a bare "#"). Pure local UI — no network involved.
+		browserDisplay.JumpToAnchor(name)
+	}
+	browserDisplay.OnOpenLXMF = func(hashHex string) {
+		// Python Browser.handle_lxmf_link (Browser.py:383-423): validate the LXMF
+		// destination hash, recall the announced display name, and for a new
+		// source create a directory entry + on-disk conversation directory; then
+		// display the conversation and switch to the Conversations page. The
+		// browser-side HandleLXMFLink has already validated, but the app method
+		// re-validates defensively.
+		if _, err := a.OpenLXMFLink(hashHex); err != nil {
+			tuiApp.Dialogs.ShowConfirmDialog(
+				"Could not open LXMF link: "+err.Error(),
+				func() {}, func() {})
+			return
+		}
+		refreshConvs()
+		conversationsDisplay.DisplayConversation(hashHex)
+		main.SelectPage("conversations")
+	}
+	browserDisplay.OnPartialUpdate = func(ids []string) {
+		// Python Browser.handle_partial_updates (Browser.py:823-834): a
+		// "p:<id>:<id>" link forces an immediate re-fetch of the named partials.
+		// The BrowserDisplay owns the partial-refresh loop and substitution; this
+		// just selects the matching partials and re-fetches them off-thread.
+		browserDisplay.RefreshPartials(ids)
+	}
+	browserDisplay.OnBrowserError = func(msg string) {
+		// Python surfaces link-dispatch failures (handle_link "No known handler",
+		// handle_lxmf_link/handle_rrc_link errors, Browser.py:303/321/422/465) in
+		// the browser footer. The Go BrowserDisplay has no footer slot, so the app
+		// surfaces them as a centered dismissible dialog. Page-load fetch errors
+		// are NOT routed here — they render in the content area (the faithful
+		// single-place surface, since Python shows those in the footer too but
+		// the Go content is the equivalent prominent surface).
+		tuiApp.Dialogs.ShowDialog("Browser",
+			tview.NewTextView().
+				SetDynamicColors(true).
+				SetTextAlign(tview.AlignCenter).
+				SetText("[red]"+tview.Escape(msg)+"[-]"),
+			50, 5, nil)
 	}
 	browserDisplay.OnToggleFullscreen = func() {
-		// TODO: Toggle fullscreen
+		// Python BrowserFrame C-g (Browser.py:36-37) calls
+		// network_display.toggle_fullscreen(), which hides the network page's
+		// left pane so the in-page browser fills the width. The Go port mounts
+		// the browser as its OWN full-screen page (navigating switches to the
+		// "browser" page), so it is already full-width with no left pane to
+		// hide — the toggle has no chrome to collapse here. A no-op preserves
+		// the keybinding without a visible change; the in-network-pane browser
+		// placement (which would make this toggle meaningful) is a larger
+		// architecture change deferred beyond this phase.
+	}
+	// OnFetchPartial fetches one page partial over RNS, resolving its (possibly
+	// relative) URL against the page's current destination hash. Wired to the
+	// browser fetch backend; the BrowserDisplay runs the refresh loop and
+	// substitutes the result into the page (Python Browser.__load_partial +
+	// partial_received). identifyOnConnect mirrors Python link_established
+	// (Browser.py:1454-1459): when the directory entry requests it, identify to
+	// the remote node over the freshly established link.
+	identifyOnConnect := func(destHash []byte) func(*rns.Link) {
+		if a.Dir == nil || !a.Dir.ShouldIdentifyOnConnect(destHash) || a.Identity == nil {
+			return nil
+		}
+		identity := a.Identity
+		return func(link *rns.Link) { _ = link.Identify(identity) }
+	}
+	browserDisplay.OnFetchPartial = func(p browser.Partial) ([]byte, error) {
+		return browser.FetchPartial(a.Transport, p, browserDisplay.CurrentDest(),
+			time.Duration(browser.DefaultTimeout)*time.Second, nil,
+			identifyOnConnect(browserDisplay.CurrentDest()))
+	}
+
+	// OnRetrieveURL runs the real fetch backend (Browser.retrieve_url →
+	// load_page → __load): parse the RNS address (resolving relative ":<path>"
+	// URLs against the current destination), check the on-disk cache when no
+	// request_data is attached (Python load_page, Browser.py:1237-1244), and
+	// otherwise establish a link, request the page on a goroutine (UI stays
+	// responsive — Python runs __load on a thread), and marshal the rendered
+	// Micron page (or an error) back to the browser via QueueUpdateDraw. On a
+	// successful fetch the page is cached for its #!c=<seconds> header
+	// (response_received, Browser.py:1524-1546) unless that header is 0.
+	browserDisplay.OnRetrieveURL = func(url string) {
+		dest, path, rd, err := browser.ParseURL(url, browserDisplay.CurrentDest(), nil)
+		if err != nil {
+			tuiApp.QueueUpdateDraw(func() {
+				browserDisplay.SetContent(fmt.Sprintf("[red]Invalid URL: %v[-]", err))
+			})
+			return
+		}
+		browserDisplay.SetCurrentDest(dest)
+		// The cache key is the canonical current_url() form (hexrep(dest):path)
+		// — Python caches current_url(), not the raw input. request_data is
+		// absent here, so no `var=...` suffix is appended.
+		canonURL := fmt.Sprintf("%x:%s", dest, path)
+		// Cache lookup only when no request_data is attached (Python load_page
+		// guards on request_data == None). A hit short-circuits the network.
+		if rd == nil {
+			if cached := pageCache.GetCached(canonURL); cached != nil {
+				tuiApp.QueueUpdateDraw(func() {
+					browserDisplay.RenderPage(string(cached))
+				})
+				return
+			}
+		}
+		go func() {
+			data, ferr := browser.FetchPage(a.Transport, dest, path, rd,
+				time.Duration(browser.DefaultTimeout)*time.Second, nil,
+				identifyOnConnect(dest))
+			tuiApp.QueueUpdateDraw(func() {
+				if ferr != nil {
+					// Surface Python's status string for the failure mode
+					// (Browser.status_text, Browser.py:1756-1802) instead of a
+					// generic "Could not load page" — e.g. "No path to
+					// destination known", "Link establishment timed out",
+					// "Request failed", "Request timed out". Python shows this in
+					// the browser footer; the Go port has no footer slot, so the
+					// content area carries the message (the faithful single-place
+					// surface for a page-load error). OnBrowserError is NOT fired
+					// here — it is reserved for link-dispatch errors
+					// (handle_link/handle_lxmf_link/handle_rrc_link) that have no
+					// content surface of their own, where the app shows a dialog.
+					browserDisplay.SetContent(fmt.Sprintf("[red]%s[-]", browser.StatusText(browser.ErrToStatus(ferr))))
+					return
+				}
+				// Cache the fetched page for its #!c= header lifetime, unless
+				// the page opts out with #!c=0. Only pages fetched without
+				// request_data are cached (Python only caches in this path and
+				// only request_data-None loads check the cache).
+				if rd == nil {
+					if ct := tui.CacheTimeFromMarkup(string(data)); ct != 0 {
+						pageCache.CachePage(canonURL, data,
+							float64(time.Now().UnixNano())/1e9+float64(ct))
+					}
+				}
+				browserDisplay.RenderPage(string(data))
+			})
+		}()
 	}
 
 	// Wire network connect to browser
-	networkDisplay.SetNavigateCallback(func(url string) {
+	navigateTo = func(url string) {
 		main.SetDisplay("browser", browserDisplay.Widget())
 		browserDisplay.LoadURL(url)
-	})
+	}
+	networkDisplay.SetNavigateCallback(navigateTo)
 
-	// Intro/splash display
-	introDisplay := tui.NewIntroDisplay("Nomad Network", a.Version)
-	main.SetDisplay("quit", introDisplay.Widget())
+	// The Quit menu item triggers graceful shutdown (selectMenu special-cases
+	// key "quit" → onQuit, mirroring Python's handler.quit raise ExitMainLoop →
+	// atexit exit_handler). It shows no page, so there is no "quit" body display
+	// to register. The startup splash is shown separately via ShowIntro above.
 
 	// On first run, the original opens the Guide on the "First Run" topic
 	// (Main.py:27 `if app.firstrun: active_display = guide_display` +
@@ -1207,4 +1565,139 @@ func toConversationMessages(in []conversation.MessageDisplayData) []tui.Conversa
 		}
 	}
 	return out
+}
+
+// buildNodeInfoData constructs the Local Node Info panel data from the app's
+// hosted node + peer settings + LXMF router, mirroring Python's NodeInfo pile
+// (Network.py:1357-1554). When no node is hosted (EnableNode false / a.Node nil)
+// the returned HasNode is false and the panel renders the "not hosting a node"
+// branch. Otherwise every stat line is a live provider that re-reads the
+// app/node/peer-settings each refresh, exactly like the Python UpdatingText
+// widgets (NodeLastAnnounce/NodeStorageStats/NodeActiveConnections/
+// NodeTotalConnections/NodeTotalPages/NodeTotalFiles, Network.py:1059-1256):
+//
+//   - Last Announce  : pretty_date(node_last_announce) or "Never"
+//   - LXMF Storage   : "<pct>%, <used> of <limit>" (when not disable_propagation)
+//     else "None"; "<used>" only when no limit
+//   - Connected Now  : len(node.destination.links) — Go tracks a.Node.ActiveLinks
+//   - Total Connects : peer_settings["node_connects"]
+//   - Served Pages   : peer_settings["served_page_requests"]
+//   - Served Files   : peer_settings["served_file_requests"]
+//
+// The Browse button browses the node's own page (connect_query), Announce sends
+// a node announce + shows the "Announce Sent" dialog (announce_query), and Rst
+// Stats zeros the persisted counters (stats_query).
+func buildNodeInfoData(a *app.App, navigateTo func(string), showAnnounceSent func()) tui.NodeInfoData {
+	data := tui.NodeInfoData{HasNode: a.Node != nil}
+	if a.Node == nil {
+		return data
+	}
+
+	// Addr = RNS.hexrep(node.destination.hash, delimit=False) = lowercase hex.
+	if dest := a.Node.Destination(); dest != nil {
+		data.Addr = fmt.Sprintf("%x", dest.Hash)
+	}
+	data.Name = a.Node.Name
+	data.DisablePropagation = a.DisablePropagation
+	if !a.DisablePropagation && a.Identity != nil {
+		// Python: RNS.prettyhexrep(RNS.Destination.hash_from_name_and_identity(
+		// "lxmf.propagation", node.destination.identity)).
+		propHash := rns.CalculateHash(a.Identity, "lxmf", "propagation")
+		data.LXMFPropAddr = rns.PrettyHexRep(propHash)
+	}
+
+	// Last Announce (NodeAnnounceTime, Network.py:1060-1097): "Never" until the
+	// node announces once, then pretty_date(unix_seconds). NodeLastAnnounce is
+	// msgpack-typed `any` (int64 from onNodeAnnounced, possibly uint64/CBOR on
+	// reload) — coerce defensively.
+	data.LastAnnounce = func() string {
+		if a.PeerSettings == nil || a.PeerSettings.NodeLastAnnounce == nil {
+			return "Never"
+		}
+		ts, ok := peerAnnounceUnix(a.PeerSettings.NodeLastAnnounce)
+		if !ok || ts <= 0 {
+			return "Never"
+		}
+		return tui.PrettyDate(time.Unix(ts, 0).UTC())
+	}
+
+	// LXMF Storage (NodeStorageStats, Network.py:1130-1147): "<pct>%, <used> of
+	// <limit>"; "None" when propagation disabled or no router; "<used>" only when
+	// the limit is unset (Python message_storage_limit is None).
+	data.StorageStats = func() string {
+		if a.DisablePropagation || a.Router == nil {
+			return "None"
+		}
+		used := a.Router.MessageStorageSize()
+		limit := a.Router.MessageStorageLimit()
+		if limit > 0 {
+			pct := strconv.FormatFloat(used/limit*100, 'f', 1, 64)
+			return pct + "%, " + tui.Prettysize(used) + " of " + tui.Prettysize(limit)
+		}
+		return tui.Prettysize(used)
+	}
+
+	// Connected Now (NodeActiveConnections, Network.py:1116-1127):
+	// len(node.destination.links) — Go tracks a.Node.ActiveLinks.
+	data.ActiveLinks = func() string { return strconv.Itoa(a.Node.ActiveLinks) }
+
+	// Total Connects / Served Pages / Served Files (NodeTotalConnections/Pages/
+	// Files, Network.py:1163-1256): the persisted peer-settings counters.
+	data.TotalConnects = func() string {
+		if a.PeerSettings == nil {
+			return "None"
+		}
+		return strconv.Itoa(a.PeerSettings.NodeConnects)
+	}
+	data.TotalPages = func() string {
+		if a.PeerSettings == nil {
+			return "None"
+		}
+		return strconv.Itoa(a.PeerSettings.ServedPageRequests)
+	}
+	data.TotalFiles = func() string {
+		if a.PeerSettings == nil {
+			return "None"
+		}
+		return strconv.Itoa(a.PeerSettings.ServedFileRequests)
+	}
+
+	// Browse → load the node's own page in the browser (connect_query,
+	// Network.py:1402-1404). The Phase 2 RNS page fetch is wired through the
+	// same navigate callback the network list uses.
+	data.OnBrowse = func() { navigateTo(data.Addr) }
+
+	// Announce → send a node announce + show "Announce Sent" (announce_query,
+	// Network.py:1406-1439). The OnAnnounced callback persists the new
+	// node_last_announce, which the 1s refresh ticker surfaces.
+	data.OnAnnounce = func() {
+		if err := a.Node.Announce(); err != nil && a.Logger != nil {
+			a.Logger.Error("node announce failed: %v", err)
+		}
+		if showAnnounceSent != nil {
+			showAnnounceSent()
+		}
+	}
+
+	// Rst Stats → zero the persisted counters (stats_query, Network.py:1383-1387).
+	data.OnResetStats = func() { a.ResetNodeStats() }
+
+	return data
+}
+
+// peerAnnounceUnix coerces a peer_settings["node_last_announce"] value (msgpack
+// `any`) to a unix-seconds int64. It accepts the int64 written by onNodeAnnounced
+// and the int64/uint64/msgpack-int forms a reloaded settings file may carry.
+func peerAnnounceUnix(v any) (int64, bool) {
+	switch n := v.(type) {
+	case int64:
+		return n, true
+	case int:
+		return int64(n), true
+	case uint64:
+		return int64(n), true
+	case float64:
+		return int64(n), true
+	}
+	return 0, false
 }

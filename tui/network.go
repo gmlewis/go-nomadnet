@@ -81,6 +81,13 @@ type NetworkDisplay struct {
 	OnSaveNode         func()
 	OnDeleteSelected   func()
 
+	// LXMF peers list callbacks (Python LXMFPeers.keypress, Network.py:1793-
+	// 1798). OnLXMFPeerUnpeer is ctrl-x; OnLXMFPeerSync is ctrl-r. Each receives
+	// the selected peer's destination hash. The wiring layer calls
+	// message_router.unpeer / peer.sync + reinit/show_peers.
+	OnLXMFPeerUnpeer func(destinationHash []byte)
+	OnLXMFPeerSync   func(destinationHash []byte)
+
 	// In-detail action callbacks (Python AnnounceInfo buttons). Each is no-arg;
 	// the wiring layer resolves the target via SelectedAnnounce/SelectedNode.
 	OnMsgOp    func() // [Msg Op] — message the node operator
@@ -190,6 +197,18 @@ func NewNetworkDisplay(app *App, announces []AnnounceEntry, nodes []NodeEntry) *
 	// populates it via UpdateLXMFPeers in Phase 5 (the LXMF message router is
 	// not wired yet). C-p swaps it into the left-pane list slot.
 	nd.lxmfPeers = NewLXMFPeersDisplay(app)
+	// Forward the wiring-layer ctrl-x/ctrl-r callbacks to the peers display.
+	// These are read live each keypress, so wiring can set them after NewNetworkDisplay.
+	nd.lxmfPeers.OnUnpeer = func(h []byte) {
+		if nd.OnLXMFPeerUnpeer != nil {
+			nd.OnLXMFPeerUnpeer(h)
+		}
+	}
+	nd.lxmfPeers.OnSync = func(h []byte) {
+		if nd.OnLXMFPeerSync != nil {
+			nd.OnLXMFPeerSync(h)
+		}
+	}
 
 	// The left pane is a PILE of two separately-bordered LineBoxes — the
 	// mode-titled list (Saved Nodes/Announce Stream/Announce Info/…) and the
@@ -674,6 +693,9 @@ func (nd *NetworkDisplay) ShowNodeInfo(data NodeInfoData) {
 	}
 	nd.leftPanel.RemoveItem(nd.localPeer.Widget())
 	nd.leftPanel.AddItem(nd.nodeInfo.Widget(), nd.nodeInfo.Height(), 0, false)
+	// Start the periodic stat refresh while the panel is visible (Python
+	// NodeInfo.start, Network.py:1528-1535, runs the UpdatingText timers).
+	nd.nodeInfo.Start()
 }
 
 // ShowLocalPeer swaps the bottom of the left pane back to the Local Peer Info
@@ -682,6 +704,10 @@ func (nd *NetworkDisplay) ShowNodeInfo(data NodeInfoData) {
 func (nd *NetworkDisplay) ShowLocalPeer() {
 	if nd.nodeInfo != nil {
 		nd.leftPanel.RemoveItem(nd.nodeInfo.Widget())
+		// Halt the stat refresh while the panel is hidden (Python leaves the
+		// timers running, but stopping here is visually identical and avoids a
+		// background ticker churning while the NodeInfo panel is offscreen).
+		nd.nodeInfo.Stop()
 	}
 	nd.leftPanel.AddItem(nd.localPeer.Widget(), nd.localPeer.Height(), 0, false)
 }

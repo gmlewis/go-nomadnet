@@ -118,6 +118,7 @@ type Node struct {
 	PartialRefresh    float64
 	HasRefresh        bool
 	PartialDescriptor string // "|"-joined raw components; the hash input (MicronParser.py:187)
+	PartialRaw        string // the full directive as it appeared in markup, "`{...}"
 
 	// For NodeTable
 	TableRows     [][]string // parsed cells (header + data rows; separator row skipped)
@@ -401,6 +402,10 @@ func parsePartial(line string) []*Node {
 	components := strings.Split(partialData, "`")
 
 	p := &Node{Type: NodePartial, PartialFields: []string{""}}
+	// The full directive as it appeared in the source markup, "`{<partialData>}".
+	// Used by the browser to substitute the rendered partial content into the
+	// page on refresh (Python replaces the partial's urwid Pile slot instead).
+	p.PartialRaw = "`{" + partialData + "}"
 	// partial_descriptor = "|".join(partial_components) — the hash input
 	// (MicronParser.py:187). Built from the raw components before field parsing.
 	p.PartialDescriptor = strings.Join(components, "|")

@@ -17,6 +17,7 @@ package tui
 
 import (
 	"time"
+	"unicode/utf8"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/gmlewis/go-nomadnet/nomadnet/micron"
@@ -356,6 +357,60 @@ func (lt *LinkableText) CursorVisible(now time.Time, focused bool) bool {
 		return false // delegate.last_keypress == 0 → now >= 0+timeout
 	}
 	return now.Before(lt.lastKeypress.Add(lt.keyTimeout))
+}
+
+// Draw renders the text view and, when this LinkableText is focused and the
+// cursor is visible (within the key-timeout window), re-positions the terminal
+// hardware cursor at the (x,y) the cursor offset maps to under urwid's
+// wrap="space" layout. This mirrors Python LinkableText.render setting
+// canvas.cursor = get_cursor_coords(size) (MicronParser.py:982-992).
+//
+// tview's Application.Draw hides the cursor each frame, so the focused widget
+// must re-show it on every draw — the same pattern ReadlineEdit.Draw uses
+// (readline.go:152). The (x,y) is computed with CalcCoords (the Go port of
+// urwid calc_coords) over the model text wrapped to the inner-rect width; the
+// cursor byte offset is converted to a rune (codepoint) offset to match
+// Python's _cursor_position semantics.
+//
+// CAVEAT — best-effort, NOT golden-tested: tmux capture-pane records the cell
+// buffer, not the terminal hardware cursor, so capture parity tooling is blind
+// to it (see TODO.md Phase 0 cursor task). The vertical scroll offset of the
+// underlying tview.TextView is internal and not exposed, so when the page is
+// scrolled the caret row is approximate. LinkableText is not yet wired into the
+// live page tree (the browser/guide bodies render via guideReader +
+// StyledLinesToTviewText into a plain TextView), so this override is currently
+// dormant; it becomes active once a Phase 2/3 change hosts a LinkableText as the
+// focusable page primitive. The verified, testable deliverable for cursor
+// parity is the golden CalcCoords table in cursor-coords_test.go.
+func (lt *LinkableText) Draw(screen tcell.Screen) {
+	lt.TextView.Draw(screen)
+	if !lt.HasFocus() {
+		return
+	}
+	if !lt.CursorVisible(time.Now(), true) {
+		return
+	}
+	text := lt.Text()
+	pos := lt.cursor
+	if pos < 0 {
+		pos = 0
+	}
+	if pos > len(text) {
+		pos = len(text)
+	}
+	// lt.cursor is a byte offset into the concatenated part text; CalcCoords
+	// takes a rune (codepoint) offset, matching Python's _cursor_position.
+	pos = utf8.RuneCountInString(text[:pos])
+	runes := []rune(text)
+	if pos > len(runes) {
+		pos = len(runes)
+	}
+	x0, y0, width, _ := lt.GetInnerRect()
+	if width < 1 {
+		return
+	}
+	relX, relY := CalcCoords(text, width, pos)
+	screen.ShowCursor(x0+relX, y0+relY)
 }
 
 // HandleKey processes one keystroke and returns either "" (consumed) or the

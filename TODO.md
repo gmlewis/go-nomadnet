@@ -233,24 +233,6 @@ test or a matching `parity.sh` summary):
 
 ### Phase 0 — Foundation & cross-cutting gaps
 
-- [ ] **Terminal cursor parity (the “solid green rectangle”).** The green cursor
-      in the Python original is the **terminal emulator’s hardware cursor**,
-      which urwid positions via `canvas.cursor = (x, y)` on a focused widget’s
-      render output — `LinkableText.render` (MicronParser.py:982-992) maps
-      `_cursor_position` → `(x,y)` via urwid `calc_coords`; `urwid.Edit`/
-      `ReadlineEdit` position it at `edit_pos`. The Go port tracks the cursor
-      **offset** (`tui/linkable-text.go`: `cursor`/`CursorVisible()`;
-      `tui/readline.go`: `cursorPos`) but **never calls `screen.ShowCursor`**
-      (`grep ShowCursor tui/*.go` is empty). tmux `capture-pane` records the cell
-      buffer, not the cursor overlay, so this is invisible to captures in *both*
-      versions. Split into:
-  - [ ] `LinkableText` / micron pages: in the focused page’s `Draw`, when
-        `CursorVisible(now, focused)` is true, port urwid `calc_coords` over the
-        line-wrapped styled text to map the `cursor` rune offset → `(x, y)` and
-        call `screen.ShowCursor(x, y)`. tview’s `Application.Draw` calls
-        `HideCursor` each frame, so the cursor must be re-shown on every focused
-        draw. Golden `(x,y)` table captured from Python `calc_coords` over a
-        known wrapped string (unit test — capture cannot see the cursor).
 - [ ] Mouse clicks have no correlation with what is under the cursor — fix mouse
       coordinate mapping so clicks hit the right menu/list/link/pane gutter and
 	  eliminate off-by-one errors.
@@ -264,28 +246,14 @@ test or a matching `parity.sh` summary):
 > using `Destination.RegisterRequestHandler`). Capture expected behavior from
 > `Browser.py`.
 
-- [ ] `BrowserDisplay.retrieveURL` — parse the RNS address, establish a link,
-      request the page, handle the response; test with mocked transport
-      asserting request bytes.
-- [ ] `loadPage` — render a retrieved Micron page (Phase 3 micron renderer); verify
-      vs Python `load_page`.
-- [ ] `downloadFile` — download over RNS; verify vs `download_file`.
-- [ ] `partialReceived`/`partialProgressed`/`partialFailed`/`updatePartials` —
-      partial handlers; verify vs Python.
-- [ ] `cachePage`/`getCached`/`cleanCache`/`uncachePage` — cache management; audit
-      limits/eviction vs Python.
-- [ ] `identify`/`disconnect` — link identity + disconnect; verify.
-- [ ] `saveNodeDialog`/`urlDialog` — overlay dialogs; verify. Wire
-      `browserDisplay.OnSaveNode` (currently `func(){ /* TODO */ }`).
-- [ ] `markedLink`/`copyUrl` — link mark + clipboard (OSC52); verify.
-- [ ] `responseReceived`/`requestFailed`/`requestTimeout`/`responseProgressed`/
-      `statusText` — request lifecycle; verify.
-- [ ] `jumpToAnchor` — scroll to anchor; verify.
-- [ ] Wire `browserDisplay` callbacks in `cmd/gonomadnet/textui.go`:
-      `OnRetrieveURL`/`OnPartialUpdate`/`OnJumpAnchor`/`OnOpenLXMF`/`OnOpenRRC`/
-      `OnBrowserError` (declared `tui/browser.go`, currently never wired) and
-      `OnToggleFullscreen` (currently `// TODO`). Wire network “Navigate” to the
-      real browser.
+- [ ] Wire `browserDisplay.OnOpenRRC` (deferred to Phase 3 — needs the
+      channels-display hub/room selection UI which Phase 3 builds): switch to
+      the Channels page, find/connect the hub via `a.RRC.FindHub`/`AddHub`, and
+      select the room. (All other browserDisplay callbacks — OnRetrieveURL,
+      OnFetchPartial, OnJumpAnchor, OnPartialUpdate, OnOpenLXMF, OnBrowserError,
+      OnToggleFullscreen, OnDisconnect, OnCopyURL, OnURLDialog, OnSaveNode —
+      are wired; OnToggleFullscreen is a documented no-op because the Go
+      browser is its own full-screen page, not an in-network-pane widget.)
 
 ### Phase 3 — Channels page / RRC (Python `Channels.py`, 2285 lines)
 
@@ -294,10 +262,6 @@ test or a matching `parity.sh` summary):
 > is built with `nil` rooms and never bound to `a.RRC`. `a.RRC = rrc.NewManager(...)`
 > exists; wire it. Capture expected behavior from `Channels.py`.
 
-- [ ] Wire `channelsDisplay` to `a.RRC` in `cmd/gonomadnet/textui.go` and populate
-      the room list from the manager.
-- [ ] `composeListWidgets` — hub/room list; verify vs `_compose_list_widgets`
-      (populated-hubs branch; the no-hubs empty state is already done).
 - [ ] `RoomWidget` — messages + users pane (`C-u` toggle removes/re-adds the
       users column) + editor; verify vs Python `RoomWidget`.
 - [ ] `RoomWidget.sendMessage` (`C-d`) + `handleSlashCommand` + `leaveRoom`
@@ -322,21 +286,6 @@ test or a matching `parity.sh` summary):
 > Left-pane list/LocalPeer/NetworkStats/AnnounceInfo/KnownNodeInfo layout is done
 > and capture-verified. Remaining items:
 
-- [ ] `LXMFPeers`/`LXMFPeerEntry` — peers list; `C-x` unpeer, `C-r` delivery sync.
-- [ ] `NodeInfo` hosting stat lines (Last Announce / Storage / Active Links / Total
-      Connects / Total Pages / Total Files, 1 s refresh) — blocked on Phase 6
-      node-hosting wiring, not on go-reticulum.
-- [ ] `BrowserFrame.keypress` — `C-w/d/f/r/u/s/b/y/g` per §Network; `up`→menu.
-- [ ] **KnownNodeInfo / AnnounceInfo RNS-field wiring.** `OnResolveAnnounceInfo`
-      and `OnResolveKnownNodeInfo` currently stub `OpStr`/`HopsStr`/`LXMFAddrStr`
-      as "Unknown". Implement using the existing primitives: `rns.RecallIdentity`
-      of the announce source → derive the `lxmf.delivery` hash → look up the
-      operator display; `rns.TransportSystem.HopsTo` for hop distance; the PN
-      address hash; wire `SetUserSelectedPropagationNode`/`AutoSelectPropagationNode`
-      (already implemented in `app/propagation.go` using real `HopsTo`, just never
-      called from the TUI) for the default-PN toggle + autoselect. Verify vs
-      Network.py:593-810 and 59-256.
-
 ### Phase 5 — Interfaces page remaining (Python `Interfaces.py`, 3214 lines)
 
 > List/data wiring, partial-box clipping, first-item ○, and title centering are
@@ -351,42 +300,24 @@ test or a matching `parity.sh` summary):
 - [ ] `RNodeCalculator` + `InterfaceBandwidthChart` — field updates + sparkline;
       verify vs Python.
 - [ ] `getPortInfo`/`getPortField` — serial port detection; verify.
-- [ ] `openConfigEditor` (`C-w`) — launch `$EDITOR` on the **RNS config** (via
-      `app.rnsConfigPath()`) and return; the Config page’s editor already launches
-      `$EDITOR` via `Application.Suspend` — reuse that path on the RNS config.
-      (Currently `OnConfigEditor` shows a static dialog instead.) Verify vs Python
-      `open_config_editor`.
 - [ ] `parseInterfaceConfig`: handle `RNodeMultiInterface [[[ / ]]]` sub-interface
       expansion (Interfaces.py:2843-2856) — currently skipped.
 
 ### Phase 6 — App wiring, node hosting & cross-process integration
 
-- [ ] **Node hosting.** `nomadnet/node/node.go` implements `Start`/`Announce`/
-      `Jobs`/`registerRequestHandlers` with real `rns.NewDestination`/
-      `RegisterRequestHandler`, but `App` never instantiates or starts it. Add
-      `App.Node`, start it in `initRNS`, run its job loop, and feed NodeInfo
-      hosting stats (unblocks Phase 4 NodeInfo hosting lines).
-- [ ] **Ping peer.** — wire the “ping peer” callback to
-      `rns.Link.Ping()` Block/unblock are already
-      wired (`App.BlockDestination`/`UnblockDestination`).
-- [ ] Wire the splash/quit display to the real intro content and graceful shutdown.
-- [ ] End-to-end smoke: start `-daemon` with a temp config, verify it registers
-      destinations and stays alive until SIGTERM.
 - [ ] **Background-thread marshaling.** RRC/message/announce callbacks must marshal
       UI updates to the tview main loop (the `watch_pipe` equivalent). Watch the
       QueueUpdateDraw-before-`Run` deadlock gotcha: at wire-time mutate UI
       primitives directly; only background goroutines (tickers) use
       QueueUpdateDraw.
-- [ ] Integration: Go node serves a Micron page, a Python node fetches it over a
-      temp TCP RNS transport and the bytes match.
-- [ ] Integration: Go app receives an LXMF message from a Python sender and
-      ingests it into a conversation identical to Python’s on-disk layout.
-- [ ] Integration: RRC HELLO/MSG round-trip Go↔Python over TCP RNS (harness
-      exists from Phase 2 cross-process work).
 
 ### Phase 7 — Mouse & final polish
 
 - [ ] Mouse parity: click list entries, links, pane gutters, expand gutters.
+      Includes the browser "marked link" footer display (Python
+      `Browser.marked_link_job`, Browser.py:181-204 — show "Link to <target>"
+      in the footer when a link is focused/hovered; pure-logic `MarkedLinkTarget`
+      already ported+golden-pinned, only the footer render remains).
 - [ ] 135×32 recommendation message (small-terminal reflow verified: 80×24 no
       crash, two-column body survives, menu clips).
 - [ ] **Dialog in-pane placement.** Python places every page dialog as

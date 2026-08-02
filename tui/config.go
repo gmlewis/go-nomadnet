@@ -65,7 +65,7 @@ func NewConfigDisplay(app *App, configPath string) *ConfigDisplay {
 	cd := &ConfigDisplay{
 		app:        app,
 		configPath: configPath,
-		editorCmd:  resolveEditorCmdDefault("editor"),
+		editorCmd:  ResolveEditorCmd("editor"),
 	}
 
 	// Explainer text (Config.py:38-44): leading/trailing blank + the
@@ -129,10 +129,12 @@ func (cd *ConfigDisplay) openEditor() {
 	})
 }
 
-// resolveEditorCmdDefault resolves the editor command the way Python's
-// EditorTerminal does (Config.py:60-68): the configured editor is used as-is,
-// except on Darwin the unavailable "editor" alias is replaced with "nano".
-func resolveEditorCmdDefault(editor string) string {
+// ResolveEditorCmd resolves the editor command the way Python's EditorTerminal
+// does (Config.py:60-68, and Interfaces.py open_config_editor:3163-3167): the
+// configured editor is used as-is, except on Darwin the unavailable "editor"
+// alias is replaced with "nano". Shared by the Config page's "Open Editor"
+// button and the Interfaces page's C-w "Open Text Editor" action.
+func ResolveEditorCmd(editor string) string {
 	if runtime.GOOS == "darwin" && editor == "editor" {
 		return "nano"
 	}

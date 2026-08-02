@@ -17,6 +17,8 @@ package app
 
 import (
 	"encoding/hex"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -133,6 +135,78 @@ func (a *App) RemoveAnnounce(timestamp float64) {
 // The entry defaults to the unknown trust level and direct delivery.
 func (a *App) SaveNode(sourceHash []byte, displayName string) *directory.Entry {
 	return a.CreateDirectoryEntry(sourceHash, displayName)
+}
+
+// SaveConnectedNode remembers a directory entry for the node the browser is
+// currently connected to, mirroring Python Browser.save_node_dialog's confirmed
+// (Browser.py:1196-1200): DirectoryEntry(destination_hash, display_name=…,
+// hosts_node=True). Unlike SaveNode (which records an announced peer that may
+// or may not host a node), this marks HostsNode true because the user reached
+// it by browsing a served page. Returns the remembered entry.
+func (a *App) SaveConnectedNode(sourceHash []byte, displayName string) *directory.Entry {
+	if a.Dir == nil {
+		a.Dir = directory.New()
+	}
+	entry := directory.NewEntry(sourceHash)
+	if displayName != "" {
+		entry.DisplayName = displayName
+	}
+	entry.HostsNode = true
+	a.Dir.Remember(entry)
+	return entry
+}
+
+// truncatedHashHexLen is the number of hex characters for a truncated RNS
+// destination hash: rns.TruncatedHashLength/8*2 = 128/8*2 = 32.
+const truncatedHashHexLen = rns.TruncatedHashLength / 8 * 2
+
+// OpenLXMFLink mirrors Python Browser.handle_lxmf_link (Browser.py:383-423):
+// it validates the LXMF destination hash (32 hex chars, decodable), recalls
+// the announced display name from the identity's app_data when a transport is
+// available, and — for a source not already in the conversation list — creates
+// a directory entry (so the peer shows up in the directory) and an on-disk
+// conversation directory (so the conversation persists and appears in
+// conversation_list, matching Python's Conversation(source_hash, initiator=True)
+// creating the directory). It returns whether a new conversation was created.
+// The TUI wiring refreshes the conversation list, displays the conversation, and
+// switches to the Conversations page on success.
+func (a *App) OpenLXMFLink(sourceHashHex string) (isNew bool, err error) {
+	if len(sourceHashHex) != truncatedHashHexLen {
+		return false, fmt.Errorf("invalid length for LXMF link: got %d, want %d", len(sourceHashHex), truncatedHashHexLen)
+	}
+	hash, err := hex.DecodeString(sourceHashHex)
+	if err != nil {
+		return false, errors.New("could not decode destination hash from LXMF link")
+	}
+
+	// An existing conversation directory means this is a known peer.
+	for _, c := range a.ConversationList() {
+		if c.SourceHash == sourceHashHex {
+			isNew = false
+			return isNew, nil
+		}
+	}
+
+	// Recall the announced display name (Python: Identity.recall_app_data +
+	// LXMF.display_name_from_app_data). Best-effort: with no transport wired
+	// (e.g. in tests) the name is simply empty.
+	displayName := ""
+	if a.Transport != nil {
+		if id := a.Transport.Recall(hash); id != nil && len(id.AppData) > 0 {
+			displayName, _ = lxmf.DisplayNameFromAppData(id.AppData)
+		}
+	}
+
+	a.CreateDirectoryEntry(hash, displayName)
+
+	if a.ConversationPath != "" {
+		if err := os.MkdirAll(filepath.Join(a.ConversationPath, sourceHashHex), 0o700); err != nil {
+			return false, err
+		}
+	}
+
+	isNew = true
+	return isNew, nil
 }
 
 // ForgetNode removes the directory entry for sourceHash, mirroring the Python

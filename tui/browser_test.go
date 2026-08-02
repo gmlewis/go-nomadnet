@@ -107,9 +107,55 @@ func TestParseMicronColorsNone(t *testing.T) {
 
 func TestParseMicronColorsHex6(t *testing.T) {
 	t.Parallel()
-	bg, fg := ParseMicronColors("#!bg=aabbcc\n#!fg=112233")
+	bg, fg := ParseMicronColors("#!bg=aabbcc\n#!fg=112233\n")
 	if bg != "aabbcc" || fg != "112233" {
 		t.Errorf("ParseMicronColors = bg=%q fg=%q, want bg=aabbcc fg=112233", bg, fg)
+	}
+}
+
+// TestParseMicronColorsGolden pins the Go port of Python Browser.load_page's
+// #!bg=/#!fg= page-color extraction (Browser.py:1247-1267 + 1326-1346) against
+// golden values captured from the installed Python nomadnet. The Python code
+// finds the directive, takes the slice up to the NEXT newline, and sets the
+// color only when that slice is exactly 3 or 6 chars. CRITICAL edge cases:
+//   - A directive with NO trailing newline (end of markup) yields NO color in
+//     Python (str.find returns -1 → length check is negative). The Go port must
+//     NOT fall back to end-of-markup there.
+//   - A value followed by other text on the same line ("abc ", "abc; extra")
+//     has length != 3/6 → no color.
+//   - \r\n: the value includes the \r → length 4 → no color.
+func TestParseMicronColorsGolden(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name   string
+		markup string
+		wantBG string
+		wantFG string
+	}{
+		{"bg3", "#!bg=abc\nbody", "abc", ""},
+		{"bg6", "#!bg=abcdef\nbody", "abcdef", ""},
+		{"bg wrong len 2", "#!bg=ab\nbody", "", ""},
+		{"bg too long 7", "#!bg=abcdefg\nbody", "", ""},
+		{"bg no newline len3", "#!bg=abc", "", ""},
+		{"bg no newline len6", "#!bg=abcdef", "", ""},
+		{"both", "#!fg=f00\n#!bg=111\nbody", "111", "f00"},
+		{"no colors", "no colors here", "", ""},
+		{"bg crlf", "#!bg=abc\r\nbody", "", ""},
+		{"bg trailing text", "#!bg=abc # comment\nbody", "", ""},
+		{"fg6", "#!fg=112233\nbody", "", "112233"},
+		{"fg no newline", "#!fg=112233", "", ""},
+		{"bg mid markup", ">Title\n#!bg=abc\nContent", "abc", ""},
+		{"first directive wins", "#!bg=abc\n#!bg=def\nbody", "abc", ""},
+	}
+	for _, c := range cases {
+		c := c
+		t.Run(c.name, func(t *testing.T) {
+			bg, fg := ParseMicronColors(c.markup)
+			if bg != c.wantBG || fg != c.wantFG {
+				t.Errorf("ParseMicronColors(%q) = bg=%q fg=%q, want bg=%q fg=%q",
+					c.markup, bg, fg, c.wantBG, c.wantFG)
+			}
+		})
 	}
 }
 
@@ -171,5 +217,91 @@ func TestBrowserDisplayReload(t *testing.T) {
 	bd.Reload()
 	if bd.CurrentURL() != "test://page" {
 		t.Errorf("Reload() CurrentURL = %q, want test://page", bd.CurrentURL())
+	}
+}
+
+// TestBrowserDisplayEffectiveMarkup pins the partial-substitution logic: the
+// original markup (with directives) is kept, and each fetched partial's content
+// replaces its directive (Partial.Raw) for rendering. Unfetched partials keep
+// their directive (the micron renderer shows the ⧖ placeholder). Mirrors
+// Python's per-Pile partial replacement without the urwid widget tree.
+func TestBrowserDisplayEffectiveMarkup(t *testing.T) {
+	t.Parallel()
+	app := newTestApp()
+	bd := NewBrowserDisplay(app)
+
+	// No partial contents → effectiveMarkup == currentMarkup.
+	bd.currentMarkup = ">Page\n`{url`5}\nEnd"
+	if got := bd.effectiveMarkup(); got != bd.currentMarkup {
+		t.Errorf("effectiveMarkup (no contents) = %q, want %q", got, bd.currentMarkup)
+	}
+
+	// Substitute one partial's content for its directive.
+	bd.partialContents = map[string]string{"`{url`5}": ">Partial\nBody"}
+	got := bd.effectiveMarkup()
+	want := ">Page\n>Partial\nBody\nEnd"
+	if got != want {
+		t.Errorf("effectiveMarkup (one partial) = %q, want %q", got, want)
+	}
+
+	// Two partials substitute independently.
+	bd.currentMarkup = ">A\n`{p1}\nmid\n`{p2}\nend"
+	bd.partialContents = map[string]string{"`{p1}": "X", "`{p2}": "Y"}
+	got = bd.effectiveMarkup()
+	want = ">A\nX\nmid\nY\nend"
+	if got != want {
+		t.Errorf("effectiveMarkup (two partials) = %q, want %q", got, want)
+	}
+}
+
+// TestBrowserDisplayPartialsInertWithoutCallback verifies that RenderPage with
+// no OnFetchPartial wired does not start any refresh goroutines (partials stay
+// as ⧖ placeholders) — the common case for the unit-test harness and any
+// BrowserDisplay whose app layer hasn't wired the fetch backend.
+func TestBrowserDisplayPartialsInertWithoutCallback(t *testing.T) {
+	t.Parallel()
+	app := newTestApp()
+	bd := NewBrowserDisplay(app)
+	if bd.OnFetchPartial != nil {
+		t.Fatal("OnFetchPartial should be nil by default")
+	}
+	// RenderPage with a partial directive must not panic or hang.
+	bd.RenderPage(">Page\n`{url`5}\nEnd")
+	if bd.partialCancel != nil {
+		t.Error("startPartials should not start a loop without OnFetchPartial")
+	}
+}
+
+// TestBrowserDisplayDisconnect pins Python Browser.disconnect (Browser.py:862-
+// 881): tearing down the link clears the history, resets the history pointer,
+// and shows the disconnected state. The current-destination hint is also cleared
+// so a subsequent relative ":<path>" URL does not resolve against the stale
+// node (Python sets status=DISCONECTED and clears request_data; the Go port
+// keeps no persistent link to tear down, but must still reset navigation).
+func TestBrowserDisplayDisconnect(t *testing.T) {
+	t.Parallel()
+	app := newTestApp()
+	bd := NewBrowserDisplay(app)
+
+	bd.LoadURL("page1")
+	bd.LoadURL("page2")
+	bd.LoadURL("page3")
+	if len(bd.history) != 3 {
+		t.Fatalf("history len = %d, want 3", len(bd.history))
+	}
+
+	bd.Disconnect()
+
+	if len(bd.history) != 0 {
+		t.Errorf("after Disconnect history len = %d, want 0 (Python clears history)", len(bd.history))
+	}
+	if bd.histIdx != 0 {
+		t.Errorf("after Disconnect histIdx = %d, want 0", bd.histIdx)
+	}
+	if bd.CurrentURL() != "" {
+		t.Errorf("after Disconnect CurrentURL = %q, want empty", bd.CurrentURL())
+	}
+	if bd.CurrentDest() != nil {
+		t.Errorf("after Disconnect CurrentDest = %v, want nil", bd.CurrentDest())
 	}
 }

@@ -28,6 +28,9 @@ func (a *App) ExitHandler() {
 	a.ShouldRunJobs = false
 	a.mu.Unlock()
 
+	// Stop the hosted node's background job loop.
+	a.stopNode()
+
 	if a.Logger != nil {
 		a.Logger.Notice("Saving directory...")
 	}

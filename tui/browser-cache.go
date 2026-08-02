@@ -26,6 +26,10 @@ import (
 	"time"
 )
 
+// defaultCacheTime is the default page-cache lifetime in seconds (Python
+// DEFAULT_CACHE_TIME = 12*60*60, Browser.py:1591).
+const defaultCacheTime = 12 * 60 * 60
+
 // BrowserCache manages on-disk page caching for the browser.
 // Matches Python's cache_page/get_cached/clean_cache at Browser.py:1564-1614.
 type BrowserCache struct {
@@ -44,23 +48,43 @@ func URLHash(url string) string {
 	return hex.EncodeToString(raw[:])
 }
 
-// CachePage writes page data to the cache directory. The cache file
-// is named "urlHash_expiresEpoch". Any existing cache entry for the
-// same URL is removed first (uncache_page semantics).
-// Matches Python's cache_page() at Browser.py:1615.
-func (bc *BrowserCache) CachePage(url string, data []byte, expires int64) {
+// formatExpires formats an epoch-seconds float the way Python's str(float) does,
+// so the cache filename matches the Python layout ("<hash>_<expires>"): a whole
+// number renders with a trailing ".0" (str(123.0) == "123.0"), a fractional one
+// without scientific notation. Round-trips through strconv.ParseFloat.
+func formatExpires(expires float64) string {
+	s := strconv.FormatFloat(expires, 'f', -1, 64)
+	if !strings.ContainsAny(s, ".e") {
+		s += ".0"
+	}
+	return s
+}
+
+// nowFloat returns the current time as epoch-seconds float, matching Python's
+// time.time() used by get_cached/clean_cache for expiry comparison.
+func nowFloat() float64 {
+	return float64(time.Now().UnixNano()) / 1e9
+}
+
+// CachePage writes page data to the cache directory. The cache file is named
+// "urlHash_expiresEpoch" where expiresEpoch is the Python str(float) form. Any
+// existing cache entry for the same URL is removed first (uncache_page
+// semantics). Matches Python's cache_page() at Browser.py:1615.
+func (bc *BrowserCache) CachePage(url string, data []byte, expires float64) {
 	urlHash := URLHash(url)
 	bc.UncachePage(url)
 
-	filename := fmt.Sprintf("%s_%v", urlHash, expires)
+	filename := urlHash + "_" + formatExpires(expires)
 	cachefile := filepath.Join(bc.cachePath, filename)
 	if err := os.WriteFile(cachefile, data, 0o644); err != nil {
 		fmt.Fprintf(os.Stderr, "Could not write cache file: %v\n", err)
 	}
 }
 
-// GetCached returns cached page data for url if a fresh entry exists.
-// Expired entries are removed. Returns nil if no valid cache entry found.
+// GetCached returns cached page data for url if a fresh entry exists. Expired
+// entries are removed using a float epoch comparison (Python time.time() >
+// expires, NOT int-truncated seconds — truncation diverges near the boundary).
+// Returns nil if no valid cache entry found.
 // Matches Python's get_cached() at Browser.py:1564.
 func (bc *BrowserCache) GetCached(url string) []byte {
 	urlHash := URLHash(url)
@@ -70,6 +94,7 @@ func (bc *BrowserCache) GetCached(url string) []byte {
 		return nil
 	}
 
+	now := nowFloat()
 	for _, entry := range entries {
 		cachefile := filepath.Join(bc.cachePath, entry.Name())
 		components := strings.SplitN(entry.Name(), "_", 2)
@@ -83,7 +108,7 @@ func (bc *BrowserCache) GetCached(url string) []byte {
 			continue
 		}
 
-		if time.Now().Unix() > int64(expires) {
+		if now > expires {
 			_ = os.Remove(cachefile)
 			continue
 		}
@@ -99,6 +124,30 @@ func (bc *BrowserCache) GetCached(url string) []byte {
 	}
 
 	return nil
+}
+
+// CacheTimeFromMarkup extracts the #!c=<int> cache-time directive from the head
+// of a page, matching Python load_page (Browser.py:1524-1531). The directive is
+// recognized ONLY when it is the very first 4 characters of the markup
+// (markup[:4]=="#!c=") — a leading #!bg= line means no cache header. The value
+// extends to the next newline, or the end of the markup if there is no newline
+// (unlike #!bg/#!fg, which require a newline). The trimmed value is parsed as an
+// int (Python int() strips surrounding whitespace); on any parse failure the
+// default DEFAULT_CACHE_TIME is kept. A cache_time of 0 means "do not cache".
+func CacheTimeFromMarkup(markup string) int {
+	cacheTime := defaultCacheTime
+	if len(markup) < 4 || markup[:4] != "#!c=" {
+		return cacheTime
+	}
+	endpos := strings.IndexByte(markup, '\n')
+	if endpos < 0 {
+		endpos = len(markup)
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(markup[4:endpos]))
+	if err != nil {
+		return cacheTime
+	}
+	return n
 }
 
 // UncachePage removes any cache entry for the given url.
@@ -126,6 +175,7 @@ func (bc *BrowserCache) CleanCache() {
 		return
 	}
 
+	now := nowFloat()
 	for _, entry := range entries {
 		cachefile := filepath.Join(bc.cachePath, entry.Name())
 		components := strings.SplitN(entry.Name(), "_", 2)
@@ -140,7 +190,7 @@ func (bc *BrowserCache) CleanCache() {
 			continue
 		}
 
-		if time.Now().Unix() > int64(expires) {
+		if now > expires {
 			_ = os.Remove(cachefile)
 		}
 	}

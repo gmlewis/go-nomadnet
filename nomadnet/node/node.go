@@ -82,8 +82,19 @@ type Node struct {
 	ServedPageRequests int
 	ServedFileRequests int
 	NodeConnects       int
+	ActiveLinks        int
 
 	AppData []byte
+
+	// Event callbacks let the owning App persist counters and react to node
+	// events without the node importing the app package (one-way dependency).
+	// Each mirrors a peer_settings write in Python (Node.py:111-112,194-195,218):
+	// OnPeerConnected → node_connects, OnPageServed → served_page_requests,
+	// OnFileServed → served_file_requests, OnAnnounced → node_last_announce.
+	OnPeerConnected func()
+	OnPageServed    func()
+	OnFileServed    func()
+	OnAnnounced     func()
 
 	destination *rns.Destination
 	identity    *rns.Identity
@@ -141,6 +152,19 @@ func (n *Node) Stop() {
 	n.mu.Unlock()
 }
 
+// ResetStats zeros the in-memory stat counters (served page/file requests and
+// node connects), mirroring Python NodeInfo.stats_query (Network.py:1391-1394)
+// which resets peer_settings["node_connects"]/["served_page_requests"]/
+// ["served_file_requests"] to 0. The owning App persists the peer-settings
+// copy; this resets the node's own bookkeeping.
+func (n *Node) ResetStats() {
+	n.mu.Lock()
+	n.ServedPageRequests = 0
+	n.ServedFileRequests = 0
+	n.NodeConnects = 0
+	n.mu.Unlock()
+}
+
 // Destination returns the node's RNS destination, or nil if not started.
 func (n *Node) Destination() *rns.Destination {
 	return n.destination
@@ -188,6 +212,12 @@ func (n *Node) makePageHandler(filePath string) func(string, []byte, []byte, []b
 		if content == nil {
 			return nil
 		}
+		n.mu.Lock()
+		n.ServedPageRequests++
+		n.mu.Unlock()
+		if n.OnPageServed != nil {
+			n.OnPageServed()
+		}
 		return content
 	}
 }
@@ -201,6 +231,12 @@ func (n *Node) makeFileHandler(filePath string) func(string, []byte, []byte, []b
 		fileData, err := os.ReadFile(filePath)
 		if err != nil {
 			return nil
+		}
+		n.mu.Lock()
+		n.ServedFileRequests++
+		n.mu.Unlock()
+		if n.OnFileServed != nil {
+			n.OnFileServed()
 		}
 		return fileData
 	}
@@ -219,6 +255,9 @@ func (n *Node) Announce() error {
 	}
 	n.AppData = []byte(n.Name)
 	n.LastAnnounce = time.Now()
+	if n.OnAnnounced != nil {
+		n.OnAnnounced()
+	}
 	return n.destination.Announce(n.AppData)
 }
 
@@ -226,19 +265,31 @@ func (n *Node) Announce() error {
 // Python Node.peer_connected: it increments the node connection count and
 // registers PeerDisconnected as the link-closed callback. Python persists the
 // incremented count via app.save_peer_settings; that persistence is applied at
-// the app layer when the node is wired into NomadNetworkApp.
+// the app layer via OnPeerConnected when the node is wired into NomadNetworkApp.
+// ActiveLinks tracks the currently-open links (Python
+// len(node.destination.links)) for the "Connected Now" stat.
 func (n *Node) PeerConnected(link *rns.Link) {
 	n.mu.Lock()
 	n.NodeConnects++
+	n.ActiveLinks++
 	n.mu.Unlock()
+	if n.OnPeerConnected != nil {
+		n.OnPeerConnected()
+	}
 	if link != nil {
 		link.SetLinkClosedCallback(n.PeerDisconnected)
 	}
 }
 
 // PeerDisconnected handles a peer link closing, mirroring Python
-// Node.peer_disconnected, whose body only logs (it is a `pass`).
+// Node.peer_disconnected, whose body only logs (it is a `pass`). It decrements
+// the active-link count so the "Connected Now" stat stays accurate.
 func (n *Node) PeerDisconnected(link *rns.Link) {
+	n.mu.Lock()
+	if n.ActiveLinks > 0 {
+		n.ActiveLinks--
+	}
+	n.mu.Unlock()
 }
 
 // Jobs runs the background job loop, mirroring Python Node.__jobs. It repeats

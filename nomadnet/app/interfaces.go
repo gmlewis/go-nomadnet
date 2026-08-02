@@ -47,11 +47,13 @@ type interfaceConfigEntry struct {
 	enabled bool   // interface_enabled AND enabled both non-false (default true)
 }
 
-// rnsConfigPath returns the path to the RNS config file in use, or "" if it is
+// RNSConfigPath returns the path to the RNS config file in use, or "" if it is
 // not available yet (initRNS runs asynchronously). When an explicit RNS config
 // dir was given it lives there; otherwise ensureStandaloneRNSConfig copied the
-// system config into a standalone temp dir.
-func (a *App) rnsConfigPath() string {
+// system config into a standalone temp dir. The Interfaces "Open Text Editor"
+// (C-w) action edits this file, matching Python's open_config_editor
+// (Interfaces.py:3160) which edits self.app.rns.configpath.
+func (a *App) RNSConfigPath() string {
 	if a.RNSConfigDir != "" {
 		return filepath.Join(a.RNSConfigDir, "config")
 	}
@@ -153,7 +155,7 @@ func isFalseyConfigBool(v string) bool {
 // edge with the write in initRNS; GetInterfaces and the per-interface accessors
 // perform their own internal locking.
 func (a *App) InterfaceStats() []InterfaceStat {
-	path := a.rnsConfigPath()
+	path := a.RNSConfigPath()
 	entries := parseInterfaceConfig(path)
 	if entries == nil {
 		// Config not yet available (async init) — no interfaces to show.

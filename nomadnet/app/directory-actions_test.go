@@ -50,6 +50,29 @@ func TestSaveNodeAndForget(t *testing.T) {
 	}
 }
 
+// TestSaveConnectedNodeHostsNode pins Python Browser.save_node_dialog
+// (Browser.py:1196-1200): saving the connected node marks HostsNode true
+// (the user browsed a served page), unlike the generic SaveNode path.
+func TestSaveConnectedNodeHostsNode(t *testing.T) {
+	t.Parallel()
+	a := NewApp(tempDir(t), "", false, false)
+	a.setupPaths()
+	hash := []byte{1, 2, 3, 4}
+	entry := a.SaveConnectedNode(hash, "Some Node")
+	if entry == nil || !entry.HostsNode {
+		t.Fatalf("SaveConnectedNode entry HostsNode = %v, want true", entry)
+	}
+	if got := a.Dir.Find(hash); got == nil || got.DisplayName != "Some Node" || !got.HostsNode {
+		t.Fatalf("remembered entry = %+v, want DisplayName=Some Node HostsNode=true", got)
+	}
+	// Generic SaveNode does NOT set HostsNode.
+	hash2 := []byte{5, 6, 7, 8}
+	a.SaveNode(hash2, "peer")
+	if got := a.Dir.Find(hash2); got == nil || got.HostsNode {
+		t.Fatalf("SaveNode entry HostsNode = %v, want false", got)
+	}
+}
+
 func TestForgetNodeNilDir(t *testing.T) {
 	t.Parallel()
 	a := NewApp(tempDir(t), "", false, false)

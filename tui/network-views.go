@@ -97,6 +97,16 @@ type LXMFPeerEntry struct {
 	Alive     bool
 	SyncLimit int
 	Pending   int
+
+	// DestinationHash is the raw propagation-node destination hash, used by the
+	// C-x (unpeer) and C-r (sync) keybindings to resolve the selected peer
+	// (Python LXMFPeerEntry.display_widget.destination_hash, Network.py:1900).
+	// Empty for legacy callers that only populate Hash/Name.
+	DestinationHash []byte
+	// DisplayText is the pre-rendered multi-line peer_info_str from
+	// FormatLXMFPeerEntry; when set it is used verbatim as the list row. Empty
+	// for legacy callers, which fall back to Name/Hash.
+	DisplayText string
 }
 
 // NewLXMFPeersView creates a propagation peers list view.

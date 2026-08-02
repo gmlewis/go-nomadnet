@@ -730,6 +730,76 @@ func (h *RRCHub) MarkRead(room string) {
 	delete(h.MentionRooms, room)
 }
 
+// GetHubName returns the hub's display name under the hub lock, for the TUI
+// HubView adapter (mirrors Python hub.name in Channels._compose_list_widgets).
+func (h *RRCHub) GetHubName() string {
+	h.lock.Lock()
+	defer h.lock.Unlock()
+	return h.Name
+}
+
+// GetHubStatus returns the hub's connection status under the hub lock, for the
+// TUI HubView adapter (mirrors Python hub.status). The int is the Status*
+// enum (StatusDisconnected … StatusFailed).
+func (h *RRCHub) GetHubStatus() int {
+	h.lock.Lock()
+	defer h.lock.Unlock()
+	return h.Status
+}
+
+// JoinedRoomList returns the sorted list of joined room names, for the TUI
+// HubView adapter (mirrors Python hub.rooms).
+func (h *RRCHub) JoinedRoomList() []string {
+	h.lock.Lock()
+	defer h.lock.Unlock()
+	out := make([]string, 0, len(h.Rooms))
+	for r := range h.Rooms {
+		out = append(out, r)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// MessageRoomList returns the sorted list of rooms that have message buffers
+// (joined rooms get an empty buffer on AddRoom), for the TUI HubView adapter
+// (mirrors Python set(hub.messages.keys())).
+func (h *RRCHub) MessageRoomList() []string {
+	h.lock.Lock()
+	defer h.lock.Unlock()
+	out := make([]string, 0, len(h.Messages))
+	for r := range h.Messages {
+		out = append(out, r)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// UnreadRoomList returns the sorted list of rooms with unread messages, for
+// the TUI HubView adapter (mirrors Python hub.unread_rooms).
+func (h *RRCHub) UnreadRoomList() []string {
+	h.lock.Lock()
+	defer h.lock.Unlock()
+	out := make([]string, 0, len(h.UnreadRooms))
+	for r := range h.UnreadRooms {
+		out = append(out, r)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// MentionRoomList returns the sorted list of rooms with unread mentions, for
+// the TUI HubView adapter (mirrors Python hub.mention_rooms).
+func (h *RRCHub) MentionRoomList() []string {
+	h.lock.Lock()
+	defer h.lock.Unlock()
+	out := make([]string, 0, len(h.MentionRooms))
+	for r := range h.MentionRooms {
+		out = append(out, r)
+	}
+	sort.Strings(out)
+	return out
+}
+
 // GetMessages returns the message buffer for a room.
 func (h *RRCHub) GetMessages(room string) []*RRCMessage {
 	room = strings.ToLower(room)
