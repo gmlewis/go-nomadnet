@@ -20,7 +20,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
@@ -46,21 +45,18 @@ const (
 type announceStreamDisplay struct {
 	nd *NetworkDisplay // back-ref for announce data, display mode, glyphs
 
-	tabNodes  *UrwidButton
-	tabPeers  *UrwidButton
-	tabPN     *UrwidButton
-	tabBar    *urwidColumns
-	search    *ReadlineEdit
-	toggle    *UrwidButton
-	filterBar *urwidColumns
-	ilb       *IndicativeListBox // == nd.announcesList
-	pile      *tview.Flex
-
+	tabNodes   *UrwidButton
+	tabPeers   *UrwidButton
+	tabPN      *UrwidButton
+	tabBar     *urwidColumns
+	search     *ReadlineEdit
+	toggle     *UrwidButton
+	filterBar  *urwidColumns
+	ilb        *IndicativeListBox // == nd.announcesList
+	pile       *pileFiller
 	currentTab announceStreamTab
 	searchText string
 	entries    []AnnounceEntry // the filtered list currently shown (index maps to list rows)
-	tabBarH    int             // cached tab-bar row count for the last width
-	lastWidth  int
 }
 
 // newAnnounceStreamDisplay builds the AnnounceStream Pile around the network
@@ -86,32 +82,11 @@ func newAnnounceStreamDisplay(nd *NetworkDisplay) *announceStreamDisplay {
 	as.filterBar = newURWIDColumns(1, as.search, as.toggle).
 		SetWeight(0, 2).SetWeight(1, 1)
 
-	// Pile [tab_bar (pack), filter_bar (1), ilb (weight 1)]. The ilb is the
-	// focused item so the list retains keyboard focus; tab switching via the
-	// keyboard (Up from the list → filter → tabs → header) is deferred.
-	as.pile = tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(as.tabBar, 2, 0, false).
-		AddItem(as.filterBar, 1, 0, false).
-		AddItem(as.ilb, 0, 1, true)
-
-	// Resize the tab_bar to its wrapped row count before the Flex lays out
-	// children (the DrawFunc runs in Box.DrawForSubclass, before Flex.Draw).
-	// At inner width 50 the weight-1 tabs wrap "Nodes (N)" to 2 rows and the
-	// weight-3 tab fits on 1, so the bar is 2 rows; this keeps it correct if
-	// the width or counts change.
-	as.pile.SetDrawFunc(func(screen tcell.Screen, x, y, w, h int) (int, int, int, int) {
-		tbh := as.tabBar.requiredHeightAt(w)
-		if tbh < 1 {
-			tbh = 1
-		}
-		if tbh != as.tabBarH || w != as.lastWidth {
-			as.tabBarH = tbh
-			as.lastWidth = w
-			as.pile.ResizeItem(as.tabBar, tbh, 0)
-		}
-		as.pile.ResizeItem(as.filterBar, 1, 0)
-		return x, y, w, h
-	})
+	as.pile = newPileFiller()
+	as.pile.AddItem(as.tabBar, 2, true)
+	as.pile.AddItem(as.filterBar, 1, true)
+	as.pile.AddItem(as.ilb, 0, true)
+	as.pile.SetFocusIndex(2)
 
 	as.update()
 	return as

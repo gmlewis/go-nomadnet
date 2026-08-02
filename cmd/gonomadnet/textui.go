@@ -379,7 +379,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 			"Enter URL:", "",
 			func(text string) {
 				if text != "" {
-					networkDisplay.SetNavigateCallback(func(url string) { _ = url })
+					navigateTo(browser.NormalizeEnteredURL(text))
 				}
 			},
 			func() {},
@@ -1557,7 +1557,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 
 	// Wire network connect to browser
 	navigateTo = func(url string) {
-		main.SetDisplay("browser", browserDisplay.Widget())
+		main.SelectPage("browser")
 		browserDisplay.LoadURL(url)
 	}
 	networkDisplay.SetNavigateCallback(navigateTo)

@@ -169,10 +169,22 @@ func (p *pileFiller) SetRect(x, y, w, h int) {
 		return
 	}
 
-	total := 0
+	fixedTotal := 0
+	flexibleCount := 0
 	for _, it := range p.items {
-		total += it.height
+		if it.height > 0 {
+			fixedTotal += it.height
+		} else {
+			flexibleCount++
+		}
 	}
+
+	flexHeight := 0
+	if flexibleCount > 0 && ih > fixedTotal {
+		flexHeight = (ih - fixedTotal) / flexibleCount
+	}
+
+	total := fixedTotal + flexHeight*flexibleCount
 
 	// Compute the top-trim in rows (urwid Filler.render cursor-trim), based on
 	// the currently focused selectable item's position.
@@ -184,7 +196,11 @@ func (p *pileFiller) SetRect(x, y, w, h int) {
 				if it.widget == fi {
 					break
 				}
-				focusedTop += it.height
+				itemH := it.height
+				if itemH == 0 {
+					itemH = flexHeight
+				}
+				focusedTop += itemH
 			}
 			topTrim = focusedTop - ih + 1
 			if topTrim < 0 {
@@ -203,8 +219,12 @@ func (p *pileFiller) SetRect(x, y, w, h int) {
 	// height from the box top.
 	cy := iy - topTrim
 	for i, it := range p.items {
+		itemH := it.height
+		if itemH == 0 {
+			itemH = flexHeight
+		}
 		itemTop := cy
-		itemBottom := cy + it.height
+		itemBottom := cy + itemH
 		cy = itemBottom
 
 		if itemBottom <= iy || itemTop >= iy+ih {
@@ -212,7 +232,7 @@ func (p *pileFiller) SetRect(x, y, w, h int) {
 			continue
 		}
 		drawY := itemTop
-		drawH := it.height
+		drawH := itemH
 		if drawY < iy {
 			drawH = itemBottom - iy
 			drawY = iy
@@ -257,11 +277,7 @@ func (p *pileFiller) HasFocus() bool {
 
 // InputHandler implements urwid-Pile-style focus traversal: Tab/Down moves
 // focus to the next selectable item, BackTab/Up to the previous (wrapping),
-// and all other keys are forwarded to the focused item's own handler. The
-// focused widgets (ReadlineEdit, RadioButton, tview.Checkbox, UrwidButton) do
-// not consume Tab/Up/Down for their own purposes, so intercepting them first
-// matches urwid's Pile.keypress (which moves focus when the focused widget
-// returns the key unhandled).
+// and all other keys are forwarded to the focused item's own handler.
 func (p *pileFiller) InputHandler() func(event *tcell.EventKey, setFocus func(p tview.Primitive)) {
 	return func(event *tcell.EventKey, setFocus func(p tview.Primitive)) {
 		if len(p.selectable) == 0 {
@@ -271,6 +287,47 @@ func (p *pileFiller) InputHandler() func(event *tcell.EventKey, setFocus func(p 
 			p.onEsc()
 			return
 		}
+
+		fi := p.focusedItem()
+
+		// If focused item is a List or IndicativeListBox, allow Up/Down to scroll items in the list
+		// unless at the list boundaries (index 0 for Up, last index for Down).
+		if fi != nil {
+			var list *tview.List
+			if l, ok := fi.(*tview.List); ok {
+				list = l
+			} else if ilb, ok := fi.(*IndicativeListBox); ok {
+				list = ilb.List
+			}
+
+			if list != nil {
+				curr := list.GetCurrentItem()
+				count := list.GetItemCount()
+				switch event.Key() {
+				case tcell.KeyUp:
+					if curr > 0 {
+						if h := fi.InputHandler(); h != nil {
+							h(event, setFocus)
+						}
+						return
+					}
+					// At top of list: move focus up to previous item in pile
+					p.moveFocus(-1, setFocus)
+					return
+				case tcell.KeyDown:
+					if curr < count-1 {
+						if h := fi.InputHandler(); h != nil {
+							h(event, setFocus)
+						}
+						return
+					}
+					// At bottom of list: move focus down to next item in pile
+					p.moveFocus(1, setFocus)
+					return
+				}
+			}
+		}
+
 		switch event.Key() {
 		case tcell.KeyTab, tcell.KeyDown:
 			p.moveFocus(1, setFocus)
@@ -279,7 +336,8 @@ func (p *pileFiller) InputHandler() func(event *tcell.EventKey, setFocus func(p 
 			p.moveFocus(-1, setFocus)
 			return
 		}
-		if fi := p.focusedItem(); fi != nil {
+
+		if fi != nil {
 			if h := fi.InputHandler(); h != nil {
 				h(event, setFocus)
 			}

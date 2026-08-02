@@ -19,6 +19,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 )
 
 // TestUrwidColumnWidths pins the column-width distribution against values
@@ -255,5 +258,53 @@ func TestAnnounceStreamDisplayToggle(t *testing.T) {
 	as.toggleDisplayMode()
 	if as.toggle.Label() != "Show: Name" {
 		t.Errorf("after 2nd toggle: label = %q, want 'Show: Name'", as.toggle.Label())
+	}
+}
+
+func TestAnnounceStreamFocusNavigation(t *testing.T) {
+	t.Parallel()
+	app := newTestApp()
+	app.Glyphs = GetGlyphSet(GlyphUnicode)
+	nd := NewNetworkDisplay(app, []AnnounceEntry{
+		{DisplayName: "Node1", Type: "node", SourceHash: "aa", Timestamp: time.Now(), AppData: "Data1"},
+	}, nil)
+	as := nd.announceStream
+
+	tapp := newTestApp()
+	setFocus := func(p tview.Primitive) { tapp.Application.SetFocus(p) }
+
+	as.Widget().Focus(setFocus)
+
+	if !as.ilb.HasFocus() {
+		t.Fatalf("expected initial focus to be on announce list (ilb)")
+	}
+
+	pf, ok := as.Widget().(*pileFiller)
+	if !ok {
+		t.Fatalf("expected announceStream Widget to be *pileFiller")
+	}
+
+	// List item is 0. UpArrow moves focus up to filterBar (search edit)
+	pf.InputHandler()(tcell.NewEventKey(tcell.KeyUp, 0, tcell.ModNone), setFocus)
+	if !as.filterBar.HasFocus() {
+		t.Errorf("expected filterBar to have focus after UpArrow from top of list")
+	}
+
+	// UpArrow again moves focus up to tabBar
+	pf.InputHandler()(tcell.NewEventKey(tcell.KeyUp, 0, tcell.ModNone), setFocus)
+	if !as.tabBar.HasFocus() {
+		t.Errorf("expected tabBar to have focus after second UpArrow")
+	}
+
+	// DownArrow moves focus back down to filterBar
+	pf.InputHandler()(tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone), setFocus)
+	if !as.filterBar.HasFocus() {
+		t.Errorf("expected filterBar to have focus after DownArrow from tabBar")
+	}
+
+	// DownArrow moves focus back down to list
+	pf.InputHandler()(tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone), setFocus)
+	if !as.ilb.HasFocus() {
+		t.Errorf("expected ilb list to have focus after second DownArrow")
 	}
 }
