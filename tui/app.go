@@ -100,6 +100,15 @@ func (a *App) Stop() {
 	a.Application.Stop()
 }
 
+// QueueUpdateDraw queues f to be executed on the application event loop
+// non-blockingly, avoiding deadlocks when invoked from the main thread or during shutdown.
+func (a *App) QueueUpdateDraw(f func()) {
+	if a == nil || a.Application == nil || f == nil {
+		return
+	}
+	go a.Application.QueueUpdateDraw(f)
+}
+
 // SetQuitCallback sets the callback invoked when the user quits.
 func (a *App) SetQuitCallback(fn func()) {
 	if a.Main != nil {

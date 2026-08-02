@@ -136,4 +136,3 @@ func TestButtonRowFocusCycling(t *testing.T) {
 		t.Errorf("after KeyLeft on b2, b1 HasFocus = false, want true")
 	}
 }
-

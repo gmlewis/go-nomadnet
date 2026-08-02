@@ -18,6 +18,7 @@ package tui
 import (
 	"testing"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
@@ -32,6 +33,71 @@ func TestNewGuideDisplay(t *testing.T) {
 	}
 	if gd.Widget() == nil {
 		t.Error("Widget() returned nil")
+	}
+}
+
+func TestGuideClickMenuAndDraw(t *testing.T) {
+	t.Parallel()
+
+	app := NewApp(ThemeDark, GlyphUnicode, ColorModeTrue)
+	guideDisplay := NewGuideDisplay(app)
+	app.Main.SetDisplay("guide", guideDisplay.Widget())
+
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatalf("screen.Init: %v", err)
+	}
+	defer screen.Fini()
+	screen.SetSize(135, 32)
+	app.Main.Root().SetRect(0, 0, 135, 32)
+	app.Main.Root().Draw(screen)
+
+	app.Main.SelectPage("guide")
+	app.Main.Root().Draw(screen)
+}
+
+func TestGuidePaneFocusSwitching(t *testing.T) {
+	t.Parallel()
+
+	app := NewApp(ThemeDark, GlyphUnicode, ColorModeTrue)
+	gd := NewGuideDisplay(app)
+	gd.FocusTopics()
+
+	if !gd.topicsList.HasFocus() {
+		t.Errorf("initial focus = %v, want topicsList", app.GetFocus())
+	}
+
+	handler := gd.Widget().InputHandler()
+	if handler != nil {
+		handler(tcell.NewEventKey(tcell.KeyRight, 0, tcell.ModNone), func(p tview.Primitive) { app.SetFocus(p) })
+		if !gd.scroll.HasFocus() {
+			t.Errorf("focus after KeyRight = %v, want scroll (reader)", app.GetFocus())
+		}
+
+		handler(tcell.NewEventKey(tcell.KeyLeft, 0, tcell.ModNone), func(p tview.Primitive) { app.SetFocus(p) })
+		if !gd.topicsList.HasFocus() {
+			t.Errorf("focus after KeyLeft = %v, want topicsList", app.GetFocus())
+		}
+	}
+}
+
+func TestListSetCurrentItemInCallback(t *testing.T) {
+	t.Parallel()
+	list := tview.NewList()
+	list.SetRect(0, 0, 40, 10)
+	calls := 0
+	list.AddItem("Item 0", "", 0, func() {
+		calls++
+		if calls > 10 {
+			t.Fatal("infinite loop detected in List callback")
+		}
+		list.SetCurrentItem(0)
+	})
+
+	handler := list.MouseHandler()
+	if handler != nil {
+		event := tcell.NewEventMouse(1, 0, tcell.Button1, 0)
+		handler(tview.MouseLeftClick, event, func(p tview.Primitive) {})
 	}
 }
 

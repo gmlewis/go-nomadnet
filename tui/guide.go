@@ -146,6 +146,9 @@ func NewGuideDisplay(app *App) *GuideDisplay {
 		i := i
 		gd.topics.AddItem(guideTopics[i].label, "", 0, func() { gd.showTopic(i) })
 	}
+	gd.topics.SetChangedFunc(func(index int, mainText, secondaryText string, shortcut rune) {
+		gd.showTopic(index)
+	})
 
 	// Reader (right pane). A thin wrapper around tview.TextView overrides
 	// SetRect so horizontal dividers re-expand to the pane width on resize.
@@ -184,6 +187,25 @@ func NewGuideDisplay(app *App) *GuideDisplay {
 	gd.widget = tview.NewFlex().SetDirection(tview.FlexColumn).
 		AddItem(topicsBox, 0, 1, true).
 		AddItem(readerBox, 0, 2, false)
+
+	gd.widget.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event == nil {
+			return nil
+		}
+		switch event.Key() {
+		case tcell.KeyRight, tcell.KeyTab:
+			if gd.topicsList.HasFocus() {
+				gd.FocusReader()
+				return nil
+			}
+		case tcell.KeyLeft:
+			if gd.scroll.HasFocus() {
+				gd.FocusTopics()
+				return nil
+			}
+		}
+		return event
+	})
 
 	gd.showPlaceholder()
 	return gd
@@ -235,7 +257,9 @@ func (gd *GuideDisplay) showTopic(idx int) {
 	}
 	gd.currentIdx = idx
 	gd.renderMarkup(guideTopics[idx].markup)
-	gd.topics.SetCurrentItem(idx)
+	if gd.topics.GetCurrentItem() != idx {
+		gd.topics.SetCurrentItem(idx)
+	}
 }
 
 // showMarkupForTest renders arbitrary micron markup into the reader (for

@@ -325,4 +325,3 @@ func TestBrowserDisplayMarkedLink(t *testing.T) {
 		t.Errorf("MarkedLink empty did not clear footer target")
 	}
 }
-

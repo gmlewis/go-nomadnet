@@ -146,3 +146,56 @@ func TestMenuMouseClickIgnoresNonZeroY(t *testing.T) {
 	}
 }
 
+func TestMenuClickFocusesBodyAndDoesNotLockup(t *testing.T) {
+	t.Parallel()
+	app := NewApp(ThemeDark, GlyphUnicode, ColorModeTrue)
+	md := app.Main
+	md.menuBar.SetRect(0, 0, 135, 1)
+
+	// Simulate MouseLeftClick on menuBar at x=82 (inside [ Guide ])
+	handler := md.menuBar.GetMouseCapture()
+	if handler != nil {
+		event := tcell.NewEventMouse(82, 0, tcell.Button1, 0)
+		action, returnedEvent := handler(tview.MouseLeftClick, event)
+		if returnedEvent != nil {
+			t.Errorf("menu mouse capture returned event %v, want nil (consumed click so focus is not stolen by menuBar)", returnedEvent)
+		}
+		if action != 0 {
+			t.Errorf("menu mouse capture returned action %v, want 0", action)
+		}
+	}
+	if md.activePage != "guide" {
+		t.Errorf("active page = %q, want 'guide'", md.activePage)
+	}
+	if md.focusRegion != "body" {
+		t.Errorf("focusRegion = %q, want 'body'", md.focusRegion)
+	}
+}
+
+func TestMenuBarMouseCaptureConsumesAllActions(t *testing.T) {
+	t.Parallel()
+	app := NewApp(ThemeDark, GlyphUnicode, ColorModeTrue)
+	md := app.Main
+	md.menuBar.SetRect(0, 0, 135, 1)
+
+	handler := md.menuBar.GetMouseCapture()
+	if handler == nil {
+		t.Fatal("menuBar mouse capture handler is nil")
+	}
+
+	actionsToTest := []tview.MouseAction{
+		tview.MouseLeftDown,
+		tview.MouseLeftUp,
+		tview.MouseLeftClick,
+		tview.MouseRightClick,
+		tview.MouseRightDown,
+	}
+
+	for _, act := range actionsToTest {
+		event := tcell.NewEventMouse(10, 0, tcell.Button1, 0)
+		action, returnedEvent := handler(act, event)
+		if returnedEvent != nil || action != 0 {
+			t.Errorf("action %v inside menuBar returned (%v, %v), want (0, nil)", act, action, returnedEvent)
+		}
+	}
+}

@@ -93,12 +93,13 @@ func NewMainDisplay(app *App, theme int, glyphSetName string) *MainDisplay {
 	md.menuBar.SetDynamicColors(true)
 	md.menuBar.SetTextAlign(tview.AlignLeft)
 	md.menuBar.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
-		if action&tview.MouseLeftClick != 0 {
-			x, y := event.Position()
-			bx, by, bw, bh := md.menuBar.GetRect()
-			if x >= bx && x < bx+bw && y >= by && y < by+bh {
+		x, y := event.Position()
+		bx, by, bw, bh := md.menuBar.GetRect()
+		if x >= bx && x < bx+bw && y >= by && y < by+bh {
+			if action == tview.MouseLeftClick || action == tview.MouseLeftUp {
 				md.handleClick(x - bx)
 			}
+			return 0, nil // Consumed: prevents menuBar.MouseHandler from setting focus back to menuBar on MouseLeftDown or MouseLeftUp
 		}
 		return action, event
 	})
@@ -590,6 +591,9 @@ func (md *MainDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 
 	if md.focusRegion == "menu" {
 		return md.handleMenuInput(event)
+	}
+	if md.app != nil && md.app.GetFocus() == md.menuBar {
+		md.FocusBody()
 	}
 	// Body region. Up at the top of the focused list collapses focus to the
 	// menu bar (MainFrame.focus_position = "header"), matching Python's

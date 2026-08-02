@@ -168,4 +168,3 @@ func TestUrwidButtonFocusedStyle(t *testing.T) {
 		t.Errorf("focused button style = fg:%v bg:%v, want fg:Black bg:Green", fg, bg)
 	}
 }
-

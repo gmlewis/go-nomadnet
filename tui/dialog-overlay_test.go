@@ -188,4 +188,3 @@ func TestCenterDialogInPanePlacement(t *testing.T) {
 		t.Errorf("dialog side border at (1,9) = %q, want '│'", cSide)
 	}
 }
-

@@ -112,11 +112,12 @@ func NewClickableIcon(glyph string, action func()) *ClickableIcon {
 		action: action,
 	}
 	ci.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
-		if action&tview.MouseLeftClick != 0 {
-			x, y := event.Position()
-			if ci.InRect(x, y) {
+		x, y := event.Position()
+		if ci.InRect(x, y) {
+			if action == tview.MouseLeftClick || action == tview.MouseLeftUp {
 				ci.HandleMouseLeftClick()
 			}
+			return 0, nil
 		}
 		return action, event
 	})

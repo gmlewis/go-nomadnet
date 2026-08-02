@@ -22,8 +22,6 @@ import (
 	"testing"
 )
 
-
-
 func TestAddInterfaceConfig(t *testing.T) {
 	t.Parallel()
 	dir := tempDir(t)
