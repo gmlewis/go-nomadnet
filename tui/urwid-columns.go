@@ -86,6 +86,71 @@ func urwidColumnWidths(maxcol int, weights []int, dividechars int) []int {
 	return widths
 }
 
+// urwidColumnWidthsEx extends urwidColumnWidths to support explicit fixed-width
+// columns (e.g. NetworkDisplay's left pane width 52, right pane weight 1).
+func urwidColumnWidthsEx(maxcol int, weights []int, fixedWidths []int, dividechars int) []int {
+	n := len(weights)
+	widths := make([]int, n)
+	if n == 0 {
+		return widths
+	}
+	if fixedWidths == nil {
+		return urwidColumnWidths(maxcol, weights, dividechars)
+	}
+	hasFixed := false
+	for _, fw := range fixedWidths {
+		if fw > 0 {
+			hasFixed = true
+			break
+		}
+	}
+	if !hasFixed {
+		return urwidColumnWidths(maxcol, weights, dividechars)
+	}
+
+	shared := maxcol
+	for i := 0; i < n; i++ {
+		if i > 0 {
+			shared -= dividechars
+		}
+	}
+
+	var weightedIdxs []int
+	wtotal := 0
+	for i := 0; i < n; i++ {
+		if fixedWidths[i] > 0 {
+			fw := fixedWidths[i]
+			if fw > shared {
+				fw = shared
+			}
+			widths[i] = fw
+			shared -= fw
+		} else {
+			weightedIdxs = append(weightedIdxs, i)
+			wtotal += weights[i]
+		}
+	}
+
+	if len(weightedIdxs) > 0 && shared > 0 {
+		grow := shared
+		for _, idx := range weightedIdxs {
+			if wtotal <= 0 {
+				widths[idx] = 1
+				continue
+			}
+			w := weights[idx]
+			width := int(float64(grow)*float64(w)/float64(wtotal) + 0.5)
+			if width < 1 {
+				width = 1
+			}
+			widths[idx] = width
+			grow -= width
+			wtotal -= w
+		}
+	}
+	return widths
+}
+
 // urwidColumns lays out a row of weighted children with blank dividechar
 // columns between them, replicating urwid's Columns widget sizing (see
 // urwidColumnWidths). Each child is given the full height of the row; a child
@@ -97,6 +162,7 @@ type urwidColumns struct {
 	*tview.Box
 	children    []tview.Primitive
 	weights     []int
+	fixedWidths []int
 	dividechars int
 	focusIndex  int
 }
@@ -105,6 +171,7 @@ type urwidColumns struct {
 // children with blank columns of width dividechars between them.
 func newURWIDColumns(dividechars int, children ...tview.Primitive) *urwidColumns {
 	weights := make([]int, len(children))
+	fixedWidths := make([]int, len(children))
 	for i := range children {
 		weights[i] = 1
 	}
@@ -112,9 +179,18 @@ func newURWIDColumns(dividechars int, children ...tview.Primitive) *urwidColumns
 		Box:         tview.NewBox(),
 		children:    children,
 		weights:     weights,
+		fixedWidths: fixedWidths,
 		dividechars: dividechars,
 		focusIndex:  -1,
 	}
+}
+
+// SetFixedWidth sets an explicit fixed character width for column i.
+func (c *urwidColumns) SetFixedWidth(i, width int) *urwidColumns {
+	if i >= 0 && i < len(c.fixedWidths) {
+		c.fixedWidths[i] = width
+	}
+	return c
 }
 
 // isFocusable returns true if child can receive focus (e.g. UrwidButton, ReadlineEdit, RadioButton, Checkbox).
@@ -210,7 +286,7 @@ func (c *urwidColumns) SetWeight(i, weight int) *urwidColumns {
 // SetRect lays out the children at their urwid-computed widths across the row.
 func (c *urwidColumns) SetRect(x, y, w, h int) {
 	c.Box.SetRect(x, y, w, h)
-	widths := urwidColumnWidths(w, c.weights, c.dividechars)
+	widths := urwidColumnWidthsEx(w, c.weights, c.fixedWidths, c.dividechars)
 	cx := x
 	for i, child := range c.children {
 		cw := widths[i]
@@ -236,12 +312,13 @@ func (c *urwidColumns) Draw(screen tcell.Screen) {
 // A child implements heightRequest when it has a RequiredHeight(width) method;
 // otherwise it is assumed to be one row tall.
 func (c *urwidColumns) requiredHeightAt(w int) int {
-	widths := urwidColumnWidths(w, c.weights, c.dividechars)
+	widths := urwidColumnWidthsEx(w, c.weights, c.fixedWidths, c.dividechars)
 	max := 1
 	for i, child := range c.children {
+		cw := widths[i]
 		hh := 1
-		if rh, ok := child.(interface{ RequiredHeight(int) int }); ok {
-			hh = rh.RequiredHeight(widths[i])
+		if hr, ok := child.(interface{ RequiredHeight(int) int }); ok {
+			hh = hr.RequiredHeight(cw)
 		}
 		if hh > max {
 			max = hh
@@ -345,11 +422,23 @@ func (c *urwidColumns) InputHandler() func(event *tcell.EventKey, setFocus func(
 
 func (c *urwidColumns) MouseHandler() func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(p tview.Primitive)) (consumed bool, capture tview.Primitive) {
 	return func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(p tview.Primitive)) (bool, tview.Primitive) {
-		for _, child := range c.children {
-			if h := child.MouseHandler(); h != nil {
-				if consumed, capture := h(action, event, setFocus); consumed {
-					return consumed, capture
+		mx, my := event.Position()
+		for i, child := range c.children {
+			if !isFocusable(child) {
+				continue
+			}
+			cx, cy, cw, ch := child.GetRect()
+			if mx >= cx && mx < cx+cw && my >= cy && my < cy+ch {
+				c.SetFocusIndex(i)
+				if setFocus != nil {
+					setFocus(child)
 				}
+				if h := child.MouseHandler(); h != nil {
+					if consumed, capture := h(action, event, setFocus); consumed {
+						return consumed, capture
+					}
+				}
+				return true, nil
 			}
 		}
 		return false, nil

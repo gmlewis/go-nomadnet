@@ -19,6 +19,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
@@ -34,12 +35,12 @@ func TestNetworkDisplayNoOuterBorder(t *testing.T) {
 	app := newTestApp()
 	nd := NewNetworkDisplay(app, nil, nil)
 
-	cols, ok := nd.Widget().(*tview.Flex)
+	cols, ok := nd.Widget().(*urwidColumns)
 	if !ok {
-		t.Fatalf("Widget is %T, want *tview.Flex (the columns)", nd.Widget())
+		t.Fatalf("Widget is %T, want *urwidColumns (Python urwid.Columns)", nd.Widget())
 	}
-	if got := cols.GetTitle(); got != "" {
-		t.Errorf("outer columns title = %q, want empty (Python has no outer border/title)", got)
+	if cols == nil {
+		t.Fatalf("expected non-nil urwidColumns")
 	}
 }
 
@@ -217,5 +218,51 @@ func TestNetworkDisplayUpdateLXMFPeersRefreshesTitle(t *testing.T) {
 	}
 	if got := nd.listBox.GetTitle(); got != " LXMF Propagation Peers (1) " {
 		t.Errorf("title after update = %q, want count 1", got)
+	}
+}
+
+// TestNetworkDisplayColumnFocusNavigation verifies RightArrow/Tab moves focus from
+// the left panel into the Remote Node browser pane, and mouse clicking on the
+// right pane focuses the browser pane.
+func TestNetworkDisplayColumnFocusNavigation(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	nd := NewNetworkDisplay(app, nil, nil)
+
+	cols, ok := nd.Widget().(*urwidColumns)
+	if !ok {
+		t.Fatalf("Widget is %T, want *urwidColumns", nd.Widget())
+	}
+
+	setFocus := func(p tview.Primitive) {
+		if p != nil {
+			p.Focus(func(tview.Primitive) {})
+		}
+	}
+
+	cols.Focus(setFocus)
+	if cols.FocusIndex() != 0 {
+		t.Errorf("initial focusIndex = %d, want 0 (left panel)", cols.FocusIndex())
+	}
+
+	// KeyRight moves focus to column 1 (Remote Node browser pane)
+	cols.InputHandler()(tcell.NewEventKey(tcell.KeyRight, 0, tcell.ModNone), setFocus)
+	if cols.FocusIndex() != 1 {
+		t.Errorf("after KeyRight focusIndex = %d, want 1 (browser pane)", cols.FocusIndex())
+	}
+
+	// KeyLeft moves focus back to column 0 (left panel)
+	cols.InputHandler()(tcell.NewEventKey(tcell.KeyLeft, 0, tcell.ModNone), setFocus)
+	if cols.FocusIndex() != 0 {
+		t.Errorf("after KeyLeft focusIndex = %d, want 0 (left panel)", cols.FocusIndex())
+	}
+
+	// Mouse click on right pane (e.g. x=60, y=10) sets focus to column 1
+	cols.SetRect(0, 0, 100, 30)
+	ev := tcell.NewEventMouse(60, 10, tcell.Button1, 0)
+	cols.MouseHandler()(tview.MouseLeftClick, ev, setFocus)
+	if cols.FocusIndex() != 1 {
+		t.Errorf("after mouse click at x=60 focusIndex = %d, want 1 (browser pane)", cols.FocusIndex())
 	}
 }

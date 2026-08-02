@@ -49,7 +49,7 @@ type NodeEntry struct {
 // and toggle between them via ctrl-l.
 type NetworkDisplay struct {
 	app            *App
-	widget         *tview.Flex
+	widget         tview.Primitive
 	leftPanel      *tview.Flex
 	announces      *tview.List
 	announcesList  *IndicativeListBox
@@ -226,10 +226,11 @@ func NewNetworkDisplay(app *App, announces []AnnounceEntry, nodes []NodeEntry) *
 	// Content: left panel + detail. Python: self.widget = self.columns
 	// (Network.py:1666) — NO outer LineBox or title around the page; the two
 	// columns sit directly in the body.
-	nd.widget = tview.NewFlex().SetDirection(tview.FlexColumn)
-	nd.widget.SetInputCapture(nd.handleInput)
-	nd.widget.AddItem(nd.leftPanel, 52, 0, true)
-	nd.widget.AddItem(nd.browser.Widget(), 0, 1, false)
+	mainCols := newURWIDColumns(0, nd.leftPanel, nd.browser.Widget()).
+		SetFixedWidth(0, 52).
+		SetWeight(1, 1)
+	mainCols.SetInputCapture(nd.handleInput)
+	nd.widget = mainCols
 
 	// Set up list callbacks. The announce list shows only the active tab's
 	// filtered entries, so resolve the selected entry through the AnnounceStream
