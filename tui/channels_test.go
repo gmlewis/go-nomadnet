@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/gdamore/tcell/v2"
+	"github.com/gmlewis/go-nomadnet/nomadnet/rrc"
 )
 
 func TestNewChannelsDisplay(t *testing.T) {
@@ -253,5 +254,78 @@ func TestChannelsDisplayBootLayout(t *testing.T) {
 	}
 	if c := cellAt(rows, 36, 23); c != "└" {
 		t.Errorf("right-pane bottom-left border at (36,23) = %q, want '└'", c)
+	}
+}
+
+func TestMaybeAutoconnect(t *testing.T) {
+	t.Parallel()
+
+	dir := tempDir(t)
+	mgr := rrc.NewManager(dir, nil)
+	hub := mgr.AddHub([]byte{0x01, 0x02, 0x03, 0x04}, "rrc.hub", "Hub 1")
+
+	// Nil hub is a no-op
+	MaybeAutoconnect(nil)
+
+	// StatusDisconnected -> attempts connect
+	hub.Status = rrc.StatusDisconnected
+	MaybeAutoconnect(hub)
+
+	// StatusFailed -> attempts connect
+	hub.Status = rrc.StatusFailed
+	MaybeAutoconnect(hub)
+
+	// StatusConnected -> no-op
+	hub.Status = rrc.StatusConnected
+	MaybeAutoconnect(hub)
+}
+
+func TestChannelsDisplaySelectedEntry(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	cd := NewChannelsDisplay(app, nil)
+
+	_, ok := cd.SelectedEntry()
+	if ok {
+		t.Error("SelectedEntry on empty list should return false")
+	}
+
+	hubs := []HubView{
+		&fakeHub{name: "Hub A", status: 2, joined: []string{"general"}},
+	}
+	cd.SetHubs(hubs)
+
+	entry, ok := cd.SelectedEntry()
+	if !ok {
+		t.Fatal("SelectedEntry returned false after SetHubs")
+	}
+	if entry.Kind != RowHub {
+		t.Errorf("entry.Kind = %v, want RowHub", entry.Kind)
+	}
+}
+
+func TestChannelsDisplayF8AndCtrlY(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	cd := NewChannelsDisplay(app, nil)
+
+	// Ctrl-Y toggles channel list state
+	if !cd.ChannelListVisible() {
+		t.Error("ChannelListVisible should default to true")
+	}
+	cd.handleInput(tcell.NewEventKey(tcell.KeyCtrlY, 0, tcell.ModNone))
+	if cd.ChannelListVisible() {
+		t.Error("ChannelListVisible should be false after Ctrl-Y")
+	}
+
+	// F8 toggles join/part collapse
+	if cd.collapseJoinPart {
+		t.Error("collapseJoinPart should default to false")
+	}
+	cd.handleInput(tcell.NewEventKey(tcell.KeyF8, 0, tcell.ModNone))
+	if !cd.collapseJoinPart {
+		t.Error("collapseJoinPart should be true after F8")
 	}
 }

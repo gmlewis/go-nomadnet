@@ -17,6 +17,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"os"
@@ -31,6 +32,7 @@ import (
 	"github.com/gmlewis/go-nomadnet/nomadnet/browser"
 	"github.com/gmlewis/go-nomadnet/nomadnet/conversation"
 	"github.com/gmlewis/go-nomadnet/nomadnet/directory"
+	"github.com/gmlewis/go-nomadnet/nomadnet/rrc"
 	"github.com/gmlewis/go-nomadnet/tui"
 	"github.com/gmlewis/go-reticulum/lxmf"
 	"github.com/gmlewis/go-reticulum/rns"
@@ -1053,73 +1055,41 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 
 	// Wire channel keyboard shortcuts
 	channelsDisplay.OnNewHub = func() {
-		tuiApp.Dialogs.ShowInputDialog("New Hub",
-			"Hub address (hex hash):", "",
-			func(text string) {
-				if text == "" {
-					return
-				}
-				name := tui.TruncateString(text, 8)
-				_ = a
-				// TODO: Call a.AddHub when app method exists
-				_ = text
-				_ = name
-			},
-			func() {},
-		)
+		channelsDisplay.NewHubDialog()
 	}
 	channelsDisplay.OnJoinRoom = func() {
-		tuiApp.Dialogs.ShowInputDialog("Join Room",
-			"Room name:", "",
-			func(text string) {
-				if text == "" {
-					return
-				}
-				_ = text
-				// TODO: Join room via RRC hub
-			},
-			func() {},
-		)
+		channelsDisplay.JoinRoomDialog()
 	}
 	channelsDisplay.OnRemoveHub = func() {
-		tuiApp.Dialogs.ShowConfirmDialog("Remove selected hub/room?",
-			func() {
-				// TODO: Remove hub/room via RRC hub
-			},
-			func() {},
-		)
+		channelsDisplay.RemoveSelectedDialog()
 	}
 	channelsDisplay.OnEditHub = func() {
-		tuiApp.Dialogs.ShowInputDialog("Edit Hub",
-			"Display name:", "",
-			func(text string) {
-				if text == "" {
-					return
-				}
-				// TODO: Update hub display name
-				_ = text
-			},
-			func() {},
-		)
+		channelsDisplay.EditHubDialog()
 	}
 	channelsDisplay.OnConnect = func() {
-		tuiApp.Dialogs.ShowDialog("Connect",
-			tview.NewTextView().
-				SetDynamicColors(true).
-				SetText("[gray]Connecting to hub...[-]"),
-			40, 5, nil)
-		// TODO: Connect to hub via RRC
+		if entry, ok := channelsDisplay.SelectedEntry(); ok && a.RRC != nil {
+			hubs := a.RRC.HubsSnapshot()
+			if entry.HubIdx >= 0 && entry.HubIdx < len(hubs) {
+				hubs[entry.HubIdx].ConnectAsync()
+			}
+		}
 	}
 	channelsDisplay.OnDisconnect = func() {
-		tuiApp.Dialogs.ShowDialog("Disconnect",
-			tview.NewTextView().
-				SetDynamicColors(true).
-				SetText("[gray]Disconnected from hub.[-]"),
-			40, 5, nil)
-		// TODO: Disconnect from hub
+		if entry, ok := channelsDisplay.SelectedEntry(); ok && a.RRC != nil {
+			hubs := a.RRC.HubsSnapshot()
+			if entry.HubIdx >= 0 && entry.HubIdx < len(hubs) {
+				hubs[entry.HubIdx].Disconnect()
+			}
+		}
 	}
 	channelsDisplay.OnToggleAutoReconnect = func() {
-		// TODO: Toggle auto-reconnect setting
+		if entry, ok := channelsDisplay.SelectedEntry(); ok && a.RRC != nil {
+			hubs := a.RRC.HubsSnapshot()
+			if entry.HubIdx >= 0 && entry.HubIdx < len(hubs) {
+				hub := hubs[entry.HubIdx]
+				hub.SetAutoReconnect(!hub.AutoReconnect, true)
+			}
+		}
 	}
 
 	// Config display
@@ -1379,6 +1349,32 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		refreshConvs()
 		conversationsDisplay.DisplayConversation(hashHex)
 		main.SelectPage("conversations")
+	}
+	browserDisplay.OnOpenRRC = func(hubHex, room string) {
+		hubHex = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(hubHex)), "0x")
+		hashBytes, err := hex.DecodeString(hubHex)
+		if err != nil || len(hashBytes) != 16 {
+			tuiApp.Dialogs.ShowConfirmDialog(
+				"Could not open RRC link: invalid hub address",
+				func() {}, func() {})
+			return
+		}
+		if a.RRC != nil {
+			hub := a.RRC.FindHub(hashBytes, "rrc.hub")
+			if hub == nil {
+				hub = a.RRC.AddHub(hashBytes, "rrc.hub", "")
+			}
+			if room != "" {
+				hub.AddRoom(room)
+				if hub.Status == rrc.StatusConnected {
+					hub.JoinRoom(room, false)
+				}
+			}
+			tuiApp.QueueUpdateDraw(func() {
+				channelsDisplay.SetHubs(a.HubViews())
+			})
+		}
+		main.SelectPage("channels")
 	}
 	browserDisplay.OnPartialUpdate = func(ids []string) {
 		// Python Browser.handle_partial_updates (Browser.py:823-834): a

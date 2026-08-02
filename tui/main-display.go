@@ -400,7 +400,6 @@ func (md *MainDisplay) redrawMenuBar() {
 	indicatorStyled := fmt.Sprintf("[#%06x:#%06x]%s[-:-]",
 		int32(fg), int32(bg), indicator)
 	b.WriteString(indicatorStyled)
-	md.menuWidths = append(md.menuWidths, len([]rune(indicator)))
 
 	for i, item := range md.menuItems {
 		// "[ Name ]" matches urwid MenuButton (Main.py:35-37): button_left
@@ -417,7 +416,8 @@ func (md *MainDisplay) redrawMenuBar() {
 		// dividechars=1: one space between columns.
 		b.WriteString(" ")
 		b.WriteString(styled)
-		md.menuWidths = append(md.menuWidths, len([]rune(label)))
+		w := 1 + runewidth.StringWidth(label)
+		md.menuWidths = append(md.menuWidths, w)
 	}
 
 	md.menuBar.SetText(b.String())
@@ -529,7 +529,16 @@ func (md *MainDisplay) FocusBody() {
 
 // handleClick determines which menu item was clicked based on x position.
 func (md *MainDisplay) handleClick(x int) {
-	offset := 0
+	indicator := md.glyphs["decoration_menu"]
+	if md.unreadIndicator {
+		if g := md.glyphs["unread_menu"]; g != "" {
+			indicator = g
+		}
+	}
+	offset := runewidth.StringWidth(indicator)
+	if offset < 1 {
+		offset = 1
+	}
 	for i, w := range md.menuWidths {
 		if x >= offset && x < offset+w {
 			md.selectMenu(i)

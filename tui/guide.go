@@ -155,13 +155,10 @@ func NewGuideDisplay(app *App) *GuideDisplay {
 	gd.reader.SetScrollable(true)
 	gd.reader.SetWrap(true)
 	gd.reader.SetTextColor(tcell.NewHexColor(0xbbbbbb))
-	gd.reader.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
-		if action == tview.MouseLeftClick {
-			if hl := gd.reader.GetHighlights(); len(hl) > 0 {
-				gd.activateLink(hl[0])
-			}
+	gd.reader.SetHighlightedFunc(func(added, removed, remaining []string) {
+		if len(added) > 0 {
+			gd.activateLink(added[0])
 		}
-		return action, event
 	})
 
 	// Each pane in its own LineBox (SetBorder), matching the original: Topics

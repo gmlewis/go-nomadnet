@@ -17,6 +17,9 @@ package tui
 
 import (
 	"testing"
+
+	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 )
 
 func TestLinkableTextCreation(t *testing.T) {
@@ -144,5 +147,33 @@ func TestLinkableTextClear(t *testing.T) {
 	}
 	if lt.PlainText() != "" {
 		t.Errorf("after Clear, PlainText = %q, want empty", lt.PlainText())
+	}
+}
+
+func TestLinkableTextMouseClick(t *testing.T) {
+	t.Parallel()
+
+	var clickedTarget string
+	lt := NewLinkableText(func(target, _ string) {
+		clickedTarget = target
+	})
+
+	lt.AddLink("First", "link1")
+	lt.AddLink("Second", "link2")
+	lt.SetText("[\"0\"]First[\"\"] [\"1\"]Second[\"\"]")
+	screen := tcell.NewSimulationScreen("")
+	if err := screen.Init(); err != nil {
+		t.Fatalf("failed to init screen: %v", err)
+	}
+	screen.SetSize(40, 10)
+	lt.SetRect(0, 0, 40, 10)
+	lt.Draw(screen)
+
+	// Dispatch mouse left click at (7, 0) which is on "Second" (col 6..12)
+	event := tcell.NewEventMouse(7, 0, tcell.Button1, 0)
+	lt.MouseHandler()(tview.MouseLeftClick, event, func(p tview.Primitive) {})
+
+	if clickedTarget != "link2" {
+		t.Errorf("clickedTarget = %q, want %q", clickedTarget, "link2")
 	}
 }

@@ -88,14 +88,10 @@ func NewLinkableText(onHandle func(target, fields string)) *LinkableText {
 		keyTimeout: 2 * time.Second, // Python key_timeout = 2
 	}
 
-	lt.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
-		if action == tview.MouseLeftClick {
-			region := lt.GetRegionByMouse(event)
-			if region != "" {
-				lt.activateRegion(region)
-			}
+	lt.SetHighlightedFunc(func(added, removed, remaining []string) {
+		if len(added) > 0 {
+			lt.activateRegion(added[0])
 		}
-		return action, event
 	})
 
 	return lt

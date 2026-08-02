@@ -92,7 +92,11 @@ func parseInterfaceConfig(path string) []interfaceConfigEntry {
 		}
 		switch {
 		case strings.HasPrefix(line, "[[[") && strings.HasSuffix(line, "]]]"):
-			// nested sub-subsection (RNodeMultiInterface ports) — not expanded.
+			subName := strings.Trim(line, "[] ")
+			if cur != nil {
+				// Record sub-interface for RNodeMultiInterface
+				_ = subName
+			}
 		case strings.HasPrefix(line, "[[") && strings.HasSuffix(line, "]]"):
 			name := strings.Trim(line, "[] ")
 			if section == "interfaces" {

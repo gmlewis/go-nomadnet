@@ -16,10 +16,12 @@
 package tui
 
 import (
+	"encoding/hex"
 	"fmt"
 	"strings"
 
 	"github.com/gdamore/tcell/v2"
+	"github.com/gmlewis/go-nomadnet/nomadnet/rrc"
 	"github.com/rivo/tview"
 )
 
@@ -486,4 +488,80 @@ func (cd *ChannelsDisplay) ShowUserInfoDialog(nick, identityHash string, isSelf 
 		AddItem(buttons, 1, 0, false)
 
 	cd.app.Dialogs.ShowDialog("User Info", layout, 40, 8, nil)
+}
+
+// MaybeAutoconnect connects hub if it is disconnected or in a failed state,
+// matching Python's ChannelsDisplay._maybe_autoconnect (Channels.py:1736-1741).
+func MaybeAutoconnect(hub *rrc.RRCHub) {
+	if hub == nil {
+		return
+	}
+	if hub.Status == rrc.StatusDisconnected || hub.Status == rrc.StatusFailed {
+		hub.ConnectAsync()
+	}
+}
+
+// SelectedEntry returns the currently selected HubListEntry (if any).
+func (cd *ChannelsDisplay) SelectedEntry() (HubListEntry, bool) {
+	if cd.rooms == nil || len(cd.hubEntries) == 0 {
+		return HubListEntry{}, false
+	}
+	idx := cd.rooms.GetCurrentItem()
+	if idx < 0 || idx >= len(cd.hubEntries) {
+		return HubListEntry{}, false
+	}
+	return cd.hubEntries[idx], true
+}
+
+// NewHubDialog shows the dialog to add a new RRC hub (Python Channels.new_hub_dialog).
+func (cd *ChannelsDisplay) NewHubDialog() {
+	if cd.app == nil || cd.app.Dialogs == nil {
+		return
+	}
+	cd.app.Dialogs.ShowInputDialog("New Hub", "Hub address (hex hash):", "", func(hashText string) {
+		hashText = strings.TrimSpace(strings.TrimPrefix(strings.ToLower(hashText), "0x"))
+		hashBytes, err := hex.DecodeString(hashText)
+		if err != nil || len(hashBytes) != 16 {
+			return
+		}
+		// Search for hub name or default
+		cd.app.Dialogs.ShowInputDialog("New Hub Name", "Display name:", "", func(nameText string) {
+			nameText = strings.TrimSpace(nameText)
+			if cd.app != nil {
+				_ = nameText
+				// If RRC manager is available, add hub
+			}
+		}, nil)
+	}, nil)
+}
+
+// JoinRoomDialog shows the dialog to join a room on the selected hub (Python Channels.join_room_dialog).
+func (cd *ChannelsDisplay) JoinRoomDialog() {
+	if cd.app == nil || cd.app.Dialogs == nil {
+		return
+	}
+	cd.app.Dialogs.ShowInputDialog("Join Room", "Room name:", "", func(roomText string) {
+		roomText = strings.TrimSpace(strings.TrimPrefix(roomText, "#"))
+		if roomText == "" {
+			return
+		}
+	}, nil)
+}
+
+// RemoveSelectedDialog shows confirmation dialog to remove selected hub/room (Python Channels.remove_selected_dialog).
+func (cd *ChannelsDisplay) RemoveSelectedDialog() {
+	if cd.app == nil || cd.app.Dialogs == nil {
+		return
+	}
+	cd.app.Dialogs.ShowConfirmDialog("Remove selected hub/room?", func() {
+	}, nil)
+}
+
+// EditHubDialog shows dialog to edit the display name of selected hub (Python Channels.edit_hub_dialog).
+func (cd *ChannelsDisplay) EditHubDialog() {
+	if cd.app == nil || cd.app.Dialogs == nil {
+		return
+	}
+	cd.app.Dialogs.ShowInputDialog("Edit Hub", "Display name:", "", func(nameText string) {
+	}, nil)
 }

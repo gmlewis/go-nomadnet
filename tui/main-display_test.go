@@ -79,3 +79,46 @@ func TestUrwidSpaceWrap(t *testing.T) {
 		})
 	}
 }
+
+func TestMenuMouseClick(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	app.Glyphs = GetGlyphSet(GlyphUnicode)
+	app.GlyphSet = GlyphUnicode
+
+	md := NewMainDisplay(app, ThemeDark, GlyphUnicode)
+	md.activeMenu = 0
+	md.activePage = "conversations"
+	md.redrawMenuBar()
+
+	// Column positions (indicator width = 1, dividechar = 1):
+	// Col 0: indicator
+	// Col 1..18: space + [ Conversations ]
+	// Col 19..30: space + [ Network ]
+	// Col 31..43: space + [ Channels ]
+	// Col 44..51: space + [ Log ]
+	// Col 52..66: space + [ Interfaces ]
+	// Col 67..77: space + [ Config ]
+	// Col 78..87: space + [ Guide ]
+
+	clickTests := []struct {
+		x        int
+		wantPage string
+	}{
+		{2, "conversations"}, // inside [ Conversations ]
+		{22, "network"},      // inside [ Network ]
+		{35, "channels"},     // inside [ Channels ]
+		{48, "log"},          // inside [ Log ]
+		{58, "interfaces"},   // inside [ Interfaces ]
+		{72, "config"},       // inside [ Config ]
+		{82, "guide"},        // inside [ Guide ]
+	}
+
+	for _, tt := range clickTests {
+		md.handleClick(tt.x)
+		if md.activePage != tt.wantPage {
+			t.Errorf("handleClick(%d) selected page %q, want %q", tt.x, md.activePage, tt.wantPage)
+		}
+	}
+}

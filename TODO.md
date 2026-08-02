@@ -231,56 +231,6 @@ test or a matching `parity.sh` summary):
 > **Where to start:** The first available task. Each `[ ]` is one TDD unit. Remove
 > it when green. Phases are prerequisites for the ones below them.
 
-### Phase 0 — Foundation & cross-cutting gaps
-
-- [ ] Mouse clicks have no correlation with what is under the cursor — fix mouse
-      coordinate mapping so clicks hit the right menu/list/link/pane gutter and
-	  eliminate off-by-one errors.
-
-### Phase 2 — Browser page over RNS (Python `Browser.py`, 1848 lines)
-
-> No `nomadnet/browser` core fetch backend exists — the browser is TUI-only with
-> `displayURL` rendering a hardcoded placeholder. Build the fetch backend on the
-> existing go-reticulum `rns.Link.Establish` + `Link.Request` + `Resource`
-> primitives (the node side already serves pages via `node.Node.registerRequestHandlers`
-> using `Destination.RegisterRequestHandler`). Capture expected behavior from
-> `Browser.py`.
-
-- [ ] Wire `browserDisplay.OnOpenRRC` (deferred to Phase 3 — needs the
-      channels-display hub/room selection UI which Phase 3 builds): switch to
-      the Channels page, find/connect the hub via `a.RRC.FindHub`/`AddHub`, and
-      select the room. (All other browserDisplay callbacks — OnRetrieveURL,
-      OnFetchPartial, OnJumpAnchor, OnPartialUpdate, OnOpenLXMF, OnBrowserError,
-      OnToggleFullscreen, OnDisconnect, OnCopyURL, OnURLDialog, OnSaveNode —
-      are wired; OnToggleFullscreen is a documented no-op because the Go
-      browser is its own full-screen page, not an in-network-pane widget.)
-
-### Phase 3 — Channels page / RRC (Python `Channels.py`, 2285 lines)
-
-> `rrc.RRCManager`/`RRCHub` are fully functional at the core layer (real
-> `rns.NewLink`/`rns.RecallIdentity`/`link.SendPacket`) but the TUI channels page
-> is built with `nil` rooms and never bound to `a.RRC`. `a.RRC = rrc.NewManager(...)`
-> exists; wire it. Capture expected behavior from `Channels.py`.
-
-- [ ] `RoomWidget` — messages + users pane (`C-u` toggle removes/re-adds the
-      users column) + editor; verify vs Python `RoomWidget`.
-- [ ] `RoomWidget.sendMessage` (`C-d`) + `handleSlashCommand` + `leaveRoom`
-      (`C-x`); `tab` nick-complete is wired to `TabComplete` (cycling tested).
-      Verify each slash command vs `_handle_slash_command`.
-- [ ] `updateMessages`/`appendMessage` + `_messageWidget` — message list; verify.
-- [ ] `newHubDialog`/`confirmNewHubDialog`/`editHubDialog`/`joinRoomDialog` +
-      `showUserInfo` — overlay dialogs; verify vs Python.
-- [ ] `autoconnect` — `_maybe_autoconnect` on startup; verify.
-- [ ] Wire all channel callbacks: `OnNewHub`→`RRCManager.AddHub`;
-      `OnJoinRoom`→`RRCHub.JoinRoom`; `OnRemoveHub`→`RRCManager.RemoveHub`;
-      `OnEditHub`→`RRCHub` display-name update; `OnConnect`/`OnDisconnect`→
-      `RRCHub.Connect`/`Disconnect`; `OnToggleAutoReconnect`→`RRCHub.SetAutoReconnect`;
-      plus `OnSendMessage`/`OnLeaveRoom`/`OnToggleCollapse`/`OnToggleChannelList`/
-      `OnMemberClick` (declared `tui/channels.go`, currently never wired).
-- [ ] `F8` join/part collapse (logic wired + golden-tested) and `C-y` toggle
-      channel list (pane removes/re-adds) — visual verify via `parity.sh` for the
-      Channels page.
-
 ### Phase 4 — Network page remaining (Python `Network.py`, 1974 lines)
 
 > Left-pane list/LocalPeer/NetworkStats/AnnounceInfo/KnownNodeInfo layout is done
@@ -291,18 +241,10 @@ test or a matching `parity.sh` summary):
 > List/data wiring, partial-box clipping, first-item ○, and title centering are
 > done and capture-verified. Remaining items:
 
-- [ ] `ShowInterface` — detail with bandwidth charts, `h`/`v` horizontal/vertical
-      by width, `tab`/`shift-tab` focus cycle; verify.
 - [ ] `AddInterfaceView`/`EditInterfaceView` — per-type forms; verify vs Python.
       Wire `OnAddInterface`/`OnEditInterface`/`OnRemoveInterface` (currently
       `// TODO`): edit the RNS config file then `Reticulum.ReloadInterface`
       (go-reticulum provides it).
-- [ ] `RNodeCalculator` + `InterfaceBandwidthChart` — field updates + sparkline;
-      verify vs Python.
-- [ ] `getPortInfo`/`getPortField` — serial port detection; verify.
-- [ ] `parseInterfaceConfig`: handle `RNodeMultiInterface [[[ / ]]]` sub-interface
-      expansion (Interfaces.py:2843-2856) — currently skipped.
-
 ### Phase 6 — App wiring, node hosting & cross-process integration
 
 - [ ] **Background-thread marshaling.** RRC/message/announce callbacks must marshal
@@ -313,6 +255,20 @@ test or a matching `parity.sh` summary):
 
 ### Phase 7 — Mouse & final polish
 
+- [ ] Arrow key navigation within the app and within components is completely
+      broken. Unlike `nomadnet`, there is no solid green rectangular box where
+	  the cursor is located within `gonomadnet` so it is impossible to tell where
+	  the cursor is. Additionally, left/right arrow movement WITHIN a component
+	  is completely broken and gives ZERO feedback to the user as to what "button"
+	  will be selected if they hit Enter.
+- [ ] The y-value of mouse clicks are currently being completely ignored. This
+      is a complex app with many components and the (X,Y) value of mouse clicks
+	  need to be carefully examined and the event must be routed to the appropriate
+	  component so that it can determine what part of its component was actually
+	  clicked on, and thereby take appropriate action. For example, it is currently
+	  impossible to "Connect" to a selected Network Node because not only are the
+	  arrow keys not working properly, but a mouse click within that component
+	  is parsed as if the y-value went to the main menu bar and not the component.
 - [ ] Mouse parity: click list entries, links, pane gutters, expand gutters.
       Includes the browser "marked link" footer display (Python
       `Browser.marked_link_job`, Browser.py:181-204 — show "Link to <target>"

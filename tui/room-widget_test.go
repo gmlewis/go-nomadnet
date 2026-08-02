@@ -274,3 +274,84 @@ func TestRoomWidgetTabComplete(t *testing.T) {
 		t.Error("doTabComplete with no match should return false")
 	}
 }
+
+func TestRoomWidgetToggleUsers(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	rw := NewRoomWidget(app, "hub1", "general")
+
+	if !rw.usersVisible {
+		t.Error("users visible should default to true")
+	}
+	if rw.columns.GetItemCount() != 2 {
+		t.Errorf("columns count = %d, want 2", rw.columns.GetItemCount())
+	}
+
+	// Toggle off via C-u
+	rw.handleInput(tcell.NewEventKey(tcell.KeyCtrlU, 0, tcell.ModNone))
+	if rw.usersVisible {
+		t.Error("users visible should be false after toggle")
+	}
+	if rw.columns.GetItemCount() != 1 {
+		t.Errorf("columns count after toggle off = %d, want 1", rw.columns.GetItemCount())
+	}
+
+	// Toggle back on
+	rw.handleInput(tcell.NewEventKey(tcell.KeyCtrlU, 0, tcell.ModNone))
+	if !rw.usersVisible {
+		t.Error("users visible should be true after toggle back")
+	}
+	if rw.columns.GetItemCount() != 2 {
+		t.Errorf("columns count after toggle back = %d, want 2", rw.columns.GetItemCount())
+	}
+}
+
+func TestRoomWidgetSlashCommands(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+
+	tests := []struct {
+		input     string
+		wantSent  string
+		wantLeave bool
+	}{
+		{"/join #test", "/join #test", false},
+		{"/j #test", "/j #test", false},
+		{"/me dances", "/me dances", false},
+		{"/nick alice", "/nick alice", false},
+		{"/who", "/who", false},
+		{"/names", "/names", false},
+		{"/topic new topic", "/topic new topic", false},
+		{"/part", "", true},
+		{"/leave", "", true},
+		{"/quit", "", true},
+		{"/q", "", true},
+		{"/disconnect", "", true},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.input, func(t *testing.T) {
+			rw := NewRoomWidget(app, "hub1", "general")
+			var sentText string
+			left := false
+			rw.OnSendMessage = func(text string) { sentText = text }
+			rw.OnLeaveRoom = func() { left = true }
+
+			rw.editor.SetText(tt.input)
+			rw.sendMessage()
+
+			if sentText != tt.wantSent {
+				t.Errorf("sendMessage(%q) sent = %q, want %q", tt.input, sentText, tt.wantSent)
+			}
+			if left != tt.wantLeave {
+				t.Errorf("sendMessage(%q) left = %v, want %v", tt.input, left, tt.wantLeave)
+			}
+			if rw.editor.GetText() != "" {
+				t.Errorf("sendMessage(%q) editor text = %q, want empty", tt.input, rw.editor.GetText())
+			}
+		})
+	}
+}
