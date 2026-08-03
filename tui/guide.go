@@ -104,16 +104,13 @@ const firstRunTopicIndex = 8
 // GuideColumns layout (Topics list weight 0.33, reader weight 0.67), each pane
 // in its own LineBox (Topics titled, reader untitled), no outer border.
 type GuideDisplay struct {
-	app    *App
-	widget *tview.Flex
-	topics *tview.List
-	// topicsList wraps topics with IndicativeListBox end-indicator bars and is
-	// the primitive added to the layout / focused by the app.
+	app        *App
+	widget     *tview.Flex
+	topics     *tview.List
 	topicsList *IndicativeListBox
 	reader     *guideReader
-	// scroll wraps reader with a right-edge scrollbar (urwid ScrollBar,
-	// Guide.py:232) and is the primitive added to the reader pane / focused.
-	scroll *ScrollBar
+	readerBox  *tview.Flex
+	scroll     *ScrollBar
 
 	currentIdx   int // currently displayed topic, -1 = placeholder
 	links        []micron.LinkSpec
@@ -178,15 +175,25 @@ func NewGuideDisplay(app *App) *GuideDisplay {
 
 	gd.scroll = NewScrollBar(gd.reader)
 	gd.scroll.SetThumbColor(GetThemeColors(app.Theme)["scrollbar"])
-	readerBox := tview.NewFlex().SetDirection(tview.FlexRow).
+	gd.readerBox = tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(gd.scroll, 0, 1, true)
-	readerBox.SetBorder(true)
+	gd.readerBox.SetBorder(true)
 
 	// Weights 1 : 2 ≈ 0.33 : 0.67 (Guide.py list_width = 0.33). The topics pane
 	// is the initial focus (focus=true) on a normal launch.
 	gd.widget = tview.NewFlex().SetDirection(tview.FlexColumn).
 		AddItem(topicsBox, 0, 1, true).
-		AddItem(readerBox, 0, 2, false)
+		AddItem(gd.readerBox, 0, 2, false)
+
+	gd.topicsList.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event != nil && event.Key() == tcell.KeyUp && gd.topics.GetCurrentItem() == 0 {
+			if gd.app != nil && gd.app.Main != nil {
+				gd.app.Main.FocusMenu()
+				return nil
+			}
+		}
+		return event
+	})
 
 	gd.widget.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event == nil {
@@ -246,6 +253,7 @@ func (gd *GuideDisplay) FocusReader() {
 func (gd *GuideDisplay) showPlaceholder() {
 	gd.currentIdx = -1
 	gd.links = nil
+	SetTitledBorder(gd.readerBox, "?")
 	gd.reader.SetText("\n  No topic selected")
 }
 
@@ -256,14 +264,16 @@ func (gd *GuideDisplay) showTopic(idx int) {
 		return
 	}
 	gd.currentIdx = idx
+	SetTitledBorder(gd.readerBox, guideTopics[idx].label)
 	gd.renderMarkup(guideTopics[idx].markup)
-	// NB: tview.List tracks the current item internally when ChangedFunc fires.
-	// Do NOT call SetCurrentItem here — it triggers another ChangedFunc and
-	// causes an infinite recursion (tview.List's internal state is not yet
-	// updated when our callback runs, so GetCurrentItem never matches).
 }
 
-// showMarkupForTest renders arbitrary micron markup into the reader (for
+// Shortcuts returns the footer shortcut text for the Guide page, matching
+// Python's Guide.py:219 / GuideDisplayShortcuts.
+func (gd *GuideDisplay) Shortcuts() string {
+	return "[C-q] Quit  [Tab] Move Focus  [Enter] Select Topic / Follow Link"
+}
+
 // unit-testing jumpToAnchor/handleLink without going through the embedded topic
 // list). Production uses showTopic.
 func (gd *GuideDisplay) showMarkupForTest(markup string) {

@@ -1122,7 +1122,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	// Guide display
 	guideDisplay := tui.NewGuideDisplay(tuiApp)
 	main.SetDisplay("guide", guideDisplay.Widget())
-	main.SetShortcut("guide", "")
+	main.SetShortcutCallback("guide", guideDisplay.Shortcuts)
 
 	// Interfaces display — wired to the live RNS transport. Python builds the
 	// list from the RNS config + app.rns.get_interface_stats() (Interfaces.py:

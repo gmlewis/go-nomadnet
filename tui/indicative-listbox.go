@@ -166,9 +166,19 @@ func (i *IndicativeListBox) HasFocus() bool {
 	return i.Box.HasFocus() || i.List.HasFocus()
 }
 
-// InputHandler delegates to the wrapped List.
+// InputHandler delegates to the wrapped List, checking input capture first.
 func (i *IndicativeListBox) InputHandler() func(event *tcell.EventKey, setFocus func(p tview.Primitive)) {
-	return i.List.InputHandler()
+	return func(event *tcell.EventKey, setFocus func(p tview.Primitive)) {
+		if capture := i.GetInputCapture(); capture != nil {
+			event = capture(event)
+			if event == nil {
+				return
+			}
+		}
+		if handler := i.List.InputHandler(); handler != nil {
+			handler(event, setFocus)
+		}
+	}
 }
 
 // MouseHandler delegates to the wrapped List (whose rect was set in SetRect).

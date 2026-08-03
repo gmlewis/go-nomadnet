@@ -433,7 +433,7 @@ func (md *MainDisplay) redrawMenuBar() {
 
 	md.menuBar.SetText(b.String())
 
-	if (md.focusRegion == "menu" || md.menuBar.HasFocus()) {
+	if md.focusRegion == "menu" || md.menuBar.HasFocus() {
 		indicator := md.glyphs["decoration_menu"]
 		if md.unreadIndicator {
 			if g := md.glyphs["unread_menu"]; g != "" {

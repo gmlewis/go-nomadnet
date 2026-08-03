@@ -36,6 +36,42 @@ func TestNewGuideDisplay(t *testing.T) {
 	}
 }
 
+func TestGuideReaderDynamicTitleUpdate(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	gd := NewGuideDisplay(app)
+
+	gd.showTopic(0)
+	if got := gd.readerBox.GetTitle(); got != " Introduction " {
+		t.Errorf("readerBox title for topic 0 = %q, want ' Introduction '", got)
+	}
+
+	gd.showTopic(1)
+	if got := gd.readerBox.GetTitle(); got != " Concepts & Terminology " {
+		t.Errorf("readerBox title for topic 1 = %q, want ' Concepts & Terminology '", got)
+	}
+}
+
+func TestGuideKeyUpTopFocusesMenu(t *testing.T) {
+	t.Parallel()
+
+	app := NewApp(ThemeDark, GlyphUnicode, ColorModeTrue)
+	gd := NewGuideDisplay(app)
+	app.Main.SetDisplay("guide", gd.Widget())
+	app.Main.SelectPage("guide")
+	gd.FocusTopics()
+	gd.topics.SetCurrentItem(0)
+
+	handler := gd.topicsList.InputHandler()
+	if handler != nil {
+		handler(tcell.NewEventKey(tcell.KeyUp, 0, tcell.ModNone), func(p tview.Primitive) { app.SetFocus(p) })
+		if app.Main.focusRegion != "menu" {
+			t.Errorf("focusRegion after KeyUp at item 0 = %q, want 'menu'", app.Main.focusRegion)
+		}
+	}
+}
+
 func TestGuideClickMenuAndDraw(t *testing.T) {
 	t.Parallel()
 
