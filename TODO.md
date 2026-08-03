@@ -231,11 +231,6 @@ test or a matching `parity.sh` summary):
 > **Where to start:** The first available task. Each `[ ]` is one TDD unit. Remove
 > it when green. Phases are prerequisites for the ones below them.
 
-- [ ] **Guide Column Layout & Focus Navigation**: Refactor `GuideDisplay` layout to use `urwidColumns` (`newURWIDColumns`), allowing seamless `Left` / `Right` arrow key navigation and mouse click focus switching between `Topics` and the reader pane.
-- [ ] **Micron Heading Depth & Section Line Formatting**: Update `micron.RenderToStyledLines` and `StyledLinesToTviewText` (`tui/micron-view.go`, `tui/guide.go`) to indent headings according to depth (`>>`, `>>>`, `>>>>`) and stretch horizontal divider lines (`-`) across the full pane width.
-- [ ] **Guide Reader ScrollBar & Link Highlight Cursor**: Ensure the reader pane displays a vertical scrollbar thumb (`┃`) on overflow and positions the hardware cursor on active links during keyboard navigation.
-- [ ] **Fix Micron Page Header & Rendering in Remote Node Pane**: Ensure Micron page headers (`Ⓝ url`) and styled Micron elements render in the Remote Node pane upon successful link retrieval.
-
 
 ---
 

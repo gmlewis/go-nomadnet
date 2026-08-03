@@ -72,6 +72,35 @@ func TestGuideKeyUpTopFocusesMenu(t *testing.T) {
 	}
 }
 
+func TestGuideURWIDColumnsLayoutAndClickFocus(t *testing.T) {
+	t.Parallel()
+
+	app := NewApp(ThemeDark, GlyphUnicode, ColorModeTrue)
+	gd := NewGuideDisplay(app)
+
+	// Verify columns widget type
+	cols, ok := gd.Widget().(*urwidColumns)
+	if !ok {
+		t.Fatalf("gd.Widget() = %T, want *urwidColumns", gd.Widget())
+	}
+
+	cols.SetRect(0, 0, 120, 30)
+	gd.FocusTopics()
+	if !gd.topicsList.HasFocus() {
+		t.Errorf("initial focus = %v, want topicsList", app.GetFocus())
+	}
+
+	// Click column 1 (reader pane) to move focus
+	mouseHandler := cols.MouseHandler()
+	if mouseHandler != nil {
+		event := tcell.NewEventMouse(80, 10, tcell.Button1, 0)
+		mouseHandler(tview.MouseLeftClick, event, func(p tview.Primitive) { app.SetFocus(p) })
+		if !gd.scroll.HasFocus() && !gd.reader.HasFocus() {
+			t.Errorf("focus after click reader = %v, want scroll/reader focused", app.GetFocus())
+		}
+	}
+}
+
 func TestGuideClickMenuAndDraw(t *testing.T) {
 	t.Parallel()
 
@@ -143,9 +172,9 @@ func TestGuideDisplayWidgetType(t *testing.T) {
 	app := newTestApp()
 	gd := NewGuideDisplay(app)
 
-	_, ok := gd.Widget().(*tview.Flex)
+	_, ok := gd.Widget().(*urwidColumns)
 	if !ok {
-		t.Error("Widget is not a Flex")
+		t.Errorf("Widget is %T, want *urwidColumns", gd.Widget())
 	}
 }
 

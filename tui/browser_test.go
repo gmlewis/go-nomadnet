@@ -60,6 +60,25 @@ func TestHandleLinkEmpty(t *testing.T) {
 	}
 }
 
+func TestBrowserPageHeaderAndMicronRendering(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	app.Glyphs = GetGlyphSet(GlyphUnicode)
+	bd := NewBrowserDisplay(app)
+
+	bd.urlBar.SetText("nomadnetwork://44f0dbf2ec1c2ac47277995475217aed/page/status.mu")
+	bd.RenderPage(">Welcome Node\n-")
+
+	text := bd.content.GetText(true)
+	if text == "" {
+		t.Fatal("content text is empty after RenderPage")
+	}
+	if !testing.Short() && len(text) < 5 {
+		t.Errorf("content text too short: %q", text)
+	}
+}
+
 func TestHandleLinkUnknown(t *testing.T) {
 	t.Parallel()
 	_, _, err := HandleLink("ftp://example.com")

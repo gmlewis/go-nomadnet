@@ -105,7 +105,7 @@ const firstRunTopicIndex = 8
 // in its own LineBox (Topics titled, reader untitled), no outer border.
 type GuideDisplay struct {
 	app        *App
-	widget     *tview.Flex
+	widget     tview.Primitive
 	topics     *tview.List
 	topicsList *IndicativeListBox
 	reader     *guideReader
@@ -181,9 +181,9 @@ func NewGuideDisplay(app *App) *GuideDisplay {
 
 	// Weights 1 : 2 ≈ 0.33 : 0.67 (Guide.py list_width = 0.33). The topics pane
 	// is the initial focus (focus=true) on a normal launch.
-	gd.widget = tview.NewFlex().SetDirection(tview.FlexColumn).
-		AddItem(topicsBox, 0, 1, true).
-		AddItem(gd.readerBox, 0, 2, false)
+	cols := newURWIDColumns(0, topicsBox, gd.readerBox)
+	cols.SetWeight(0, 1)
+	cols.SetWeight(1, 2)
 
 	gd.topicsList.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event != nil && event.Key() == tcell.KeyUp && gd.topics.GetCurrentItem() == 0 {
@@ -195,7 +195,7 @@ func NewGuideDisplay(app *App) *GuideDisplay {
 		return event
 	})
 
-	gd.widget.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+	cols.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event == nil {
 			return nil
 		}
@@ -213,6 +213,8 @@ func NewGuideDisplay(app *App) *GuideDisplay {
 		}
 		return event
 	})
+
+	gd.widget = cols
 
 	gd.showPlaceholder()
 	return gd

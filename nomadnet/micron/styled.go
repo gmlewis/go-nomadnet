@@ -191,6 +191,7 @@ func renderLineNodes(nodes []*Node, rs *renderState, theme Theme, depth int) []*
 		case NodeDivider:
 			sl.Divider = true
 			sl.DividerChar = node.Text
+			sl.Indent = 0
 			out = append(out, sl)
 			sl = &StyledLine{Indent: leftIndent(depth)}
 		case NodeTable:

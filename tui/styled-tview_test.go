@@ -93,3 +93,33 @@ func TestStyledLinesToTviewTextNoBoldBleed(t *testing.T) {
 		t.Errorf("plain text inherits bold flag (all-bold regression): %q", before)
 	}
 }
+
+func TestMicronHeadingDepthAndDividerFormatting(t *testing.T) {
+	t.Parallel()
+
+	markup := ">Heading 1\n>>Heading 2\n>>>Heading 3\n-"
+	lines := micron.RenderToStyledLines(markup, micronTheme(ThemeDark))
+	out, _ := StyledLinesToTviewText(lines, 50)
+
+	renderedLines := strings.Split(out, "\n")
+	if len(renderedLines) < 4 {
+		t.Fatalf("expected at least 4 rendered lines, got %d", len(renderedLines))
+	}
+
+	// Heading 1 at depth 1: 0 indent
+	if strings.HasPrefix(renderedLines[0], " ") {
+		t.Errorf("heading 1 line = %q, want no leading indent", renderedLines[0])
+	}
+	// Heading 2 at depth 2: 2 spaces indent
+	if !strings.HasPrefix(renderedLines[1], "  ") {
+		t.Errorf("heading 2 line = %q, want 2 leading spaces", renderedLines[1])
+	}
+	// Heading 3 at depth 3: 4 spaces indent
+	if !strings.HasPrefix(renderedLines[2], "    ") {
+		t.Errorf("heading 3 line = %q, want 4 leading spaces", renderedLines[2])
+	}
+	// Divider line: 50 width of '-'
+	if runeCount := len([]rune(renderedLines[3])); runeCount != 50 || strings.Trim(renderedLines[3], "─") != "" {
+		t.Errorf("divider line = %q (runes %d), want 50 '─' characters", renderedLines[3], runeCount)
+	}
+}
