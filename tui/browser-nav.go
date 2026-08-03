@@ -16,6 +16,7 @@
 package tui
 
 import (
+	"strconv"
 	"time"
 	"unicode/utf8"
 
@@ -59,6 +60,58 @@ func newBrowserPageView(bd *BrowserDisplay) *browserPageView {
 func (v *browserPageView) Draw(screen tcell.Screen) {
 	v.TextView.Draw(screen)
 	v.bd.drawCursor(screen)
+}
+
+// MouseHandler makes a left-click on a rendered link follow it, matching
+// Python LinkableText.mouse_event (MicronParser.py:1005-1044): on a left-click
+// Python maps the click to a position, finds the item there, and if it is a
+// LinkSpec calls handle_link(item.link_target, item.link_fields).
+//
+// The embedded TextView already resolves a click to one of the numbered region
+// tags ["N"]...[""] emitted by StyledLinesToTviewText (SetRegions(true), the
+// region index N ↔ bd.links[N]) and highlights it. This override delegates to
+// that handler so the region is resolved, then reads the highlighted region's
+// ID, maps it to bd.links[N], and dispatches HandleLink with the link's URL —
+// the same call the keyboard Enter/Space path makes. The highlight is cleared
+// after dispatch so the clicked link is not left visually inverted (urwid
+// does not invert a clicked link; tview inverts highlighted regions on draw).
+//
+// It does not reposition the keyboard part-cursor to the click (Python sets
+// _cursor_position); a click typically navigates to a new page whose
+// initNavState resets the cursor, and for in-page anchors JumpToAnchor
+// scrolls instead. That finer cursor-follow is a deferred refinement.
+func (v *browserPageView) MouseHandler() func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(p tview.Primitive)) (consumed bool, capture tview.Primitive) {
+	base := v.TextView.MouseHandler()
+	return func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(p tview.Primitive)) (consumed bool, capture tview.Primitive) {
+		consumed, capture = base(action, event, setFocus)
+		if v.bd == nil || v.bd.content == nil {
+			return
+		}
+		switch action {
+		case tview.MouseLeftDown:
+			// Focus the browserPageView itself (not the embedded TextView) so
+			// the layout's keyboard-nav input capture sees bd.content.HasFocus()
+			// exactly as the keyboard focus path does. Both share the same Box,
+			// so HasFocus is identical either way, but keeping the focused
+			// primitive the page view keeps input dispatch consistent.
+			setFocus(v.bd.content)
+		case tview.MouseLeftClick:
+			ids := v.bd.content.GetHighlights()
+			if len(ids) == 0 {
+				return
+			}
+			// Clear the highlight tview just set so the link is not left
+			// inverted on the next draw; urwid does not invert on click.
+			v.bd.content.Highlight()
+			idx, err := strconv.Atoi(ids[0])
+			if err != nil || idx < 0 || idx >= len(v.bd.links) {
+				return
+			}
+			link := v.bd.links[idx] // capture before dispatch (HandleLink may re-render)
+			v.bd.HandleLink(link.URL)
+		}
+		return
+	}
 }
 
 // initNavState resets the per-line focus + cursor model for the freshly
