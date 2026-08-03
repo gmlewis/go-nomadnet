@@ -109,7 +109,20 @@ fi
 
 mkdir -p "$OUT"
 SESS="tui-parity-$$"
-tmux -f /dev/null new-session -d -x "$W" -y "$H" -s "$SESS" "$CMD; echo __EXIT=\$?; sleep 120"
+
+# Force truecolor so color *values* can be diffed directly between the two
+# targets with no 256-vs-truecolor artifact (the record-cast.sh rationale):
+#   - terminal-features RGB tells tmux the outer terminal supports RGB, so
+#     `capture-pane -e` records 38;2;r;g;b escapes as-emitted (no down-convert).
+#   - COLORTERM=truecolor makes tcell (the Go port) emit 38;2;r;g;b regardless
+#     of $TERM. Python urwid is config-authoritative (colormode), so a fresh
+#     config may still emit 256-color — the known colormode caveat; structural
+#     parity is unaffected and color-value parity is exact when both are 24bit.
+TMUX_CONF="$(mktemp "${TMPDIR:-/tmp}/tui-parity-tmux-XXXXXX")"
+printf 'terminal-features RGB\n' > "$TMUX_CONF"
+trap 'rm -f "$TMUX_CONF"; tmux kill-session -t "$SESS" 2>/dev/null || true' EXIT
+tmux -f "$TMUX_CONF" new-session -d -x "$W" -y "$H" -s "$SESS" \
+  "COLORTERM=truecolor $CMD; echo __EXIT=\$?; sleep 120"
 
 cap() {
   local idx="$1"
