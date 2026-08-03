@@ -321,7 +321,7 @@ func TestBrowserDisplayDisconnect(t *testing.T) {
 		t.Errorf("after Disconnect CurrentURL = %q, want empty", bd.CurrentURL())
 	}
 	if bd.CurrentDest() != nil {
-		t.Errorf("after Disconnect CurrentDest = %v, want nil", bd.CurrentDest())
+		t.Errorf("after Disconnect CurrentDest = %x, want nil", bd.CurrentDest())
 	}
 }
 

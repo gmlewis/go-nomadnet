@@ -35,6 +35,13 @@ type BrowserDisplay struct {
 	content *browserPageView
 	history []string
 	histIdx int
+	// loading is the MIDDLE-centered "Retrieving\n[<url>]" body shown while a
+	// page fetch is in flight (Python Browser.update_display REQUEST_SENT branch,
+	// Browser.py:593-598: Filler(Text("Retrieving\n["+url+"]", CENTER), MIDDLE)).
+	// It is swapped into the layout in place of bd.content during displayURL and
+	// swapped back out when renderPage paints the fetched page. nil ⇒ the page
+	// content is currently shown.
+	loading tview.Primitive
 
 	// Per-line focus + part-cursor nav model, mirroring Python's Pile of
 	// LinkableText (MicronParser.py:858-1048): focusLine is the focused
@@ -266,10 +273,39 @@ func (bd *BrowserDisplay) GoForward() {
 // the UI stays responsive.
 func (bd *BrowserDisplay) displayURL(url string) {
 	bd.urlBar.SetText(url)
-	bd.content.SetText(fmt.Sprintf("[::b]Loading: %v[-]\n\n[gray]Resolving RNS address and requesting page...[-]", url))
+	bd.showLoading(url)
 	if bd.OnRetrieveURL != nil {
 		bd.OnRetrieveURL(url)
 	}
+}
+
+// showLoading swaps the MIDDLE-centered "Retrieving\n[<url>]" body into the
+// layout in place of the page content, mirroring Python Browser.update_display
+// while a request is in flight (status <= REQUEST_SENT, no attr_maps yet:
+// Filler(Text("Retrieving\n["+current_url()+"]", CENTER), MIDDLE),
+// Browser.py:593-598). The URL bar above stays visible (Python keeps the
+// control-widget header during loading); the centered message replaces only
+// the body. Restored to the page content by renderPage (showContent).
+func (bd *BrowserDisplay) showLoading(url string) {
+	bd.layout.RemoveItem(bd.content)
+	if bd.loading != nil {
+		bd.layout.RemoveItem(bd.loading)
+	}
+	bd.loading = newMiddleCentered(tcell.NewHexColor(defaultContentFG), "Retrieving", "["+url+"]")
+	bd.layout.AddItem(bd.loading, 0, 1, true)
+}
+
+// showContent swaps the page content back into the layout, removing the
+// centered loading body. Called from renderPage once a page has rendered.
+func (bd *BrowserDisplay) showContent() {
+	if bd.loading != nil {
+		bd.layout.RemoveItem(bd.loading)
+		bd.loading = nil
+	}
+	// Ensure bd.content is present (showLoading removes it). AddItem is a no-op
+	// duplicate guard via RemoveItem first.
+	bd.layout.RemoveItem(bd.content)
+	bd.layout.AddItem(bd.content, 0, 1, true)
 }
 
 // defaultContentFG is the browser content area's default text color, matching
@@ -328,6 +364,10 @@ func (bd *BrowserDisplay) renderPage() {
 	}
 
 	bd.content.SetText(text)
+
+	// Swap the page content back in if the centered loading body was showing
+	// (displayURL swaps it out while a fetch is in flight).
+	bd.showContent()
 
 	// Reset the per-line focus + part-cursor nav model for the freshly rendered
 	// page (browser-nav.go): focus defaults to the first selectable line, each

@@ -45,6 +45,21 @@ func newCenteredText(color tcell.Color, lines ...string) *centeredText {
 // callers that inspect the empty-state text.
 func (c *centeredText) GetText() string { return strings.Join(c.lines, "\n") }
 
+// newMiddleCentered builds a vertically MIDDLE-centered, horizontally CENTER
+// text primitive matching urwid Filler(Text(..., align=CENTER), MIDDLE): two
+// equal-weight blank spacers above and below a fixed-height centeredText. This
+// is the loading/disconnected body style nomadnet uses (Browser.py:554-557
+// disconnected, 595-598 "Retrieving\n[url]" loading). tview's Flex leaves any
+// odd leftover row on the last spacer, so the text sits within one row of
+// urwid's exact MIDDLE.
+func newMiddleCentered(color tcell.Color, lines ...string) tview.Primitive {
+	body := newCenteredText(color, lines...)
+	return tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(tview.NewBox(), 0, 1, false).
+		AddItem(body, len(lines), 0, false).
+		AddItem(tview.NewBox(), 0, 1, false)
+}
+
 // Draw renders each line ceil-left-centered at the top of the inner rect.
 func (c *centeredText) Draw(screen tcell.Screen) {
 	c.Box.DrawForSubclass(screen, c)

@@ -62,6 +62,7 @@ type NetworkDisplay struct {
 	nodeInfo       *NodeInfoDisplay
 	lxmfPeers      *LXMFPeersDisplay
 	browser        *BrowserPane
+	mainCols       *urwidColumns
 	showingNodes   bool
 	showingPeers   bool
 	inInfoView     bool
@@ -230,6 +231,12 @@ func NewNetworkDisplay(app *App, announces []AnnounceEntry, nodes []NodeEntry) *
 		SetFixedWidth(0, 52).
 		SetWeight(1, 1)
 	mainCols.SetInputCapture(nd.handleInput)
+	// The right pane (browser) is self-managing: it owns Left/Right for its
+	// part-cursor model + Left-at-start focus release, so the outer Columns
+	// forwards Left/Right to it instead of pane-wrapping (Python keeps the
+	// browser body's keypress, which never bubbles Left/Right to the Columns).
+	mainCols.SetSelfManaging(1, true)
+	nd.mainCols = mainCols
 	nd.widget = mainCols
 
 	// Set up list callbacks. The announce list shows only the active tab's
@@ -354,7 +361,7 @@ func (nd *NetworkDisplay) showAnnounceDetailFor(ann AnnounceEntry) {
 
 	ai := newAnnounceInfoDisplay(nd, ann, data)
 	nd.setLeftList(ai.Widget(), "Announce Info")
-	nd.inInfoView = true
+	nd.setInfoView(true)
 	// Focus the AnnounceInfo button row (Python pile.focus_position = last =
 	// buttons; button_columns.focus_position = 0 = Back), so Enter/click reach
 	// the buttons.
@@ -423,7 +430,7 @@ func (nd *NetworkDisplay) ShowKnownNodeInfo(nodeHash string) {
 	}
 	ki := newKnownNodeInfoDisplay(nd, nodeHash, data)
 	nd.setLeftList(ki.Widget(), "Node Info")
-	nd.inInfoView = true
+	nd.setInfoView(true)
 	nd.focusLeftList()
 }
 
@@ -431,7 +438,7 @@ func (nd *NetworkDisplay) ShowKnownNodeInfo(nodeHash string) {
 // KnownNodeInfo/AnnounceInfo view (Python show_known_nodes, Network.py:690-693).
 func (nd *NetworkDisplay) showKnownNodes() {
 	nd.setLeftList(nd.nodesView(), "Saved Nodes")
-	nd.inInfoView = false
+	nd.setInfoView(false)
 	nd.showingPeers = false
 	nd.showingNodes = true
 	nd.focusLeftList()
@@ -477,7 +484,7 @@ func (nd *NetworkDisplay) showAnnounceStream() {
 	} else {
 		nd.setLeftList(nd.announceStream.Widget(), "Announce Stream")
 	}
-	nd.inInfoView = false
+	nd.setInfoView(false)
 	nd.showingPeers = false
 	nd.focusLeftList()
 }
@@ -657,6 +664,22 @@ func (nd *NetworkDisplay) setLeftList(item tview.Primitive, title string) {
 	SetTitledBorder(nd.listBox, title)
 }
 
+// setInfoView records whether a detail view (AnnounceInfo / KnownNodeInfo) is
+// open in the left pane and, with it, toggles the left column's self-managing
+// flag on the outer Network Columns. While a detail view is open the left
+// column holds a button row that owns Left/Right (Back→Connect→Msg Op→Save),
+// so the outer Columns must forward Left/Right to it instead of grabbing Right
+// to jump to the browser pane (Python's nested button_columns consumes Left/
+// Right; tview can't report consumption, so the self-managing flag marks the
+// columns that would). When the detail view closes (back to a plain list),
+// the left column is no longer self-managing and Right moves panes again.
+func (nd *NetworkDisplay) setInfoView(active bool) {
+	nd.inInfoView = active
+	if nd.mainCols != nil {
+		nd.mainCols.SetSelfManaging(0, active)
+	}
+}
+
 // focusLeftList establishes keyboard focus on the primitive currently swapped
 // into the bordered list slot, so subsequent keys (Enter/arrows/button
 // activation) cascade to it via the root InputHandler. Mirrors Python's
@@ -770,7 +793,7 @@ func (nd *NetworkDisplay) toggleList() {
 // here reproduces that (toggleList shows the opposite of showingNodes).
 func (nd *NetworkDisplay) showPeers() {
 	if nd.inInfoView {
-		nd.inInfoView = false
+		nd.setInfoView(false)
 	}
 	nd.showingNodes = !nd.showingNodes
 	nd.showingPeers = true

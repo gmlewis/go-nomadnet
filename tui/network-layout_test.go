@@ -252,10 +252,14 @@ func TestNetworkDisplayColumnFocusNavigation(t *testing.T) {
 		t.Errorf("after KeyRight focusIndex = %v, want 1 (browser pane)", cols.FocusIndex())
 	}
 
-	// KeyLeft moves focus back to column 0 (left panel)
+	// KeyLeft does NOT move back to column 0: the browser pane is self-managing,
+	// so Left belongs to the browser's own part-cursor model (and its Left-at-
+	// start focus release via OnReleaseFocus, which is what hands focus back to
+	// the left list in Python's micron_released_focus — not the outer Columns
+	// pane-wrapping). The outer Columns stays on the browser column.
 	cols.InputHandler()(tcell.NewEventKey(tcell.KeyLeft, 0, tcell.ModNone), setFocus)
-	if cols.FocusIndex() != 0 {
-		t.Errorf("after KeyLeft focusIndex = %v, want 0 (left panel)", cols.FocusIndex())
+	if cols.FocusIndex() != 1 {
+		t.Errorf("after KeyLeft focusIndex = %v, want 1 (browser owns Left, no pane-wrap)", cols.FocusIndex())
 	}
 
 	// Mouse click on right pane (e.g. x=60, y=10) sets focus to column 1

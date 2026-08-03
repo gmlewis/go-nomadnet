@@ -165,6 +165,20 @@ type urwidColumns struct {
 	fixedWidths []int
 	dividechars int
 	focusIndex  int
+	// selfManaging[i] marks column i as owning its own Left/Right key handling.
+	// For a self-managing focused column, Left/Right are forwarded to the
+	// column's subtree instead of the parent moving column focus — so (a) the
+	// Network browser pane's part-cursor model handles Left/Right (and its own
+	// Left-at-start focus release) rather than the outer Columns pane-wrapping,
+	// and (b) when the left column holds an AnnounceInfo button row (marked
+	// self-managing while the detail view is open), Right moves Back→Connect
+	// inside the nested button row instead of jumping to the browser. This
+	// mirrors Python urwid Columns.keypress, which forwards the key to the
+	// focused column first and only moves column focus on an *unhandled* key —
+	// tview InputHandlers can't report consumption, so the self-managing flag
+	// marks the columns that would consume Left/Right. Tab/Backtab and all other
+	// keys keep their usual (moveFocus / forward) behavior either way.
+	selfManaging []bool
 }
 
 // newURWIDColumns builds a urwid-style Columns row of the given weighted
@@ -183,6 +197,19 @@ func newURWIDColumns(dividechars int, children ...tview.Primitive) *urwidColumns
 		dividechars: dividechars,
 		focusIndex:  -1,
 	}
+}
+
+// SetSelfManaging marks column i as owning its Left/Right key handling (see
+// urwidColumns.selfManaging). A self-managing focused column receives Left/
+// Right via forwarding instead of the parent moving column focus.
+func (c *urwidColumns) SetSelfManaging(i int, v bool) *urwidColumns {
+	if i >= 0 && i < len(c.children) {
+		if c.selfManaging == nil {
+			c.selfManaging = make([]bool, len(c.children))
+		}
+		c.selfManaging[i] = v
+	}
+	return c
 }
 
 // SetFixedWidth sets an explicit fixed character width for column i.
@@ -389,6 +416,21 @@ func (c *urwidColumns) InputHandler() func(event *tcell.EventKey, setFocus func(
 		}
 
 		focusedChild := c.children[c.focusIndex]
+
+		// A self-managing focused column owns Left/Right: forward those to its
+		// subtree (e.g. the browser part-cursor model, or a nested AnnounceInfo
+		// button row) instead of moving column focus. This mirrors Python
+		// Columns.keypress forwarding to the focused column first; tview can't
+		// report consumption, so the flag marks the columns that would consume
+		// Left/Right. Tab/Backtab still move column focus (see the switch below).
+		if c.focusIndex < len(c.selfManaging) && c.selfManaging[c.focusIndex] {
+			if event.Key() == tcell.KeyRight || event.Key() == tcell.KeyLeft {
+				if h := focusedChild.InputHandler(); h != nil {
+					h(event, setFocus)
+				}
+				return
+			}
+		}
 
 		// For text input fields (e.g. ReadlineEdit or tview.InputField), plain KeyLeft and KeyRight move the text cursor.
 		// Tab and Backtab move column focus.

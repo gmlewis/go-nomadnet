@@ -217,7 +217,7 @@ func TestCleanCache(t *testing.T) {
 
 	got := bc.GetCached(url1)
 	if got == nil || string(got) != "fresh" {
-		t.Errorf("fresh page after CleanCache = %v, want 'fresh'", got)
+		t.Errorf("fresh page after CleanCache = %s, want 'fresh'", got)
 	}
 
 	got = bc.GetCached(url2)
@@ -247,7 +247,7 @@ func TestGetCachedNoCacheDir(t *testing.T) {
 
 	got := bc.GetCached("anyurl")
 	if got != nil {
-		t.Errorf("GetCached on missing dir = %v, want nil", got)
+		t.Errorf("GetCached on missing dir = %s, want nil", got)
 	}
 }
 
