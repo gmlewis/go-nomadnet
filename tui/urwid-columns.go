@@ -367,7 +367,12 @@ func (c *urwidColumns) HasFocus() bool {
 }
 
 func (c *urwidColumns) InputHandler() func(event *tcell.EventKey, setFocus func(p tview.Primitive)) {
-	return func(event *tcell.EventKey, setFocus func(p tview.Primitive)) {
+	// Route through WrapInputHandler so an input capture installed with
+	// SetInputCapture (e.g. NetworkDisplay.handleInput for Ctrl-L toggle) is
+	// consulted before the default column/child handling — matching tview's
+	// own container primitives (Flex, Grid). Without this, SetInputCapture is
+	// silently ignored and page-level shortcuts like Ctrl-L never fire.
+	return c.WrapInputHandler(func(event *tcell.EventKey, setFocus func(p tview.Primitive)) {
 		if len(c.children) == 0 {
 			return
 		}
@@ -417,7 +422,7 @@ func (c *urwidColumns) InputHandler() func(event *tcell.EventKey, setFocus func(
 		if h := focusedChild.InputHandler(); h != nil {
 			h(event, setFocus)
 		}
-	}
+	})
 }
 
 func (c *urwidColumns) MouseHandler() func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(p tview.Primitive)) (consumed bool, capture tview.Primitive) {

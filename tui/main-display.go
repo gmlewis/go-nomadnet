@@ -547,13 +547,22 @@ func (md *MainDisplay) FocusMenu() {
 }
 
 // FocusBody moves focus to the content area (MainFrame.focus_position = "body").
+//
+// Focus is moved to the content area BEFORE redrawing the menu bar so that
+// menuBar.HasFocus() is already false when redrawMenuBar runs — its else
+// branch then clears the hardware-cursor DrawFunc, removing the solid green
+// menu cursor. Without this redraw, the DrawFunc installed while the menu was
+// focused keeps painting the cursor onto the menu bar on every frame, so the
+// cursor appears to stay in the menu after Down/Tab even though tview focus
+// has moved to the body (mirrors FocusMenu, which redraws to install it).
 func (md *MainDisplay) FocusBody() {
-	md.mu.Lock()
-	md.focusRegion = "body"
-	md.mu.Unlock()
 	if md.app != nil {
 		md.app.SetFocus(md.contentArea)
 	}
+	md.mu.Lock()
+	md.focusRegion = "body"
+	md.redrawMenuBar()
+	md.mu.Unlock()
 }
 
 // handleClick determines which menu item was clicked based on x position.
