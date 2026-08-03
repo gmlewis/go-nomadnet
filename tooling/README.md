@@ -11,12 +11,14 @@ The older subdirectories have their own READMEs:
 - `micron-parity/` — golden-value extractors for the micron *parser* (no urwid
   needed). See `micron-parity/README.md`.
 
-The three scripts below (`parse_screencast.py`, `substates.py`, `guidetopics.py`)
-are the **color-aware cast comparison** suite. They were written because the
-`tui-parity` summary strips color and the original `parse_screencast.py` did not
-decode ANSI escapes correctly. They compare **color, underline, italic, bold,
-reverse, strike, and blink** — not just text — because rendering behavior
-depends on all of these.
+The scripts below are the **color-aware cast comparison** suite. The three
+decoders (`parse_screencast.py`, `substates.py`, `guidetopics.py`) were written
+because the `tui-parity` summary strips color and the original
+`parse_screencast.py` did not decode ANSI escapes correctly. They compare
+**color, underline, italic, bold, reverse, strike, and blink** — not just text
+— because rendering behavior depends on all of these. `record-cast.sh` is the
+recorder that produces the `.cast` files those decoders consume, forcing 24-bit
+truecolor for both targets so the casts are directly comparable.
 
 ## ⚠️ Colormode caveat (read before trusting any color diff)
 
@@ -24,16 +26,26 @@ depends on all of these.
 compared.** asciinema records exactly the bytes the program emits:
 
 - Python `nomadnet` (urwid) emits the colormode selected by its `colormode`
-  config / the terminal's advertised color capability. A recording made in
-  **256-color mode** emits `\x1b[38;5;N;48;5;M` palette-index SGR; a **truecolor**
-  recording emits `\x1b[38;2;r;g;b;48;2;r;g;b`.
-- The Go port (tview/tcell) currently always emits **truecolor**.
+  config. urwid's `set_terminal_properties` is **authoritative** — it does *not*
+  consult the terminal's advertised color capability — so a config with
+  `colormode = 256` emits `\x1b[38;5;N;48;5;M` palette-index SGR **even inside a
+  truecolor terminal**, and a config with `colormode = 24bit` emits
+  `\x1b[38;2;r;g;b;48;2;r;g;b` regardless of terminal.
+- The Go port (tview/tcell) emits **truecolor** when the terminfo entry for
+  `$TERM` has the RGB capability (truecolor terminals like ghostty do), **or**
+  when `COLORTERM=truecolor|24bit|24-bit` is set — tcell's `LookupTerminfo`
+  fabricates the `38;2;r;g;b` escapes for a 256-color terminfo entry in that
+  case (tcell `terminfo/terminfo.go`). Its config also defaults `colormode` to
+  `24bit`.
 
-So a Python cast recorded in 256-color and a Go cast recorded in truecolor will
-differ in *every* color cell even when both correctly implement the **same**
-palette — urwid approximates the truecolor RGB to the nearest 256-palette index,
-while tcell emits the exact RGB. **Such color differences are colormode artifacts,
-not port bugs.**
+So a Python cast recorded with `colormode = 256` and a Go cast recorded in
+truecolor will differ in *every* color cell even when both correctly implement
+the **same** palette — urwid approximates the truecolor RGB to the nearest
+256-palette index, while tcell emits the exact RGB. **Such color differences are
+colormode artifacts, not port bugs.** (The existing `python_session.cast` is
+256-color precisely because the user's `~/.nomadnetwork/config` has
+`colormode = 256`, written by an older nomadnet; the Go cast was recorded in
+ghostty and is already truecolor.)
 
 How to tell which colormode a cast used (look at the raw menubar SGR):
 
@@ -51,11 +63,15 @@ PY
 # \x1b[...38;2;17;17;17;48;2;187;187;187... -> truecolor (RGB)
 ```
 
-To make a valid color comparison, **re-record the Python session in truecolor**
-(set `colormode = 24bit` in `~/.reticulum/...` / the nomadnet config and run in a
-truecolor-capable terminal, e.g. `COLORTERM=truecolor` set). Then the Go
+To make a valid color comparison, record both sessions in truecolor so the Go
 truecolor RGB values can be diffed against the Python truecolor RGB values
-directly.
+directly. The nomadnet config file is `~/.nomadnetwork/config` (or
+`~/.config/nomadnetwork/config`), with `colormode` under the `[textui]` section —
+not `~/.reticulum` (that is Reticulum's config, separate). The easiest path is
+[`record-cast.sh`](#record-castsh--truecolor-asciinema-recorder), which forces
+`colormode = 24bit` for Python and exports `COLORTERM=truecolor` for Go. Done by
+hand, set `colormode = 24bit` in the nomadnet config and run in a truecolor
+terminal (or `export COLORTERM=truecolor` for the Go target).
 
 **What IS comparable across colormodes** (and is what these tools reliably find):
 **structural** differences and **text-attribute** differences that are not
@@ -63,6 +79,62 @@ color-index approximations — e.g. a border that exists in one and not the othe
 an underline attribute that leaks, a menu item that is bold/highlighted in one
 and uniform in the other, a footer that is present/absent, a forced background
 where the other uses terminal default.
+
+## `record-cast.sh` — truecolor asciinema recorder
+
+`record-cast.sh` produces the `.cast` files that `parse_screencast.py` compares,
+and it **forces 24-bit truecolor for both targets** so the resulting casts have no
+colormode artifact (see the caveat above). It is the recorder counterpart to
+this suite's decoders.
+
+What it forces, and why:
+
+- **Python** — seeds `colormode = 24bit` in the `[textui]` section of a *copy* of
+  your nomadnet config. urwid is config-authoritative, so this alone makes
+  Python emit `38;2;r;g;b` truecolor SGR regardless of the terminal. (The
+  existing `python_session.cast` is 256-color because the user's real config has
+  `colormode = 256`; this fixes that without editing the real config.)
+- **Go** — exports `COLORTERM=truecolor`, which makes tcell fabricate
+  `38;2;r;g;b` truecolor escapes even when `$TERM`'s terminfo lacks the RGB
+  capability (e.g. inside a 256-color terminal). Go's own config already
+  defaults to `24bit`.
+
+To preserve your real node identity and discovered peers (so the Network page
+populates after Ctrl-L), it **copies** your real nomadnet config dir (default
+`~/.nomadnetwork`) to a temp dir, forces `colormode = 24bit` in the copy, and
+runs the app with `--config <temp>`. Your real config is never modified. Pass
+`--fresh` to start from an empty config instead (boots the first-run Guide;
+both targets then self-create their default config, already `colormode = 24bit`).
+
+The recorded BYTES are truecolor whether or not the live terminal can render
+truecolor — asciinema records what the program emits, not what the terminal
+displays — so the `.cast` is directly comparable even if you record in a
+256-color terminal (the live preview just looks approximated).
+
+Usage:
+
+```bash
+# Python  (was: asciinema rec python_session.cast --command "nomadnet")
+tooling/record-cast.sh --target orig --out python_session.cast
+
+# Go port  (was: asciinema rec go_session-002.cast --command "./gonomadnet.sh")
+tooling/record-cast.sh --target go --out go_session-003.cast --force
+
+# First-run Guide, Go, truecolor:
+tooling/record-cast.sh --target go --out guide_session.cast --fresh
+```
+
+`--force` overwrites an existing `.cast` (asciinema refuses to overwrite by
+default). `--config DIR` copies from a non-default real config dir; `--bin PATH`
+uses a specific `nomadnet` / prebuilt `gonomadnet` binary (default: `nomadnet`
+on PATH for `orig`, `go run ./cmd/gonomadnet` for `go`). `--idle SECS` and
+`--title TITLE` pass through to asciinema. Interact with the app, then quit it
+(Go: menu → Quit / Ctrl-Q; Python: the Quit menu item / Ctrl-C) to end the
+recording; the script prints a colormode check of the resulting cast and the
+`parse_screencast.py --diff` command to compare it.
+
+Requires `asciinema` (`asciinema rec`), `python3` (stdlib only), and either
+`nomadnet` on PATH (`--target orig`) or a buildable repo (`--target go`).
 
 ## `parse_screencast.py` — color-aware terminal emulator + page detector
 
