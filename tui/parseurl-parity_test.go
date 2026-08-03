@@ -54,7 +54,7 @@ func TestParseURLPythonParity(t *testing.T) {
 	}
 
 	if golden.TruncatedHashHexLen != hashLen {
-		t.Fatalf("golden truncated_hash_hex_len = %d, but Go hashLen = %d", golden.TruncatedHashHexLen, hashLen)
+		t.Fatalf("golden truncated_hash_hex_len = %v, but Go hashLen = %v", golden.TruncatedHashHexLen, hashLen)
 	}
 
 	for _, tc := range golden.Cases {

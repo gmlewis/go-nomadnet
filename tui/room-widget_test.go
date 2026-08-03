@@ -144,12 +144,12 @@ func TestRoomWidgetSetMaxMessageBytes(t *testing.T) {
 	rw := NewRoomWidget(app, "hub1", "general")
 
 	if rw.MaxMessageBytes() != 350 {
-		t.Errorf("MaxMessageBytes = %d, want 350", rw.MaxMessageBytes())
+		t.Errorf("MaxMessageBytes = %v, want 350", rw.MaxMessageBytes())
 	}
 
 	rw.SetMaxMessageBytes(500)
 	if rw.MaxMessageBytes() != 500 {
-		t.Errorf("MaxMessageBytes = %d, want 500", rw.MaxMessageBytes())
+		t.Errorf("MaxMessageBytes = %v, want 500", rw.MaxMessageBytes())
 	}
 }
 
@@ -203,7 +203,7 @@ func TestRoomWidgetSetMessages(t *testing.T) {
 
 	rw.SetMessages(msgs)
 	if len(rw.chatMessages) != 3 {
-		t.Errorf("SetMessages: got %d, want 3", len(rw.chatMessages))
+		t.Errorf("SetMessages: got %v, want 3", len(rw.chatMessages))
 	}
 }
 
@@ -220,7 +220,7 @@ func TestRoomWidgetSetMembers(t *testing.T) {
 
 	rw.SetMembers(members)
 	if len(rw.members) != 2 {
-		t.Errorf("SetMembers: got %d, want 2", len(rw.members))
+		t.Errorf("SetMembers: got %v, want 2", len(rw.members))
 	}
 }
 
@@ -285,7 +285,7 @@ func TestRoomWidgetToggleUsers(t *testing.T) {
 		t.Error("users visible should default to true")
 	}
 	if rw.columns.GetItemCount() != 2 {
-		t.Errorf("columns count = %d, want 2", rw.columns.GetItemCount())
+		t.Errorf("columns count = %v, want 2", rw.columns.GetItemCount())
 	}
 
 	// Toggle off via C-u
@@ -294,7 +294,7 @@ func TestRoomWidgetToggleUsers(t *testing.T) {
 		t.Error("users visible should be false after toggle")
 	}
 	if rw.columns.GetItemCount() != 1 {
-		t.Errorf("columns count after toggle off = %d, want 1", rw.columns.GetItemCount())
+		t.Errorf("columns count after toggle off = %v, want 1", rw.columns.GetItemCount())
 	}
 
 	// Toggle back on
@@ -303,7 +303,7 @@ func TestRoomWidgetToggleUsers(t *testing.T) {
 		t.Error("users visible should be true after toggle back")
 	}
 	if rw.columns.GetItemCount() != 2 {
-		t.Errorf("columns count after toggle back = %d, want 2", rw.columns.GetItemCount())
+		t.Errorf("columns count after toggle back = %v, want 2", rw.columns.GetItemCount())
 	}
 }
 

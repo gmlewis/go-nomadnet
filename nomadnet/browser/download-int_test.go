@@ -85,7 +85,7 @@ func TestIntegrationDownloadFile(t *testing.T) {
 		t.Errorf("DownloadFile savedName = %q, want report.txt", savedName)
 	}
 	if savedSize != len(fileContent) {
-		t.Errorf("DownloadFile savedSize = %d, want %d", savedSize, len(fileContent))
+		t.Errorf("DownloadFile savedSize = %v, want %v", savedSize, len(fileContent))
 	}
 	got, err := os.ReadFile(filepath.Join(downloadsDir, savedName))
 	if err != nil {

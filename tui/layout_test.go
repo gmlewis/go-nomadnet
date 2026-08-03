@@ -36,28 +36,28 @@ const (
 func TestLayoutConversationListWidthMatchesPython(t *testing.T) {
 	t.Parallel()
 	if ConversationsGivenWidth != 52 {
-		t.Errorf("ConversationsGivenWidth = %d, want 52 (Python ConversationsDisplay.given_list_width)", ConversationsGivenWidth)
+		t.Errorf("ConversationsGivenWidth = %v, want 52 (Python ConversationsDisplay.given_list_width)", ConversationsGivenWidth)
 	}
 }
 
 func TestLayoutNetworkListWidthMatchesPython(t *testing.T) {
 	t.Parallel()
 	if NetworkGivenWidth != 52 {
-		t.Errorf("NetworkGivenWidth = %d, want 52 (Python NetworkDisplay.given_list_width)", NetworkGivenWidth)
+		t.Errorf("NetworkGivenWidth = %v, want 52 (Python NetworkDisplay.given_list_width)", NetworkGivenWidth)
 	}
 }
 
 func TestLayoutChannelListWidthMatchesPython(t *testing.T) {
 	t.Parallel()
 	if ChannelsGivenWidth != 36 {
-		t.Errorf("ChannelsGivenWidth = %d, want 36 (Python ChannelsDisplay.given_list_width)", ChannelsGivenWidth)
+		t.Errorf("ChannelsGivenWidth = %v, want 36 (Python ChannelsDisplay.given_list_width)", ChannelsGivenWidth)
 	}
 }
 
 func TestLayoutUsersPaneWidthMatchesPython(t *testing.T) {
 	t.Parallel()
 	if UsersPaneWidth != 22 {
-		t.Errorf("UsersPaneWidth = %d, want 22 (Python RoomWidget.USERS_PANE_WIDTH)", UsersPaneWidth)
+		t.Errorf("UsersPaneWidth = %v, want 22 (Python RoomWidget.USERS_PANE_WIDTH)", UsersPaneWidth)
 	}
 }
 

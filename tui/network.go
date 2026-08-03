@@ -673,6 +673,16 @@ func (nd *NetworkDisplay) focusLeftList() {
 	nd.app.SetFocus(nd.listBox)
 }
 
+// FocusLists moves keyboard focus to the left node/announce list, mirroring
+// Python's focus_lists (the left_pile gets focus when the browser body
+// releases focus via micron_released_focus, MicronParser.py:972-974). It is the
+// public entry point wired to BrowserDisplay.OnReleaseFocus from the
+// cmd/gonomadnet wiring layer (the right browser pane's release hands focus
+// back to the left list).
+func (nd *NetworkDisplay) FocusLists() {
+	nd.focusLeftList()
+}
+
 // UpdateLocalPeer fills the Local Peer Info panel with the app's real identity
 // data. lxmfAddr and identityHash are prettyhexrep-formatted ("<hex>"); name
 // is the current display name; lastAnnounce is the last announce time (zero →
@@ -932,7 +942,7 @@ func (nd *NetworkDisplay) ShowLXMFPeersDialog(peers []LXMFPeerEntry) {
 			status = "[red]dead[-]"
 		}
 		text := fmt.Sprintf("%s %s %s", peer.Name, status, truncateStr(peer.Hash, 8))
-		secondary := fmt.Sprintf("Pending: %d", peer.Pending)
+		secondary := fmt.Sprintf("Pending: %v", peer.Pending)
 		list.AddItem(text, secondary, 0, nil)
 	}
 

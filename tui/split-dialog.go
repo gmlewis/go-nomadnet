@@ -43,7 +43,7 @@ func ComputeSplitDialog(text string, limit int) SplitDialogInfo {
 	parts := SplitMessage(text, limit)
 	if parts == nil {
 		info.Error = fmt.Sprintf(
-			"Message is %d bytes but per-message limit is too small to split.",
+			"Message is %v bytes but per-message limit is too small to split.",
 			info.BodyBytes)
 		return info
 	}
@@ -78,9 +78,9 @@ func SplitDialogPreview(part0 string) string {
 // (Error != "").
 func SplitDialogLines(info SplitDialogInfo) []string {
 	return []string{
-		fmt.Sprintf("  Message is %d bytes.", info.BodyBytes),
-		fmt.Sprintf("  Hub limit  : %d bytes per message.", info.Limit),
-		fmt.Sprintf("  Split into %d %s.", info.K, info.Noun),
+		fmt.Sprintf("  Message is %v bytes.", info.BodyBytes),
+		fmt.Sprintf("  Hub limit  : %v bytes per message.", info.Limit),
+		fmt.Sprintf("  Split into %v %s.", info.K, info.Noun),
 		"  Preview of part 1:",
 		"    " + info.Preview,
 	}

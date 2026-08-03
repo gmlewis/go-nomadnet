@@ -232,7 +232,7 @@ func TestPopulateListRowText(t *testing.T) {
 	cd.populateList()
 	// Tab defaults to trusted; only Alice should be present with the badge.
 	if cd.list.GetItemCount() != 1 {
-		t.Fatalf("item count = %d, want 1", cd.list.GetItemCount())
+		t.Fatalf("item count = %v, want 1", cd.list.GetItemCount())
 	}
 	main, sec := cd.list.GetItemText(0)
 	if main != "✓ Alice ✉ (3)" {
@@ -295,7 +295,7 @@ func TestConversationsToggleFullscreen(t *testing.T) {
 		t.Error("expected non-fullscreen initially")
 	}
 	if c := cell(cd.ListWidth()+1, 1); c != 'S' {
-		t.Errorf("normal detail cell(%d,1) = %q, want 'S'", cd.ListWidth()+1, c)
+		t.Errorf("normal detail cell(%v,1) = %q, want 'S'", cd.ListWidth()+1, c)
 	}
 	if c := cell(0, 1); c == 'S' {
 		t.Errorf("normal detail cell(0,1) = 'S', but list pane should occupy column 0")
@@ -321,7 +321,7 @@ func TestConversationsToggleFullscreen(t *testing.T) {
 	screen.Clear()
 	cd.content.Draw(screen)
 	if c := cell(cd.ListWidth()+1, 1); c != 'S' {
-		t.Errorf("restored detail cell(%d,1) = %q, want 'S'", cd.ListWidth()+1, c)
+		t.Errorf("restored detail cell(%v,1) = %q, want 'S'", cd.ListWidth()+1, c)
 	}
 }
 
@@ -450,7 +450,7 @@ func TestDisplayConversationLoadsMessages(t *testing.T) {
 		t.Errorf("cw.OwnHash = %x, want %x", cw.OwnHash, ownHash)
 	}
 	if len(cw.messages) != 2 {
-		t.Fatalf("loaded %d messages, want 2", len(cw.messages))
+		t.Fatalf("loaded %v messages, want 2", len(cw.messages))
 	}
 	if cw.messages[0].Content != "hello world" {
 		t.Errorf("messages[0].Content = %q, want %q", cw.messages[0].Content, "hello world")
@@ -490,7 +490,7 @@ func TestReloadCurrentMessages(t *testing.T) {
 
 	cd.DisplayConversation(hash)
 	if loads != 1 {
-		t.Errorf("expected 1 load on display, got %d", loads)
+		t.Errorf("expected 1 load on display, got %v", loads)
 	}
 	// if cd.currentWidget.messageList.GetText(true) != "" && cd.currentWidget.messages != nil {
 	// 	// initial empty is acceptable
@@ -498,7 +498,7 @@ func TestReloadCurrentMessages(t *testing.T) {
 
 	cd.ReloadCurrentMessages()
 	if loads != 2 {
-		t.Errorf("expected 2 loads after reload, got %d", loads)
+		t.Errorf("expected 2 loads after reload, got %v", loads)
 	}
 	if !strings.Contains(cd.currentWidget.messageList.GetText(true), "freshly sent") {
 		t.Errorf("reload did not render the new message: %s", cd.currentWidget.messageList.GetText(true))
@@ -1050,7 +1050,7 @@ func TestConversationsDisplaySyncConversationsRequestSync(t *testing.T) {
 		t.Error("RequestSync should fire OnSyncRequested")
 	}
 	if syncLimit != 0 {
-		t.Errorf("syncLimit = %d, want 0 (unlimited)", syncLimit)
+		t.Errorf("syncLimit = %v, want 0 (unlimited)", syncLimit)
 	}
 }
 
@@ -1067,7 +1067,7 @@ func TestConversationsDisplaySyncConversationsWithLimit(t *testing.T) {
 	cd.RequestSync(5)
 
 	if syncLimit != 5 {
-		t.Errorf("syncLimit = %d, want 5", syncLimit)
+		t.Errorf("syncLimit = %v, want 5", syncLimit)
 	}
 }
 
@@ -1162,13 +1162,13 @@ func TestConversationsDisplayShowBlockedFiltersList(t *testing.T) {
 	cd.SetShowBlocked(false)
 	filtered := FilterConversationsWithBlocked(cd.conversations, "untrusted", cd.ShowBlocked())
 	if len(filtered) != 0 {
-		t.Errorf("without blocked, got %d untrusted, want 0", len(filtered))
+		t.Errorf("without blocked, got %v untrusted, want 0", len(filtered))
 	}
 
 	cd.SetShowBlocked(true)
 	filtered = FilterConversationsWithBlocked(cd.conversations, "untrusted", cd.ShowBlocked())
 	if len(filtered) != 1 {
-		t.Errorf("with blocked, got %d untrusted, want 1", len(filtered))
+		t.Errorf("with blocked, got %v untrusted, want 1", len(filtered))
 	}
 }
 
@@ -1564,7 +1564,7 @@ func TestSyncDialogResult(t *testing.T) {
 		t.Errorf("Mode = %v, want SyncLimited", result.Mode)
 	}
 	if result.Limit != 10 {
-		t.Errorf("Limit = %d, want 10", result.Limit)
+		t.Errorf("Limit = %v, want 10", result.Limit)
 	}
 	if result.Action != "sync" {
 		t.Errorf("Action = %q, want sync", result.Action)
@@ -1575,9 +1575,9 @@ func TestSyncModeConstants(t *testing.T) {
 	t.Parallel()
 
 	if SyncAll != 0 {
-		t.Errorf("SyncAll = %d, want 0", SyncAll)
+		t.Errorf("SyncAll = %v, want 0", SyncAll)
 	}
 	if SyncLimited != 1 {
-		t.Errorf("SyncLimited = %d, want 1", SyncLimited)
+		t.Errorf("SyncLimited = %v, want 1", SyncLimited)
 	}
 }

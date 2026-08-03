@@ -69,5 +69,5 @@ func (ss *SyncStatus) FormatSyncProgress() string {
 	}
 	bar += "]"
 
-	return fmt.Sprintf("%s %d%%", bar, ss.SyncProgress)
+	return fmt.Sprintf("%s %v%%", bar, ss.SyncProgress)
 }

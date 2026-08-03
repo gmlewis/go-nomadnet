@@ -204,7 +204,7 @@ func (cd *ChannelsDisplay) populateRooms(rooms []ChannelInfo) {
 			prefix = "[*] "
 		}
 		text := fmt.Sprintf("%s#%s", prefix, room.Name)
-		secondary := fmt.Sprintf("%d members — %s", room.Members, room.Topic)
+		secondary := fmt.Sprintf("%v members — %s", room.Members, room.Topic)
 		cd.rooms.AddItem(text, secondary, 0, nil)
 	}
 }
@@ -323,7 +323,7 @@ func (cd *ChannelsDisplay) UpdateRooms(rooms []ChannelInfo) {
 			prefix = "[*] "
 		}
 		text := fmt.Sprintf("%s#%s", prefix, room.Name)
-		secondary := fmt.Sprintf("%d members — %s", room.Members, room.Topic)
+		secondary := fmt.Sprintf("%v members — %s", room.Members, room.Topic)
 		cd.rooms.AddItem(text, secondary, 0, nil)
 	}
 }

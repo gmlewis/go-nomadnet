@@ -88,7 +88,7 @@ func StyledLinesToTviewText(lines []*micron.StyledLine, width int) (string, []mi
 			if span.Link != nil {
 				idx := len(links)
 				links = append(links, *span.Link)
-				fmt.Fprintf(&b, `["%d"]`, idx)
+				fmt.Fprintf(&b, `["%v"]`, idx)
 				underlineOn = writeSpanTag(&b, span, underlineOn)
 				b.WriteString(`[""]`)
 				continue

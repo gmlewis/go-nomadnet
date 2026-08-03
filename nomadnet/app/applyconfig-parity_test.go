@@ -90,7 +90,7 @@ func TestApplyConfigAppFieldsParity(t *testing.T) {
 				// documented in seconds.
 				want := gIntApp(golden["rrc_ephemeral_notices"])
 				if a.RRCEphemeralNotices != want {
-					t.Errorf("RRCEphemeralNotices = %d (sec), want %d (sec)", a.RRCEphemeralNotices, want)
+					t.Errorf("RRCEphemeralNotices = %v (sec), want %v (sec)", a.RRCEphemeralNotices, want)
 				}
 			}
 
@@ -106,7 +106,7 @@ func TestApplyConfigAppFieldsParity(t *testing.T) {
 					// field is documented in minutes.
 					want := gIntApp(golden["node_announce_interval"])
 					if a.NodeAnnounceInterval != want {
-						t.Errorf("NodeAnnounceInterval = %d (min), want %d (min)", a.NodeAnnounceInterval, want)
+						t.Errorf("NodeAnnounceInterval = %v (min), want %v (min)", a.NodeAnnounceInterval, want)
 					}
 				}
 			}

@@ -90,7 +90,7 @@ func TestIntegrationPartialPipeline(t *testing.T) {
 	// Extract the partial from the fetched markup.
 	partials := ExtractPartials(string(pageData))
 	if len(partials) != 1 {
-		t.Fatalf("ExtractPartials got %d, want 1: %+v", len(partials), partials)
+		t.Fatalf("ExtractPartials got %v, want 1: %+v", len(partials), partials)
 	}
 	p := partials[0]
 	if p.URL != ":/page/part.mu" {

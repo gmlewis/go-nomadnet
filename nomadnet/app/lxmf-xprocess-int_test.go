@@ -174,7 +174,7 @@ func TestIntegrationLXMFReceiveFromPython(t *testing.T) {
 	// RNS destination hashes are truncated (16 bytes → 32 hex); the sender's
 	// lxmf.delivery destination hash is the conversation source key.
 	if len(pySource) != 32 {
-		t.Fatalf("PYTHON_SOURCE = %q (len %d), want 32 hex chars", pySource, len(pySource))
+		t.Fatalf("PYTHON_SOURCE = %q (len %v), want 32 hex chars", pySource, len(pySource))
 	}
 	pySourceBytes, err := hex.DecodeString(pySource)
 	if err != nil {
@@ -293,7 +293,7 @@ func TestIntegrationLXMFReceiveFromPython(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	if len(msgs) != 1 {
-		t.Fatalf("ConversationMessages(%s) = %d entries, want 1", pySource, len(msgs))
+		t.Fatalf("ConversationMessages(%s) = %v entries, want 1", pySource, len(msgs))
 	}
 	if msgs[0].Content != "Hello from Python!" {
 		t.Errorf("loaded content = %q, want %q", msgs[0].Content, "Hello from Python!")

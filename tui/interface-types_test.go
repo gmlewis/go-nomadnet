@@ -110,7 +110,7 @@ func TestAllInterfaceTypes(t *testing.T) {
 
 	allTypes := AllInterfaceTypes()
 	if len(allTypes) < 10 {
-		t.Errorf("AllInterfaceTypes() returned %d types, want >= 10", len(allTypes))
+		t.Errorf("AllInterfaceTypes() returned %v types, want >= 10", len(allTypes))
 	}
 	// Verify all types have a category
 	for _, it := range allTypes {
@@ -142,13 +142,13 @@ func TestRequiredFields(t *testing.T) {
 			t.Parallel()
 			got := RequiredFields(tt.ifType)
 			if len(got) != len(tt.want) {
-				t.Errorf("RequiredFields(%q) = %v (len %d), want %v (len %d)",
+				t.Errorf("RequiredFields(%q) = %v (len %v), want %v (len %v)",
 					tt.ifType, got, len(got), tt.want, len(tt.want))
 				return
 			}
 			for i := range got {
 				if got[i] != tt.want[i] {
-					t.Errorf("RequiredFields(%q)[%d] = %q, want %q", tt.ifType, i, got[i], tt.want[i])
+					t.Errorf("RequiredFields(%q)[%v] = %q, want %q", tt.ifType, i, got[i], tt.want[i])
 				}
 			}
 		})

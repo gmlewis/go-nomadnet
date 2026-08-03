@@ -49,7 +49,7 @@ func TestCollapsedJoinPartLabelPythonParity(t *testing.T) {
 			t.Parallel()
 			got := CollapsedJoinPartLabel(tt.n)
 			if got != tt.want {
-				t.Errorf("CollapsedJoinPartLabel(%d) = %q, want %q", tt.n, got, tt.want)
+				t.Errorf("CollapsedJoinPartLabel(%v) = %q, want %q", tt.n, got, tt.want)
 			}
 		})
 	}
@@ -109,7 +109,7 @@ func TestCollapseJoinPartMessages(t *testing.T) {
 	}
 	got := CollapseJoinPartMessages(msgs)
 	if len(got) != 4 {
-		t.Fatalf("got %d messages, want 4: %+v", len(got), got)
+		t.Fatalf("got %v messages, want 4: %+v", len(got), got)
 	}
 	if got[0].Text != CollapsedJoinPartLabel(3) {
 		t.Errorf("got[0].Text = %q, want %q", got[0].Text, CollapsedJoinPartLabel(3))
@@ -129,7 +129,7 @@ func TestCollapseJoinPartMessages(t *testing.T) {
 
 	// Empty input yields empty output.
 	if out := CollapseJoinPartMessages(nil); len(out) != 0 {
-		t.Errorf("nil input got %d messages, want 0", len(out))
+		t.Errorf("nil input got %v messages, want 0", len(out))
 	}
 
 	// All-collapsible input collapses to a single summary.

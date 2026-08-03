@@ -57,13 +57,13 @@ func TestMenuButtonsUniformMenubarStyle(t *testing.T) {
 
 			// No button may be bold. A bold button tag looks like ":b]".
 			if strings.Contains(styled, ":b]") {
-				t.Errorf("theme %d active %d: menu bar contains a bold button tag ':b]' (Python never bolds menu buttons):\n%s",
+				t.Errorf("theme %v active %v: menu bar contains a bold button tag ':b]' (Python never bolds menu buttons):\n%s",
 					theme, active, styled)
 			}
 
 			// No button may use the list_focus background.
 			if strings.Contains(styled, ":"+listFocusBg) {
-				t.Errorf("theme %d active %d: menu bar uses list_focus_bg %q (no button should):\n%s",
+				t.Errorf("theme %v active %v: menu bar uses list_focus_bg %q (no button should):\n%s",
 					theme, active, listFocusBg, styled)
 			}
 
@@ -72,17 +72,17 @@ func TestMenuButtonsUniformMenubarStyle(t *testing.T) {
 				btn := "[ " + item.Label + " ]"
 				idx := strings.Index(styled, btn)
 				if idx < 0 {
-					t.Errorf("theme %d active %d: menu bar missing button %q", theme, active, btn)
+					t.Errorf("theme %v active %v: menu bar missing button %q", theme, active, btn)
 					continue
 				}
 				tagStart := strings.LastIndex(styled[:idx], "[")
 				if tagStart < 0 {
-					t.Errorf("theme %d active %d: button %q has no preceding color tag", theme, active, btn)
+					t.Errorf("theme %v active %v: button %q has no preceding color tag", theme, active, btn)
 					continue
 				}
 				tag := styled[tagStart:idx]
 				if !strings.Contains(tag, menubarBg) {
-					t.Errorf("theme %d active %d: button %q color tag %q does not use menubar_bg %q:\n%s",
+					t.Errorf("theme %v active %v: button %q color tag %q does not use menubar_bg %q:\n%s",
 						theme, active, btn, tag, menubarBg, styled)
 				}
 			}

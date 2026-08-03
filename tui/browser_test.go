@@ -93,7 +93,7 @@ func TestDetectPartials(t *testing.T) {
 	markup := "Hello world\n>>header\nSome text\n>>footer\nEnd"
 	partials := DetectPartials(markup)
 	if len(partials) != 2 {
-		t.Fatalf("DetectPartials got %d, want 2", len(partials))
+		t.Fatalf("DetectPartials got %v, want 2", len(partials))
 	}
 	if partials[0] != "header" || partials[1] != "footer" {
 		t.Errorf("DetectPartials = %v, want [header footer]", partials)
@@ -104,7 +104,7 @@ func TestDetectPartialsNone(t *testing.T) {
 	t.Parallel()
 	partials := DetectPartials("No partials here")
 	if len(partials) != 0 {
-		t.Errorf("DetectPartials got %d, want 0", len(partials))
+		t.Errorf("DetectPartials got %v, want 0", len(partials))
 	}
 }
 
@@ -306,16 +306,16 @@ func TestBrowserDisplayDisconnect(t *testing.T) {
 	bd.LoadURL("page2")
 	bd.LoadURL("page3")
 	if len(bd.history) != 3 {
-		t.Fatalf("history len = %d, want 3", len(bd.history))
+		t.Fatalf("history len = %v, want 3", len(bd.history))
 	}
 
 	bd.Disconnect()
 
 	if len(bd.history) != 0 {
-		t.Errorf("after Disconnect history len = %d, want 0 (Python clears history)", len(bd.history))
+		t.Errorf("after Disconnect history len = %v, want 0 (Python clears history)", len(bd.history))
 	}
 	if bd.histIdx != 0 {
-		t.Errorf("after Disconnect histIdx = %d, want 0", bd.histIdx)
+		t.Errorf("after Disconnect histIdx = %v, want 0", bd.histIdx)
 	}
 	if bd.CurrentURL() != "" {
 		t.Errorf("after Disconnect CurrentURL = %q, want empty", bd.CurrentURL())

@@ -40,7 +40,7 @@ func TestFormatTabLabel(t *testing.T) {
 			t.Parallel()
 			got := FormatTabLabel(tt.label, tt.total, tt.unread, tt.unreadGlyph)
 			if got != tt.want {
-				t.Errorf("FormatTabLabel(%q, %d, %d, %q) = %q, want %q",
+				t.Errorf("FormatTabLabel(%q, %v, %v, %q) = %q, want %q",
 					tt.label, tt.total, tt.unread, tt.unreadGlyph, got, tt.want)
 			}
 		})

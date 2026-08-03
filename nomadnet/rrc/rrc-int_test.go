@@ -73,7 +73,7 @@ func TestIntegrationHubConnectEstablishesLink(t *testing.T) {
 	select {
 	case <-clientEstablished:
 		if hub.Status != StatusConnected {
-			t.Errorf("hub status = %d, want StatusConnected", hub.Status)
+			t.Errorf("hub status = %v, want StatusConnected", hub.Status)
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("timeout waiting for client link establishment")
@@ -648,14 +648,14 @@ func TestIntegrationPartRoomUpdatesMembers(t *testing.T) {
 	serverMembersAfter := len(serverHub.Members["general"])
 	serverHub.lock.Unlock()
 	if serverMembersAfter > 0 {
-		t.Errorf("server should have removed member after part, got %d members", serverMembersAfter)
+		t.Errorf("server should have removed member after part, got %v members", serverMembersAfter)
 	}
 
 	clientHub.lock.Lock()
 	clientMembersAfter := len(clientHub.Members["general"])
 	clientHub.lock.Unlock()
 	if clientMembersAfter > 0 {
-		t.Errorf("client should have removed member after PARTED notification, got %d members", clientMembersAfter)
+		t.Errorf("client should have removed member after PARTED notification, got %v members", clientMembersAfter)
 	}
 }
 
@@ -717,7 +717,7 @@ func TestIntegrationHubDisconnectUpdatesStatus(t *testing.T) {
 	status := clientHub.Status
 	clientHub.lock.Unlock()
 	if status != StatusConnected {
-		t.Fatalf("expected StatusConnected, got %d", status)
+		t.Fatalf("expected StatusConnected, got %v", status)
 	}
 
 	clientHub.Disconnect()
@@ -732,7 +732,7 @@ func TestIntegrationHubDisconnectUpdatesStatus(t *testing.T) {
 	status = clientHub.Status
 	clientHub.lock.Unlock()
 	if status != StatusDisconnected {
-		t.Errorf("expected StatusDisconnected after disconnect, got %d", status)
+		t.Errorf("expected StatusDisconnected after disconnect, got %v", status)
 	}
 }
 

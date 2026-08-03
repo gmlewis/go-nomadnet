@@ -74,7 +74,7 @@ func TestLXMFPeersNoContentLayout(t *testing.T) {
 	pp := NewLXMFPeersDisplay(app)
 
 	if got := pp.Count(); got != 0 {
-		t.Errorf("Count = %d, want 0", got)
+		t.Errorf("Count = %v, want 0", got)
 	}
 	if got := pp.Title(); got != "LXMF Propagation Peers (0)" {
 		t.Errorf("Title = %q, want %q", got, "LXMF Propagation Peers (0)")
@@ -118,7 +118,7 @@ func TestLXMFPeersSetPeersEmpty(t *testing.T) {
 	pp.SetPeers(nil)
 
 	if pp.Count() != 0 {
-		t.Errorf("Count after SetPeers(nil) = %d, want 0", pp.Count())
+		t.Errorf("Count after SetPeers(nil) = %v, want 0", pp.Count())
 	}
 	if pp.Title() != "LXMF Propagation Peers (0)" {
 		t.Errorf("Title after SetPeers(nil) = %q, want count 0", pp.Title())

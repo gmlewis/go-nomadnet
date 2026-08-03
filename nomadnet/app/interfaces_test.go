@@ -79,7 +79,7 @@ share_instance = No
 	a := &App{RNSConfigDir: dir, Transport: ts}
 	stats := a.InterfaceStats()
 	if len(stats) != 3 {
-		t.Fatalf("InterfaceStats() returned %d entries, want 3: %+v", len(stats), stats)
+		t.Fatalf("InterfaceStats() returned %v entries, want 3: %+v", len(stats), stats)
 	}
 
 	// Index 0: disabled Michmesh — from config, no transport stats.
@@ -107,7 +107,7 @@ share_instance = No
 		t.Error("stats[1].Connected = false, want true (running)")
 	}
 	if stats[1].Bitrate != 1000000 {
-		t.Errorf("stats[1].Bitrate = %d, want 1000000", stats[1].Bitrate)
+		t.Errorf("stats[1].Bitrate = %v, want 1000000", stats[1].Bitrate)
 	}
 
 	// Index 2: g00n — enabled (config, "enabled = Yes"), not running.
@@ -136,7 +136,7 @@ func TestParseInterfaceConfigEnabledDefault(t *testing.T) {
 	}
 	entries := parseInterfaceConfig(filepath.Join(dir, "config"))
 	if len(entries) != 1 {
-		t.Fatalf("got %d entries, want 1", len(entries))
+		t.Fatalf("got %v entries, want 1", len(entries))
 	}
 	if !entries[0].enabled {
 		t.Error("default enabled = false, want true")
@@ -160,7 +160,7 @@ func TestParseInterfaceConfigNameProperty(t *testing.T) {
 	}
 	entries := parseInterfaceConfig(filepath.Join(dir, "config"))
 	if len(entries) != 1 {
-		t.Fatalf("got %d entries, want 1", len(entries))
+		t.Fatalf("got %v entries, want 1", len(entries))
 	}
 	if entries[0].iface != "My Custom Name" {
 		t.Errorf("display name = %q, want %q", entries[0].iface, "My Custom Name")

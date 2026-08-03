@@ -142,7 +142,7 @@ func TestConfigDisplayLayout(t *testing.T) {
 	// Rows 8+: blank (TOP-filled, not vertically centered).
 	for i := 8; i < 23; i++ {
 		if rows[i] != "" {
-			t.Errorf("row %d = %q, want blank (TOP-filled below the pile)", i, rows[i])
+			t.Errorf("row %v = %q, want blank (TOP-filled below the pile)", i, rows[i])
 		}
 	}
 }

@@ -121,7 +121,7 @@ func TestTruncateStr(t *testing.T) {
 	for _, tt := range tests {
 		got := truncateStr(tt.input, tt.max)
 		if got != tt.want {
-			t.Errorf("truncateStr(%q, %d) = %q, want %q", tt.input, tt.max, got, tt.want)
+			t.Errorf("truncateStr(%q, %v) = %q, want %q", tt.input, tt.max, got, tt.want)
 		}
 	}
 }

@@ -387,12 +387,12 @@ func (cw *ConversationWidget) updatePeerInfo() {
 	case *cw.Hops == 1:
 		hopsStr = "1 hop"
 	default:
-		hopsStr = fmt.Sprintf("%d hops", *cw.Hops)
+		hopsStr = fmt.Sprintf("%v hops", *cw.Hops)
 	}
 
 	var rightParts []string
 	if cw.StampCost != nil {
-		rightParts = append(rightParts, fmt.Sprintf("Stamp: %d", *cw.StampCost))
+		rightParts = append(rightParts, fmt.Sprintf("Stamp: %v", *cw.StampCost))
 	}
 	rightParts = append(rightParts, speed+hopsStr)
 
@@ -523,7 +523,7 @@ func (cw *ConversationWidget) renderMessages() {
 			sb.WriteString("\n")
 		}
 		if msg.HasAttach && len(msg.AttachmentNames) == 0 {
-			sb.WriteString(fmt.Sprintf("  [gray]%s %d attachment(s)[-]\n", cw.glyphs()["file"], msg.AttachCount))
+			sb.WriteString(fmt.Sprintf("  [gray]%s %v attachment(s)[-]\n", cw.glyphs()["file"], msg.AttachCount))
 		}
 		sb.WriteString("\n")
 	}

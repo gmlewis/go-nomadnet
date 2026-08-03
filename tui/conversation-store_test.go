@@ -26,7 +26,7 @@ func TestConversationStoreCreate(t *testing.T) {
 
 	store := NewConversationStore()
 	if store.Count() != 0 {
-		t.Errorf("empty store count = %d, want 0", store.Count())
+		t.Errorf("empty store count = %v, want 0", store.Count())
 	}
 }
 
@@ -45,7 +45,7 @@ func TestConversationStoreAdd(t *testing.T) {
 	store.Add(conv)
 
 	if store.Count() != 1 {
-		t.Errorf("count = %d, want 1", store.Count())
+		t.Errorf("count = %v, want 1", store.Count())
 	}
 
 	got := store.Get("aabbccdd")
@@ -75,7 +75,7 @@ func TestConversationStoreDelete(t *testing.T) {
 
 	store.Delete("aabb")
 	if store.Count() != 1 {
-		t.Errorf("count after delete = %d, want 1", store.Count())
+		t.Errorf("count after delete = %v, want 1", store.Count())
 	}
 	if store.Get("aabb") != nil {
 		t.Error("deleted entry still found")
@@ -117,7 +117,7 @@ func TestConversationStoreSearch(t *testing.T) {
 			t.Parallel()
 			got := store.Search(tt.query)
 			if len(got) != tt.count {
-				t.Errorf("Search(%q) returned %d, want %d", tt.query, len(got), tt.count)
+				t.Errorf("Search(%q) returned %v, want %v", tt.query, len(got), tt.count)
 			}
 		})
 	}
@@ -133,12 +133,12 @@ func TestConversationStoreFilterByTrust(t *testing.T) {
 
 	trusted := store.FilterByTrust("trusted")
 	if len(trusted) != 2 {
-		t.Errorf("trusted count = %d, want 2", len(trusted))
+		t.Errorf("trusted count = %v, want 2", len(trusted))
 	}
 
 	untrusted := store.FilterByTrust("untrusted")
 	if len(untrusted) != 1 {
-		t.Errorf("untrusted count = %d, want 1", len(untrusted))
+		t.Errorf("untrusted count = %v, want 1", len(untrusted))
 	}
 }
 
@@ -152,7 +152,7 @@ func TestConversationStoreSortByName(t *testing.T) {
 
 	sorted := store.SortedByName()
 	if len(sorted) != 3 {
-		t.Fatalf("sorted count = %d, want 3", len(sorted))
+		t.Fatalf("sorted count = %v, want 3", len(sorted))
 	}
 	if sorted[0].DisplayName != "Alice" {
 		t.Errorf("first = %q, want Alice", sorted[0].DisplayName)
@@ -176,7 +176,7 @@ func TestConversationStoreSortByTime(t *testing.T) {
 
 	sorted := store.SortedByTime()
 	if len(sorted) != 3 {
-		t.Fatalf("sorted count = %d, want 3", len(sorted))
+		t.Fatalf("sorted count = %v, want 3", len(sorted))
 	}
 	if sorted[0].DisplayName != "B" {
 		t.Errorf("first = %q, want B (most recent)", sorted[0].DisplayName)
@@ -259,7 +259,7 @@ func TestConversationStoreUnreadCount(t *testing.T) {
 	store.Add(ConversationInfo{SourceHash: "eeff", DisplayName: "C", Unread: false})
 
 	if got := store.UnreadCount(); got != 2 {
-		t.Errorf("UnreadCount() = %d, want 2", got)
+		t.Errorf("UnreadCount() = %v, want 2", got)
 	}
 }
 
@@ -274,12 +274,12 @@ func TestConversationStoreByTrustLevel(t *testing.T) {
 
 	trusted := store.ByTrustLevel("trusted")
 	if len(trusted) != 2 {
-		t.Errorf("trusted count = %d, want 2", len(trusted))
+		t.Errorf("trusted count = %v, want 2", len(trusted))
 	}
 
 	all := store.ByTrustLevel("")
 	if len(all) != 4 {
-		t.Errorf("empty filter count = %d, want 4", len(all))
+		t.Errorf("empty filter count = %v, want 4", len(all))
 	}
 }
 

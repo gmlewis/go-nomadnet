@@ -48,13 +48,13 @@ func TestHubViews(t *testing.T) {
 
 	views := a.HubViews()
 	if len(views) != 2 {
-		t.Fatalf("HubViews len = %d, want 2", len(views))
+		t.Fatalf("HubViews len = %v, want 2", len(views))
 	}
 	if got := views[0].Name(); got != "Hub 1" {
 		t.Errorf("views[0].Name = %q, want %q", got, "Hub 1")
 	}
 	if got := views[0].Status(); got != rrc.StatusConnected {
-		t.Errorf("views[0].Status = %d, want %d", got, rrc.StatusConnected)
+		t.Errorf("views[0].Status = %v, want %v", got, rrc.StatusConnected)
 	}
 	if got, want := views[0].JoinedRooms(), []string{"general", "random"}; !sliceEqual(got, want) {
 		t.Errorf("views[0].JoinedRooms = %v, want %v", got, want)
@@ -72,7 +72,7 @@ func TestHubViews(t *testing.T) {
 		t.Errorf("views[1].Name = %q, want %q", got, "Hub 2")
 	}
 	if got := views[1].Status(); got != rrc.StatusDisconnected {
-		t.Errorf("views[1].Status = %d, want %d", got, rrc.StatusDisconnected)
+		t.Errorf("views[1].Status = %v, want %v", got, rrc.StatusDisconnected)
 	}
 
 	// Confirm the returned values satisfy the tui.HubView interface.

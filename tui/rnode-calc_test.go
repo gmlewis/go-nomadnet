@@ -94,7 +94,7 @@ func TestCalculateRNodeParametersCodingRates(t *testing.T) {
 	for _, cr := range []int{5, 6, 7, 8} {
 		result := CalculateRNodeParameters(125000, 7, cr, RNodeParams{})
 		if result.DataRate == "" {
-			t.Errorf("coding rate %d produced empty data rate", cr)
+			t.Errorf("coding rate %v produced empty data rate", cr)
 		}
 	}
 }
@@ -105,7 +105,7 @@ func TestCalculateRNodeParametersSpreadingFactors(t *testing.T) {
 	for _, sf := range []int{5, 6, 7, 8, 9, 10, 11, 12} {
 		result := CalculateRNodeParameters(125000, sf, 5, RNodeParams{})
 		if result.DataRate == "" {
-			t.Errorf("spreading factor %d produced empty data rate", sf)
+			t.Errorf("spreading factor %v produced empty data rate", sf)
 		}
 	}
 }

@@ -74,7 +74,7 @@ func TestURWIDColumnsInputCaptureHonored(t *testing.T) {
 		t.Error("input capture was not invoked for forwarded key")
 	}
 	if cols.FocusIndex() == before {
-		t.Errorf("Tab did not move column focus: still at %d", before)
+		t.Errorf("Tab did not move column focus: still at %v", before)
 	}
 }
 

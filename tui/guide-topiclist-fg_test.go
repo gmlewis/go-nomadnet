@@ -87,7 +87,7 @@ func TestGuideTopicListUnfocusedFg(t *testing.T) {
 					}
 					// record the first divergent cell for a helpful message
 					if !found {
-						t.Errorf("topic-list unfocused cell at (%d,%d) char %q fg=#%06x, want topic_list_normal #%06x",
+						t.Errorf("topic-list unfocused cell at (%v,%v) char %q fg=#%06x, want topic_list_normal #%06x",
 							x, y, string(c), uint32(fg&0xffffff), tc.wantHex)
 						found = true
 						break

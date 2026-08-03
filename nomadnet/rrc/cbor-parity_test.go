@@ -163,7 +163,7 @@ print("OK")
 		t.Fatalf("read python encoded: %v", err)
 	}
 
-	t.Logf("python encoded len=%d", len(pythonEncoded))
+	t.Logf("python encoded len=%v", len(pythonEncoded))
 	decoded, err := DecodeEnvelope(pythonEncoded)
 	if err != nil {
 		t.Fatalf("Go DecodeEnvelope failed: %v", err)
@@ -262,7 +262,7 @@ func TestIntegrationProtocolConstantsMatch(t *testing.T) {
 
 	for name, want := range expected {
 		if got := actual[name]; got != want {
-			t.Errorf("%s = %d, want %d", name, got, want)
+			t.Errorf("%s = %v, want %v", name, got, want)
 		}
 	}
 }

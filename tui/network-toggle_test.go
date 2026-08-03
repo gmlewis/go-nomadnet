@@ -102,12 +102,12 @@ func TestDisplayModeToggle(t *testing.T) {
 
 	mode = ToggleDisplayMode(mode)
 	if mode != DisplayHash {
-		t.Errorf("after toggle: got %d, want DisplayHash(%d)", mode, DisplayHash)
+		t.Errorf("after toggle: got %v, want DisplayHash(%v)", mode, DisplayHash)
 	}
 
 	mode = ToggleDisplayMode(mode)
 	if mode != DisplayName {
-		t.Errorf("after second toggle: got %d, want DisplayName(%d)", mode, DisplayName)
+		t.Errorf("after second toggle: got %v, want DisplayName(%v)", mode, DisplayName)
 	}
 }
 

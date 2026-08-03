@@ -73,7 +73,7 @@ func TestPileFillerFocusCyclingTab(t *testing.T) {
 	p.AddItem(c, 1, true)
 
 	if p.FocusIndex() != 0 {
-		t.Fatalf("initial focusIndex = %d, want 0", p.FocusIndex())
+		t.Fatalf("initial focusIndex = %v, want 0", p.FocusIndex())
 	}
 	p.Focus(func(tview.Primitive) {})
 	if !a.HasFocus() {
@@ -83,7 +83,7 @@ func TestPileFillerFocusCyclingTab(t *testing.T) {
 	// Tab → B.
 	pfKey(p, tcell.KeyTab)
 	if p.FocusIndex() != 1 {
-		t.Errorf("after Tab focusIndex = %d, want 1", p.FocusIndex())
+		t.Errorf("after Tab focusIndex = %v, want 1", p.FocusIndex())
 	}
 	if !b.HasFocus() {
 		t.Error("B should be focused after Tab")
@@ -95,7 +95,7 @@ func TestPileFillerFocusCyclingTab(t *testing.T) {
 	// Tab → C.
 	pfKey(p, tcell.KeyTab)
 	if p.FocusIndex() != 2 {
-		t.Errorf("after 2x Tab focusIndex = %d, want 2", p.FocusIndex())
+		t.Errorf("after 2x Tab focusIndex = %v, want 2", p.FocusIndex())
 	}
 	if !c.HasFocus() {
 		t.Error("C should be focused after 2x Tab")
@@ -104,7 +104,7 @@ func TestPileFillerFocusCyclingTab(t *testing.T) {
 	// Tab wraps → A.
 	pfKey(p, tcell.KeyTab)
 	if p.FocusIndex() != 0 {
-		t.Errorf("after 3x Tab focusIndex = %d, want 0 (wrap)", p.FocusIndex())
+		t.Errorf("after 3x Tab focusIndex = %v, want 0 (wrap)", p.FocusIndex())
 	}
 	if !a.HasFocus() {
 		t.Error("A should be focused after wrap")
@@ -113,7 +113,7 @@ func TestPileFillerFocusCyclingTab(t *testing.T) {
 	// Backtab from A wraps → C.
 	pfKey(p, tcell.KeyBacktab)
 	if p.FocusIndex() != 2 {
-		t.Errorf("after Backtab from A focusIndex = %d, want 2 (wrap)", p.FocusIndex())
+		t.Errorf("after Backtab from A focusIndex = %v, want 2 (wrap)", p.FocusIndex())
 	}
 	if !c.HasFocus() {
 		t.Error("C should be focused after Backtab wrap")
@@ -122,7 +122,7 @@ func TestPileFillerFocusCyclingTab(t *testing.T) {
 	// Tab moves forward to wrap → A.
 	pfKey(p, tcell.KeyTab)
 	if p.FocusIndex() != 0 {
-		t.Errorf("after Tab from C focusIndex = %d, want 0 (wrap)", p.FocusIndex())
+		t.Errorf("after Tab from C focusIndex = %v, want 0 (wrap)", p.FocusIndex())
 	}
 }
 
@@ -189,7 +189,7 @@ func TestPileFillerSetFocusIndex(t *testing.T) {
 	p.SetFocusIndex(2) // last
 	p.Focus(func(tview.Primitive) {})
 	if p.FocusIndex() != 2 {
-		t.Errorf("focusIndex = %d, want 2", p.FocusIndex())
+		t.Errorf("focusIndex = %v, want 2", p.FocusIndex())
 	}
 	if !c_hasFocus(p) {
 		t.Error("last item should be focused after SetFocusIndex(2)")

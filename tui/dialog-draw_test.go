@@ -36,7 +36,7 @@ type boundsAssertScreen struct {
 func (s *boundsAssertScreen) SetContent(x, y int, mainc rune, combc []rune, st tcell.Style) {
 	if x < 0 || y < 0 {
 		w, h := s.Screen.Size()
-		s.t.Errorf("SetContent at negative coordinate (%d,%d) on a %dx%d screen: rune %q", x, y, w, h, mainc)
+		s.t.Errorf("SetContent at negative coordinate (%v,%v) on a %vx%v screen: rune %q", x, y, w, h, mainc)
 		return
 	}
 	s.Screen.SetContent(x, y, mainc, combc, st)

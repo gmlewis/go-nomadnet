@@ -52,7 +52,7 @@ func TestParseColorMode(t *testing.T) {
 	for _, c := range cases {
 		got := ParseColorMode(c.in)
 		if got != c.want {
-			t.Errorf("ParseColorMode(%q) = %d, want %d", c.in, got, c.want)
+			t.Errorf("ParseColorMode(%q) = %v, want %v", c.in, got, c.want)
 		}
 	}
 }
@@ -191,7 +191,7 @@ func TestPaletteMatchesPython(t *testing.T) {
 		// The implementation must not carry entries absent from the Python
 		// original (catches typos / inventing styles).
 		if len(th.implements) != len(th.golden) {
-			t.Errorf("%s palette has %d entries, want %d", th.name, len(th.implements), len(th.golden))
+			t.Errorf("%s palette has %v entries, want %v", th.name, len(th.implements), len(th.golden))
 		}
 		for name := range th.implements {
 			if _, ok := th.golden[name]; !ok {
@@ -222,7 +222,7 @@ func TestResolveStyleDepthSelection(t *testing.T) {
 		for _, cm := range modes[2:] {
 			fg, bg = ResolveStyle(e, cm)
 			if fg != e.HighFG || bg != e.HighBG {
-				t.Errorf("depth %d %q = (%q,%q), want (%q,%q)", cm, name, fg, bg, e.HighFG, e.HighBG)
+				t.Errorf("depth %v %q = (%q,%q), want (%q,%q)", cm, name, fg, bg, e.HighFG, e.HighBG)
 			}
 		}
 	}
@@ -300,6 +300,6 @@ func TestDetectColorModeValid(t *testing.T) {
 	case ColorModeMono, ColorMode16, ColorMode88, ColorMode256, ColorModeTrue:
 		// ok
 	default:
-		t.Errorf("DetectColorMode() = %d, want one of the known depth constants", cm)
+		t.Errorf("DetectColorMode() = %v, want one of the known depth constants", cm)
 	}
 }

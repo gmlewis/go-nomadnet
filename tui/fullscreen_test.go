@@ -32,7 +32,7 @@ func TestFullscreenToggle(t *testing.T) {
 		t.Error("should be fullscreen after toggle")
 	}
 	if fs.ListWidth != 0 {
-		t.Errorf("ListWidth = %d, want 0", fs.ListWidth)
+		t.Errorf("ListWidth = %v, want 0", fs.ListWidth)
 	}
 
 	fs.Toggle()
@@ -40,7 +40,7 @@ func TestFullscreenToggle(t *testing.T) {
 		t.Error("should not be fullscreen after second toggle")
 	}
 	if fs.ListWidth != 52 {
-		t.Errorf("ListWidth = %d, want 52", fs.ListWidth)
+		t.Errorf("ListWidth = %v, want 52", fs.ListWidth)
 	}
 }
 
@@ -50,11 +50,11 @@ func TestFullscreenToggleCustomWidth(t *testing.T) {
 	fs := FullscreenState{ListWidth: 40}
 	fs.Toggle()
 	if fs.ListWidth != 0 {
-		t.Errorf("ListWidth = %d, want 0", fs.ListWidth)
+		t.Errorf("ListWidth = %v, want 0", fs.ListWidth)
 	}
 	fs.Toggle()
 	if fs.ListWidth != 40 {
-		t.Errorf("ListWidth = %d, want 40", fs.ListWidth)
+		t.Errorf("ListWidth = %v, want 40", fs.ListWidth)
 	}
 }
 
@@ -70,7 +70,7 @@ func TestFullscreenToggleMultipleTimes(t *testing.T) {
 		t.Error("should not be fullscreen after even number of toggles")
 	}
 	if fs.ListWidth != 52 {
-		t.Errorf("ListWidth = %d, want 52", fs.ListWidth)
+		t.Errorf("ListWidth = %v, want 52", fs.ListWidth)
 	}
 }
 
@@ -80,6 +80,6 @@ func TestFullscreenSetWidth(t *testing.T) {
 	fs := FullscreenState{ListWidth: 52}
 	fs.SetWidth(60)
 	if fs.ListWidth != 60 {
-		t.Errorf("ListWidth = %d, want 60", fs.ListWidth)
+		t.Errorf("ListWidth = %v, want 60", fs.ListWidth)
 	}
 }

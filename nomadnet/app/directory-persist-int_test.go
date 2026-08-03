@@ -87,7 +87,7 @@ func TestDirectoryPersistsAcrossShutdown(t *testing.T) {
 		t.Errorf("loaded DisplayName = %q, want %q", got.DisplayName, "TestPeer")
 	}
 	if got.TrustLevel != directory.TrustTrusted {
-		t.Errorf("loaded TrustLevel = %d, want %d (Trusted)", got.TrustLevel, directory.TrustTrusted)
+		t.Errorf("loaded TrustLevel = %v, want %v (Trusted)", got.TrustLevel, directory.TrustTrusted)
 	}
 	if !got.HostsNode {
 		t.Errorf("loaded HostsNode = false, want true")

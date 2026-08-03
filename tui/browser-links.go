@@ -31,7 +31,7 @@ const truncatedHashHexLen = 32
 // handle_lxmf_link() validation at Browser.py:383.
 func ValidateLXMFLink(linkTarget string) error {
 	if len(linkTarget) != truncatedHashHexLen {
-		return fmt.Errorf("invalid length for LXMF link: got %d, want %d", len(linkTarget), truncatedHashHexLen)
+		return fmt.Errorf("invalid length for LXMF link: got %v, want %v", len(linkTarget), truncatedHashHexLen)
 	}
 	if _, err := hex.DecodeString(linkTarget); err != nil {
 		return errors.New("could not decode destination hash from LXMF link")
@@ -66,7 +66,7 @@ func ParseRRCLink(linkTarget string) (hubHex, room, dest string, err error) {
 		return "", "", "", errors.New("invalid hub hash")
 	}
 	if len(hubBytes) != truncatedHashHexLen/2 {
-		return "", "", "", fmt.Errorf("hub hash must be %d bytes", truncatedHashHexLen/2)
+		return "", "", "", fmt.Errorf("hub hash must be %v bytes", truncatedHashHexLen/2)
 	}
 
 	// Normalize the room exactly as Python's handle_rrc_link does:

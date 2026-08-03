@@ -78,7 +78,7 @@ func FormatNodeDetail(entry *NodeEntryFull, editable bool) string {
 		sb.WriteString("  Node: yes\n")
 	}
 	if entry.SortRank >= 0 {
-		sb.WriteString(fmt.Sprintf("  Sort Rank: %d\n", entry.SortRank))
+		sb.WriteString(fmt.Sprintf("  Sort Rank: %v\n", entry.SortRank))
 	}
 	if entry.Notes != "" {
 		sb.WriteString(fmt.Sprintf("  Notes: %s\n", entry.Notes))
@@ -106,7 +106,7 @@ func SearchConversations(convs []ConversationInfo, query string) []ConversationI
 // FormatConversationSummary produces a one-line summary for the detail view.
 func FormatConversationSummary(conv ConversationInfo) string {
 	return fmt.Sprintf(
-		"[::b]%s[-]\n\nTrust: %s\nMessages: %d\nLast: %s",
+		"[::b]%s[-]\n\nTrust: %s\nMessages: %v\nLast: %s",
 		conv.DisplayName,
 		FormatTrustLabel(conv.TrustLevel),
 		conv.MessageCount,

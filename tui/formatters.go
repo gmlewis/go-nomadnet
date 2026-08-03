@@ -41,15 +41,15 @@ func relativeTimeAt(t, now time.Time) string {
 	case delta < time.Minute:
 		return "just now"
 	case delta < time.Hour:
-		return fmt.Sprintf("%dm ago", int(delta.Minutes()))
+		return fmt.Sprintf("%vm ago", int(delta.Minutes()))
 	case delta < 24*time.Hour:
-		return fmt.Sprintf("%dh ago", int(delta.Hours()))
+		return fmt.Sprintf("%vh ago", int(delta.Hours()))
 	case delta < 48*time.Hour:
 		return "yesterday"
 	case delta < 7*24*time.Hour:
-		return fmt.Sprintf("%dd ago", int(delta.Hours()/24))
+		return fmt.Sprintf("%vd ago", int(delta.Hours()/24))
 	case delta < 30*24*time.Hour:
-		return fmt.Sprintf("%dw ago", int(delta.Hours()/(7*24)))
+		return fmt.Sprintf("%vw ago", int(delta.Hours()/(7*24)))
 	default:
 		return t.Format("2006-01-02")
 	}
@@ -110,7 +110,7 @@ func prettyDateAt(t, now time.Time) string {
 func FormatSize(size int64) string {
 	switch {
 	case size < 1024:
-		return fmt.Sprintf("%d B", size)
+		return fmt.Sprintf("%v B", size)
 	case size < 1048576:
 		return fmt.Sprintf("%.1f KB", float64(size)/1024.0)
 	default:
@@ -130,7 +130,7 @@ func FormatBytes(size float64) string {
 	}
 
 	if unitIndex == 0 {
-		return fmt.Sprintf("%d %s", int(size), units[unitIndex])
+		return fmt.Sprintf("%v %s", int(size), units[unitIndex])
 	}
 	return fmt.Sprintf("%.1f %s", size, units[unitIndex])
 }
@@ -169,10 +169,10 @@ func FormatHubStatus(hub HubEntry) string {
 
 	line := fmt.Sprintf("%s %s (%s", icon, hub.Name, status)
 	if roomCount > 0 {
-		line += fmt.Sprintf(", %d rooms", roomCount)
+		line += fmt.Sprintf(", %v rooms", roomCount)
 	}
 	if unread > 0 {
-		line += fmt.Sprintf(", %d unread", unread)
+		line += fmt.Sprintf(", %v unread", unread)
 	}
 	line += ")"
 	return line
@@ -193,7 +193,7 @@ func FormatSyncProgress(progress int) string {
 	empty := barWidth - filled
 
 	bar := "[" + strings.Repeat("=", filled) + strings.Repeat(" ", empty) + "]"
-	return fmt.Sprintf("%s %d%%", bar, progress)
+	return fmt.Sprintf("%s %v%%", bar, progress)
 }
 
 // FormatAnnounceSummary formats a single announce for the list view.
@@ -269,7 +269,7 @@ func ParseURLWithQuery(url, currentHash string) (hash, path string, fields map[s
 	case 1:
 		// Bare hash — use default path
 		if len(components[0]) != hashLen {
-			return "", "", nil, false, fmt.Errorf("malformed URL: hash must be %d hex chars, got %d", hashLen, len(components[0]))
+			return "", "", nil, false, fmt.Errorf("malformed URL: hash must be %v hex chars, got %v", hashLen, len(components[0]))
 		}
 		if _, hexErr := hex.DecodeString(components[0]); hexErr != nil {
 			return "", "", nil, false, fmt.Errorf("malformed URL: invalid hex in hash")
@@ -290,7 +290,7 @@ func ParseURLWithQuery(url, currentHash string) (hash, path string, fields map[s
 			hash, path = currentHash, pathPart
 		} else {
 			if len(hashPart) != hashLen {
-				return "", "", nil, false, fmt.Errorf("malformed URL: hash must be %d hex chars, got %d", hashLen, len(hashPart))
+				return "", "", nil, false, fmt.Errorf("malformed URL: hash must be %v hex chars, got %v", hashLen, len(hashPart))
 			}
 			if _, hexErr := hex.DecodeString(hashPart); hexErr != nil {
 				return "", "", nil, false, fmt.Errorf("malformed URL: invalid hex in hash")

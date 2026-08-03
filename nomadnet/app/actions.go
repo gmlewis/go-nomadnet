@@ -172,7 +172,7 @@ const truncatedHashHexLen = rns.TruncatedHashLength / 8 * 2
 // switches to the Conversations page on success.
 func (a *App) OpenLXMFLink(sourceHashHex string) (isNew bool, err error) {
 	if len(sourceHashHex) != truncatedHashHexLen {
-		return false, fmt.Errorf("invalid length for LXMF link: got %d, want %d", len(sourceHashHex), truncatedHashHexLen)
+		return false, fmt.Errorf("invalid length for LXMF link: got %v, want %v", len(sourceHashHex), truncatedHashHexLen)
 	}
 	hash, err := hex.DecodeString(sourceHashHex)
 	if err != nil {

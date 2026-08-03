@@ -205,7 +205,7 @@ func TestChannelsDisplaySetHubs(t *testing.T) {
 
 	// Expected entries: hub1 header, 2 rooms, spacer, hub2 header = 5 rows.
 	if got := cd.rooms.GetItemCount(); got != 5 {
-		t.Fatalf("room count = %d, want 5", got)
+		t.Fatalf("room count = %v, want 5", got)
 	}
 	wantTexts := []string{
 		"[#66bb22]= hub1[-]",
@@ -217,7 +217,7 @@ func TestChannelsDisplaySetHubs(t *testing.T) {
 	for i, want := range wantTexts {
 		main, _ := cd.rooms.GetItemText(i)
 		if main != want {
-			t.Errorf("row %d main = %q, want %q", i, main, want)
+			t.Errorf("row %v main = %q, want %q", i, main, want)
 		}
 	}
 
@@ -232,14 +232,14 @@ func TestChannelsDisplaySetHubs(t *testing.T) {
 	}
 	cd.selectEntry(0) // hub1 header
 	if gotHubIdx != 0 {
-		t.Errorf("OnSelectHub hubIdx = %d, want 0", gotHubIdx)
+		t.Errorf("OnSelectHub hubIdx = %v, want 0", gotHubIdx)
 	}
 	cd.selectEntry(1) // general room
 	if gotRoom != 0 || gotRoomName != "general" {
-		t.Errorf("OnSelectRoom = (%d, %q), want (0, %q)", gotRoom, gotRoomName, "general")
+		t.Errorf("OnSelectRoom = (%v, %q), want (0, %q)", gotRoom, gotRoomName, "general")
 	}
 	cd.selectEntry(4) // hub2 header
 	if gotHubIdx != 1 {
-		t.Errorf("OnSelectHub hubIdx = %d, want 1", gotHubIdx)
+		t.Errorf("OnSelectHub hubIdx = %v, want 1", gotHubIdx)
 	}
 }

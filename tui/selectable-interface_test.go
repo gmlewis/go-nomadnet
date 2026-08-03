@@ -164,11 +164,11 @@ func TestInterfaceItemRowTextPythonParity(t *testing.T) {
 			t.Parallel()
 			rows := InterfaceItemRowText(tt.item, w)
 			if len(rows) != 5 {
-				t.Fatalf("got %d rows, want 5", len(rows))
+				t.Fatalf("got %v rows, want 5", len(rows))
 			}
 			for i, got := range rows {
 				if runewidth.StringWidth(got) != cw {
-					t.Errorf("row %d display width = %d, want %d (%q)", i, runewidth.StringWidth(got), cw, got)
+					t.Errorf("row %v display width = %v, want %v (%q)", i, runewidth.StringWidth(got), cw, got)
 				}
 				if i == 3 {
 					want := strings.Repeat("-", cw)
@@ -178,7 +178,7 @@ func TestInterfaceItemRowTextPythonParity(t *testing.T) {
 					continue
 				}
 				if got := strings.TrimRight(rows[i], " "); got != tt.wantContent[i] {
-					t.Errorf("row %d content = %q, want %q", i, got, tt.wantContent[i])
+					t.Errorf("row %v content = %q, want %q", i, got, tt.wantContent[i])
 				}
 			}
 		})

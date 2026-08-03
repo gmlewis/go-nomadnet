@@ -303,7 +303,7 @@ func TestBrowserHandleLink(t *testing.T) {
 				}
 				for i, id := range gotPartialIDs {
 					if id != tt.partialIDs[i] {
-						t.Errorf("partial[%d] = %q, want %q", i, id, tt.partialIDs[i])
+						t.Errorf("partial[%v] = %q, want %q", i, id, tt.partialIDs[i])
 					}
 				}
 			}

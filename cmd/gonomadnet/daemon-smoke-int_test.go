@@ -210,7 +210,7 @@ func TestDaemonSmokeEndToEnd(t *testing.T) {
 	waitErr := cmd.Wait()
 	if exitErr, ok := waitErr.(*exec.ExitError); ok {
 		if exitErr.ExitCode() != 0 {
-			t.Fatalf("daemon exited %d after SIGTERM; output:\n%s", exitErr.ExitCode(), lb.dump())
+			t.Fatalf("daemon exited %v after SIGTERM; output:\n%s", exitErr.ExitCode(), lb.dump())
 		}
 	} else if waitErr != nil {
 		t.Fatalf("daemon wait: %v", waitErr)

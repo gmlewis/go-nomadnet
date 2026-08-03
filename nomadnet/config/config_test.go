@@ -28,7 +28,7 @@ func TestDefaultConfig(t *testing.T) {
 
 	// Logging defaults
 	if c.Logging.LogLevel != 4 {
-		t.Errorf("LogLevel = %d, want 4", c.Logging.LogLevel)
+		t.Errorf("LogLevel = %v, want 4", c.Logging.LogLevel)
 	}
 	if c.Logging.Destination != "file" {
 		t.Errorf("Destination = %q, want %q", c.Logging.Destination, "file")
@@ -45,10 +45,10 @@ func TestDefaultConfig(t *testing.T) {
 		t.Errorf("DownloadsPath = %q, want %q", c.Client.DownloadsPath, "~/Downloads")
 	}
 	if c.Client.AnnounceInterval != 360*60 {
-		t.Errorf("AnnounceInterval = %d, want %d", c.Client.AnnounceInterval, 360*60)
+		t.Errorf("AnnounceInterval = %v, want %v", c.Client.AnnounceInterval, 360*60)
 	}
 	if c.Client.LXMFSyncLimit != 8 {
-		t.Errorf("LXMFSyncLimit = %d, want 8", c.Client.LXMFSyncLimit)
+		t.Errorf("LXMFSyncLimit = %v, want 8", c.Client.LXMFSyncLimit)
 	}
 	if c.Client.RequiredStampCost != nil {
 		t.Errorf("RequiredStampCost = %v, want nil", *c.Client.RequiredStampCost)
@@ -79,7 +79,7 @@ func TestDefaultConfig(t *testing.T) {
 
 	// RRC defaults
 	if c.RRC.HistoryPerRoomCap != 500 {
-		t.Errorf("HistoryPerRoomCap = %d, want 500", c.RRC.HistoryPerRoomCap)
+		t.Errorf("HistoryPerRoomCap = %v, want 500", c.RRC.HistoryPerRoomCap)
 	}
 	if c.RRC.FilterLoadedHistory != true {
 		t.Error("FilterLoadedHistory = false, want true")
@@ -102,10 +102,10 @@ func TestDefaultConfig(t *testing.T) {
 		t.Error("EnableNode = true, want false")
 	}
 	if c.Node.AnnounceInterval != 360*60 {
-		t.Errorf("Node.AnnounceInterval = %d, want %d", c.Node.AnnounceInterval, 360*60)
+		t.Errorf("Node.AnnounceInterval = %v, want %v", c.Node.AnnounceInterval, 360*60)
 	}
 	if c.Node.PropagationCost != 16 {
-		t.Errorf("PropagationCost = %d, want 16", c.Node.PropagationCost)
+		t.Errorf("PropagationCost = %v, want 16", c.Node.PropagationCost)
 	}
 	if c.Node.MaxTransferSize != 256 {
 		t.Errorf("MaxTransferSize = %f, want 256", c.Node.MaxTransferSize)
@@ -182,7 +182,7 @@ func TestAsInt(t *testing.T) {
 				return
 			}
 			if got != tt.want {
-				t.Errorf("asInt(%q) = %d, want %d", tt.input, got, tt.want)
+				t.Errorf("asInt(%q) = %v, want %v", tt.input, got, tt.want)
 			}
 		})
 	}
@@ -236,12 +236,12 @@ func TestAsList(t *testing.T) {
 			t.Parallel()
 			got := asList(tt.input)
 			if len(got) != len(tt.want) {
-				t.Errorf("asList(%q) = %v (len %d), want %v (len %d)", tt.input, got, len(got), tt.want, len(tt.want))
+				t.Errorf("asList(%q) = %v (len %v), want %v (len %v)", tt.input, got, len(got), tt.want, len(tt.want))
 				return
 			}
 			for i := range got {
 				if got[i] != tt.want[i] {
-					t.Errorf("asList(%q)[%d] = %q, want %q", tt.input, i, got[i], tt.want[i])
+					t.Errorf("asList(%q)[%v] = %q, want %q", tt.input, i, got[i], tt.want[i])
 				}
 			}
 		})
@@ -278,7 +278,7 @@ func TestApplyCustomValues(t *testing.T) {
 		t.Error("EnableClient = true, want false")
 	}
 	if c.Client.AnnounceInterval != 60*60 {
-		t.Errorf("AnnounceInterval = %d, want %d", c.Client.AnnounceInterval, 60*60)
+		t.Errorf("AnnounceInterval = %v, want %v", c.Client.AnnounceInterval, 60*60)
 	}
 	if c.Client.RequiredStampCost == nil || *c.Client.RequiredStampCost != 42 {
 		t.Error("RequiredStampCost != 42")
@@ -304,7 +304,7 @@ func TestApplyCustomValues(t *testing.T) {
 		t.Errorf("NodeName = %q, want %q", c.Node.NodeName, "MyNode")
 	}
 	if c.Node.PropagationCost != 20 {
-		t.Errorf("PropagationCost = %d, want 20", c.Node.PropagationCost)
+		t.Errorf("PropagationCost = %v, want 20", c.Node.PropagationCost)
 	}
 	if c.Node.MaxPeers == nil || *c.Node.MaxPeers != 10 {
 		t.Error("MaxPeers != 10")
@@ -320,7 +320,7 @@ func TestApplyLogLevelClamp(t *testing.T) {
 	}
 	c.Apply()
 	if c.Logging.LogLevel != 7 {
-		t.Errorf("LogLevel = %d, want 7 (clamped)", c.Logging.LogLevel)
+		t.Errorf("LogLevel = %v, want 7 (clamped)", c.Logging.LogLevel)
 	}
 
 	c2 := DefaultConfig()
@@ -329,7 +329,7 @@ func TestApplyLogLevelClamp(t *testing.T) {
 	}
 	c2.Apply()
 	if c2.Logging.LogLevel != 0 {
-		t.Errorf("LogLevel = %d, want 0 (clamped)", c2.Logging.LogLevel)
+		t.Errorf("LogLevel = %v, want 0 (clamped)", c2.Logging.LogLevel)
 	}
 }
 
@@ -342,7 +342,7 @@ func TestApplyAnnounceIntervalMin(t *testing.T) {
 	}
 	c.Apply()
 	if c.Client.AnnounceInterval != 30*60 {
-		t.Errorf("AnnounceInterval = %d, want %d (min clamped)", c.Client.AnnounceInterval, 30*60)
+		t.Errorf("AnnounceInterval = %v, want %v (min clamped)", c.Client.AnnounceInterval, 30*60)
 	}
 }
 
@@ -355,7 +355,7 @@ func TestApplyNodePropagationCostMin(t *testing.T) {
 	}
 	c.Apply()
 	if c.Node.PropagationCost != 13 {
-		t.Errorf("PropagationCost = %d, want 13 (min clamped)", c.Node.PropagationCost)
+		t.Errorf("PropagationCost = %v, want 13 (min clamped)", c.Node.PropagationCost)
 	}
 }
 
@@ -576,7 +576,7 @@ print_command = lp
 
 	// Verify logging
 	if c.Logging.LogLevel != 4 {
-		t.Errorf("LogLevel = %d, want 4", c.Logging.LogLevel)
+		t.Errorf("LogLevel = %v, want 4", c.Logging.LogLevel)
 	}
 	if c.Logging.Destination != "file" {
 		t.Errorf("Destination = %q, want %q", c.Logging.Destination, "file")
@@ -590,7 +590,7 @@ print_command = lp
 		t.Errorf("UserInterface = %q, want %q", c.Client.UserInterface, "text")
 	}
 	if c.Client.AnnounceInterval != 360*60 {
-		t.Errorf("AnnounceInterval = %d, want %d", c.Client.AnnounceInterval, 360*60)
+		t.Errorf("AnnounceInterval = %v, want %v", c.Client.AnnounceInterval, 360*60)
 	}
 	if c.Client.RequiredStampCost != nil {
 		t.Errorf("RequiredStampCost = %v, want nil", c.Client.RequiredStampCost)
@@ -612,7 +612,7 @@ print_command = lp
 
 	// Verify rrc
 	if c.RRC.HistoryPerRoomCap != 500 {
-		t.Errorf("HistoryPerRoomCap = %d, want 500", c.RRC.HistoryPerRoomCap)
+		t.Errorf("HistoryPerRoomCap = %v, want 500", c.RRC.HistoryPerRoomCap)
 	}
 	if c.RRC.NickColors != true {
 		t.Error("NickColors = false, want true")
@@ -626,7 +626,7 @@ print_command = lp
 		t.Error("EnableNode = true, want false")
 	}
 	if c.Node.PropagationCost != 16 {
-		t.Errorf("PropagationCost = %d, want 16", c.Node.PropagationCost)
+		t.Errorf("PropagationCost = %v, want 16", c.Node.PropagationCost)
 	}
 	if c.Node.MaxTransferSize != 256 {
 		t.Errorf("MaxTransferSize = %f, want 256", c.Node.MaxTransferSize)

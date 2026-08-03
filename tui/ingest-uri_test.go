@@ -102,19 +102,19 @@ func TestIngestResultConstants(t *testing.T) {
 	t.Parallel()
 
 	if IngestSuccess != 0 {
-		t.Errorf("IngestSuccess = %d, want 0", IngestSuccess)
+		t.Errorf("IngestSuccess = %v, want 0", IngestSuccess)
 	}
 	if IngestDuplicate != 1 {
-		t.Errorf("IngestDuplicate = %d, want 1", IngestDuplicate)
+		t.Errorf("IngestDuplicate = %v, want 1", IngestDuplicate)
 	}
 	if IngestError != 2 {
-		t.Errorf("IngestError = %d, want 2", IngestError)
+		t.Errorf("IngestError = %v, want 2", IngestError)
 	}
 	if IngestPropagated != 3 {
-		t.Errorf("IngestPropagated = %d, want 3", IngestPropagated)
+		t.Errorf("IngestPropagated = %v, want 3", IngestPropagated)
 	}
 	if IngestDiscarded != 4 {
-		t.Errorf("IngestDiscarded = %d, want 4", IngestDiscarded)
+		t.Errorf("IngestDiscarded = %v, want 4", IngestDiscarded)
 	}
 }
 
@@ -138,7 +138,7 @@ func TestIngestResultTextGolden(t *testing.T) {
 	}
 	for _, tc := range tests {
 		if got := IngestResultText(tc.result); got != tc.want {
-			t.Errorf("IngestResultText(%d) = %q, want %q", tc.result, got, tc.want)
+			t.Errorf("IngestResultText(%v) = %q, want %q", tc.result, got, tc.want)
 		}
 	}
 }

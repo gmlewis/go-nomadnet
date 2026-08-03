@@ -153,7 +153,7 @@ func TestFormatSize(t *testing.T) {
 	for _, tt := range tests {
 		got := FormatSize(tt.input)
 		if got != tt.want {
-			t.Errorf("FormatSize(%d) = %q, want %q", tt.input, got, tt.want)
+			t.Errorf("FormatSize(%v) = %q, want %q", tt.input, got, tt.want)
 		}
 	}
 }
@@ -470,7 +470,7 @@ func TestParseLinkTargetWithFields(t *testing.T) {
 			} else {
 				for i := range fields {
 					if fields[i] != tt.wantFields[i] {
-						t.Errorf("fields[%d] = %q, want %q", i, fields[i], tt.wantFields[i])
+						t.Errorf("fields[%v] = %q, want %q", i, fields[i], tt.wantFields[i])
 					}
 				}
 			}
@@ -517,16 +517,16 @@ func TestConversationTabStats(t *testing.T) {
 	stats := ComputeConversationTabStats(convs)
 
 	if stats.TrustedCount != 2 {
-		t.Errorf("TrustedCount = %d, want 2", stats.TrustedCount)
+		t.Errorf("TrustedCount = %v, want 2", stats.TrustedCount)
 	}
 	if stats.UntrustedCount != 3 {
-		t.Errorf("UntrustedCount = %d, want 3", stats.UntrustedCount)
+		t.Errorf("UntrustedCount = %v, want 3", stats.UntrustedCount)
 	}
 	if stats.TrustedUnread != 1 {
-		t.Errorf("TrustedUnread = %d, want 1", stats.TrustedUnread)
+		t.Errorf("TrustedUnread = %v, want 1", stats.TrustedUnread)
 	}
 	if stats.UntrustedUnread != 2 {
-		t.Errorf("UntrustedUnread = %d, want 2", stats.UntrustedUnread)
+		t.Errorf("UntrustedUnread = %v, want 2", stats.UntrustedUnread)
 	}
 }
 
@@ -535,7 +535,7 @@ func TestConversationTabStatsEmpty(t *testing.T) {
 
 	stats := ComputeConversationTabStats(nil)
 	if stats.TrustedCount != 0 || stats.UntrustedCount != 0 {
-		t.Errorf("empty stats: trusted=%d untrusted=%d, want both 0",
+		t.Errorf("empty stats: trusted=%v untrusted=%v, want both 0",
 			stats.TrustedCount, stats.UntrustedCount)
 	}
 }
@@ -581,7 +581,7 @@ func TestFormatSyncProgress(t *testing.T) {
 	for _, tt := range tests {
 		got := FormatSyncProgress(tt.progress)
 		if got != tt.want {
-			t.Errorf("FormatSyncProgress(%d) = %q, want %q", tt.progress, got, tt.want)
+			t.Errorf("FormatSyncProgress(%v) = %q, want %q", tt.progress, got, tt.want)
 		}
 	}
 }
@@ -726,7 +726,7 @@ func TestParseQueryFields(t *testing.T) {
 				return
 			}
 			if len(gotFields) != len(tt.wantKeys) {
-				t.Errorf("ParseQueryFields(%q) got %d fields, want %d", tt.query, len(gotFields), len(tt.wantKeys))
+				t.Errorf("ParseQueryFields(%q) got %v fields, want %v", tt.query, len(gotFields), len(tt.wantKeys))
 				return
 			}
 			for k, v := range tt.wantKeys {

@@ -64,16 +64,16 @@ func TestApplyConfigWiresFields(t *testing.T) {
 		t.Errorf("PeerAnnounceAtStart = %v, want %v", a.PeerAnnounceAtStart, cfg.Client.AnnounceAtStart)
 	}
 	if a.UIMode != UIText {
-		t.Errorf("UIMode = %d, want %d (UIText)", a.UIMode, UIText)
+		t.Errorf("UIMode = %v, want %v (UIText)", a.UIMode, UIText)
 	}
 	if !reflect.DeepEqual(a.RRCNickColorsTheme, cfg.RRC.NickColorsTheme) {
 		t.Errorf("RRCNickColorsTheme = %v, want %v", a.RRCNickColorsTheme, cfg.RRC.NickColorsTheme)
 	}
 	if a.PageRefreshInterval != cfg.Node.PageRefreshInterval {
-		t.Errorf("PageRefreshInterval = %d, want %d", a.PageRefreshInterval, cfg.Node.PageRefreshInterval)
+		t.Errorf("PageRefreshInterval = %v, want %v", a.PageRefreshInterval, cfg.Node.PageRefreshInterval)
 	}
 	if a.FileRefreshInterval != cfg.Node.FileRefreshInterval {
-		t.Errorf("FileRefreshInterval = %d, want %d", a.FileRefreshInterval, cfg.Node.FileRefreshInterval)
+		t.Errorf("FileRefreshInterval = %v, want %v", a.FileRefreshInterval, cfg.Node.FileRefreshInterval)
 	}
 	if !reflect.DeepEqual(a.StaticPeers, cfg.Node.StaticPeers) {
 		t.Errorf("StaticPeers = %v, want %v", a.StaticPeers, cfg.Node.StaticPeers)
@@ -121,7 +121,7 @@ func TestApplyConfigUIModeMapping(t *testing.T) {
 			a := &App{}
 			a.applyConfig(cfg)
 			if a.UIMode != c.want {
-				t.Errorf("UIMode(%q) = %d, want %d", c.ui, a.UIMode, c.want)
+				t.Errorf("UIMode(%q) = %v, want %v", c.ui, a.UIMode, c.want)
 			}
 		})
 	}

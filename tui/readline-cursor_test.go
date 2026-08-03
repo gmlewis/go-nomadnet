@@ -65,7 +65,7 @@ func TestReadlineEditCaretTracksCursor(t *testing.T) {
 	}
 	wantX := labelW + 2
 	if x != wantX || y != 0 {
-		t.Errorf("caret at SetCursorPos(2) = (%d,%d), want (%d,0)", x, y, wantX)
+		t.Errorf("caret at SetCursorPos(2) = (%v,%v), want (%v,0)", x, y, wantX)
 	}
 
 	// Move to the very beginning (Ctrl-A equivalent): caret at label end.
@@ -75,14 +75,14 @@ func TestReadlineEditCaretTracksCursor(t *testing.T) {
 		t.Fatal("caret not visible after SetCursorPos(0)")
 	}
 	if x != labelW {
-		t.Errorf("caret at SetCursorPos(0) = %d, want %d (label width)", x, labelW)
+		t.Errorf("caret at SetCursorPos(0) = %v, want %v (label width)", x, labelW)
 	}
 
 	// End position still correct.
 	re.SetCursorPos(5)
 	x, _, _ = drawReadlineEditFocused(t, re, 40)
 	if x != labelW+5 {
-		t.Errorf("caret at SetCursorPos(5) = %d, want %d", x, labelW+5)
+		t.Errorf("caret at SetCursorPos(5) = %v, want %v", x, labelW+5)
 	}
 }
 

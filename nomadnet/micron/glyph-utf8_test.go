@@ -39,7 +39,7 @@ func TestParseInlineMultibyteGlyph(t *testing.T) {
 	glyphs := "✓  ✕  ⚠  Ⓝ  ↓"
 	lines := RenderToStyledLines(glyphs, ThemeDark)
 	if len(lines) != 1 {
-		t.Fatalf("RenderToStyledLines produced %d lines, want 1", len(lines))
+		t.Fatalf("RenderToStyledLines produced %v lines, want 1", len(lines))
 	}
 	// Concatenate the span text of the single rendered line.
 	var b strings.Builder
@@ -68,7 +68,7 @@ func TestParseInlineMultibyteEscaped(t *testing.T) {
 	// escapes apply in normal mode. Use a plain line with an escaped glyph.
 	lines := RenderToStyledLines(`\✓`, ThemeDark)
 	if len(lines) != 1 {
-		t.Fatalf("RenderToStyledLines produced %d lines, want 1", len(lines))
+		t.Fatalf("RenderToStyledLines produced %v lines, want 1", len(lines))
 	}
 	var b strings.Builder
 	for _, span := range lines[0].Spans {
@@ -98,7 +98,7 @@ func TestParseInlineMultibyteRoundtrip(t *testing.T) {
 			t.Parallel()
 			lines := RenderToStyledLines(in, ThemeDark)
 			if len(lines) != 1 {
-				t.Fatalf("RenderToStyledLines(%q) produced %d lines, want 1", in, len(lines))
+				t.Fatalf("RenderToStyledLines(%q) produced %v lines, want 1", in, len(lines))
 			}
 			var b strings.Builder
 			for _, span := range lines[0].Spans {

@@ -98,7 +98,7 @@ func TestConversationsTwoPaneLayout(t *testing.T) {
 		}
 	}
 	if indicators < 2 {
-		t.Errorf("found %d ─── indicator rows, want at least 2 (top+bottom)", indicators)
+		t.Errorf("found %v ─── indicator rows, want at least 2 (top+bottom)", indicators)
 	}
 
 	// "Last sync: never" footer near the bottom of the left pane.

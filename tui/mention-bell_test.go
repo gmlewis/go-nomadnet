@@ -60,7 +60,7 @@ func TestMentionBellPythonParity(t *testing.T) {
 			}
 		}
 		if got := buf.Len(); got != rangCount {
-			t.Errorf("bell wrote %d bytes, want %d (one BEL per ring)", got, rangCount)
+			t.Errorf("bell wrote %v bytes, want %v (one BEL per ring)", got, rangCount)
 		}
 		for _, by := range buf.Bytes() {
 			if by != 0x07 {

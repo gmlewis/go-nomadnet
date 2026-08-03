@@ -32,7 +32,7 @@ func TestDefaultSettings(t *testing.T) {
 		t.Errorf("DisplayName = %q, want %q", s.DisplayName, "Anonymous Peer")
 	}
 	if s.AnnounceInterval != 21600 {
-		t.Errorf("AnnounceInterval = %d, want 21600", s.AnnounceInterval)
+		t.Errorf("AnnounceInterval = %v, want 21600", s.AnnounceInterval)
 	}
 	if s.LastAnnounce != nil {
 		t.Errorf("LastAnnounce = %v, want nil", s.LastAnnounce)
@@ -41,10 +41,10 @@ func TestDefaultSettings(t *testing.T) {
 		t.Errorf("PropagationNode = %v, want nil", s.PropagationNode)
 	}
 	if s.LastLXMFSync != 0 {
-		t.Errorf("LastLXMFSync = %d, want 0", s.LastLXMFSync)
+		t.Errorf("LastLXMFSync = %v, want 0", s.LastLXMFSync)
 	}
 	if s.NodeConnects != 0 {
-		t.Errorf("NodeConnects = %d, want 0", s.NodeConnects)
+		t.Errorf("NodeConnects = %v, want 0", s.NodeConnects)
 	}
 }
 
@@ -88,13 +88,13 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 		t.Errorf("DisplayName = %q, want %q", loaded.DisplayName, "My Peer")
 	}
 	if loaded.NodeConnects != 42 {
-		t.Errorf("NodeConnects = %d, want 42", loaded.NodeConnects)
+		t.Errorf("NodeConnects = %v, want 42", loaded.NodeConnects)
 	}
 	if loaded.ServedPageRequests != 10 {
-		t.Errorf("ServedPageRequests = %d, want 10", loaded.ServedPageRequests)
+		t.Errorf("ServedPageRequests = %v, want 10", loaded.ServedPageRequests)
 	}
 	if loaded.ServedFileRequests != 5 {
-		t.Errorf("ServedFileRequests = %d, want 5", loaded.ServedFileRequests)
+		t.Errorf("ServedFileRequests = %v, want 5", loaded.ServedFileRequests)
 	}
 }
 

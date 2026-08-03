@@ -123,11 +123,11 @@ func TestSendDirect(t *testing.T) {
 	}
 
 	if len(deps.handled) != 1 {
-		t.Fatalf("HandleOutbound called %d times, want 1", len(deps.handled))
+		t.Fatalf("HandleOutbound called %v times, want 1", len(deps.handled))
 	}
 	lxm := deps.handled[0]
 	if lxm.DesiredMethod != lxmf.MethodDirect {
-		t.Errorf("DesiredMethod = %d, want MethodDirect", lxm.DesiredMethod)
+		t.Errorf("DesiredMethod = %v, want MethodDirect", lxm.DesiredMethod)
 	}
 	if lxm.IncludeTicket {
 		t.Error("IncludeTicket = true, want false for untrusted peer")
@@ -145,13 +145,13 @@ func TestSendDirect(t *testing.T) {
 		t.Errorf("Title = %q, want %q", lxm.Title, "a title")
 	}
 	if deps.ingestCount != 1 {
-		t.Errorf("Ingest called %d times, want 1", deps.ingestCount)
+		t.Errorf("Ingest called %v times, want 1", deps.ingestCount)
 	}
 	if len(deps.ingestOrigin) != 1 || !deps.ingestOrigin[0] {
 		t.Error("Ingest not called with originator=true")
 	}
 	if len(c.Messages) != 1 {
-		t.Errorf("c.Messages = %d, want 1", len(c.Messages))
+		t.Errorf("c.Messages = %v, want 1", len(c.Messages))
 	}
 }
 
@@ -182,7 +182,7 @@ func TestSendPropagated(t *testing.T) {
 	}
 	lxm := deps.handled[0]
 	if lxm.DesiredMethod != lxmf.MethodPropagated {
-		t.Errorf("DesiredMethod = %d, want MethodPropagated", lxm.DesiredMethod)
+		t.Errorf("DesiredMethod = %v, want MethodPropagated", lxm.DesiredMethod)
 	}
 	if !lxm.TryPropagationOnFail {
 		t.Error("TryPropagationOnFail = false, want true")
@@ -216,7 +216,7 @@ func TestSendOpportunistic(t *testing.T) {
 	}
 	lxm := deps.handled[0]
 	if lxm.DesiredMethod != lxmf.MethodOpportunistic {
-		t.Errorf("DesiredMethod = %d, want MethodOpportunistic", lxm.DesiredMethod)
+		t.Errorf("DesiredMethod = %v, want MethodOpportunistic", lxm.DesiredMethod)
 	}
 }
 
@@ -265,10 +265,10 @@ func TestSendNoDestination(t *testing.T) {
 		t.Error("Send returned true with no destination")
 	}
 	if len(deps.handled) != 0 {
-		t.Errorf("HandleOutbound called %d times, want 0", len(deps.handled))
+		t.Errorf("HandleOutbound called %v times, want 0", len(deps.handled))
 	}
 	if deps.ingestCount != 0 {
-		t.Errorf("Ingest called %d times, want 0", deps.ingestCount)
+		t.Errorf("Ingest called %v times, want 0", deps.ingestCount)
 	}
 }
 
@@ -298,10 +298,10 @@ func TestMessageNotificationDeliveredIngests(t *testing.T) {
 	c.MessageNotification(lxm)
 
 	if deps.ingestCount != 1 {
-		t.Errorf("Ingest called %d times, want 1", deps.ingestCount)
+		t.Errorf("Ingest called %v times, want 1", deps.ingestCount)
 	}
 	if len(deps.handled) != 0 {
-		t.Errorf("HandleOutbound called %d times, want 0", len(deps.handled))
+		t.Errorf("HandleOutbound called %v times, want 0", len(deps.handled))
 	}
 }
 
@@ -332,17 +332,17 @@ func TestMessageNotificationFailedRetriesAsPropagated(t *testing.T) {
 	c.MessageNotification(lxm)
 
 	if len(deps.handled) != 1 {
-		t.Fatalf("HandleOutbound called %d times, want 1", len(deps.handled))
+		t.Fatalf("HandleOutbound called %v times, want 1", len(deps.handled))
 	}
 	retried := deps.handled[0]
 	if retried.DesiredMethod != lxmf.MethodPropagated {
-		t.Errorf("retry DesiredMethod = %d, want MethodPropagated", retried.DesiredMethod)
+		t.Errorf("retry DesiredMethod = %v, want MethodPropagated", retried.DesiredMethod)
 	}
 	if retried.TryPropagationOnFail {
 		t.Error("TryPropagationOnFail still true after retry")
 	}
 	if deps.ingestCount != 0 {
-		t.Errorf("Ingest called %d times, want 0 on retry", deps.ingestCount)
+		t.Errorf("Ingest called %v times, want 0 on retry", deps.ingestCount)
 	}
 }
 
@@ -373,9 +373,9 @@ func TestMessageNotificationFailedNoTryPropIngests(t *testing.T) {
 	c.MessageNotification(lxm)
 
 	if deps.ingestCount != 1 {
-		t.Errorf("Ingest called %d times, want 1", deps.ingestCount)
+		t.Errorf("Ingest called %v times, want 1", deps.ingestCount)
 	}
 	if len(deps.handled) != 0 {
-		t.Errorf("HandleOutbound called %d times, want 0", len(deps.handled))
+		t.Errorf("HandleOutbound called %v times, want 0", len(deps.handled))
 	}
 }

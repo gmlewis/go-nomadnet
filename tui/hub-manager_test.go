@@ -80,7 +80,7 @@ func TestHubManagerListHubs(t *testing.T) {
 
 	hubs := hm.ListHubs()
 	if len(hubs) != 2 {
-		t.Errorf("ListHubs() returned %d, want 2", len(hubs))
+		t.Errorf("ListHubs() returned %v, want 2", len(hubs))
 	}
 }
 
@@ -94,7 +94,7 @@ func TestHubManagerAddRoom(t *testing.T) {
 
 	hub := hm.GetHub("hub1")
 	if len(hub.Rooms) != 2 {
-		t.Errorf("Rooms = %d, want 2", len(hub.Rooms))
+		t.Errorf("Rooms = %v, want 2", len(hub.Rooms))
 	}
 }
 
@@ -188,7 +188,7 @@ func TestHubManagerUnreadCount(t *testing.T) {
 	hub.GetRoom("random").Unread = true
 
 	if hub.UnreadCount() != 2 {
-		t.Errorf("UnreadCount() = %d, want 2", hub.UnreadCount())
+		t.Errorf("UnreadCount() = %v, want 2", hub.UnreadCount())
 	}
 }
 
@@ -227,7 +227,7 @@ func TestHubManagerConnectedCount(t *testing.T) {
 	hm.SetStatus("hub2", HubReconnecting)
 
 	if got := hm.ConnectedCount(); got != 1 {
-		t.Errorf("ConnectedCount() = %d, want 1", got)
+		t.Errorf("ConnectedCount() = %v, want 1", got)
 	}
 }
 
@@ -245,7 +245,7 @@ func TestHubManagerTotalUnreadCount(t *testing.T) {
 	hm.GetHub("hub2").GetRoom("dev").Unread = true
 
 	if got := hm.TotalUnreadCount(); got != 2 {
-		t.Errorf("TotalUnreadCount() = %d, want 2", got)
+		t.Errorf("TotalUnreadCount() = %v, want 2", got)
 	}
 }
 
@@ -317,7 +317,7 @@ func TestSearchHubs(t *testing.T) {
 			t.Parallel()
 			got := hm.SearchHubs(tt.query)
 			if len(got) != tt.count {
-				t.Errorf("SearchHubs(%q) returned %d, want %d", tt.query, len(got), tt.count)
+				t.Errorf("SearchHubs(%q) returned %v, want %v", tt.query, len(got), tt.count)
 			}
 		})
 	}

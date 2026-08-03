@@ -163,7 +163,7 @@ func TestSaveAttachmentsToDir(t *testing.T) {
 	}, destDir)
 
 	if failed != 1 {
-		t.Errorf("failed = %d, want 1", failed)
+		t.Errorf("failed = %v, want 1", failed)
 	}
 	if len(saved) != 1 {
 		t.Fatalf("saved = %v, want 1 path", saved)

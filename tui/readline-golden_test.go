@@ -226,13 +226,13 @@ func TestReadlineGolden(t *testing.T) {
 			for i, st := range sc.steps {
 				re.handleKey(rlEvent(st.key))
 				if got := re.GetText(); got != st.wantText {
-					t.Errorf("step %d (%q): text = %q, want %q", i, st.key, got, st.wantText)
+					t.Errorf("step %v (%q): text = %q, want %q", i, st.key, got, st.wantText)
 				}
 				if got := re.CursorPos(); got != st.wantPos {
-					t.Errorf("step %d (%q): pos = %d, want %d", i, st.key, got, st.wantPos)
+					t.Errorf("step %v (%q): pos = %v, want %v", i, st.key, got, st.wantPos)
 				}
 				if got := kr.Text(); got != st.wantKR {
-					t.Errorf("step %d (%q): killring = %q, want %q", i, st.key, got, st.wantKR)
+					t.Errorf("step %v (%q): killring = %q, want %q", i, st.key, got, st.wantKR)
 				}
 			}
 		})

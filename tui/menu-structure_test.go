@@ -43,14 +43,14 @@ func TestMenuStructureMatchesPython(t *testing.T) {
 	}
 
 	if len(MenuItems) != len(wantLabels) {
-		t.Fatalf("MenuItems len = %d, want %d (%v)", len(MenuItems), len(wantLabels), MenuItems)
+		t.Fatalf("MenuItems len = %v, want %v (%v)", len(MenuItems), len(wantLabels), MenuItems)
 	}
 	for i, want := range wantLabels {
 		if MenuItems[i].Label != want {
-			t.Errorf("MenuItems[%d].Label = %q, want %q", i, MenuItems[i].Label, want)
+			t.Errorf("MenuItems[%v].Label = %q, want %q", i, MenuItems[i].Label, want)
 		}
 		if MenuItems[i].Key != wantKeys[i] {
-			t.Errorf("MenuItems[%d].Key = %q, want %q", i, MenuItems[i].Key, wantKeys[i])
+			t.Errorf("MenuItems[%v].Key = %q, want %q", i, MenuItems[i].Key, wantKeys[i])
 		}
 	}
 
@@ -106,11 +106,11 @@ func TestMenuStructureHideGuide(t *testing.T) {
 		"Interfaces", "Config", "Quit",
 	}
 	if len(md.menuItems) != len(wantLabels) {
-		t.Fatalf("menuItems len = %d, want %d (%v)", len(md.menuItems), len(wantLabels), md.menuItems)
+		t.Fatalf("menuItems len = %v, want %v (%v)", len(md.menuItems), len(wantLabels), md.menuItems)
 	}
 	for i, want := range wantLabels {
 		if md.menuItems[i].Label != want {
-			t.Errorf("menuItems[%d].Label = %q, want %q", i, md.menuItems[i].Label, want)
+			t.Errorf("menuItems[%v].Label = %q, want %q", i, md.menuItems[i].Label, want)
 		}
 	}
 	for _, mi := range md.menuItems {

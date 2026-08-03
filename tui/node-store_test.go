@@ -82,7 +82,7 @@ func TestNodeStoreUpdate(t *testing.T) {
 		t.Errorf("DisplayName = %q, want %q", got.DisplayName, "Alice Updated")
 	}
 	if got.SortRank != 5 {
-		t.Errorf("SortRank = %d, want 5", got.SortRank)
+		t.Errorf("SortRank = %v, want 5", got.SortRank)
 	}
 	if got.Notes != "Test notes" {
 		t.Errorf("Notes = %q, want %q", got.Notes, "Test notes")
@@ -98,7 +98,7 @@ func TestNodeStoreList(t *testing.T) {
 
 	nodes := ns.List()
 	if len(nodes) != 2 {
-		t.Errorf("List() returned %d nodes, want 2", len(nodes))
+		t.Errorf("List() returned %v nodes, want 2", len(nodes))
 	}
 }
 
@@ -113,7 +113,7 @@ func TestNodeStoreKnownNodesSort(t *testing.T) {
 	nodes := ns.KnownNodes()
 	// Trusted first, then alphabetical
 	if len(nodes) != 3 {
-		t.Fatalf("KnownNodes() returned %d nodes, want 3", len(nodes))
+		t.Fatalf("KnownNodes() returned %v nodes, want 3", len(nodes))
 	}
 	if nodes[0].DisplayName != "Alice" {
 		t.Errorf("first = %q, want %q (trusted first)", nodes[0].DisplayName, "Alice")
@@ -147,11 +147,11 @@ func TestNodeStoreCount(t *testing.T) {
 
 	ns := NewNodeStore()
 	if ns.Count() != 0 {
-		t.Errorf("Count() = %d, want 0", ns.Count())
+		t.Errorf("Count() = %v, want 0", ns.Count())
 	}
 	ns.Add("aabb", "Alice", "trusted", true, "tcp")
 	if ns.Count() != 1 {
-		t.Errorf("Count() = %d, want 1", ns.Count())
+		t.Errorf("Count() = %v, want 1", ns.Count())
 	}
 }
 
@@ -192,7 +192,7 @@ func TestNodeStoreSearchByName(t *testing.T) {
 
 	results := ns.SearchByName("ali")
 	if len(results) != 2 {
-		t.Fatalf("SearchByName('ali') returned %d, want 2", len(results))
+		t.Fatalf("SearchByName('ali') returned %v, want 2", len(results))
 	}
 	// Results should be case-insensitive
 	for _, r := range results {
@@ -210,7 +210,7 @@ func TestNodeStoreSearchByNameEmpty(t *testing.T) {
 
 	results := ns.SearchByName("")
 	if len(results) != 1 {
-		t.Errorf("SearchByName('') returned %d, want 1 (empty matches all)", len(results))
+		t.Errorf("SearchByName('') returned %v, want 1 (empty matches all)", len(results))
 	}
 }
 
@@ -224,7 +224,7 @@ func TestNodeStoreFilterByTrust(t *testing.T) {
 
 	trusted := ns.FilterByTrust("trusted")
 	if len(trusted) != 1 {
-		t.Fatalf("FilterByTrust('trusted') returned %d, want 1", len(trusted))
+		t.Fatalf("FilterByTrust('trusted') returned %v, want 1", len(trusted))
 	}
 	if trusted[0].DisplayName != "Alice" {
 		t.Errorf("FilterByTrust('trusted')[0] = %q, want %q", trusted[0].DisplayName, "Alice")
@@ -232,7 +232,7 @@ func TestNodeStoreFilterByTrust(t *testing.T) {
 
 	untrusted := ns.FilterByTrust("untrusted")
 	if len(untrusted) != 1 {
-		t.Fatalf("FilterByTrust('untrusted') returned %d, want 1", len(untrusted))
+		t.Fatalf("FilterByTrust('untrusted') returned %v, want 1", len(untrusted))
 	}
 	if untrusted[0].DisplayName != "Bob" {
 		t.Errorf("FilterByTrust('untrusted')[0] = %q, want %q", untrusted[0].DisplayName, "Bob")
@@ -249,7 +249,7 @@ func TestNodeStoreFilterByHashPrefix(t *testing.T) {
 
 	results := ns.FilterByHashPrefix("aabb")
 	if len(results) != 2 {
-		t.Fatalf("FilterByHashPrefix('aabb') returned %d, want 2", len(results))
+		t.Fatalf("FilterByHashPrefix('aabb') returned %v, want 2", len(results))
 	}
 }
 
@@ -262,7 +262,7 @@ func TestNodeStoreFilterByDelivery(t *testing.T) {
 
 	results := ns.FilterByDelivery("tcp")
 	if len(results) != 1 {
-		t.Fatalf("FilterByDelivery('tcp') returned %d, want 1", len(results))
+		t.Fatalf("FilterByDelivery('tcp') returned %v, want 1", len(results))
 	}
 	if results[0].DisplayName != "Alice" {
 		t.Errorf("FilterByDelivery('tcp')[0] = %q, want %q", results[0].DisplayName, "Alice")
@@ -278,7 +278,7 @@ func TestNodeStoreHostsNode(t *testing.T) {
 
 	nodes := ns.HostsNodeOnly()
 	if len(nodes) != 1 {
-		t.Fatalf("HostsNodeOnly() returned %d, want 1", len(nodes))
+		t.Fatalf("HostsNodeOnly() returned %v, want 1", len(nodes))
 	}
 	if nodes[0].DisplayName != "Alice" {
 		t.Errorf("HostsNodeOnly()[0] = %q, want %q", nodes[0].DisplayName, "Alice")
@@ -293,6 +293,6 @@ func TestNodeStoreSearchByHashPrefixEmpty(t *testing.T) {
 
 	results := ns.FilterByHashPrefix("")
 	if len(results) != 1 {
-		t.Errorf("FilterByHashPrefix('') returned %d, want 1 (empty matches all)", len(results))
+		t.Errorf("FilterByHashPrefix('') returned %v, want 1 (empty matches all)", len(results))
 	}
 }

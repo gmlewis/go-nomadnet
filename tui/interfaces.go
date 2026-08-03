@@ -408,7 +408,7 @@ func FormatInterfaceDetail(iface InterfaceInfo) string {
 
 	if len(iface.Traffic) > 0 {
 		sb.WriteString("\n  [gray]Recent Traffic[-]\n")
-		sb.WriteString(fmt.Sprintf("  Samples: %d\n", len(iface.Traffic)))
+		sb.WriteString(fmt.Sprintf("  Samples: %v\n", len(iface.Traffic)))
 	}
 
 	return sb.String()

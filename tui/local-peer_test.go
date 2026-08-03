@@ -123,7 +123,7 @@ func TestLocalPeerHeight(t *testing.T) {
 	app := newTestApp()
 	lp := NewLocalPeerDisplay(app, "<a>", "<b>", "", time.Time{})
 	if got := lp.Height(); got != 10 {
-		t.Errorf("Height = %d, want 10", got)
+		t.Errorf("Height = %v, want 10", got)
 	}
 }
 

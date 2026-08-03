@@ -54,7 +54,7 @@ func TestNewEntry(t *testing.T) {
 	entry := NewEntry(hash)
 
 	if len(entry.SourceHash) != 8 {
-		t.Errorf("SourceHash len = %d, want 8", len(entry.SourceHash))
+		t.Errorf("SourceHash len = %v, want 8", len(entry.SourceHash))
 	}
 	if entry.TrustLevel != TrustUnknown {
 		t.Errorf("TrustLevel = 0x%02X, want 0x%02X", entry.TrustLevel, TrustUnknown)
@@ -352,7 +352,7 @@ func TestKnownNodes(t *testing.T) {
 
 	nodes := d.KnownNodes()
 	if len(nodes) != 2 {
-		t.Fatalf("KnownNodes len = %d, want 2", len(nodes))
+		t.Fatalf("KnownNodes len = %v, want 2", len(nodes))
 	}
 	// Sorted by trust level descending: Trusted first
 	if nodes[0].DisplayName != "Node A" {
@@ -388,7 +388,7 @@ func TestAnnounceStream(t *testing.T) {
 
 	stream := d.AnnounceStream()
 	if len(stream) != 3 {
-		t.Fatalf("AnnounceStream len = %d, want 3", len(stream))
+		t.Fatalf("AnnounceStream len = %v, want 3", len(stream))
 	}
 }
 
@@ -410,7 +410,7 @@ func TestAnnounceStreamCompact(t *testing.T) {
 
 	stream := d.PeerAnnounces()
 	if len(stream) != 1 {
-		t.Fatalf("PeerAnnounces len = %d, want 1 (compact)", len(stream))
+		t.Fatalf("PeerAnnounces len = %v, want 1 (compact)", len(stream))
 	}
 	if stream[0].Timestamp != 2.0 {
 		t.Errorf("Remaining announce timestamp = %f, want 2.0", stream[0].Timestamp)
@@ -432,7 +432,7 @@ func TestAnnounceStreamMaxLen(t *testing.T) {
 
 	stream := d.PeerAnnounces()
 	if len(stream) != AnnounceStreamMaxLen {
-		t.Errorf("PeerAnnounces len = %d, want %d", len(stream), AnnounceStreamMaxLen)
+		t.Errorf("PeerAnnounces len = %v, want %v", len(stream), AnnounceStreamMaxLen)
 	}
 }
 
@@ -454,7 +454,7 @@ func TestRemoveAnnounceWithTimestamp(t *testing.T) {
 
 	stream := d.NodeAnnounces()
 	if len(stream) != 1 {
-		t.Fatalf("NodeAnnounces len = %d, want 1", len(stream))
+		t.Fatalf("NodeAnnounces len = %v, want 1", len(stream))
 	}
 	if stream[0].Timestamp != 2.0 {
 		t.Errorf("Remaining announce timestamp = %f, want 2.0", stream[0].Timestamp)
@@ -474,7 +474,7 @@ func TestEntries(t *testing.T) {
 
 	entries := d.Entries()
 	if len(entries) != 5 {
-		t.Errorf("Entries len = %d, want 5", len(entries))
+		t.Errorf("Entries len = %v, want 5", len(entries))
 	}
 }
 
@@ -483,17 +483,17 @@ func TestLen(t *testing.T) {
 
 	d := New()
 	if d.Len() != 0 {
-		t.Errorf("Len = %d, want 0", d.Len())
+		t.Errorf("Len = %v, want 0", d.Len())
 	}
 
 	hash := []byte{0x01, 0x02, 0x03, 0x04}
 	d.Remember(NewEntry(hash))
 	if d.Len() != 1 {
-		t.Errorf("Len = %d, want 1", d.Len())
+		t.Errorf("Len = %v, want 1", d.Len())
 	}
 
 	d.Forget(hash)
 	if d.Len() != 0 {
-		t.Errorf("Len after forget = %d, want 0", d.Len())
+		t.Errorf("Len after forget = %v, want 0", d.Len())
 	}
 }

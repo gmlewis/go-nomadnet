@@ -50,7 +50,7 @@ func TestCreateDefaultConfigFirstrunParity(t *testing.T) {
 		t.Fatalf("read written config: %v", err)
 	}
 	if want := config.DefaultConfigText(); string(written) != want {
-		t.Errorf("written config is not byte-identical to Python default:\n got len %d, want len %d", len(written), len(want))
+		t.Errorf("written config is not byte-identical to Python default:\n got len %v, want len %v", len(written), len(want))
 	}
 
 	// The applied config must reflect the default file's parsed values.
@@ -68,11 +68,11 @@ func TestCreateDefaultConfigFirstrunParity(t *testing.T) {
 	}
 	// Default file: node announce_interval = 360 (minutes); config stores seconds.
 	if got, want := a.Config.Node.AnnounceInterval, 360*60; got != want {
-		t.Errorf("node announce_interval = %d, want %d (360 min in seconds)", got, want)
+		t.Errorf("node announce_interval = %v, want %v (360 min in seconds)", got, want)
 	}
 	// App field is in minutes.
 	if got, want := a.NodeAnnounceInterval, 360; got != want {
-		t.Errorf("NodeAnnounceInterval = %d, want %d minutes", got, want)
+		t.Errorf("NodeAnnounceInterval = %v, want %v minutes", got, want)
 	}
 }
 

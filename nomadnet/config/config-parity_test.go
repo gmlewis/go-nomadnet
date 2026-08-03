@@ -61,7 +61,7 @@ func TestLoadPythonCompat(t *testing.T) {
 	}
 
 	if len(c.Raw) != len(want) {
-		t.Errorf("section count = %d, want %d", len(c.Raw), len(want))
+		t.Errorf("section count = %v, want %v", len(c.Raw), len(want))
 	}
 	for sec, wantKeys := range want {
 		gotKeys, ok := c.Raw[sec]
@@ -70,7 +70,7 @@ func TestLoadPythonCompat(t *testing.T) {
 			continue
 		}
 		if len(gotKeys) != len(wantKeys) {
-			t.Errorf("section %q: key count = %d, want %d", sec, len(gotKeys), len(wantKeys))
+			t.Errorf("section %q: key count = %v, want %v", sec, len(gotKeys), len(wantKeys))
 		}
 		// Compare as sorted key lists to ignore map iteration order.
 		gotList := sortedKeys(gotKeys)

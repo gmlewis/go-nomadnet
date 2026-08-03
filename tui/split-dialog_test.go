@@ -87,7 +87,7 @@ func TestSplitDialogPythonParity(t *testing.T) {
 			t.Parallel()
 			info := ComputeSplitDialog(tt.text, tt.limit)
 			if info.BodyBytes != tt.wantBytes {
-				t.Errorf("BodyBytes = %d, want %d", info.BodyBytes, tt.wantBytes)
+				t.Errorf("BodyBytes = %v, want %v", info.BodyBytes, tt.wantBytes)
 			}
 			if info.Error != tt.wantErr {
 				t.Errorf("Error = %q, want %q", info.Error, tt.wantErr)
@@ -96,7 +96,7 @@ func TestSplitDialogPythonParity(t *testing.T) {
 				return
 			}
 			if info.K != tt.wantK {
-				t.Errorf("K = %d, want %d", info.K, tt.wantK)
+				t.Errorf("K = %v, want %v", info.K, tt.wantK)
 			}
 			if info.Noun != tt.wantNoun {
 				t.Errorf("Noun = %q, want %q", info.Noun, tt.wantNoun)
@@ -105,7 +105,7 @@ func TestSplitDialogPythonParity(t *testing.T) {
 				t.Errorf("Preview = %q, want %q", info.Preview, tt.wantPrev)
 			}
 			if len(info.Parts) != tt.wantK {
-				t.Errorf("len(Parts) = %d, want %d", len(info.Parts), tt.wantK)
+				t.Errorf("len(Parts) = %v, want %v", len(info.Parts), tt.wantK)
 			}
 		})
 	}

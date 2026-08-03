@@ -90,7 +90,7 @@ func (p *LXMFPeersDisplay) Count() int { return p.count }
 // Title returns the LineBox title for this list, "LXMF Propagation Peers (N)",
 // matching Python's LXMFPeers title (Network.py:1788).
 func (p *LXMFPeersDisplay) Title() string {
-	return fmt.Sprintf("LXMF Propagation Peers (%d)", p.count)
+	return fmt.Sprintf("LXMF Propagation Peers (%v)", p.count)
 }
 
 // SetPeers replaces the peer list. With no peers the no-content branch is
@@ -167,7 +167,7 @@ func (p *LXMFPeersDisplay) selectedHash(list *tview.List) []byte {
 // fields mirror the intermediate strings Python's LXMFPeerEntry.__init__
 // (Network.py:1875-1928) computes before concatenating peer_info_str, so the
 // pure formatter is testable without an RNS transport or directory. The
-// per-field string formatting (prettysize, prettyspeed, "%d"/"Unknown") is done
+// per-field string formatting (prettysize, prettyspeed, "%v"/"Unknown") is done
 // by BuildPeerEntryData; FormatLXMFPeerEntry only does the final join + the
 // time-injected pretty_date.
 type PeerEntryData struct {
@@ -179,7 +179,7 @@ type PeerEntryData struct {
 	TxferLimit    string // prettysize(transfer_limit*1000) or "No"
 	STR           string // prettyspeed(sync_transfer_rate)
 	LER           string // prettyspeed(link_establishment_rate)
-	StampCost     string // "%d" or "Unknown"
+	StampCost     string // "%v" or "Unknown"
 	StampFlex     string // " (flex N)" or ""
 	Unhandled     int    // unhandled_message_count
 	AcceptancePct string // Python round(rate*100,2) formatted as f"{ar}"
@@ -294,7 +294,7 @@ func BuildPeerEntryData(peer *lxmf.Peer, displayStr string, sym string) PeerEntr
 		d.StampCost = "Unknown"
 	}
 	if scf := peer.PropagationStampCostFlexibility(); scf != nil {
-		d.StampFlex = fmt.Sprintf(" (flex %d)", *scf)
+		d.StampFlex = fmt.Sprintf(" (flex %v)", *scf)
 	}
 	d.Unhandled = peer.UnhandledMessageCount()
 	d.AcceptancePct = formatAcceptancePct(peer.AcceptanceRate())

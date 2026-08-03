@@ -44,7 +44,7 @@ func TestFormatPongResult(t *testing.T) {
 	for _, c := range cases {
 		got := FormatPongResult(c.elapsedMs, c.hops)
 		if got != c.want {
-			t.Errorf("FormatPongResult(%d, %d) = %q, want %q", c.elapsedMs, c.hops, got, c.want)
+			t.Errorf("FormatPongResult(%v, %v) = %q, want %q", c.elapsedMs, c.hops, got, c.want)
 		}
 	}
 }

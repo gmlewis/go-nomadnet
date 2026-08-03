@@ -62,7 +62,7 @@ func TestConversationWidgetSetMessages(t *testing.T) {
 
 	cw.SetMessages(msgs)
 	if len(cw.messages) != 3 {
-		t.Errorf("SetMessages: got %d messages, want 3", len(cw.messages))
+		t.Errorf("SetMessages: got %v messages, want 3", len(cw.messages))
 	}
 }
 
@@ -653,11 +653,11 @@ func TestConversationWidgetCtrlSavesAttachments(t *testing.T) {
 		{Name: "old.txt", Type: "file", FieldIndex: 0},
 	}
 	if len(gotRefs) != len(want) {
-		t.Fatalf("got %d refs %v, want %d %v", len(gotRefs), gotRefs, len(want), want)
+		t.Fatalf("got %v refs %v, want %v %v", len(gotRefs), gotRefs, len(want), want)
 	}
 	for i, w := range want {
 		if gotRefs[i].Name != w.Name || gotRefs[i].Type != w.Type || gotRefs[i].FieldIndex != w.FieldIndex {
-			t.Errorf("ref[%d] = %+v, want %+v", i, gotRefs[i], w)
+			t.Errorf("ref[%v] = %+v, want %+v", i, gotRefs[i], w)
 		}
 	}
 }

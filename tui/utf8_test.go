@@ -122,7 +122,7 @@ func TestTruncateStringPreservesRuneBoundaries(t *testing.T) {
 			t.Parallel()
 			got := TruncateString(tc.input, tc.maxVisible)
 			if got != tc.expect {
-				t.Errorf("TruncateString(%q, %d) = %q, want %q", tc.input, tc.maxVisible, got, tc.expect)
+				t.Errorf("TruncateString(%q, %v) = %q, want %q", tc.input, tc.maxVisible, got, tc.expect)
 			}
 			if !utf8.ValidString(got) {
 				t.Errorf("TruncateString produced invalid UTF-8: %q", got)

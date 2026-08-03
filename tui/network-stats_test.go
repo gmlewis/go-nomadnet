@@ -101,7 +101,7 @@ func TestNetworkStatLabelsPythonParity(t *testing.T) {
 				t.Parallel()
 				got := NodeActiveConnectionsLabel(tt.links, tt.hasNode)
 				if got != tt.want {
-					t.Errorf("NodeActiveConnectionsLabel(%d,%v) = %q, want %q",
+					t.Errorf("NodeActiveConnectionsLabel(%v,%v) = %q, want %q",
 						tt.links, tt.hasNode, got, tt.want)
 				}
 			})
@@ -164,7 +164,7 @@ func TestNetworkStatLabelsPythonParity(t *testing.T) {
 				t.Parallel()
 				got := NodeTotalConnectionsLabel(tt.n, tt.hasNode)
 				if got != tt.want {
-					t.Errorf("NodeTotalConnectionsLabel(%d,%v) = %q, want %q",
+					t.Errorf("NodeTotalConnectionsLabel(%v,%v) = %q, want %q",
 						tt.n, tt.hasNode, got, tt.want)
 				}
 			})
@@ -187,7 +187,7 @@ func TestNetworkStatLabelsPythonParity(t *testing.T) {
 				t.Parallel()
 				got := NodeTotalPagesLabel(tt.n, tt.hasNode)
 				if got != tt.want {
-					t.Errorf("NodeTotalPagesLabel(%d,%v) = %q, want %q",
+					t.Errorf("NodeTotalPagesLabel(%v,%v) = %q, want %q",
 						tt.n, tt.hasNode, got, tt.want)
 				}
 			})
@@ -210,7 +210,7 @@ func TestNetworkStatLabelsPythonParity(t *testing.T) {
 				t.Parallel()
 				got := NodeTotalFilesLabel(tt.n, tt.hasNode)
 				if got != tt.want {
-					t.Errorf("NodeTotalFilesLabel(%d,%v) = %q, want %q",
+					t.Errorf("NodeTotalFilesLabel(%v,%v) = %q, want %q",
 						tt.n, tt.hasNode, got, tt.want)
 				}
 			})

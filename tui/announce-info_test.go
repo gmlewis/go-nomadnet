@@ -93,7 +93,7 @@ func TestAnnounceInfoPeerLayout(t *testing.T) {
 	}
 	for i, p := range wantPrefix {
 		if p != "" && !strings.HasPrefix(rows[i], p) {
-			t.Errorf("row %d = %q, want prefix %q", i, rows[i], p)
+			t.Errorf("row %v = %q, want prefix %q", i, rows[i], p)
 		}
 	}
 
@@ -136,7 +136,7 @@ func TestAnnounceInfoPeerLayout(t *testing.T) {
 	// button is "< label   ...   >" (label left-justified, ">" at the edge).
 	btnRow := rows[9]
 	if len([]rune(btnRow)) != 50 {
-		t.Errorf("button row len = %d, want 50", len([]rune(btnRow)))
+		t.Errorf("button row len = %v, want 50", len([]rune(btnRow)))
 	}
 	backCol := btnRow[:23]
 	if !strings.HasPrefix(backCol, "< Back") || !strings.HasSuffix(backCol, ">") {
@@ -214,7 +214,7 @@ func TestAnnounceInfoNodeLayout(t *testing.T) {
 	for _, b := range wantButtons {
 		seg := btnRow[b.start:b.end]
 		if !strings.HasPrefix(seg, b.label) {
-			t.Errorf("button segment [%d:%d] = %q, want prefix %q", b.start, b.end, seg, b.label)
+			t.Errorf("button segment [%v:%v] = %q, want prefix %q", b.start, b.end, seg, b.label)
 		}
 	}
 }
@@ -518,7 +518,7 @@ func TestPileFillerPadsBottomWhenContentFits(t *testing.T) {
 	// Rows 5-7 are blank (bottom padding).
 	for i := 5; i < 8; i++ {
 		if rows[i] != "" {
-			t.Errorf("row %d = %q, want blank (bottom pad)", i, rows[i])
+			t.Errorf("row %v = %q, want blank (bottom pad)", i, rows[i])
 		}
 	}
 }

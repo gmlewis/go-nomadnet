@@ -99,7 +99,7 @@ func TestCacheTimeFromMarkupGolden(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			if got := CacheTimeFromMarkup(c.markup); got != c.want {
-				t.Errorf("CacheTimeFromMarkup(%q) = %d, want %d", c.markup, got, c.want)
+				t.Errorf("CacheTimeFromMarkup(%q) = %v, want %v", c.markup, got, c.want)
 			}
 		})
 	}
@@ -139,7 +139,7 @@ func TestGetCachedExpired(t *testing.T) {
 
 	files, _ := os.ReadDir(cacheDir)
 	if len(files) != 0 {
-		t.Errorf("cache dir has %d files after expired read, want 0", len(files))
+		t.Errorf("cache dir has %v files after expired read, want 0", len(files))
 	}
 }
 
@@ -199,7 +199,7 @@ func TestCachePageOverwrites(t *testing.T) {
 
 	files, _ := os.ReadDir(cacheDir)
 	if len(files) != 1 {
-		t.Errorf("cache dir has %d files after overwrite, want 1", len(files))
+		t.Errorf("cache dir has %v files after overwrite, want 1", len(files))
 	}
 }
 
@@ -276,7 +276,7 @@ func TestCacheFilenameMatchesPython(t *testing.T) {
 
 	entries, _ := os.ReadDir(cacheDir)
 	if len(entries) != 1 {
-		t.Fatalf("want 1 cache file, got %d", len(entries))
+		t.Fatalf("want 1 cache file, got %v", len(entries))
 	}
 	name := entries[0].Name()
 	prefix := URLHash(url) + "_"

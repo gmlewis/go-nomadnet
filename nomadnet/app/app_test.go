@@ -44,13 +44,13 @@ func TestNewAppDefaults(t *testing.T) {
 		t.Error("ShouldRunJobs = false, want true")
 	}
 	if a.JobInterval != 5 {
-		t.Errorf("JobInterval = %d, want 5", a.JobInterval)
+		t.Errorf("JobInterval = %v, want 5", a.JobInterval)
 	}
 	if a.DeferJobs != 90 {
-		t.Errorf("DeferJobs = %d, want 90", a.DeferJobs)
+		t.Errorf("DeferJobs = %v, want 90", a.DeferJobs)
 	}
 	if a.AnnounceInterval != 21600 {
-		t.Errorf("AnnounceInterval = %d, want 21600", a.AnnounceInterval)
+		t.Errorf("AnnounceInterval = %v, want 21600", a.AnnounceInterval)
 	}
 	if !a.PeerAnnounceAtStart {
 		t.Error("PeerAnnounceAtStart = false, want true")
@@ -71,22 +71,22 @@ func TestNewAppDefaults(t *testing.T) {
 		t.Error("PeriodicLXMFSync = false, want true")
 	}
 	if a.LXMFSyncInterval != 21600 {
-		t.Errorf("LXMFSyncInterval = %d, want 21600", a.LXMFSyncInterval)
+		t.Errorf("LXMFSyncInterval = %v, want 21600", a.LXMFSyncInterval)
 	}
 	if a.LXMFSyncLimit != 8 {
-		t.Errorf("LXMFSyncLimit = %d, want 8", a.LXMFSyncLimit)
+		t.Errorf("LXMFSyncLimit = %v, want 8", a.LXMFSyncLimit)
 	}
 	if a.NodePropagationCost != 16 {
-		t.Errorf("NodePropagationCost = %d, want 16", a.NodePropagationCost)
+		t.Errorf("NodePropagationCost = %v, want 16", a.NodePropagationCost)
 	}
 	if a.RRCHistoryPerRoomCap != 500 {
-		t.Errorf("RRCHistoryPerRoomCap = %d, want 500", a.RRCHistoryPerRoomCap)
+		t.Errorf("RRCHistoryPerRoomCap = %v, want 500", a.RRCHistoryPerRoomCap)
 	}
 	if !a.RRCFilterLoadedHistory {
 		t.Error("RRCFilterLoadedHistory = false, want true")
 	}
 	if a.RRCEphemeralNotices != 600 {
-		t.Errorf("RRCEphemeralNotices = %d, want 600", a.RRCEphemeralNotices)
+		t.Errorf("RRCEphemeralNotices = %v, want 600", a.RRCEphemeralNotices)
 	}
 	if !a.RRCNickColors {
 		t.Error("RRCNickColors = false, want true")
@@ -201,7 +201,7 @@ func TestAppApplyConfig(t *testing.T) {
 		t.Error("EnableClient = true after applying config with false")
 	}
 	if a.AnnounceInterval != 120*60 {
-		t.Errorf("AnnounceInterval = %d, want %d", a.AnnounceInterval, 120*60)
+		t.Errorf("AnnounceInterval = %v, want %v", a.AnnounceInterval, 120*60)
 	}
 	if a.NotifyOnNewMessage {
 		t.Error("NotifyOnNewMessage = true after applying config with false")
@@ -308,19 +308,19 @@ func TestAppUIModeConstants(t *testing.T) {
 	t.Parallel()
 
 	if UINone != 0 {
-		t.Errorf("UINone = %d, want 0", UINone)
+		t.Errorf("UINone = %v, want 0", UINone)
 	}
 	if UIText != 1 {
-		t.Errorf("UIText = %d, want 1", UIText)
+		t.Errorf("UIText = %v, want 1", UIText)
 	}
 	if UIGraphical != 2 {
-		t.Errorf("UIGraphical = %d, want 2", UIGraphical)
+		t.Errorf("UIGraphical = %v, want 2", UIGraphical)
 	}
 	if UIWeb != 3 {
-		t.Errorf("UIWeb = %d, want 3", UIWeb)
+		t.Errorf("UIWeb = %v, want 3", UIWeb)
 	}
 	if UIMenu != 4 {
-		t.Errorf("UIMenu = %d, want 4", UIMenu)
+		t.Errorf("UIMenu = %v, want 4", UIMenu)
 	}
 }
 
@@ -441,14 +441,14 @@ func TestInitWithTransportReceivesAnnounces(t *testing.T) {
 	defer a.Shutdown()
 
 	if a.AnnounceCount() != 0 {
-		t.Errorf("AnnounceCount = %d, want 0", a.AnnounceCount())
+		t.Errorf("AnnounceCount = %v, want 0", a.AnnounceCount())
 	}
 
 	// Simulate receiving a peer announce directly
 	a.handleLXMFAnnounce(id.Hash, id, []byte("test"), false)
 
 	if a.AnnounceCount() != 1 {
-		t.Errorf("AnnounceCount = %d, want 1 after announce", a.AnnounceCount())
+		t.Errorf("AnnounceCount = %v, want 1 after announce", a.AnnounceCount())
 	}
 }
 
@@ -483,7 +483,7 @@ func TestAnnounceStreamNewestFirst(t *testing.T) {
 
 	got := a.GetAnnounces()
 	if len(got) != 2 {
-		t.Fatalf("GetAnnounces len = %d, want 2", len(got))
+		t.Fatalf("GetAnnounces len = %v, want 2", len(got))
 	}
 	// Newest-first: the second-received ("NewNode") must be at index 0.
 	if string(got[0].AppData) != "NewNode" || string(got[1].AppData) != "OldNode" {
@@ -631,10 +631,10 @@ func TestDirAnnounceEventsCrossRunRetention(t *testing.T) {
 		}
 	}
 	if rNode != 1 {
-		t.Errorf("AppB reloaded node announce count = %d, want 1 (history not retained?)", rNode)
+		t.Errorf("AppB reloaded node announce count = %v, want 1 (history not retained?)", rNode)
 	}
 	if rPeer != 1 {
-		t.Errorf("AppB reloaded peer announce count = %d, want 1 (history not retained?)", rPeer)
+		t.Errorf("AppB reloaded peer announce count = %v, want 1 (history not retained?)", rPeer)
 	}
 }
 

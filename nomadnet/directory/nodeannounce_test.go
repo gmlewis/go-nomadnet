@@ -65,7 +65,7 @@ func TestNodeAnnounceReceivedPeerUntrustedNoEntry(t *testing.T) {
 	}
 	// announce still recorded
 	if len(d.NodeAnnounces()) != 1 {
-		t.Fatalf("node announce should be recorded, got %d", len(d.NodeAnnounces()))
+		t.Fatalf("node announce should be recorded, got %v", len(d.NodeAnnounces()))
 	}
 }
 

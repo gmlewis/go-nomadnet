@@ -145,7 +145,7 @@ func TestBrowseHistoryHistory(t *testing.T) {
 
 	history := bh.History()
 	if len(history) != 3 {
-		t.Errorf("History() returned %d items, want 3", len(history))
+		t.Errorf("History() returned %v items, want 3", len(history))
 	}
 	if history[0] != "page1" || history[1] != "page2" || history[2] != "page3" {
 		t.Errorf("History() = %v, want [page1 page2 page3]", history)
@@ -165,7 +165,7 @@ func TestBrowseHistoryBranchThenNavigate(t *testing.T) {
 
 	history := bh.History()
 	if len(history) != 2 {
-		t.Errorf("History() after branch: %d items, want 2", len(history))
+		t.Errorf("History() after branch: %v items, want 2", len(history))
 	}
 	if history[0] != "page1" || history[1] != "branch" {
 		t.Errorf("History() = %v, want [page1 branch]", history)

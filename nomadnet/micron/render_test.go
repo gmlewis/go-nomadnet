@@ -273,10 +273,10 @@ func TestParseTable(t *testing.T) {
 		if n.Type == NodeTable {
 			hasTable = true
 			if len(n.TableRows) != 2 {
-				t.Errorf("table rows = %d, want 2", len(n.TableRows))
+				t.Errorf("table rows = %v, want 2", len(n.TableRows))
 			}
 			if len(n.TableRows) > 0 && len(n.TableRows[0]) != 3 {
-				t.Errorf("table cols = %d, want 3", len(n.TableRows[0]))
+				t.Errorf("table cols = %v, want 3", len(n.TableRows[0]))
 			}
 		}
 	}
@@ -350,7 +350,7 @@ func TestParseTableMaxWidth(t *testing.T) {
 	for _, n := range nodes {
 		if n.Type == NodeTable {
 			if n.TableMaxWidth != 80 {
-				t.Errorf("table max width = %d, want 80", n.TableMaxWidth)
+				t.Errorf("table max width = %v, want 80", n.TableMaxWidth)
 			}
 		}
 	}

@@ -82,7 +82,7 @@ func TestUrwidButtonActivate(t *testing.T) {
 	h(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone), func(p tview.Primitive) {})
 	h(tcell.NewEventKey(tcell.KeyRune, ' ', tcell.ModNone), func(p tview.Primitive) {})
 	if fired != 2 {
-		t.Errorf("fired %d times after Enter+Space, want 2", fired)
+		t.Errorf("fired %v times after Enter+Space, want 2", fired)
 	}
 	// A non-space rune is ignored.
 	before := fired
@@ -145,7 +145,7 @@ func TestTabButtonActivate(t *testing.T) {
 	h(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone), func(p tview.Primitive) {})
 	h(tcell.NewEventKey(tcell.KeyRune, ' ', tcell.ModNone), func(p tview.Primitive) {})
 	if fired != 2 {
-		t.Errorf("tab fired %d times after Enter+Space, want 2", fired)
+		t.Errorf("tab fired %v times after Enter+Space, want 2", fired)
 	}
 }
 
@@ -166,6 +166,6 @@ func TestUrwidButtonFocusedStyle(t *testing.T) {
 		t.Errorf("expected cursor to be visible on focused button")
 	}
 	if cx != 2 || cy != 0 {
-		t.Errorf("got cursor pos (%d, %d), want (2, 0)", cx, cy)
+		t.Errorf("got cursor pos (%v, %v), want (2, 0)", cx, cy)
 	}
 }

@@ -90,7 +90,7 @@ func TestFocusedBoxRendersSingleLine(t *testing.T) {
 	mustCell := func(x, y int, want rune) {
 		c, _, _, _ := screen.GetContent(x, y)
 		if c != want {
-			t.Errorf("focused box cell(%d,%d) = %q, want %q", x, y, c, want)
+			t.Errorf("focused box cell(%v,%v) = %q, want %q", x, y, c, want)
 		}
 	}
 	mustCell(0, 0, BorderTopLeft)
@@ -123,7 +123,7 @@ func TestBorderedBoxSingleLine(t *testing.T) {
 	mustCell := func(x, y int, want rune) {
 		c, _, _, _ := screen.GetContent(x, y)
 		if c != want {
-			t.Errorf("cell(%d,%d) = %q, want %q", x, y, c, want)
+			t.Errorf("cell(%v,%v) = %q, want %q", x, y, c, want)
 		}
 	}
 	mustCell(0, 0, BorderTopLeft)
@@ -161,7 +161,7 @@ func TestBorderedBoxRounded(t *testing.T) {
 	mustCell := func(x, y int, want rune) {
 		c, _, _, _ := screen.GetContent(x, y)
 		if c != want {
-			t.Errorf("cell(%d,%d) = %q, want %q", x, y, c, want)
+			t.Errorf("cell(%v,%v) = %q, want %q", x, y, c, want)
 		}
 	}
 	mustCell(0, 0, BorderTopLeftRounded)

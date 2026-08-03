@@ -107,7 +107,7 @@ func TestHubInfoAreaSetRooms(t *testing.T) {
 	rooms := []string{"general", "random", "dev"}
 	hia.SetRooms(rooms)
 	if len(hia.Rooms()) != 3 {
-		t.Errorf("Rooms count = %d, want 3", len(hia.Rooms()))
+		t.Errorf("Rooms count = %v, want 3", len(hia.Rooms()))
 	}
 }
 
@@ -120,6 +120,6 @@ func TestHubInfoAreaSetAvailableRooms(t *testing.T) {
 	available := []string{"general", "random", "dev", "test"}
 	hia.SetAvailableRooms(available)
 	if len(hia.AvailableRooms()) != 4 {
-		t.Errorf("AvailableRooms count = %d, want 4", len(hia.AvailableRooms()))
+		t.Errorf("AvailableRooms count = %v, want 4", len(hia.AvailableRooms()))
 	}
 }

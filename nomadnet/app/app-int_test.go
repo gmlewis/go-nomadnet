@@ -200,7 +200,7 @@ func TestIntegrationSendConversationWiring(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Errorf("sender has no conversation with peer %s after send; list=%d", peerHex, len(list))
+		t.Errorf("sender has no conversation with peer %s after send; list=%v", peerHex, len(list))
 	}
 }
 
@@ -251,7 +251,7 @@ func TestIntegrationConversationMessages(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	if len(got) != 1 {
-		t.Fatalf("ConversationMessages returned %d entries, want 1", len(got))
+		t.Fatalf("ConversationMessages returned %v entries, want 1", len(got))
 	}
 	if got[0].Content != "msg body content" {
 		t.Errorf("content = %q, want %q", got[0].Content, "msg body content")
@@ -492,7 +492,7 @@ func TestIntegrationSaveConversationAttachments(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	if len(msgs) != 1 {
-		t.Fatalf("ConversationMessages = %d, want 1", len(msgs))
+		t.Fatalf("ConversationMessages = %v, want 1", len(msgs))
 	}
 
 	// Redirect B's downloads path to a temp dir so we can assert the saved file.
@@ -507,7 +507,7 @@ func TestIntegrationSaveConversationAttachments(t *testing.T) {
 		},
 	)
 	if failed != 0 {
-		t.Errorf("failed = %d, want 0", failed)
+		t.Errorf("failed = %v, want 0", failed)
 	}
 	if len(saved) != 1 {
 		t.Fatalf("saved = %v, want 1 path", saved)
@@ -647,7 +647,7 @@ func TestIntegrationIngestLXMURI(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	if len(msgs) != 1 {
-		t.Fatalf("ConversationMessages = %d, want 1", len(msgs))
+		t.Fatalf("ConversationMessages = %v, want 1", len(msgs))
 	}
 	if msgs[0].Content != "ingest via uri body" {
 		t.Errorf("ingested content = %q, want %q", msgs[0].Content, "ingest via uri body")

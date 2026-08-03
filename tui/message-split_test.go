@@ -64,7 +64,7 @@ func TestChunkByBytes(t *testing.T) {
 			t.Parallel()
 			got := ChunkByBytes(tt.text, tt.bud)
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("ChunkByBytes(%q, %d) = %v, want %v", tt.text, tt.bud, got, tt.want)
+				t.Errorf("ChunkByBytes(%q, %v) = %v, want %v", tt.text, tt.bud, got, tt.want)
 			}
 		})
 	}
@@ -74,13 +74,13 @@ func TestChunkByBytesBudgetValidation(t *testing.T) {
 	t.Parallel()
 
 	if got := ChunkByBytes("hello", 0); len(got) != 0 {
-		t.Errorf("budget=0: got %d parts, want 0", len(got))
+		t.Errorf("budget=0: got %v parts, want 0", len(got))
 	}
 	if got := ChunkByBytes("hello", -1); len(got) != 0 {
-		t.Errorf("budget=-1: got %d parts, want 0", len(got))
+		t.Errorf("budget=-1: got %v parts, want 0", len(got))
 	}
 	if got := ChunkByBytes("", 10); len(got) != 0 {
-		t.Errorf("empty text: got %d parts, want 0", len(got))
+		t.Errorf("empty text: got %v parts, want 0", len(got))
 	}
 }
 
@@ -115,7 +115,7 @@ func TestSplitMessage(t *testing.T) {
 			t.Parallel()
 			got := SplitMessage(tt.text, tt.limit)
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("SplitMessage(%q, %d) = %v, want %v", tt.text, tt.limit, got, tt.want)
+				t.Errorf("SplitMessage(%q, %v) = %v, want %v", tt.text, tt.limit, got, tt.want)
 			}
 		})
 	}

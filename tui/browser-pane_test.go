@@ -61,7 +61,7 @@ func TestBrowserPaneDisconnectedLayout(t *testing.T) {
 	// Rows above (1-9) and below (12-20) are blank inside the border.
 	for _, y := range []int{1, 5, 9, 12, 16, 20} {
 		if strings.TrimSpace(rows[y]) != "│                          │" {
-			t.Errorf("row %d = %q, want empty border row", y, rows[y])
+			t.Errorf("row %v = %q, want empty border row", y, rows[y])
 		}
 	}
 }

@@ -30,10 +30,10 @@ func TestMessageStates(t *testing.T) {
 	t.Parallel()
 
 	if StateDraft != 0 {
-		t.Errorf("StateDraft = %d, want 0", StateDraft)
+		t.Errorf("StateDraft = %v, want 0", StateDraft)
 	}
 	if StateFailed != 5 {
-		t.Errorf("StateFailed = %d, want 5", StateFailed)
+		t.Errorf("StateFailed = %v, want 5", StateFailed)
 	}
 }
 
@@ -115,7 +115,7 @@ func TestMessageGetStateDefault(t *testing.T) {
 
 	msg := NewMessage(path)
 	if state := msg.GetState(); state != StateDraft {
-		t.Errorf("GetState = %d, want %d", state, StateDraft)
+		t.Errorf("GetState = %v, want %v", state, StateDraft)
 	}
 }
 
@@ -233,7 +233,7 @@ func TestToIndexEntryAndRestore(t *testing.T) {
 		t.Error("CachedSignatureValidated = nil/false, want true")
 	}
 	if msg2.CachedMethod != 1 {
-		t.Errorf("CachedMethod = %d, want 1", msg2.CachedMethod)
+		t.Errorf("CachedMethod = %v, want 1", msg2.CachedMethod)
 	}
 	if !msg2.CachedHasAttachments {
 		t.Error("CachedHasAttachments = false, want true")
@@ -270,7 +270,7 @@ func TestReadWriteIndex(t *testing.T) {
 	// Read it back
 	index := ReadIndex(convPath)
 	if len(index) != 1 {
-		t.Fatalf("ReadIndex len = %d, want 1", len(index))
+		t.Fatalf("ReadIndex len = %v, want 1", len(index))
 	}
 
 	entry, ok := index["0102030405060708010203040506070801020304050607080102030405060708"]
@@ -294,7 +294,7 @@ func TestReadIndexMissing(t *testing.T) {
 	dir := tempDir(t)
 	index := ReadIndex(filepath.Join(dir, "nonexistent"))
 	if len(index) != 0 {
-		t.Errorf("ReadIndex for missing file returned %d entries, want 0", len(index))
+		t.Errorf("ReadIndex for missing file returned %v entries, want 0", len(index))
 	}
 }
 
@@ -324,7 +324,7 @@ func TestScanStorage(t *testing.T) {
 	}
 
 	if len(conv.Messages) != 3 {
-		t.Errorf("Messages len = %d, want 3", len(conv.Messages))
+		t.Errorf("Messages len = %v, want 3", len(conv.Messages))
 	}
 }
 
@@ -343,7 +343,7 @@ func TestScanStorageEmpty(t *testing.T) {
 	}
 
 	if len(conv.Messages) != 0 {
-		t.Errorf("Messages len = %d, want 0", len(conv.Messages))
+		t.Errorf("Messages len = %v, want 0", len(conv.Messages))
 	}
 }
 
@@ -377,7 +377,7 @@ func TestScanStorageSkipsNonHex(t *testing.T) {
 	}
 
 	if len(conv.Messages) != 1 {
-		t.Errorf("Messages len = %d, want 1", len(conv.Messages))
+		t.Errorf("Messages len = %v, want 1", len(conv.Messages))
 	}
 }
 
@@ -422,7 +422,7 @@ func TestPurgeFailed(t *testing.T) {
 		}
 	}
 	if remaining != 2 {
-		t.Errorf("After PurgeFailed, remaining = %d, want 2", remaining)
+		t.Errorf("After PurgeFailed, remaining = %v, want 2", remaining)
 	}
 }
 
@@ -452,7 +452,7 @@ func TestClearHistory(t *testing.T) {
 	conv.ClearHistory()
 
 	if len(conv.Messages) != 0 {
-		t.Errorf("After ClearHistory, Messages len = %d, want 0", len(conv.Messages))
+		t.Errorf("After ClearHistory, Messages len = %v, want 0", len(conv.Messages))
 	}
 
 	// Verify files are deleted
@@ -499,7 +499,7 @@ func TestConversationList(t *testing.T) {
 
 	list := ConversationList(convPath, displayNames, trustLevels)
 	if len(list) != 2 {
-		t.Fatalf("ConversationList len = %d, want 2", len(list))
+		t.Fatalf("ConversationList len = %v, want 2", len(list))
 	}
 
 	// Find Alice
@@ -545,17 +545,17 @@ func TestConversationListUnreadFailedCount(t *testing.T) {
 
 	list := ConversationList(convPath, nil, nil)
 	if len(list) != 1 {
-		t.Fatalf("ConversationList len = %d, want 1", len(list))
+		t.Fatalf("ConversationList len = %v, want 1", len(list))
 	}
 	info := list[0]
 	if info.UnreadCount != 3 {
-		t.Errorf("UnreadCount = %d, want 3", info.UnreadCount)
+		t.Errorf("UnreadCount = %v, want 3", info.UnreadCount)
 	}
 	if !info.Unread {
 		t.Error("Unread = false, want true (count > 0)")
 	}
 	if info.FailedCount != 1 {
-		t.Errorf("FailedCount = %d, want 1 (empty flag file)", info.FailedCount)
+		t.Errorf("FailedCount = %v, want 1 (empty flag file)", info.FailedCount)
 	}
 	if !info.Failed {
 		t.Error("Failed = false, want true (count > 0)")
@@ -570,7 +570,7 @@ func TestConversationListUnreadFailedCount(t *testing.T) {
 	for _, info := range list {
 		if info.SourceHash == hash2 {
 			if info.UnreadCount != 0 || info.FailedCount != 0 {
-				t.Errorf("hash2 counts = unread %d failed %d, want 0/0", info.UnreadCount, info.FailedCount)
+				t.Errorf("hash2 counts = unread %v failed %v, want 0/0", info.UnreadCount, info.FailedCount)
 			}
 		}
 	}
@@ -719,7 +719,7 @@ func TestIngestTwoMessagesSameSourceSingleConversation(t *testing.T) {
 	list := ConversationList(dir, nil, nil)
 	sourceHex := hex.EncodeToString(msg1.SourceHash)
 	if len(list) != 1 {
-		t.Errorf("ConversationList len = %d, want 1", len(list))
+		t.Errorf("ConversationList len = %v, want 1", len(list))
 	}
 	if len(list) > 0 && list[0].SourceHash != sourceHex {
 		t.Errorf("SourceHash = %q, want %q", list[0].SourceHash, sourceHex)
@@ -730,7 +730,7 @@ func TestIngestTwoMessagesSameSourceSingleConversation(t *testing.T) {
 		t.Fatal(err)
 	}
 	if conv.MessageCount() != 2 {
-		t.Errorf("MessageCount = %d, want 2", conv.MessageCount())
+		t.Errorf("MessageCount = %v, want 2", conv.MessageCount())
 	}
 }
 

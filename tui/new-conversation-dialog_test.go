@@ -135,10 +135,10 @@ func TestNewConversationDialogLayout(t *testing.T) {
 		}
 	}
 	if left < 0 || right < 0 {
-		t.Fatalf("dialog top-border corners not found (left=%d right=%d)", left, right)
+		t.Fatalf("dialog top-border corners not found (left=%v right=%v)", left, right)
 	}
 	if got := right - left + 1; got != 48 {
-		t.Errorf("dialog top border width = %d, want 48", got)
+		t.Errorf("dialog top border width = %v, want 48", got)
 	}
 }
 
@@ -174,9 +174,9 @@ func TestNewConversationDialogErrorRow(t *testing.T) {
 		}
 	}
 	if bottom < 0 {
-		t.Fatalf("dialog bottom border not found (top=%d)", top)
+		t.Fatalf("dialog bottom border not found (top=%v)", top)
 	}
 	if got := bottom - top + 1; got != 13 {
-		t.Errorf("error dialog height = %d rows, want 13", got)
+		t.Errorf("error dialog height = %v rows, want 13", got)
 	}
 }

@@ -40,25 +40,25 @@ func TestTabComplete(t *testing.T) {
 
 	gotText, gotPos, gotState, ok := TabComplete(text, pos, state, members)
 	if !ok || gotText != "alice:  hello" || gotPos != 7 || gotState.Idx != 0 || gotState.HasAt || gotState.TokenStart != 0 {
-		t.Errorf("tab1: ok=%v text=%q pos=%d state=%+v, want \"alice:  hello\"/7/idx0", ok, gotText, gotPos, gotState)
+		t.Errorf("tab1: ok=%v text=%q pos=%v state=%+v, want \"alice:  hello\"/7/idx0", ok, gotText, gotPos, gotState)
 	}
 	state = gotState
 
 	gotText, gotPos, gotState, ok = TabComplete(gotText, gotPos, state, members)
 	if !ok || gotText != "alicia:  hello" || gotPos != 8 || gotState.Idx != 1 {
-		t.Errorf("tab2: text=%q pos=%d idx=%d, want \"alicia:  hello\"/8/idx1", gotText, gotPos, gotState.Idx)
+		t.Errorf("tab2: text=%q pos=%v idx=%v, want \"alicia:  hello\"/8/idx1", gotText, gotPos, gotState.Idx)
 	}
 	state = gotState
 
 	gotText, gotPos, gotState, ok = TabComplete(gotText, gotPos, state, members)
 	if !ok || gotText != "alice:  hello" || gotPos != 7 || gotState.Idx != 0 {
-		t.Errorf("tab3: text=%q pos=%d idx=%d, want \"alice:  hello\"/7/idx0", gotText, gotPos, gotState.Idx)
+		t.Errorf("tab3: text=%q pos=%v idx=%v, want \"alice:  hello\"/7/idx0", gotText, gotPos, gotState.Idx)
 	}
 	state = gotState
 
 	gotText, gotPos, gotState, ok = TabComplete(gotText, gotPos, state, members)
 	if !ok || gotText != "alicia:  hello" || gotPos != 8 || gotState.Idx != 1 {
-		t.Errorf("tab4: text=%q pos=%d idx=%d, want \"alicia:  hello\"/8/idx1", gotText, gotPos, gotState.Idx)
+		t.Errorf("tab4: text=%q pos=%v idx=%v, want \"alicia:  hello\"/8/idx1", gotText, gotPos, gotState.Idx)
 	}
 }
 
@@ -70,12 +70,12 @@ func TestTabCompleteAtMention(t *testing.T) {
 	text := "hi @al there"
 	gotText, gotPos, st, ok := TabComplete(text, 6, nil, members)
 	if !ok || gotText != "hi @alice there" || gotPos != 9 || !st.HasAt || st.TokenStart != 3 || st.Idx != 0 {
-		t.Errorf("@tab1: text=%q pos=%d state=%+v, want \"hi @alice there\"/9/hasAt/idx0/ts3", gotText, gotPos, st)
+		t.Errorf("@tab1: text=%q pos=%v state=%+v, want \"hi @alice there\"/9/hasAt/idx0/ts3", gotText, gotPos, st)
 	}
 
 	gotText, gotPos, st, ok = TabComplete(gotText, gotPos, st, members)
 	if !ok || gotText != "hi @alicia there" || gotPos != 10 || st.Idx != 1 {
-		t.Errorf("@tab2: text=%q pos=%d idx=%d, want \"hi @alicia there\"/10/idx1", gotText, gotPos, st.Idx)
+		t.Errorf("@tab2: text=%q pos=%v idx=%v, want \"hi @alicia there\"/10/idx1", gotText, gotPos, st.Idx)
 	}
 }
 
@@ -87,7 +87,7 @@ func TestTabCompleteMidLine(t *testing.T) {
 	// Mid-line nick (no @, not at start) inserts the bare nick.
 	gotText, gotPos, st, ok := TabComplete("say al now", 6, nil, members)
 	if !ok || gotText != "say alice now" || gotPos != 9 || st.HasAt || st.TokenStart != 4 || st.Idx != 0 {
-		t.Errorf("mid: text=%q pos=%d state=%+v, want \"say alice now\"/9/ts4/idx0", gotText, gotPos, st)
+		t.Errorf("mid: text=%q pos=%v state=%+v, want \"say alice now\"/9/ts4/idx0", gotText, gotPos, st)
 	}
 }
 

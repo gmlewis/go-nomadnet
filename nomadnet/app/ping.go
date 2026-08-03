@@ -40,9 +40,9 @@ func FormatPongResult(elapsedMs int, hops int) string {
 		if hops == 1 {
 			plural = ""
 		}
-		hopsStr = fmt.Sprintf(" (%d hop%s)", hops, plural)
+		hopsStr = fmt.Sprintf(" (%v hop%s)", hops, plural)
 	}
-	return fmt.Sprintf("Pong in %d ms%s", elapsedMs, hopsStr)
+	return fmt.Sprintf("Pong in %v ms%s", elapsedMs, hopsStr)
 }
 
 // PingPeer pings the peer whose LXMF delivery hash is sourceHash (hex) and

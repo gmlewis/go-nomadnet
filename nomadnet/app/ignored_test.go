@@ -31,7 +31,7 @@ func TestIgnoredListLoadAndIsIgnored(t *testing.T) {
 	}
 	a.loadIgnoredList()
 	if len(a.IgnoredList) != 2 {
-		t.Fatalf("IgnoredList len = %d, want 2", len(a.IgnoredList))
+		t.Fatalf("IgnoredList len = %v, want 2", len(a.IgnoredList))
 	}
 	if !a.IsIgnored([]byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10}) {
 		t.Fatal("first hash not ignored")

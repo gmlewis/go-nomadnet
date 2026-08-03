@@ -31,7 +31,7 @@ func TestChannelRoomStoreAdd(t *testing.T) {
 		t.Fatal("Get returned nil")
 	}
 	if room.Members != 10 {
-		t.Errorf("Members = %d, want 10", room.Members)
+		t.Errorf("Members = %v, want 10", room.Members)
 	}
 }
 
@@ -61,7 +61,7 @@ func TestChannelRoomStoreByHub(t *testing.T) {
 
 	rooms := store.ByHub("hub1")
 	if len(rooms) != 2 {
-		t.Errorf("ByHub count = %d, want 2", len(rooms))
+		t.Errorf("ByHub count = %v, want 2", len(rooms))
 	}
 	// Should be sorted by name
 	if rooms[0].Name != "general" {
@@ -78,7 +78,7 @@ func TestChannelRoomStoreUnreadByHub(t *testing.T) {
 	store.Add(ChannelRoomInfo{HubAddr: "hub2", Name: "dev", Unread: true})
 
 	if got := store.UnreadByHub("hub1"); got != 1 {
-		t.Errorf("UnreadByHub('hub1') = %d, want 1", got)
+		t.Errorf("UnreadByHub('hub1') = %v, want 1", got)
 	}
 }
 
@@ -91,7 +91,7 @@ func TestChannelRoomStoreSearch(t *testing.T) {
 
 	results := store.SearchByName("gen")
 	if len(results) != 1 {
-		t.Errorf("Search returned %d, want 1", len(results))
+		t.Errorf("Search returned %v, want 1", len(results))
 	}
 }
 
@@ -141,7 +141,7 @@ func TestSortedRooms(t *testing.T) {
 
 	sorted := store.SortedRooms()
 	if len(sorted) != 3 {
-		t.Fatalf("count = %d, want 3", len(sorted))
+		t.Fatalf("count = %v, want 3", len(sorted))
 	}
 	// Sorted by hub addr, then name
 	if sorted[0].HubAddr != "hub1" || sorted[0].Name != "alpha" {

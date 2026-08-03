@@ -370,7 +370,7 @@ func TestInterfacesDisplayListFocusDraw(t *testing.T) {
 		t.Errorf("second item selection glyph at boot = %q, want ○", c)
 	}
 	if id.SelectedIndex() != -1 {
-		t.Errorf("SelectedIndex at boot = %d, want -1", id.SelectedIndex())
+		t.Errorf("SelectedIndex at boot = %v, want -1", id.SelectedIndex())
 	}
 
 	// First Down focuses the first item (Python: Down from header -> item 0).
@@ -383,7 +383,7 @@ func TestInterfacesDisplayListFocusDraw(t *testing.T) {
 		t.Errorf("after first Down, second item glyph = %q, want ○", c)
 	}
 	if id.SelectedIndex() != 0 {
-		t.Errorf("SelectedIndex after first Down = %d, want 0", id.SelectedIndex())
+		t.Errorf("SelectedIndex after first Down = %v, want 0", id.SelectedIndex())
 	}
 
 	// A second Down moves focus to the second item.
@@ -396,12 +396,12 @@ func TestInterfacesDisplayListFocusDraw(t *testing.T) {
 		t.Errorf("after second Down, second item glyph = %q, want ●", c)
 	}
 	if id.SelectedIndex() != 1 {
-		t.Errorf("SelectedIndex after second Down = %d, want 1", id.SelectedIndex())
+		t.Errorf("SelectedIndex after second Down = %v, want 1", id.SelectedIndex())
 	}
 
 	// Enter fires OnShowInterface with the focused index.
 	id.handleInput(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone))
 	if shown != 1 {
-		t.Errorf("OnShowInterface fired with %d, want 1", shown)
+		t.Errorf("OnShowInterface fired with %v, want 1", shown)
 	}
 }

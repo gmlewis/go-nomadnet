@@ -130,12 +130,12 @@ func TestSortModeToggle(t *testing.T) {
 
 	mode = ToggleSortMode(mode)
 	if mode != SortName {
-		t.Errorf("after toggle: got %d, want SortName(%d)", mode, SortName)
+		t.Errorf("after toggle: got %v, want SortName(%v)", mode, SortName)
 	}
 
 	mode = ToggleSortMode(mode)
 	if mode != SortRecent {
-		t.Errorf("after second toggle: got %d, want SortRecent(%d)", mode, SortRecent)
+		t.Errorf("after second toggle: got %v, want SortRecent(%v)", mode, SortRecent)
 	}
 }
 
@@ -174,7 +174,7 @@ func TestFilterConversationsTrusted(t *testing.T) {
 
 	filtered := FilterConversations(convs, "trusted")
 	if len(filtered) != 2 {
-		t.Fatalf("trusted filter: got %d, want 2", len(filtered))
+		t.Fatalf("trusted filter: got %v, want 2", len(filtered))
 	}
 	if filtered[0].DisplayName != "Alice" {
 		t.Errorf("first: got %q, want %q", filtered[0].DisplayName, "Alice")
@@ -194,7 +194,7 @@ func TestFilterConversationsUntrusted(t *testing.T) {
 
 	filtered := FilterConversations(convs, "untrusted")
 	if len(filtered) != 1 {
-		t.Fatalf("untrusted filter: got %d, want 1", len(filtered))
+		t.Fatalf("untrusted filter: got %v, want 1", len(filtered))
 	}
 	if filtered[0].DisplayName != "Bob" {
 		t.Errorf("first: got %q, want %q", filtered[0].DisplayName, "Bob")
@@ -213,18 +213,18 @@ func TestFilterConversationsBlocked(t *testing.T) {
 	// Untrusted tab without show blocked
 	filtered := FilterConversations(convs, "untrusted")
 	if len(filtered) != 1 {
-		t.Fatalf("untrusted no-block: got %d, want 1", len(filtered))
+		t.Fatalf("untrusted no-block: got %v, want 1", len(filtered))
 	}
 
 	// Untrusted tab with show blocked
 	filtered = FilterConversationsWithBlocked(convs, "untrusted", true)
 	if len(filtered) != 2 {
-		t.Fatalf("untrusted with blocked: got %d, want 2", len(filtered))
+		t.Fatalf("untrusted with blocked: got %v, want 2", len(filtered))
 	}
 
 	// Trusted tab should never show blocked
 	filtered = FilterConversationsWithBlocked(convs, "trusted", true)
 	if len(filtered) != 1 {
-		t.Fatalf("trusted with blocked flag: got %d, want 1", len(filtered))
+		t.Fatalf("trusted with blocked flag: got %v, want 1", len(filtered))
 	}
 }

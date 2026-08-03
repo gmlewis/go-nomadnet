@@ -96,19 +96,19 @@ func TestLoadPythonCompat(t *testing.T) {
 				t.Errorf("display_name = %q, want %q", s.DisplayName, wantStr(want.DisplayName))
 			}
 			if s.AnnounceInterval != wantInt(want.AnnounceInterval) {
-				t.Errorf("announce_interval = %d, want %d", s.AnnounceInterval, wantInt(want.AnnounceInterval))
+				t.Errorf("announce_interval = %v, want %v", s.AnnounceInterval, wantInt(want.AnnounceInterval))
 			}
 			if s.LastLXMFSync != wantInt(want.LastLXMFSync) {
-				t.Errorf("last_lxmf_sync = %d, want %d", s.LastLXMFSync, wantInt(want.LastLXMFSync))
+				t.Errorf("last_lxmf_sync = %v, want %v", s.LastLXMFSync, wantInt(want.LastLXMFSync))
 			}
 			if s.NodeConnects != wantInt(want.NodeConnects) {
-				t.Errorf("node_connects = %d, want %d", s.NodeConnects, wantInt(want.NodeConnects))
+				t.Errorf("node_connects = %v, want %v", s.NodeConnects, wantInt(want.NodeConnects))
 			}
 			if s.ServedPageRequests != wantInt(want.ServedPageRequests) {
-				t.Errorf("served_page_requests = %d, want %d", s.ServedPageRequests, wantInt(want.ServedPageRequests))
+				t.Errorf("served_page_requests = %v, want %v", s.ServedPageRequests, wantInt(want.ServedPageRequests))
 			}
 			if s.ServedFileRequests != wantInt(want.ServedFileRequests) {
-				t.Errorf("served_file_requests = %d, want %d", s.ServedFileRequests, wantInt(want.ServedFileRequests))
+				t.Errorf("served_file_requests = %v, want %v", s.ServedFileRequests, wantInt(want.ServedFileRequests))
 			}
 			if !anyBytesEqual(s.LastAnnounce, want.LastAnnounce) {
 				t.Errorf("last_announce = %v, want %v", s.LastAnnounce, want.LastAnnounce)

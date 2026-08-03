@@ -114,7 +114,7 @@ func SplitMessage(text string, maxBytes int) []string {
 		if guess < 1 {
 			guess = 1
 		}
-		prefix := fmt.Sprintf("(%d/%d) ", guess, guess)
+		prefix := fmt.Sprintf("(%v/%v) ", guess, guess)
 		budget := maxBytes - len(prefix)
 		if budget <= 0 {
 			return nil
@@ -128,7 +128,7 @@ func SplitMessage(text string, maxBytes int) []string {
 	K := len(parts)
 	result := make([]string, K)
 	for i, p := range parts {
-		result[i] = fmt.Sprintf("(%d/%d) %s", i+1, K, p)
+		result[i] = fmt.Sprintf("(%v/%v) %s", i+1, K, p)
 	}
 	return result
 }

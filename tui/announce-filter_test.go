@@ -22,7 +22,7 @@ func TestAnnounceFilterNew(t *testing.T) {
 
 	af := NewAnnounceFilter(nil)
 	if af.Count() != 0 {
-		t.Errorf("Count() = %d, want 0", af.Count())
+		t.Errorf("Count() = %v, want 0", af.Count())
 	}
 }
 
@@ -40,7 +40,7 @@ func TestAnnounceFilterWithType(t *testing.T) {
 
 	results := af.Filtered()
 	if len(results) != 1 {
-		t.Errorf("Filtered() returned %d, want 1", len(results))
+		t.Errorf("Filtered() returned %v, want 1", len(results))
 	}
 	if results[0].DisplayName != "Node1" {
 		t.Errorf("first result = %q, want %q", results[0].DisplayName, "Node1")
@@ -61,7 +61,7 @@ func TestAnnounceFilterWithSearch(t *testing.T) {
 
 	results := af.Filtered()
 	if len(results) != 1 {
-		t.Errorf("Filtered() returned %d, want 1", len(results))
+		t.Errorf("Filtered() returned %v, want 1", len(results))
 	}
 	if results[0].DisplayName != "Alice Node" {
 		t.Errorf("first result = %q, want %q", results[0].DisplayName, "Alice Node")
@@ -82,7 +82,7 @@ func TestAnnounceFilterWithTrust(t *testing.T) {
 
 	results := af.Filtered()
 	if len(results) != 1 {
-		t.Errorf("Filtered() returned %d, want 1", len(results))
+		t.Errorf("Filtered() returned %v, want 1", len(results))
 	}
 	if results[0].DisplayName != "Trusted" {
 		t.Errorf("first result = %q, want %q", results[0].DisplayName, "Trusted")
@@ -100,7 +100,7 @@ func TestAnnounceFilterNoFilter(t *testing.T) {
 	af := NewAnnounceFilter(entries)
 	results := af.Filtered()
 	if len(results) != 2 {
-		t.Errorf("Filtered() returned %d, want 2", len(results))
+		t.Errorf("Filtered() returned %v, want 2", len(results))
 	}
 }
 
@@ -119,7 +119,7 @@ func TestAnnounceFilterCombined(t *testing.T) {
 
 	results := af.Filtered()
 	if len(results) != 1 {
-		t.Errorf("Filtered() returned %d, want 1", len(results))
+		t.Errorf("Filtered() returned %v, want 1", len(results))
 	}
 	if results[0].DisplayName != "Alice Peer" {
 		t.Errorf("first result = %q, want %q", results[0].DisplayName, "Alice Peer")
@@ -140,7 +140,7 @@ func TestAnnounceFilterClearFilters(t *testing.T) {
 
 	results := af.Filtered()
 	if len(results) != 2 {
-		t.Errorf("Filtered() after ClearFilters returned %d, want 2", len(results))
+		t.Errorf("Filtered() after ClearFilters returned %v, want 2", len(results))
 	}
 }
 
@@ -157,7 +157,7 @@ func TestAnnounceFilterSearchByHash(t *testing.T) {
 
 	results := af.Filtered()
 	if len(results) != 1 {
-		t.Errorf("Filtered() returned %d, want 1", len(results))
+		t.Errorf("Filtered() returned %v, want 1", len(results))
 	}
 	if results[0].SourceHash != "aabbccdd" {
 		t.Errorf("first result hash = %q, want %q", results[0].SourceHash, "aabbccdd")
@@ -172,7 +172,7 @@ func TestAnnounceFilterUpdateEntries(t *testing.T) {
 	})
 
 	if af.Count() != 1 {
-		t.Errorf("Count() = %d, want 1", af.Count())
+		t.Errorf("Count() = %v, want 1", af.Count())
 	}
 
 	af.UpdateEntries([]AnnounceEntry{
@@ -182,6 +182,6 @@ func TestAnnounceFilterUpdateEntries(t *testing.T) {
 	})
 
 	if af.Count() != 3 {
-		t.Errorf("Count() after update = %d, want 3", af.Count())
+		t.Errorf("Count() after update = %v, want 3", af.Count())
 	}
 }

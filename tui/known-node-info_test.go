@@ -96,7 +96,7 @@ func TestKnownNodeInfoStructure(t *testing.T) {
 	}
 	for i, p := range wantPrefix {
 		if p != "" && !strings.HasPrefix(rows[i], p) {
-			t.Errorf("row %d = %q, want prefix %q", i, rows[i], p)
+			t.Errorf("row %v = %q, want prefix %q", i, rows[i], p)
 		}
 	}
 
@@ -219,7 +219,7 @@ func TestKnownNodeInfoTrustPreselect(t *testing.T) {
 				}
 			}
 			if gotChecked != 1 {
-				t.Errorf("trust %q: %d radios checked, want exactly 1", c.trust, gotChecked)
+				t.Errorf("trust %q: %v radios checked, want exactly 1", c.trust, gotChecked)
 			}
 		})
 	}
@@ -314,7 +314,7 @@ func TestKnownNodeInfoFocusOnButtonRow(t *testing.T) {
 	k := newKnownNodeInfoDisplay(nd, strings.Repeat("f", 32), data)
 	want := len(k.pile.selectable) - 1
 	if got := k.pile.FocusIndex(); got != want {
-		t.Errorf("pile focusIndex = %d, want %d (last = button row)", got, want)
+		t.Errorf("pile focusIndex = %v, want %v (last = button row)", got, want)
 	}
 }
 

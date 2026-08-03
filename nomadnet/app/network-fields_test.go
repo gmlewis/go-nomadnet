@@ -68,7 +68,7 @@ func TestNodeOperatorDisplayAndPropagationHash(t *testing.T) {
 	// NodePropagationHash derives the lxmf.propagation hash for the same identity.
 	pn := appB.NodePropagationHash(appA.LXMFDest.Hash)
 	if len(pn) != len(appA.LXMFDest.Hash) {
-		t.Errorf("NodePropagationHash len = %d, want %d", len(pn), len(appA.LXMFDest.Hash))
+		t.Errorf("NodePropagationHash len = %v, want %v", len(pn), len(appA.LXMFDest.Hash))
 	}
 	wantPN := rns.CalculateHash(appA.Identity, "lxmf", "propagation")
 	if fmt.Sprintf("%x", pn) != fmt.Sprintf("%x", wantPN) {

@@ -126,7 +126,7 @@ func TestParseFieldParity(t *testing.T) {
 				t.Fatalf("Parse(%q) produced no field node", tc.markup)
 			}
 			if n.Type != tc.wantType {
-				t.Errorf("Type = %d, want %d", n.Type, tc.wantType)
+				t.Errorf("Type = %v, want %v", n.Type, tc.wantType)
 			}
 			if n.FieldType != tc.wantFType {
 				t.Errorf("FieldType = %q, want %q", n.FieldType, tc.wantFType)
@@ -135,7 +135,7 @@ func TestParseFieldParity(t *testing.T) {
 				t.Errorf("FieldName = %q, want %q", n.FieldName, tc.wantName)
 			}
 			if n.FieldWidth != tc.wantWidth {
-				t.Errorf("FieldWidth = %d, want %d", n.FieldWidth, tc.wantWidth)
+				t.Errorf("FieldWidth = %v, want %v", n.FieldWidth, tc.wantWidth)
 			}
 			if n.FieldMask != tc.wantMask {
 				t.Errorf("FieldMask = %v, want %v", n.FieldMask, tc.wantMask)

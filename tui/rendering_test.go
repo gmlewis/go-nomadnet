@@ -148,7 +148,7 @@ func TestBodyMarkupPlain(t *testing.T) {
 		t.Error("plain text should not have links")
 	}
 	if len(spans) != 1 {
-		t.Fatalf("got %d spans, want 1", len(spans))
+		t.Fatalf("got %v spans, want 1", len(spans))
 	}
 	if spans[0].Kind != "text" {
 		t.Errorf("span.Kind = %q, want %q", spans[0].Kind, "text")
@@ -166,7 +166,7 @@ func TestBodyMarkupWithLink(t *testing.T) {
 		t.Error("should detect link")
 	}
 	if len(spans) < 2 {
-		t.Fatalf("got %d spans, want >= 2", len(spans))
+		t.Fatalf("got %v spans, want >= 2", len(spans))
 	}
 	// Find the link span
 	found := false
@@ -232,7 +232,7 @@ func TestBodyMarkupWithCodeBlock(t *testing.T) {
 	// Code blocks don't create spans — they only exclude overlapping spans
 	// So plain code with no links/mentions returns a single text span
 	if len(spans) != 1 {
-		t.Fatalf("got %d spans, want 1", len(spans))
+		t.Fatalf("got %v spans, want 1", len(spans))
 	}
 	if spans[0].Kind != "text" {
 		t.Errorf("span.Kind = %q, want %q", spans[0].Kind, "text")

@@ -69,16 +69,16 @@ func TestStripModifiersPythonParity(t *testing.T) {
 		_ = i
 		if !wantOk {
 			if got != nil {
-				t.Errorf("case %d (%q): got %q, want nil", i, in, *got)
+				t.Errorf("case %v (%q): got %q, want nil", i, in, *got)
 			}
 			continue
 		}
 		if got == nil {
-			t.Errorf("case %d (%q): got nil, want %q", i, in, want)
+			t.Errorf("case %v (%q): got nil, want %q", i, in, want)
 			continue
 		}
 		if *got != want {
-			t.Errorf("case %d (%q): got %q, want %q", i, in, *got, want)
+			t.Errorf("case %v (%q): got %q, want %q", i, in, *got, want)
 		}
 	}
 }
@@ -97,16 +97,16 @@ func TestSanitizeNamePythonParity(t *testing.T) {
 		}())
 		if !wantOk {
 			if got != nil {
-				t.Errorf("case %d (%q): got %q, want nil", i, in, *got)
+				t.Errorf("case %v (%q): got %q, want nil", i, in, *got)
 			}
 			continue
 		}
 		if got == nil {
-			t.Errorf("case %d (%q): got nil, want %q", i, in, want)
+			t.Errorf("case %v (%q): got nil, want %q", i, in, want)
 			continue
 		}
 		if *got != want {
-			t.Errorf("case %d (%q): got %q, want %q", i, in, *got, want)
+			t.Errorf("case %v (%q): got %q, want %q", i, in, *got, want)
 		}
 	}
 }
@@ -118,7 +118,7 @@ func TestStripMicronPythonParity(t *testing.T) {
 		in, _ := strOrZero(c[0])
 		want, _ := strOrZero(c[1])
 		if got := StripMicron(in); got != want {
-			t.Errorf("case %d (%q): got %q, want %q", i, in, got, want)
+			t.Errorf("case %v (%q): got %q, want %q", i, in, got, want)
 		}
 	}
 }
@@ -130,7 +130,7 @@ func TestStripEscapedMicronPythonParity(t *testing.T) {
 		in, _ := strOrZero(c[0])
 		want, _ := strOrZero(c[1])
 		if got := StripEscapedMicron(in); got != want {
-			t.Errorf("case %d (%q): got %q, want %q", i, in, got, want)
+			t.Errorf("case %v (%q): got %q, want %q", i, in, got, want)
 		}
 	}
 }
@@ -142,7 +142,7 @@ func TestUnescapeMicronPythonParity(t *testing.T) {
 		in, _ := strOrZero(c[0])
 		want, _ := strOrZero(c[1])
 		if got := UnescapeMicron(in); got != want {
-			t.Errorf("case %d (%q): got %q, want %q", i, in, got, want)
+			t.Errorf("case %v (%q): got %q, want %q", i, in, got, want)
 		}
 	}
 }
@@ -154,7 +154,7 @@ func TestStripNonFormattingTagsPythonParity(t *testing.T) {
 		in, _ := strOrZero(c[0])
 		want, _ := strOrZero(c[1])
 		if got := StripNonFormattingTags(in); got != want {
-			t.Errorf("case %d (%q): got %q, want %q", i, in, got, want)
+			t.Errorf("case %v (%q): got %q, want %q", i, in, got, want)
 		}
 	}
 }

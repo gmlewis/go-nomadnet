@@ -74,7 +74,7 @@ func TestDisplayTestGradientBars(t *testing.T) {
 			t.Parallel()
 			lines := RenderToStyledLines(tc.line, ThemeDark)
 			if len(lines) != 1 {
-				t.Fatalf("RenderToStyledLines produced %d lines, want 1", len(lines))
+				t.Fatalf("RenderToStyledLines produced %v lines, want 1", len(lines))
 			}
 			// Collect the visible (non-empty-text) spans.
 			var got []struct {
@@ -99,20 +99,20 @@ func TestDisplayTestGradientBars(t *testing.T) {
 					dump.WriteString(g.bg)
 					dump.WriteString("]")
 				}
-				t.Fatalf("visible spans = %d, want %d: %s", len(got), len(tc.wantBG), dump.String())
+				t.Fatalf("visible spans = %v, want %v: %s", len(got), len(tc.wantBG), dump.String())
 			}
 			for i, g := range got {
 				if g.text != " " {
-					t.Errorf("span %d text = %q, want a single space (gradient bar cell)", i, g.text)
+					t.Errorf("span %v text = %q, want a single space (gradient bar cell)", i, g.text)
 				}
 				if g.bg != tc.wantBG[i] {
-					t.Errorf("span %d bg = %s, want %s", i, g.bg, tc.wantBG[i])
+					t.Errorf("span %v bg = %s, want %s", i, g.bg, tc.wantBG[i])
 				}
 				if g.fg != "#dddddd" {
-					t.Errorf("span %d fg = %s, want #dddddd (plain dark fg)", i, g.fg)
+					t.Errorf("span %v fg = %s, want #dddddd (plain dark fg)", i, g.fg)
 				}
 				if g.under {
-					t.Errorf("span %d carries Underline=true (A4 underline leak)", i)
+					t.Errorf("span %v carries Underline=true (A4 underline leak)", i)
 				}
 			}
 		})

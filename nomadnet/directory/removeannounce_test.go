@@ -25,15 +25,15 @@ func TestRemoveAnnounceWithTimestampPerStream(t *testing.T) {
 
 	d.RemoveAnnounceWithTimestamp(10)
 	if len(d.PeerAnnounces()) != 0 {
-		t.Fatalf("peer announce should be removed, got %d", len(d.PeerAnnounces()))
+		t.Fatalf("peer announce should be removed, got %v", len(d.PeerAnnounces()))
 	}
 	if len(d.PNAnnounces()) != 1 {
-		t.Fatalf("pn announce should remain, got %d", len(d.PNAnnounces()))
+		t.Fatalf("pn announce should remain, got %v", len(d.PNAnnounces()))
 	}
 
 	d.RemoveAnnounceWithTimestamp(20)
 	if len(d.PNAnnounces()) != 0 {
-		t.Fatalf("pn announce should be removed, got %d", len(d.PNAnnounces()))
+		t.Fatalf("pn announce should be removed, got %v", len(d.PNAnnounces()))
 	}
 
 	// no-op when timestamp absent

@@ -63,7 +63,7 @@ func TestParseLineLevelParity(t *testing.T) {
 		t.Parallel()
 		for _, markup := range []string{"# comment", "#"} {
 			if nodes := Parse(markup); len(nodes) != 0 {
-				t.Errorf("Parse(%q) = %d nodes, want 0", markup, len(nodes))
+				t.Errorf("Parse(%q) = %v nodes, want 0", markup, len(nodes))
 			}
 		}
 	})
@@ -90,7 +90,7 @@ func TestParseLineLevelParity(t *testing.T) {
 						got += n.Text
 					}
 					if n.Depth != 0 {
-						t.Errorf("node %v Depth = %d, want 0", n.Type, n.Depth)
+						t.Errorf("node %v Depth = %v, want 0", n.Type, n.Depth)
 					}
 				}
 				if got != tc.want {

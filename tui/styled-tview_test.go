@@ -108,7 +108,7 @@ func TestMicronHeadingDepthAndDividerFormatting(t *testing.T) {
 
 	renderedLines := strings.Split(out, "\n")
 	if len(renderedLines) < 4 {
-		t.Fatalf("expected at least 4 rendered lines, got %d", len(renderedLines))
+		t.Fatalf("expected at least 4 rendered lines, got %v", len(renderedLines))
 	}
 
 	// Heading 1 at depth 1: 0 indent
@@ -125,6 +125,6 @@ func TestMicronHeadingDepthAndDividerFormatting(t *testing.T) {
 	}
 	// Divider line: 50 width of '-'
 	if runeCount := len([]rune(renderedLines[3])); runeCount != 50 || strings.Trim(renderedLines[3], "─") != "" {
-		t.Errorf("divider line = %q (runes %d), want 50 '─' characters", renderedLines[3], runeCount)
+		t.Errorf("divider line = %q (runes %v), want 50 '─' characters", renderedLines[3], runeCount)
 	}
 }

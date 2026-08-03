@@ -39,14 +39,14 @@ func TestSlugifyPythonParity(t *testing.T) {
 		if c[0] != nil {
 			s, ok := c[0].(string)
 			if !ok {
-				t.Fatalf("case %d: input not string", i)
+				t.Fatalf("case %v: input not string", i)
 			}
 			in = s
 		}
 		want, _ := c[1].(string)
 		got := Slugify(in)
 		if got != want {
-			t.Errorf("case %d (%q): got %q, want %q", i, in, got, want)
+			t.Errorf("case %v (%q): got %q, want %q", i, in, got, want)
 		}
 	}
 }

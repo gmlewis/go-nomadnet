@@ -552,11 +552,11 @@ func TestIntegrationNodeServesBinaryFile(t *testing.T) {
 	select {
 	case content := <-responseCh:
 		if len(content) != len(binaryData) {
-			t.Errorf("content length = %d, want %d", len(content), len(binaryData))
+			t.Errorf("content length = %v, want %v", len(content), len(binaryData))
 		}
 		for i, b := range content {
 			if i >= len(binaryData) || b != binaryData[i] {
-				t.Errorf("content[%d] = 0x%02x, want 0x%02x", i, b, binaryData[i])
+				t.Errorf("content[%v] = 0x%02x, want 0x%02x", i, b, binaryData[i])
 				break
 			}
 		}

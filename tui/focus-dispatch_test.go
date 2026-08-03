@@ -156,7 +156,7 @@ func TestFocusDispatch(t *testing.T) {
 				t.Errorf("focusRegion = %q, want %q", md.focusRegion, c.wantRegion)
 			}
 			if c.wantMenu >= 0 && md.activeMenu != c.wantMenu {
-				t.Errorf("activeMenu = %d, want %d", md.activeMenu, c.wantMenu)
+				t.Errorf("activeMenu = %v, want %v", md.activeMenu, c.wantMenu)
 			}
 			if md.activePage != c.wantPage {
 				t.Errorf("activePage = %q, want %q", md.activePage, c.wantPage)

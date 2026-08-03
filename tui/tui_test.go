@@ -26,10 +26,10 @@ func TestThemeConstants(t *testing.T) {
 	t.Parallel()
 
 	if ThemeDark != 1 {
-		t.Errorf("ThemeDark = %d, want 1", ThemeDark)
+		t.Errorf("ThemeDark = %v, want 1", ThemeDark)
 	}
 	if ThemeLight != 2 {
-		t.Errorf("ThemeLight = %d, want 2", ThemeLight)
+		t.Errorf("ThemeLight = %v, want 2", ThemeLight)
 	}
 }
 
@@ -129,7 +129,7 @@ func TestMenuItemCount(t *testing.T) {
 
 	// 8 top-level menu items, matching Python Main.py:201-204 (no Directory/Map).
 	if len(MenuItems) != 8 {
-		t.Errorf("MenuItems len = %d, want 8", len(MenuItems))
+		t.Errorf("MenuItems len = %v, want 8", len(MenuItems))
 	}
 
 	// Check key names in on-screen order.
@@ -139,7 +139,7 @@ func TestMenuItemCount(t *testing.T) {
 	}
 	for i, key := range expectedKeys {
 		if MenuItems[i].Key != key {
-			t.Errorf("MenuItems[%d].Key = %q, want %q", i, MenuItems[i].Key, key)
+			t.Errorf("MenuItems[%v].Key = %q, want %q", i, MenuItems[i].Key, key)
 		}
 	}
 }
@@ -182,7 +182,7 @@ func TestNewMainDisplay(t *testing.T) {
 		t.Error("contentArea is nil")
 	}
 	if len(md.menuItems) != 8 {
-		t.Errorf("menuItems len = %d, want 8", len(md.menuItems))
+		t.Errorf("menuItems len = %v, want 8", len(md.menuItems))
 	}
 }
 
@@ -251,7 +251,7 @@ func TestNewApp(t *testing.T) {
 		t.Error("Main is nil")
 	}
 	if a.Theme != ThemeDark {
-		t.Errorf("Theme = %d, want %d", a.Theme, ThemeDark)
+		t.Errorf("Theme = %v, want %v", a.Theme, ThemeDark)
 	}
 }
 
@@ -260,7 +260,7 @@ func TestNewAppDefaults(t *testing.T) {
 
 	a := NewApp(ThemeLight, GlyphPlain, ColorModeTrue)
 	if a.Theme != ThemeLight {
-		t.Errorf("Theme = %d, want %d", a.Theme, ThemeLight)
+		t.Errorf("Theme = %v, want %v", a.Theme, ThemeLight)
 	}
 	if a.Glyphs["check"] != "=" {
 		t.Error("Default glyphs not set correctly")

@@ -41,7 +41,7 @@ func TestLXMFPeersKeybindings(t *testing.T) {
 	}
 	pp.SetPeers(peers)
 	if pp.Count() != 2 {
-		t.Fatalf("Count = %d, want 2", pp.Count())
+		t.Fatalf("Count = %v, want 2", pp.Count())
 	}
 
 	list, ok := pp.Widget().(*tview.List)
@@ -106,7 +106,7 @@ func TestLXMFPeersRenderFullText(t *testing.T) {
 		t.Fatalf("Widget is %T, want *tview.List", pp.Widget())
 	}
 	if got := list.GetItemCount(); got != 2 {
-		t.Fatalf("item count = %d, want 2", got)
+		t.Fatalf("item count = %v, want 2", got)
 	}
 	mainA, _ := list.GetItemText(0)
 	if mainA != "↑ <aaaa>\n  Available, last heard just now" {

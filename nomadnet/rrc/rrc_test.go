@@ -35,19 +35,19 @@ func TestProtocolConstants(t *testing.T) {
 	t.Parallel()
 
 	if RRCVersion != 1 {
-		t.Errorf("RRCVersion = %d, want 1", RRCVersion)
+		t.Errorf("RRCVersion = %v, want 1", RRCVersion)
 	}
 	if TypeHello != 1 {
-		t.Errorf("TypeHello = %d, want 1", TypeHello)
+		t.Errorf("TypeHello = %v, want 1", TypeHello)
 	}
 	if TypeWelcome != 2 {
-		t.Errorf("TypeWelcome = %d, want 2", TypeWelcome)
+		t.Errorf("TypeWelcome = %v, want 2", TypeWelcome)
 	}
 	if TypeMsg != 20 {
-		t.Errorf("TypeMsg = %d, want 20", TypeMsg)
+		t.Errorf("TypeMsg = %v, want 20", TypeMsg)
 	}
 	if TypeResourceEnvelope != 50 {
-		t.Errorf("TypeResourceEnvelope = %d, want 50", TypeResourceEnvelope)
+		t.Errorf("TypeResourceEnvelope = %v, want 50", TypeResourceEnvelope)
 	}
 }
 
@@ -69,7 +69,7 @@ func TestRRCMessageHistoryEntry(t *testing.T) {
 		t.Errorf("kind = %v, want %q", entry[HKind], "msg")
 	}
 	if entry[HTS] != int64(1234567890) {
-		t.Errorf("ts = %v, want %d", entry[HTS], 1234567890)
+		t.Errorf("ts = %v, want %v", entry[HTS], 1234567890)
 	}
 	if entry[HText] != "Hello" {
 		t.Errorf("text = %v, want %q", entry[HText], "Hello")
@@ -100,7 +100,7 @@ func TestDecodeHistoryEntry(t *testing.T) {
 		t.Errorf("Kind = %q, want %q", msg.Kind, "action")
 	}
 	if msg.Ts != 9876543210 {
-		t.Errorf("Ts = %d, want %d", msg.Ts, 9876543210)
+		t.Errorf("Ts = %v, want %v", msg.Ts, 9876543210)
 	}
 	if msg.Text != "waves" {
 		t.Errorf("Text = %q, want %q", msg.Text, "waves")
@@ -126,13 +126,13 @@ func TestMakeEnvelope(t *testing.T) {
 	env := MakeEnvelope(TypeMsg, src, room, nick, body, mid, ts)
 
 	if env[KeyVersion] != RRCVersion {
-		t.Errorf("version = %v, want %d", env[KeyVersion], RRCVersion)
+		t.Errorf("version = %v, want %v", env[KeyVersion], RRCVersion)
 	}
 	if env[KeyType] != TypeMsg {
-		t.Errorf("type = %v, want %d", env[KeyType], TypeMsg)
+		t.Errorf("type = %v, want %v", env[KeyType], TypeMsg)
 	}
 	if env[KeyTimestamp] != ts {
-		t.Errorf("timestamp = %v, want %d", env[KeyTimestamp], ts)
+		t.Errorf("timestamp = %v, want %v", env[KeyTimestamp], ts)
 	}
 	if env[KeyRoom] == nil {
 		t.Error("room is nil")
@@ -162,7 +162,7 @@ func TestEncodeDecodeEnvelope(t *testing.T) {
 
 	// Verify the envelope has the expected keys
 	if len(decoded) < 3 {
-		t.Errorf("decoded envelope has %d keys, want >= 3", len(decoded))
+		t.Errorf("decoded envelope has %v keys, want >= 3", len(decoded))
 	}
 
 	// Verify room is present
@@ -185,7 +185,7 @@ func TestNowMs(t *testing.T) {
 	after := NowMs()
 
 	if ts < before || ts > after {
-		t.Errorf("NowMs() = %d not in range [%d, %d]", ts, before, after)
+		t.Errorf("NowMs() = %v not in range [%v, %v]", ts, before, after)
 	}
 }
 
@@ -196,10 +196,10 @@ func TestMsgID(t *testing.T) {
 	id2 := MsgID()
 
 	if len(id1) != 8 {
-		t.Errorf("MsgID len = %d, want 8", len(id1))
+		t.Errorf("MsgID len = %v, want 8", len(id1))
 	}
 	if len(id2) != 8 {
-		t.Errorf("MsgID len = %d, want 8", len(id2))
+		t.Errorf("MsgID len = %v, want 8", len(id2))
 	}
 	// Two random IDs should (almost certainly) differ
 	same := true
@@ -227,10 +227,10 @@ func TestNewHub(t *testing.T) {
 		t.Errorf("Name = %q, want %q", hub.Name, "Test Hub")
 	}
 	if hub.Status != StatusDisconnected {
-		t.Errorf("Status = %d, want %d", hub.Status, StatusDisconnected)
+		t.Errorf("Status = %v, want %v", hub.Status, StatusDisconnected)
 	}
 	if hub.MaxNickBytes != DefaultMaxNickBytes {
-		t.Errorf("MaxNickBytes = %d, want %d", hub.MaxNickBytes, DefaultMaxNickBytes)
+		t.Errorf("MaxNickBytes = %v, want %v", hub.MaxNickBytes, DefaultMaxNickBytes)
 	}
 }
 
@@ -283,7 +283,7 @@ func TestHubDisplayNameFor(t *testing.T) {
 	// Without nick set, returns hex prefix
 	name := hub.DisplayNameFor(hash)
 	if len(name) > 12 {
-		t.Errorf("DisplayNameFor = %q (len %d), want ≤12 chars", name, len(name))
+		t.Errorf("DisplayNameFor = %q (len %v), want ≤12 chars", name, len(name))
 	}
 
 	// With nick set
@@ -315,7 +315,7 @@ func TestHubSendMessage(t *testing.T) {
 	hub.lock.Unlock()
 
 	if len(msgs) != 1 {
-		t.Fatalf("Messages len = %d, want 1", len(msgs))
+		t.Fatalf("Messages len = %v, want 1", len(msgs))
 	}
 	if msgs[0].Text != "Hello!" {
 		t.Errorf("Message text = %q, want %q", msgs[0].Text, "Hello!")
@@ -341,7 +341,7 @@ func TestHubSendAction(t *testing.T) {
 	hub.lock.Unlock()
 
 	if len(msgs) != 1 {
-		t.Fatalf("Messages len = %d, want 1", len(msgs))
+		t.Fatalf("Messages len = %v, want 1", len(msgs))
 	}
 	if msgs[0].Kind != "action" {
 		t.Errorf("Message kind = %q, want %q", msgs[0].Kind, "action")
@@ -372,7 +372,7 @@ func TestHubSendCommand(t *testing.T) {
 	}
 
 	if got := intVal(captured, KeyType); got != TypeMsg {
-		t.Errorf("envelope type = %v, want T_MSG (%d)", got, TypeMsg)
+		t.Errorf("envelope type = %v, want T_MSG (%v)", got, TypeMsg)
 	}
 	if got, _ := captured[KeyBody].(string); got != "/list" {
 		t.Errorf("envelope body = %q, want /list", got)
@@ -388,7 +388,7 @@ func TestHubSendCommand(t *testing.T) {
 		t.Errorf("envelope nick = %q, want Alice", got)
 	}
 	if mid := byteVal(captured, KeyMessageID); len(mid) != 8 {
-		t.Errorf("envelope mid len = %d, want 8", len(mid))
+		t.Errorf("envelope mid len = %v, want 8", len(mid))
 	}
 
 	// send_command does not record the message locally.
@@ -427,7 +427,7 @@ func TestHubSetStatus(t *testing.T) {
 
 	hub.SetStatus(StatusConnected, "Connected!")
 	if hub.Status != StatusConnected {
-		t.Errorf("Status = %d, want %d", hub.Status, StatusConnected)
+		t.Errorf("Status = %v, want %v", hub.Status, StatusConnected)
 	}
 	if hub.StatusText != "Connected!" {
 		t.Errorf("StatusText = %q, want %q", hub.StatusText, "Connected!")
@@ -444,7 +444,7 @@ func TestManagerAddRemoveHub(t *testing.T) {
 	hub1 := mgr.AddHub(hash1, "rrc.hub", "Hub 1")
 
 	if len(mgr.Hubs) != 1 {
-		t.Errorf("Hubs len = %d, want 1", len(mgr.Hubs))
+		t.Errorf("Hubs len = %v, want 1", len(mgr.Hubs))
 	}
 
 	// Adding same hub returns existing
@@ -456,12 +456,12 @@ func TestManagerAddRemoveHub(t *testing.T) {
 	hash2 := []byte{0x05, 0x06, 0x07, 0x08}
 	mgr.AddHub(hash2, "rrc.hub", "Hub 2")
 	if len(mgr.Hubs) != 2 {
-		t.Errorf("Hubs len = %d, want 2", len(mgr.Hubs))
+		t.Errorf("Hubs len = %v, want 2", len(mgr.Hubs))
 	}
 
 	mgr.RemoveHub(hub1)
 	if len(mgr.Hubs) != 1 {
-		t.Errorf("Hubs len after remove = %d, want 1", len(mgr.Hubs))
+		t.Errorf("Hubs len after remove = %v, want 1", len(mgr.Hubs))
 	}
 }
 
@@ -478,7 +478,7 @@ func TestManagerHubsSnapshot(t *testing.T) {
 
 	snap := mgr.HubsSnapshot()
 	if len(snap) != 2 {
-		t.Fatalf("HubsSnapshot len = %d, want 2", len(snap))
+		t.Fatalf("HubsSnapshot len = %v, want 2", len(snap))
 	}
 	if snap[0].GetHubName() != "Hub 1" || snap[1].GetHubName() != "Hub 2" {
 		t.Errorf("HubsSnapshot names = %q, %q, want Hub 1, Hub 2", snap[0].GetHubName(), snap[1].GetHubName())
@@ -487,7 +487,7 @@ func TestManagerHubsSnapshot(t *testing.T) {
 	// Mutating the snapshot must not affect the manager.
 	_ = append(snap, nil)
 	if len(mgr.Hubs) != 2 {
-		t.Errorf("manager Hubs len after snapshot append = %d, want 2", len(mgr.Hubs))
+		t.Errorf("manager Hubs len after snapshot append = %v, want 2", len(mgr.Hubs))
 	}
 }
 
@@ -588,7 +588,7 @@ func TestManagerSaveLoad(t *testing.T) {
 	}
 
 	if len(mgr2.Hubs) != 1 {
-		t.Fatalf("Loaded Hubs len = %d, want 1", len(mgr2.Hubs))
+		t.Fatalf("Loaded Hubs len = %v, want 1", len(mgr2.Hubs))
 	}
 
 	loaded := mgr2.Hubs[0]
@@ -628,7 +628,7 @@ func TestManagerSaveLoadEmpty(t *testing.T) {
 	}
 
 	if len(mgr2.Hubs) != 0 {
-		t.Errorf("Loaded Hubs len = %d, want 0", len(mgr2.Hubs))
+		t.Errorf("Loaded Hubs len = %v, want 0", len(mgr2.Hubs))
 	}
 }
 
@@ -645,7 +645,7 @@ func TestManagerShutdown(t *testing.T) {
 
 	for _, hub := range mgr.Hubs {
 		if hub.Status != StatusDisconnected {
-			t.Errorf("Hub Status = %d after shutdown, want %d", hub.Status, StatusDisconnected)
+			t.Errorf("Hub Status = %v after shutdown, want %v", hub.Status, StatusDisconnected)
 		}
 	}
 }
@@ -670,7 +670,7 @@ func TestManagerShutdownDisconnectsHubs(t *testing.T) {
 	hub.lock.Lock()
 	defer hub.lock.Unlock()
 	if hub.Status != StatusDisconnected {
-		t.Errorf("Status = %d, want %d", hub.Status, StatusDisconnected)
+		t.Errorf("Status = %v, want %v", hub.Status, StatusDisconnected)
 	}
 	if hub.link != nil {
 		t.Error("link not cleared by shutdown (Python disconnect sets link = None)")
@@ -728,7 +728,7 @@ func TestHandleDataMsgEnvelopeRecordsMessage(t *testing.T) {
 
 	msgs := hub.GetMessages("general")
 	if len(msgs) != 1 {
-		t.Fatalf("GetMessages len = %d, want 1", len(msgs))
+		t.Fatalf("GetMessages len = %v, want 1", len(msgs))
 	}
 	if msgs[0].Nick != "OtherNick" {
 		t.Errorf("nick = %q, want %q", msgs[0].Nick, "OtherNick")
@@ -784,7 +784,7 @@ func TestResourceAdvertisedCap(t *testing.T) {
 	for _, tc := range cases {
 		adv := &rns.ResourceAdvertisement{D: tc.size}
 		if got := hub.resourceAdvertised(adv); got != tc.want {
-			t.Errorf("resourceAdvertised(D=%d) = %v, want %v", tc.size, got, tc.want)
+			t.Errorf("resourceAdvertised(D=%v) = %v, want %v", tc.size, got, tc.want)
 		}
 	}
 
@@ -869,7 +869,7 @@ func TestRecordResourceExpectationRejectsInvalid(t *testing.T) {
 		n := len(hub.resourceExpectations)
 		hub.lock.Unlock()
 		if n != 0 {
-			t.Errorf("%s: resourceExpectations len = %d, want 0", tc.name, n)
+			t.Errorf("%s: resourceExpectations len = %v, want 0", tc.name, n)
 		}
 	}
 }
@@ -1114,7 +1114,7 @@ func TestPacketWouldFitMTUBoundary(t *testing.T) {
 		payload := make([]byte, tc.size)
 		got := hub.packetWouldFit(link, payload)
 		if got != tc.want {
-			t.Errorf("packetWouldFit(size=%d) = %v, want %v", tc.size, got, tc.want)
+			t.Errorf("packetWouldFit(size=%v) = %v, want %v", tc.size, got, tc.want)
 		}
 	}
 }
@@ -1180,31 +1180,31 @@ func TestHubHistoryConfigAccessors(t *testing.T) {
 	mgr := NewManager(dir, nil)
 	hub := mgr.AddHub([]byte{0x01}, "rrc.hub", "H")
 	if hub.perRoomCap() != 0 {
-		t.Errorf("perRoomCap = %d, want 0 (no cap) by default", hub.perRoomCap())
+		t.Errorf("perRoomCap = %v, want 0 (no cap) by default", hub.perRoomCap())
 	}
 	if !hub.filterHistory() {
 		t.Error("filterHistory = false, want true by default")
 	}
 	if got := hub.ephemeralNoticesHistory(); got != NoticeTimeout {
-		t.Errorf("ephemeralNoticesHistory = %d, want %d", got, NoticeTimeout)
+		t.Errorf("ephemeralNoticesHistory = %v, want %v", got, NoticeTimeout)
 	}
 
 	// Configured manager → reflects the configured values.
 	mgr.SetHistoryConfig(500, false, 120)
 	if got := hub.perRoomCap(); got != 500 {
-		t.Errorf("perRoomCap = %d, want 500", got)
+		t.Errorf("perRoomCap = %v, want 500", got)
 	}
 	if hub.filterHistory() {
 		t.Error("filterHistory = true, want false after config")
 	}
 	if got := hub.ephemeralNoticesHistory(); got != 120 {
-		t.Errorf("ephemeralNoticesHistory = %d, want 120", got)
+		t.Errorf("ephemeralNoticesHistory = %v, want 120", got)
 	}
 
 	// A zero ephemeral value is ignored, keeping the previous setting.
 	mgr.SetHistoryConfig(0, true, 0)
 	if got := hub.ephemeralNoticesHistory(); got != 120 {
-		t.Errorf("ephemeralNoticesHistory = %d, want 120 (zero ignored)", got)
+		t.Errorf("ephemeralNoticesHistory = %v, want 120 (zero ignored)", got)
 	}
 
 	// A hub with no manager falls back to the Python defaults.
@@ -1369,7 +1369,7 @@ func TestHubRecordNoticeCapsAt200(t *testing.T) {
 	hub.lock.Lock()
 	defer hub.lock.Unlock()
 	if len(hub.Notices) > 200 {
-		t.Errorf("Notices len = %d, want <= 200", len(hub.Notices))
+		t.Errorf("Notices len = %v, want <= 200", len(hub.Notices))
 	}
 }
 
@@ -1429,7 +1429,7 @@ func TestHubLoadHistory(t *testing.T) {
 	defer hub.lock.Unlock()
 	msgs := hub.Messages["general"]
 	if len(msgs) != 3 {
-		t.Fatalf("Messages[general] len = %d, want 3 (cap)", len(msgs))
+		t.Fatalf("Messages[general] len = %v, want 3 (cap)", len(msgs))
 	}
 	want := []string{"m3", "m4", "m5"}
 	got := messageTexts(msgs)
@@ -1526,7 +1526,7 @@ func TestHistoryPathParity(t *testing.T) {
 	long := strings.Repeat("a", 100)
 	got = hub.historyPath(long)
 	if len(filepath.Base(got)) != 64+1+8+4 /* name_ + hash + .log */ {
-		t.Errorf("historyPath(long) base = %q (len %d), want 64-char sanitized prefix", filepath.Base(got), len(filepath.Base(got)))
+		t.Errorf("historyPath(long) base = %q (len %v), want 64-char sanitized prefix", filepath.Base(got), len(filepath.Base(got)))
 	}
 }
 
@@ -1640,7 +1640,7 @@ func TestManagerSaveLoadPartedRoomsParity(t *testing.T) {
 	}
 	entries, _ := raw["hubs"].([]any)
 	if len(entries) != 1 {
-		t.Fatalf("hubs entries = %d, want 1", len(entries))
+		t.Fatalf("hubs entries = %v, want 1", len(entries))
 	}
 	entry, _ := entries[0].(map[any]any)
 
@@ -1661,7 +1661,7 @@ func TestManagerSaveLoadPartedRoomsParity(t *testing.T) {
 		t.Fatalf("Load: %v", err)
 	}
 	if len(mgr2.Hubs) != 1 {
-		t.Fatalf("loaded hubs = %d, want 1", len(mgr2.Hubs))
+		t.Fatalf("loaded hubs = %v, want 1", len(mgr2.Hubs))
 	}
 	loaded := mgr2.Hubs[0]
 	loaded.lock.Lock()
@@ -1841,7 +1841,7 @@ func TestReconnectBackoff(t *testing.T) {
 	for _, tc := range cases {
 		got := reconnectBackoff(tc.attempts)
 		if got != tc.want {
-			t.Errorf("reconnectBackoff(%d) = %v, want %v", tc.attempts, got, tc.want)
+			t.Errorf("reconnectBackoff(%v) = %v, want %v", tc.attempts, got, tc.want)
 		}
 	}
 }
@@ -1882,10 +1882,10 @@ func TestScheduleReconnect(t *testing.T) {
 	hub.lock.Unlock()
 
 	if attempts != 1 {
-		t.Errorf("reconnectAttempts = %d, want 1", attempts)
+		t.Errorf("reconnectAttempts = %v, want 1", attempts)
 	}
 	if status != StatusDisconnected {
-		t.Errorf("Status = %d, want StatusDisconnected", status)
+		t.Errorf("Status = %v, want StatusDisconnected", status)
 	}
 	if text != "Reconnect in 2s" {
 		t.Errorf("StatusText = %q, want %q", text, "Reconnect in 2s")
@@ -1957,7 +1957,7 @@ func TestOnClosedClearsState(t *testing.T) {
 		t.Error("pending/silent maps not cleared")
 	}
 	if hub.Status != StatusDisconnected {
-		t.Errorf("Status = %d, want StatusDisconnected", hub.Status)
+		t.Errorf("Status = %v, want StatusDisconnected", hub.Status)
 	}
 }
 
@@ -1984,7 +1984,7 @@ func TestOnClosedSchedulesReconnect(t *testing.T) {
 	attempts := hub.reconnectAttempts
 	hub.lock.Unlock()
 	if attempts != 1 {
-		t.Errorf("reconnectAttempts = %d, want 1 (reconnect scheduled)", attempts)
+		t.Errorf("reconnectAttempts = %v, want 1 (reconnect scheduled)", attempts)
 	}
 }
 
@@ -2007,7 +2007,7 @@ func TestOnClosedNoReconnectWhenManualDisconnect(t *testing.T) {
 	attempts := hub.reconnectAttempts
 	hub.lock.Unlock()
 	if attempts != 0 {
-		t.Errorf("reconnectAttempts = %d, want 0 (no reconnect after manual disconnect)", attempts)
+		t.Errorf("reconnectAttempts = %v, want 0 (no reconnect after manual disconnect)", attempts)
 	}
 }
 
@@ -2028,7 +2028,7 @@ func TestConnectWorkerIdentityUnknown(t *testing.T) {
 	hub.lock.Lock()
 	defer hub.lock.Unlock()
 	if hub.Status != StatusFailed {
-		t.Errorf("Status = %d, want StatusFailed", hub.Status)
+		t.Errorf("Status = %v, want StatusFailed", hub.Status)
 	}
 	if hub.StatusText != "Hub identity unknown" {
 		t.Errorf("StatusText = %q, want %q", hub.StatusText, "Hub identity unknown")
@@ -2055,7 +2055,7 @@ func TestConnectWorkerHashMismatch(t *testing.T) {
 	hub.lock.Lock()
 	defer hub.lock.Unlock()
 	if hub.Status != StatusFailed {
-		t.Errorf("Status = %d, want StatusFailed", hub.Status)
+		t.Errorf("Status = %v, want StatusFailed", hub.Status)
 	}
 	if hub.StatusText != "Hash/destination name mismatch" {
 		t.Errorf("StatusText = %q, want %q", hub.StatusText, "Hash/destination name mismatch")
@@ -2106,7 +2106,7 @@ func TestConnectAsyncGuard(t *testing.T) {
 	text := hub.StatusText
 	hub.lock.Unlock()
 	if status != StatusConnecting {
-		t.Errorf("Status = %d, want StatusConnecting", status)
+		t.Errorf("Status = %v, want StatusConnecting", status)
 	}
 	if text != "Connecting" {
 		t.Errorf("StatusText = %q, want %q", text, "Connecting")
@@ -2213,7 +2213,7 @@ func TestHubListViewAccessors(t *testing.T) {
 		t.Errorf("GetHubName = %q, want %q", got, "My Hub")
 	}
 	if got := hub.GetHubStatus(); got != StatusConnected {
-		t.Errorf("GetHubStatus = %d, want %d", got, StatusConnected)
+		t.Errorf("GetHubStatus = %v, want %v", got, StatusConnected)
 	}
 	if got, want := hub.JoinedRoomList(), []string{"general", "random"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("JoinedRoomList = %v, want %v", got, want)

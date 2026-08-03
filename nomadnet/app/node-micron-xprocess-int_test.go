@@ -263,7 +263,7 @@ func TestIntegrationNodeServesMicronToPython(t *testing.T) {
 		t.Fatalf("decode RECV_HEX: %v", err)
 	}
 	if string(recvBytes) != node.DefaultIndex {
-		t.Errorf("received page bytes (len %s) != node.DefaultIndex (len %d).\nreceived:\n%s\nwant:\n%s",
+		t.Errorf("received page bytes (len %s) != node.DefaultIndex (len %v).\nreceived:\n%s\nwant:\n%s",
 			strings.TrimSpace(recvLen), len(node.DefaultIndex), recvBytes, node.DefaultIndex)
 	}
 	// DefaultIndex == Python DEFAULT_INDEX is pinned by

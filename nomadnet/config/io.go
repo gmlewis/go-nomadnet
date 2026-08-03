@@ -75,7 +75,7 @@ func Save(c *Config, path string) (retErr error) {
 	}
 
 	writeSection("logging", map[string]string{
-		"loglevel":    fmt.Sprintf("%d", c.Logging.LogLevel),
+		"loglevel":    fmt.Sprintf("%v", c.Logging.LogLevel),
 		"destination": c.Logging.Destination,
 	})
 
@@ -85,18 +85,18 @@ func Save(c *Config, path string) (retErr error) {
 		"downloads_path":               c.Client.DownloadsPath,
 		"notify_on_new_message":        boolStr(c.Client.NotifyOnNewMessage),
 		"announce_at_start":            boolStr(c.Client.AnnounceAtStart),
-		"announce_interval":            fmt.Sprintf("%d", c.Client.AnnounceInterval/60),
+		"announce_interval":            fmt.Sprintf("%v", c.Client.AnnounceInterval/60),
 		"try_propagation_on_send_fail": boolStr(c.Client.TryPropagationOnSendFail),
 		"periodic_lxmf_sync":           boolStr(c.Client.PeriodicLXMFSync),
-		"lxmf_sync_interval":           fmt.Sprintf("%d", c.Client.LXMFSyncInterval/60),
-		"lxmf_sync_limit":              fmt.Sprintf("%d", c.Client.LXMFSyncLimit),
+		"lxmf_sync_interval":           fmt.Sprintf("%v", c.Client.LXMFSyncInterval/60),
+		"lxmf_sync_limit":              fmt.Sprintf("%v", c.Client.LXMFSyncLimit),
 		"accept_invalid_stamps":        boolStr(c.Client.AcceptInvalidStamps),
 		"max_accepted_size":            fmt.Sprintf("%.0f", c.Client.MaxAcceptedSize),
 		"compact_announce_stream":      boolStr(c.Client.CompactAnnounceStream),
 		"compose_in_markdown":          boolStr(c.Client.ComposeInMarkdown),
 	}
 	if c.Client.RequiredStampCost != nil {
-		clientKeys["required_stamp_cost"] = fmt.Sprintf("%d", *c.Client.RequiredStampCost)
+		clientKeys["required_stamp_cost"] = fmt.Sprintf("%v", *c.Client.RequiredStampCost)
 	} else {
 		clientKeys["required_stamp_cost"] = "None"
 	}
@@ -115,7 +115,7 @@ func Save(c *Config, path string) (retErr error) {
 	})
 
 	rrcKeys := map[string]string{
-		"history_per_room_cap":     fmt.Sprintf("%d", c.RRC.HistoryPerRoomCap),
+		"history_per_room_cap":     fmt.Sprintf("%v", c.RRC.HistoryPerRoomCap),
 		"filter_loaded_history":    boolStr(c.RRC.FilterLoadedHistory),
 		"ephemeral_notices":        fmt.Sprintf("%.0f", c.RRC.EphemeralNotices),
 		"color_mention_timestamps": boolStr(c.RRC.ColorMentionTimestamps),
@@ -137,14 +137,14 @@ func Save(c *Config, path string) (retErr error) {
 
 	nodeKeys := map[string]string{
 		"enable_node":           boolStr(c.Node.EnableNode),
-		"announce_interval":     fmt.Sprintf("%d", c.Node.AnnounceInterval/60),
+		"announce_interval":     fmt.Sprintf("%v", c.Node.AnnounceInterval/60),
 		"announce_at_start":     boolStr(c.Node.AnnounceAtStart),
 		"disable_propagation":   boolStr(c.Node.DisablePropagation),
-		"propagation_cost":      fmt.Sprintf("%d", c.Node.PropagationCost),
+		"propagation_cost":      fmt.Sprintf("%v", c.Node.PropagationCost),
 		"max_transfer_size":     fmt.Sprintf("%.0f", c.Node.MaxTransferSize),
 		"max_sync_size":         fmt.Sprintf("%.0f", c.Node.MaxSyncSize),
-		"page_refresh_interval": fmt.Sprintf("%d", c.Node.PageRefreshInterval),
-		"file_refresh_interval": fmt.Sprintf("%d", c.Node.FileRefreshInterval),
+		"page_refresh_interval": fmt.Sprintf("%v", c.Node.PageRefreshInterval),
+		"file_refresh_interval": fmt.Sprintf("%v", c.Node.FileRefreshInterval),
 		"message_storage_limit": fmt.Sprintf("%.0f", c.Node.MessageStorageLimit),
 	}
 	if c.Node.NodeName != "" {
@@ -163,7 +163,7 @@ func Save(c *Config, path string) (retErr error) {
 		nodeKeys["static_peers"] = strings.Join(c.Node.StaticPeers, ", ")
 	}
 	if c.Node.MaxPeers != nil {
-		nodeKeys["max_peers"] = fmt.Sprintf("%d", *c.Node.MaxPeers)
+		nodeKeys["max_peers"] = fmt.Sprintf("%v", *c.Node.MaxPeers)
 	}
 	writeSection("node", nodeKeys)
 

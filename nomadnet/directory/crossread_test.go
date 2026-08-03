@@ -65,6 +65,6 @@ func TestLoadFromDiskPythonWritten(t *testing.T) {
 		t.Errorf("nil PreferredDelivery should default to direct, got %v", e2.PreferredDelivery)
 	}
 	if len(d.PeerAnnounces()) != 1 || len(d.NodeAnnounces()) != 1 || len(d.PNAnnounces()) != 1 {
-		t.Fatalf("announce counts wrong: peer=%d node=%d pn=%d", len(d.PeerAnnounces()), len(d.NodeAnnounces()), len(d.PNAnnounces()))
+		t.Fatalf("announce counts wrong: peer=%v node=%v pn=%v", len(d.PeerAnnounces()), len(d.NodeAnnounces()), len(d.PNAnnounces()))
 	}
 }

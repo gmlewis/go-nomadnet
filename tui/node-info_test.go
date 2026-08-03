@@ -74,7 +74,7 @@ func TestNodeInfoNotHostingLayout(t *testing.T) {
 	ni := NewNodeInfoDisplay(app, NodeInfoData{HasNode: false})
 
 	if got := ni.Height(); got != 9 {
-		t.Fatalf("Height = %d, want 9 (7 content + 2 border)", got)
+		t.Fatalf("Height = %v, want 9 (7 content + 2 border)", got)
 	}
 
 	rows := renderNodeInfo(t, ni, 50, ni.Height())
@@ -164,7 +164,7 @@ func TestNodeInfoHeightNotHosting(t *testing.T) {
 	app := newTestApp()
 	ni := NewNodeInfoDisplay(app, NodeInfoData{HasNode: false})
 	if got := ni.Height(); got != 9 {
-		t.Errorf("not-hosting Height = %d, want 9", got)
+		t.Errorf("not-hosting Height = %v, want 9", got)
 	}
 }
 

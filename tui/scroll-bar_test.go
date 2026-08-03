@@ -119,7 +119,7 @@ func TestScrollBarFitsNoBar(t *testing.T) {
 	col := scrollBarColumn(rows, 20)
 	for i, c := range col {
 		if c == scrollBarThumb {
-			t.Errorf("rightmost column row %d = ┃, want no thumb (content fits): col=%q", i, string(col))
+			t.Errorf("rightmost column row %v = ┃, want no thumb (content fits): col=%q", i, string(col))
 		}
 	}
 	// The TextView should have used the full width, so "only a few lines"
@@ -185,7 +185,7 @@ func TestScrollBarThumbSizeWrappedContent(t *testing.T) {
 	tv.Draw(screen)
 	trueRowsMax := tv.GetWrappedLineCount()
 	if trueRowsMax <= 0 {
-		t.Fatalf("trueRowsMax = %d, want > 0", trueRowsMax)
+		t.Fatalf("trueRowsMax = %v, want > 0", trueRowsMax)
 	}
 
 	const h = 10
@@ -212,7 +212,7 @@ func TestScrollBarThumbSizeWrappedContent(t *testing.T) {
 	}
 	gotThumb := thumbEnd - thumbStart + 1
 	if gotThumb != wantThumb {
-		t.Errorf("thumb height = %d (rows %d-%d), want %d (h=%d trueRowsMax=%d); col=%q",
+		t.Errorf("thumb height = %v (rows %v-%v), want %v (h=%v trueRowsMax=%v); col=%q",
 			gotThumb, thumbStart, thumbEnd, wantThumb, h, trueRowsMax, string(col))
 	}
 }

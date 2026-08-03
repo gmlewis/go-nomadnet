@@ -46,7 +46,7 @@ func TestReadIndexPythonCompat(t *testing.T) {
 	want := loadPyIndexJSON(t)
 
 	if len(got) != len(want) {
-		t.Fatalf("index entry count = %d, want %d", len(got), len(want))
+		t.Fatalf("index entry count = %v, want %v", len(got), len(want))
 	}
 	for fn, wantEntry := range want {
 		gotEntry, ok := got[fn]

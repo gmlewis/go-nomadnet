@@ -110,7 +110,7 @@ func TestStyledLinesToTviewTextUnderlineNoLeak(t *testing.T) {
 				for i := 0; i < len(runes); i++ {
 					_, _, attr := styleAt(screen, x-i, y)
 					if attr&tcell.AttrUnderline != 0 {
-						t.Errorf("plain line cell (%d,%d) carries AttrUnderline — underline leaked from previous underlined run (tview [-:-:-] does not reset underline)", x-i, y)
+						t.Errorf("plain line cell (%v,%v) carries AttrUnderline — underline leaked from previous underlined run (tview [-:-:-] does not reset underline)", x-i, y)
 					}
 				}
 				return

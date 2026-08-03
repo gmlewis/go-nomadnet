@@ -81,7 +81,7 @@ func TestAppClearTmpDir(t *testing.T) {
 	a.ClearTmpDir()
 	entries, _ := os.ReadDir(a.TmpFilesPath)
 	if len(entries) != 0 {
-		t.Fatalf("tmp dir not empty: %d entries", len(entries))
+		t.Fatalf("tmp dir not empty: %v entries", len(entries))
 	}
 }
 

@@ -90,7 +90,7 @@ func TestCalcCoordsGolden(t *testing.T) {
 		for pos, want := range c.coords {
 			gotX, gotY := CalcCoords(c.text, c.maxcol, pos)
 			if gotX != want.x || gotY != want.y {
-				t.Errorf("CalcCoords(%q, %d, %d) = (%d,%d), want (%d,%d)",
+				t.Errorf("CalcCoords(%q, %v, %v) = (%v,%v), want (%v,%v)",
 					c.text, c.maxcol, pos, gotX, gotY, want.x, want.y)
 			}
 		}

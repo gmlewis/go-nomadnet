@@ -90,7 +90,7 @@ func TestDisplayMessagesSortingAndFields(t *testing.T) {
 
 	got := conv.DisplayMessages()
 	if len(got) != 2 {
-		t.Fatalf("DisplayMessages returned %d entries, want 2", len(got))
+		t.Fatalf("DisplayMessages returned %v entries, want 2", len(got))
 	}
 
 	// Ascending by sort_timestamp: oldest first.
@@ -148,6 +148,6 @@ func TestDisplayMessagesEmpty(t *testing.T) {
 	}
 	got := conv.DisplayMessages()
 	if len(got) != 0 {
-		t.Errorf("DisplayMessages returned %d entries, want 0", len(got))
+		t.Errorf("DisplayMessages returned %v entries, want 0", len(got))
 	}
 }

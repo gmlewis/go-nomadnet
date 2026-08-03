@@ -74,11 +74,11 @@ func TestUrwidSpaceWrap(t *testing.T) {
 			t.Parallel()
 			got := urwidSpaceWrap(tt.text, tt.width)
 			if len(got) != len(tt.want) {
-				t.Fatalf("urwidSpaceWrap(%q, %d) = %d lines, want %d\n got=%#v", tt.text, tt.width, len(got), len(tt.want), got)
+				t.Fatalf("urwidSpaceWrap(%q, %v) = %v lines, want %v\n got=%#v", tt.text, tt.width, len(got), len(tt.want), got)
 			}
 			for i := range tt.want {
 				if got[i] != tt.want[i] {
-					t.Errorf("urwidSpaceWrap(%q, %d) line %d = %q, want %q", tt.text, tt.width, i, got[i], tt.want[i])
+					t.Errorf("urwidSpaceWrap(%q, %v) line %v = %q, want %q", tt.text, tt.width, i, got[i], tt.want[i])
 				}
 			}
 		})
@@ -123,7 +123,7 @@ func TestMenuMouseClick(t *testing.T) {
 	for _, tt := range clickTests {
 		md.handleClick(tt.x)
 		if md.activePage != tt.wantPage {
-			t.Errorf("handleClick(%d) selected page %q, want %q", tt.x, md.activePage, tt.wantPage)
+			t.Errorf("handleClick(%v) selected page %q, want %q", tt.x, md.activePage, tt.wantPage)
 		}
 	}
 }

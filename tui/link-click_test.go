@@ -60,7 +60,7 @@ func TestLinkClickTrackerSingleLink(t *testing.T) {
 	for _, tt := range tests {
 		got := tracker.FindLinkAtPosition(tt.pos)
 		if got != tt.want {
-			t.Errorf("FindLinkAtPosition(%d) = %q, want %q", tt.pos, got, tt.want)
+			t.Errorf("FindLinkAtPosition(%v) = %q, want %q", tt.pos, got, tt.want)
 		}
 	}
 }
@@ -96,7 +96,7 @@ func TestLinkClickTrackerMultipleLinks(t *testing.T) {
 	for _, tt := range tests {
 		got := tracker.FindLinkAtPosition(tt.pos)
 		if got != tt.want {
-			t.Errorf("FindLinkAtPosition(%d) = %q, want %q", tt.pos, got, tt.want)
+			t.Errorf("FindLinkAtPosition(%v) = %q, want %q", tt.pos, got, tt.want)
 		}
 	}
 }
@@ -129,6 +129,6 @@ func TestLinkClickTrackerSetLinks(t *testing.T) {
 	}
 	tracker.SetLinks([]LinkPosition{{Start: 0, End: 5, Target: "test"}})
 	if len(tracker.Links()) != 1 {
-		t.Errorf("after SetLinks, got %d links, want 1", len(tracker.Links()))
+		t.Errorf("after SetLinks, got %v links, want 1", len(tracker.Links()))
 	}
 }

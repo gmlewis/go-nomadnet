@@ -76,7 +76,7 @@ func TestInterfaceStoreList(t *testing.T) {
 
 	all := store.List()
 	if len(all) != 2 {
-		t.Fatalf("count = %d, want 2", len(all))
+		t.Fatalf("count = %v, want 2", len(all))
 	}
 	// Should be sorted by name
 	if all[0].Name != "eth0" {
@@ -93,7 +93,7 @@ func TestInterfaceStoreConnectedCount(t *testing.T) {
 	store.Add(InterfaceInfo{Name: "eth2", Status: "connected"})
 
 	if got := store.ConnectedCount(); got != 2 {
-		t.Errorf("ConnectedCount() = %d, want 2", got)
+		t.Errorf("ConnectedCount() = %v, want 2", got)
 	}
 }
 
@@ -107,7 +107,7 @@ func TestInterfaceStoreFilterByType(t *testing.T) {
 
 	tcp := store.FilterByType("TCPClientInterface")
 	if len(tcp) != 2 {
-		t.Errorf("TCPClientInterface count = %d, want 2", len(tcp))
+		t.Errorf("TCPClientInterface count = %v, want 2", len(tcp))
 	}
 }
 
@@ -120,7 +120,7 @@ func TestInterfaceStoreSearch(t *testing.T) {
 
 	eth := store.SearchByName("eth")
 	if len(eth) != 1 {
-		t.Errorf("Search('eth') returned %d, want 1", len(eth))
+		t.Errorf("Search('eth') returned %v, want 1", len(eth))
 	}
 }
 
@@ -134,13 +134,13 @@ func TestTrafficRingBuffer(t *testing.T) {
 
 	samples := rb.Samples()
 	if len(samples) != 5 {
-		t.Fatalf("Samples() returned %d, want 5", len(samples))
+		t.Fatalf("Samples() returned %v, want 5", len(samples))
 	}
 	// Last 5 values should be 5,6,7,8,9
 	expected := []float64{5, 6, 7, 8, 9}
 	for i, v := range samples {
 		if v != expected[i] {
-			t.Errorf("sample[%d] = %v, want %v", i, v, expected[i])
+			t.Errorf("sample[%v] = %v, want %v", i, v, expected[i])
 		}
 	}
 }
@@ -151,7 +151,7 @@ func TestTrafficRingBufferEmpty(t *testing.T) {
 	rb := NewTrafficRingBuffer(5)
 	samples := rb.Samples()
 	if len(samples) != 0 {
-		t.Errorf("empty buffer Samples() returned %d, want 0", len(samples))
+		t.Errorf("empty buffer Samples() returned %v, want 0", len(samples))
 	}
 }
 
@@ -163,7 +163,7 @@ func TestInterfaceStoreRecordTraffic(t *testing.T) {
 
 	samples := store.TrafficSamples("eth0")
 	if len(samples) != 1 {
-		t.Errorf("Samples() returned %d, want 1", len(samples))
+		t.Errorf("Samples() returned %v, want 1", len(samples))
 	}
 }
 

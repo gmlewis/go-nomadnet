@@ -157,7 +157,7 @@ func TestFileBrowserDialogListEntries(t *testing.T) {
 	entries := fbd.Entries()
 
 	if len(entries) < 2 {
-		t.Errorf("Entries returned %d, want at least 2", len(entries))
+		t.Errorf("Entries returned %v, want at least 2", len(entries))
 	}
 
 	var hasDir, hasFile bool

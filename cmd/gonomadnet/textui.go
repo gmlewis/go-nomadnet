@@ -1545,8 +1545,15 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	}
 
 	wireBrowser(browserDisplay)
+	// Release-focus: Left at the start of the focused line in the page body
+	// returns focus to the owning view (Python delegate.micron_released_focus →
+	// focus_lists / the menu, MicronParser.py:972-974). The standalone browser
+	// page hands focus back to the menu bar; the Network right pane hands it to
+	// the left node/announce list.
+	browserDisplay.OnReleaseFocus = func() { main.FocusMenu() }
 	if ndBd := networkDisplay.BrowserDisplay(); ndBd != nil {
 		wireBrowser(ndBd)
+		ndBd.OnReleaseFocus = func() { networkDisplay.FocusLists() }
 	}
 
 	// Wire network connect to browser (loads page in Network display's Remote Node pane and full browser)

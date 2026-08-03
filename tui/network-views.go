@@ -130,7 +130,7 @@ func NewLXMFPeersView(peers []LXMFPeerEntry) *LXMFPeersView {
 			status = "[red]dead[-]"
 		}
 		text := fmt.Sprintf("%s %s %s", p.Name, status, ShortHash(p.Hash, 8))
-		secondary := fmt.Sprintf("Pending: %d", p.Pending)
+		secondary := fmt.Sprintf("Pending: %v", p.Pending)
 		lv.list.AddItem(text, secondary, 0, nil)
 	}
 

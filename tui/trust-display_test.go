@@ -197,7 +197,7 @@ func TestSearchConversations(t *testing.T) {
 			t.Parallel()
 			got := SearchConversations(convs, tt.query)
 			if len(got) != tt.count {
-				t.Errorf("SearchConversations(%q) returned %d, want %d", tt.query, len(got), tt.count)
+				t.Errorf("SearchConversations(%q) returned %v, want %v", tt.query, len(got), tt.count)
 			}
 		})
 	}
@@ -208,7 +208,7 @@ func TestSearchConversationsEmptyInput(t *testing.T) {
 
 	got := SearchConversations(nil, "test")
 	if len(got) != 0 {
-		t.Errorf("SearchConversations(nil, %q) returned %d, want 0", "test", len(got))
+		t.Errorf("SearchConversations(nil, %q) returned %v, want 0", "test", len(got))
 	}
 }
 

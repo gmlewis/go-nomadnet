@@ -113,7 +113,7 @@ func TestExtractPartialsGolden(t *testing.T) {
 	t.Run("two partials in one page", func(t *testing.T) {
 		got := ExtractPartials("`{a`1}\n`{b`2`pid=zz}\n")
 		if len(got) != 2 {
-			t.Fatalf("got %d partials, want 2: %+v", len(got), got)
+			t.Fatalf("got %v partials, want 2: %+v", len(got), got)
 		}
 		if got[0].URL != "a" || got[0].Refresh != 1 || got[0].Descriptor != "a|1" {
 			t.Errorf("first partial = %+v, want URL=a Refresh=1 Descriptor=a|1", got[0])

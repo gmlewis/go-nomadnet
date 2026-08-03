@@ -32,9 +32,27 @@ type BrowserDisplay struct {
 	widget  tview.Primitive
 	layout  *tview.Flex
 	urlBar  *ReadlineEdit
-	content *tview.TextView
+	content *browserPageView
 	history []string
 	histIdx int
+
+	// Per-line focus + part-cursor nav model, mirroring Python's Pile of
+	// LinkableText (MicronParser.py:858-1048): focusLine is the focused
+	// selectable line; lineCursors[idx] is the rune offset of the part cursor on
+	// line idx. cursorLastKeypress/cursorHasKeypress drive the 2s hardware-
+	// cursor visibility window (LinkableText.key_timeout=2); cursorHideTimer
+	// queues the expiry redraw. See browser-nav.go.
+	focusLine          int
+	lineCursors        []int
+	cursorLastKeypress time.Time
+	cursorHasKeypress  bool
+	cursorHideTimer    *time.Timer
+	// OnReleaseFocus fires when Left is pressed at the start of the focused
+	// line's first part — Python's delegate.micron_released_focus → focus_lists
+	// (MicronParser.py:972-974). For the Network right pane it shifts focus to
+	// the left node list; for the standalone browser page it returns focus to
+	// the menu bar.
+	OnReleaseFocus func()
 
 	// currentDest is the 16-byte destination hash of the page currently loaded
 	// (nil until the first successful navigation), used to resolve relative
@@ -102,13 +120,14 @@ func NewBrowserDisplay(app *App) *BrowserDisplay {
 	bd.urlBar.SetFieldBackgroundColor(tcell.NewHexColor(0x222222))
 	bd.urlBar.SetFieldTextColor(tcell.NewHexColor(0xdddddd))
 
-	// Content area
-	bd.content = tview.NewTextView().
-		SetDynamicColors(true).
-		SetScrollable(true).
-		SetRegions(true).
-		SetTextColor(tcell.NewHexColor(0xbbbbbb)).
-		SetText("[gray]Enter a URL and press Enter to load a page[-]")
+	// Content area — a browserPageView wraps a TextView so the page body can
+	// reposition the hardware cursor on each draw (see browser-nav.go). All
+	// TextView behavior (scrolling, color tags, region tags, #!bg/#!fg) is
+	// preserved; the nav model drives scrolling + link dispatch instead of the
+	// TextView's own InputHandler.
+	bd.content = newBrowserPageView(bd)
+	bd.content.SetTextColor(tcell.NewHexColor(0xbbbbbb))
+	bd.content.SetText("[gray]Enter a URL and press Enter to load a page[-]")
 
 	// Navigation bar
 	navBar := tview.NewTextView().
@@ -132,23 +151,17 @@ func NewBrowserDisplay(app *App) *BrowserDisplay {
 }
 
 // handleInput processes keyboard shortcuts for the browser display.
-// Matches Python's BrowserFrame.keypress() at Browser.py:21: the C-w/d/f/r/u/
-// s/b/y/g shortcuts route to the delegate callbacks, and Up at the top of the
-// page content collapses focus to the menu bar (the Go port's unified body
-// focus model — Python's BrowserFrame scrolls on Up; the Go port mirrors the
-// log/guide pages and returns focus to the menu on Up-at-top, since the
-// centralized MainDisplay.bodyListAtTop only covers *tview.List). Up on the URL
-// bar is forwarded so the input field keeps focus; Up mid-page is forwarded so
-// the content scrolls.
+// Matches Python's BrowserFrame.keypress() (Browser.py:21): the C-w/d/f/r/u/
+// s/b/y/g shortcuts route to the delegate callbacks, and when the page body
+// (content) is focused every navigation key runs through the Python page-key
+// model in handleNavKey (browser-nav.go) — arrows move per-line focus and the
+// per-line part cursor, Home/End/PgUp/PgDn scroll with automove, Enter/Space
+// follow the link at the cursor, Left-at-start releases focus. When the URL
+// bar (or any non-content child) holds focus, navigation keys pass through
+// unchanged so the input field keeps editing.
 func (bd *BrowserDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 	if event == nil {
 		return event
-	}
-	if event.Key() == tcell.KeyUp && bd.contentAtTop() {
-		if bd.app != nil && bd.app.Main != nil {
-			bd.app.Main.FocusMenu()
-		}
-		return nil
 	}
 	switch event.Key() {
 	case tcell.KeyCtrlW:
@@ -199,31 +212,17 @@ func (bd *BrowserDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 		return nil
 	}
 
+	// Page body focused: run the full Python page-key model (browser-nav.go).
+	if bd.content.HasFocus() && bd.handleNavKey(event) {
+		return nil
+	}
+
 	return event
 }
 
 // Widget returns the tview primitive for this display.
 func (bd *BrowserDisplay) Widget() tview.Primitive {
 	return bd.widget
-}
-
-// contentAtTop reports whether the page content (not the URL bar) is focused
-// and scrolled to its top, the condition under which Up collapses focus to the
-// menu bar. It is false while a modal dialog is open (focus must not be stolen
-// from an overlay) and when the URL input field rather than the content holds
-// focus (Up must edit the URL, not escape to the menu). The browser content is
-// a scrollable TextView; the centralized MainDisplay.bodyListAtTop dispatcher
-// only recognizes *tview.List, so the browser owns this transition, mirroring
-// the log display (log.go:103-111) and the guide reader.
-func (bd *BrowserDisplay) contentAtTop() bool {
-	if bd.app != nil && bd.app.Dialogs != nil && bd.app.Dialogs.Open() {
-		return false
-	}
-	if bd.app != nil && bd.app.GetFocus() != bd.content {
-		return false
-	}
-	row, _ := bd.content.GetScrollOffset()
-	return row <= 0
 }
 
 // LoadURL loads a URL and displays the content.
@@ -329,6 +328,13 @@ func (bd *BrowserDisplay) renderPage() {
 	}
 
 	bd.content.SetText(text)
+
+	// Reset the per-line focus + part-cursor nav model for the freshly rendered
+	// page (browser-nav.go): focus defaults to the first selectable line, each
+	// line's cursor starts at part 0, and the hardware-cursor visibility window
+	// is cleared. Mirrors Python update_page_display building a fresh Pile of
+	// LinkableText on every load (Browser.py:469-486).
+	bd.initNavState()
 }
 
 // JumpToAnchor scrolls the browser content so the named anchor's line sits at
@@ -598,9 +604,16 @@ func (bd *BrowserDisplay) MarkedLink(target, fields string) {
 	bd.app.Main.SetShortcut("browser", "Link to "+t)
 }
 
-// MicronReleasedFocus handles focus release from the micron text area.
+// MicronReleasedFocus handles focus release from the micron text area, mirroring
+// Python delegate.micron_released_focus → focus_lists (MicronParser.py:972-974):
+// it clears the link peek and hands focus back to the owning view via
+// OnReleaseFocus (the Network left list, or the menu bar for the standalone
+// browser page).
 func (bd *BrowserDisplay) MicronReleasedFocus() {
 	bd.MarkedLink("", "")
+	if bd.OnReleaseFocus != nil {
+		bd.OnReleaseFocus()
+	}
 }
 
 // HandleLink dispatches a link target based on its type.

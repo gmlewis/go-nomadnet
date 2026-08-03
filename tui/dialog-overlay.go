@@ -106,7 +106,7 @@ func (dm *DialogManager) showOverlay(app *tview.Application, title string, conte
 	prevFocus := app.GetFocus()
 	dialog := NewDialogLineBox(title, content, func() { dm.dismissTop() })
 	entry := &dialogEntry{
-		pageName:  fmt.Sprintf("dialog-%d", dm.seq),
+		pageName:  fmt.Sprintf("dialog-%v", dm.seq),
 		dialog:    dialog,
 		overlay:   centerDialog(dialog, width, height),
 		onDismiss: onDismiss,

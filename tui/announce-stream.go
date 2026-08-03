@@ -191,7 +191,7 @@ func (as *announceStreamDisplay) update() {
 		as.ilb.SetEmptyText("")
 	}
 
-	as.tabNodes.SetLabel(fmt.Sprintf("Nodes (%d)", nodeCount))
-	as.tabPeers.SetLabel(fmt.Sprintf("Peers (%d)", peerCount))
-	as.tabPN.SetLabel(fmt.Sprintf("Propagation Nodes (%d)", pnCount))
+	as.tabNodes.SetLabel(fmt.Sprintf("Nodes (%v)", nodeCount))
+	as.tabPeers.SetLabel(fmt.Sprintf("Peers (%v)", peerCount))
+	as.tabPN.SetLabel(fmt.Sprintf("Propagation Nodes (%v)", pnCount))
 }

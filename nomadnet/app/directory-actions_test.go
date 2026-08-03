@@ -158,7 +158,7 @@ func TestRememberPeerInfoRoundTrip(t *testing.T) {
 		t.Fatal("pinned entry should have a non-nil SortRank")
 	}
 	if *entry.SortRank != 0 {
-		t.Errorf("SortRank=%d want 0", *entry.SortRank)
+		t.Errorf("SortRank=%v want 0", *entry.SortRank)
 	}
 
 	// Unpinning the peer clears the SortRank (sort_rank=None in Python).
@@ -216,11 +216,11 @@ func TestRemoveAnnounce(t *testing.T) {
 		SourceHash: []byte{1},
 	}, false)
 	if len(a.Dir.AnnounceStream()) != 1 {
-		t.Fatalf("expected 1 announce, got %d", len(a.Dir.AnnounceStream()))
+		t.Fatalf("expected 1 announce, got %v", len(a.Dir.AnnounceStream()))
 	}
 	a.RemoveAnnounce(ts)
 	if len(a.Dir.AnnounceStream()) != 0 {
-		t.Fatalf("expected 0 announces after remove, got %d", len(a.Dir.AnnounceStream()))
+		t.Fatalf("expected 0 announces after remove, got %v", len(a.Dir.AnnounceStream()))
 	}
 	// Nil-dir guard.
 	a.Dir = nil

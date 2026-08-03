@@ -78,7 +78,7 @@ func TestFindLineStart(t *testing.T) {
 			t.Parallel()
 			got := lineStart([]rune(tt.text), tt.pos)
 			if got != tt.want {
-				t.Errorf("lineStart(%q, %d) = %d, want %d", tt.text, tt.pos, got, tt.want)
+				t.Errorf("lineStart(%q, %v) = %v, want %v", tt.text, tt.pos, got, tt.want)
 			}
 		})
 	}
@@ -105,7 +105,7 @@ func TestFindLineEnd(t *testing.T) {
 			t.Parallel()
 			got := lineEnd([]rune(tt.text), tt.pos)
 			if got != tt.want {
-				t.Errorf("lineEnd(%q, %d) = %d, want %d", tt.text, tt.pos, got, tt.want)
+				t.Errorf("lineEnd(%q, %v) = %v, want %v", tt.text, tt.pos, got, tt.want)
 			}
 		})
 	}
@@ -194,7 +194,7 @@ func TestReadlineEditCursorTracking(t *testing.T) {
 
 	// Verify cursor position tracking
 	if re.cursorPos != 5 {
-		t.Errorf("cursor pos = %d, want 5", re.cursorPos)
+		t.Errorf("cursor pos = %v, want 5", re.cursorPos)
 	}
 }
 
@@ -227,7 +227,7 @@ func TestBackwardWord(t *testing.T) {
 	re.handleKey(event)
 	pos := re.cursorPos
 	if pos != 12 {
-		t.Errorf("after backward word from end: pos = %d, want 12 (start of 'foo')", pos)
+		t.Errorf("after backward word from end: pos = %v, want 12 (start of 'foo')", pos)
 	}
 
 	// Ctrl-Left again: skip space, skip word "world" → start of "world"
@@ -235,7 +235,7 @@ func TestBackwardWord(t *testing.T) {
 	re.handleKey(event)
 	pos = re.cursorPos
 	if pos != 6 {
-		t.Errorf("after backward word from 12: pos = %d, want 6 (start of 'world')", pos)
+		t.Errorf("after backward word from 12: pos = %v, want 6 (start of 'world')", pos)
 	}
 
 	// Ctrl-Left again: skip space, skip word "hello" → start of "hello"
@@ -243,7 +243,7 @@ func TestBackwardWord(t *testing.T) {
 	re.handleKey(event)
 	pos = re.cursorPos
 	if pos != 0 {
-		t.Errorf("after backward word from 6: pos = %d, want 0 (start of 'hello')", pos)
+		t.Errorf("after backward word from 6: pos = %v, want 0 (start of 'hello')", pos)
 	}
 }
 
@@ -259,7 +259,7 @@ func TestForwardWord(t *testing.T) {
 	re.handleKey(event)
 	pos := re.cursorPos
 	if pos != 5 {
-		t.Errorf("after forward word from 0: pos = %d, want 5 (end of 'hello')", pos)
+		t.Errorf("after forward word from 0: pos = %v, want 5 (end of 'hello')", pos)
 	}
 
 	// Ctrl-Right again: skip space, skip word "world" → end of "world"
@@ -267,7 +267,7 @@ func TestForwardWord(t *testing.T) {
 	re.handleKey(event)
 	pos = re.cursorPos
 	if pos != 11 {
-		t.Errorf("after forward word from 5: pos = %d, want 11 (end of 'world')", pos)
+		t.Errorf("after forward word from 5: pos = %v, want 11 (end of 'world')", pos)
 	}
 
 	// Ctrl-Right again: skip space, skip word "foo" → end of "foo"
@@ -275,7 +275,7 @@ func TestForwardWord(t *testing.T) {
 	re.handleKey(event)
 	pos = re.cursorPos
 	if pos != 15 {
-		t.Errorf("after forward word from 11: pos = %d, want 15 (end of 'foo')", pos)
+		t.Errorf("after forward word from 11: pos = %v, want 15 (end of 'foo')", pos)
 	}
 }
 
@@ -292,7 +292,7 @@ func TestWordMovementWithSpecialChars(t *testing.T) {
 	re.handleKey(event)
 	pos := re.cursorPos
 	if pos != 16 {
-		t.Errorf("special chars backward: pos = %d, want 16 (start of 'bar')", pos)
+		t.Errorf("special chars backward: pos = %v, want 16 (start of 'bar')", pos)
 	}
 
 	// Ctrl-Right from start: skip non-word (none), skip word "hello" → end of "hello"
@@ -301,6 +301,6 @@ func TestWordMovementWithSpecialChars(t *testing.T) {
 	re.handleKey(event)
 	pos = re.cursorPos
 	if pos != 5 {
-		t.Errorf("special chars forward: pos = %d, want 5 (end of 'hello')", pos)
+		t.Errorf("special chars forward: pos = %v, want 5 (end of 'hello')", pos)
 	}
 }

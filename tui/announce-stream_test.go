@@ -54,7 +54,7 @@ func TestUrwidColumnWidths(t *testing.T) {
 			}
 			for i := range got {
 				if got[i] != tc.want[i] {
-					t.Errorf("col %d: got %d, want %d (all %v)", i, got[i], tc.want[i], got)
+					t.Errorf("col %v: got %v, want %v (all %v)", i, got[i], tc.want[i], got)
 				}
 			}
 		})
@@ -112,7 +112,7 @@ func TestTabButtonRequiredHeight(t *testing.T) {
 	for _, c := range cases {
 		tb := NewTabButton(c.label)
 		if got := tb.RequiredHeight(c.w); got != c.want {
-			t.Errorf("RequiredHeight(%q,%d) = %d, want %d", c.label, c.w, got, c.want)
+			t.Errorf("RequiredHeight(%q,%v) = %v, want %v", c.label, c.w, got, c.want)
 		}
 	}
 }
@@ -190,7 +190,7 @@ func TestAnnounceStreamTabFiltering(t *testing.T) {
 
 	// Default tab = nodes: one node entry shown.
 	if got := as.ilb.List.GetItemCount(); got != 1 {
-		t.Errorf("nodes tab: list has %d items, want 1", got)
+		t.Errorf("nodes tab: list has %v items, want 1", got)
 	}
 	if as.tabNodes.Label() != "Nodes (1)" || as.tabPeers.Label() != "Peers (1)" || as.tabPN.Label() != "Propagation Nodes (1)" {
 		t.Errorf("tab labels = %q/%q/%q, want Nodes (1)/Peers (1)/Propagation Nodes (1)",
@@ -199,11 +199,11 @@ func TestAnnounceStreamTabFiltering(t *testing.T) {
 
 	as.SetCurrentTab(tabPeers)
 	if got := as.ilb.List.GetItemCount(); got != 1 {
-		t.Errorf("peers tab: list has %d items, want 1", got)
+		t.Errorf("peers tab: list has %v items, want 1", got)
 	}
 	as.SetCurrentTab(tabPN)
 	if got := as.ilb.List.GetItemCount(); got != 1 {
-		t.Errorf("pn tab: list has %d items, want 1", got)
+		t.Errorf("pn tab: list has %v items, want 1", got)
 	}
 }
 
@@ -222,18 +222,18 @@ func TestAnnounceStreamSearchFilter(t *testing.T) {
 	as := nd.announceStream
 
 	if got := as.ilb.List.GetItemCount(); got != 2 {
-		t.Fatalf("before search: %d items, want 2", got)
+		t.Fatalf("before search: %v items, want 2", got)
 	}
 	as.search.SetText("alpha")
 	as.onSearchChange()
 	if got := as.ilb.List.GetItemCount(); got != 1 {
-		t.Errorf("after search 'alpha': %d items, want 1", got)
+		t.Errorf("after search 'alpha': %v items, want 1", got)
 	}
 	// Clearing the search restores both.
 	as.search.SetText("")
 	as.onSearchChange()
 	if got := as.ilb.List.GetItemCount(); got != 2 {
-		t.Errorf("after clearing search: %d items, want 2", got)
+		t.Errorf("after clearing search: %v items, want 2", got)
 	}
 }
 

@@ -26,6 +26,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
@@ -46,17 +47,22 @@ func NewIntroDisplay(title string, version string) *IntroDisplay {
 	// BigText(title, HalfBlock5x4Font). The untrimmed render keeps every row
 	// the same width so AlignCenter aligns the glyphs consistently (trimming
 	// trailing spaces per row would shift narrower rows left). intro_title is
-	// not in nomadnet's palette, so urwid renders it in the default color.
+	// not in nomadnet's palette, so urwid falls back to its default style
+	// (terminal-default fg/bg, no forced color) — replicated here with
+	// tcell.ColorDefault instead of tview's forced PrimaryTextColor (white).
 	id.bigView = tview.NewTextView().
 		SetTextAlign(tview.AlignCenter).
+		SetTextColor(tcell.ColorDefault).
 		SetText(strings.Join(halfBlock5x4Render(title), "\n"))
 
 	id.versionView = tview.NewTextView().
 		SetTextAlign(tview.AlignCenter).
+		SetTextColor(tcell.ColorDefault).
 		SetText(fmt.Sprintf("Version %s", version))
 
 	id.startingView = tview.NewTextView().
 		SetTextAlign(tview.AlignCenter).
+		SetTextColor(tcell.ColorDefault).
 		SetText("-= Starting =- ")
 
 	// Pile: big text (font height 4) + blank + version + divider + starting.

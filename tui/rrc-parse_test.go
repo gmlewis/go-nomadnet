@@ -71,14 +71,14 @@ func TestParseWhoNotice(t *testing.T) {
 				t.Errorf("room = %q, want %q", room, tt.wantRoom)
 			}
 			if tt.wantLen > 0 && len(entries) != tt.wantLen {
-				t.Errorf("len(entries) = %d, want %d", len(entries), tt.wantLen)
+				t.Errorf("len(entries) = %v, want %v", len(entries), tt.wantLen)
 			}
 			for i, nick := range tt.wantNicks {
 				if i >= len(entries) {
-					t.Fatalf("entries[%d] does not exist", i)
+					t.Fatalf("entries[%v] does not exist", i)
 				}
 				if entries[i].Nick != nick {
-					t.Errorf("entries[%d].Nick = %q, want %q", i, entries[i].Nick, nick)
+					t.Errorf("entries[%v].Nick = %q, want %q", i, entries[i].Nick, nick)
 				}
 			}
 		})
@@ -152,7 +152,7 @@ func TestParseRoomListNotice(t *testing.T) {
 				t.Fatalf("ParseRoomListNotice(%q) returned error: %v", tt.text, err)
 			}
 			if len(rooms) != tt.wantLen {
-				t.Errorf("len(rooms) = %d, want %d", len(rooms), tt.wantLen)
+				t.Errorf("len(rooms) = %v, want %v", len(rooms), tt.wantLen)
 			}
 			for _, key := range tt.wantKeys {
 				if _, ok := rooms[key]; !ok {
@@ -236,7 +236,7 @@ func TestShortHash(t *testing.T) {
 			t.Parallel()
 			got := ShortHash(tt.input, tt.n)
 			if got != tt.want {
-				t.Errorf("ShortHash(%q, %d) = %q, want %q", tt.input, tt.n, got, tt.want)
+				t.Errorf("ShortHash(%q, %v) = %q, want %q", tt.input, tt.n, got, tt.want)
 			}
 		})
 	}
@@ -261,7 +261,7 @@ func TestFormatTimestamp(t *testing.T) {
 			t.Parallel()
 			got := FormatTimestamp(tt.tsMs)
 			if got != tt.want {
-				t.Errorf("FormatTimestamp(%d) = %q, want %q", tt.tsMs, got, tt.want)
+				t.Errorf("FormatTimestamp(%v) = %q, want %q", tt.tsMs, got, tt.want)
 			}
 		})
 	}
@@ -288,7 +288,7 @@ func TestScanCodeBlocks(t *testing.T) {
 			t.Parallel()
 			regions := ScanCodeBlocks(tt.text)
 			if len(regions) != tt.wantLen {
-				t.Errorf("ScanCodeBlocks(%q) returned %d regions, want %d", tt.text, len(regions), tt.wantLen)
+				t.Errorf("ScanCodeBlocks(%q) returned %v regions, want %v", tt.text, len(regions), tt.wantLen)
 			}
 		})
 	}
@@ -305,12 +305,12 @@ func TestScanCodeBlockRegions(t *testing.T) {
 	// so it is not a fenced block, and its leading backticks are rejected
 	// as inline openers by the (?<!`) lookbehind.
 	if len(regions) != 1 {
-		t.Fatalf("ScanCodeBlocks returned %d regions, want 1: %+v", len(regions), regions)
+		t.Fatalf("ScanCodeBlocks returned %v regions, want 1: %+v", len(regions), regions)
 	}
 
 	// First region: inline `code`
 	if regions[0].Start != 7 || regions[0].End != 13 {
-		t.Errorf("region 0 = {%d, %d}, want {7, 13}", regions[0].Start, regions[0].End)
+		t.Errorf("region 0 = {%v, %v}, want {7, 13}", regions[0].Start, regions[0].End)
 	}
 }
 
@@ -336,7 +336,7 @@ func TestIsInCodeBlock(t *testing.T) {
 	for _, tt := range tests {
 		got := IsInCodeBlock(tt.pos, blocks)
 		if got != tt.want {
-			t.Errorf("IsInCodeBlock(%d) = %v, want %v", tt.pos, got, tt.want)
+			t.Errorf("IsInCodeBlock(%v) = %v, want %v", tt.pos, got, tt.want)
 		}
 	}
 }

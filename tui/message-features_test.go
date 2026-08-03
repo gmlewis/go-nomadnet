@@ -97,18 +97,18 @@ func TestScanLinks(t *testing.T) {
 			t.Parallel()
 			got := ScanLinks(tt.text)
 			if len(got) != len(tt.want) {
-				t.Errorf("got %d links, want %d", len(got), len(tt.want))
+				t.Errorf("got %v links, want %v", len(got), len(tt.want))
 				for i, l := range got {
-					t.Logf("  [%d] kind=%q target=%q", i, l.Kind, l.Target)
+					t.Logf("  [%v] kind=%q target=%q", i, l.Kind, l.Target)
 				}
 				return
 			}
 			for i := range got {
 				if got[i].Kind != tt.want[i].Kind {
-					t.Errorf("link[%d].Kind = %q, want %q", i, got[i].Kind, tt.want[i].Kind)
+					t.Errorf("link[%v].Kind = %q, want %q", i, got[i].Kind, tt.want[i].Kind)
 				}
 				if got[i].Target != tt.want[i].Target {
-					t.Errorf("link[%d].Target = %q, want %q", i, got[i].Target, tt.want[i].Target)
+					t.Errorf("link[%v].Target = %q, want %q", i, got[i].Target, tt.want[i].Target)
 				}
 			}
 		})
@@ -175,18 +175,18 @@ func TestScanMentions(t *testing.T) {
 			t.Parallel()
 			got := ScanMentions(tt.text, tt.ownNick)
 			if len(got) != len(tt.want) {
-				t.Errorf("got %d mentions, want %d", len(got), len(tt.want))
+				t.Errorf("got %v mentions, want %v", len(got), len(tt.want))
 				for i, m := range got {
-					t.Logf("  [%d] nick=%q self=%v", i, m.Nick, m.IsSelf)
+					t.Logf("  [%v] nick=%q self=%v", i, m.Nick, m.IsSelf)
 				}
 				return
 			}
 			for i := range got {
 				if got[i].Nick != tt.want[i].Nick {
-					t.Errorf("mention[%d].Nick = %q, want %q", i, got[i].Nick, tt.want[i].Nick)
+					t.Errorf("mention[%v].Nick = %q, want %q", i, got[i].Nick, tt.want[i].Nick)
 				}
 				if got[i].IsSelf != tt.want[i].IsSelf {
-					t.Errorf("mention[%d].IsSelf = %v, want %v", i, got[i].IsSelf, tt.want[i].IsSelf)
+					t.Errorf("mention[%v].IsSelf = %v, want %v", i, got[i].IsSelf, tt.want[i].IsSelf)
 				}
 			}
 		})
@@ -266,15 +266,15 @@ func TestNickCompletion(t *testing.T) {
 			t.Parallel()
 			got := CompleteNick(tt.text, tt.cursor, tt.members, tt.self)
 			if len(got) != len(tt.want) {
-				t.Errorf("got %d completions, want %d", len(got), len(tt.want))
+				t.Errorf("got %v completions, want %v", len(got), len(tt.want))
 				for i, c := range got {
-					t.Logf("  [%d] %q", i, c)
+					t.Logf("  [%v] %q", i, c)
 				}
 				return
 			}
 			for i := range got {
 				if got[i] != tt.want[i] {
-					t.Errorf("completion[%d] = %q, want %q", i, got[i], tt.want[i])
+					t.Errorf("completion[%v] = %q, want %q", i, got[i], tt.want[i])
 				}
 			}
 		})

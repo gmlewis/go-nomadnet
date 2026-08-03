@@ -73,7 +73,7 @@ func TestRefreshList(t *testing.T) {
 
 	RefreshList(sl.List, items)
 	if sl.GetItemCount() != 2 {
-		t.Errorf("item count = %d, want 2", sl.GetItemCount())
+		t.Errorf("item count = %v, want 2", sl.GetItemCount())
 	}
 }
 
@@ -84,7 +84,7 @@ func TestRefreshListEmpty(t *testing.T) {
 	RefreshList(sl.List, nil)
 
 	if sl.GetItemCount() != 1 {
-		t.Errorf("item count = %d, want 1 (empty state)", sl.GetItemCount())
+		t.Errorf("item count = %v, want 1 (empty state)", sl.GetItemCount())
 	}
 }
 

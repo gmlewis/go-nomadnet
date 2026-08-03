@@ -80,7 +80,7 @@ func TestSaveDownload(t *testing.T) {
 		t.Errorf("first save name = %q, want report.pdf", name)
 	}
 	if size != 5 {
-		t.Errorf("first save size = %d, want 5", size)
+		t.Errorf("first save size = %v, want 5", size)
 	}
 	assertContent(t, filepath.Join(dir, "report.pdf"), "hello")
 

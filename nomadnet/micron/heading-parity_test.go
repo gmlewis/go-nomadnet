@@ -109,7 +109,7 @@ func TestParseHeadingParity(t *testing.T) {
 				t.Fatalf("Parse(%q) produced no heading", tc.markup)
 			}
 			if heading.Level != tc.wantLevel {
-				t.Errorf("Level = %d, want %d", heading.Level, tc.wantLevel)
+				t.Errorf("Level = %v, want %v", heading.Level, tc.wantLevel)
 			}
 			// Concatenate the text of text-node children to compare against
 			// the Python heading content (toggle nodes emit no text).

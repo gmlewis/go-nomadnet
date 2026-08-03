@@ -98,7 +98,7 @@ func TestNetworkDisplayNodesEmptyState(t *testing.T) {
 	nd.addNodeEntry(NodeEntry{SourceHash: "000102030405060708090a0b0c0d0e0f", TrustLevel: "unknown", DisplayName: "Alice"})
 	nd.refreshNodesView()
 	if nd.nodes.GetItemCount() != 1 {
-		t.Errorf("after add, item count = %d, want 1", nd.nodes.GetItemCount())
+		t.Errorf("after add, item count = %v, want 1", nd.nodes.GetItemCount())
 	}
 	if nd.nodesView() != (tview.Primitive)(nd.nodesList) {
 		t.Errorf("nodesView after adding = %T, want nodesList", nd.nodesView())
@@ -214,7 +214,7 @@ func TestNetworkDisplayUpdateLXMFPeersRefreshesTitle(t *testing.T) {
 
 	nd.UpdateLXMFPeers([]LXMFPeerEntry{{Hash: "abcdef", Name: "node1", Alive: true}})
 	if got := nd.lxmfPeers.Count(); got != 1 {
-		t.Errorf("Count = %d, want 1", got)
+		t.Errorf("Count = %v, want 1", got)
 	}
 	if got := nd.listBox.GetTitle(); got != " LXMF Propagation Peers (1) " {
 		t.Errorf("title after update = %q, want count 1", got)
@@ -243,19 +243,19 @@ func TestNetworkDisplayColumnFocusNavigation(t *testing.T) {
 
 	cols.Focus(setFocus)
 	if cols.FocusIndex() != 0 {
-		t.Errorf("initial focusIndex = %d, want 0 (left panel)", cols.FocusIndex())
+		t.Errorf("initial focusIndex = %v, want 0 (left panel)", cols.FocusIndex())
 	}
 
 	// KeyRight moves focus to column 1 (Remote Node browser pane)
 	cols.InputHandler()(tcell.NewEventKey(tcell.KeyRight, 0, tcell.ModNone), setFocus)
 	if cols.FocusIndex() != 1 {
-		t.Errorf("after KeyRight focusIndex = %d, want 1 (browser pane)", cols.FocusIndex())
+		t.Errorf("after KeyRight focusIndex = %v, want 1 (browser pane)", cols.FocusIndex())
 	}
 
 	// KeyLeft moves focus back to column 0 (left panel)
 	cols.InputHandler()(tcell.NewEventKey(tcell.KeyLeft, 0, tcell.ModNone), setFocus)
 	if cols.FocusIndex() != 0 {
-		t.Errorf("after KeyLeft focusIndex = %d, want 0 (left panel)", cols.FocusIndex())
+		t.Errorf("after KeyLeft focusIndex = %v, want 0 (left panel)", cols.FocusIndex())
 	}
 
 	// Mouse click on right pane (e.g. x=60, y=10) sets focus to column 1
@@ -263,6 +263,6 @@ func TestNetworkDisplayColumnFocusNavigation(t *testing.T) {
 	ev := tcell.NewEventMouse(60, 10, tcell.Button1, 0)
 	cols.MouseHandler()(tview.MouseLeftClick, ev, setFocus)
 	if cols.FocusIndex() != 1 {
-		t.Errorf("after mouse click at x=60 focusIndex = %d, want 1 (browser pane)", cols.FocusIndex())
+		t.Errorf("after mouse click at x=60 focusIndex = %v, want 1 (browser pane)", cols.FocusIndex())
 	}
 }

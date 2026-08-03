@@ -108,7 +108,7 @@ func checkClient(t *testing.T, cfg *Config, g map[string]any) {
 	}
 	if has("announce_interval") {
 		if got, want := cfg.Client.AnnounceInterval, gInt(g["announce_interval"]); got != want {
-			t.Errorf("announce_interval = %d, want %d", got, want)
+			t.Errorf("announce_interval = %v, want %v", got, want)
 		}
 	}
 	if has("try_propagation_on_send_fail") {
@@ -123,12 +123,12 @@ func checkClient(t *testing.T, cfg *Config, g map[string]any) {
 	}
 	if has("lxmf_sync_interval") {
 		if got, want := cfg.Client.LXMFSyncInterval, gInt(g["lxmf_sync_interval"]); got != want {
-			t.Errorf("lxmf_sync_interval = %d, want %d", got, want)
+			t.Errorf("lxmf_sync_interval = %v, want %v", got, want)
 		}
 	}
 	if has("lxmf_sync_limit") {
 		if got, want := cfg.Client.LXMFSyncLimit, gIntOrZero(g["lxmf_sync_limit"]); got != want {
-			t.Errorf("lxmf_sync_limit = %d, want %d", got, want)
+			t.Errorf("lxmf_sync_limit = %v, want %v", got, want)
 		}
 	}
 	if has("required_stamp_cost") {
@@ -171,7 +171,7 @@ func checkRRC(t *testing.T, cfg *Config, g map[string]any) {
 
 	if has("history_per_room_cap") {
 		if got, want := cfg.RRC.HistoryPerRoomCap, gInt(g["rrc_history_per_room_cap"]); got != want {
-			t.Errorf("rrc_history_per_room_cap = %d, want %d", got, want)
+			t.Errorf("rrc_history_per_room_cap = %v, want %v", got, want)
 		}
 	}
 	if has("filter_loaded_history") {
@@ -275,22 +275,22 @@ func checkNode(t *testing.T, cfg *Config, g map[string]any) {
 	if has("announce_interval") {
 		// Python stores node_announce_interval in minutes; Go config stores seconds.
 		if got, want := cfg.Node.AnnounceInterval, gInt(g["node_announce_interval"])*60; got != want {
-			t.Errorf("node_announce_interval = %d (sec), want %d (sec)", got, want)
+			t.Errorf("node_announce_interval = %v (sec), want %v (sec)", got, want)
 		}
 	}
 	if has("propagation_cost") {
 		if got, want := cfg.Node.PropagationCost, gInt(g["node_propagation_cost"]); got != want {
-			t.Errorf("node_propagation_cost = %d, want %d", got, want)
+			t.Errorf("node_propagation_cost = %v, want %v", got, want)
 		}
 	}
 	if has("page_refresh_interval") {
 		if got, want := cfg.Node.PageRefreshInterval, gInt(g["page_refresh_interval"]); got != want {
-			t.Errorf("page_refresh_interval = %d, want %d", got, want)
+			t.Errorf("page_refresh_interval = %v, want %v", got, want)
 		}
 	}
 	if has("file_refresh_interval") {
 		if got, want := cfg.Node.FileRefreshInterval, gInt(g["file_refresh_interval"]); got != want {
-			t.Errorf("file_refresh_interval = %d, want %d", got, want)
+			t.Errorf("file_refresh_interval = %v, want %v", got, want)
 		}
 	}
 	if has("prioritise_destinations") {

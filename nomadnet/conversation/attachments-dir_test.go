@@ -192,6 +192,6 @@ func TestExtractAttachmentsNoAttachments(t *testing.T) {
 	}
 	entries, _ := os.ReadDir(attachmentPath)
 	if len(entries) != 0 {
-		t.Fatalf("expected no attachment dirs, got %d", len(entries))
+		t.Fatalf("expected no attachment dirs, got %v", len(entries))
 	}
 }

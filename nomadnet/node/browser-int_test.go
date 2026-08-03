@@ -354,7 +354,7 @@ func TestIntegrationPartialsTriggerSubRequests(t *testing.T) {
 	// Test that pages with partial references can be detected
 	partials := detectPartialsInMarkup("Main Page\n\n>>partial_header\n\nContent here.\n\n>>partial_footer")
 	if len(partials) != 2 {
-		t.Fatalf("detectPartialsInMarkup got %d partials, want 2", len(partials))
+		t.Fatalf("detectPartialsInMarkup got %v partials, want 2", len(partials))
 	}
 	if partials[0] != "partial_header" {
 		t.Errorf("partials[0] = %q, want partial_header", partials[0])

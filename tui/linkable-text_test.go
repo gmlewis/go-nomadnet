@@ -39,7 +39,7 @@ func TestLinkableTextAddLink(t *testing.T) {
 
 	links := lt.Links()
 	if len(links) != 1 {
-		t.Fatalf("expected 1 link, got %d", len(links))
+		t.Fatalf("expected 1 link, got %v", len(links))
 	}
 	if links[0].Target != "https://example.com" {
 		t.Errorf("target = %q, want %q", links[0].Target, "https://example.com")
@@ -92,13 +92,13 @@ func TestLinkableTextMultipleLinks(t *testing.T) {
 
 	links := lt.Links()
 	if len(links) != 3 {
-		t.Fatalf("expected 3 links, got %d", len(links))
+		t.Fatalf("expected 3 links, got %v", len(links))
 	}
 
 	wantTargets := []string{"target1", "target2", "target3"}
 	for i, want := range wantTargets {
 		if links[i].Target != want {
-			t.Errorf("links[%d].Target = %q, want %q", i, links[i].Target, want)
+			t.Errorf("links[%v].Target = %q, want %q", i, links[i].Target, want)
 		}
 	}
 }
@@ -143,7 +143,7 @@ func TestLinkableTextClear(t *testing.T) {
 	lt.Clear()
 
 	if len(lt.Links()) != 0 {
-		t.Errorf("after Clear, links = %d, want 0", len(lt.Links()))
+		t.Errorf("after Clear, links = %v, want 0", len(lt.Links()))
 	}
 	if lt.PlainText() != "" {
 		t.Errorf("after Clear, PlainText = %q, want empty", lt.PlainText())

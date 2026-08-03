@@ -29,7 +29,7 @@ func TestNewUnicode(t *testing.T) {
 		t.Errorf("unicode cross = %q, want %q", c.Symbols.Cross, "┼")
 	}
 	if c.Offset != 3 {
-		t.Errorf("offset = %d, want 3", c.Offset)
+		t.Errorf("offset = %v, want 3", c.Offset)
 	}
 }
 
@@ -75,7 +75,7 @@ func TestPlotSingleSeries(t *testing.T) {
 	// Should have multiple lines
 	lines := strings.Split(result, "\n")
 	if len(lines) < 2 {
-		t.Errorf("PlotSingle returned %d lines, want >= 2", len(lines))
+		t.Errorf("PlotSingle returned %v lines, want >= 2", len(lines))
 	}
 }
 
@@ -205,7 +205,7 @@ func TestPlotHeight(t *testing.T) {
 	lines := strings.Split(result, "\n")
 	// Height should limit vertical extent
 	if len(lines) > 10 {
-		t.Errorf("Plot height too large: %d lines", len(lines))
+		t.Errorf("Plot height too large: %v lines", len(lines))
 	}
 }
 
@@ -270,7 +270,7 @@ func TestFormatInt(t *testing.T) {
 			t.Parallel()
 			got := formatInt(tt.input)
 			if got != tt.want {
-				t.Errorf("formatInt(%d) = %q, want %q", tt.input, got, tt.want)
+				t.Errorf("formatInt(%v) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
 	}

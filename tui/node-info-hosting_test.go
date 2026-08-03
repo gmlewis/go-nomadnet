@@ -59,7 +59,7 @@ func TestNodeInfoHostingLayout(t *testing.T) {
 
 	// 13 content rows + 2 border rows = 15.
 	if got := ni.Height(); got != 15 {
-		t.Fatalf("Height = %d, want 15 (13 content + 2 border)", got)
+		t.Fatalf("Height = %v, want 15 (13 content + 2 border)", got)
 	}
 
 	rows := renderNodeInfo(t, ni, 50, ni.Height())
@@ -117,7 +117,7 @@ func TestNodeInfoHostingLayoutDisabledPropagation(t *testing.T) {
 	ni := NewNodeInfoDisplay(app, d)
 
 	if got := ni.Height(); got != 13 {
-		t.Fatalf("Height = %d, want 13 (11 content + 2 border, no LXMF line)", got)
+		t.Fatalf("Height = %v, want 13 (11 content + 2 border, no LXMF line)", got)
 	}
 
 	rows := renderNodeInfo(t, ni, 50, ni.Height())
@@ -170,7 +170,7 @@ func TestNodeInfoHostingButtonCallbacks(t *testing.T) {
 	}
 	for i, w := range want {
 		if fired[i] != w {
-			t.Errorf("fired[%d] = %q, want %q", i, fired[i], w)
+			t.Errorf("fired[%v] = %q, want %q", i, fired[i], w)
 		}
 	}
 }
@@ -194,14 +194,14 @@ func TestNodeInfoHostingRefresh(t *testing.T) {
 
 	// Initial render already read the provider once.
 	if count < 1 {
-		t.Fatalf("provider not called at construction; count=%d", count)
+		t.Fatalf("provider not called at construction; count=%v", count)
 	}
 	before := count
 
 	// A manual refresh re-reads the providers.
 	ni.refreshStats()
 	if count <= before {
-		t.Errorf("refreshStats did not re-read the provider: count=%d before=%d", count, before)
+		t.Errorf("refreshStats did not re-read the provider: count=%v before=%v", count, before)
 	}
 
 	// The new value is reflected in the rendered output.
@@ -232,12 +232,12 @@ func TestNodeInfoHostingRefreshTicker(t *testing.T) {
 	ni.Stop()
 	afterRun := calls
 	if afterRun <= afterConstruction {
-		t.Fatalf("ticker did not fire: calls=%d after construction=%d", afterRun, afterConstruction)
+		t.Fatalf("ticker did not fire: calls=%v after construction=%v", afterRun, afterConstruction)
 	}
 
 	// After Stop, the ticker must not keep calling the provider.
 	time.Sleep(400 * time.Millisecond)
 	if calls > afterRun+1 {
-		t.Errorf("ticker kept firing after Stop: calls=%d afterRun=%d", calls, afterRun)
+		t.Errorf("ticker kept firing after Stop: calls=%v afterRun=%v", calls, afterRun)
 	}
 }

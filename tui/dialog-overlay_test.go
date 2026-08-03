@@ -58,20 +58,20 @@ func TestDialogOverlayPreservesUnderlying(t *testing.T) {
 		t.Error("main page removed after dialog opened; underlying screen must be preserved")
 	}
 	if dm.Count() != 1 {
-		t.Errorf("DialogCount = %d, want 1", dm.Count())
+		t.Errorf("DialogCount = %v, want 1", dm.Count())
 	}
 	// A dialog page was added on top.
 	if pages.GetPageCount() != 2 {
-		t.Errorf("page count = %d, want 2 (main + dialog)", pages.GetPageCount())
+		t.Errorf("page count = %v, want 2 (main + dialog)", pages.GetPageCount())
 	}
 
 	// Dismiss and assert focus is restored to the main body.
 	dm.DismissTop()
 	if dm.Count() != 0 {
-		t.Errorf("DialogCount after dismiss = %d, want 0", dm.Count())
+		t.Errorf("DialogCount after dismiss = %v, want 0", dm.Count())
 	}
 	if pages.GetPageCount() != 1 {
-		t.Errorf("page count after dismiss = %d, want 1 (main only)", pages.GetPageCount())
+		t.Errorf("page count after dismiss = %v, want 1 (main only)", pages.GetPageCount())
 	}
 	if got := app.Application.GetFocus(); got != main {
 		t.Errorf("focus after dismiss = %v, want main (restored)", got)
@@ -90,10 +90,10 @@ func TestDialogStackEscDismissesTop(t *testing.T) {
 	dm.ShowDialog("Second", tview.NewTextView().SetText("2"), 30, 5, nil)
 
 	if dm.Count() != 2 {
-		t.Fatalf("DialogCount = %d, want 2", dm.Count())
+		t.Fatalf("DialogCount = %v, want 2", dm.Count())
 	}
 	if pages.GetPageCount() != 3 {
-		t.Errorf("page count = %d, want 3 (main + 2 dialogs)", pages.GetPageCount())
+		t.Errorf("page count = %v, want 3 (main + 2 dialogs)", pages.GetPageCount())
 	}
 
 	// Esc on the top dialog: simulate via its InputHandler.
@@ -104,10 +104,10 @@ func TestDialogStackEscDismissesTop(t *testing.T) {
 	)
 
 	if dm.Count() != 1 {
-		t.Errorf("after first Esc: DialogCount = %d, want 1 (lower dialog remains)", dm.Count())
+		t.Errorf("after first Esc: DialogCount = %v, want 1 (lower dialog remains)", dm.Count())
 	}
 	if pages.GetPageCount() != 2 {
-		t.Errorf("after first Esc: page count = %d, want 2", pages.GetPageCount())
+		t.Errorf("after first Esc: page count = %v, want 2", pages.GetPageCount())
 	}
 	// Focus should now be on the remaining (first) dialog.
 	if got := app.Application.GetFocus(); got != dm.stack[0].dialog {
@@ -122,7 +122,7 @@ func TestDialogStackEscDismissesTop(t *testing.T) {
 	)
 
 	if dm.Count() != 0 {
-		t.Errorf("after second Esc: DialogCount = %d, want 0", dm.Count())
+		t.Errorf("after second Esc: DialogCount = %v, want 0", dm.Count())
 	}
 	if got := app.Application.GetFocus(); got != main {
 		t.Errorf("after second Esc: focus = %v, want main (restored)", got)

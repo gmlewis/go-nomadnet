@@ -30,7 +30,7 @@ func resizeAndDraw(t *testing.T, root tview.Primitive, screen tcell.Screen, w, h
 	t.Helper()
 	defer func() {
 		if r := recover(); r != nil {
-			t.Fatalf("panic resizing to %dx%d: %v", w, h, r)
+			t.Fatalf("panic resizing to %vx%v: %v", w, h, r)
 		}
 	}()
 	screen.SetSize(w, h)
@@ -93,7 +93,7 @@ func TestMainDisplayResizeWithDialogOpen(t *testing.T) {
 	// at widths narrower than the title.
 	app.Dialogs.ShowDialog("A Rather Long Dialog Title", tview.NewTextView().SetText("body"), 40, 6, nil)
 	if app.Dialogs.Count() != 1 {
-		t.Fatalf("DialogCount = %d, want 1", app.Dialogs.Count())
+		t.Fatalf("DialogCount = %v, want 1", app.Dialogs.Count())
 	}
 
 	screen := tcell.NewSimulationScreen("UTF-8")

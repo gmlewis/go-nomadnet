@@ -100,7 +100,7 @@ func TestPaperOutputSaveURI(t *testing.T) {
 		t.Errorf("URI %q does not start with %q", uri, lxmf.URISchema+"://")
 	}
 	if deps.ingestCount != 1 {
-		t.Errorf("Ingest called %d times, want 1", deps.ingestCount)
+		t.Errorf("Ingest called %v times, want 1", deps.ingestCount)
 	}
 	if len(deps.ingestOrigin) != 1 || !deps.ingestOrigin[0] {
 		t.Error("Ingest not called with originator=true")
@@ -124,7 +124,7 @@ func TestPaperOutputReturnURI(t *testing.T) {
 		t.Errorf("URI %q does not start with %q", uri, lxmf.URISchema+"://")
 	}
 	if deps.ingestCount != 0 {
-		t.Errorf("Ingest called %d times, want 0", deps.ingestCount)
+		t.Errorf("Ingest called %v times, want 0", deps.ingestCount)
 	}
 }
 
@@ -153,7 +153,7 @@ func TestPaperOutputSaveQR(t *testing.T) {
 		t.Errorf("saved QR file is not a PNG: % x", got[:min(len(got), 8)])
 	}
 	if deps.ingestCount != 1 {
-		t.Errorf("Ingest called %d times, want 1", deps.ingestCount)
+		t.Errorf("Ingest called %v times, want 1", deps.ingestCount)
 	}
 }
 
@@ -172,17 +172,17 @@ func TestPaperOutputPrintQRSuccess(t *testing.T) {
 		t.Fatal("PaperOutput print_qr returned !ok with PrintFile succeeding")
 	}
 	if deps.printCalls != 1 {
-		t.Errorf("PrintFile called %d times, want 1", deps.printCalls)
+		t.Errorf("PrintFile called %v times, want 1", deps.printCalls)
 	}
 	if deps.ingestCount != 1 {
-		t.Errorf("Ingest called %d times, want 1 after successful print", deps.ingestCount)
+		t.Errorf("Ingest called %v times, want 1 after successful print", deps.ingestCount)
 	}
 	entries, err := os.ReadDir(tmpFiles)
 	if err != nil {
 		t.Fatalf("reading tmp dir: %v", err)
 	}
 	if len(entries) != 0 {
-		t.Errorf("tmp dir not cleaned up: %d entries remain", len(entries))
+		t.Errorf("tmp dir not cleaned up: %v entries remain", len(entries))
 	}
 }
 
@@ -201,7 +201,7 @@ func TestPaperOutputPrintQRFailure(t *testing.T) {
 		t.Error("PaperOutput print_qr returned ok with PrintFile failing")
 	}
 	if deps.ingestCount != 0 {
-		t.Errorf("Ingest called %d times, want 0 after failed print", deps.ingestCount)
+		t.Errorf("Ingest called %v times, want 0 after failed print", deps.ingestCount)
 	}
 }
 
@@ -220,7 +220,7 @@ func TestPaperOutputNoDestination(t *testing.T) {
 		t.Error("PaperOutput returned ok with no destination")
 	}
 	if deps.ingestCount != 0 {
-		t.Errorf("Ingest called %d times, want 0", deps.ingestCount)
+		t.Errorf("Ingest called %v times, want 0", deps.ingestCount)
 	}
 }
 

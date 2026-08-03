@@ -69,7 +69,7 @@ func TestIntegrationFetchPageFromNode(t *testing.T) {
 		t.Fatalf("FetchPage: %v", err)
 	}
 	if string(data) != node.DefaultIndex {
-		t.Errorf("FetchPage default index = %q, want node.DefaultIndex (len %d)", truncStr(data, 60), len(node.DefaultIndex))
+		t.Errorf("FetchPage default index = %q, want node.DefaultIndex (len %v)", truncStr(data, 60), len(node.DefaultIndex))
 	}
 }
 

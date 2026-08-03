@@ -58,7 +58,7 @@ func TestSafeAttachmentNameUTF8Truncation(t *testing.T) {
 			t.Parallel()
 			got := SafeAttachmentName(tc.input, "attachment")
 			if got != tc.expect {
-				t.Errorf("SafeAttachmentName byte-exact mismatch:\n  got  (%d bytes, %d runes): %q\n  want (%d bytes, %d runes): %q",
+				t.Errorf("SafeAttachmentName byte-exact mismatch:\n  got  (%v bytes, %v runes): %q\n  want (%v bytes, %v runes): %q",
 					len(got), utf8.RuneCountInString(got), got,
 					len(tc.expect), utf8.RuneCountInString(tc.expect), tc.expect)
 			}
@@ -82,7 +82,7 @@ func TestSafeAttachmentNameUTF8TruncationMixed(t *testing.T) {
 	input := strings.Repeat("Müller 日本 €", 30) + ".dat"
 	got := SafeAttachmentName(input, "attachment")
 	if rc := utf8.RuneCountInString(got); rc != 200 {
-		t.Errorf("rune count = %d, want 200 (got %q)", rc, got)
+		t.Errorf("rune count = %v, want 200 (got %q)", rc, got)
 	}
 	if !utf8.ValidString(got) {
 		t.Errorf("output is not valid UTF-8: %q", got)

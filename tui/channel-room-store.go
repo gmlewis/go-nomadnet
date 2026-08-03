@@ -146,7 +146,7 @@ func FormatRoomEntry(room ChannelRoomInfo) string {
 		prefix = "[*] "
 	}
 	text := fmt.Sprintf("%s#%s", prefix, room.Name)
-	secondary := fmt.Sprintf("%d members — %s", room.Members, room.Topic)
+	secondary := fmt.Sprintf("%v members — %s", room.Members, room.Topic)
 	return text + "\n" + secondary
 }
 

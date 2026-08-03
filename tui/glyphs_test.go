@@ -102,7 +102,7 @@ func TestGlyphGolden(t *testing.T) {
 	for _, s := range sets {
 		gs := GetGlyphSet(s.name)
 		if len(gs) != len(seen) {
-			t.Errorf("glyph set %q has %d entries, want %d", s.name, len(gs), len(seen))
+			t.Errorf("glyph set %q has %v entries, want %v", s.name, len(gs), len(seen))
 		}
 		for name := range gs {
 			if !seen[name] {

@@ -74,22 +74,22 @@ func TestScanLinksPythonParity(t *testing.T) {
 			t.Parallel()
 			got := ScanLinks(tt.text)
 			if len(got) != len(tt.want) {
-				t.Fatalf("ScanLinks(%q) got %d links, want %d: %+v", tt.text, len(got), len(tt.want), got)
+				t.Fatalf("ScanLinks(%q) got %v links, want %v: %+v", tt.text, len(got), len(tt.want), got)
 			}
 			for i, w := range tt.want {
 				g := got[i]
 				if g.Kind != w.kind {
-					t.Errorf("link[%d].Kind = %q, want %q", i, g.Kind, w.kind)
+					t.Errorf("link[%v].Kind = %q, want %q", i, g.Kind, w.kind)
 				}
 				if g.Target != w.target {
-					t.Errorf("link[%d].Target = %q, want %q", i, g.Target, w.target)
+					t.Errorf("link[%v].Target = %q, want %q", i, g.Target, w.target)
 				}
 				match := ""
 				if g.Start >= 0 && g.End <= len(tt.text) && g.Start <= g.End {
 					match = tt.text[g.Start:g.End]
 				}
 				if match != w.match {
-					t.Errorf("link[%d] match = %q (text[%d:%d]), want %q", i, match, g.Start, g.End, w.match)
+					t.Errorf("link[%v] match = %q (text[%v:%v]), want %q", i, match, g.Start, g.End, w.match)
 				}
 			}
 		})
@@ -135,12 +135,12 @@ func TestScanCodeBlocksPythonParity(t *testing.T) {
 			t.Parallel()
 			got := ScanCodeBlocks(tt.text)
 			if len(got) != len(tt.want) {
-				t.Fatalf("ScanCodeBlocks(%q) got %d regions, want %d: %+v", tt.text, len(got), len(tt.want), got)
+				t.Fatalf("ScanCodeBlocks(%q) got %v regions, want %v: %+v", tt.text, len(got), len(tt.want), got)
 			}
 			for i, w := range tt.want {
 				g := got[i]
 				if g.Start != w[0] || g.End != w[1] {
-					t.Errorf("region[%d] = {%d,%d}, want {%d,%d} (%q)", i, g.Start, g.End, w[0], w[1], tt.text[w[0]:w[1]])
+					t.Errorf("region[%v] = {%v,%v}, want {%v,%v} (%q)", i, g.Start, g.End, w[0], w[1], tt.text[w[0]:w[1]])
 				}
 			}
 		})
@@ -182,7 +182,7 @@ func TestScanMentionsPythonParity(t *testing.T) {
 			t.Parallel()
 			got := ScanMentions(tc.text, "alice")
 			if len(got) != len(tc.want) {
-				t.Fatalf("ScanMentions(%q, alice) got %d, want %d: %+v", tc.text, len(got), len(tc.want), got)
+				t.Fatalf("ScanMentions(%q, alice) got %v, want %v: %+v", tc.text, len(got), len(tc.want), got)
 			}
 			for i, w := range tc.want {
 				match := ""
@@ -190,10 +190,10 @@ func TestScanMentionsPythonParity(t *testing.T) {
 					match = tc.text[got[i].Start:got[i].End]
 				}
 				if match != w {
-					t.Errorf("mention[%d] = %q, want %q", i, match, w)
+					t.Errorf("mention[%v] = %q, want %q", i, match, w)
 				}
 				if !got[i].IsSelf {
-					t.Errorf("mention[%d] IsSelf = false, want true", i)
+					t.Errorf("mention[%v] IsSelf = false, want true", i)
 				}
 			}
 		})
@@ -214,7 +214,7 @@ func TestScanMentionsPythonParity(t *testing.T) {
 			t.Parallel()
 			got := scanNickMentions(tc.text, "alice")
 			if len(got) != len(tc.want) {
-				t.Fatalf("scanNickMentions(%q, alice) got %d, want %d: %+v", tc.text, len(got), len(tc.want), got)
+				t.Fatalf("scanNickMentions(%q, alice) got %v, want %v: %+v", tc.text, len(got), len(tc.want), got)
 			}
 			for i, w := range tc.want {
 				match := ""
@@ -222,10 +222,10 @@ func TestScanMentionsPythonParity(t *testing.T) {
 					match = tc.text[got[i].start:got[i].end]
 				}
 				if match != w.match {
-					t.Errorf("nickMention[%d] = %q, want %q", i, match, w.match)
+					t.Errorf("nickMention[%v] = %q, want %q", i, match, w.match)
 				}
 				if got[i].nick != w.nick {
-					t.Errorf("nickMention[%d].nick = %q, want %q", i, got[i].nick, w.nick)
+					t.Errorf("nickMention[%v].nick = %q, want %q", i, got[i].nick, w.nick)
 				}
 			}
 		})

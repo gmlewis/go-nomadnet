@@ -49,7 +49,7 @@ func TestScanPages(t *testing.T) {
 
 	// Python scan_pages includes ALL non-hidden, non-.allowed files
 	if len(sorted) != 4 {
-		t.Fatalf("ScanPages len = %d, want 4: %v", len(sorted), sorted)
+		t.Fatalf("ScanPages len = %v, want 4: %v", len(sorted), sorted)
 	}
 
 	// Check that expected files are found (full paths)
@@ -86,7 +86,7 @@ func TestScanPagesEmpty(t *testing.T) {
 	dir := tempDir(t)
 	pages := ScanPages(dir)
 	if len(pages) != 0 {
-		t.Errorf("ScanPages on empty dir = %d, want 0", len(pages))
+		t.Errorf("ScanPages on empty dir = %v, want 0", len(pages))
 	}
 }
 
@@ -95,7 +95,7 @@ func TestScanPagesMissing(t *testing.T) {
 
 	pages := ScanPages("/nonexistent/path")
 	if len(pages) != 0 {
-		t.Errorf("ScanPages on missing dir = %d, want 0", len(pages))
+		t.Errorf("ScanPages on missing dir = %v, want 0", len(pages))
 	}
 }
 
@@ -120,7 +120,7 @@ func TestScanFiles(t *testing.T) {
 	sorted := SortFiles(files)
 
 	if len(sorted) != 3 {
-		t.Fatalf("ScanFiles len = %d, want 3: %v", len(sorted), sorted)
+		t.Fatalf("ScanFiles len = %v, want 3: %v", len(sorted), sorted)
 	}
 
 	found := make(map[string]bool)
@@ -152,7 +152,7 @@ func TestScanFilesEmpty(t *testing.T) {
 	dir := tempDir(t)
 	files := ScanFiles(dir)
 	if len(files) != 0 {
-		t.Errorf("ScanFiles on empty dir = %d, want 0", len(files))
+		t.Errorf("ScanFiles on empty dir = %v, want 0", len(files))
 	}
 }
 
@@ -161,7 +161,7 @@ func TestScanFilesMissing(t *testing.T) {
 
 	files := ScanFiles("/nonexistent/path")
 	if len(files) != 0 {
-		t.Errorf("ScanFiles on missing dir = %d, want 0", len(files))
+		t.Errorf("ScanFiles on missing dir = %v, want 0", len(files))
 	}
 }
 
@@ -227,12 +227,12 @@ func TestParseAllowedFile(t *testing.T) {
 
 	// Should have 3 entries (hash2 appears twice)
 	if len(hashes) != 3 {
-		t.Fatalf("ParseAllowedFile len = %d, want 3", len(hashes))
+		t.Fatalf("ParseAllowedFile len = %v, want 3", len(hashes))
 	}
 
 	// Verify first hash
 	if len(hashes[0]) != 32 {
-		t.Errorf("hash[0] len = %d, want 32", len(hashes[0]))
+		t.Errorf("hash[0] len = %v, want 32", len(hashes[0]))
 	}
 }
 
@@ -253,7 +253,7 @@ func TestParseAllowedFileInvalidLength(t *testing.T) {
 
 	// Only the 64-char hash should be included
 	if len(hashes) != 1 {
-		t.Errorf("ParseAllowedFile len = %d, want 1", len(hashes))
+		t.Errorf("ParseAllowedFile len = %v, want 1", len(hashes))
 	}
 }
 
@@ -409,13 +409,13 @@ func TestNewNode(t *testing.T) {
 		t.Errorf("FilesPath = %q, want %q", n.FilesPath, "/files")
 	}
 	if n.AnnounceInterval != 60 {
-		t.Errorf("AnnounceInterval = %d, want 60", n.AnnounceInterval)
+		t.Errorf("AnnounceInterval = %v, want 60", n.AnnounceInterval)
 	}
 	if n.PageRefreshInterval != 30 {
-		t.Errorf("PageRefreshInterval = %d, want 30", n.PageRefreshInterval)
+		t.Errorf("PageRefreshInterval = %v, want 30", n.PageRefreshInterval)
 	}
 	if n.FileRefreshInterval != 15 {
-		t.Errorf("FileRefreshInterval = %d, want 15", n.FileRefreshInterval)
+		t.Errorf("FileRefreshInterval = %v, want 15", n.FileRefreshInterval)
 	}
 	if !n.AnnounceAtStart {
 		t.Error("AnnounceAtStart = false, want true")
@@ -438,7 +438,7 @@ func TestNodeRegisterPages(t *testing.T) {
 	n.RegisterPages()
 
 	if len(n.ServedPages) != 2 {
-		t.Errorf("ServedPages len = %d, want 2", len(n.ServedPages))
+		t.Errorf("ServedPages len = %v, want 2", len(n.ServedPages))
 	}
 }
 
@@ -455,7 +455,7 @@ func TestNodeRegisterFiles(t *testing.T) {
 	n.RegisterFiles()
 
 	if len(n.ServedFiles) != 2 {
-		t.Errorf("ServedFiles len = %d, want 2", len(n.ServedFiles))
+		t.Errorf("ServedFiles len = %v, want 2", len(n.ServedFiles))
 	}
 }
 
@@ -463,10 +463,10 @@ func TestNodeConstants(t *testing.T) {
 	t.Parallel()
 
 	if JobInterval != 5 {
-		t.Errorf("JobInterval = %d, want 5", JobInterval)
+		t.Errorf("JobInterval = %v, want 5", JobInterval)
 	}
 	if StartAnnounceDelay != 6 {
-		t.Errorf("StartAnnounceDelay = %d, want 6", StartAnnounceDelay)
+		t.Errorf("StartAnnounceDelay = %v, want 6", StartAnnounceDelay)
 	}
 }
 
@@ -477,7 +477,7 @@ func TestSortPages(t *testing.T) {
 	sorted := SortPages(pages)
 
 	if len(sorted) != 3 {
-		t.Fatalf("SortPages len = %d, want 3", len(sorted))
+		t.Fatalf("SortPages len = %v, want 3", len(sorted))
 	}
 	if sorted[0] != "/a.mu" || sorted[1] != "/b.mu" || sorted[2] != "/c.mu" {
 		t.Errorf("SortPages = %v, want [/a.mu /b.mu /c.mu]", sorted)
@@ -584,7 +584,7 @@ func TestStartCreatesDestination(t *testing.T) {
 		t.Error("destination should be set after Start")
 	}
 	if n.destination.Type != rns.DestinationSingle {
-		t.Errorf("destination type = %d, want DestinationSingle", n.destination.Type)
+		t.Errorf("destination type = %v, want DestinationSingle", n.destination.Type)
 	}
 }
 
@@ -707,17 +707,17 @@ func TestPeerConnectedIncrementsConnects(t *testing.T) {
 	defer n.Stop()
 
 	if n.NodeConnects != 0 {
-		t.Fatalf("initial NodeConnects = %d, want 0", n.NodeConnects)
+		t.Fatalf("initial NodeConnects = %v, want 0", n.NodeConnects)
 	}
 
 	n.PeerConnected(&rns.Link{})
 	if n.NodeConnects != 1 {
-		t.Errorf("after 1 connect, NodeConnects = %d, want 1", n.NodeConnects)
+		t.Errorf("after 1 connect, NodeConnects = %v, want 1", n.NodeConnects)
 	}
 
 	n.PeerConnected(&rns.Link{})
 	if n.NodeConnects != 2 {
-		t.Errorf("after 2 connects, NodeConnects = %d, want 2", n.NodeConnects)
+		t.Errorf("after 2 connects, NodeConnects = %v, want 2", n.NodeConnects)
 	}
 }
 
@@ -744,7 +744,7 @@ func TestPeerDisconnectedNoop(t *testing.T) {
 	before := n.NodeConnects
 	n.PeerDisconnected(&rns.Link{})
 	if n.NodeConnects != before {
-		t.Errorf("PeerDisconnected changed NodeConnects from %d to %d", before, n.NodeConnects)
+		t.Errorf("PeerDisconnected changed NodeConnects from %v to %v", before, n.NodeConnects)
 	}
 }
 

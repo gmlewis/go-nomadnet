@@ -237,10 +237,10 @@ func HubSummary(hub *HubEntry) string {
 	icon := StatusIcon(hub.Status)
 
 	if unread > 0 {
-		return fmt.Sprintf("%s %s (%d rooms, %d unread)",
+		return fmt.Sprintf("%s %s (%v rooms, %v unread)",
 			icon, hub.Name, roomCount, unread)
 	}
-	return fmt.Sprintf("%s %s (%d rooms)", icon, hub.Name, roomCount)
+	return fmt.Sprintf("%s %s (%v rooms)", icon, hub.Name, roomCount)
 }
 
 // SearchHubs returns hubs whose name or address contains the query

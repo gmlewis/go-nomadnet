@@ -623,7 +623,7 @@ func (cd *ConversationsDisplay) showDetail(idx int) {
 		cd.populateList()
 	}
 	cd.detail.SetText(fmt.Sprintf(
-		"[::b]%s[-]\n\nTrust: %s\nMessages: %d\nLast: %s\n\n[gray]Select a message to read[-]",
+		"[::b]%s[-]\n\nTrust: %s\nMessages: %v\nLast: %s\n\n[gray]Select a message to read[-]",
 		conv.DisplayName,
 		conv.TrustLevel,
 		conv.MessageCount,
@@ -797,9 +797,9 @@ func tabButtonLabels(convs []ConversationInfo, unreadGlyph string) (trusted, unt
 	}
 	label := func(name string, total, unread int) string {
 		if unread > 0 {
-			return fmt.Sprintf("%s (%d) %s %d", name, total, unreadGlyph, unread)
+			return fmt.Sprintf("%s (%v) %s %v", name, total, unreadGlyph, unread)
 		}
-		return fmt.Sprintf("%s (%d)", name, total)
+		return fmt.Sprintf("%s (%v)", name, total)
 	}
 	return label("Trusted", trustedCount, trustedAlert), label("Untrusted", untrustedCount, untrustedAlert)
 }
@@ -1196,15 +1196,15 @@ func (cd *ConversationsDisplay) SaveAttachmentsDialog(sourceHash string, refs []
 			g := cd.app.Glyphs
 			var lines []string
 			if len(saved) > 0 {
-				lines = append(lines, fmt.Sprintf("%s Copied %d file(s) to %s:", g["check"], len(saved), saveDirOf(saved)))
+				lines = append(lines, fmt.Sprintf("%s Copied %v file(s) to %s:", g["check"], len(saved), saveDirOf(saved)))
 				for _, p := range saved {
 					lines = append(lines, "  "+filepath.Base(p))
 				}
 				if failed > 0 {
-					lines = append(lines, fmt.Sprintf("%s %d failed", g["cross"], failed))
+					lines = append(lines, fmt.Sprintf("%s %v failed", g["cross"], failed))
 				}
 			} else if failed > 0 {
-				lines = append(lines, fmt.Sprintf("%s Failed: %d file(s)", g["cross"], failed))
+				lines = append(lines, fmt.Sprintf("%s Failed: %v file(s)", g["cross"], failed))
 			} else {
 				lines = append(lines, "No files selected")
 			}
@@ -1660,7 +1660,7 @@ func (cd *ConversationsDisplay) ShowSyncDialog(
 		}
 		result := SyncDialogResult{Mode: mode, Action: "sync"}
 		if mode == SyncLimited {
-			_, _ = fmt.Sscanf(limitInput.GetText(), "%d", &result.Limit)
+			_, _ = fmt.Sscanf(limitInput.GetText(), "%v", &result.Limit)
 		}
 		if onSync != nil {
 			onSync(result)

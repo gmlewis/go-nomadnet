@@ -123,14 +123,14 @@ func TestParsePartialParity(t *testing.T) {
 			t.Parallel()
 			nodes := Parse("`{" + tc.inner)
 			if len(nodes) != tc.wantNodes {
-				t.Fatalf("Parse partial len = %d, want %d", len(nodes), tc.wantNodes)
+				t.Fatalf("Parse partial len = %v, want %v", len(nodes), tc.wantNodes)
 			}
 			if tc.wantNodes == 0 {
 				return
 			}
 			n := nodes[0]
 			if n.Type != NodePartial {
-				t.Fatalf("node type = %d, want %d", n.Type, NodePartial)
+				t.Fatalf("node type = %v, want %v", n.Type, NodePartial)
 			}
 			if n.PartialURL != tc.url {
 				t.Errorf("partial url = %q, want %q", n.PartialURL, tc.url)
