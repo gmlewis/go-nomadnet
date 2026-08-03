@@ -16,10 +16,19 @@
 package tui
 
 import (
+	"sync"
 	"time"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
+
+// applyDefaultStylesOnce guards the write to tview's library-global tview.Styles
+// (mirroring applyBordersOnce): the values are constants, so applying them
+// more than once is a no-op, and the sync.Once makes ApplyDefaultStyles
+// idempotent and safe to call from concurrent goroutines (e.g. parallel tests
+// each calling NewApp). TestMain fires it once before any parallel test runs.
+var applyDefaultStylesOnce sync.Once
 
 // App wraps tview.Application with NomadNet configuration.
 type App struct {
@@ -57,10 +66,35 @@ func NewApp(theme int, glyphSet string, colorMode int) *App {
 	}
 	a.Styles.Register(theme, colorMode)
 	ApplySingleLineBorders()
+	ApplyDefaultStyles()
 
 	a.Main = NewMainDisplay(a, theme, glyphSet)
 
 	return a
+}
+
+// ApplyDefaultStyles overrides tview's library-global Styles so that pane
+// backgrounds, border cells, border titles, and graphics use the TERMINAL
+// DEFAULT color (transparent), matching the Python original. The Python
+// urwid LineBox and pane backgrounds are emitted with `\x1b[0;39;49m`
+// (default fg, default bg) — never a forced black background or white border.
+//
+// tview's stock Styles default to `PrimitiveBackgroundColor=ColorBlack` and
+// `BorderColor=TitleColor=GraphicsColor=ColorWhite`, which box.go combines into
+// white-on-black border cells (`\x1b[38;2;255;255;255;48;2;0;0;0`). On a light
+// terminal that is a hard black box where Python is transparent.
+//
+// Idempotent and safe to call repeatedly: this only ever assigns the constant
+// ColorDefault to these four fields. Widgets that need a specific fill (the
+// menubar/shortcutbar at `menubar_bg`, msg headers, etc.) set their own
+// SetBackgroundColor explicitly and are unaffected.
+func ApplyDefaultStyles() {
+	applyDefaultStylesOnce.Do(func() {
+		tview.Styles.PrimitiveBackgroundColor = tcell.ColorDefault
+		tview.Styles.BorderColor = tcell.ColorDefault
+		tview.Styles.TitleColor = tcell.ColorDefault
+		tview.Styles.GraphicsColor = tcell.ColorDefault
+	})
 }
 
 // SetRoot sets the root primitive for the application. The main display is

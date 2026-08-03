@@ -258,78 +258,6 @@ test or a matching `parity.sh` summary):
       256-color cast too; it remains useful for structural/attribute diffs.
       This is a capture task, not a code task — but it unblocks all color tasks.
 
-### A1 — Menu: active-page button is highlighted (Go adds; Python does not)
-- [ ] **`MenuColumns`/menu-button rendering:** every `[ Name ]` button must use
-      the `menubar` style uniformly; the active page's button must NOT be
-      bolded or recolored. Golden (Python, truecolor): all 8 buttons render
-      `#111`/`#bbb` with no `B`; the active page is indicated **only** by the
-      leading indicator glyph (`󰐻`/`+`), never by a per-button style change.
-      Bug (Go): the active button is wrapped in
-      `\x1b[38;2;17;17;17;48;2;170;170;170m\x1b[1m` (bold `#111`/`#aaa` =
-      `list_focus`). Write a test that builds the menu, sets the active page,
-      and asserts every button's style == the `menubar` style (no bold, no
-      `list_focus` bg). Fix in the menu widget; do not special-case active.
-
-### A5 — Forced `#000000` bg / `#ffffff` border fg where Python uses terminal default
-- [ ] **Border styling (`ApplySingleLineBorders` / `BorderedBox`):** border cells
-      must use `tcell.ColorDefault` for fg **and** bg (transparent), not
-      `ColorWhite`/`ColorBlack`. Golden (Python): the border line is emitted
-      `\x1b[0;39;49m` (default fg, default bg). Bug (Go): borders emit
-      `\x1b[38;2;255;255;255;48;2;0;0;0` (white on black). On a light terminal
-      Python shows transparent (light) borders; Go shows a hard black box.
-- [ ] **Empty/blank pane cells & pane background:** the background of undrawn
-      cells inside panes must be `tcell.ColorDefault` (transparent), not
-      `ColorBlack`. Golden (Python): empty reader/list cells carry default bg
-      (`49m`); bug (Go): they carry `48;2;0;0;0`. (Likely the same root base-style
-      setting as the border task — fix the shared base style and re-verify both.)
-      NOTE: this is colormode-independent (Python `default` is transparent in
-      every colormode; Go forces black). After fixing, re-run
-      `tooling/substates.py` on both casts and confirm pane/border cells are
-      `#??,#??,` → `d,d` (default) in the Go chrome.
-
-### A4 — Sticky underline attribute leak in the micron renderer
-> Root cause: once an underlined span renders, the `U` attribute is not reset,
-> so all subsequent body text inherits underline. Confirmed across the entire
-> Markup and Display Test guide topics. Each sub-task is one micron construct
-> with a Python golden (underline resets after the span/line); fix the shared
-> attribute-reset path and make each test green.
-- [ ] **`_` inline underline span resets:** after `` `_…`_ `` the renderer must
-      clear `U`. Golden (Python Display Test): the line
-      "And this one should be underlined, aligned right" is `U`, and the very
-      next line "The following line should contain a red gradient bar:" is
-      plain (no `U`). Bug (Go): that next line is `#dddddd,#000000,U`.
-- [ ] **Link span (`[`) resets:** after `` `[label`url] `` the renderer must
-      clear `U`. Golden (Python): a URL link is `U` and the following body text
-      is plain. (Mark "First Time Information" in Display Test: Python underline
-      only; see also A4-link-italic below.) Bug (Go): trailing body stays `U`.
-- [ ] **Heading (`>`) resets:** after a `>` heading line the renderer must clear
-      `U` for the next line. Golden (Python): a `>` heading is underlined
-      (`heading` = `g93,underline`), the body line after it is plain. Bug (Go):
-      the body after a heading stays `U` (e.g. Markup: ">Partials" then body).
-- [ ] **Line-start / literal-block reset:** at the start of each rendered line
-      (and on exiting a `` `= `` literal block), the inline attribute state must
-      reset to the line's base style. Golden (Python): lines never inherit `U`
-      from a previous line. Bug (Go): the leak persists across line breaks,
-      so whole topics become underlined. Add a regression test feeding a
-      multi-line micron doc with one underlined line and asserting only that
-      one line (and its styled sub-spans) carry `U`.
-
-### A2 — Guide page shows a footer shortcut bar (Go adds; Python empty)
-- [ ] **Guide shortcut bar:** the Guide page footer must be empty. Golden
-      (Python): the Guide footer row is blank (`#111`/`#bbb` fill, no text).
-      Bug (Go): footer shows `[C-q] Quit  [Tab] Move Focus  [Enter] Select Topic
-      / Follow Link`. Write a test asserting `GuideDisplay`'s shortcut bar is
-      empty; remove the bar text. (Verify against a truecolor re-capture too —
-      P1 — in case Python's Guide footer is conditionally non-empty.)
-
-### A3 — Guide reader right-pane border carries a topic-name title (Go adds)
-- [ ] **`GuideDisplay` reader `BorderedBox`:** the reader pane border must have
-      **no title**. Golden (Python): the reader pane border is untitled; the
-      topic title (e.g. "Markup & Color Display Test") is a content heading
-      *inside* the pane. Bug (Go): the border is titled with the topic name
-      ("Markup", "Display Test", …). Write a test asserting the reader's
-      `LineBox`/`BorderedBox` title is empty; remove the title.
-
 ### Verification tasks (areas not captured, or not comparable at this colormode)
 > These are not yet confirmed bugs — they are areas the existing casts do not
 > cover or that need a truecolor re-capture (P1) to judge. Capture with the
@@ -345,23 +273,19 @@ test or a matching `parity.sh` summary):
 - [ ] **V-Dialogs:** dialog rendering parity — new conversation, peer info,
       sync, URL, save-node (overlay position is a known systemic gap; check
       content/colors).
-- [ ] **V-DisplayTest-Gradient:** Display Test gradient-bar fg/attribute —
-      Python Display Test topic was not captured; confirm the bar cell style
-      (Go renders `#dddddd,#<color>,U`; the `U` is A4, the fg needs Python).
-- [ ] **V-Link-Italic:** Go renders the "First Time Information" link as
-      `#dddddd,#000000,IU` (italic+underline); Python URL links are `U` only.
-      Confirm with a truecolor capture whether links should carry italic.
-- [ ] **V-TopicList-Fg:** Go renders unfocused Guide topic-list items with
-      terminal-default fg; verify Python applies `topic_list_normal` (`#ddd`
-      light / `#222` dark) and fix if so.
 
 ### Tooling tasks
-- [ ] **T-UTF8:** `tooling/parse_screencast.py` `Term` must decode the cast as
-      UTF-8 and advance the cursor by display width, so multibyte glyphs (Nerd
-      Font icons, box-drawing) stop rendering as mojibake (`â`/`ï`/`ó°`).
-      Symmetrical today (both casts mojibake), so not a port bug, but it blocks
-      glyph-content comparison. Add a test feeding a known multibyte string and
-      asserting one cell per grapheme.
+- [ ] **T-UTF8:** `tooling/parse_screencast.py` `Term._putc` advances the cursor
+      `cx += 1` per character with no display-width handling, so wide/CJK
+      graphemes misalign the cell grid in the decoded comparison. Decode the cast
+      as UTF-8 and advance by `wcwidth`-style per-grapheme width. Add a test
+      feeding a known multibyte string and asserting the right cell advance per
+      grapheme. (NOTE: the related Go *port* glyph bug — multibyte runes like
+      `✓ ✕ ⚠ Ⓝ ↓` rendering as `â` because `parseInline` iterated the line as
+      bytes, `string(byte(0xe2))`==`â` — is FIXED in `nomadnet/micron/micron.go`
+      via `utf8.DecodeRuneInString`; pinned by `glyph-utf8_test.go`. The Python
+      cast was never mojibaked — only the Go port was. This tooling task is now
+      purely the cursor-width alignment for accurate comparison.)
 
 ---
 

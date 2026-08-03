@@ -36,23 +36,6 @@ func TestNewGuideDisplay(t *testing.T) {
 	}
 }
 
-func TestGuideReaderDynamicTitleUpdate(t *testing.T) {
-	t.Parallel()
-
-	app := newTestApp()
-	gd := NewGuideDisplay(app)
-
-	gd.showTopic(0)
-	if got := gd.readerBox.GetTitle(); got != " Introduction " {
-		t.Errorf("readerBox title for topic 0 = %q, want ' Introduction '", got)
-	}
-
-	gd.showTopic(1)
-	if got := gd.readerBox.GetTitle(); got != " Concepts & Terminology " {
-		t.Errorf("readerBox title for topic 1 = %q, want ' Concepts & Terminology '", got)
-	}
-}
-
 func TestGuideKeyUpTopFocusesMenu(t *testing.T) {
 	t.Parallel()
 
@@ -175,6 +158,50 @@ func TestGuideDisplayWidgetType(t *testing.T) {
 	_, ok := gd.Widget().(*urwidColumns)
 	if !ok {
 		t.Errorf("Widget is %T, want *urwidColumns", gd.Widget())
+	}
+}
+
+// TestGuideShortcutBarEmpty pins A2: the Guide page footer shortcut bar must be
+// EMPTY, matching Python's GuideDisplayShortcuts (Guide.py:8-13) which wraps an
+// empty urwid.Text("") in the "shortcutbar" attr — the footer row is just the
+// shortcutbar background fill with no text. The Go port previously returned a
+// "[C-q] Quit  [Tab] Move Focus  [Enter] Select Topic / Follow Link" bar
+// (go_session-002.cast confirms the extra text; python_session.cast has none).
+func TestGuideShortcutBarEmpty(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	gd := NewGuideDisplay(app)
+
+	if got := gd.Shortcuts(); got != "" {
+		t.Errorf("GuideDisplay.Shortcuts() = %q, want \"\" (Python Guide.py:13 urwid.Text(\"\") empty footer)", got)
+	}
+}
+
+// TestGuideReaderBorderUntitled pins A3: the Guide reader (right pane) border
+// must carry NO title. Golden (Python Guide.py:207): the reader is
+// `urwid.LineBox(urwid.Filler(topic_text, urwid.TOP))` with no title= argument
+// — the topic title is a content `>` heading INSIDE the pane, not a border
+// title. The Topics list (left pane) IS titled "Topics" (Guide.py:188). The Go
+// port previously titled the reader border with the topic label (showTopic) or
+// "?" (showPlaceholder); both must be removed.
+func TestGuideReaderBorderUntitled(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	gd := NewGuideDisplay(app)
+
+	// After construction the placeholder is shown; the reader border must be
+	// untitled (not "?").
+	if got := gd.readerBox.GetTitle(); got != "" {
+		t.Errorf("readerBox title after placeholder = %q, want \"\" (Python reader LineBox is untitled)", got)
+	}
+
+	// After showing a real topic the reader border must STILL be untitled
+	// (not the topic label).
+	gd.showTopic(0)
+	if got := gd.readerBox.GetTitle(); got != "" {
+		t.Errorf("readerBox title after showTopic = %q, want \"\" (topic title is content, not a border title)", got)
 	}
 }
 

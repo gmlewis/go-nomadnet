@@ -139,6 +139,14 @@ func NewGuideDisplay(app *App) *GuideDisplay {
 	gd.topics.SetHighlightFullLine(true)
 	gd.topics.ShowSecondaryText(false)
 	ApplyListFocusStyle(gd.topics, app.Theme)
+	// Unfocused topic-list items use the theme's topic_list_normal foreground,
+	// matching Python GuideEntry's AttrMap(widget, "topic_list_normal",
+	// "list_focus") (Guide.py:133-135). ApplyListFocusStyle only sets the
+	// SELECTED colors; without this the unfocused rows fall back to tview's
+	// terminal-default fg instead of the themed #ddd (dark) / #222 (light)
+	// (Python TextUI.py:52 dark, :105 light; the first palette block is
+	// THEME_DARK at TextUI.py:19).
+	gd.topics.SetMainTextColor(GetThemeColors(app.Theme)["topic_list_normal"])
 	for i := range guideTopics {
 		i := i
 		gd.topics.AddItem(guideTopics[i].label, "", 0, func() { gd.showTopic(i) })
@@ -255,7 +263,9 @@ func (gd *GuideDisplay) FocusReader() {
 func (gd *GuideDisplay) showPlaceholder() {
 	gd.currentIdx = -1
 	gd.links = nil
-	SetTitledBorder(gd.readerBox, "?")
+	// The reader pane border is untitled (Python Guide.py:207 LineBox has no
+	// title=). The "No topic selected" text is pane CONTENT, not a border title.
+	SetTitledBorder(gd.readerBox, "")
 	gd.reader.SetText("\n  No topic selected")
 }
 
@@ -266,14 +276,19 @@ func (gd *GuideDisplay) showTopic(idx int) {
 		return
 	}
 	gd.currentIdx = idx
-	SetTitledBorder(gd.readerBox, guideTopics[idx].label)
+	// The reader pane border is untitled (Python Guide.py:207 LineBox has no
+	// title=). The topic title is a content `>` heading rendered INSIDE the
+	// pane by renderMarkup, not a border title.
+	SetTitledBorder(gd.readerBox, "")
 	gd.renderMarkup(guideTopics[idx].markup)
 }
 
 // Shortcuts returns the footer shortcut text for the Guide page, matching
-// Python's Guide.py:219 / GuideDisplayShortcuts.
+// Python's GuideDisplayShortcuts (Guide.py:8-13): an empty urwid.Text("") wrapped
+// in the "shortcutbar" attr — the Guide footer row is just the shortcutbar
+// background fill with NO text. (pinned by TestGuideShortcutBarEmpty.)
 func (gd *GuideDisplay) Shortcuts() string {
-	return "[C-q] Quit  [Tab] Move Focus  [Enter] Select Topic / Follow Link"
+	return ""
 }
 
 // unit-testing jumpToAnchor/handleLink without going through the embedded topic

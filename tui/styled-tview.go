@@ -44,12 +44,25 @@ func StyledLinesToTviewText(lines []*micron.StyledLine, width int) (string, []mi
 	}
 	var b strings.Builder
 	var links []micron.LinkSpec
+	// underlineOn tracks whether the tview color-tag state currently has the
+	// underline attribute latched ON. tview's [-:-:-] reset (parseTag in
+	// strings.go) clears the foreground, background, and the bold/italic
+	// attribute MASK, but it does NOT clear the separate Underline toggle,
+	// which is set by the lowercase 'u' tag and only cleared by the uppercase
+	// 'U' tag. So once a span emits :u, every following run — plain indent
+	// spaces, spans whose tag has no attribute field, divider chars —
+	// inherits underline until an explicit :U is emitted. The micron
+	// renderer already scopes underline per span/line; the converter must
+	// mirror that by emitting 'U' to turn the latched toggle off whenever a
+	// run should not be underlined (and before plain indent/divider content).
+	underlineOn := false
 	for _, line := range lines {
 		if line == nil {
 			b.WriteByte('\n')
 			continue
 		}
 		if line.Divider {
+			underlineOn = clearUnderline(&b, underlineOn)
 			ch := line.DividerChar
 			if ch == "" {
 				ch = "─"
@@ -63,43 +76,68 @@ func StyledLinesToTviewText(lines []*micron.StyledLine, width int) (string, []mi
 			b.WriteByte('\n')
 			continue
 		}
+		// Plain indent spaces carry no color tag, so they inherit the latched
+		// underline; clear it first so indented content starts ununderlined.
+		// (Indent == 0 lines have no plain spaces before the first span, so the
+		// per-span 'U' in writeSpanTag is enough and no leading reset is needed.)
+		if line.Indent > 0 {
+			underlineOn = clearUnderline(&b, underlineOn)
+		}
 		b.WriteString(strings.Repeat(" ", line.Indent))
 		for _, span := range line.Spans {
 			if span.Link != nil {
 				idx := len(links)
 				links = append(links, *span.Link)
 				fmt.Fprintf(&b, `["%d"]`, idx)
-				writeSpanTag(&b, span)
+				underlineOn = writeSpanTag(&b, span, underlineOn)
 				b.WriteString(`[""]`)
 				continue
 			}
-			writeSpanTag(&b, span)
+			underlineOn = writeSpanTag(&b, span, underlineOn)
 		}
 		b.WriteByte('\n')
 	}
 	return b.String(), links
 }
 
+// clearUnderline emits a tview tag that turns the latched underline toggle OFF
+// ([-:-:U]) if it is currently on, returning the new (now off) state. This is
+// a no-op when underline is already off, so runs that never use underline are
+// emitted unchanged.
+func clearUnderline(b *strings.Builder, underlineOn bool) bool {
+	if underlineOn {
+		b.WriteString("[-:-:U]")
+		return false
+	}
+	return underlineOn
+}
+
 // writeSpanTag emits one styled run: a color tag, the (tag-escaped) text, and
 // a full reset. Fully-default spans (no fg/bg/flags and no link) are emitted
-// as plain escaped text with no tag.
-func writeSpanTag(b *strings.Builder, span micron.StyledSpan) {
+// as plain escaped text with no tag. It returns the updated latched-underline
+// state so the caller can emit an explicit 'U' to turn underline off for a
+// later run (tview's [-:-:-] reset does not clear the underline toggle).
+func writeSpanTag(b *strings.Builder, span micron.StyledSpan, underlineOn bool) bool {
 	fg := tviewColor(span.FG)
 	bg := tviewColor(span.BG)
-	flags := tviewFlags(span.Bold, span.Underline, span.Italic)
+	flags := tviewFlags(span.Bold, span.Underline, span.Italic, underlineOn)
 	if fg == "-" && bg == "-" && flags == "" {
 		b.WriteString(tview.Escape(span.Text))
-		return
+		return underlineOn
 	}
 	if flags == "" {
 		fmt.Fprintf(b, "[%s:%s]%s[-:-:-]", fg, bg, tview.Escape(span.Text))
 	} else {
 		fmt.Fprintf(b, "[%s:%s:%s]%s[-:-:-]", fg, bg, flags, tview.Escape(span.Text))
 	}
+	return span.Underline
 }
 
 // tviewFlags builds the tview color-tag attribute string from the style bools.
-func tviewFlags(bold, underline, italic bool) string {
+// When the run is not underlined but the latched toggle is on (underlineOn),
+// an uppercase 'U' is prepended so tview turns the underline OFF for this run —
+// the [-:-:-] reset only clears the bold/italic mask, not the underline toggle.
+func tviewFlags(bold, underline, italic, underlineOn bool) string {
 	var f string
 	if bold {
 		f += "b"
@@ -109,6 +147,9 @@ func tviewFlags(bold, underline, italic bool) string {
 	}
 	if italic {
 		f += "i"
+	}
+	if !underline && underlineOn {
+		f = "U" + f
 	}
 	return f
 }

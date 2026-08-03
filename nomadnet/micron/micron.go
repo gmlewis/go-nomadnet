@@ -27,6 +27,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 // NodeType identifies the type of an AST node.
@@ -464,10 +465,18 @@ func parseInline(line string) []*Node {
 			// Escape next character: the backslash and the following char
 			// are consumed and the char is taken literally. A trailing
 			// backslash with no following char contributes nothing,
-			// matching Python's escape flag (MicronParser.py:829-835).
+			// matching Python's escape flag (MicronParser.py:829-835). The
+			// escaped char may be multibyte (e.g. "\✓"); decode the whole rune
+			// rather than taking a single byte (string(byte) mangles UTF-8).
 			if i+1 < len(line) {
-				part += string(line[i+1])
-				i += 2
+				if line[i+1] < utf8.RuneSelf {
+					part += string(line[i+1])
+					i += 2
+				} else {
+					r, size := utf8.DecodeRuneInString(line[i+1:])
+					part += string(r)
+					i += 1 + size
+				}
 				continue
 			}
 			i++ // drop trailing backslash
@@ -491,8 +500,19 @@ func parseInline(line string) []*Node {
 			continue
 		}
 
-		part += string(c)
-		i++
+		// ASCII bytes round-trip through string(byte) unchanged, but a
+		// multibyte rune (e.g. "✓" = e2 9c 93) must be decoded whole: string(byte(0xe2))
+		// yields "â" (U+00E2), and the continuation bytes 0x9c/0x93 become C1
+		// controls that vanish on output — so each glyph collapsed to "â" in the
+		// Go cast. Decode the rune and append it (and any RuneError as U+FFFD).
+		if c < utf8.RuneSelf {
+			part += string(c)
+			i++
+		} else {
+			r, size := utf8.DecodeRuneInString(line[i:])
+			part += string(r)
+			i += size
+		}
 	}
 
 	if len(part) > 0 {

@@ -54,10 +54,15 @@ func TestStyledLinesToTviewText(t *testing.T) {
 		"[#bbbbbb:-]body[-:-:-]",
 		"[#bbbbbb:-:b]bold[-:-:-]",
 		"[#bbbbbb:-:ui]underlined italic[-:-:-]",
-		strings.Repeat("─", 40),
+		// tview's [-:-:-] reset does NOT clear the latched underline toggle,
+		// so a divider following an underlined run needs an explicit [-:-:U]
+		// prefix or the divider chars render underlined.
+		"[-:-:U]" + strings.Repeat("─", 40),
 		"  [#bbbbbb:-]indented[-:-:-]",
 		"[\"0\"][#79d79d:-:u]click me[-:-:-][\"\"]",
-		"plain default",
+		// plain run after an underlined run: explicit :U turns the latched
+		// underline toggle OFF (the [-:-:-] reset only clears the bold/italic mask).
+		"[-:-:U]plain default[-:-:-]",
 		"[#808080:-]gray[-:-:-]",
 		"",
 	}, "\n")

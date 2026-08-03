@@ -51,5 +51,6 @@ func newTestApp() *App {
 // ApplySingleLineBorders calls and tview's Draw reads of the global.
 func TestMain(m *testing.M) {
 	ApplySingleLineBorders()
+	ApplyDefaultStyles()
 	os.Exit(m.Run())
 }

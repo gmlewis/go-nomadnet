@@ -396,7 +396,6 @@ func (md *MainDisplay) redrawMenuBar() {
 	colors := GetThemeColors(md.theme)
 	fg := colors["menubar_fg"]
 	bg := colors["menubar_bg"]
-	focusBg := colors["list_focus_bg"]
 
 	var b strings.Builder
 	md.menuWidths = md.menuWidths[:0]
@@ -412,18 +411,18 @@ func (md *MainDisplay) redrawMenuBar() {
 		int32(fg), int32(bg), indicator)
 	b.WriteString(indicatorStyled)
 
-	for i, item := range md.menuItems {
+	for _, item := range md.menuItems {
 		// "[ Name ]" matches urwid MenuButton (Main.py:35-37): button_left
 		// "[" + " "+label+" " + button_right "]".
+		//
+		// Every button renders the uniform `menubar` style — Python wraps the
+		// whole MenuColumns in AttrMap(columns, "menubar") with NO focus_map
+		// (Main.py:211), so the active/focused button is NOT recolored or
+		// bolded; it is indicated to the user only by the hardware cursor set
+		// below. See TestMenuButtonsUniformMenubarStyle.
 		label := "[ " + item.Label + " ]"
-		var styled string
-		if i == md.activeMenu {
-			styled = fmt.Sprintf("[#%06x:#%06x:b]%s[-:-:-]",
-				int32(fg), int32(focusBg), label)
-		} else {
-			styled = fmt.Sprintf("[#%06x:#%06x]%s[-:-]",
-				int32(fg), int32(bg), label)
-		}
+		styled := fmt.Sprintf("[#%06x:#%06x]%s[-:-]",
+			int32(fg), int32(bg), label)
 		// dividechars=1: one space between columns.
 		b.WriteString(" ")
 		b.WriteString(styled)
