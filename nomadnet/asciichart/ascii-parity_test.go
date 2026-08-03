@@ -83,7 +83,7 @@ func TestPlotPythonParity(t *testing.T) {
 			}
 			got := c.Plot(toFloatSeries(tc.Series))
 			if got != tc.Result {
-				t.Errorf("Plot(%s) mismatch:\n--- got ---\n%s\n--- want ---\n%s", tc.Label, got, tc.Result)
+				t.Errorf("Plot(%v) mismatch:\n--- got ---\n%v\n--- want ---\n%v", tc.Label, got, tc.Result)
 			}
 		})
 	}

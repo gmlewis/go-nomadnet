@@ -21,9 +21,9 @@ import "fmt"
 // count. Matches Python's _label() helper in update_listbox.
 func FormatTabLabel(name string, total, unread int, unreadGlyph string) string {
 	if unread > 0 {
-		return fmt.Sprintf("%s (%v) %s %v", name, total, unreadGlyph, unread)
+		return fmt.Sprintf("%v (%v) %v %v", name, total, unreadGlyph, unread)
 	}
-	return fmt.Sprintf("%s (%v)", name, total)
+	return fmt.Sprintf("%v (%v)", name, total)
 }
 
 // ConversationFilterPredicate tests whether a conversation passes

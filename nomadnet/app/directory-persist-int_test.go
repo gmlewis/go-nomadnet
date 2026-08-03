@@ -81,7 +81,7 @@ func TestDirectoryPersistsAcrossShutdown(t *testing.T) {
 
 	got := app2.Dir.Find(peerHash)
 	if got == nil {
-		t.Fatalf("app2 did not load the directory entry from %s", dirPath)
+		t.Fatalf("app2 did not load the directory entry from %v", dirPath)
 	}
 	if got.DisplayName != "TestPeer" {
 		t.Errorf("loaded DisplayName = %q, want %q", got.DisplayName, "TestPeer")

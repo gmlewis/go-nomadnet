@@ -333,7 +333,7 @@ func (a *App) Init() error {
 		a.Logger.SetLogFilePath(a.LogFilePath)
 	}
 
-	a.Logger.Info("Nomad Network Client %s starting...", a.Version)
+	a.Logger.Info("Nomad Network Client %v starting...", a.Version)
 
 	// Initialize non-blocking subsystems
 	a.Dir = directory.New()
@@ -341,7 +341,7 @@ func (a *App) Init() error {
 	// Restore the persisted directory (Python Directory.__init__ →
 	// load_from_disk, Directory.py:82). A missing file is not an error.
 	if err := a.Dir.LoadFromDisk(a.DirectoryPath); err != nil {
-		a.Logger.Error("Could not load directory from %s: %v", a.DirectoryPath, err)
+		a.Logger.Error("Could not load directory from %v: %v", a.DirectoryPath, err)
 	}
 	// Eager-persist on every Remember (Python remember→save_to_disk,
 	// Directory.py:350) so discovered nodes survive across runs even on a
@@ -395,7 +395,7 @@ func (a *App) initRNS() {
 		a.Logger.Error("Could not load identity: %v", err2)
 		return
 	}
-	a.Logger.Info("Identity loaded: %s", rns.PrettyHex(a.Identity.Hash))
+	a.Logger.Info("Identity loaded: %v", rns.PrettyHex(a.Identity.Hash))
 	a.RRC.SetIdentity(a.Identity)
 	a.RRC.SetHistoryConfig(a.RRCHistoryPerRoomCap, a.RRCFilterLoadedHistory, a.RRCEphemeralNotices)
 
@@ -416,7 +416,7 @@ func (a *App) initRNS() {
 		a.Logger.Error("Could not register delivery identity: %v", err)
 		return
 	}
-	a.Logger.Info("LXMF Router ready to receive on %s", rns.PrettyHex(a.LXMFDest.Hash))
+	a.Logger.Info("LXMF Router ready to receive on %v", rns.PrettyHex(a.LXMFDest.Hash))
 
 	// Register announce handlers with RNS transport
 	a.Transport.RegisterAnnounceHandler(&rns.AnnounceHandler{
@@ -495,7 +495,7 @@ func (a *App) InitWithTransport(ts *rns.TransportSystem, identity *rns.Identity)
 	// load_from_disk, Directory.py:82) so known peers, trust levels, and the
 	// announce stream survive a restart. A missing file is not an error.
 	if err := a.Dir.LoadFromDisk(a.DirectoryPath); err != nil {
-		a.Logger.Error("Could not load directory from %s: %v", a.DirectoryPath, err)
+		a.Logger.Error("Could not load directory from %v: %v", a.DirectoryPath, err)
 	}
 	// Eager-persist on every Remember (Python remember→save_to_disk,
 	// Directory.py:350) so discovered nodes survive across runs even on a
@@ -735,7 +735,7 @@ func (a *App) Shutdown() {
 	// the directory is ephemeral and every known peer is lost on restart.
 	if a.Dir != nil {
 		if err := a.Dir.SaveToDisk(a.DirectoryPath); err != nil {
-			a.Logger.Error("Could not save directory to %s: %v", a.DirectoryPath, err)
+			a.Logger.Error("Could not save directory to %v: %v", a.DirectoryPath, err)
 		}
 	}
 
@@ -761,7 +761,7 @@ func (a *App) Shutdown() {
 	// removeAllWithRetry pattern used in go-reticulum's testutils.
 	if a.standaloneRNSDir != "" {
 		if err := removeAllWithRetry(a.standaloneRNSDir); err != nil {
-			a.Logger.Warning("Could not remove standalone RNS config dir %s: %v", a.standaloneRNSDir, err)
+			a.Logger.Warning("Could not remove standalone RNS config dir %v: %v", a.standaloneRNSDir, err)
 		}
 		a.standaloneRNSDir = ""
 	}
@@ -996,7 +996,7 @@ func (a *App) ensureStandaloneRNSConfig() string {
 	content = setRNSConfigDirective(content, "share_instance", "No")
 
 	_ = os.WriteFile(configPath, []byte(content), 0o644)
-	a.Logger.Info("Created standalone RNS config at %s", rnsDir)
+	a.Logger.Info("Created standalone RNS config at %v", rnsDir)
 	return rnsDir
 }
 
@@ -1022,7 +1022,7 @@ func setRNSConfigDirective(content, key, value string) string {
 			}
 			parts := strings.SplitN(trimmed, "=", 2)
 			if len(parts) == 2 && strings.TrimSpace(parts[0]) == key {
-				lines[i] = fmt.Sprintf("  %s = %s", key, value)
+				lines[i] = fmt.Sprintf("  %v = %v", key, value)
 				replaced = true
 				break
 			}
@@ -1033,7 +1033,7 @@ func setRNSConfigDirective(content, key, value string) string {
 		for i, line := range lines {
 			trimmed := strings.TrimSpace(line)
 			if strings.HasPrefix(trimmed, "[reticulum]") {
-				lines = append(lines[:i+1], append([]string{fmt.Sprintf("  %s = %s", key, value)}, lines[i+1:]...)...)
+				lines = append(lines[:i+1], append([]string{fmt.Sprintf("  %v = %v", key, value)}, lines[i+1:]...)...)
 				break
 			}
 		}
@@ -1048,7 +1048,7 @@ func (a *App) loadOrCreateIdentity(path string) (*rns.Identity, error) {
 		if err != nil {
 			return nil, fmt.Errorf("loading identity: %w", err)
 		}
-		a.Logger.Info("Loaded identity from %s", path)
+		a.Logger.Info("Loaded identity from %v", path)
 		return id, nil
 	}
 
@@ -1064,13 +1064,13 @@ func (a *App) loadOrCreateIdentity(path string) (*rns.Identity, error) {
 	if err := id.ToFile(path); err != nil {
 		return nil, fmt.Errorf("saving identity: %w", err)
 	}
-	a.Logger.Info("Created new identity at %s", path)
+	a.Logger.Info("Created new identity at %v", path)
 	return id, nil
 }
 
 // lxmfDelivery handles incoming LXMF messages.
 func (a *App) lxmfDelivery(msg *lxmf.Message) {
-	a.Logger.Info("Received LXMF message from %s", rns.PrettyHex(msg.SourceHash))
+	a.Logger.Info("Received LXMF message from %v", rns.PrettyHex(msg.SourceHash))
 
 	if a.ConversationPath != "" {
 		if _, err := a.ConversationCache.Ingest(msg, a.ConversationPath, false); err != nil {

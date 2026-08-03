@@ -869,7 +869,7 @@ func TestRecordResourceExpectationRejectsInvalid(t *testing.T) {
 		n := len(hub.resourceExpectations)
 		hub.lock.Unlock()
 		if n != 0 {
-			t.Errorf("%s: resourceExpectations len = %v, want 0", tc.name, n)
+			t.Errorf("%v: resourceExpectations len = %v, want 0", tc.name, n)
 		}
 	}
 }

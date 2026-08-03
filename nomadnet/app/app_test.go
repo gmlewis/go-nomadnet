@@ -163,7 +163,7 @@ func TestAppInit(t *testing.T) {
 		a.TmpFilesPath, a.AttachmentPath,
 	} {
 		if _, err := os.Stat(d); os.IsNotExist(err) {
-			t.Errorf("directory %s not created", d)
+			t.Errorf("directory %v not created", d)
 		}
 	}
 

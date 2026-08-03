@@ -200,7 +200,7 @@ func TestIntegrationSendConversationWiring(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Errorf("sender has no conversation with peer %s after send; list=%v", peerHex, len(list))
+		t.Errorf("sender has no conversation with peer %v after send; list=%v", peerHex, len(list))
 	}
 }
 
@@ -428,7 +428,7 @@ func TestIntegrationAttachmentExtractionOnReceive(t *testing.T) {
 	attFile := filepath.Join(appB.AttachmentPath, fmt.Sprintf("%x", got.Hash), "file_0")
 	data, err := os.ReadFile(attFile)
 	if err != nil {
-		t.Fatalf("extracted attachment not on disk at %s: %v", attFile, err)
+		t.Fatalf("extracted attachment not on disk at %v: %v", attFile, err)
 	}
 	if !bytes.Equal(data, attBody) {
 		t.Errorf("extracted attachment = %q, want %q", data, attBody)
@@ -570,7 +570,7 @@ func TestIntegrationPaperMessageSaveURI(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Errorf("sender has no conversation with peer %s after paper output", peerHex)
+		t.Errorf("sender has no conversation with peer %v after paper output", peerHex)
 	}
 }
 

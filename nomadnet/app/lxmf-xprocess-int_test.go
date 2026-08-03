@@ -275,7 +275,7 @@ func TestIntegrationLXMFReceiveFromPython(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	if onDisk == "" {
-		t.Fatalf("no message file found under %s", convDir)
+		t.Fatalf("no message file found under %v", convDir)
 	}
 	if onDisk != msgHashHex {
 		t.Errorf("on-disk filename = %q, want Python MSG_HASH %q (LXMF message-hash parity)", onDisk, msgHashHex)
@@ -293,7 +293,7 @@ func TestIntegrationLXMFReceiveFromPython(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	if len(msgs) != 1 {
-		t.Fatalf("ConversationMessages(%s) = %v entries, want 1", pySource, len(msgs))
+		t.Fatalf("ConversationMessages(%v) = %v entries, want 1", pySource, len(msgs))
 	}
 	if msgs[0].Content != "Hello from Python!" {
 		t.Errorf("loaded content = %q, want %q", msgs[0].Content, "Hello from Python!")
@@ -382,7 +382,7 @@ func (lb *xlineBuffer) waitFor(t *testing.T, prefix string, timeout time.Duratio
 		all := strings.Join(lb.lines, "\n")
 		lb.mu.Unlock()
 		if time.Now().After(deadline) {
-			t.Fatalf("timeout waiting for %q; python stdout:\n%s", prefix, all)
+			t.Fatalf("timeout waiting for %q; python stdout:\n%v", prefix, all)
 		}
 		time.Sleep(50 * time.Millisecond)
 	}

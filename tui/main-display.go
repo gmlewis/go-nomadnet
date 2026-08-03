@@ -135,7 +135,7 @@ func NewMainDisplay(app *App, theme int, glyphSetName string) *MainDisplay {
 			SetTextAlign(tview.AlignCenter).
 			SetDynamicColors(true).
 			SetTextColor(tcell.NewHexColor(0x999999)).
-			SetText(fmt.Sprintf("\n\n%s\n\n[yellow]Content will appear here[-]", item.Label))
+			SetText(fmt.Sprintf("\n\n%v\n\n[yellow]Content will appear here[-]", item.Label))
 		md.contentArea.AddPage(item.Key, placeholder, true, false)
 	}
 
@@ -407,7 +407,7 @@ func (md *MainDisplay) redrawMenuBar() {
 			indicator = g
 		}
 	}
-	indicatorStyled := fmt.Sprintf("[#%06x:#%06x]%s[-:-]",
+	indicatorStyled := fmt.Sprintf("[#%06x:#%06x]%v[-:-]",
 		int32(fg), int32(bg), indicator)
 	b.WriteString(indicatorStyled)
 
@@ -421,7 +421,7 @@ func (md *MainDisplay) redrawMenuBar() {
 		// bolded; it is indicated to the user only by the hardware cursor set
 		// below. See TestMenuButtonsUniformMenubarStyle.
 		label := "[ " + item.Label + " ]"
-		styled := fmt.Sprintf("[#%06x:#%06x]%s[-:-]",
+		styled := fmt.Sprintf("[#%06x:#%06x]%v[-:-]",
 			int32(fg), int32(bg), label)
 		// dividechars=1: one space between columns.
 		b.WriteString(" ")
@@ -763,7 +763,7 @@ func (md *MainDisplay) BuildMenuBarText() string {
 	var parts []string
 	for i, item := range md.menuItems {
 		if i == md.activeMenu {
-			parts = append(parts, fmt.Sprintf("[::b]%s[::-]", item.Label))
+			parts = append(parts, fmt.Sprintf("[::b]%v[::-]", item.Label))
 		} else {
 			parts = append(parts, item.Label)
 		}

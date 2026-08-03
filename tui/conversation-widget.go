@@ -523,7 +523,7 @@ func (cw *ConversationWidget) renderMessages() {
 			sb.WriteString("\n")
 		}
 		if msg.HasAttach && len(msg.AttachmentNames) == 0 {
-			sb.WriteString(fmt.Sprintf("  [gray]%s %v attachment(s)[-]\n", cw.glyphs()["file"], msg.AttachCount))
+			sb.WriteString(fmt.Sprintf("  [gray]%v %v attachment(s)[-]\n", cw.glyphs()["file"], msg.AttachCount))
 		}
 		sb.WriteString("\n")
 	}
@@ -644,9 +644,9 @@ func (cw *ConversationWidget) timeFormat() string {
 // Matches Python's show_qr_dialog at Conversations.py:641.
 func FormatQRText(data string) string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("┌%s┐\n", strings.Repeat("─", len(data)+4)))
-	sb.WriteString(fmt.Sprintf("│  %s  │\n", data))
-	sb.WriteString(fmt.Sprintf("└%s┘\n", strings.Repeat("─", len(data)+4)))
+	sb.WriteString(fmt.Sprintf("┌%v┐\n", strings.Repeat("─", len(data)+4)))
+	sb.WriteString(fmt.Sprintf("│  %v  │\n", data))
+	sb.WriteString(fmt.Sprintf("└%v┘\n", strings.Repeat("─", len(data)+4)))
 	return sb.String()
 }
 

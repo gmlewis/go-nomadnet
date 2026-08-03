@@ -110,7 +110,7 @@ func (p *Paths) EnsureDirs() error {
 
 	for _, dir := range dirs {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
-			return fmt.Errorf("creating %s: %w", dir, err)
+			return fmt.Errorf("creating %v: %w", dir, err)
 		}
 	}
 

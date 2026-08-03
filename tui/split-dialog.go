@@ -80,7 +80,7 @@ func SplitDialogLines(info SplitDialogInfo) []string {
 	return []string{
 		fmt.Sprintf("  Message is %v bytes.", info.BodyBytes),
 		fmt.Sprintf("  Hub limit  : %v bytes per message.", info.Limit),
-		fmt.Sprintf("  Split into %v %s.", info.K, info.Noun),
+		fmt.Sprintf("  Split into %v %v.", info.K, info.Noun),
 		"  Preview of part 1:",
 		"    " + info.Preview,
 	}

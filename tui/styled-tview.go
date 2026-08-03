@@ -126,9 +126,9 @@ func writeSpanTag(b *strings.Builder, span micron.StyledSpan, underlineOn bool) 
 		return underlineOn
 	}
 	if flags == "" {
-		fmt.Fprintf(b, "[%s:%s]%s[-:-:-]", fg, bg, tview.Escape(span.Text))
+		fmt.Fprintf(b, "[%v:%v]%v[-:-:-]", fg, bg, tview.Escape(span.Text))
 	} else {
-		fmt.Fprintf(b, "[%s:%s:%s]%s[-:-:-]", fg, bg, flags, tview.Escape(span.Text))
+		fmt.Fprintf(b, "[%v:%v:%v]%v[-:-:-]", fg, bg, flags, tview.Escape(span.Text))
 	}
 	return span.Underline
 }

@@ -186,7 +186,7 @@ func (as *announceStreamDisplay) update() {
 
 	// Empty state: a centered "No <tab> announces" (Network.py:521).
 	if len(as.entries) == 0 {
-		as.ilb.SetEmptyText(fmt.Sprintf("No %s announces", as.currentTab))
+		as.ilb.SetEmptyText(fmt.Sprintf("No %v announces", as.currentTab))
 	} else {
 		as.ilb.SetEmptyText("")
 	}

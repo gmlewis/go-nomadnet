@@ -101,7 +101,7 @@ func TestParseURL(t *testing.T) {
 				gotDestHex = hexEncode(dest)
 			}
 			if gotDestHex != c.wantDestHex {
-				t.Errorf("ParseURL(%q) dest = %s, want %s", c.url, gotDestHex, c.wantDestHex)
+				t.Errorf("ParseURL(%q) dest = %v, want %v", c.url, gotDestHex, c.wantDestHex)
 			}
 			if path != c.wantPath {
 				t.Errorf("ParseURL(%q) path = %q, want %q", c.url, path, c.wantPath)

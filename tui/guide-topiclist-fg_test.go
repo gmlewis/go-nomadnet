@@ -95,7 +95,7 @@ func TestGuideTopicListUnfocusedFg(t *testing.T) {
 				}
 			}
 			if !found {
-				t.Errorf("no topic-list unfocused cell matched topic_list_normal #%06x (theme %s)", tc.wantHex, tc.name)
+				t.Errorf("no topic-list unfocused cell matched topic_list_normal #%06x (theme %v)", tc.wantHex, tc.name)
 			}
 		})
 	}

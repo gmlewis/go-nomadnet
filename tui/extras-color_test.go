@@ -69,13 +69,13 @@ func TestIntroDisplayDefaultColor(t *testing.T) {
 				found = true
 				fg, _, _ := style.Decompose()
 				if fg != tcell.ColorDefault {
-					t.Errorf("%s cell (%v,%v) %q foreground = %v, want tcell.ColorDefault",
+					t.Errorf("%v cell (%v,%v) %q foreground = %v, want tcell.ColorDefault",
 						view.name, x, y, string(mainc), fg)
 				}
 			}
 		}
 		if !found {
-			t.Fatalf("%s drew no non-blank cells; test setup is wrong", view.name)
+			t.Fatalf("%v drew no non-blank cells; test setup is wrong", view.name)
 		}
 	}
 }

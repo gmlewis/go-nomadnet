@@ -130,9 +130,9 @@ func FormatBytes(size float64) string {
 	}
 
 	if unitIndex == 0 {
-		return fmt.Sprintf("%v %s", int(size), units[unitIndex])
+		return fmt.Sprintf("%v %v", int(size), units[unitIndex])
 	}
-	return fmt.Sprintf("%.1f %s", size, units[unitIndex])
+	return fmt.Sprintf("%.1f %v", size, units[unitIndex])
 }
 
 // FormatSyncStatus produces the sync status line shown in the
@@ -167,7 +167,7 @@ func FormatHubStatus(hub HubEntry) string {
 		status = "Reconnecting"
 	}
 
-	line := fmt.Sprintf("%s %s (%s", icon, hub.Name, status)
+	line := fmt.Sprintf("%v %v (%v", icon, hub.Name, status)
 	if roomCount > 0 {
 		line += fmt.Sprintf(", %v rooms", roomCount)
 	}
@@ -193,7 +193,7 @@ func FormatSyncProgress(progress int) string {
 	empty := barWidth - filled
 
 	bar := "[" + strings.Repeat("=", filled) + strings.Repeat(" ", empty) + "]"
-	return fmt.Sprintf("%s %v%%", bar, progress)
+	return fmt.Sprintf("%v %v%%", bar, progress)
 }
 
 // FormatAnnounceSummary formats a single announce for the list view.
@@ -207,7 +207,7 @@ func FormatAnnounceSummary(ann AnnounceEntry) string {
 	case "peer":
 		typeIcon = "Ⓟ"
 	}
-	return fmt.Sprintf("%s %s [%s] %s",
+	return fmt.Sprintf("%v %v [%v] %v",
 		typeIcon,
 		ann.DisplayName,
 		ann.Type,
@@ -401,13 +401,13 @@ func ParseLinkTargetWithFields(target string) (destType, hash string, fields []s
 func FormatAnnounceDetail(ann AnnounceEntry) string {
 	var sb strings.Builder
 
-	sb.WriteString(fmt.Sprintf("[::b]%s[-]\n", ann.DisplayName))
-	sb.WriteString(fmt.Sprintf("  Type: %s\n", ann.Type))
-	sb.WriteString(fmt.Sprintf("  Trust: %s\n", ann.TrustLevel))
-	sb.WriteString(fmt.Sprintf("  Hash: %s\n", ann.SourceHash))
-	sb.WriteString(fmt.Sprintf("  Time: %s\n", ann.Timestamp.Format("2006-01-02 15:04:05")))
+	sb.WriteString(fmt.Sprintf("[::b]%v[-]\n", ann.DisplayName))
+	sb.WriteString(fmt.Sprintf("  Type: %v\n", ann.Type))
+	sb.WriteString(fmt.Sprintf("  Trust: %v\n", ann.TrustLevel))
+	sb.WriteString(fmt.Sprintf("  Hash: %v\n", ann.SourceHash))
+	sb.WriteString(fmt.Sprintf("  Time: %v\n", ann.Timestamp.Format("2006-01-02 15:04:05")))
 	if ann.AppData != "" {
-		sb.WriteString(fmt.Sprintf("  Data: %s\n", truncateStr(ann.AppData, 64)))
+		sb.WriteString(fmt.Sprintf("  Data: %v\n", truncateStr(ann.AppData, 64)))
 	}
 
 	return sb.String()

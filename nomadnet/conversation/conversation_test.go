@@ -459,7 +459,7 @@ func TestClearHistory(t *testing.T) {
 	entries, _ := os.ReadDir(convPath)
 	for _, e := range entries {
 		if !e.IsDir() && e.Name() != ".index" {
-			t.Errorf("File %s still exists after ClearHistory", e.Name())
+			t.Errorf("File %v still exists after ClearHistory", e.Name())
 		}
 	}
 }

@@ -49,11 +49,11 @@ func loadPeerExpected(t *testing.T, name string) peerExpected {
 	t.Helper()
 	data, err := peerFS.ReadFile("testdata/" + name + ".json")
 	if err != nil {
-		t.Fatalf("read %s.json: %v", name, err)
+		t.Fatalf("read %v.json: %v", name, err)
 	}
 	var ex peerExpected
 	if err := json.Unmarshal(data, &ex); err != nil {
-		t.Fatalf("unmarshal %s.json: %v", name, err)
+		t.Fatalf("unmarshal %v.json: %v", name, err)
 	}
 	return ex
 }

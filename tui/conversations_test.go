@@ -459,10 +459,10 @@ func TestDisplayConversationLoadsMessages(t *testing.T) {
 	// The rendered message list must contain the message bodies.
 	body := cw.messageList.GetText(true)
 	if !strings.Contains(body, "hello world") {
-		t.Errorf("messageList missing %q; got: %s", "hello world", body)
+		t.Errorf("messageList missing %q; got: %v", "hello world", body)
 	}
 	if !strings.Contains(body, "second msg") {
-		t.Errorf("messageList missing %q; got: %s", "second msg", body)
+		t.Errorf("messageList missing %q; got: %v", "second msg", body)
 	}
 }
 
@@ -501,7 +501,7 @@ func TestReloadCurrentMessages(t *testing.T) {
 		t.Errorf("expected 2 loads after reload, got %v", loads)
 	}
 	if !strings.Contains(cd.currentWidget.messageList.GetText(true), "freshly sent") {
-		t.Errorf("reload did not render the new message: %s", cd.currentWidget.messageList.GetText(true))
+		t.Errorf("reload did not render the new message: %v", cd.currentWidget.messageList.GetText(true))
 	}
 }
 
@@ -788,10 +788,10 @@ func TestConversationsDisplayKeyboardShortcuts(t *testing.T) {
 			fired = fired[:0]
 			result := cd.handleInput(tt.event)
 			if result != nil {
-				t.Errorf("key %s was not consumed (returned non-nil)", tt.name)
+				t.Errorf("key %v was not consumed (returned non-nil)", tt.name)
 			}
 			if len(fired) != 1 || fired[0] != tt.want {
-				t.Errorf("key %s fired %v, want [%s]", tt.name, fired, tt.want)
+				t.Errorf("key %v fired %v, want [%v]", tt.name, fired, tt.want)
 			}
 		})
 	}

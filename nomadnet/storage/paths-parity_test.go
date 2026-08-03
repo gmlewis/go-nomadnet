@@ -98,7 +98,7 @@ func TestPathsPythonParity(t *testing.T) {
 			// Compare via filepath.Clean so trailing-slash / separator
 			// differences don't cause false failures across platforms.
 			if filepath.Clean(c.got) != filepath.Clean(w) {
-				t.Errorf("%s = %q, want %q", c.name, c.got, w)
+				t.Errorf("%v = %q, want %q", c.name, c.got, w)
 			}
 		})
 	}

@@ -59,12 +59,12 @@ func (a *App) AddInterfaceConfig(name string, props map[string]any) error {
 		}
 	}
 
-	sb.WriteString(fmt.Sprintf("  [[%s]]\n", name))
+	sb.WriteString(fmt.Sprintf("  [[%v]]\n", name))
 	for k, v := range props {
 		if k == "name" {
 			continue
 		}
-		sb.WriteString(fmt.Sprintf("    %s = %v\n", k, v))
+		sb.WriteString(fmt.Sprintf("    %v = %v\n", k, v))
 	}
 
 	return os.WriteFile(path, []byte(sb.String()), 0o644)
@@ -172,12 +172,12 @@ func (a *App) EditInterfaceConfig(oldName, newName string, props map[string]any)
 			if secName == oldName {
 				inTarget = true
 				replaced = true
-				out = append(out, fmt.Sprintf("  [[%s]]", newName))
+				out = append(out, fmt.Sprintf("  [[%v]]", newName))
 				for k, v := range props {
 					if k == "name" {
 						continue
 					}
-					out = append(out, fmt.Sprintf("    %s = %v", k, v))
+					out = append(out, fmt.Sprintf("    %v = %v", k, v))
 				}
 				continue
 			} else {

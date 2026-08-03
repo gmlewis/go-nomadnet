@@ -672,7 +672,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		addr := a.LXMFAddressHex()
 		text := "[gray]LXMF address display — not available[-]"
 		if addr != "" {
-			text = fmt.Sprintf("[lightblue]LXMF Address[-]\n\n[white]<%s>[-]", addr)
+			text = fmt.Sprintf("[lightblue]LXMF Address[-]\n\n[white]<%v>[-]", addr)
 		}
 		tuiApp.Dialogs.ShowDialog("LXMF Address",
 			tview.NewTextView().
@@ -915,7 +915,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		tuiApp.Dialogs.ShowDialog("Ping",
 			tview.NewTextView().
 				SetDynamicColors(true).
-				SetText(fmt.Sprintf("[gray]Pinging %s...[-]", sourceHash[:8])),
+				SetText(fmt.Sprintf("[gray]Pinging %v...[-]", sourceHash[:8])),
 			40, 5, nil)
 		// TODO: Actual ping via RNS transport
 	}
@@ -1301,7 +1301,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		tuiApp.Dialogs.ShowDialog("Interface: "+iface.Name,
 			tview.NewTextView().
 				SetDynamicColors(true).
-				SetText(fmt.Sprintf("[::b]%s[-]\n\nType: %s\nStatus: %s\nTarget: %s",
+				SetText(fmt.Sprintf("[::b]%v[-]\n\nType: %v\nStatus: %v\nTarget: %v",
 					iface.Name, iface.Type, status, iface.Target)),
 			50, 9, nil)
 	}
@@ -1514,7 +1514,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 				return
 			}
 			bd.SetCurrentDest(dest)
-			canonURL := fmt.Sprintf("%x:%s", dest, path)
+			canonURL := fmt.Sprintf("%x:%v", dest, path)
 			if rd == nil {
 				if cached := pageCache.GetCached(canonURL); cached != nil {
 					tuiApp.QueueUpdateDraw(func() {
@@ -1529,7 +1529,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 					identifyOnConnect(dest))
 				tuiApp.QueueUpdateDraw(func() {
 					if ferr != nil {
-						bd.SetContent(fmt.Sprintf("[red]%s[-]", browser.StatusText(browser.ErrToStatus(ferr))))
+						bd.SetContent(fmt.Sprintf("[red]%v[-]", browser.StatusText(browser.ErrToStatus(ferr))))
 						return
 					}
 					if rd == nil {

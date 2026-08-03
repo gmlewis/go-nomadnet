@@ -53,7 +53,7 @@ func main() {
 	flag.BoolVar(&showVer, "version", false, "show version and exit")
 
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Nomad Network Client %s\n\n", version.Version)
+		fmt.Fprintf(os.Stderr, "Nomad Network Client %v\n\n", version.Version)
 		fmt.Fprintf(os.Stderr, "Usage: nomadnet [options]\n\n")
 		fmt.Fprintf(os.Stderr, "Options:\n")
 		flag.PrintDefaults()
@@ -62,7 +62,7 @@ func main() {
 	flag.Parse()
 
 	if showVer {
-		fmt.Printf("Nomad Network Client %s\n", version.Version)
+		fmt.Printf("Nomad Network Client %v\n", version.Version)
 		os.Exit(0)
 	}
 

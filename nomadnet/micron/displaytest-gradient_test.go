@@ -99,17 +99,17 @@ func TestDisplayTestGradientBars(t *testing.T) {
 					dump.WriteString(g.bg)
 					dump.WriteString("]")
 				}
-				t.Fatalf("visible spans = %v, want %v: %s", len(got), len(tc.wantBG), dump.String())
+				t.Fatalf("visible spans = %v, want %v: %v", len(got), len(tc.wantBG), dump.String())
 			}
 			for i, g := range got {
 				if g.text != " " {
 					t.Errorf("span %v text = %q, want a single space (gradient bar cell)", i, g.text)
 				}
 				if g.bg != tc.wantBG[i] {
-					t.Errorf("span %v bg = %s, want %s", i, g.bg, tc.wantBG[i])
+					t.Errorf("span %v bg = %v, want %v", i, g.bg, tc.wantBG[i])
 				}
 				if g.fg != "#dddddd" {
-					t.Errorf("span %v fg = %s, want #dddddd (plain dark fg)", i, g.fg)
+					t.Errorf("span %v fg = %v, want #dddddd (plain dark fg)", i, g.fg)
 				}
 				if g.under {
 					t.Errorf("span %v carries Underline=true (A4 underline leak)", i)

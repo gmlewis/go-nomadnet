@@ -67,9 +67,9 @@ func Save(c *Config, path string) (retErr error) {
 	}()
 
 	writeSection := func(name string, keys map[string]string) {
-		_, _ = fmt.Fprintf(w, "[%s]\n", name)
+		_, _ = fmt.Fprintf(w, "[%v]\n", name)
 		for k, v := range keys {
-			_, _ = fmt.Fprintf(w, "%s = %s\n", k, v)
+			_, _ = fmt.Fprintf(w, "%v = %v\n", k, v)
 		}
 		_, _ = fmt.Fprintln(w)
 	}

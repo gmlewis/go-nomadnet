@@ -64,7 +64,7 @@ func (lb *lineBuffer) waitForLine(t *testing.T, substr string, timeout time.Dura
 		all := append([]string(nil), lb.lines...)
 		lb.mu.Unlock()
 		if time.Now().After(deadline) {
-			t.Fatalf("timeout waiting for %q; output so far:\n%s", substr, strings.Join(all, "\n"))
+			t.Fatalf("timeout waiting for %q; output so far:\n%v", substr, strings.Join(all, "\n"))
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
@@ -103,7 +103,7 @@ func buildDaemonBinary(t *testing.T) string {
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		t.Fatalf("go build gonomadnet: %v\n%s", err, stderr.String())
+		t.Fatalf("go build gonomadnet: %v\n%v", err, stderr.String())
 	}
 	return binPath
 }
@@ -121,7 +121,7 @@ func repoRoot(t *testing.T) string {
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			t.Fatalf("could not find go.mod walking up from %s", dir)
+			t.Fatalf("could not find go.mod walking up from %v", dir)
 		}
 		dir = parent
 	}
@@ -189,12 +189,12 @@ func TestDaemonSmokeEndToEnd(t *testing.T) {
 	if ready == "" {
 		t.Errorf("LXMF ready line %q has no <hash> marker", readyLine)
 	}
-	t.Logf("daemon registered LXMF destination %s", ready)
+	t.Logf("daemon registered LXMF destination %v", ready)
 
 	// Confirm the process is still alive a moment after registering (it must
 	// stay up until SIGTERM, not exit on its own).
 	if !processAlive(cmd.Process) {
-		t.Fatalf("daemon exited before SIGTERM; output:\n%s", lb.dump())
+		t.Fatalf("daemon exited before SIGTERM; output:\n%v", lb.dump())
 	}
 
 	// Graceful shutdown on SIGTERM (Python exits via urwid.ExitMainLoop on Quit;
@@ -210,7 +210,7 @@ func TestDaemonSmokeEndToEnd(t *testing.T) {
 	waitErr := cmd.Wait()
 	if exitErr, ok := waitErr.(*exec.ExitError); ok {
 		if exitErr.ExitCode() != 0 {
-			t.Fatalf("daemon exited %v after SIGTERM; output:\n%s", exitErr.ExitCode(), lb.dump())
+			t.Fatalf("daemon exited %v after SIGTERM; output:\n%v", exitErr.ExitCode(), lb.dump())
 		}
 	} else if waitErr != nil {
 		t.Fatalf("daemon wait: %v", waitErr)

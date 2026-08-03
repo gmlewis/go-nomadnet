@@ -57,7 +57,7 @@ func TestApplySingleLineBorders(t *testing.T) {
 	}
 	for _, c := range cases {
 		if c.got != c.want {
-			t.Errorf("%s = %q, want %q", c.name, c.got, c.want)
+			t.Errorf("%v = %q, want %q", c.name, c.got, c.want)
 		}
 	}
 }

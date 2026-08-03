@@ -144,15 +144,15 @@ func TestConversationWidgetKeyboardShortcuts(t *testing.T) {
 			fired = fired[:0]
 			result := cw.handleInput(tt.event)
 			if result != nil {
-				t.Errorf("key %s was not consumed", tt.name)
+				t.Errorf("key %v was not consumed", tt.name)
 			}
 			if tt.want == "" {
 				if len(fired) != 0 {
-					t.Errorf("key %s should not fire callbacks, fired %v", tt.name, fired)
+					t.Errorf("key %v should not fire callbacks, fired %v", tt.name, fired)
 				}
 			} else {
 				if len(fired) != 1 || fired[0] != tt.want {
-					t.Errorf("key %s fired %v, want [%s]", tt.name, fired, tt.want)
+					t.Errorf("key %v fired %v, want [%v]", tt.name, fired, tt.want)
 				}
 			}
 		})
@@ -365,7 +365,7 @@ func TestConversationWidgetRenderHeaderParity(t *testing.T) {
 	// encryption glyph must appear; relative_time is now-dependent so not asserted.
 	for _, want := range []string{"↑ → ", "2023-11-14 21:13:20 ⚿", "| My Subject", "  Hello world"} {
 		if !strings.Contains(text, want) {
-			t.Errorf("rendered text missing %q\ngot: %s", want, text)
+			t.Errorf("rendered text missing %q\ngot: %v", want, text)
 		}
 	}
 }

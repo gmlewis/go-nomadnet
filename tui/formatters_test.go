@@ -772,7 +772,7 @@ func TestPrettyDate(t *testing.T) {
 	for _, tt := range tests {
 		got := prettyDateAt(now.Add(-tt.offset), now)
 		if got != tt.want {
-			t.Errorf("PrettyDate(%s) = %q, want %q", tt.name, got, tt.want)
+			t.Errorf("PrettyDate(%v) = %q, want %q", tt.name, got, tt.want)
 		}
 	}
 }

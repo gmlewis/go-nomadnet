@@ -75,7 +75,7 @@ func TestScanPages(t *testing.T) {
 	for _, p := range sorted {
 		base := filepath.Base(p)
 		if base == ".hidden" || base == "index.mu.allowed" {
-			t.Errorf("Should not include %s", base)
+			t.Errorf("Should not include %v", base)
 		}
 	}
 }
@@ -387,7 +387,7 @@ func TestServeDefaultIndexPythonParity(t *testing.T) {
 				t.Fatal(err)
 			}
 			if string(tc.got) != string(want) {
-				t.Errorf("%s markup differs from Python reference:\n got  (%v bytes): %q\n want (%v bytes): %q",
+				t.Errorf("%v markup differs from Python reference:\n got  (%v bytes): %q\n want (%v bytes): %q",
 					tc.name, len(tc.got), string(tc.got), len(want), string(want))
 			}
 		})

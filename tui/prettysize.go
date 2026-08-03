@@ -30,13 +30,13 @@ func Prettysize(num float64) string {
 	for _, unit := range prettysizeUnits {
 		if absFloat(num) < 1000.0 {
 			if unit == "" {
-				return fmt.Sprintf("%.0f %s%s", num, unit, "B")
+				return fmt.Sprintf("%.0f %v%v", num, unit, "B")
 			}
-			return fmt.Sprintf("%.2f %s%s", num, unit, "B")
+			return fmt.Sprintf("%.2f %v%v", num, unit, "B")
 		}
 		num /= 1000.0
 	}
-	return fmt.Sprintf("%.2f%s%s", num, lastUnit, "B")
+	return fmt.Sprintf("%.2f%v%v", num, lastUnit, "B")
 }
 
 // absFloat returns the absolute value of x without depending on the math

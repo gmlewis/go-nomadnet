@@ -181,21 +181,21 @@ func TestPaletteMatchesPython(t *testing.T) {
 		for name, want := range th.golden {
 			got, ok := paletteLookup(th.theme, name)
 			if !ok {
-				t.Errorf("%s palette missing %q", th.name, name)
+				t.Errorf("%v palette missing %q", th.name, name)
 				continue
 			}
 			if got != want {
-				t.Errorf("%s %q = %+v, want %+v", th.name, name, got, want)
+				t.Errorf("%v %q = %+v, want %+v", th.name, name, got, want)
 			}
 		}
 		// The implementation must not carry entries absent from the Python
 		// original (catches typos / inventing styles).
 		if len(th.implements) != len(th.golden) {
-			t.Errorf("%s palette has %v entries, want %v", th.name, len(th.implements), len(th.golden))
+			t.Errorf("%v palette has %v entries, want %v", th.name, len(th.implements), len(th.golden))
 		}
 		for name := range th.implements {
 			if _, ok := th.golden[name]; !ok {
-				t.Errorf("%s palette has extra entry %q not in Python THEMES", th.name, name)
+				t.Errorf("%v palette has extra entry %q not in Python THEMES", th.name, name)
 			}
 		}
 	}

@@ -119,7 +119,7 @@ func resolveAttachmentSavePath(filename, saveDir string) (string, error) {
 	base := safeName[:len(safeName)-len(ext)]
 	for isFile(candidate) {
 		counter++
-		candidate = filepath.Clean(filepath.Join(saveDir, fmt.Sprintf("%s_%v%s", base, counter, ext)))
+		candidate = filepath.Clean(filepath.Join(saveDir, fmt.Sprintf("%v_%v%v", base, counter, ext)))
 		if !startsWithDir(candidate, baseDir) {
 			return "", os.ErrPermission
 		}

@@ -85,9 +85,9 @@ func (mvd *MessageViewDisplay) ShowMessage(msg MessageInfo) {
 		trustColor = "[yellow]"
 	}
 
-	sb.WriteString(fmt.Sprintf("%s[%s][-] ", trustColor, strings.ToUpper(msg.TrustLevel)))
-	sb.WriteString(fmt.Sprintf("[::b]%s[-]", msg.Sender))
-	sb.WriteString(fmt.Sprintf("  [gray]%s[-]\n", msg.Timestamp))
+	sb.WriteString(fmt.Sprintf("%v[%v][-] ", trustColor, strings.ToUpper(msg.TrustLevel)))
+	sb.WriteString(fmt.Sprintf("[::b]%v[-]", msg.Sender))
+	sb.WriteString(fmt.Sprintf("  [gray]%v[-]\n", msg.Timestamp))
 	sb.WriteString(strings.Repeat("─", 40) + "\n\n")
 
 	// Render content with Micron if it looks like Micron markup

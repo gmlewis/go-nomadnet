@@ -61,7 +61,7 @@ func NewHubInfoArea(app *App, hubName string) *HubInfoArea {
 	hia.widget = tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(hia.view, 0, 1, false)
 	hia.widget.SetBorder(true)
-	hia.widget.SetTitle(fmt.Sprintf(" %s ", hubName))
+	hia.widget.SetTitle(fmt.Sprintf(" %v ", hubName))
 	hia.widget.SetInputCapture(hia.handleKey)
 	hia.refreshView()
 
@@ -167,19 +167,19 @@ func (hia *HubInfoArea) handleKey(event *tcell.EventKey) *tcell.EventKey {
 func (hia *HubInfoArea) refreshView() {
 	var sb strings.Builder
 	if hia.motd != "" {
-		sb.WriteString(fmt.Sprintf("[::b]MOTD:[-] %s\n\n", hia.motd))
+		sb.WriteString(fmt.Sprintf("[::b]MOTD:[-] %v\n\n", hia.motd))
 	}
 	if len(hia.rooms) > 0 {
 		sb.WriteString("[::b]Rooms:[-]\n")
 		for _, r := range hia.rooms {
-			sb.WriteString(fmt.Sprintf("  #%s\n", r))
+			sb.WriteString(fmt.Sprintf("  #%v\n", r))
 		}
 		sb.WriteString("\n")
 	}
 	if len(hia.availableRooms) > 0 {
 		sb.WriteString("[::b]Available Rooms:[-]\n")
 		for _, r := range hia.availableRooms {
-			sb.WriteString(fmt.Sprintf("  #%s\n", r))
+			sb.WriteString(fmt.Sprintf("  #%v\n", r))
 		}
 	}
 	if sb.Len() == 0 {

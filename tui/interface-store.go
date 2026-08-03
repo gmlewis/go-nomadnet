@@ -221,7 +221,7 @@ func FormatInterfaceSummary(iface InterfaceInfo) string {
 		trafficInfo = fmt.Sprintf(" [%v samples]", len(iface.Traffic))
 	}
 
-	return fmt.Sprintf("%s %s (%s) — %s — %s%s",
+	return fmt.Sprintf("%v %v (%v) — %v — %v%v",
 		statusIcon, iface.Name, iface.Type, iface.Status,
 		formatBandwidth(iface.Bandwidth), trafficInfo)
 }

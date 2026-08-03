@@ -623,7 +623,7 @@ func (cd *ConversationsDisplay) showDetail(idx int) {
 		cd.populateList()
 	}
 	cd.detail.SetText(fmt.Sprintf(
-		"[::b]%s[-]\n\nTrust: %s\nMessages: %v\nLast: %s\n\n[gray]Select a message to read[-]",
+		"[::b]%v[-]\n\nTrust: %v\nMessages: %v\nLast: %v\n\n[gray]Select a message to read[-]",
 		conv.DisplayName,
 		conv.TrustLevel,
 		conv.MessageCount,
@@ -797,9 +797,9 @@ func tabButtonLabels(convs []ConversationInfo, unreadGlyph string) (trusted, unt
 	}
 	label := func(name string, total, unread int) string {
 		if unread > 0 {
-			return fmt.Sprintf("%s (%v) %s %v", name, total, unreadGlyph, unread)
+			return fmt.Sprintf("%v (%v) %v %v", name, total, unreadGlyph, unread)
 		}
-		return fmt.Sprintf("%s (%v)", name, total)
+		return fmt.Sprintf("%v (%v)", name, total)
 	}
 	return label("Trusted", trustedCount, trustedAlert), label("Untrusted", untrustedCount, untrustedAlert)
 }
@@ -943,7 +943,7 @@ func BlockedRowLabel(displayName, sourceHash string) string {
 	if displayName == "" {
 		displayName = sourceHash
 	}
-	return fmt.Sprintf("× [blocked] %s", displayName)
+	return fmt.Sprintf("× [blocked] %v", displayName)
 }
 
 // OpenSyncDialog opens the LXMF sync dialog with propagation
@@ -1196,15 +1196,15 @@ func (cd *ConversationsDisplay) SaveAttachmentsDialog(sourceHash string, refs []
 			g := cd.app.Glyphs
 			var lines []string
 			if len(saved) > 0 {
-				lines = append(lines, fmt.Sprintf("%s Copied %v file(s) to %s:", g["check"], len(saved), saveDirOf(saved)))
+				lines = append(lines, fmt.Sprintf("%v Copied %v file(s) to %v:", g["check"], len(saved), saveDirOf(saved)))
 				for _, p := range saved {
 					lines = append(lines, "  "+filepath.Base(p))
 				}
 				if failed > 0 {
-					lines = append(lines, fmt.Sprintf("%s %v failed", g["cross"], failed))
+					lines = append(lines, fmt.Sprintf("%v %v failed", g["cross"], failed))
 				}
 			} else if failed > 0 {
-				lines = append(lines, fmt.Sprintf("%s Failed: %v file(s)", g["cross"], failed))
+				lines = append(lines, fmt.Sprintf("%v Failed: %v file(s)", g["cross"], failed))
 			} else {
 				lines = append(lines, "No files selected")
 			}
@@ -1736,7 +1736,7 @@ func (cd *ConversationsDisplay) updateSyncProgress() {
 	}
 
 	if showPercent {
-		cd.syncStatusText.SetText(fmt.Sprintf("%s (%.0f%%)", status, prog*100))
+		cd.syncStatusText.SetText(fmt.Sprintf("%v (%.0f%%)", status, prog*100))
 	} else {
 		cd.syncStatusText.SetText(status)
 	}

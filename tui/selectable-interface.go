@@ -142,11 +142,11 @@ func (s *SelectableInterfaceItem) Draw(screen tcell.Screen) {
 		sel = "●"
 	}
 	contentRows := []string{
-		fmt.Sprintf("%-4s%s  %s", sel, s.Icon, s.Name),
-		fmt.Sprintf("%-10s%-10s | %s", "Status: ", s.StatusText(), s.ConnectedText()),
-		fmt.Sprintf("%-10s%s", "Type:", s.IfaceType),
+		fmt.Sprintf("%-4s%v  %v", sel, s.Icon, s.Name),
+		fmt.Sprintf("%-10s%-10s | %v", "Status: ", s.StatusText(), s.ConnectedText()),
+		fmt.Sprintf("%-10s%v", "Type:", s.IfaceType),
 		strings.Repeat("-", cw),
-		fmt.Sprintf("%-10s%-15s%-10s%s", "TX:", s.TXText(), "RX:", s.RXText()),
+		fmt.Sprintf("%-10s%-15s%-10s%v", "TX:", s.TXText(), "RX:", s.RXText()),
 	}
 
 	// Render rows 1..h-1. For a full box the last row is the bottom border; for
@@ -216,11 +216,11 @@ func InterfaceItemRowText(s *SelectableInterfaceItem, w int) []string {
 		sel = "●"
 	}
 	rows := []string{
-		fmt.Sprintf("%-4s%s  %s", sel, s.Icon, s.Name),
-		fmt.Sprintf("%-10s%-10s | %s", "Status: ", s.StatusText(), s.ConnectedText()),
-		fmt.Sprintf("%-10s%s", "Type:", s.IfaceType),
+		fmt.Sprintf("%-4s%v  %v", sel, s.Icon, s.Name),
+		fmt.Sprintf("%-10s%-10s | %v", "Status: ", s.StatusText(), s.ConnectedText()),
+		fmt.Sprintf("%-10s%v", "Type:", s.IfaceType),
 		"",
-		fmt.Sprintf("%-10s%-15s%-10s%s", "TX:", s.TXText(), "RX:", s.RXText()),
+		fmt.Sprintf("%-10s%-15s%-10s%v", "TX:", s.TXText(), "RX:", s.RXText()),
 	}
 	for i, r := range rows {
 		if i == 3 {

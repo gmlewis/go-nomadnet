@@ -137,7 +137,7 @@ func TestFormatLXMFPeerEntry(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			got := FormatLXMFPeerEntry(tc.data, now)
 			if got != tc.want {
-				t.Errorf("FormatLXMFPeerEntry (now=%v):\ngot:\n%s\nwant:\n%s", now, got, tc.want)
+				t.Errorf("FormatLXMFPeerEntry (now=%v):\ngot:\n%v\nwant:\n%v", now, got, tc.want)
 			}
 		})
 	}
@@ -153,7 +153,7 @@ func TestFormatLXMFPeerEntry(t *testing.T) {
 	)
 	got := FormatLXMFPeerEntry(tests[1].data, yesterdayNow)
 	if got != yesterdayWant {
-		t.Errorf("yesterday-now variant:\ngot:\n%s\nwant:\n%s", got, yesterdayWant)
+		t.Errorf("yesterday-now variant:\ngot:\n%v\nwant:\n%v", got, yesterdayWant)
 	}
 }
 

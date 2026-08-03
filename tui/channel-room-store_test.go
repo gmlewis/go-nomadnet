@@ -145,6 +145,6 @@ func TestSortedRooms(t *testing.T) {
 	}
 	// Sorted by hub addr, then name
 	if sorted[0].HubAddr != "hub1" || sorted[0].Name != "alpha" {
-		t.Errorf("first = %s/%s, want hub1/alpha", sorted[0].HubAddr, sorted[0].Name)
+		t.Errorf("first = %v/%v, want hub1/alpha", sorted[0].HubAddr, sorted[0].Name)
 	}
 }

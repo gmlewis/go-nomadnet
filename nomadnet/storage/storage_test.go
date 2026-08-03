@@ -94,11 +94,11 @@ func TestEnsureDirs(t *testing.T) {
 	for _, d := range dirs {
 		info, err := os.Stat(d)
 		if err != nil {
-			t.Errorf("directory %s not created: %v", d, err)
+			t.Errorf("directory %v not created: %v", d, err)
 			continue
 		}
 		if !info.IsDir() {
-			t.Errorf("%s is not a directory", d)
+			t.Errorf("%v is not a directory", d)
 		}
 	}
 }

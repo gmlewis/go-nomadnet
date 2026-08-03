@@ -112,7 +112,7 @@ func TestTabCompleteNoTokenOrMatch(t *testing.T) {
 			t.Parallel()
 			_, _, _, ok := TabComplete(tc.text, tc.pos, nil, members)
 			if ok {
-				t.Errorf("%s: expected no completion, got ok=true", tc.name)
+				t.Errorf("%v: expected no completion, got ok=true", tc.name)
 			}
 		})
 	}

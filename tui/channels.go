@@ -203,8 +203,8 @@ func (cd *ChannelsDisplay) populateRooms(rooms []ChannelInfo) {
 		if room.Joined {
 			prefix = "[*] "
 		}
-		text := fmt.Sprintf("%s#%s", prefix, room.Name)
-		secondary := fmt.Sprintf("%v members — %s", room.Members, room.Topic)
+		text := fmt.Sprintf("%v#%v", prefix, room.Name)
+		secondary := fmt.Sprintf("%v members — %v", room.Members, room.Topic)
 		cd.rooms.AddItem(text, secondary, 0, nil)
 	}
 }
@@ -322,8 +322,8 @@ func (cd *ChannelsDisplay) UpdateRooms(rooms []ChannelInfo) {
 		if room.Joined {
 			prefix = "[*] "
 		}
-		text := fmt.Sprintf("%s#%s", prefix, room.Name)
-		secondary := fmt.Sprintf("%v members — %s", room.Members, room.Topic)
+		text := fmt.Sprintf("%v#%v", prefix, room.Name)
+		secondary := fmt.Sprintf("%v members — %v", room.Members, room.Topic)
 		cd.rooms.AddItem(text, secondary, 0, nil)
 	}
 }
@@ -385,7 +385,7 @@ func (cd *ChannelsDisplay) CollapseJoinPart() bool {
 // ShowUserInfo displays a user info dialog for the selected member.
 // Matches Python's ChannelsDisplay.show_user_info() at Channels.py:2119.
 func (cd *ChannelsDisplay) ShowUserInfo(nick, hash string) {
-	info := fmt.Sprintf("[::b]Nick[-]  : %s\n[::b]Hash[-] : %s", nick, hash)
+	info := fmt.Sprintf("[::b]Nick[-]  : %v\n[::b]Hash[-] : %v", nick, hash)
 	cd.messages.SetText(info)
 }
 
@@ -398,16 +398,16 @@ func (cd *ChannelsDisplay) ShowMessages(msgs []ChannelMessage) {
 	for _, msg := range msgs {
 		switch {
 		case msg.IsSystem:
-			sb.WriteString(fmt.Sprintf("[gray]%s[-]\n", msg.Text))
+			sb.WriteString(fmt.Sprintf("[gray]%v[-]\n", msg.Text))
 		case msg.IsNotice:
-			sb.WriteString(fmt.Sprintf("[yellow]%s[-]\n", msg.Text))
+			sb.WriteString(fmt.Sprintf("[yellow]%v[-]\n", msg.Text))
 		case msg.IsError:
-			sb.WriteString(fmt.Sprintf("[red]%s[-]\n", msg.Text))
+			sb.WriteString(fmt.Sprintf("[red]%v[-]\n", msg.Text))
 		case msg.IsSelf:
-			sb.WriteString(fmt.Sprintf("[green]%s[-] %s\n", msg.Nick, msg.Text))
+			sb.WriteString(fmt.Sprintf("[green]%v[-] %v\n", msg.Nick, msg.Text))
 		default:
 			color := nickColor(msg.Nick)
-			sb.WriteString(fmt.Sprintf("[%s]%s[-] %s\n", color, msg.Nick, msg.Text))
+			sb.WriteString(fmt.Sprintf("[%v]%v[-] %v\n", color, msg.Nick, msg.Text))
 		}
 	}
 	cd.messages.SetText(sb.String())
@@ -421,7 +421,7 @@ func (cd *ChannelsDisplay) ShowMembers(members []ChannelMember) {
 		if m.Online {
 			status = "●"
 		}
-		cd.members.AddItem(fmt.Sprintf("%s %s", status, m.Nick), m.Hash[:12], 0, nil)
+		cd.members.AddItem(fmt.Sprintf("%v %v", status, m.Nick), m.Hash[:12], 0, nil)
 	}
 }
 
@@ -438,20 +438,20 @@ func nickColor(nick string) string {
 func FormatMessage(msg ChannelMessage, theme int) string {
 	switch {
 	case msg.IsSystem:
-		return fmt.Sprintf("[gray]system:%s[-]", msg.Text)
+		return fmt.Sprintf("[gray]system:%v[-]", msg.Text)
 	case msg.IsNotice:
-		return fmt.Sprintf("[yellow]notice:%s[-]", msg.Text)
+		return fmt.Sprintf("[yellow]notice:%v[-]", msg.Text)
 	case msg.IsError:
-		return fmt.Sprintf("[red]error:%s[-]", msg.Text)
+		return fmt.Sprintf("[red]error:%v[-]", msg.Text)
 	case msg.IsSelf:
-		return fmt.Sprintf("[green]%s[-] %s", msg.Nick, msg.Text)
+		return fmt.Sprintf("[green]%v[-] %v", msg.Nick, msg.Text)
 	default:
 		// Check for mention indicator
 		extra := ""
 		if msg.Mention {
 			extra = " [orange]@mention[-]"
 		}
-		return fmt.Sprintf("[%s]%s[-] %s%s", nickColor(msg.Nick), msg.Nick, msg.Text, extra)
+		return fmt.Sprintf("[%v]%v[-] %v%v", nickColor(msg.Nick), msg.Nick, msg.Text, extra)
 	}
 }
 
@@ -461,8 +461,8 @@ func FormatMessage(msg ChannelMessage, theme int) string {
 func (cd *ChannelsDisplay) ShowUserInfoDialog(nick, identityHash string, isSelf bool, onOpenConversation func()) {
 	var sb strings.Builder
 	sb.WriteString("\n")
-	sb.WriteString(fmt.Sprintf(" Nick     : %s\n", nick))
-	sb.WriteString(fmt.Sprintf(" Identity : %s\n", identityHash))
+	sb.WriteString(fmt.Sprintf(" Nick     : %v\n", nick))
+	sb.WriteString(fmt.Sprintf(" Identity : %v\n", identityHash))
 
 	if isSelf {
 		sb.WriteString("\n (This is you)\n")

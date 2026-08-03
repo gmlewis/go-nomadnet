@@ -45,9 +45,9 @@ func (ss *SyncStatus) FormatStatusLine() string {
 	}
 
 	if ss.NodeLabel != "" {
-		return fmt.Sprintf("Last sync: %s (%s)", when, ss.NodeLabel)
+		return fmt.Sprintf("Last sync: %v (%v)", when, ss.NodeLabel)
 	}
-	return fmt.Sprintf("Last sync: %s", when)
+	return fmt.Sprintf("Last sync: %v", when)
 }
 
 // FormatSyncProgress returns a progress bar string for active syncs.
@@ -69,5 +69,5 @@ func (ss *SyncStatus) FormatSyncProgress() string {
 	}
 	bar += "]"
 
-	return fmt.Sprintf("%s %v%%", bar, ss.SyncProgress)
+	return fmt.Sprintf("%v %v%%", bar, ss.SyncProgress)
 }

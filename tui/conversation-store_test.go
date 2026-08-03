@@ -245,7 +245,7 @@ func TestConversationStoreMarkAllRead(t *testing.T) {
 
 	for _, conv := range store.List() {
 		if conv.Unread {
-			t.Errorf("%s should be marked as read", conv.DisplayName)
+			t.Errorf("%v should be marked as read", conv.DisplayName)
 		}
 	}
 }

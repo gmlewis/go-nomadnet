@@ -95,18 +95,18 @@ func TestIntegrationCBORGoToPython(t *testing.T) {
 
 	output := string(out)
 	if !strings.Contains(output, "TYPE:20") {
-		t.Errorf("Python output missing TYPE:20, got: %s", output)
+		t.Errorf("Python output missing TYPE:20, got: %v", output)
 	}
 	if !strings.Contains(output, "ROOM:#general") {
-		t.Errorf("Python output missing ROOM:#general, got: %s", output)
+		t.Errorf("Python output missing ROOM:#general, got: %v", output)
 	}
 	if !strings.Contains(output, "BODY:hello from go") {
-		t.Errorf("Python output missing BODY:hello from go, got: %s", output)
+		t.Errorf("Python output missing BODY:hello from go, got: %v", output)
 	}
 
 	// Verify the decoded keys are complete
 	if !strings.Contains(output, "KEYS:") {
-		t.Errorf("Python output missing KEYS, got: %s", output)
+		t.Errorf("Python output missing KEYS, got: %v", output)
 	}
 }
 
@@ -262,7 +262,7 @@ func TestIntegrationProtocolConstantsMatch(t *testing.T) {
 
 	for name, want := range expected {
 		if got := actual[name]; got != want {
-			t.Errorf("%s = %v, want %v", name, got, want)
+			t.Errorf("%v = %v, want %v", name, got, want)
 		}
 	}
 }

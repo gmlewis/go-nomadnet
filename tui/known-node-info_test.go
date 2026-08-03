@@ -214,7 +214,7 @@ func TestKnownNodeInfoTrustPreselect(t *testing.T) {
 				if rb.Checked() {
 					gotChecked++
 					if label != c.want {
-						t.Errorf("trust %q: %s checked, want %s", c.trust, label, c.want)
+						t.Errorf("trust %q: %v checked, want %v", c.trust, label, c.want)
 					}
 				}
 			}

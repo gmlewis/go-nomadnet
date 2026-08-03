@@ -533,10 +533,7 @@ func (bd *BrowserDisplay) handleNavKey(event *tcell.EventKey) bool {
 		if h <= 0 {
 			h = 1
 		}
-		endRow := bd.totalWrappedRows() - h
-		if endRow < 0 {
-			endRow = 0
-		}
+		endRow := max(0, bd.totalWrappedRows()-h)
 		bd.content.ScrollTo(endRow, 0)
 		bd.automoveFocus()
 		return true

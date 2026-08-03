@@ -266,7 +266,7 @@ func (bd *BrowserDisplay) GoForward() {
 // the UI stays responsive.
 func (bd *BrowserDisplay) displayURL(url string) {
 	bd.urlBar.SetText(url)
-	bd.content.SetText(fmt.Sprintf("[::b]Loading: %s[-]\n\n[gray]Resolving RNS address and requesting page...[-]", url))
+	bd.content.SetText(fmt.Sprintf("[::b]Loading: %v[-]\n\n[gray]Resolving RNS address and requesting page...[-]", url))
 	if bd.OnRetrieveURL != nil {
 		bd.OnRetrieveURL(url)
 	}
@@ -510,7 +510,7 @@ func (bd *BrowserDisplay) fetchAndSubstitute(p browser.Partial, cancel chan stru
 			bd.partialContents = map[string]string{}
 		}
 		if err != nil {
-			bd.partialContents[p.Raw] = fmt.Sprintf("[red]Could not load partial %s: %v[-]", p.URL, err)
+			bd.partialContents[p.Raw] = fmt.Sprintf("[red]Could not load partial %v: %v[-]", p.URL, err)
 		} else {
 			bd.partialContents[p.Raw] = strings.TrimRight(string(data), "\n")
 		}
@@ -653,7 +653,7 @@ func HandleLink(target string) (destType, hash string, err error) {
 		}
 	}
 
-	return "", "", fmt.Errorf("unrecognized link target: %s", target)
+	return "", "", fmt.Errorf("unrecognized link target: %v", target)
 }
 
 // DetectPartials scans page markup for partial include directives.

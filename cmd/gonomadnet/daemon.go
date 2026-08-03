@@ -36,8 +36,8 @@ func runDaemon(configDir, rnsConfigDir string, console bool) {
 	}
 
 	log.Printf("Daemon mode active")
-	log.Printf("Config: %s", a.ConfigPath)
-	log.Printf("Storage: %s", a.StoragePath)
+	log.Printf("Config: %v", a.ConfigPath)
+	log.Printf("Storage: %v", a.StoragePath)
 
 	// Set up signal handling for graceful shutdown
 	sigChan := make(chan os.Signal, 1)

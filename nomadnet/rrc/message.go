@@ -140,5 +140,5 @@ func DecodeEnvelope(data []byte) (map[any]any, error) {
 // MentionRegex returns a simple pattern for detecting @mentions.
 // The actual implementation uses word-boundary-aware matching.
 func MentionRegex(nick string) string {
-	return fmt.Sprintf(`(?i)\b@%s\b`, nick)
+	return fmt.Sprintf(`(?i)\b@%v\b`, nick)
 }

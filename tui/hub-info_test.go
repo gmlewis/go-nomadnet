@@ -77,10 +77,10 @@ func TestHubInfoAreaKeyboardShortcuts(t *testing.T) {
 			fired = fired[:0]
 			result := hia.HandleKey(tt.event)
 			if result != nil {
-				t.Errorf("key %s was not consumed", tt.name)
+				t.Errorf("key %v was not consumed", tt.name)
 			}
 			if len(fired) != 1 || fired[0] != tt.want {
-				t.Errorf("key %s fired %v, want [%s]", tt.name, fired, tt.want)
+				t.Errorf("key %v fired %v, want [%v]", tt.name, fired, tt.want)
 			}
 		})
 	}

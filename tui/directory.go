@@ -62,7 +62,7 @@ func NewDirectoryDisplay(app *App, entries []DirectoryEntry) *DirectoryDisplay {
 		if len(hashDisplay) > 8 {
 			hashDisplay = hashDisplay[:8]
 		}
-		secondary := fmt.Sprintf("%s — %s", hashDisplay, entry.LastMessage())
+		secondary := fmt.Sprintf("%v — %v", hashDisplay, entry.LastMessage())
 		dd.list.AddItem(icon, secondary, 0, nil)
 	}
 
@@ -113,7 +113,7 @@ func (dd *DirectoryDisplay) showDetail(entry DirectoryEntry) {
 	}
 
 	dd.detail.SetText(fmt.Sprintf(
-		"[::b]%s[-]\n\nTrust: %s%s[-]\nHash: %s\nDelivery: %s\nLast seen: %s",
+		"[::b]%v[-]\n\nTrust: %v%v[-]\nHash: %v\nDelivery: %v\nLast seen: %v",
 		entry.DisplayName,
 		trustColor,
 		entry.TrustLevel,

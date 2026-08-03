@@ -271,7 +271,7 @@ func TestLayoutAllDisplaysNonNil(t *testing.T) {
 
 	for _, d := range displays {
 		if d.w == nil {
-			t.Errorf("%s widget is nil", d.name)
+			t.Errorf("%v widget is nil", d.name)
 		}
 	}
 }

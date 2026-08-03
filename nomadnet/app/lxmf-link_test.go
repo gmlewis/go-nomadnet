@@ -50,7 +50,7 @@ func TestOpenLXMFLink(t *testing.T) {
 	// Conversation directory created on disk.
 	convDir := filepath.Join(a.ConversationPath, hash)
 	if info, err := os.Stat(convDir); err != nil || !info.IsDir() {
-		t.Errorf("conversation dir not created at %s: %v", convDir, err)
+		t.Errorf("conversation dir not created at %v: %v", convDir, err)
 	}
 
 	// Reopening the same link is NOT new and does not error.

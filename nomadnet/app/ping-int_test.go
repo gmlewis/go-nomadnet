@@ -60,7 +60,7 @@ func TestAppPingPeer(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	if !saw {
-		t.Fatalf("appA never received appB's peer announce for %s", peerHash)
+		t.Fatalf("appA never received appB's peer announce for %v", peerHash)
 	}
 
 	// Collect every setStatus call. PingPeer invokes setStatus from the link's

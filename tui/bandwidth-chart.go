@@ -149,7 +149,7 @@ func PrettySpeed(bps float64) string {
 		unitIndex++
 	}
 	if unitIndex == 0 {
-		return fmt.Sprintf("%v %s", int64(bps), units[unitIndex])
+		return fmt.Sprintf("%v %v", int64(bps), units[unitIndex])
 	}
-	return fmt.Sprintf("%.1f %s", bps, units[unitIndex])
+	return fmt.Sprintf("%.1f %v", bps, units[unitIndex])
 }

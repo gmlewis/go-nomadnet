@@ -128,7 +128,7 @@ func SplitMessage(text string, maxBytes int) []string {
 	K := len(parts)
 	result := make([]string, K)
 	for i, p := range parts {
-		result[i] = fmt.Sprintf("(%v/%v) %s", i+1, K, p)
+		result[i] = fmt.Sprintf("(%v/%v) %v", i+1, K, p)
 	}
 	return result
 }

@@ -58,7 +58,7 @@ func NewIntroDisplay(title string, version string) *IntroDisplay {
 	id.versionView = tview.NewTextView().
 		SetTextAlign(tview.AlignCenter).
 		SetTextColor(tcell.ColorDefault).
-		SetText(fmt.Sprintf("Version %s", version))
+		SetText(fmt.Sprintf("Version %v", version))
 
 	id.startingView = tview.NewTextView().
 		SetTextAlign(tview.AlignCenter).

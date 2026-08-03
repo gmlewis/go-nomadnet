@@ -335,9 +335,9 @@ func formatInterfaces(interfaces []InterfaceInfo) string {
 			statusColor = "[red]"
 		}
 
-		sb.WriteString(fmt.Sprintf("[::b]%s[-] %s(%s)[-]\n", iface.Name, statusColor, iface.Status))
-		sb.WriteString(fmt.Sprintf("  Type: %s  Target: %s\n", iface.Type, iface.Target))
-		sb.WriteString(fmt.Sprintf("  Bandwidth: %s\n", formatBandwidth(iface.Bandwidth)))
+		sb.WriteString(fmt.Sprintf("[::b]%v[-] %v(%v)[-]\n", iface.Name, statusColor, iface.Status))
+		sb.WriteString(fmt.Sprintf("  Type: %v  Target: %v\n", iface.Type, iface.Target))
+		sb.WriteString(fmt.Sprintf("  Bandwidth: %v\n", formatBandwidth(iface.Bandwidth)))
 
 		if len(iface.Traffic) > 0 {
 			sb.WriteString("\n")
@@ -366,9 +366,9 @@ func formatBandwidth(bps float64) string {
 	}
 
 	if unitIdx == 0 {
-		return fmt.Sprintf("%.0f %s", size, units[unitIdx])
+		return fmt.Sprintf("%.0f %v", size, units[unitIdx])
 	}
-	return fmt.Sprintf("%.1f %s", size, units[unitIdx])
+	return fmt.Sprintf("%.1f %v", size, units[unitIdx])
 }
 
 // FormatInterfaceEntry produces a single-line summary for the interface
@@ -380,7 +380,7 @@ func FormatInterfaceEntry(iface InterfaceInfo) string {
 	if iface.Status != "connected" {
 		statusColor = "[red]"
 	}
-	return fmt.Sprintf("%s %s %s(%s)[-]", icon, iface.Name, statusColor, iface.Status)
+	return fmt.Sprintf("%v %v %v(%v)[-]", icon, iface.Name, statusColor, iface.Status)
 }
 
 // FormatInterfaceDetail produces a multi-line detail view for the
@@ -391,20 +391,20 @@ func FormatInterfaceDetail(iface InterfaceInfo) string {
 	var sb strings.Builder
 
 	sb.WriteString("[::b]Interface Details[-]\n\n")
-	sb.WriteString(fmt.Sprintf("  Name: %s\n", iface.Name))
-	sb.WriteString(fmt.Sprintf("  Type: %s\n", iface.Type))
+	sb.WriteString(fmt.Sprintf("  Name: %v\n", iface.Name))
+	sb.WriteString(fmt.Sprintf("  Type: %v\n", iface.Type))
 
 	statusIcon := "○"
 	if iface.Status == "connected" {
 		statusIcon = "●"
 	}
-	sb.WriteString(fmt.Sprintf("  Status: %s %s\n", statusIcon, iface.Status))
+	sb.WriteString(fmt.Sprintf("  Status: %v %v\n", statusIcon, iface.Status))
 
 	if iface.Target != "" {
-		sb.WriteString(fmt.Sprintf("  Target: %s\n", iface.Target))
+		sb.WriteString(fmt.Sprintf("  Target: %v\n", iface.Target))
 	}
 
-	sb.WriteString(fmt.Sprintf("  Bandwidth: %s\n", formatBandwidth(iface.Bandwidth)))
+	sb.WriteString(fmt.Sprintf("  Bandwidth: %v\n", formatBandwidth(iface.Bandwidth)))
 
 	if len(iface.Traffic) > 0 {
 		sb.WriteString("\n  [gray]Recent Traffic[-]\n")
@@ -421,7 +421,7 @@ func (id *InterfacesDisplay) ShowEnableDisableConfirm(name string, enabled bool,
 	if enabled {
 		action = "Disable"
 	}
-	msg := fmt.Sprintf("%s interface %s?", action, name)
+	msg := fmt.Sprintf("%v interface %v?", action, name)
 
 	id.app.Dialogs.ShowConfirmDialog(msg, func() {
 		if onConfirm != nil {
@@ -447,7 +447,7 @@ func (id *InterfacesDisplay) ShowRestartRequired() {
 // ShowInterfaceError shows an error message for interface operations.
 // Matches Python's Interfaces.py:2619-2650.
 func (id *InterfacesDisplay) ShowInterfaceError(errMsg string) {
-	msg := fmt.Sprintf("[red]Error:[-] %s", errMsg)
+	msg := fmt.Sprintf("[red]Error:[-] %v", errMsg)
 
 	id.app.Dialogs.ShowDialog("Interface Error",
 		tview.NewTextView().

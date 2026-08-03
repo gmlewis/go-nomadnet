@@ -891,12 +891,12 @@ func FormatAnnounceFull(ann AnnounceEntry, showHash bool) string {
 // formatAnnounce formats an announce for the detail panel.
 func formatAnnounce(ann AnnounceEntry) string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("[::b]%s[-]\n", ann.DisplayName))
-	sb.WriteString(fmt.Sprintf("Type: %s\n", ann.Type))
-	sb.WriteString(fmt.Sprintf("Trust: %s\n", ann.TrustLevel))
-	sb.WriteString(fmt.Sprintf("Hash: %s\n", ann.SourceHash))
-	sb.WriteString(fmt.Sprintf("Time: %s\n", ann.Timestamp.Format("2006-01-02 15:04:05")))
-	sb.WriteString(fmt.Sprintf("Data: %s\n", ann.AppData))
+	sb.WriteString(fmt.Sprintf("[::b]%v[-]\n", ann.DisplayName))
+	sb.WriteString(fmt.Sprintf("Type: %v\n", ann.Type))
+	sb.WriteString(fmt.Sprintf("Trust: %v\n", ann.TrustLevel))
+	sb.WriteString(fmt.Sprintf("Hash: %v\n", ann.SourceHash))
+	sb.WriteString(fmt.Sprintf("Time: %v\n", ann.Timestamp.Format("2006-01-02 15:04:05")))
+	sb.WriteString(fmt.Sprintf("Data: %v\n", ann.AppData))
 	return sb.String()
 }
 
@@ -904,11 +904,11 @@ func formatAnnounce(ann AnnounceEntry) string {
 // Matches Python's LocalPeer at Network.py:1259-1350.
 func (nd *NetworkDisplay) ShowLocalPeerDialog(lxmfAddr, identityHash, name string, lastAnnounce string) {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf(" LXMF Addr : %s\n", lxmfAddr))
-	sb.WriteString(fmt.Sprintf(" Identity  : %s\n", identityHash))
-	sb.WriteString(fmt.Sprintf(" Name      : %s\n", name))
+	sb.WriteString(fmt.Sprintf(" LXMF Addr : %v\n", lxmfAddr))
+	sb.WriteString(fmt.Sprintf(" Identity  : %v\n", identityHash))
+	sb.WriteString(fmt.Sprintf(" Name      : %v\n", name))
 	if lastAnnounce != "" {
-		sb.WriteString(fmt.Sprintf(" Last Announce: %s\n", lastAnnounce))
+		sb.WriteString(fmt.Sprintf(" Last Announce: %v\n", lastAnnounce))
 	}
 
 	buttons := tview.NewFlex().SetDirection(tview.FlexColumn).
@@ -941,7 +941,7 @@ func (nd *NetworkDisplay) ShowLXMFPeersDialog(peers []LXMFPeerEntry) {
 		if !peer.Alive {
 			status = "[red]dead[-]"
 		}
-		text := fmt.Sprintf("%s %s %s", peer.Name, status, truncateStr(peer.Hash, 8))
+		text := fmt.Sprintf("%v %v %v", peer.Name, status, truncateStr(peer.Hash, 8))
 		secondary := fmt.Sprintf("Pending: %v", peer.Pending)
 		list.AddItem(text, secondary, 0, nil)
 	}

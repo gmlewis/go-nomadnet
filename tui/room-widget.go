@@ -89,7 +89,7 @@ func NewRoomWidget(app *App, hubName, roomName string) *RoomWidget {
 	header.SetTextAlign(tview.AlignCenter)
 	header.SetDynamicColors(true)
 	header.SetTextColor(tcell.NewHexColor(0xdddddd))
-	header.SetText(fmt.Sprintf("[::b]#%s[-] @ %s", roomName, hubName))
+	header.SetText(fmt.Sprintf("[::b]#%v[-] @ %v", roomName, hubName))
 
 	// Chat box: header + messages + editor
 	rw.chatBox = tview.NewFlex().SetDirection(tview.FlexRow).
@@ -330,17 +330,17 @@ func (rw *RoomWidget) renderMessages() {
 	for _, msg := range msgs {
 		switch {
 		case msg.IsSystem:
-			sb.WriteString(fmt.Sprintf("[gray]%s[-]\n", msg.Text))
+			sb.WriteString(fmt.Sprintf("[gray]%v[-]\n", msg.Text))
 		case msg.IsNotice:
-			sb.WriteString(fmt.Sprintf("[yellow]%s[-]\n", msg.Text))
+			sb.WriteString(fmt.Sprintf("[yellow]%v[-]\n", msg.Text))
 		case msg.IsError:
-			sb.WriteString(fmt.Sprintf("[red]%s[-]\n", msg.Text))
+			sb.WriteString(fmt.Sprintf("[red]%v[-]\n", msg.Text))
 		default:
 			if msg.IsSelf {
-				sb.WriteString(fmt.Sprintf("[#66cc55]<%s>[-] %s\n", msg.Nick, msg.Text))
+				sb.WriteString(fmt.Sprintf("[#66cc55]<%v>[-] %v\n", msg.Nick, msg.Text))
 			} else {
 				nickCol := nickColor(msg.Nick)
-				sb.WriteString(fmt.Sprintf("%s<%s>[-] %s\n", nickCol, msg.Nick, msg.Text))
+				sb.WriteString(fmt.Sprintf("%v<%v>[-] %v\n", nickCol, msg.Nick, msg.Text))
 			}
 		}
 	}
@@ -360,7 +360,7 @@ func (rw *RoomWidget) renderMembers() {
 		if m.Online {
 			icon = "●"
 		}
-		text := fmt.Sprintf("%s %s", icon, m.Nick)
+		text := fmt.Sprintf("%v %v", icon, m.Nick)
 		rw.usersList.AddItem(text, "", 0, nil)
 	}
 	if len(rw.members) == 0 {

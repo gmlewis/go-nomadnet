@@ -123,9 +123,9 @@ func assertContent(t *testing.T, path, want string) {
 	t.Helper()
 	got, err := os.ReadFile(path)
 	if err != nil {
-		t.Fatalf("read %s: %v", path, err)
+		t.Fatalf("read %v: %v", path, err)
 	}
 	if string(got) != want {
-		t.Errorf("content of %s = %q, want %q", path, got, want)
+		t.Errorf("content of %v = %q, want %q", path, got, want)
 	}
 }

@@ -57,13 +57,13 @@ func TestMenuButtonsUniformMenubarStyle(t *testing.T) {
 
 			// No button may be bold. A bold button tag looks like ":b]".
 			if strings.Contains(styled, ":b]") {
-				t.Errorf("theme %v active %v: menu bar contains a bold button tag ':b]' (Python never bolds menu buttons):\n%s",
+				t.Errorf("theme %v active %v: menu bar contains a bold button tag ':b]' (Python never bolds menu buttons):\n%v",
 					theme, active, styled)
 			}
 
 			// No button may use the list_focus background.
 			if strings.Contains(styled, ":"+listFocusBg) {
-				t.Errorf("theme %v active %v: menu bar uses list_focus_bg %q (no button should):\n%s",
+				t.Errorf("theme %v active %v: menu bar uses list_focus_bg %q (no button should):\n%v",
 					theme, active, listFocusBg, styled)
 			}
 
@@ -82,7 +82,7 @@ func TestMenuButtonsUniformMenubarStyle(t *testing.T) {
 				}
 				tag := styled[tagStart:idx]
 				if !strings.Contains(tag, menubarBg) {
-					t.Errorf("theme %v active %v: button %q color tag %q does not use menubar_bg %q:\n%s",
+					t.Errorf("theme %v active %v: button %q color tag %q does not use menubar_bg %q:\n%v",
 						theme, active, btn, tag, menubarBg, styled)
 				}
 			}

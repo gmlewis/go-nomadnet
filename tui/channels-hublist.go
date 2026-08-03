@@ -198,5 +198,5 @@ func HubListRowText(entry HubListEntry, colors map[string]tcell.Color) string {
 	if !ok {
 		return entry.Label
 	}
-	return fmt.Sprintf("[#%06x]%s[-]", uint32(c), entry.Label)
+	return fmt.Sprintf("[#%06x]%v[-]", uint32(c), entry.Label)
 }

@@ -54,12 +54,12 @@ func FormatTrustLabel(trustLevel string) string {
 func FormatNodeSummary(entry *NodeEntryFull) string {
 	icon := TrustDisplayIcon(entry.TrustLevel)
 	if entry.DisplayName != "" {
-		return fmt.Sprintf("%s %s", icon, entry.DisplayName)
+		return fmt.Sprintf("%v %v", icon, entry.DisplayName)
 	}
 	if len(entry.SourceHash) >= 12 {
-		return fmt.Sprintf("%s <%s…>", icon, entry.SourceHash[:12])
+		return fmt.Sprintf("%v <%v…>", icon, entry.SourceHash[:12])
 	}
-	return fmt.Sprintf("%s <%s>", icon, entry.SourceHash)
+	return fmt.Sprintf("%v <%v>", icon, entry.SourceHash)
 }
 
 // FormatNodeDetail produces a multi-line detail view for a node entry.
@@ -67,13 +67,13 @@ func FormatNodeSummary(entry *NodeEntryFull) string {
 func FormatNodeDetail(entry *NodeEntryFull, editable bool) string {
 	var sb strings.Builder
 	sb.WriteString("[::b]Node Details[-]\n\n")
-	sb.WriteString(fmt.Sprintf("  Name: %s\n", entry.DisplayName))
+	sb.WriteString(fmt.Sprintf("  Name: %v\n", entry.DisplayName))
 	if editable {
 		sb.WriteString("  [gray](editable)[-]\n")
 	}
-	sb.WriteString(fmt.Sprintf("  Trust: %s %s\n", TrustDisplayIcon(entry.TrustLevel), FormatTrustLabel(entry.TrustLevel)))
-	sb.WriteString(fmt.Sprintf("  Hash: %s\n", entry.SourceHash))
-	sb.WriteString(fmt.Sprintf("  Delivery: %s\n", entry.PreferredDelivery))
+	sb.WriteString(fmt.Sprintf("  Trust: %v %v\n", TrustDisplayIcon(entry.TrustLevel), FormatTrustLabel(entry.TrustLevel)))
+	sb.WriteString(fmt.Sprintf("  Hash: %v\n", entry.SourceHash))
+	sb.WriteString(fmt.Sprintf("  Delivery: %v\n", entry.PreferredDelivery))
 	if entry.HostsNode {
 		sb.WriteString("  Node: yes\n")
 	}
@@ -81,7 +81,7 @@ func FormatNodeDetail(entry *NodeEntryFull, editable bool) string {
 		sb.WriteString(fmt.Sprintf("  Sort Rank: %v\n", entry.SortRank))
 	}
 	if entry.Notes != "" {
-		sb.WriteString(fmt.Sprintf("  Notes: %s\n", entry.Notes))
+		sb.WriteString(fmt.Sprintf("  Notes: %v\n", entry.Notes))
 	}
 	return sb.String()
 }
@@ -106,7 +106,7 @@ func SearchConversations(convs []ConversationInfo, query string) []ConversationI
 // FormatConversationSummary produces a one-line summary for the detail view.
 func FormatConversationSummary(conv ConversationInfo) string {
 	return fmt.Sprintf(
-		"[::b]%s[-]\n\nTrust: %s\nMessages: %v\nLast: %s",
+		"[::b]%v[-]\n\nTrust: %v\nMessages: %v\nLast: %v",
 		conv.DisplayName,
 		FormatTrustLabel(conv.TrustLevel),
 		conv.MessageCount,
