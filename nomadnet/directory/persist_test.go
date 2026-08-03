@@ -110,6 +110,92 @@ func TestDirectorySaveLoadRoundTrip(t *testing.T) {
 	}
 }
 
+// TestRememberEagerPersist pins the Python parity behavior that Remember
+// saves the directory to disk eagerly when a persist path is configured (Python
+// Directory.remember → save_to_disk, Directory.py:340-351). Without this, a Go
+// process that exits without reaching Shutdown (Ctrl-C, SIGHUP, crash) loses
+// every discovered node, which is the root cause of "gonomadnet doesn't retain
+// node history across runs".
+func TestRememberEagerPersist(t *testing.T) {
+	t.Parallel()
+	dir := tempDir(t)
+	path := filepath.Join(dir, "directory")
+
+	d := New()
+	d.SetPersistPath(path)
+
+	// Before any Remember, no file is written.
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("directory file should not exist before Remember, got err=%v", err)
+	}
+
+	// First Remember must write the file.
+	d.Remember(&Entry{
+		SourceHash:  []byte{1, 2, 3, 4, 5, 6, 7, 8},
+		DisplayName: "Alice",
+		TrustLevel:  TrustTrusted,
+		HostsNode:   true,
+	})
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("directory file should exist after Remember, got err=%v", err)
+	}
+
+	// The written file must round-trip: a fresh Directory loads the entry.
+	d2 := New()
+	if err := d2.LoadFromDisk(path); err != nil {
+		t.Fatal(err)
+	}
+	if e := d2.Find([]byte{1, 2, 3, 4, 5, 6, 7, 8}); e == nil || e.DisplayName != "Alice" {
+		t.Fatalf("after reload, entry = %+v, want Alice", e)
+	}
+
+	// A second Remember overwrites the entry and re-saves.
+	d.Remember(&Entry{
+		SourceHash:  []byte{1, 2, 3, 4, 5, 6, 7, 8},
+		DisplayName: "Alicia",
+		TrustLevel:  TrustTrusted,
+	})
+	d3 := New()
+	if err := d3.LoadFromDisk(path); err != nil {
+		t.Fatal(err)
+	}
+	if e := d3.Find([]byte{1, 2, 3, 4, 5, 6, 7, 8}); e == nil || e.DisplayName != "Alicia" {
+		t.Fatalf("after second Remember + reload, entry = %+v, want Alicia", e)
+	}
+
+	// Remember must also persist the announce stream (Python save_to_disk
+	// serializes entries + announce_stream together).
+	d.NodeAnnounceReceived(Announce{Timestamp: 123, SourceHash: []byte{2}, AppData: []byte("nodedata"), AnnounceType: "node"}, false)
+	d.Remember(&Entry{SourceHash: []byte{9, 9, 9, 9, 9, 9, 9, 9}, DisplayName: "Bob", TrustLevel: TrustTrusted})
+	d4 := New()
+	if err := d4.LoadFromDisk(path); err != nil {
+		t.Fatal(err)
+	}
+	if nodes := d4.NodeAnnounces(); len(nodes) != 1 || string(nodes[0].AppData) != "nodedata" {
+		t.Fatalf("announce stream not persisted with Remember, nodes=%v", nodes)
+	}
+}
+
+// TestRememberNoPersistPath verifies that with no persist path configured,
+// Remember only updates in-memory state and never writes a file (and does not
+// panic), preserving the historical pre-SetPersistPath behavior for callers
+// that manage persistence themselves (e.g. integration tests).
+func TestRememberNoPersistPath(t *testing.T) {
+	t.Parallel()
+	dir := tempDir(t)
+	path := filepath.Join(dir, "directory")
+
+	d := New() // no SetPersistPath
+	d.Remember(&Entry{SourceHash: []byte{1, 2, 3, 4}, DisplayName: "Alice", TrustLevel: TrustTrusted})
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("no persist path: file should not be written, got err=%v", err)
+	}
+	// In-memory state still updated.
+	if e := d.Find([]byte{1, 2, 3, 4}); e == nil || e.DisplayName != "Alice" {
+		t.Fatalf("in-memory entry = %+v, want Alice", e)
+	}
+}
+
 func tempDir(t *testing.T) string {
 	t.Helper()
 	dir, err := os.MkdirTemp("/tmp", "nomadnet-directory-test")

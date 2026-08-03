@@ -343,6 +343,10 @@ func (a *App) Init() error {
 	if err := a.Dir.LoadFromDisk(a.DirectoryPath); err != nil {
 		a.Logger.Error("Could not load directory from %s: %v", a.DirectoryPath, err)
 	}
+	// Eager-persist on every Remember (Python remember→save_to_disk,
+	// Directory.py:350) so discovered nodes survive across runs even on a
+	// non-shutdown exit. See directory.SetPersistPath.
+	a.Dir.SetPersistPath(a.DirectoryPath)
 	a.RRC = rrc.NewManager(a.StoragePath, nil)
 	a.loadPeerSettings()
 	a.loadIgnoredList()
@@ -493,6 +497,10 @@ func (a *App) InitWithTransport(ts *rns.TransportSystem, identity *rns.Identity)
 	if err := a.Dir.LoadFromDisk(a.DirectoryPath); err != nil {
 		a.Logger.Error("Could not load directory from %s: %v", a.DirectoryPath, err)
 	}
+	// Eager-persist on every Remember (Python remember→save_to_disk,
+	// Directory.py:350) so discovered nodes survive across runs even on a
+	// non-shutdown exit. See directory.SetPersistPath.
+	a.Dir.SetPersistPath(a.DirectoryPath)
 	a.RRC = rrc.NewManager(a.StoragePath, nil)
 	a.RRC.SetIdentity(a.Identity)
 	a.RRC.SetHistoryConfig(a.RRCHistoryPerRoomCap, a.RRCFilterLoadedHistory, a.RRCEphemeralNotices)
@@ -838,6 +846,40 @@ func (a *App) AnnounceCount() int {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return len(a.Announces)
+}
+
+// DirAnnounceEvents returns the persisted directory announce stream as display
+// events (AnnounceEvent), mirroring Python's AnnounceStream widget which
+// iterates app.directory.announce_stream (Network.py:489) — the on-disk-persisted,
+// per-source-compacted stream restored by LoadFromDisk at boot. Unlike the
+// ephemeral a.Announces feed (empty until a live announce arrives), this reads
+// the directory's loaded history, so the Network panel populates at boot from
+// the previous run's discovered nodes rather than waiting for new announces.
+// Display names are derived from app_data: node announces store the raw UTF-8
+// name (Directory.py:198), peer/pn announces use the LXMF app_data format.
+func (a *App) DirAnnounceEvents() []AnnounceEvent {
+	stream := a.Dir.AnnounceStream()
+	events := make([]AnnounceEvent, 0, len(stream))
+	for _, an := range stream {
+		var name string
+		switch an.AnnounceType {
+		case "node":
+			name = string(an.AppData)
+		default: // "peer", "pn" use the LXMF app_data format.
+			name, _ = lxmf.DisplayNameFromAppData(an.AppData)
+		}
+		sec := int64(an.Timestamp)
+		nanos := int64((an.Timestamp - float64(sec)) * 1e9)
+		events = append(events, AnnounceEvent{
+			Timestamp:    time.Unix(sec, nanos),
+			TimestampF:   an.Timestamp,
+			SourceHash:   an.SourceHash,
+			AppData:      an.AppData,
+			AnnounceType: an.AnnounceType,
+			DisplayName:  name,
+		})
+	}
+	return events
 }
 
 // SetUIChangeCallback sets a callback for UI refresh.

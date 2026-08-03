@@ -589,10 +589,11 @@ func (md *MainDisplay) handleClick(x int) {
 // handleInput implements the Python focus model. It runs as the app-level
 // input capture, so it sees every key before the focused widget.
 //
-// Global (any region): Ctrl-Q is the only quit (TextUI.py:262-264
-// unhandled_input). Esc is NOT a quit — it is forwarded so the DialogManager
-// overlay can close the top dialog (Phase 0.5). There are no digit menu
-// shortcuts and no 'q' quit.
+// Global (any region): Ctrl-Q is the documented quit (TextUI.py:262-264
+// unhandled_input); Ctrl-C is also routed to quit (Python KeyboardInterrupt →
+// clean exit + atexit save, NomadNetworkApp.py:38-42). Esc is NOT a quit — it
+// is forwarded so the DialogManager overlay can close the top dialog (Phase
+// 0.5). There are no digit menu shortcuts and no 'q' quit.
 //
 // Menu region (MainFrame.focus_position == "header", Main.py MenuColumns:171-176):
 // Left/Right move the button highlight WITHOUT switching the body page;
@@ -608,8 +609,17 @@ func (md *MainDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 		return event
 	}
 
-	// Global quit — the only key the dispatcher always owns.
-	if event.Key() == tcell.KeyCtrlQ {
+	// Global quit — the only keys the dispatcher always owns. Ctrl-Q is the
+	// documented quit (TextUI.py:262-264 unhandled_input). Ctrl-C is also
+	// routed here: in Python, Ctrl-C raises KeyboardInterrupt which the urwid
+	// loop catches to exit cleanly, and the atexit handler then saves the
+	// directory (NomadNetworkApp.py:38-42). tcell runs the terminal in raw
+	// mode so Ctrl-C arrives as a key event (KeyCtrlC) rather than SIGINT —
+	// without this it would be a no-op and the user would lose all discovered
+	// nodes on Ctrl-C, since the shutdown path (which saves the directory) is
+	// the only one that persists it. Routing it through onQuit makes Shutdown
+	// save the directory before stopping, mirroring Python's graceful-exit save.
+	if event.Key() == tcell.KeyCtrlQ || event.Key() == tcell.KeyCtrlC {
 		if md.onQuit != nil {
 			md.onQuit()
 		}

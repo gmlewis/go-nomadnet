@@ -55,6 +55,15 @@ type Directory struct {
 	peerAnnounces []Announce
 	pnAnnounces   []Announce
 
+	// persistPath, when set via SetPersistPath, makes Remember eagerly save the
+	// directory (entries + announce stream) to this path after each update —
+	// mirroring Python's Directory.remember → save_to_disk (Directory.py:340-
+	// 351). This is what makes the node directory survive across runs in Python
+	// regardless of how the process exits; without it Go only persisted on the
+	// menu-Quit shutdown path (and lost everything on Ctrl-C/SIGHUP). Empty
+	// means Remember only updates in-memory state and the caller owns persisting.
+	persistPath string
+
 	mu sync.Mutex
 }
 
@@ -65,14 +74,35 @@ func New() *Directory {
 	}
 }
 
+// SetPersistPath configures the path that Remember will eagerly save the
+// directory to after each update, mirroring Python's Directory.remember →
+// save_to_disk (Directory.py:340-351). When unset (the zero value), Remember
+// only updates in-memory state and the caller is responsible for persisting
+// (e.g. on shutdown).
+func (d *Directory) SetPersistPath(path string) {
+	d.mu.Lock()
+	d.persistPath = path
+	d.mu.Unlock()
+}
+
 // Remember stores a directory entry. If an associated node entry exists
-// with the same identity, its trust level is updated to match.
+// with the same identity, its trust level is updated to match. When a
+// persist path has been configured with SetPersistPath, the directory is
+// saved to disk after the update so the entry survives across runs even if
+// the process exits without reaching the shutdown path — matching Python's
+// eager remember→save_to_disk behavior.
 func (d *Directory) Remember(entry *Entry) {
 	d.mu.Lock()
-	defer d.mu.Unlock()
 
 	key := hexKey(entry.SourceHash)
 	d.entries[key] = entry
+
+	path := d.persistPath
+	d.mu.Unlock()
+
+	if path != "" {
+		_ = d.SaveToDisk(path)
+	}
 }
 
 // Forget removes a directory entry by source hash.

@@ -549,6 +549,95 @@ func TestInitWithTransportSetsRRCIdentity(t *testing.T) {
 	}
 }
 
+// TestDirAnnounceEventsCrossRunRetention pins the parity fix for "gonomadnet
+// doesn't retain node history across runs": the Network panel must read the
+// persisted directory announce stream (a.DirAnnounceEvents, mirroring Python's
+// AnnounceStream widget iterating app.directory.announce_stream, Network.py:489)
+// so it populates at boot from the previous run's discovered nodes, instead of
+// the ephemeral a.Announces feed which is empty until a live announce arrives.
+// AppA receives announces, shuts down (persisting the stream); AppB loads the
+// same storage dir and must see the announces — the "same list of live nodes
+// from history" the user needs for parity capture.
+func TestDirAnnounceEventsCrossRunRetention(t *testing.T) {
+	t.Parallel()
+
+	dir := tempDir(t)
+	ts := rns.NewTransportSystem(nil)
+	id, err := rns.NewIdentity(true, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// App A: receive a node announce and a peer announce.
+	a := NewAppWithTransport(dir, WithTransport(ts), WithIdentity(id))
+	if err := a.InitWithTransport(ts, id); err != nil {
+		t.Fatalf("InitWithTransport error: %v", err)
+	}
+	nodeHash := []byte{0xaa, 0xbb, 0xcc, 0xdd}
+	peerHash := []byte{0x11, 0x22, 0x33, 0x44}
+	a.handleNodeAnnounce(nodeHash, nil, []byte("MyNode"), false)
+	// Raw UTF-8 app_data is the original LXMF announce format; the peer's
+	// display name derives from it verbatim via DisplayNameFromAppData.
+	a.handleLXMFAnnounce(peerHash, id, []byte("Alice"), false)
+
+	// DirAnnounceEvents must reflect the directory stream with names derived
+	// per type (node = raw app_data; peer = LXMF app_data name).
+	got := a.DirAnnounceEvents()
+	var nodeNames, peerNames []string
+	for _, ev := range got {
+		switch ev.AnnounceType {
+		case "node":
+			nodeNames = append(nodeNames, ev.DisplayName)
+		case "peer":
+			peerNames = append(peerNames, ev.DisplayName)
+		}
+	}
+	if len(nodeNames) != 1 || nodeNames[0] != "MyNode" {
+		t.Errorf("node announce display names = %v, want [MyNode]", nodeNames)
+	}
+	if len(peerNames) != 1 || peerNames[0] != "Alice" {
+		t.Errorf("peer announce display names = %v, want [Alice]", peerNames)
+	}
+
+	// Persist (Shutdown saves entries + announce stream) and reload into a
+	// fresh App over the same storage dir, simulating the next run.
+	a.Shutdown()
+
+	ts2 := rns.NewTransportSystem(nil)
+	id2, err := rns.NewIdentity(true, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := NewAppWithTransport(dir, WithTransport(ts2), WithIdentity(id2))
+	if err := b.InitWithTransport(ts2, id2); err != nil {
+		t.Fatalf("AppB InitWithTransport: %v", err)
+	}
+	defer b.Shutdown()
+
+	// AppB's Network panel must show the persisted announces at boot — the
+	// core retention fix — without any new live announce having arrived.
+	reloaded := b.DirAnnounceEvents()
+	var rNode, rPeer int
+	for _, ev := range reloaded {
+		switch ev.AnnounceType {
+		case "node":
+			if ev.DisplayName == "MyNode" && string(ev.SourceHash) == string(nodeHash) {
+				rNode++
+			}
+		case "peer":
+			if ev.DisplayName == "Alice" {
+				rPeer++
+			}
+		}
+	}
+	if rNode != 1 {
+		t.Errorf("AppB reloaded node announce count = %d, want 1 (history not retained?)", rNode)
+	}
+	if rPeer != 1 {
+		t.Errorf("AppB reloaded peer announce count = %d, want 1 (history not retained?)", rPeer)
+	}
+}
+
 func tempDir(t *testing.T) string {
 	t.Helper()
 	dir, err := os.MkdirTemp("", "nomadnet-app-test")
