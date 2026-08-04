@@ -96,10 +96,21 @@ func NewMainDisplay(app *App, theme int, glyphSetName string) *MainDisplay {
 		x, y := event.Position()
 		bx, by, bw, bh := md.menuBar.GetRect()
 		if x >= bx && x < bx+bw && y >= by && y < by+bh {
-			if action == tview.MouseLeftClick || action == tview.MouseLeftUp {
+			// Activate the clicked item on the completed click only. handleClick
+			// must NOT also fire on MouseLeftUp (which immediately precedes
+			// MouseLeftClick) or the item's selectMenu runs twice.
+			if action == tview.MouseLeftClick {
 				md.handleClick(x - bx)
+				// MouseConsumed (not 0) marks the event consumed so tview
+				// redraws after the click. Returning 0 (MouseMove) left
+				// consumed=false, so no redraw fired and the menu appeared
+				// frozen until an unrelated async redraw painted it.
+				return tview.MouseConsumed, nil
 			}
-			return 0, nil // Consumed: prevents menuBar.MouseHandler from setting focus back to menuBar on MouseLeftDown or MouseLeftUp
+			// Down/Up/Move inside the bar: swallow the event (nil) so the
+			// default Box.MouseHandler does not steal focus to the menuBar,
+			// but return 0 (not MouseConsumed) so these do not trigger a redraw.
+			return 0, nil
 		}
 		return action, event
 	})

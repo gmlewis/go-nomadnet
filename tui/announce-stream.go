@@ -87,6 +87,15 @@ func newAnnounceStreamDisplay(nd *NetworkDisplay) *announceStreamDisplay {
 	as.pile.AddItem(as.filterBar, 1, true)
 	as.pile.AddItem(as.ilb, 0, true)
 	as.pile.SetFocusIndex(2)
+	// Up at the top of the pile (the tab bar) escapes to the main menu, matching
+	// urwid's MainFrame where Up at the top of the body moves focus to the
+	// header. Without this the tab bar traps Up (the user can traverse
+	// list→filter bar→tab bar but cannot reach the menu from the tab bar).
+	as.pile.SetUpEscapeHandler(func() {
+		if as.nd != nil && as.nd.app != nil && as.nd.app.Main != nil {
+			as.nd.app.Main.FocusMenu()
+		}
+	})
 
 	as.update()
 	return as

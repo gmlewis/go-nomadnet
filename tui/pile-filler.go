@@ -56,6 +56,7 @@ type pileFiller struct {
 	focusIndex int   // index into selectable[] of the focused item, -1 if none
 	visible    []bool
 	onEsc      func() // dismiss handler, matching urwid Pile/WidgetWrap Esc
+	onUpEscape func() // Up-at-top escape: hand focus to the parent (e.g. menu)
 }
 
 type pfItem struct {
@@ -125,6 +126,13 @@ func (p *pileFiller) focusedItem() tview.Primitive {
 // forwards Esc unconsumed, so without this Esc would be lost when focus is on
 // the pile's widgets.
 func (p *pileFiller) SetEscHandler(fn func()) { p.onEsc = fn }
+
+// SetUpEscapeHandler installs a handler invoked when Up is pressed while the
+// pile's TOP selectable item has focus, so focus can escape the pile to the
+// parent (e.g. the main menu) instead of dead-ending on the top widget. This
+// mirrors urwid's MainFrame, where Up at the top of the body moves focus to the
+// header. Without it the Announce Stream's tab bar (the top pile item) traps Up.
+func (p *pileFiller) SetUpEscapeHandler(fn func()) { p.onUpEscape = fn }
 
 // moveFocus moves focus by delta (wrapping) among the selectable items,
 // blurring the old widget and focusing the new so cursor/highlight rendering
@@ -353,6 +361,14 @@ func (p *pileFiller) InputHandler() func(event *tcell.EventKey, setFocus func(p 
 		case tcell.KeyUp:
 			if p.focusIndex > 0 {
 				p.moveFocus(-1, setFocus)
+				return
+			}
+			// At the top of the pile: hand focus to the parent (e.g. the
+			// main menu) when wired, matching urwid's MainFrame where Up at
+			// the top of the body moves focus to the header. Without this
+			// the top widget (e.g. the Announce Stream tab bar) traps Up.
+			if p.onUpEscape != nil {
+				p.onUpEscape()
 				return
 			}
 		}

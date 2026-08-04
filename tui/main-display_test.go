@@ -160,8 +160,8 @@ func TestMenuClickFocusesBodyAndDoesNotLockup(t *testing.T) {
 		if returnedEvent != nil {
 			t.Errorf("menu mouse capture returned event %v, want nil (consumed click so focus is not stolen by menuBar)", returnedEvent)
 		}
-		if action != 0 {
-			t.Errorf("menu mouse capture returned action %v, want 0", action)
+		if action != tview.MouseConsumed {
+			t.Errorf("menu mouse capture returned action %v, want MouseConsumed (%v) so tview redraws after the click", action, tview.MouseConsumed)
 		}
 	}
 	if md.activePage != "guide" {
@@ -183,19 +183,28 @@ func TestMenuBarMouseCaptureConsumesAllActions(t *testing.T) {
 		t.Fatal("menuBar mouse capture handler is nil")
 	}
 
-	actionsToTest := []tview.MouseAction{
-		tview.MouseLeftDown,
-		tview.MouseLeftUp,
-		tview.MouseLeftClick,
-		tview.MouseRightClick,
-		tview.MouseRightDown,
+	// Every mouse action inside the menuBar must return a nil event so the
+	// default Box.MouseHandler cannot steal focus to the menuBar. The completed
+	// left click additionally returns MouseConsumed so tview redraws after the
+	// click; all other actions return 0 (no redraw).
+	tests := []struct {
+		action     tview.MouseAction
+		wantAction tview.MouseAction
+	}{
+		{tview.MouseLeftDown, 0},
+		{tview.MouseLeftUp, 0},
+		{tview.MouseLeftClick, tview.MouseConsumed},
+		{tview.MouseRightClick, 0},
+		{tview.MouseRightDown, 0},
 	}
-
-	for _, act := range actionsToTest {
+	for _, tt := range tests {
 		event := tcell.NewEventMouse(10, 0, tcell.Button1, 0)
-		action, returnedEvent := handler(act, event)
-		if returnedEvent != nil || action != 0 {
-			t.Errorf("action %v inside menuBar returned (%v, %v), want (0, nil)", act, action, returnedEvent)
+		action, returnedEvent := handler(tt.action, event)
+		if returnedEvent != nil {
+			t.Errorf("action %v inside menuBar returned event %v, want nil (no focus steal)", tt.action, returnedEvent)
+		}
+		if action != tt.wantAction {
+			t.Errorf("action %v inside menuBar returned action %v, want %v", tt.action, action, tt.wantAction)
 		}
 	}
 }
