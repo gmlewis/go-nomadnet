@@ -10,6 +10,7 @@ require (
 	github.com/mdp/qrterminal/v3 v3.2.1
 	github.com/rivo/tview v0.42.0
 	github.com/vmihailenco/msgpack/v5 v5.4.1
+	golang.org/x/term v0.28.0
 	golang.org/x/text v0.38.0
 	rsc.io/qr v0.2.0
 )
@@ -21,5 +22,4 @@ require (
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	golang.org/x/sys v0.29.0 // indirect
-	golang.org/x/term v0.28.0 // indirect
 )
