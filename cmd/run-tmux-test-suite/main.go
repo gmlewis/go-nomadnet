@@ -140,7 +140,7 @@ func run(args []string) error {
 		return err
 	}
 	if tempConfig != "" {
-		defer os.RemoveAll(tempConfig)
+		defer func() { _ = os.RemoveAll(tempConfig) }()
 	}
 
 	// Determine the pane size. In --headed, query the ACTUAL terminal and use
@@ -278,7 +278,7 @@ func openLog(path string) (func(string, ...any), func(), error) {
 	logf := func(format string, args ...any) {
 		ts := time.Since(start).Truncate(time.Millisecond)
 		msg := fmt.Sprintf(format, args...)
-		fmt.Fprintf(f, "[%s] %s\n", ts, msg)
+		_, _ = fmt.Fprintf(f, "[%s] %s\n", ts, msg)
 	}
 	return logf, func() { _ = f.Close() }, nil
 }

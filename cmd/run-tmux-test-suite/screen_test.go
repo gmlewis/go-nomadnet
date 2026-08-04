@@ -192,6 +192,46 @@ func TestListSelectedRow(t *testing.T) {
 	}
 }
 
+func TestAnnounceNodeName(t *testing.T) {
+	tests := []struct {
+		name string
+		row  string
+		want string
+	}{
+		{"named node with borders", "│16:32:23 Ⓝ  Rostov                                │", "Rostov"},
+		{"re-announce with new timestamp keeps name", "│16:33:01 Ⓝ  Rostov                                │", "Rostov"},
+		{"date timestamp other day", "│2026-08-01 Ⓝ  Helsinki                            │", "Helsinki"},
+		{"hash in show-destination mode", "│16:32:23 Ⓝ  c5379340701ac6fff391de24d42db64f    │", "c5379340701ac6fff391de24d42db64f"},
+		{"no borders", "16:32:23 Ⓝ  Rostov", "Rostov"},
+		{"empty name falls back to <hash>", "│16:32:23 Ⓝ  <c5379340701ac6fff391de24d42db64f>  │", "<c5379340701ac6fff391de24d42db64f>"},
+		// announceNodeName only runs on the selected #aaaaaa node row, so a
+		// non-announce string never reaches it; the contract is "return the 3rd
+		// space-separated field", so a 3-word string yields its 3rd field.
+		{"three-word string yields 3rd field", "just some text", "text"},
+		{"two-word row has no name field", "16:32:23 Ⓝ", ""},
+		{"blank", "      ", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := announceNodeName(tt.row)
+			if got != tt.want {
+				t.Errorf("announceNodeName(%q) = %q, want %q", tt.row, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestAnnounceNodeNameDedupStability confirms the dedup key is stable across a
+// re-announce (new timestamp, same name) — the exact bug that made the old
+// suite reconnect the same node repeatedly.
+func TestAnnounceNodeNameDedupStability(t *testing.T) {
+	first := announceNodeName("│16:32:23 Ⓝ  Rostov      │")
+	again := announceNodeName("│16:33:55 Ⓝ  Rostov      │")
+	if first != again || first != "Rostov" {
+		t.Errorf("dedup key changed across re-announce: %q vs %q (want Rostov)", first, again)
+	}
+}
+
 func TestAnnounceInfoAddr(t *testing.T) {
 	bar := menuBar()
 	info := "┌─ Announce Info " + strings.Repeat("─", 20) + "┐\n"

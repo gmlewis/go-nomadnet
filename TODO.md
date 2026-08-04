@@ -267,7 +267,19 @@ test or a matching `parity.sh` summary):
 - [ ] **V-Net-Stream:** Network Announce Stream rendering (not in the cast).
 - [ ] **V-Net-Detail:** Network node-detail right pane (not in the cast).
 - [ ] **V-Interfaces:** Interfaces page row colors / partial-clip / disabled
-      rows (re-verify at truecolor).
+      rows. **Confirmed root cause (not just a re-verify):**
+      `SelectableInterfaceItem.Draw` (`tui/selectable-interface.go:126`) paints
+      every content row — the name+icon line, the `Status: Enabled/Disabled |
+      Connected/Disconnected` line, the `Type:` line, and the `TX:/RX:` line —
+      with a single `tcell.StyleDefault` (terminal default fg, no color, no
+      bold). Python's `Interfaces.py` `SelectableInterfaceItem` styles these
+      rows from the palette (connected vs disconnected, enabled vs disabled,
+      TX/RX counts) so the page reads at a glance. Capture the Python truecolor
+      rendering, port the per-row style mapping into `Draw`/`printRow`
+      (plumbing the app theme + palette like the other pages), and pin with a
+      parity test. Icons themselves already match (`interface-icon-parity_test.go`
+      passes), so this is a coloring-only gap (the "possibly icons" suspicion is
+      covered).
 - [ ] **V-Log:** Log page (`urwid.Terminal` tail) rendering.
 - [ ] **V-Config:** Config page (`urwid.Terminal` editor) rendering.
 - [ ] **V-Dialogs:** dialog rendering parity — new conversation, peer info,

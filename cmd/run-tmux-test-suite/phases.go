@@ -247,7 +247,14 @@ func (d *driver) phase2() {
 func (d *driver) phase3() {
 	d.step(fmt.Sprintf("Phase 3: connect to nodes, render index.mu, follow links (x%d)", d.nodeIters))
 
-	connected := map[string]bool{} // dedup by announce row text (the list reorders)
+	// tried is keyed by the node's STABLE display name (announceNodeName), not
+	// the full announce row text. The announce stream re-sorts and re-emits
+	// nodes with a fresh timestamp on every re-announce, so the row text
+	// ("16:32:23 Ⓝ Rostov") changes while the name ("Rostov") does not —
+	// keying on row text (the old behavior) made the suite reconnect the same
+	// node repeatedly. tried covers both successes and failures so the suite
+	// never revisits a node this session (forward progress; no reconnects).
+	tried := map[string]bool{}
 	success := 0
 	attempts := 0
 	maxAttempts := d.nodeIters * 4
@@ -260,44 +267,41 @@ func (d *driver) phase3() {
 			break
 		}
 
-		// 1. Find the highlighted node (the #aaaaaa cursor row in the left list).
-		v := d.view()
-		row := v.SelectedAnnounceRow()
-		if row == nil || row.Text == "" {
-			d.logf("  no node row selected (empty list?); advancing")
-			d.snapshot("phase3 no-node-row")
-			d.send("Down")
-			continue
+		// 1. Seek an untried node. The cursor may be on a node we already
+		//    connected/attempted (the list reorders dynamically); walk Down
+		//    until we find a name not in `tried`, or cycle through all visible
+		//    nodes (then nothing new to do this round).
+		name, row := d.seekUntriedNode(tried)
+		if name == "" || row == nil {
+			d.logf("  no untried node visible (all %d known names attempted); ending Phase 3", len(tried))
+			break
 		}
-		if connected[row.Text] {
-			d.logf("  node %q already connected; advancing to next", row.Text)
-			d.send("Down")
-			continue
-		}
+		d.logf("  selected node %q (row %q)", name, row.Text)
 
-		// 2. Enter -> Announce Info. Verify it actually opened (border title +
-		//    an Addr hash), the check the blind script's `wait_for "Connect"`
-		//    faked by matching stale "Connect" text.
+		// 2. Enter -> Announce Info. Verify it opened (border title + Addr
+		//    hash) — the check the blind script faked with a stale "Connect"
+		//    substring match.
 		d.send("Enter")
 		opened := d.assert(func(v *View) bool {
 			_, ok := v.AnnounceInfoAddr()
 			return ok && hasBorderTitle(v.Screen.fullText(), "Announce Info")
-		}, 6*time.Second, "Announce Info opened for %q", row.Text)
+		}, 6*time.Second, "Announce Info opened for %q", name)
 		if !opened {
-			d.logf("  no node-type Announce Info opened (peer/pn entry or empty); skip")
+			d.logf("  no node-type Announce Info (peer/pn entry or empty); marking tried and skipping")
+			tried[name] = true
 			d.send("Escape")
 			d.snapshot("phase3 skip (no Announce Info)")
-			d.send("Down")
 			continue
 		}
 		targetHash := ""
 		if hv := d.view(); hv != nil {
 			targetHash, _ = hv.AnnounceInfoAddr()
 		}
-		d.snapshot(fmt.Sprintf("phase3: announce info opened (addr=%s)", targetHash))
+		d.snapshot(fmt.Sprintf("phase3: announce info opened (name=%q addr=%s)", name, targetHash))
 
 		// 3. Focus the Connect button (color-neutral; detected via cursor_x on
-		//    the button row). Right moves Back->Connect.
+		//    the button row). Right moves Back->Connect. Only press Enter if
+		//    Connect is actually focused, else we would activate Back.
 		for tries := 0; tries < 4; tries++ {
 			if bv := d.view(); bv != nil {
 				if b, ok := bv.FocusedActionButton(); ok && b == "Connect" {
@@ -306,86 +310,207 @@ func (d *driver) phase3() {
 			}
 			d.send("Right")
 		}
-		d.assert(func(v *View) bool {
+		connectFocused := d.assert(func(v *View) bool {
 			b, ok := v.FocusedActionButton()
 			return ok && b == "Connect"
-		}, 3*time.Second, "Connect button focused")
+		}, 3*time.Second, "Connect button focused for %q", name)
+		if !connectFocused {
+			d.logf("  could not focus Connect; marking tried and skipping")
+			tried[name] = true
+			d.send("Escape")
+			continue
+		}
 		d.send("Enter")
 
-		// 4. VERIFY the connect (the core fix). Wait for the browser URL bar to
-		//    show the target node's hash (proves navigation to THIS node, not a
-		//    stale page), then wait for rendered or error. The blind script
-		//    instead fired `wait_gone "Disconnected"` after 0s against a
-		//    "Retrieving" frame and declared success on a still-loading page.
-		d.logf("  Connect pressed (target %q); waiting for navigation...", targetHash)
-		navOK := d.assert(func(v *View) bool {
-			_, url := v.BrowserState()
-			return targetHash != "" && url == targetHash
-		}, 6*time.Second, "browser navigated to target hash %q", targetHash)
-
-		state, _ := d.view().BrowserState()
-		d.logf("  browser state after connect: %q", state)
-		rendered := false
-		if navOK {
-			v, ok := d.waitFor(func(v *View) bool {
-				st, _ := v.BrowserState()
-				return st == bsRendered || strings.HasPrefix(st, "error:")
-			}, d.connectWait)
-			state, _ = v.BrowserState()
-			if ok && state == bsRendered {
-				rendered = true
-			} else if ok && strings.HasPrefix(state, "error:") {
-				d.logf("  connect FAILED: %s; skipping node", state)
-			} else {
-				d.logf("  connect TIMEOUT after %v (state=%q); skipping node", d.connectWait, state)
+		// 4. VERIFY the connect — wait for a TERMINAL state and ONLY then
+		//    proceed: either the target node's index.mu rendered (state ==
+		//    rendered AND url == targetHash, proving navigation to THIS node
+		//    and not a stale page), OR a connect error (link establishment
+		//    failure / no path / request failed / timed out). The blind script
+		//    declared success the instant "Disconnected" disappeared, matching
+		//    a still-"Retrieving" frame; this single wait blocks through
+		//    "Retrieving" until one of the two outcomes actually occurs.
+		d.logf("  Connect pressed (target %q); waiting for render or failure...", targetHash)
+		_, _ = d.waitFor(func(v *View) bool {
+			st, url := v.BrowserState()
+			if strings.HasPrefix(st, "error:") {
+				return true
 			}
-		} else {
-			d.logf("  connect FAILED: browser never navigated to %q; skipping", targetHash)
-		}
+			return st == bsRendered && targetHash != "" && url == targetHash
+		}, d.connectWait+6*time.Second)
+		st, url := d.view().BrowserState()
+		tried[name] = true
 
-		if !rendered {
+		if !(st == bsRendered && targetHash != "" && url == targetHash) {
+			switch {
+			case strings.HasPrefix(st, "error:"):
+				d.logf("  connect FAILED: %s; skipping node", st)
+			case st == bsRendered:
+				d.logf("  connect FAILED: rendered page url=%q != target %q (stale page?); skipping", url, targetHash)
+			default:
+				d.logf("  connect TIMEOUT after %v (state=%q); skipping node", d.connectWait+6*time.Second, st)
+			}
 			d.snapshot("phase3: connect failed")
-			d.send("C-w") // Disconnect to reset the browser pane.
+			d.send("C-w") // Disconnect to reset the browser pane before the next node.
 			time.Sleep(d.stepDelay)
-			d.send("Down")
 			continue
 		}
 
-		d.logf("  page RENDERED OK")
+		d.logf("  page RENDERED OK (url=%q)", url)
 		d.snapshot("phase3: node index.mu rendered")
 		success++
-		connected[row.Text] = true
 
-		// 5. Move into the browser pane and follow a couple of links.
-		d.send("Right")
+		// 5. Move into the browser page and follow EVERY link on the front
+		//    page, returning to the main page (Back = C-d) after each. The
+		//    browser resets focus to the first selectable line on every render
+		//    (initNavState), so link i is reached with i Downs. Links render
+		//    in the inherited text color (no distinct link color), so we
+		//    detect "tried all links" by URL reuse: once a Down+Enter
+		//    re-navigates to an already-followed URL (or fails to leave the
+		//    main page), we stop.
+		d.send("Right") // list -> browser content
 		d.assert(func(v *View) bool {
 			_, ok := v.MenuFocusedButton()
 			return !ok // focus moved into the body/browser
 		}, 3*time.Second, "focus moved into browser pane")
 		d.snapshot("phase3: browser pane (before link nav)")
-		for link := 1; link <= 2; link++ {
-			d.send("Down")
-			d.send("Enter")
-			d.logf("  followed link %d", link)
-			d.waitFor(func(v *View) bool {
-				st, _ := v.BrowserState()
-				return st == bsRendered || strings.HasPrefix(st, "error:")
-			}, 5*time.Second)
-			d.snapshot(fmt.Sprintf("phase3: after following link %d", link))
-		}
+		d.followAllLinks(targetHash)
 
-		// Release focus back to the Announce Stream list (Left at a line's
-		// start releases the browser focus), then advance to the next node.
-		for i := 0; i < 3; i++ {
+		// 6. Release focus back to the Announce Stream list (Left at a line's
+		//    start releases browser focus) so the next iteration can seek the
+		//    next node. The seek then walks to an untried node.
+		for i := 0; i < 2; i++ {
 			d.send("Left")
+			if r := d.view().SelectedAnnounceRow(); r != nil {
+				break
+			}
 		}
 		d.assert(func(v *View) bool {
 			return v.SelectedAnnounceRow() != nil
 		}, 3*time.Second, "focus back on the announce list")
 		d.snapshot("phase3: back at node list")
+	}
+	d.logf("Phase 3 complete: %d/%d successful connects in %d attempts (%d distinct nodes tried)",
+		success, d.nodeIters, attempts, len(tried))
+}
+
+// seekUntriedNode walks the Announce Stream list (Down, wrapping) until the
+// selected row's stable node name is not in `tried`, returning the name + row.
+// Returns ("", nil) if every visible node is already tried (detected when a
+// Down lands on a name already seen this seek — i.e. we cycled through all).
+func (d *driver) seekUntriedNode(tried map[string]bool) (string, *ListRow) {
+	visited := map[string]bool{}
+	nilStreak := 0 // consecutive steps with no selected list row (focus not on list)
+	for steps := 0; steps < 60; steps++ {
+		row := d.view().SelectedAnnounceRow()
+		name := ""
+		if row != nil {
+			name = announceNodeName(row.Text)
+		}
+		if name != "" && !tried[name] {
+			return name, row
+		}
+		if name != "" {
+			nilStreak = 0
+			// A repeat means we've cycled through every visible node and they
+			// are all tried — stop seeking.
+			if visited[name] {
+				return "", nil
+			}
+			visited[name] = true
+		} else {
+			// No selected list row: focus is not on the list (e.g. stuck in a
+			// linkless browser page). A few Downs should release/advance; if it
+			// persists, stop rather than burn the whole budget scrolling.
+			nilStreak++
+			if nilStreak >= 5 {
+				return "", nil
+			}
+		}
 		d.send("Down")
 	}
-	d.logf("Phase 3 complete: %d/%d successful connects in %d attempts", success, d.nodeIters, attempts)
+	return "", nil
+}
+
+// followAllLinks follows every link on the front (index.mu) page, going Back
+// (C-d) to the main page after each. mainHash is the main page's URL (the node
+// hash) used to confirm we returned and to detect exhaustion. See phase3 step 5.
+func (d *driver) followAllLinks(mainHash string) {
+	followed := map[string]bool{}
+	const maxLinks = 20
+	for i := 0; i < maxLinks; i++ {
+		// Reach link i from the top (focus resets to the first selectable line
+		// after each Back, so i Downs lands on the i-th link). Send them in one
+		// tmux call with a short settle — we only verify state after Enter.
+		if i > 0 {
+			keys := make([]string, i)
+			for j := range keys {
+				keys[j] = "Down"
+			}
+			d.jog(keys...)
+		}
+		d.send("Enter")
+
+		_, ok := d.waitFor(func(v *View) bool {
+			st, _ := v.BrowserState()
+			return st == bsRendered || strings.HasPrefix(st, "error:")
+		}, d.connectWait)
+		if !ok {
+			d.logf("  link %d: no render/error within %v; stopping link nav", i, d.connectWait)
+			d.send("C-d")
+			d.settleMain(mainHash)
+			break
+		}
+		st, url := d.view().BrowserState()
+		if strings.HasPrefix(st, "error:") {
+			d.logf("  link %d: error %q; back to main, trying next link", i, st)
+			d.snapshot(fmt.Sprintf("phase3: link %d error", i))
+			d.send("C-d")
+			d.settleMain(mainHash)
+			continue
+		}
+		// Exhaustion: Enter did not navigate away from the main page (no link
+		// at this position — we're past the last link, Down had scrolled), OR
+		// it re-followed a link we already tried (Down past the last link
+		// landed on the last link again). Either way we've tried them all.
+		if url == "" || url == mainHash || followed[url] {
+			d.logf("  link %d: url=%q (main page or repeat) — exhausted front-page links after %d", i, url, len(followed))
+			if url != "" && url != mainHash {
+				d.send("C-d")
+				d.settleMain(mainHash)
+			}
+			break
+		}
+		followed[url] = true
+		d.logf("  followed link %d -> %q", i, url)
+		d.snapshot(fmt.Sprintf("phase3: link %d -> %s", i, url))
+		d.send("C-d") // Back to the main page.
+		d.settleMain(mainHash)
+	}
+	d.logf("  followed %d distinct front-page links", len(followed))
+}
+
+// settleMain waits for the main page to come back after a Back (C-d), confirmed
+// by the browser URL bar showing the main page hash again.
+func (d *driver) settleMain(mainHash string) {
+	d.waitFor(func(v *View) bool {
+		st, url := v.BrowserState()
+		return st == bsRendered && mainHash != "" && url == mainHash
+	}, d.connectWait)
+}
+
+// jog sends keys in one tmux send-keys call with a short settle. Used for the
+// repetitive Down-jogging between links (we only verify state after Enter, not
+// after each Down), keeping link navigation responsive.
+func (d *driver) jog(keys ...string) {
+	if len(keys) == 0 {
+		return
+	}
+	d.logf("jog: %d x %s", len(keys), keys[0])
+	if err := d.sess.SendKeys(keys...); err != nil {
+		d.logf("  ERROR jog send-keys: %v", err)
+	}
+	time.Sleep(120 * time.Millisecond)
 }
 
 // guideTopicTitles is the first rendered line (the `>Title` heading) of each

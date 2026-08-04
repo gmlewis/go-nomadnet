@@ -681,6 +681,29 @@ func (v *View) SelectedAnnounceRow() *ListRow {
 	return nil
 }
 
+// announceNodeName extracts the stable display name from an announce-stream row
+// so a node can be recognized across re-announces. The row text (captured inside
+// the bordered list box) is "│{ts} {glyph} {displayStr}   │" — the timestamp
+// changes on every re-announce, but displayStr (the node name, or the hex hash in
+// show-destination mode) is stable. We strip the wrapping '│' borders, then take
+// the text after the second space (the "{ts} {glyph} " prefix has no internal
+// spaces), which is displayStr. Returns "" for a non-conforming row.
+func announceNodeName(rowText string) string {
+	s := strings.TrimSpace(rowText)
+	// Strip the box-drawing border chars that wrap every list content row.
+	s = strings.Trim(s, "│┃║")
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	// Format (announce-entry.go): "{ts} {glyph} {displayStr}".
+	parts := strings.SplitN(s, " ", 3)
+	if len(parts) < 3 {
+		return ""
+	}
+	return strings.TrimSpace(parts[2])
+}
+
 // AnnounceInfoAddr returns the node address hash shown in an open Announce Info
 // (the "Addr  : <hash>" row), with ok=false if no such row is present.
 //
