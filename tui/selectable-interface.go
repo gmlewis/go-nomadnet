@@ -42,6 +42,7 @@ type SelectableInterfaceItem struct {
 	TX          int64
 	RX          int64
 	IfaceOpts   any
+	app         *App
 	focused     bool
 	OnSelect    func(name string)
 	OnActivate  func()
@@ -59,6 +60,31 @@ func NewSelectableInterfaceItem(name, ifaceType string, connected, enabled bool,
 		RX:          rx,
 		Icon:        icon,
 	}
+}
+
+// SetApp wires the app whose StyleRegistry resolves the palette styles used to
+// color the status/connection rows (Python Interfaces.py:1136-1158). It is
+// optional: with no app (or no Styles) the item falls back to tcell.StyleDefault
+// for every row, matching the legacy monochrome rendering.
+func (s *SelectableInterfaceItem) SetApp(app *App) { s.app = app }
+
+// style resolves a named palette entry to a tcell.Style via the wired app's
+// StyleRegistry, returning tcell.StyleDefault when no app is available.
+func (s *SelectableInterfaceItem) style(name string) tcell.Style {
+	if s.app == nil || s.app.Styles == nil {
+		return tcell.StyleDefault
+	}
+	return s.app.Styles.Style(name)
+}
+
+// statusStyle returns the connected_status (green) style when `on` is true and
+// the disconnected_status (red) style when false — the coloring Python applies
+// to both the Enabled/Disabled and Connected/Disconnected values.
+func (s *SelectableInterfaceItem) statusStyle(on bool) tcell.Style {
+	if on {
+		return s.style("connected_status")
+	}
+	return s.style("disconnected_status")
 }
 
 // SetFocused sets whether this item shows the focused selection glyph.
@@ -141,12 +167,47 @@ func (s *SelectableInterfaceItem) Draw(screen tcell.Screen) {
 	if s.focused {
 		sel = "●"
 	}
-	contentRows := []string{
-		fmt.Sprintf("%-4s%v  %v", sel, s.Icon, s.Name),
-		fmt.Sprintf("%-10s%-10s | %v", "Status: ", s.StatusText(), s.ConnectedText()),
-		fmt.Sprintf("%-10s%v", "Type:", s.IfaceType),
-		strings.Repeat("-", cw),
-		fmt.Sprintf("%-10s%-15s%-10s%v", "TX:", s.TXText(), "RX:", s.RXText()),
+
+	// Title style: interface_title normally, interface_title_selected (bold in
+	// 16-color) when focused (Python Interfaces.py:1213-1218). At truecolor both
+	// resolve to the terminal default, so the visible focus cue remains the
+	// ●/○ glyph; this is the structural style mapping for parity.
+	titleStyle := s.style("interface_title")
+	if s.focused {
+		titleStyle = s.style("interface_title_selected")
+	}
+
+	// Each content row is a sequence of styled spans. Only the Enabled/Disabled
+	// status value and the Connected/Disconnected connection value carry color
+	// (connected_status green / disconnected_status red); the "key" labels
+	// ("Status:", "Type:", "TX:", "RX:") and "value" iface-type/byte-counts are
+	// undefined in Python's palette and so render terminal-default. The span
+	// text matches the previous plain-string layout byte-for-byte (the
+	// InterfaceItemRowText text-parity helper is unchanged), so this is purely a
+	// coloring change.
+	divider := strings.Repeat("-", cw)
+	rows := [][]styledSpan{
+		{
+			{fmt.Sprintf("%-4s", sel), tcell.StyleDefault},
+			{s.Icon + "  " + s.Name, titleStyle},
+		},
+		{
+			{fmt.Sprintf("%-10s", "Status: "), tcell.StyleDefault},
+			{fmt.Sprintf("%-10s", s.StatusText()), s.statusStyle(s.IsEnabled)},
+			{" | ", tcell.StyleDefault},
+			{s.ConnectedText(), s.statusStyle(s.IsConnected)},
+		},
+		{
+			{fmt.Sprintf("%-10s", "Type:"), tcell.StyleDefault},
+			{s.IfaceType, tcell.StyleDefault},
+		},
+		{{divider, tcell.StyleDefault}},
+		{
+			{fmt.Sprintf("%-10s", "TX:"), tcell.StyleDefault},
+			{fmt.Sprintf("%-15s", s.TXText()), tcell.StyleDefault},
+			{fmt.Sprintf("%-10s", "RX:"), tcell.StyleDefault},
+			{s.RXText(), tcell.StyleDefault},
+		},
 	}
 
 	// Render rows 1..h-1. For a full box the last row is the bottom border; for
@@ -159,8 +220,8 @@ func (s *SelectableInterfaceItem) Draw(screen tcell.Screen) {
 	for r := 1; r <= lastContentRow; r++ {
 		screen.SetContent(x, y+r, BorderVertical, nil, style)
 		screen.SetContent(x+w-1, y+r, BorderVertical, nil, style)
-		if r-1 < len(contentRows) {
-			s.printRow(screen, cx, y+r, cw, contentRows[r-1], style)
+		if r-1 < len(rows) {
+			s.printSpans(screen, cx, y+r, cw, rows[r-1])
 		}
 	}
 
@@ -174,27 +235,38 @@ func (s *SelectableInterfaceItem) Draw(screen tcell.Screen) {
 	}
 }
 
-// printRow writes s left-aligned at (x,y) padded to width w with spaces,
-// using runewidth so wide glyphs (e.g. the interface icon emoji) advance the
-// correct number of columns, matching urwid's left-aligned fill.
-func (s *SelectableInterfaceItem) printRow(screen tcell.Screen, x, y, w int, str string, style tcell.Style) {
+// styledSpan is a run of text painted in a single tcell.Style. A content row
+// is a slice of spans, letting the title/status values carry a different color
+// from their labels (Python's per-widget urwid AttrMap styling).
+type styledSpan struct {
+	text  string
+	style tcell.Style
+}
+
+// printSpans writes the spans left-aligned at (x,y), each rune in its span's
+// style, then pads the remaining width with spaces in tcell.StyleDefault —
+// matching urwid's left-aligned Columns fill. runewidth is used so wide glyphs
+// (e.g. the interface icon emoji) advance the correct number of columns.
+func (s *SelectableInterfaceItem) printSpans(screen tcell.Screen, x, y, w int, spans []styledSpan) {
 	col := 0
-	for _, r := range str {
-		if col >= w {
-			break
+	for _, sp := range spans {
+		for _, r := range sp.text {
+			if col >= w {
+				return
+			}
+			rw := runewidth.RuneWidth(r)
+			if rw == 0 {
+				rw = 1
+			}
+			if col+rw > w {
+				return
+			}
+			screen.SetContent(x+col, y, r, nil, sp.style)
+			col += rw
 		}
-		rw := runewidth.RuneWidth(r)
-		if rw == 0 {
-			rw = 1
-		}
-		if col+rw > w {
-			break
-		}
-		screen.SetContent(x+col, y, r, nil, style)
-		col += rw
 	}
 	for col < w {
-		screen.SetContent(x+col, y, ' ', nil, style)
+		screen.SetContent(x+col, y, ' ', nil, tcell.StyleDefault)
 		col++
 	}
 }

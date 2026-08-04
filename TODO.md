@@ -266,20 +266,6 @@ test or a matching `parity.sh` summary):
 > or close the gap.
 - [ ] **V-Net-Stream:** Network Announce Stream rendering (not in the cast).
 - [ ] **V-Net-Detail:** Network node-detail right pane (not in the cast).
-- [ ] **V-Interfaces:** Interfaces page row colors / partial-clip / disabled
-      rows. **Confirmed root cause (not just a re-verify):**
-      `SelectableInterfaceItem.Draw` (`tui/selectable-interface.go:126`) paints
-      every content row — the name+icon line, the `Status: Enabled/Disabled |
-      Connected/Disconnected` line, the `Type:` line, and the `TX:/RX:` line —
-      with a single `tcell.StyleDefault` (terminal default fg, no color, no
-      bold). Python's `Interfaces.py` `SelectableInterfaceItem` styles these
-      rows from the palette (connected vs disconnected, enabled vs disabled,
-      TX/RX counts) so the page reads at a glance. Capture the Python truecolor
-      rendering, port the per-row style mapping into `Draw`/`printRow`
-      (plumbing the app theme + palette like the other pages), and pin with a
-      parity test. Icons themselves already match (`interface-icon-parity_test.go`
-      passes), so this is a coloring-only gap (the "possibly icons" suspicion is
-      covered).
 - [ ] **V-Log:** Log page (`urwid.Terminal` tail) rendering.
 - [ ] **V-Config:** Config page (`urwid.Terminal` editor) rendering.
 - [ ] **V-Dialogs:** dialog rendering parity — new conversation, peer info,
@@ -300,18 +286,6 @@ test or a matching `parity.sh` summary):
       purely the cursor-width alignment for accurate comparison.)
 
 ---
-
-- **Guide scroll-reset-to-top bug:** `tui/guide.go` `showTopic`/`renderMarkup`
-  renders a new topic into the reader `TextView` without `ScrollTo(0, 0)`, so the
-  vertical scroll offset leaks from the previously-viewed topic. Selecting topic
-  N after scrolling topic N-1 to the bottom opens topic N already scrolled part
-  way down — the first visible line is NOT the topic's `>Title` heading. `Home`
-  (which *does* `ScrollToBeginning`) restores row 0, proving the offset is the
-  culprit. The `cmd/run-tmux-test-suite` Phase 4 exercises this bug (selects each
-  of the 12 topics, moves to the reader, End-to-bottom, then selects the next
-  topic and checks whether the title is at top — logging a `SCROLL-RESET BUG` per
-  leak). Fix: `ScrollTo(0, 0)` in `showTopic`/`renderMarkup` before/after writing
-  the new content; pin with a Guide topic-switch scroll-position test.
 
 ## Known deferred gaps (lower priority; not blocking, but needed for 100%)
 

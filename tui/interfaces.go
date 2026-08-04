@@ -77,7 +77,7 @@ func NewInterfacesDisplay(app *App, interfaces []InterfaceInfo) *InterfacesDispl
 	// header + urwid.Divider().
 	title := newCenteredText(tcell.ColorDefault, "Interfaces", "")
 
-	id.listBox = newInterfaceListBox(id.glyphset)
+	id.listBox = newInterfaceListBox(id.app, id.glyphset)
 	id.SetInterfaces(interfaces)
 
 	// No outer border (Python: pile = urwid.Pile([box_adapter]) wrapped in
@@ -169,12 +169,13 @@ type interfaceListBox struct {
 	items      []*SelectableInterfaceItem
 	focusIdx   int
 	offset     int // index of the first visible item
+	app        *App
 	glyphset   string
 	onActivate func(idx int)
 }
 
-func newInterfaceListBox(glyphset string) *interfaceListBox {
-	b := &interfaceListBox{Box: tview.NewBox(), glyphset: glyphset, focusIdx: -1}
+func newInterfaceListBox(app *App, glyphset string) *interfaceListBox {
+	b := &interfaceListBox{Box: tview.NewBox(), app: app, glyphset: glyphset, focusIdx: -1}
 	return b
 }
 
@@ -183,9 +184,13 @@ func newInterfaceListBox(glyphset string) *interfaceListBox {
 // Python's interface list, whose ListBox focus defaults to the non-selectable
 // header (Interfaces.py:2905-2910 — [interface_header, Divider] lead the
 // walker), so NO interface item shows the ● selection glyph until the user
-// presses Down to move focus onto the first item.
+// presses Down to move focus onto the first item. The wired app (if any) is
+// propagated to each item so its Draw resolves the palette status colors.
 func (b *interfaceListBox) SetItems(items []*SelectableInterfaceItem) {
 	b.items = items
+	for _, it := range items {
+		it.SetApp(b.app)
+	}
 	switch {
 	case len(items) == 0:
 		b.focusIdx = -1

@@ -267,6 +267,9 @@ func (gd *GuideDisplay) showPlaceholder() {
 	// title=). The "No topic selected" text is pane CONTENT, not a border title.
 	SetTitledBorder(gd.readerBox, "")
 	gd.reader.SetText("\n  No topic selected")
+	// Reset scroll (see showTopic): the placeholder replaces prior content and
+	// must start at the top so a later topic isn't shown at a stale offset.
+	gd.reader.ScrollTo(0, 0)
 }
 
 // showTopic renders the given topic's micron source into the reader and syncs
@@ -281,6 +284,16 @@ func (gd *GuideDisplay) showTopic(idx int) {
 	// pane by renderMarkup, not a border title.
 	SetTitledBorder(gd.readerBox, "")
 	gd.renderMarkup(guideTopics[idx].markup)
+	// Reset the reader to the top on a topic switch. Python's Guide.display_topic
+	// -> set_content_widgets rebuilds the entire Scrollable widget on every
+	// switch (Guide.py:226-234), which implicitly resets scroll; the Go port
+	// reuses one TextView, and tview's SetText/clear leave lineOffset untouched,
+	// so without this the previous topic's scroll offset leaks into the new one
+	// (the first visible line would not be the topic's `>Title` heading).
+	// NOTE: this reset lives in showTopic, NOT in renderMarkup/rerender — those
+	// are also used by jumpToAnchor and the resize re-render path, which must
+	// preserve the user's current scroll position.
+	gd.reader.ScrollTo(0, 0)
 }
 
 // Shortcuts returns the footer shortcut text for the Guide page, matching

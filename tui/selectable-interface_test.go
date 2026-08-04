@@ -269,7 +269,7 @@ func TestInterfaceListBoxPartialLastItem(t *testing.T) {
 		NewSelectableInterfaceItem("B", "TCPClientInterface", true, true, 0, 0, "󰈀"),
 		NewSelectableInterfaceItem("C", "TCPClientInterface", true, true, 0, 0, "󰈀"),
 	}
-	b := newInterfaceListBox("")
+	b := newInterfaceListBox(nil, "")
 	b.SetItems(items)
 	// Height fits 2 full boxes (14) + 3 rows of a partial 3rd.
 	b.SetRect(0, 0, 60, 17)
