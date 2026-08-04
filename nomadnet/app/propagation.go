@@ -23,6 +23,8 @@ import (
 // node hash, or nil when none is set. This mirrors the Python NomadNet
 // get_user_selected_propagation_node.
 func (a *App) GetUserSelectedPropagationNode() []byte {
+	a.psMu.Lock()
+	defer a.psMu.Unlock()
 	if a.PeerSettings == nil {
 		return nil
 	}
@@ -36,11 +38,13 @@ func (a *App) GetUserSelectedPropagationNode() []byte {
 // hash, persists peer settings, and re-runs automatic selection so the router
 // uses it. This mirrors the Python NomadNet set_user_selected_propagation_node.
 func (a *App) SetUserSelectedPropagationNode(nodeHash []byte) {
+	a.psMu.Lock()
 	if a.PeerSettings == nil {
 		a.PeerSettings = peersettings.DefaultSettings(a.AnnounceInterval)
 	}
 	a.PeerSettings.PropagationNode = nodeHash
-	a.SavePeerSettings()
+	a.savePeerSettingsLocked()
+	a.psMu.Unlock()
 	a.AutoSelectPropagationNode()
 }
 

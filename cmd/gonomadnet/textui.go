@@ -1669,10 +1669,11 @@ func buildNodeInfoData(a *app.App, navigateTo func(string), showAnnounceSent fun
 	// msgpack-typed `any` (int64 from onNodeAnnounced, possibly uint64/CBOR on
 	// reload) — coerce defensively.
 	data.LastAnnounce = func() string {
-		if a.PeerSettings == nil || a.PeerSettings.NodeLastAnnounce == nil {
+		last, ok := a.NodeLastAnnounceSetting()
+		if !ok || last == nil {
 			return "Never"
 		}
-		ts, ok := peerAnnounceUnix(a.PeerSettings.NodeLastAnnounce)
+		ts, ok := peerAnnounceUnix(last)
 		if !ok || ts <= 0 {
 			return "Never"
 		}
@@ -1697,27 +1698,30 @@ func buildNodeInfoData(a *app.App, navigateTo func(string), showAnnounceSent fun
 
 	// Connected Now (NodeActiveConnections, Network.py:1116-1127):
 	// len(node.destination.links) — Go tracks a.Node.ActiveLinks.
-	data.ActiveLinks = func() string { return strconv.Itoa(a.Node.ActiveLinks) }
+	data.ActiveLinks = func() string { return strconv.Itoa(a.Node.ActiveLinkCount()) }
 
 	// Total Connects / Served Pages / Served Files (NodeTotalConnections/Pages/
 	// Files, Network.py:1163-1256): the persisted peer-settings counters.
 	data.TotalConnects = func() string {
-		if a.PeerSettings == nil {
+		connects, _, _, ok := a.NodeStats()
+		if !ok {
 			return "None"
 		}
-		return strconv.Itoa(a.PeerSettings.NodeConnects)
+		return strconv.Itoa(connects)
 	}
 	data.TotalPages = func() string {
-		if a.PeerSettings == nil {
+		_, pages, _, ok := a.NodeStats()
+		if !ok {
 			return "None"
 		}
-		return strconv.Itoa(a.PeerSettings.ServedPageRequests)
+		return strconv.Itoa(pages)
 	}
 	data.TotalFiles = func() string {
-		if a.PeerSettings == nil {
+		_, _, files, ok := a.NodeStats()
+		if !ok {
 			return "None"
 		}
-		return strconv.Itoa(a.PeerSettings.ServedFileRequests)
+		return strconv.Itoa(files)
 	}
 
 	// Browse → load the node's own page in the browser (connect_query,

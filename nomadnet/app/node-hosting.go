@@ -101,42 +101,50 @@ func (a *App) startNode() error {
 // Python Node.peer_connected (Node.py:111-112): peer_settings["node_connects"]
 // += 1; save_peer_settings.
 func (a *App) onNodePeerConnected() {
+	a.psMu.Lock()
+	defer a.psMu.Unlock()
 	if a.PeerSettings == nil {
 		return
 	}
 	a.PeerSettings.NodeConnects++
-	a.SavePeerSettings()
+	a.savePeerSettingsLocked()
 }
 
 // onNodePageServed persists the incremented served-page-requests counter,
 // mirroring Python Node.serve_page (Node.py:111-112,194-195).
 func (a *App) onNodePageServed() {
+	a.psMu.Lock()
+	defer a.psMu.Unlock()
 	if a.PeerSettings == nil {
 		return
 	}
 	a.PeerSettings.ServedPageRequests++
-	a.SavePeerSettings()
+	a.savePeerSettingsLocked()
 }
 
 // onNodeFileServed persists the incremented served-file-requests counter,
 // mirroring Python Node.serve_file (Node.py:194-195).
 func (a *App) onNodeFileServed() {
+	a.psMu.Lock()
+	defer a.psMu.Unlock()
 	if a.PeerSettings == nil {
 		return
 	}
 	a.PeerSettings.ServedFileRequests++
-	a.SavePeerSettings()
+	a.savePeerSettingsLocked()
 }
 
 // onNodeAnnounced persists the node-last-announce timestamp, mirroring Python
 // Node.announce (Node.py:218): peer_settings["node_last_announce"] =
 // self.last_announce; save_peer_settings.
 func (a *App) onNodeAnnounced() {
+	a.psMu.Lock()
+	defer a.psMu.Unlock()
 	if a.PeerSettings == nil {
 		return
 	}
 	a.PeerSettings.NodeLastAnnounce = time.Now().Unix()
-	a.SavePeerSettings()
+	a.savePeerSettingsLocked()
 }
 
 // ResetNodeStats zeros the hosted-node stat counters (node_connects,
@@ -145,12 +153,14 @@ func (a *App) onNodeAnnounced() {
 // in-memory counters so the live "Connected Now" / session counts stay
 // consistent.
 func (a *App) ResetNodeStats() {
+	a.psMu.Lock()
 	if a.PeerSettings != nil {
 		a.PeerSettings.NodeConnects = 0
 		a.PeerSettings.ServedPageRequests = 0
 		a.PeerSettings.ServedFileRequests = 0
-		a.SavePeerSettings()
+		a.savePeerSettingsLocked()
 	}
+	a.psMu.Unlock()
 	if a.Node != nil {
 		a.Node.ResetStats()
 	}
@@ -163,8 +173,14 @@ func (a *App) nodeName() string {
 	if a.NodeName != "" {
 		return a.NodeName
 	}
-	if a.PeerSettings != nil && a.PeerSettings.DisplayName != "" {
-		return a.PeerSettings.DisplayName + "'s Node"
+	a.psMu.Lock()
+	displayName := ""
+	if a.PeerSettings != nil {
+		displayName = a.PeerSettings.DisplayName
+	}
+	a.psMu.Unlock()
+	if displayName != "" {
+		return displayName + "'s Node"
 	}
 	return ""
 }
@@ -177,6 +193,30 @@ func (a *App) stopNode() {
 		return
 	}
 	a.Node.Stop()
+}
+
+// NodeStats snapshots the hosted-node peer-settings counters under psMu so
+// the TUI render goroutine can read them without racing the node job-loop /
+// announce callbacks that mutate them. The bool reports whether settings
+// exist (so callers can render "None" when absent).
+func (a *App) NodeStats() (connects, pages, files int, ok bool) {
+	a.psMu.Lock()
+	defer a.psMu.Unlock()
+	if a.PeerSettings == nil {
+		return 0, 0, 0, false
+	}
+	return a.PeerSettings.NodeConnects, a.PeerSettings.ServedPageRequests, a.PeerSettings.ServedFileRequests, true
+}
+
+// NodeLastAnnounceSetting snapshots the persisted node-last-announce value
+// under psMu. It returns (nil, false) when settings are absent.
+func (a *App) NodeLastAnnounceSetting() (any, bool) {
+	a.psMu.Lock()
+	defer a.psMu.Unlock()
+	if a.PeerSettings == nil {
+		return nil, false
+	}
+	return a.PeerSettings.NodeLastAnnounce, true
 }
 
 // NodeDestinationHash returns the "nomadnetwork.node" destination hash for the

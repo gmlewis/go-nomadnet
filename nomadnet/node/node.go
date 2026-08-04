@@ -170,6 +170,15 @@ func (n *Node) Destination() *rns.Destination {
 	return n.destination
 }
 
+// ActiveLinkCount returns the number of currently-open peer links under mu, so
+// the TUI render goroutine can read it without racing PeerConnected/
+// PeerDisconnected, which mutate ActiveLinks from link callbacks.
+func (n *Node) ActiveLinkCount() int {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.ActiveLinks
+}
+
 // registerRequestHandlers registers RNS request handlers for all served
 // pages and files, plus the default index.
 func (n *Node) registerRequestHandlers() {
@@ -253,12 +262,15 @@ func (n *Node) Announce() error {
 	if n.destination == nil {
 		return errors.New("node not started")
 	}
+	n.mu.Lock()
 	n.AppData = []byte(n.Name)
 	n.LastAnnounce = time.Now()
+	appData := n.AppData
+	n.mu.Unlock()
 	if n.OnAnnounced != nil {
 		n.OnAnnounced()
 	}
-	return n.destination.Announce(n.AppData)
+	return n.destination.Announce(appData)
 }
 
 // PeerConnected handles a peer establishing a link to this node, mirroring
@@ -320,18 +332,31 @@ func (n *Node) Jobs() {
 // fire when greater than zero, matching Python's guards. It returns any error
 // from announcing.
 func (n *Node) runJobsOnce(now time.Time) error {
-	if now.After(n.LastAnnounce.Add(time.Duration(n.AnnounceInterval) * time.Minute)) {
+	n.mu.Lock()
+	lastAnnounce := n.LastAnnounce
+	announceInterval := n.AnnounceInterval
+	pageRefresh := n.PageRefreshInterval
+	lastPageRefresh := n.LastPageRefresh
+	fileRefresh := n.FileRefreshInterval
+	lastFileRefresh := n.LastFileRefresh
+	n.mu.Unlock()
+
+	if now.After(lastAnnounce.Add(time.Duration(announceInterval) * time.Minute)) {
 		if err := n.Announce(); err != nil {
 			return err
 		}
 	}
-	if n.PageRefreshInterval > 0 && now.After(n.LastPageRefresh.Add(time.Duration(n.PageRefreshInterval)*time.Minute)) {
+	if pageRefresh > 0 && now.After(lastPageRefresh.Add(time.Duration(pageRefresh)*time.Minute)) {
 		n.RegisterPages()
+		n.mu.Lock()
 		n.LastPageRefresh = now
+		n.mu.Unlock()
 	}
-	if n.FileRefreshInterval > 0 && now.After(n.LastFileRefresh.Add(time.Duration(n.FileRefreshInterval)*time.Minute)) {
+	if fileRefresh > 0 && now.After(lastFileRefresh.Add(time.Duration(fileRefresh)*time.Minute)) {
 		n.RegisterFiles()
+		n.mu.Lock()
 		n.LastFileRefresh = now
+		n.mu.Unlock()
 	}
 	return nil
 }

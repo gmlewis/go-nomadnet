@@ -28,11 +28,15 @@ func (a *App) loadPeerSettings() {
 		a.Logger.Error("Could not load peer settings: %v", err)
 		ps = peersettings.DefaultSettings(a.AnnounceInterval)
 	}
+	a.psMu.Lock()
 	a.PeerSettings = ps
+	a.psMu.Unlock()
 }
 
-// savePeerSettings persists the local peer settings to disk.
-func (a *App) SavePeerSettings() {
+// savePeerSettingsLocked persists the local peer settings to disk. The caller
+// must hold psMu so that the msgpack marshal of the whole PeerSettings struct
+// cannot race with a concurrent field mutation.
+func (a *App) savePeerSettingsLocked() {
 	if a.PeerSettings == nil {
 		return
 	}
@@ -41,22 +45,33 @@ func (a *App) SavePeerSettings() {
 	}
 }
 
+// SavePeerSettings persists the local peer settings to disk.
+func (a *App) SavePeerSettings() {
+	a.psMu.Lock()
+	a.savePeerSettingsLocked()
+	a.psMu.Unlock()
+}
+
 // SetDisplayName updates the local peer's display name, propagates it to the
 // LXMF delivery destination, and persists peer settings. This mirrors the
 // Python NomadNetworkApp.set_display_name.
 func (a *App) SetDisplayName(displayName string) {
+	a.psMu.Lock()
 	if a.PeerSettings == nil {
 		a.PeerSettings = peersettings.DefaultSettings(a.AnnounceInterval)
 	}
 	a.PeerSettings.DisplayName = displayName
+	a.savePeerSettingsLocked()
+	a.psMu.Unlock()
 	if a.LXMFDest != nil && a.Router != nil {
 		a.Router.SetDisplayName(a.LXMFDest.Hash, displayName)
 	}
-	a.SavePeerSettings()
 }
 
 // GetDisplayName returns the local peer's configured display name.
 func (a *App) GetDisplayName() string {
+	a.psMu.Lock()
+	defer a.psMu.Unlock()
 	if a.PeerSettings == nil {
 		return ""
 	}

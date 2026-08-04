@@ -103,8 +103,10 @@ func (a *App) RequestLXMFSync(limit int) {
 	state := a.Router.PropagationTransferState()
 	if state == lxmf.PRIdle || state >= lxmf.PRComplete {
 		if a.PeerSettings != nil {
+			a.psMu.Lock()
 			a.PeerSettings.LastLXMFSync = int(timeNow().Unix())
-			a.SavePeerSettings()
+			a.savePeerSettingsLocked()
+			a.psMu.Unlock()
 		}
 		var lim *int
 		if limit > 0 {

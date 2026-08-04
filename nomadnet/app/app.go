@@ -203,7 +203,14 @@ type App struct {
 	DeliveryCallback func(msg any)
 	UIChangeCallback func()
 
-	mu     sync.Mutex
+	mu sync.Mutex
+	// psMu guards all access to PeerSettings fields. The node job-loop,
+	// announce-at-start, sync, propagation, and TUI/main goroutines all reach
+	// into PeerSettings; without a lock the background save (msgpack marshal of
+	// the whole struct) races with concurrent field mutations such as
+	// NodeLastAnnounce. SavePeerSettings marshals while holding psMu, so any
+	// mutating a.PeerSettings field must do so under psMu as well.
+	psMu   sync.Mutex
 	initWG sync.WaitGroup
 }
 
@@ -789,11 +796,13 @@ func (a *App) AnnounceNow() {
 // autoselect_propagation_node.
 func (a *App) AutoSelectPropagationNode() {
 	var selected []byte
+	a.psMu.Lock()
 	if ps := a.PeerSettings; ps != nil {
 		if h, ok := ps.PropagationNode.([]byte); ok && len(h) > 0 {
 			selected = h
 		}
 	}
+	a.psMu.Unlock()
 	if selected == nil && a.Dir != nil {
 		bestHops := rns.PathfinderM + 1
 		for _, node := range a.Dir.KnownNodes() {
