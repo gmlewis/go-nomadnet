@@ -17,9 +17,16 @@
 //
 // Usage:
 //
-//	go run ./cmd/run-tmux-test-suite [--headed] [--copy-config] [--fresh]
-//	    [--config DIR] [--rnsconfig DIR] [--announce-wait 25s] [--connect-wait 12s]
-//	    [--node-iters 7] [--step-delay 400ms] [--size 135x32] [--log FILE]
+//	go run ./cmd/run-tmux-test-suite [--nomadnet] [--headed] [--copy-config]
+//	    [--fresh] [--config DIR] [--rnsconfig DIR] [--announce-wait 25s]
+//	    [--connect-wait 12s] [--node-iters 7] [--step-delay 400ms]
+//	    [--size 135x32] [--log FILE]
+//
+// By default the suite drives the Go port (go run ./cmd/gonomadnet). Pass
+// --nomadnet to drive the source-of-truth Python nomadnet
+// (/opt/homebrew/bin/nomadnet) instead — use this to TUNE the suite against the
+// reference implementation first, so any later gonomadnet divergence is
+// unambiguously a port bug.
 //
 // In --headed mode the program queries the ACTUAL terminal size and uses the
 // FULL terminal (not a fixed sub-window), then attaches the tmux session to
@@ -51,6 +58,7 @@ type config struct {
 	headed       bool
 	copyConfig   bool
 	fresh        bool
+	nomadnet     bool // drive the source-of-truth Python nomadnet instead of the Go port
 	configDir    string
 	rnsconfigDir string
 	announceWait time.Duration
@@ -59,6 +67,16 @@ type config struct {
 	stepDelay    time.Duration
 	size         string // WxH, "" = auto for headed / 135x32 for detached
 	logFile      string
+}
+
+// target returns a short label for the implementation under test ("nomadnet"
+// for the Python original, "go" for the port), used in the session name,
+// default log path, and banner.
+func (c *config) target() string {
+	if c.nomadnet {
+		return "nomadnet"
+	}
+	return "go"
 }
 
 func parseFlags(args []string) (*config, error) {
@@ -78,6 +96,8 @@ func parseFlags(args []string) (*config, error) {
 	fs.BoolVar(&c.headed, "headed", false, "attach the tmux session to this terminal so the test is watchable (uses the full terminal size)")
 	fs.BoolVar(&c.copyConfig, "copy-config", false, "copy the config dir to a temp dir so the real config is not modified")
 	fs.BoolVar(&c.fresh, "fresh", false, "run with an empty config dir (first-run Guide boot; no live nodes)")
+	fs.BoolVar(&c.nomadnet, "nomadnet", false,
+		"drive the source-of-truth Python `nomadnet` (/opt/homebrew/bin/nomadnet) instead of the Go port; use to tune the suite against the reference first (log -> /tmp/nomadnet-tmux-test-suite-NNN.log)")
 	fs.StringVar(&c.configDir, "config", c.configDir, "config directory to use (as-is)")
 	fs.StringVar(&c.rnsconfigDir, "rnsconfig", "", "RNS config dir passed as -rnsconfig")
 	fs.DurationVar(&c.announceWait, "announce-wait", c.announceWait, "how long to wait for announcing nodes before connecting")
@@ -118,15 +138,24 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := requireTools(); err != nil {
+	if err := requireTools(cfg); err != nil {
 		return err
 	}
 
 	nnn := strconv.FormatInt(time.Now().Unix(), 10)
-	sessionName := "gonet-" + nnn
+	target := cfg.target()
+	// Session + default-log prefixes are target-specific so a Python run is
+	// never confused with a Go run on disk or in `tmux ls`.
+	sessionPrefix := "gonet-"
+	logPrefix := "gonomadnet-tmux-test-suite"
+	if cfg.nomadnet {
+		sessionPrefix = "nnet-"
+		logPrefix = "nomadnet-tmux-test-suite"
+	}
+	sessionName := sessionPrefix + nnn
 	logFile := cfg.logFile
 	if logFile == "" {
-		logFile = fmt.Sprintf("/tmp/gonomadnet-tmux-test-suite-%s.log", nnn)
+		logFile = fmt.Sprintf("/tmp/%s-%s.log", logPrefix, nnn)
 	}
 	logf, closeLog, err := openLog(logFile)
 	if err != nil {
@@ -161,24 +190,39 @@ func run(args []string) error {
 		}
 	}
 
-	// Build the launch command.
+	// Build the launch command. The Go port and the Python original take the
+	// same -t / config / rnsconfig flags, but with different spellings
+	// (single-dash -config/-rnsconfig for the Go flag package; GNU long
+	// --config/--rnsconfig for Python argparse). The Go port runs from the
+	// repo via `go run`; the Python nomadnet is a global homebrew binary.
+	repo, _ := os.Getwd()
 	rnsFlag := ""
 	if cfg.rnsconfigDir != "" {
-		rnsFlag = fmt.Sprintf(" -rnsconfig '%s'", cfg.rnsconfigDir)
+		if cfg.nomadnet {
+			rnsFlag = fmt.Sprintf(" --rnsconfig '%s'", cfg.rnsconfigDir)
+		} else {
+			rnsFlag = fmt.Sprintf(" -rnsconfig '%s'", cfg.rnsconfigDir)
+		}
 	}
-	repo, _ := os.Getwd()
-	launchCmd := fmt.Sprintf("cd '%s' && exec go run ./cmd/gonomadnet -t -config '%s'%s", repo, configDir, rnsFlag)
+	var launchCmd string
+	if cfg.nomadnet {
+		// Python nomadnet is a global binary; no `go run` / repo cwd needed.
+		launchCmd = fmt.Sprintf("exec nomadnet -t --config '%s'%s", configDir, rnsFlag)
+	} else {
+		launchCmd = fmt.Sprintf("cd '%s' && exec go run ./cmd/gonomadnet -t -config '%s'%s", repo, configDir, rnsFlag)
+	}
 
 	both := func(format string, args ...any) {
 		fmt.Fprintf(os.Stderr, format+"\n", args...)
 		logf(format, args...)
 	}
 
-	both("gonomadnet tmux test suite (Go)")
+	both("nomadnet tmux test suite (%s)", target)
 	both("  log     : %s", logFile)
 	both("  session : %s  (watch live: tmux attach -t %s)", sessionName, sessionName)
 	both("  config  : %s", configSummary(cfg, configDir))
 	both("  repo    : %s", repo)
+	both("  target  : %s  (launch: %s)", target, launchCmd)
 	both("  size    : %dx%d", w, h)
 	both("  flags   : announce-wait=%s connect-wait=%s node-iters=%d step-delay=%s headed=%t",
 		cfg.announceWait, cfg.connectWait, cfg.nodeIters, cfg.stepDelay, cfg.headed)
@@ -380,8 +424,14 @@ func parseSize(s string) (w, h int, ok bool) {
 	return 0, 0, false
 }
 
-func requireTools() error {
-	for _, tool := range []string{"tmux", "go"} {
+func requireTools(cfg *config) error {
+	tools := []string{"tmux"}
+	if cfg.nomadnet {
+		tools = append(tools, "nomadnet")
+	} else {
+		tools = append(tools, "go")
+	}
+	for _, tool := range tools {
 		if _, err := exec.LookPath(tool); err != nil {
 			return fmt.Errorf("%s not found on PATH", tool)
 		}

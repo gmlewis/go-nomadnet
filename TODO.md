@@ -233,6 +233,36 @@ test or a matching `parity.sh` summary):
 
 ---
 
+## Runtime bugs found by the tmux test suite (`cmd/run-tmux-test-suite`)
+
+> These are live-behavior bugs the active tmux suite surfaced (the blind bash
+> script could not see them). Each is reproduced in a log under
+> `/tmp/*-tmux-test-suite-*.log`. Fix TDD: capture the expected focus
+> transition from the Python original (run the suite with `--python`), pin it
+> with a Go unit test against the Network/browser focus state machine, then
+> fix. Remove each entry when green.
+
+- [ ] **R-NET-FOCUS-TRAP:** After `Connect`-ing a node from its Announce Info
+      dialog, focus is trapped on the Announce Info button row (`< Back > <
+      Connect > < Msg Op > < Save >`, screen y≈12) for the rest of the session.
+      `Right`/`Left`/`Up` cannot move the cursor into the browser pane, back to
+      the Announce Stream list, or up to the menu — the suite was stranded on
+      the Network page for ~2m40s (Phase 4 never reached the Guide; the "12
+      scroll-reset" hits were false positives reading the browser border title;
+      Phase 5's Quit failed and fell back to `C-q`). The `Right`→browser /
+      `Left`-at-line-start→list / `Up`-at-list-top→menu contract (see
+      `[[browser-frame-keypress-up-to-menu]]`) is broken after a Connect.
+      Root-cause is in the Network page's Connect handler / Announce Info
+      dialog-close / browser-focus handoff (`tui/network.go` handleInput, the
+      browser focus flag, `initNavState`). Reference log:
+      `/tmp/gonomadnet-tmux-test-suite-1785884922.log` (Phase 3 line ~843 →
+      end). Expected behavior: drive the suite with `--python` against the
+      source-of-truth `nomadnet` — there `Connect` closes the dialog, moves
+      focus into the browser pane, and `Left`/`Up` release back to the list /
+      menu.
+
+---
+
 ## Screencast-comparison parity (cast-confirmed bugs)
 
 > Source: `python_session.cast` (Python nomadnet v1.2.6, **256-color**) vs
