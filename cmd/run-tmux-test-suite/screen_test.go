@@ -335,6 +335,30 @@ func TestBrowserURLParsing(t *testing.T) {
 	}
 }
 
+// TestBrowserURLBordered confirms browserURL strips BOTH the leading '││' border
+// AND the trailing '   ││' border of the URL bar row — the bug that made
+// Phase 3 record 0 successes (url came back as "<hash>││", never matching the
+// target hash, so every connect timed out as state="").
+func TestBrowserURLBordered(t *testing.T) {
+	bar := menuBar()
+	// Nested node-page box: "││URL: <hash>   ││" with leading AND trailing
+	// borders. TrimSpace leaves the trailing "││" attached.
+	rows := []string{
+		"││URL: 7eb47d629a3b84984750355da9efb7fb   ││",
+		"││                                          ││",
+		"││  Nomad Network                           ││",
+	}
+	raw := bar + "\n" + strings.Join(rows, "\n") + "\n"
+	v := viewOf(raw, 0, 1)
+	st, url := v.BrowserState()
+	if url != "7eb47d629a3b84984750355da9efb7fb" {
+		t.Errorf("bordered url = %q, want the bare hash (trailing ││ must be stripped)", url)
+	}
+	if st != bsRendered {
+		t.Errorf("bordered state = %q, want %q", st, bsRendered)
+	}
+}
+
 func TestGuideTopicRendered(t *testing.T) {
 	// Full-width screen (W=60): left third (cols 0..19) is the topics list,
 	// the reader occupies cols 20..59. The first non-blank reader line is the
@@ -348,6 +372,27 @@ func TestGuideTopicRendered(t *testing.T) {
 	got := strings.TrimSpace(v.GuideTopicRendered())
 	if got != "Nomad Network" {
 		t.Errorf("GuideTopicRendered = %q, want Nomad Network", got)
+	}
+}
+
+// TestGuideTopicRenderedBordered confirms the reader title is extracted cleanly
+// when the reader pane is a bordered box — every content row is wrapped in
+// leading '│' and trailing '│' (or '┃' scrollbar) chars that TrimSpace does
+// NOT strip. Without stripping the trailing border the title compared as
+// "Nomad Network │", falsely reporting the scroll-reset bug on every topic.
+func TestGuideTopicRenderedBordered(t *testing.T) {
+	const W = 60
+	// Reader occupies cols 20..59 (width 40). Bordered: '│' at col 20, content
+	// cols 21..58, '│' at col 59. Title "Nomad Network" indented 2.
+	readerW := 40
+	content := "  Nomad Network" + strings.Repeat(" ", readerW-2-2-13) // 2 borders + 2 indent
+	titleRow := strings.Repeat(" ", 20) + "│" + content + "│"
+	blankRow := strings.Repeat(" ", W)
+	raw := blankRow + "\n" + blankRow + "\n" + titleRow + "\n" + blankRow
+	v := viewOf(raw, 0, 1)
+	got := strings.TrimSpace(v.GuideTopicRendered())
+	if got != "Nomad Network" {
+		t.Errorf("bordered GuideTopicRendered = %q, want Nomad Network (trailing │ must be stripped)", got)
 	}
 }
 

@@ -301,6 +301,18 @@ test or a matching `parity.sh` summary):
 
 ---
 
+- **Guide scroll-reset-to-top bug:** `tui/guide.go` `showTopic`/`renderMarkup`
+  renders a new topic into the reader `TextView` without `ScrollTo(0, 0)`, so the
+  vertical scroll offset leaks from the previously-viewed topic. Selecting topic
+  N after scrolling topic N-1 to the bottom opens topic N already scrolled part
+  way down — the first visible line is NOT the topic's `>Title` heading. `Home`
+  (which *does* `ScrollToBeginning`) restores row 0, proving the offset is the
+  culprit. The `cmd/run-tmux-test-suite` Phase 4 exercises this bug (selects each
+  of the 12 topics, moves to the reader, End-to-bottom, then selects the next
+  topic and checks whether the title is at top — logging a `SCROLL-RESET BUG` per
+  leak). Fix: `ScrollTo(0, 0)` in `showTopic`/`renderMarkup` before/after writing
+  the new content; pin with a Guide topic-switch scroll-position test.
+
 ## Known deferred gaps (lower priority; not blocking, but needed for 100%)
 
 - **Interfaces 1-row sizing nuance:** Python sizes its BoxAdapter to

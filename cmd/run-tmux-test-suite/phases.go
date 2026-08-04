@@ -140,6 +140,76 @@ func menuFocused() func(*View) bool {
 	}
 }
 
+// onAList reports whether focus currently sits on a selectable list (the
+// Network Announce/Saved list, or the Guide Topics list). Used by escapeToMenu
+// to decide between Up (escape a list to the menu) and Left (release browser
+// content focus back to a list). Up while in the browser content only scrolls
+// the browser and never reaches the menu — the exact failure that stranded
+// Phase 4 on the Network page.
+func (v *View) onAList() bool {
+	if v == nil || v.Screen == nil {
+		return false
+	}
+	if v.SelectedAnnounceRow() != nil {
+		return true
+	}
+	if idx, ok := v.GuideSelectedTopic(); ok && idx >= 0 {
+		return true
+	}
+	return false
+}
+
+// releaseToList sends Left until focus is back on a selectable list (the
+// Network Announce/Saved list or the Guide Topics list), capped at `cap`
+// sends. Returns whether a list is focused. It does nothing if focus is
+// already on a list. This is the inverse of escapeToMenu: Left in the browser
+// content releases browser focus back to the left list; Left on a list would
+// move INTO the browser, so it is guarded by onAList and never sent when
+// already on a list.
+func (d *driver) releaseToList(cap int) bool {
+	for i := 0; i < cap; i++ {
+		if d.view().onAList() {
+			return true
+		}
+		d.send("Left")
+	}
+	return d.view().onAList()
+}
+
+// escapeToMenu releases focus from wherever it is (browser content, a list,
+// a dialog) up to the menu bar, asserting nothing — the caller asserts. From
+// the browser content it sends Left (which at a line's start releases browser
+// focus back to the left list); once on a list it sends Up (bodyListAtTop ->
+// FocusMenu). It never sends Up while in the browser (that only scrolls).
+// Caps total steps so a stuck focus still returns.
+func (d *driver) escapeToMenu(maxSteps int) {
+	for i := 0; i < maxSteps; i++ {
+		v := d.view()
+		if _, ok := v.MenuFocusedButton(); ok {
+			return
+		}
+		if v.onAList() {
+			d.send("Up")
+		} else {
+			d.send("Left")
+		}
+	}
+}
+
+// moveMenuTo moves the menu focus to the target button index by sending Right
+// (the menu wraps, so Right always advances) until MenuFocusedButton matches,
+// capped at `cap` sends. Returns whether the target was reached.
+func (d *driver) moveMenuTo(target, cap int) bool {
+	for i := 0; i < cap; i++ {
+		if idx, ok := d.view().MenuFocusedButton(); ok && idx == target {
+			return true
+		}
+		d.send("Right")
+	}
+	idx, ok := d.view().MenuFocusedButton()
+	return ok && idx == target
+}
+
 // appStarted waits for the menu bar to appear (the "[ Conversations ]" button).
 func appStarted() func(*View) bool {
 	return func(v *View) bool {
@@ -267,6 +337,13 @@ func (d *driver) phase3() {
 			break
 		}
 
+		// 0. Ensure focus is back on the Announce Stream list. A failed
+		//    connect (C-w + continue) can leave focus in the (now-disconnected)
+		//    browser pane; seekUntriedNode would then send Down into the browser
+		//    (scrolling it) and never find a node. releaseToList Lefts out of the
+		//    browser back to the list, and is a no-op when already on the list.
+		d.releaseToList(4)
+
 		// 1. Seek an untried node. The cursor may be on a node we already
 		//    connected/attempted (the list reorders dynamically); walk Down
 		//    until we find a name not in `tried`, or cycle through all visible
@@ -378,13 +455,9 @@ func (d *driver) phase3() {
 
 		// 6. Release focus back to the Announce Stream list (Left at a line's
 		//    start releases browser focus) so the next iteration can seek the
-		//    next node. The seek then walks to an untried node.
-		for i := 0; i < 2; i++ {
-			d.send("Left")
-			if r := d.view().SelectedAnnounceRow(); r != nil {
-				break
-			}
-		}
+		//    next node. releaseToList is guarded so it is a no-op if focus is
+		//    already back on the list.
+		d.releaseToList(4)
 		d.assert(func(v *View) bool {
 			return v.SelectedAnnounceRow() != nil
 		}, 3*time.Second, "focus back on the announce list")
@@ -541,28 +614,21 @@ func (d *driver) phase4() {
 		return
 	}
 
-	// From the Announce Stream list, escape up to the menu: list->filter bar->
-	// tab bar->menu (pileFiller onUpEscape, three Ups). Then assert the menu is
-	// focused — the check the blind script never made, so it walked 12 "topics"
-	// on the Network page without realizing it.
-	for i := 0; i < 3; i++ {
-		d.send("Up")
-	}
-	// Retry up to a few extra Ups in case focus was elsewhere (e.g. the browser).
-	for tries := 0; tries < 4; tries++ {
-		if _, ok := d.view().MenuFocusedButton(); ok {
-			break
-		}
-		d.send("Up")
-	}
+	// From wherever Phase 3 left focus (the Announce Stream list, or the browser
+	// content if the last connect failed and released focus via C-w), escape up
+	// to the menu. The blind script sent a fixed number of Ups — which only
+	// scrolled the browser when focus was stuck there, so it never reached the
+	// menu and walked 12 "topics" on the Network page. escapeToMenu sends Left
+	// to release browser focus back to a list FIRST, then Up to escape the list
+	// to the menu.
+	d.escapeToMenu(15)
 	d.assert(menuFocused(), 3*time.Second, "menu reached from Announce Stream (cursor on row 0)")
 	d.snapshot("menu reached from Announce Stream")
 
-	// Active page is Network (index 1). Right 5 to Guide (index 6), Enter, then
-	// Down drops to the body (topic list, focused on item 0).
-	for i := 0; i < 5; i++ {
-		d.send("Right")
-	}
+	// The active page is Network (index 1). Right to Guide (index 6), Enter,
+	// then Down drops to the body (topic list, focused on item 0). moveMenuTo is
+	// robust to the menu landing on any index after the escape.
+	d.moveMenuTo(6, 8)
 	d.assert(menuAt(6), 3*time.Second, "menu on Guide (index 6)")
 	d.send("Enter")
 	d.assert(func(v *View) bool { return v.ActivePage() == "guide" }, 5*time.Second, "Guide page active (Topics title present)")
@@ -609,7 +675,15 @@ func (d *driver) phase4() {
 		d.send("End")
 		time.Sleep(400 * time.Millisecond)
 		d.snapshot(fmt.Sprintf("Guide topic %d reader scrolled to bottom", topic))
-		d.send("Left")
+		// Release focus back to the Topics list. Left at a line's start in the
+		// reader releases focus; after End the cursor may not be at position 0,
+		// so send Left a few times until the Topics list is selected again.
+		for tries := 0; tries < 4; tries++ {
+			if idx, ok := d.view().GuideSelectedTopic(); ok && idx >= 0 {
+				break
+			}
+			d.send("Left")
+		}
 
 		if topic < 11 {
 			d.send("Down")
@@ -632,14 +706,15 @@ func (d *driver) phase5() {
 		d.logf("session already gone before Phase 5")
 		return
 	}
-	// From the topic list at item 11, escape to the menu (Up-at-0 -> FocusMenu),
-	// then Right to Quit (index 7), Enter to activate -> graceful shutdown.
-	for i := 0; i < 13; i++ {
-		d.send("Up")
-	}
+	// From the topic list at item 11, escape to the menu (escapeToMenu: Left
+	// releases the reader if focus is there, then Up escapes the list to the
+	// menu — robust to wherever Phase 4 left focus), then Right to Quit (index 7).
+	// The active page is Guide (index 6), so Right 1 lands on Quit (7); moveMenuTo
+	// handles the wrap and is robust to the menu landing on any index.
+	d.escapeToMenu(15)
 	d.assert(menuFocused(), 3*time.Second, "menu reached from Guide (cursor on row 0)")
 	d.snapshot("menu reached from Guide")
-	d.send("Right")
+	d.moveMenuTo(7, 8)
 	d.assert(menuAt(7), 3*time.Second, "cursor on Quit (index 7)")
 	d.snapshot("cursor on Quit (index 7)")
 	d.send("Enter")

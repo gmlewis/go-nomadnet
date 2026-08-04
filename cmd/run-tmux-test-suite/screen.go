@@ -818,12 +818,28 @@ func (v *View) BrowserState() (state, url string) {
 }
 
 // browserURL extracts the value of the "URL: <value>" bar row.
+//
+// The URL bar row is rendered inside the browser pane's bordered box, so its
+// text both begins AND ends with one or more '│' border chars ("│URL: <hash>   │"
+// or "││URL: <hash>   ││" for the nested node-page box). TrimSpace does not
+// strip '│', so neither HasPrefix(t, "URL:") nor TrimSpace of the tail works —
+// we match "URL:" anywhere on the row, then take only the first
+// whitespace-delimited token after it, which drops the trailing border chars
+// ("││") as well as any inner padding. The URL bar sits at the top of the
+// browser pane (above the page content), so the first row containing "URL:"
+// is the bar itself.
 func browserURL(full string) string {
 	for _, line := range strings.Split(full, "\n") {
 		t := strings.TrimSpace(line)
-		if strings.HasPrefix(t, "URL:") {
-			return strings.TrimSpace(strings.TrimPrefix(t, "URL:"))
+		idx := strings.Index(t, "URL:")
+		if idx < 0 {
+			continue
 		}
+		fields := strings.Fields(t[idx+len("URL:"):])
+		if len(fields) > 0 {
+			return fields[0]
+		}
+		return ""
 	}
 	return ""
 }
@@ -893,10 +909,12 @@ func (v *View) GuideTopicRendered() string {
 				b.WriteRune(ch)
 			}
 		}
-		t := strings.TrimRight(b.String(), " ")
+		// The reader pane is a bordered box, so every content row is wrapped in
+		// '│' (or '││'/'┃' for nested/scrollbar boxes). Strip leading AND
+		// trailing border+space chars so the heading title compares cleanly
+		// (e.g. "Nomad Network", not "Nomad Network │").
+		t := strings.TrimRight(b.String(), " │┃║")
 		if strings.TrimSpace(t) != "" {
-			// Strip a leading border column if the reader's left border leaked
-			// into our scan (the '│' char). Trim leading non-letter noise.
 			t = strings.TrimLeft(t, "│ ")
 			return strings.TrimSpace(t)
 		}
