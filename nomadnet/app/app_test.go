@@ -155,6 +155,7 @@ func TestAppInit(t *testing.T) {
 	if err := a.Init(); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
+	defer a.Shutdown()
 
 	// Verify directories were created
 	for _, d := range []string{
@@ -342,6 +343,7 @@ func TestAppWithConfigFile(t *testing.T) {
 	if err := a.Init(); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
+	defer a.Shutdown()
 
 	if a.EnableClient {
 		t.Error("EnableClient = true, want false (loaded from config)")
@@ -644,6 +646,13 @@ func tempDir(t *testing.T) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	// Use removeAllWithRetry so cleanup survives the brief window where RNS
+	// background goroutines recreate files mid-removal (ENOTEMPTY/EBUSY)
+	// after Shutdown — instead of silently leaking the dir.
+	t.Cleanup(func() {
+		if err := removeAllWithRetry(dir); err != nil {
+			t.Errorf("tempDir cleanup: %v", err)
+		}
+	})
 	return dir
 }

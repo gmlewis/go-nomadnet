@@ -59,6 +59,12 @@ func setupTwoNodeApps(t *testing.T) (*App, *App, func()) {
 		t.Fatalf("InitWithTransport B: %v", err)
 	}
 
+	// Isolate downloads/attachment-save paths to per-app temp dirs so tests
+	// never write LXM_*.txt or saved attachments into the real ~/Downloads.
+	// InitWithTransport defaults DownloadsPath to ~/Downloads; override here.
+	appA.DownloadsPath = testutils.TempDir(t, "nomadnet-int-dl-a")
+	appB.DownloadsPath = testutils.TempDir(t, "nomadnet-int-dl-b")
+
 	cleanup := func() {
 		appA.Shutdown()
 		appB.Shutdown()

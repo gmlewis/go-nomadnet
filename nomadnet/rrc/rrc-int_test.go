@@ -255,12 +255,10 @@ func TestIntegrationHubAnnounce(t *testing.T) {
 
 func tempDirRRC(t *testing.T) string {
 	t.Helper()
-	dir, err := os.MkdirTemp("/tmp", "nomadnet-rrc-int-test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.RemoveAll(dir) })
-	return dir
+	// Use testutils.TempDir so cleanup retries on transient ENOTEMPTY/EBUSY
+	// (RNS background goroutines briefly recreate files mid-removal) instead
+	// of silently leaking the dir when a single os.RemoveAll races.
+	return testutils.TempDir(t, "nomadnet-rrc-int-test")
 }
 
 func TestIntegrationHelloWelcomeHandshake(t *testing.T) {
