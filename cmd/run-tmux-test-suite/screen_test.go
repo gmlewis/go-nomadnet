@@ -195,30 +195,63 @@ func TestListSelectedRow(t *testing.T) {
 func TestAnnounceInfoAddr(t *testing.T) {
 	bar := menuBar()
 	info := "┌─ Announce Info " + strings.Repeat("─", 20) + "┐\n"
-	addr := "Addr  : <0123456789abcdef>\n"
+	// The real app renders Announce Info inside a bordered box, so each content
+	// row is prefixed with the '│' border char (which TrimSpace does NOT strip).
+	addr := "│Addr  : <0123456789abcdef>   │\n"
 	raw := bar + "\n" + info + addr
 	v := viewOf(raw, 0, 2)
 	hash, ok := v.AnnounceInfoAddr()
 	if !ok {
-		t.Fatal("AnnounceInfoAddr not ok")
+		t.Fatal("AnnounceInfoAddr not ok (leading │ not handled?)")
 	}
 	if hash != "0123456789abcdef" {
 		t.Errorf("addr = %q, want 0123456789abcdef", hash)
 	}
 }
 
+func TestAnnounceInfoAddrAboveLocalPeer(t *testing.T) {
+	// When Announce Info is open, both its "Addr  : <nodehash>" row and the
+	// Local Peer Info "LXMF Addr : <localhash>" row contain "Addr"; the node
+	// hash (in the Announce Info box, above) must win.
+	bar := menuBar()
+	raw := bar + "\n" +
+		"┌─ Announce Info " + strings.Repeat("─", 20) + "┐\n" +
+		"│Addr  : <nodehash1234>           │\n" +
+		"┌─ Local Peer Info " + strings.Repeat("─", 18) + "┐\n" +
+		"│LXMF Addr : <localhash5678>      │\n"
+	v := viewOf(raw, 0, 3)
+	hash, ok := v.AnnounceInfoAddr()
+	if !ok {
+		t.Fatal("AnnounceInfoAddr not ok")
+	}
+	if hash != "nodehash1234" {
+		t.Errorf("addr = %q, want nodehash1234 (Local Peer Addr must not win)", hash)
+	}
+}
+
 func TestFocusedActionButton(t *testing.T) {
 	bar := menuBar()
-	// Button row with < Back > < Connect > < Msg Op > < Save > (all default style).
-	buttons := "< Back >  < Connect >  < Msg Op >  < Save >\n"
+	// The real app pads buttons to a fixed inner width, so the on-screen text is
+	// "< Back    >  < Connect >  < Msg Op  >  < Save    >" — NOT "< Back >". The
+	// parser must scan "< ... >" spans generically and trim the inner label.
+	buttons := "< Back    >  < Connect >  < Msg Op  >  < Save    >\n"
 	raw := bar + "\n" + buttons
 	s := parseScreen([]byte(raw))
-	// Find the column of "Connect" and place the cursor on it.
-	connectCol := strings.Index(s.rowText(1), "< Connect >")
-	v := &View{Screen: s, CursorX: connectCol + 2, CursorY: 1, CursorOK: true}
-	got, ok := v.FocusedActionButton()
-	if !ok || got != "Connect" {
-		t.Errorf("FocusedActionButton = (%q,%t), want (Connect,true)", got, ok)
+	rowText := s.rowText(1)
+	for _, want := range []string{"Back", "Connect", "Msg Op", "Save"} {
+		// Place the cursor on the label's first letter inside "< ... >".
+		// Back/Msg Op/Save are padded with trailing spaces; Connect is not.
+		start := strings.Index(rowText, "< "+want)
+		if start < 0 {
+			t.Fatalf("button %q not found in %q", want, rowText)
+		}
+		cx := start + 2 // first letter of label
+		v := &View{Screen: s, CursorX: cx, CursorY: 1, CursorOK: true}
+		got, ok := v.FocusedActionButton()
+		if !ok || got != want {
+			t.Errorf("cursor on %q: FocusedActionButton = (%q,%t), want (%q,true) [row=%q cx=%d]",
+				want, got, ok, want, rowText, cx)
+		}
 	}
 }
 

@@ -683,21 +683,29 @@ func (v *View) SelectedAnnounceRow() *ListRow {
 
 // AnnounceInfoAddr returns the node address hash shown in an open Announce Info
 // (the "Addr  : <hash>" row), with ok=false if no such row is present.
+//
+// The row is rendered inside a bordered box, so its text actually begins with a
+// '│' border char: "│Addr  : <hash>   │". TrimSpace does not remove '│', so we
+// must use Contains (not HasPrefix) and extract the first "<...>" that follows the
+// "Addr" marker. The Announce Info box sits above the Local Peer Info box, whose
+// "LXMF Addr : <hash>" row also contains "Addr" — but the Announce Info row comes
+// first, so the first match is the node hash we want.
 func (v *View) AnnounceInfoAddr() (string, bool) {
 	if v.Screen == nil {
 		return "", false
 	}
 	for y := 0; y < v.Screen.H; y++ {
-		t := strings.TrimSpace(v.Screen.rowText(y))
-		if !strings.HasPrefix(t, "Addr") {
+		t := v.Screen.rowText(y)
+		ai := strings.Index(t, "Addr")
+		if ai < 0 {
 			continue
 		}
-		// Row text is "Addr  : <hash>" (two spaces after Addr). Extract the
-		// hex between the first '<' and '>'.
-		lo := strings.IndexByte(t, '<')
-		hi := strings.IndexByte(t, '>')
+		// Extract the first "<...>" that appears after the "Addr" marker.
+		rest := t[ai:]
+		lo := strings.IndexByte(rest, '<')
+		hi := strings.IndexByte(rest, '>')
 		if lo >= 0 && hi > lo {
-			return t[lo+1 : hi], true
+			return rest[lo+1 : hi], true
 		}
 	}
 	return "", false
@@ -706,7 +714,12 @@ func (v *View) AnnounceInfoAddr() (string, bool) {
 // FocusedActionButton returns the label of the focused "< Label >" button on
 // the AnnounceInfo / KnownNodeInfo button row, detected via the cursor position
 // (buttons are color-neutral). ok=false if the cursor is not on a button row.
-// The known action buttons: Back, Connect, Msg Op, Save (node) or similar.
+//
+// Buttons are padded to a fixed inner width, so the on-screen text is actually
+// "< Back    >", "< Connect >", "< Msg Op  >", "< Save    >", etc. — NOT the
+// unpadded "< Back >" a naive search would look for. We therefore scan the row
+// generically for every "< ... >" span, trim+collapse the inner label, and
+// return the one whose column range contains CursorX.
 func (v *View) FocusedActionButton() (string, bool) {
 	if v.Screen == nil || !v.CursorOK {
 		return "", false
@@ -715,23 +728,30 @@ func (v *View) FocusedActionButton() (string, bool) {
 		return "", false
 	}
 	row := v.Screen.rowText(v.CursorY)
-	// Find every "< Label >" occurrence and check which spans CursorX.
-	for _, label := range []string{"Back", "Connect", "Msg Op", "Save", "Peer Info", "Ping"} {
-		target := "< " + label + " >"
-		start := strings.Index(row, target)
-		for start >= 0 {
-			end := start + len(target)
-			if v.CursorX >= start && v.CursorX < end {
+	for pos := 0; ; {
+		start := strings.Index(row[pos:], "<")
+		if start < 0 {
+			return "", false
+		}
+		start += pos
+		end := strings.IndexByte(row[start+1:], '>')
+		if end < 0 {
+			return "", false
+		}
+		end += start + 1 // index just past '<'
+		// end is the index of '>' itself; the span is [start, end+1).
+		closeIdx := end + 1
+		if v.CursorX >= start && v.CursorX < closeIdx {
+			label := strings.TrimSpace(row[start+1 : end])
+			// Collapse internal runs of whitespace (defensive).
+			label = strings.Join(strings.Fields(label), " ")
+			if label != "" {
 				return label, true
 			}
-			next := strings.Index(row[start+1:], target)
-			if next < 0 {
-				break
-			}
-			start = start + 1 + next
+			return "", false
 		}
+		pos = closeIdx
 	}
-	return "", false
 }
 
 // browserState enumerates the browser pane states the test distinguishes.

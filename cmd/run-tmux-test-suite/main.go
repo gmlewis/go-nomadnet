@@ -221,7 +221,18 @@ func run(args []string) error {
 		both("attaching tmux session so you can watch (detach with Ctrl-b d to leave it running)...")
 		both("progress is being logged to: %s", logFile)
 		both("")
-		_ = exec.Command("tmux", "attach", "-t", sessionName).Run()
+		// NOTE: exec.Command connects unset Stdin/Stdout/Stderr to /dev/null
+		// (os/exec exec.go: "If Stdin is nil, the process reads from the null
+		// device"), so we MUST explicitly hand tmux attach the real terminal
+		// fds or it cannot take over the screen and exits immediately.
+		attach := exec.Command("tmux", "attach", "-t", sessionName)
+		attach.Stdin = os.Stdin
+		attach.Stdout = os.Stdout
+		attach.Stderr = os.Stderr
+		if err := attach.Run(); err != nil {
+			both("WARN: tmux attach exited (%v). The test is still running in the", err)
+			both("      background; re-attach to watch: tmux attach -t %s", sessionName)
+		}
 		<-done
 	} else {
 		both("running detached. Watch live in another terminal with:")
