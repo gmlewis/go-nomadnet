@@ -16,6 +16,7 @@
 package browser
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"strings"
@@ -131,7 +132,7 @@ func PartialRequestData(fields []string) (requestData map[string]string, linkFie
 // (DefaultTimeout when <= 0). onLinkEstablished (may be nil) lets the caller
 // identify to the remote node when the directory requests it (see fetchBytes).
 // The link is torn down after the fetch (one-shot).
-func FetchPartial(ts *rns.TransportSystem, partial Partial, currentDest []byte, timeout time.Duration, onProgress func(float64), onLinkEstablished func(*rns.Link)) ([]byte, error) {
+func FetchPartial(ctx context.Context, ts *rns.TransportSystem, partial Partial, currentDest []byte, timeout time.Duration, onProgress func(float64), onLinkEstablished func(*rns.Link)) ([]byte, error) {
 	rd, _ := PartialRequestData(partial.Fields)
 	// PartialRequestData always returns a non-nil map (matching Python, which
 	// sets request_data = {} whenever fields is non-None). go-reticulum's
@@ -149,7 +150,7 @@ func FetchPartial(ts *rns.TransportSystem, partial Partial, currentDest []byte, 
 	if err != nil {
 		return nil, err
 	}
-	data, link, err := fetchBytes(ts, dest, path, rd, timeout, onProgress, onLinkEstablished)
+	data, link, err := fetchBytes(ctx, ts, dest, path, rd, timeout, onProgress, onLinkEstablished)
 	if err != nil {
 		return nil, err
 	}

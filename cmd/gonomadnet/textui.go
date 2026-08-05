@@ -17,6 +17,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/hex"
 	"fmt"
 	"log"
@@ -1487,7 +1488,11 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		return func(link *rns.Link) { _ = link.Identify(identity) }
 	}
 	browserDisplay.OnFetchPartial = func(p browser.Partial) ([]byte, error) {
-		return browser.FetchPartial(a.Transport, p, browserDisplay.CurrentDest(),
+		// This closure runs on the runPartialRefresh goroutine (browser.go), NOT
+		// the tview event loop, so it must NOT read bd.reqCtx (it would race the
+		// event loop). Pass context.Background(); partials already have their
+		// own partialCancel staleness gate (browser.go fetchAndSubstitute).
+		return browser.FetchPartial(context.Background(), a.Transport, p, browserDisplay.CurrentDest(),
 			time.Duration(browser.DefaultTimeout)*time.Second, nil,
 			identifyOnConnect(browserDisplay.CurrentDest()))
 	}
@@ -1501,14 +1506,27 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	// Micron page (or an error) back to the browser via QueueUpdateDraw. On a
 	// successful fetch the page is cached for its #!c=<seconds> header
 	// (response_received, Browser.py:1524-1546) unless that header is 0.
+	//
+	// Race fix: beginRequest cancels any in-flight fetch and bumps a request
+	// sequence BEFORE this fetch spawns. The goroutine captures ctx+seq by value
+	// and, at the top of its QueueUpdateDraw callback, drops the render when seq
+	// no longer equals the current sequence or ctx was cancelled — so a slow
+	// fetch from a superseded Connect can never overwrite the page the user is
+	// now viewing. This is the single convergence point for both displayURL →
+	// OnRetrieveURL and HandleLink → OnRetrieveURL, so link-click racing is
+	// covered too.
 	wireBrowser := func(bd *tui.BrowserDisplay) {
 		if bd == nil {
 			return
 		}
 		bd.OnRetrieveURL = func(url string) {
+			ctx, seq := bd.BeginRequest()
 			dest, path, rd, err := browser.ParseURL(url, bd.CurrentDest(), nil)
 			if err != nil {
 				tuiApp.QueueUpdateDraw(func() {
+					if seq != bd.CurrentRequestSeq() || ctx.Err() != nil {
+						return
+					}
 					bd.SetContent(fmt.Sprintf("[red]Invalid URL: %v[-]", err))
 				})
 				return
@@ -1518,6 +1536,9 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 			if rd == nil {
 				if cached := pageCache.GetCached(canonURL); cached != nil {
 					tuiApp.QueueUpdateDraw(func() {
+						if seq != bd.CurrentRequestSeq() || ctx.Err() != nil {
+							return
+						}
 						bd.SetTransferStats(int64(len(cached)), 0, 0, true)
 						bd.RenderPage(string(cached))
 					})
@@ -1526,11 +1547,14 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 			}
 			go func() {
 				start := time.Now()
-				data, ferr := browser.FetchPage(a.Transport, dest, path, rd,
+				data, ferr := browser.FetchPage(ctx, a.Transport, dest, path, rd,
 					time.Duration(browser.DefaultTimeout)*time.Second, nil,
 					identifyOnConnect(dest))
 				elapsed := time.Since(start).Seconds()
 				tuiApp.QueueUpdateDraw(func() {
+					if seq != bd.CurrentRequestSeq() || ctx.Err() != nil {
+						return
+					}
 					if ferr != nil {
 						bd.SetContent(fmt.Sprintf("[red]%v[-]", browser.StatusText(browser.ErrToStatus(ferr))))
 						return

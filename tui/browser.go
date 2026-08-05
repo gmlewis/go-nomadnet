@@ -16,6 +16,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -101,6 +102,24 @@ type BrowserDisplay struct {
 	currentMarkup   string
 	partialContents map[string]string
 	partialCancel   chan struct{}
+
+	// In-flight page-fetch tracking, fixing the "stale Connect overtakes the
+	// current page" race: every new navigation (Connect / URL load / link click)
+	// calls beginRequest, which cancels the previous fetch's ctx and bumps
+	// reqSeq. The fetch goroutine captures ctx+seq BY VALUE and, inside its
+	// QueueUpdateDraw callback, drops the render when seq no longer equals
+	// CurrentRequestSeq() or ctx was cancelled. Disconnect calls CancelRequest
+	// to drop late renders of a page nobody is visiting anymore.
+	//
+	// All fields are event-loop-confined (no mutex): every writer
+	// (displayURL/HandleLink → OnRetrieveURL → beginRequest, and Disconnect →
+	// CancelRequest) runs on the tview event loop, the fetch goroutine captures
+	// ctx+seq by value before spawn, and the render gate reads reqSeq from inside
+	// QueueUpdateDraw (also the event loop). Same confinement model as
+	// currentDest/history/partialCancel above.
+	reqCtx    context.Context
+	reqCancel context.CancelFunc
+	reqSeq    uint64
 	// renderedWidth is the column count the current page text was laid out for
 	// (the width passed to StyledLinesToTviewText in renderPage). Horizontal
 	// dividers are pre-rendered at this width; if the content is later drawn at a
@@ -108,7 +127,7 @@ type BrowserDisplay struct {
 	// browserPageView.Draw schedules a re-render so dividers reflow to the real
 	// width — mirroring Python's urwid.Divider box widget which fills width at
 	// draw time.
-	renderedWidth   int
+	renderedWidth int
 	// partials is the list of every partial declared in the current page markup
 	// (including ones with no auto-refresh interval), tracked so a "p:<id>"
 	// force-refresh link (Python handle_partial_updates) can select and re-fetch
@@ -678,6 +697,7 @@ func (bd *BrowserDisplay) Reload() {
 // dropped, and the content set to the disconnected state. request_data is
 // cleared implicitly since the Go port does not retain it between fetches.
 func (bd *BrowserDisplay) Disconnect() {
+	bd.CancelRequest()
 	bd.history = nil
 	bd.histIdx = 0
 	bd.currentDest = nil
@@ -709,6 +729,46 @@ func (bd *BrowserDisplay) CurrentDest() []byte { return bd.currentDest }
 // SetCurrentDest records the destination hash of the page now being loaded, so
 // subsequent relative URLs resolve against it.
 func (bd *BrowserDisplay) SetCurrentDest(dest []byte) { bd.currentDest = dest }
+
+// BeginRequest cancels any in-flight page fetch, increments the request
+// sequence, and installs a fresh cancellation context for the new fetch. It is
+// the single entry point that invalidates a prior superseded fetch: a new
+// Connect/URL-load/link-click must call this BEFORE spawning its fetch
+// goroutine. Must be called on the tview event loop.
+func (bd *BrowserDisplay) BeginRequest() (context.Context, uint64) {
+	if bd.reqCancel != nil {
+		bd.reqCancel()
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	bd.reqCtx = ctx
+	bd.reqCancel = cancel
+	bd.reqSeq++
+	return ctx, bd.reqSeq
+}
+
+// CurrentRequest returns the in-flight request's context and sequence number.
+// The fetch wiring reads this on the event loop before spawning the goroutine
+// so it can capture ctx+seq by value.
+func (bd *BrowserDisplay) CurrentRequest() (context.Context, uint64) {
+	return bd.reqCtx, bd.reqSeq
+}
+
+// CurrentRequestSeq returns the current request sequence, for the stale-result
+// check at the top of every QueueUpdateDraw render callback.
+func (bd *BrowserDisplay) CurrentRequestSeq() uint64 { return bd.reqSeq }
+
+// CancelRequest cancels any in-flight page fetch without starting a new one.
+// Called from Disconnect. It bumps reqSeq so a render queued by a fetch that
+// started before Disconnect is dropped by the seq check even though no new
+// request has begun (belt-and-suspenders alongside the cancelled-ctx check).
+func (bd *BrowserDisplay) CancelRequest() {
+	if bd.reqCancel != nil {
+		bd.reqCancel()
+	}
+	bd.reqCancel = nil
+	bd.reqCtx = nil
+	bd.reqSeq++
+}
 
 // MarkedLink shows "Link to <target>" in the browser footer (the in-pane
 // BrowserFrame footer, NOT the global shortcut bar), mirroring Python

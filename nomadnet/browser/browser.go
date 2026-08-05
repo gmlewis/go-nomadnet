@@ -26,6 +26,7 @@
 package browser
 
 import (
+	"context"
 	"encoding/hex"
 	"errors"
 	"os"
@@ -324,7 +325,7 @@ func CurrentURL(destHash []byte, path string, requestData map[string]string) str
 //
 // The returned link is OPEN on success (the caller decides whether to retain
 // or tear it down); it is torn down on every failure/timeout path.
-func fetchBytes(ts *rns.TransportSystem, destHash []byte, path string, requestData map[string]string, timeout time.Duration, onProgress func(float64), onLinkEstablished func(*rns.Link)) ([]byte, *rns.Link, error) {
+func fetchBytes(ctx context.Context, ts *rns.TransportSystem, destHash []byte, path string, requestData map[string]string, timeout time.Duration, onProgress func(float64), onLinkEstablished func(*rns.Link)) ([]byte, *rns.Link, error) {
 	if timeout <= 0 {
 		timeout = time.Duration(DefaultTimeout) * time.Second
 	}
@@ -333,12 +334,26 @@ func fetchBytes(ts *rns.TransportSystem, destHash []byte, path string, requestDa
 			timeout += time.Duration(hops*3) * time.Second
 		}
 	}
+	// Cancellation guard: a superseding Connect cancels this fetch's ctx before
+	// it reaches the network; bail out immediately rather than rendering a stale
+	// page over the one the user is now viewing. Normalize a nil ctx to
+	// context.Background() so the select arms below can call ctx.Done()
+	// unconditionally (a nil context.Context interface would panic on Done()).
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if ctx.Err() != nil {
+		return nil, nil, ctx.Err()
+	}
 
 	// 1. Path resolution.
 	if !ts.HasPath(destHash) {
 		_ = ts.RequestPath(destHash)
 		deadline := time.Now().Add(timeout)
 		for time.Now().Before(deadline) && !ts.HasPath(destHash) {
+			if ctx.Err() != nil {
+				return nil, nil, ctx.Err()
+			}
 			time.Sleep(250 * time.Millisecond)
 		}
 		if !ts.HasPath(destHash) {
@@ -376,6 +391,9 @@ func fetchBytes(ts *rns.TransportSystem, destHash []byte, path string, requestDa
 	case <-time.After(timeout):
 		link.Teardown()
 		return nil, nil, ErrLinkTimeout
+	case <-ctx.Done():
+		link.Teardown()
+		return nil, nil, ctx.Err()
 	}
 
 	// 3b. Link is ACTIVE — give the caller a chance to identify to the remote
@@ -421,6 +439,9 @@ func fetchBytes(ts *rns.TransportSystem, destHash []byte, path string, requestDa
 	case <-time.After(timeout):
 		link.Teardown()
 		return nil, nil, ErrRequestTimeout
+	case <-ctx.Done():
+		link.Teardown()
+		return nil, nil, ctx.Err()
 	}
 }
 
@@ -431,8 +452,8 @@ func fetchBytes(ts *rns.TransportSystem, destHash []byte, path string, requestDa
 // does not yet retain a per-destination link the way Python retains self.link;
 // link reuse is a TUI-ownership concern). See fetchBytes for the per-step
 // behavior and the requestData/onProgress/onLinkEstablished/timeout semantics.
-func FetchPage(ts *rns.TransportSystem, destHash []byte, path string, requestData map[string]string, timeout time.Duration, onProgress func(float64), onLinkEstablished func(*rns.Link)) ([]byte, error) {
-	data, link, err := fetchBytes(ts, destHash, path, requestData, timeout, onProgress, onLinkEstablished)
+func FetchPage(ctx context.Context, ts *rns.TransportSystem, destHash []byte, path string, requestData map[string]string, timeout time.Duration, onProgress func(float64), onLinkEstablished func(*rns.Link)) ([]byte, error) {
+	data, link, err := fetchBytes(ctx, ts, destHash, path, requestData, timeout, onProgress, onLinkEstablished)
 	if err != nil {
 		return nil, err
 	}
@@ -452,8 +473,8 @@ func FetchPage(ts *rns.TransportSystem, destHash []byte, path string, requestDat
 // It returns the saved file's name (relative to downloadsDir — the basename
 // used, with a ".N" suffix appended on collision, matching Python's
 // saved_file_name) and its size in bytes.
-func DownloadFile(ts *rns.TransportSystem, destHash []byte, path string, requestData map[string]string, downloadsDir string, timeout time.Duration, onProgress func(float64), onLinkEstablished func(*rns.Link)) (savedName string, savedSize int, err error) {
-	data, link, err := fetchBytes(ts, destHash, path, requestData, timeout, onProgress, onLinkEstablished)
+func DownloadFile(ctx context.Context, ts *rns.TransportSystem, destHash []byte, path string, requestData map[string]string, downloadsDir string, timeout time.Duration, onProgress func(float64), onLinkEstablished func(*rns.Link)) (savedName string, savedSize int, err error) {
+	data, link, err := fetchBytes(ctx, ts, destHash, path, requestData, timeout, onProgress, onLinkEstablished)
 	if err != nil {
 		return "", 0, err
 	}

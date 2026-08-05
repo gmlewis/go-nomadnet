@@ -18,6 +18,7 @@
 package browser
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -79,7 +80,7 @@ func TestIntegrationPartialPipeline(t *testing.T) {
 	}
 
 	// Fetch the page carrying the partial directive.
-	pageData, err := FetchPage(tsClient, nodeHash, "/page/index.mu", nil, 15*time.Second, nil, nil)
+	pageData, err := FetchPage(context.Background(), tsClient, nodeHash, "/page/index.mu", nil, 15*time.Second, nil, nil)
 	if err != nil {
 		t.Fatalf("FetchPage index: %v", err)
 	}
@@ -101,7 +102,7 @@ func TestIntegrationPartialPipeline(t *testing.T) {
 	}
 
 	// Fetch the partial (relative URL resolved against nodeHash).
-	partialData, err := FetchPartial(tsClient, p, nodeHash, 15*time.Second, nil, nil)
+	partialData, err := FetchPartial(context.Background(), tsClient, p, nodeHash, 15*time.Second, nil, nil)
 	if err != nil {
 		t.Fatalf("FetchPartial: %v", err)
 	}

@@ -18,6 +18,7 @@
 package browser
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -77,7 +78,7 @@ func TestIntegrationDownloadFile(t *testing.T) {
 	}
 
 	downloadsDir := filepath.Join(baseDir, "downloads")
-	savedName, savedSize, err := DownloadFile(tsClient, nodeHash, "/file/report.txt", nil, downloadsDir, 15*time.Second, nil, nil)
+	savedName, savedSize, err := DownloadFile(context.Background(), tsClient, nodeHash, "/file/report.txt", nil, downloadsDir, 15*time.Second, nil, nil)
 	if err != nil {
 		t.Fatalf("DownloadFile: %v", err)
 	}
@@ -97,7 +98,7 @@ func TestIntegrationDownloadFile(t *testing.T) {
 
 	// A second download of the same file collides → report.txt.1, with the
 	// same contents (mirrors Python file_received's collision counter).
-	savedName2, _, err := DownloadFile(tsClient, nodeHash, "/file/report.txt", nil, downloadsDir, 15*time.Second, nil, nil)
+	savedName2, _, err := DownloadFile(context.Background(), tsClient, nodeHash, "/file/report.txt", nil, downloadsDir, 15*time.Second, nil, nil)
 	if err != nil {
 		t.Fatalf("DownloadFile 2: %v", err)
 	}

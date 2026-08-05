@@ -18,6 +18,8 @@
 package browser
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -64,7 +66,7 @@ func TestIntegrationFetchPageFromNode(t *testing.T) {
 		t.Fatal("timeout waiting for path to node")
 	}
 
-	data, err := FetchPage(tsClient, nodeHash, "/page/index.mu", nil, 15*time.Second, nil, nil)
+	data, err := FetchPage(context.Background(), tsClient, nodeHash, "/page/index.mu", nil, 15*time.Second, nil, nil)
 	if err != nil {
 		t.Fatalf("FetchPage: %v", err)
 	}
@@ -112,7 +114,7 @@ func TestIntegrationFetchPageCustomPath(t *testing.T) {
 		t.Fatal("timeout waiting for path to node")
 	}
 
-	data, err := FetchPage(tsClient, nodeHash, "/page/index.mu", nil, 15*time.Second, nil, nil)
+	data, err := FetchPage(context.Background(), tsClient, nodeHash, "/page/index.mu", nil, 15*time.Second, nil, nil)
 	if err != nil {
 		t.Fatalf("FetchPage: %v", err)
 	}
@@ -166,7 +168,7 @@ func TestIntegrationFetchPageViaParseURL(t *testing.T) {
 		t.Errorf("ParseURL requestData = %v, want nil", rd)
 	}
 
-	data, err := FetchPage(tsClient, dest, path, rd, 15*time.Second, nil, nil)
+	data, err := FetchPage(context.Background(), tsClient, dest, path, rd, 15*time.Second, nil, nil)
 	if err != nil {
 		t.Fatalf("FetchPage: %v", err)
 	}
@@ -213,7 +215,7 @@ func TestIntegrationFetchPageOnLinkEstablished(t *testing.T) {
 		hookStatus = link.GetStatus()
 		hookCalled = true
 	}
-	data, err := FetchPage(tsClient, nodeHash, "/page/index.mu", nil, 15*time.Second, nil, hook)
+	data, err := FetchPage(context.Background(), tsClient, nodeHash, "/page/index.mu", nil, 15*time.Second, nil, hook)
 	if err != nil {
 		t.Fatalf("FetchPage: %v", err)
 	}
@@ -225,6 +227,51 @@ func TestIntegrationFetchPageOnLinkEstablished(t *testing.T) {
 	}
 	if string(data) != node.DefaultIndex {
 		t.Errorf("FetchPage = %q, want DefaultIndex", truncStr(data, 60))
+	}
+}
+
+// TestIntegrationFetchPagePreCancelledCtx pins the context-cancellation guard
+// at the top of fetchBytes: a fetch made with an ALREADY-cancelled ctx must
+// return context.Canceled immediately, without touching the network. This is
+// the backend half of the "stale Connect overtakes the current page" fix — a
+// superseding Connect cancels the prior fetch's ctx, so when the prior fetch
+// reaches the top guard it bails out deterministically (before any link or
+// select with random ordering). The render-gate half is unit-tested in
+// tui/browser_request_test.go.
+func TestIntegrationFetchPagePreCancelledCtx(t *testing.T) {
+	testutils.SkipShortIntegration(t)
+
+	tsServer, cleanupServer := newStartedTS(t)
+	defer cleanupServer()
+	tsClient, cleanupClient := newStartedTS(t)
+	defer cleanupClient()
+	pipeA, pipeB, pipeCleanup := newBrowserPipes(t, tsServer, tsClient)
+	defer pipeCleanup()
+	tsServer.RegisterInterface(pipeA)
+	tsClient.RegisterInterface(pipeB)
+
+	dir := testutils.TempDir(t, "browser-fetch-ctx")
+	n := node.NewNode("BrowserCtxNode", dir, dir, 720, 0, 0, false)
+	if err := n.Start(tsServer, tsServer.Identity()); err != nil {
+		t.Fatalf("node Start: %v", err)
+	}
+	defer n.Stop()
+	if err := n.Announce(); err != nil {
+		t.Fatalf("node Announce: %v", err)
+	}
+	nodeHash := n.Destination().Hash
+	if !waitForPath(tsClient, nodeHash, 5*time.Second) {
+		t.Fatal("timeout waiting for path to node")
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := FetchPage(ctx, tsClient, nodeHash, "/page/index.mu", nil, 15*time.Second, nil, nil)
+	if err == nil {
+		t.Fatal("FetchPage with pre-cancelled ctx returned nil error")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("FetchPage err = %v, want context.Canceled", err)
 	}
 }
 
