@@ -233,6 +233,130 @@ test or a matching `parity.sh` summary):
 
 ---
 
+## tmux-suite run-diff parity (nomadnet vs gonomadnet, 2026-08-05)
+
+> Source: full `tmux-test-suite` run against the Python source-of-truth
+> (`/tmp/nomadnet-tmux-test-suite-1785954642.log`, 232x53, headed) vs the same
+> suite against the Go port (`/tmp/gonomadnet-tmux-test-suite-1785970825.log`,
+> same size/flags). Both pass every suite ASSERT; the bugs below are the
+> behavioral/visual differences the suite does **not** assert on. Each entry
+> cites log line numbers (nomadnet→ / gonomadnet→) as evidence. Line numbers
+> are file offsets in the two `/tmp/*tmux-test-suite*.log` files.
+
+### B1 — Network browser: `Right` does not enter the browser pane; link-walk is 100% broken (CRITICAL)
+- [ ] After `Connect` closes the Announce Info dialog, focus stays in the
+      Announce Stream list. Sending `Right` should move focus into the browser
+      pane (the rendered `index.mu`); instead it stays in the left list, so the
+      subsequent `Down`s traverse the announce entries (one row per Down,
+      ~36 downs to the bottom) and never scroll the browser page or activate
+      links.
+- Evidence: every successful connect in gonomadnet ends with
+  `examined main page: 35-38 downs, 0 screenfuls, 0 distinct links followed`
+  (7/7). gonomadnet has **0** `link ->` snapshots and **0** browser screenfuls
+  for the whole phase. nomadnet has **40** `link ->` snapshots, **13** browser
+  screenfuls, and follows 1-6 links per node (e.g. `examined main page: 26
+  downs, 13 screenfuls, 6 distinct links followed`).
+- Logs: gonomadnet→955-957 (send Right → `bottom reached after 37 downs (0
+  screenfuls)`); nomadnet→956-1014 (send Right → `main page: screenful 1
+  scrolled into view` → `phase3: link -> 8b0b…`). Compare the seven
+  `examined main page` summary lines in each log.
+- Fix target: `tui/` Network page pane-focus / `Right` keybinding — the
+  browser pane must claim focus after Connect and `Right` from the list must
+  cross into it (see reference keybindings: "Left/Right inside a page move
+  focus between its panes").
+
+### B2 — Guide "Markup" topic never reaches the bottom (the "slower Guide scroll") (HIGH)
+- [ ] Guide topic 7 ("Outputting Formatted Text", listed as "Markup") is
+      rendered substantially longer in Go and never finishes scrolling: it hits
+      the suite's 700-Down safety cap (`max 700 downs without a clean bottom
+      signal (700 screenfuls)`) after ~1m42s. Python reaches the bottom cleanly
+      at **502 downs (478 screenfuls)** in ~74s. The Go render produces ~46%
+      more screenfuls for the same topic and the walk never completes it.
+- Evidence: gonomadnet→16833 `guide topic 7 reader: max 700 downs…`;
+  nomadnet→13795 `guide topic 7 reader: bottom reached after 502 downs (478
+  screenfuls)`. Per-Down timing is identical (~0.146 s/down in both), so this is
+  a content-length / line-wrap blow-up, not a per-key delay.
+- This is the user's "moving the cursor down through the Guide is 2-3× slower"
+  symptom — the topic scrolls at the same rate but never ends.
+- Fix target: micron renderer / Guide reader — investigate why topic 7 expands
+  to ≥700 screenfuls (line-wrapping, missing compact alignment, or repeated
+  demo sections). Likely entangled with B3/B4 below.
+
+### B3 — Micron `c`/`r`/`a` alignment not rendered in the Guide reader (HIGH)
+- [ ] Center (`\`c`) and right (`\`r`) alignment directives are not applied to
+      rendered paragraph text in the Go Guide reader; everything is
+      left-aligned.
+- Evidence: topic 0 — nomadnet centers "Communicate Freely.", gonomadnet
+  left-aligns it (nomadnet→4606+, gonomadnet→2584+). topic 7 — nomadnet centers
+  "Hello! This is output from micron" / "Micron generates formatted text for
+  your terminal"; gonomadnet left-aligns them (nomadnet→8519+, gonomadnet→9024+).
+  topic 7 alignment demo — nomadnet renders "This line will be centered." /
+  "So will this." centered and "This will be aligned to the right"
+  right-aligned; gonomadnet renders all three left-aligned
+  (gonomadnet→10178+ screenful 100).
+- Fix target: `nomadnet/micron` alignment (`c`/`l`/`r`/`a`) handling and/or
+  the Guide `LinkableText`/reader row layout that should honor per-line
+  alignment.
+
+### B4 — Micron horizontal-divider glyph is wrong (MED)
+- [ ] The micron `-` divider renders as `─` (U+2500 BOX DRAWINGS LIGHT
+      HORIZONTAL) in Go, but as `∿` (U+223F SINE WAVE) in Python.
+- Evidence: topic 7 dividers — nomadnet→8519 = 96× `0x223f` (∿); gonomadnet→9026
+  = 96× `0x2500` (─). Same width, wrong glyph.
+- Fix target: divider glyph in the active glyph set (`tui/` glyphs /
+  `nomadnet/micron` divider rendering).
+
+### B5 — Hardware cursor mostly invisible in gonomadnet (MED, user-observed)
+- [ ] The terminal hardware cursor is always visible in nomadnet but is mostly
+      NOT visible in gonomadnet (observed live in both tmux sessions; tmux
+      `capture-pane` does not record cursor position, so this is from live
+      observation, not the logs).
+- Corroborates the known gap: Python positions the hardware cursor via
+  `canvas.cursor` on focused `LinkableText` (micron pages) and `ReadlineEdit`
+  (text inputs); the Go port uses a `ShowCursor` DrawFunc and does not drive the
+  real cursor the same way (see memory `green-cursor-parity-gap`).
+- Fix target: drive the real terminal cursor position on focused micron link
+  cursors and ReadlineEdit fields (capture-invisible; verify with a
+  `calc_coords` golden test per the Definition of Done).
+
+### B6 — Log page omits the log-level field (MED)
+- [ ] Log lines in nomadnet show `[timestamp] [Level]   message` (e.g.
+      `[2026-08-05 14:30:43] [Notice]   Configuration loaded…`); gonomadnet log
+      lines show `[timestamp]     message` with the level field blank (e.g.
+      `[2026-08-05 19:00:26]     Failed to re-broadcast…`).
+- Evidence: nomadnet→181-228 vs gonomadnet→181-228 (Phase 1 "page: Log"
+  snapshot). Likely the go-reticulum log writer omits the `[Level]` token, which
+  the Log page (`tail -fn50 logfile`) surfaces verbatim.
+- Fix target: go-reticulum log formatter (or the Log page's log-line rendering)
+  must emit/parse the `[Level]` field.
+
+### B7 — Guide two-pane column width is off by 1 char (LOW)
+- [ ] The Guide "Topics" box is 1 column narrower in Go (and the reader pane 1
+      column wider), shifting line-wrap points in the reader.
+- Evidence: nomadnet→4497 `┌──…── Topics ──…──┐` (34 dashes each side);
+  gonomadnet→2475 (33 left / 35 right). Downstream wrap diff — topic 0: nomadnet
+  wraps `…bugs and possibly` / `sub-optimal…`; gonomadnet wraps `…bugs and
+  possibly sub-` / `optimal…`.
+- Fix target: Guide `Columns` weight / box-width calculation in `tui/`.
+
+### B8 — Boot: Local Peer Info / interface status populate slower; "Last sync" reads "never" (LOW)
+- [ ] At the ~7 s Phase 1 Network snapshot, gonomadnet's Local Peer Info panel
+      shows `LXMF Addr: <>`, `Identity:` blank, `Announced: Never`, and
+      Interfaces show `Disconnected` / 0 bytes — while nomadnet (same
+      `~/.nomadnetwork` config) already shows the populated addrs, `Announced:
+      just now`, and `Connected` interfaces with bytes. By ~20 s (phase 3)
+      gonomadnet is populated, so the identity IS loaded, just later.
+- Conversations shows the same lag: `Last sync: never` (gonomadnet) vs
+  `Last sync: 6h ago` (nomadnet) at the Phase 1 snapshot — verify whether this
+  is purely boot timing or a failure to read the persisted last-sync timestamp
+  from LXMF state.
+- Evidence: nomadnet→104-108 vs gonomadnet→104-108; gonomadnet later populated
+  at →944-948.
+- Fix target: RNS/identity bring-up ordering on boot, and last-sync
+  persisted-state reading; low priority (eventually correct).
+
+---
+
 ## Screencast-comparison parity (cast-confirmed bugs)
 
 > Source: `python_session.cast` (Python nomadnet v1.2.6, **256-color**) vs
