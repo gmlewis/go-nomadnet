@@ -84,10 +84,10 @@ func browserStatusText(g map[string]string, status browserStatus,
 			timeStr = fmt.Sprintf("%.2f", responseTime)
 		}
 		respSize := responseSize
-		if savedFileName != "" {
-			// resp_size = saved_file_size; caller passes responseSize already
-			// adjusted when a file was saved (Python uses saved_file_size).
-		}
+		// if savedFileName != "" {
+		//   resp_size = saved_file_size; caller passes responseSize already
+		//   adjusted when a file was saved (Python uses saved_file_size).
+		// }
 		if respSize > 0 {
 			statsString = "  " + glyph(g, "page") + sizeStr(float64(respSize), "B")
 		}
