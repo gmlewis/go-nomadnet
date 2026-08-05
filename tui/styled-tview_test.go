@@ -123,8 +123,22 @@ func TestMicronHeadingDepthAndDividerFormatting(t *testing.T) {
 	if !strings.HasPrefix(renderedLines[2], "    ") {
 		t.Errorf("heading 3 line = %q, want 4 leading spaces", renderedLines[2])
 	}
-	// Divider line: 50 width of '-'
-	if runeCount := len([]rune(renderedLines[3])); runeCount != 50 || strings.Trim(renderedLines[3], "─") != "" {
-		t.Errorf("divider line = %q (runes %v), want 50 '─' characters", renderedLines[3], runeCount)
+	// Divider line follows the depth-3 heading, so Python renders it as
+	// Padding(Divider, left=4, right=4): 4 leading spaces + (50-8)=42 '─' runes.
+	// (micron_parseline.py:259-262: depth>0 → Padding(Divider, left=left_indent,
+	// right=right_indent); depth persists from the prior >>>heading.)
+	divider := renderedLines[3]
+	if got := len([]rune(divider)); got != 46 {
+		t.Errorf("divider line runes = %v, want 46 (4 spaces + 42 dashes)", got)
+	}
+	if !strings.HasPrefix(divider, "    ") {
+		t.Errorf("divider line = %q, want 4 leading spaces (depth-3 indent)", divider)
+	}
+	dashes := strings.TrimPrefix(divider, "    ")
+	if strings.Trim(dashes, "─") != "" {
+		t.Errorf("divider line = %q, want 4 spaces then only '─' chars", divider)
+	}
+	if got := len([]rune(dashes)); got != 42 {
+		t.Errorf("divider dash count = %v, want 42 (width 50 - left 4 - right 4)", got)
 	}
 }

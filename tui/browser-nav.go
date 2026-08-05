@@ -57,9 +57,37 @@ func newBrowserPageView(bd *BrowserDisplay) *browserPageView {
 // Draw renders the page text and, when the page body is focused and the cursor
 // is within its key-timeout visibility window, repositions the terminal
 // hardware cursor at the focused line's part cursor.
+//
+// It also reflows the page when the content is first drawn at a width different
+// from the one renderPage laid out for. The fetch callback (OnRetrieveURL) can
+// fire before the browser display's first Draw, so contentWidth() returns a
+// stale/zero value and horizontal dividers render too short; once the real
+// width is known at Draw time, a re-render is queued (Python's urwid.Divider
+// fills width at draw time, so this restores parity).
 func (v *browserPageView) Draw(screen tcell.Screen) {
 	v.TextView.Draw(screen)
 	v.bd.drawCursor(screen)
+	v.bd.reflowIfWidthChanged()
+}
+
+// reflowIfWidthChanged queues a re-render of the current page when the content's
+// real inner width differs from the width it was laid out for (renderedWidth).
+// No-op when there is no current page, the width already matches, or no app
+// loop is available (unit tests drive rendering directly). The re-render runs
+// on the UI loop via QueueUpdateDraw so it does not recurse into this Draw.
+func (bd *BrowserDisplay) reflowIfWidthChanged() {
+	if bd.currentMarkup == "" || bd.app == nil || bd.app.Application == nil {
+		return
+	}
+	_, _, w, _ := bd.content.GetInnerRect()
+	if w <= 0 || w == bd.renderedWidth {
+		return
+	}
+	bd.app.QueueUpdateDraw(func() {
+		// re-render at the now-known width; renderPage updates renderedWidth so
+		// the next Draw does not re-trigger.
+		bd.renderPage()
+	})
 }
 
 // MouseHandler makes a left-click on a rendered link follow it, matching

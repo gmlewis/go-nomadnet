@@ -1518,15 +1518,18 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 			if rd == nil {
 				if cached := pageCache.GetCached(canonURL); cached != nil {
 					tuiApp.QueueUpdateDraw(func() {
+						bd.SetTransferStats(int64(len(cached)), 0, 0, true)
 						bd.RenderPage(string(cached))
 					})
 					return
 				}
 			}
 			go func() {
+				start := time.Now()
 				data, ferr := browser.FetchPage(a.Transport, dest, path, rd,
 					time.Duration(browser.DefaultTimeout)*time.Second, nil,
 					identifyOnConnect(dest))
+				elapsed := time.Since(start).Seconds()
 				tuiApp.QueueUpdateDraw(func() {
 					if ferr != nil {
 						bd.SetContent(fmt.Sprintf("[red]%v[-]", browser.StatusText(browser.ErrToStatus(ferr))))
@@ -1538,6 +1541,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 								float64(time.Now().UnixNano())/1e9+float64(ct))
 						}
 					}
+					bd.SetTransferStats(int64(len(data)), int64(len(data)), elapsed, false)
 					bd.RenderPage(string(data))
 				})
 			}()

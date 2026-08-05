@@ -79,19 +79,20 @@ func TestBrowserLoadingShowsCenteredRetrieving(t *testing.T) {
 	}
 
 	// Vertically centered: the "Retrieving" row sits within one row of the
-	// vertical middle of the body region (the body is below the 3 header rows:
-	// title, URL bar, nav bar). Body height = 16-3 = 13; two lines centered ⇒
-	// top at ceil((13-2)/2) = ~5-6 rows into the body ⇒ screen row ~8-9.
-	if retRow < 6 || retRow > 9 {
-		t.Errorf("Retrieving at row %d, want roughly vertically centered (6..9) in a 16-row pane with 3 header rows", retRow)
+	// vertical middle of the body region. The layout is header (url + divider
+	// = 2 rows) · body · footer (divider + status = 2 rows). Body height =
+	// 16-4 = 12; two lines centered ⇒ top at ceil((12-2)/2) = 5 rows into the
+	// body ⇒ screen row 2+5 = 7.
+	if retRow < 5 || retRow > 9 {
+		t.Errorf("Retrieving at row %d, want roughly vertically centered (5..9) in a 16-row pane with 2 header + 2 footer rows", retRow)
 	}
 
-	// Horizontally centered: the URL line's left padding inside the bordered
-	// content area ≈ (innerWidth - len) / 2. The layout has a border at col 0,
-	// so the inner content starts at col 1; measure the first non-space column
-	// from there.
+	// Horizontally centered: the URL line's left padding inside the body area
+	// ≈ (innerWidth - len) / 2. The layout has NO border (the enclosing
+	// BrowserPane LineBox is the caller's responsibility), so the inner content
+	// starts at col 0.
 	firstCol := -1
-	for x := 1; x < 60; x++ {
+	for x := 0; x < 60; x++ {
 		if cellAt(rows, x, urlRow) != " " {
 			firstCol = x
 			break
@@ -100,17 +101,17 @@ func TestBrowserLoadingShowsCenteredRetrieving(t *testing.T) {
 	if firstCol < 0 {
 		t.Fatalf("[url] line not found in cells at row %d", urlRow)
 	}
-	leftPad := firstCol - 1 // inner rect begins at column 1 (after the border)
-	const innerWidth = 58   // 60 - 2 border columns
+	leftPad := firstCol // inner content begins at column 0 (no border)
+	const innerWidth = 60
 	wantPad := (innerWidth - tview.TaggedStringWidth("[a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6/page/index.mu]")) / 2
 	if abs(leftPad-wantPad) > 1 {
 		t.Errorf("[url] left padding = %d, want ~%d (centered)", leftPad, wantPad)
 	}
 
-	// The URL bar above still shows the URL (Python keeps the control-widget
+	// The URL header above still shows the URL (Python keeps the control-widget
 	// header during loading).
-	if got := bd.urlBar.GetText(); !strings.Contains(got, "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6/page/index.mu") {
-		t.Errorf("URL bar = %q during loading, want it to show the requested URL", got)
+	if got := bd.URLDisplayText(); !strings.Contains(got, "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6/page/index.mu") {
+		t.Errorf("URL display = %q during loading, want it to show the requested URL", got)
 	}
 }
 

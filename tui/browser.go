@@ -28,13 +28,30 @@ import (
 
 // BrowserDisplay provides URL-based page browsing.
 type BrowserDisplay struct {
-	app     *App
-	widget  tview.Primitive
-	layout  *tview.Flex
-	urlBar  *ReadlineEdit
-	content *browserPageView
-	history []string
-	histIdx int
+	app    *App
+	widget tview.Primitive
+	layout *tview.Flex
+	body   *tview.Flex // the header/footer-framed body slot (content or loading)
+	// urlHeader is the non-editable "Ⓝ <url>" header row, mirroring Python
+	// Browser.make_control_widget (Browser.py:505-524): g["node"]+" "+
+	// current_url() as a urwid.Text (editing is via the C-u URL dialog, not an
+	// inline field).
+	urlHeader      *tview.TextView
+	headerDivider  tview.Primitive
+	footerDivider  tview.Primitive
+	footerStatus   *tview.TextView
+	currentURLDisp string
+	// Transfer stats for the footer status text (Python response_size/
+	// response_transfer_size/response_time/loaded_from_cache, Browser.py:1756).
+	responseSize      int64
+	responseTransfer  int64
+	responseTime      float64
+	hasTransfer       bool
+	loadedFromCache   bool
+	linkStatusShowing bool
+	content           *browserPageView
+	history           []string
+	histIdx           int
 	// loading is the MIDDLE-centered "Retrieving\n[<url>]" body shown while a
 	// page fetch is in flight (Python Browser.update_display REQUEST_SENT branch,
 	// Browser.py:593-598: Filler(Text("Retrieving\n["+url+"]", CENTER), MIDDLE)).
@@ -84,6 +101,14 @@ type BrowserDisplay struct {
 	currentMarkup   string
 	partialContents map[string]string
 	partialCancel   chan struct{}
+	// renderedWidth is the column count the current page text was laid out for
+	// (the width passed to StyledLinesToTviewText in renderPage). Horizontal
+	// dividers are pre-rendered at this width; if the content is later drawn at a
+	// different width (e.g. the fetch callback fired before the first layout),
+	// browserPageView.Draw schedules a re-render so dividers reflow to the real
+	// width — mirroring Python's urwid.Divider box widget which fills width at
+	// draw time.
+	renderedWidth   int
 	// partials is the list of every partial declared in the current page markup
 	// (including ones with no auto-refresh interval), tracked so a "p:<id>"
 	// force-refresh link (Python handle_partial_updates) can select and re-fetch
@@ -112,20 +137,41 @@ type BrowserDisplay struct {
 }
 
 // NewBrowserDisplay creates a new browser display.
+//
+// The layout mirrors Python Browser.build_display (Browser.py:473-487):
+// LineBox(BrowserFrame(body, header, footer), title=<hash>) — a Frame whose
+// header = make_control_widget() (Pile([Text("Ⓝ <url>"), Divider(┄)])), body =
+// the page content, footer = make_status_widget() (Pile([Divider(┄),
+// Text(status)])). The surrounding LineBox (border + "<hash>" title) is owned
+// by the BrowserPane (Network right pane) or the standalone browser page — the
+// BrowserDisplay itself renders NO border and NO title, so there is no nested
+// "Browser" box. There is no top nav bar; controls live in the footer.
 func NewBrowserDisplay(app *App) *BrowserDisplay {
 	bd := &BrowserDisplay{app: app}
+	g := app.Glyphs
+	divGlyph := glyph(g, "divider1")
+	if divGlyph == "" {
+		divGlyph = "┄"
+	}
+	nodeGlyph := glyph(g, "node")
+	controlsColor := browserControlsColor(app)
 
-	// Title
-	title := tview.NewTextView().
-		SetTextAlign(tview.AlignCenter).
+	// URL header: non-editable "Ⓝ <url>" (Python make_control_widget,
+	// Browser.py:505-524). Editing is via the C-u URL dialog, not inline.
+	bd.urlHeader = tview.NewTextView().
 		SetDynamicColors(true).
-		SetTextColor(tcell.NewHexColor(0xdddddd)).
-		SetText("[::b]Browser[-]")
+		SetTextColor(controlsColor)
+	bd.urlHeader.SetText(nodeGlyph)
 
-	// URL bar
-	bd.urlBar = NewReadlineEdit(app.killRing, "URL: ", "Enter RNS address or lxmf:// URI")
-	bd.urlBar.SetFieldBackgroundColor(tcell.NewHexColor(0x222222))
-	bd.urlBar.SetFieldTextColor(tcell.NewHexColor(0xdddddd))
+	// Chrome dividers (urwid.Divider(self.g["divider1"]) — full width).
+	bd.headerDivider = newDividerRow(divGlyph)
+	bd.footerDivider = newDividerRow(divGlyph)
+
+	// Footer status: transfer stats / "Link to <target>" (Python
+	// make_status_widget + marked_link_job, Browser.py:497-501, 196-204).
+	bd.footerStatus = tview.NewTextView().
+		SetDynamicColors(true).
+		SetTextColor(controlsColor)
 
 	// Content area — a browserPageView wraps a TextView so the page body can
 	// reposition the hardware cursor on each draw (see browser-nav.go). All
@@ -136,20 +182,21 @@ func NewBrowserDisplay(app *App) *BrowserDisplay {
 	bd.content.SetTextColor(tcell.NewHexColor(0xbbbbbb))
 	bd.content.SetText("[gray]Enter a URL and press Enter to load a page[-]")
 
-	// Navigation bar
-	navBar := tview.NewTextView().
-		SetTextAlign(tview.AlignCenter).
-		SetDynamicColors(true).
-		SetTextColor(tcell.NewHexColor(0x999999)).
-		SetText("[yellow]Enter[-] Load  [yellow]Ctrl-L[-] Back  [yellow]Ctrl-R[-] Forward  [yellow]Esc[-] URL bar")
-
-	// Layout
-	layout := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(title, 1, 0, false).
-		AddItem(bd.urlBar, 1, 0, false).
-		AddItem(navBar, 1, 0, false).
+	// The body slot holds the page content (or the centered "Retrieving" body
+	// while a fetch is in flight). Swapping its single child keeps the header
+	// and footer rows in place (Python keeps the control widget + status widget
+	// during loading).
+	bd.body = tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(bd.content, 0, 1, true)
-	layout.SetBorder(true)
+
+	// Layout: header (url + divider) · body · footer (divider + status). No
+	// border, no title — the enclosing LineBox is the caller's responsibility.
+	layout := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(bd.urlHeader, 1, 0, false).
+		AddItem(bd.headerDivider, 1, 0, false).
+		AddItem(bd.body, 0, 1, true).
+		AddItem(bd.footerDivider, 1, 0, false).
+		AddItem(bd.footerStatus, 1, 0, false)
 	layout.SetInputCapture(bd.handleInput)
 
 	bd.layout = layout
@@ -272,12 +319,42 @@ func (bd *BrowserDisplay) GoForward() {
 // mirrors Python Browser.retrieve_url → __load, run on a background thread so
 // the UI stays responsive.
 func (bd *BrowserDisplay) displayURL(url string) {
-	bd.urlBar.SetText(url)
-	bd.showLoading(url)
+	bd.setURLHeader(url)
+	bd.showLoading(bd.currentURLDisp)
 	if bd.OnRetrieveURL != nil {
 		bd.OnRetrieveURL(url)
 	}
 }
+
+// setURLHeader sets the non-editable "Ⓝ <url>" header text, mirroring Python
+// make_control_widget (Browser.py:505-524): g["node"]+" "+current_url(). The
+// displayed URL is the canonical "<hex>:<path>" form when the URL parses as a
+// nomadnet RNS address (Python current_url, Browser.py:146-163); a non-RNS or
+// synthetic URL is shown verbatim so unit tests and error states still surface
+// what was requested. The raw value is also stored in currentURLDisp for
+// accessors.
+func (bd *BrowserDisplay) setURLHeader(url string) {
+	disp := bd.canonicalURL(url)
+	bd.currentURLDisp = disp
+	g := bd.app.Glyphs
+	bd.urlHeader.SetText(glyph(g, "node") + " " + disp)
+}
+
+// canonicalURL returns the "<hex>:<path>" form of url when it parses as a
+// nomadnet RNS address (resolving relative ":<path>" URLs against the current
+// destination), falling back to the raw url on a parse error. Mirrors Python
+// Browser.current_url (Browser.py:146-163) for the displayable form.
+func (bd *BrowserDisplay) canonicalURL(url string) string {
+	dest, path, rd, err := browser.ParseURL(url, bd.currentDest, nil)
+	if err != nil {
+		return url
+	}
+	return browser.CurrentURL(dest, path, rd)
+}
+
+// URLDisplayText returns the URL currently shown in the header (without the
+// node glyph), for test accessors and the copy-URL action.
+func (bd *BrowserDisplay) URLDisplayText() string { return bd.currentURLDisp }
 
 // showLoading swaps the MIDDLE-centered "Retrieving\n[<url>]" body into the
 // layout in place of the page content, mirroring Python Browser.update_display
@@ -287,25 +364,23 @@ func (bd *BrowserDisplay) displayURL(url string) {
 // control-widget header during loading); the centered message replaces only
 // the body. Restored to the page content by renderPage (showContent).
 func (bd *BrowserDisplay) showLoading(url string) {
-	bd.layout.RemoveItem(bd.content)
 	if bd.loading != nil {
-		bd.layout.RemoveItem(bd.loading)
+		bd.body.RemoveItem(bd.loading)
 	}
+	bd.body.RemoveItem(bd.content)
 	bd.loading = newMiddleCentered(tcell.NewHexColor(defaultContentFG), "Retrieving", "["+url+"]")
-	bd.layout.AddItem(bd.loading, 0, 1, true)
+	bd.body.AddItem(bd.loading, 0, 1, true)
 }
 
-// showContent swaps the page content back into the layout, removing the
+// showContent swaps the page content back into the body slot, removing the
 // centered loading body. Called from renderPage once a page has rendered.
 func (bd *BrowserDisplay) showContent() {
 	if bd.loading != nil {
-		bd.layout.RemoveItem(bd.loading)
+		bd.body.RemoveItem(bd.loading)
 		bd.loading = nil
 	}
-	// Ensure bd.content is present (showLoading removes it). AddItem is a no-op
-	// duplicate guard via RemoveItem first.
-	bd.layout.RemoveItem(bd.content)
-	bd.layout.AddItem(bd.content, 0, 1, true)
+	bd.body.RemoveItem(bd.content)
+	bd.body.AddItem(bd.content, 0, 1, true)
 }
 
 // defaultContentFG is the browser content area's default text color, matching
@@ -341,7 +416,9 @@ func (bd *BrowserDisplay) RenderPage(markup string) {
 func (bd *BrowserDisplay) renderPage() {
 	markup := bd.effectiveMarkup()
 	lines := micron.RenderToStyledLines(markup, micronTheme(bd.app.Theme))
-	text, links := StyledLinesToTviewText(lines, bd.contentWidth())
+	width := bd.contentWidth()
+	text, links := StyledLinesToTviewText(lines, width)
+	bd.renderedWidth = width
 	bd.currentLines = lines
 	bd.links = links
 	bd.anchors = micron.BuildAnchorMap(lines)
@@ -375,6 +452,11 @@ func (bd *BrowserDisplay) renderPage() {
 	// is cleared. Mirrors Python update_page_display building a fresh Pile of
 	// LinkableText on every load (Browser.py:469-486).
 	bd.initNavState()
+
+	// A completed render ⇒ DONE: refresh the footer so the transfer-status line
+	// (or "Link to" peek) reflects the current page (Python update_display DONE
+	// branch sets browser_footer = make_status_widget(), Browser.py:529-531).
+	bd.refreshFooterStatus()
 }
 
 // JumpToAnchor scrolls the browser content so the named anchor's line sits at
@@ -600,7 +682,9 @@ func (bd *BrowserDisplay) Disconnect() {
 	bd.histIdx = 0
 	bd.currentDest = nil
 	bd.stopPartials()
-	bd.urlBar.SetText("")
+	bd.urlHeader.SetText(glyph(bd.app.Glyphs, "node"))
+	bd.currentURLDisp = ""
+	bd.footerStatus.SetText("")
 	bd.content.SetText("[gray]Disconnected.[-]")
 }
 
@@ -626,14 +710,16 @@ func (bd *BrowserDisplay) CurrentDest() []byte { return bd.currentDest }
 // subsequent relative URLs resolve against it.
 func (bd *BrowserDisplay) SetCurrentDest(dest []byte) { bd.currentDest = dest }
 
-// MarkedLink updates the footer link peek display.
-// Matches Python's Browser.marked_link_job (Browser.py:181-204).
+// MarkedLink shows "Link to <target>" in the browser footer (the in-pane
+// BrowserFrame footer, NOT the global shortcut bar), mirroring Python
+// Browser.marked_link_job (Browser.py:181-204): when the cursor rests on a link
+// the footer swaps to "Link to <target>`<fields>"; clearing it (target=="")
+// restores the transfer-status widget. This is the link-peek that enables
+// in-page link-following.
 func (bd *BrowserDisplay) MarkedLink(target, fields string) {
-	if bd.app == nil || bd.app.Main == nil {
-		return
-	}
 	if target == "" {
-		bd.app.Main.SetShortcut("browser", "[C-d] Back  [C-f] Forward  [C-r] Reload  [C-u] URL  [C-s] Save  [C-w] Disconnect")
+		bd.linkStatusShowing = false
+		bd.refreshFooterStatus()
 		return
 	}
 	var f []string
@@ -641,7 +727,50 @@ func (bd *BrowserDisplay) MarkedLink(target, fields string) {
 		f = strings.Split(fields, "|")
 	}
 	t := browser.MarkedLinkTarget(target, f)
-	bd.app.Main.SetShortcut("browser", "Link to "+t)
+	bd.linkStatusShowing = true
+	bd.footerStatus.SetText("Link to " + t)
+}
+
+// SetTransferStats records the response size, transfer size, and elapsed time
+// for the most recent fetch, then refreshes the footer status — mirroring
+// Python Browser.status_text (Browser.py:1756-1803) which renders
+// "Done  ▤ <size>   ↓<size> in <t>s   ◷ <speed>b/s". cached marks a cache hit
+// (" (cached)"). Call with hasTransfer=false before the fetch completes to show
+// the in-flight status label instead.
+func (bd *BrowserDisplay) SetTransferStats(responseSize, transferSize int64, responseTime float64, cached bool) {
+	bd.responseSize = responseSize
+	bd.responseTransfer = transferSize
+	bd.responseTime = responseTime
+	bd.hasTransfer = transferSize > 0
+	bd.loadedFromCache = cached
+	bd.refreshFooterStatus()
+}
+
+// SetBrowserStatus sets the lifecycle status driving the footer status text
+// (Python Browser.status, Browser.py:80-101) and refreshes the footer. Use
+// before/while a fetch is in flight to show "Sending request...", "Request
+// sent, awaiting response...", etc.
+func (bd *BrowserDisplay) SetBrowserStatus(status int) {
+	bd.refreshFooterStatusFor(browserStatus(status))
+}
+
+// refreshFooterStatus rebuilds the footer status text for the current stats and
+// the DONE state (the common state once a page has rendered), unless a link
+// peek is currently showing (Python link_status_showing suppresses the status
+// widget while "Link to ..." is displayed).
+func (bd *BrowserDisplay) refreshFooterStatus() {
+	if bd.linkStatusShowing {
+		return
+	}
+	bd.refreshFooterStatusFor(browserDone)
+}
+
+// refreshFooterStatusFor renders the footer text for a given lifecycle status.
+func (bd *BrowserDisplay) refreshFooterStatusFor(status browserStatus) {
+	g := bd.app.Glyphs
+	text := browserStatusText(g, status, bd.responseSize, bd.responseTransfer,
+		bd.responseTime, bd.hasTransfer, bd.loadedFromCache, "")
+	bd.footerStatus.SetText(text)
 }
 
 // MicronReleasedFocus handles focus release from the micron text area, mirroring

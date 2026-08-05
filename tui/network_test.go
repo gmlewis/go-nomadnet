@@ -165,8 +165,8 @@ func TestBrowserLoadURL(t *testing.T) {
 	bd := NewBrowserDisplay(app)
 
 	bd.LoadURL("http://example.com")
-	if bd.urlBar.GetText() != "http://example.com" {
-		t.Errorf("URL bar = %q, want %q", bd.urlBar.GetText(), "http://example.com")
+	if bd.URLDisplayText() != "http://example.com" {
+		t.Errorf("URL display = %q, want %q", bd.URLDisplayText(), "http://example.com")
 	}
 }
 
@@ -181,13 +181,13 @@ func TestBrowserHistory(t *testing.T) {
 	bd.LoadURL("url3")
 
 	bd.GoBack()
-	if bd.urlBar.GetText() != "url2" {
-		t.Errorf("After GoBack, URL = %q, want %q", bd.urlBar.GetText(), "url2")
+	if bd.URLDisplayText() != "url2" {
+		t.Errorf("After GoBack, URL = %q, want %q", bd.URLDisplayText(), "url2")
 	}
 
 	bd.GoForward()
-	if bd.urlBar.GetText() != "url3" {
-		t.Errorf("After GoForward, URL = %q, want %q", bd.urlBar.GetText(), "url3")
+	if bd.URLDisplayText() != "url3" {
+		t.Errorf("After GoForward, URL = %q, want %q", bd.URLDisplayText(), "url3")
 	}
 }
 

@@ -287,14 +287,15 @@ func TestNavVimLettersSuppressed(t *testing.T) {
 	}
 }
 
-// TestNavPassesThroughOnURLBar asserts navigation keys are NOT consumed when a
-// non-content child (the URL bar) holds focus — they pass through so the input
-// field keeps editing. (Python's BrowserFrame only runs the page model when the
-// page body is focused.)
-func TestNavPassesThroughOnURLBar(t *testing.T) {
+// TestNavPassesThroughWhenContentNotFocused asserts navigation keys are NOT
+// consumed when the page body does not hold focus — they pass through so a
+// non-content child (e.g. the footer status, or an external overlay) keeps the
+// key. (Python's BrowserFrame only runs the page model when the page body is
+// focused.)
+func TestNavPassesThroughWhenContentNotFocused(t *testing.T) {
 	t.Parallel()
 	app, bd := newNavTestBrowser(t)
-	app.SetFocus(bd.urlBar)
+	app.SetFocus(bd.footerStatus)
 
 	for _, ev := range []*tcell.EventKey{
 		key(tcell.KeyUp, 0), key(tcell.KeyDown, 0), key(tcell.KeyLeft, 0),
@@ -302,7 +303,7 @@ func TestNavPassesThroughOnURLBar(t *testing.T) {
 		key(tcell.KeyPgUp, 0), key(tcell.KeyPgDn, 0),
 	} {
 		if got := bd.handleInput(ev); got == nil {
-			t.Errorf("key consumed while URL bar focused; want pass-through")
+			t.Errorf("key consumed while content not focused; want pass-through")
 		}
 	}
 }

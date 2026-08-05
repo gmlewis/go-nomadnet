@@ -67,7 +67,10 @@ func StyledLinesToTviewText(lines []*micron.StyledLine, width int) (string, []mi
 			if ch == "" {
 				ch = "─"
 			}
-			n := width - line.Indent
+			// Python: depth 0 → urwid.Divider fills the full width; depth>0 →
+			// Padding(Divider, left=left_indent, right=right_indent). The divider
+			// run spans width - left - right, offset by left indent spaces.
+			n := width - line.Indent - line.DividerRight
 			if n < 1 {
 				n = 1
 			}

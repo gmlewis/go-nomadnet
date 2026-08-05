@@ -67,7 +67,7 @@ func TestBrowserPageHeaderAndMicronRendering(t *testing.T) {
 	app.Glyphs = GetGlyphSet(GlyphUnicode)
 	bd := NewBrowserDisplay(app)
 
-	bd.urlBar.SetText("nomadnetwork://44f0dbf2ec1c2ac47277995475217aed/page/status.mu")
+	bd.LoadURL("nomadnetwork://44f0dbf2ec1c2ac47277995475217aed/page/status.mu")
 	bd.RenderPage(">Welcome Node\n-")
 
 	text := bd.content.GetText(true)
@@ -333,13 +333,13 @@ func TestBrowserDisplayMarkedLink(t *testing.T) {
 	app.Main.activePage = "browser"
 
 	bd.MarkedLink("http://example.com", "f1|f2")
-	got := app.Main.GetShortcutText()
+	got := bd.footerStatus.GetText(true)
 	if got != "Link to http://example.com`f1|f2" {
-		t.Errorf("MarkedLink target = %q, want 'Link to http://example.com`f1|f2'", got)
+		t.Errorf("MarkedLink footer = %q, want 'Link to http://example.com`f1|f2'", got)
 	}
 
 	bd.MarkedLink("", "")
-	gotCleared := app.Main.GetShortcutText()
+	gotCleared := bd.footerStatus.GetText(true)
 	if gotCleared == "Link to http://example.com`f1|f2" {
 		t.Errorf("MarkedLink empty did not clear footer target")
 	}

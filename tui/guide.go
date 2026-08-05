@@ -151,9 +151,15 @@ func NewGuideDisplay(app *App) *GuideDisplay {
 		i := i
 		gd.topics.AddItem(guideTopics[i].label, "", 0, func() { gd.showTopic(i) })
 	}
-	gd.topics.SetChangedFunc(func(index int, mainText, secondaryText string, shortcut rune) {
-		gd.showTopic(index)
-	})
+	// Note: no SetChangedFunc — mirroring Python's TopicList, arrow navigation
+	// only moves the highlight and does NOT render the topic. Python's
+	// ListEntry emits its "click" signal solely on the ACTIVATE command
+	// (Enter/Space) and mouse press (Guide.py:20-26), and display_topic (the
+	// click handler) is what builds the reader content + focus_reader
+	// (Guide.py:138-154). tview's SetChangedFunc fires on every selection
+	// change (i.e. on arrow Down), which would render topics on navigation and
+	// diverge from the original; the selected func above (Enter) is the
+	// equivalent of the "click" signal.
 
 	// Reader (right pane). A thin wrapper around tview.TextView overrides
 	// SetRect so horizontal dividers re-expand to the pane width on resize.
@@ -194,10 +200,12 @@ func NewGuideDisplay(app *App) *GuideDisplay {
 	cols.SetWeight(1, 2)
 
 	gd.topicsList.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if event != nil && event.Key() == tcell.KeyUp && gd.topics.GetCurrentItem() == 0 {
-			if gd.app != nil && gd.app.Main != nil {
-				gd.app.Main.FocusMenu()
-				return nil
+		if event != nil {
+			if event.Key() == tcell.KeyUp && gd.topics.GetCurrentItem() == 0 {
+				if gd.app != nil && gd.app.Main != nil {
+					gd.app.Main.FocusMenu()
+					return nil
+				}
 			}
 		}
 		return event
@@ -272,13 +280,22 @@ func (gd *GuideDisplay) showPlaceholder() {
 	gd.reader.ScrollTo(0, 0)
 }
 
-// showTopic renders the given topic's micron source into the reader and syncs
-// the topic-list selection (Guide.py GuideEntry.display_topic).
+// showTopic renders the given topic's micron source into the reader, syncs the
+// topic-list selection, and moves focus to the reader — mirroring Python's
+// GuideEntry.display_topic (Guide.py:138-154), which set_content_widgets +
+// select_item + focus_reader. This is invoked on the topic list's "click"
+// signal (Enter/Space, the AddItem selected func), NOT on arrow navigation.
 func (gd *GuideDisplay) showTopic(idx int) {
 	if idx < 0 || idx >= len(guideTopics) {
 		return
 	}
 	gd.currentIdx = idx
+	// Sync the topic-list highlight to the selected topic (Python
+	// display_topic: self.parent.ilb.select_item(topic_position)). SetCurrentItem
+	// does NOT fire the selected func (no re-entrant showTopic).
+	if gd.topics.GetCurrentItem() != idx {
+		gd.topics.SetCurrentItem(idx)
+	}
 	// The reader pane border is untitled (Python Guide.py:207 LineBox has no
 	// title=). The topic title is a content `>` heading rendered INSIDE the
 	// pane by renderMarkup, not a border title.
@@ -294,6 +311,10 @@ func (gd *GuideDisplay) showTopic(idx int) {
 	// are also used by jumpToAnchor and the resize re-render path, which must
 	// preserve the user's current scroll position.
 	gd.reader.ScrollTo(0, 0)
+	// Move focus to the reader (Python display_topic: self.reader.focus_reader()).
+	// This is what makes Enter on a topic hand input to the reader pane so Down
+	// scrolls the topic and Left releases focus back to the topic list.
+	gd.FocusReader()
 }
 
 // Shortcuts returns the footer shortcut text for the Guide page, matching

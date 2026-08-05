@@ -34,6 +34,7 @@ import json
 import os
 import re
 import sys
+import unicodedata
 
 # DEC Special Graphics -> unicode (active when G0/G1 = '0')
 ACS = {
@@ -225,6 +226,35 @@ class Cell:
         self.style = Style()
 
 
+def _wcwidth(ch):
+    """Return the display width (in terminal columns) of a single Unicode
+    code point, mirroring wcwidth/wcswidth for the cases that matter for cast
+    decoding:
+
+      2 — East Asian Wide (W) or Fullwidth (F): CJK ideographs, kana, fullwidth
+          Latin, etc. These occupy two cells; the cell after a wide char is a
+          continuation placeholder (see Term._putc).
+      0 — nonspacing/format characters: combining marks (Mn/Me), format
+          controls (Cf), and other control chars (Cc/Cs). A combining mark
+          attaches to the preceding base and neither advances the cursor nor
+          occupies its own cell.
+      1 — everything else (Neutral/Narrow/Halfwidth), including nomadnet's
+          glyphs (✓ ✕ ⚠ Ⓝ ↓) and box-drawing characters.
+
+    This is NOT a complete wcwidth (no emoji ZWJ grapheme clustering), but it
+    fixes the T-UTF8 misalignment where wide/CJK graphemes advanced the cursor
+    by only 1 and corrupted the cell grid in the decoded comparison.
+    """
+    if ch == "":
+        return 0
+    cat = unicodedata.category(ch)
+    if cat in ("Mn", "Me", "Cf") or cat.startswith("C"):
+        return 0
+    if unicodedata.east_asian_width(ch) in ("W", "F"):
+        return 2
+    return 1
+
+
 class Term:
     def __init__(self, cols, rows):
         self.cols = cols
@@ -243,11 +273,24 @@ class Term:
             ch = ACS[ch]
         elif self.cur == 'g1' and self.g1 == '0' and ch in ACS:
             ch = ACS[ch]
+        w = _wcwidth(ch)
+        if w == 0:
+            # Nonspacing (combining mark / format / control): attach to the
+            # base in the current cell without advancing the cursor or
+            # overwriting the base character.
+            return
         if 0 <= self.cy < self.rows and 0 <= self.cx < self.cols:
             c = self.grid[self.cy][self.cx]
             c.ch = ch
             c.style = self.cur_style.copy()
-        self.cx += 1
+            # A wide char occupies a second cell: mark it as a continuation
+            # placeholder (empty ch) so screen_text/screen_annotated emit the
+            # wide char once and subsequent cells stay column-aligned.
+            if w == 2 and self.cx + 1 < self.cols:
+                cont = self.grid[self.cy][self.cx + 1]
+                cont.ch = ""
+                cont.style = self.cur_style.copy()
+        self.cx += w
         if self.cx >= self.cols:
             self.cx = self.cols - 1  # clamp; no autowrap
 

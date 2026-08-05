@@ -109,6 +109,7 @@ type StyledLine struct {
 	HeadingLevel int    // 0 = not a heading; else the heading level
 	Divider      bool   // true for a horizontal-divider line
 	DividerChar  string // divider character (default U+2500)
+	DividerRight int    // right pad for a divider at depth>0 (Python right_indent)
 	Anchor       string // anchor name bound to this line (heading slug or `:name)
 }
 
@@ -191,7 +192,12 @@ func renderLineNodes(nodes []*Node, rs *renderState, theme Theme, depth int) []*
 		case NodeDivider:
 			sl.Divider = true
 			sl.DividerChar = node.Text
-			sl.Indent = 0
+			// Python MicronParser.py:334-336: depth 0 → urwid.Divider fills the
+			// full width; depth>0 → Padding(Divider, left=left_indent,
+			// right=right_indent) pads both sides by (depth-1)*SECTION_INDENT.
+			ind := leftIndent(node.Depth)
+			sl.Indent = ind
+			sl.DividerRight = ind // right_indent == left_indent
 			out = append(out, sl)
 			sl = &StyledLine{Indent: leftIndent(depth)}
 		case NodeTable:

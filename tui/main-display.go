@@ -33,7 +33,7 @@ type MainDisplay struct {
 	frame             *tview.Flex
 	menuBar           *tview.TextView
 	menuItems         []MenuItem
-	contentArea       *tview.Pages
+	contentArea       *bodyPages
 	shortcutBar       *tview.TextView
 	shortcutTextRaw   string // raw (unwrapped) shortcut text; the bar renders a pre-wrapped copy
 	shortcutWrapSrc   string // raw text last wrapped into the bar (cache invalidation)
@@ -115,8 +115,10 @@ func NewMainDisplay(app *App, theme int, glyphSetName string) *MainDisplay {
 		return action, event
 	})
 
-	// Create content area (individual displays add their own borders)
-	md.contentArea = tview.NewPages()
+	// Create content area (individual displays add their own borders). This is
+	// a bodyPages (tview.Pages wrapper) so input dispatch only reaches the
+	// VISIBLE page — see body-pages.go for the focus-stealing root cause it fixes.
+	md.contentArea = newBodyPages()
 	md.contentArea.SetBackgroundColor(tcell.ColorDefault)
 
 	// Create shortcut bar (footer). It holds plain text (the Python original
