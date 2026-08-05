@@ -260,6 +260,128 @@ test or a matching `parity.sh` summary):
       source-of-truth `nomadnet` — there `Connect` closes the dialog, moves
       focus into the browser pane, and `Left`/`Up` release back to the list /
       menu.
+      > **NOTE (2026-08-05):** Did NOT reproduce in the latest run
+      > `/tmp/gonomadnet-tmux-test-suite-1785955051.log` — every Connect closed
+      > the Announce Info (`ASSERT PASS: Announce Info closed after Connect
+      > (browser active)`, 7/7) and the suite escaped the Network page to the
+      > menu (`ASSERT PASS: menu reached from Announce Stream`). Likely fixed
+      > (or masked by the suite's more robust Home+Up escape). Re-verify after
+      > the browser-display fixes below land; remove if confirmed fixed.
+
+### Browser display parity (Network right pane, connected state)
+
+> Source: `/tmp/nomadnet-tmux-test-suite-1785954642.log` (Python, source-of-truth)
+> vs `/tmp/gonomadnet-tmux-test-suite-1785955051.log` (Go port). The
+> disconnected `Remote Node` right pane and the `Announce Info` dialog are
+> byte-identical; the **connected/rendered browser page** diverges in its
+> header/footer chrome. Python `Browser.build_display`
+> (`Browser.py:473-487`) = `LineBox(BrowserFrame(body, header, footer),
+> title=<hash>)` — ONE linebox (the `<hash>` pane), header = `Ⓝ <url>` + `┄`
+> divider, footer = `┄` divider + status/`Link to`. The Go port adds a SECOND
+> bordered box and rearranges the chrome. All bugs below are
+> colormode-independent (plain-text/structural).
+
+- [ ] **R-NET-BROWSER-STRUCTURE:** The browser renders a nested **"Browser"
+      titled LineBox** inside the `<hash>` right pane → double borders
+      (`┌── Browser ──┐` inside `┌── <hash> ──┐`). Python has no inner box; the
+      `<hash>` linebox directly contains the frame. Drop `layout.SetBorder(true)`
+      + the "Browser" title (`tui/browser.go:123, :152`). Evidence: Go node-page
+      snapshot rows 2-4 show `┌── Browser ──┐` / `│ Browser │`; Python row 2 is
+      `Ⓝ <hash>:/page/index.mu` directly.
+- [ ] **R-NET-BROWSER-URLBAR:** URL bar shows `URL: <hash>` instead of
+      `Ⓝ <hash>:/page/index.mu`. Python (`Browser.py:508`) renders
+      `self.g["node"]+" "+current_url()` = the node glyph + full hash + `:path`
+      as a non-editable `urwid.Text` header. Go (`browser.go:126`) uses an
+      editable `ReadLineEdit` with a `"URL: "` label showing only the hash —
+      missing the `Ⓝ` glyph, the `:/page/index.mu` path, and (behaviorally) the
+      URL should be a Text, not an inline-editable field (editing is via `C-u`
+      URL dialog). Evidence: Go `URL: 95b8bfd5…` vs Python
+      `Ⓝ  8b0b7663…:/page/index.mu`.
+- [ ] **R-NET-BROWSER-NAVBAR:** A spurious top nav-bar
+      `Enter Load  Ctrl-L Back  Ctrl-R Forward  Esc URL bar` is shown. Python
+      has NO top nav bar; its controls live in the FOOTER (bottom) and show
+      transfer stats / `Link to …` — never `Enter Load Ctrl-L Back…`. Remove
+      `navBar` (`tui/browser.go:140-146`). Evidence: Go row 5 = the nav-bar
+      text; Python row 5 = page content.
+- [ ] **R-NET-BROWSER-FOOTER:** The browser footer area is missing. Python's
+      `BrowserFrame` footer = `Pile([Divider(┄), Text(status)])` showing
+      `Done  ▤ 815B   ↓815B in 0.77s   ◷ 8.48Kb/s` (transfer stats) or
+      `Link to <target>` (link peek). Go has no footer area — content fills to
+      the bottom border and the transfer-stats line is absent. Evidence: Python
+      bottom rows = `┄┄┄` + `Done ▤ 815B …`; Go bottom rows = blank + nested
+      `└──┘`.
+- [ ] **R-NET-BROWSER-LINKPEEK:** The `Link to <target>` footer peek is
+      missing/broken → in-page link-following is broken. Python shows
+      `Link to <target>` in the footer when the cursor rests on a link (2 s
+      key-timeout, `Browser.marked_link` → `browser_footer`), and the suite
+      follows links (`link line N: followed link -> <hash>`). Go never shows a
+      `Link to` footer; `examineMainPage` follows **0 links** (no "followed
+      link" log lines vs Python's many). Root cause: the Go browser doesn't
+      implement `marked_link`/`browser_footer` (and the footer is absent per
+      R-NET-BROWSER-FOOTER). Evidence: Go log has 0 "followed link" lines;
+      Python has many (e.g. log line 1013).
+- [ ] **R-NET-BROWSER-DIVIDER:** The `┄┄┄` header/footer divider rows
+      (`urwid.Divider(self.g["divider1"])`) are absent. Python header = URL row
+      + `┄┄┄` (full width); footer = `┄┄┄` + status. Go has no `┄` chrome
+      dividers in the header/footer. (Distinct from the in-page micron `-`
+      divider — see R-MICRON-DIVIDER-WIDTH.) Evidence: Python row 3 =
+      `┄┄┄…`; Go has no `┄` in the header.
+
+### Micron rendering
+
+- [ ] **R-MICRON-DIVIDER-WIDTH:** The micron `-` section divider renders short
+      (~15 chars) instead of spanning the full content width. Python renders
+      the `-` divider before `Served by rngit` at full pane width (~130 chars
+      of `─`); Go renders `───────────────` (~15 chars). Evidence: Go node-page
+      `───────────────` vs Python full-width `────…`.
+
+### Guide page
+
+> Source: same logs. Go `guide-scroll-bug=12` (every topic's reader top is
+> `No topic selected`) vs Python `guide-scroll-bug=0` (title at top). Phase 5
+> then cannot escape the Guide to the menu (`ASSERT FAIL: menu reached from
+> Guide`, cursor stuck at `(232,51)`).
+
+- [ ] **R-GUIDE-TOPIC-RENDER:** Selecting a Guide topic does NOT render the
+      topic in the reader pane — the reader stays at `No topic selected`.
+      Python: Enter on a topic → `display_topic` renders the topic (e.g.
+      `Nomad Network`) in the reader. Go: `showTopic` calls
+      `renderMarkup`/`SetText` (`tui/guide.go:280-292`) but the reader never
+      updates (placeholder persists). Evidence: Go log line 2700-2755 (topic 0
+      reader = `No topic selected`); Python log line 4661 (`Nomad Network` at
+      top). This is the `guide-scroll-bug=12` signal — every topic reports the
+      title missing.
+- [ ] **R-GUIDE-FOCUS-READER:** `showTopic` does not move focus to the reader.
+      Python's `display_topic` calls `focus_reader()` (focus → reader, so Down
+      scrolls the reader). Go's `showTopic` only renders + `ScrollTo(0,0)` and
+      never calls `FocusReader()` — focus stays on the topics list, so the
+      suite's Down-walk moves the TOPIC SELECTION instead of scrolling the
+      reader (`bottom reached after 5 downs (0 screenfuls)`). Likely the root
+      cause of R-GUIDE-DIALOG (Down/Enter leaking to a still-mounted Network
+      browser). Fix: call `FocusReader()` at the end of `showTopic` (mirror
+      Python `focus_reader()`).
+- [ ] **R-GUIDE-DIALOG:** A `Save selected node?` confirmation dialog opens
+      spuriously during Guide topic walking and persists as a modal trap.
+      From topic 2 onward, a `Confirm — Save selected node?` dialog appears
+      over the Guide page and never closes. It traps focus, so Phase 5's
+      `Up×15` cannot escape to the menu (Phase 5 `ASSERT FAIL: menu reached
+      from Guide`; the menu-Quit then misses → `C-q` fallback). `Save selected
+      node?` is only meant to be triggerable from the Network/Browser Save Node
+      action (`C-s`/`C-b` or the Announce Info `Save` button), never from the
+      Guide. It appears mid-iteration (between the topic-1 and topic-2
+      snapshots) with no Save-Node key sent — likely a mis-routed key from
+      R-GUIDE-FOCUS-READER (the Down/Enter meant to scroll the reader hit the
+      still-mounted Network browser's handler) or a delayed Phase-3 side
+      effect. Evidence: Go log line 2850 (first appearance), persists through
+      3496/3560; Phase 5 fails at 3471/3535. Re-verify after R-GUIDE-FOCUS-READER
+      is fixed.
+- [ ] **R-GUIDE-CURSOR-OOB:** Cursor positioned out of bounds `(232,51)` on
+      the Guide page (pane is 135×32). tmux reports `cursor=(232,51)` during
+      the Phase-5 escape attempt; Python reports `(0,0)` when the cursor is
+      hidden. The Go app is positioning the cursor outside the screen (a
+      `LinkableText`/`ShowCursor` coord-calc bug, or a stale cursor while the
+      modal dialog traps focus). Evidence: Go log 3471, 3535. Secondary to
+      R-GUIDE-DIALOG; re-verify after the dialog trap is fixed.
 
 ---
 
