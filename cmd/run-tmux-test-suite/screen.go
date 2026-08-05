@@ -629,6 +629,79 @@ func (v *View) FirstSelectedRow(yMin, yMax int) *ListRow {
 // (tui/network.go:231 SetFixedWidth(0, 52)).
 const networkLeftWidth = 52
 
+// announceNodeGlyph is the circled-N rune that prefixes every announce-stream
+// NODE entry (tui/glyphs.go "node" = "Ⓝ "; the row reads "{ts} Ⓝ  {name}").
+// Peer and propagation-node entries use different glyphs, so matching this
+// rune specifically selects connectable nodes.
+const announceNodeGlyph = 'Ⓝ'
+
+// leftPaneText returns the trimmed text of the left (list) pane of row y — the
+// cells with x < networkLeftWidth. The Network page's left pane is a fixed
+// 52 cols, so this isolates the announce-stream row regardless of where the
+// cursor sits (Python's ilb reports cursor_x at the right edge, ~135).
+func (v *View) leftPaneText(y int) string {
+	if v.Screen == nil || y < 0 || y >= len(v.Screen.Rows) {
+		return ""
+	}
+	row := v.Screen.Rows[y]
+	var b strings.Builder
+	for x := 0; x < networkLeftWidth && x < len(row); x++ {
+		ch := row[x].Ch
+		if ch == 0 {
+			ch = ' '
+		}
+		b.WriteRune(ch)
+	}
+	return strings.TrimSpace(b.String())
+}
+
+// cursorOnAnnounceNodeRow reports whether the hardware cursor is on an
+// announce-stream NODE row: the left pane of the row at CursorY contains the
+// Ⓝ glyph. This is the PRIMARY selection signal for the Python original,
+// which renders the selected node row with NO background fill (just fg
+// #afafaf) and signals selection solely via the cursor position. (The Go port
+// additionally fills the selected row with #aaaaaa — see SelectedAnnounceRow's
+// fallback.) cursor_x is unreliable for Python's ilb (it reports the right
+// edge, ~135), so only cursor_y is used.
+func (v *View) cursorOnAnnounceNodeRow() bool {
+	if !v.CursorOK || v.Screen == nil {
+		return false
+	}
+	if v.CursorY < 0 || v.CursorY >= v.Screen.H {
+		return false
+	}
+	return strings.ContainsRune(v.leftPaneText(v.CursorY), announceNodeGlyph)
+}
+
+// HasAnnounceNode reports whether any announce-stream NODE row (a left-pane
+// row containing Ⓝ) is present on screen. Used by Phase 2 to wait for
+// announcing nodes to populate WITHOUT relying on the cursor (which flickers
+// because the stream re-sorts as new announces arrive).
+func (v *View) HasAnnounceNode() bool {
+	if v.Screen == nil {
+		return false
+	}
+	for y := 0; y < v.Screen.H; y++ {
+		if strings.ContainsRune(v.leftPaneText(y), announceNodeGlyph) {
+			return true
+		}
+	}
+	return false
+}
+
+// IsAnnounceTabOrFilter reports whether rowText looks like the Announce
+// Stream tab bar ("[ Nodes (N) ] [ Peers ] ...") or the filter/search bar —
+// the pile widgets ABOVE the node list. enterAnnounceList sends Down past
+// these to reach the list. Detection is by plain text (no color needed) and
+// works for both the Go port and the Python original.
+func IsAnnounceTabOrFilter(rowText string) bool {
+	return strings.Contains(rowText, "Nodes ]") ||
+		strings.Contains(rowText, "Peers ]") ||
+		strings.Contains(rowText, "Propagation") ||
+		strings.Contains(rowText, "Search") ||
+		strings.Contains(rowText, "Filter")
+}
+
 // AnnounceListRows returns the content rows of the Network left pane (the
 // Announce Stream / Saved Nodes list, x < networkLeftWidth), marking the
 // #aaaaaa-bg row as Selected. Empty/blank rows are excluded. The tab bar and
@@ -669,9 +742,25 @@ func (v *View) AnnounceListRows() []ListRow {
 	return out
 }
 
-// SelectedAnnounceRow returns the #aaaaaa (cursor) row of the Announce Stream
-// list, or nil if the list is empty / no row is selected.
+// SelectedAnnounceRow returns the currently-selected Announce Stream node.
+//
+// The Python original signals selection SOLELY via the hardware cursor (the
+// selected node row has no background fill, just fg #afafaf), so the PRIMARY
+// signal is the row the cursor is on (when it is an Ⓝ node row). The Go port
+// additionally fills the selected row with the #aaaaaa list_focus background
+// whether the list has focus or not, so we fall back to that row when the
+// cursor is not on a node row (e.g. focus is in the browser but the list still
+// shows the #aaaaaa selection). Returns nil if neither signal is present.
+//
+// NOTE: the Python announce stream re-sorts as new announces arrive, which
+// makes the cursor reading flicker (the ilb cursor is sometimes hidden at
+// (0,0) even while the list has focus). Callers that must identify a node
+// robustly should key on the Announce Info address hash (content-based), not
+// on this row — see Phase 3.
 func (v *View) SelectedAnnounceRow() *ListRow {
+	if v.cursorOnAnnounceNodeRow() {
+		return &ListRow{Y: v.CursorY, Text: v.leftPaneText(v.CursorY), Selected: true}
+	}
 	for _, r := range v.AnnounceListRows() {
 		if r.Selected {
 			rr := r
@@ -787,19 +876,24 @@ const (
 
 // BrowserState returns the browser pane's state and the URL bar value. The
 // state is one of bsDisconnected, bsRetrieving, "error:<msg>", or bsRendered,
-// detected from plain-text strings (no color needed). url is the text after
-// "URL: " on that bar row (empty if absent).
+// detected from plain-text strings (no color needed). url is the browser's
+// current URL — the node hash (path stripped) — extracted from the Go port's
+// "URL: <hash>" bar OR the Python original's border title "<hash>" / URL line
+// "Ⓝ <hash>:/page/...".
 func (v *View) BrowserState() (state, url string) {
 	if v.Screen == nil {
 		return "", ""
 	}
 	full := v.Screen.fullText()
-	url = browserURL(full)
+	url = v.browserURL()
 
 	switch {
 	case strings.Contains(full, "Disconnected"):
 		return bsDisconnected, url
-	case strings.Contains(full, "Retrieving"):
+	case strings.Contains(full, "Retrieving"),
+		strings.Contains(full, "Request sent, awaiting response"),
+		strings.Contains(full, "Awaiting response"),
+		strings.Contains(full, "Establishing link"):
 		return bsRetrieving, url
 	case strings.Contains(full, "No path to destination known"),
 		strings.Contains(full, "Link establishment timed out"),
@@ -817,31 +911,98 @@ func (v *View) BrowserState() (state, url string) {
 	}
 }
 
-// browserURL extracts the value of the "URL: <value>" bar row.
-//
-// The URL bar row is rendered inside the browser pane's bordered box, so its
-// text both begins AND ends with one or more '│' border chars ("│URL: <hash>   │"
-// or "││URL: <hash>   ││" for the nested node-page box). TrimSpace does not
-// strip '│', so neither HasPrefix(t, "URL:") nor TrimSpace of the tail works —
-// we match "URL:" anywhere on the row, then take only the first
-// whitespace-delimited token after it, which drops the trailing border chars
-// ("││") as well as any inner padding. The URL bar sits at the top of the
-// browser pane (above the page content), so the first row containing "URL:"
-// is the bar itself.
-func browserURL(full string) string {
-	for _, line := range strings.Split(full, "\n") {
-		t := strings.TrimSpace(line)
-		idx := strings.Index(t, "URL:")
-		if idx < 0 {
-			continue
-		}
-		fields := strings.Fields(t[idx+len("URL:"):])
-		if len(fields) > 0 {
-			return fields[0]
-		}
+// browserURL extracts the browser pane's current URL — the node hash with any
+// path (":/page/...") stripped, so callers compare against the Announce Info
+// target hash. The Go port renders a "URL: <hash>" bar; the Python original
+// renders the URL as the browser border title "<hash>" and a
+// "Ⓝ <hash>:/page/..." line. Both live in the right pane (x >=
+// networkLeftWidth), so we scan only the right pane to avoid matching the
+// Announce Info / Local Peer Info "<hash>" rows in the left pane.
+func (v *View) browserURL() string {
+	if v.Screen == nil {
 		return ""
 	}
+	// Go: a row containing "URL:" -> first token after it. "URL:" is
+	// browser-specific (the left-pane Announce Info / Local Peer Info use
+	// "Addr :"/"LXMF Addr :", never "URL:"), so a full-row scan is safe and
+	// keeps working for test fixtures that place the bar at column 0.
+	for y := 0; y < v.Screen.H; y++ {
+		t := v.Screen.rowText(y)
+		if idx := strings.Index(t, "URL:"); idx >= 0 {
+			if fs := strings.Fields(t[idx+len("URL:"):]); len(fs) > 0 {
+				return stripURLPath(fs[0])
+			}
+		}
+	}
+	// Python: the browser border title "<hash>" — a RIGHT-PANE border row
+	// (contains '─', U+2500) with a "<...>" span. Scoped to the right pane
+	// because the left-pane Announce Info / Local Peer Info also render
+	// "<hash>" rows. The first such row is the outer browser frame; its inner
+	// text is the node hash.
+	for y := 0; y < v.Screen.H; y++ {
+		t := v.rightPaneText(y)
+		if t == "" || !strings.Contains(t, "─") {
+			continue
+		}
+		lo := strings.Index(t, "<")
+		if lo < 0 {
+			continue
+		}
+		hi := strings.IndexByte(t[lo+1:], '>')
+		if hi < 0 {
+			continue
+		}
+		inner := strings.TrimSpace(t[lo+1 : lo+1+hi])
+		if inner == "" {
+			continue
+		}
+		return stripURLPath(strings.Fields(inner)[0])
+	}
+	// Python fallback: the "Ⓝ <hash>:/page/..." URL line in the RIGHT pane
+	// (the left-pane announce rows also contain Ⓝ, so this must be scoped).
+	for y := 0; y < v.Screen.H; y++ {
+		t := v.rightPaneText(y)
+		if t == "" {
+			continue
+		}
+		if strings.ContainsRune(t, announceNodeGlyph) {
+			if fs := strings.Fields(t); len(fs) > 0 {
+				return stripURLPath(fs[len(fs)-1])
+			}
+		}
+	}
 	return ""
+}
+
+// rightPaneText returns the trimmed text of the right (browser) pane of row y
+// — the cells with x >= networkLeftWidth. The browser pane is everything right
+// of the fixed 52-col left list, so this isolates browser content/labels from
+// the announce list / side panels on the left.
+func (v *View) rightPaneText(y int) string {
+	if v.Screen == nil || y < 0 || y >= len(v.Screen.Rows) {
+		return ""
+	}
+	row := v.Screen.Rows[y]
+	var b strings.Builder
+	for x := networkLeftWidth; x < len(row); x++ {
+		ch := row[x].Ch
+		if ch == 0 {
+			ch = ' '
+		}
+		b.WriteRune(ch)
+	}
+	return strings.TrimRight(b.String(), " ")
+}
+
+// stripURLPath reduces a browser URL token to its bare node hash by dropping
+// any ":/path" suffix. RNS destination hashes are hex with no colon, so a
+// colon marks the start of a path ("c684...:/page/index.mu" -> "c684...").
+// Tokens with no colon (a bare hash, or a Go "URL:" value) pass through.
+func stripURLPath(token string) string {
+	if c := strings.IndexByte(token, ':'); c >= 0 {
+		return token[:c]
+	}
+	return token
 }
 
 func firstErrorLine(full string) string {
@@ -873,58 +1034,102 @@ func firstErrorLine(full string) string {
 	return "unknown"
 }
 
-// GuideTopicRendered returns the first non-blank line of the Guide reader pane
-// (the right ~2/3 of the screen), which is the topic's `>Title` heading. Used
-// to verify a topic actually rendered and to detect the scroll-reset bug (if
-// the title is NOT at the top after selecting a new topic, the offset leaked).
+// GuideTopicRendered returns the first visible content line of the Guide
+// reader pane — the topic's `>Title` heading when the reader is at the top
+// (scroll offset 0). Used to verify a topic actually rendered and to detect
+// the scroll-reset bug: if the title is NOT at the top after selecting a new
+// topic, the scroll offset leaked from the previous topic (the Go port's
+// known bug; the Python reference makes a fresh Scrollable per topic so it
+// always resets).
+//
+// The reader is a LineBox(ScrollBar(Scrollable(...))) — a bordered box whose
+// top border `┌──...──┐` sits on a fixed row (it does NOT scroll; only the
+// content inside does). So: find the reader's top border row and its left
+// edge (the SECOND `┌` on that row — the first `┌` is the Topics LineBox),
+// then return the first non-blank content row below it, stripped of the
+// leading `│` and trailing scrollbar/border. When the reader is scrolled to
+// the bottom, this returns mid-content instead of the title — exactly the
+// scroll-reset-bug signal.
 func (v *View) GuideTopicRendered() string {
-	if v.Screen == nil {
+	if v.Screen == nil || len(v.Screen.Rows) == 0 {
 		return ""
 	}
-	// The Guide layout is [topics ~1/3 | reader ~2/3]. The reader starts at
-	// roughly 1/3 of the width. Scan body rows for the first non-blank line
-	// whose content begins at/after the reader's left column. We approximate
-	// the reader's left edge as W/3.
-	leftEdge := v.Screen.W / 3
-	if leftEdge < 1 {
-		leftEdge = 1
+	rows := v.Screen.Rows
+	// Find the row holding BOTH the Topics and reader top borders, and the
+	// column of the reader's `┌` (the second box-corner on that row).
+	borderY, readerLeft := -1, -1
+	for y := 1; y < v.Screen.H && y < len(rows); y++ {
+		r := rows[y]
+		first := -1
+		for x := 0; x < len(r); x++ {
+			ch := r[x].Ch
+			if ch == '┌' || ch == '├' || ch == '└' {
+				if first < 0 {
+					first = x
+				} else {
+					borderY, readerLeft = y, x
+					break
+				}
+			}
+		}
+		if borderY >= 0 {
+			break
+		}
 	}
-	for y := 1; y < v.Screen.H; y++ {
-		row := v.Screen.Rows[y]
-		if len(row) <= leftEdge {
+	if borderY < 0 || readerLeft < 0 {
+		// Fallback: reader begins near W/3, border on row 1.
+		borderY = 1
+		readerLeft = v.Screen.W / 3
+		if readerLeft < 1 {
+			readerLeft = 1
+		}
+	}
+	// Scan the rows below the top border for the first content row. A content
+	// row begins with │ or ┃ at the reader's left edge; inner border rows
+	// (├┬└┴─) and blank rows are skipped.
+	for y := borderY + 1; y < v.Screen.H && y < len(rows); y++ {
+		r := rows[y]
+		if readerLeft >= len(r) {
 			continue
 		}
-		// Find the first non-space cell at/after leftEdge.
+		edge := r[readerLeft].Ch
+		if edge == 0 {
+			edge = ' '
+		}
+		if edge != '│' && edge != '┃' {
+			continue // border / separator / blank
+		}
+		// Extract content from readerLeft+1 up to the trailing scrollbar (┃)
+		// or the LineBox right border (│).
 		var b strings.Builder
-		any := false
-		for x := leftEdge; x < len(row); x++ {
-			ch := row[x].Ch
+		started := false
+		for x := readerLeft + 1; x < len(r); x++ {
+			ch := r[x].Ch
 			if ch == 0 {
 				ch = ' '
 			}
-			if ch != ' ' {
-				any = true
+			if ch == '┃' || ch == '│' {
+				break // scrollbar thumb or right border
 			}
-			if any {
-				b.WriteRune(ch)
+			if !started && ch == ' ' {
+				continue
 			}
+			started = true
+			b.WriteRune(ch)
 		}
-		// The reader pane is a bordered box, so every content row is wrapped in
-		// '│' (or '││'/'┃' for nested/scrollbar boxes). Strip leading AND
-		// trailing border+space chars so the heading title compares cleanly
-		// (e.g. "Nomad Network", not "Nomad Network │").
-		t := strings.TrimRight(b.String(), " │┃║")
-		if strings.TrimSpace(t) != "" {
-			t = strings.TrimLeft(t, "│ ")
-			return strings.TrimSpace(t)
+		if t := strings.TrimSpace(b.String()); t != "" {
+			return t
 		}
 	}
 	return ""
 }
 
-// GuideSelectedTopic returns the index (0..11) of the highlighted topic in the
-// "Topics" list, by locating the Topics border-title box and finding the
-// #aaaaaa-bg row within it. ok=false if the Topics list is not on screen.
+// GuideSelectedTopic returns the index (0..11) of the selected topic in the
+// "Topics" list. The PRIMARY signal is the hardware cursor: like the announce
+// stream, the Python original signals topic selection via the cursor with no
+// background fill, so the topic the cursor is on (in the left third, below the
+// "Topics" border title) is the selected one. Falls back to the #aaaaaa-bg row
+// (the Go port). ok=false if the Topics list is not on screen.
 func (v *View) GuideSelectedTopic() (int, bool) {
 	if v.Screen == nil {
 		return -1, false
@@ -945,8 +1150,32 @@ func (v *View) GuideSelectedTopic() (int, bool) {
 	if rightEdge < 2 {
 		rightEdge = 2
 	}
-	// The selected topic is the #aaaaaa-bg row below the title, in the left
-	// third. Count it as the Nth non-blank topic row to derive the index.
+	// Cursor-primary: if the cursor is on a topic row (left third, below the
+	// Topics title), count it as the Nth non-blank topic row.
+	if v.CursorOK && v.CursorY > titleY && v.CursorY < v.Screen.H {
+		idx := -1
+		for y := titleY + 1; y <= v.CursorY && y < v.Screen.H; y++ {
+			row := v.Screen.Rows[y]
+			if len(row) == 0 {
+				continue
+			}
+			blank := true
+			for x := 0; x < rightEdge && x < len(row); x++ {
+				ch := row[x].Ch
+				if ch != 0 && ch != ' ' {
+					blank = false
+					break
+				}
+			}
+			if !blank {
+				idx++
+			}
+		}
+		if idx >= 0 {
+			return idx, true
+		}
+	}
+	// Fallback: the #aaaaaa-bg row below the title (Go port).
 	idx := -1
 	for y := titleY + 1; y < v.Screen.H; y++ {
 		row := v.Screen.Rows[y]

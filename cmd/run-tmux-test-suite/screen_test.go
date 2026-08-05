@@ -360,14 +360,19 @@ func TestBrowserURLBordered(t *testing.T) {
 }
 
 func TestGuideTopicRendered(t *testing.T) {
-	// Full-width screen (W=60): left third (cols 0..19) is the topics list,
-	// the reader occupies cols 20..59. The first non-blank reader line is the
-	// topic title, which starts at col 20 (= W/3). All rows are 60 ASCII chars
-	// so display columns == rune count.
+	// Model the real Python Guide layout (W=60): a Topics LineBox (cols 0..19)
+	// and a reader LineBox (cols 20..59), both bordered. Row 1 holds both top
+	// borders (┌ at col 0 and ┌ at col 20); the reader's first content row (row
+	// 2) holds the topic title. GuideTopicRendered must locate the reader's
+	// left edge (the SECOND ┌) and return the first content line stripped of
+	// its │ borders.
 	const W = 60
 	blankRow := strings.Repeat(" ", W)
-	titleRow := strings.Repeat(" ", 20) + "Nomad Network" + strings.Repeat(" ", W-20-13)
-	raw := blankRow + "\n" + blankRow + "\n" + titleRow + "\n" + blankRow
+	borderRow := "┌" + strings.Repeat("─", 18) + "┐" + "┌" + strings.Repeat("─", 38) + "┐"
+	// Topics box content (cols 0..19) + reader content (cols 20..59).
+	readerContent := "Nomad Network" + strings.Repeat(" ", 38-13)
+	contentRow := "│Introduction" + strings.Repeat(" ", 6) + "│" + "│" + readerContent + "│"
+	raw := blankRow + "\n" + borderRow + "\n" + contentRow + "\n" + blankRow
 	v := viewOf(raw, 0, 1)
 	got := strings.TrimSpace(v.GuideTopicRendered())
 	if got != "Nomad Network" {
@@ -382,13 +387,12 @@ func TestGuideTopicRendered(t *testing.T) {
 // "Nomad Network │", falsely reporting the scroll-reset bug on every topic.
 func TestGuideTopicRenderedBordered(t *testing.T) {
 	const W = 60
-	// Reader occupies cols 20..59 (width 40). Bordered: '│' at col 20, content
-	// cols 21..58, '│' at col 59. Title "Nomad Network" indented 2.
-	readerW := 40
-	content := "  Nomad Network" + strings.Repeat(" ", readerW-2-2-13) // 2 borders + 2 indent
-	titleRow := strings.Repeat(" ", 20) + "│" + content + "│"
 	blankRow := strings.Repeat(" ", W)
-	raw := blankRow + "\n" + blankRow + "\n" + titleRow + "\n" + blankRow
+	borderRow := "┌" + strings.Repeat("─", 18) + "┐" + "┌" + strings.Repeat("─", 38) + "┐"
+	// Title indented 2 inside the reader box.
+	indented := "  Nomad Network" + strings.Repeat(" ", 38-2-13)
+	contentRow := "│Introduction" + strings.Repeat(" ", 6) + "│" + "│" + indented + "│"
+	raw := blankRow + "\n" + borderRow + "\n" + contentRow + "\n" + blankRow
 	v := viewOf(raw, 0, 1)
 	got := strings.TrimSpace(v.GuideTopicRendered())
 	if got != "Nomad Network" {

@@ -140,59 +140,88 @@ func menuFocused() func(*View) bool {
 	}
 }
 
-// onAList reports whether focus currently sits on a selectable list (the
-// Network Announce/Saved list, or the Guide Topics list). Used by escapeToMenu
-// to decide between Up (escape a list to the menu) and Left (release browser
-// content focus back to a list). Up while in the browser content only scrolls
-// the browser and never reaches the menu — the exact failure that stranded
-// Phase 4 on the Network page.
-func (v *View) onAList() bool {
-	if v == nil || v.Screen == nil {
-		return false
-	}
-	if v.SelectedAnnounceRow() != nil {
-		return true
-	}
-	if idx, ok := v.GuideSelectedTopic(); ok && idx >= 0 {
-		return true
-	}
-	return false
-}
-
-// releaseToList sends Left until focus is back on a selectable list (the
-// Network Announce/Saved list or the Guide Topics list), capped at `cap`
-// sends. Returns whether a list is focused. It does nothing if focus is
-// already on a list. This is the inverse of escapeToMenu: Left in the browser
-// content releases browser focus back to the left list; Left on a list would
-// move INTO the browser, so it is guarded by onAList and never sent when
-// already on a list.
-func (d *driver) releaseToList(cap int) bool {
-	for i := 0; i < cap; i++ {
-		if d.view().onAList() {
+// enterAnnounceList moves focus from the Announce Stream tab bar / filter bar
+// down onto the node list. After Phase 2's Ctrl-L, the Python original leaves
+// focus on the tab bar (cursor ~3,2); the Go port is already on the list. This
+// sends Down past the tab bar and filter bar (detected by their row text —
+// "[ Nodes (N) ]", "Search:") until focus is on the list: 2 Downs for Python,
+// 0 for Go (whose cursor is already on a Ⓝ row). It stops as soon as the
+// cursor is on a node row OR the cursor has left the tab/filter rows (the ilb
+// cursor may be hidden at (0,0) after a re-sort, but focus is on the list and
+// Down/Enter still activate the focused node).
+func (d *driver) enterAnnounceList(maxDowns int) bool {
+	for i := 0; i < maxDowns; i++ {
+		v := d.view()
+		if v.cursorOnAnnounceNodeRow() {
 			return true
 		}
-		d.send("Left")
+		if v.CursorOK && v.CursorY >= 0 && v.CursorY < v.Screen.H &&
+			IsAnnounceTabOrFilter(v.Screen.rowText(v.CursorY)) {
+			d.send("Down")
+			continue
+		}
+		// Cursor is past the tab/filter rows and not visibly on a node row —
+		// assume focus is on the list (cursor hidden after a re-sort).
+		return true
 	}
-	return d.view().onAList()
+	return d.view().cursorOnAnnounceNodeRow()
 }
 
-// escapeToMenu releases focus from wherever it is (browser content, a list,
-// a dialog) up to the menu bar, asserting nothing — the caller asserts. From
-// the browser content it sends Left (which at a line's start releases browser
-// focus back to the left list); once on a list it sends Up (bodyListAtTop ->
-// FocusMenu). It never sends Up while in the browser (that only scrolls).
-// Caps total steps so a stuck focus still returns.
+// escapeToMenu moves focus from wherever it is (browser content, the announce
+// list, the tab/filter bar, a dialog) up to the menu bar. The caller asserts.
+// The Python AnnounceStream is a pile [tab bar, filter bar, node list]; Up
+// climbs the pile to the menu (list -> filter -> tab -> menu, 3 Ups). Up while
+// in the browser CONTENT only scrolls and never reaches the menu, so when the
+// cursor is in the right pane (the browser) we send Left first to release
+// focus back to the left list, then climb. Caps total steps so a stuck focus
+// still returns.
 func (d *driver) escapeToMenu(maxSteps int) {
 	for i := 0; i < maxSteps; i++ {
 		v := d.view()
 		if _, ok := v.MenuFocusedButton(); ok {
 			return
 		}
-		if v.onAList() {
-			d.send("Up")
-		} else {
-			d.send("Left")
+		// If an Announce Info is open, the cursor is trapped on its button row
+		// (< Back > at ~(3,12)) and Up cycles the buttons without escaping. The
+		// probe confirmed Escape closes Announce Info and returns focus to the
+		// Announce Stream list (cursor hidden at (0,0)), from which Up×3 reaches
+		// the menu. Handle this BEFORE the node-row / right-pane checks, since the
+		// button row is in the LEFT pane at a small cursor_x and would otherwise
+		// fall through to the Up branch and stay trapped.
+		if v.Screen != nil && hasBorderTitle(v.Screen.fullText(), "Announce Info") {
+			d.send("Escape")
+			continue
 		}
+		// On the Guide page: the Topics list is a urwid LineBox(ilb). The ilb
+		// reports cursor_x at the right edge (~135), which the right-pane check
+		// below would mistake for the Network browser and send Left (moving
+		// topics->reader, the wrong way). The phase4 loop always ends with Left
+		// so focus is on the Topics list here; Up climbs the list to the menu
+		// (TopicList.keypress sends focus to the header at the first item).
+		if v.ActivePage() == "guide" {
+			d.send("Up")
+			continue
+		}
+		// On the announce node list: the cursor is on a Ⓝ row. Python's ilb
+		// reports cursor_x at the right edge (~135), so we MUST check the node
+		// row BEFORE the right-pane check below — otherwise the list is mistaken
+		// for the browser and Left moves list->browser (oscillation). Up escapes
+		// the pile toward the menu (list -> filter -> tab -> menu).
+		if v.cursorOnAnnounceNodeRow() {
+			d.send("Up")
+			continue
+		}
+		// Cursor genuinely in the right pane and NOT on a node row -> in the
+		// browser -> Left releases focus back to the left list.
+		if v.CursorOK && v.CursorX >= networkLeftWidth {
+			d.send("Left")
+			continue
+		}
+		// Otherwise (tab/filter bar, list with a hidden cursor at (0,0), Guide
+		// list) -> Up climbs toward the menu. From the list with a hidden cursor
+		// the first Up wakes the cursor on the filter bar and subsequent Ups
+		// climb to the menu.
+		d.send("Up")
 	}
 }
 
@@ -294,19 +323,21 @@ func (d *driver) phase2() {
 	d.assert(hasTitle("Announce Stream"), 5*time.Second, "Announce Stream showing after Ctrl-L")
 	d.snapshot("after Ctrl-L (Announce Stream)")
 
+	// Enter the node list. After C-l the Python original leaves focus on the
+	// tab bar (cursor ~3,2); the Go port is already on the list. send Down
+	// past the tab/filter bar onto the node list (2 Downs for Python, 0 for
+	// Go) so Phase 3 can Down/Enter nodes. The cursor flickers (the stream
+	// re-sorts as announces arrive), so this is detected by tab/filter row
+	// text, not the cursor.
+	d.enterAnnounceList(6)
+	d.snapshot("after entering announce list")
+
 	d.logf("waiting up to %v for announcing nodes to populate...", d.announceWait)
-	nodesSeen := false
-	deadline := time.Now().Add(d.announceWait)
-	for time.Now().Before(deadline) {
-		v := d.view()
-		if r := v.SelectedAnnounceRow(); r != nil && r.Text != "" {
-			nodesSeen = true
-			d.logf("  announcing node present: %q at row %d", r.Text, r.Y)
-			break
+	if d.assert(func(v *View) bool { return v.HasAnnounceNode() }, d.announceWait, "announcing nodes present in the stream") {
+		if r := d.view().SelectedAnnounceRow(); r != nil {
+			d.logf("  announcing node selected: %q at row %d", r.Text, r.Y)
 		}
-		time.Sleep(500 * time.Millisecond)
-	}
-	if !nodesSeen {
+	} else {
 		d.logf("  no announcing nodes detected within %v; Phase 3 will record zero connects", d.announceWait)
 	}
 	d.snapshot("Announce Stream after announce-wait")
@@ -317,18 +348,21 @@ func (d *driver) phase2() {
 func (d *driver) phase3() {
 	d.step(fmt.Sprintf("Phase 3: connect to nodes, render index.mu, follow links (x%d)", d.nodeIters))
 
-	// tried is keyed by the node's STABLE display name (announceNodeName), not
-	// the full announce row text. The announce stream re-sorts and re-emits
-	// nodes with a fresh timestamp on every re-announce, so the row text
-	// ("16:32:23 Ⓝ Rostov") changes while the name ("Rostov") does not —
-	// keying on row text (the old behavior) made the suite reconnect the same
-	// node repeatedly. tried covers both successes and failures so the suite
-	// never revisits a node this session (forward progress; no reconnects).
+	// tried is keyed by the node's Announce Info ADDRESS HASH — the only
+	// robust identifier. The Python announce stream re-sorts as new announces
+	// arrive and signals selection via the hardware cursor, which flickers
+	// (the ilb cursor is sometimes hidden at (0,0) even while the list has
+	// focus), so neither the row text nor the cursor reliably identifies the
+	// selected node. The Announce Info address is plain text (content-based),
+	// so keying on it avoids reconnects even when the list reorders. tried
+	// covers both successes and failures so the suite never revisits a node.
 	tried := map[string]bool{}
 	success := 0
 	attempts := 0
-	maxAttempts := d.nodeIters * 4
+	maxAttempts := d.nodeIters * 5
 
+	// Phase 2 already called enterAnnounceList, so focus is on the node list
+	// (cursor may flicker, but Down/Enter activate the focused node regardless).
 	for success < d.nodeIters && attempts < maxAttempts {
 		attempts++
 		d.logf("iteration: success=%d/%d attempts=%d/%d", success, d.nodeIters, attempts, maxAttempts)
@@ -337,44 +371,44 @@ func (d *driver) phase3() {
 			break
 		}
 
-		// 0. Ensure focus is back on the Announce Stream list. A failed
-		//    connect (C-w + continue) can leave focus in the (now-disconnected)
-		//    browser pane; seekUntriedNode would then send Down into the browser
-		//    (scrolling it) and never find a node. releaseToList Lefts out of the
-		//    browser back to the list, and is a no-op when already on the list.
-		d.releaseToList(4)
-
-		// 1. Seek an untried node. The cursor may be on a node we already
-		//    connected/attempted (the list reorders dynamically); walk Down
-		//    until we find a name not in `tried`, or cycle through all visible
-		//    nodes (then nothing new to do this round).
-		name, row := d.seekUntriedNode(tried)
-		if name == "" || row == nil {
-			d.logf("  no untried node visible (all %d known names attempted); ending Phase 3", len(tried))
-			break
+		// 1. Advance to the next node. On iteration 1 we are on the top node;
+		//    on later iterations the previous Left released the browser back to
+		//    the list on the node we just connected, so Down moves to the next.
+		if attempts > 1 {
+			d.send("Down")
 		}
-		d.logf("  selected node %q (row %q)", name, row.Text)
 
-		// 2. Enter -> Announce Info. Verify it opened (border title + Addr
-		//    hash) — the check the blind script faked with a stale "Connect"
-		//    substring match.
+		// 2. Enter -> Announce Info for the focused node. Focus is on the list,
+		//    so Enter opens the Announce Info even when the cursor is hidden.
 		d.send("Enter")
 		opened := d.assert(func(v *View) bool {
 			_, ok := v.AnnounceInfoAddr()
 			return ok && hasBorderTitle(v.Screen.fullText(), "Announce Info")
-		}, 6*time.Second, "Announce Info opened for %q", name)
+		}, 6*time.Second, "Announce Info opened (attempt %d)", attempts)
 		if !opened {
-			d.logf("  no node-type Announce Info (peer/pn entry or empty); marking tried and skipping")
-			tried[name] = true
+			d.logf("  no Announce Info (focus not on a node, or peer/pn entry); skipping")
+			d.snapshot("phase3: no announce info")
+			// Recover: release any browser focus back to the list and retry.
 			d.send("Escape")
-			d.snapshot("phase3 skip (no Announce Info)")
+			d.send("Left")
 			continue
 		}
 		targetHash := ""
 		if hv := d.view(); hv != nil {
 			targetHash, _ = hv.AnnounceInfoAddr()
 		}
-		d.snapshot(fmt.Sprintf("phase3: announce info opened (name=%q addr=%s)", name, targetHash))
+		d.snapshot(fmt.Sprintf("phase3: announce info opened (addr=%s)", targetHash))
+
+		// Skip nodes we already tried this session — the list re-sorts, so a
+		// Down can land on a previously-connected node.
+		if targetHash != "" && tried[targetHash] {
+			d.logf("  node %s already tried this session; skipping", targetHash)
+			d.send("Escape")
+			continue
+		}
+		if targetHash != "" {
+			tried[targetHash] = true
+		}
 
 		// 3. Focus the Connect button (color-neutral; detected via cursor_x on
 		//    the button row). Right moves Back->Connect. Only press Enter if
@@ -390,10 +424,9 @@ func (d *driver) phase3() {
 		connectFocused := d.assert(func(v *View) bool {
 			b, ok := v.FocusedActionButton()
 			return ok && b == "Connect"
-		}, 3*time.Second, "Connect button focused for %q", name)
+		}, 3*time.Second, "Connect button focused (addr=%s)", targetHash)
 		if !connectFocused {
-			d.logf("  could not focus Connect; marking tried and skipping")
-			tried[name] = true
+			d.logf("  could not focus Connect; skipping")
 			d.send("Escape")
 			continue
 		}
@@ -403,10 +436,8 @@ func (d *driver) phase3() {
 		//    proceed: either the target node's index.mu rendered (state ==
 		//    rendered AND url == targetHash, proving navigation to THIS node
 		//    and not a stale page), OR a connect error (link establishment
-		//    failure / no path / request failed / timed out). The blind script
-		//    declared success the instant "Disconnected" disappeared, matching
-		//    a still-"Retrieving" frame; this single wait blocks through
-		//    "Retrieving" until one of the two outcomes actually occurs.
+		//    failure / no path / request failed / timed out). Content-based, so
+		//    it works for both ports regardless of cursor visibility.
 		d.logf("  Connect pressed (target %q); waiting for render or failure...", targetHash)
 		_, _ = d.waitFor(func(v *View) bool {
 			st, url := v.BrowserState()
@@ -416,7 +447,6 @@ func (d *driver) phase3() {
 			return st == bsRendered && targetHash != "" && url == targetHash
 		}, d.connectWait+6*time.Second)
 		st, url := d.view().BrowserState()
-		tried[name] = true
 
 		if !(st == bsRendered && targetHash != "" && url == targetHash) {
 			switch {
@@ -430,6 +460,7 @@ func (d *driver) phase3() {
 			d.snapshot("phase3: connect failed")
 			d.send("C-w") // Disconnect to reset the browser pane before the next node.
 			time.Sleep(d.stepDelay)
+			d.send("Left") // Release the (now-disconnected) browser focus back to the list.
 			continue
 		}
 
@@ -437,72 +468,33 @@ func (d *driver) phase3() {
 		d.snapshot("phase3: node index.mu rendered")
 		success++
 
-		// 5. Move into the browser page and follow EVERY link on the front
-		//    page, returning to the main page (Back = C-d) after each. The
-		//    browser resets focus to the first selectable line on every render
-		//    (initNavState), so link i is reached with i Downs. Links render
-		//    in the inherited text color (no distinct link color), so we
-		//    detect "tried all links" by URL reuse: once a Down+Enter
-		//    re-navigates to an already-followed URL (or fails to leave the
-		//    main page), we stop.
-		d.send("Right") // list -> browser content
+		// 5. Follow front-page links. After Connect the Python reference returns
+		//    focus to the Announce Stream LIST (probe-confirmed: a stray Enter on
+		//    the list re-opens the Announce Info), NOT to the browser. So we MUST
+		//    send Right to move focus list->browser before link navigation, else
+		//    followAllLinks's first Enter re-opens the Announce Info and traps the
+		//    cursor on its button row (the Go port has the same list-focus
+		//    behavior after Connect — R-NET-FOCUS-TRAP). Right from the list lands
+		//    in the browser (cursor hidden at (0,0); the browser is a urwid
+		//    Text/Filler with no visible cursor). followAllLinks verifies each
+		//    navigation via BrowserState content.
 		d.assert(func(v *View) bool {
-			_, ok := v.MenuFocusedButton()
-			return !ok // focus moved into the body/browser
-		}, 3*time.Second, "focus moved into browser pane")
+			// The Announce Info dialog closed and the browser is active: the
+			// Announce Info border title is gone.
+			return !hasBorderTitle(v.Screen.fullText(), "Announce Info")
+		}, 3*time.Second, "Announce Info closed after Connect (browser active)")
 		d.snapshot("phase3: browser pane (before link nav)")
+		d.send("Right") // list -> browser (cursor hidden at (0,0))
 		d.followAllLinks(targetHash)
 
-		// 6. Release focus back to the Announce Stream list (Left at a line's
-		//    start releases browser focus) so the next iteration can seek the
-		//    next node. releaseToList is guarded so it is a no-op if focus is
-		//    already back on the list.
-		d.releaseToList(4)
-		d.assert(func(v *View) bool {
-			return v.SelectedAnnounceRow() != nil
-		}, 3*time.Second, "focus back on the announce list")
-		d.snapshot("phase3: back at node list")
+		// 6. Release the browser back to the list for the next iteration. Left
+		//    at a line's start in the browser releases focus to the left list.
+		//    The cursor may stay hidden (0,0), but focus is on the list and the
+		//    next iteration's Down/Enter will activate the next node.
+		d.send("Left")
 	}
 	d.logf("Phase 3 complete: %d/%d successful connects in %d attempts (%d distinct nodes tried)",
 		success, d.nodeIters, attempts, len(tried))
-}
-
-// seekUntriedNode walks the Announce Stream list (Down, wrapping) until the
-// selected row's stable node name is not in `tried`, returning the name + row.
-// Returns ("", nil) if every visible node is already tried (detected when a
-// Down lands on a name already seen this seek — i.e. we cycled through all).
-func (d *driver) seekUntriedNode(tried map[string]bool) (string, *ListRow) {
-	visited := map[string]bool{}
-	nilStreak := 0 // consecutive steps with no selected list row (focus not on list)
-	for steps := 0; steps < 60; steps++ {
-		row := d.view().SelectedAnnounceRow()
-		name := ""
-		if row != nil {
-			name = announceNodeName(row.Text)
-		}
-		if name != "" && !tried[name] {
-			return name, row
-		}
-		if name != "" {
-			nilStreak = 0
-			// A repeat means we've cycled through every visible node and they
-			// are all tried — stop seeking.
-			if visited[name] {
-				return "", nil
-			}
-			visited[name] = true
-		} else {
-			// No selected list row: focus is not on the list (e.g. stuck in a
-			// linkless browser page). A few Downs should release/advance; if it
-			// persists, stop rather than burn the whole budget scrolling.
-			nilStreak++
-			if nilStreak >= 5 {
-				return "", nil
-			}
-		}
-		d.send("Down")
-	}
-	return "", nil
 }
 
 // followAllLinks follows every link on the front (index.mu) page, going Back
@@ -639,24 +631,39 @@ func (d *driver) phase4() {
 	}, 3*time.Second, "Guide topic list visible (Topics box)")
 	d.snapshot("Guide topic list (item 0, Introduction)")
 
-	// Select topic 0 via Enter (AddItem selected callback -> showTopic).
+	// Select topic 0 via Enter. In the Python reference, a topic ListEntry
+	// emits "click" on Enter -> display_topic -> set_content_widgets builds a
+	// FRESH Scrollable (scroll offset reset to 0) AND focus_reader() moves
+	// focus to the reader column. So after Enter, focus is in the reader and
+	// the topic is at the top. Down alone does NOT render (no click signal),
+	// so each topic needs its own Enter.
 	d.send("Enter")
 	d.snapshot("Guide topic 0 (Introduction) selected")
 
-	// For each topic: move to the reader, capture the FIRST visible line. If it
-	// is the topic title, scroll is at row 0 (correct). If not, the scroll-reset
-	// bug is present (showTopic has no ScrollTo(0,0), so the offset leaked from
-	// the previous topic). Then Home (which DOES ScrollToBeginning) and re-check
-	// to contrast buggy vs correct; End to scroll to bottom; Left back to list;
-	// Down to the next topic (auto-renders it).
+	// For each topic: focus is in the reader (from this iteration's Enter, or
+	// the pre-loop Enter for topic 0), showing the topic at the top (Python
+	// resets the offset; the Go port's known bug leaks it, so the first
+	// visible line is mid-content instead of the title). Capture the FIRST
+	// visible content line (GuideTopicRendered skips the reader's border) and
+	// compare to the expected title. Then Home (ScrollToBeginning, correct) to
+	// contrast buggy-vs-correct; End to scroll to the bottom (sets up the
+	// leak test for the next topic); Left to release focus back to the Topics
+	// list; Down to the next topic + Enter to render it.
 	for topic := 0; topic <= 11; topic++ {
 		expected := guideTopicTitles[topic]
-		d.send("Right")
 		time.Sleep(300 * time.Millisecond)
 		v := d.view()
 		rendered := v.GuideTopicRendered()
 		d.snapshot(fmt.Sprintf("Guide topic %d reader right after selection (BUG CHECK: top should be %q)", topic, expected))
-		if strings.TrimSpace(rendered) == expected {
+		// Only count a scroll-reset bug when we are ACTUALLY on the Guide page.
+		// The blind script counted bogus hits because it never verified it was
+		// on the Guide (it read the browser border title as the Guide reader
+		// while stranded on the Network page). If focus never reached the
+		// Guide, log a NOTE instead of incrementing the bug counter.
+		if v.ActivePage() != "guide" {
+			d.logf("  topic %d: NOT on Guide page (active=%q) — not counting a scroll-reset bug; top is %q",
+				topic, v.ActivePage(), rendered)
+		} else if strings.TrimSpace(rendered) == expected {
 			d.logf("  topic %d: scroll at row 0 (title %q at top) — no leak", topic, expected)
 		} else {
 			d.scrollBug++
@@ -675,23 +682,23 @@ func (d *driver) phase4() {
 		d.send("End")
 		time.Sleep(400 * time.Millisecond)
 		d.snapshot(fmt.Sprintf("Guide topic %d reader scrolled to bottom", topic))
-		// Release focus back to the Topics list. Left at a line's start in the
-		// reader releases focus; after End the cursor may not be at position 0,
-		// so send Left a few times until the Topics list is selected again.
-		for tries := 0; tries < 4; tries++ {
-			if idx, ok := d.view().GuideSelectedTopic(); ok && idx >= 0 {
-				break
-			}
-			d.send("Left")
-		}
+		// Release focus back to the Topics list: Left moves reader->topics in
+		// the urwid Columns (the vertical Scrollable does not consume Left).
+		d.send("Left")
+		time.Sleep(200 * time.Millisecond)
 
 		if topic < 11 {
+			// Down selects the next topic in the list (no render); Enter fires
+			// display_topic -> renders it and moves focus back to the reader.
 			d.send("Down")
-			time.Sleep(300 * time.Millisecond)
-			d.assert(func(v *View) bool {
-				idx, ok := v.GuideSelectedTopic()
-				return ok && idx == topic+1
-			}, 3*time.Second, "Guide topic advanced to %d", topic+1)
+			d.send("Enter")
+			// Soft cross-check only: GuideSelectedTopic is unreliable in the
+			// Python reference (the ilb cursor sits at x=135 and the list_focus
+			// bg only shows while the list has focus, which it now does not),
+			// so an assert here would noise up the Python run. The real
+			// verification is the next iteration's BUG CHECK (the reader shows
+			// the expected title).
+			d.logf("  advanced to topic %d", topic+1)
 		}
 	}
 	d.logf("Phase 4 complete (12 topics walked, scroll-reset bug observed on %d)", d.scrollBug)
