@@ -169,13 +169,36 @@ func (d *driver) enterAnnounceList(maxDowns int) bool {
 
 // escapeToMenu moves focus from wherever it is (browser content, the announce
 // list, the tab/filter bar, a dialog) up to the menu bar. The caller asserts.
-// The Python AnnounceStream is a pile [tab bar, filter bar, node list]; Up
-// climbs the pile to the menu (list -> filter -> tab -> menu, 3 Ups). Up while
-// in the browser CONTENT only scrolls and never reaches the menu, so when the
-// cursor is in the right pane (the browser) we send Left first to release
-// focus back to the left list, then climb. Caps total steps so a stuck focus
-// still returns.
+// Caps total steps so a stuck focus still returns.
+//
+// ROOT CAUSE (the "Save Node Info loop" bug): the Python AnnounceStream's node
+// list is an IndicativeListBox built with modifier_key=MODIFIER_KEY.NONE, so
+// MODIFIER_KEY.NONE.prepend_to("up") == "up" — plain Up IS the ilb's handled
+// key. The ilb CONSUMES plain Up to move the SELECTION up the list
+// (_pass_key_to_contained_listbox -> ListBox.keypress); it only returns "up"
+// UNHANDLED when the first item is already selected (first_item_is_selected,
+// Network.py:862/1790 + indicative_listbox.py:217). Only then does the
+// AnnounceStream's internal Pile climb ilb -> filter -> tab, and the next Up at
+// the tab bar sets frame.focus_position="header" (Network.py:448) — 3 Ups total.
+// So Up from a MID-LIST selection (where the selection sits after Connect) moves
+// the selection (consumed) and never climbs — exactly the 10-Up stuck loop in
+// /tmp/nomadnet-tmux-test-suite-1785933157.log (cursor stayed (0,0), browser sig
+// unchanged, menu never reached).
+//
+// FIX: send Home ONCE first. Home -> ilb select_first_item (indicative_listbox
+// :217-221) moves the selection to the TOP (consumed when mid-list; a no-op that
+// returns "home" unhandled when already at top). After Home the ilb is at the
+// top, so the next plain Up returns "up" unhandled and the pile climbs
+// ilb -> filter -> tab -> menu in 3 Ups. The homeSent flag prevents looping on
+// Home (at the top it does nothing). Home is harmless on the filter/tab bars
+// (Edit Home / no-op) and the local-peer panel (no-op), and Up still climbs from
+// those, so the same Home+Up sequence escapes from any left-pane focus state.
 func (d *driver) escapeToMenu(maxSteps int) {
+	// homeSent tracks whether we've sent Home to move the AnnounceStream ilb's
+	// selection to the top. Reset on any key that could move focus to a different
+	// pile widget (Escape from Announce Info, Left from the browser, Up off the
+	// local-peer panel) so Home is re-sent once focus is back on the ilb.
+	homeSent := false
 	for i := 0; i < maxSteps; i++ {
 		v := d.view()
 		if _, ok := v.MenuFocusedButton(); ok {
@@ -184,43 +207,57 @@ func (d *driver) escapeToMenu(maxSteps int) {
 		// If an Announce Info is open, the cursor is trapped on its button row
 		// (< Back > at ~(3,12)) and Up cycles the buttons without escaping. The
 		// probe confirmed Escape closes Announce Info and returns focus to the
-		// Announce Stream list (cursor hidden at (0,0)), from which Up×3 reaches
-		// the menu. Handle this BEFORE the node-row / right-pane checks, since the
-		// button row is in the LEFT pane at a small cursor_x and would otherwise
-		// fall through to the Up branch and stay trapped.
+		// Announce Stream list (cursor hidden at (0,0)), from which Home+Up×3
+		// reaches the menu. Handle this BEFORE the other checks, since the button
+		// row is in the LEFT pane at a small cursor_x.
 		if v.Screen != nil && hasBorderTitle(v.Screen.fullText(), "Announce Info") {
 			d.send("Escape")
+			homeSent = false
 			continue
 		}
-		// On the Guide page: the Topics list is a urwid LineBox(ilb). The ilb
-		// reports cursor_x at the right edge (~135), which the right-pane check
-		// below would mistake for the Network browser and send Left (moving
-		// topics->reader, the wrong way). The phase4 loop always ends with Left
-		// so focus is on the Topics list here; Up climbs the list to the menu
-		// (TopicList.keypress sends focus to the header at the first item).
+		// On the Guide page: the Topics list is a urwid LineBox(ilb). The phase4
+		// loop always ends with Left so focus is on the Topics list here; Up
+		// climbs the list to the menu (TopicList.keypress sends focus to the
+		// header at the first item). Home is not needed (the Guide ilb's Up-at-top
+		// already escapes).
 		if v.ActivePage() == "guide" {
 			d.send("Up")
 			continue
 		}
-		// On the announce node list: the cursor is on a Ⓝ row. Python's ilb
-		// reports cursor_x at the right edge (~135), so we MUST check the node
-		// row BEFORE the right-pane check below — otherwise the list is mistaken
-		// for the browser and Left moves list->browser (oscillation). Up escapes
-		// the pile toward the menu (list -> filter -> tab -> menu).
-		if v.cursorOnAnnounceNodeRow() {
+		// Local Peer < Save > / < Node Info > button focused (cursor on the
+		// button row at ~(3,28)): Up moves the NetworkLeftPile focus from
+		// local_peer (pos 1) up to the AnnounceStream (pos 0); then Home+Up
+		// climbs to the menu. This is the "Save Node Info loop" exit path.
+		if btn, ok := v.FocusedActionButton(); ok && (btn == "Save" || btn == "Node Info") {
+			d.send("Up")
+			homeSent = false
+			continue
+		}
+		// Cursor genuinely in the right pane (the browser) and NOT on a node
+		// row -> Left releases focus back to the left list (urwid Columns moves
+		// to the adjacent selectable column on Left when the body returns the
+		// key; a LinkableText at position 0 calls micron_released_focus ->
+		// focus_lists). The node-row guard keeps the ilb's x≈135 cursor quirk
+		// (cursor on the selected Ⓝ row) from being mistaken for the browser.
+		if v.CursorOK && v.CursorX >= networkLeftWidth && !v.cursorOnAnnounceNodeRow() {
+			d.send("Left")
+			homeSent = false
+			continue
+		}
+		// On the Network left pane (AnnounceStream ilb with the cursor hidden at
+		// (0,0) after Connect/Escape, OR on a node/tab/filter row): Home selects
+		// the first item (top of the list), then Up×3 climbs the pile to the menu.
+		// See the ROOT CAUSE note above for why Home is required.
+		if v.ActivePage() == "network" {
+			if !homeSent {
+				d.send("Home")
+				homeSent = true
+				continue
+			}
 			d.send("Up")
 			continue
 		}
-		// Cursor genuinely in the right pane and NOT on a node row -> in the
-		// browser -> Left releases focus back to the left list.
-		if v.CursorOK && v.CursorX >= networkLeftWidth {
-			d.send("Left")
-			continue
-		}
-		// Otherwise (tab/filter bar, list with a hidden cursor at (0,0), Guide
-		// list) -> Up climbs toward the menu. From the list with a hidden cursor
-		// the first Up wakes the cursor on the filter bar and subsequent Ups
-		// climb to the menu.
+		// Fallback for any other page: Up climbs toward the menu.
 		d.send("Up")
 	}
 }
@@ -388,8 +425,18 @@ func (d *driver) phase3() {
 		if !opened {
 			d.logf("  no Announce Info (focus not on a node, or peer/pn entry); skipping")
 			d.snapshot("phase3: no announce info")
-			// Recover: release any browser focus back to the list and retry.
+			// Recover focus back to the NODE LIST. The most common cause is that
+			// the previous Down overshot PAST the last list node into the Local
+			// Peer panel (Enter there opens the "Save Node Info" dialog), or focus
+			// is still in the browser. Reset robustly from any state: Escape
+			// closes any open dialog (Save Node Info / Announce Info); Up climbs
+			// Local Peer -> AnnounceStream list (or scrolls the browser up, a
+			// no-op at its top); Home moves the list selection to the TOP so the
+			// next Down moves to the 2nd node instead of overshooting again; Left
+			// releases the browser -> list (a no-op if already on the list).
 			d.send("Escape")
+			d.send("Up")
+			d.send("Home")
 			d.send("Left")
 			continue
 		}
@@ -461,6 +508,7 @@ func (d *driver) phase3() {
 			d.send("C-w") // Disconnect to reset the browser pane before the next node.
 			time.Sleep(d.stepDelay)
 			d.send("Left") // Release the (now-disconnected) browser focus back to the list.
+			d.send("Home") // List selection -> top so the next Down can't overshoot into the Local Peer panel.
 			continue
 		}
 
@@ -485,31 +533,24 @@ func (d *driver) phase3() {
 		d.snapshot("phase3: browser pane (before thorough walk)")
 		d.send("Right") // list -> browser (cursor at the top of the main page)
 
-		// Thoroughly examine the node's main page in two passes:
-		//  Pass 1: walk Down through the WHOLE main page, snapshotting each
-		//          screenful as it scrolls into view, until the bottom is
-		//          reached — so every screenful is rendered (catching regressions
-		//          across the full page, not just the top).
-		//  Pass 2: walk line by line from the top, following every hyperlink on
-		//          the main page (Enter follows the link under the cursor; C-d
-		//          returns to the main page) — the "test if the thing under the
-		//          cursor is a hyperlink, and if so try it, then return" the user
-		//          asked for.
-		bottomDowns := d.walkToBottom(func(v *View) string { return v.browserPaneSig() },
-			120, 200*time.Millisecond, "main page")
-		// Python's Browser.back (C-d) RE-FETCHES the page with a fresh Scrollable
-		// (offset reset to 0), so Pass 2 must start from the top. Walk Up back to
-		// the top first (Pass 1 left the cursor at the bottom).
-		if bottomDowns > 0 {
-			d.jogKeys(bottomDowns, "Up")
-		}
-		d.followLinksFromTop(targetHash, bottomDowns)
+		// 5. Thoroughly examine the node's main page in ONE pass: walk Down
+		//    through the whole page (snapshotting each screenful for full-page
+		//    regression coverage) and follow every position-0 hyperlink as it
+		//    comes under the cursor. Link detection is by the browser footer
+		//    ("Link to <target>"), so linkless pages get a single clean walk with
+		//    no Enters — the efficient one-pass the user asked for (the old
+		//    two-pass walk-then-rejog was O(N²) and scanned the page twice).
+		d.examineMainPage(targetHash, 160)
 
 		// 6. Release the browser back to the list for the next iteration. Left
 		//    at a line's start in the browser releases focus to the left list.
-		//    The cursor may stay hidden (0,0), but focus is on the list and the
-		//    next iteration's Down/Enter will activate the next node.
+		//    Then Home moves the list selection to the TOP, so the next
+		//    iteration's Down advances to the 2nd node — preventing the overshoot
+		//    into the Local Peer panel (Enter on < Save > opens "Save Node Info")
+		//    that happened when a connected node sat at the BOTTOM of the list
+		//    and Down moved past the last node.
 		d.send("Left")
+		d.send("Home")
 	}
 	d.logf("Phase 3 complete: %d/%d successful connects in %d attempts (%d distinct nodes tried)",
 		success, d.nodeIters, attempts, len(tried))
@@ -607,84 +648,157 @@ func (d *driver) walkToBottom(sig func(v *View) string, maxSteps int, step time.
 	return maxSteps
 }
 
-// followLinksFromTop follows every hyperlink on the main page by walking to
-// each line (0..lineCount) and pressing Enter (which follows the link at the
-// cursor, position 0 after a Down). See phase3 step 5.
+// examineMainPage walks Down through the node's whole main page in ONE pass,
+// snapshotting each screenful as it scrolls into view (full-page regression
+// coverage) AND following every position-0 hyperlink as it comes under the
+// cursor. This replaces the old two-pass walk-then-rejog (Pass 1 walkToBottom +
+// Pass 2 followLinksFromTop) the user found unbearably slow: that was O(N²)
+// (jog from the top to every line and back) and scanned the page twice. This is
+// a single O(N) walk.
 //
-// Navigation is detected by a CHANGE in the browser pane's content signature
-// after Enter — NOT by the URL: browserURL strips the path, so a link to
-// /page/about.mu of the SAME node returns url == mainHash and a URL-based check
-// would wrongly treat it as "no link" (the first smoke run followed 0 links for
-// exactly this reason). The content signature distinguishes "stayed on the main
-// page" from "navigated to another page (same node or not)". Dedup is by the
-// destination signature, so each distinct page is snapshotted once (same-node
-// pages share url == mainHash, so the URL is not a usable dedup key).
+// Link detection is by the browser footer, not by pressing Enter on every line:
+// the Python browser renders "Link to <target>" in its footer when the cursor
+// rests on a link (LinkableText.peek_link -> marked_link_job, ~100ms after a
+// keypress — see browserFooterLink). So we only press Enter on link-bearing
+// lines. Linkless pages (the common case — e.g. PARTEI, MKS, Santino) get a
+// single clean walk with NO Enters at all.
 //
-// Python's Browser.back (C-d) RE-FETCHES the page (a fresh Scrollable, offset
-// reset to 0), so after following a link and going Back the cursor is at the
-// TOP, not where it was. A naive single walk would therefore re-Enter the first
-// followed line forever. So each iteration jogs Down `line` times from the top
-// (where the previous C-d left us) to reach the Nth line, tests it, and — if no
-// link was found — jogs back Up to the top so the next iteration starts from
-// offset 0 again. Back is served from the page cache, so this is fast.
-func (d *driver) followLinksFromTop(mainHash string, lineCount int) {
+// Following a link navigates to the destination; Python's Browser.back (C-d)
+// RE-FETCHES the page with a fresh Scrollable at offset 0, so after a link we
+// C-d back to the TOP and jog Down `curLine` to resume the walk at the line we
+// left. The jog-back is outside this loop, so it does not perturb the
+// bottom-detection counters. Dedup is by the destination content signature
+// (same-node /page/x.mu links return url == mainHash, so the URL is not a usable
+// dedup key — see followLinksFromTop's note).
+//
+// Bottom detection is the walkToBottom rule, applied on every forward Down: sig
+// stable for K consecutive Downs AND (cursor stable for K, OR cursor never
+// seen), with the hard sigStuck >= Screen.H fallback for pages whose final
+// screenful is dense with selectable links/fields.
+func (d *driver) examineMainPage(mainHash string, maxSteps int) {
+	const K = 4
 	followed := map[string]bool{}
-	if lineCount > 40 {
-		lineCount = 40
+	v := d.view()
+	hardStuck := v.Screen.H
+	if hardStuck < K+1 {
+		hardStuck = K + 1
 	}
-	for line := 0; line <= lineCount; line++ {
-		// Each iteration begins at the top (previous C-d returned to the fresh
-		// main page at offset 0; or this is the first iteration). Jog Down
-		// `line` times to reach the Nth line.
-		if line > 0 {
-			d.jogKeys(line, "Down")
+	prevSig := v.browserPaneSig()
+	prevCY := -1
+	sigStuck, cursorStuck := 0, 0
+	cursorEverSeen := false
+	screenfuls := 0
+	curLine := 0
+	linksFollowed := 0
+	for i := 0; i < maxSteps; i++ {
+		if err := d.sess.SendKeys("Down"); err != nil {
+			d.logf("  ERROR walk send-keys: %v", err)
 		}
-		sigBefore := d.view().browserPaneSig()
-		d.send("Enter")
-		_, ok := d.waitFor(func(v *View) bool {
-			st, _ := v.BrowserState()
-			return st == bsRendered || strings.HasPrefix(st, "error:")
-		}, d.connectWait)
-		if !ok {
-			d.logf("  link line %d: no render/error within %v; back to main", line, d.connectWait)
-			d.send("C-d")
-			d.settleMain(mainHash)
-			continue
-		}
-		v := d.view()
-		st, url := v.BrowserState()
-		if strings.HasPrefix(st, "error:") {
-			d.logf("  link line %d: error %q; back to main", line, st)
-			d.snapshot(fmt.Sprintf("phase3: link line %d error", line))
-			d.send("C-d")
-			d.settleMain(mainHash)
-			continue
-		}
-		sigAfter := v.browserPaneSig()
-		if sigAfter == sigBefore {
-			// No navigation — no link at this line. Jog back Up to the top so the
-			// next iteration starts from offset 0.
-			if line > 0 {
-				d.jogKeys(line, "Up")
+		time.Sleep(200 * time.Millisecond)
+		curLine++
+		v = d.view()
+		s := v.browserPaneSig()
+		if s != prevSig {
+			sigStuck = 0
+			screenfuls++
+			if screenfuls == 1 || screenfuls%5 == 0 {
+				d.snapshot(fmt.Sprintf("main page: screenful %d scrolled into view", screenfuls))
 			}
-			continue
+		} else {
+			sigStuck++
 		}
-		// Enter navigated to another page. Dedup by destination signature so
-		// each distinct page is snapshotted once (same-node pages share url ==
-		// mainHash, so the URL is not a usable dedup key).
-		if followed[sigAfter] {
-			d.send("C-d")
-			d.settleMain(mainHash)
-			continue
+		prevSig = s
+		if v.CursorOK && v.CursorY > 0 {
+			cursorEverSeen = true
+			if prevCY > 0 && v.CursorY == prevCY {
+				cursorStuck++
+			} else {
+				cursorStuck = 0
+			}
+			prevCY = v.CursorY
 		}
-		followed[sigAfter] = true
-		d.logf("  link line %d: followed link -> %q", line, url)
-		d.snapshot(fmt.Sprintf("phase3: link -> %s", url))
-		d.send("C-d")
-		d.settleMain(mainHash)
+		if sigStuck >= K && (cursorStuck >= K || !cursorEverSeen) {
+			d.logf("  main page: bottom reached after %d downs (%d screenfuls)", i+1, screenfuls)
+			break
+		}
+		if sigStuck >= hardStuck {
+			d.logf("  main page: bottom reached after %d downs (%d screenfuls, sig-stuck fallback)", i+1, screenfuls)
+			break
+		}
+
+		// Follow a position-0 link if the cursor is resting on one (browser
+		// footer shows "Link to"). Linkless lines get no Enter — the walk just
+		// continues Down.
+		if lt := v.browserFooterLink(); lt != "" {
+			sigBefore := s
+			d.send("Enter")
+			_, ok := d.waitFor(func(vv *View) bool {
+				st, _ := vv.BrowserState()
+				return st == bsRendered || strings.HasPrefix(st, "error:")
+			}, d.connectWait)
+			if !ok {
+				d.logf("  link line %d (%q): no render/error within %v; back to main", curLine, lt, d.connectWait)
+				// Only navigate back if Enter actually left the main page (sig
+				// changed). A no-op Enter on a non-link line leaves sig unchanged,
+				// so C-d would needlessly navigate AWAY from the main page.
+				if d.view().browserPaneSig() != sigBefore {
+					d.send("C-d")
+					d.settleMain(mainHash)
+					d.jogKeys(curLine, "Down")
+				}
+				prevSig = d.view().browserPaneSig()
+				continue
+			}
+			lv := d.view()
+			st, url := lv.BrowserState()
+			if strings.HasPrefix(st, "error:") {
+				d.logf("  link line %d (%q): error %q; back to main", curLine, lt, st)
+				d.snapshot(fmt.Sprintf("phase3: link line %d error", curLine))
+				if lv.browserPaneSig() != sigBefore {
+					d.send("C-d")
+					d.settleMain(mainHash)
+					d.jogKeys(curLine, "Down")
+				}
+				prevSig = d.view().browserPaneSig()
+				continue
+			}
+			sigAfter := lv.browserPaneSig()
+			// Only count + return if Enter actually navigated (sig changed). A
+			// false-positive footer (e.g. body text "Link to ") leaves sig
+			// unchanged — Enter was a no-op, so we must NOT C-d back (that would
+			// navigate away from the main page and leave the browser mid-retrieval
+			// for the next Phase-3 iteration).
+			if sigAfter != sigBefore {
+				if !followed[sigAfter] {
+					followed[sigAfter] = true
+					linksFollowed++
+					d.logf("  link line %d: followed link -> %q", curLine, url)
+					d.snapshot(fmt.Sprintf("phase3: link -> %s", url))
+				}
+				// Return to the main page and jog Down curLine to resume the walk.
+				// (C-d re-fetches at offset 0, so we must jog back from the top.)
+				d.send("C-d")
+				d.settleMain(mainHash)
+				d.jogKeys(curLine, "Down")
+			}
+			prevSig = d.view().browserPaneSig()
+		}
 	}
-	d.logf("  followed %d distinct links across %d main-page lines", len(followed), lineCount)
+	d.logf("  examined main page: %d downs, %d screenfuls, %d distinct links followed",
+		curLine, screenfuls, linksFollowed)
 }
+
+// followLinksFromTop followed every hyperlink on the main page by jogging from
+// the top to each line, pressing Enter, and jogging back — an O(N²) two-pass
+// scan the user found unbearably slow. It has been replaced by the one-pass
+// examineMainPage (link detection via the browser footer, so linkless pages get
+// a single clean walk with no Enters). The navigation/dedup notes below still
+// apply to examineMainPage: navigation is detected by a CHANGE in the browser
+// pane content signature after Enter (NOT the URL — browserURL strips the path,
+// so a same-node /page/x.mu link returns url == mainHash), and dedup is by the
+// destination signature (same-node pages share url == mainHash). Python's
+// Browser.back (C-d) RE-FETCHES the page at offset 0, so after a link we jog
+// Down curLine to resume the walk.
 
 // settleMain waits for the main page to come back after a Back (C-d), confirmed
 // by the browser URL bar showing the main page hash again.
@@ -696,8 +810,9 @@ func (d *driver) settleMain(mainHash string) {
 }
 
 // jogKeys sends `n` copies of `key` in one tmux send-keys call, then settles.
-// Used for the fast line-skipping in followLinksFromTop (we only verify state
-// after Enter, not after each Down/Up).
+// Used by examineMainPage to jog Down curLine to resume the walk after a link
+// follow's C-d reset the page to offset 0 (we only verify state after Enter,
+// not after each Down).
 func (d *driver) jogKeys(n int, key string) {
 	if n <= 0 {
 		return

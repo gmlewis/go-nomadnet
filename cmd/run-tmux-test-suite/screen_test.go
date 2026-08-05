@@ -408,6 +408,58 @@ func TestXterm256(t *testing.T) {
 	}
 }
 
+// TestBrowserFooterLink confirms browserFooterLink extracts the link target
+// from the browser footer ("Link to <target>"), which renders in the BrowserFrame
+// footer — the right-pane row immediately ABOVE the LineBox bottom border '└'. It
+// returns "" when no link footer is present, and crucially does NOT match "Link
+// to " text in the page BODY (a false positive would make examineMainPage press
+// Enter + C-d and navigate away from the main page).
+func TestBrowserFooterLink(t *testing.T) {
+	const W = 135
+	pad := func(left, right string) string {
+		// Force the left pane to exactly networkLeftWidth columns so the right
+		// pane (right) always starts at col 52, matching the real layout.
+		if len(left) > networkLeftWidth {
+			left = left[:networkLeftWidth]
+		} else if len(left) < networkLeftWidth {
+			left = left + strings.Repeat(" ", networkLeftWidth-len(left))
+		}
+		row := left + right
+		if rpad := W - len(row); rpad > 0 {
+			row += strings.Repeat(" ", rpad)
+		}
+		return row
+	}
+	// Right-pane bottom border '└' on the last row; the "Link to" footer is the
+	// row above it. The left pane on that footer row is the local-peer buttons.
+	leftBtn := "< Save                >     < Node Info          >"
+	footerRow := pad(leftBtn, "Link to :/page/group.mu`g=public")
+	borderRow := pad("└──────────────────────────────────────────────┘", "└─────────────────────────────────────────────────────────────────────────────────┘")
+	raw := menuBar() + "\n" + footerRow + "\n" + borderRow + "\n"
+	v := viewOf(raw, 0, 1)
+	got := v.browserFooterLink()
+	if got != ":/page/group.mu`g=public" {
+		t.Errorf("browserFooterLink = %q, want %q (footer Link to target)", got, ":/page/group.mu`g=public")
+	}
+
+	// No link footer (status text on the footer row instead) -> "".
+	footerRow2 := pad(leftBtn, "Done  ▤ 936B   ↓936B in 7.99s")
+	raw2 := menuBar() + "\n" + footerRow2 + "\n" + borderRow + "\n"
+	v2 := viewOf(raw2, 0, 1)
+	if got := v2.browserFooterLink(); got != "" {
+		t.Errorf("browserFooterLink = %q, want \"\" (no Link to footer present)", got)
+	}
+
+	// "Link to " in the page BODY (not the footer row) must NOT match — this is
+	// the false positive that caused the Phase-3 cascade failures.
+	bodyRow := pad("│08:09:09 Ⓝ  BasilYes Git node                     │", "Link to our forum is at the bottom of this page")
+	raw3 := menuBar() + "\n" + bodyRow + "\n" + footerRow2 + "\n" + borderRow + "\n"
+	v3 := viewOf(raw3, 0, 1)
+	if got := v3.browserFooterLink(); got != "" {
+		t.Errorf("browserFooterLink = %q, want \"\" (body text 'Link to' must NOT match, only the footer row)", got)
+	}
+}
+
 func TestParseSize(t *testing.T) {
 	tests := []struct {
 		in   string

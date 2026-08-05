@@ -994,6 +994,56 @@ func (v *View) rightPaneText(y int) string {
 	return strings.TrimRight(b.String(), " ")
 }
 
+// browserFooterLink returns the link target the browser footer currently shows
+// ("Link to <target>"), or "" when the cursor is not resting on a link.
+//
+// The Python browser sets its footer via LinkableText.peek_link (called from
+// render() while the focused LinkableText is within key_timeout of the last
+// keypress) -> marked_link -> set_alarm_in(0.1s, marked_link_job), which renders
+// "Link to <target>" in the BrowserFrame footer — the LAST content row INSIDE
+// the browser LineBox, i.e. the right-pane row immediately ABOVE the LineBox
+// bottom border ('└'). So during a Down-walk (a keypress every ~200ms <
+// key_timeout) the footer reliably reports the link under the cursor's position
+// 0, letting examineMainPage follow ONLY link-bearing lines.
+//
+// The scan is restricted to that single footer row (located by finding the
+// right-pane bottom border and checking the row above it). Scanning the WHOLE
+// right pane produced false positives from page BODY text that happens to contain
+// "Link to ", which was NOT harmless: examineMainPage pressed Enter (a no-op on a
+// non-link line) and then C-d (Back), navigating AWAY from the main page and
+// leaving the browser mid-retrieval — the cause of the Phase-3 "Announce Info
+// opened" cascade failures (the next Down+Enter landed in the browser).
+func (v *View) browserFooterLink() string {
+	if v.Screen == nil {
+		return ""
+	}
+	// Locate the browser LineBox bottom border: the right-pane row whose text
+	// starts with '└'. Scan from the bottom so the FIRST match is the browser
+	// border (not an inner box). The footer is the row immediately above it.
+	for y := v.Screen.H - 1; y > 0; y-- {
+		t := v.rightPaneText(y)
+		if strings.HasPrefix(t, "└") {
+			ft := v.rightPaneText(y - 1)
+			if i := strings.Index(ft, "Link to "); i >= 0 {
+				return strings.TrimSpace(ft[i+len("Link to "):])
+			}
+			return ""
+		}
+	}
+	// Fallback: no bottom border found (e.g. an unusual layout) — scan the bottom
+	// few right-pane rows so a real footer is still detected.
+	for y := v.Screen.H - 4; y < v.Screen.H; y++ {
+		if y < 0 {
+			continue
+		}
+		t := v.rightPaneText(y)
+		if i := strings.Index(t, "Link to "); i >= 0 {
+			return strings.TrimSpace(t[i+len("Link to "):])
+		}
+	}
+	return ""
+}
+
 // stripURLPath reduces a browser URL token to its bare node hash by dropping
 // any ":/path" suffix. RNS destination hashes are hex with no colon, so a
 // colon marks the start of a path ("c684...:/page/index.mu" -> "c684...").
