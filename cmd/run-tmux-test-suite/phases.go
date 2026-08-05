@@ -468,24 +468,42 @@ func (d *driver) phase3() {
 		d.snapshot("phase3: node index.mu rendered")
 		success++
 
-		// 5. Follow front-page links. After Connect the Python reference returns
-		//    focus to the Announce Stream LIST (probe-confirmed: a stray Enter on
-		//    the list re-opens the Announce Info), NOT to the browser. So we MUST
-		//    send Right to move focus list->browser before link navigation, else
-		//    followAllLinks's first Enter re-opens the Announce Info and traps the
-		//    cursor on its button row (the Go port has the same list-focus
-		//    behavior after Connect — R-NET-FOCUS-TRAP). Right from the list lands
-		//    in the browser (cursor hidden at (0,0); the browser is a urwid
-		//    Text/Filler with no visible cursor). followAllLinks verifies each
-		//    navigation via BrowserState content.
+		// 5. Thoroughly examine the node's main page. After Connect the Python
+		//    reference returns focus to the Announce Stream LIST (probe-confirmed:
+		//    a stray Enter on the list re-opens the Announce Info), NOT to the
+		//    browser. So we MUST send Right to move focus list->browser before
+		//    walking the page, else the first Enter re-opens the Announce Info and
+		//    traps the cursor on its button row (the Go port has the same
+		//    list-focus behavior after Connect — R-NET-FOCUS-TRAP). Right from the
+		//    list lands in the browser (cursor hidden at (0,0); the browser is a
+		//    urwid Text/Filler with no visible cursor).
 		d.assert(func(v *View) bool {
 			// The Announce Info dialog closed and the browser is active: the
 			// Announce Info border title is gone.
 			return !hasBorderTitle(v.Screen.fullText(), "Announce Info")
 		}, 3*time.Second, "Announce Info closed after Connect (browser active)")
-		d.snapshot("phase3: browser pane (before link nav)")
-		d.send("Right") // list -> browser (cursor hidden at (0,0))
-		d.followAllLinks(targetHash)
+		d.snapshot("phase3: browser pane (before thorough walk)")
+		d.send("Right") // list -> browser (cursor at the top of the main page)
+
+		// Thoroughly examine the node's main page in two passes:
+		//  Pass 1: walk Down through the WHOLE main page, snapshotting each
+		//          screenful as it scrolls into view, until the bottom is
+		//          reached — so every screenful is rendered (catching regressions
+		//          across the full page, not just the top).
+		//  Pass 2: walk line by line from the top, following every hyperlink on
+		//          the main page (Enter follows the link under the cursor; C-d
+		//          returns to the main page) — the "test if the thing under the
+		//          cursor is a hyperlink, and if so try it, then return" the user
+		//          asked for.
+		bottomDowns := d.walkToBottom(func(v *View) string { return v.browserPaneSig() },
+			120, 200*time.Millisecond, "main page")
+		// Python's Browser.back (C-d) RE-FETCHES the page with a fresh Scrollable
+		// (offset reset to 0), so Pass 2 must start from the top. Walk Up back to
+		// the top first (Pass 1 left the cursor at the bottom).
+		if bottomDowns > 0 {
+			d.jogKeys(bottomDowns, "Up")
+		}
+		d.followLinksFromTop(targetHash, bottomDowns)
 
 		// 6. Release the browser back to the list for the next iteration. Left
 		//    at a line's start in the browser releases focus to the left list.
@@ -497,62 +515,175 @@ func (d *driver) phase3() {
 		success, d.nodeIters, attempts, len(tried))
 }
 
-// followAllLinks follows every link on the front (index.mu) page, going Back
-// (C-d) to the main page after each. mainHash is the main page's URL (the node
-// hash) used to confirm we returned and to detect exhaustion. See phase3 step 5.
-func (d *driver) followAllLinks(mainHash string) {
-	followed := map[string]bool{}
-	const maxLinks = 20
-	for i := 0; i < maxLinks; i++ {
-		// Reach link i from the top (focus resets to the first selectable line
-		// after each Back, so i Downs lands on the i-th link). Send them in one
-		// tmux call with a short settle — we only verify state after Enter.
-		if i > 0 {
-			keys := make([]string, i)
-			for j := range keys {
-				keys[j] = "Down"
-			}
-			d.jog(keys...)
+// walkToBottom presses Down through a Scrollable page (the browser main page
+// or the Guide reader), snapshotting each time the pane content scrolls (a new
+// screenful becomes visible), until it reaches the bottom — so every screenful
+// is rendered and snapshotted, exposing rendering regressions across the full
+// page. Returns the number of Downs pressed. See phase3 step 5 and phase4.
+//
+// Bottom detection: urwid's Scrollable (force_forward_keypress) first moves the
+// Pile focus line by line WITHIN the visible area — the cursor y advances but
+// the content does NOT scroll — and only scrolls once the focus reaches the
+// visible-area bottom. So content-signature stability alone is NOT a reliable
+// bottom signal (it fires while the cursor is still moving within the visible
+// area). We therefore require BOTH the pane signature AND the cursor y to be
+// stable for K consecutive Downs. The LinkableText cursor shows within ~2s of
+// the last keypress, so `step` must stay well under 2s. maxSteps is the safety
+// net.
+//
+// Some pages have NO selectable widgets (e.g. the Introduction Guide topic is
+// plain text) — there is no cursor to track and no Phase 1 focus movement, so
+// Down either scrolls immediately or does nothing. For those pages the cursor
+// is never seen (cursorEverSeen stays false), and sigStuck >= K alone is a
+// valid bottom (a short page: Down does nothing from the first step; a long
+// page: Down scrolls each step so sigStuck only accumulates at the real
+// bottom). When the cursor IS seen we additionally require cursorStuck >= K so
+// Phase 1 focus movement (sig stable, cursor advancing) does not false-bottom.
+func (d *driver) walkToBottom(sig func(v *View) string, maxSteps int, step time.Duration, label string) int {
+	const K = 4
+	v := d.view()
+	// hardStuck is the sig-stuck fallback threshold: if the content signature
+	// is unchanged for more than a full screen of consecutive Downs, the page
+	// is at its bottom regardless of the cursor. This CANNOT false-bottom
+	// during Phase-1 focus movement (before the first scroll): urwid moves
+	// Pile focus through the selectable widgets currently in view, and there
+	// are at most (visible rows) < H of those before the next Down scrolls —
+	// so sigStuck can never reach H while there is still content to scroll.
+	// It guarantees a bottom for pages whose final screenful is dense with
+	// selectable links/fields (e.g. Guide topic 7, "Markup"): there the cursor
+	// keeps stepping between widgets so cursorStuck never reaches K, but Down
+	// stops changing the content, so sigStuck climbs past H and bottoms out.
+	hardStuck := v.Screen.H
+	if hardStuck < K+1 {
+		hardStuck = K + 1
+	}
+	prevSig := sig(v)
+	prevCY := -1
+	sigStuck, cursorStuck := 0, 0
+	cursorEverSeen := false
+	screenfuls := 0
+	for i := 0; i < maxSteps; i++ {
+		if err := d.sess.SendKeys("Down"); err != nil {
+			d.logf("  ERROR walk send-keys: %v", err)
 		}
-		d.send("Enter")
+		time.Sleep(step)
+		v = d.view()
+		s := sig(v)
+		if s != prevSig {
+			sigStuck = 0
+			screenfuls++
+			// Snapshot every 5th screenful (and the first). The reader/browser
+			// visible window is ~25 rows and scroll steps 1 row per Down, so a
+			// 5-row stride still captures every line in some snapshot (with
+			// overlap) — full regression coverage without flooding the log.
+			if screenfuls == 1 || screenfuls%5 == 0 {
+				d.snapshot(fmt.Sprintf("%s: screenful %d scrolled into view", label, screenfuls))
+			}
+		} else {
+			sigStuck++
+		}
+		prevSig = s
+		if v.CursorOK && v.CursorY > 0 {
+			cursorEverSeen = true
+			if prevCY > 0 && v.CursorY == prevCY {
+				cursorStuck++
+			} else {
+				cursorStuck = 0
+			}
+			prevCY = v.CursorY
+		}
+		if sigStuck >= K && (cursorStuck >= K || !cursorEverSeen) {
+			d.logf("  %s: bottom reached after %d downs (%d screenfuls)", label, i+1, screenfuls)
+			return i + 1
+		}
+		if sigStuck >= hardStuck {
+			d.logf("  %s: bottom reached after %d downs (%d screenfuls, sig-stuck fallback)",
+				label, i+1, screenfuls)
+			return i + 1
+		}
+	}
+	d.logf("  %s: max %d downs without a clean bottom signal (%d screenfuls)",
+		label, maxSteps, screenfuls)
+	return maxSteps
+}
 
+// followLinksFromTop follows every hyperlink on the main page by walking to
+// each line (0..lineCount) and pressing Enter (which follows the link at the
+// cursor, position 0 after a Down). See phase3 step 5.
+//
+// Navigation is detected by a CHANGE in the browser pane's content signature
+// after Enter — NOT by the URL: browserURL strips the path, so a link to
+// /page/about.mu of the SAME node returns url == mainHash and a URL-based check
+// would wrongly treat it as "no link" (the first smoke run followed 0 links for
+// exactly this reason). The content signature distinguishes "stayed on the main
+// page" from "navigated to another page (same node or not)". Dedup is by the
+// destination signature, so each distinct page is snapshotted once (same-node
+// pages share url == mainHash, so the URL is not a usable dedup key).
+//
+// Python's Browser.back (C-d) RE-FETCHES the page (a fresh Scrollable, offset
+// reset to 0), so after following a link and going Back the cursor is at the
+// TOP, not where it was. A naive single walk would therefore re-Enter the first
+// followed line forever. So each iteration jogs Down `line` times from the top
+// (where the previous C-d left us) to reach the Nth line, tests it, and — if no
+// link was found — jogs back Up to the top so the next iteration starts from
+// offset 0 again. Back is served from the page cache, so this is fast.
+func (d *driver) followLinksFromTop(mainHash string, lineCount int) {
+	followed := map[string]bool{}
+	if lineCount > 40 {
+		lineCount = 40
+	}
+	for line := 0; line <= lineCount; line++ {
+		// Each iteration begins at the top (previous C-d returned to the fresh
+		// main page at offset 0; or this is the first iteration). Jog Down
+		// `line` times to reach the Nth line.
+		if line > 0 {
+			d.jogKeys(line, "Down")
+		}
+		sigBefore := d.view().browserPaneSig()
+		d.send("Enter")
 		_, ok := d.waitFor(func(v *View) bool {
 			st, _ := v.BrowserState()
 			return st == bsRendered || strings.HasPrefix(st, "error:")
 		}, d.connectWait)
 		if !ok {
-			d.logf("  link %d: no render/error within %v; stopping link nav", i, d.connectWait)
-			d.send("C-d")
-			d.settleMain(mainHash)
-			break
-		}
-		st, url := d.view().BrowserState()
-		if strings.HasPrefix(st, "error:") {
-			d.logf("  link %d: error %q; back to main, trying next link", i, st)
-			d.snapshot(fmt.Sprintf("phase3: link %d error", i))
+			d.logf("  link line %d: no render/error within %v; back to main", line, d.connectWait)
 			d.send("C-d")
 			d.settleMain(mainHash)
 			continue
 		}
-		// Exhaustion: Enter did not navigate away from the main page (no link
-		// at this position — we're past the last link, Down had scrolled), OR
-		// it re-followed a link we already tried (Down past the last link
-		// landed on the last link again). Either way we've tried them all.
-		if url == "" || url == mainHash || followed[url] {
-			d.logf("  link %d: url=%q (main page or repeat) — exhausted front-page links after %d", i, url, len(followed))
-			if url != "" && url != mainHash {
-				d.send("C-d")
-				d.settleMain(mainHash)
-			}
-			break
+		v := d.view()
+		st, url := v.BrowserState()
+		if strings.HasPrefix(st, "error:") {
+			d.logf("  link line %d: error %q; back to main", line, st)
+			d.snapshot(fmt.Sprintf("phase3: link line %d error", line))
+			d.send("C-d")
+			d.settleMain(mainHash)
+			continue
 		}
-		followed[url] = true
-		d.logf("  followed link %d -> %q", i, url)
-		d.snapshot(fmt.Sprintf("phase3: link %d -> %s", i, url))
-		d.send("C-d") // Back to the main page.
+		sigAfter := v.browserPaneSig()
+		if sigAfter == sigBefore {
+			// No navigation — no link at this line. Jog back Up to the top so the
+			// next iteration starts from offset 0.
+			if line > 0 {
+				d.jogKeys(line, "Up")
+			}
+			continue
+		}
+		// Enter navigated to another page. Dedup by destination signature so
+		// each distinct page is snapshotted once (same-node pages share url ==
+		// mainHash, so the URL is not a usable dedup key).
+		if followed[sigAfter] {
+			d.send("C-d")
+			d.settleMain(mainHash)
+			continue
+		}
+		followed[sigAfter] = true
+		d.logf("  link line %d: followed link -> %q", line, url)
+		d.snapshot(fmt.Sprintf("phase3: link -> %s", url))
+		d.send("C-d")
 		d.settleMain(mainHash)
 	}
-	d.logf("  followed %d distinct front-page links", len(followed))
+	d.logf("  followed %d distinct links across %d main-page lines", len(followed), lineCount)
 }
 
 // settleMain waits for the main page to come back after a Back (C-d), confirmed
@@ -564,18 +695,22 @@ func (d *driver) settleMain(mainHash string) {
 	}, d.connectWait)
 }
 
-// jog sends keys in one tmux send-keys call with a short settle. Used for the
-// repetitive Down-jogging between links (we only verify state after Enter, not
-// after each Down), keeping link navigation responsive.
-func (d *driver) jog(keys ...string) {
-	if len(keys) == 0 {
+// jogKeys sends `n` copies of `key` in one tmux send-keys call, then settles.
+// Used for the fast line-skipping in followLinksFromTop (we only verify state
+// after Enter, not after each Down/Up).
+func (d *driver) jogKeys(n int, key string) {
+	if n <= 0 {
 		return
 	}
-	d.logf("jog: %d x %s", len(keys), keys[0])
+	d.logf("jog: %d x %s", n, key)
+	keys := make([]string, n)
+	for i := range keys {
+		keys[i] = key
+	}
 	if err := d.sess.SendKeys(keys...); err != nil {
 		d.logf("  ERROR jog send-keys: %v", err)
 	}
-	time.Sleep(120 * time.Millisecond)
+	time.Sleep(200 * time.Millisecond)
 }
 
 // guideTopicTitles is the first rendered line (the `>Title` heading) of each
@@ -646,9 +781,10 @@ func (d *driver) phase4() {
 	// visible line is mid-content instead of the title). Capture the FIRST
 	// visible content line (GuideTopicRendered skips the reader's border) and
 	// compare to the expected title. Then Home (ScrollToBeginning, correct) to
-	// contrast buggy-vs-correct; End to scroll to the bottom (sets up the
-	// leak test for the next topic); Left to release focus back to the Topics
-	// list; Down to the next topic + Enter to render it.
+	// contrast buggy-vs-correct; walkToBottom scrolls through the FULL topic
+	// content (every screenful, for regression coverage) and leaves the reader
+	// at the bottom (sets up the next topic's leak test); Left to release
+	// focus back to the Topics list; Down to the next topic + Enter to render.
 	for topic := 0; topic <= 11; topic++ {
 		expected := guideTopicTitles[topic]
 		time.Sleep(300 * time.Millisecond)
@@ -679,9 +815,18 @@ func (d *driver) phase4() {
 		} else {
 			d.logf("  topic %d: after Home, top is %q (expected %q)", topic, home, expected)
 		}
-		d.send("End")
-		time.Sleep(400 * time.Millisecond)
-		d.snapshot(fmt.Sprintf("Guide topic %d reader scrolled to bottom", topic))
+		// Walk Down through the FULL topic content, snapshotting every screenful
+		// as it scrolls into view, until the bottom — so every screenful of every
+		// topic is rendered (several topics span multiple screenfuls), catching
+		// any rendering regressions across the whole page. This also leaves the
+		// reader scrolled to the bottom, which sets up the next topic's leak test
+		// (the Go port's scroll-reset bug).
+		// Topic 7 (Markup) is ~490+ lines of micron examples — the longest topic
+		// by far. walkToBottom bottoms out at (page length) + H downs in the
+		// worst case (the sig-stuck fallback fires H downs after the last
+		// scroll), so the cap must clear ~490 + H with margin.
+		d.walkToBottom(func(v *View) string { return v.readerPaneSig() },
+			700, 120*time.Millisecond, fmt.Sprintf("guide topic %d reader", topic))
 		// Release focus back to the Topics list: Left moves reader->topics in
 		// the urwid Columns (the vertical Scrollable does not consume Left).
 		d.send("Left")

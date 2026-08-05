@@ -1124,6 +1124,78 @@ func (v *View) GuideTopicRendered() string {
 	return ""
 }
 
+// readerLeftCol returns the column of the Guide reader pane's left edge — the
+// SECOND box-corner ('┌'/'├'/'└') on the row holding both the Topics LineBox
+// and the reader LineBox top borders (the first corner is the Topics box). It
+// is the same anchor GuideTopicRendered uses. Returns -1 if not found.
+func (v *View) readerLeftCol() int {
+	if v.Screen == nil || len(v.Screen.Rows) == 0 {
+		return -1
+	}
+	rows := v.Screen.Rows
+	for y := 1; y < v.Screen.H && y < len(rows); y++ {
+		r := rows[y]
+		first := -1
+		for x := 0; x < len(r); x++ {
+			ch := r[x].Ch
+			if ch == '┌' || ch == '├' || ch == '└' {
+				if first < 0 {
+					first = x
+				} else {
+					return x
+				}
+			}
+		}
+	}
+	return -1
+}
+
+// readerPaneSig returns a signature of the Guide reader pane's visible content
+// (every cell at and right of the reader's left edge, for all rows). It changes
+// whenever the reader scrolls, so walkToBottom can detect each new screenful and
+// (paired with the cursor y) the bottom. The fixed top border row is included
+// but does not change, so it does not affect the signal.
+func (v *View) readerPaneSig() string {
+	if v.Screen == nil {
+		return ""
+	}
+	rl := v.readerLeftCol()
+	if rl < 0 {
+		rl = v.Screen.W / 3
+		if rl < 1 {
+			rl = 1
+		}
+	}
+	var b strings.Builder
+	for y := 0; y < v.Screen.H && y < len(v.Screen.Rows); y++ {
+		row := v.Screen.Rows[y]
+		for x := rl; x < len(row); x++ {
+			ch := row[x].Ch
+			if ch == 0 {
+				ch = ' '
+			}
+			b.WriteRune(ch)
+		}
+		b.WriteByte('\n')
+	}
+	return b.String()
+}
+
+// browserPaneSig returns a signature of the browser right pane's visible content
+// (every row's right-pane text, x >= networkLeftWidth). It changes when the
+// browser scrolls, so walkToBottom can detect each new screenful and the bottom.
+func (v *View) browserPaneSig() string {
+	if v.Screen == nil {
+		return ""
+	}
+	var b strings.Builder
+	for y := 0; y < v.Screen.H; y++ {
+		b.WriteString(v.rightPaneText(y))
+		b.WriteByte('\n')
+	}
+	return b.String()
+}
+
 // GuideSelectedTopic returns the index (0..11) of the selected topic in the
 // "Topics" list. The PRIMARY signal is the hardware cursor: like the announce
 // stream, the Python original signals topic selection via the cursor with no
