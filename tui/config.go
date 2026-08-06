@@ -27,7 +27,6 @@ import (
 	"os/exec"
 	"runtime"
 
-	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
@@ -70,8 +69,11 @@ func NewConfigDisplay(app *App, configPath string) *ConfigDisplay {
 
 	// Explainer text (Config.py:38-44): leading/trailing blank + the
 	// blank-separated body lines, all body_text colored, ceil-left centered.
+	// Python wraps the explainer in `urwid.Text(("body_text", ...), CENTER)`
+	// (Config.py:40); body_text is 3-hex #ddd / #222 (ui/TextUI.py:26,80),
+	// cube-quantized to #d7d7d7 / #000000.
 	cd.explainer = newCenteredText(
-		tcell.NewHexColor(0xbbbbbb),
+		GetThemeColors(app.Theme)["body_text"],
 		"",
 		"To change the configuration, edit the config file located at:",
 		"",

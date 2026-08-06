@@ -253,8 +253,12 @@ func parseColor(spec string) tcell.Color {
 			if !ok1 || !ok2 || !ok3 {
 				return tcell.ColorDefault
 			}
-			rgb := doubleNibble(r)<<16 | doubleNibble(g)<<8 | doubleNibble(b)
-			return tcell.NewHexColor(int32(rgb))
+			// urwid quantizes 3-digit "#rgb" to the 256-color cube EVEN in
+			// 24-bit truecolor (_parse_color_true routes 3-hex through
+			// _parse_color_256); see cubeQuantize3. Nibble-doubling here
+			// would diverge from Python on every mid-tone (e.g. #bbb would
+			// render #bbbbbb=187 vs urwid's #afafaf=175).
+			return tcell.NewHexColor(cubeQuantize3(r, g, b))
 		case 6:
 			r, ok1 := hexNibble(hex[0])
 			r2, ok2 := hexNibble(hex[1])
@@ -265,7 +269,10 @@ func parseColor(spec string) tcell.Color {
 			if !ok1 || !ok2 || !ok3 || !ok4 || !ok5 || !ok6 {
 				return tcell.ColorDefault
 			}
-			rgb := (r<<4 | r2) | (g<<4|g2)<<8 | (b<<4|b2)<<16
+			// 6-digit "#rrggbb" is parsed as exact 24-bit (urwid's 7-char
+			// branch is NOT cube-quantized). Pack as (R<<16)|(G<<8)|B —
+			// tcell.NewHexColor / Decompose read R from the high byte.
+			rgb := (r<<4|r2)<<16 | (g<<4|g2)<<8 | (b<<4 | b2)
 			return tcell.NewHexColor(int32(rgb))
 		}
 		return tcell.ColorDefault
@@ -303,9 +310,45 @@ func decDigit(c byte) (int, bool) {
 	return 0, false
 }
 
-// doubleNibble doubles a 4-bit value (0x6 -> 0x66), expanding a 3-digit
-// "#rgb" hex color to its 6-digit "#rrggbb" form.
-func doubleNibble(v int) int { return v<<4 | v }
+// cubeSteps256 mirrors urwid's six 256-color-cube channel values
+// (urwid/display/common.py:_CUBE_STEPS_256 = [0x00,0x5F,0x87,0xAF,0xD7,0xFF]).
+var cubeSteps256 = [6]int32{0x00, 0x5f, 0x87, 0xaf, 0xd7, 0xff}
+
+// cubeStepForNibble maps a 4-bit nibble (0..15) to the index of the nearest
+// cube step, mirroring urwid's _CUBE_256_LOOKUP_16 =
+// [0,0,0,1,1,1,1,2,2,2,3,3,4,4,5,5]. urwid quantizes 3-digit "#rgb" colors to
+// the 256-color cube EVEN in 24-bit truecolor (_parse_color_true routes 3-hex
+// through _parse_color_256 first), so "#bbb" renders as #afafaf (175), not the
+// nibble-doubled #bbbbbb (187). Only 6-digit "#rrggbb" is parsed as exact
+// 24-bit. Replicating this collapses the port-wide color divergence where Go
+// nibble-doubled every 3-hex palette entry.
+var cubeStepForNibble = [16]int{0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 3, 3, 4, 4, 5, 5}
+
+// cubeQuantize3 returns the urwid-cube-quantized 24-bit RGB for a 3-hex
+// "#rgb" color whose nibble values are r, g, b (each 0..15).
+func cubeQuantize3(r, g, b int) int32 {
+	return cubeSteps256[cubeStepForNibble[r]]<<16 |
+		cubeSteps256[cubeStepForNibble[g]]<<8 |
+		cubeSteps256[cubeStepForNibble[b]]
+}
+
+// cubeHex3 parses a 3-digit "#rgb" hex color and returns the urwid-cube-
+// quantized tcell.Color. It mirrors urwid's truecolor rendering of the
+// static palette's 3-hex entries (menubar #111→#000000, #bbb→#afafaf, …),
+// collapsing the port-wide nibble-doubling divergence. Used to express the
+// theme color maps (theme.go) from the Python source-of-truth 3-hex specs.
+func cubeHex3(spec string) tcell.Color {
+	if len(spec) != 4 || spec[0] != '#' {
+		return tcell.ColorDefault
+	}
+	r, ok1 := hexNibble(spec[1])
+	g, ok2 := hexNibble(spec[2])
+	b, ok3 := hexNibble(spec[3])
+	if !ok1 || !ok2 || !ok3 {
+		return tcell.ColorDefault
+	}
+	return tcell.NewHexColor(cubeQuantize3(r, g, b))
+}
 
 // parseAttr maps a urwid monochrome/attribute name to a tcell attribute mask.
 // urwid "standout" is reverse video.

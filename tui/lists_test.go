@@ -108,7 +108,8 @@ func TestFocusFirstChildNil(t *testing.T) {
 // TestListFocusColors asserts the list selection colors come from the theme's
 // list_focus_fg/list_focus_bg entries (Python TextUI.py: list_focus is
 // #111 on #aaa in both dark and light), NOT the hardcoded #666 the port
-// previously used.
+// previously used. Both #111 and #aaa are 3-hex, so urwid cube-quantizes them
+// even in truecolor: #111→#000000, #aaa→#afafaf.
 func TestListFocusColors(t *testing.T) {
 	t.Parallel()
 
@@ -117,8 +118,8 @@ func TestListFocusColors(t *testing.T) {
 		wantFg uint32
 		wantBg uint32
 	}{
-		{ThemeDark, 0x111111, 0xaaaaaa},
-		{ThemeLight, 0x111111, 0xaaaaaa},
+		{ThemeDark, 0x000000, 0xafafaf},
+		{ThemeLight, 0x000000, 0xafafaf},
 	}
 	for _, tc := range cases {
 		fg, bg := ListFocusColors(tc.theme)

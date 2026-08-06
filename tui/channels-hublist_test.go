@@ -158,8 +158,10 @@ func TestComposeHubListGolden(t *testing.T) {
 
 // TestHubListRowText pins the tview color-tag rendering of a HubListEntry.
 // The unfocused foreground color is the entry's style palette color; spacer
-// rows render as an empty string. Dark theme palette: list_trusted #66bb22,
-// list_unknown #bbbbbb, list_unresponsive #bb9922.
+// rows render as an empty string. Dark theme palette 3-hex colors are cube-
+// quantized to the 256 palette even in truecolor (urwid _parse_color_true):
+// list_trusted #6b2→#5faf00, list_unknown #bbb→#afafaf, list_unresponsive
+// #b92→#af8700.
 func TestHubListRowText(t *testing.T) {
 	t.Parallel()
 	colors := GetThemeColors(ThemeDark)
@@ -170,9 +172,9 @@ func TestHubListRowText(t *testing.T) {
 		want  string
 	}{
 		{"spacer", HubListEntry{Kind: RowSpacer, HubIdx: 1}, ""},
-		{"hub trusted", HubListEntry{Kind: RowHub, Label: "= hub1", Style: "list_trusted"}, "[#66bb22]= hub1[-]"},
-		{"room unknown", HubListEntry{Kind: RowRoom, Label: "     #general", Style: "list_unknown", Room: "general"}, "[#bbbbbb]     #general[-]"},
-		{"room mention unresponsive", HubListEntry{Kind: RowRoom, Label: "   ! #joined", Style: "list_unresponsive"}, "[#bb9922]   ! #joined[-]"},
+		{"hub trusted", HubListEntry{Kind: RowHub, Label: "= hub1", Style: "list_trusted"}, "[#5faf00]= hub1[-]"},
+		{"room unknown", HubListEntry{Kind: RowRoom, Label: "     #general", Style: "list_unknown", Room: "general"}, "[#afafaf]     #general[-]"},
+		{"room mention unresponsive", HubListEntry{Kind: RowRoom, Label: "   ! #joined", Style: "list_unresponsive"}, "[#af8700]   ! #joined[-]"},
 		{"missing style falls back to plain", HubListEntry{Kind: RowHub, Label: "X failed", Style: "no_such_style"}, "X failed"},
 	}
 	for _, c := range cases {
@@ -208,11 +210,11 @@ func TestChannelsDisplaySetHubs(t *testing.T) {
 		t.Fatalf("room count = %v, want 5", got)
 	}
 	wantTexts := []string{
-		"[#66bb22]= hub1[-]",
-		"[#66bb22]     #general[-]",
-		"[#66bb22]     #random[-]",
+		"[#5faf00]= hub1[-]",
+		"[#5faf00]     #general[-]",
+		"[#5faf00]     #random[-]",
 		"",
-		"[#bbbbbb]  hub2[-]",
+		"[#afafaf]  hub2[-]",
 	}
 	for i, want := range wantTexts {
 		main, _ := cd.rooms.GetItemText(i)

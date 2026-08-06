@@ -19,9 +19,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/gmlewis/go-nomadnet/nomadnet/util"
 	"github.com/gmlewis/go-reticulum/lxmf"
 	"github.com/gmlewis/go-reticulum/rns"
-	"github.com/gmlewis/go-nomadnet/nomadnet/util"
 )
 
 // GetSyncStatus returns a human-readable description of the current LXMF

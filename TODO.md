@@ -213,9 +213,10 @@ test or a matching `parity.sh` summary):
 - [ ] Readline kill/yank with a global kill ring in every input.
 - [ ] Mouse: click menu, list entries, links, pane gutters, expand gutters.
 - [ ] UTF-8 clean; reflows at 80×24; no resize crash; 1 s intro splash.
-- [ ] Terminal hardware cursor positioned on focused micron pages (`LinkableText`)
-      and text inputs (`ReadlineEdit`) (capture-invisible — verified by a
-      `calc_coords` golden test, not `parity.sh`).
+- [x] Terminal hardware cursor positioned on focused micron pages (`LinkableText`)
+      and text inputs (`ReadlineEdit`) (capture-invisible — verified by sim-screen
+      `GetCursor` tests + live tmux `cursorEverSeen=true` in the Guide walk, not
+      `parity.sh`).
 - [ ] All pages functional (Conversations send/attach/trust; Browser fetches over
       RNS; Channels connect via RRC; Interfaces real enumeration + forms; Config
       editor; Log live tail; node hosting serves pages).
@@ -243,75 +244,6 @@ test or a matching `parity.sh` summary):
 > cites log line numbers (nomadnet→ / gonomadnet→) as evidence. Line numbers
 > are file offsets in the two `/tmp/*tmux-test-suite*.log` files.
 
-### B2 — Guide "Markup" topic never reaches the bottom (the "slower Guide scroll") (HIGH)
-- [ ] Guide topic 7 ("Outputting Formatted Text", listed as "Markup") is
-      rendered substantially longer in Go and never finishes scrolling: it hits
-      the suite's 700-Down safety cap (`max 700 downs without a clean bottom
-      signal (700 screenfuls)`) after ~1m42s. Python reaches the bottom cleanly
-      at **502 downs (478 screenfuls)** in ~74s. The Go render produces ~46%
-      more screenfuls for the same topic and the walk never completes it.
-- Evidence: gonomadnet→16833 `guide topic 7 reader: max 700 downs…`;
-  nomadnet→13795 `guide topic 7 reader: bottom reached after 502 downs (478
-  screenfuls)`. Per-Down timing is identical (~0.146 s/down in both), so this is
-  a content-length / line-wrap blow-up, not a per-key delay.
-- This is the user's "moving the cursor down through the Guide is 2-3× slower"
-  symptom — the topic scrolls at the same rate but never ends.
-- Fix target: micron renderer / Guide reader — investigate why topic 7 expands
-  to ≥700 screenfuls (line-wrapping, missing compact alignment, or repeated
-  demo sections). (B3/B4 alignment+divider parity are now fixed; this remains a
-  scroll-model issue.)
-- ROOT-CAUSE FOUND (not a content/wrap blow-up): at a FIXED reader width Go and
-  Python render the SAME row count (1004 vs 1004 @ width 134; Go 1009 vs Python
-  1010 @ 132). Live reader widths are also equal (~99). So content is at parity.
-  The real difference is the SCROLL MODEL: Python's Guide reader is a urwid
-  Pile-of-attrmaps + Scrollable, so Down moves the FOCUS to the next selectable
-  attrmap (cursor jumps variable rows, ~2 rows/down avg; verified live: cursor
-  Hello→Micron→paragraph→ToC-links), reaching the ~1060-row bottom in 502 downs.
-  Go's reader is a plain tview.TextView scrolling exactly 1 display row per Down,
-  so it needs ~1014 downs and hits the 700 cap (sig changed on every single Down:
-  700/700, never stabilized). Fix = give the Go Guide reader a link/attrmap focus
-  model so Down jumps focus to the next selectable (link) line and scrolls to
-  keep it visible, AND shows the hardware cursor on it (entangled with B5). Real
-  feature, not a render tweak.
-- INDENT-WRAP GAP (found during B7, entangled with this same reader
-  rearchitecture): `StyledLinesToTviewText` writes `line.Indent` as leading
-  spaces INTO the text, so the single TextView wraps (indent+text) at the full
-  pane width. Python wraps each attrmap line in `Padding(left=left_indent,
-  right=right_indent)`, so its Text wraps at (width − left_indent − right_indent)
-  and is then shifted. For a depth-1 section paragraph (indent 2) at inner 132
-  (ScrollBar → 131), Go wraps `  While…support to` at 131 (fits "to"); Python
-  wraps `While…support` at 129 (breaks before "to") then shifts right 2. Live
-  diff is 2 paragraphs in topic 7 (`…must support to` vs `…must support`).
-  The same Pile-of-Padded-attrmaps rearchitecture that fixes the scroll model
-  fixes this — a single tview.TextView cannot wrap per-line at (width−indent).
-
-### B5 — Hardware cursor mostly invisible in gonomadnet (MED, user-observed)
-- [ ] The terminal hardware cursor is always visible in nomadnet but is mostly
-      NOT visible in gonomadnet (observed live in both tmux sessions; tmux
-      `capture-pane` does not record cursor position, so this is from live
-      observation, not the logs).
-- Corroborates the known gap: Python positions the hardware cursor via
-  `canvas.cursor` on focused `LinkableText` (micron pages) and `ReadlineEdit`
-  (text inputs); the Go port uses a `ShowCursor` DrawFunc and does not drive the
-  real cursor the same way (see memory `green-cursor-parity-gap`).
-- Fix target: drive the real terminal cursor position on focused micron link
-  cursors and ReadlineEdit fields (capture-invisible; verify with a
-  `calc_coords` golden test per the Definition of Done).
-
-### B8 — Boot: Local Peer Info / interface status populate slower (LOW)
-- [ ] At the ~7 s Phase 1 Network snapshot, gonomadnet's Local Peer Info panel
-      shows `LXMF Addr: <>`, `Identity:` blank, `Announced: Never`, and
-      Interfaces show `Disconnected` / 0 bytes — while nomadnet (same
-      `~/.nomadnetwork` config) already shows the populated addrs, `Announced:
-      just now`, and `Connected` interfaces with bytes. By ~20 s (phase 3)
-      gonomadnet is populated, so the identity IS loaded, just later.
-- Evidence: nomadnet→104-108 vs gonomadnet→104-108; gonomadnet later populated
-  at →944-948.
-- Fix target: RNS/identity bring-up ordering on boot; low priority (eventually
-  correct). (The "Last sync: never" sibling symptom is FIXED — the
-  Conversations footer now reads the persisted `peer_settings["last_lxmf_sync"]`
-  via `App.LastSyncInfo` + a 30 s refresh, matching Python `_sync_status_line`.)
-
 ---
 
 ## Screencast-comparison parity (cast-confirmed bugs)
@@ -321,42 +253,124 @@ test or a matching `parity.sh` summary):
 > `tooling/parse_screencast.py` (+ `substates.py`, `guidetopics.py`). See
 > `tooling/README.md` for the methodology and the **colormode caveat**.
 >
-> **Important — most apparent color differences are NOT bugs.** Go's truecolor
-> RGB values (`menubar` `#111`/`#bbb`, `list_focus` `#111`/`#aaa`, `body_text`
-> `#ddd`, etc.) **match the Python source-of-truth truecolor palette**
-> (`nomadnet/ui/TextUI.py`). The casts differ in color only because they use
-> different colormodes (256-color vs truecolor) rendering the *same* palette.
-> The tasks below are the **structural / text-attribute** differences that are
-> colormode-independent and cast-confirmed. Palette *color-value* parity cannot
-> be validated from these casts — see task P1.
+> **Update (2026-08-06): the 3-hex cube-quantization divergence was a REAL
+> port-wide bug, NOT a colormode artifact.** urwid's `_parse_color_true`
+> (display/common.py) routes 4-char `#rgb` through `_parse_color_256`, cube-
+> quantizing each nibble to the nearest of {0,95,135,175,215,255} EVEN in
+> 24-bit truecolor; only 7-char `#rrggbb` is parsed exact. Python's static
+> palette (TextUI.py THEMES) uses 3-hex strings, so its truecolor menubar emits
+> `\x1b[38;2;0;0;0m\x1b[48;2;175;175;175m` (#111/#bbb → #000000/#afafaf), NOT
+> 17,17,17 / 187,187,187. The Go port nibble-doubled 3-hex → 6-hex (exact),
+> diverging everywhere. The micron path was already at parity (Python's
+> `high_color` nibble-doubles 3-hex → 6-hex → urwid-parses-exact, and Go's
+> `highColor`/`tviewColor` match). FIXED for the two central color-resolution
+> paths — `parseColor`/StyleRegistry (tui/palette.go) and `GetThemeColors`
+> (tui/theme.go, all 3-hex entries → `cubeHex3`) — plus the Guide reader base
+> color (was a wrong `0xbbbbbb`; now the micron plain default #dddddd/#222222).
+> The boot/Guide truecolor capture (captures/cq_135x32_00_esc.txt vs
+> gq_135x32_00_esc.txt) now has IDENTICAL SGR sets — fg {0,215,221,34,95},
+> bg {175,187}. (The earlier P1 task was based on the wrong premise that
+> Python truecolor emits 38;2;17;17;17; it emits 38;2;0;0;0. P1 is removed —
+> the truecolor captures now exist, satisfying its purpose.) The remaining
+> work is P2: direct nibble-doubled literals in widget files that bypass the
+> central paths.
 
-### P1 — Prerequisite: re-record the Python session in truecolor
-- [ ] Re-record `python_session.cast` in **24-bit truecolor** (set
-      `colormode = 24bit` in the nomadnet config; run in a truecolor terminal with
-      `COLORTERM=truecolor`). Verify the menubar SGR is `\x1b[38;2;17;17;17…`
-      not `\x1b[38;5;16…`. Without this, no palette-color TDD task below (or in
-      later phases) can be validated — the existing cast is 256-color. Keep the
-      256-color cast too; it remains useful for structural/attribute diffs.
-      This is a capture task, not a code task — but it unblocks all color tasks.
+### P2 — Cube-quantize remaining direct nibble-doubled 3-hex literals
+- [ ] Direct `tcell.NewHexColor(0xbbbbbb)` / `0xdddddd` / `0x222222` / …
+      nibble-doubled literals that bypass `parseColor`/`theme.go`. Each needs
+      per-site Python cross-referencing: if the Python source uses 3-hex
+      `#rgb` for that element → route through `GetThemeColors(theme)[key]`
+      (theme-aware, already cube-quantized) or `cubeHex3("#rgb")`; if it uses
+      6-hex `#rrggbb` → leave exact; if it is a Go-specific value Python never
+      emits → correct it. Do NOT blanket-quantize — quantizing a color Python
+      treats as exact 6-hex would introduce a divergence. Capture each
+      affected page with `capture.sh` and confirm the Go truecolor SGR set
+      converges on Python's before removing this task.
+
+  **DONE so far (2026-08-06, TDD-pinned, golden values from ui/TextUI.py +
+  Conversations.py/Channels.py AttrMap wrapping, full suite green):**
+  - Guide reader base fg → micron plain default #dddddd/#222222
+    (`tui/guide.go`; was wrong 0xbbbbbb).
+  - conversation-widget: peerInfoBar → `msg_header_sent` (#111/#ddd), editor
+    + titleEditor → `msg_editor` (#111/#0bb), messageList base → default
+    (Python `IndicativeListBox` has no AttrMap).
+  - channels: compose input → `msg_editor`, messages view base → default
+    (Python `_StickyMessageListBox` has no AttrMap).
+  - compose: title + editor → `msg_editor`.
+  - browser content base → `body_text` (#ddd/#222; Browser.py:562
+    `AttrMap(...,"body_text")`). Colors blank/padding + placeholder/loading
+    only — micron plain runs carry an explicit #dddddd tag (micron.DefaultFG,
+    like Python `high_color`), so they do not inherit it. Was a wrong hardcoded
+    `0xbbbbbb` const; now theme-aware `bd.contentFG` via
+    `GetThemeColors(app.Theme)["body_text"]` (`tui/browser.go`).
+  - room-widget: messages base → `body_text` (Go renders bodies as
+    `[#66cc55]<nick>[-] <text>`, so the body inherits SetTextColor; Python body
+    attr is `body_text`, Channels.py:1333), editor → `msg_editor`
+    (Channels.py:609 `AttrMap(editor,"msg_editor")`).
+  - network-views: NodeInfo + LocalPeer base → default (Python bare
+    `urwid.Text`, no AttrMap / `widget_style=""`, Network.py:1271-1272,1351,
+    1372,1387-1388).
+  - log: LogDisplay base → default (Python `LogTerminal` = `urwid.Terminal` in a
+    LineBox, no AttrMap, Log.py:44-51).
+  - config: explainer → `body_text` (Config.py:40 `Text(("body_text",...))`).
+  - directory: detail base → `body_text` (Python `Directory.py` is a 20-line
+    stub using `body_text`, Directory.py:14; Go's richer two-pane is Go-specific
+    so body_text is the closest defensible base).
+  - conversations: right-pane detail (`cd.detail`) empty-state base → default
+    (Python bare `Text("\n  No conversation selected")`, no AttrMap,
+    Conversations.py:1881-1884; the populated summary is Go-specific).
+  Each routed through `GetThemeColors(app.Theme)[...]` (or `ColorDefault`).
+
+  **Remaining (need per-site Python cross-ref + capture; do NOT guess):**
+  - editor/field surfaces: `interfaces.go` (Phase-5 Add/Edit — confirm the
+    Python editor style first); dialog ReadlineEdit inputs (`dialog.go` +
+    `conversations.go` eName/eCopy/eNotes/limitInput) — Python leaves these BARE
+    (no `AttrMap`) so they are `default`, NOT `msg_editor`; verify per-site.
+  - Go-specific / no-clear-Python-spec surfaces (leave 0xbbbbbb or needs
+    capture): `msgview.go` (no Python equiv), `hub-info.go` (Go-specific
+    MOTD/rooms text summary; Python `scrollbar` attr is for a different widget
+    - the channel-list scrollbar trough, Channels.py:1827), `micron-view.go`
+    (Go-specific; closest = micron plain #dddddd), `linkable-text.go` (micron
+    plain #dddddd; used inside the browser `body_text` wrapper - needs
+    capture), `browser-chrome.go:156` (test-only `browser_controls` fallback),
+    `network.go`, `helpers.go`.
+  - named-color gaps (SEPARATE, out of 3-hex scope): `error_text`/trust-banner
+    bg "dark red" (#800000 vs tcell.ColorRed), `inactive_text`/placeholder
+    "dark gray", `connected_status` "dark green", `interface_title` "" / bold —
+    these are urwid *named* colors, not 3-hex; resolve via urwid's named-color
+    table, not cubeHex3.
+  - `gNN` micron grayscale (heading `g93`): Go uses linear `v*255/99` but urwid
+    uses the 24-step 256-gray ramp — a distinct follow-up.
 
 ### Verification tasks (areas not captured, or not comparable at this colormode)
 > These are not yet confirmed bugs — they are areas the existing casts do not
-> cover or that need a truecolor re-capture (P1) to judge. Capture with the
+> cover or that need a truecolor capture to judge. Capture with the
 > `tui-parity` harness or a truecolor asciinema run, compare with
 > `tooling/substates.py` / `guidetopics.py`, and either file a concrete bug task
 > or close the gap.
-- [ ] **V-Net-Stream:** Network Announce Stream rendering (not in the cast).
-- [ ] **V-Net-Detail:** Network node-detail right pane (not in the cast).
-- [ ] **V-Log:** Log page (`urwid.Terminal` tail) rendering.
-- [ ] **V-Config:** Config page (`urwid.Terminal` editor) rendering.
-- [ ] **V-Dialogs:** dialog rendering parity — new conversation, peer info,
-      sync, URL, save-node (overlay position is a known systemic gap; check
-      content/colors).
 
 ---
 
 ## Known deferred gaps (lower priority; not blocking, but needed for 100%)
 
+- **Boot: Local Peer Info blank during RNS bring-up (was B8):** gonomadnet
+  shows the TUI immediately with a blank Local Peer Info (identity/addr empty,
+  `Announced: Never`, interfaces `Disconnected`) while `initRNS` runs in a
+  background goroutine; the panel populates once `initRNS` completes (it fires
+  `UIChangeCallback`). Python runs RNS init SYNCHRONOUSLY before the UI starts,
+  so its terminal is blank for the same duration and then appears WITH identity
+  populated. The Go init ORDER matches Python (both load identity after
+  `RNS.Reticulum`); Python's `TCPClientInterface.SYNCHRONOUS_START = True`
+  means it ALSO blocks ~5 s per unreachable TCP hub on the dial. Both reach the
+  populated state at the same wall-clock time when hubs are reachable (the
+  normal case); the original B8 observation was a run where Go's hubs were
+  unreachable (3×5 s dial timeouts). The parity-faithful fix (make `initRNS`
+  synchronous) is a deliberate UX tradeoff — it matches Python's
+  blank-startup-when-unreachable but regresses Go's show-UI-early design, and
+  would make the `Init()` tests block on real RNS + `startNode`. Left as a
+  conscious design choice pending user confirmation; the "Last sync: never"
+  sibling symptom is already FIXED (Conversations footer reads persisted
+  `last_lxmf_sync` via `App.LastSyncInfo` + 30 s refresh).
 - **Interfaces 1-row sizing nuance:** Python sizes its BoxAdapter to
   `screen_rows - iface_row_offset` (constant `iface_row_offset = 4`,
   Interfaces.py:2837) with the 2-row header INSIDE the list → `items =
@@ -366,6 +380,15 @@ test or a matching `parity.sh` summary):
 - **tview Checkbox glyph:** Go’s `(X) label` vs urwid’s exact checkbox glyph (not
   capture-reachable; affects KnownNodeInfo checkboxes).
 - **RNodeMultiInterface sub-interface expansion:** see Phase 5.
+- **Guide indent-wrap gap:** `StyledLinesToTviewText` writes `line.Indent` as
+  leading spaces INTO the text, so the single TextView wraps (indent+text) at the
+  full pane width. Python wraps each attrmap line in `Padding(left=left_indent,
+  right=right_indent)`, so its Text wraps at (width − left_indent − right_indent)
+  and is then shifted. For a depth-1 section paragraph (indent 2) Go wraps the
+  indented line one word later than Python (e.g. `…must support to` vs `…must
+  support`), a 2-paragraph difference in topic 7. Fix = per-line padded wrapping
+  (a Pile-of-Padded-attrmaps rearchitecture); the B2 focus model now rides on top
+  of the single TextView, so this is an independent, low-impact wrap nuance.
 
 ---
 

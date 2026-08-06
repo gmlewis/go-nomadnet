@@ -279,8 +279,14 @@ func TestAnnounceStreamFocusNavigation(t *testing.T) {
 
 	as.Widget().Focus(setFocus)
 
-	if !as.ilb.HasFocus() {
-		t.Fatalf("expected initial focus to be on announce list (ilb)")
+	// Python parity: the AnnounceStream Pile (Network.py:437-441) is built
+	// without an explicit focus_position, so urwid defaults to index 0 — the
+	// tab bar. A live capture confirms it: after Ctrl-L the Python announce
+	// stream needs TWO Downs (tab bar → filter bar → list) before Enter opens
+	// a node's Announce Info, whereas the Go port previously pre-focused the
+	// list (one Down). Match Python by leaving the Pile at its default index.
+	if !as.tabBar.HasFocus() {
+		t.Fatalf("expected initial focus on the tab bar (Python parity), not the list")
 	}
 
 	pf, ok := as.Widget().(*pileFiller)
@@ -288,27 +294,27 @@ func TestAnnounceStreamFocusNavigation(t *testing.T) {
 		t.Fatalf("expected announceStream Widget to be *pileFiller")
 	}
 
-	// List item is 0. UpArrow moves focus up to filterBar (search edit)
-	pf.InputHandler()(tcell.NewEventKey(tcell.KeyUp, 0, tcell.ModNone), setFocus)
-	if !as.filterBar.HasFocus() {
-		t.Errorf("expected filterBar to have focus after UpArrow from top of list")
-	}
-
-	// UpArrow again moves focus up to tabBar
-	pf.InputHandler()(tcell.NewEventKey(tcell.KeyUp, 0, tcell.ModNone), setFocus)
-	if !as.tabBar.HasFocus() {
-		t.Errorf("expected tabBar to have focus after second UpArrow")
-	}
-
-	// DownArrow moves focus back down to filterBar
+	// DownArrow: tab bar → filter bar (search edit)
 	pf.InputHandler()(tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone), setFocus)
 	if !as.filterBar.HasFocus() {
-		t.Errorf("expected filterBar to have focus after DownArrow from tabBar")
+		t.Errorf("expected filterBar to have focus after DownArrow from the tab bar")
 	}
 
-	// DownArrow moves focus back down to list
+	// DownArrow: filter bar → list
 	pf.InputHandler()(tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone), setFocus)
 	if !as.ilb.HasFocus() {
-		t.Errorf("expected ilb list to have focus after second DownArrow")
+		t.Errorf("expected ilb list to have focus after DownArrow from the filter bar")
+	}
+
+	// UpArrow: list → filter bar
+	pf.InputHandler()(tcell.NewEventKey(tcell.KeyUp, 0, tcell.ModNone), setFocus)
+	if !as.filterBar.HasFocus() {
+		t.Errorf("expected filterBar to have focus after UpArrow from the top of the list")
+	}
+
+	// UpArrow: filter bar → tab bar
+	pf.InputHandler()(tcell.NewEventKey(tcell.KeyUp, 0, tcell.ModNone), setFocus)
+	if !as.tabBar.HasFocus() {
+		t.Errorf("expected tab bar to have focus after the second UpArrow")
 	}
 }

@@ -240,12 +240,17 @@ func TestRegisterThemeStylesTrueColor(t *testing.T) {
 		wantAttr  tcell.AttrMask
 		checkAttr bool
 	}{
-		{"menubar", tcell.NewHexColor(0x111111), tcell.NewHexColor(0xbbbbbb), 0, false},
-		{"list_focus", tcell.NewHexColor(0x111111), tcell.NewHexColor(0xaaaaaa), 0, false},
-		{"body_text", tcell.NewHexColor(0xdddddd), tcell.ColorDefault, 0, false},
+		// 3-hex high-colors are cube-quantized to the 256 palette even in
+		// truecolor (urwid _parse_color_true routes 3-hex through
+		// _parse_color_256): #111→#000000, #bbb/#aaa→#afafaf, #ddd→#d7d7d7,
+		// #f44→#ff5f5f, #fb4→#ffaf5f. heading is g93 grayscale (not 3-hex),
+		// so it is unchanged by the cube-quantization fix.
+		{"menubar", tcell.NewHexColor(0x000000), tcell.NewHexColor(0xafafaf), 0, false},
+		{"list_focus", tcell.NewHexColor(0x000000), tcell.NewHexColor(0xafafaf), 0, false},
+		{"body_text", tcell.NewHexColor(0xd7d7d7), tcell.ColorDefault, 0, false},
 		{"heading", tcell.NewHexColor(0xefefef), tcell.ColorDefault, tcell.AttrUnderline, true},
-		{"error", tcell.NewHexColor(0xff4444), tcell.ColorDefault, tcell.AttrBlink, true},
-		{"irc_mention", tcell.NewHexColor(0xffbb44), tcell.ColorDefault, tcell.AttrBold, true},
+		{"error", tcell.NewHexColor(0xff5f5f), tcell.ColorDefault, tcell.AttrBlink, true},
+		{"irc_mention", tcell.NewHexColor(0xffaf5f), tcell.ColorDefault, tcell.AttrBold, true},
 	}
 	for _, c := range cases {
 		fg, bg, attr := r.Style(c.name).Decompose()
@@ -291,6 +296,80 @@ func TestRegisterThemeStylesMono(t *testing.T) {
 	// "default" (body_text mono) carries no attribute.
 	if _, _, attr := r.Style("body_text").Decompose(); attr != 0 {
 		t.Errorf("mono body_text attrs = %v, want 0", attr)
+	}
+}
+
+// TestCubeQuantize3Hex pins that 3-digit "#rgb" palette colors are resolved to
+// the 256-color CUBE (not nibble-doubled), mirroring urwid's truecolor
+// rendering. urwid's _parse_color_true (display/common.py:363) routes every
+// 3-hex spec through _parse_color_256, which snaps each nibble to the nearest
+// of the six cube steps {0x00,0x5f,0x87,0xaf,0xd7,0xff} via
+// _CUBE_256_LOOKUP_16 = [0,0,0,1,1,1,1,2,2,2,3,3,4,4,5,5] — EVEN in 24-bit
+// truecolor. So Python renders "#bbb"→#afafaf (175), not #bbbbbb (187); only
+// 6-hex "#rrggbb" is parsed as exact 24-bit. The Go port previously
+// nibble-doubled, diverging from Python on every mid-tone 3-hex value. The
+// golden RGB values below were captured verbatim from urwid
+// (_parse_color_true) for the dark + light theme 3-hex high-color specs.
+func TestCubeQuantize3Hex(t *testing.T) {
+	t.Parallel()
+
+	// spec -> the 24-bit RGB urwid emits in truecolor (captured from
+	// urwid.display.common._parse_color_true).
+	cases := []struct {
+		spec string
+		rgb  int32
+	}{
+		{"#000", 0x000000},
+		{"#111", 0x000000},
+		{"#222", 0x000000},
+		{"#444", 0x5f5f5f},
+		{"#777", 0x878787},
+		{"#888", 0x878787},
+		{"#999", 0x878787},
+		{"#aaa", 0xafafaf},
+		{"#bbb", 0xafafaf},
+		{"#ddd", 0xd7d7d7},
+		{"#0bb", 0x00afaf},
+		{"#150", 0x005f00},
+		{"#28b", 0x0087af},
+		{"#530", 0x5f5f00},
+		{"#6b2", 0x5faf00},
+		{"#6c5", 0x5fd75f},
+		{"#810", 0x870000},
+		{"#a22", 0xaf0000},
+		{"#a70", 0xaf8700},
+		{"#b92", 0xaf8700},
+		{"#ba4", 0xafaf5f},
+		{"#c50", 0xd75f00},
+		{"#f44", 0xff5f5f},
+		{"#f55", 0xff5f5f},
+		{"#fb4", 0xffaf5f},
+		{"#fd3", 0xffd75f},
+		{"#3cd", 0x5fd7d7},
+		{"#4a0", 0x5faf00},
+		{"#069", 0x005f87},
+		{"#077", 0x008787},
+		{"#3a0", 0x5faf00},
+	}
+	for _, c := range cases {
+		got := cubeHex3(c.spec)
+		if got != tcell.NewHexColor(c.rgb) {
+			t.Errorf("cubeHex3(%q) = #%06x, want #%06x", c.spec, uint32(got.Hex())&0xffffff, uint32(c.rgb)&0xffffff)
+		}
+		// parseColor must agree for a 3-hex spec (it powers the StyleRegistry
+		// path used by selectable-interface + scroll-bar).
+		if got := parseColor(c.spec); got != tcell.NewHexColor(c.rgb) {
+			t.Errorf("parseColor(%q) = #%06x, want #%06x", c.spec, uint32(got.Hex())&0xffffff, uint32(c.rgb)&0xffffff)
+		}
+	}
+
+	// 6-hex stays EXACT (urwid's 7-char branch) — the regression guard: do
+	// not quantize 6-hex.
+	if got := parseColor("#bbbbbb"); got != tcell.NewHexColor(0xbbbbbb) {
+		t.Errorf("parseColor(#bbbbbb) = #%06x, want exact #bbbbbb (6-hex must NOT be cube-quantized)", uint32(got.Hex())&0xffffff)
+	}
+	if got := parseColor("#00a533"); got != tcell.NewHexColor(0x00a533) {
+		t.Errorf("parseColor(#00a533) = #%06x, want exact #00a533", uint32(got.Hex())&0xffffff)
 	}
 }
 

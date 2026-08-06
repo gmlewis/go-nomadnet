@@ -32,17 +32,20 @@ import (
 // indicated to the user ONLY by the hardware cursor (screen.ShowCursor),
 // never by a per-button color or bold change.
 //
-// Regression: the Go port had been wrapping the active button in
-// `[#111111:aaaaaa:b]…[-:-:-]` (bold `#111`/`#aaa` = list_focus), which Python
-// does not emit (confirmed in python_session.cast: every menu button carries
-// the same SGR, including the active page's).
+// Note: in Python truecolor, menubar (#111/#bbb) and list_focus (#111/#aaa)
+// both cube-quantize to the SAME rendered pair (#000000 on #afafaf), so a
+// per-button background color can no longer distinguish them — the bold
+// attribute is the only tell. The original Go regression wrapped the active
+// button in `[#111111:aaaaaa:b]…` (bold list_focus), which Python never
+// emits (confirmed in python_session.cast: every menu button carries the
+// same SGR, including the active page's).
 func TestMenuButtonsUniformMenubarStyle(t *testing.T) {
 	t.Parallel()
 
-	// Both themes define menubar_bg=#bbbbbb and list_focus_bg=#aaaaaa
-	// (tui/theme.go). The menubar fg is #111111 in both themes.
-	const menubarBg = "bbbbbb"
-	const listFocusBg = "aaaaaa"
+	// Both themes define menubar_bg=#bbb, which cube-quantizes to #afafaf
+	// even in truecolor (urwid routes 3-hex through the 256-color cube).
+	// The menubar fg #111 cube-quantizes to #000000.
+	const menubarBg = "afafaf"
 
 	for _, theme := range []int{ThemeDark, ThemeLight} {
 		app := newTestApp()
@@ -56,15 +59,12 @@ func TestMenuButtonsUniformMenubarStyle(t *testing.T) {
 			styled := md.menuBar.GetText(false) // with color tags
 
 			// No button may be bold. A bold button tag looks like ":b]".
+			// (In Python truecolor menubar and list_focus render the same
+			// colors, so bold is the only attribute that would reveal the
+			// old list_focus-on-active-button regression.)
 			if strings.Contains(styled, ":b]") {
 				t.Errorf("theme %v active %v: menu bar contains a bold button tag ':b]' (Python never bolds menu buttons):\n%v",
 					theme, active, styled)
-			}
-
-			// No button may use the list_focus background.
-			if strings.Contains(styled, ":"+listFocusBg) {
-				t.Errorf("theme %v active %v: menu bar uses list_focus_bg %q (no button should):\n%v",
-					theme, active, listFocusBg, styled)
 			}
 
 			// Every button's preceding color tag must use the menubar background.

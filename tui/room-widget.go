@@ -76,13 +76,21 @@ func NewRoomWidget(app *App, hubName, roomName string) *RoomWidget {
 	rw.messages = tview.NewTextView()
 	rw.messages.SetDynamicColors(true)
 	rw.messages.SetScrollable(true)
-	rw.messages.SetTextColor(tcell.NewHexColor(0xbbbbbb))
+	// Message bodies are rendered as `[#66cc55]<nick>[-] <text>` (renderMessages),
+	// so the body text carries no color tag and inherits this SetTextColor.
+	// Python colors the body with the body_text palette attr (Channels.py:1333
+	// _body_markup(body, body_attr="body_text")); body_text is 3-hex #ddd dark /
+	// #222 light (ui/TextUI.py:26,80), cube-quantized to #d7d7d7 / #000000.
+	tc := GetThemeColors(app.Theme)
+	rw.messages.SetTextColor(tc["body_text"])
 	rw.messages.SetBackgroundColor(tcell.ColorDefault)
 
-	// Editor
+	// Editor: Python wraps it in AttrMap(editor, "msg_editor") (Channels.py:609);
+	// msg_editor is #111/#0bb (both themes, ui/TextUI.py:32,85), cube-quantized
+	// to #000000/#00afaf.
 	rw.editor = NewReadlineEdit(app.killRing, "", "Type a message...")
-	rw.editor.SetFieldBackgroundColor(tcell.NewHexColor(0x222222))
-	rw.editor.SetFieldTextColor(tcell.NewHexColor(0xdddddd))
+	rw.editor.SetFieldBackgroundColor(tc["msg_editor_bg"])
+	rw.editor.SetFieldTextColor(tc["msg_editor_fg"])
 
 	// Header: room title
 	header := tview.NewTextView()

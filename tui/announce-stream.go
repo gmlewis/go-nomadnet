@@ -86,7 +86,11 @@ func newAnnounceStreamDisplay(nd *NetworkDisplay) *announceStreamDisplay {
 	as.pile.AddItem(as.tabBar, 2, true)
 	as.pile.AddItem(as.filterBar, 1, true)
 	as.pile.AddItem(as.ilb, 0, true)
-	as.pile.SetFocusIndex(2)
+	// Python's AnnounceStream Pile (Network.py:437-441) sets no focus_position,
+	// so urwid defaults to index 0 — the tab bar. Do NOT pre-focus the list:
+	// a live capture confirms Python needs two Downs (tab bar → filter bar →
+	// list) after Ctrl-L before Enter opens an Announce Info, so the Go port
+	// must start on the tab bar too.
 	// Up at the top of the pile (the tab bar) escapes to the main menu, matching
 	// urwid's MainFrame where Up at the top of the body moves focus to the
 	// header. Without this the tab bar traps Up (the user can traverse

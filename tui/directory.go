@@ -70,11 +70,15 @@ func NewDirectoryDisplay(app *App, entries []DirectoryEntry) *DirectoryDisplay {
 		dd.list.AddItem("[gray]No peers in directory[-]", "", 0, nil)
 	}
 
-	// Detail view
+	// Detail view. Python's Directory.py is a 20-line stub whose only text uses
+	// the body_text attr (Directory.py:14); the Go two-pane list+detail has no
+	// direct Python color spec, so body_text (3-hex #ddd / #222, cube-quantized
+	// to #d7d7d7 / #000000) is the closest defensible base — the prior 0xbbbbbb
+	// is a color Python never emits.
 	dd.detail = tview.NewTextView()
 	dd.detail.SetDynamicColors(true)
 	dd.detail.SetScrollable(true)
-	dd.detail.SetTextColor(tcell.NewHexColor(0xbbbbbb))
+	dd.detail.SetTextColor(GetThemeColors(app.Theme)["body_text"])
 	dd.detail.SetText("[gray]Select a peer to view details[-]")
 
 	// Layout

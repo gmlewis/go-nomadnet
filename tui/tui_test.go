@@ -40,16 +40,19 @@ func TestGetThemeColors(t *testing.T) {
 	if dark == nil {
 		t.Fatal("GetThemeColors(ThemeDark) returned nil")
 	}
-	if dark["body_text"] != tcell.NewHexColor(0xdddddd) {
-		t.Errorf("dark body_text = %v, want #ddd", dark["body_text"])
+	// #ddd cube-quantizes to #d7d7d7 even in truecolor (urwid routes 3-hex
+	// through the 256-color cube), so dark body_text = #d7d7d7, not #dddddd.
+	if dark["body_text"] != tcell.NewHexColor(0xd7d7d7) {
+		t.Errorf("dark body_text = %v, want #d7d7d7 (cube-quantized #ddd)", dark["body_text"])
 	}
 
 	light := GetThemeColors(ThemeLight)
 	if light == nil {
 		t.Fatal("GetThemeColors(ThemeLight) returned nil")
 	}
-	if light["body_text"] != tcell.NewHexColor(0x222222) {
-		t.Errorf("light body_text = %v, want #222", light["body_text"])
+	// #222 cube-quantizes to #000000 (nibble 2 snaps to cube step 0).
+	if light["body_text"] != tcell.NewHexColor(0x000000) {
+		t.Errorf("light body_text = %v, want #000000 (cube-quantized #222)", light["body_text"])
 	}
 }
 
@@ -58,7 +61,7 @@ func TestGetThemeColorsDefault(t *testing.T) {
 
 	// Unknown theme should return dark
 	colors := GetThemeColors(99)
-	if colors["body_text"] != tcell.NewHexColor(0xdddddd) {
+	if colors["body_text"] != tcell.NewHexColor(0xd7d7d7) {
 		t.Error("Unknown theme did not default to dark")
 	}
 }

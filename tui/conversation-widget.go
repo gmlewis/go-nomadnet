@@ -132,13 +132,17 @@ func NewConversationWidget(app *App, sourceHash string) *ConversationWidget {
 		app:    app,
 		source: sourceHash,
 	}
+	tc := GetThemeColors(app.Theme)
 
-	// Peer info bar — style "msg_header_sent" (TextUI.py:35/88): true-color
-	// fg #111, bg #ddd.
+	// Peer info bar — style "msg_header_sent" (ui/TextUI.py:35/88): 3-hex
+	// fg #111 / bg #ddd in both themes. urwid cube-quantizes 3-hex even in
+	// truecolor (#111→#000000, #ddd→#d7d7d7), so route through the palette
+	// (which already cube-quantizes) rather than nibble-doubling to exact
+	// #111111/#dddddd.
 	cw.peerInfoBar = tview.NewTextView()
 	cw.peerInfoBar.SetDynamicColors(true)
-	cw.peerInfoBar.SetTextColor(tcell.NewHexColor(0x111111))
-	cw.peerInfoBar.SetBackgroundColor(tcell.NewHexColor(0xdddddd))
+	cw.peerInfoBar.SetTextColor(tc["msg_header_sent_fg"])
+	cw.peerInfoBar.SetBackgroundColor(tc["msg_header_sent_bg"])
 	cw.updatePeerInfo()
 
 	// Trust banner — style "msg_warning_untrusted" (TextUI.py:39/92): true-color
@@ -159,19 +163,27 @@ func NewConversationWidget(app *App, sourceHash string) *ConversationWidget {
 	cw.messageList = tview.NewTextView()
 	cw.messageList.SetDynamicColors(true)
 	cw.messageList.SetScrollable(true)
-	cw.messageList.SetTextColor(tcell.NewHexColor(0xbbbbbb))
+	// Python's messagelist is a bare IndicativeListBox with NO AttrMap
+	// (Conversations.py:2287), so its base color is the terminal default;
+	// message widgets carry their own styling. Do not impose a #bbbbbb
+	// base (Python never does).
+	cw.messageList.SetTextColor(tcell.ColorDefault)
 	cw.messageList.SetBackgroundColor(tcell.ColorDefault)
 	cw.messageList.SetTextAlign(tview.AlignLeft)
 
-	// Minimal editor (content only)
+	// Minimal editor (content only) — Python wraps the editor in
+	// `AttrMap(editor, "msg_editor")` (Conversations.py:609); msg_editor is
+	// 3-hex #111 / #0bb (ui/TextUI.py:32/85), cube-quantized to #000000 /
+	// #00afaf. Route through the palette; the prior 0x222222/0xdddddd did
+	// not match Python's msg_editor at all.
 	cw.editor = NewReadlineEdit(app.killRing, "", "Type a message... (Ctrl-D to send)")
-	cw.editor.SetFieldBackgroundColor(tcell.NewHexColor(0x222222))
-	cw.editor.SetFieldTextColor(tcell.NewHexColor(0xdddddd))
+	cw.editor.SetFieldBackgroundColor(tc["msg_editor_bg"])
+	cw.editor.SetFieldTextColor(tc["msg_editor_fg"])
 
-	// Title editor (hidden by default)
+	// Title editor (hidden by default) — same msg_editor style.
 	cw.titleEditor = NewReadlineEdit(app.killRing, "Title: ", "")
-	cw.titleEditor.SetFieldBackgroundColor(tcell.NewHexColor(0x222222))
-	cw.titleEditor.SetFieldTextColor(tcell.NewHexColor(0xdddddd))
+	cw.titleEditor.SetFieldBackgroundColor(tc["msg_editor_bg"])
+	cw.titleEditor.SetFieldTextColor(tc["msg_editor_fg"])
 
 	// Full editor (title + content)
 	cw.fullEditorArea = tview.NewFlex().SetDirection(tview.FlexRow).

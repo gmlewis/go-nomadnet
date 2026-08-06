@@ -166,7 +166,10 @@ func NewChannelsDisplay(app *App, rooms []ChannelInfo) *ChannelsDisplay {
 	cd.messages = tview.NewTextView().
 		SetDynamicColors(true).
 		SetScrollable(true).
-		SetTextColor(tcell.NewHexColor(0xbbbbbb))
+		// Python's channel message list is a bare _StickyMessageListBox with
+		// no AttrMap (Channels.py:784); message widgets carry their own
+		// styling. The base is the terminal default, not #bbbbbb.
+		SetTextColor(tcell.ColorDefault)
 	cd.members = tview.NewList()
 	cd.members.SetHighlightFullLine(true)
 	ApplyListFocusStyle(cd.members, app.Theme)
@@ -175,9 +178,14 @@ func NewChannelsDisplay(app *App, rooms []ChannelInfo) *ChannelsDisplay {
 			cd.OnMemberClick(mainText, secondaryText)
 		}
 	})
+	// Compose editor — Python wraps it in `AttrMap(editor, "msg_editor")`
+	// (Channels.py:609); msg_editor is 3-hex #111/#0bb (ui/TextUI.py:32/85),
+	// cube-quantized to #000000/#00afaf. Route through the palette rather than
+	// the prior 0x222222/0xdddddd (which is not Python's msg_editor).
+	tc := GetThemeColors(app.Theme)
 	cd.input = NewReadlineEdit(app.killRing, "", "Type a message...")
-	cd.input.SetFieldBackgroundColor(tcell.NewHexColor(0x222222))
-	cd.input.SetFieldTextColor(tcell.NewHexColor(0xdddddd))
+	cd.input.SetFieldBackgroundColor(tc["msg_editor_bg"])
+	cd.input.SetFieldTextColor(tc["msg_editor_fg"])
 
 	// Two-pane Columns: left list (given 36) + right pane (weight 1). No outer
 	// border — each pane carries its own (Python columns_widget, Channels.py:

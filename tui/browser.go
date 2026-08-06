@@ -51,8 +51,18 @@ type BrowserDisplay struct {
 	loadedFromCache   bool
 	linkStatusShowing bool
 	content           *browserPageView
-	history           []string
-	histIdx           int
+	// contentFG is the browser content area's default text color: the
+	// cube-quantized body_text palette entry (Python wraps the display widget
+	// in AttrMap(..., "body_text"), Browser.py:562; body_text is 3-hex #ddd dark
+	// / #222 light, ui/TextUI.py:26,80, cube-quantized to #d7d7d7 / #000000).
+	// It colors blank/padding cells and the non-micron placeholder/loading text;
+	// micron plain runs carry an explicit #dddddd tag (micron.DefaultFG, like
+	// Python's high_color nibble-doubling) so they do not inherit it. It is
+	// restored as the TextView default when a page declares no #!fg= (Python
+	// resets page_foreground_color=None each load).
+	contentFG tcell.Color
+	history   []string
+	histIdx   int
 	// loading is the MIDDLE-centered "Retrieving\n[<url>]" body shown while a
 	// page fetch is in flight (Python Browser.update_display REQUEST_SENT branch,
 	// Browser.py:593-598: Filler(Text("Retrieving\n["+url+"]", CENTER), MIDDLE)).
@@ -198,7 +208,8 @@ func NewBrowserDisplay(app *App) *BrowserDisplay {
 	// preserved; the nav model drives scrolling + link dispatch instead of the
 	// TextView's own InputHandler.
 	bd.content = newBrowserPageView(bd)
-	bd.content.SetTextColor(tcell.NewHexColor(0xbbbbbb))
+	bd.contentFG = GetThemeColors(app.Theme)["body_text"]
+	bd.content.SetTextColor(bd.contentFG)
 	bd.content.SetText("[gray]Enter a URL and press Enter to load a page[-]")
 
 	// The body slot holds the page content (or the centered "Retrieving" body
@@ -387,7 +398,7 @@ func (bd *BrowserDisplay) showLoading(url string) {
 		bd.body.RemoveItem(bd.loading)
 	}
 	bd.body.RemoveItem(bd.content)
-	bd.loading = newMiddleCentered(tcell.NewHexColor(defaultContentFG), "Retrieving", "["+url+"]")
+	bd.loading = newMiddleCentered(bd.contentFG, "Retrieving", "["+url+"]")
 	bd.body.AddItem(bd.loading, 0, 1, true)
 }
 
@@ -401,12 +412,6 @@ func (bd *BrowserDisplay) showContent() {
 	bd.body.RemoveItem(bd.content)
 	bd.body.AddItem(bd.content, 0, 1, true)
 }
-
-// defaultContentFG is the browser content area's default text color, matching
-// the SetTextColor used in NewBrowserDisplay. It is restored when a page
-// declares no #!fg= (Python load_page resets page_foreground_color=None each
-// load).
-const defaultContentFG = 0xbbbbbb
 
 // RenderPage renders Micron markup into the browser content area, mirroring
 // Python Browser.load_page (Browser.py:1236-1282): micron.RenderToStyledLines
@@ -451,7 +456,7 @@ func (bd *BrowserDisplay) renderPage() {
 	if fg != "" {
 		bd.content.SetTextColor(parseColor("#" + fg))
 	} else {
-		bd.content.SetTextColor(tcell.NewHexColor(defaultContentFG))
+		bd.content.SetTextColor(bd.contentFG)
 	}
 	if bg != "" {
 		bd.content.SetBackgroundColor(parseColor("#" + bg))

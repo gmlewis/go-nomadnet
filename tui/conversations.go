@@ -215,11 +215,14 @@ func NewConversationsDisplay(app *App, convs []ConversationInfo) *ConversationsD
 
 	// Detail view (right pane). Empty state matches Python's ConversationWidget
 	// (None): a bordered LineBox with "\n  No conversation selected"
-	// (Conversations.py:1884-1886).
+	// (Conversations.py:1884-1886), a bare urwid.Text with no AttrMap → terminal
+	// default base. (The populated "Trust/Messages/Last" summary Go renders here
+	// is a Go-specific format with no Python equivalent; the empty state is the
+	// only Python-specified surface.)
 	cd.detail = tview.NewTextView()
 	cd.detail.SetDynamicColors(true)
 	cd.detail.SetScrollable(true)
-	cd.detail.SetTextColor(tcell.NewHexColor(0xbbbbbb))
+	cd.detail.SetTextColor(tcell.ColorDefault)
 	cd.detail.SetTextAlign(tview.AlignLeft)
 	cd.detail.SetBorder(true)
 	cd.detail.SetText("\n  No conversation selected")

@@ -41,7 +41,10 @@ func NewNodeInfo(hash, name string) *NodeInfo {
 
 	text := tview.NewTextView()
 	text.SetDynamicColors(true)
-	text.SetTextColor(tcell.NewHexColor(0xbbbbbb))
+	// Python's NodeInfo uses bare urwid.Text lines with widget_style="" (empty
+	// attr = default, Network.py:1372,1387-1388), so the base color is the
+	// terminal default, not a palette color.
+	text.SetTextColor(tcell.ColorDefault)
 	text.SetText(sb.String())
 
 	ni.widget = text
@@ -71,7 +74,9 @@ func NewLocalPeer(addr, name, lastAnnounce string) *LocalPeer {
 
 	text := tview.NewTextView()
 	text.SetDynamicColors(true)
-	text.SetTextColor(tcell.NewHexColor(0xbbbbbb))
+	// Python's LocalPeer uses bare urwid.Text lines with no AttrMap
+	// (Network.py:1271-1272,1351), so the base color is the terminal default.
+	text.SetTextColor(tcell.ColorDefault)
 	text.SetText(sb.String())
 
 	lp.widget = text

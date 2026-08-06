@@ -25,6 +25,7 @@ package tui
 import (
 	_ "embed"
 	"strings"
+	"time"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/gmlewis/go-nomadnet/nomadnet/micron"
@@ -119,6 +120,26 @@ type GuideDisplay struct {
 	anchors      micron.AnchorMap     // anchor name → line index (current topic)
 	lineTexts    []string             // per-line tview-tagged text (current topic)
 
+	// Focus model (B2/B5). Python's Guide reader is a urwid
+	// Scrollable(Pile(LinkableText)): each Down advances the Pile focus to the
+	// next SELECTABLE line (text lines; headings, dividers and blank lines are
+	// non-selectable and skipped), and the Scrollable keeps the focused line
+	// visible. The Go port renders into a single tview.TextView, so this state
+	// reproduces that focus model on top of it: selectable holds the
+	// StyledLine indices that are focusable; lineRows[i] is the display-row
+	// offset where line i begins (so the focused line can be scrolled to and
+	// the hardware cursor positioned on it); focusSel is the index into
+	// selectable of the currently focused line (-1 = none); focusCol is a byte
+	// offset into the focused line's concatenated span text (the within-line
+	// cursor, mirroring LinkableText's part cursor); lastKey drives the 2s
+	// key-timeout that gates hardware-cursor visibility (B5).
+	selectable []int
+	lineRows   []int
+	focusSel   int
+	focusCol   int
+	lastKey    time.Time
+	hasKey     bool
+
 	// OnHandleLink is invoked when a link in the reader is activated (click or
 	// keyboard). The app wires this to the GuideLinkDelegate behavior
 	// (Guide.py:91-118): "#anchor" jumps in-page, external links switch to
@@ -169,7 +190,19 @@ func NewGuideDisplay(app *App) *GuideDisplay {
 	gd.reader.SetRegions(true)
 	gd.reader.SetScrollable(true)
 	gd.reader.SetWrap(true)
-	gd.reader.SetTextColor(tcell.NewHexColor(0xbbbbbb))
+	// The reader base (fallback) foreground must match Python's micron "plain"
+	// default: MicronParser DEFAULT_FG_DARK="ddd" / DEFAULT_FG_LIGHT="222",
+	// nibble-doubled to "#rrggbb" by high_color and parsed EXACT by urwid —
+	// #dddddd (dark) / #222222 (light). Styled spans carry the same tag, but
+	// tview's `[-:-:-]` resets and the indent/padding spaces written before
+	// the first span fall back to this base color, so it must agree or those
+	// runs diverge to a third color Python never emits (the port previously
+	// used 0xbbbbbb).
+	readerFG := tcell.NewHexColor(0xdddddd)
+	if gd.app.Theme == ThemeLight {
+		readerFG = tcell.NewHexColor(0x222222)
+	}
+	gd.reader.SetTextColor(readerFG)
 	gd.reader.SetHighlightedFunc(func(added, removed, remaining []string) {
 		if len(added) > 0 {
 			gd.activateLink(added[0])
@@ -228,9 +261,29 @@ func NewGuideDisplay(app *App) *GuideDisplay {
 				gd.FocusReader()
 				return nil
 			}
+			// Reader focused: Right steps the within-line cursor (B2/B5).
+			if gd.scroll.HasFocus() {
+				gd.handleReaderKey(event)
+				return nil
+			}
 		case tcell.KeyLeft:
 			if gd.scroll.HasFocus() {
+				// Left moves the within-line cursor; at position 0 it
+				// releases focus back to the topic list (LinkableText left
+				// at pos 0 → micron_released_focus, Guide.py:100-101).
+				if consumed := gd.handleReaderKey(event); consumed == nil {
+					return nil
+				}
 				gd.FocusTopics()
+				return nil
+			}
+		case tcell.KeyDown, tcell.KeyUp, tcell.KeyEnter, tcell.KeyCtrlJ:
+			// Reader-focused focus-model navigation (B2): Down/Up advance
+			// focus to the next/previous selectable line; Enter activates
+			// the link at the cursor. When the topics list is focused these
+			// keys fall through to it (list navigation / activation).
+			if gd.scroll.HasFocus() {
+				gd.handleReaderKey(event)
 				return nil
 			}
 		}
@@ -285,6 +338,11 @@ func (gd *GuideDisplay) showPlaceholder() {
 	// Reset scroll (see showTopic): the placeholder replaces prior content and
 	// must start at the top so a later topic isn't shown at a stale offset.
 	gd.reader.ScrollTo(0, 0)
+	// No selectable content in the placeholder.
+	gd.selectable = nil
+	gd.lineRows = nil
+	gd.focusSel = -1
+	gd.focusCol = 0
 }
 
 // showTopic renders the given topic's micron source into the reader, syncs the
@@ -318,6 +376,11 @@ func (gd *GuideDisplay) showTopic(idx int) {
 	// are also used by jumpToAnchor and the resize re-render path, which must
 	// preserve the user's current scroll position.
 	gd.reader.ScrollTo(0, 0)
+	// Reset the focus model: Python rebuilds the entire Pile on every topic
+	// switch (set_content_widgets), so the focus cursor restarts at the first
+	// selectable line. Without this, focus stays on a line index from the
+	// previous (now-replaced) topic, out of range for the new one.
+	gd.resetFocus()
 	// Move focus to the reader (Python display_topic: self.reader.focus_reader()).
 	// This is what makes Enter on a topic hand input to the reader pane so Down
 	// scrolls the topic and Left releases focus back to the topic list.
@@ -337,6 +400,9 @@ func (gd *GuideDisplay) Shortcuts() string {
 func (gd *GuideDisplay) showMarkupForTest(markup string) {
 	gd.currentIdx = 0 // mark "a topic is shown" so jumpToAnchor/rerender act
 	gd.renderMarkup(markup)
+	// Mirror showTopic: reset the focus cursor to the first selectable line so
+	// tests start from a known focus position.
+	gd.resetFocus()
 }
 
 // renderMarkup is the shared render path: micron-render the markup, convert to
@@ -350,6 +416,7 @@ func (gd *GuideDisplay) renderMarkup(markup string) {
 	gd.anchors = micron.BuildAnchorMap(lines)
 	gd.lineTexts = splitLineTexts(text)
 	gd.reader.SetText(text)
+	gd.computeFocusLayout()
 }
 
 // splitLineTexts splits a StyledLinesToTviewText result into one entry per
@@ -377,6 +444,7 @@ func (gd *GuideDisplay) rerender(width int) {
 	gd.anchors = micron.BuildAnchorMap(lines)
 	gd.lineTexts = splitLineTexts(text)
 	gd.reader.SetText(text)
+	gd.computeFocusLayout()
 }
 
 // readerWidth is the reader's current inner column count (the wrap/divider
@@ -405,6 +473,11 @@ func (gd *GuideDisplay) jumpToAnchor(name string) {
 		return
 	}
 	gd.reader.ScrollTo(gd.rowsAbove(targetIdx), 0)
+	// Move the focus cursor to the selectable line at or after the anchor, so
+	// subsequent Down continues from the anchor rather than the top. Python's
+	// jump_to_anchor sets the Scrollable position and (via
+	// automove_cursor_on_scroll) the Pile focus follows.
+	gd.setFocusAtOrAfter(targetIdx)
 }
 
 // rowsAbove returns the number of wrapped display rows preceding line idx,
@@ -498,6 +571,31 @@ func (gr *guideReader) SetRect(x, y, w, h int) {
 		gr.lastW = w
 		gr.gd.rerender(w)
 	}
+}
+
+// Draw renders the reader and, when it (via the ScrollBar) is focused and the
+// cursor is within the 2s key-timeout window, re-positions the terminal
+// hardware cursor on the focused selectable line's within-line cursor column
+// (B5). This mirrors Python LinkableText.render setting canvas.cursor
+// (MicronParser.py:982-992); tview's Application.Draw hides the cursor each
+// frame, so the focused widget must re-show it on every draw (the same pattern
+// ReadlineEdit.Draw uses, readline.go:152). The cursor is capture-invisible
+// (tmux capture-pane records the cell buffer, not the cursor), so this is
+// verified by the cursorRow golden in guide-focus_test.go and the live
+// tmux-suite cursor-y tracking, not parity.sh.
+func (gr *guideReader) Draw(screen tcell.Screen) {
+	gr.TextView.Draw(screen)
+	if gr.gd == nil {
+		return
+	}
+	if !gr.gd.cursorVisible(time.Now(), gr.gd.scroll.HasFocus()) {
+		return
+	}
+	x, y, ok := gr.gd.cursorScreenXY()
+	if !ok {
+		return
+	}
+	screen.ShowCursor(x, y)
 }
 
 // guideTopicPlainText returns the rendered plain text of a topic (for tests),

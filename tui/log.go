@@ -59,7 +59,10 @@ func NewLogDisplay(app *App, logPath string, lines int) *LogDisplay {
 	ld.logView.SetDynamicColors(true)
 	ld.logView.SetScrollable(true)
 	ld.logView.SetWrap(true)
-	ld.logView.SetTextColor(tcell.NewHexColor(0xbbbbbb))
+	// Python's LogTerminal embeds urwid.Terminal (tail -f) wrapped only in a
+	// LineBox with no AttrMap (Log.py:44-51), so the log text uses the terminal's
+	// own default colors — there is no palette text fg.
+	ld.logView.SetTextColor(tcell.ColorDefault)
 	ld.logView.SetBackgroundColor(tcell.ColorDefault)
 
 	// Load initial content and follow the end (Python `tail -f` shows latest).

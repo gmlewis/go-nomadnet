@@ -70,16 +70,22 @@ func TestAnnounceStreamUpToMenu(t *testing.T) {
 	screen.SetSize(135, 32)
 
 	app.Main.SelectPage("network")
-	// Enter the Announce Stream and focus its left list (the pileFiller),
-	// mirroring the user's post-connect state. focusLeftList SetFocus's the
-	// bordered list slot, which cascades down to the pile's list item.
+	// Enter the Announce Stream, mirroring the user's post-Ctrl-L state.
+	// Python's AnnounceStream Pile defaults to index 0, so toggleList lands
+	// focus on the tab bar (not the list).
 	nd.toggleList()
-	nd.focusLeftList()
 
 	app.Main.SetQuitCallback(func() { app.Stop() })
 	runErr := make(chan error, 1)
 	go func() { runErr <- app.runWithSimScreen() }()
 	time.Sleep(100 * time.Millisecond)
+
+	// Reach the list the way a user does — two Downs: tab bar → filter bar →
+	// list.
+	for i := 0; i < 2; i++ {
+		screen.InjectKey(tcell.KeyDown, 0, tcell.ModNone)
+		time.Sleep(100 * time.Millisecond)
+	}
 
 	// The pile is [tab bar(0), filter bar(1), list(2)] with focus on the list,
 	// so three Ups are required: list→filter bar→tab bar→menu. Focus must stay
