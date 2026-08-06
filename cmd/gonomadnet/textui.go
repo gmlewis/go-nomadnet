@@ -621,6 +621,20 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		conversationsDisplay.SetConversations(tuiConvs)
 	}
 
+	// "Last sync:" footer reads the persisted peer_settings["last_lxmf_sync"]
+	// live (Python _sync_status_line, Conversations.py:517-545). Refresh every
+	// 30 s to age the relative time, matching Python's set_alarm_in(30,
+	// _refresh_sync_status). Also refreshed after a sync completes (below).
+	conversationsDisplay.LastSyncInfo = a.LastSyncInfo
+	conversationsDisplay.RefreshSyncStatus()
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			conversationsDisplay.RefreshSyncStatus()
+		}
+	}()
+
 	// Wire conversation keyboard shortcuts
 	conversationsDisplay.OnDeleteConv = func() {
 		idx := conversationsDisplay.GetSelectedIndex()
@@ -865,6 +879,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 						limit = result.Limit
 					}
 					a.RequestLXMFSync(limit)
+					conversationsDisplay.RefreshSyncStatus()
 				case "cancel":
 					a.CancelLXMFSync()
 				case "dismiss":

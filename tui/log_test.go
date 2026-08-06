@@ -16,6 +16,9 @@
 package tui
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/gdamore/tcell/v2"
@@ -75,5 +78,35 @@ func TestLogDisplayUpMidScrollForwards(t *testing.T) {
 	}
 	if app.Main.focusRegion != "body" {
 		t.Errorf("focusRegion = %q, want body (Up should scroll, not steal focus)", app.Main.focusRegion)
+	}
+}
+
+// TestLogDisplayPreservesLevelField pins B6: the Log page renders the raw
+// logfile verbatim, and the logfile (written by go-reticulum, matching
+// Python RNS.format `[timestamp] [Level]   message`) contains `[Info]`,
+// `[Error]`, etc. tview's TextView parses `[...]` as a color tag, so an
+// unescaped `[Info]` is silently dropped from the visible text (the user sees
+// `[timestamp]      message` with the level field blank). Python's Log.py
+// embeds urwid.Terminal running `tail -fn50`, which shows the brackets
+// literally. The Go substitute must escape tview color tags so the `[Level]`
+// field is visible. The log content has NO real tview color tags (it is plain
+// log text), so escaping the whole line is safe.
+func TestLogDisplayPreservesLevelField(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "logfile")
+	line := "[2026-08-05 19:00:26] [Notice]  Configuration loaded successfully\n"
+	if err := os.WriteFile(path, []byte(line), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	app := newTestApp()
+	ld := NewLogDisplay(app, path, 50)
+
+	got := ld.logView.GetText(true)
+	// The visible text must retain the literal `[Notice]` level token.
+	if !strings.Contains(got, "[Notice]") {
+		t.Errorf("Log display stripped the [Level] field (B6: tview parsed [Notice] as a color tag).\ngettext = %q", got)
 	}
 }

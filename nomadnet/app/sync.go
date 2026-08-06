@@ -20,6 +20,8 @@ import (
 	"time"
 
 	"github.com/gmlewis/go-reticulum/lxmf"
+	"github.com/gmlewis/go-reticulum/rns"
+	"github.com/gmlewis/go-nomadnet/nomadnet/util"
 )
 
 // GetSyncStatus returns a human-readable description of the current LXMF
@@ -131,3 +133,46 @@ func (a *App) CancelLXMFSync() {
 }
 
 func timeNow() time.Time { return time.Now() }
+
+// LastSyncInfo returns the persisted last-LXMF-sync time and the default
+// propagation node's display label for the Conversations "Last sync:" footer,
+// mirroring Python's _sync_status_line (Conversations.py:517-545). The time is
+// read live from PeerSettings.LastLXMFSync (peer_settings["last_lxmf_sync"]),
+// so it survives across runs (a sync writes the field via RequestLXMFSync).
+// The label is the propagation node's directory display name, falling back to
+// "<" + the first 8 hex chars of its destination hash + "…" (Python lines
+// 530-543). A zero time (no sync recorded) formats as "never" upstream.
+func (a *App) LastSyncInfo() (time.Time, string) {
+	var t time.Time
+	a.psMu.Lock()
+	if a.PeerSettings != nil && a.PeerSettings.LastLXMFSync > 0 {
+		t = time.Unix(int64(a.PeerSettings.LastLXMFSync), 0)
+	}
+	a.psMu.Unlock()
+
+	if t.IsZero() {
+		return t, ""
+	}
+
+	pnHash := a.GetDefaultPropagationNode()
+	if len(pnHash) == 0 {
+		return t, ""
+	}
+
+	// Recall the node identity and look up its "nomadnetwork.node" directory
+	// entry for the display name (Python: Identity.recall →
+	// hash_from_name_and_identity("nomadnetwork.node", ident) → directory.find).
+	if a.Transport != nil {
+		if id := rns.RecallIdentity(a.Transport, pnHash); id != nil {
+			nodeDest := rns.CalculateHash(id, "nomadnetwork", "node")
+			if entry := a.Dir.Find(nodeDest); entry != nil && entry.DisplayName != "" {
+				if name := util.StripModifiers(&entry.DisplayName); name != nil && *name != "" {
+					return t, *name
+				}
+			}
+		}
+	}
+
+	// Fallback: "<" + first 8 hex chars of the propagation node hash + "…".
+	return t, "<" + fmt.Sprintf("%x", pnHash)[:8] + "…>"
+}

@@ -129,6 +129,45 @@ func TestGuidePaneFocusSwitching(t *testing.T) {
 	}
 }
 
+// TestGuideColumnsWidthsMatchPython pins B7: the Guide two-pane column widths
+// must match Python's urwid.Columns with float weights [0.33, 0.67] (Guide.py
+// list_width = 0.33). Python computes the topics-pane width as
+// int(maxcol*0.33 + 0.5) via urwid's column_widths subtractive rounding. The Go
+// port must use the SAME ratio — integer weights [33, 67] replicate 0.33/0.67
+// exactly (33/100 == 0.33 in float64), whereas [1, 2] (1/3, 2/3) rounds one
+// larger at widths where 1/3 of the width lands just above 0.33 of it
+// (e.g. maxcol 200 → [1,2] gives 67, but Python gives 66). At the tmux-suite
+// size the live Go topics box was 67 wide vs Python 66, shifting every reader
+// wrap point by one column.
+func TestGuideColumnsWidthsMatchPython(t *testing.T) {
+	t.Parallel()
+
+	app := NewApp(ThemeDark, GlyphUnicode, ColorModeTrue)
+	gd := NewGuideDisplay(app)
+	cols, ok := gd.Widget().(*urwidColumns)
+	if !ok {
+		t.Fatalf("gd.Widget() = %T, want *urwidColumns", gd.Widget())
+	}
+
+	for _, maxcol := range []int{80, 120, 134, 199, 200, 250, 300} {
+		cols.SetRect(0, 0, maxcol, 40)
+		_, _, readerW, _ := gd.readerBox.GetRect()
+		// Python: topics width = int(maxcol*0.33 + 0.5) (urwid subtractive
+		// rounding with weights [0.33, 0.67] and dividechars 0). The topics
+		// LineBox width equals the columns width allocated to column 0.
+		wantTopics := int(float64(maxcol)*0.33 + 0.5)
+		_, _, topicsW, _ := gd.topicsBox.GetRect()
+		if topicsW != wantTopics {
+			t.Errorf("maxcol=%v: topics box width = %v, want %v (Python 0.33 ratio)", maxcol, topicsW, wantTopics)
+		}
+		// Reader pane gets the remainder.
+		wantReader := maxcol - wantTopics
+		if readerW != wantReader {
+			t.Errorf("maxcol=%v: reader box width = %v, want %v", maxcol, readerW, wantReader)
+		}
+	}
+}
+
 func TestListSetCurrentItemInCallback(t *testing.T) {
 	t.Parallel()
 	list := tview.NewList()

@@ -274,6 +274,31 @@ func (p *pileFiller) Focus(delegate func(tview.Primitive)) {
 	}
 }
 
+// Blur clears focus on the pile AND its focused selectable child. The
+// inherited tview.Box.Blur only clears the pile's own hasFocus flag, leaving
+// the focused child (e.g. the Announce-Stream list) with hasFocus=true. When
+// app.SetFocus moves focus away from the pile — which it does by calling
+// a.focus.Blur() — a.focus is this pileFiller (a container): the Announce
+// Stream pile becomes a.focus because pileFiller.moveFocus registers the pile
+// itself with the app via setFocus(p), and the Box.Focus delegate chain that
+// SetTrigger does not descend any further (tview leaves like *tview.List use
+// Box.Focus, which never calls the delegate). Without this override the
+// focused list child keeps hasFocus=true after focus moves to the browser, so
+// BOTH columns report focus and subsequent Downs dispatch to the left list
+// instead of scrolling the browser (tmux-suite bug B1: 0 browser screenfuls /
+// 0 links followed across 7 connects). Blurring the focused child releases
+// the left column cleanly. This is safe with moveFocus: during setFocus(p)
+// the new child has not been focused yet, so this Blur is a no-op on it, and
+// the subsequent pile.Focus -> fi.Focus re-focuses it.
+func (p *pileFiller) Blur() {
+	p.Box.Blur()
+	if fi := p.focusedItem(); fi != nil {
+		if bl, ok := fi.(interface{ Blur() }); ok {
+			bl.Blur()
+		}
+	}
+}
+
 func (p *pileFiller) HasFocus() bool {
 	for _, it := range p.items {
 		if it.widget.HasFocus() {

@@ -142,3 +142,45 @@ func TestMicronHeadingDepthAndDividerFormatting(t *testing.T) {
 		t.Errorf("divider dash count = %v, want 42 (width 50 - left 4 - right 4)", got)
 	}
 }
+
+// TestStyledLinesToTviewTextAlignment pins micron `c`/`r` alignment rendering
+// (B3): Python's urwid.Text(align=state["align"]) centers/right-aligns each
+// line within the pane width, so `cThis line will be centered.` at width 40
+// renders with (40-27)//2 = 6 leading spaces, and `r...` right-aligns with
+// 40-textlen leading spaces. The Go converter must emit that leading padding
+// (matching Python's urwid center/right math), not left-align the line.
+func TestStyledLinesToTviewTextAlignment(t *testing.T) {
+	t.Parallel()
+
+	const w = 40
+	cases := []struct {
+		name    string
+		markup  string
+		wantPad int // expected leading spaces before the first color tag
+	}{
+		{"center", "`cThis line will be centered.", (w - len("This line will be centered.")) / 2},
+		{"right", "`rThis will be aligned to the right", w - len("This will be aligned to the right")},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			lines := micron.RenderToStyledLines(tc.markup, micron.ThemeDark)
+			out, _ := StyledLinesToTviewText(lines, w)
+			rendered := strings.Split(strings.TrimSuffix(out, "\n"), "\n")
+			// Find the content line (skip any blank/leading lines).
+			var content string
+			for _, l := range rendered {
+				if strings.TrimSpace(l) != "" {
+					content = l
+					break
+				}
+			}
+			if content == "" {
+				t.Fatalf("no content line in %q", out)
+			}
+			gotPad := len(content) - len(strings.TrimLeft(content, " "))
+			if gotPad != tc.wantPad {
+				t.Errorf("%s: leading pad = %d, want %d (line=%q)", tc.name, gotPad, tc.wantPad, content)
+			}
+		})
+	}
+}

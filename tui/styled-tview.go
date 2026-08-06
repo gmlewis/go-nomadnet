@@ -21,6 +21,7 @@ import (
 	"strings"
 
 	"github.com/gmlewis/go-nomadnet/nomadnet/micron"
+	"github.com/mattn/go-runewidth"
 	"github.com/rivo/tview"
 )
 
@@ -87,6 +88,36 @@ func StyledLinesToTviewText(lines []*micron.StyledLine, width int) (string, []mi
 			underlineOn = clearUnderline(&b, underlineOn)
 		}
 		b.WriteString(strings.Repeat(" ", line.Indent))
+		// Apply micron `c`/`r` alignment (Python urwid.Text(align=state["align"])
+		// centers/right-aligns the line within the pane). Python wraps the
+		// aligned text in Padding(left=left_indent, right=right_indent), so the
+		// centering space is (avail - textWidth)//2 where avail = width -
+		// left_indent - right_indent; the left_indent (line.Indent, already
+		// written above) shifts the whole block right. For depth-0 aligned
+		// content line.Indent is 0. (StyledLine does not track right_indent for
+		// text lines, so it is treated as 0 — correct for depth 0, the only
+		// place `c`/`r` appear in the guide/pages in practice.)
+		if line.Align == micron.AlignCenter || line.Align == micron.AlignRight {
+			textWidth := 0
+			for _, span := range line.Spans {
+				textWidth += runewidth.StringWidth(span.Text)
+			}
+			avail := width - line.Indent
+			if avail < textWidth {
+				avail = textWidth
+			}
+			pad := 0
+			switch line.Align {
+			case micron.AlignCenter:
+				pad = (avail - textWidth) / 2
+			case micron.AlignRight:
+				pad = avail - textWidth
+			}
+			if pad > 0 {
+				underlineOn = clearUnderline(&b, underlineOn)
+				b.WriteString(strings.Repeat(" ", pad))
+			}
+		}
 		for _, span := range line.Spans {
 			if span.Link != nil {
 				idx := len(links)

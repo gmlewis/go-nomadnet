@@ -87,6 +87,14 @@ type ConversationsDisplay struct {
 	OnShowQR           func()
 	OnSyncRequested    func(limit int)
 
+	// LastSyncInfo supplies the persisted last-LXMF-sync time and the default
+	// propagation node label for the left-pane "Last sync:" footer, mirroring
+	// Python's _sync_status_line (Conversations.py:517-545) which reads
+	// peer_settings["last_lxmf_sync"] live. The wiring layer connects this to
+	// app.PeerSettings.LastLXMFSync + the propagation-node display name. When
+	// nil or returning a zero time, the footer reads " Last sync: never".
+	LastSyncInfo func() (time.Time, string)
+
 	// Trust banner button callbacks (fired by the in-conversation trust
 	// banner; Python _on_trust_click/_on_block_click/_on_ignore_click).
 	OnTrustPeer  func(sourceHash string)
@@ -825,10 +833,48 @@ func (cd *ConversationsDisplay) refreshTabBar() {
 
 // syncStatusLine returns the left-pane sync footer text, matching Python's
 // _sync_status_line (Conversations.py:517-545): " Last sync: <when>" (with a
-// leading space), where <when> is "never" when no sync has been recorded.
-// The propagation-node label suffix is omitted until RNS wiring supplies it.
+// leading space), where <when> is "never" when no sync has been recorded, or a
+// relative time ("5m ago") when the LastSyncInfo hook supplies one. An optional
+// "  (<nodeLabel>)" suffix names the default propagation node. The hook reads
+// the persisted peer_settings["last_lxmf_sync"] live (wired in
+// cmd/gonomadnet/textui.go to app.PeerSettings.LastLXMFSync).
 func (cd *ConversationsDisplay) syncStatusLine() string {
-	return " Last sync: never"
+	var when string
+	var label string
+	if cd.LastSyncInfo != nil {
+		t, l := cd.LastSyncInfo()
+		label = l
+		if t.IsZero() {
+			when = "never"
+		} else {
+			when = RelativeTime(t)
+		}
+	} else {
+		when = "never"
+	}
+	line := " Last sync: " + when
+	if label != "" {
+		line += "  (" + label + ")"
+	}
+	return line
+}
+
+// RefreshSyncStatus re-renders the sync footer from the LastSyncInfo hook,
+// mirroring Python's _refresh_sync_status (Conversations.py:550-557) which the
+// app re-arms every 30 s. Safe to call from any goroutine; it marshals the
+// TextView write onto the tview event loop.
+func (cd *ConversationsDisplay) RefreshSyncStatus() {
+	if cd.syncStatus == nil {
+		return
+	}
+	line := cd.syncStatusLine()
+	if cd.app != nil {
+		cd.app.QueueUpdateDraw(func() {
+			cd.syncStatus.SetText(line)
+		})
+	} else {
+		cd.syncStatus.SetText(line)
+	}
 }
 
 // applyPileLayout rebuilds the left-pane item stack, matching Python's

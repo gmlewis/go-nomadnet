@@ -230,8 +230,13 @@ func parseLine(line string, state *parseState) []*Node {
 	// Check for horizontal dividers: -X (custom char) or longer (default)
 	if line[0] == '-' {
 		char := rune('\u2500')
-		if len(line) == 2 {
-			char = rune(line[1])
+		// Python's `len(line) == 2` / `line[1]` operate on CHARACTERS
+		// (codepoints), not bytes \u2014 markup.mu uses "-\u223f" (U+223F SINE WAVE,
+		// 2 UTF-8 bytes) as its section divider. Use rune count so a multibyte
+		// custom char is recognized; fall through to the default \u2500 otherwise.
+		if utf8.RuneCountInString(line) == 2 {
+			r, _ := utf8.DecodeRuneInString(line[1:])
+			char = r
 			if char < 32 {
 				char = '\u2500'
 			}

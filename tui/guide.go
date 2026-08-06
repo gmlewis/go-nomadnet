@@ -108,6 +108,7 @@ type GuideDisplay struct {
 	widget     tview.Primitive
 	topics     *tview.List
 	topicsList *IndicativeListBox
+	topicsBox  *tview.Flex
 	reader     *guideReader
 	readerBox  *tview.Flex
 	scroll     *ScrollBar
@@ -182,10 +183,10 @@ func NewGuideDisplay(app *App) *GuideDisplay {
 	// ScrollBar so it shows the ┃ thumb on the right edge when content overflows
 	// (urwid ScrollBar, Guide.py:232).
 	gd.topicsList = NewIndicativeListBox(gd.topics)
-	topicsBox := tview.NewFlex().SetDirection(tview.FlexRow).
+	gd.topicsBox = tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(gd.topicsList, 0, 1, true)
-	topicsBox.SetBorder(true)
-	SetTitledBorder(topicsBox, "Topics")
+	gd.topicsBox.SetBorder(true)
+	SetTitledBorder(gd.topicsBox, "Topics")
 
 	gd.scroll = NewScrollBar(gd.reader)
 	gd.scroll.SetThumbColor(GetThemeColors(app.Theme)["scrollbar"])
@@ -193,11 +194,17 @@ func NewGuideDisplay(app *App) *GuideDisplay {
 		AddItem(gd.scroll, 0, 1, true)
 	gd.readerBox.SetBorder(true)
 
-	// Weights 1 : 2 ≈ 0.33 : 0.67 (Guide.py list_width = 0.33). The topics pane
-	// is the initial focus (focus=true) on a normal launch.
-	cols := newURWIDColumns(0, topicsBox, gd.readerBox)
-	cols.SetWeight(0, 1)
-	cols.SetWeight(1, 2)
+	// Weights 33 : 67 replicate Python's float weights [0.33, 0.67] (Guide.py
+	// list_width = 0.33) EXACTLY: 33/100 == 0.33 in float64, so urwidColumnWidths
+	// (which divides weight/wtotal) produces the same subtractive rounding urwid
+	// applies to int(maxcol*0.33 + 0.5). Using [1, 2] (1/3, 2/3) instead rounds
+	// the topics pane one column wider at widths where 1/3 of the width lands
+	// just above 0.33 of it (e.g. maxcol 200 → 67 vs Python's 66), shifting every
+	// reader wrap point by one column (B7). The topics pane is the initial focus
+	// (focus=true) on a normal launch.
+	cols := newURWIDColumns(0, gd.topicsBox, gd.readerBox)
+	cols.SetWeight(0, 33)
+	cols.SetWeight(1, 67)
 
 	gd.topicsList.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event != nil {

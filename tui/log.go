@@ -63,7 +63,16 @@ func NewLogDisplay(app *App, logPath string, lines int) *LogDisplay {
 	ld.logView.SetBackgroundColor(tcell.ColorDefault)
 
 	// Load initial content and follow the end (Python `tail -f` shows latest).
-	content := tailFile(logPath, lines)
+	// The logfile (go-reticulum, matching Python RNS.format
+	// `[timestamp] [Level]   message`) contains `[Info]` / `[Notice]` / `[Error]`
+	// tokens. tview's TextView parses `[...]` as a color tag, so an unescaped
+	// `[Notice]` is silently dropped from the visible text (B6: the Log page showed
+	// `[timestamp]      message` with the level field blank). Python's Log.py
+	// embeds urwid.Terminal running `tail -fn50`, which shows the brackets
+	// literally. Escape tview color tags so the `[Level]` field is visible. The
+	// log content has NO real tview color tags (plain log text), so escaping the
+	// whole content is safe.
+	content := tview.Escape(tailFile(logPath, lines))
 	ld.logView.SetText(content)
 	ld.logView.ScrollToEnd()
 
@@ -141,7 +150,7 @@ func (ld *LogDisplay) StartTailing() {
 					if line != "" {
 						chunk := strings.TrimSuffix(line, "\n")
 						ld.app.QueueUpdateDraw(func() {
-							_, _ = ld.logView.Write([]byte(chunk + "\n"))
+							_, _ = ld.logView.Write([]byte(tview.Escape(chunk) + "\n"))
 						})
 					}
 					if err != nil {

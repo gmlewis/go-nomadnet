@@ -1126,6 +1126,47 @@ func TestSyncStatusLine(t *testing.T) {
 	}
 }
 
+// TestConversationsSyncStatusLine pins B8: the Conversations left-pane sync
+// footer must read the persisted last-sync time (Python _sync_status_line,
+// Conversations.py:517-545, which reads peer_settings["last_lxmf_sync"]). The
+// Go port hardcoded " Last sync: never"; it must instead consult a
+// LastSyncInfo hook returning (lastSyncTime, nodeLabel) supplied by the wiring
+// layer from app.PeerSettings.LastLXMFSync + the default propagation node.
+// Format: " Last sync: <relative|never>" + optional "  (<nodeLabel>)".
+func TestConversationsSyncStatusLine(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	cd := NewConversationsDisplay(app, nil)
+
+	// No hook wired: legacy fallback is " Last sync: never".
+	if got := cd.syncStatusLine(); got != " Last sync: never" {
+		t.Errorf("syncStatusLine() no-hook = %q, want %q", got, " Last sync: never")
+	}
+
+	// Hook returning a zero time → never (no sync recorded yet).
+	cd.LastSyncInfo = func() (time.Time, string) { return time.Time{}, "" }
+	if got := cd.syncStatusLine(); got != " Last sync: never" {
+		t.Errorf("syncStatusLine() zero-time = %q, want %q", got, " Last sync: never")
+	}
+
+	// Hook returning 5 minutes ago, no node label.
+	cd.LastSyncInfo = func() (time.Time, string) {
+		return time.Now().Add(-5 * time.Minute), ""
+	}
+	if got := cd.syncStatusLine(); got != " Last sync: 5m ago" {
+		t.Errorf("syncStatusLine() 5m = %q, want %q", got, " Last sync: 5m ago")
+	}
+
+	// Hook returning 1 hour ago with a node label suffix.
+	cd.LastSyncInfo = func() (time.Time, string) {
+		return time.Now().Add(-1 * time.Hour), "TestNode"
+	}
+	if got := cd.syncStatusLine(); got != " Last sync: 1h ago  (TestNode)" {
+		t.Errorf("syncStatusLine() 1h+label = %q, want %q", got, " Last sync: 1h ago  (TestNode)")
+	}
+}
+
 func TestConversationsDisplayShowBlocked(t *testing.T) {
 	t.Parallel()
 
