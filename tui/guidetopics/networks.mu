@@ -20,7 +20,7 @@ Reticulum supports using many kinds of devices as networking interfaces, and all
 
 If you have not changed the default Reticulum configuration, which should be located at `!~/.reticulum/config`!, you will have one interface active right now. With it, you should be able to communicate with any other peers and systems that exist on your local ethernet or WiFi network, if your computer is connected to one, and most probably nothing else outside of that.
 
-To learn how to configure your Reticulum setup to use LoRa radios, packet radio or other interfaces, or connect to other Reticulum networks via the Internet, the best places to start is to read the relevant parts of the Reticulum Manual, which can be found on GitHub:
+To learn how to configure your Reticulum setup to use LoRa radios, packet radio or other interfaces, or connect to other Reticulum networks via the Internet, the best places to start are to read the relevant parts of the Reticulum Manual, which can be found on GitHub:
 
 `c`_https://markqvist.github.io/Reticulum/manual/interfaces.html`_
 `l
@@ -36,7 +36,7 @@ It might be nice to keep that handy when you are not connected to the Internet, 
 
 >The Distributed Backbone
 
-If you have Internet access, and just want to get started experimenting, you can connected to the distributed global Reticulum backbone. For more information about this, see the Reticulum Manual, or sites such as https://directory.rns.recips or https://rmap.world.
+If you have Internet access, and just want to get started experimenting, you can connect to the distributed global Reticulum backbone. For more information about this, see the Reticulum Manual, or sites such as https://directory.rns.recipes or https://rmap.world.
 
 If you connect to the public backbone, you can leave nomadnet running for a while and wait for it to receive announces from other nodes on the network that host pages or services, or you can try connecting directly to some nodes listed here:
 

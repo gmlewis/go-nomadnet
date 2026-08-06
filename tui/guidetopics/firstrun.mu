@@ -45,7 +45,7 @@ If they do not render, install a Nerd Font and configure your terminal to use it
  - `!Configure your terminal`!
    After installing, set your terminal emulator's font to the Nerd Font
    variant (it usually has "Nerd Font" in the name). Restart NomadNet
-   so the new font are picked up.
+   so the new font is picked up.
 <
 
 If for some reason you cannot or do not want to use a Nerd Font, you can disable Nerd Font glyphs in the `![ Config ]`! menu and NomadNet will fall back to plain unicode symbols.
@@ -54,7 +54,7 @@ Nomad Network expects that you are already connected to some form of Reticulum n
 
 At least, if Nomad Network launches, it means that it is connected to a running Reticulum instance, that should in turn be connected to `*something`*, which should get you started.
 
-For more some more information, you can also read the `*Introduction`* section of this guide.
+For some more information, you can also read the `*Introduction`* section of this guide.
 
 Now go out there and explore. This is still early days. See what you can find and create.
 

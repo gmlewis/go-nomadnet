@@ -58,7 +58,7 @@ If you are having trouble getting micron output to display correctly, try using 
 
 >>>Encoding
 
-All micron sources are intepreted as UTF-8, and micron assumes it can output UTF-8 characters to the terminal. If your terminal does not support UTF-8, output will be faulty.
+All micron sources are interpreted as UTF-8, and micron assumes it can output UTF-8 characters to the terminal. If your terminal does not support UTF-8, output will be faulty.
 
 >>>Colors
 
@@ -271,7 +271,7 @@ Every section heading you write also becomes an anchor automatically. The anchor
 
 If you want an anchor, that isn't tied to a heading, place one anywhere in your text with the \`: tag, followed by a name. Names may contain the characters `*A-Z`*, `*a-z`*, `*0-9`*, `*_`* and `*-`*, and end at any other character (a space, a newline, or punctuation).
 
-The anchor itself takes up no space and does not render. Is's just a position marker. An explicit anchor declared on an otherwise empty line binds to that line's position.
+The anchor itself takes up no space and does not render. It's just a position marker. An explicit anchor declared on an otherwise empty line binds to that line's position.
 
 `Faaa
 `=
@@ -437,7 +437,7 @@ In addition to text fields, Checkboxes are another way of submitting data. They 
 `=
 `<?|field_name|value`>`b Label Text`
 `=
-When the checkbox is checked, it's field will be set to the provided value. If there are multiple checkboxes that share the same field name, the checked values will be concatenated when they are sent to the node by a comma.
+When the checkbox is checked, its field will be set to the provided value. If there are multiple checkboxes that share the same field name, the checked values will be concatenated when they are sent to the node by a comma.
 ``
 
 `B444`<?|sign_up|1`>`b Sign me up`
@@ -448,7 +448,7 @@ You can also pre-check both checkboxes and radio groups by appending a |* after 
 
 >>> Radio groups
 
-Radio groups are another input that lets the user chose from a set of options. Unlike checkboxes, radio buttons with the same field name are mutually exclusive.
+Radio groups are another input that lets the user choose from a set of options. Unlike checkboxes, radio buttons with the same field name are mutually exclusive.
 
 Example:
 
@@ -578,7 +578,7 @@ If you are having trouble getting micron output to display correctly, try using 
 
 >>>Encoding
 
-All micron sources are intepreted as UTF-8, and micron assumes it can output UTF-8 characters to the terminal. If your terminal does not support UTF-8, output will be faulty.
+All micron sources are interpreted as UTF-8, and micron assumes it can output UTF-8 characters to the terminal. If your terminal does not support UTF-8, output will be faulty.
 
 >>>Colors
 
@@ -791,7 +791,7 @@ Every section heading you write also becomes an anchor automatically. The anchor
 
 If you want an anchor, that isn't tied to a heading, place one anywhere in your text with the \`: tag, followed by a name. Names may contain the characters `*A-Z`*, `*a-z`*, `*0-9`*, `*_`* and `*-`*, and end at any other character (a space, a newline, or punctuation).
 
-The anchor itself takes up no space and does not render. Is's just a position marker. An explicit anchor declared on an otherwise empty line binds to that line's position.
+The anchor itself takes up no space and does not render. It's just a position marker. An explicit anchor declared on an otherwise empty line binds to that line's position.
 
 `Faaa
 \`=
@@ -957,7 +957,7 @@ In addition to text fields, Checkboxes are another way of submitting data. They 
 \`=
 `<?|field_name|value`>`b Label Text`
 \`=
-When the checkbox is checked, it's field will be set to the provided value. If there are multiple checkboxes that share the same field name, the checked values will be concatenated when they are sent to the node by a comma.
+When the checkbox is checked, its field will be set to the provided value. If there are multiple checkboxes that share the same field name, the checked values will be concatenated when they are sent to the node by a comma.
 ``
 
 `B444`<?|sign_up|1`>`b Sign me up`
@@ -968,7 +968,7 @@ You can also pre-check both checkboxes and radio groups by appending a |* after 
 
 >>> Radio groups
 
-Radio groups are another input that lets the user chose from a set of options. Unlike checkboxes, radio buttons with the same field name are mutually exclusive.
+Radio groups are another input that lets the user choose from a set of options. Unlike checkboxes, radio buttons with the same field name are mutually exclusive.
 
 Example:
 

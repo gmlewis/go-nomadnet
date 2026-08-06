@@ -14,7 +14,7 @@
 # // along with this program. If not, see <https://www.gnu.org/licenses/>.
 >Thanks, Acknowledgements and Licenses
 
-This program uses various other software components, without which Nomad Network would not have been possible. Sincere thanks to the authors and contributors of the following projects
+This program uses various other software components, without which Nomad Network would not have been possible. Sincere thanks to the authors and contributors of the following projects:
 
 >>>
  - `!Cryptography.io`! by `*pyca`*

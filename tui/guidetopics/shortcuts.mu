@@ -14,14 +14,14 @@
 # // along with this program. If not, see <https://www.gnu.org/licenses/>.
 >Keyboard Shortcuts
 
-The different sections of the program has a number of keyboard shortcuts mapped, that makes operating and navigating the program easier. The following lists details all mapped shortcuts.
+The different sections of the program have a number of keyboard shortcuts mapped, that make operating and navigating the program easier. The following lists details all mapped shortcuts.
 
 >>`!Conversations Window`!
 >>>Conversation List
  - Ctrl-N   Start a new conversation
  - Ctrl-E   Display and edit selected peer info
  - Ctrl-X   Delete conversation
- - Ctrl-R   Open LXMF syncronisation dialog
+ - Ctrl-R   Open LXMF synchronization dialog
  - Ctrl-U   Ingest LXMF URI
  - Ctrl-O   Toggle sort mode
  - Ctrl-P   Display own LXMF address

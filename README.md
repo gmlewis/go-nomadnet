@@ -1,4 +1,8 @@
-# go-nomadnet — Nomad Network Client (Go)
+# gonomadnet — Go Nomad Network Client
+
+![gonomadnet mascott
+The Go gopher was designed by Renee French.
+The design is licensed under the Creative Commons 4.0 Attributions license.](assets/gonomadnet-mascott.png)
 
 A complete Go port of [NomadNet](https://github.com/markqvist/nomadnet), a
 peer-to-peer messaging and information sharing system built on

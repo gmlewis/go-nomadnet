@@ -16,9 +16,12 @@
 // Package tui implements the NomadNet terminal user interface.
 //
 // Guide display: this file ports Python's Guide.py. The per-topic micron
-// source is embedded verbatim from the original nomadnet Guide.py (under
+// source is embedded from the original nomadnet Guide.py (under
 // tui/guidetopics/*.mu) and rendered through the Phase-3 styled-line
-// renderer (micron.RenderToStyledLines) so body text is NOT all-bold.
+// renderer (micron.RenderToStyledLines) so body text is NOT all-bold. The
+// topic content has had a deliberate, user-authorized grammar / US-spelling
+// cleanup pass (see the guide-grammar-review-findings memory); it therefore
+// intentionally diverges from the Python source text in those respects.
 
 package tui
 
@@ -32,8 +35,9 @@ import (
 	"github.com/rivo/tview"
 )
 
-// Embedded guide topic micron source, extracted verbatim from the original
-// nomadnet/ui/textui/Guide.py TOPIC_* strings. Each file begins with a
+// Embedded guide topic micron source, extracted from the original
+// nomadnet/ui/textui/Guide.py TOPIC_* strings (then given a grammar /
+// US-spelling cleanup pass; see above). Each file begins with a
 // suppressed `#`-comment copyright header (micron comments render no output),
 // so the first rendered line is the topic heading, matching the original.
 //

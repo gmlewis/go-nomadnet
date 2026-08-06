@@ -247,10 +247,11 @@ func TestGuideReaderBorderUntitled(t *testing.T) {
 func TestGuideContent(t *testing.T) {
 	t.Parallel()
 
-	// The Introduction topic is embedded verbatim from the Python Guide and
-	// rendered through the micron styled-line renderer. Its rendered plain
-	// text must mention Nomad Network and Reticulum (the original introContent
-	// checked the same substrings).
+	// The Introduction topic is embedded from the Python Guide (with a
+	// deliberate, user-authorized grammar / US-spelling cleanup pass; see the
+	// guide-grammar-review-findings memory) and rendered through the micron
+	// styled-line renderer. Its rendered plain text must mention Nomad Network
+	// and Reticulum (the original introContent checked the same substrings).
 	content := guideTopicPlainText(guideIntroduction, ThemeDark)
 	if len(content) == 0 {
 		t.Error("introduction rendered text is empty")

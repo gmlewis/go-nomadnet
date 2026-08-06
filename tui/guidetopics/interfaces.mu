@@ -32,7 +32,7 @@ To view more info about an interface, navigate using the `!Up`! and `!Down`! arr
 
 To edit an interface, select the interface and press `!< Ctrl + E >`!.
 
-To remove an interface, select the interface and press `!< Ctrl + X >`!. You can also perform both of these actions  from the details view.
+To remove an interface, select the interface and press `!< Ctrl + X >`!. You can also perform both of these actions from the details view.
 
 >>Adding Interfaces
 
@@ -55,7 +55,7 @@ Optional Parameters:
 Devices: Specific network devices to use
 Ignored Devices: Network devices to exclude
 Group ID: Create isolated networks on the same physical LAN
-Discovery Scope: Can set to link, admin, site, organisation or global
+Discovery Scope: Can set to link, admin, site, organization or global
 ```
 
 The AutoInterface is ideal for quickly connecting to other Reticulum nodes on your local network without complex configuration.
@@ -88,7 +88,7 @@ Listen Port: Port number to listen on
 Optional Parameters:
 Prefer IPv6: Bind to IPv6 address if available
 I2P Tunneled: Enable for I2P tunnel support
-Device: Specific network device to use (e,g
+Device: Specific network device to use
 ```
 
 Useful when you want other nodes to be able to connect to your Transport instance over TCP/IP.

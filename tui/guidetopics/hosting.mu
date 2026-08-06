@@ -45,7 +45,7 @@ You can control how long a peer will cache your pages by including the cache hea
 
 You can use a preprocessor such as PHP, bash, Python (or whatever you prefer) to generate dynamic pages and fully interactive applications running over Nomad Network. To do so, just set executable permissions on the relevant page file, and be sure to include the interpreter at the beginning of the file, for example `!#!/usr/bin/python3`!.
 
-Data from fields and link variables will be passed to these scipts or programs as environment variables, and can simply be read by any method for accessing such.
+Data from fields and link variables will be passed to these scripts or programs as environment variables, and can simply be read by any method for accessing such.
 
 In the `!examples`! directory, you can find various small examples for the use of this feature. The currently included examples are:
 
@@ -60,7 +60,7 @@ Sometimes, you don't want everyone to be able to view certain pages or execute c
 
 To enable authentication for any page, simply add a new file to your pages directory with ".allowed" added to the file-name of the page. If your page is named "secret_page.mu", just add a file named "secret_page.mu.allowed".
 
-For each user allowed to access the page, add a line to this file, containing the hash of that users primary identity. Users can find their own identity hash in the `![ Network ]`! part of the program, under `!Local Peer Info`!. If you want to allow access for three different users, your file would look like this:
+For each user allowed to access the page, add a line to this file, containing the hash of that user's primary identity. Users can find their own identity hash in the `![ Network ]`! part of the program, under `!Local Peer Info`!. If you want to allow access for three different users, your file would look like this:
 
 `Faaa
 `=
@@ -86,9 +86,9 @@ Links to pages and resources in Nomad Network use a simple URL format. Here is a
 
 The first part is the 10 byte destination address of the node (represented as readable hexadecimal), followed by the `!:`! character. Everything after the `!:`! represents the request path.
 
-By convention, Nomad Network nodes maps all hosted pages under the `!/page`! path, and all hosted files under the `!/file`! path. You can create as many subdirectories for pages and files as you please, and they will be automatically mapped to corresponding request paths.
+By convention, Nomad Network nodes map all hosted pages under the `!/page`! path, and all hosted files under the `!/file`! path. You can create as many subdirectories for pages and files as you please, and they will be automatically mapped to corresponding request paths.
 
-You can omit the destination address of the node, if you are reffering to a local page or file. You must still keep the `!:`! character. In such a case, the URL to a page could look like this:
+You can omit the destination address of the node, if you are referring to a local page or file. You must still keep the `!:`! character. In such a case, the URL to a page could look like this:
 
 `!:/page/other_page.mu`!
 

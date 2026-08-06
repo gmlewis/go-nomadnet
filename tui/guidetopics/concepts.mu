@@ -20,7 +20,7 @@ The following section will briefly introduce various concepts and terms used in 
 
 A `*peer`* refers to another Nomad Network client, which will generally be operated by another person. But since Nomad Network is a general LXMF client, it could also be any other LXMF client, program, automated system or machine that can communicate over LXMF.
 
-All peers (and nodes) are identified by their `*address`* (which is, technically speaking, a Reticulum destination hash). An address consist of 32 hexadecimal characters (16 bytes), and looks like this:
+All peers (and nodes) are identified by their `*address`* (which is, technically speaking, a Reticulum destination hash). An address consists of 32 hexadecimal characters (16 bytes), and looks like this:
 
 `c<e9eafceea9e3664a5c55611c5e8c420a>
 `l
@@ -33,7 +33,7 @@ To make this easier, Nomad Network allows you to mark peers and nodes as either 
 
 >>Announces
 
-An `*announce`* can be sent by any peer or node on the network, which will notify other peers of its existence, and contains the cryptographic keys that allows other peers to communicate with it.
+An `*announce`* can be sent by any peer or node on the network, which will notify other peers of its existence, and contains the cryptographic keys that allow other peers to communicate with it.
 
 In the `![ Network ]`! section of the program, you can monitor announces on the network, initiate conversations with announced peers, and announce your own peer on the network. You can also connect to nodes on the network and browse information shared by them.
 
@@ -53,9 +53,9 @@ For propagated delivery to work, one or more nodes must be available on the netw
 
 To select a node manually, go to the `![ Network ]`! part of the program, choose the desired node in the `*Known Nodes`* list, and select the `!< Info >`! button. In the `!Node Info`! dialog, you can specify the selected node as the default propagation node.
 
-By default, Nomad Network will check in with propagation nodes, and download any available messages every 6 hours. You can change this interval, or disable automatic syncronisation completely, by editing the configuration file.
+By default, Nomad Network will check in with propagation nodes, and download any available messages every 6 hours. You can change this interval, or disable automatic synchronization completely, by editing the configuration file.
 
-You can always initiate a sync manually, by pressing `!Ctrl-R`! in the `![ Conversations ]`! part of the program, which will open the syncronisation window.
+You can always initiate a sync manually, by pressing `!Ctrl-R`! in the `![ Conversations ]`! part of the program, which will open the synchronization window.
 
 >>Node
 
@@ -63,7 +63,7 @@ A Nomad Network `*node`* is an instance of the Nomad Network program that has be
 
 Nodes can host pages (similar to webpages) written in a markup-language called `*micron`*, as well as make files and other resources available for download for peers on the network. Nodes also form a distributed message store for offline users, and allows messages to be exchanged between peers that are not online at the same time.
 
-If no nodes exist on a network, all peers will still be able to communicate directly peer-to-peer, but both endpoints of a conversation will need to be available at the same time to converse. When nodes exist on the network, messages will be held and syncronised between nodes for deferred delivery if the destination peer is unavailable. Nodes will automatically discover and peer with each other, and handle syncronisation of message stores.
+If no nodes exist on a network, all peers will still be able to communicate directly peer-to-peer, but both endpoints of a conversation will need to be available at the same time to converse. When nodes exist on the network, messages will be held and synchronized between nodes for deferred delivery if the destination peer is unavailable. Nodes will automatically discover and peer with each other, and handle synchronization of message stores.
 
 To learn how to host your own node, read the `*Hosting a Node`* section of this guide.
 

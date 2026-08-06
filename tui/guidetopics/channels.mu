@@ -62,5 +62,5 @@ You will be notified (and the bell may ring, depending on your configuration) wh
 
 >>Hub etiquette
 
-Each hub is operated independently and may have its own rules, MOTD, ban list and operator team. Be respecful, follow the hub's MOTD, and remember that operators can kick, ban and set modes on rooms they own.
+Each hub is operated independently and may have its own rules, MOTD, ban list and operator team. Be respectful, follow the hub's MOTD, and remember that operators can kick, ban and set modes on rooms they own.
 

@@ -14,7 +14,7 @@
 # // along with this program. If not, see <https://www.gnu.org/licenses/>.
 >Configuration Options
 
-To change the configuration of Nomad Network, you must edit the configuration file. If you did not manually specify a config path when you started the program, Nomad Net will look for a configuration in the folllowing directories:
+To change the configuration of Nomad Network, you must edit the configuration file. If you did not manually specify a config path when you started the program, Nomad Net will look for a configuration in the following directories:
 
   `!/etc/nomadnetwork`!
   `!~/.config/nomadnetwork`!
@@ -28,7 +28,7 @@ For reference, all the configuration options are listed and explained here as we
 
 >> Logging Section
 
-This section hold configuration directives related to logging output, and is delimited by the `![logging]`! header in the configuration file. Available directives, along with their default values, are as follows:
+This section holds configuration directives related to logging output, and is delimited by the `![logging]`! header in the configuration file. Available directives, along with their default values, are as follows:
 
 >>>
 `!loglevel = 4`!
@@ -59,7 +59,7 @@ Path to the log file. Must be a writable filesystem path.
 
 >> Client Section
 
-This section hold configuration directives related to the client behaviour and user interface of the program. It is delimited by the `![client]`! header in the configuration file. Available directives, along with their default values, are as follows:
+This section holds configuration directives related to the client behavior and user interface of the program. It is delimited by the `![client]`! header in the configuration file. Available directives, along with their default values, are as follows:
 
 >>>
 `!enable_client = yes`!
@@ -153,7 +153,7 @@ Configures whether sent messages are composed in markdown format.
 
 >> RRC Section
 
-This section hold configuration directives related to the RRC client behaviour. It is delimited by the `![rrc]`! header in the configuration file. Available directives, along with their default values, are as follows:
+This section holds configuration directives related to the RRC client behavior. It is delimited by the `![rrc]`! header in the configuration file. Available directives, along with their default values, are as follows:
 
 >>>
 `!history_per_room_cap = 500`!
@@ -164,7 +164,7 @@ Maximum number of messages retained per room in the in-memory scrollback buffer,
 >>>
 `!filter_loaded_history = yes`!
 >>>>
-Whether to filter notices and system message when initially loading room history.
+Whether to filter notices and system messages when initially loading room history.
 <
 
 >>>
@@ -213,7 +213,7 @@ Rendering layout options for messages.
 
 >> Text UI Section
 
-This section hold configuration directives related to the look and feel of the text-based user interface of the program. It is delimited by the `![textui]`! header in the configuration file. Available directives, along with their default values, are as follows:
+This section holds configuration directives related to the look and feel of the text-based user interface of the program. It is delimited by the `![textui]`! header in the configuration file. Available directives, along with their default values, are as follows:
 
 >>>
 `!intro_time = 1`!
@@ -358,13 +358,13 @@ Configures the maximum amount of storage, in megabytes, that the LXMF Propagatio
 >>>
 `!max_transfer_size = 256`!
 >>>>
-The maximum accepted transfer size per incoming propagation transfer, in kilobytes. This also sets the upper limit for the size of single messages accepted onto this propagation node. If a node wants to propagate a larger number of messages to this node, than what can fit within this limit, it will prioritise sending the smallest, newest messages first, and try with any remaining messages at a later point.
+The maximum accepted transfer size per incoming propagation transfer, in kilobytes. This also sets the upper limit for the size of single messages accepted onto this propagation node. If a node wants to propagate a larger number of messages to this node, than what can fit within this limit, it will prioritize sending the smallest, newest messages first, and try with any remaining messages at a later point.
 <
 
 >>>
 `!prioritise_destinations = 41d20c727598a3fbbdf9106133a3a0ed, d924b81822ca24e68e2effea99bcb8cf`!
 >>>>
-Configures the LXMF Propagation Node to prioritise storing messages for certain destinations. If the message store reaches the specified limit, LXMF will prioritise keeping messages for destinations specified with this option. This setting is optional, and generally you do not need to use it.
+Configures the LXMF Propagation Node to prioritize storing messages for certain destinations. If the message store reaches the specified limit, LXMF will prioritize keeping messages for destinations specified with this option. This setting is optional, and generally you do not need to use it.
 <
 
 >>>
@@ -398,7 +398,7 @@ Determines where the template for printed messages is found. Must be a filesyste
 >>>
 `!print_from = 76fe5751a56067d1e84eef3e88eab85b, trusted`!
 >>>>
-Determines from which destinations messages are printed. Can be a list of destinations hashes, the keyword "trusted", or "everywhere".
+Determines from which destinations messages are printed. Can be a list of destination hashes, the keyword "trusted", or "everywhere".
 <
 
 >>>
