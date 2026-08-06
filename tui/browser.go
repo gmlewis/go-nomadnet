@@ -710,6 +710,7 @@ func (bd *BrowserDisplay) Disconnect() {
 	bd.urlHeader.SetText(glyph(bd.app.Glyphs, "node"))
 	bd.currentURLDisp = ""
 	bd.footerStatus.SetText("")
+	bd.showContent()
 	bd.content.SetText("[gray]Disconnected.[-]")
 }
 
@@ -721,8 +722,18 @@ func (bd *BrowserDisplay) CurrentURL() string {
 	return ""
 }
 
-// SetContent replaces the browser content area text.
+// SetContent replaces the browser content area text. It is the app-layer
+// failure callback for a fetch (OnBrowserError in cmd/gonomadnet/textui.go),
+// reached when a fetch times out or returns ErrNoPath/ErrLinkTimeout/
+// ErrRequestTimeout. Because a fetch in flight leaves the centered "Retrieving"
+// loading body (bd.loading) in the layout in place of bd.content (showLoading,
+// Browser.py:593-598), SetContent must swap that loading body back out via
+// showContent — otherwise the error text lands on the hidden content widget and
+// the browser stays stuck on "Retrieving" forever (the regression where a
+// non-responding node appeared to never time out). showContent is a no-op when
+// no fetch is in flight (bd.loading == nil).
 func (bd *BrowserDisplay) SetContent(text string) {
+	bd.showContent()
 	bd.content.SetText(text)
 }
 
