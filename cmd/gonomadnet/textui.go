@@ -1597,6 +1597,32 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	if ndBd := networkDisplay.BrowserDisplay(); ndBd != nil {
 		wireBrowser(ndBd)
 		ndBd.OnReleaseFocus = func() { networkDisplay.FocusLists() }
+		// C-w while the Network right-pane browser holds focus routes through
+		// the BrowserDisplay's own key handler (browser.go handleInput KeyCtrlW
+		// → OnDisconnect). Python's BrowserFrame.keypress (Browser.py:21-22) calls
+		// self.delegate.disconnect() — the same Browser.disconnect the Network
+		// page shortcut calls — so wire it to the pane's Disconnect (which cancels
+		// the in-flight fetch and resets the Remote Node pane to the disconnected
+		// view). Without this, C-w while the browser is focused is a no-op and the
+		// pane stays stuck on "Retrieving" after a connect to a non-responding
+		// node (the connect-timeout regression).
+		ndBd.OnDisconnect = func() {
+			if bp := networkDisplay.BrowserPane(); bp != nil {
+				bp.Disconnect()
+			}
+		}
+	}
+
+	// C-w on the Network page with focus on the left list routes through
+	// NetworkDisplay.handleInput (network.go KeyCtrlW → OnDisconnect). Python's
+	// NetworkDisplay.keypress (Network.py:1609-1610) calls
+	// self.parent.browser.disconnect() directly; the Go port must wire the
+	// callback or C-w is a no-op (the in-flight fetch is never cancelled, the
+	// "Retrieving" loading body is never swapped out — the pane hangs).
+	networkDisplay.OnDisconnect = func() {
+		if bp := networkDisplay.BrowserPane(); bp != nil {
+			bp.Disconnect()
+		}
 	}
 
 	// Wire network connect to browser (loads page in Network display's Remote Node pane and full browser)

@@ -94,6 +94,27 @@ func FormatRemoteNodeTitle(url string) string {
 	return s
 }
 
+// Disconnect tears down the Remote Node pane and resets it to the disconnected
+// centered view, mirroring Python Browser.disconnect → update_display
+// DISCONECTED (Browser.py:862-888, 549-559): the underlying BrowserDisplay's
+// in-flight fetch is cancelled and its history/destination hint cleared
+// (BrowserDisplay.Disconnect, which also swaps the loading body out via
+// showContent), the pane body returns to the MIDDLE-centered
+// "Disconnected\n<arrow_l>  <arrow_r>" (browser_inactive), and the LineBox title
+// resets to "Remote Node". This is the Network page C-w handler: Python's
+// NetworkDisplay.keypress (Network.py:1609-1610) calls
+// self.parent.browser.disconnect() directly on ctrl-w.
+func (bp *BrowserPane) Disconnect() {
+	if bp.display != nil {
+		bp.display.Disconnect()
+	}
+	bp.widget.Clear()
+	bp.widget.AddItem(tview.NewBox(), 0, 1, false)
+	bp.widget.AddItem(bp.body, 2, 0, false)
+	bp.widget.AddItem(tview.NewBox(), 0, 1, false)
+	SetTitledBorder(bp.widget, "Remote Node")
+}
+
 // LoadURL loads a URL and displays the content inside the Remote Node pane.
 func (bp *BrowserPane) LoadURL(url string) {
 	if bp.display != nil {
