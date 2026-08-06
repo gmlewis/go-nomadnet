@@ -159,6 +159,30 @@ func (bd *BrowserDisplay) initNavState() {
 	bd.content.ScrollToBeginning()
 }
 
+// resetNavState clears the per-line focus + cursor model for a NON-rendered
+// content body — a fetch failure (SetContent, the OnBrowserError callback) or a
+// disconnect (Disconnect) that sets text on bd.content via showContent but does
+// NOT run renderPage/initNavState. Without this, bd.lineCursors stays nil and
+// bd.focusLine stays 0 (its zero value), so handleNavKey's "no selectable line"
+// guard (bd.focusLine < 0) would NOT fire and an arrow key would index
+// bd.lineCursors[0] with len==0, crashing the app with
+// "index out of range [0] with length 0". Setting focusLine = -1 (and emptying
+// the rendered-line tables) makes the existing empty-page guard consume the
+// arrow keys, matching Python's blank-page no-op for arrows.
+//
+// Call this from every path that puts non-rendered text into bd.content
+// (SetContent, Disconnect). renderPage owns the populated state via initNavState.
+func (bd *BrowserDisplay) resetNavState() {
+	bd.currentLines = nil
+	bd.lineTexts = nil
+	bd.links = nil
+	bd.anchors = nil
+	bd.lineCursors = nil
+	bd.focusLine = -1
+	bd.cursorHasKeypress = false
+	bd.stopCursorHideTimer()
+}
+
 // selectableLine reports whether line idx is focusable in the Pile sense: a
 // non-empty line (blank lines are urwid.Text("") and non-selectable, so Pile
 // up/down skips them, MicronParser.py:122). Every non-empty rendered line is a
@@ -520,10 +544,14 @@ func (bd *BrowserDisplay) drawCursor(screen tcell.Screen) {
 // BrowserFrame → Scrollable → Pile → LinkableText (Browser.py:21,
 // Scrollable.py:183, pile.py:978, MicronParser.py:921).
 func (bd *BrowserDisplay) handleNavKey(event *tcell.EventKey) bool {
-	if bd.focusLine < 0 {
-		// No selectable line (empty/disconnected page): let Home/End/PgUp/PgDn
-		// still scroll the TextView, but consume the arrows so tview does not
-		// horizontal-scroll on Left/Right (Python no-ops them on a blank page).
+	if bd.focusLine < 0 || len(bd.lineCursors) == 0 {
+		// No selectable line (empty/disconnected/error page): let
+		// Home/End/PgUp/PgDn still scroll the TextView, but consume the arrows so
+		// tview does not horizontal-scroll on Left/Right (Python no-ops them on a
+		// blank page). The len(lineCursors)==0 belt is defense-in-depth: any path
+		// that puts non-rendered text into bd.content must call resetNavState to
+		// set focusLine = -1; this guard also absorbs an inconsistent state so an
+		// arrow key never indexes an empty slice and panics.
 		switch event.Key() {
 		case tcell.KeyLeft, tcell.KeyRight, tcell.KeyUp, tcell.KeyDown,
 			tcell.KeyHome, tcell.KeyEnd, tcell.KeyPgUp, tcell.KeyPgDn:

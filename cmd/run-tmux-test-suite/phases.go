@@ -23,6 +23,17 @@ type driver struct {
 	connectWait  time.Duration
 	nodeIters    int
 
+	// visitedLinks is a per-SESSION (non-persistent) cache of every link the
+	// suite has already followed during this run, keyed by the browser footer's
+	// "Link to <target>" string (View.browserFooterLink). examineMainPage checks
+	// it BEFORE pressing Enter so the suite never attempts to visit the same
+	// link twice in one session — across nodes, many pages link to the same
+	// destination (common hubs, shared indexes), and re-fetching them just to
+	// C-d back wastes wall-clock and re-triggers transient fetch errors. The
+	// cache lives for the whole test-suite run, not just one examineMainPage
+	// call (the per-call `followed` map only dedupes within a single page).
+	visitedLinks map[string]bool
+
 	// counters for the end-of-run summary.
 	asserts   int
 	assertOK  int
@@ -552,15 +563,26 @@ func (d *driver) phase3() {
 		//    two-pass walk-then-rejog was O(N²) and scanned the page twice).
 		d.examineMainPage(targetHash, 160)
 
-		// 6. Release the browser back to the list for the next iteration. Left
-		//    at a line's start in the browser releases focus to the left list.
-		//    Then Home moves the list selection to the TOP, so the next
-		//    iteration's Down advances to the 2nd node — preventing the overshoot
-		//    into the Local Peer panel (Enter on < Save > opens "Save Node Info")
-		//    that happened when a connected node sat at the BOTTOM of the list
-		//    and Down moved past the last node.
-		d.send("Left")
-		d.send("Home")
+		// 6. Release the browser back to the list for the next iteration. C-w
+		//    disconnects the browser pane, which (via BrowserPane.Disconnect ->
+		//    OnReleaseFocus -> networkDisplay.FocusLists) reliably returns focus
+		//    to the left list REGARDLESS of where the walk left the browser cursor.
+		//    The previous recovery sent a single Left, but Left only releases
+		//    focus at a line's START (Python delegate.micron_released_focus fires on
+		//    Left-at-start, MicronParser.py:972-974) — and the walk frequently ends
+		//    mid-line (e.g. cursor x=52 resting on a link), so Left just moved
+		//    within the line and focus stayed trapped in the browser. The next
+		//    iteration's Down+Enter then acted on the stale browser page instead
+		//    of the list, so no Announce Info opened, no Connect happened, and the
+		//    browser stayed on the prior node's stale page (looked "blank" with no
+		//    "Retrieving" on the next Connect). C-w is the same reliable release
+		//    the connect-FAILED path uses below. Home then moves the list
+		//    selection to the TOP so the next Down advances to the 2nd node —
+		//    preventing the overshoot into the Local Peer panel (Enter on < Save >
+		//    opens "Save Node Info") that happened when a connected node sat at the
+		//    BOTTOM of the list and Down moved past the last node.
+		d.send("C-w")  // disconnect -> releases focus to the left list (cursor-position independent)
+		d.send("Home") // list selection -> top so the next Down can't overshoot into Local Peer
 	}
 	d.logf("Phase 3 complete: %d/%d successful connects in %d attempts (%d distinct nodes tried)",
 		success, d.nodeIters, attempts, len(tried))
@@ -740,6 +762,19 @@ func (d *driver) examineMainPage(mainHash string, maxSteps int) {
 		// footer shows "Link to"). Linkless lines get no Enter — the walk just
 		// continues Down.
 		if lt := v.browserFooterLink(); lt != "" {
+			// Per-session visited-links cache (the user-requested non-persistent
+			// cache): never attempt the same link twice during one suite run. Many
+			// nodes link to the same shared destinations (common hubs, shared
+			// indexes); re-fetching a destination only to C-d back wastes wall-clock
+			// and re-triggers transient fetch errors. Keyed by the footer "Link to
+			// <target>" string, checked BEFORE Enter so we don't even attempt a
+			// re-visit; recorded on attempt so a link that errored is not retried.
+			// (The per-call `followed` map below still dedupes within one page.)
+			if d.visitedLinks[lt] {
+				d.logf("  link line %d (%q): already visited this session; skipping", curLine, lt)
+				continue
+			}
+			d.visitedLinks[lt] = true
 			sigBefore := s
 			d.send("Enter")
 			_, ok := d.waitFor(func(vv *View) bool {
@@ -794,8 +829,8 @@ func (d *driver) examineMainPage(mainHash string, maxSteps int) {
 			prevSig = d.view().browserPaneSig()
 		}
 	}
-	d.logf("  examined main page: %d downs, %d screenfuls, %d distinct links followed",
-		curLine, screenfuls, linksFollowed)
+	d.logf("  examined main page: %d downs, %d screenfuls, %d distinct links followed (%d links in session cache)",
+		curLine, screenfuls, linksFollowed, len(d.visitedLinks))
 }
 
 // followLinksFromTop followed every hyperlink on the main page by jogging from

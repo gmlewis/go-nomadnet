@@ -252,6 +252,7 @@ func run(args []string) error {
 		announceWait: cfg.announceWait,
 		connectWait:  cfg.connectWait,
 		nodeIters:    cfg.nodeIters,
+		visitedLinks: map[string]bool{},
 	}
 
 	if cfg.headed {

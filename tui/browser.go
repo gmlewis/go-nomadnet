@@ -712,6 +712,10 @@ func (bd *BrowserDisplay) Disconnect() {
 	bd.footerStatus.SetText("")
 	bd.showContent()
 	bd.content.SetText("[gray]Disconnected.[-]")
+	// "Disconnected." is not a rendered micron page: reset the per-line nav
+	// model so an arrow key falls into handleNavKey's empty-page guard instead
+	// of indexing an empty bd.lineCursors and panicking. See resetNavState.
+	bd.resetNavState()
 }
 
 // CurrentURL returns the currently loaded URL.
@@ -735,6 +739,11 @@ func (bd *BrowserDisplay) CurrentURL() string {
 func (bd *BrowserDisplay) SetContent(text string) {
 	bd.showContent()
 	bd.content.SetText(text)
+	// Error text is not a rendered micron page (no renderPage/initNavState ran):
+	// reset the per-line nav model so an arrow key falls into handleNavKey's
+	// empty-page guard instead of indexing an empty bd.lineCursors and
+	// panicking ("index out of range [0] with length 0"). See resetNavState.
+	bd.resetNavState()
 }
 
 // CurrentDest returns the 16-byte destination hash of the currently loaded page
