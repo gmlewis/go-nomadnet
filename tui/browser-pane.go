@@ -104,9 +104,27 @@ func FormatRemoteNodeTitle(url string) string {
 // resets to "Remote Node". This is the Network page C-w handler: Python's
 // NetworkDisplay.keypress (Network.py:1609-1610) calls
 // self.parent.browser.disconnect() directly on ctrl-w.
+//
+// After resetting the pane, focus is released back to the owning view (the
+// Network left list). The Network Columns is self-managing (network.go
+// SetSelfManaging): it forwards Left/Right to the pane but does NOT do
+// urwid-style column-arrow traversal, so unlike Python — where Left on the
+// disconnected body bubbles to the Columns and moves focus to the list — a
+// disconnected Go pane (the centered bp.body, with no LinkableText
+// Left-at-start handler) would TRAP focus, and the test suite's recovery
+// (C-w → Left → Home → Down → Enter) could never reopen Announce Info. The
+// BrowserDisplay's OnReleaseFocus is wired to networkDisplay.FocusLists in the
+// wiring layer (cmd/gonomadnet/textui.go), the same callback the loaded browser
+// fires on Left-at-start; reuse it here so disconnecting returns focus to the
+// list. It is released BEFORE Clear so SetFocus lands on the list while the
+// (still-mounted) BrowserDisplay is the active focus target, not a dangling
+// removed widget.
 func (bp *BrowserPane) Disconnect() {
 	if bp.display != nil {
 		bp.display.Disconnect()
+		if bp.display.OnReleaseFocus != nil {
+			bp.display.OnReleaseFocus()
+		}
 	}
 	bp.widget.Clear()
 	bp.widget.AddItem(tview.NewBox(), 0, 1, false)

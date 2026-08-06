@@ -122,6 +122,39 @@ func TestNetworkCtrlWDisconnectsBrowserPane(t *testing.T) {
 	}
 }
 
+// TestBrowserPaneDisconnectReleasesFocus pins the focus-trap regression: after
+// BrowserPane.Disconnect resets the pane to the centered "Disconnected" body,
+// focus MUST return to the owning view (the Network left list). The Network
+// Columns is self-managing (network.go SetSelfManaging) — it forwards Left/
+// Right to the pane but does NOT do urwid-style column-arrow traversal, so
+// unlike Python (where Left on the disconnected body bubbles to the Columns and
+// moves focus to the list) a disconnected Go pane would trap focus. The pane
+// therefore releases focus explicitly on disconnect via the BrowserDisplay's
+// OnReleaseFocus (wired to networkDisplay.FocusLists in the wiring layer).
+func TestBrowserPaneDisconnectReleasesFocus(t *testing.T) {
+	t.Parallel()
+	app := newTestApp()
+	app.Glyphs = GetGlyphSet(GlyphUnicode)
+	bp := NewBrowserPane(app)
+	bd := bp.BrowserDisplay()
+
+	var released bool
+	bd.OnReleaseFocus = func() { released = true }
+
+	bp.LoadURL("7b75524d2453f2f5138947daaddb5b77/page/index.mu")
+	if bd.loading == nil {
+		t.Fatal("loading body not shown after LoadURL")
+	}
+
+	bp.Disconnect()
+
+	if !released {
+		t.Errorf("Disconnect did not release focus (OnReleaseFocus not called) — " +
+			"focus is trapped in the disconnected pane, so the test suite cannot " +
+			"recover (Down+Enter goes to the pane, not the left list)")
+	}
+}
+
 func rowContains(rows []string, s string) bool {
 	for _, r := range rows {
 		if strings.Contains(r, s) {

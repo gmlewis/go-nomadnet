@@ -505,6 +505,16 @@ func (d *driver) phase3() {
 				d.logf("  connect TIMEOUT after %v (state=%q); skipping node", d.connectWait+6*time.Second, st)
 			}
 			d.snapshot("phase3: connect failed")
+			// C-w disconnects the browser pane. BrowserPane.Disconnect (tui)
+			// cancels the in-flight fetch, resets the pane to the centered
+			// "Disconnected" view, AND releases focus back to the left list (it
+			// fires OnReleaseFocus → networkDisplay.FocusLists). The release is
+			// necessary because the Network Columns is self-managing and does
+			// NOT do urwid-style column-arrow traversal, so a disconnected pane
+			// (centered text, no LinkableText Left-at-start handler) would
+			// otherwise trap focus and this recovery could never reopen the
+			// next Announce Info. Left below is belt-and-suspenders (a no-op
+			// once focus is already on the list).
 			d.send("C-w") // Disconnect to reset the browser pane before the next node.
 			time.Sleep(d.stepDelay)
 			d.send("Left") // Release the (now-disconnected) browser focus back to the list.
