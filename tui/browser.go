@@ -397,20 +397,43 @@ func (bd *BrowserDisplay) showLoading(url string) {
 	if bd.loading != nil {
 		bd.body.RemoveItem(bd.loading)
 	}
+	// The browser's key shortcuts (Ctrl-d/w/u/etc. in handleInput) run as an
+	// input capture on bd.widget, which bodyPages dispatches to only while the
+	// browser page's widget tree HasFocus (body-pages.go:86). Removing the
+	// focused bd.content orphans focus — no child of the page keeps it — so
+	// the page stops receiving keys and the keyboard goes dead for the whole
+	// fetch ("Retrieving" dead-keyboard bug: nomadnet stays responsive because
+	// BrowserFrame.keypress always runs for the browser region). Move focus
+	// onto the loading body when the content held it so the page keeps a
+	// focused child and bodyPages keeps dispatching to handleInput. When the
+	// left list (Network pane) held focus, bd.content.HasFocus() is false and
+	// we must NOT steal focus — the list stays driven during the fetch.
+	contentHadFocus := bd.content.HasFocus()
 	bd.body.RemoveItem(bd.content)
 	bd.loading = newMiddleCentered(bd.contentFG, "Retrieving", "["+url+"]")
 	bd.body.AddItem(bd.loading, 0, 1, true)
+	if contentHadFocus {
+		bd.app.SetFocus(bd.loading)
+	}
 }
 
 // showContent swaps the page content back into the body slot, removing the
 // centered loading body. Called from renderPage once a page has rendered.
 func (bd *BrowserDisplay) showContent() {
+	// Mirror showLoading: if the loading body held focus (because bd.content
+	// was focused when the load started), move focus back onto the restored
+	// content so the loaded page is immediately navigable — otherwise the app
+	// focus points at the removed loading body and keys go nowhere.
+	loadingHadFocus := bd.loading != nil && bd.loading.HasFocus()
 	if bd.loading != nil {
 		bd.body.RemoveItem(bd.loading)
 		bd.loading = nil
 	}
 	bd.body.RemoveItem(bd.content)
 	bd.body.AddItem(bd.content, 0, 1, true)
+	if loadingHadFocus {
+		bd.app.SetFocus(bd.content)
+	}
 }
 
 // RenderPage renders Micron markup into the browser content area, mirroring
@@ -744,6 +767,31 @@ func (bd *BrowserDisplay) SetContent(text string) {
 	// empty-page guard instead of indexing an empty bd.lineCursors and
 	// panicking ("index out of range [0] with length 0"). See resetNavState.
 	bd.resetNavState()
+}
+
+// NotifyLinkError surfaces a link-dispatch failure in the browser FOOTER
+// without replacing the current page, mirroring Python's Browser.handle_link
+// and url_dialog catching retrieve_url's ValueError and setting
+// self.browser_footer = "Could not open link: ..." (Browser.py:300-304,
+// 1142-1150). Python's retrieve_url raises BEFORE touching status,
+// destination_hash, or history, so the page the user was viewing stays put and
+// Back (Ctrl-d) works as normal (it has nothing to undo for the failed link).
+//
+// The Go app-layer OnRetrieveURL closure previously called SetContent on a
+// ParseURL error (e.g. an https:// link, which is ErrMalformedURL), which
+// OVERWROTE the current page with the error text. Because a failed link never
+// pushed a history entry, the user was then stranded on the error page with no
+// way back — Ctrl-d did nothing (and the Network pane's OnBack was unwired).
+// NotifyLinkError restores the prior page instead: showContent swaps the
+// "Retrieving" loading body back out if a URL-bar load had shown it (a no-op
+// for a link click, which never showed loading), and the footer carries the
+// error. The rendered page's nav state is left intact so the user keeps
+// navigating it. Fetch-FATAL errors (timeout / no path) still use SetContent,
+// matching Python's make_request_failed_widget replacing the body.
+func (bd *BrowserDisplay) NotifyLinkError(msg string) {
+	bd.showContent()
+	bd.linkStatusShowing = false
+	bd.footerStatus.SetText("[red]" + tview.Escape(msg) + "[-]")
 }
 
 // CurrentDest returns the 16-byte destination hash of the currently loaded page

@@ -135,7 +135,7 @@ const destHashHexLen = 32
 
 // ErrMalformedURL is returned by ParseURL for a URL that does not match the
 // nomadnet address grammar, matching Python's `raise ValueError("Malformed URL")`.
-var ErrMalformedURL = errors.New("malformed URL")
+var ErrMalformedURL = errors.New("Malformed URL")
 
 // Fetch errors, mirroring the Python Browser status states that surface as
 // failures during page retrieval (Browser.py __load / request_timeout).

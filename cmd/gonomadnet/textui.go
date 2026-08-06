@@ -1143,6 +1143,24 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	guideDisplay := tui.NewGuideDisplay(tuiApp)
 	main.SetDisplay("guide", guideDisplay.Widget())
 	main.SetShortcutCallback("guide", guideDisplay.Shortcuts)
+	// Wire Guide link activation to the Network browser, mirroring Python's
+	// GuideLinkDelegate.handle_link (Guide.py:103-118): an "#anchor" stays in
+	// the Guide (handled in GuideDisplay.handleLink before this callback), any
+	// other target switches to the Network page and dispatches through the
+	// browser's handle_link (here BrowserDisplay.HandleLink), which routes
+	// nomadnetwork.node page URLs → OnRetrieveURL (the fetch backend), lxmf@ →
+	// OnOpenLXMF, rrc:// → OnOpenRRC, p: → OnPartialUpdate. Without this the
+	// Guide reader's OnHandleLink was nil, so clicking/Enter on a non-anchor
+	// link like the Introduction's "Aleph git" page link did NOTHING — the user
+	// could not click it (Python's mouse_event fires handle_link directly, so
+	// nomadnet could). fields (request_data) is dropped, matching the rest of
+	// the Go port's OnRetrieveURL signature; Guide links currently carry none.
+	guideDisplay.OnHandleLink = func(target, fields string) {
+		main.SelectPage("network")
+		if ndBd := networkDisplay.BrowserDisplay(); ndBd != nil {
+			ndBd.HandleLink(target)
+		}
+	}
 
 	// Interfaces display — wired to the live RNS transport. Python builds the
 	// list from the RNS config + app.rns.get_interface_stats() (Interfaces.py:
@@ -1334,71 +1352,13 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	// uncaches the current URL first (Browser.py:1100) to force a re-fetch.
 	pageCache := tui.NewBrowserCache(a.CachePath)
 
-	// Wire browser keyboard shortcuts
-	browserDisplay.OnBack = func() { browserDisplay.GoBack() }
-	browserDisplay.OnForward = func() { browserDisplay.GoForward() }
-	browserDisplay.OnReload = func() {
-		// Python reload() uncaches the current URL then re-loads, so a reload
-		// always re-fetches instead of returning a stale cache hit.
-		pageCache.UncachePage(browserDisplay.CurrentURL())
-		browserDisplay.Reload()
-	}
-	browserDisplay.OnCopyURL = func() {
-		// Python BrowserFrame.keypress ctrl y (Browser.py:38-40) only calls
-		// copy_url when config.textui.clipboard_copy is enabled, and copy_url
-		// (Browser.py:1103-1133) copies the current URL via the OSC 52 escape
-		// sequence (osc52_copy) — no platform clipboard tool. With no URL or
-		// the feature disabled, C-y is a no-op.
-		if a.Config == nil || !a.Config.TextUI.ClipboardCopy {
-			return
-		}
-		url := browserDisplay.CurrentURL()
-		if url == "" {
-			return
-		}
-		_ = tui.OSC52Copy(url)
-	}
-	browserDisplay.OnURLDialog = func() {
-		// Python Browser.url_dialog (Browser.py:1135-1182): pre-fill the
-		// current URL, let the user edit it, and on "Go" apply the "|"`→"`"
-		// normalization (a user can type "hash:path|x=1" instead of using a
-		// backtick) then retrieve_url.
-		tuiApp.Dialogs.ShowInputDialog("Enter URL",
-			"URL : ", browserDisplay.CurrentURL(),
-			func(text string) {
-				text = strings.TrimSpace(text)
-				if text == "" {
-					return
-				}
-				browserDisplay.LoadURL(browser.NormalizeEnteredURL(text))
-			},
-			func() {},
-		)
-	}
-	browserDisplay.OnSaveNode = func() {
-		// Python Browser.save_node_dialog (Browser.py:1184-1234): only when a
-		// destination is connected; recall the announced app_data display name;
-		// confirm "Save connected node "<name>" <prettyhex> to Known Nodes?";
-		// on Save, remember a DirectoryEntry(hosts_node=True) and fire the
-		// directory-change callback (refresh the network known-nodes pane).
-		dest := browserDisplay.CurrentDest()
-		if len(dest) == 0 {
-			return
-		}
-		dispName := ""
-		if id := a.Transport.Recall(dest); id != nil && len(id.AppData) > 0 {
-			dispName = string(id.AppData)
-		}
-		namePart := ""
-		if dispName != "" {
-			namePart = " \"" + dispName + "\""
-		}
-		msg := "Save connected node" + namePart + " " + rns.PrettyHexRep(dest) + " to Known Nodes?\n"
-		tuiApp.Dialogs.ShowConfirmDialog(msg, func() {
-			a.SaveConnectedNode(dest, dispName)
-			refreshNodes()
-		}, func() {})
-	}
+	// The per-target callbacks (OnDisconnect, OnReleaseFocus) are wired inline
+	// below; everything else (OnBack/Forward/Reload/CopyURL/URLDialog/SaveNode/
+	// JumpAnchor/OpenLXMF/OpenRRC/PartialUpdate/BrowserError/ToggleFullscreen/
+	// FetchPartial/RetrieveURL) is shared by BOTH the standalone browser page
+	// and the Network right pane via wireBrowser, so the two no longer diverge
+	// (the Network pane previously had most of these nil — e.g. Ctrl-d / Back
+	// was a no-op, stranding the user after a malformed-link error).
 	browserDisplay.OnDisconnect = func() {
 		// Python Browser.disconnect (Browser.py:862-881) clears history, resets
 		// the pointer, and drops the current-destination hint — the BrowserDisplay
@@ -1406,110 +1366,16 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		// (no persistent self.link to tear down).
 		browserDisplay.Disconnect()
 	}
-	browserDisplay.OnJumpAnchor = func(name string) {
-		// Python Browser._jump_to_anchor (Browser.py:324-357): scroll the page
-		// content to the named anchor (or the next heading below the cursor for
-		// a bare "#"). Pure local UI — no network involved.
-		browserDisplay.JumpToAnchor(name)
-	}
-	browserDisplay.OnOpenLXMF = func(hashHex string) {
-		// Python Browser.handle_lxmf_link (Browser.py:383-423): validate the LXMF
-		// destination hash, recall the announced display name, and for a new
-		// source create a directory entry + on-disk conversation directory; then
-		// display the conversation and switch to the Conversations page. The
-		// browser-side HandleLXMFLink has already validated, but the app method
-		// re-validates defensively.
-		if _, err := a.OpenLXMFLink(hashHex); err != nil {
-			tuiApp.Dialogs.ShowConfirmDialog(
-				"Could not open LXMF link: "+err.Error(),
-				func() {}, func() {})
-			return
-		}
-		refreshConvs()
-		conversationsDisplay.DisplayConversation(hashHex)
-		main.SelectPage("conversations")
-	}
-	browserDisplay.OnOpenRRC = func(hubHex, room string) {
-		hubHex = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(hubHex)), "0x")
-		hashBytes, err := hex.DecodeString(hubHex)
-		if err != nil || len(hashBytes) != 16 {
-			tuiApp.Dialogs.ShowConfirmDialog(
-				"Could not open RRC link: invalid hub address",
-				func() {}, func() {})
-			return
-		}
-		if a.RRC != nil {
-			hub := a.RRC.FindHub(hashBytes, "rrc.hub")
-			if hub == nil {
-				hub = a.RRC.AddHub(hashBytes, "rrc.hub", "")
-			}
-			if room != "" {
-				hub.AddRoom(room)
-				if hub.Status == rrc.StatusConnected {
-					hub.JoinRoom(room, false)
-				}
-			}
-			tuiApp.QueueUpdateDraw(func() {
-				channelsDisplay.SetHubs(a.HubViews())
-			})
-		}
-		main.SelectPage("channels")
-	}
-	browserDisplay.OnPartialUpdate = func(ids []string) {
-		// Python Browser.handle_partial_updates (Browser.py:823-834): a
-		// "p:<id>:<id>" link forces an immediate re-fetch of the named partials.
-		// The BrowserDisplay owns the partial-refresh loop and substitution; this
-		// just selects the matching partials and re-fetches them off-thread.
-		browserDisplay.RefreshPartials(ids)
-	}
-	browserDisplay.OnBrowserError = func(msg string) {
-		// Python surfaces link-dispatch failures (handle_link "No known handler",
-		// handle_lxmf_link/handle_rrc_link errors, Browser.py:303/321/422/465) in
-		// the browser footer. The Go BrowserDisplay has no footer slot, so the app
-		// surfaces them as a centered dismissible dialog. Page-load fetch errors
-		// are NOT routed here — they render in the content area (the faithful
-		// single-place surface, since Python shows those in the footer too but
-		// the Go content is the equivalent prominent surface).
-		tuiApp.Dialogs.ShowDialog("Browser",
-			tview.NewTextView().
-				SetDynamicColors(true).
-				SetTextAlign(tview.AlignCenter).
-				SetText("[red]"+tview.Escape(msg)+"[-]"),
-			50, 5, nil)
-	}
-	browserDisplay.OnToggleFullscreen = func() {
-		// Python BrowserFrame C-g (Browser.py:36-37) calls
-		// network_display.toggle_fullscreen(), which hides the network page's
-		// left pane so the in-page browser fills the width. The Go port mounts
-		// the browser as its OWN full-screen page (navigating switches to the
-		// "browser" page), so it is already full-width with no left pane to
-		// hide — the toggle has no chrome to collapse here. A no-op preserves
-		// the keybinding without a visible change; the in-network-pane browser
-		// placement (which would make this toggle meaningful) is a larger
-		// architecture change deferred beyond this phase.
-	}
-	// OnFetchPartial fetches one page partial over RNS, resolving its (possibly
-	// relative) URL against the page's current destination hash. Wired to the
-	// browser fetch backend; the BrowserDisplay runs the refresh loop and
-	// substitutes the result into the page (Python Browser.__load_partial +
-	// partial_received). identifyOnConnect mirrors Python link_established
-	// (Browser.py:1454-1459): when the directory entry requests it, identify to
-	// the remote node over the freshly established link.
+	// identifyOnConnect mirrors Python link_established (Browser.py:1454-1459):
+	// when the directory entry requests it, identify to the remote node over the
+	// freshly established link. Shared by wireBrowser's OnFetchPartial and
+	// OnRetrieveURL, so defined before wireBrowser.
 	identifyOnConnect := func(destHash []byte) func(*rns.Link) {
 		if a.Dir == nil || !a.Dir.ShouldIdentifyOnConnect(destHash) || a.Identity == nil {
 			return nil
 		}
 		identity := a.Identity
 		return func(link *rns.Link) { _ = link.Identify(identity) }
-	}
-	browserDisplay.OnFetchPartial = func(p browser.Partial) ([]byte, error) {
-		// This closure runs on the runPartialRefresh goroutine (browser.go), NOT
-		// the tview event loop, so it must NOT read bd.reqCtx (it would race the
-		// event loop). Pass context.Background(); partials already have their
-		// own partialCancel staleness gate (browser.go fetchAndSubstitute).
-		return browser.FetchPartial(context.Background(), a.Transport, p, browserDisplay.CurrentDest(),
-			time.Duration(browser.DefaultTimeout)*time.Second, nil,
-			identifyOnConnect(browserDisplay.CurrentDest()))
 	}
 
 	// OnRetrieveURL runs the real fetch backend (Browser.retrieve_url →
@@ -1534,6 +1400,168 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		if bd == nil {
 			return
 		}
+		// Navigation + link-handling callbacks are shared by BOTH the standalone
+		// browser page and the Network right pane (Python's BrowserFrame and
+		// NetworkDisplay both drive the same Browser instance, Browser.py:21-40 /
+		// Network.py:1609-1610). Previously these were wired only on the standalone
+		// browserDisplay, so the Network pane's browser had OnBack/OnForward/etc.
+		// nil — Ctrl-d (Back) was a no-op there, stranding the user after a
+		// malformed-link error with no way back.
+		bd.OnBack = func() { bd.GoBack() }
+		bd.OnForward = func() { bd.GoForward() }
+		bd.OnReload = func() {
+			// Python reload() uncaches the current URL then re-loads, so a reload
+			// always re-fetches instead of returning a stale cache hit.
+			pageCache.UncachePage(bd.CurrentURL())
+			bd.Reload()
+		}
+		bd.OnCopyURL = func() {
+			// Python BrowserFrame.keypress ctrl y (Browser.py:38-40) only calls
+			// copy_url when config.textui.clipboard_copy is enabled, and copy_url
+			// (Browser.py:1103-1133) copies the current URL via the OSC 52 escape
+			// sequence (osc52_copy) — no platform clipboard tool. With no URL or
+			// the feature disabled, C-y is a no-op.
+			if a.Config == nil || !a.Config.TextUI.ClipboardCopy {
+				return
+			}
+			url := bd.CurrentURL()
+			if url == "" {
+				return
+			}
+			_ = tui.OSC52Copy(url)
+		}
+		bd.OnURLDialog = func() {
+			// Python Browser.url_dialog (Browser.py:1135-1182): pre-fill the
+			// current URL, let the user edit it, and on "Go" apply the "|"`→"`"
+			// normalization (a user can type "hash:path|x=1" instead of using a
+			// backtick) then retrieve_url.
+			tuiApp.Dialogs.ShowInputDialog("Enter URL",
+				"URL : ", bd.CurrentURL(),
+				func(text string) {
+					text = strings.TrimSpace(text)
+					if text == "" {
+						return
+					}
+					bd.LoadURL(browser.NormalizeEnteredURL(text))
+				},
+				func() {},
+			)
+		}
+		bd.OnSaveNode = func() {
+			// Python Browser.save_node_dialog (Browser.py:1184-1234): only when a
+			// destination is connected; recall the announced app_data display name;
+			// confirm "Save connected node "<name>" <prettyhex> to Known Nodes?";
+			// on Save, remember a DirectoryEntry(hosts_node=True) and fire the
+			// directory-change callback (refresh the network known-nodes pane).
+			dest := bd.CurrentDest()
+			if len(dest) == 0 {
+				return
+			}
+			dispName := ""
+			if id := a.Transport.Recall(dest); id != nil && len(id.AppData) > 0 {
+				dispName = string(id.AppData)
+			}
+			namePart := ""
+			if dispName != "" {
+				namePart = " \"" + dispName + "\""
+			}
+			msg := "Save connected node" + namePart + " " + rns.PrettyHexRep(dest) + " to Known Nodes?\n"
+			tuiApp.Dialogs.ShowConfirmDialog(msg, func() {
+				a.SaveConnectedNode(dest, dispName)
+				refreshNodes()
+			}, func() {})
+		}
+		bd.OnJumpAnchor = func(name string) {
+			// Python Browser._jump_to_anchor (Browser.py:324-357): scroll the page
+			// content to the named anchor (or the next heading below the cursor for
+			// a bare "#"). Pure local UI — no network involved.
+			bd.JumpToAnchor(name)
+		}
+		bd.OnOpenLXMF = func(hashHex string) {
+			// Python Browser.handle_lxmf_link (Browser.py:383-423): validate the LXMF
+			// destination hash, recall the announced display name, and for a new
+			// source create a directory entry + on-disk conversation directory; then
+			// display the conversation and switch to the Conversations page. The
+			// browser-side HandleLXMFLink has already validated, but the app method
+			// re-validates defensively.
+			if _, err := a.OpenLXMFLink(hashHex); err != nil {
+				tuiApp.Dialogs.ShowConfirmDialog(
+					"Could not open LXMF link: "+err.Error(),
+					func() {}, func() {})
+				return
+			}
+			refreshConvs()
+			conversationsDisplay.DisplayConversation(hashHex)
+			main.SelectPage("conversations")
+		}
+		bd.OnOpenRRC = func(hubHex, room string) {
+			hubHex = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(hubHex)), "0x")
+			hashBytes, err := hex.DecodeString(hubHex)
+			if err != nil || len(hashBytes) != 16 {
+				tuiApp.Dialogs.ShowConfirmDialog(
+					"Could not open RRC link: invalid hub address",
+					func() {}, func() {})
+				return
+			}
+			if a.RRC != nil {
+				hub := a.RRC.FindHub(hashBytes, "rrc.hub")
+				if hub == nil {
+					hub = a.RRC.AddHub(hashBytes, "rrc.hub", "")
+				}
+				if room != "" {
+					hub.AddRoom(room)
+					if hub.Status == rrc.StatusConnected {
+						hub.JoinRoom(room, false)
+					}
+				}
+				tuiApp.QueueUpdateDraw(func() {
+					channelsDisplay.SetHubs(a.HubViews())
+				})
+			}
+			main.SelectPage("channels")
+		}
+		bd.OnPartialUpdate = func(ids []string) {
+			// Python Browser.handle_partial_updates (Browser.py:823-834): a
+			// "p:<id>:<id>" link forces an immediate re-fetch of the named partials.
+			// The BrowserDisplay owns the partial-refresh loop and substitution; this
+			// just selects the matching partials and re-fetches them off-thread.
+			bd.RefreshPartials(ids)
+		}
+		bd.OnBrowserError = func(msg string) {
+			// Python surfaces link-dispatch failures (handle_link "No known handler",
+			// handle_lxmf_link/handle_rrc_link errors, Browser.py:303/321/422/465) in
+			// the browser footer. The Go BrowserDisplay has no footer slot, so the app
+			// surfaces them as a centered dismissible dialog. Page-load fetch errors
+			// are NOT routed here — they render in the content area (the faithful
+			// single-place surface, since Python shows those in the footer too but
+			// the Go content is the equivalent prominent surface).
+			tuiApp.Dialogs.ShowDialog("Browser",
+				tview.NewTextView().
+					SetDynamicColors(true).
+					SetTextAlign(tview.AlignCenter).
+					SetText("[red]"+tview.Escape(msg)+"[-]"),
+				50, 5, nil)
+		}
+		bd.OnToggleFullscreen = func() {
+			// Python BrowserFrame C-g (Browser.py:36-37) calls
+			// network_display.toggle_fullscreen(), which hides the network page's
+			// left pane so the in-page browser fills the width. The Go port mounts
+			// the browser as its OWN full-screen page (navigating switches to the
+			// "browser" page), so it is already full-width with no left pane to
+			// hide — the toggle has no chrome to collapse here. A no-op preserves
+			// the keybinding without a visible change; the in-network-pane browser
+			// placement (which would make this toggle meaningful) is a larger
+			// architecture change deferred beyond this phase.
+		}
+		bd.OnFetchPartial = func(p browser.Partial) ([]byte, error) {
+			// This closure runs on the runPartialRefresh goroutine (browser.go), NOT
+			// the tview event loop, so it must NOT read bd.reqCtx (it would race the
+			// event loop). Pass context.Background(); partials already have their
+			// own partialCancel staleness gate (browser.go fetchAndSubstitute).
+			return browser.FetchPartial(context.Background(), a.Transport, p, bd.CurrentDest(),
+				time.Duration(browser.DefaultTimeout)*time.Second, nil,
+				identifyOnConnect(bd.CurrentDest()))
+		}
 		bd.OnRetrieveURL = func(url string) {
 			ctx, seq := bd.BeginRequest()
 			dest, path, rd, err := browser.ParseURL(url, bd.CurrentDest(), nil)
@@ -1542,7 +1570,16 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 					if seq != bd.CurrentRequestSeq() || ctx.Err() != nil {
 						return
 					}
-					bd.SetContent(fmt.Sprintf("[red]Invalid URL: %v[-]", err))
+					// Malformed URL (e.g. an https:// link): Python's retrieve_url
+					// raises ValueError BEFORE touching status/destination/history,
+					// and handle_link / url_dialog catch it into the FOOTER
+					// ("Could not open link: ...") leaving the current page intact
+					// (Browser.py:300-304, 1142-1150). Mirroring that keeps the user
+					// on the page they were viewing so Back (Ctrl-d) works as normal
+					// — the previous SetContent overwrote the page with the error
+					// and, since the failed link never pushed history, stranded the
+					// user with no way back (Ctrl-d did nothing).
+					bd.NotifyLinkError(fmt.Sprintf("Could not open link: %v", err))
 				})
 				return
 			}
