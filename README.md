@@ -1,8 +1,8 @@
 # gonomadnet — Go Nomad Network Client
 
-![gonomadnet mascott
+![gonomadnet mascot
 The Go gopher was designed by Renee French.
-The design is licensed under the Creative Commons 4.0 Attributions license.](assets/gonomadnet-mascott.png)
+The design is licensed under the Creative Commons 4.0 Attribution license.](assets/gonomadnet-mascot.png)
 
 A complete Go port of [NomadNet](https://github.com/markqvist/nomadnet), a
 peer-to-peer messaging and information sharing system built on
@@ -27,14 +27,15 @@ the internet.
 
 ### Binary
 
-Install directly from GitHub — no clone needed:
+If you already have [Go](https://go.dev/) installed, you can
+install `gonomadnet` directly from GitHub without cloning the repo:
 
 ```bash
 go install github.com/gmlewis/go-nomadnet/cmd/gonomadnet@latest
 ```
 
-This puts the `gonomadnet` binary on your `$GOPATH/bin` (or `$GOBIN`). Make
-sure that directory is on your `PATH`.
+This puts the `gonomadnet` binary in your `$GOPATH/bin` (or `$GOBIN`)
+(which should already be in your `$PATH`).
 
 ### Build from Source
 
@@ -73,17 +74,21 @@ gonomadnet --version
 | `--console` | `-c` | In daemon mode, log to console instead of file |
 | `--version` | | Show version and exit |
 
-### Running Alongside Python NomadNet
+### Installing Alongside Python NomadNet
 
-The Go binary is named `gonomadnet` so it can coexist with the Python
-`nomadnet` on the same machine. Both read from `~/.nomadnetwork` by default
-and share the same Reticulum identity and message storage.
+The Go binary is named `gonomadnet` (not `nomadnet`) so it can be installed
+on the same machine as the Python `nomadnet` without either overwriting the
+other. Both read from `~/.nomadnetwork` by default and share the same
+Reticulum identity, peer directory, and message store — so you can switch
+between them and pick up the same conversations, trusted peers, and
+announced nodes.
 
-```bash
-# Compare side by side
-nomadnet --textui &       # Python version
-gonomadnet --textui       # Go version
-```
+Run only **one** at a time. Because they share a single identity and
+storage directory, launching both concurrently would have two processes
+claim the same LXMF destination and contend for the same files and RNS
+interfaces. Quit one before starting the other. (If you genuinely need both
+running at once, give each its own `--config` and `--rnsconfig` so they use
+separate identities, storage, and Reticulum interfaces.)
 
 ## Configuration
 
@@ -126,51 +131,53 @@ See the Python NomadNet documentation for all available options.
 | Package | Description |
 |---------|-------------|
 | `nomadnet/app` | Central app singleton: config, identity, LXMF router, directory |
+| `nomadnet/browser` | Browser backend: URL parsing, page fetching, downloads, page cache |
 | `nomadnet/config` | INI-style config file parsing and I/O |
 | `nomadnet/conversation` | LXMF conversation management and message storage |
 | `nomadnet/directory` | Peer directory with trust levels and announce streams |
 | `nomadnet/micron` | Micron markup parser (headings, formatting, colors, links) |
 | `nomadnet/node` | NomadNet node: serves pages and files over RNS |
+| `nomadnet/peersettings` | Peer settings management |
 | `nomadnet/rrc` | Reticulum Relay Chat: hubs, rooms, CBOR persistence |
 | `nomadnet/storage` | Storage directory management |
 | `nomadnet/util` | Text sanitization utilities |
 | `nomadnet/version` | Version constant |
 | `nomadnet/asciichart` | ASCII chart renderer for bandwidth display |
-| `tui` | Terminal UI framework (themes, glyphs, menu bar) |
+| `tui` | Terminal UI: all menu pages (browser, conversations, channels, network, guide, config, log, interfaces), dialogs, micron styled renderer, themes & glyphs |
 
 ## Terminal UI
 
-The TUI provides a tabbed interface with these displays:
+The TUI's top-level menu mirrors Python nomadnet: Conversations, Network,
+Channels, Log, Interfaces, Config, Guide, and Quit. (Directory and Map are
+sub-displays reached from within those pages, not top-level menu buttons.)
 
-- **Network** — Announce stream, known nodes/peers, propagation nodes
 - **Conversations** — Message list, compose, read/reply
+- **Network** — Announce stream, known nodes/peers, propagation nodes
 - **Channels** — RRC chat rooms, member list, message history
-- **Directory** — Known peers with trust levels
-- **Guide** — Help content rendered as Micron pages
-- **Config** — View/edit configuration
 - **Log** — Log file viewer
 - **Interfaces** — RNS interface status and bandwidth charts
+- **Config** — View/edit configuration
+- **Guide** — Help content rendered as Micron pages
 
 ### Keyboard Shortcuts
 
 | Key | Action |
 |-----|--------|
-| `Tab` / `Shift-Tab` | Switch between menu items |
-| `1`-`9`, `0` | Jump to menu item |
-| `q` | Quit |
-| `Esc` | Quit |
+| `Left` / `Right` | Move the menu highlight |
+| `Enter` / `Space` | Activate the focused menu item (switch page) |
+| `Tab` / `Down` | Drop focus to the body |
+| `Up` (at top of a list) | Return focus to the menu |
+| `Ctrl-Q` / `Ctrl-C` | Quit |
+| `Esc` | Close the top dialog / return to the menu |
+
+Per-page shortcuts (open a URL, sync, back, etc.) are shown in the
+shortcut bar at the bottom of each display.
 
 ## Testing
 
 ```bash
-# Run all tests
-go test ./...
-
-# Run tests with race detector
-go test -race ./...
-
-# Run tests for a specific package
-go test ./nomadnet/micron/...
+go test ./...          # all tests
+go test -race ./...    # with the race detector
 ```
 
 ## Development
@@ -179,50 +186,38 @@ go test ./nomadnet/micron/...
 
 ```
 go-nomadnet/
-├── cmd/gonomadnet/        # CLI entry point
+├── cmd/gonomadnet/        # CLI entry point (text-UI + daemon modes)
 ├── nomadnet/              # Core library packages
-│   ├── app/               # App singleton
+│   ├── app/               # App singleton, LXMF router, directory
+│   ├── browser/           # Browser backend (URL parsing, page fetch, cache)
 │   ├── config/            # Configuration
-│   ├── conversation/      # Messages
+│   ├── conversation/      # LXMF messages
 │   ├── directory/         # Peer directory
 │   ├── micron/            # Micron parser
 │   ├── node/              # Node serving
+│   ├── peersettings/      # Peer settings
 │   ├── rrc/               # Relay chat
 │   └── ...
-├── tui/                   # Terminal UI
-└── go.work               # Workspace (links to go-reticulum)
+├── tui/                   # Terminal UI (all menu pages, dialogs, renderer)
+├── tooling/               # Parity harnesses & screencast tooling
+├── scripts/               # Test/run helper shell scripts
+└── skills/                # Repo-local development skills
 ```
 
 ### Dependencies
 
-- `github.com/gmlewis/go-reticulum` — Reticulum Network Stack (local workspace)
+- `github.com/gmlewis/go-reticulum` — Reticulum Network Stack
 - `github.com/rivo/tview` — Terminal UI framework
 - `github.com/gdamore/tcell/v2` — Terminal cell library
 - `github.com/fxamacker/cbor/v2` — CBOR codec
 - `github.com/vmihailenco/msgpack/v5` — Msgpack codec
 
-### Running Tests
-
-```bash
-go test ./...                    # All tests
-go test -run TestMicron ./...    # Specific test
-go test -bench=. ./...           # Benchmarks
-```
-
 ## Status
 
-Phase 1 (Core Library) and Phase 3 (CLI) are complete. Phase 2 (TUI) is
-in progress with the framework, themes, and vendor ports done. Individual
-display implementations are pending.
-
-| Phase | Status |
-|-------|--------|
-| Core Library | ✅ Complete |
-| TUI Framework | ✅ Complete |
-| TUI Displays | 🚧 In Progress |
-| CLI Entry Point | ✅ Complete |
-| Integration Testing | 📋 Planned |
+Although this port seems to be fully functional, there may still be bugs.
+If you find bugs, please report them as new
+[GitHub Issues](https://github.com/gmlewis/go-nomadnet/issues).
 
 ## License
 
-Reticulum License — see [LICENSE](LICENSE) for details.
+GNU General Public License v3 — see [LICENSE](LICENSE) for details.
