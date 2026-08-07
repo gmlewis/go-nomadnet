@@ -142,12 +142,19 @@ func TestLocalPeerAnnounceLine(t *testing.T) {
 	}
 }
 
-// TestLocalPeerSetData verifies SetData updates all four fields.
+// TestLocalPeerSetData verifies SetData refreshes the read-only fields (LXMF
+// addr, identity, announce) but does NOT touch the name edit — mirroring
+// Python's LocalPeer, which never re-sets e_name.edit_text after construction
+// (Network.py:1271). The name is seeded once via SetName; a refresh must not
+// clobber it (this is the bug where inbound announces/messages fired
+// UIChangeCallback → SetData and overwrote the user's in-progress typing).
 func TestLocalPeerSetData(t *testing.T) {
 	t.Parallel()
 	app := newTestApp()
-	lp := NewLocalPeerDisplay(app, "", "", "", time.Time{})
-	lp.SetData("<deadbeef>", "<cafef00d>", "My Name", time.Now().Add(-time.Hour))
+	lp := NewLocalPeerDisplay(app, "", "", "Typed Name", time.Time{})
+
+	// A refresh must update only the read-only fields, leaving the name intact.
+	lp.SetData("<deadbeef>", "<cafef00d>", time.Now().Add(-time.Hour))
 
 	if got := lp.lxmfAddr.GetText(true); got != "LXMF Addr : <deadbeef>" {
 		t.Errorf("lxmfAddr = %q, want \"LXMF Addr : <deadbeef>\"", got)
@@ -155,10 +162,18 @@ func TestLocalPeerSetData(t *testing.T) {
 	if got := lp.identity.GetText(true); got != "Identity  : <cafef00d>" {
 		t.Errorf("identity = %q, want \"Identity  : <cafef00d>\"", got)
 	}
-	if got := lp.Name(); got != "My Name" {
-		t.Errorf("Name = %q, want \"My Name\"", got)
+	// SetData must not clobber the construction-seeded name.
+	if got := lp.Name(); got != "Typed Name" {
+		t.Errorf("Name = %q, want \"Typed Name\" (SetData must not touch the name)", got)
 	}
 	if got := lp.announce.GetText(true); !strings.Contains(got, "Announced : ") {
 		t.Errorf("announce = %q, want it to start with \"Announced : \"", got)
+	}
+
+	// SetName is the one-time seed; it does update the field (mirroring Python
+	// setting e_name.edit_text at construction).
+	lp.SetName("New Seed")
+	if got := lp.Name(); got != "New Seed" {
+		t.Errorf("Name after SetName = %q, want \"New Seed\"", got)
 	}
 }

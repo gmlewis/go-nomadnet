@@ -39,6 +39,9 @@ import (
 // the round-trip end-to-end through the App lifecycle.
 func TestDirectoryPersistsAcrossShutdown(t *testing.T) {
 	dir := testutils.TempDir(t, "nomadnet-dir-persist")
+	// Private config with enable_node = no so neither boot auto-starts a node
+	// from the EnableNode=true default (see writeTestNomadNetConfig).
+	writeTestNomadNetConfig(t, dir)
 
 	// --- Boot app #1, remember a trusted peer, then shut down. ---
 	ts, tsCleanup := newStartedTSApp(t, dir)

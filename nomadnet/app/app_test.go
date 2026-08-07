@@ -403,6 +403,10 @@ func TestInitWithTransportCreatesRouter(t *testing.T) {
 	t.Parallel()
 
 	dir := tempDir(t)
+	// Private config with enable_node = no so InitWithTransport (which mirrors
+	// the production initRNS path and calls startNode) does not auto-start a node
+	// from the EnableNode=true default (see writeTestNomadNetConfig).
+	writeTestNomadNetConfig(t, dir)
 	ts := rns.NewTransportSystem(nil)
 	id, err := rns.NewIdentity(true, nil)
 	if err != nil {
@@ -430,6 +434,10 @@ func TestInitWithTransportReceivesAnnounces(t *testing.T) {
 	t.Parallel()
 
 	dir := tempDir(t)
+	// Private config with enable_node = no so InitWithTransport (which mirrors
+	// the production initRNS path and calls startNode) does not auto-start a node
+	// from the EnableNode=true default (see writeTestNomadNetConfig).
+	writeTestNomadNetConfig(t, dir)
 	ts := rns.NewTransportSystem(nil)
 	id, err := rns.NewIdentity(true, nil)
 	if err != nil {
@@ -528,6 +536,10 @@ func TestInitWithTransportSetsRRCIdentity(t *testing.T) {
 	t.Parallel()
 
 	dir := tempDir(t)
+	// Private config with enable_node = no so InitWithTransport (which mirrors
+	// the production initRNS path and calls startNode) does not auto-start a node
+	// from the EnableNode=true default (see writeTestNomadNetConfig).
+	writeTestNomadNetConfig(t, dir)
 	ts := rns.NewTransportSystem(nil)
 	id, err := rns.NewIdentity(true, nil)
 	if err != nil {
@@ -564,6 +576,9 @@ func TestDirAnnounceEventsCrossRunRetention(t *testing.T) {
 	t.Parallel()
 
 	dir := tempDir(t)
+	// Private config with enable_node = no so neither boot auto-starts a node
+	// from the EnableNode=true default (see writeTestNomadNetConfig).
+	writeTestNomadNetConfig(t, dir)
 	ts := rns.NewTransportSystem(nil)
 	id, err := rns.NewIdentity(true, nil)
 	if err != nil {

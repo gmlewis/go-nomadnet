@@ -135,6 +135,15 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	networkDisplay := tui.NewNetworkDisplay(tuiApp, nil, nil)
 	networkDisplay.SanitizeNames = a.Config.TextUI.SanitizeNames
 
+	// Seed the name edit ONCE with the current display name, mirroring Python's
+	// LocalPeer.__init__ which sets e_name.edit_text at construction
+	// (Network.py:1271) and never re-sets it. PeerSettings is loaded
+	// synchronously during Init, so GetDisplayName is available here. The name
+	// is deliberately not part of the UpdateLocalPeer refresh path — including
+	// it there would clobber the user's in-progress typing on every
+	// UIChangeCallback (incoming announces/messages). See LocalPeerDisplay.SetName.
+	networkDisplay.SetLocalPeerName(a.GetDisplayName())
+
 	// refreshLXMFPeers rebuilds the LXMF Propagation Peers list from the app's
 	// LXMF message router (Python reinit_lxmf_peers, Network.py:1717 +
 	// make_peer_widgets 1863-1869): peers sorted by (pn_trust_level,
@@ -172,18 +181,20 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		}
 		networkDisplay.UpdateLXMFPeers(entries)
 	}
-	// localPeerInfo formats the app's identity/LXMF hashes + display name +
-	// last-announce time for the Local Peer Info panel (Python LocalPeer,
-	// Network.py:1259). prettyhexrep = "<" + lowercase hex + ">".
-	localPeerInfo := func() (lxmfAddr, identityHash, name string, lastAnnounce time.Time) {
+	// localPeerInfo formats the app's identity/LXMF hashes + last-announce time
+	// for the Local Peer Info panel refresh (Python LocalPeer, Network.py:1259).
+	// The name is intentionally excluded — it is seeded once via
+	// SetLocalPeerName above and never refreshed (Python never re-sets
+	// e_name.edit_text after construction). prettyhexrep = "<" + lowercase hex + ">".
+	localPeerInfo := func() (lxmfAddr, identityHash string, lastAnnounce time.Time) {
 		lxmfAddr = "<" + a.LXMFAddressHex() + ">"
 		if a.Identity != nil {
 			identityHash = "<" + fmt.Sprintf("%x", a.Identity.Hash) + ">"
 		}
-		return lxmfAddr, identityHash, a.GetDisplayName(), a.LastAnnounce
+		return lxmfAddr, identityHash, a.LastAnnounce
 	}
-	lxmfAddr, idhash, dname, lann := localPeerInfo()
-	networkDisplay.UpdateLocalPeer(lxmfAddr, idhash, dname, lann)
+	lxmfAddr, idhash, lann := localPeerInfo()
+	networkDisplay.UpdateLocalPeer(lxmfAddr, idhash, lann)
 
 	// navigateTo is assigned once the browser display is constructed (below),
 	// then invoked both by the network list's connect handler and by the Local
@@ -206,8 +217,8 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		},
 		func() {
 			a.AnnounceNow()
-			lxmfAddr, idhash, dname, lann = localPeerInfo()
-			networkDisplay.UpdateLocalPeer(lxmfAddr, idhash, dname, lann)
+			lxmfAddr, idhash, lann = localPeerInfo()
+			networkDisplay.UpdateLocalPeer(lxmfAddr, idhash, lann)
 			tuiApp.Dialogs.ShowDialog("Announce Sent",
 				tview.NewTextView().
 					SetDynamicColors(true).
@@ -292,9 +303,10 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 			// destination are nil when wireDisplays first runs. Re-filling the
 			// Local Peer Info panel on each UI change picks them up once initRNS
 			// completes (it fires UIChangeCallback at the end), and also refreshes
-			// the "Announced : …" line as the announce age advances.
-			lxmfAddr, idhash, dname, lann := localPeerInfo()
-			networkDisplay.UpdateLocalPeer(lxmfAddr, idhash, dname, lann)
+			// the "Announced : …" line as the announce age advances. The name is
+			// not part of this refresh — it was seeded once via SetLocalPeerName.
+			lxmfAddr, idhash, lann := localPeerInfo()
+			networkDisplay.UpdateLocalPeer(lxmfAddr, idhash, lann)
 		})
 	})
 	main.SetDisplay("network", networkDisplay.Widget())

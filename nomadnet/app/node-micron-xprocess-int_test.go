@@ -194,6 +194,10 @@ func TestIntegrationNodeServesMicronToPython(t *testing.T) {
 	// Python TCPServer, so the node announce + the inbound link traverse the
 	// TCP RNS transport (mirrors newStartedTSWithTCPClient from the rrc harness).
 	goDir := testutils.TempDir(t, "nomadnet-node-xproc-go")
+	// Private config: enable_node = no so InitWithTransport does not auto-start a
+	// node from the EnableNode=true default; the test starts its own node
+	// explicitly below with the settings it needs (see writeTestNomadNetConfig).
+	writeTestNomadNetConfig(t, goDir)
 	ts, tsCleanup := newStartedTSApp(t, goDir)
 	defer tsCleanup()
 	handler := func(data []byte, iface interfaces.Interface) {

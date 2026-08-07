@@ -41,6 +41,11 @@ func setupTwoNodeApps(t *testing.T) (*App, *App, func()) {
 
 	dirA := testutils.TempDir(t, "nomadnet-int-a")
 	dirB := testutils.TempDir(t, "nomadnet-int-b")
+	// Each app owns a private config with enable_node = no so the suite never
+	// depends on the default config; tests that need a node call startNode
+	// explicitly (see writeTestNomadNetConfig).
+	writeTestNomadNetConfig(t, dirA)
+	writeTestNomadNetConfig(t, dirB)
 
 	tsA, rnsCleanupA := newStartedTSApp(t, dirA)
 	tsB, rnsCleanupB := newStartedTSApp(t, dirB)

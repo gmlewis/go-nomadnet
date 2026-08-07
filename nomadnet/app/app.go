@@ -543,12 +543,14 @@ func (a *App) InitWithTransport(ts *rns.TransportSystem, identity *rns.Identity)
 		ReceivedAnnounceWithContext: a.handleRRCAnnounce,
 	})
 
-	// NOTE: unlike initRNS (the production path), this test harness does NOT
-	// auto-start the hosted node. config.Load returns DefaultConfig — which has
-	// enable_node = Yes (matching Python) — when no config file exists, so
-	// auto-starting here would create a node from an unintended default before
-	// the test gets a chance to configure EnableNode/NodeName. Every test that
-	// needs a hosted node calls startNode explicitly with its own settings.
+	// Mirror the production initRNS path (which calls startNode so a node is
+	// hosted when the config enables it). Tests that need a specific node state
+	// write their own private config (e.g. enable_node = no) before calling
+	// InitWithTransport, so the test suite never depends on the default/user
+	// config — see writeTestNomadNetConfig.
+	if err := a.startNode(); err != nil && a.Logger != nil {
+		a.Logger.Error("node start failed in InitWithTransport: %v", err)
+	}
 	return nil
 }
 

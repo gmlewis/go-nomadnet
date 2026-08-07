@@ -185,6 +185,10 @@ func TestIntegrationLXMFReceiveFromPython(t *testing.T) {
 	// onto it so announces + the inbound delivery packet route through the Go
 	// RNS stack, mirroring newStartedTSWithTCPClient from the rrc harness).
 	goDir := testutils.TempDir(t, "nomadnet-lxmf-xproc-go")
+	// Private config with enable_node = no so InitWithTransport does not
+	// auto-start a node (this test exercises LXMF delivery, not hosting; see
+	// writeTestNomadNetConfig).
+	writeTestNomadNetConfig(t, goDir)
 	ts, tsCleanup := newStartedTSApp(t, goDir)
 	defer tsCleanup()
 	handler := func(data []byte, iface interfaces.Interface) {

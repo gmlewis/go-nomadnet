@@ -71,9 +71,12 @@ func (a *App) ensureDefaultPages() error {
 // (Node.py:49-51), and an announce-at-start fires after START_ANNOUNCE_DELAY
 // when NodeAnnounceAtStart is set (Node.py:40-47). It is a no-op when
 // EnableNode is false (Python leaves self.node = None). It returns an error if
-// the node cannot be started; the production caller (initRNS) logs and
-// continues so a node start failure never aborts the client. (InitWithTransport,
-// the test harness, does not auto-call startNode — tests call it explicitly.)
+// the node cannot be started; both production callers (initRNS and the test
+// harness InitWithTransport) log and continue so a node start failure never
+// aborts the client. Tests that need to control node state write a private
+// config with enable_node = no before calling InitWithTransport (see
+// writeTestNomadNetConfig), so the test suite never depends on the default
+// config.
 func (a *App) startNode() error {
 	if !a.EnableNode {
 		return nil

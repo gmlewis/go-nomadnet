@@ -711,15 +711,31 @@ func (nd *NetworkDisplay) FocusLists() {
 	nd.focusLeftList()
 }
 
-// UpdateLocalPeer fills the Local Peer Info panel with the app's real identity
-// data. lxmfAddr and identityHash are prettyhexrep-formatted ("<hex>"); name
-// is the current display name; lastAnnounce is the last announce time (zero →
-// "Never"). Called by the wiring layer once the app's RNS identity is ready.
-func (nd *NetworkDisplay) UpdateLocalPeer(lxmfAddr, identityHash, name string, lastAnnounce time.Time) {
+// UpdateLocalPeer refreshes the read-only Local Peer Info fields with the
+// app's real identity data: the LXMF address and identity hash
+// (prettyhexrep-formatted "<hex>") and the last-announce time (zero → "Never").
+// It does NOT set the name — that is seeded once via SetLocalPeerName when the
+// Network display is first wired (mirroring Python's LocalPeer, which never
+// re-sets e_name.edit_text after construction, Network.py:1271). Called by the
+// wiring layer once the app's RNS identity is ready and on every
+// UIChangeCallback refresh.
+func (nd *NetworkDisplay) UpdateLocalPeer(lxmfAddr, identityHash string, lastAnnounce time.Time) {
 	if nd.localPeer == nil {
 		return
 	}
-	nd.localPeer.SetData(lxmfAddr, identityHash, name, lastAnnounce)
+	nd.localPeer.SetData(lxmfAddr, identityHash, lastAnnounce)
+}
+
+// SetLocalPeerName seeds the name edit field once with the current display
+// name. It mirrors Python's LocalPeer.__init__ setting e_name.edit_text at
+// construction (Network.py:1271) and never re-setting it; the Go wiring layer
+// calls this once when the Network display is first wired, after PeerSettings
+// has been loaded synchronously during Init. See LocalPeerDisplay.SetName.
+func (nd *NetworkDisplay) SetLocalPeerName(name string) {
+	if nd.localPeer == nil {
+		return
+	}
+	nd.localPeer.SetName(name)
 }
 
 // SetLocalPeerHandlers wires the Save / Announce Now / Node Info button

@@ -141,21 +141,29 @@ func (lp *LocalPeerDisplay) SetLastAnnounce(t time.Time) {
 	lp.announce.SetText(lp.announceLine(t))
 }
 
-// SetData fills the read-only Local Peer Info fields: the LXMF address and
-// identity hash (prettyhexrep-formatted "<hex>") and the last-announce time.
-// It also re-seeds the name edit with the given display name — but only when
-// the field is NOT focused, so an in-progress edit is never clobbered by a
-// UIChangeCallback refresh (incoming announces/messages fire
-// UIChangeCallback, which calls SetData; without this guard every inbound
-// event would overwrite the user's typing and jump the cursor to the end).
-// This mirrors Python's LocalPeer, which never re-sets e_name.edit_text after
-// construction (Network.py:1271).
-func (lp *LocalPeerDisplay) SetData(lxmfAddr, identityHash, name string, lastAnnounce time.Time) {
+// SetName seeds the name edit field with the current display name. It is called
+// ONCE by the wiring layer when the Network display is first wired (from
+// app.GetDisplayName(), which reads peer_settings loaded synchronously during
+// Init), mirroring Python's LocalPeer.__init__ which sets e_name.edit_text once
+// at construction (Network.py:1271) and never re-sets it. The name is
+// deliberately NOT part of SetData: incoming announces/messages fire
+// UIChangeCallback → SetData on every event, so including the name there would
+// overwrite the user's in-progress typing and jump the cursor to the end. The
+// name is only ever re-seeded across a full app restart (when LocalPeer is
+// reconstructed from the saved peer_settings display name).
+func (lp *LocalPeerDisplay) SetName(name string) {
+	lp.nameEdit.SetText(name)
+}
+
+// SetData refreshes the read-only Local Peer Info fields: the LXMF address,
+// identity hash (prettyhexrep-formatted "<hex>"), and the last-announce time.
+// It intentionally does NOT touch the name edit — see SetName. This mirrors
+// Python's LocalPeer, which never re-sets e_name.edit_text after construction
+// (Network.py:1271); only the announce time and identity fields update on a
+// refresh.
+func (lp *LocalPeerDisplay) SetData(lxmfAddr, identityHash string, lastAnnounce time.Time) {
 	lp.lxmfAddr.SetText("LXMF Addr : " + lxmfAddr)
 	lp.identity.SetText("Identity  : " + identityHash)
-	if !lp.nameEdit.HasFocus() {
-		lp.nameEdit.SetText(name)
-	}
 	lp.announce.SetText(lp.announceLine(lastAnnounce))
 }
 
