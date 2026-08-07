@@ -524,11 +524,15 @@ func (d *driver) phase3() {
 			// NOT do urwid-style column-arrow traversal, so a disconnected pane
 			// (centered text, no LinkableText Left-at-start handler) would
 			// otherwise trap focus and this recovery could never reopen the
-			// next Announce Info. Left below is belt-and-suspenders (a no-op
-			// once focus is already on the list).
+			// next Announce Info. This must match the success-path recovery
+			// below: C-w alone already lands focus on the left list, so send
+			// ONLY C-w + Home — NOT a follow-up Left. Left is NOT a no-op here:
+			// the left list column is not self-managing, so urwidColumns.moveFocus
+			// wraps Left to the RIGHT (disconnected) pane, re-trapping focus and
+			// freezing every later attempt at cursor=(<right pane>,<row>)
+			// browser=disconnected (the "0 connects after one timeout" bug).
 			d.send("C-w") // Disconnect to reset the browser pane before the next node.
 			time.Sleep(d.stepDelay)
-			d.send("Left") // Release the (now-disconnected) browser focus back to the list.
 			d.send("Home") // List selection -> top so the next Down can't overshoot into the Local Peer panel.
 			continue
 		}
