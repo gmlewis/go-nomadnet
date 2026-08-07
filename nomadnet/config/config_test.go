@@ -98,8 +98,8 @@ func TestDefaultConfig(t *testing.T) {
 	}
 
 	// Node defaults
-	if c.Node.EnableNode {
-		t.Error("EnableNode = true, want false")
+	if !c.Node.EnableNode {
+		t.Error("EnableNode = false, want true")
 	}
 	if c.Node.AnnounceInterval != 360*60 {
 		t.Errorf("Node.AnnounceInterval = %v, want %v", c.Node.AnnounceInterval, 360*60)

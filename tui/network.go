@@ -67,10 +67,16 @@ type NetworkDisplay struct {
 	showingPeers   bool
 	inInfoView     bool
 	displayMode    DisplayMode
-	SanitizeNames  bool
-	announceData   []AnnounceEntry
-	nodeData       []NodeEntry
-	onNavigate     func(url string)
+	// listWidth is the normal (non-fullscreen) fixed width of the left list
+	// pane (Python NetworkDisplay.given_list_width = 52, Network.py:1622).
+	// fullscreen is true while Ctrl-G has collapsed the left pane to width 0 so
+	// the in-page browser fills the page. See ToggleFullscreen.
+	listWidth     int
+	fullscreen    bool
+	SanitizeNames bool
+	announceData  []AnnounceEntry
+	nodeData      []NodeEntry
+	onNavigate    func(url string)
 
 	// Keyboard shortcut callbacks (Python: NetworkDisplay.keypress)
 	OnToggleFullscreen func()
@@ -230,6 +236,7 @@ func NewNetworkDisplay(app *App, announces []AnnounceEntry, nodes []NodeEntry) *
 	mainCols := newURWIDColumns(0, nd.leftPanel, nd.browser.Widget()).
 		SetFixedWidth(0, 52).
 		SetWeight(1, 1)
+	nd.listWidth = 52
 	mainCols.SetInputCapture(nd.handleInput)
 	// The right pane (browser) is self-managing: it owns Left/Right for its
 	// part-cursor model + Left-at-start focus release, so the outer Columns
@@ -276,9 +283,7 @@ func (nd *NetworkDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 		nd.toggleList()
 		return nil
 	case tcell.KeyCtrlG:
-		if nd.OnToggleFullscreen != nil {
-			nd.OnToggleFullscreen()
-		}
+		nd.ToggleFullscreen()
 		return nil
 	case tcell.KeyCtrlE:
 		if nd.OnEditNode != nil {
@@ -768,6 +773,31 @@ func (nd *NetworkDisplay) nodesView() tview.Primitive {
 	}
 	return nd.nodesList
 }
+
+// ToggleFullscreen collapses the left list pane to width 0 so the in-page
+// browser fills the page, or restores the saved list width, matching Python's
+// NetworkDisplay.toggle_fullscreen (Network.py:1678-1686): when going fullscreen
+// the current list width is saved and the pane collapses to width 0; toggling
+// again restores it. OnToggleFullscreen fires after the flip so the app layer
+// can react (Python keeps the toggle self-contained on the display, so the
+// callback is optional). The resize is applied to mainCols column 0 directly.
+func (nd *NetworkDisplay) ToggleFullscreen() {
+	nd.fullscreen = !nd.fullscreen
+	if nd.mainCols != nil {
+		if nd.fullscreen {
+			nd.mainCols.SetFixedWidth(0, 0)
+		} else {
+			nd.mainCols.SetFixedWidth(0, nd.listWidth)
+		}
+	}
+	if nd.OnToggleFullscreen != nil {
+		nd.OnToggleFullscreen()
+	}
+}
+
+// Fullscreen reports whether the left list pane is currently collapsed (the
+// in-page browser fills the page).
+func (nd *NetworkDisplay) Fullscreen() bool { return nd.fullscreen }
 
 // toggleList switches between announces and nodes views.
 func (nd *NetworkDisplay) toggleList() {

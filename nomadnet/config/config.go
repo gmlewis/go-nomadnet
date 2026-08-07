@@ -175,7 +175,7 @@ func DefaultConfig() *Config {
 			ShowGutters:            true,
 		},
 		Node: NodeConfig{
-			EnableNode:             false,
+			EnableNode:             true,
 			AnnounceInterval:       360 * 60, // 360 minutes → seconds
 			AnnounceAtStart:        true,
 			DisablePropagation:     true,

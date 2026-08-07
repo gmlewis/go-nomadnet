@@ -413,6 +413,50 @@ func TestDisplayConversationOnSendForwardsTitle(t *testing.T) {
 	}
 }
 
+// TestDisplayConversationWiresCtrlGFullscreen verifies that DisplayConversation
+// wires the open-conversation widget's Ctrl-G to the display's fullscreen
+// toggle, matching Python's ConversationWidget.keypress "ctrl g" →
+// conversations_display.toggle_fullscreen() (Conversations.py:2234-2235).
+// Before the fix the widget's OnToggleFullscreen was never wired, so Ctrl-G
+// inside an open conversation was a no-op even though the list-level Ctrl-G
+// worked. This dispatches Ctrl-G through the widget's input capture (the real
+// keypress path) and asserts the display's Fullscreen() state actually flips.
+func TestDisplayConversationWiresCtrlGFullscreen(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	const hash = "cccccccccccccccccccccccccccccccccccccccc"
+	convs := []ConversationInfo{
+		{SourceHash: hash, DisplayName: "Carol", TrustLevel: "trusted"},
+	}
+	cd := NewConversationsDisplay(app, convs)
+
+	cd.DisplayConversation(hash)
+	if cd.currentWidget == nil {
+		t.Fatal("DisplayConversation did not set currentWidget")
+	}
+	if cd.Fullscreen() {
+		t.Fatal("display should not start fullscreen")
+	}
+
+	// Ctrl-G through the widget's input capture — the same path tview takes on
+	// a real keypress while focus is in the open conversation body.
+	if ret := cd.currentWidget.handleInput(tcell.NewEventKey(tcell.KeyCtrlG, 0, tcell.ModNone)); ret != nil {
+		t.Errorf("KeyCtrlG was not consumed by the widget handleInput")
+	}
+	if !cd.Fullscreen() {
+		t.Error("Ctrl-G inside the conversation did not toggle the display to fullscreen")
+	}
+
+	// A second Ctrl-G restores the normal two-pane view.
+	if ret := cd.currentWidget.handleInput(tcell.NewEventKey(tcell.KeyCtrlG, 0, tcell.ModNone)); ret != nil {
+		t.Errorf("second KeyCtrlG was not consumed")
+	}
+	if cd.Fullscreen() {
+		t.Error("second Ctrl-G did not restore the normal view")
+	}
+}
+
 // TestDisplayConversationLoadsMessages verifies DisplayConversation calls the
 // display-level OnLoadMessages hook to populate the conversation widget's
 // message list, and injects OnOwnHash so the LXMessageWidget header can tell

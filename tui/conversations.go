@@ -404,6 +404,13 @@ func (cd *ConversationsDisplay) DisplayConversation(sourceHash string) {
 		cd.content.RemoveItem(cd.content.GetItem(1))
 		cd.content.AddItem(cd.detail, 0, 1, false)
 	}
+	// Python ConversationWidget.keypress "ctrl g" →
+	// conversations_display.toggle_fullscreen() (Conversations.py:2234-2235):
+	// Ctrl-G inside an open conversation body toggles the list pane, exactly as
+	// it does at the list level. The widget fires OnToggleFullscreen; the display
+	// owns the resize, so wire it to ToggleFullscreen directly (which both
+	// resizes and fires the display-level OnToggleFullscreen for the app layer).
+	cw.OnToggleFullscreen = cd.ToggleFullscreen
 	cw.OnSaveFocusedAttachments = func(refs []AttachmentRef) {
 		// Python save_focused_attachments hands the collected refs to a dialog.
 		// The display-level SaveAttachmentsDialog renders the checkbox list and

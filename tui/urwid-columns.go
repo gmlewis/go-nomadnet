@@ -220,6 +220,17 @@ func (c *urwidColumns) SetFixedWidth(i, width int) *urwidColumns {
 	return c
 }
 
+// FixedWidth returns the explicit fixed character width of column i, or 0 when
+// the column is weighted (no fixed width set). It is the read counterpart to
+// SetFixedWidth, used by the Network page's fullscreen toggle to save/restore
+// the left list pane width.
+func (c *urwidColumns) FixedWidth(i int) int {
+	if i >= 0 && i < len(c.fixedWidths) {
+		return c.fixedWidths[i]
+	}
+	return 0
+}
+
 // isFocusable returns true if child can receive focus (e.g. UrwidButton, ReadlineEdit, RadioButton, Checkbox).
 // Plain layout spacers like *tview.Box or static *tview.TextView return false.
 func isFocusable(p tview.Primitive) bool {

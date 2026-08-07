@@ -28,12 +28,40 @@
 package app
 
 import (
+	_ "embed"
 	"errors"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/gmlewis/go-nomadnet/nomadnet/node"
 	"github.com/gmlewis/go-reticulum/rns"
 )
+
+//go:embed default-index.mu
+var defaultIndexContent string
+
+// ensureDefaultPages creates the pages directory and a default index.mu file
+// if they don't already exist. This gives node operators a starter page to
+// customize rather than serving only the in-memory fallback.
+func (a *App) ensureDefaultPages() error {
+	// Create pages directory if it doesn't exist
+	if _, err := os.Stat(a.PagesPath); os.IsNotExist(err) {
+		if err := os.MkdirAll(a.PagesPath, 0o755); err != nil {
+			return err
+		}
+	}
+
+	// Create default index.mu if it doesn't exist
+	indexPath := filepath.Join(a.PagesPath, "index.mu")
+	if _, err := os.Stat(indexPath); os.IsNotExist(err) {
+		if err := os.WriteFile(indexPath, []byte(defaultIndexContent), 0o644); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
 
 // startNode constructs, starts, and runs the hosted node when EnableNode is
 // true. It mirrors Python NomadNetworkApp.py:399 (self.node = nomadnet.Node(self))
@@ -54,6 +82,11 @@ func (a *App) startNode() error {
 	}
 	if a.Transport == nil || a.Identity == nil {
 		return errors.New("cannot start node: transport or identity not initialized")
+	}
+
+	// Ensure the pages directory exists and has a default index.mu
+	if err := a.ensureDefaultPages(); err != nil {
+		return err
 	}
 
 	name := a.nodeName()

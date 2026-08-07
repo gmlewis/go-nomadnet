@@ -310,6 +310,81 @@ func TestNetworkDisplayKeyboardShortcuts(t *testing.T) {
 	}
 }
 
+// TestNetworkCtrlGFullscreenResizesLeftPane pins the Ctrl-G fullscreen fix for
+// the Network page. Before the fix, NetworkDisplay.handleInput Ctrl-G only
+// fired the OnToggleFullscreen callback, which the app layer never wired — so
+// the keypress was a no-op and the left list pane never collapsed (Python's
+// Network.toggle_fullscreen hides it so the in-page browser fills the page,
+// Network.py:1678-1686). The fix makes the display self-toggle the resize, so
+// no app-layer callback is needed. This dispatches Ctrl-G through the FULL
+// production key path — nd.mainCols.InputHandler() (the same handler tview
+// calls on a keypress), whose WrapInputHandler consults the SetInputCapture
+// registered in NewNetworkDisplay (network.go mainCols.SetInputCapture) before
+// forwarding to the focused child — with NO OnToggleFullscreen wired, and
+// asserts the left column width actually flips 52 → 0 → 52. Dispatching through
+// the capture chain (not handleInput directly) also pins that the capture is
+// registered, so the resize can't be silently dropped by a missing callback OR
+// a missing capture registration again.
+func TestNetworkCtrlGFullscreenResizesLeftPane(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	nd := NewNetworkDisplay(app, nil, nil)
+
+	if nd.Fullscreen() {
+		t.Fatal("display should not start fullscreen")
+	}
+	if w := nd.mainCols.FixedWidth(0); w != 52 {
+		t.Fatalf("initial left pane width = %v, want 52", w)
+	}
+
+	// Ctrl-G through the full key path: mainCols.InputHandler() is what tview
+	// invokes on a keypress; its WrapInputHandler runs the SetInputCapture
+	// (nd.handleInput) before any child sees the key. No OnToggleFullscreen is
+	// wired (mirroring production before the fix), so the resize must happen
+	// inside the display itself, not via a callback.
+	h := nd.mainCols.InputHandler()
+	if h == nil {
+		t.Fatal("mainCols has no InputHandler")
+	}
+	h(tcell.NewEventKey(tcell.KeyCtrlG, 0, tcell.ModNone), nil)
+	if !nd.Fullscreen() {
+		t.Error("Ctrl-G did not toggle the display to fullscreen")
+	}
+	if w := nd.mainCols.FixedWidth(0); w != 0 {
+		t.Errorf("fullscreen left pane width = %v, want 0 (browser should fill page)", w)
+	}
+
+	// A second Ctrl-G restores the saved list width.
+	h(tcell.NewEventKey(tcell.KeyCtrlG, 0, tcell.ModNone), nil)
+	if nd.Fullscreen() {
+		t.Error("second Ctrl-G did not restore the normal view")
+	}
+	if w := nd.mainCols.FixedWidth(0); w != 52 {
+		t.Errorf("restored left pane width = %v, want 52", w)
+	}
+}
+
+// TestNetworkToggleFullscreenFiresCallback verifies ToggleFullscreen still
+// fires the display-level OnToggleFullscreen (kept for app-layer hooks), even
+// though the resize no longer depends on it.
+func TestNetworkToggleFullscreenFiresCallback(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	nd := NewNetworkDisplay(app, nil, nil)
+
+	var fired int
+	nd.OnToggleFullscreen = func() { fired++ }
+
+	nd.ToggleFullscreen()
+	nd.ToggleFullscreen()
+
+	if fired != 2 {
+		t.Errorf("OnToggleFullscreen fired %v times, want 2", fired)
+	}
+}
+
 func TestShowLocalPeerDialog(t *testing.T) {
 	t.Parallel()
 	app := newTestApp()
