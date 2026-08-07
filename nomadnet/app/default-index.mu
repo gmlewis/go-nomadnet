@@ -48,7 +48,7 @@ This node automatically announces itself on the Nomad Network so others can disc
 
 To run gonomadnet yourself:
 
-1. Make sure `*Go`* is installed from `*`[go.dev`https://go.dev]`*
+1. Make sure `*Go`* is installed from: `_`*`[https://go.dev`https://go.dev]`*`_
 
 2. `!Install`! from source:
    `*go install github.com/gmlewis/go-nomadnet/cmd/gonomadnet@latest`*
@@ -61,6 +61,6 @@ To run gonomadnet yourself:
 
 >> Learn More
 
-`[Reticulum Network Stack`https://markqvist.github.io/Reticulum/]
-`[Nomad Network`https://github.com/markqvist/NomadNet]
-`[gonomadnet GitHub`https://github.com/gmlewis/go-nomadnet]
+Reticulum Network Stack: `_`*`[https://markqvist.github.io/Reticulum/`https://markqvist.github.io/Reticulum/]`*`_
+Nomad Network: `_`*`[https://github.com/markqvist/NomadNet`https://github.com/markqvist/NomadNet]`*`_
+gonomadnet GitHub: `_`*`[https://github.com/gmlewis/go-nomadnet`https://github.com/gmlewis/go-nomadnet]`*`_
