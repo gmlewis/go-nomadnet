@@ -1,6 +1,6 @@
 > Welcome to gonomadnet
 
-This node is running **gonomadnet** — a Go implementation of the Nomad Network client and node.
+This node is running `!gonomadnet`! — a Go implementation of the Nomad Network client and node.
 
 # ASCII art generated from PNG image (half-block mode)
 # Original: gonomadnet-mascot.png
@@ -40,27 +40,27 @@ This node is running **gonomadnet** — a Go implementation of the Nomad Network
       `BT000000`FT000000▀`FT000000▀`BT000000`FT000000▀`BT000000`FT030303▀`FT040505▀`FT050506▀`FT070809▀`FT08090a▀`FT171719▀`FT1f1f21▀`FT212225▀`FT27292c▀`BT000000`FT2e2f33▀`BT030303`FT35373b▀`BT060707`FT3b3d41▀`BT0b0b0c`FT43464a▀`BT0f0f10`FT494b50▀`BT121314`FT4f5156▀`BT171819`FT52555a▀`BT1b1c1e`FT585a5f▀`BT1a1b1d`FT43464a▀`BT151619`FT2a2c30▀`BT16181b`FT2a2d31▀`BT17191c`FT26292d▀`BT282b2f`FT484b4e▀`BT4a4c50`FT6f7073▀`BT5d6064`FT6f7173▀`BT85888c`FT737577▀`BT86888d`FT626465▀`BT797c81`FT5c5d5e▀`BTb8babc`FT5e5f5f▀`BT77787d`FT636467▀`BT7c7d81`FT898a8e▀`BT8c8d91`FT535457▀`BT6a6c6f`FT1b1c1e▀`BT28292b`FT323335▀`BT000000`FT121315▀`BT1d1e21`FT393a3e▀`BT191a1d`FT626264▀`BT1f2022`FT373738▀`BT35363a`FT555658▀`BT1b1c1e`FT5e5f60▀`BT39393b`FT111112▀`BT48494b`FT000000▀`BT2f2f31▀`BT212122▀`BT1e1e1f▀`BT1e1e1f▀`BT252526▀`BT2f3031▀`BT363638▀`BT38393b`FT050505▀`BT333435`FT1c1d1d▀`BT1f1f20`FT373739▀`BT060607`FT444446▀`BT000000`FT2d2d2f▀`FT0c0c0d▀`FT030405▀`FT040506▀`BT000000`FT000000▀`BT000000▀`BT000000`FT000000▀`BT000000`FT000000▀`BT000000`FT000000▀`BT000000`FT000000▀`BT000000`FT000000▀`BT000000`FT000000▀`BT000000`FT111113▀`FT191b1c▀`FT1a1b1d▀`FT1c1d1f▀`FT1b1c1e▀`FT060607▀`BT000000`FT000000▀`BT000000`FT000000▀`BT000000`FT000000▀`BT000000`FT000000▀`BT000000`FT000000▀`BT000000`FT000000▀`BT000000`FT000000▀`BT000000`FT020202▀`BT000000`FT000000▀`BT010101▀`BT000000▀`BT000000▀`BT000000`FT000000▀`BT000000`FT000000▀`BT000000▀`BT000000`FT000000▀`BT000000`FT000000▀`BT000000`FT000000▀`BT000000`FT000000▀`BT000000`FT000000▀`BT000000`FT1b1c1e▀`BT030304`FT2d2f32▀`BT020303`FT1b1d20▀`BT030304`FT282a2c▀`BT060607`FT303235▀`BT020202`FT090a0b▀`BT000000`FT000000▀`BT000000`FT000000▀`BT000000`FT000000▀`BT000000`FT000000▀`BT000000`FT000000▀`FT000000▀`f`b
                     `BT000000`FT000000▀▀▀▀▀▀▀▀`FT000000▀`BT000000`FT010101▀`BT000000`FT040505▀`FT0d0e0f▀`FT151617▀`FT1c1d1e▀`FT2c2c2e▀`FT353638▀`FT525355▀`FT505153▀`FT4a4b4d▀`FT303032▀`FT050505▀`FT000000▀`FT000101▀`BT000000`FT000000▀`BT000000`FT040405▀`FT050506▀`FT111214▀`BT000000`FT070809▀`BT000000`FT000000▀`BT000000`FT161717▀`FT262728▀`FT2a2b2b▀`FT29292b▀`FT28292a▀`FT262627▀`FT1c1d1e▀`FT0e0e0f▀`FT000101▀`FT000000▀▀`f`b
 
-== About This Node
+>> About This Node
 
 This node automatically announces itself on the Nomad Network so others can discover and connect to it. The node serves Micron pages and files to remote peers over RNS links.
 
-== Running Your Own Node
+>> Running Your Own Node
 
 To run gonomadnet yourself:
 
-1. Make sure **Go** is installed from https://go.dev
+1. Make sure `!Go`! is installed from `[go.dev`https://go.dev]
 
-2. **Install** from source:
+2. `!Install`! from source:
    `go install github.com/gmlewis/go-nomadnet/cmd/gonomadnet@latest`
 
-2. **Configure** by editing `~/.nomadnet/config`:
+2. `!Configure`! by editing `~/.nomadnet/config`:
    - Set `enable_node = yes` to host pages
    - Set `announce_at_start = yes` to announce on startup
 
-3. **Create pages** by placing `.mu` files in `~/.nomadnet/storage/pages/`
+3. `!Create pages`! by placing `.mu` files in `~/.nomadnet/storage/pages/`
 
-== Learn More
+>> Learn More
 
-- [[Reticulum Network Stack]]{https://markqvist.github.io/Reticulum/}
-- [[Nomad Network]]{https://github.com/markqvist/NomadNet}
-- [[gonomadnet GitHub]]{https://github.com/gmlewis/go-nomadnet}
+`[Reticulum Network Stack`https://markqvist.github.io/Reticulum/]
+`[Nomad Network`https://github.com/markqvist/NomadNet]
+`[gonomadnet GitHub`https://github.com/gmlewis/go-nomadnet]

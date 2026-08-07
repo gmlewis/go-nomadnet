@@ -28,7 +28,9 @@ func TestStatusDialogOKButtonMouseClick(t *testing.T) {
 	// content's inner rect, which the button's InRect check gates on).
 	screen := tcell.NewSimulationScreen("UTF-8")
 	screen.SetSize(60, 14)
-	screen.Init()
+	if err := screen.Init(); err != nil {
+		t.Fatalf("screen.Init: %v", err)
+	}
 	root := dm.Pages()
 	root.SetRect(0, 0, 60, 14)
 	root.Draw(screen)

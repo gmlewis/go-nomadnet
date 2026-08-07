@@ -40,7 +40,9 @@ func TestAnnounceStreamMouseWheelScroll(t *testing.T) {
 	root.SetRect(0, 0, w, h)
 	screen := tcell.NewSimulationScreen("UTF-8")
 	screen.SetSize(w, h)
-	screen.Init()
+	if err := screen.Init(); err != nil {
+		t.Fatalf("screen.Init: %v", err)
+	}
 	root.Draw(screen)
 	screen.Show()
 

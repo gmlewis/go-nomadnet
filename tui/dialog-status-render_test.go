@@ -23,7 +23,9 @@ func TestShowStatusDialogRendersOKButton(t *testing.T) {
 
 	screen := tcell.NewSimulationScreen("UTF-8")
 	screen.SetSize(60, 14)
-	screen.Init()
+	if err := screen.Init(); err != nil {
+		t.Fatalf("screen.Init: %v", err)
+	}
 	root := dm.Pages()
 	root.SetRect(0, 0, 60, 14)
 	root.Draw(screen)
