@@ -15,25 +15,24 @@
 
 // Command png-to-mu converts PNG images to 24-bit color micron markdown (.mu) files.
 //
-// The tool renders PNG images as ASCII art using half-block characters with full
-// 24-bit color support via micron's `FT and `BT color tags.
-//
 // Usage:
 //
 //	png-to-mu [options] input.png [output.mu]
 //
 // Options:
 //
-//	-width int      Output width in characters (default: auto-fit)
-//	-dither         Use ImageMagick for highest-quality Lanczos rescale with dithering
+//	-width int      Output width in characters (default: 120)
+//	-dither         Use ImageMagick for highest-quality Lanczos rescale
 //	-no-comments    Omit comment header from output
+//	-input string   Original input filename (for comment header when using -dither)
 //
 // The tool uses the ▀ character with separate foreground (`FT) and background (`BT)
-// colors to achieve maximum fidelity. Half-block mode preserves aspect ratio by
-// rendering each character as 2 vertical pixels compressed into one glyph.
+// colors to achieve maximum fidelity ASCII art. Each character represents 2 vertical
+// pixels: the top pixel becomes the foreground color, the bottom becomes background.
 //
-// When -dither is specified, ImageMagick's `convert` command performs a high-quality
-// Lanczos resample to the exact target resolution before color extraction.
+// When -dither is specified, ImageMagick's `convert` (or `magick`) command performs
+// a high-quality Lanczos resample to exactly 2× the target character resolution,
+// then this tool samples pairs of pixels for FG/BG colors.
 package main
 
 import (
@@ -59,18 +58,21 @@ type config struct {
 	width      int
 	dither     bool
 	noComments bool
+	inputFile  string
 }
 
 func main() {
 	cfg := config{
-		width:      0,
+		width:      120,
 		dither:     false,
 		noComments: false,
+		inputFile:  "",
 	}
 
-	flag.IntVar(&cfg.width, "width", 0, "Output width in characters (0 = auto-fit to 120)")
-	flag.BoolVar(&cfg.dither, "dither", false, "Use ImageMagick for highest-quality Lanczos rescale with dithering")
+	flag.IntVar(&cfg.width, "width", 120, "Output width in characters")
+	flag.BoolVar(&cfg.dither, "dither", false, "Use ImageMagick for highest-quality Lanczos rescale")
 	flag.BoolVar(&cfg.noComments, "no-comments", false, "Omit comment header from output")
+	flag.StringVar(&cfg.inputFile, "input", "", "Original input filename (for comment header)")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [options] input.png [output.mu]\n\n", os.Args[0])
@@ -78,9 +80,9 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Options:\n")
 		flag.PrintDefaults()
 		fmt.Fprintf(os.Stderr, "\nThis tool uses half-block characters (▀) with separate foreground\n")
-		fmt.Fprintf(os.Stderr, "and background colors for maximum fidelity ASCII art.\n")
+		fmt.Fprintf(os.Stderr, "(`FT) and background (`BT) colors for maximum fidelity ASCII art.\n")
 		fmt.Fprintf(os.Stderr, "\nWhen -dither is specified, ImageMagick performs a high-quality\n")
-		fmt.Fprintf(os.Stderr, "Lanczos resample to the exact target resolution.\n")
+		fmt.Fprintf(os.Stderr, "Lanczos resample to 2× the target resolution for optimal sampling.\n")
 	}
 
 	flag.Parse()
@@ -100,15 +102,23 @@ func main() {
 		outputPath = base + ".mu"
 	}
 
+	// Track original filename for comment header
+	originalFile := cfg.inputFile
+	if originalFile == "" {
+		originalFile = inputPath
+	}
+
 	var img image.Image
 	var err error
+	var outW, outH int
 
 	if cfg.dither {
-		// Use ImageMagick for highest-quality rescale with dithering
-		img, err = preprocessWithImageMagick(inputPath, cfg.width)
+		// Use ImageMagick for highest-quality rescale
+		// ImageMagick resizes to (width × height*2) so we sample 2 pixels per char row
+		img, outW, outH, err = preprocessWithImageMagick(inputPath, cfg.width)
 	} else {
-		// Standard Go image loading
-		img, err = loadImageGo(inputPath)
+		// Standard Go image loading and resizing
+		img, outW, outH, err = loadImageAndResize(inputPath, cfg.width)
 	}
 
 	if err != nil {
@@ -116,7 +126,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	micron, err := renderHalfBlockToMicron(img, cfg.noComments)
+	micron, err := renderHalfBlockToMicron(img, outW, outH, originalFile, cfg.noComments)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error converting image: %v\n", err)
 		os.Exit(1)
@@ -143,98 +153,101 @@ func main() {
 	}
 }
 
-// preprocessWithImageMagick uses ImageMagick's convert to perform highest-quality
-// Lanczos resampling with dithering to the exact target resolution.
-func preprocessWithImageMagick(inputPath string, targetWidth int) (image.Image, error) {
-	// First, get the original image dimensions
+// preprocessWithImageMagick uses ImageMagick to perform high-quality Lanczos
+// resampling to exactly 2× the target height for optimal half-block sampling.
+func preprocessWithImageMagick(inputPath string, targetWidth int) (image.Image, int, int, error) {
 	imgFile, err := os.Open(inputPath)
 	if err != nil {
-		return nil, err
+		return nil, 0, 0, err
 	}
 	defer imgFile.Close()
 
 	img, format, err := image.Decode(imgFile)
 	if err != nil {
-		return nil, fmt.Errorf("decoding image (%s): %w", format, err)
+		return nil, 0, 0, fmt.Errorf("decoding image (%s): %w", format, err)
 	}
 
 	bounds := img.Bounds()
 	srcW := bounds.Dx()
 	srcH := bounds.Dy()
 
-	// Calculate target dimensions (half-block: width as specified, height = width * srcH/srcW / 2)
-	if targetWidth <= 0 {
-		targetWidth = 120
-	}
-	targetH := int(float64(targetWidth) * float64(srcH) / float64(srcW) / 2)
-	if targetH < 1 {
-		targetH = 1
-	}
+	// Calculate target dimensions
+	// Height = width * (srcH/srcW) / 2 (for aspect ratio with half-block chars)
+	targetH := max(1, int(float64(targetWidth)*float64(srcH)/float64(srcW)/2))
+
+	// ImageMagick will resize to width × (targetH*2)
+	// so we can sample 2 pixels per character row
+	resizeH := targetH * 2
 
 	// Create a temporary file for the rescaled image
 	tmpFile, err := os.CreateTemp("", "png-to-mu-*.png")
 	if err != nil {
-		return nil, fmt.Errorf("creating temp file: %w", err)
+		return nil, 0, 0, fmt.Errorf("creating temp file: %w", err)
 	}
 	tmpPath := tmpFile.Name()
 	tmpFile.Close()
 	defer os.Remove(tmpPath)
 
-	// Use ImageMagick's convert with Lanczos filter and dithering for highest quality
-	// The -filter Lanczos -resize WxH performs high-quality resampling
-	// +dither disables dithering (we want the actual colors, not dithered patterns)
-	// But with -dither flag, we enable Floyd-Steinberg dithering for smoother gradients
-	cmd := exec.Command("convert",
+	// Use ImageMagick's magick (IMv7) or convert (IMv6) with Lanczos filter
+	// Try "magick" first (IMv7), fall back to "convert" if not available
+	cmd := exec.Command("magick",
 		inputPath,
 		"-filter", "Lanczos",
-		"-resize", fmt.Sprintf("%dx%d!", targetWidth, targetH),
-		inputPath, // Read original again for comparison
-	)
-
-	// Actually, for our use case, we want the ORIGINAL colors at each rescaled position,
-	// not a dithered palette reduction. So we use Lanczos without dithering.
-	// The "dither" flag name is kept for compatibility but really means "use IM rescale"
-	cmd = exec.Command("convert",
-		inputPath,
-		"-filter", "Lanczos",
-		"-resize", fmt.Sprintf("%dx%d!", targetWidth, targetH),
+		"-resize", fmt.Sprintf("%dx%d!", targetWidth, resizeH),
 		"-depth", "16",
 		tmpPath,
 	)
-
 	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("ImageMagick convert: %w", err)
+		// Fall back to "convert" for IMv6
+		cmd = exec.Command("convert",
+			inputPath,
+			"-filter", "Lanczos",
+			"-resize", fmt.Sprintf("%dx%d!", targetWidth, resizeH),
+			"-depth", "16",
+			tmpPath,
+		)
+		if err := cmd.Run(); err != nil {
+			return nil, 0, 0, fmt.Errorf("ImageMagick: %w", err)
+		}
 	}
 
 	// Load the rescaled image
 	rescaledFile, err := os.Open(tmpPath)
 	if err != nil {
-		return nil, err
+		return nil, 0, 0, err
 	}
 	defer rescaledFile.Close()
 
 	rescaledImg, _, err := image.Decode(rescaledFile)
 	if err != nil {
-		return nil, err
+		return nil, 0, 0, err
 	}
 
-	return rescaledImg, nil
+	return rescaledImg, targetWidth, targetH, nil
 }
 
-// loadImageGo loads an image using Go's standard image package
-func loadImageGo(inputPath string) (image.Image, error) {
+// loadImageAndResize loads an image using Go's standard image package
+// and returns it with calculated dimensions (no actual resizing in Go).
+func loadImageAndResize(inputPath string, targetWidth int) (image.Image, int, int, error) {
 	imgFile, err := os.Open(inputPath)
 	if err != nil {
-		return nil, err
+		return nil, 0, 0, err
 	}
 	defer imgFile.Close()
 
 	img, format, err := image.Decode(imgFile)
 	if err != nil {
-		return nil, fmt.Errorf("decoding image (%s): %w", format, err)
+		return nil, 0, 0, fmt.Errorf("decoding image (%s): %w", format, err)
 	}
 
-	return img, nil
+	bounds := img.Bounds()
+	srcW := bounds.Dx()
+	srcH := bounds.Dy()
+
+	// Calculate target dimensions (same formula as ImageMagick path)
+	targetH := max(1, int(float64(targetWidth)*float64(srcH)/float64(srcW)/2))
+
+	return img, targetWidth, targetH, nil
 }
 
 // colorKey returns a string key for comparing colors
@@ -261,40 +274,77 @@ func formatMicronBGColor(c color.Color) string {
 	return fmt.Sprintf("`BT%02x%02x%02x", r8, g8, b8)
 }
 
-// renderHalfBlockToMicron renders an image using half-block characters with
-// separate foreground (top half) and background (bottom half) colors.
-// This achieves maximum vertical resolution by using the ▀ character with
-// both `FT (foreground) and `BT (background) micron color tags.
-//
-// When the image comes from ImageMagick preprocessing, it's already at the
-// exact target resolution, so we sample 2 vertical pixels per character
-// (which become the FG and BG colors).
-func renderHalfBlockToMicron(img image.Image, noComments bool) (string, error) {
+// renderHalfBlockToMicron renders an image using half-block characters.
+// For ImageMagick-preprocessed images, the image is already at 2× height,
+// so we sample pairs of vertical pixels (2y, 2y+1) for FG and BG colors.
+// For Go-native images, we sample 4 pixels and average them into 2.
+func renderHalfBlockToMicron(img image.Image, outW, outH int, originalFile string, noComments bool) (string, error) {
 	bounds := img.Bounds()
-	outW := bounds.Dx()
-	outH := bounds.Dy()
+	imgW := bounds.Dx()
+	imgH := bounds.Dy()
 
 	var sb strings.Builder
 
 	if !noComments {
-		fmt.Fprintf(&sb, "# ASCII art generated from PNG image (half-block mode)\n# Original: %s\n# Dimensions: %dx%d characters (using ▀ with FG/BG colors)\n#\n\n", filepath.Base(filepath.Base(bounds.String())), outW, outH)
+		fmt.Fprintf(&sb, "# ASCII art generated from PNG image (half-block mode)\n# Original: %s\n# Dimensions: %dx%d characters (using ▀ with FG/BG colors)\n#\n\n", filepath.Base(originalFile), outW, outH)
 	}
+
+	// Check if image is pre-scaled (from ImageMagick, imgH should be outH*2)
+	isPreScaled := (imgH == outH*2) && (imgW == outW)
 
 	for y := 0; y < outH; y++ {
 		var lastFGKey, lastBGKey string
 		for x := 0; x < outW; x++ {
-			// Sample 2 vertical pixels for this character position
-			// When preprocessed by ImageMagick, these are the exact rescaled pixels
-			srcX := bounds.Min.X + x
-			srcY1 := bounds.Min.Y + y*2
-			srcY2 := srcY1 + 1
+			var upper, lower color.Color
 
-			if srcY2 >= bounds.Max.Y {
-				srcY2 = bounds.Max.Y - 1
+			if isPreScaled {
+				// ImageMagick path: image is exactly outW × (outH*2)
+				// Sample pixels at (x, y*2) and (x, y*2+1)
+				srcX := bounds.Min.X + x
+				srcY1 := bounds.Min.Y + y*2
+				srcY2 := srcY1 + 1
+
+				upper = img.At(srcX, srcY1)
+				lower = img.At(srcX, srcY2)
+			} else {
+				// Go-native path: sample 4 pixels and average
+				srcX := int(float64(x) * float64(imgW) / float64(outW))
+				baseY := int(float64(y*4) * float64(imgH) / float64(outH*4))
+
+				if srcX >= imgW {
+					srcX = imgW - 1
+				}
+
+				// Sample 4 pixels
+				pixels := make([]color.Color, 4)
+				for i := 0; i < 4; i++ {
+					yi := baseY + i
+					if yi >= imgH {
+						yi = imgH - 1
+					}
+					pixels[i] = img.At(bounds.Min.X+srcX, bounds.Min.Y+yi)
+				}
+
+				// Average top 2 for foreground
+				r1, g1, b1, _ := pixels[0].RGBA()
+				r2, g2, b2, _ := pixels[1].RGBA()
+				upper = color.RGBA{
+					R: uint8(((r1 >> 8) + (r2 >> 8)) / 2),
+					G: uint8(((g1 >> 8) + (g2 >> 8)) / 2),
+					B: uint8(((b1 >> 8) + (b2 >> 8)) / 2),
+					A: 255,
+				}
+
+				// Average bottom 2 for background
+				r3, g3, b3, _ := pixels[2].RGBA()
+				r4, g4, b4, _ := pixels[3].RGBA()
+				lower = color.RGBA{
+					R: uint8(((r3 >> 8) + (r4 >> 8)) / 2),
+					G: uint8(((g3 >> 8) + (g4 >> 8)) / 2),
+					B: uint8(((b3 >> 8) + (b4 >> 8)) / 2),
+					A: 255,
+				}
 			}
-
-			upper := img.At(srcX, srcY1)
-			lower := img.At(srcX, srcY2)
 
 			_, _, _, ua := upper.RGBA()
 			_, _, _, la := lower.RGBA()

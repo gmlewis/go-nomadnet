@@ -47,140 +47,28 @@ func TestFormatMicronColor(t *testing.T) {
 	}
 }
 
-// TestCalculateDimensions verifies dimension calculations
-func TestCalculateDimensions(t *testing.T) {
+// TestFormatMicronBGColor verifies 24-bit background color code generation
+func TestFormatMicronBGColor(t *testing.T) {
 	tests := []struct {
-		name      string
-		srcW      int
-		srcH      int
-		cfg       config
-		wantW, wantH int
+		name string
+		c    color.Color
+		want string
 	}{
-		{"no scaling", 100, 100, config{scale: 1.0, charSet: "simple"}, 100, 100},
-		{"scale 0.5", 100, 100, config{scale: 0.5, charSet: "simple"}, 50, 50},
-		{"max width", 200, 100, config{scale: 1.0, width: 80, charSet: "simple"}, 80, 40},
-		{"max height", 100, 200, config{scale: 1.0, height: 50, charSet: "simple"}, 25, 50},
-		{"blocks mode", 100, 100, config{scale: 1.0, charSet: "blocks"}, 100, 50},
-		{"detailed mode", 100, 100, config{scale: 1.0, charSet: "detailed"}, 100, 25},
+		{"black", color.RGBA{0, 0, 0, 255}, "`BT000000"},
+		{"white", color.RGBA{255, 255, 255, 255}, "`BTffffff"},
+		{"red", color.RGBA{255, 0, 0, 255}, "`BTff0000"},
+		{"green", color.RGBA{0, 255, 0, 255}, "`BT00ff00"},
+		{"blue", color.RGBA{0, 0, 255, 255}, "`BT0000ff"},
+		{"gray", color.RGBA{128, 128, 128, 255}, "`BT808080"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotW, gotH := calculateDimensions(tt.srcW, tt.srcH, tt.cfg)
-			if gotW != tt.wantW || gotH != tt.wantH {
-				t.Errorf("calculateDimensions(%d, %d, cfg) = (%d, %d), want (%d, %d)",
-					tt.srcW, tt.srcH, gotW, gotH, tt.wantW, tt.wantH)
+			got := formatMicronBGColor(tt.c)
+			if got != tt.want {
+				t.Errorf("formatMicronBGColor(%v) = %v, want %v", tt.c, got, tt.want)
 			}
 		})
-	}
-}
-
-// TestRenderSimple verifies simple character rendering
-func TestRenderSimple(t *testing.T) {
-	img := image.NewRGBA(image.Rect(0, 0, 10, 10))
-	bounds := img.Bounds()
-
-	// White pixel should map to light character
-	img.Set(5, 5, color.RGBA{255, 255, 255, 255})
-
-	char, c := renderSimple(img, bounds, 5, 5, 10, 10)
-	if char == ' ' {
-		t.Errorf("renderSimple(white) = %q, want non-space character", char)
-	}
-
-	r, g, b, a := c.RGBA()
-	if a < 0x1000 {
-		t.Errorf("renderSimple(white) alpha = %04x, want opaque", a)
-	}
-	if r < 0xf000 || g < 0xf000 || b < 0xf000 {
-		t.Errorf("renderSimple(white) color = (%04x, %04x, %04x), want bright", r, g, b)
-	}
-}
-
-// TestRenderBlocks verifies block character rendering
-func TestRenderBlocks(t *testing.T) {
-	img := image.NewRGBA(image.Rect(0, 0, 10, 10))
-	bounds := img.Bounds()
-
-	// Fill with opaque color
-	for y := 0; y < 10; y++ {
-		for x := 0; x < 10; x++ {
-			img.Set(x, y, color.RGBA{100, 150, 200, 255})
-		}
-	}
-
-	char, c := renderBlocks(img, bounds, 5, 5, 5, 5)
-	if char == ' ' {
-		t.Errorf("renderBlocks(opaque) = %q, want non-space character", char)
-	}
-
-	// Verify character is one of the block characters
-	validChars := map[rune]bool{
-		blockUpper: true,
-		blockLower: true,
-		blockFull:  true,
-		blockLight: true,
-		' ':        true,
-	}
-	if !validChars[char] {
-		t.Errorf("renderBlocks() = %q, want valid block character", char)
-	}
-
-	_ = c // color checked implicitly
-}
-
-// TestRenderBraille verifies braille character rendering
-func TestRenderBraille(t *testing.T) {
-	img := image.NewRGBA(image.Rect(0, 0, 20, 20))
-	bounds := img.Bounds()
-
-	// Fill with opaque color
-	for y := 0; y < 20; y++ {
-		for x := 0; x < 20; x++ {
-			img.Set(x, y, color.RGBA{100, 150, 200, 255})
-		}
-	}
-
-	char, c := renderBraille(img, bounds, 5, 5, 10, 5)
-
-	// With all pixels opaque, should get full braille character
-	if char != brailleFull {
-		t.Errorf("renderBraille(all opaque) = %q, want brailleFull %q", char, brailleFull)
-	}
-
-	// Check color is approximately correct
-	r, g, b, _ := c.RGBA()
-	r8 := uint8(r >> 8)
-	g8 := uint8(g >> 8)
-	b8 := uint8(b >> 8)
-
-	// Allow some tolerance for averaging
-	if r8 < 90 || r8 > 110 {
-		t.Errorf("renderBraille() red = %d, want ~100", r8)
-	}
-	if g8 < 140 || g8 > 160 {
-		t.Errorf("renderBraille() green = %d, want ~150", g8)
-	}
-	if b8 < 190 || b8 > 210 {
-		t.Errorf("renderBraille() blue = %d, want ~200", b8)
-	}
-}
-
-// TestRenderBrailleTransparent verifies transparent pixel handling
-func TestRenderBrailleTransparent(t *testing.T) {
-	img := image.NewRGBA(image.Rect(0, 0, 20, 20))
-	bounds := img.Bounds()
-
-	// All transparent
-	for y := 0; y < 20; y++ {
-		for x := 0; x < 20; x++ {
-			img.Set(x, y, color.RGBA{0, 0, 0, 0})
-		}
-	}
-
-	char, _ := renderBraille(img, bounds, 5, 5, 10, 5)
-	if char != ' ' {
-		t.Errorf("renderBraille(all transparent) = %q, want space", char)
 	}
 }
 
@@ -202,62 +90,139 @@ func TestColorKey(t *testing.T) {
 	}
 }
 
-// TestImageToMicron verifies complete conversion
-func TestImageToMicron(t *testing.T) {
-	img := image.NewRGBA(image.Rect(0, 0, 8, 8))
+// TestRenderHalfBlockToMicronPreScaled verifies half-block rendering with pre-scaled images
+func TestRenderHalfBlockToMicronPreScaled(t *testing.T) {
+	// Create an 8x4 image (simulating ImageMagick output: 8 wide × 4 tall = 8×2 chars)
+	img := image.NewRGBA(image.Rect(0, 0, 8, 4))
 
-	// Simple test pattern
-	for y := 0; y < 8; y++ {
+	// Simple gradient pattern
+	for y := 0; y < 4; y++ {
 		for x := 0; x < 8; x++ {
-			img.Set(x, y, color.RGBA{uint8(x * 32), uint8(y * 32), 128, 255})
+			img.Set(x, y, color.RGBA{uint8(x * 32), uint8(y * 64), 128, 255})
 		}
 	}
 
-	cfg := config{
-		charSet:    "simple",
-		noComments: true,
-	}
-
-	result, err := imageToMicron(img, cfg)
+	result, err := renderHalfBlockToMicron(img, 8, 2, "test.png", true)
 	if err != nil {
-		t.Fatalf("imageToMicron() error = %v", err)
+		t.Fatalf("renderHalfBlockToMicron() error = %v", err)
 	}
 
 	// Verify output structure
-	if !strings.HasPrefix(result, "`FT") {
-		t.Errorf("imageToMicron() should start with color code, got %q...", result[:20])
+	if !strings.Contains(result, "`FT") {
+		t.Errorf("renderHalfBlockToMicron() should contain foreground color codes")
+	}
+	if !strings.Contains(result, "`BT") {
+		t.Errorf("renderHalfBlockToMicron() should contain background color codes")
 	}
 	if !strings.Contains(result, "`f`b`=") {
-		t.Errorf("imageToMicron() should end with reset codes")
+		t.Errorf("renderHalfBlockToMicron() should end with reset codes")
 	}
 
-	// Verify we have content lines (image rows + header + footer)
+	// Verify we have content lines (2 rows + reset)
 	lines := strings.Split(strings.TrimSpace(result), "\n")
-	// 8x8 image in simple mode = 8 lines + 1 reset line = 9 lines
-	if len(lines) < 2 {
-		t.Errorf("imageToMicron() produced %d lines, want at least 2", len(lines))
+	if len(lines) < 3 {
+		t.Errorf("renderHalfBlockToMicron() produced %d lines, want at least 3", len(lines))
+	}
+
+	// Verify half-block character is used
+	if !strings.ContainsRune(result, blockUpper) {
+		t.Errorf("renderHalfBlockToMicron() should use half-block character ▀")
 	}
 }
 
-// TestGetRenderer verifies renderer selection
-func TestGetRenderer(t *testing.T) {
-	tests := []struct {
-		charSet string
-		want    string
-	}{
-		{"simple", "simple"},
-		{"blocks", "blocks"},
-		{"detailed", "braille"},
-		{"unknown", "braille"}, // default
+// TestRenderHalfBlockToMicronGoNative verifies half-block rendering with Go-native images
+func TestRenderHalfBlockToMicronGoNative(t *testing.T) {
+	// Create a 16x8 image (Go-native, will be sampled to 8×2 chars)
+	img := image.NewRGBA(image.Rect(0, 0, 16, 8))
+
+	// Fill with solid color
+	for y := 0; y < 8; y++ {
+		for x := 0; x < 16; x++ {
+			img.Set(x, y, color.RGBA{100, 150, 200, 255})
+		}
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.charSet, func(t *testing.T) {
-			fn := getRenderer(tt.charSet)
-			if fn == nil {
-				t.Errorf("getRenderer(%q) returned nil", tt.charSet)
-			}
-			// We can't directly compare function pointers, so we just verify it's not nil
-		})
+	result, err := renderHalfBlockToMicron(img, 8, 2, "test.png", true)
+	if err != nil {
+		t.Fatalf("renderHalfBlockToMicron() error = %v", err)
+	}
+
+	// Verify output structure
+	if !strings.Contains(result, "`FT") {
+		t.Errorf("renderHalfBlockToMicron() should contain foreground color codes")
+	}
+	if !strings.Contains(result, "`BT") {
+		t.Errorf("renderHalfBlockToMicron() should contain background color codes")
+	}
+
+	// Verify we have content lines
+	lines := strings.Split(strings.TrimSpace(result), "\n")
+	if len(lines) < 3 {
+		t.Errorf("renderHalfBlockToMicron() produced %d lines, want at least 3", len(lines))
+	}
+}
+
+// TestRenderHalfBlockToMicronComments verifies comment generation
+func TestRenderHalfBlockToMicronComments(t *testing.T) {
+	img := image.NewRGBA(image.Rect(0, 0, 8, 4))
+	for y := 0; y < 4; y++ {
+		for x := 0; x < 8; x++ {
+			img.Set(x, y, color.RGBA{128, 128, 128, 255})
+		}
+	}
+
+	// With comments
+	result, err := renderHalfBlockToMicron(img, 8, 2, "test.png", false)
+	if err != nil {
+		t.Fatalf("renderHalfBlockToMicron() error = %v", err)
+	}
+
+	if !strings.HasPrefix(result, "# ASCII art") {
+		t.Errorf("renderHalfBlockToMicron() with comments should start with '#'")
+	}
+	if !strings.Contains(result, "Dimensions:") {
+		t.Errorf("renderHalfBlockToMicron() should contain dimensions in comments")
+	}
+	if !strings.Contains(result, "test.png") {
+		t.Errorf("renderHalfBlockToMicron() should contain original filename")
+	}
+
+	// Without comments
+	resultNoComments, err := renderHalfBlockToMicron(img, 8, 2, "test.png", true)
+	if err != nil {
+		t.Fatalf("renderHalfBlockToMicron() error = %v", err)
+	}
+
+	if strings.HasPrefix(resultNoComments, "#") {
+		t.Errorf("renderHalfBlockToMicron() no-comments should not start with '#'")
+	}
+}
+
+// TestRenderHalfBlockToMicronTransparent verifies transparent pixel handling
+func TestRenderHalfBlockToMicronTransparent(t *testing.T) {
+	img := image.NewRGBA(image.Rect(0, 0, 8, 4))
+
+	// All transparent
+	for y := 0; y < 4; y++ {
+		for x := 0; x < 8; x++ {
+			img.Set(x, y, color.RGBA{0, 0, 0, 0})
+		}
+	}
+
+	result, err := renderHalfBlockToMicron(img, 8, 2, "test.png", true)
+	if err != nil {
+		t.Fatalf("renderHalfBlockToMicron() error = %v", err)
+	}
+
+	// Should contain spaces for transparent areas
+	if !strings.Contains(result, " ") {
+		t.Errorf("renderHalfBlockToMicron(transparent) should contain spaces")
+	}
+}
+
+// TestBlockUpperConstant verifies the half-block character
+func TestBlockUpperConstant(t *testing.T) {
+	if blockUpper != '▀' {
+		t.Errorf("blockUpper = %q, want '▀' (U+2580)", blockUpper)
 	}
 }
