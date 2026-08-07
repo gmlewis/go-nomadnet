@@ -37,6 +37,9 @@ go install github.com/gmlewis/go-nomadnet/cmd/gonomadnet@latest
 This puts the `gonomadnet` binary in your `$GOPATH/bin` (or `$GOBIN`)
 (which should already be in your `$PATH`).
 
+Alternatively, you can download the latest binary release for your platform
+from: [Releases](https://github.com/gmlewis/go-nomadnet/releases).
+
 ### Build from Source
 
 ```bash

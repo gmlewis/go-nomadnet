@@ -50,8 +50,10 @@ To run gonomadnet yourself:
 
 1. Make sure `*Go`* is installed from: `_`*`[https://go.dev`https://go.dev]`*`_
 
-2. `!Install`! from source:
+2. `!Install`! from source or pre-built binary:
    `*go install github.com/gmlewis/go-nomadnet/cmd/gonomadnet@latest`*
+   or alternatively, you can download the latest binary release for your platform from:
+   `_`*`[https://github.com/gmlewis/go-nomadnet/releases`https://github.com/gmlewis/go-nomadnet/releases]`*`_
 
 2. `!Configure`! by editing `*~/.nomadnet/config`*:
    - Set `!enable_node = yes`! to host pages
