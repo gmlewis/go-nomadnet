@@ -1,6 +1,6 @@
 // Copyright 2026 Glenn Lewis. All rights reserved.
 
-package main
+package utils
 
 import (
 	"fmt"

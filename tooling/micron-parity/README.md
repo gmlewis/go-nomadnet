@@ -21,7 +21,7 @@ and encoded into Go table-driven tests — no urwid required.
 
 - `python3` (stdlib only — no third-party packages).
 - Access to the READ-ONLY original source at
-  `/Users/glenn/src/github.com/markqvist/nomadnet` (only needed if you want to
+  `${HOME}/src/github.com/markqvist/nomadnet` (only needed if you want to
   re-extract/audit the copied functions against upstream).
 
 ## Files
@@ -99,7 +99,7 @@ The copied functions are verbatim snapshots. If you suspect drift, diff the
 region against the original:
 
 ```bash
-diff <(sed -n '593,855p' /Users/glenn/src/github.com/markqvist/nomadnet/nomadnet/ui/textui/MicronParser.py) \
+diff <(sed -n '593,855p' ${HOME}/src/github.com/markqvist/nomadnet/nomadnet/ui/textui/MicronParser.py) \
      <(sed -n '/^def make_output/,/^def serialize/p' micron_inline.py)
 ```
 

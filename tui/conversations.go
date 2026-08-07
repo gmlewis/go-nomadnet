@@ -132,6 +132,14 @@ type ConversationsDisplay struct {
 	// header bar (Python _update_peer_info, Conversations.py:2107-2112). nil
 	// renders "unknown".
 	OnHops func(sourceHash string) *int
+	// OnResolveTrust returns the peer's CURRENT trust level string
+	// ("trusted"/"untrusted"/"unknown"/"warning") read live from the directory
+	// by the wiring layer. Threaded onto each ConversationWidget so its trust
+	// banner reflects the directory's actual trust rather than the snapshot
+	// captured at open time (Python has_visible_trust_banner reads
+	// directory.trust_level live, Conversations.py:1957-1960). nil falls back
+	// to the cached TrustLevel.
+	OnResolveTrust func(sourceHash string) string
 
 	// OnPaperMessage performs a paper (offline) message output for the open
 	// conversation (Python paper_output, Conversations.py:2474-2503). The
@@ -196,6 +204,15 @@ func NewConversationsDisplay(app *App, convs []ConversationInfo) *ConversationsD
 	cd.list.SetHighlightFullLine(true)
 	ApplyListFocusStyle(cd.list, cd.app.Theme)
 	cd.ilb = NewIndicativeListBox(cd.list)
+
+	// Default the shortcut region to "list": on first display the list pane
+	// (left column) is the focused region, and Python's focus-path dispatch
+	// (Conversations.py:1765-1779) starts in the list. Without this, the
+	// zero value "" leaves cd.handleInput's region gate (shortcutFocus=="list")
+	// passing every list shortcut through unconsumed until the first focus
+	// event fires — breaking list-region keyboard shortcuts (C-e/C-n/C-r/
+	// C-p My-LXMF/C-u Ingest-URI/C-o/C-x/C-g) before any SetFocusFunc runs.
+	cd.shortcutFocus = "list"
 
 	cd.populateList()
 	cd.refreshTabBar()
@@ -310,9 +327,38 @@ func (cd *ConversationsDisplay) GetShortcutText() string {
 	}
 }
 
-// handleInput processes keyboard shortcuts for the conversations display.
-// Matches Python's ConversationsArea.keypress() at Conversations.py:88.
+// handleInput processes the LIST-PANE keyboard shortcuts for the conversations
+// display, matching Python's ConversationsArea.keypress() at Conversations.py:88.
+//
+// Crucially, these shortcuts fire ONLY when the list pane (left column) is
+// focused — mirroring Python, where ConversationsArea is the LEFT (list) column
+// and urwid dispatches a key only to the focused column (Conversations.py:88-117
+// + 420). The conversation widget (right column) has its own frame-level capture
+// (ConversationWidget.handleInput) for the editor/body shortcuts. Python gets
+// region-awareness for free from this structural split; tview runs an ancestor
+// InputCapture before the focused descendant, so without this gate cd.handleInput
+// would STEAL the dual-meaning keys when the editor/body is focused:
+//
+//	C-p  list→My LXMF (show_my_qr)   editor→Paper Msg (paper_message)   Conversations.py:104,1811
+//	C-u  list→Ingest URI              body→Purge failed (purge_failed)  Conversations.py:95,2227
+//	C-x  list→Delete conversation     body→Clear History              Conversations.py:92,2232
+//	C-o  list→toggle sort mode        body→sort_by_timestamp toggle  Conversations.py:101,2236
+//
+// The shortcut bars GetShortcutText advertises already reflect this split
+// (editor bar: "[C-p] Paper Msg"; body bar: "[C-u] Purge [C-o] Sort [C-x] Clear
+// History"; list bar: "[C-p] My LXMF [C-u] Ingest URI [C-x] Delete [C-o] Sort"),
+// so gating here makes the actual behavior match the advertised bar + Python.
+// cd.shortcutFocus is maintained by the SetFocusFunc of every focusable
+// Conversations primitive (line 269-273 + DisplayConversation editor/body focus
+// funcs), so it accurately reflects which column has focus. When a dialog overlay
+// is open this capture does not run at all (the overlay sits in a separate Pages
+// layer and receives keys directly), so dialogs are unaffected.
 func (cd *ConversationsDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
+	if cd.shortcutFocus != "list" {
+		// Editor or body (right column) has focus: pass the key through to the
+		// conversation widget's frame capture so the editor/body meaning wins.
+		return event
+	}
 	switch event.Key() {
 	case tcell.KeyCtrlE:
 		if cd.OnEditPeerInfo != nil {
@@ -379,6 +425,17 @@ func (cd *ConversationsDisplay) DisplayConversation(sourceHash string) {
 			break
 		}
 	}
+	// Wire the live trust resolver BEFORE the first refreshTrustBanner so the
+	// banner reflects the directory's actual trust from the start. Without this
+	// ordering, refreshTrustBanner ran with OnResolveTrust still nil and fell
+	// back to the cached TrustLevel — which is "" for a freshly-created
+	// conversation whose dir doesn't exist yet (so cd.conversations has no entry
+	// for it), leaving the banner wrongly showing for a peer the user just marked
+	// Trusted in the New Conversation dialog. (Python reads directory.trust_level
+	// live in has_visible_trust_banner, Conversations.py:1957-1960.)
+	if cd.OnResolveTrust != nil {
+		cw.OnResolveTrust = cd.OnResolveTrust
+	}
 	cw.refreshTrustBanner()
 	// Wire the trust banner buttons to the display-level peer callbacks so
 	// the app layer (which owns the directory) can trust/block the peer.
@@ -403,6 +460,22 @@ func (cd *ConversationsDisplay) DisplayConversation(sourceHash string) {
 		// content Flex's index-1 item) and re-add the bordered detail view.
 		cd.content.RemoveItem(cd.content.GetItem(1))
 		cd.content.AddItem(cd.detail, 0, 1, false)
+		cd.currentWidget = nil
+		// Return focus to the conversation LIST (left column), matching Python's
+		// close_conversation → display_conversation(source_hash=None) →
+		// columns_widget.focus_position = 0 (Conversations.py:1677 + 1638-1639).
+		// Without this, tview leaves focus on the now-empty detail placeholder
+		// (right column) after the conversation widget is removed, so the user is
+		// stranded — list-region shortcuts (C-e/C-n/C-r/C-p My-LXMF/C-u Ingest-URI)
+		// no longer fire and there is no keyboard path back to the list (tview Flex
+		// does not do urwid Columns' Left/Right column traversal). Setting focus to
+		// the list restores the region the user expects after closing a conversation
+		// and keeps cd.handleInput's list-region gate (shortcutFocus=="list")
+		// accurate so list shortcuts work again.
+		if cd.app != nil {
+			cd.app.SetFocus(cd.list)
+		}
+		cd.setShortcutRegion("list")
 	}
 	// Python ConversationWidget.keypress "ctrl g" →
 	// conversations_display.toggle_fullscreen() (Conversations.py:2234-2235):
@@ -502,9 +575,44 @@ func (cd *ConversationsDisplay) DisplayConversation(sourceHash string) {
 	if cd.OnLoadMessages != nil {
 		cw.SetMessages(cd.OnLoadMessages(sourceHash))
 	}
+	// Replace the detail pane's content: remove the empty placeholder (when
+	// this is the first conversation opened from the empty state) OR the
+	// previously-open conversation widget (when a conversation is already
+	// open), then add the new one — mirroring Python's
+	// columns_widget.contents[1] = (make_conversation_widget(source_hash),
+	// options) (Conversations.py:1637), which REPLACES index 1 rather than
+	// appending. Without removing the previous widget, opening a second
+	// conversation while one is already open leaves both visible (list + old
+	// + new = 3 columns) and focus/send go to the wrong pane.
+	prev := cd.currentWidget
 	cd.currentWidget = cw
-	cd.content.RemoveItem(cd.detail)
+	if prev != nil {
+		cd.content.RemoveItem(prev.Widget())
+	} else {
+		cd.content.RemoveItem(cd.detail)
+	}
 	cd.content.AddItem(cw.Widget(), 0, 1, true)
+	// Focus the composer (frame footer), matching Python's ConversationFrame
+	// construction with focus_part="footer" + display_conversation setting
+	// columns_widget.focus_position = 1 (Conversations.py:1645,1962): opening a
+	// conversation places focus in the message editor so the user can type
+	// immediately. AddItem's focus=true flag only marks the preferred focus target
+	// for the content Flex; it does not actively move focus, so without this the
+	// previously-focused primitive (the list) keeps focus and the editor never
+	// receives keystrokes.
+	cd.focusEditor()
+}
+
+// focusEditor moves focus to the currently-open conversation's composer (the
+// frame footer), matching Python's ConversationFrame focus_part="footer". It
+// is also called after the New Conversation dialog dismisses, since dismissTop
+// restores focus to the list (the dialog's prevFocus) AFTER onCreate already
+// displayed the conversation — without re-focusing, the composer would never
+// receive the keystrokes the user types. No-op when no conversation is open.
+func (cd *ConversationsDisplay) focusEditor() {
+	if cd.currentWidget != nil && cd.currentWidget.editor != nil {
+		cd.app.SetFocus(cd.currentWidget.editor)
+	}
 }
 
 // ReloadCurrentMessages re-fetches and re-renders the message list for the
@@ -517,6 +625,29 @@ func (cd *ConversationsDisplay) ReloadCurrentMessages() {
 		return
 	}
 	cd.currentWidget.SetMessages(cd.OnLoadMessages(cd.currentWidget.source))
+}
+
+// RefreshOpenConversation reloads the message list + re-renders the trust
+// banner for the currently-open conversation when it matches sourceHex (the
+// changed conversation). This is the receive→open-widget refresh path that
+// mirrors Python's per-conversation changed-callback
+// (Conversation.ingest → scan_storage → __changed_callback →
+// ConversationWidget.conversation_changed → update_message_widgets,
+// Conversation.py:71-80 + 271-272, Conversations.py:1896 + 2246-2252): an
+// inbound message lands in the open view without a manual interaction. The
+// trust banner refresh picks up a trust change made after the conversation was
+// opened (Python _refresh_trust_banner reads directory.trust_level live,
+// Conversations.py:1957-1960). No-op when no conversation is open or the open
+// conversation is a different peer (the list's unread badge still updates via
+// refreshConvs). Must run on the UI thread.
+func (cd *ConversationsDisplay) RefreshOpenConversation(sourceHex string) {
+	if cd.currentWidget == nil || cd.currentWidget.source != sourceHex {
+		return
+	}
+	if cd.OnLoadMessages != nil {
+		cd.currentWidget.SetMessages(cd.OnLoadMessages(sourceHex))
+	}
+	cd.currentWidget.refreshTrustBanner()
 }
 
 // populateList fills the list based on current tab (trusted/untrusted).
@@ -1596,6 +1727,12 @@ func (cd *ConversationsDisplay) showNewConversationDialog(addr, name string, sho
 		}
 		if onCreate(addrHex, displayName, trust) {
 			dismiss()
+			// onCreate already displayed the conversation (DisplayConversation
+			// focused the editor), but dismiss() just restored focus to the list
+			// (the dialog's prevFocus), stealing it from the composer. Re-focus
+			// the editor so the user can type immediately, matching Python where
+			// the dialog closes into the conversation's focused footer.
+			cd.focusEditor()
 			return
 		}
 		// Re-show with the preserved inputs and the error row. The dialog is

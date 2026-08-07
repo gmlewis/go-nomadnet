@@ -1,6 +1,6 @@
 // Copyright 2026 Glenn Lewis. All rights reserved.
 
-package main
+package utils
 
 import (
 	"strconv"
@@ -40,10 +40,10 @@ type Screen struct {
 	Rows [][]Cell
 }
 
-// rowText returns row y as a string (cells with no rune become spaces). Used
+// RowText returns row y as a string (cells with no rune become spaces). Used
 // for plain-text queries (border titles, "Retrieving", "URL: ", error strings)
 // where color is irrelevant.
-func (s *Screen) rowText(y int) string {
+func (s *Screen) RowText(y int) string {
 	if y < 0 || y >= len(s.Rows) {
 		return ""
 	}
@@ -58,11 +58,11 @@ func (s *Screen) rowText(y int) string {
 	return b.String()
 }
 
-// fullText returns the whole screen as a newline-joined string.
-func (s *Screen) fullText() string {
+// FullText returns the whole screen as a newline-joined string.
+func (s *Screen) FullText() string {
 	var b strings.Builder
 	for y := 0; y < s.H; y++ {
-		b.WriteString(strings.TrimRight(s.rowText(y), " "))
+		b.WriteString(strings.TrimRight(s.RowText(y), " "))
 		b.WriteByte('\n')
 	}
 	return b.String()
@@ -427,9 +427,9 @@ const (
 	listFocusBG = int32(0xaaaaaa) // palette "list_focus" bg — the ONLY SGR focus signal
 )
 
-// menuLabels is the menu-bar button text in order (tui/theme.go MenuItems),
+// MenuLabels is the menu-bar button text in order (tui/theme.go MenuItems),
 // rendered as "[ <Label> ]" with one space between buttons.
-var menuLabels = []string{
+var MenuLabels = []string{
 	"Conversations", "Network", "Channels", "Log",
 	"Interfaces", "Config", "Guide", "Quit",
 }
@@ -460,15 +460,27 @@ type MenuButton struct {
 }
 
 // menuButtons parses the "[ Label ]" buttons from row 0.
+//
+// Start/End are SCREEN-COLUMN indices (one per cell), NOT byte indices. The
+// menu bar is prefixed with a decoration glyph (glyphs["decoration_menu"]) that
+// is a single cell but a multi-byte UTF-8 rune in the Nerd Font glyph set
+// (e.g. U+F043B = 4 bytes). strings.Index returns a BYTE offset, so using it
+// directly would make Start/End lag the cursor's cell coordinate by the
+// glyph's byte-width-minus-one — and MenuFocusedButton (which compares
+// CursorX, a cell coordinate, against Start/End) would never match. RowText
+// emits exactly one rune per cell, so a rune-index search gives the cell
+// coordinate. We search over []rune to stay cell-accurate regardless of glyph
+// set.
 func (v *View) menuButtons() []MenuButton {
 	if v.Screen == nil || len(v.Screen.Rows) == 0 {
 		return nil
 	}
-	row := v.Screen.rowText(0)
+	row := v.Screen.RowText(0)
+	runes := []rune(row)
 	var out []MenuButton
-	for _, label := range menuLabels {
-		target := "[ " + label + " ]"
-		idx := strings.Index(row, target)
+	for _, label := range MenuLabels {
+		target := []rune("[ " + label + " ]")
+		idx := runesIndex(runes, target)
 		if idx < 0 {
 			continue
 		}
@@ -483,8 +495,34 @@ func (v *View) menuButtons() []MenuButton {
 	return out
 }
 
+// runesIndex returns the rune index of the first occurrence of sub within s,
+// or -1 if not found. A rune-index of RowText equals the screen-cell column
+// (RowText is one rune per cell), so this is the cell-accurate analogue of
+// strings.Index.
+func runesIndex(s, sub []rune) int {
+	if len(sub) == 0 {
+		return 0
+	}
+	if len(sub) > len(s) {
+		return -1
+	}
+	for i := 0; i+len(sub) <= len(s); i++ {
+		match := true
+		for j := range sub {
+			if s[i+j] != sub[j] {
+				match = false
+				break
+			}
+		}
+		if match {
+			return i
+		}
+	}
+	return -1
+}
+
 func indexOfLabel(label string) int {
-	for i, l := range menuLabels {
+	for i, l := range MenuLabels {
 		if l == label {
 			return i
 		}
@@ -519,27 +557,27 @@ func (v *View) ActivePage() string {
 	// Gather body text (rows below the menu bar).
 	var body strings.Builder
 	for y := 1; y < v.Screen.H; y++ {
-		body.WriteString(v.Screen.rowText(y))
+		body.WriteString(v.Screen.RowText(y))
 		body.WriteByte('\n')
 	}
 	s := body.String()
 	// "Topics" is the Guide's left-pane border title — the distinctive signal
 	// the blind script never checked for (so it walked 12 "topics" on the
 	// Network page). Match it as a border title: flanked by border dashes.
-	if hasBorderTitle(s, "Topics") {
+	if HasBorderTitle(s, "Topics") {
 		return "guide"
 	}
-	if hasBorderTitle(s, "Announce Stream") || hasBorderTitle(s, "Saved Nodes") ||
-		hasBorderTitle(s, "Announce Info") || hasBorderTitle(s, "Remote Node") {
+	if HasBorderTitle(s, "Announce Stream") || HasBorderTitle(s, "Saved Nodes") ||
+		HasBorderTitle(s, "Announce Info") || HasBorderTitle(s, "Remote Node") {
 		return "network"
 	}
-	if hasBorderTitle(s, "Conversations") {
+	if HasBorderTitle(s, "Conversations") {
 		return "conversations"
 	}
-	if hasBorderTitle(s, "Channels") {
+	if HasBorderTitle(s, "Channels") {
 		return "channels"
 	}
-	if hasBorderTitle(s, "Local Peer Info") || hasBorderTitle(s, "Local Node Info") {
+	if HasBorderTitle(s, "Local Peer Info") || HasBorderTitle(s, "Local Node Info") {
 		return "network" // network page side panels
 	}
 	// Interfaces page header is a centered "Interfaces" text (no border), and
@@ -553,12 +591,12 @@ func (v *View) ActivePage() string {
 	return ""
 }
 
-// hasBorderTitle reports whether title appears as a border title, i.e. on a
+// HasBorderTitle reports whether title appears as a border title, i.e. on a
 // row that is mostly box-drawing dashes (tview's top border with SetTitledBorder
 // renders " Title " inside a row of '─' runes, U+2500). A row counts as a
 // border row if it contains the '─' substring at least 3 times AND contains the
 // title text. This is robust to terminal width without parsing border geometry.
-func hasBorderTitle(s, title string) bool {
+func HasBorderTitle(s, title string) bool {
 	const dash = "─" // U+2500 BOX DRAWINGS LIGHT HORIZONTAL
 	for _, line := range strings.Split(s, "\n") {
 		if !strings.Contains(line, title) {
@@ -607,7 +645,7 @@ func (v *View) ListSelectedRows() []ListRow {
 		// A full-line highlighted list row fills most of its width with the
 		// #aaaaaa bg. Require a meaningful span to avoid noise.
 		if bgCount >= 3 {
-			out = append(out, ListRow{Y: y, Text: strings.TrimSpace(v.Screen.rowText(y)), Selected: true})
+			out = append(out, ListRow{Y: y, Text: strings.TrimSpace(v.Screen.RowText(y)), Selected: true})
 		}
 	}
 	return out
@@ -625,9 +663,9 @@ func (v *View) FirstSelectedRow(yMin, yMax int) *ListRow {
 	return nil
 }
 
-// networkLeftWidth is the fixed width of the Network page's left list pane
+// NetworkLeftWidth is the fixed width of the Network page's left list pane
 // (tui/network.go:231 SetFixedWidth(0, 52)).
-const networkLeftWidth = 52
+const NetworkLeftWidth = 52
 
 // announceNodeGlyph is the circled-N rune that prefixes every announce-stream
 // NODE entry (tui/glyphs.go "node" = "Ⓝ "; the row reads "{ts} Ⓝ  {name}").
@@ -636,7 +674,7 @@ const networkLeftWidth = 52
 const announceNodeGlyph = 'Ⓝ'
 
 // leftPaneText returns the trimmed text of the left (list) pane of row y — the
-// cells with x < networkLeftWidth. The Network page's left pane is a fixed
+// cells with x < NetworkLeftWidth. The Network page's left pane is a fixed
 // 52 cols, so this isolates the announce-stream row regardless of where the
 // cursor sits (Python's ilb reports cursor_x at the right edge, ~135).
 func (v *View) leftPaneText(y int) string {
@@ -645,7 +683,7 @@ func (v *View) leftPaneText(y int) string {
 	}
 	row := v.Screen.Rows[y]
 	var b strings.Builder
-	for x := 0; x < networkLeftWidth && x < len(row); x++ {
+	for x := 0; x < NetworkLeftWidth && x < len(row); x++ {
 		ch := row[x].Ch
 		if ch == 0 {
 			ch = ' '
@@ -655,7 +693,7 @@ func (v *View) leftPaneText(y int) string {
 	return strings.TrimSpace(b.String())
 }
 
-// cursorOnAnnounceNodeRow reports whether the hardware cursor is on an
+// CursorOnAnnounceNodeRow reports whether the hardware cursor is on an
 // announce-stream NODE row: the left pane of the row at CursorY contains the
 // Ⓝ glyph. This is the PRIMARY selection signal for the Python original,
 // which renders the selected node row with NO background fill (just fg
@@ -663,7 +701,7 @@ func (v *View) leftPaneText(y int) string {
 // additionally fills the selected row with #aaaaaa — see SelectedAnnounceRow's
 // fallback.) cursor_x is unreliable for Python's ilb (it reports the right
 // edge, ~135), so only cursor_y is used.
-func (v *View) cursorOnAnnounceNodeRow() bool {
+func (v *View) CursorOnAnnounceNodeRow() bool {
 	if !v.CursorOK || v.Screen == nil {
 		return false
 	}
@@ -703,7 +741,7 @@ func IsAnnounceTabOrFilter(rowText string) bool {
 }
 
 // AnnounceListRows returns the content rows of the Network left pane (the
-// Announce Stream / Saved Nodes list, x < networkLeftWidth), marking the
+// Announce Stream / Saved Nodes list, x < NetworkLeftWidth), marking the
 // #aaaaaa-bg row as Selected. Empty/blank rows are excluded. The tab bar and
 // filter bar rows above the list are not #aaaaaa, so only real list cursor rows
 // are marked Selected.
@@ -719,7 +757,7 @@ func (v *View) AnnounceListRows() []ListRow {
 		}
 		var b strings.Builder
 		selected := false
-		for x := 0; x < networkLeftWidth && x < len(row); x++ {
+		for x := 0; x < NetworkLeftWidth && x < len(row); x++ {
 			c := row[x]
 			if c.BG == listFocusBG {
 				selected = true
@@ -758,7 +796,7 @@ func (v *View) AnnounceListRows() []ListRow {
 // robustly should key on the Announce Info address hash (content-based), not
 // on this row — see Phase 3.
 func (v *View) SelectedAnnounceRow() *ListRow {
-	if v.cursorOnAnnounceNodeRow() {
+	if v.CursorOnAnnounceNodeRow() {
 		return &ListRow{Y: v.CursorY, Text: v.leftPaneText(v.CursorY), Selected: true}
 	}
 	for _, r := range v.AnnounceListRows() {
@@ -793,6 +831,13 @@ func announceNodeName(rowText string) string {
 	return strings.TrimSpace(parts[2])
 }
 
+// AnnounceNodeName extracts the stable display name from an announce-stream
+// row (see announceNodeName). Exported so cross-package test harnesses can use
+// it without re-implementing the border stripping.
+func AnnounceNodeName(rowText string) string {
+	return announceNodeName(rowText)
+}
+
 // AnnounceInfoAddr returns the node address hash shown in an open Announce Info
 // (the "Addr  : <hash>" row), with ok=false if no such row is present.
 //
@@ -807,7 +852,7 @@ func (v *View) AnnounceInfoAddr() (string, bool) {
 		return "", false
 	}
 	for y := 0; y < v.Screen.H; y++ {
-		t := v.Screen.rowText(y)
+		t := v.Screen.RowText(y)
 		ai := strings.Index(t, "Addr")
 		if ai < 0 {
 			continue
@@ -839,22 +884,26 @@ func (v *View) FocusedActionButton() (string, bool) {
 	if v.CursorY < 0 || v.CursorY >= v.Screen.H {
 		return "", false
 	}
-	row := v.Screen.rowText(v.CursorY)
+	// CursorX is a SCREEN-COLUMN (cell) index, so the "< ... >" span bounds must
+	// be computed in RUNE indices, not byte indices. The button row is prefixed
+	// with box-border runes (│ = 3 UTF-8 bytes, one cell) and possibly the
+	// decoration glyph, so strings.Index/IndexByte (byte offsets) would overshoot
+	// the cursor's cell coordinate and never match — the same byte-vs-cell hazard
+	// menuButtons guards against. One rune == one cell here (RowText is cell-wide).
+	runes := []rune(v.Screen.RowText(v.CursorY))
 	for pos := 0; ; {
-		start := strings.Index(row[pos:], "<")
+		start := indexOfRune(runes, '<', pos)
 		if start < 0 {
 			return "", false
 		}
-		start += pos
-		end := strings.IndexByte(row[start+1:], '>')
+		end := indexOfRune(runes, '>', start+1)
 		if end < 0 {
 			return "", false
 		}
-		end += start + 1 // index just past '<'
 		// end is the index of '>' itself; the span is [start, end+1).
 		closeIdx := end + 1
 		if v.CursorX >= start && v.CursorX < closeIdx {
-			label := strings.TrimSpace(row[start+1 : end])
+			label := strings.TrimSpace(string(runes[start+1 : end]))
 			// Collapse internal runs of whitespace (defensive).
 			label = strings.Join(strings.Fields(label), " ")
 			if label != "" {
@@ -866,16 +915,28 @@ func (v *View) FocusedActionButton() (string, bool) {
 	}
 }
 
+// indexOfRune returns the index of the first occurrence of r in runes at or
+// after from, or -1. Like strings.IndexByte but over a rune slice so the
+// returned index is a cell index (one rune per cell), not a byte offset.
+func indexOfRune(runes []rune, r rune, from int) int {
+	for i := from; i < len(runes); i++ {
+		if runes[i] == r {
+			return i
+		}
+	}
+	return -1
+}
+
 // browserState enumerates the browser pane states the test distinguishes.
 const (
-	bsDisconnected = "disconnected"
-	bsRetrieving   = "retrieving"
-	bsRendered     = "rendered"
+	BSDisconnected = "disconnected"
+	BSRetrieving   = "retrieving"
+	BSRendered     = "rendered"
 	// bsError is "error:<message>"
 )
 
 // BrowserState returns the browser pane's state and the URL bar value. The
-// state is one of bsDisconnected, bsRetrieving, "error:<msg>", or bsRendered,
+// state is one of BSDisconnected, BSRetrieving, "error:<msg>", or BSRendered,
 // detected from plain-text strings (no color needed). url is the browser's
 // current URL — the node hash (path stripped) — extracted from the Go port's
 // "URL: <hash>" bar OR the Python original's border title "<hash>" / URL line
@@ -884,17 +945,17 @@ func (v *View) BrowserState() (state, url string) {
 	if v.Screen == nil {
 		return "", ""
 	}
-	full := v.Screen.fullText()
+	full := v.Screen.FullText()
 	url = v.browserURL()
 
 	switch {
 	case strings.Contains(full, "Disconnected"):
-		return bsDisconnected, url
+		return BSDisconnected, url
 	case strings.Contains(full, "Retrieving"),
 		strings.Contains(full, "Request sent, awaiting response"),
 		strings.Contains(full, "Awaiting response"),
 		strings.Contains(full, "Establishing link"):
-		return bsRetrieving, url
+		return BSRetrieving, url
 	case strings.Contains(full, "No path to destination known"),
 		strings.Contains(full, "Link establishment timed out"),
 		strings.Contains(full, "Request failed"),
@@ -905,7 +966,7 @@ func (v *View) BrowserState() (state, url string) {
 		return "error:" + firstErrorLine(full), url
 	default:
 		if url != "" {
-			return bsRendered, url
+			return BSRendered, url
 		}
 		return "", ""
 	}
@@ -916,7 +977,7 @@ func (v *View) BrowserState() (state, url string) {
 // target hash. The Go port renders a "URL: <hash>" bar; the Python original
 // renders the URL as the browser border title "<hash>" and a
 // "Ⓝ <hash>:/page/..." line. Both live in the right pane (x >=
-// networkLeftWidth), so we scan only the right pane to avoid matching the
+// NetworkLeftWidth), so we scan only the right pane to avoid matching the
 // Announce Info / Local Peer Info "<hash>" rows in the left pane.
 func (v *View) browserURL() string {
 	if v.Screen == nil {
@@ -927,7 +988,7 @@ func (v *View) browserURL() string {
 	// "Addr :"/"LXMF Addr :", never "URL:"), so a full-row scan is safe and
 	// keeps working for test fixtures that place the bar at column 0.
 	for y := 0; y < v.Screen.H; y++ {
-		t := v.Screen.rowText(y)
+		t := v.Screen.RowText(y)
 		if idx := strings.Index(t, "URL:"); idx >= 0 {
 			if fs := strings.Fields(t[idx+len("URL:"):]); len(fs) > 0 {
 				return stripURLPath(fs[0])
@@ -975,7 +1036,7 @@ func (v *View) browserURL() string {
 }
 
 // rightPaneText returns the trimmed text of the right (browser) pane of row y
-// — the cells with x >= networkLeftWidth. The browser pane is everything right
+// — the cells with x >= NetworkLeftWidth. The browser pane is everything right
 // of the fixed 52-col left list, so this isolates browser content/labels from
 // the announce list / side panels on the left.
 func (v *View) rightPaneText(y int) string {
@@ -984,7 +1045,7 @@ func (v *View) rightPaneText(y int) string {
 	}
 	row := v.Screen.Rows[y]
 	var b strings.Builder
-	for x := networkLeftWidth; x < len(row); x++ {
+	for x := NetworkLeftWidth; x < len(row); x++ {
 		ch := row[x].Ch
 		if ch == 0 {
 			ch = ' '
@@ -994,7 +1055,7 @@ func (v *View) rightPaneText(y int) string {
 	return strings.TrimRight(b.String(), " ")
 }
 
-// browserFooterLink returns the link target the browser footer currently shows
+// BrowserFooterLink returns the link target the browser footer currently shows
 // ("Link to <target>"), or "" when the cursor is not resting on a link.
 //
 // The Python browser sets its footer via LinkableText.peek_link (called from
@@ -1013,7 +1074,7 @@ func (v *View) rightPaneText(y int) string {
 // non-link line) and then C-d (Back), navigating AWAY from the main page and
 // leaving the browser mid-retrieval — the cause of the Phase-3 "Announce Info
 // opened" cascade failures (the next Down+Enter landed in the browser).
-func (v *View) browserFooterLink() string {
+func (v *View) BrowserFooterLink() string {
 	if v.Screen == nil {
 		return ""
 	}
@@ -1200,12 +1261,12 @@ func (v *View) readerLeftCol() int {
 	return -1
 }
 
-// readerPaneSig returns a signature of the Guide reader pane's visible content
+// ReaderPaneSig returns a signature of the Guide reader pane's visible content
 // (every cell at and right of the reader's left edge, for all rows). It changes
 // whenever the reader scrolls, so walkToBottom can detect each new screenful and
 // (paired with the cursor y) the bottom. The fixed top border row is included
 // but does not change, so it does not affect the signal.
-func (v *View) readerPaneSig() string {
+func (v *View) ReaderPaneSig() string {
 	if v.Screen == nil {
 		return ""
 	}
@@ -1231,10 +1292,10 @@ func (v *View) readerPaneSig() string {
 	return b.String()
 }
 
-// browserPaneSig returns a signature of the browser right pane's visible content
-// (every row's right-pane text, x >= networkLeftWidth). It changes when the
+// BrowserPaneSig returns a signature of the browser right pane's visible content
+// (every row's right-pane text, x >= NetworkLeftWidth). It changes when the
 // browser scrolls, so walkToBottom can detect each new screenful and the bottom.
-func (v *View) browserPaneSig() string {
+func (v *View) BrowserPaneSig() string {
 	if v.Screen == nil {
 		return ""
 	}
@@ -1260,7 +1321,7 @@ func (v *View) GuideSelectedTopic() (int, bool) {
 	// below it, in the left ~1/3 of the screen.
 	titleY := -1
 	for y := 0; y < v.Screen.H; y++ {
-		if hasBorderTitle(v.Screen.rowText(y), "Topics") {
+		if HasBorderTitle(v.Screen.RowText(y), "Topics") {
 			titleY = y
 			break
 		}

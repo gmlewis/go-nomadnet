@@ -1011,6 +1011,48 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		}
 		return nil
 	}
+	// Live trust resolver: the conversation widget's trust banner reads the
+	// directory's current trust on each render (Python has_visible_trust_banner
+	// calls self.app.directory.trust_level live, Conversations.py:1957-1960),
+	// instead of relying on the TrustLevel snapshot captured at
+	// DisplayConversation time — which can be stale (e.g. "" because the
+	// conversation dir didn't exist yet when the New Conversation dialog created
+	// the trusted entry, so the banner wrongly showed for a trusted peer).
+	conversationsDisplay.OnResolveTrust = func(sourceHash string) string {
+		h, ok := app.SourceHashFromHex(sourceHash)
+		if !ok {
+			return ""
+		}
+		switch a.Dir.TrustLevel(h, nil) {
+		case directory.TrustTrusted:
+			return "trusted"
+		case directory.TrustUntrusted:
+			return "untrusted"
+		case directory.TrustWarning:
+			return "warning"
+		default:
+			return "unknown"
+		}
+	}
+	// Receive → open-conversation refresh. Ingest fires OnChanged from the LXMF
+	// delivery goroutine when a message lands on disk (mirrors Python's
+	// Conversation.ingest → scan_storage → __changed_callback →
+	// ConversationWidget.conversation_changed → update_message_widgets,
+	// Conversation.py:71-80 + 271-272, Conversations.py:1896 + 2246-2252).
+	// Marshal to the UI thread, refresh the conversation LIST (so the unread
+	// badge updates — Python created_callback → update_conversation_list), then
+	// reload the OPEN conversation's message list + trust banner so an inbound
+	// message appears in the already-open view without a manual interaction.
+	// Without this the list refreshed on receive but the open body stayed "No
+	// messages yet" until the next send/interaction triggered a reload.
+	if a.ConversationCache != nil {
+		a.ConversationCache.OnChanged = func(sourceHex string) {
+			tuiApp.QueueUpdateDraw(func() {
+				refreshConvs()
+				conversationsDisplay.RefreshOpenConversation(sourceHex)
+			})
+		}
+	}
 	// Paper message hook: C-p in the open conversation's composer builds the
 	// paper (offline) LXMF message via App.PaperMessage (print_qr / save_qr /
 	// save_uri). On success the saved-path / failure dialogs are rendered by the

@@ -39,6 +39,19 @@ type ConversationCache struct {
 	unread         map[string]bool
 	failed         map[string]bool
 	attachmentPath string
+
+	// OnChanged, when set, is fired by Ingest after a message has been written
+	// to disk + the cached conversation (if any) re-scanned, carrying the hex
+	// source hash of the changed conversation. The TUI wiring layer uses it to
+	// refresh the currently-open conversation widget's message list + trust
+	// banner when an inbound (or outbound-delivery-confirmed) message lands —
+	// mirroring Python's per-conversation changed-callback chain
+	// (Conversation.ingest → scan_storage → Conversation.__changed_callback →
+	// ConversationWidget.conversation_changed → update_message_widgets,
+	// Conversation.py:71-80 + 271-272, Conversations.py:1896 + 2246-2252).
+	// Fired from the LXMF delivery goroutine; callers must marshal to the UI
+	// thread. Nil is a no-op (tests/headless use).
+	OnChanged func(sourceHex string)
 }
 
 // NewConversationCache returns an empty, ready-to-use cache.
@@ -175,6 +188,14 @@ func (cc *ConversationCache) Ingest(msg *lxmf.Message, conversationsPath string,
 		cc.mu.Lock()
 		cc.unread[sourceHex] = true
 		cc.mu.Unlock()
+	}
+
+	// Notify the UI that this conversation's on-disk content changed, so the
+	// open conversation widget can reload its message list + trust banner
+	// (mirrors Python's Conversation.ingest firing created_callback +
+	// scan_storage firing __changed_callback, Conversation.py:111-112 + 271).
+	if cc.OnChanged != nil {
+		cc.OnChanged(sourceHex)
 	}
 
 	return ingestedPath, nil

@@ -23,6 +23,7 @@
 package app
 
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -901,12 +902,38 @@ func (a *App) SetUIChangeCallback(fn func()) {
 	a.UIChangeCallback = fn
 }
 
-// ConversationList returns the list of all conversations.
+// ConversationList returns the list of all conversations, enriched with each
+// peer's display name + trust level from the directory. A conversation's name
+// and trust live only in the directory (the per-conversation dir on disk holds
+// messages, not metadata), so the displayNames/trustLevels maps passed to
+// conversation.ConversationList must be built from a.Dir — passing nil (as this
+// previously did) left every conversation showing its raw hash with unknown
+// trust, ignoring the name + trust the user set in the New Conversation / Peer
+// Info dialogs. Mirrors Python Conversations.py, which looks up name + trust
+// from self.app.directory for each conversation.
 func (a *App) ConversationList() []conversation.ConversationInfo {
 	if a.ConversationPath == "" {
 		return nil
 	}
-	return conversation.ConversationList(a.ConversationPath, nil, nil)
+	displayNames := map[string]string{}
+	trustLevels := map[string]byte{}
+	if entries, err := os.ReadDir(a.ConversationPath); err == nil {
+		for _, e := range entries {
+			if !e.IsDir() {
+				continue
+			}
+			hashHex := e.Name()
+			hashBytes, err := hex.DecodeString(hashHex)
+			if err != nil {
+				continue
+			}
+			if a.Dir != nil {
+				displayNames[hashHex] = a.Dir.DisplayName(hashBytes)
+				trustLevels[hashHex] = a.Dir.TrustLevel(hashBytes, nil)
+			}
+		}
+	}
+	return conversation.ConversationList(a.ConversationPath, displayNames, trustLevels)
 }
 
 func expandUser(path string) string {

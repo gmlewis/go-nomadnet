@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/gmlewis/go-nomadnet/utils"
 )
 
 // phases.go implements the 5-phase scripted test as a verified state machine.
@@ -16,7 +18,7 @@ import (
 
 // driver holds the test run state and shared helpers.
 type driver struct {
-	sess         *Session
+	sess         *utils.Session
 	logf         func(format string, args ...any) // timestamped line writer
 	stepDelay    time.Duration
 	announceWait time.Duration
@@ -61,23 +63,23 @@ func (d *driver) snapshot(label string) {
 }
 
 // view captures the current View, logging on error.
-func (d *driver) view() *View {
+func (d *driver) view() *utils.View {
 	v, err := d.sess.View()
 	if err != nil {
 		d.logf("  ERROR capturing view: %v", err)
-		return &View{}
+		return &utils.View{}
 	}
 	return v
 }
 
 // waitFor polls until cond(v) is true or timeout. Returns the last view + ok.
-func (d *driver) waitFor(cond func(*View) bool, timeout time.Duration) (*View, bool) {
+func (d *driver) waitFor(cond func(*utils.View) bool, timeout time.Duration) (*utils.View, bool) {
 	return d.sess.Wait(cond, timeout)
 }
 
 // assert waits up to timeout for cond(v), then logs PASS/FAIL with the observed
 // state. Never fatal. Returns whether the condition held.
-func (d *driver) assert(cond func(*View) bool, timeout time.Duration, format string, args ...any) bool {
+func (d *driver) assert(cond func(*utils.View) bool, timeout time.Duration, format string, args ...any) bool {
 	d.asserts++
 	v, ok := d.waitFor(cond, timeout)
 	msg := fmt.Sprintf(format, args...)
@@ -94,7 +96,7 @@ func (d *driver) assert(cond func(*View) bool, timeout time.Duration, format str
 }
 
 // observedState summarizes the view for failure logs.
-func observedState(v *View) string {
+func observedState(v *utils.View) string {
 	if v == nil || v.Screen == nil {
 		return "<no view>"
 	}
@@ -125,27 +127,27 @@ func (d *driver) step(msg string) {
 
 // expectsTitle is a Wait condition for an Announce Stream / Saved Nodes /
 // Announce Info / Guide border title.
-func hasTitle(title string) func(*View) bool {
-	return func(v *View) bool {
+func hasTitle(title string) func(*utils.View) bool {
+	return func(v *utils.View) bool {
 		if v.Screen == nil {
 			return false
 		}
-		return hasBorderTitle(v.Screen.fullText(), title)
+		return utils.HasBorderTitle(v.Screen.FullText(), title)
 	}
 }
 
 // menuAt is a Wait condition: the menu bar is focused (cursor on row 0) and the
 // focused button is the given index.
-func menuAt(idx int) func(*View) bool {
-	return func(v *View) bool {
+func menuAt(idx int) func(*utils.View) bool {
+	return func(v *utils.View) bool {
 		i, ok := v.MenuFocusedButton()
 		return ok && i == idx
 	}
 }
 
 // menuFocused is a Wait condition: any menu button is focused (cursor on row 0).
-func menuFocused() func(*View) bool {
-	return func(v *View) bool {
+func menuFocused() func(*utils.View) bool {
+	return func(v *utils.View) bool {
 		_, ok := v.MenuFocusedButton()
 		return ok
 	}
@@ -163,11 +165,11 @@ func menuFocused() func(*View) bool {
 func (d *driver) enterAnnounceList(maxDowns int) bool {
 	for i := 0; i < maxDowns; i++ {
 		v := d.view()
-		if v.cursorOnAnnounceNodeRow() {
+		if v.CursorOnAnnounceNodeRow() {
 			return true
 		}
 		if v.CursorOK && v.CursorY >= 0 && v.CursorY < v.Screen.H &&
-			IsAnnounceTabOrFilter(v.Screen.rowText(v.CursorY)) {
+			utils.IsAnnounceTabOrFilter(v.Screen.RowText(v.CursorY)) {
 			d.send("Down")
 			continue
 		}
@@ -175,7 +177,7 @@ func (d *driver) enterAnnounceList(maxDowns int) bool {
 		// assume focus is on the list (cursor hidden after a re-sort).
 		return true
 	}
-	return d.view().cursorOnAnnounceNodeRow()
+	return d.view().CursorOnAnnounceNodeRow()
 }
 
 // escapeToMenu moves focus from wherever it is (browser content, the announce
@@ -221,7 +223,7 @@ func (d *driver) escapeToMenu(maxSteps int) {
 		// Announce Stream list (cursor hidden at (0,0)), from which Home+Up×3
 		// reaches the menu. Handle this BEFORE the other checks, since the button
 		// row is in the LEFT pane at a small cursor_x.
-		if v.Screen != nil && hasBorderTitle(v.Screen.fullText(), "Announce Info") {
+		if v.Screen != nil && utils.HasBorderTitle(v.Screen.FullText(), "Announce Info") {
 			d.send("Escape")
 			homeSent = false
 			continue
@@ -250,7 +252,7 @@ func (d *driver) escapeToMenu(maxSteps int) {
 		// key; a LinkableText at position 0 calls micron_released_focus ->
 		// focus_lists). The node-row guard keeps the ilb's x≈135 cursor quirk
 		// (cursor on the selected Ⓝ row) from being mistaken for the browser.
-		if v.CursorOK && v.CursorX >= networkLeftWidth && !v.cursorOnAnnounceNodeRow() {
+		if v.CursorOK && v.CursorX >= utils.NetworkLeftWidth && !v.CursorOnAnnounceNodeRow() {
 			d.send("Left")
 			homeSent = false
 			continue
@@ -288,12 +290,12 @@ func (d *driver) moveMenuTo(target, cap int) bool {
 }
 
 // appStarted waits for the menu bar to appear (the "[ Conversations ]" button).
-func appStarted() func(*View) bool {
-	return func(v *View) bool {
+func appStarted() func(*utils.View) bool {
+	return func(v *utils.View) bool {
 		if v.Screen == nil || len(v.Screen.Rows) == 0 {
 			return false
 		}
-		return strings.Contains(v.Screen.rowText(0), "Conversations")
+		return strings.Contains(v.Screen.RowText(0), "Conversations")
 	}
 }
 
@@ -328,12 +330,12 @@ func (d *driver) phase1() {
 	for idx := 0; idx <= 6; idx++ {
 		if idx > 0 {
 			d.send("Right")
-			d.assert(menuAt(idx), 3*time.Second, "menu focused on index %d (%s)", idx, menuLabels[idx])
+			d.assert(menuAt(idx), 3*time.Second, "menu focused on index %d (%s)", idx, utils.MenuLabels[idx])
 		}
 		d.send("Enter")
 		// Focus stays in the menu (cursor on row 0) after Enter.
 		d.assert(menuAt(idx), 2*time.Second, "focus stayed in menu on index %d after Enter", idx)
-		d.snapshot(fmt.Sprintf("page: %s (menu %d)", menuLabels[idx], idx))
+		d.snapshot(fmt.Sprintf("page: %s (menu %d)", utils.MenuLabels[idx], idx))
 		// Soft cross-check the rendered page where a reliable title exists.
 		if key, has := pageByKey[idx]; has && key != "log" {
 			v := d.view()
@@ -356,12 +358,12 @@ func (d *driver) phase2() {
 	}
 	d.assert(menuAt(1), 3*time.Second, "menu on Network (index 1) after 5 Lefts")
 	d.send("Enter")
-	d.assert(func(v *View) bool { return v.ActivePage() == "network" }, 5*time.Second, "Network page active (Saved Nodes)")
+	d.assert(func(v *utils.View) bool { return v.ActivePage() == "network" }, 5*time.Second, "Network page active (Saved Nodes)")
 	d.snapshot("Network selected (Saved Nodes)")
 
 	// Down drops focus from the menu to the body.
 	d.send("Down")
-	d.assert(func(v *View) bool {
+	d.assert(func(v *utils.View) bool {
 		_, ok := v.MenuFocusedButton()
 		return !ok // cursor left the menu row
 	}, 3*time.Second, "focus left the menu (Down to body)")
@@ -381,7 +383,7 @@ func (d *driver) phase2() {
 	d.snapshot("after entering announce list")
 
 	d.logf("waiting up to %v for announcing nodes to populate...", d.announceWait)
-	if d.assert(func(v *View) bool { return v.HasAnnounceNode() }, d.announceWait, "announcing nodes present in the stream") {
+	if d.assert(func(v *utils.View) bool { return v.HasAnnounceNode() }, d.announceWait, "announcing nodes present in the stream") {
 		if r := d.view().SelectedAnnounceRow(); r != nil {
 			d.logf("  announcing node selected: %q at row %d", r.Text, r.Y)
 		}
@@ -429,9 +431,9 @@ func (d *driver) phase3() {
 		// 2. Enter -> Announce Info for the focused node. Focus is on the list,
 		//    so Enter opens the Announce Info even when the cursor is hidden.
 		d.send("Enter")
-		opened := d.assert(func(v *View) bool {
+		opened := d.assert(func(v *utils.View) bool {
 			_, ok := v.AnnounceInfoAddr()
-			return ok && hasBorderTitle(v.Screen.fullText(), "Announce Info")
+			return ok && utils.HasBorderTitle(v.Screen.FullText(), "Announce Info")
 		}, 6*time.Second, "Announce Info opened (attempt %d)", attempts)
 		if !opened {
 			d.logf("  no Announce Info (focus not on a node, or peer/pn entry); skipping")
@@ -479,7 +481,7 @@ func (d *driver) phase3() {
 			}
 			d.send("Right")
 		}
-		connectFocused := d.assert(func(v *View) bool {
+		connectFocused := d.assert(func(v *utils.View) bool {
 			b, ok := v.FocusedActionButton()
 			return ok && b == "Connect"
 		}, 3*time.Second, "Connect button focused (addr=%s)", targetHash)
@@ -497,20 +499,20 @@ func (d *driver) phase3() {
 		//    failure / no path / request failed / timed out). Content-based, so
 		//    it works for both ports regardless of cursor visibility.
 		d.logf("  Connect pressed (target %q); waiting for render or failure...", targetHash)
-		_, _ = d.waitFor(func(v *View) bool {
+		_, _ = d.waitFor(func(v *utils.View) bool {
 			st, url := v.BrowserState()
 			if strings.HasPrefix(st, "error:") {
 				return true
 			}
-			return st == bsRendered && targetHash != "" && url == targetHash
+			return st == utils.BSRendered && targetHash != "" && url == targetHash
 		}, d.connectWait+6*time.Second)
 		st, url := d.view().BrowserState()
 
-		if !(st == bsRendered && targetHash != "" && url == targetHash) {
+		if !(st == utils.BSRendered && targetHash != "" && url == targetHash) {
 			switch {
 			case strings.HasPrefix(st, "error:"):
 				d.logf("  connect FAILED: %s; skipping node", st)
-			case st == bsRendered:
+			case st == utils.BSRendered:
 				d.logf("  connect FAILED: rendered page url=%q != target %q (stale page?); skipping", url, targetHash)
 			default:
 				d.logf("  connect TIMEOUT after %v (state=%q); skipping node", d.connectWait+6*time.Second, st)
@@ -550,10 +552,10 @@ func (d *driver) phase3() {
 		//    list-focus behavior after Connect — R-NET-FOCUS-TRAP). Right from the
 		//    list lands in the browser (cursor hidden at (0,0); the browser is a
 		//    urwid Text/Filler with no visible cursor).
-		d.assert(func(v *View) bool {
+		d.assert(func(v *utils.View) bool {
 			// The Announce Info dialog closed and the browser is active: the
 			// Announce Info border title is gone.
-			return !hasBorderTitle(v.Screen.fullText(), "Announce Info")
+			return !utils.HasBorderTitle(v.Screen.FullText(), "Announce Info")
 		}, 3*time.Second, "Announce Info closed after Connect (browser active)")
 		d.snapshot("phase3: browser pane (before thorough walk)")
 		d.send("Right") // list -> browser (cursor at the top of the main page)
@@ -616,7 +618,7 @@ func (d *driver) phase3() {
 // page: Down scrolls each step so sigStuck only accumulates at the real
 // bottom). When the cursor IS seen we additionally require cursorStuck >= K so
 // Phase 1 focus movement (sig stable, cursor advancing) does not false-bottom.
-func (d *driver) walkToBottom(sig func(v *View) string, maxSteps int, step time.Duration, label string) int {
+func (d *driver) walkToBottom(sig func(v *utils.View) string, maxSteps int, step time.Duration, label string) int {
 	const K = 4
 	v := d.view()
 	// hardStuck is the sig-stuck fallback threshold: if the content signature
@@ -719,7 +721,7 @@ func (d *driver) examineMainPage(mainHash string, maxSteps int) {
 	if hardStuck < K+1 {
 		hardStuck = K + 1
 	}
-	prevSig := v.browserPaneSig()
+	prevSig := v.BrowserPaneSig()
 	prevCY := -1
 	sigStuck, cursorStuck := 0, 0
 	cursorEverSeen := false
@@ -733,7 +735,7 @@ func (d *driver) examineMainPage(mainHash string, maxSteps int) {
 		time.Sleep(200 * time.Millisecond)
 		curLine++
 		v = d.view()
-		s := v.browserPaneSig()
+		s := v.BrowserPaneSig()
 		if s != prevSig {
 			sigStuck = 0
 			screenfuls++
@@ -765,7 +767,7 @@ func (d *driver) examineMainPage(mainHash string, maxSteps int) {
 		// Follow a position-0 link if the cursor is resting on one (browser
 		// footer shows "Link to"). Linkless lines get no Enter — the walk just
 		// continues Down.
-		if lt := v.browserFooterLink(); lt != "" {
+		if lt := v.BrowserFooterLink(); lt != "" {
 			// Per-session visited-links cache (the user-requested non-persistent
 			// cache): never attempt the same link twice during one suite run. Many
 			// nodes link to the same shared destinations (common hubs, shared
@@ -781,21 +783,21 @@ func (d *driver) examineMainPage(mainHash string, maxSteps int) {
 			d.visitedLinks[lt] = true
 			sigBefore := s
 			d.send("Enter")
-			_, ok := d.waitFor(func(vv *View) bool {
+			_, ok := d.waitFor(func(vv *utils.View) bool {
 				st, _ := vv.BrowserState()
-				return st == bsRendered || strings.HasPrefix(st, "error:")
+				return st == utils.BSRendered || strings.HasPrefix(st, "error:")
 			}, d.connectWait)
 			if !ok {
 				d.logf("  link line %d (%q): no render/error within %v; back to main", curLine, lt, d.connectWait)
 				// Only navigate back if Enter actually left the main page (sig
 				// changed). A no-op Enter on a non-link line leaves sig unchanged,
 				// so C-d would needlessly navigate AWAY from the main page.
-				if d.view().browserPaneSig() != sigBefore {
+				if d.view().BrowserPaneSig() != sigBefore {
 					d.send("C-d")
 					d.settleMain(mainHash)
 					d.jogKeys(curLine, "Down")
 				}
-				prevSig = d.view().browserPaneSig()
+				prevSig = d.view().BrowserPaneSig()
 				continue
 			}
 			lv := d.view()
@@ -803,15 +805,15 @@ func (d *driver) examineMainPage(mainHash string, maxSteps int) {
 			if strings.HasPrefix(st, "error:") {
 				d.logf("  link line %d (%q): error %q; back to main", curLine, lt, st)
 				d.snapshot(fmt.Sprintf("phase3: link line %d error", curLine))
-				if lv.browserPaneSig() != sigBefore {
+				if lv.BrowserPaneSig() != sigBefore {
 					d.send("C-d")
 					d.settleMain(mainHash)
 					d.jogKeys(curLine, "Down")
 				}
-				prevSig = d.view().browserPaneSig()
+				prevSig = d.view().BrowserPaneSig()
 				continue
 			}
-			sigAfter := lv.browserPaneSig()
+			sigAfter := lv.BrowserPaneSig()
 			// Only count + return if Enter actually navigated (sig changed). A
 			// false-positive footer (e.g. body text "Link to ") leaves sig
 			// unchanged — Enter was a no-op, so we must NOT C-d back (that would
@@ -830,7 +832,7 @@ func (d *driver) examineMainPage(mainHash string, maxSteps int) {
 				d.settleMain(mainHash)
 				d.jogKeys(curLine, "Down")
 			}
-			prevSig = d.view().browserPaneSig()
+			prevSig = d.view().BrowserPaneSig()
 		}
 	}
 	d.logf("  examined main page: %d downs, %d screenfuls, %d distinct links followed (%d links in session cache)",
@@ -852,9 +854,9 @@ func (d *driver) examineMainPage(mainHash string, maxSteps int) {
 // settleMain waits for the main page to come back after a Back (C-d), confirmed
 // by the browser URL bar showing the main page hash again.
 func (d *driver) settleMain(mainHash string) {
-	d.waitFor(func(v *View) bool {
+	d.waitFor(func(v *utils.View) bool {
 		st, url := v.BrowserState()
-		return st == bsRendered && mainHash != "" && url == mainHash
+		return st == utils.BSRendered && mainHash != "" && url == mainHash
 	}, d.connectWait)
 }
 
@@ -922,11 +924,11 @@ func (d *driver) phase4() {
 	d.moveMenuTo(6, 8)
 	d.assert(menuAt(6), 3*time.Second, "menu on Guide (index 6)")
 	d.send("Enter")
-	d.assert(func(v *View) bool { return v.ActivePage() == "guide" }, 5*time.Second, "Guide page active (Topics title present)")
+	d.assert(func(v *utils.View) bool { return v.ActivePage() == "guide" }, 5*time.Second, "Guide page active (Topics title present)")
 	d.snapshot("Guide selected")
 	d.send("Down")
-	d.assert(func(v *View) bool {
-		return hasBorderTitle(v.Screen.fullText(), "Topics")
+	d.assert(func(v *utils.View) bool {
+		return utils.HasBorderTitle(v.Screen.FullText(), "Topics")
 	}, 3*time.Second, "Guide topic list visible (Topics box)")
 	d.snapshot("Guide topic list (item 0, Introduction)")
 
@@ -989,7 +991,7 @@ func (d *driver) phase4() {
 		// by far. walkToBottom bottoms out at (page length) + H downs in the
 		// worst case (the sig-stuck fallback fires H downs after the last
 		// scroll), so the cap must clear ~490 + H with margin.
-		d.walkToBottom(func(v *View) string { return v.readerPaneSig() },
+		d.walkToBottom(func(v *utils.View) string { return v.ReaderPaneSig() },
 			700, 120*time.Millisecond, fmt.Sprintf("guide topic %d reader", topic))
 		// Release focus back to the Topics list: Left moves reader->topics in
 		// the urwid Columns (the vertical Scrollable does not consume Left).

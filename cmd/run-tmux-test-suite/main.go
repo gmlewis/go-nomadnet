@@ -43,6 +43,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gmlewis/go-nomadnet/utils"
 	"golang.org/x/term"
 )
 
@@ -177,7 +178,7 @@ func run(args []string) error {
 	// 135x32 (the size the app is tuned for) for reproducibility.
 	w, h := 135, 32
 	if cfg.size != "" {
-		if ww, hh, ok := parseSize(cfg.size); ok {
+		if ww, hh, ok := utils.ParseSize(cfg.size); ok {
 			w, h = ww, hh
 		} else {
 			return fmt.Errorf("invalid --size %q (want WxH)", cfg.size)
@@ -234,7 +235,7 @@ func run(args []string) error {
 	// tcell truecolor is robust regardless of $TERM.
 	_ = os.Setenv("COLORTERM", "truecolor")
 
-	sess, err := NewSession(sessionName, repo, launchCmd, w, h)
+	sess, err := utils.NewSession(sessionName, repo, launchCmd, w, h)
 	if err != nil {
 		return fmt.Errorf("FATAL: %w", err)
 	}
@@ -333,13 +334,15 @@ func openLog(path string) (func(string, ...any), func(), error) {
 func resolveConfig(cfg *config) (dir, temp string, err error) {
 	switch {
 	case cfg.fresh:
-		temp, err = os.MkdirTemp("", "gonet-fresh-XXXXXX")
+		// Use /tmp explicitly, not os.MkdirTemp("") which resolves to $TMPDIR
+		// (a per-user /var/folders path on macOS) — kept dirs must live in /tmp.
+		temp, err = os.MkdirTemp("/tmp", "gonet-fresh-XXXXXX")
 		if err != nil {
 			return "", "", err
 		}
 		return temp, temp, nil
 	case cfg.copyConfig:
-		temp, err = os.MkdirTemp("", "gonet-copy-XXXXXX")
+		temp, err = os.MkdirTemp("/tmp", "gonet-copy-XXXXXX")
 		if err != nil {
 			return "", "", err
 		}
@@ -389,38 +392,10 @@ func terminalSize() (w, h int, ok bool) {
 		out, err := cmd.Output()
 		_ = f.Close()
 		if err == nil {
-			if ww, hh, ok2 := parseSize(strings.TrimSpace(string(out))); ok2 {
+			if ww, hh, ok2 := utils.ParseSize(strings.TrimSpace(string(out))); ok2 {
 				return ww, hh, ok2
 			}
 		}
-	}
-	return 0, 0, false
-}
-
-// parseSize parses "WxH" (or "H W" from stty size).
-func parseSize(s string) (w, h int, ok bool) {
-	s = strings.TrimSpace(s)
-	if strings.Contains(s, "x") {
-		parts := strings.SplitN(s, "x", 2)
-		if len(parts) != 2 {
-			return 0, 0, false
-		}
-		ww, err1 := strconv.Atoi(strings.TrimSpace(parts[0]))
-		hh, err2 := strconv.Atoi(strings.TrimSpace(parts[1]))
-		if err1 != nil || err2 != nil || ww <= 0 || hh <= 0 {
-			return 0, 0, false
-		}
-		return ww, hh, true
-	}
-	// stty size: "rows cols".
-	parts := strings.Fields(s)
-	if len(parts) == 2 {
-		hh, err1 := strconv.Atoi(parts[0])
-		ww, err2 := strconv.Atoi(parts[1])
-		if err1 != nil || err2 != nil || ww <= 0 || hh <= 0 {
-			return 0, 0, false
-		}
-		return ww, hh, true
 	}
 	return 0, 0, false
 }

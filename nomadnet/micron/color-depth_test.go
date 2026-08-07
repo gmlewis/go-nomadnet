@@ -20,7 +20,7 @@ import "testing"
 // Expected values captured from Python MicronParser.make_style's
 // low_color/high_color/mono_color helpers (MicronParser.py:442-591),
 // extracted and run in /tmp/micron_color.py against the upstream source at
-// /Users/glenn/src/github.com/markqvist/nomadnet/nomadnet/ui/textui/MicronParser.py.
+// ${HOME}/src/github.com/markqvist/nomadnet/nomadnet/ui/textui/MicronParser.py.
 
 func TestLowColor(t *testing.T) {
 	t.Parallel()

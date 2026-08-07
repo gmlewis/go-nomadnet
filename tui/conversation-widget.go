@@ -86,6 +86,17 @@ type ConversationWidget struct {
 	OnTrust  func()
 	OnBlock  func()
 	OnIgnore func()
+	// OnResolveTrust, when set, returns the peer's CURRENT trust level string
+	// ("trusted"/"untrusted"/"unknown"/"warning") read live from the directory
+	// by the wiring layer. hasVisibleTrustBanner consults it so the banner
+	// reflects the directory's actual trust — not the TrustLevel snapshot
+	// captured at DisplayConversation time, which can be stale (e.g. the
+	// conversation dir didn't exist yet when the New Conversation dialog
+	// created the entry, so the snapshot was ""). This mirrors Python's
+	// has_visible_trust_banner reading self.app.directory.trust_level(...)
+	// fresh on each render (Conversations.py:1957-1960). Nil falls back to the
+	// cached TrustLevel.
+	OnResolveTrust func(sourceHex string) string
 
 	// Dialog state
 	dialogOpen bool
@@ -287,11 +298,36 @@ func (cw *ConversationWidget) handleInput(event *tcell.EventKey) *tcell.EventKey
 		}
 		return nil
 	case tcell.KeyTab:
-		// Toggle focus between editor and message list
-		return event
+		// Tab toggles focus between the editor (footer) and the message list
+		// (body), matching Python ConversationWidget.keypress "tab" →
+		// toggle_focus_area (Conversations.py:2219-2221 + 2206-2216). Tab is
+		// CONSUMED (returns nil) so tview's default Flex focus traversal does NOT
+		// run — otherwise Tab would cycle through the header (peer-info bar /
+		// trust banner) too, never cleanly landing on the body, and the
+		// "[Tab] ↑ Messages" / "[Tab] ↓ Editor" shortcut-bar claim would be a lie.
+		cw.toggleFocusArea()
+		return nil
 	}
 
 	return event
+}
+
+// toggleFocusArea swaps focus between the composer (editor, frame footer) and
+// the message list (body), matching Python's toggle_focus_area
+// (Conversations.py:2206-2216): focused on the message list → focus the editor;
+// focused on the editor → focus the message list. No-op when focus is elsewhere
+// (e.g. on the trust banner) so Tab from the banner does not jump to the body.
+func (cw *ConversationWidget) toggleFocusArea() {
+	if cw.app == nil {
+		return
+	}
+	focused := cw.app.GetFocus()
+	switch focused {
+	case cw.messageList:
+		cw.app.SetFocus(cw.editor)
+	case cw.editor, cw.titleEditor:
+		cw.app.SetFocus(cw.messageList)
+	}
 }
 
 // toggleEditor switches between minimal and full editor modes.
@@ -412,13 +448,22 @@ func (cw *ConversationWidget) updatePeerInfo() {
 }
 
 // hasVisibleTrustBanner reports whether the trust banner should show,
-// mirroring Python's has_visible_trust_banner (Conversations.py:1953-1960):
-// false when dismissed or when the peer is trusted.
+// mirroring Python's has_visible_trust_banner (Conversations.py:1953-1960),
+// which reads the directory trust level fresh each render. We prefer the live
+// OnResolveTrust lookup (so a peer trusted via the New Conversation / Peer Info
+// dialog is reflected immediately, even before the conversation list catches
+// up) and fall back to the cached TrustLevel snapshot when no resolver is wired.
 func (cw *ConversationWidget) hasVisibleTrustBanner() bool {
 	if cw.trustBannerDismissed {
 		return false
 	}
-	return cw.TrustLevel != "trusted"
+	level := cw.TrustLevel
+	if cw.OnResolveTrust != nil {
+		if resolved := cw.OnResolveTrust(cw.source); resolved != "" {
+			level = resolved
+		}
+	}
+	return level != "trusted"
 }
 
 // refreshTrustBanner shows or hides the trust banner in the header pile,
