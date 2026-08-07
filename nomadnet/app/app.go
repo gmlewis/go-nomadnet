@@ -543,11 +543,12 @@ func (a *App) InitWithTransport(ts *rns.TransportSystem, identity *rns.Identity)
 		ReceivedAnnounceWithContext: a.handleRRCAnnounce,
 	})
 
-	// Start the hosted node when enable_node is set (mirrors initRNS).
-	if err := a.startNode(); err != nil {
-		return fmt.Errorf("starting node: %w", err)
-	}
-
+	// NOTE: unlike initRNS (the production path), this test harness does NOT
+	// auto-start the hosted node. config.Load returns DefaultConfig — which has
+	// enable_node = Yes (matching Python) — when no config file exists, so
+	// auto-starting here would create a node from an unintended default before
+	// the test gets a chance to configure EnableNode/NodeName. Every test that
+	// needs a hosted node calls startNode explicitly with its own settings.
 	return nil
 }
 

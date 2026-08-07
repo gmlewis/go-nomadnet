@@ -141,13 +141,21 @@ func (lp *LocalPeerDisplay) SetLastAnnounce(t time.Time) {
 	lp.announce.SetText(lp.announceLine(t))
 }
 
-// SetData fills all four data fields at once: the LXMF address and identity
-// hash (prettyhexrep-formatted "<hex>"), the display name (loaded into the
-// name edit), and the last-announce time.
+// SetData fills the read-only Local Peer Info fields: the LXMF address and
+// identity hash (prettyhexrep-formatted "<hex>") and the last-announce time.
+// It also re-seeds the name edit with the given display name — but only when
+// the field is NOT focused, so an in-progress edit is never clobbered by a
+// UIChangeCallback refresh (incoming announces/messages fire
+// UIChangeCallback, which calls SetData; without this guard every inbound
+// event would overwrite the user's typing and jump the cursor to the end).
+// This mirrors Python's LocalPeer, which never re-sets e_name.edit_text after
+// construction (Network.py:1271).
 func (lp *LocalPeerDisplay) SetData(lxmfAddr, identityHash, name string, lastAnnounce time.Time) {
 	lp.lxmfAddr.SetText("LXMF Addr : " + lxmfAddr)
 	lp.identity.SetText("Identity  : " + identityHash)
-	lp.nameEdit.SetText(name)
+	if !lp.nameEdit.HasFocus() {
+		lp.nameEdit.SetText(name)
+	}
 	lp.announce.SetText(lp.announceLine(lastAnnounce))
 }
 

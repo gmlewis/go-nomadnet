@@ -27,7 +27,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gmlewis/go-nomadnet/nomadnet/node"
 	"github.com/gmlewis/go-reticulum/rns"
 	"github.com/gmlewis/go-reticulum/rns/interfaces"
 	"github.com/gmlewis/go-reticulum/testutils"
@@ -141,14 +140,15 @@ time.sleep(1)
 //
 // The Go node hosts a "nomadnetwork.node" destination (node.go:129) and
 // registers an RNS request handler at /page/index.mu returning the raw .mu
-// source bytes — here the DefaultIndex Micron string (served when no index.mu
-// exists in the pages directory, node.go:246-248). The Python client establishes
-// an RNS Link to the node and calls link.request("/page/index.mu"), the same
-// call Python's own Browser makes (Browser.py:1436). The received bytes must
-// equal node.DefaultIndex, which the unit test TestServeDefaultIndexPythonParity
-// pins to Python's Node.DEFAULT_INDEX (testdata/py_default_index.mu) — so this
-// test pins both the cross-process wire path AND the byte parity across the
-// Go↔Python RNS link.
+// source bytes. startNode → ensureDefaultPages seeds the pages directory with a
+// default index.mu containing defaultIndexContent (the gonomadnet mascot page),
+// so /page/index.mu serves that file. The Python client establishes an RNS Link
+// to the node and calls link.request("/page/index.mu"), the same call Python's
+// own Browser makes (Browser.py:1436). The received bytes must equal
+// defaultIndexContent — pinning the cross-process wire path (request/response
+// across the Go↔Python TCP RNS link). The placeholder default-index parity
+// (node.DefaultIndex == Python DEFAULT_INDEX) is pinned separately by
+// nomadnet/node.TestServeDefaultIndexPythonParity.
 func TestIntegrationNodeServesMicronToPython(t *testing.T) {
 	testutils.SkipShortIntegration(t)
 	pyPath := findLXMFPython(t)
@@ -226,11 +226,12 @@ func TestIntegrationNodeServesMicronToPython(t *testing.T) {
 		t.Fatal("appGo.Node is nil after startNode")
 	}
 
-	// The node's pages directory is empty (fresh storage) → /page/index.mu
-	// serves DefaultIndex. Ensure no index.mu lingers from a prior run.
-	if appGo.PagesPath != "" {
-		_ = os.Remove(filepath.Join(appGo.PagesPath, "index.mu"))
-	}
+	// startNode → ensureDefaultPages seeds the pages directory with a default
+	// index.mu containing defaultIndexContent (the gonomadnet mascot page), so
+	// /page/index.mu is served from that file. (When no index.mu exists at all,
+	// defaultIndexHandler serves node.DefaultIndex — the placeholder pinned to
+	// Python's DEFAULT_INDEX by nomadnet/node.TestServeDefaultIndexPythonParity.
+	// Here the seeded mascot file is what the cross-process link must deliver.)
 
 	// Publish the Go nomadnetwork.node destination hash so Python can recall it.
 	nodeHash := rns.CalculateHash(appGo.Identity, "nomadnetwork", "node")
@@ -262,19 +263,14 @@ func TestIntegrationNodeServesMicronToPython(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decode RECV_HEX: %v", err)
 	}
-	if string(recvBytes) != node.DefaultIndex {
-		t.Errorf("received page bytes (len %v) != node.DefaultIndex (len %v).\nreceived:\n%v\nwant:\n%v",
-			strings.TrimSpace(recvLen), len(node.DefaultIndex), recvBytes, node.DefaultIndex)
+	if string(recvBytes) != defaultIndexContent {
+		t.Errorf("received page bytes (len %v) != defaultIndexContent (len %v).\nreceived:\n%v\nwant:\n%v",
+			strings.TrimSpace(recvLen), len(defaultIndexContent), recvBytes, defaultIndexContent)
 	}
-	// DefaultIndex == Python DEFAULT_INDEX is pinned by
-	// nomadnet/node.TestServeDefaultIndexPythonParity (testdata/py_default_index.mu);
-	// re-asserting it here keeps the cross-process test self-contained. `go
-	// test` runs with the package dir as cwd (nomadnet/app).
-	pyDefault, err := os.ReadFile(filepath.Join("..", "node", "testdata", "py_default_index.mu"))
-	if err != nil {
-		t.Fatalf("read py_default_index.mu: %v", err)
-	}
-	if string(recvBytes) != string(pyDefault) {
-		t.Errorf("received page bytes != Python DEFAULT_INDEX (testdata/py_default_index.mu)")
-	}
+	// node.DefaultIndex (the placeholder served when no index.mu exists at all)
+	// == Python DEFAULT_INDEX is pinned separately by
+	// nomadnet/node.TestServeDefaultIndexPythonParity (testdata/py_default_index.mu).
+	// This cross-process test pins the wire path: the bytes the Go node actually
+	// serves (the ensureDefaultPages mascot file) arrive byte-identical over the
+	// Go↔Python TCP RNS link.
 }
