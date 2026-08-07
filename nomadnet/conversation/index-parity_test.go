@@ -23,6 +23,8 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+
+	rnsmsgpack "github.com/gmlewis/go-reticulum/rns/msgpack"
 )
 
 //go:embed testdata/index_py.bin
@@ -49,14 +51,14 @@ func TestReadIndexPythonCompat(t *testing.T) {
 		t.Fatalf("index entry count = %v, want %v", len(got), len(want))
 	}
 	for fn, wantEntry := range want {
-		gotEntry, ok := got[fn]
+		gotEntry, ok := got.Get(fn)
 		if !ok {
 			t.Errorf("missing entry %q", fn)
 			continue
 		}
-		gotMap, ok := gotEntry.(map[string]any)
+		gotMap, ok := gotEntry.(rnsmsgpack.OrderedMap)
 		if !ok {
-			t.Errorf("entry %q: not a map, got %T", fn, gotEntry)
+			t.Errorf("entry %q: not an OrderedMap, got %T", fn, gotEntry)
 			continue
 		}
 		if !reflect.DeepEqual(normEntry(gotMap), normWantEntry(wantEntry)) {
@@ -80,10 +82,10 @@ func loadPyIndexJSON(t *testing.T) map[string]map[string]any {
 
 // normEntry normalizes a Go-msgpack-parsed entry so numbers from msgpack (which
 // may decode as int/int64/uint64/float64) collapse to float64 for comparison.
-func normEntry(m map[string]any) map[string]any {
+func normEntry(m rnsmsgpack.OrderedMap) map[string]any {
 	out := make(map[string]any, len(m))
-	for k, v := range m {
-		out[k] = normValue(v)
+	for _, e := range m {
+		out[e.Key.(string)] = normValue(e.Value)
 	}
 	return out
 }
@@ -151,6 +153,14 @@ func normValue(v any) any {
 		out := make(map[string]any, len(x))
 		for k, e := range x {
 			out[k] = normValue(e)
+		}
+		return out
+	case rnsmsgpack.OrderedMap:
+		out := make(map[string]any, len(x))
+		for _, e := range x {
+			if ks, ok := e.Key.(string); ok {
+				out[ks] = normValue(e.Value)
+			}
 		}
 		return out
 	}

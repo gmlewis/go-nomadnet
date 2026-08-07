@@ -22,7 +22,7 @@ import (
 	"regexp"
 
 	"github.com/gmlewis/go-reticulum/lxmf"
-	"github.com/vmihailenco/msgpack/v5"
+	rnsmsgpack "github.com/gmlewis/go-reticulum/rns/msgpack"
 )
 
 var storedNameRE = regexp.MustCompile(`^file_\d+$`)
@@ -50,20 +50,24 @@ func (m *Message) attachmentDir() string {
 // attachment directory, mirroring the Python NomadNet _read_attachment_manifest.
 // Names are sanitized and stored names are validated against the file_N form.
 // It returns nil when the manifest is absent or invalid.
-func (m *Message) readAttachmentManifest(attDir string) map[string]any {
+func (m *Message) readAttachmentManifest(attDir string) map[any]any {
 	manifestPath := filepath.Join(attDir, "manifest")
 	data, err := os.ReadFile(manifestPath)
 	if err != nil {
 		return nil
 	}
-	var manifest map[string]any
-	if err := msgpack.Unmarshal(data, &manifest); err != nil {
+	raw, err := rnsmsgpack.Unpack(data)
+	if err != nil {
+		return nil
+	}
+	manifest, ok := raw.(map[any]any)
+	if !ok {
 		return nil
 	}
 	rawFiles, _ := manifest["files"].([]any)
 	safeFiles := make([]any, 0, len(rawFiles))
 	for idx, entry := range rawFiles {
-		e, ok := entry.(map[string]any)
+		e, ok := entry.(map[any]any)
 		if !ok {
 			continue
 		}
@@ -157,7 +161,7 @@ func (m *Message) GetAttachmentFilePath(fieldType string, fieldIndex int) string
 		manifest := m.readAttachmentManifest(attDir)
 		if manifest != nil {
 			if files, ok := manifest["files"].([]any); ok && fieldIndex < len(files) {
-				if entry, ok := files[fieldIndex].(map[string]any); ok {
+				if entry, ok := files[fieldIndex].(map[any]any); ok {
 					if stored, ok := entry["stored_name"].(string); ok {
 						return filepath.Join(attDir, stored)
 					}
@@ -208,12 +212,7 @@ func ExtractAttachmentsFromLXM(lxm *lxmf.Message, attachmentPath string) error {
 		return err
 	}
 
-	type manifestEntry struct {
-		Name       string `msgpack:"name"`
-		StoredName string `msgpack:"stored_name"`
-		Size       int    `msgpack:"size"`
-	}
-	var entries []manifestEntry
+	var entries []any
 
 	if fv, ok := fieldLookup(fields, lxmf.FieldFileAttachments); ok {
 		fileAtts, _ := fv.([]any)
@@ -228,7 +227,7 @@ func ExtractAttachmentsFromLXM(lxm *lxmf.Message, attachmentPath string) error {
 			if err := os.WriteFile(filepath.Join(attDir, stored), data, 0o644); err != nil {
 				return err
 			}
-			entries = append(entries, manifestEntry{Name: name, StoredName: stored, Size: len(data)})
+			entries = append(entries, attachmentManifestEntry(name, stored, len(data)))
 		}
 	}
 
@@ -241,7 +240,7 @@ func ExtractAttachmentsFromLXM(lxm *lxmf.Message, attachmentPath string) error {
 			if err := os.WriteFile(filepath.Join(attDir, stored), data, 0o644); err != nil {
 				return err
 			}
-			entries = append(entries, manifestEntry{Name: name, StoredName: stored, Size: len(data)})
+			entries = append(entries, attachmentManifestEntry(name, stored, len(data)))
 		}
 	}
 
@@ -254,16 +253,32 @@ func ExtractAttachmentsFromLXM(lxm *lxmf.Message, attachmentPath string) error {
 			if err := os.WriteFile(filepath.Join(attDir, stored), data, 0o644); err != nil {
 				return err
 			}
-			entries = append(entries, manifestEntry{Name: name, StoredName: stored, Size: len(data)})
+			entries = append(entries, attachmentManifestEntry(name, stored, len(data)))
 		}
 	}
 
-	manifest := map[string]any{"files": entries}
-	manifestData, err := msgpack.Marshal(manifest)
+	// The manifest is an insertion-ordered map {"files": [...]} (mirroring
+	// Python's manifest = {"files": []} ... msgpack.packb(manifest)); each file
+	// entry is itself an OrderedMap keyed name, stored_name, size in that
+	// order. size is widened to uint so its msgpack encoding matches Python's
+	// unsigned encoding for non-negative values (a Go int would pack sizes
+	// above 0x7f as signed int16/int32 and diverge).
+	manifest := rnsmsgpack.OrderedMap{{Key: "files", Value: entries}}
+	manifestData, err := rnsmsgpack.Pack(manifest)
 	if err != nil {
 		return err
 	}
 	return os.WriteFile(filepath.Join(attDir, "manifest"), manifestData, 0o644)
+}
+
+// attachmentManifestEntry builds one manifest file entry as an OrderedMap keyed
+// in Python's insertion order (name, stored_name, size), with size as uint.
+func attachmentManifestEntry(name, storedName string, size int) rnsmsgpack.OrderedMap {
+	return rnsmsgpack.OrderedMap{
+		{Key: "name", Value: name},
+		{Key: "stored_name", Value: storedName},
+		{Key: "size", Value: uint(size)},
+	}
 }
 
 // fieldLookup looks up a field key in a parsed LXMF fields map, tolerating the

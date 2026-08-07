@@ -69,7 +69,7 @@ gonomadnet --version
 |------|-------|-------------|
 | `--config` | | Path to alternative NomadNet config directory |
 | `--rnsconfig` | | Path to alternative Reticulum config directory |
-| `--textui` | `-t` | Run in text-UI mode |
+| `--textui` | `-t` | Run in text-UI mode (the default) |
 | `--daemon` | `-d` | Run in daemon mode (no UI) |
 | `--console` | `-c` | In daemon mode, log to console instead of file |
 | `--version` | | Show version and exit |
@@ -210,7 +210,6 @@ go-nomadnet/
 - `github.com/rivo/tview` — Terminal UI framework
 - `github.com/gdamore/tcell/v2` — Terminal cell library
 - `github.com/fxamacker/cbor/v2` — CBOR codec
-- `github.com/vmihailenco/msgpack/v5` — Msgpack codec
 
 ## Status
 

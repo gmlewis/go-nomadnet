@@ -24,7 +24,7 @@ import (
 
 	"github.com/gmlewis/go-reticulum/lxmf"
 	"github.com/gmlewis/go-reticulum/rns"
-	"github.com/vmihailenco/msgpack/v5"
+	rnsmsgpack "github.com/gmlewis/go-reticulum/rns/msgpack"
 )
 
 // MessageState represents the delivery state of a message.
@@ -451,8 +451,16 @@ func (m *Message) computeAttachmentCache() {
 	}
 }
 
-// ToIndexEntry serializes the message metadata for the index file.
-func (m *Message) ToIndexEntry() map[string]any {
+// ToIndexEntry serializes the message metadata for the index file. It returns an
+// OrderedMap keyed in Python NomadNet's to_index_entry declaration order
+// (timestamp, sort_timestamp, state, ...) so the on-disk msgpack is
+// byte-identical to Python's insertion-ordered dict serialization — a plain Go
+// map would randomize the key order. Integer fields (state, method, and the
+// per-attachment size) are widened to uint so their msgpack encoding matches
+// Python's unsigned encoding for non-negative values (a Go int packs values
+// above 0x7f as signed int16/int32, e.g. a 1024-byte attachment size would
+// become 0xd1 0x04 0x00 instead of Python's uint16 0xcd 0x04 0x00).
+func (m *Message) ToIndexEntry() rnsmsgpack.OrderedMap {
 	var ts any
 	if m.Timestamp != nil {
 		ts = *m.Timestamp
@@ -460,7 +468,7 @@ func (m *Message) ToIndexEntry() map[string]any {
 
 	var state any
 	if m.CachedState != nil {
-		state = int(*m.CachedState)
+		state = uint(*m.CachedState)
 	}
 
 	var sigValid any
@@ -473,109 +481,135 @@ func (m *Message) ToIndexEntry() map[string]any {
 		renderer = m.Renderer
 	}
 
-	attNames := make([]any, 0, len(m.CachedAttachmentNames))
-	for _, a := range m.CachedAttachmentNames {
-		attNames = append(attNames, []any{a.Type, a.Name, a.Size})
+	// source_hash is a []byte; a nil slice must serialize as msgpack nil (0xc0)
+	// to match Python's None, not as an empty bin (0xc4 0x00) which is what a
+	// typed nil []byte encodes to. Wrap it in an any so an absent hash stays an
+	// untyped nil.
+	var sourceHash any
+	if m.CachedSourceHash != nil {
+		sourceHash = m.CachedSourceHash
 	}
 
-	return map[string]any{
-		"timestamp":            ts,
-		"sort_timestamp":       m.SortTimestamp,
-		"state":                state,
-		"title":                m.CachedTitle,
-		"content":              m.CachedContent,
-		"source_hash":          m.CachedSourceHash,
-		"transport_encrypted":  m.CachedTransportEncrypted,
-		"transport_encryption": m.CachedTransportEncryption,
-		"signature_validated":  sigValid,
-		"unverified_reason":    m.CachedUnverifiedReason,
-		"method":               m.CachedMethod,
-		"renderer":             renderer,
-		"has_attachments":      m.CachedHasAttachments,
-		"attachment_names":     attNames,
+	attNames := make([]any, 0, len(m.CachedAttachmentNames))
+	for _, a := range m.CachedAttachmentNames {
+		attNames = append(attNames, []any{a.Type, a.Name, uint(a.Size)})
+	}
+
+	return rnsmsgpack.OrderedMap{
+		{Key: "timestamp", Value: ts},
+		{Key: "sort_timestamp", Value: m.SortTimestamp},
+		{Key: "state", Value: state},
+		{Key: "title", Value: m.CachedTitle},
+		{Key: "content", Value: m.CachedContent},
+		{Key: "source_hash", Value: sourceHash},
+		{Key: "transport_encrypted", Value: m.CachedTransportEncrypted},
+		{Key: "transport_encryption", Value: m.CachedTransportEncryption},
+		{Key: "signature_validated", Value: sigValid},
+		{Key: "unverified_reason", Value: m.CachedUnverifiedReason},
+		{Key: "method", Value: uint(m.CachedMethod)},
+		{Key: "renderer", Value: renderer},
+		{Key: "has_attachments", Value: m.CachedHasAttachments},
+		{Key: "attachment_names", Value: attNames},
 	}
 }
 
-// RestoreFromIndex populates cached fields from an index entry.
-func (m *Message) RestoreFromIndex(entry map[string]any) {
-	if v, ok := entry["timestamp"]; ok && v != nil {
+// RestoreFromIndex populates cached fields from an index entry. The entry is
+// the OrderedMap produced by the order-preserving Unpack variant, so fields
+// are read by name via Get rather than by Go map indexing.
+func (m *Message) RestoreFromIndex(entry rnsmsgpack.OrderedMap) {
+	if v, ok := entry.Get("timestamp"); ok && v != nil {
 		if f, ok := v.(float64); ok {
 			m.Timestamp = &f
 		}
 	}
-	if v, ok := entry["sort_timestamp"]; ok {
+	if v, ok := entry.Get("sort_timestamp"); ok {
 		if f, ok := v.(float64); ok {
 			m.SortTimestamp = f
 		}
 	}
-	if v, ok := entry["state"]; ok && v != nil {
+	if v, ok := entry.Get("state"); ok && v != nil {
 		if i, ok := toInt(v); ok {
 			s := MessageState(i)
 			m.CachedState = &s
 		}
 	}
-	if v, ok := entry["title"]; ok {
+	if v, ok := entry.Get("title"); ok {
 		m.CachedTitle, _ = v.(string)
 	}
-	if v, ok := entry["content"]; ok {
+	if v, ok := entry.Get("content"); ok {
 		m.CachedContent, _ = v.(string)
 	}
-	if v, ok := entry["source_hash"]; ok {
+	if v, ok := entry.Get("source_hash"); ok {
 		if b, ok := v.([]byte); ok {
 			m.CachedSourceHash = b
 		}
 	}
-	if v, ok := entry["transport_encrypted"]; ok {
+	if v, ok := entry.Get("transport_encrypted"); ok {
 		m.CachedTransportEncrypted, _ = v.(bool)
 	}
-	if v, ok := entry["transport_encryption"]; ok {
+	if v, ok := entry.Get("transport_encryption"); ok {
 		m.CachedTransportEncryption, _ = v.(string)
 	}
-	if v, ok := entry["signature_validated"]; ok && v != nil {
+	if v, ok := entry.Get("signature_validated"); ok && v != nil {
 		if b, ok := v.(bool); ok {
 			m.CachedSignatureValidated = &b
 		}
 	}
-	m.CachedUnverifiedReason = entry["unverified_reason"]
-	if v, ok := entry["method"]; ok {
+	if v, ok := entry.Get("unverified_reason"); ok {
+		m.CachedUnverifiedReason = v
+	}
+	if v, ok := entry.Get("method"); ok {
 		m.CachedMethod, _ = toInt(v)
 	}
-	if v, ok := entry["has_attachments"]; ok {
+	if v, ok := entry.Get("has_attachments"); ok {
 		m.CachedHasAttachments, _ = v.(bool)
 	}
 }
 
-// ReadIndex reads the message index from a conversation directory.
-func ReadIndex(conversationPath string) map[string]any {
+// ReadIndex reads the message index from a conversation directory. It returns
+// an OrderedMap (keyed by message filename) preserving the file's insertion
+// order, mirroring Python NomadNet's read_index which returns the
+// insertion-ordered dict from msgpack.unpackb. Nested per-message entries are
+// also OrderedMap. An empty OrderedMap is returned when the index is absent or
+// unreadable so callers can use Get uniformly.
+func ReadIndex(conversationPath string) rnsmsgpack.OrderedMap {
 	indexPath := filepath.Join(conversationPath, ".index")
 	data, err := os.ReadFile(indexPath)
 	if err != nil {
-		return make(map[string]any)
+		return rnsmsgpack.OrderedMap{}
 	}
 
-	var index map[string]any
-	if err := msgpack.Unmarshal(data, &index); err != nil {
-		return make(map[string]any)
+	raw, err := rnsmsgpack.UnpackPreserveBinMapKeyOrder(data)
+	if err != nil {
+		return rnsmsgpack.OrderedMap{}
 	}
-	return index
+	om, ok := raw.(rnsmsgpack.OrderedMap)
+	if !ok {
+		return rnsmsgpack.OrderedMap{}
+	}
+	return om
 }
 
-// WriteIndex writes the message index to a conversation directory.
+// WriteIndex writes the message index to a conversation directory. The index
+// is read back as an OrderedMap (preserving the existing file's key order),
+// updated via Set so re-assigned filenames keep their insertion position and
+// new filenames append (matching Python dict semantics), and packed via
+// OrderedMap.MarshalMsgpack so the on-disk bytes are byte-identical to Python's
+// write_index. Only messages with a cached state are written, matching
+// Python's "if msg._cached_state is not None" guard.
 func WriteIndex(conversationPath string, messages []*Message) error {
 	indexPath := filepath.Join(conversationPath, ".index")
 
-	// Read existing index
 	existing := ReadIndex(conversationPath)
 
-	// Update entries for messages with cached state
 	for _, msg := range messages {
 		if msg.CachedState != nil {
 			key := filepath.Base(msg.FilePath)
-			existing[key] = msg.ToIndexEntry()
+			existing = existing.Set(key, msg.ToIndexEntry())
 		}
 	}
 
-	data, err := msgpack.Marshal(existing)
+	data, err := rnsmsgpack.Pack(existing)
 	if err != nil {
 		return fmt.Errorf("encoding index: %w", err)
 	}

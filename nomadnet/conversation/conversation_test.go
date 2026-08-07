@@ -23,7 +23,7 @@ import (
 
 	"github.com/gmlewis/go-reticulum/lxmf"
 	"github.com/gmlewis/go-reticulum/rns"
-	"github.com/vmihailenco/msgpack/v5"
+	rnsmsgpack "github.com/gmlewis/go-reticulum/rns/msgpack"
 )
 
 func TestMessageStates(t *testing.T) {
@@ -203,14 +203,19 @@ func TestToIndexEntryAndRestore(t *testing.T) {
 
 	entry := msg.ToIndexEntry()
 
-	// Verify entry can be serialized/deserialized
-	data, err := msgpack.Marshal(entry)
+	// Verify entry can be serialized/deserialized through rns/msgpack, which
+	// round-trips an OrderedMap back to an OrderedMap (order-preserving unpack).
+	data, err := rnsmsgpack.Pack(entry)
 	if err != nil {
-		t.Fatalf("Marshal: %v", err)
+		t.Fatalf("Pack: %v", err)
 	}
-	var decoded map[string]any
-	if err := msgpack.Unmarshal(data, &decoded); err != nil {
-		t.Fatalf("Unmarshal: %v", err)
+	raw, err := rnsmsgpack.UnpackPreserveBinMapKeyOrder(data)
+	if err != nil {
+		t.Fatalf("UnpackPreserveBinMapKeyOrder: %v", err)
+	}
+	decoded, ok := raw.(rnsmsgpack.OrderedMap)
+	if !ok {
+		t.Fatalf("unpacked type = %T, want OrderedMap", raw)
 	}
 
 	// Restore to a new message
@@ -273,18 +278,19 @@ func TestReadWriteIndex(t *testing.T) {
 		t.Fatalf("ReadIndex len = %v, want 1", len(index))
 	}
 
-	entry, ok := index["0102030405060708010203040506070801020304050607080102030405060708"]
+	entry, ok := index.Get("0102030405060708010203040506070801020304050607080102030405060708")
 	if !ok {
 		t.Fatal("Index entry not found for message")
 	}
 
-	ie, ok := entry.(map[string]any)
+	ie, ok := entry.(rnsmsgpack.OrderedMap)
 	if !ok {
-		t.Fatal("Index entry is not a map")
+		t.Fatalf("Index entry is not an OrderedMap, got %T", entry)
 	}
 
-	if title, ok := ie["title"].(string); !ok || title != "Test" {
-		t.Errorf("title = %v, want %q", ie["title"], "Test")
+	title, _ := ie.Get("title")
+	if title != "Test" {
+		t.Errorf("title = %v, want %q", title, "Test")
 	}
 }
 

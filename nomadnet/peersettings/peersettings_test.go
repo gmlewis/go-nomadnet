@@ -19,8 +19,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/vmihailenco/msgpack/v5"
 )
 
 func TestDefaultSettings(t *testing.T) {
@@ -141,18 +139,21 @@ func TestSaveCorruptFile(t *testing.T) {
 func TestMsgpackCompatibility(t *testing.T) {
 	t.Parallel()
 
-	// Verify that our settings produce valid msgpack that can be decoded
+	// Verify that Save produces msgpack that Load can decode (a round-trip
+	// through the rns/msgpack codec the production code uses, rather than a
+	// third-party reflection codec).
 	s := DefaultSettings(21600)
 	s.DisplayName = "Test Peer"
 
-	data, err := msgpack.Marshal(s)
-	if err != nil {
-		t.Fatalf("Marshal: %v", err)
+	dir := tempDir(t)
+	path := filepath.Join(dir, "peersettings")
+	if err := Save(s, path); err != nil {
+		t.Fatalf("Save: %v", err)
 	}
 
-	decoded := &Settings{}
-	if err := msgpack.Unmarshal(data, decoded); err != nil {
-		t.Fatalf("Unmarshal: %v", err)
+	decoded, err := Load(path, 21600)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
 	}
 
 	if decoded.DisplayName != "Test Peer" {

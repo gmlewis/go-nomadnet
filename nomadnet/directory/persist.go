@@ -18,20 +18,29 @@ package directory
 import (
 	"os"
 
-	"github.com/vmihailenco/msgpack/v5"
+	rnsmsgpack "github.com/gmlewis/go-reticulum/rns/msgpack"
 )
 
 // SaveToDisk serializes the directory entries and announce stream to path in
-// the msgpack format used by the Python NomadNet save_to_disk: a map with an
-// "entry_list" of per-entry tuples and an "announce_stream" of announce
-// tuples.
+// the msgpack format used by the Python NomadNet save_to_disk: an
+// insertion-ordered map with an "entry_list" of per-entry tuples and an
+// "announce_stream" of announce tuples. The output is byte-identical to
+// Python's save_to_disk: entries are emitted in insertion order (via
+// entryOrder, matching Python's insertion-ordered dict), the top-level map keys
+// are written "entry_list" then "announce_stream" (via OrderedMap, since a Go
+// map iterates in random order), and the integer fields (trust_level,
+// preferred_delivery, sort_rank) are packed as unsigned so non-negative values
+// use the same fixint/uint8/uint16/uint32 encodings Python's msgpack picks
+// (notably TrustTrusted=0xFF -> uint8 0xcc 0xff, not int16).
 func (d *Directory) SaveToDisk(path string) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	entryList := make([]any, 0, len(d.entries))
-	for _, e := range d.entries {
-		entryList = append(entryList, entryToTuple(e))
+	entryList := make([]any, 0, len(d.entryOrder))
+	for _, key := range d.entryOrder {
+		if e, ok := d.entries[key]; ok {
+			entryList = append(entryList, entryToTuple(e))
+		}
 	}
 
 	stream := d.nodeAnnounces
@@ -42,12 +51,12 @@ func (d *Directory) SaveToDisk(path string) error {
 		announceList = append(announceList, []any{a.Timestamp, a.SourceHash, a.AppData, a.AnnounceType})
 	}
 
-	directory := map[string]any{
-		"entry_list":      entryList,
-		"announce_stream": announceList,
+	directory := rnsmsgpack.OrderedMap{
+		{Key: "entry_list", Value: entryList},
+		{Key: "announce_stream", Value: announceList},
 	}
 
-	data, err := msgpack.Marshal(directory)
+	data, err := rnsmsgpack.Pack(directory)
 	if err != nil {
 		return err
 	}
@@ -56,18 +65,21 @@ func (d *Directory) SaveToDisk(path string) error {
 
 // entryToTuple builds the msgpack tuple for a directory entry, matching the
 // Python NomadNet save order: source_hash, display_name, trust_level,
-// hosts_node, preferred_delivery, identify, sort_rank, notes.
+// hosts_node, preferred_delivery, identify, sort_rank, notes. trust_level and
+// preferred_delivery are widened to uint so their msgpack encoding matches
+// Python's unsigned encoding for non-negative values (a Go int would pack as
+// signed int8/int16/int32 and diverge, e.g. TrustTrusted=0xFF).
 func entryToTuple(e *Entry) []any {
 	var sortRank any
 	if e.SortRank != nil {
-		sortRank = *e.SortRank
+		sortRank = uint(*e.SortRank)
 	}
 	return []any{
 		e.SourceHash,
 		e.DisplayName,
-		int(e.TrustLevel),
+		uint(e.TrustLevel),
 		e.HostsNode,
-		int(e.PreferredDelivery),
+		uint(e.PreferredDelivery),
 		e.IdentifyOnConnect,
 		sortRank,
 		e.Notes,
@@ -76,7 +88,10 @@ func entryToTuple(e *Entry) []any {
 
 // LoadFromDisk reads a directory file written by SaveToDisk (or by the Python
 // NomadNet) and restores entries and the announce stream, mirroring the Python
-// NomadNet load_from_disk.
+// NomadNet load_from_disk. entryOrder is rebuilt from the file's entry_list
+// order so a subsequent SaveToDisk re-emits the entries in the same order
+// (matching Python, whose insertion-ordered dict preserves file order across a
+// load/save cycle).
 func (d *Directory) LoadFromDisk(path string) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -86,16 +101,21 @@ func (d *Directory) LoadFromDisk(path string) error {
 		return err
 	}
 
-	var raw map[string]any
-	if err := msgpack.Unmarshal(data, &raw); err != nil {
+	raw, err := rnsmsgpack.Unpack(data)
+	if err != nil {
 		return err
+	}
+	m, ok := raw.(map[any]any)
+	if !ok {
+		return nil
 	}
 
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
 	d.entries = make(map[string]*Entry)
-	if entryList, ok := raw["entry_list"].([]any); ok {
+	d.entryOrder = d.entryOrder[:0]
+	if entryList, ok := m["entry_list"].([]any); ok {
 		for _, item := range entryList {
 			tuple, ok := item.([]any)
 			if !ok || len(tuple) < 3 {
@@ -144,14 +164,16 @@ func (d *Directory) LoadFromDisk(path string) error {
 					entry.Notes = n
 				}
 			}
-			d.entries[hexKey(sourceHash)] = entry
+			key := hexKey(sourceHash)
+			d.entries[key] = entry
+			d.entryOrder = append(d.entryOrder, key)
 		}
 	}
 
 	d.nodeAnnounces = nil
 	d.peerAnnounces = nil
 	d.pnAnnounces = nil
-	if stream, ok := raw["announce_stream"].([]any); ok {
+	if stream, ok := m["announce_stream"].([]any); ok {
 		for _, item := range stream {
 			tuple, ok := item.([]any)
 			if !ok || len(tuple) < 4 {

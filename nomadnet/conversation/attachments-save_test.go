@@ -20,7 +20,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/vmihailenco/msgpack/v5"
+	rnsmsgpack "github.com/gmlewis/go-reticulum/rns/msgpack"
 )
 
 // TestCopyAttachmentToDest mirrors Python's _copy_attachment_to_dest +
@@ -134,11 +134,18 @@ func TestSaveAttachmentsToDir(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(attDir, "file_0"), body, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	// Minimal manifest so GetAttachmentFilePath resolves field index 0.
-	manifest := map[string]any{"files": []any{
-		map[string]any{"name": "report.txt", "stored_name": "file_0", "size": len(body)},
+	// Minimal manifest so GetAttachmentFilePath resolves field index 0,
+	// written with the same rns/msgpack codec the production code reads.
+	manifest := rnsmsgpack.OrderedMap{{
+		Key: "files", Value: []any{
+			rnsmsgpack.OrderedMap{
+				{Key: "name", Value: "report.txt"},
+				{Key: "stored_name", Value: "file_0"},
+				{Key: "size", Value: uint(len(body))},
+			},
+		},
 	}}
-	manifestData, err := msgpack.Marshal(manifest)
+	manifestData, err := rnsmsgpack.Pack(manifest)
 	if err != nil {
 		t.Fatal(err)
 	}

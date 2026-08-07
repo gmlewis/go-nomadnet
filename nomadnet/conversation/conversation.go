@@ -28,6 +28,7 @@ import (
 	"strings"
 
 	"github.com/gmlewis/go-reticulum/rns"
+	rnsmsgpack "github.com/gmlewis/go-reticulum/rns/msgpack"
 )
 
 // Conversation represents an LXMF conversation with a single peer.
@@ -144,9 +145,9 @@ func (c *Conversation) ScanStorage() error {
 		msg.Transport = c.Transport
 
 		// Restore from index if available
-		if indexEntry, ok := index[name]; ok {
-			if ie, ok := indexEntry.(map[string]any); ok {
-				msg.RestoreFromIndex(ie)
+		if ie, ok := index.Get(name); ok {
+			if om, ok := ie.(rnsmsgpack.OrderedMap); ok {
+				msg.RestoreFromIndex(om)
 			}
 		}
 

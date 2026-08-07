@@ -43,6 +43,12 @@ type Announce struct {
 // Directory manages the peer directory and announce streams.
 type Directory struct {
 	entries map[string]*Entry // source_hash hex → Entry
+	// entryOrder holds the hex source-hash keys in insertion order, mirroring
+	// Python's insertion-ordered directory_entries dict. SaveToDisk emits
+	// entries in this order so the on-disk file is byte-identical to Python's
+	// save_to_disk (a Go map iterates in random order, which would make the
+	// entry_list nondeterministic and diverge from Python's bytes).
+	entryOrder []string
 
 	// SanitizeNames mirrors the [textui] sanitize_names config flag. When true
 	// display names are run through SanitizeName instead of StripModifiers.
@@ -95,6 +101,12 @@ func (d *Directory) Remember(entry *Entry) {
 	d.mu.Lock()
 
 	key := hexKey(entry.SourceHash)
+	// Preserve the existing insertion position when re-remembering a key
+	// (matching Python dict semantics, where re-assigning an existing key
+	// updates the value but keeps its place); only new keys are appended.
+	if _, exists := d.entries[key]; !exists {
+		d.entryOrder = append(d.entryOrder, key)
+	}
 	d.entries[key] = entry
 
 	path := d.persistPath
@@ -112,6 +124,12 @@ func (d *Directory) Forget(sourceHash []byte) {
 
 	key := hexKey(sourceHash)
 	delete(d.entries, key)
+	for i, k := range d.entryOrder {
+		if k == key {
+			d.entryOrder = append(d.entryOrder[:i], d.entryOrder[i+1:]...)
+			break
+		}
+	}
 }
 
 // Find returns the directory entry for the given source hash, or nil.
