@@ -48,16 +48,16 @@ This node automatically announces itself on the Nomad Network so others can disc
 
 To run gonomadnet yourself:
 
-1. Make sure `!Go`! is installed from `[go.dev`https://go.dev]
+1. Make sure `*Go`* is installed from `*`[go.dev`https://go.dev]`*
 
 2. `!Install`! from source:
-   `go install github.com/gmlewis/go-nomadnet/cmd/gonomadnet@latest`
+   `*go install github.com/gmlewis/go-nomadnet/cmd/gonomadnet@latest`*
 
-2. `!Configure`! by editing `~/.nomadnet/config`:
-   - Set `enable_node = yes` to host pages
-   - Set `announce_at_start = yes` to announce on startup
+2. `!Configure`! by editing `*~/.nomadnet/config`*:
+   - Set `!enable_node = yes`! to host pages
+   - Set `!announce_at_start = yes`! to announce on startup
 
-3. `!Create pages`! by placing `.mu` files in `~/.nomadnet/storage/pages/`
+3. `!Create pages`! by placing `*.mu`* files in `*~/.nomadnet/storage/pages/`*
 
 >> Learn More
 
