@@ -436,31 +436,18 @@ func (id *InterfacesDisplay) ShowEnableDisableConfirm(name string, enabled bool,
 }
 
 // ShowRestartRequired shows a notice that a restart is required after
-// interface changes. Matches Python's Interfaces.py:2589-2610.
+// interface changes. Matches Python's Interfaces.py:2589-2610 (a DialogLineBox
+// with an OK button).
 func (id *InterfacesDisplay) ShowRestartRequired() {
 	msg := "RNS must be restarted for interface changes to take effect.\nRestart Nomad Network to apply changes."
-
-	id.app.Dialogs.ShowDialog("Restart Required",
-		tview.NewTextView().
-			SetDynamicColors(true).
-			SetTextColor(tcell.NewHexColor(0xdddddd)).
-			SetTextAlign(tview.AlignCenter).
-			SetText(msg),
-		50, 5, nil)
+	id.app.Dialogs.ShowStatusDialog("Restart Required", msg, 50, 7)
 }
 
 // ShowInterfaceError shows an error message for interface operations.
-// Matches Python's Interfaces.py:2619-2650.
+// Matches Python's Interfaces.py:2619-2650 (a DialogLineBox with an OK button).
 func (id *InterfacesDisplay) ShowInterfaceError(errMsg string) {
 	msg := fmt.Sprintf("[red]Error:[-] %v", errMsg)
-
-	id.app.Dialogs.ShowDialog("Interface Error",
-		tview.NewTextView().
-			SetDynamicColors(true).
-			SetTextColor(tcell.NewHexColor(0xdddddd)).
-			SetTextAlign(tview.AlignCenter).
-			SetText(msg),
-		50, 5, nil)
+	id.app.Dialogs.ShowStatusDialog("Interface Error", msg, 50, 7)
 }
 
 // ShowRNSDisconnected shows an overlay when the RNS transport is lost.

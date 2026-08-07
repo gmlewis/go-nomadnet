@@ -752,13 +752,26 @@ func (nd *NetworkDisplay) SetLocalPeerHandlers(onSave func(name string), onAnnou
 
 // ShowNodeInfo swaps the bottom of the left pane from the Local Peer Info panel
 // to the Local Node Info panel (Python node_info_query, Network.py:1399-1401),
-// building it lazily from the given data. The list slot above is unaffected.
+// building it fresh from the given data. The list slot above is unaffected.
 // The NodeInfo panel's Back button swaps back via ShowLocalPeer.
+//
+// The panel is rebuilt on every call rather than cached, mirroring Python's
+// node_info_query which constructs a fresh NodeInfo(self.app, self.parent) each
+// time (Network.py:1399-1401). The dynamic stat lines (Last Announce, Storage,
+// Active/Total/Pages/Files) are live providers that re-read the app each tick
+// regardless, but the static fields (Name, Addr, LXMF propagation address) are
+// captured at construction — rebuilding them each open keeps them current if the
+// user changes their display name or propagation setting mid-session (the
+// previous `if nd.nodeInfo == nil` cache showed the first-open values forever).
+// Any previously built panel is stopped (halting its ticker) and removed first
+// so no background refresh goroutine leaks.
 func (nd *NetworkDisplay) ShowNodeInfo(data NodeInfoData) {
-	if nd.nodeInfo == nil {
-		nd.nodeInfo = NewNodeInfoDisplay(nd.app, data)
-		nd.nodeInfo.OnBack = nd.ShowLocalPeer
+	if nd.nodeInfo != nil {
+		nd.nodeInfo.Stop()
+		nd.leftPanel.RemoveItem(nd.nodeInfo.Widget())
 	}
+	nd.nodeInfo = NewNodeInfoDisplay(nd.app, data)
+	nd.nodeInfo.OnBack = nd.ShowLocalPeer
 	nd.leftPanel.RemoveItem(nd.localPeer.Widget())
 	nd.leftPanel.AddItem(nd.nodeInfo.Widget(), nd.nodeInfo.Height(), 0, false)
 	// Start the periodic stat refresh while the panel is visible (Python

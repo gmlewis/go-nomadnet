@@ -143,6 +143,36 @@ func TestNetworkDisplayShowNodeInfoSwap(t *testing.T) {
 	}
 }
 
+// TestNetworkDisplayShowNodeInfoRebuilds pins the parity fix for stale Node
+// Info static fields: ShowNodeInfo rebuilds the panel from the supplied data on
+// every call (mirroring Python's node_info_query, which constructs a fresh
+// NodeInfo(self.app, self.parent) each time, Network.py:1399-1401) rather than
+// caching the first-open values forever. The previous `if nd.nodeInfo == nil`
+// cache captured Name/Addr once, so changing the display name mid-session and
+// re-opening Node Info still showed the old name. HasNode:false keeps Start a
+// no-op so no ticker goroutine is involved.
+func TestNetworkDisplayShowNodeInfoRebuilds(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	app.Glyphs = GetGlyphSet(GlyphUnicode)
+	nd := NewNetworkDisplay(app, nil, nil)
+
+	nd.ShowNodeInfo(NodeInfoData{HasNode: false, Name: "Alice"})
+	if nd.nodeInfo == nil || nd.nodeInfo.data.Name != "Alice" {
+		t.Fatalf("first ShowNodeInfo: data.Name = %q, want Alice", nd.nodeInfo.data.Name)
+	}
+	first := nd.nodeInfo
+
+	nd.ShowNodeInfo(NodeInfoData{HasNode: false, Name: "Bob"})
+	if nd.nodeInfo == nil || nd.nodeInfo.data.Name != "Bob" {
+		t.Fatalf("second ShowNodeInfo: data.Name = %q, want Bob (panel was cached, not rebuilt)", nd.nodeInfo.data.Name)
+	}
+	if nd.nodeInfo == first {
+		t.Errorf("second ShowNodeInfo reused the cached NodeInfoDisplay instead of rebuilding")
+	}
+}
+
 // TestNetworkDisplayShowPeersSwap pins the C-p (show_peers) left-pane swap and
 // the ctrl-l toggle-back, matching Python's show_peers + toggle_list
 // (Network.py:1688, 1668). C-p swaps the list slot to the LXMF peers list

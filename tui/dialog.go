@@ -157,6 +157,30 @@ func (d *DialogLineBox) InputHandler() func(event *tcell.EventKey, setFocus func
 	})
 }
 
+// MouseHandler forwards mouse events to the dialog's content so clicks on a
+// dialog's buttons/fields reach them. Without this override, DialogLineBox
+// inherits *tview.Box.MouseHandler, which does NOT forward to content (Box has
+// no notion of children) — so every dialog button (OK / Yes / No / Save /
+// Cancel / etc.) was keyboard-only: Enter worked (InputHandler forwards to
+// content) but a mouse click was silently dropped, never reaching the button's
+// selected callback. This is the same delegate-to-content pattern used by
+// InputHandler and Focus above. The content's rect is set to the dialog's
+// inner rect in Draw, so the content's own InRect check (Flex/Button)
+// correctly gates which child the click hits.
+func (d *DialogLineBox) MouseHandler() func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(tview.Primitive)) (consumed bool, capture tview.Primitive) {
+	return d.WrapMouseHandler(func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(tview.Primitive)) (consumed bool, capture tview.Primitive) {
+		if !d.InRect(event.Position()) {
+			return false, nil
+		}
+		if d.content != nil {
+			if handler := d.content.MouseHandler(); handler != nil {
+				return handler(action, event, setFocus)
+			}
+		}
+		return false, nil
+	})
+}
+
 // ShowDialog creates and shows a centered dialog overlay on the application.
 // The dialog is pushed onto the modal dialog stack (see DialogManager), so the
 // underlying screen is preserved and focus is restored on dismiss. Esc on the
@@ -281,6 +305,35 @@ func (dm *DialogManager) ShowRadioDialog(title, message string, options []string
 		AddItem(list, 0, 1, true)
 
 	dm.ShowDialog(title, layout, 40, 10, nil)
+}
+
+// ShowStatusDialog shows a centered status/notice message with an OK button
+// that dismisses it (click OK or press Enter/Space when focused). This matches
+// Python's status dialogs, which are all a DialogLineBox wrapping a Pile of a
+// centered message Text + an "OK" button — e.g. LocalPeer.save_query's "Saved"
+// dialog (Network.py:1282-1287) and announce_query's "Announce Sent"
+// (Network.py:1305-1309), and Interfaces.show_message / show_restart_required
+// / show_error_message (Interfaces.py:1969-1977, 2589-2603, 2619-2628).
+//
+// Esc also dismisses (DialogLineBox default, plus MainDisplay routes Esc to
+// DismissTop when any dialog is open). The OK button matters because a bare
+// centered-text modal gives NO visible dismiss affordance: the user can press
+// Esc, but there is nothing on screen to signal that, so the dialog appears
+// stuck — the Local Peer "Saved" dialog was reported undismissable for exactly
+// this reason. The OK button restores the Python UX and gives a guaranteed
+// click/Enter dismiss path that does not depend on tview's focus routing.
+func (dm *DialogManager) ShowStatusDialog(title, message string, width, height int) {
+	text := tview.NewTextView().
+		SetDynamicColors(true).
+		SetTextColor(tcell.NewHexColor(0xdddddd)).
+		SetTextAlign(tview.AlignCenter).
+		SetText(message)
+	okBtn := tview.NewButton("OK").SetSelectedFunc(func() { dm.DismissTop() })
+	buttons := CreateButtonRow(okBtn)
+	layout := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(text, 0, 1, false).
+		AddItem(buttons, 1, 0, true)
+	dm.ShowDialog(title, layout, width, height, nil)
 }
 
 // ConfirmationDialog is a reusable confirmation dialog.

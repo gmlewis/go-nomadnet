@@ -208,23 +208,13 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	networkDisplay.SetLocalPeerHandlers(
 		func(name string) {
 			a.SetDisplayName(name)
-			tuiApp.Dialogs.ShowDialog("Saved",
-				tview.NewTextView().
-					SetDynamicColors(true).
-					SetTextAlign(tview.AlignCenter).
-					SetText("\n\n\nSaved\n\n"),
-				40, 9, nil)
+			tuiApp.Dialogs.ShowStatusDialog("Saved", "\n\n\nSaved\n\n", 40, 9)
 		},
 		func() {
 			a.AnnounceNow()
 			lxmfAddr, idhash, lann = localPeerInfo()
 			networkDisplay.UpdateLocalPeer(lxmfAddr, idhash, lann)
-			tuiApp.Dialogs.ShowDialog("Announce Sent",
-				tview.NewTextView().
-					SetDynamicColors(true).
-					SetTextAlign(tview.AlignCenter).
-					SetText("\n\n\nAnnounce Sent\n\n\n"),
-				40, 10, nil)
+			tuiApp.Dialogs.ShowStatusDialog("Announce Sent", "\n\n\nAnnounce Sent\n\n\n", 40, 10)
 		},
 		func() {
 			// Swap the left pile's PACK slot from Local Peer Info to the Local
@@ -233,12 +223,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 			// is hosted (EnableNode false) the panel renders the "not hosting a
 			// node" branch (Python NodeInfo else-branch, Network.py:1541-1551).
 			data := buildNodeInfoData(a, navigateTo, func() {
-				tuiApp.Dialogs.ShowDialog("Announce Sent",
-					tview.NewTextView().
-						SetDynamicColors(true).
-						SetTextAlign(tview.AlignCenter).
-						SetText("\n\n\nAnnounce Sent\n\n\n"),
-					40, 10, nil)
+				tuiApp.Dialogs.ShowStatusDialog("Announce Sent", "\n\n\nAnnounce Sent\n\n\n", 40, 10)
 			})
 			networkDisplay.ShowNodeInfo(data)
 		},
@@ -1651,6 +1636,53 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 					return
 				}
 			}
+			// Local loopback: if the destination is THIS node's own
+			// destination, serve the page directly from the local pages
+			// directory instead of going through RNS transport. Mirrors
+			// Python Browser.load_page's loopback branch (Browser.py:1296
+			// -1372): a single nomadnet instance hosts the node AND the
+			// browser in one process, so browsing the local node reads its
+			// served pages from disk — it never establishes an RNS link to
+			// itself. RNS has no self-loopback (Transport.has_path(own) is
+			// false even in Python), so without this Browse on the local
+			// node fails at the path-resolution gate with "No path to
+			// destination known". Local file downloads (/file/...) route
+			// through ServeLocalFile the same way; remote /file/ downloads
+			// are a separate, not-yet-wired path.
+			if a.Node != nil {
+				if nd := a.Node.Destination(); nd != nil && bytes.Equal(dest, nd.Hash) {
+					go func() {
+						start := time.Now()
+						var data []byte
+						if strings.HasPrefix(path, "/file/") {
+							savedName, _, _ := browser.ServeLocalFile(a.FilesPath, path, a.DownloadsPath)
+							elapsed := time.Since(start).Seconds()
+							tuiApp.QueueUpdateDraw(func() {
+								if seq != bd.CurrentRequestSeq() || ctx.Err() != nil {
+									return
+								}
+								if savedName != "" {
+									bd.SetTransferStats(0, 0, elapsed, false)
+									bd.SetContent(fmt.Sprintf("Saved file: %s", savedName))
+								} else {
+									bd.SetContent("[red]The requested local download file does not exist[-]")
+								}
+							})
+							return
+						}
+						data = browser.ServeLocalPage(a.PagesPath, path)
+						elapsed := time.Since(start).Seconds()
+						tuiApp.QueueUpdateDraw(func() {
+							if seq != bd.CurrentRequestSeq() || ctx.Err() != nil {
+								return
+							}
+							bd.SetTransferStats(int64(len(data)), int64(len(data)), elapsed, false)
+							bd.RenderPage(string(data))
+						})
+					}()
+					return
+				}
+			}
 			go func() {
 				start := time.Now()
 				data, ferr := browser.FetchPage(ctx, a.Transport, dest, path, rd,
@@ -1815,7 +1847,18 @@ func buildNodeInfoData(a *app.App, navigateTo func(string), showAnnounceSent fun
 	if dest := a.Node.Destination(); dest != nil {
 		data.Addr = fmt.Sprintf("%x", dest.Hash)
 	}
-	data.Name = a.Node.Name
+	// Name: the local peer's display name (the same value the Local Peer Info
+	// panel shows in its "Name" field), NOT the node's own name. The node's
+	// Name is derived from the display name with a "'s Node" suffix appended
+	// (nodeName, node-hosting.go, mirroring Python Node.py:38-39) so the
+	// announced node identity reads "Alice's Node" to other peers — but the
+	// "Name" field in the Local Node Info panel should match the "Name" field
+	// in the Local Peer Info panel (the bare display name), not flip to
+	// "Alice's Node" the moment the user opens Node Info. The user explicitly
+	// wants this field to always render the same as the main panel, without
+	// the "'s Node" suffix (a deliberate, documented divergence from Python's
+	// NodeInfo, which shows app.node.name = "Alice's Node").
+	data.Name = a.GetDisplayName()
 	data.DisablePropagation = a.DisablePropagation
 	if !a.DisablePropagation && a.Identity != nil {
 		// Python: RNS.prettyhexrep(RNS.Destination.hash_from_name_and_identity(

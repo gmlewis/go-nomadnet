@@ -639,6 +639,25 @@ func (md *MainDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 		return nil
 	}
 
+	// When a modal dialog is open, route Esc straight to DismissTop and pass
+	// every other key through unchanged. The DialogLineBox already dismisses
+	// on Esc (dialog.go), but tview dispatches a key only to the single
+	// focused primitive (no bubbling), and after a mouse click opens a dialog
+	// tview can leave focus on the dialog's content TextView rather than the
+	// DialogLineBox — so Esc reaches the TextView (which ignores it) instead
+	// of the dismiss handler, and the dialog appears stuck. Handling Esc here
+	// (at the app-level capture, which runs before any focused primitive)
+	// guarantees dismissal for every dialog regardless of where focus landed.
+	// Other keys are returned so the dialog's own fields/buttons receive them
+	// via the normal tview dispatch.
+	if md.app != nil && md.app.Dialogs != nil && md.app.Dialogs.Open() {
+		if event.Key() == tcell.KeyEscape {
+			md.app.Dialogs.DismissTop()
+			return nil
+		}
+		return event
+	}
+
 	if md.focusRegion == "menu" {
 		return md.handleMenuInput(event)
 	}

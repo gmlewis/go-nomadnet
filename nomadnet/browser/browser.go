@@ -542,3 +542,77 @@ func fileExists(path string) bool {
 	}
 	return !info.IsDir()
 }
+
+// LocalPageNotFound is the body returned when a locally-served page (loopback
+// browse of the local node's own destination) does not exist on disk, matching
+// Python Browser.load_page's default page_data
+// (Browser.py:1304, "The requested local page did not exist in the file
+// system").
+var LocalPageNotFound = []byte("The requested local page did not exist in the file system")
+
+// ServeLocalPage serves a page from the local node's pages directory, mirroring
+// Python Browser.load_page's loopback branch (Browser.py:1300-1320): when the
+// browser navigates to its OWN node's destination (the "loopback"), Python
+// reads the page directly from self.app.pagespath instead of establishing an
+// RNS link to itself — RNS has no self-loopback, and Transport.has_path(own) is
+// false even in Python (a single nomadnet instance hosts the node AND the
+// browser in one process, so the local node's content is served from disk).
+// The Go port does the same: resolve the request path "/page/<rel>" to
+// pagesPath/<rel> and read it.
+//
+// path is the request path (e.g. "/page/index.mu"); the leading "/page" is
+// stripped (Python: self.path.replace("/page", "", 1)). A traversal guard
+// keeps the resolved path within pagesPath — Python concatenates unsanitized,
+// so the guard is a defensive addition, not a behavior change for well-formed
+// paths.
+//
+// Executable pages (Python runs an executable page as a subprocess with the
+// request_data map as env, Browser.py:1306-1316) are NOT executed here: the Go
+// node serve side (node.ServePage) also reads pages statically, so the Go port
+// does not support executable pages at all — a local executable page renders
+// its source, consistently with a remote fetch from a Go-served node.
+func ServeLocalPage(pagesPath, path string) []byte {
+	rel := strings.TrimPrefix(path, "/page")
+	full := filepath.Join(pagesPath, rel)
+	// Guard against traversal ("../../etc/passwd"): the resolved path must
+	// stay within pagesPath.
+	if rel2, err := filepath.Rel(pagesPath, full); err != nil || rel2 == ".." || strings.HasPrefix(rel2, "../") {
+		return LocalPageNotFound
+	}
+	info, err := os.Stat(full)
+	if err != nil || info.IsDir() {
+		return LocalPageNotFound
+	}
+	data, err := os.ReadFile(full)
+	if err != nil {
+		return LocalPageNotFound
+	}
+	return data
+}
+
+// ServeLocalFile serves a /file/<name> download from the local node's files
+// directory, mirroring Python Browser.download_local_file (Browser.py:964-984):
+// when the destination is the local node ("loopback"), the file is read
+// directly from self.app.filespath and copied to downloadsDir under a unique
+// basename (".N" suffix on collision, matching Python's counter loop). It
+// returns the saved basename (relative to downloadsDir) and the saved size.
+//
+// path is the request path (e.g. "/file/docs/readme.txt"); the leading "/file"
+// is stripped (Python: path.replace("/file", "", 1)). The same traversal guard
+// as ServeLocalPage applies. A missing file returns ("", 0, os.ErrNotExist).
+func ServeLocalFile(filesPath, path, downloadsDir string) (savedName string, savedSize int, err error) {
+	rel := strings.TrimPrefix(path, "/file")
+	full := filepath.Join(filesPath, rel)
+	if rel2, err := filepath.Rel(filesPath, full); err != nil || rel2 == ".." || strings.HasPrefix(rel2, "../") {
+		return "", 0, os.ErrNotExist
+	}
+	info, err := os.Stat(full)
+	if err != nil || info.IsDir() {
+		return "", 0, os.ErrNotExist
+	}
+	data, err := os.ReadFile(full)
+	if err != nil {
+		return "", 0, err
+	}
+	return SaveDownload(downloadsDir, path, data)
+}
