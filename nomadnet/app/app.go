@@ -29,7 +29,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 	"syscall"
@@ -179,14 +178,13 @@ type App struct {
 	Announces []AnnounceEvent
 
 	// RNS/LXMF references
-	Logger           *rns.Logger
-	Transport        *rns.TransportSystem
-	RNS              *rns.Reticulum
-	Identity         *rns.Identity
-	Router           *lxmf.Router
-	LXMFDest         *rns.Destination
-	RNSConfigDir     string
-	standaloneRNSDir string
+	Logger       *rns.Logger
+	Transport    *rns.TransportSystem
+	RNS          *rns.Reticulum
+	Identity     *rns.Identity
+	Router       *lxmf.Router
+	LXMFDest     *rns.Destination
+	RNSConfigDir string
 
 	// Node is the hosted Nomad Network node (nomadnet/node.Node), started when
 	// EnableNode is true. Mirrors Python NomadNetworkApp.py:399
@@ -385,16 +383,24 @@ func (a *App) initRNS() {
 	a.mu.Unlock()
 	a.Dir.SetTransport(transport)
 	rnsConfigDir := a.RNSConfigDir
-	if rnsConfigDir == "" {
-		rnsConfigDir = a.ensureStandaloneRNSConfig()
-	}
+	// When no -rnsconfig is given, pass "" through to go-reticulum, which
+	// resolves it to ~/.reticulum (or /etc/reticulum / ~/.config/reticulum
+	// if a config already exists there) and creates the dir + a default
+	// share_instance=Yes config on first run — matching Python nomadnet's
+	// RNS.Reticulum(configdir=None).
 
 	ret, err := rns.NewReticulumWithLogger(a.Transport, rnsConfigDir, a.Logger)
 	if err != nil {
 		a.Logger.Error("Could not initialize Reticulum: %v", err)
 		return
 	}
+	// Publish the Reticulum under a.mu so concurrent readers (RNSConfigPath,
+	// polled from the Interfaces page / UI ticker) see the pointer safely.
+	// The pointer is assigned once here and never reassigned, but a bare
+	// unsynchronized assignment races a lock-free reader under -race.
+	a.mu.Lock()
 	a.RNS = ret
+	a.mu.Unlock()
 
 	// Load or create identity
 	var err2 error
@@ -763,19 +769,6 @@ func (a *App) Shutdown() {
 			a.Logger.Warning("Could not close Reticulum: %v", err)
 		}
 	}
-
-	// Remove the per-run standalone RNS config dir created by
-	// ensureStandaloneRNSConfig so temp dirs don't accumulate across runs.
-	// Done after RNS.Close(); the retry handles the brief window where RNS
-	// background goroutines finish flushing ratchet/destination storage and
-	// recreate files mid-removal (ENOTEMPTY/EBUSY). This mirrors the
-	// removeAllWithRetry pattern used in go-reticulum's testutils.
-	if a.standaloneRNSDir != "" {
-		if err := removeAllWithRetry(a.standaloneRNSDir); err != nil {
-			a.Logger.Warning("Could not remove standalone RNS config dir %v: %v", a.standaloneRNSDir, err)
-		}
-		a.standaloneRNSDir = ""
-	}
 }
 
 // AnnounceNow sends an LXMF delivery announce using the configured display
@@ -950,23 +943,6 @@ func expandUser(path string) string {
 // intPtr returns a pointer to n, for config fields stored as *int.
 func intPtr(n int) *int { return &n }
 
-// ensureStandaloneRNSConfig creates a standalone RNS config directory
-// with share_instance = No, matching gornphone's pattern. Each gonomadnet
-// instance runs its own standalone RNS stack so destinations are registered
-// on its own TransportSystem.
-// tempBaseDir returns the base directory for standalone RNS config temp dirs.
-// On macOS (darwin) it returns "/tmp" — matching the go-reticulum repo's
-// testutils.tempBaseDir() — instead of os.TempDir() ($TMPDIR, a per-user
-// /var/folders path) so the dirs live in the conventional, easily inspected
-// /tmp location. On every other platform it returns "" so os.MkdirTemp uses
-// its default (os.TempDir()).
-func tempBaseDir() string {
-	if runtime.GOOS == "darwin" {
-		return "/tmp"
-	}
-	return ""
-}
-
 // removeAllWithRetry removes path with os.RemoveAll, retrying on transient
 // ENOTEMPTY/EBUSY errors for up to ~100ms. After RNS.Close() a handful of
 // background goroutines may still be flushing ratchet/destination storage and
@@ -992,92 +968,6 @@ func removeAllWithRetry(path string) error {
 
 func isRetriableRemoveAllError(err error) bool {
 	return errors.Is(err, syscall.ENOTEMPTY) || errors.Is(err, syscall.EBUSY)
-}
-
-func (a *App) ensureStandaloneRNSConfig() string {
-	rnsDir, err := os.MkdirTemp(tempBaseDir(), "gonomadnet-rns-")
-	if err != nil {
-		a.Logger.Error("Could not create standalone RNS config dir: %v", err)
-		return ""
-	}
-	a.standaloneRNSDir = rnsDir
-	configPath := filepath.Join(rnsDir, "config")
-
-	home, err := os.UserHomeDir()
-	if err != nil {
-		home = ""
-	}
-
-	var content string
-	if home != "" {
-		systemConfigPath := filepath.Join(home, ".reticulum", "config")
-		if data, err := os.ReadFile(systemConfigPath); err == nil {
-			content = string(data)
-		}
-	}
-
-	if content == "" {
-		content = `[reticulum]
-  share_instance = No
-
-[logging]
-  loglevel = 4
-
-[interfaces]
-  [[Default Interface]]
-    type = AutoInterface
-    enabled = Yes
-    name = Default Interface
-`
-	}
-
-	// Override share_instance to No for standalone operation
-	content = setRNSConfigDirective(content, "share_instance", "No")
-
-	_ = os.WriteFile(configPath, []byte(content), 0o644)
-	a.Logger.Info("Created standalone RNS config at %v", rnsDir)
-	return rnsDir
-}
-
-// setRNSConfigDirective replaces or adds a key=value directive in the
-// [reticulum] section of an RNS config string.
-func setRNSConfigDirective(content, key, value string) string {
-	lines := strings.Split(content, "\n")
-	inReticulum := false
-	replaced := false
-	for i, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "[[") && strings.HasSuffix(trimmed, "]]") {
-			continue
-		}
-		if strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]") {
-			section := strings.Trim(trimmed, "[] ")
-			inReticulum = section == "reticulum"
-			continue
-		}
-		if inReticulum {
-			if strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, ";") {
-				continue
-			}
-			parts := strings.SplitN(trimmed, "=", 2)
-			if len(parts) == 2 && strings.TrimSpace(parts[0]) == key {
-				lines[i] = fmt.Sprintf("  %v = %v", key, value)
-				replaced = true
-				break
-			}
-		}
-	}
-	if !replaced {
-		// Add to end of [reticulum] section
-		for i, line := range lines {
-			trimmed := strings.TrimSpace(line)
-			if strings.HasPrefix(trimmed, "[reticulum]") {
-				lines = append(lines[:i+1], append([]string{fmt.Sprintf("  %v = %v", key, value)}, lines[i+1:]...)...)
-				break
-			}
-		}
-	}
-	return strings.Join(lines, "\n")
 }
 
 // loadOrCreateIdentity loads an existing identity or creates a new one.

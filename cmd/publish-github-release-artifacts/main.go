@@ -33,6 +33,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -88,11 +89,12 @@ func main() {
 	}
 }
 
-// run builds the release artifacts and either publishes them as a new GitHub
-// release (when dryRun is false) or prints the Markdown release description
-// that would be written to stdout and returns (when dryRun is true). In dry-run
-// mode all progress output is routed to stderr so stdout contains only the
-// Markdown description.
+func pprintf(w *os.File, format string, args ...any) {
+	if _, err := fmt.Fprintf(w, format, args...); err != nil {
+		log.Fatalf("pprintf: %v", err)
+	}
+}
+
 func run(force, dryRun bool) error {
 	if _, err := exec.LookPath("gh"); err != nil {
 		return fmt.Errorf("gh CLI not found in PATH: %w", err)
@@ -113,13 +115,13 @@ func run(force, dryRun bool) error {
 		return err
 	}
 	tag := "v" + version
-	fmt.Fprintf(progress, "Publishing release for version %v (tag %v)\n", version, tag)
+	pprintf(progress, "Publishing release for version %v (tag %v)\n", version, tag)
 
 	repo, err := ghRepoSlug()
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(progress, "Repository: %v\n", repo)
+	pprintf(progress, "Repository: %v\n", repo)
 
 	exists := false
 	if !dryRun {
@@ -157,7 +159,7 @@ func run(force, dryRun bool) error {
 	}
 
 	if exists && force {
-		fmt.Fprintf(progress, "--force: deleting existing release %v and its assets\n", tag)
+		pprintf(progress, "--force: deleting existing release %v and its assets\n", tag)
 		if err := gh("release", "delete", tag, "--yes"); err != nil {
 			return fmt.Errorf("delete existing release: %w", err)
 		}
@@ -169,9 +171,9 @@ func run(force, dryRun bool) error {
 		return fmt.Errorf("create release: %w", err)
 	}
 
-	fmt.Fprintf(progress, "\nPublished release %v with %v asset(s):\n", tag, len(assets))
+	pprintf(progress, "\nPublished release %v with %v asset(s):\n", tag, len(assets))
 	for _, a := range assets {
-		fmt.Fprintf(progress, "  %v\n", filepath.Base(a))
+		pprintf(progress, "  %v\n", filepath.Base(a))
 	}
 	return nil
 }
@@ -246,7 +248,7 @@ func buildAll(outDir, version string, progress *os.File) ([]string, error) {
 		}
 		outPath := filepath.Join(outDir, name)
 
-		fmt.Fprintf(progress, "Building %v/%v -> %v\n", t.goos, t.goarch, name)
+		pprintf(progress, "Building %v/%v -> %v\n", t.goos, t.goarch, name)
 		cmd := exec.Command("go", "build", "-trimpath", "-o", outPath, "./cmd/gonomadnet")
 		cmd.Env = append(os.Environ(),
 			"GOOS="+t.goos,

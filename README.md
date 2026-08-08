@@ -1,4 +1,4 @@
-# gonomadnet — Go Nomad Network Client
+# gonomadnet — Go Nomad Network Client <a href="https://github.com/gmlewis/go-nomadnet/actions/workflows/build.yml"><img align="right" src="https://github.com/gmlewis/go-nomadnet/actions/workflows/build.yml/badge.svg"/></a>
 
 ![gonomadnet mascot
 The Go gopher was designed by Renee French.

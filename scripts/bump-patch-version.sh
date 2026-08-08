@@ -16,11 +16,11 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-# bump-patch-version.sh bumps ONLY the patch version component of the Version
+# bump-patch-version.sh bumps ONLY the patch version component of the VERSION
 # constant in nomadnet/version/version.go, leaving major and minor untouched
 # (e.g. "0.1.0" -> "0.1.1", "1.9.3" -> "1.9.4").
 #
-# It refuses to run if the Version string is not a clean "MAJOR.MINOR.PATCH"
+# It refuses to run if the VERSION string is not a clean "MAJOR.MINOR.PATCH"
 # semver (no pre-release/build metadata) to avoid silently corrupting the file.
 
 set -euo pipefail
@@ -34,18 +34,18 @@ if [[ ! -f "${VERSION_FILE}" ]]; then
 	exit 1
 fi
 
-# Extract the current quoted version string from the Go source.
-CURRENT="$(grep -E '^[[:space:]]*const[[:space:]]+Version[[:space:]]*=[[:space:]]*"[^"]+"' "${VERSION_FILE}" \
+# Extract the current quoted VERSION string from the Go source.
+CURRENT="$(grep -E '^[[:space:]]*const[[:space:]]+VERSION[[:space:]]*=[[:space:]]*"[^"]+"' "${VERSION_FILE}" \
 	| head -1 \
 	| sed -E 's/.*"([^"]+)".*/\1/')"
 
 if [[ -z "${CURRENT}" ]]; then
-	echo "error: could not parse Version constant from ${VERSION_FILE}" >&2
+	echo "error: could not parse VERSION constant from ${VERSION_FILE}" >&2
 	exit 1
 fi
 
 if ! echo "${CURRENT}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-	echo "error: Version \"${CURRENT}\" is not a clean MAJOR.MINOR.PATCH semver;" \
+	echo "error: VERSION \"${CURRENT}\" is not a clean MAJOR.MINOR.PATCH semver;" \
 		"refusing to bump." >&2
 	exit 1
 fi
@@ -56,12 +56,12 @@ PATCH="$(echo "${CURRENT}" | cut -d. -f3)"
 NEW_PATCH=$((PATCH + 1))
 NEW_VERSION="${MAJOR}.${MINOR}.${NEW_PATCH}"
 
-# In-place replace of the Version line. We anchor on the full line so we only
+# In-place replace of the VERSION line. We anchor on the full line so we only
 # touch the assignment and leave the surrounding file (copyright, comments)
 # byte-for-byte unchanged. Use POSIX [[:space:]] (portable to BSD sed on
 # macOS) rather than GNU \s.
 if ! sed -i.bak -E \
-	"s|^([[:space:]]*const[[:space:]]+Version[[:space:]]*=[[:space:]]*\")${CURRENT}(\")|\1${NEW_VERSION}\2|" \
+	"s|^([[:space:]]*const[[:space:]]+VERSION[[:space:]]*=[[:space:]]*\")${CURRENT}(\")|\1${NEW_VERSION}\2|" \
 	"${VERSION_FILE}"; then
 	echo "error: failed to update ${VERSION_FILE}" >&2
 	exit 1

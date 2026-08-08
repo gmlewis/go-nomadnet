@@ -1031,7 +1031,7 @@ func TestDecodeText(t *testing.T) {
 
 func tempDir(t *testing.T) string {
 	t.Helper()
-	dir, err := os.MkdirTemp("", "nomadnet-rrc-test")
+	dir, err := os.MkdirTemp("/tmp", "nomadnet-rrc-test")
 	if err != nil {
 		t.Fatal(err)
 	}

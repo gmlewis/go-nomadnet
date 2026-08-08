@@ -19,17 +19,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/gmlewis/go-nomadnet/nomadnet/version"
 )
-
-func TestVersion(t *testing.T) {
-	t.Parallel()
-
-	if version.Version != "0.1.0" {
-		t.Errorf("Version = %q, want %q", version.Version, "0.1.0")
-	}
-}
 
 func TestDefaultConfigDir(t *testing.T) {
 	t.Parallel()

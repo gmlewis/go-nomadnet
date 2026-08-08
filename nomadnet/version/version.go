@@ -16,5 +16,5 @@
 // Package version provides the Go NomadNet version string.
 package version
 
-// Version is the current version of Go NomadNet.
-const Version = "0.1.0"
+// VERSION is the current version of Go NomadNet.
+const VERSION = "0.2.0"

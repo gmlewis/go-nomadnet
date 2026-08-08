@@ -163,7 +163,7 @@ func TestMessageDir(t *testing.T) {
 
 func tempDir(t *testing.T) string {
 	t.Helper()
-	dir, err := os.MkdirTemp("", "nomadnet-storage-test")
+	dir, err := os.MkdirTemp("/tmp", "nomadnet-storage-test")
 	if err != nil {
 		t.Fatal(err)
 	}

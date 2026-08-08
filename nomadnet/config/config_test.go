@@ -488,7 +488,7 @@ func TestRequiredStampCostNone(t *testing.T) {
 
 func tempDir(t *testing.T) string {
 	t.Helper()
-	dir, err := os.MkdirTemp("", "nomadnet-config-test")
+	dir, err := os.MkdirTemp("/tmp", "nomadnet-config-test")
 	if err != nil {
 		t.Fatal(err)
 	}

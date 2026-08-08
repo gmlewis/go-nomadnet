@@ -150,7 +150,8 @@ func TestAppInit(t *testing.T) {
 	// Not parallel — Init() starts real RNS/LXMF subsystems.
 
 	dir := tempDir(t)
-	a := NewApp(dir, "", false, false)
+	rnsDir := writeTestRNSConfig(t)
+	a := NewApp(dir, rnsDir, false, false)
 
 	if err := a.Init(); err != nil {
 		t.Fatalf("Init: %v", err)
@@ -177,6 +178,12 @@ func TestAppInit(t *testing.T) {
 	}
 	if a.RRC == nil {
 		t.Error("RRC is nil after Init")
+	}
+
+	// RNSConfigPath resolves through the Reticulum accessor once RNS is up;
+	// an explicit dir is passed through unchanged, so the path is <rnsDir>/config.
+	if got := a.RNSConfigPath(); got != filepath.Join(rnsDir, "config") {
+		t.Errorf("RNSConfigPath() = %q, want %q", got, filepath.Join(rnsDir, "config"))
 	}
 }
 
@@ -225,7 +232,8 @@ func TestAppShutdown(t *testing.T) {
 	// Not parallel — Init() starts real RNS/LXMF subsystems.
 
 	dir := tempDir(t)
-	a := NewApp(dir, "", false, false)
+	rnsDir := writeTestRNSConfig(t)
+	a := NewApp(dir, rnsDir, false, false)
 	if err := a.Init(); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
@@ -339,7 +347,7 @@ func TestAppWithConfigFile(t *testing.T) {
 		t.Fatalf("Save config: %v", err)
 	}
 
-	a := NewApp(dir, "", false, false)
+	a := NewApp(dir, writeTestRNSConfig(t), false, false)
 	if err := a.Init(); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
@@ -657,7 +665,7 @@ func TestDirAnnounceEventsCrossRunRetention(t *testing.T) {
 
 func tempDir(t *testing.T) string {
 	t.Helper()
-	dir, err := os.MkdirTemp("", "nomadnet-app-test")
+	dir, err := os.MkdirTemp("/tmp", "nomadnet-app-test")
 	if err != nil {
 		t.Fatal(err)
 	}

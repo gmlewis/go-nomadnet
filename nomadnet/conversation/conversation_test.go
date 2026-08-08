@@ -742,7 +742,7 @@ func TestIngestTwoMessagesSameSourceSingleConversation(t *testing.T) {
 
 func tempDir(t *testing.T) string {
 	t.Helper()
-	dir, err := os.MkdirTemp("", "nomadnet-conversation-test")
+	dir, err := os.MkdirTemp("/tmp", "nomadnet-conversation-test")
 	if err != nil {
 		t.Fatal(err)
 	}

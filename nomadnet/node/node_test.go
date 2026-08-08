@@ -548,7 +548,7 @@ func TestDefaultNotAllowedContent(t *testing.T) {
 
 func tempDir(t *testing.T) string {
 	t.Helper()
-	dir, err := os.MkdirTemp("", "nomadnet-node-test")
+	dir, err := os.MkdirTemp("/tmp", "nomadnet-node-test")
 	if err != nil {
 		t.Fatal(err)
 	}

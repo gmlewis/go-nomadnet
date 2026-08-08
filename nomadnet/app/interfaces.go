@@ -48,22 +48,25 @@ type interfaceConfigEntry struct {
 }
 
 // RNSConfigPath returns the path to the RNS config file in use, or "" if it is
-// not available yet (initRNS runs asynchronously). When an explicit RNS config
-// dir was given it lives there; otherwise ensureStandaloneRNSConfig copied the
-// system config into a standalone temp dir. The Interfaces "Open Text Editor"
-// (C-w) action edits this file, matching Python's open_config_editor
-// (Interfaces.py:3160) which edits self.app.rns.configpath.
+// not available yet (initRNS runs asynchronously). Once RNS is initialized the
+// resolved path comes from the Reticulum itself (go-reticulum's
+// Reticulum.ConfigPath), matching Python's self.app.rns.configpath; before
+// init, an explicit -rnsconfig dir is used as a fallback. The Interfaces "Open
+// Text Editor" (C-w) action edits this file, matching Python's
+// open_config_editor (Interfaces.py:3160) which edits self.app.rns.configpath.
 func (a *App) RNSConfigPath() string {
+	// a.RNS is assigned asynchronously by initRNS (under a.mu); read it under
+	// the same mutex so the load is race-free against that write.
+	a.mu.Lock()
+	rnsRef := a.RNS
+	a.mu.Unlock()
+	if rnsRef != nil {
+		return rnsRef.ConfigPath()
+	}
 	if a.RNSConfigDir != "" {
 		return filepath.Join(a.RNSConfigDir, "config")
 	}
-	a.mu.Lock()
-	dir := a.standaloneRNSDir
-	a.mu.Unlock()
-	if dir == "" {
-		return ""
-	}
-	return filepath.Join(dir, "config")
+	return ""
 }
 
 // parseInterfaceConfig scans the RNS config and returns the [[Name]] subsections

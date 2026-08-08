@@ -47,3 +47,20 @@ func writeTestNomadNetConfig(t *testing.T, dir string) {
 		t.Fatalf("writeTestNomadNetConfig(%q): %v", dir, err)
 	}
 }
+
+// writeTestRNSConfig creates an isolated RNS config dir for tests that drive
+// the real Init() -> initRNS path, so they never touch the user's real
+// ~/.reticulum. It returns the new dir path (a fresh temp dir, cleaned up via
+// tempDir's t.Cleanup). share_instance = No makes the instance standalone
+// (no shared-instance socket, no clobbering a real instance) and the empty
+// [interfaces] section means no network I/O — these tests don't need a
+// reachable peer, just an initialized RNS stack in isolation.
+func writeTestRNSConfig(t *testing.T) string {
+	t.Helper()
+	dir := tempDir(t)
+	const contents = "[reticulum]\n  share_instance = No\n\n[logging]\n  loglevel = 4\n\n[interfaces]\n"
+	if err := os.WriteFile(filepath.Join(dir, "config"), []byte(contents), 0o600); err != nil {
+		t.Fatalf("writeTestRNSConfig: %v", err)
+	}
+	return dir
+}

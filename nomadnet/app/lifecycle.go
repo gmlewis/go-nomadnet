@@ -66,5 +66,5 @@ func (a *App) ExceptionHandler(r any) {
 	}
 	a.Logger.Error("An unhandled panic occurred:")
 	a.Logger.Error("Value: %v", r)
-	a.Logger.Error("Trace:\n%v", debug.Stack())
+	a.Logger.Error("Trace:\n%s", debug.Stack())
 }

@@ -163,7 +163,7 @@ func TestMsgpackCompatibility(t *testing.T) {
 
 func tempDir(t *testing.T) string {
 	t.Helper()
-	dir, err := os.MkdirTemp("", "nomadnet-peersettings-test")
+	dir, err := os.MkdirTemp("/tmp", "nomadnet-peersettings-test")
 	if err != nil {
 		t.Fatal(err)
 	}

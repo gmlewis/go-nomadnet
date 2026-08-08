@@ -26,6 +26,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/gmlewis/go-nomadnet/testutils"
 )
 
 // TestNoFormatVOnByteSlice is a static guard against the one class of
@@ -49,6 +51,13 @@ import (
 // It uses only the standard library (go/parser, go/types, go/importer) so no
 // new module dependency is required.
 func TestNoFormatVOnByteSlice(t *testing.T) {
+	// This test type-checks the whole tui package via the source importer,
+	// which transitively type-checks every import from source (~15s). That
+	// blows the -short budget (every short test must run in well under 5s),
+	// so skip it there; it still runs in the full unit and full integration
+	// suites where the budget is 4m.
+	testutils.SkipShortIntegration(t)
+
 	t.Parallel()
 
 	// Locate this package's source directory regardless of the test's CWD so

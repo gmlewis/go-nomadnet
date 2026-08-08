@@ -24,33 +24,19 @@ import (
 // Interfaces "Open Text Editor" (C-w) action edits — matching Python's
 // open_config_editor (Interfaces.py:3160), which edits self.app.rns.configpath.
 //
-//   - An explicit -rnsconfig dir wins: the config lives at <dir>/config.
-//   - Otherwise the per-run standalone config dir (ensureStandaloneRNSConfig)
-//     is used, also at <dir>/config.
-//   - When neither is set (RNS not yet initialized) it returns "" so the
-//     wiring can surface a "not ready" message instead of editing nothing.
+//   - Once RNS is initialized, the resolved path comes from the Reticulum
+//     itself (Reticulum.ConfigPath); see TestAppInit for that end-to-end check.
+//   - Before RNS is initialized, an explicit -rnsconfig dir is used: the
+//     config lives at <dir>/config.
+//   - When neither is set (RNS not yet initialized, no -rnsconfig) it returns
+//     "" so the wiring can surface a "not ready" message instead of editing
+//     nothing.
 func TestRNSConfigPath(t *testing.T) {
-	t.Run("explicit rns config dir", func(t *testing.T) {
+	t.Run("explicit rns config dir before init", func(t *testing.T) {
 		a := &App{RNSConfigDir: "/tmp/rnscfg-example"}
 		want := filepath.Join("/tmp/rnscfg-example", "config")
 		if got := a.RNSConfigPath(); got != want {
 			t.Errorf("RNSConfigPath() = %q, want %q", got, want)
-		}
-	})
-
-	t.Run("standalone dir fallback", func(t *testing.T) {
-		a := &App{RNSConfigDir: "", standaloneRNSDir: "/tmp/standalone-example"}
-		want := filepath.Join("/tmp/standalone-example", "config")
-		if got := a.RNSConfigPath(); got != want {
-			t.Errorf("RNSConfigPath() = %q, want %q", got, want)
-		}
-	})
-
-	t.Run("explicit dir beats standalone", func(t *testing.T) {
-		a := &App{RNSConfigDir: "/tmp/explicit", standaloneRNSDir: "/tmp/standalone"}
-		want := filepath.Join("/tmp/explicit", "config")
-		if got := a.RNSConfigPath(); got != want {
-			t.Errorf("RNSConfigPath() = %q, want %q (explicit must win)", got, want)
 		}
 	})
 
