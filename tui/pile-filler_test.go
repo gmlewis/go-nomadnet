@@ -36,9 +36,9 @@ func pfRender(t *testing.T, p *pileFiller, w, h int) []string {
 	p.Draw(screen)
 	screen.Sync()
 	rows := make([]string, h)
-	for y := 0; y < h; y++ {
+	for y := range h {
 		var b strings.Builder
-		for x := 0; x < w; x++ {
+		for x := range w {
 			c, _, _, _ := screen.GetContent(x, y)
 			b.WriteRune(c)
 		}

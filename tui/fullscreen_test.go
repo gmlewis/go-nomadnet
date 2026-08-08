@@ -62,7 +62,7 @@ func TestFullscreenToggleMultipleTimes(t *testing.T) {
 	t.Parallel()
 
 	fs := FullscreenState{ListWidth: 52}
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		fs.Toggle()
 	}
 	// After 10 toggles (even number), should be back to normal

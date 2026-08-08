@@ -163,7 +163,7 @@ func menuFocused() func(*utils.View) bool {
 // cursor may be hidden at (0,0) after a re-sort, but focus is on the list and
 // Down/Enter still activate the focused node).
 func (d *driver) enterAnnounceList(maxDowns int) bool {
-	for i := 0; i < maxDowns; i++ {
+	for range maxDowns {
 		v := d.view()
 		if v.CursorOnAnnounceNodeRow() {
 			return true
@@ -212,7 +212,7 @@ func (d *driver) escapeToMenu(maxSteps int) {
 	// pile widget (Escape from Announce Info, Left from the browser, Up off the
 	// local-peer panel) so Home is re-sent once focus is back on the ilb.
 	homeSent := false
-	for i := 0; i < maxSteps; i++ {
+	for range maxSteps {
 		v := d.view()
 		if _, ok := v.MenuFocusedButton(); ok {
 			return
@@ -279,7 +279,7 @@ func (d *driver) escapeToMenu(maxSteps int) {
 // (the menu wraps, so Right always advances) until MenuFocusedButton matches,
 // capped at `cap` sends. Returns whether the target was reached.
 func (d *driver) moveMenuTo(target, cap int) bool {
-	for i := 0; i < cap; i++ {
+	for range cap {
 		if idx, ok := d.view().MenuFocusedButton(); ok && idx == target {
 			return true
 		}
@@ -353,7 +353,7 @@ func (d *driver) phase2() {
 	d.step("Phase 2: select Network, Down into body, Ctrl-L -> Announce Stream")
 
 	// From Guide (6) go back to Network (1): five Lefts.
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		d.send("Left")
 	}
 	d.assert(menuAt(1), 3*time.Second, "menu on Network (index 1) after 5 Lefts")
@@ -473,7 +473,7 @@ func (d *driver) phase3() {
 		// 3. Focus the Connect button (color-neutral; detected via cursor_x on
 		//    the button row). Right moves Back->Connect. Only press Enter if
 		//    Connect is actually focused, else we would activate Back.
-		for tries := 0; tries < 4; tries++ {
+		for range 4 {
 			if bv := d.view(); bv != nil {
 				if b, ok := bv.FocusedActionButton(); ok && b == "Connect" {
 					break
@@ -632,16 +632,13 @@ func (d *driver) walkToBottom(sig func(v *utils.View) string, maxSteps int, step
 	// selectable links/fields (e.g. Guide topic 7, "Markup"): there the cursor
 	// keeps stepping between widgets so cursorStuck never reaches K, but Down
 	// stops changing the content, so sigStuck climbs past H and bottoms out.
-	hardStuck := v.Screen.H
-	if hardStuck < K+1 {
-		hardStuck = K + 1
-	}
+	hardStuck := max(v.Screen.H, K+1)
 	prevSig := sig(v)
 	prevCY := -1
 	sigStuck, cursorStuck := 0, 0
 	cursorEverSeen := false
 	screenfuls := 0
-	for i := 0; i < maxSteps; i++ {
+	for i := range maxSteps {
 		if err := d.sess.SendKeys("Down"); err != nil {
 			d.logf("  ERROR walk send-keys: %v", err)
 		}
@@ -717,10 +714,7 @@ func (d *driver) examineMainPage(mainHash string, maxSteps int) {
 	const K = 4
 	followed := map[string]bool{}
 	v := d.view()
-	hardStuck := v.Screen.H
-	if hardStuck < K+1 {
-		hardStuck = K + 1
-	}
+	hardStuck := max(v.Screen.H, K+1)
 	prevSig := v.BrowserPaneSig()
 	prevCY := -1
 	sigStuck, cursorStuck := 0, 0
@@ -728,7 +722,7 @@ func (d *driver) examineMainPage(mainHash string, maxSteps int) {
 	screenfuls := 0
 	curLine := 0
 	linksFollowed := 0
-	for i := 0; i < maxSteps; i++ {
+	for i := range maxSteps {
 		if err := d.sess.SendKeys("Down"); err != nil {
 			d.logf("  ERROR walk send-keys: %v", err)
 		}

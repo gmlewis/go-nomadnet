@@ -38,7 +38,6 @@ func TestParseLineLevelParity(t *testing.T) {
 			{"------", "─"},
 		}
 		for _, tc := range cases {
-			tc := tc
 			t.Run(tc.markup, func(t *testing.T) {
 				t.Parallel()
 				nodes := Parse(tc.markup)
@@ -78,7 +77,6 @@ func TestParseLineLevelParity(t *testing.T) {
 			{"<<deep reset", "deep reset"},
 		}
 		for _, tc := range cases {
-			tc := tc
 			t.Run(tc.markup, func(t *testing.T) {
 				t.Parallel()
 				nodes := Parse(tc.markup)

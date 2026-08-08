@@ -49,7 +49,6 @@ func TestSizeStrGolden(t *testing.T) {
 		{6520, "b", "52.16Kb"},
 	}
 	for _, c := range cases {
-		c := c
 		t.Run(t.Name(), func(t *testing.T) {
 			if got := sizeStr(c.num, c.suffix); got != c.want {
 				t.Errorf("sizeStr(%v, %q) = %q, want %q", c.num, c.suffix, got, c.want)
@@ -98,7 +97,6 @@ func TestBrowserStatusTextInFlight(t *testing.T) {
 		{browserDisconnected, "Disconnected"},
 	}
 	for _, c := range cases {
-		c := c
 		if got := browserStatusText(g, c.status, 0, 0, 0, false, false, ""); got != c.want {
 			t.Errorf("status(%v) = %q, want %q", c.status, got, c.want)
 		}

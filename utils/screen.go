@@ -73,8 +73,6 @@ func (s *Screen) FullText() string {
 // skips other CSI/OSC sequences. Cell columns are grown as characters are
 // written; short rows are padded to the screen width at the end.
 func parseScreen(raw []byte) *Screen {
-	type rowState struct{ cells []Cell }
-
 	var rows [][]Cell
 	cur := Cell{FG: colorDefault, BG: colorDefault}
 	cx, cy := 0, 0
@@ -106,8 +104,8 @@ func parseScreen(raw []byte) *Screen {
 	n := len(raw)
 	for i < n {
 		b := raw[i]
-		switch {
-		case b == 0x1b: // ESC
+		switch b {
+		case 0x1b: // ESC
 			if i+1 >= n {
 				i++
 				continue
@@ -198,14 +196,14 @@ func parseScreen(raw []byte) *Screen {
 				// other ESC (e.g. ESC =, ESC >, ESC M) — skip ESC + next
 				i += 2
 			}
-		case b == '\r':
+		case '\r':
 			cx = 0
 			i++
-		case b == '\n', b == 0x0b, b == 0x0c:
+		case '\n', 0x0b, 0x0c:
 			cy++
 			cx = 0
 			i++
-		case b == 0x08: // backspace
+		case 0x08: // backspace
 			if cx > 0 {
 				cx--
 			}
@@ -598,7 +596,7 @@ func (v *View) ActivePage() string {
 // title text. This is robust to terminal width without parsing border geometry.
 func HasBorderTitle(s, title string) bool {
 	const dash = "─" // U+2500 BOX DRAWINGS LIGHT HORIZONTAL
-	for _, line := range strings.Split(s, "\n") {
+	for line := range strings.SplitSeq(s, "\n") {
 		if !strings.Contains(line, title) {
 			continue
 		}
@@ -613,7 +611,7 @@ func HasBorderTitle(s, title string) bool {
 // whitespace) on a body line — used for the Interfaces centered header which is
 // not a border title.
 func hasCenteredText(s, text string) bool {
-	for _, line := range strings.Split(s, "\n") {
+	for line := range strings.SplitSeq(s, "\n") {
 		t := strings.TrimSpace(line)
 		if t == text {
 			return true
@@ -989,8 +987,8 @@ func (v *View) browserURL() string {
 	// keeps working for test fixtures that place the bar at column 0.
 	for y := 0; y < v.Screen.H; y++ {
 		t := v.Screen.RowText(y)
-		if idx := strings.Index(t, "URL:"); idx >= 0 {
-			if fs := strings.Fields(t[idx+len("URL:"):]); len(fs) > 0 {
+		if _, after, ok := strings.Cut(t, "URL:"); ok {
+			if fs := strings.Fields(after); len(fs) > 0 {
 				return stripURLPath(fs[0])
 			}
 		}
@@ -1085,8 +1083,8 @@ func (v *View) BrowserFooterLink() string {
 		t := v.rightPaneText(y)
 		if strings.HasPrefix(t, "└") {
 			ft := v.rightPaneText(y - 1)
-			if i := strings.Index(ft, "Link to "); i >= 0 {
-				return strings.TrimSpace(ft[i+len("Link to "):])
+			if _, after, ok := strings.Cut(ft, "Link to "); ok {
+				return strings.TrimSpace(after)
 			}
 			return ""
 		}
@@ -1098,8 +1096,8 @@ func (v *View) BrowserFooterLink() string {
 			continue
 		}
 		t := v.rightPaneText(y)
-		if i := strings.Index(t, "Link to "); i >= 0 {
-			return strings.TrimSpace(t[i+len("Link to "):])
+		if _, after, ok := strings.Cut(t, "Link to "); ok {
+			return strings.TrimSpace(after)
 		}
 	}
 	return ""
@@ -1110,8 +1108,8 @@ func (v *View) BrowserFooterLink() string {
 // colon marks the start of a path ("c684...:/page/index.mu" -> "c684...").
 // Tokens with no colon (a bare hash, or a Go "URL:" value) pass through.
 func stripURLPath(token string) string {
-	if c := strings.IndexByte(token, ':'); c >= 0 {
-		return token[:c]
+	if before, _, ok := strings.Cut(token, ":"); ok {
+		return before
 	}
 	return token
 }
@@ -1130,15 +1128,15 @@ func firstErrorLine(full string) string {
 	}
 	if i := strings.Index(full, "Invalid URL:"); i >= 0 {
 		rest := full[i:]
-		if nl := strings.IndexByte(rest, '\n'); nl >= 0 {
-			return strings.TrimSpace(rest[:nl])
+		if before, _, ok := strings.Cut(rest, "\n"); ok {
+			return strings.TrimSpace(before)
 		}
 		return strings.TrimSpace(rest)
 	}
 	if i := strings.Index(full, "Could not load partial"); i >= 0 {
 		rest := full[i:]
-		if nl := strings.IndexByte(rest, '\n'); nl >= 0 {
-			return strings.TrimSpace(rest[:nl])
+		if before, _, ok := strings.Cut(rest, "\n"); ok {
+			return strings.TrimSpace(before)
 		}
 		return strings.TrimSpace(rest)
 	}
@@ -1172,7 +1170,7 @@ func (v *View) GuideTopicRendered() string {
 	for y := 1; y < v.Screen.H && y < len(rows); y++ {
 		r := rows[y]
 		first := -1
-		for x := 0; x < len(r); x++ {
+		for x := range r {
 			ch := r[x].Ch
 			if ch == '┌' || ch == '├' || ch == '└' {
 				if first < 0 {
@@ -1190,10 +1188,7 @@ func (v *View) GuideTopicRendered() string {
 	if borderY < 0 || readerLeft < 0 {
 		// Fallback: reader begins near W/3, border on row 1.
 		borderY = 1
-		readerLeft = v.Screen.W / 3
-		if readerLeft < 1 {
-			readerLeft = 1
-		}
+		readerLeft = max(v.Screen.W/3, 1)
 	}
 	// Scan the rows below the top border for the first content row. A content
 	// row begins with │ or ┃ at the reader's left edge; inner border rows
@@ -1247,7 +1242,7 @@ func (v *View) readerLeftCol() int {
 	for y := 1; y < v.Screen.H && y < len(rows); y++ {
 		r := rows[y]
 		first := -1
-		for x := 0; x < len(r); x++ {
+		for x := range r {
 			ch := r[x].Ch
 			if ch == '┌' || ch == '├' || ch == '└' {
 				if first < 0 {
@@ -1272,10 +1267,7 @@ func (v *View) ReaderPaneSig() string {
 	}
 	rl := v.readerLeftCol()
 	if rl < 0 {
-		rl = v.Screen.W / 3
-		if rl < 1 {
-			rl = 1
-		}
+		rl = max(v.Screen.W/3, 1)
 	}
 	var b strings.Builder
 	for y := 0; y < v.Screen.H && y < len(v.Screen.Rows); y++ {
@@ -1329,10 +1321,7 @@ func (v *View) GuideSelectedTopic() (int, bool) {
 	if titleY < 0 {
 		return -1, false
 	}
-	rightEdge := v.Screen.W / 3
-	if rightEdge < 2 {
-		rightEdge = 2
-	}
+	rightEdge := max(v.Screen.W/3, 2)
 	// Cursor-primary: if the cursor is on a topic row (left third, below the
 	// Topics title), count it as the Nth non-blank topic row.
 	if v.CursorOK && v.CursorY > titleY && v.CursorY < v.Screen.H {

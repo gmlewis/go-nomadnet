@@ -36,7 +36,7 @@ func drawRadioButtonAt(t *testing.T, rb *RadioButton, w int) string {
 	rb.Draw(screen)
 	screen.Sync()
 	var b strings.Builder
-	for x := 0; x < w; x++ {
+	for x := range w {
 		c, _, _, _ := screen.GetContent(x, 0)
 		b.WriteRune(c)
 	}

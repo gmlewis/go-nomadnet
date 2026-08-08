@@ -32,8 +32,8 @@ func TestShowStatusDialogRendersOKButton(t *testing.T) {
 	screen.Show()
 
 	var b strings.Builder
-	for y := 0; y < 14; y++ {
-		for x := 0; x < 60; x++ {
+	for y := range 14 {
+		for x := range 60 {
 			c, _, _, _ := screen.GetContent(x, y)
 			b.WriteRune(c)
 		}

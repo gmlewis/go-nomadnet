@@ -53,7 +53,6 @@ func TestApplyConfigPrintingFrom(t *testing.T) {
 		{name: "comma_list_with_trusted", printFrom: hexHash + ", trusted", wantTrusted: true, wantAllowed: []string{hexHash, "trusted"}},
 	}
 	for _, c := range cases {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			cfg := &config.Config{Printing: config.PrintingConfig{

@@ -27,7 +27,7 @@ import "strings"
 // equivalent specs without urwid.
 
 // monoColor is the monochrome terminal color. Python always returns "default".
-func monoColor(fg, bg string) string {
+func monoColor(_, _ string) string {
 	return "default"
 }
 
@@ -179,7 +179,7 @@ func highColor(color string) string {
 		// digit yields "default" (Python's except branch).
 		var sb strings.Builder
 		sb.WriteByte('#')
-		for i := 0; i < 6; i++ {
+		for i := range 6 {
 			v, ok := parseHexDigit(color[i])
 			if !ok {
 				return "default"

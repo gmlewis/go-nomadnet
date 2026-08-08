@@ -115,7 +115,6 @@ func TestLXMessageHeaderPythonParity(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			got, gotStyle := LXMessageHeader(tc.in)
@@ -145,7 +144,6 @@ func TestStrftimeLayout(t *testing.T) {
 		{"plain text", "plain text"},
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.in, func(t *testing.T) {
 			t.Parallel()
 			if got := strftimeLayout(tc.in); got != tc.want {
@@ -174,7 +172,6 @@ func TestRelativeTimeAtParity(t *testing.T) {
 		{10 * 86400, "1w ago"},
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.want, func(t *testing.T) {
 			t.Parallel()
 			ts := now.Add(-time.Duration(tc.delta) * time.Second)

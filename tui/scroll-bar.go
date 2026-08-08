@@ -112,7 +112,7 @@ func wrappedRowCount(text string, width int) int {
 		return 0
 	}
 	total := 0
-	for _, line := range strings.Split(text, "\n") {
+	for line := range strings.SplitSeq(text, "\n") {
 		if line == "" {
 			total++
 			continue
@@ -164,10 +164,7 @@ func (s *ScrollBar) Draw(screen tcell.Screen) {
 
 	// Scrollbar needed. Compute thumb geometry per urwid scrollable.py:558-568.
 	thumbWeight := math.Min(1.0, float64(h)/float64(rowsMax))
-	thumbHeight := int(math.Round(thumbWeight * float64(h)))
-	if thumbHeight < 1 {
-		thumbHeight = 1
-	}
+	thumbHeight := max(int(math.Round(thumbWeight*float64(h))), 1)
 	posmax := rowsMax - h
 	topWeight := 0.0
 	if posmax > 0 {
@@ -175,10 +172,7 @@ func (s *ScrollBar) Draw(screen tcell.Screen) {
 	}
 	topHeight := int(float64(h-thumbHeight) * topWeight)
 	if topHeight == 0 && topWeight > 0 {
-		topHeight = 1
-		if topHeight > h-thumbHeight {
-			topHeight = h - thumbHeight
-		}
+		topHeight = min(1, h-thumbHeight)
 	}
 	bottomHeight := h - thumbHeight - topHeight
 

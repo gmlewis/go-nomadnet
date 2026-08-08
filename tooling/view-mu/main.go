@@ -243,7 +243,9 @@ func writeANSICode(sb *strings.Builder, fg, bg string, bold, underline, italic b
 		}
 	}
 
-	sb.WriteString("\033[" + strings.Join(codes, ";") + "m")
+	sb.WriteString("\033[")
+	sb.WriteString(strings.Join(codes, ";"))
+	sb.WriteString("m")
 }
 
 // parseHexColor converts "#rrggbb" to "r;g;b" format for ANSI 24-bit color

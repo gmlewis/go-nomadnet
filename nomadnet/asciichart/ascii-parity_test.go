@@ -56,7 +56,6 @@ func TestPlotPythonParity(t *testing.T) {
 		t.Fatalf("unmarshal: %v", err)
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.Label, func(t *testing.T) {
 			t.Parallel()
 			c := New(tc.Glyph)

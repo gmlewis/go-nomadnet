@@ -69,7 +69,6 @@ func TestUrwidSpaceWrap(t *testing.T) {
 		{"embedded newline honored", "a\nbc", 80, []string{"a", "bc"}},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			got := urwidSpaceWrap(tt.text, tt.width)

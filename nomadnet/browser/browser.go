@@ -135,6 +135,10 @@ const destHashHexLen = 32
 
 // ErrMalformedURL is returned by ParseURL for a URL that does not match the
 // nomadnet address grammar, matching Python's `raise ValueError("Malformed URL")`.
+// The leading capital is intentional: it mirrors Python and surfaces verbatim
+// in the browser status line.
+//
+//lint:ignore ST1005 should not be capitalized
 var ErrMalformedURL = errors.New("Malformed URL")
 
 // Fetch errors, mirroring the Python Browser status states that surface as
@@ -209,7 +213,7 @@ func ParseURL(url string, currentDest []byte, requestData map[string]string) (de
 			if len(requestData) == 0 { // nil or empty → fresh map (Python: `if not request_data`)
 				requestData = map[string]string{}
 			}
-			for _, e := range strings.Split(linkFieldsStr, "|") {
+			for e := range strings.SplitSeq(linkFieldsStr, "|") {
 				if !strings.Contains(e, "=") {
 					continue
 				}

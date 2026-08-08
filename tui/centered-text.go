@@ -73,10 +73,7 @@ func (c *centeredText) Draw(screen tcell.Screen) {
 		}
 		rw := tview.TaggedStringWidth(line)
 		// urwid ceil-left centering: leftPad = ceil((w - rw) / 2).
-		leftPad := (w - rw + 1) / 2
-		if leftPad < 0 {
-			leftPad = 0
-		}
+		leftPad := max((w-rw+1)/2, 0)
 		if x+leftPad < x+w {
 			tview.Print(screen, line, x+leftPad, y+i, w-leftPad, tview.AlignLeft, c.color)
 		}

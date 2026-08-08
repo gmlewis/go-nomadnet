@@ -42,9 +42,9 @@ func drawIndicativeListBox(t *testing.T, ilb *IndicativeListBox, w, h int) []str
 	screen.Sync()
 
 	rows := make([]string, h)
-	for y := 0; y < h; y++ {
+	for y := range h {
 		var b strings.Builder
-		for x := 0; x < w; x++ {
+		for x := range w {
 			c, _, _, _ := screen.GetContent(x, y)
 			b.WriteRune(c)
 		}
@@ -91,7 +91,7 @@ func TestIndicativeListBoxBottomCovered(t *testing.T) {
 	t.Parallel()
 	list := tview.NewList()
 	list.ShowSecondaryText(false)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		list.AddItem("item"+itoa(i), "", 0, nil)
 	}
 	ilb := NewIndicativeListBox(list)
@@ -111,7 +111,7 @@ func TestIndicativeListBoxScrolledDown(t *testing.T) {
 	t.Parallel()
 	list := tview.NewList()
 	list.ShowSecondaryText(false)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		list.AddItem("item"+itoa(i), "", 0, nil)
 	}
 	list.SetCurrentItem(9) // jump to last item → tview scrolls the bottom into view

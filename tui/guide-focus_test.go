@@ -145,7 +145,7 @@ func TestGuideFocusShowTopicResetsFocus(t *testing.T) {
 
 	gd.showTopic(7)
 	// Walk focus well down into topic 7.
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		gd.focusDown()
 	}
 	if got := gd.focusedLineIndex(); got == 0 {

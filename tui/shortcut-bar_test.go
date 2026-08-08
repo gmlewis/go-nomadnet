@@ -21,7 +21,6 @@ import "testing"
 //
 //	Conversations.py:64-80  — three bars (list/editor/body)
 //	Network.py:13-25        — NetworkDisplayShortcuts
-//	Channels.py:217-229     — three bars (list/editor/body)
 //	Interfaces.py:3194      — InterfaceDisplayShortcuts
 //	Log.py:14, Config.py:10, Guide.py:13 — empty
 const (
@@ -30,10 +29,6 @@ const (
 	shortcutConversationsBody   = "[C-s] Save  [C-u] Purge  [C-o] Sort  [C-x] Clear History  [C-g] Fullscreen  [C-w] Close  [Tab] ↓ Editor"
 
 	shortcutNetwork = "[C-l] Nodes/Announces  [C-x] Remove  [C-w] Disconnect  [C-d] Back  [C-f] Forward  [C-r] Reload  [C-u] URL  [C-g] Fullscreen  [C-s / C-b] Save Node"
-
-	shortcutChannelsList   = "[C-n] New Hub  [C-a] Add Room  [C-r] Connect  [C-w] Disconnect  [C-t] Auto-reconnect  [C-e] Edit Hub  [C-x] Remove"
-	shortcutChannelsEditor = "[C-d] Send  [C-x] Leave  [F8] Collapse  [Tab] Complete Nick"
-	shortcutChannelsBody   = "[C-x] Leave  [C-u] Users  [C-y] Channels  [F8] Collapse Joins  [Tab] ↓ Editor"
 
 	shortcutInterfaces = "[C-a] Add Interface [C-e] Edit Interface [C-x] Remove Interface [Enter] Show Interface [C-w] Open Text Editor"
 )
@@ -72,7 +67,6 @@ func TestShortcutBarPerPage(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		c := c
 		t.Run(c.page, func(t *testing.T) {
 			// Sub-tests share md (mutate activePage); run sequentially.
 			md.mu.Lock()
@@ -109,7 +103,6 @@ func TestConversationsShortcutBars(t *testing.T) {
 		{"body", shortcutConversationsBody},
 	}
 	for _, c := range cases {
-		c := c
 		t.Run(c.region, func(t *testing.T) {
 			// Sub-tests share cd (mutate shortcutFocus); run sequentially.
 			cd.SetShortcutFocus(c.region)

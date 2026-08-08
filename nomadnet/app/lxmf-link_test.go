@@ -76,7 +76,6 @@ func TestOpenLXMFLinkInvalid(t *testing.T) {
 		{"non-hex", "zzzz1122zzzz1122zzzz1122zzzz1122"},
 	}
 	for _, c := range cases {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			a := NewApp(tempDir(t), "", false, false)
@@ -98,7 +97,7 @@ func parseHex(t *testing.T, s string) []byte {
 	b := make([]byte, len(s)/2)
 	for i := range b {
 		var v byte
-		for j := 0; j < 2; j++ {
+		for j := range 2 {
 			c := s[i*2+j]
 			switch {
 			case c >= '0' && c <= '9':

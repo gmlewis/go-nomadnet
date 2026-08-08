@@ -25,7 +25,7 @@ import (
 	"github.com/gmlewis/go-reticulum/rns"
 )
 
-func buildLXMWithAttachments(t *testing.T, dir, attachmentPath string) (string, []byte, []byte) {
+func buildLXMWithAttachments(t *testing.T, dir, _ string) (string, []byte, []byte) {
 	t.Helper()
 	ts := rns.NewTransportSystem(nil)
 	id, err := rns.NewIdentity(true, nil)

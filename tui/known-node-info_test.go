@@ -194,7 +194,6 @@ func TestKnownNodeInfoTrustPreselect(t *testing.T) {
 		{"trusted", "Trusted"},
 	}
 	for _, c := range cases {
-		c := c
 		t.Run(c.trust, func(t *testing.T) {
 			t.Parallel()
 			data := KnownNodeInfoData{

@@ -399,7 +399,10 @@ enable_node = no
 	}
 	defer func() { _ = f.Close() }()
 
-	raw := parseINI(f)
+	raw, err := parseINI(f)
+	if err != nil {
+		t.Fatalf("parseINI: %v", err)
+	}
 
 	if raw["logging"]["loglevel"] != "6" {
 		t.Errorf("logging.loglevel = %q, want %q", raw["logging"]["loglevel"], "6")

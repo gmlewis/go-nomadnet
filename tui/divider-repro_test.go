@@ -69,7 +69,7 @@ func TestDividerReflowsToContentWidth(t *testing.T) {
 
 	text := bd.content.GetText(true)
 	var divider string
-	for _, line := range strings.Split(text, "\n") {
+	for line := range strings.SplitSeq(text, "\n") {
 		if strings.Contains(line, "─") {
 			divider = line
 			break

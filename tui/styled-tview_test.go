@@ -83,17 +83,17 @@ func TestStyledLinesToTviewTextNoBoldBleed(t *testing.T) {
 	out, _ := StyledLinesToTviewText(lines, 40)
 	// The bold span is closed with [-:-:-] before "and plain" appears, and
 	// "and plain" starts with its own non-bold tag (no :b flag).
-	idxBold := strings.Index(out, "bold here[-:-:-]")
-	if idxBold < 0 {
+	_, after, ok := strings.Cut(out, "bold here[-:-:-]")
+	if !ok {
 		t.Fatalf("bold run not closed with reset in: %q", out)
 	}
-	rest := out[idxBold+len("bold here[-:-:-]"):]
-	plainAt := strings.Index(rest, "and plain")
-	if plainAt < 0 {
+	rest := after
+	before0, _, ok := strings.Cut(rest, "and plain")
+	if !ok {
 		t.Fatalf("plain text not found after bold run in: %q", out)
 	}
 	// The tag preceding "and plain" must not carry the bold flag.
-	before := rest[:plainAt]
+	before := before0
 	if strings.Contains(before, ":b]") || strings.Contains(before, ":bu]") || strings.Contains(before, ":bi]") || strings.Contains(before, ":bui]") {
 		t.Errorf("plain text inherits bold flag (all-bold regression): %q", before)
 	}

@@ -35,7 +35,7 @@ func appStarted() func(*utils.View) bool {
 // the pile toward the menu). A bounded loop so a stuck focus still returns.
 func (d *driver) escapeToMenu(maxSteps int) {
 	homeSent := false
-	for i := 0; i < maxSteps; i++ {
+	for range maxSteps {
 		v := d.view()
 		if _, ok := v.MenuFocusedButton(); ok {
 			return
@@ -66,7 +66,7 @@ func (d *driver) escapeToMenu(maxSteps int) {
 // (the menu wraps, so Right always advances) until MenuFocusedButton matches,
 // capped at cap sends. Returns whether the target was reached.
 func (d *driver) moveMenuTo(target, cap int) bool {
-	for i := 0; i < cap; i++ {
+	for range cap {
 		if idx, ok := d.view().MenuFocusedButton(); ok && idx == target {
 			return true
 		}
@@ -83,10 +83,7 @@ func (d *driver) moveMenuTo(target, cap int) bool {
 // advances through the list/pile and into the button row; if Down stalls, Tab
 // cycles the focusable primitives. Returns whether the button was reached.
 func (d *driver) focusActionButton(label string, cap int) bool {
-	downBudget := cap
-	if downBudget < 6 {
-		downBudget = 6
-	}
+	downBudget := max(cap, 6)
 	tabBudget := 6
 	for i := 0; i < downBudget+tabBudget; i++ {
 		v := d.view()
@@ -487,7 +484,7 @@ func (h *harness) cleanup() {
 			d.logf("  could not reach list for cleanup (editor->list nav gap); temp dirs removed by defer")
 			continue
 		}
-		for i := 0; i < 3; i++ {
+		for range 3 {
 			d.send("Home")
 			d.send("C-x")
 			d.snapshot("delete-confirm")

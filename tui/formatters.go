@@ -258,9 +258,9 @@ func ParseURLWithQuery(url, currentHash string) (hash, path string, fields map[s
 	// Split off query part (backtick separator)
 	urlPart := url
 	queryPart := ""
-	if idx := strings.Index(url, "`"); idx >= 0 {
-		urlPart = url[:idx]
-		queryPart = url[idx+1:]
+	if before, after, ok := strings.Cut(url, "`"); ok {
+		urlPart = before
+		queryPart = after
 	}
 
 	components := strings.Split(urlPart, ":")
@@ -321,7 +321,7 @@ func ParseQueryFields(query string) (fields map[string]string, wildcard bool) {
 	}
 
 	fields = make(map[string]string)
-	for _, part := range strings.Split(query, "|") {
+	for part := range strings.SplitSeq(query, "|") {
 		kv := strings.SplitN(part, "=", 2)
 		if len(kv) == 2 {
 			fields[kv[0]] = kv[1]
@@ -351,9 +351,9 @@ func ParseLinkTargetWithFields(target string) (destType, hash string, fields []s
 	// them with a backtick, so strip it here before resolving the target.
 	linkPart := target
 	fieldPart := ""
-	if idx := strings.Index(target, "`"); idx >= 0 {
-		linkPart = target[:idx]
-		fieldPart = target[idx+1:]
+	if before, after, ok := strings.Cut(target, "`"); ok {
+		linkPart = before
+		fieldPart = after
 	}
 
 	// Parse fields
@@ -401,13 +401,13 @@ func ParseLinkTargetWithFields(target string) (destType, hash string, fields []s
 func FormatAnnounceDetail(ann AnnounceEntry) string {
 	var sb strings.Builder
 
-	sb.WriteString(fmt.Sprintf("[::b]%v[-]\n", ann.DisplayName))
-	sb.WriteString(fmt.Sprintf("  Type: %v\n", ann.Type))
-	sb.WriteString(fmt.Sprintf("  Trust: %v\n", ann.TrustLevel))
-	sb.WriteString(fmt.Sprintf("  Hash: %v\n", ann.SourceHash))
-	sb.WriteString(fmt.Sprintf("  Time: %v\n", ann.Timestamp.Format("2006-01-02 15:04:05")))
+	fmt.Fprintf(&sb, "[::b]%v[-]\n", ann.DisplayName)
+	fmt.Fprintf(&sb, "  Type: %v\n", ann.Type)
+	fmt.Fprintf(&sb, "  Trust: %v\n", ann.TrustLevel)
+	fmt.Fprintf(&sb, "  Hash: %v\n", ann.SourceHash)
+	fmt.Fprintf(&sb, "  Time: %v\n", ann.Timestamp.Format("2006-01-02 15:04:05"))
 	if ann.AppData != "" {
-		sb.WriteString(fmt.Sprintf("  Data: %v\n", truncateStr(ann.AppData, 64)))
+		fmt.Fprintf(&sb, "  Data: %v\n", truncateStr(ann.AppData, 64))
 	}
 
 	return sb.String()

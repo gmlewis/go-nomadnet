@@ -114,7 +114,6 @@ func TestApplyConfigUIModeMapping(t *testing.T) {
 		{"web", UIWeb},
 	}
 	for _, c := range cases {
-		c := c
 		t.Run(c.ui, func(t *testing.T) {
 			t.Parallel()
 			cfg := &config.Config{Client: config.ClientConfig{UserInterface: c.ui}}

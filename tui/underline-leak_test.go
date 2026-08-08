@@ -61,11 +61,11 @@ func TestStyledLinesToTviewTextUnderlineNoLeak(t *testing.T) {
 		t.Fatalf("underlined run :u] not found in output: %q", out)
 	}
 	afterUnderline := out[underlinedAt:]
-	plainAt := strings.Index(afterUnderline, "The following line")
-	if plainAt < 0 {
+	before0, _, ok := strings.Cut(afterUnderline, "The following line")
+	if !ok {
 		t.Fatalf("plain line not found after underlined run in: %q", out)
 	}
-	before := afterUnderline[:plainAt]
+	before := before0
 	// The tag immediately preceding the plain text must carry an uppercase U
 	// to clear the latched underline toggle (the [-:-:-] reset does not).
 	if !strings.Contains(before, ":U]") {
@@ -96,8 +96,8 @@ func TestStyledLinesToTviewTextUnderlineNoLeak(t *testing.T) {
 	target := "The following line should contain a red gradient bar:"
 	runes := []rune(target)
 	found := 0
-	for y := 0; y < 6; y++ {
-		for x := 0; x < 90; x++ {
+	for y := range 6 {
+		for x := range 90 {
 			c, _, _, _ := screen.GetContent(x, y)
 			if c != runes[found] {
 				found = 0
@@ -107,7 +107,7 @@ func TestStyledLinesToTviewTextUnderlineNoLeak(t *testing.T) {
 			if found == len(runes) {
 				// We matched the full plain line; verify none of its cells
 				// carried the underline attribute.
-				for i := 0; i < len(runes); i++ {
+				for i := range runes {
 					_, _, attr := styleAt(screen, x-i, y)
 					if attr&tcell.AttrUnderline != 0 {
 						t.Errorf("plain line cell (%v,%v) carries AttrUnderline — underline leaked from previous underlined run (tview [-:-:-] does not reset underline)", x-i, y)

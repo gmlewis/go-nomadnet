@@ -133,9 +133,7 @@ func (ld *LogDisplay) StartTailing() {
 	// Seek to end to start tailing from here.
 	_, _ = file.Seek(0, 2)
 
-	ld.wg.Add(1)
-	go func() {
-		defer ld.wg.Done()
+	ld.wg.Go(func() {
 		defer func() { _ = file.Close() }()
 
 		ticker := time.NewTicker(500 * time.Millisecond)
@@ -162,7 +160,7 @@ func (ld *LogDisplay) StartTailing() {
 				}
 			}
 		}
-	}()
+	})
 }
 
 // StopTailing stops the live tail goroutine.

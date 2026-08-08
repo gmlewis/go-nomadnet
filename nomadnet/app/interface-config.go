@@ -47,7 +47,8 @@ func (a *App) AddInterfaceConfig(name string, props map[string]any) error {
 	var sb strings.Builder
 	if !hasInterfaces {
 		if len(lines) > 0 && lines[len(lines)-1] != "" {
-			sb.WriteString(string(content) + "\n")
+			sb.WriteString(string(content))
+			sb.WriteString("\n")
 		} else {
 			sb.WriteString(string(content))
 		}
@@ -59,12 +60,12 @@ func (a *App) AddInterfaceConfig(name string, props map[string]any) error {
 		}
 	}
 
-	sb.WriteString(fmt.Sprintf("  [[%v]]\n", name))
+	fmt.Fprintf(&sb, "  [[%v]]\n", name)
 	for k, v := range props {
 		if k == "name" {
 			continue
 		}
-		sb.WriteString(fmt.Sprintf("    %v = %v\n", k, v))
+		fmt.Fprintf(&sb, "    %v = %v\n", k, v)
 	}
 
 	return os.WriteFile(path, []byte(sb.String()), 0o644)
@@ -155,7 +156,7 @@ func (a *App) EditInterfaceConfig(oldName, newName string, props map[string]any)
 	inTarget := false
 	replaced := false
 
-	for i := 0; i < len(lines); i++ {
+	for i := range len(lines) {
 		l := lines[i]
 		trimmed := strings.TrimSpace(l)
 
@@ -221,7 +222,7 @@ func (a *App) RemoveInterfaceConfig(name string) error {
 	inInterfaces := false
 	inTarget := false
 
-	for i := 0; i < len(lines); i++ {
+	for i := range len(lines) {
 		l := lines[i]
 		trimmed := strings.TrimSpace(l)
 

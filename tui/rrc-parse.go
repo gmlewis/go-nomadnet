@@ -49,24 +49,24 @@ func ParseWhoNotice(text string) (string, []WhoMember, error) {
 	}
 
 	rest := text[len(prefix):]
-	sepIdx := strings.Index(rest, ": ")
-	if sepIdx < 0 {
+	before, after, ok := strings.Cut(rest, ": ")
+	if !ok {
 		return "", nil, fmt.Errorf("missing ': ' separator")
 	}
-	room := strings.TrimSpace(rest[:sepIdx])
+	room := strings.TrimSpace(before)
 	room = strings.TrimPrefix(room, "#")
 	room = strings.ToLower(room)
 	if room == "" {
 		return "", nil, fmt.Errorf("empty room name")
 	}
 
-	body := strings.TrimSpace(rest[sepIdx+2:])
+	body := strings.TrimSpace(after)
 	var members []WhoMember
 
 	if body != "" && body != "(none)" {
 		// Split by comma and parse each entry
-		entries := strings.Split(body, ",")
-		for _, entry := range entries {
+		entries := strings.SplitSeq(body, ",")
+		for entry := range entries {
 			entry = strings.TrimSpace(entry)
 			if entry == "" {
 				continue

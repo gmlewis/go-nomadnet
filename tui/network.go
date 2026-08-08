@@ -460,7 +460,7 @@ func (nd *NetworkDisplay) connectKnownNode(nodeHash string) {
 
 // msgOpKnownNode starts a conversation with the node's operator then returns to
 // the saved-nodes list (Python msg_op, Network.py:707-731).
-func (nd *NetworkDisplay) msgOpKnownNode(nodeHash string) {
+func (nd *NetworkDisplay) msgOpKnownNode(_ string) {
 	nd.showKnownNodes()
 	if nd.OnMsgOp != nil {
 		nd.OnMsgOp()
@@ -515,7 +515,7 @@ func (nd *NetworkDisplay) connectToNode(ann AnnounceEntry) {
 
 // msgOpNode starts a conversation with the node's operator.
 // Matches Python's msg_op(sender).
-func (nd *NetworkDisplay) msgOpNode(ann AnnounceEntry) {
+func (nd *NetworkDisplay) msgOpNode(_ AnnounceEntry) {
 	nd.showAnnounceStream()
 	if nd.OnMsgOp != nil {
 		nd.OnMsgOp()
@@ -524,7 +524,7 @@ func (nd *NetworkDisplay) msgOpNode(ann AnnounceEntry) {
 
 // saveNode saves the node to the directory.
 // Matches Python's save_node(sender).
-func (nd *NetworkDisplay) saveNode(ann AnnounceEntry) {
+func (nd *NetworkDisplay) saveNode(_ AnnounceEntry) {
 	nd.showAnnounceStream()
 	if nd.OnSaveNode != nil {
 		nd.OnSaveNode()
@@ -533,7 +533,7 @@ func (nd *NetworkDisplay) saveNode(ann AnnounceEntry) {
 
 // useAsPN sets the announce's source as the default propagation node.
 // Matches Python's use_pn(sender).
-func (nd *NetworkDisplay) useAsPN(ann AnnounceEntry) {
+func (nd *NetworkDisplay) useAsPN(_ AnnounceEntry) {
 	nd.showAnnounceStream()
 	if nd.OnUseAsPN != nil {
 		nd.OnUseAsPN()
@@ -542,7 +542,7 @@ func (nd *NetworkDisplay) useAsPN(ann AnnounceEntry) {
 
 // converseWith starts a conversation with a peer.
 // Matches Python's converse(sender).
-func (nd *NetworkDisplay) converseWith(ann AnnounceEntry) {
+func (nd *NetworkDisplay) converseWith(_ AnnounceEntry) {
 	nd.showAnnounceStream()
 	if nd.OnConverse != nil {
 		nd.OnConverse()
@@ -885,15 +885,6 @@ func (nd *NetworkDisplay) ToggleDisplayMode() {
 	nd.announceStream.update()
 }
 
-// rebuildAnnounceList repopulates the announce list via the AnnounceStream
-// (retained as a thin wrapper for callers that predate the AnnounceStream Pile).
-func (nd *NetworkDisplay) rebuildAnnounceList() {
-	nd.announceStream.update()
-	if nd.app != nil {
-		nd.app.QueueUpdateDraw(func() {})
-	}
-}
-
 // glyphs returns the glyph set for this display, falling back to unicode.
 func (nd *NetworkDisplay) glyphs() GlyphSet {
 	if nd.app != nil && nd.app.Glyphs != nil {
@@ -973,12 +964,12 @@ func FormatAnnounceFull(ann AnnounceEntry, showHash bool) string {
 // formatAnnounce formats an announce for the detail panel.
 func formatAnnounce(ann AnnounceEntry) string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("[::b]%v[-]\n", ann.DisplayName))
-	sb.WriteString(fmt.Sprintf("Type: %v\n", ann.Type))
-	sb.WriteString(fmt.Sprintf("Trust: %v\n", ann.TrustLevel))
-	sb.WriteString(fmt.Sprintf("Hash: %v\n", ann.SourceHash))
-	sb.WriteString(fmt.Sprintf("Time: %v\n", ann.Timestamp.Format("2006-01-02 15:04:05")))
-	sb.WriteString(fmt.Sprintf("Data: %v\n", ann.AppData))
+	fmt.Fprintf(&sb, "[::b]%v[-]\n", ann.DisplayName)
+	fmt.Fprintf(&sb, "Type: %v\n", ann.Type)
+	fmt.Fprintf(&sb, "Trust: %v\n", ann.TrustLevel)
+	fmt.Fprintf(&sb, "Hash: %v\n", ann.SourceHash)
+	fmt.Fprintf(&sb, "Time: %v\n", ann.Timestamp.Format("2006-01-02 15:04:05"))
+	fmt.Fprintf(&sb, "Data: %v\n", ann.AppData)
 	return sb.String()
 }
 
@@ -986,11 +977,11 @@ func formatAnnounce(ann AnnounceEntry) string {
 // Matches Python's LocalPeer at Network.py:1259-1350.
 func (nd *NetworkDisplay) ShowLocalPeerDialog(lxmfAddr, identityHash, name string, lastAnnounce string) {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf(" LXMF Addr : %v\n", lxmfAddr))
-	sb.WriteString(fmt.Sprintf(" Identity  : %v\n", identityHash))
-	sb.WriteString(fmt.Sprintf(" Name      : %v\n", name))
+	fmt.Fprintf(&sb, " LXMF Addr : %v\n", lxmfAddr)
+	fmt.Fprintf(&sb, " Identity  : %v\n", identityHash)
+	fmt.Fprintf(&sb, " Name      : %v\n", name)
 	if lastAnnounce != "" {
-		sb.WriteString(fmt.Sprintf(" Last Announce: %v\n", lastAnnounce))
+		fmt.Fprintf(&sb, " Last Announce: %v\n", lastAnnounce)
 	}
 
 	buttons := tview.NewFlex().SetDirection(tview.FlexColumn).

@@ -85,10 +85,11 @@ func (mvd *MessageViewDisplay) ShowMessage(msg MessageInfo) {
 		trustColor = "[yellow]"
 	}
 
-	sb.WriteString(fmt.Sprintf("%v[%v][-] ", trustColor, strings.ToUpper(msg.TrustLevel)))
-	sb.WriteString(fmt.Sprintf("[::b]%v[-]", msg.Sender))
-	sb.WriteString(fmt.Sprintf("  [gray]%v[-]\n", msg.Timestamp))
-	sb.WriteString(strings.Repeat("─", 40) + "\n\n")
+	fmt.Fprintf(&sb, "%v[%v][-] ", trustColor, strings.ToUpper(msg.TrustLevel))
+	fmt.Fprintf(&sb, "[::b]%v[-]", msg.Sender)
+	fmt.Fprintf(&sb, "  [gray]%v[-]\n", msg.Timestamp)
+	sb.WriteString(strings.Repeat("─", 40))
+	sb.WriteString("\n\n")
 
 	// Render content with Micron if it looks like Micron markup
 	content := msg.Content
@@ -140,7 +141,8 @@ func renderMicronAsText(text string) string {
 		case micron.NodeReset:
 			sb.WriteString("[-]")
 		case micron.NodeDivider:
-			sb.WriteString(strings.Repeat("─", 30) + "\n")
+			sb.WriteString(strings.Repeat("─", 30))
+			sb.WriteString("\n")
 		default:
 			sb.WriteString(node.Text)
 		}

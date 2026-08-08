@@ -58,15 +58,6 @@ func (kr *killRing) kill(killed string, forward bool) {
 	kr.lastWasKill = true
 }
 
-// killKeySet mirrors Python's _KILL_KEYS = {"ctrl u","ctrl k","ctrl w","ctrl l"}.
-// These are the only keys that do NOT break the kill chain.
-var killKeySet = map[tcell.Key]bool{
-	tcell.KeyCtrlU: true,
-	tcell.KeyCtrlK: true,
-	tcell.KeyCtrlW: true,
-	tcell.KeyCtrlL: true,
-}
-
 // ReadlineEdit is a tview.InputField with readline-style editing keys,
 // ported from Python's ReadlineMixin.keypress (ReadlineEdit.py). Bindings:
 //
@@ -157,13 +148,7 @@ func (re *ReadlineEdit) Draw(screen tcell.Screen) {
 	x, y, _, _ := re.GetInnerRect()
 	labelW := tview.TaggedStringWidth(re.GetLabel())
 	runes := []rune(re.GetText())
-	pos := re.cursorPos
-	if pos < 0 {
-		pos = 0
-	}
-	if pos > len(runes) {
-		pos = len(runes)
-	}
+	pos := min(max(re.cursorPos, 0), len(runes))
 	col := runewidth.StringWidth(string(runes[:pos]))
 	screen.ShowCursor(x+labelW+col, y)
 }
@@ -173,10 +158,7 @@ func (re *ReadlineEdit) Draw(screen tcell.Screen) {
 // insertion) or the event itself to let tview handle non-readline keys.
 func (re *ReadlineEdit) handleKey(event *tcell.EventKey) *tcell.EventKey {
 	runes := []rune(re.GetText())
-	pos := re.cursorPos
-	if pos > len(runes) {
-		pos = len(runes)
-	}
+	pos := min(re.cursorPos, len(runes))
 
 	killKey := false
 	consumed := true

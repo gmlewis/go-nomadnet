@@ -45,7 +45,6 @@ func TestUniqueDownloadPath(t *testing.T) {
 		{"gap in counter", func(d string) { touch(d, "report.pdf"); touch(d, "report.pdf.2") }, "report.pdf", "report.pdf.1"},
 	}
 	for _, c := range cases {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			d := t.TempDir()
 			if c.setup != nil {

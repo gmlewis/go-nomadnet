@@ -139,15 +139,12 @@ func (b *UrwidButton) Draw(screen tcell.Screen) {
 		}
 	}
 	// Label cell width = w - brackets - 2*dividechars (one blank each side).
-	labelW := w - len([]rune(b.leftBracket)) - len([]rune(b.rightBracket)) - 2*urwidButtonDivideChars
-	if labelW < 0 {
-		labelW = 0
-	}
+	labelW := max(w-len([]rune(b.leftBracket))-len([]rune(b.rightBracket))-2*urwidButtonDivideChars, 0)
 	lines := urwidSpaceWrap(b.label, labelW)
 	if len(lines) == 0 {
 		lines = []string{""}
 	}
-	for r := 0; r < h; r++ {
+	for r := range h {
 		var line string
 		if r < len(lines) {
 			line = lines[r]
@@ -168,7 +165,7 @@ func (b *UrwidButton) Draw(screen tcell.Screen) {
 				px++
 			}
 		}
-		for i := 0; i < urwidButtonDivideChars; i++ {
+		for range urwidButtonDivideChars {
 			setRune(px, y+r, ' ')
 			px++
 		}
@@ -185,7 +182,7 @@ func (b *UrwidButton) Draw(screen tcell.Screen) {
 			px++
 		}
 		// Right dividechars blank.
-		for i := 0; i < urwidButtonDivideChars; i++ {
+		for range urwidButtonDivideChars {
 			setRune(px, y+r, ' ')
 			px++
 		}

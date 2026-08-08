@@ -261,10 +261,7 @@ func (b *interfaceListBox) visibleCount() int {
 }
 
 func (b *interfaceListBox) scrollIntoView() {
-	visible := b.visibleCount()
-	if visible < 1 {
-		visible = 1
-	}
+	visible := max(b.visibleCount(), 1)
 	if b.focusIdx < b.offset {
 		b.offset = b.focusIdx
 	}
@@ -295,12 +292,10 @@ func (b *interfaceListBox) Draw(screen tcell.Screen) {
 		if rowY >= y+h {
 			break
 		}
-		itemH := InterfaceItemHeight
-		if itemH > y+h-rowY {
+		itemH := min(InterfaceItemHeight,
 			// Bottom-clipped last item: urwid's ListBox renders the visible top
 			// portion of a partially-fit item rather than skipping it entirely.
-			itemH = y + h - rowY
-		}
+			y+h-rowY)
 		it := b.items[i]
 		it.SetRect(x, rowY, w, itemH)
 		it.Draw(screen)
@@ -340,14 +335,14 @@ func formatInterfaces(interfaces []InterfaceInfo) string {
 			statusColor = "[red]"
 		}
 
-		sb.WriteString(fmt.Sprintf("[::b]%v[-] %v(%v)[-]\n", iface.Name, statusColor, iface.Status))
-		sb.WriteString(fmt.Sprintf("  Type: %v  Target: %v\n", iface.Type, iface.Target))
-		sb.WriteString(fmt.Sprintf("  Bandwidth: %v\n", formatBandwidth(iface.Bandwidth)))
+		fmt.Fprintf(&sb, "[::b]%v[-] %v(%v)[-]\n", iface.Name, statusColor, iface.Status)
+		fmt.Fprintf(&sb, "  Type: %v  Target: %v\n", iface.Type, iface.Target)
+		fmt.Fprintf(&sb, "  Bandwidth: %v\n", formatBandwidth(iface.Bandwidth))
 
 		if len(iface.Traffic) > 0 {
 			sb.WriteString("\n")
 			chartView := chart.PlotSingle(iface.Traffic)
-			for _, line := range strings.Split(chartView, "\n") {
+			for line := range strings.SplitSeq(chartView, "\n") {
 				sb.WriteString("  ")
 				sb.WriteString(line)
 				sb.WriteString("\n")
@@ -396,24 +391,24 @@ func FormatInterfaceDetail(iface InterfaceInfo) string {
 	var sb strings.Builder
 
 	sb.WriteString("[::b]Interface Details[-]\n\n")
-	sb.WriteString(fmt.Sprintf("  Name: %v\n", iface.Name))
-	sb.WriteString(fmt.Sprintf("  Type: %v\n", iface.Type))
+	fmt.Fprintf(&sb, "  Name: %v\n", iface.Name)
+	fmt.Fprintf(&sb, "  Type: %v\n", iface.Type)
 
 	statusIcon := "○"
 	if iface.Status == "connected" {
 		statusIcon = "●"
 	}
-	sb.WriteString(fmt.Sprintf("  Status: %v %v\n", statusIcon, iface.Status))
+	fmt.Fprintf(&sb, "  Status: %v %v\n", statusIcon, iface.Status)
 
 	if iface.Target != "" {
-		sb.WriteString(fmt.Sprintf("  Target: %v\n", iface.Target))
+		fmt.Fprintf(&sb, "  Target: %v\n", iface.Target)
 	}
 
-	sb.WriteString(fmt.Sprintf("  Bandwidth: %v\n", formatBandwidth(iface.Bandwidth)))
+	fmt.Fprintf(&sb, "  Bandwidth: %v\n", formatBandwidth(iface.Bandwidth))
 
 	if len(iface.Traffic) > 0 {
 		sb.WriteString("\n  [gray]Recent Traffic[-]\n")
-		sb.WriteString(fmt.Sprintf("  Samples: %v\n", len(iface.Traffic)))
+		fmt.Fprintf(&sb, "  Samples: %v\n", len(iface.Traffic))
 	}
 
 	return sb.String()

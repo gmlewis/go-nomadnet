@@ -139,10 +139,7 @@ func (c *Chart) Plot(series [][]float64) string {
 	}
 
 	interval := maxVal - minVal
-	offset := c.Offset
-	if offset < 0 {
-		offset = 0
-	}
+	offset := max(c.Offset, 0)
 
 	// Python: height = cfg.get('height', interval); ratio = height/interval
 	// if interval > 0 else 1. An unset height (c.Height == 0) therefore yields
@@ -210,10 +207,7 @@ func (c *Chart) Plot(series [][]float64) string {
 		}
 		label := formatLabel(labelVal, c.Format)
 		row := y - min2
-		start := offset - len([]rune(label))
-		if start < 0 {
-			start = 0
-		}
+		start := max(offset-len([]rune(label)), 0)
 		setCell(row, start, label)
 		if y == 0 {
 			setCell(row, offset-1, symbols[0])

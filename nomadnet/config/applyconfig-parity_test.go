@@ -62,8 +62,6 @@ func TestApplyConfigPythonParity(t *testing.T) {
 	}
 
 	for name, text := range fx.Variants {
-		name := name
-		text := text
 		golden := fx.Golden[name]
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

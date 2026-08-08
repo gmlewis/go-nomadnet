@@ -387,13 +387,7 @@ func (lt *LinkableText) Draw(screen tcell.Screen) {
 		return
 	}
 	text := lt.Text()
-	pos := lt.cursor
-	if pos < 0 {
-		pos = 0
-	}
-	if pos > len(text) {
-		pos = len(text)
-	}
+	pos := min(max(lt.cursor, 0), len(text))
 	// lt.cursor is a byte offset into the concatenated part text; CalcCoords
 	// takes a rune (codepoint) offset, matching Python's _cursor_position.
 	pos = utf8.RuneCountInString(text[:pos])

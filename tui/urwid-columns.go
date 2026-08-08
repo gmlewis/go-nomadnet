@@ -75,10 +75,7 @@ func urwidColumnWidths(maxcol int, weights []int, dividechars int) []int {
 			widths[w.idx] = minWidth
 			continue
 		}
-		width := int(float64(grow)*float64(w.weight)/float64(wtotal) + 0.5)
-		if width < minWidth {
-			width = minWidth
-		}
+		width := max(int(float64(grow)*float64(w.weight)/float64(wtotal)+0.5), minWidth)
 		widths[w.idx] = width
 		grow -= width
 		wtotal -= w.weight
@@ -109,7 +106,7 @@ func urwidColumnWidthsEx(maxcol int, weights []int, fixedWidths []int, dividecha
 	}
 
 	shared := maxcol
-	for i := 0; i < n; i++ {
+	for i := range n {
 		if i > 0 {
 			shared -= dividechars
 		}
@@ -117,12 +114,9 @@ func urwidColumnWidthsEx(maxcol int, weights []int, fixedWidths []int, dividecha
 
 	var weightedIdxs []int
 	wtotal := 0
-	for i := 0; i < n; i++ {
+	for i := range n {
 		if fixedWidths[i] > 0 {
-			fw := fixedWidths[i]
-			if fw > shared {
-				fw = shared
-			}
+			fw := min(fixedWidths[i], shared)
 			widths[i] = fw
 			shared -= fw
 		} else {
@@ -139,10 +133,7 @@ func urwidColumnWidthsEx(maxcol int, weights []int, fixedWidths []int, dividecha
 				continue
 			}
 			w := weights[idx]
-			width := int(float64(grow)*float64(w)/float64(wtotal) + 0.5)
-			if width < 1 {
-				width = 1
-			}
+			width := max(int(float64(grow)*float64(w)/float64(wtotal)+0.5), 1)
 			widths[idx] = width
 			grow -= width
 			wtotal -= w
@@ -343,26 +334,6 @@ func (c *urwidColumns) Draw(screen tcell.Screen) {
 	for _, child := range c.children {
 		child.Draw(screen)
 	}
-}
-
-// requiredHeightAt returns the row height urwid would give the columns at width
-// w: the maximum of the children's required heights at their computed widths.
-// A child implements heightRequest when it has a RequiredHeight(width) method;
-// otherwise it is assumed to be one row tall.
-func (c *urwidColumns) requiredHeightAt(w int) int {
-	widths := urwidColumnWidthsEx(w, c.weights, c.fixedWidths, c.dividechars)
-	max := 1
-	for i, child := range c.children {
-		cw := widths[i]
-		hh := 1
-		if hr, ok := child.(interface{ RequiredHeight(int) int }); ok {
-			hh = hr.RequiredHeight(cw)
-		}
-		if hh > max {
-			max = hh
-		}
-	}
-	return max
 }
 
 // Focus, HasFocus, InputHandler and MouseHandler delegate to the focused child

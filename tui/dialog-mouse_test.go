@@ -38,9 +38,9 @@ func TestStatusDialogOKButtonMouseClick(t *testing.T) {
 
 	// Locate the row that renders the OK button and click its center.
 	okY := -1
-	for y := 0; y < 14; y++ {
+	for y := range 14 {
 		var line strings.Builder
-		for x := 0; x < 60; x++ {
+		for x := range 60 {
 			c, _, _, _ := screen.GetContent(x, y)
 			line.WriteRune(c)
 		}

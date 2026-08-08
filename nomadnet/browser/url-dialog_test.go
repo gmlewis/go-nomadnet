@@ -42,7 +42,6 @@ func TestNormalizeEnteredURLGolden(t *testing.T) {
 			"hash12345678901234567890123456789012:/page/index.mu`f=v"},
 	}
 	for _, c := range cases {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			if got := NormalizeEnteredURL(c.in); got != c.want {

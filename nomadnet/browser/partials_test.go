@@ -145,7 +145,6 @@ func TestPartialHash(t *testing.T) {
 		{"", "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
 	}
 	for _, c := range cases {
-		c := c
 		t.Run(c.descriptor, func(t *testing.T) {
 			if got := PartialHash(c.descriptor); got != c.want {
 				t.Errorf("PartialHash(%q) = %q, want %q", c.descriptor, got, c.want)
@@ -177,7 +176,6 @@ func TestPartialRequestData(t *testing.T) {
 		{"pid entry is a var too", []string{"pid=abc"}, map[string]string{"var_pid": "abc"}, nil},
 	}
 	for _, c := range cases {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			rd, links := PartialRequestData(c.fields)
 			if !reflect.DeepEqual(rd, c.wantRD) {

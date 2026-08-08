@@ -26,7 +26,7 @@ func (d *driver) stepf(format string, args ...any) {
 // if the region is not reached, the caller's downstream assertion will fail and
 // log the observed state.
 func (d *driver) toRegion(region string, cap int) {
-	for i := 0; i < cap; i++ {
+	for i := range cap {
 		if shortcutRegion(d.view()) == region {
 			return
 		}

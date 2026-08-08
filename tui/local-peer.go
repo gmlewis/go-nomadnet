@@ -23,11 +23,6 @@ import (
 	"github.com/rivo/tview"
 )
 
-// localPeerLabelWidth is the column width of the "LXMF Addr : ", "Identity  : "
-// and "Name      : " labels so the colons line up, matching Python's LocalPeer
-// (Network.py:1278-1282).
-const localPeerLabelWidth = 12
-
 // LocalPeerDisplay is the "Local Peer Info" panel shown PACKed below the saved
 // nodes list in the Network left pane. It mirrors Python's LocalPeer
 // (Network.py:1259-1355): a titled LineBox wrapping a Pile of the LXMF address,

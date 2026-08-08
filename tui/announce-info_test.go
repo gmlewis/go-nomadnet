@@ -24,13 +24,6 @@ import (
 	"github.com/rivo/tview"
 )
 
-// aiRowInfo holds the expected label prefix and full content for one
-// AnnounceInfo text row, used by the golden layout assertions.
-type aiRowInfo struct {
-	prefix string // the exact label prefix (e.g. "Time  : ")
-	full   string // the full row text excluding trailing pad spaces
-}
-
 // trimTrailing strips trailing spaces from a rendered row so the golden
 // expectations can ignore right-padding (which is fill, not content).
 func trimTrailing(s string) string { return strings.TrimRight(s, " ") }

@@ -399,12 +399,12 @@ func isTableSeparator(cells []string) bool {
 // may carry a pid= entry. Any parse failure (missing brace, non-numeric
 // refresh) yields no node, mirroring the Python try/except → None.
 func parsePartial(line string) []*Node {
-	endpos := strings.IndexByte(line, '}')
-	if endpos == -1 {
+	before, _, ok := strings.Cut(line, "}")
+	if !ok {
 		return nil
 	}
 
-	partialData := line[:endpos]
+	partialData := before
 	components := strings.Split(partialData, "`")
 
 	p := &Node{Type: NodePartial, PartialFields: []string{""}}

@@ -314,7 +314,7 @@ func TestScanStorage(t *testing.T) {
 	}
 
 	// Create some message files
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		hash := make([]byte, 32)
 		hash[0] = byte(i)
 		name := hexHash(hash)
@@ -397,7 +397,7 @@ func TestPurgeFailed(t *testing.T) {
 	}
 
 	// Create message files
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		hash := make([]byte, 32)
 		hash[0] = byte(i + 10)
 		name := hexHash(hash)
@@ -441,7 +441,7 @@ func TestClearHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		hash := make([]byte, 32)
 		hash[0] = byte(i + 20)
 		name := hexHash(hash)

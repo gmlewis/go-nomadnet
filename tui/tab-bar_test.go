@@ -45,7 +45,7 @@ func TestTabBarWidgetWidthDistribution(t *testing.T) {
 	screen.Sync()
 
 	var row strings.Builder
-	for x := 0; x < 50; x++ {
+	for x := range 50 {
 		c, _, _, _ := screen.GetContent(x, 0)
 		row.WriteRune(c)
 	}
@@ -76,7 +76,7 @@ func TestTabBarWidgetEvenWidth(t *testing.T) {
 	screen.Sync()
 
 	var row strings.Builder
-	for x := 0; x < 21; x++ {
+	for x := range 21 {
 		c, _, _, _ := screen.GetContent(x, 0)
 		row.WriteRune(c)
 	}

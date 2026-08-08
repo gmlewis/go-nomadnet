@@ -35,7 +35,6 @@ func TestComposeDisplayPaletteColors(t *testing.T) {
 		{"dark", ThemeDark},
 		{"light", ThemeLight},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			app := NewApp(tc.theme, GlyphUnicode, ColorModeTrue)

@@ -16,6 +16,7 @@
 package tui
 
 import (
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -47,13 +48,7 @@ func (cs *ConversationStore) Add(conv ConversationInfo) {
 	cs.convs[conv.SourceHash] = &entry
 
 	// Track insertion order if new
-	found := false
-	for _, h := range cs.order {
-		if h == conv.SourceHash {
-			found = true
-			break
-		}
-	}
+	found := slices.Contains(cs.order, conv.SourceHash)
 	if !found {
 		cs.order = append(cs.order, conv.SourceHash)
 	}

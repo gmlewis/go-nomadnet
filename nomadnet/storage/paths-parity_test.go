@@ -81,7 +81,6 @@ func TestPathsPythonParity(t *testing.T) {
 		{"MessageDir", p.MessageDir(sampleHash, sampleMsg), "_message_path"},
 	}
 	for _, c := range cases {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			if c.name == "Root" {

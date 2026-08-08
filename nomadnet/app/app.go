@@ -41,6 +41,7 @@ import (
 	"github.com/gmlewis/go-nomadnet/nomadnet/peersettings"
 	"github.com/gmlewis/go-nomadnet/nomadnet/rrc"
 	"github.com/gmlewis/go-nomadnet/nomadnet/storage"
+	"github.com/gmlewis/go-nomadnet/nomadnet/version"
 	"github.com/gmlewis/go-reticulum/lxmf"
 	"github.com/gmlewis/go-reticulum/rns"
 )
@@ -236,7 +237,7 @@ func WithLogger(logger *rns.Logger) AppOption {
 // NewApp creates a new App with the given configuration directory.
 func NewApp(configDir, rnsConfigDir string, daemon, forceConsole bool) *App {
 	a := &App{
-		Version:                   "0.1.0",
+		Version:                   version.VERSION,
 		ConfigDir:                 configDir,
 		RNSConfigDir:              rnsConfigDir,
 		EnableClient:              true,
@@ -375,11 +376,7 @@ func (a *App) Init() error {
 
 	// Start RNS initialization in a goroutine so the TUI can start immediately.
 	// RNS initialization may block on network interfaces.
-	a.initWG.Add(1)
-	go func() {
-		defer a.initWG.Done()
-		a.initRNS()
-	}()
+	a.initWG.Go(a.initRNS)
 
 	return nil
 }
@@ -625,9 +622,9 @@ func (a *App) applyConfig(cfg *config.Config) {
 	a.applyUIMode(cfg.Client.UserInterface)
 	// Python stores these as floats (as_float); the App fields are *int KB
 	// values. The config package has already applied defaults and clamping.
-	a.LXMFMaxIncomingSize = intPtr(int(cfg.Client.MaxAcceptedSize))
-	a.LXMFMaxPropagationSize = intPtr(int(cfg.Node.MaxTransferSize))
-	a.LXMFMaxSyncSize = intPtr(int(cfg.Node.MaxSyncSize))
+	a.LXMFMaxIncomingSize = new(int(cfg.Client.MaxAcceptedSize))
+	a.LXMFMaxPropagationSize = new(int(cfg.Node.MaxTransferSize))
+	a.LXMFMaxSyncSize = new(int(cfg.Node.MaxSyncSize))
 	a.DisablePropagation = cfg.Node.DisablePropagation
 
 	a.PageRefreshInterval = cfg.Node.PageRefreshInterval
@@ -730,7 +727,7 @@ func (a *App) applyPrintingFrom(cfg *config.Config) {
 // matching the config package's as_list convention for list-valued keys.
 func splitCSV(s string) []string {
 	var out []string
-	for _, part := range strings.Split(s, ",") {
+	for part := range strings.SplitSeq(s, ",") {
 		p := strings.TrimSpace(part)
 		if p != "" {
 			out = append(out, p)
@@ -962,9 +959,6 @@ func expandUser(path string) string {
 	return filepath.Join(home, path[1:])
 }
 
-// intPtr returns a pointer to n, for config fields stored as *int.
-func intPtr(n int) *int { return &n }
-
 // removeAllWithRetry removes path with os.RemoveAll, retrying on transient
 // ENOTEMPTY/EBUSY errors for up to ~100ms. After RNS.Close() a handful of
 // background goroutines may still be flushing ratchet/destination storage and
@@ -974,7 +968,7 @@ func removeAllWithRetry(path string) error {
 	const maxAttempts = 10
 	const retryDelay = 10 * time.Millisecond
 
-	for attempt := 0; attempt < maxAttempts; attempt++ {
+	for range maxAttempts {
 		err := os.RemoveAll(path)
 		if err == nil || os.IsNotExist(err) {
 			return nil

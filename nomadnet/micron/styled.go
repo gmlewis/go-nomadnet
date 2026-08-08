@@ -159,9 +159,7 @@ func RenderToStyledLines(markup string, theme Theme) []*StyledLine {
 			continue
 		}
 		nodes := parseLine(line, ps)
-		for _, sl := range renderLineNodes(nodes, rs, theme, ps.depth) {
-			out = append(out, sl)
-		}
+		out = append(out, renderLineNodes(nodes, rs, theme, ps.depth)...)
 	}
 	return out
 }
@@ -201,9 +199,7 @@ func renderLineNodes(nodes []*Node, rs *renderState, theme Theme, depth int) []*
 			out = append(out, sl)
 			sl = &StyledLine{Indent: leftIndent(depth)}
 		case NodeTable:
-			for _, row := range renderTableLines(node, rs, theme, depth) {
-				out = append(out, row)
-			}
+			out = append(out, renderTableLines(node, rs, theme, depth)...)
 		case NodePartial:
 			sl.Spans = append(sl.Spans, StyledSpan{
 				Text: partialPlaceholder, // ⧖ hourglass (Python parse_partial)

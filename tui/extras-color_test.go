@@ -61,7 +61,7 @@ func TestIntroDisplayDefaultColor(t *testing.T) {
 
 		found := false
 		for y := 0; y < view.h; y++ {
-			for x := 0; x < 60; x++ {
+			for x := range 60 {
 				mainc, _, style, width := screen.GetContent(x, y)
 				if width == 0 || mainc == ' ' {
 					continue

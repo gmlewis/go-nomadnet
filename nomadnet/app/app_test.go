@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/gmlewis/go-nomadnet/nomadnet/config"
+	"github.com/gmlewis/go-nomadnet/nomadnet/version"
 	"github.com/gmlewis/go-reticulum/rns"
 )
 
@@ -31,8 +32,8 @@ func TestNewAppDefaults(t *testing.T) {
 	dir := tempDir(t)
 	a := NewApp(dir, "", false, false)
 
-	if a.Version != "0.1.0" {
-		t.Errorf("Version = %q, want %q", a.Version, "0.1.0")
+	if a.Version != version.VERSION {
+		t.Errorf("Version = %q, want %q", a.Version, version.VERSION)
 	}
 	if a.ConfigDir != dir {
 		t.Errorf("ConfigDir = %q, want %q", a.ConfigDir, dir)
@@ -402,8 +403,8 @@ func TestNewAppWithTransportWithoutOptionsMatchesNewApp(t *testing.T) {
 	if a.Identity != nil {
 		t.Error("Identity should be nil without option")
 	}
-	if a.Version != "0.1.0" {
-		t.Errorf("Version = %q, want %q", a.Version, "0.1.0")
+	if a.Version != version.VERSION {
+		t.Errorf("Version = %q, want %q", a.Version, version.VERSION)
 	}
 }
 

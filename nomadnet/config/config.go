@@ -352,11 +352,7 @@ func (c *Config) applyClient() {
 	}
 	if v, ok := sec["lxmf_sync_limit"]; ok {
 		if n, err := asInt(v); err == nil {
-			if n > 0 {
-				c.Client.LXMFSyncLimit = n
-			} else {
-				c.Client.LXMFSyncLimit = 0
-			}
+			c.Client.LXMFSyncLimit = max(n, 0)
 		}
 	}
 	if v, ok := sec["required_stamp_cost"]; ok {

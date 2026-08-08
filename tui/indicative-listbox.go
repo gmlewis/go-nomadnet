@@ -132,10 +132,7 @@ func (i *IndicativeListBox) indicators() (top, bottom string) {
 	itemOffset, _ := i.List.GetOffset()
 	count := i.List.GetItemCount()
 	_, _, _, listH := i.listRect()
-	visible := listH
-	if visible < 1 {
-		visible = 1
-	}
+	visible := max(listH, 1)
 
 	top = "▲"
 	if itemOffset <= 0 || count == 0 {

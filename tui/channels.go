@@ -406,16 +406,16 @@ func (cd *ChannelsDisplay) ShowMessages(msgs []ChannelMessage) {
 	for _, msg := range msgs {
 		switch {
 		case msg.IsSystem:
-			sb.WriteString(fmt.Sprintf("[gray]%v[-]\n", msg.Text))
+			fmt.Fprintf(&sb, "[gray]%v[-]\n", msg.Text)
 		case msg.IsNotice:
-			sb.WriteString(fmt.Sprintf("[yellow]%v[-]\n", msg.Text))
+			fmt.Fprintf(&sb, "[yellow]%v[-]\n", msg.Text)
 		case msg.IsError:
-			sb.WriteString(fmt.Sprintf("[red]%v[-]\n", msg.Text))
+			fmt.Fprintf(&sb, "[red]%v[-]\n", msg.Text)
 		case msg.IsSelf:
-			sb.WriteString(fmt.Sprintf("[green]%v[-] %v\n", msg.Nick, msg.Text))
+			fmt.Fprintf(&sb, "[green]%v[-] %v\n", msg.Nick, msg.Text)
 		default:
 			color := nickColor(msg.Nick)
-			sb.WriteString(fmt.Sprintf("[%v]%v[-] %v\n", color, msg.Nick, msg.Text))
+			fmt.Fprintf(&sb, "[%v]%v[-] %v\n", color, msg.Nick, msg.Text)
 		}
 	}
 	cd.messages.SetText(sb.String())
@@ -469,8 +469,8 @@ func FormatMessage(msg ChannelMessage, theme int) string {
 func (cd *ChannelsDisplay) ShowUserInfoDialog(nick, identityHash string, isSelf bool, onOpenConversation func()) {
 	var sb strings.Builder
 	sb.WriteString("\n")
-	sb.WriteString(fmt.Sprintf(" Nick     : %v\n", nick))
-	sb.WriteString(fmt.Sprintf(" Identity : %v\n", identityHash))
+	fmt.Fprintf(&sb, " Nick     : %v\n", nick)
+	fmt.Fprintf(&sb, " Identity : %v\n", identityHash)
 
 	if isSelf {
 		sb.WriteString("\n (This is you)\n")

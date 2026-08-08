@@ -56,7 +56,6 @@ func TestURLHashGolden(t *testing.T) {
 		{"relative", ":/page/p.mu", "630980d0446b9ae434cf5055151f24df1bf313d291288cf8bdf5e5d7f57c5324"},
 	}
 	for _, c := range cases {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			got := URLHash(c.url)
@@ -95,7 +94,6 @@ func TestCacheTimeFromMarkupGolden(t *testing.T) {
 		{"#!bg first means no #!c header", "#!bg=fff\n#!c=7200\nbody", 43200},
 	}
 	for _, c := range cases {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			if got := CacheTimeFromMarkup(c.markup); got != c.want {

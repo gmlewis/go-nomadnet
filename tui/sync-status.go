@@ -17,6 +17,7 @@ package tui
 
 import (
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -60,14 +61,15 @@ func (ss *SyncStatus) FormatSyncProgress() string {
 	filled := int(float64(barWidth) * float64(ss.SyncProgress) / 100.0)
 	empty := barWidth - filled
 
-	bar := "["
-	for i := 0; i < filled; i++ {
-		bar += "="
+	var bar strings.Builder
+	bar.WriteString("[")
+	for range filled {
+		bar.WriteString("=")
 	}
-	for i := 0; i < empty; i++ {
-		bar += " "
+	for range empty {
+		bar.WriteString(" ")
 	}
-	bar += "]"
+	bar.WriteString("]")
 
-	return fmt.Sprintf("%v %v%%", bar, ss.SyncProgress)
+	return fmt.Sprintf("%v %v%%", bar.String(), ss.SyncProgress)
 }

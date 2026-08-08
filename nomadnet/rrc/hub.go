@@ -321,20 +321,12 @@ func (h *RRCHub) scheduleReconnect() {
 // reconnectBackoff computes the reconnect delay for the given (post-increment)
 // attempt count, matching Python's backoff = min(60.0, max(1.0, 2.0 ** min(attempts, 6))).
 func reconnectBackoff(attempts int) time.Duration {
-	exp := attempts
-	if exp > 6 {
-		exp = 6
-	}
-	if exp < 0 {
-		exp = 0
-	}
-	secs := 1 << uint(exp) // 2 ** exp
-	if secs < 1 {
-		secs = 1
-	}
-	if secs > 60 {
-		secs = 60
-	}
+	exp := max(min(attempts, 6), 0)
+	secs := min(
+		// 2 ** exp
+		max(
+
+			1<<uint(exp), 1), 60)
 	return time.Duration(secs) * time.Second
 }
 
@@ -540,7 +532,7 @@ func (h *RRCHub) establishLink(ts rns.Transport, dest *rns.Destination) error {
 
 // sendHello sends a HELLO envelope on the given link. Matches Python's
 // RRCHub._send_hello which sends client name, version, caps, and nick.
-func (h *RRCHub) sendHello(link *rns.Link) {
+func (h *RRCHub) sendHello(_ *rns.Link) {
 	var srcHash []byte
 	if h.Manager != nil {
 		srcHash = h.Manager.identityHash()
@@ -1245,7 +1237,7 @@ func (h *RRCHub) handleWelcome(body any) {
 // handleHello processes a HELLO envelope from a connecting client.
 // It stores the client's nick and sends a WELCOME response. Matches
 // Python's RRC server behavior when receiving a HELLO from a client.
-func (h *RRCHub) handleHello(src, nick []byte, body any) {
+func (h *RRCHub) handleHello(src, nick []byte, _ any) {
 	srcHex := hexString(src)
 	nickStr := string(nick)
 
@@ -1279,7 +1271,7 @@ func (h *RRCHub) handleHello(src, nick []byte, body any) {
 // broadcasts a JOINED notification back to the joining client with
 // the joiner's identity hash and nick. On the client side, JOINED
 // is handled in the main HandleData switch.
-func (h *RRCHub) handleJoin(src, nick, room []byte, body any) {
+func (h *RRCHub) handleJoin(src, nick, room []byte, _ any) {
 	roomStr := strings.ToLower(string(room))
 	nickStr := string(nick)
 
@@ -1299,7 +1291,7 @@ func (h *RRCHub) handleJoin(src, nick, room []byte, body any) {
 
 // handlePart processes a PART envelope. On the server side, it
 // broadcasts a PARTED notification back to the parting client.
-func (h *RRCHub) handlePart(src, nick, room []byte, body any) {
+func (h *RRCHub) handlePart(src, nick, room []byte, _ any) {
 	roomStr := strings.ToLower(string(room))
 	nickStr := string(nick)
 

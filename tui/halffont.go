@@ -70,7 +70,7 @@ func halfBlock5x4Render(s string) []string {
 		if !ok || g.W == 0 {
 			continue
 		}
-		for r := 0; r < halffontHeight; r++ {
+		for r := range halffontHeight {
 			rows[r] += g.Rows[r]
 		}
 	}

@@ -389,6 +389,27 @@ test or a matching `parity.sh` summary):
   support`), a 2-paragraph difference in topic 7. Fix = per-line padded wrapping
   (a Pile-of-Padded-attrmaps rearchitecture); the B2 focus model now rides on top
   of the single TextView, so this is an independent, low-impact wrap nuance.
+- **Channels shortcut bar not wired (key-hint footer):** The Channels *page*
+  is implemented (hub list, rooms, members, gutters, room store, `handleInput`
+  keyboard handling, colors, tests in `channels_test.go` /
+  `channels-hublist_test.go` / `channel-gutters_test.go` /
+  `channels-color_test.go`), but its **shortcut bar** — the per-focus-region
+  key-hint footer (Python `Channels.py:217-229`, three regions: list / editor /
+  body) — is **not wired**: `channels.go` never calls `SetShortcut`,
+  `SetShortcutCallback`, `SetShortcutFocus`, `GetShortcutText`,
+  `setShortcutRegion`, or `refreshShortcuts`, so the channels page shows an
+  empty/stale shortcut bar. `ConversationsDisplay` is the reference pattern
+  (`setShortcutRegion` wired as the `SetFocusFunc` of every focusable primitive
+  → "list"/"editor"/"body", plus `GetShortcutText`; see `conversations.go:287`).
+  The three golden strings for these bars (`shortcutChannelsList` /
+  `shortcutChannelsEditor` / `shortcutChannelsBody`, captured from
+  `Channels.py:217-229`) were removed during the 2026-08-08 lint sweep as U1000
+  dead code because no test used them — they are re-capturable from
+  `Channels.py:217-229`. Fix: port the Conversations `SetShortcutFocus` /
+  `setShortcutRegion` / `GetShortcutText` pattern to a `ChannelsDisplay`, wire it
+  as the `SetFocusFunc` of the channels list / room editor / room body
+  primitives, re-capture the three bar strings from `Channels.py:217-229`, and
+  add a channels shortcut-bar test (`shortcut-bar_test.go`-style) using them.
 
 ---
 

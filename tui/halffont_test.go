@@ -95,7 +95,6 @@ func TestHalfBlock5x4Render(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			got := halfBlock5x4RenderTrimmed(c.in)

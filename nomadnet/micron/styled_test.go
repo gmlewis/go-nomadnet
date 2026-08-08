@@ -161,7 +161,6 @@ func TestRenderToStyledLinesHeadings(t *testing.T) {
 		{">>>>Deep Four", 4, 6, "#000000", "#777777", "deep-four", "Deep Four"},
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.markup, func(t *testing.T) {
 			t.Parallel()
 			lines := RenderToStyledLines(tc.markup, ThemeDark)

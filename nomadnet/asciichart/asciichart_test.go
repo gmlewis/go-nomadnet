@@ -185,8 +185,8 @@ func TestPlotWidth(t *testing.T) {
 	series := []float64{1, 2, 3, 4, 5}
 	result := c.PlotSingle(series)
 
-	lines := strings.Split(result, "\n")
-	for _, line := range lines {
+	lines := strings.SplitSeq(result, "\n")
+	for line := range lines {
 		// Each line should have at least offset + series width
 		if len([]rune(line)) < 5+5 {
 			t.Errorf("Line too short: %q", line)

@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/gmlewis/go-nomadnet/nomadnet/conversation"
 	"github.com/gmlewis/go-nomadnet/nomadnet/directory"
@@ -85,12 +86,7 @@ func (a *App) ShouldPrint(msg *lxmf.Message) bool {
 		}
 	}
 
-	for _, allowed := range a.AllowedMessagePrintDestinations {
-		if allowed == sourceHashText {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(a.AllowedMessagePrintDestinations, sourceHashText)
 }
 
 // DeleteConversation removes the conversation directory for the given hex

@@ -74,7 +74,6 @@ func TestLoadPythonCompat(t *testing.T) {
 	t.Parallel()
 	cases := []string{"filled", "defaults"}
 	for _, name := range cases {
-		name := name
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			bin, err := peerFS.ReadFile("testdata/peersettings_" + name + ".bin")

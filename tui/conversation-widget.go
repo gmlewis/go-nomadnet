@@ -574,13 +574,13 @@ func (cw *ConversationWidget) renderMessages() {
 
 		// Body: indent every content line two columns (Python LXMessageWidget
 		// "  "+line for non-markdown content).
-		for _, line := range strings.Split(msg.Content, "\n") {
+		for line := range strings.SplitSeq(msg.Content, "\n") {
 			sb.WriteString("  ")
 			sb.WriteString(line)
 			sb.WriteString("\n")
 		}
 		if msg.HasAttach && len(msg.AttachmentNames) == 0 {
-			sb.WriteString(fmt.Sprintf("  [gray]%v %v attachment(s)[-]\n", cw.glyphs()["file"], msg.AttachCount))
+			fmt.Fprintf(&sb, "  [gray]%v %v attachment(s)[-]\n", cw.glyphs()["file"], msg.AttachCount)
 		}
 		sb.WriteString("\n")
 	}
@@ -701,9 +701,9 @@ func (cw *ConversationWidget) timeFormat() string {
 // Matches Python's show_qr_dialog at Conversations.py:641.
 func FormatQRText(data string) string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("┌%v┐\n", strings.Repeat("─", len(data)+4)))
-	sb.WriteString(fmt.Sprintf("│  %v  │\n", data))
-	sb.WriteString(fmt.Sprintf("└%v┘\n", strings.Repeat("─", len(data)+4)))
+	fmt.Fprintf(&sb, "┌%v┐\n", strings.Repeat("─", len(data)+4))
+	fmt.Fprintf(&sb, "│  %v  │\n", data)
+	fmt.Fprintf(&sb, "└%v┘\n", strings.Repeat("─", len(data)+4))
 	return sb.String()
 }
 

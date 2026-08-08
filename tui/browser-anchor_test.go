@@ -59,10 +59,7 @@ func TestBrowserJumpToAnchorScrollOffset(t *testing.T) {
 		if i >= targetIdx {
 			break
 		}
-		rows := len(tview.WordWrap(lt, innerW))
-		if rows < 1 {
-			rows = 1
-		}
+		rows := max(len(tview.WordWrap(lt, innerW)), 1)
 		expected += rows
 	}
 	if expected <= 1 {
@@ -132,10 +129,7 @@ func TestBrowserJumpToAnchorEmptyJumpsToNextHeader(t *testing.T) {
 		if i >= headingIdx {
 			break
 		}
-		rows := len(tview.WordWrap(lt, innerW))
-		if rows < 1 {
-			rows = 1
-		}
+		rows := max(len(tview.WordWrap(lt, innerW)), 1)
 		expected += rows
 	}
 	if expected <= 1 {

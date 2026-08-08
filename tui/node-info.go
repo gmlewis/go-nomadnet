@@ -272,9 +272,7 @@ func (ni *NodeInfoDisplay) start(marshal bool) {
 	ni.started = true
 	ni.mu.Unlock()
 
-	ni.wg.Add(1)
-	go func() {
-		defer ni.wg.Done()
+	ni.wg.Go(func() {
 		ticker := time.NewTicker(animationInterval())
 		defer ticker.Stop()
 		for {
@@ -289,7 +287,7 @@ func (ni *NodeInfoDisplay) start(marshal bool) {
 				}
 			}
 		}
-	}()
+	})
 }
 
 // Stop halts the periodic stat refresh. It is idempotent and safe to call when

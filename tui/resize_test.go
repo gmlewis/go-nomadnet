@@ -206,7 +206,7 @@ func TestMainDisplayReflowAt80x24(t *testing.T) {
 	// The menu bar is the top row (row 0). After selectMenu(0) the first item
 	// "Conversations" is rendered, so row 0 must contain a non-blank cell.
 	rowHasText := false
-	for x := 0; x < W; x++ {
+	for x := range W {
 		c, _, _, _ := screen.GetContent(x, 0)
 		if c != ' ' && c != 0 {
 			rowHasText = true

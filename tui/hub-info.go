@@ -167,19 +167,19 @@ func (hia *HubInfoArea) handleKey(event *tcell.EventKey) *tcell.EventKey {
 func (hia *HubInfoArea) refreshView() {
 	var sb strings.Builder
 	if hia.motd != "" {
-		sb.WriteString(fmt.Sprintf("[::b]MOTD:[-] %v\n\n", hia.motd))
+		fmt.Fprintf(&sb, "[::b]MOTD:[-] %v\n\n", hia.motd)
 	}
 	if len(hia.rooms) > 0 {
 		sb.WriteString("[::b]Rooms:[-]\n")
 		for _, r := range hia.rooms {
-			sb.WriteString(fmt.Sprintf("  #%v\n", r))
+			fmt.Fprintf(&sb, "  #%v\n", r)
 		}
 		sb.WriteString("\n")
 	}
 	if len(hia.availableRooms) > 0 {
 		sb.WriteString("[::b]Available Rooms:[-]\n")
 		for _, r := range hia.availableRooms {
-			sb.WriteString(fmt.Sprintf("  #%v\n", r))
+			fmt.Fprintf(&sb, "  #%v\n", r)
 		}
 	}
 	if sb.Len() == 0 {

@@ -128,7 +128,7 @@ func TestTrafficRingBuffer(t *testing.T) {
 	t.Parallel()
 
 	rb := NewTrafficRingBuffer(5)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		rb.Push(float64(i))
 	}
 

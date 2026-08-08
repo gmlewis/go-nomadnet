@@ -78,7 +78,6 @@ func TestFormatNodeEntryRowPythonParity(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			got := FormatNodeEntryRow(tc.node, g)
@@ -105,7 +104,6 @@ func TestNodeTrustStyleParity(t *testing.T) {
 		{"", "list_untrusted", "list_focus_untrusted"}, // else/default branch
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.trust, func(t *testing.T) {
 			t.Parallel()
 			style, focus := NodeTrustStyle(tc.trust)

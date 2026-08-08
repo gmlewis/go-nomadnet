@@ -65,7 +65,7 @@ func TestGuideReaderHardwareCursor(t *testing.T) {
 	// tracker sees movement and does not false-bottom (B5).
 	handler := gd.Widget().InputHandler()
 	var prevY int = -1
-	for i := 0; i < 6; i++ {
+	for i := range 6 {
 		handler(tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone), func(p tview.Primitive) { app.SetFocus(p) })
 		app.Main.Root().Draw(screen)
 		x, y, vis := screen.GetCursor()

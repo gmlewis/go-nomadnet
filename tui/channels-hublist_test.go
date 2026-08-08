@@ -145,7 +145,6 @@ func TestComposeHubListGolden(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			got := ComposeHubList(c.hubs, g)
@@ -178,7 +177,6 @@ func TestHubListRowText(t *testing.T) {
 		{"missing style falls back to plain", HubListEntry{Kind: RowHub, Label: "X failed", Style: "no_such_style"}, "X failed"},
 	}
 	for _, c := range cases {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			if got := HubListRowText(c.entry, colors); got != c.want {

@@ -54,9 +54,9 @@ func renderNewConversationDialog(t *testing.T, showError bool) []string {
 	screen.Sync()
 
 	rows := make([]string, 24)
-	for y := 0; y < 24; y++ {
+	for y := range 24 {
 		var b strings.Builder
-		for x := 0; x < 80; x++ {
+		for x := range 80 {
 			c, _, _, _ := screen.GetContent(x, y)
 			b.WriteRune(c)
 		}

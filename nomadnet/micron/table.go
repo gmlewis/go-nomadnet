@@ -123,10 +123,7 @@ func parseTableAlignments(line string) []string {
 func padCell(text, align string, width int) string {
 	text = truncateCell(text, width)
 	textWidth := visibleWidth(text)
-	padding := width - textWidth
-	if padding < 0 {
-		padding = 0
-	}
+	padding := max(width-textWidth, 0)
 	switch align {
 	case "right":
 		return strings.Repeat(" ", padding) + text
@@ -279,10 +276,7 @@ func FormatTableRaw(rows []string, align string, maxWidth int) []string {
 			if excess <= 0 {
 				break
 			}
-			reduction := excess
-			if e.w-tableMinColWidth < reduction {
-				reduction = e.w - tableMinColWidth
-			}
+			reduction := min(e.w-tableMinColWidth, excess)
 			colWidths[e.i] -= reduction
 			excess -= reduction
 		}
@@ -297,22 +291,30 @@ func FormatTableRaw(rows []string, align string, maxWidth int) []string {
 	result = append(result, boxBorder(tableTL, tableTM, tableTR, colWidths))
 
 	// Header row (always left-padded).
-	headerLine := tableV
+	var headerLine strings.Builder
+	headerLine.WriteString(tableV)
 	for i, cell := range headerCells {
-		headerLine += " " + padCell(cell, "left", colWidths[i]) + " " + tableV
+		headerLine.WriteString(" ")
+		headerLine.WriteString(padCell(cell, "left", colWidths[i]))
+		headerLine.WriteString(" ")
+		headerLine.WriteString(tableV)
 	}
-	result = append(result, headerLine)
+	result = append(result, headerLine.String())
 
 	// Separator row.
 	result = append(result, boxBorder(tableML, tableMM, tableMR, colWidths))
 
 	// Data rows (per-column alignment).
 	for _, row := range dataRows {
-		rowLine := tableV
+		var rowLine strings.Builder
+		rowLine.WriteString(tableV)
 		for i, cell := range row {
-			rowLine += " " + padCell(cell, alignments[i], colWidths[i]) + " " + tableV
+			rowLine.WriteString(" ")
+			rowLine.WriteString(padCell(cell, alignments[i], colWidths[i]))
+			rowLine.WriteString(" ")
+			rowLine.WriteString(tableV)
 		}
-		result = append(result, rowLine)
+		result = append(result, rowLine.String())
 	}
 
 	// Bottom border.

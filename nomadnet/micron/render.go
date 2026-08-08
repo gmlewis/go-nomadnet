@@ -142,14 +142,14 @@ func renderNode(sb *strings.Builder, node *Node, state *RenderState) {
 	case NodeColor:
 		if node.FGColor != "" && node.FGColor != "default" {
 			state.FGColor = expandColor(node.FGColor)
-			sb.WriteString(fmt.Sprintf("[#%v]", state.FGColor))
+			fmt.Fprintf(sb, "[#%v]", state.FGColor)
 		} else if node.FGColor == "default" {
 			state.FGColor = DefaultFG
-			sb.WriteString(fmt.Sprintf("[#%v]", state.FGColor))
+			fmt.Fprintf(sb, "[#%v]", state.FGColor)
 		}
 		if node.BGColor != "" && node.BGColor != "default" {
 			state.BGColor = expandColor(node.BGColor)
-			sb.WriteString(fmt.Sprintf("[:%v]", state.BGColor))
+			fmt.Fprintf(sb, "[:%v]", state.BGColor)
 		} else if node.BGColor == "default" {
 			state.BGColor = DefaultBG
 			sb.WriteString("[:-:-]")
@@ -168,12 +168,12 @@ func renderNode(sb *strings.Builder, node *Node, state *RenderState) {
 		sb.WriteString("\n")
 
 	case NodeLink:
-		sb.WriteString(fmt.Sprintf(`["%v"]`, node.LinkURL))
+		fmt.Fprintf(sb, `["%v"]`, node.LinkURL)
 		sb.WriteString(node.LinkLabel)
 		sb.WriteString(`[""]`)
 
 	case NodeField:
-		sb.WriteString(fmt.Sprintf("[%v]", node.FieldName))
+		fmt.Fprintf(sb, "[%v]", node.FieldName)
 
 	case NodeAlign:
 		state.Align = node.Align
@@ -193,18 +193,19 @@ func renderNode(sb *strings.Builder, node *Node, state *RenderState) {
 }
 
 // renderHeading renders a heading node with appropriate tview formatting.
-func renderHeading(sb *strings.Builder, node *Node, state *RenderState) {
+func renderHeading(sb *strings.Builder, node *Node, _ *RenderState) {
 	indent := strings.Repeat("  ", node.Level-1)
 
+	sb.WriteString(indent)
 	switch node.Level {
 	case 1:
-		sb.WriteString(indent + "[#000000:#bbbbbb::b]")
+		sb.WriteString("[#000000:#bbbbbb::b]")
 	case 2:
-		sb.WriteString(indent + "[#111111:#999999::b]")
+		sb.WriteString("[#111111:#999999::b]")
 	case 3:
-		sb.WriteString(indent + "[#222222:#777777::b]")
+		sb.WriteString("[#222222:#777777::b]")
 	default:
-		sb.WriteString(indent + "[::b]")
+		sb.WriteString("[::b]")
 	}
 
 	for _, child := range node.Children {

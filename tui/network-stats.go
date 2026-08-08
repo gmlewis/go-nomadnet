@@ -196,9 +196,7 @@ func (ns *NetworkStats) start(marshal bool) {
 	ns.started = true
 	ns.mu.Unlock()
 
-	ns.wg.Add(1)
-	go func() {
-		defer ns.wg.Done()
+	ns.wg.Go(func() {
 		ticker := time.NewTicker(ns.interval)
 		defer ticker.Stop()
 		for {
@@ -213,7 +211,7 @@ func (ns *NetworkStats) start(marshal bool) {
 				}
 			}
 		}
-	}()
+	})
 }
 
 // Start launches the refresh goroutine, marshaling updates onto the event loop

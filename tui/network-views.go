@@ -34,8 +34,8 @@ func NewNodeInfo(hash, name string) *NodeInfo {
 	ni := &NodeInfo{}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("[::b]Name[-]  : %v\n", name))
-	sb.WriteString(fmt.Sprintf("[::b]Addr[-]  : <[lightblue]%v[-]>\n", hash))
+	fmt.Fprintf(&sb, "[::b]Name[-]  : %v\n", name)
+	fmt.Fprintf(&sb, "[::b]Addr[-]  : <[lightblue]%v[-]>\n", hash)
 	sb.WriteString("[::b]Type[-]  : Nomad Network Node Ⓝ\n")
 	sb.WriteString("[gray]No additional stats available[-]\n")
 
@@ -68,9 +68,9 @@ func NewLocalPeer(addr, name, lastAnnounce string) *LocalPeer {
 
 	var sb strings.Builder
 	sb.WriteString("[::b]Local Peer[-]\n\n")
-	sb.WriteString(fmt.Sprintf("[::b]LXMF Addr[-] : [lightblue]%v[-]\n", addr))
-	sb.WriteString(fmt.Sprintf("[::b]Name[-]      : %v\n", name))
-	sb.WriteString(fmt.Sprintf("[::b]Last Announce[-]: %v\n", lastAnnounce))
+	fmt.Fprintf(&sb, "[::b]LXMF Addr[-] : [lightblue]%v[-]\n", addr)
+	fmt.Fprintf(&sb, "[::b]Name[-]      : %v\n", name)
+	fmt.Fprintf(&sb, "[::b]Last Announce[-]: %v\n", lastAnnounce)
 
 	text := tview.NewTextView()
 	text.SetDynamicColors(true)

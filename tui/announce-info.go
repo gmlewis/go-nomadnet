@@ -16,8 +16,6 @@
 package tui
 
 import (
-	"time"
-
 	"github.com/rivo/tview"
 )
 
@@ -219,11 +217,4 @@ func (ai *announceInfoDisplay) buttonRow() *urwidColumns {
 	}
 	return newURWIDColumns(0, back, tview.NewBox(), action).
 		SetWeight(0, 9).SetWeight(1, 2).SetWeight(2, 9)
-}
-
-// formatAnnounceInfoTimestamp is a small helper retained for tests that want
-// the Python time-format string used by AnnounceInfo ("2006-01-02 15:04:05" in
-// Go form, mirroring "%Y-%m-%d %H:%M:%S").
-func formatAnnounceInfoTimestamp(t time.Time) string {
-	return t.Format("2006-01-02 15:04:05")
 }

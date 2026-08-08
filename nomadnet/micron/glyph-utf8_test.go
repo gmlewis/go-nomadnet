@@ -93,7 +93,6 @@ func TestParseInlineMultibyteRoundtrip(t *testing.T) {
 		"é", "ñ", "ü", "Ω", "α", "中", "文",
 	}
 	for _, in := range cases {
-		in := in
 		t.Run(in, func(t *testing.T) {
 			t.Parallel()
 			lines := RenderToStyledLines(in, ThemeDark)

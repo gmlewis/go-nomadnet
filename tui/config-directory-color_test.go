@@ -37,7 +37,6 @@ func TestConfigDisplayExplainerColor(t *testing.T) {
 		{"dark", ThemeDark, 0xd7d7d7},
 		{"light", ThemeLight, 0x000000},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			app := NewApp(tc.theme, GlyphUnicode, ColorModeTrue)
@@ -67,7 +66,6 @@ func TestDirectoryDisplayDetailColor(t *testing.T) {
 		{"dark", ThemeDark, 0xd7d7d7},
 		{"light", ThemeLight, 0x000000},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			app := NewApp(tc.theme, GlyphUnicode, ColorModeTrue)

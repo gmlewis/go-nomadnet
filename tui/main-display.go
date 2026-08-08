@@ -283,10 +283,7 @@ func (md *MainDisplay) resizeShortcutBar(width int) {
 		return // cached; nothing to do
 	}
 	lines := urwidSpaceWrap(md.shortcutTextRaw, width)
-	rows := len(lines)
-	if rows < 1 {
-		rows = 1
-	}
+	rows := max(len(lines), 1)
 	md.shortcutBar.SetText(strings.Join(lines, "\n"))
 	md.frame.ResizeItem(md.shortcutBar, rows, 0)
 	md.shortcutWrapSrc = md.shortcutTextRaw
@@ -313,7 +310,7 @@ func urwidSpaceWrap(text string, width int) []string {
 		return []string{text}
 	}
 	var lines []string
-	for _, seg := range strings.Split(text, "\n") {
+	for seg := range strings.SplitSeq(text, "\n") {
 		lines = append(lines, urwidWrapSegment(seg, width)...)
 	}
 	if len(lines) == 0 {
@@ -586,10 +583,7 @@ func (md *MainDisplay) handleClick(x int) {
 			indicator = g
 		}
 	}
-	offset := runewidth.StringWidth(indicator)
-	if offset < 1 {
-		offset = 1
-	}
+	offset := max(runewidth.StringWidth(indicator), 1)
 	for i, w := range md.menuWidths {
 		if x >= offset && x < offset+w {
 			md.selectMenu(i)

@@ -76,7 +76,6 @@ func wireDialogNav(app *App, dismiss func(), items []tview.Primitive) {
 		return
 	}
 	for i := range items {
-		i := i
 		prev := (i - 1 + len(items)) % len(items)
 		nxt := (i + 1) % len(items)
 		orig := getItemCapture(items[i])

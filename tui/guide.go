@@ -174,7 +174,6 @@ func NewGuideDisplay(app *App) *GuideDisplay {
 	// THEME_DARK at TextUI.py:19).
 	gd.topics.SetMainTextColor(GetThemeColors(app.Theme)["topic_list_normal"])
 	for i := range guideTopics {
-		i := i
 		gd.topics.AddItem(guideTopics[i].label, "", 0, func() { gd.showTopic(i) })
 	}
 	// Note: no SetChangedFunc — mirroring Python's TopicList, arrow navigation

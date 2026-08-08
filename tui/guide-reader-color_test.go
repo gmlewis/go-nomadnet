@@ -49,7 +49,6 @@ func TestGuideReaderBaseColor(t *testing.T) {
 		{"dark", ThemeDark, 0xdddddd},
 		{"light", ThemeLight, 0x222222},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			app := NewApp(tc.theme, GlyphUnicode, ColorModeTrue)
@@ -68,8 +67,8 @@ func TestGuideReaderBaseColor(t *testing.T) {
 			want := tcell.NewHexColor(int32(tc.want))
 			wrong := tcell.NewHexColor(0xbbbbbb)
 			var foundBase, foundWrong bool
-			for y := 0; y < 24; y++ {
-				for x := 0; x < 100; x++ {
+			for y := range 24 {
+				for x := range 100 {
 					c, _, style, _ := screen.GetContent(x, y)
 					if c != ' ' && c != 0 {
 						continue

@@ -67,21 +67,21 @@ func FormatNodeSummary(entry *NodeEntryFull) string {
 func FormatNodeDetail(entry *NodeEntryFull, editable bool) string {
 	var sb strings.Builder
 	sb.WriteString("[::b]Node Details[-]\n\n")
-	sb.WriteString(fmt.Sprintf("  Name: %v\n", entry.DisplayName))
+	fmt.Fprintf(&sb, "  Name: %v\n", entry.DisplayName)
 	if editable {
 		sb.WriteString("  [gray](editable)[-]\n")
 	}
-	sb.WriteString(fmt.Sprintf("  Trust: %v %v\n", TrustDisplayIcon(entry.TrustLevel), FormatTrustLabel(entry.TrustLevel)))
-	sb.WriteString(fmt.Sprintf("  Hash: %v\n", entry.SourceHash))
-	sb.WriteString(fmt.Sprintf("  Delivery: %v\n", entry.PreferredDelivery))
+	fmt.Fprintf(&sb, "  Trust: %v %v\n", TrustDisplayIcon(entry.TrustLevel), FormatTrustLabel(entry.TrustLevel))
+	fmt.Fprintf(&sb, "  Hash: %v\n", entry.SourceHash)
+	fmt.Fprintf(&sb, "  Delivery: %v\n", entry.PreferredDelivery)
 	if entry.HostsNode {
 		sb.WriteString("  Node: yes\n")
 	}
 	if entry.SortRank >= 0 {
-		sb.WriteString(fmt.Sprintf("  Sort Rank: %v\n", entry.SortRank))
+		fmt.Fprintf(&sb, "  Sort Rank: %v\n", entry.SortRank)
 	}
 	if entry.Notes != "" {
-		sb.WriteString(fmt.Sprintf("  Notes: %v\n", entry.Notes))
+		fmt.Fprintf(&sb, "  Notes: %v\n", entry.Notes)
 	}
 	return sb.String()
 }

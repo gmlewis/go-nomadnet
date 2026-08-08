@@ -92,7 +92,8 @@ func renderNodes(nodes []*micron.Node) string {
 		case micron.NodeReset:
 			sb.WriteString("[-]")
 		case micron.NodeDivider:
-			sb.WriteString(strings.Repeat("─", 30) + "\n")
+			sb.WriteString(strings.Repeat("─", 30))
+			sb.WriteString("\n")
 		case micron.NodeLink:
 			sb.WriteString("[yellow]")
 			if node.LinkLabel != "" {
@@ -103,10 +104,10 @@ func renderNodes(nodes []*micron.Node) string {
 			sb.WriteString("[-]")
 		case micron.NodeField:
 			if node.FieldName != "" {
-				sb.WriteString(fmt.Sprintf("[cyan]%v[-]: ", node.FieldName))
+				fmt.Fprintf(&sb, "[cyan]%v[-]: ", node.FieldName)
 			}
 			if node.FieldData != "" {
-				sb.WriteString(fmt.Sprintf("[gray][%v][-]", node.FieldData))
+				fmt.Fprintf(&sb, "[gray][%v][-]", node.FieldData)
 			} else {
 				sb.WriteString("[gray][...] [-]")
 			}
@@ -116,7 +117,7 @@ func renderNodes(nodes []*micron.Node) string {
 				cb = "[x]"
 			}
 			if node.FieldName != "" {
-				sb.WriteString(fmt.Sprintf("[cyan]%v[-] %v", node.FieldName, cb))
+				fmt.Fprintf(&sb, "[cyan]%v[-] %v", node.FieldName, cb)
 			} else {
 				sb.WriteString(cb)
 			}
@@ -126,7 +127,7 @@ func renderNodes(nodes []*micron.Node) string {
 				rb = "(*)"
 			}
 			if node.FieldName != "" {
-				sb.WriteString(fmt.Sprintf("[cyan]%v[-] %v", node.FieldName, rb))
+				fmt.Fprintf(&sb, "[cyan]%v[-] %v", node.FieldName, rb)
 			} else {
 				sb.WriteString(rb)
 			}
@@ -137,9 +138,9 @@ func renderNodes(nodes []*micron.Node) string {
 				sb.WriteString("]")
 			}
 		case micron.NodePartial:
-			sb.WriteString(fmt.Sprintf("[gray][partial:%v][-]", node.PartialID))
+			fmt.Fprintf(&sb, "[gray][partial:%v][-]", node.PartialID)
 		case micron.NodeAnchor:
-			sb.WriteString(fmt.Sprintf("[gray][#%v][-]", node.AnchorName))
+			fmt.Fprintf(&sb, "[gray][#%v][-]", node.AnchorName)
 		default:
 			if node.Text != "" {
 				sb.WriteString(node.Text)

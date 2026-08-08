@@ -1362,7 +1362,7 @@ func TestHubRecordNoticeCapsAt200(t *testing.T) {
 	mgr := NewManager(dir, func() []byte { return []byte("me") })
 	hub := mgr.AddHub([]byte{0x01}, "rrc.hub", "H")
 
-	for i := 0; i < 205; i++ {
+	for range 205 {
 		hub.recordNotice(&RRCMessage{Kind: "notice", Room: "general", Text: "n", Ts: NowMs()})
 	}
 
@@ -1419,7 +1419,7 @@ func TestHubLoadHistory(t *testing.T) {
 	hub := mgr.AddHub([]byte{0x01, 0x02, 0x03, 0x04}, "rrc.hub", "H")
 	hub.AddRoom("general") // ensures a buffer entry exists for the room
 
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		appendHistoryEntry(t, hub, "general", &RRCMessage{Kind: "msg", Text: "m" + string(rune('1'+i)), Ts: int64(i)})
 	}
 
@@ -1572,7 +1572,7 @@ func TestHubLoadHistoryTruncatesOnDecodeError(t *testing.T) {
 	hub := mgr.AddHub([]byte{0x01}, "rrc.hub", "H")
 	hub.AddRoom("general")
 
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		appendHistoryEntry(t, hub, "general", &RRCMessage{Kind: "msg", Text: "v" + string(rune('1'+i)), Ts: int64(i)})
 	}
 	// Append corrupt bytes that are not a valid CBOR object.
@@ -1798,7 +1798,7 @@ func TestSetAutoListAndSetAutoWho(t *testing.T) {
 	hub.lock.Unlock()
 
 	// Two notifications fired.
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		select {
 		case <-changes:
 		case <-time.After(time.Second):

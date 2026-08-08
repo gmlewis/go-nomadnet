@@ -40,7 +40,6 @@ func TestMarkedLinkTargetGolden(t *testing.T) {
 		{"relative three fields", "rel", []string{"a=1", "b=2", "c=3"}, "rel`a=1|b=2|c=3"},
 	}
 	for _, c := range cases {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			if got := MarkedLinkTarget(c.target, c.fields); got != c.want {

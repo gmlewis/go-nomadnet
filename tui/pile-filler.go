@@ -210,10 +210,7 @@ func (p *pileFiller) SetRect(x, y, w, h int) {
 				}
 				focusedTop += itemH
 			}
-			topTrim = focusedTop - ih + 1
-			if topTrim < 0 {
-				topTrim = 0
-			}
+			topTrim = max(focusedTop-ih+1, 0)
 			if max := total - ih; topTrim > max {
 				topTrim = max
 			}

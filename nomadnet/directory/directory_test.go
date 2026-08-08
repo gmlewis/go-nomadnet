@@ -423,7 +423,7 @@ func TestAnnounceStreamMaxLen(t *testing.T) {
 	d := New()
 
 	// Add more than max announces
-	for i := 0; i < AnnounceStreamMaxLen+10; i++ {
+	for i := range AnnounceStreamMaxLen + 10 {
 		d.PeerAnnounceReceived(Announce{
 			Timestamp:  float64(i),
 			SourceHash: []byte{byte(i)},
@@ -466,7 +466,7 @@ func TestEntries(t *testing.T) {
 
 	d := New()
 
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		hash := []byte{byte(i), 0x02, 0x03, 0x04}
 		entry := NewEntry(hash)
 		d.Remember(entry)

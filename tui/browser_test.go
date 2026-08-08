@@ -167,7 +167,6 @@ func TestParseMicronColorsGolden(t *testing.T) {
 		{"first directive wins", "#!bg=abc\n#!bg=def\nbody", "abc", ""},
 	}
 	for _, c := range cases {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			bg, fg := ParseMicronColors(c.markup)
 			if bg != c.wantBG || fg != c.wantFG {

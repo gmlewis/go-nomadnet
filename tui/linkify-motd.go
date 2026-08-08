@@ -60,7 +60,11 @@ func LinkifyMOTD(text string) string {
 		sb.WriteString(text[pos:start])
 		match := text[start:end]
 		name := text[start+1 : end]
-		sb.WriteString("`[" + match + "`room://" + name + "]")
+		sb.WriteString("`[")
+		sb.WriteString(match)
+		sb.WriteString("`room://")
+		sb.WriteString(name)
+		sb.WriteString("]")
 		pos = end
 	}
 	return sb.String()

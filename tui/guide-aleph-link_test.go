@@ -91,7 +91,7 @@ func TestGuideAlephGitLinkReachable(t *testing.T) {
 	// Right advances the within-line cursor to the next part boundary; the
 	// link is a part, so one or more Rights must land the cursor on it.
 	activated := false
-	for i := 0; i < 64; i++ {
+	for range 64 {
 		if !gd.focusRight() {
 			break
 		}

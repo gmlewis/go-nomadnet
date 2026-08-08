@@ -460,8 +460,8 @@ func ParseAllowedFile(path string) ([][]byte, error) {
 	}
 
 	var hashes [][]byte
-	lines := strings.Split(string(data), "\n")
-	for _, line := range lines {
+	lines := strings.SplitSeq(string(data), "\n")
+	for line := range lines {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue

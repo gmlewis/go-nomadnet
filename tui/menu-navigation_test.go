@@ -82,7 +82,7 @@ func TestAnnounceStreamUpToMenu(t *testing.T) {
 
 	// Reach the list the way a user does — two Downs: tab bar → filter bar →
 	// list.
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		screen.InjectKey(tcell.KeyDown, 0, tcell.ModNone)
 		time.Sleep(100 * time.Millisecond)
 	}

@@ -71,10 +71,7 @@ func StyledLinesToTviewText(lines []*micron.StyledLine, width int) (string, []mi
 			// Python: depth 0 → urwid.Divider fills the full width; depth>0 →
 			// Padding(Divider, left=left_indent, right=right_indent). The divider
 			// run spans width - left - right, offset by left indent spaces.
-			n := width - line.Indent - line.DividerRight
-			if n < 1 {
-				n = 1
-			}
+			n := max(width-line.Indent-line.DividerRight, 1)
 			b.WriteString(strings.Repeat(" ", line.Indent))
 			b.WriteString(strings.Repeat(ch, n))
 			b.WriteByte('\n')
@@ -102,10 +99,7 @@ func StyledLinesToTviewText(lines []*micron.StyledLine, width int) (string, []mi
 			for _, span := range line.Spans {
 				textWidth += runewidth.StringWidth(span.Text)
 			}
-			avail := width - line.Indent
-			if avail < textWidth {
-				avail = textWidth
-			}
+			avail := max(width-line.Indent, textWidth)
 			pad := 0
 			switch line.Align {
 			case micron.AlignCenter:

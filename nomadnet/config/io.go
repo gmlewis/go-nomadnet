@@ -37,7 +37,11 @@ func Load(path string) (*Config, error) {
 	}
 	defer func() { _ = f.Close() }()
 
-	c.Raw = parseINI(f)
+	raw, err := parseINI(f)
+	if err != nil {
+		return nil, err
+	}
+	c.Raw = raw
 	c.Apply()
 	return c, nil
 }
@@ -189,8 +193,9 @@ func boolStr(b bool) string {
 
 // parseINI reads an INI-style config file and returns a map of
 // section → key → value pairs. Comments (lines starting with #)
-// and blank lines are skipped.
-func parseINI(f *os.File) map[string]map[string]string {
+// and blank lines are skipped. A non-nil error is returned if reading
+// stops before EOF (e.g. a line exceeds the scanner's buffer).
+func parseINI(f *os.File) (map[string]map[string]string, error) {
 	result := make(map[string]map[string]string)
 	var currentSection string
 
@@ -222,5 +227,8 @@ func parseINI(f *os.File) map[string]map[string]string {
 		}
 	}
 
-	return result
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("parsing config: %w", err)
+	}
+	return result, nil
 }

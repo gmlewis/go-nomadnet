@@ -36,8 +36,9 @@ func TestNetworkStatLabelsPythonParity(t *testing.T) {
 	t.Parallel()
 
 	now := time.Date(2026, 7, 31, 12, 0, 0, 0, time.UTC)
-	sec := func(offset time.Duration) int64 {
-		return now.Add(-offset).Unix()
+	sec := func(offset time.Duration) *int64 {
+		v := now.Add(-offset).Unix()
+		return &v
 	}
 
 	t.Run("AnnounceTime", func(t *testing.T) {
@@ -48,9 +49,9 @@ func TestNetworkStatLabelsPythonParity(t *testing.T) {
 			want string
 		}{
 			{"never", nil, "Announced : Never"},
-			{"a minute ago", pInt64(sec(90 * time.Second)), "Announced : a minute ago"},
-			{"hours ago", pInt64(sec(5 * time.Hour)), "Announced : 5 hours ago"},
-			{"days ago", pInt64(sec(48 * time.Hour)), "Announced : 2 days ago"},
+			{"a minute ago", sec(90 * time.Second), "Announced : a minute ago"},
+			{"hours ago", sec(5 * time.Hour), "Announced : 5 hours ago"},
+			{"days ago", sec(48 * time.Hour), "Announced : 2 days ago"},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
@@ -71,7 +72,7 @@ func TestNetworkStatLabelsPythonParity(t *testing.T) {
 			want string
 		}{
 			{"never", nil, "Last Announce  : Never"},
-			{"a minute ago", pInt64(sec(90 * time.Second)), "Last Announce  : a minute ago"},
+			{"a minute ago", sec(90 * time.Second), "Last Announce  : a minute ago"},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
@@ -118,21 +119,21 @@ func TestNetworkStatLabelsPythonParity(t *testing.T) {
 			propOn  bool
 			want    string
 		}{
-			{"50pct", pInt64(500000), pInt64(1000000), true, true,
+			{"50pct", new(int64(500000)), new(int64(1000000)), true, true,
 				"LXMF Storage   : 50.0%, 500.00 KB of 1.00 MB"},
-			{"zero used", pInt64(0), pInt64(1000000), true, true,
+			{"zero used", new(int64(0)), new(int64(1000000)), true, true,
 				"LXMF Storage   : 0.0%, 0 B of 1.00 MB"},
-			{"no limit", pInt64(512), nil, true, true,
+			{"no limit", new(int64(512)), nil, true, true,
 				"LXMF Storage   : 512 B"},
-			{"bankers pct", pInt64(225), pInt64(10000), true, true,
+			{"bankers pct", new(int64(225)), new(int64(10000)), true, true,
 				"LXMF Storage   : 2.2%, 225 B of 10.00 KB"},
-			{"37.5 pct", pInt64(3750), pInt64(10000), true, true,
+			{"37.5 pct", new(int64(3750)), new(int64(10000)), true, true,
 				"LXMF Storage   : 37.5%, 3.75 KB of 10.00 KB"},
-			{"propagation disabled", pInt64(500), pInt64(1000), true, false,
+			{"propagation disabled", new(int64(500)), new(int64(1000)), true, false,
 				"LXMF Storage   : None"},
-			{"no node", pInt64(500), pInt64(1000), false, true,
+			{"no node", new(int64(500)), new(int64(1000)), false, true,
 				"LXMF Storage   : None"},
-			{"big GB", pInt64(1073741824), pInt64(2147483648), true, true,
+			{"big GB", new(int64(1073741824)), new(int64(2147483648)), true, true,
 				"LXMF Storage   : 50.0%, 1.07 GB of 2.15 GB"},
 		}
 		for _, tt := range tests {
@@ -217,6 +218,3 @@ func TestNetworkStatLabelsPythonParity(t *testing.T) {
 		}
 	})
 }
-
-// pInt64 returns a pointer to v (helper for optional int64 inputs).
-func pInt64(v int64) *int64 { return &v }

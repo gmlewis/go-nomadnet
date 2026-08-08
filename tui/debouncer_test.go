@@ -24,7 +24,7 @@ func TestDebouncedCallCoalescesBurst(t *testing.T) {
 	// Fire 200 times with no delay between calls, simulating a tight burst of
 	// 200 incoming announces all firing UIChangeCallback within the coalesce
 	// window.
-	for i := 0; i < 200; i++ {
+	for range 200 {
 		d.Trigger()
 	}
 
@@ -70,7 +70,7 @@ func TestDebouncedCallRetriggerAfterFire(t *testing.T) {
 
 	// A second burst well after the first fire must re-arm the same timer and
 	// produce exactly one more call.
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		d.Trigger()
 	}
 	time.Sleep(60 * time.Millisecond)
@@ -93,7 +93,7 @@ func TestDebouncedCallConcurrentTriggers(t *testing.T) {
 	var wg sync.WaitGroup
 	n := 500
 	wg.Add(n)
-	for i := 0; i < n; i++ {
+	for range n {
 		go func() {
 			defer wg.Done()
 			d.Trigger()

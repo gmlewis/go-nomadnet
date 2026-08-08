@@ -16,6 +16,7 @@
 package tui
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/gmlewis/go-nomadnet/nomadnet/browser"
@@ -72,10 +73,5 @@ func TestBrowserPartialsTrackedAndSelectable(t *testing.T) {
 }
 
 func sliceContains(s []string, v string) bool {
-	for _, x := range s {
-		if x == v {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(s, v)
 }

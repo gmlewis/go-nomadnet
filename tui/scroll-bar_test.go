@@ -39,9 +39,9 @@ func drawScrollBar(t *testing.T, s *ScrollBar, w, h int) []string {
 	s.Draw(screen)
 	screen.Sync()
 	rows := make([]string, h)
-	for y := 0; y < h; y++ {
+	for y := range h {
 		var b strings.Builder
-		for x := 0; x < w; x++ {
+		for x := range w {
 			c, _, _, _ := screen.GetContent(x, y)
 			b.WriteRune(c)
 		}
@@ -75,7 +75,7 @@ func TestScrollBarOverflowThumb(t *testing.T) {
 	tv.SetWrap(false)
 	// 40 short lines, each shorter than the width so no wrapping.
 	var b strings.Builder
-	for i := 0; i < 40; i++ {
+	for i := range 40 {
 		b.WriteString("line")
 		b.WriteString(itoa(i))
 		b.WriteByte('\n')
@@ -137,7 +137,7 @@ func TestScrollBarScrolledDown(t *testing.T) {
 	tv.SetScrollable(true)
 	tv.SetWrap(false)
 	var b strings.Builder
-	for i := 0; i < 40; i++ {
+	for i := range 40 {
 		b.WriteString("line")
 		b.WriteString(itoa(i))
 		b.WriteByte('\n')
@@ -189,10 +189,7 @@ func TestScrollBarThumbSizeWrappedContent(t *testing.T) {
 	}
 
 	const h = 10
-	wantThumb := int(math.Round(math.Min(1.0, float64(h)/float64(trueRowsMax)) * float64(h)))
-	if wantThumb < 1 {
-		wantThumb = 1
-	}
+	wantThumb := max(int(math.Round(math.Min(1.0, float64(h)/float64(trueRowsMax))*float64(h))), 1)
 
 	s := NewScrollBar(tv)
 	rows := drawScrollBar(t, s, contentW+1, h)

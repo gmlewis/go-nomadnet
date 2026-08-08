@@ -85,7 +85,6 @@ func TestFormatAnnounceStreamRowPythonParity(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			got := FormatAnnounceStreamRow(tc.ann, now, tc.showDestination, tc.sanitize, g)
@@ -112,7 +111,6 @@ func TestAnnounceTrustStyleParity(t *testing.T) {
 		{"", "list_untrusted", "list_focus_untrusted"}, // default branch
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.trust, func(t *testing.T) {
 			t.Parallel()
 			style, focus := AnnounceTrustStyle(tc.trust)
@@ -126,7 +124,7 @@ func TestAnnounceTrustStyleParity(t *testing.T) {
 // bytesRange returns a slice of bytes 0..n-1.
 func bytesRange(n int) []byte {
 	b := make([]byte, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		b[i] = byte(i)
 	}
 	return b

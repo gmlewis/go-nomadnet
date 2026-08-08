@@ -38,7 +38,6 @@ func TestPartialDescriptorAndHash(t *testing.T) {
 		{"sub/page`10}", "sub/page|10", "5484ccc05b51f7ea08dddd7a6e6331af895965e6fda6afe34b1ddf82978552cf"},
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.inner, func(t *testing.T) {
 			t.Parallel()
 			nodes := Parse("`{" + tc.inner)

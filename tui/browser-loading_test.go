@@ -92,7 +92,7 @@ func TestBrowserLoadingShowsCenteredRetrieving(t *testing.T) {
 	// BrowserPane LineBox is the caller's responsibility), so the inner content
 	// starts at col 0.
 	firstCol := -1
-	for x := 0; x < 60; x++ {
+	for x := range 60 {
 		if cellAt(rows, x, urlRow) != " " {
 			firstCol = x
 			break

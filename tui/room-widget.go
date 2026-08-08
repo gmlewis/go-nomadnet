@@ -338,17 +338,17 @@ func (rw *RoomWidget) renderMessages() {
 	for _, msg := range msgs {
 		switch {
 		case msg.IsSystem:
-			sb.WriteString(fmt.Sprintf("[gray]%v[-]\n", msg.Text))
+			fmt.Fprintf(&sb, "[gray]%v[-]\n", msg.Text)
 		case msg.IsNotice:
-			sb.WriteString(fmt.Sprintf("[yellow]%v[-]\n", msg.Text))
+			fmt.Fprintf(&sb, "[yellow]%v[-]\n", msg.Text)
 		case msg.IsError:
-			sb.WriteString(fmt.Sprintf("[red]%v[-]\n", msg.Text))
+			fmt.Fprintf(&sb, "[red]%v[-]\n", msg.Text)
 		default:
 			if msg.IsSelf {
-				sb.WriteString(fmt.Sprintf("[#66cc55]<%v>[-] %v\n", msg.Nick, msg.Text))
+				fmt.Fprintf(&sb, "[#66cc55]<%v>[-] %v\n", msg.Nick, msg.Text)
 			} else {
 				nickCol := nickColor(msg.Nick)
-				sb.WriteString(fmt.Sprintf("%v<%v>[-] %v\n", nickCol, msg.Nick, msg.Text))
+				fmt.Fprintf(&sb, "%v<%v>[-] %v\n", nickCol, msg.Nick, msg.Text)
 			}
 		}
 	}

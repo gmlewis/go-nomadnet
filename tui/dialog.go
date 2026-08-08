@@ -70,20 +70,20 @@ func (d *DialogLineBox) Draw(screen tcell.Screen) {
 
 	// Top border
 	set(x-1, y-1, '┌', style)
-	for i := 0; i < w; i++ {
+	for i := range w {
 		set(x+i, y-1, '─', style)
 	}
 	set(x+w, y-1, '┐', style)
 
 	// Bottom border
 	set(x-1, y+h, '└', style)
-	for i := 0; i < w; i++ {
+	for i := range w {
 		set(x+i, y+h, '─', style)
 	}
 	set(x+w, y+h, '┘', style)
 
 	// Side borders
-	for i := 0; i < h; i++ {
+	for i := range h {
 		set(x-1, y+i, '│', style)
 		set(x+w, y+i, '│', style)
 	}

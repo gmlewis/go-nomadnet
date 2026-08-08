@@ -149,7 +149,7 @@ func TestNickColorByHashPaletteSize(t *testing.T) {
 
 	// All colors returned must be valid palette entries
 	seen := make(map[string]bool)
-	for i := 0; i < 1000; i++ {
+	for i := range 1000 {
 		hash := make([]byte, 16)
 		hash[15] = byte(i % 256)
 		hash[14] = byte(i / 256)

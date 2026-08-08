@@ -84,7 +84,6 @@ func TestParseURL(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			dest, path, rd, err := ParseURL(c.url, c.currentDest, c.inRD)
 			if c.wantErr {
@@ -132,7 +131,6 @@ func TestCurrentURL(t *testing.T) {
 		{"empty map no suffix", "/page/x.mu", map[string]string{}, h32 + ":/page/x.mu"},
 	}
 	for _, c := range cases {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			if got := CurrentURL(dh, c.path, c.rd); got != c.want {
 				t.Errorf("CurrentURL(%q,%v) = %q, want %q", c.path, c.rd, got, c.want)
@@ -144,7 +142,7 @@ func TestCurrentURL(t *testing.T) {
 func bytesFromHex(t *testing.T, s string) []byte {
 	t.Helper()
 	b := make([]byte, len(s)/2)
-	for i := 0; i < len(b); i++ {
+	for i := range b {
 		var hi, lo byte
 		switch {
 		case s[2*i] >= '0' && s[2*i] <= '9':

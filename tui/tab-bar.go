@@ -48,10 +48,7 @@ func (t *tabBarWidget) SetRect(x, y, w, h int) {
 		t.right.SetRect(x, y, 0, 0)
 		return
 	}
-	remaining := w - t.divider
-	if remaining < 0 {
-		remaining = 0
-	}
+	remaining := max(w-t.divider, 0)
 	leftW := (remaining + 1) / 2 // ceil → extra column to the left button
 	rightW := remaining - leftW
 	t.left.SetRect(x, y, leftW, h)

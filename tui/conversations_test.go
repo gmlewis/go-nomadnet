@@ -1428,9 +1428,9 @@ func TestShowPeerInfoDialogGolden(t *testing.T) {
 	screen.Sync()
 
 	rows := make([]string, 30)
-	for y := 0; y < 30; y++ {
+	for y := range 30 {
 		var b strings.Builder
-		for x := 0; x < 80; x++ {
+		for x := range 80 {
 			c, _, _, _ := screen.GetContent(x, y)
 			b.WriteRune(c)
 		}
@@ -1500,9 +1500,9 @@ func TestShowPeerInfoDialogKnownDivider(t *testing.T) {
 	screen.Sync()
 
 	rows := make([]string, 30)
-	for y := 0; y < 30; y++ {
+	for y := range 30 {
 		var b strings.Builder
-		for x := 0; x < 80; x++ {
+		for x := range 80 {
 			c, _, _, _ := screen.GetContent(x, y)
 			b.WriteRune(c)
 		}

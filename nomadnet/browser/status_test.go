@@ -45,7 +45,6 @@ func TestStatusTextGolden(t *testing.T) {
 		{"unknown zero-ish", 0x10, "Browser Status Unknown"},
 	}
 	for _, c := range cases {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			if got := StatusText(c.status); got != c.want {
@@ -74,7 +73,6 @@ func TestErrToStatus(t *testing.T) {
 		{"other error", errOther, StatusRequestFailed},
 	}
 	for _, c := range cases {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			if got := ErrToStatus(c.err); got != c.want {

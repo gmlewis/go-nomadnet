@@ -642,7 +642,6 @@ func (bd *BrowserDisplay) RefreshPartials(ids []string) {
 	cancel := bd.partialCancel
 	go func() {
 		for _, p := range matches {
-			p := p
 			bd.fetchAndSubstitute(p, cancel)
 		}
 	}()
@@ -963,11 +962,11 @@ func HandleLink(target string) (destType, hash string, err error) {
 // Matches Python's Browser.detect_partials at Browser.py:659.
 func DetectPartials(markup string) []string {
 	var partials []string
-	lines := strings.Split(markup, "\n")
-	for _, line := range lines {
+	lines := strings.SplitSeq(markup, "\n")
+	for line := range lines {
 		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, ">>") {
-			name := strings.TrimSpace(strings.TrimPrefix(trimmed, ">>"))
+		if after, ok := strings.CutPrefix(trimmed, ">>"); ok {
+			name := strings.TrimSpace(after)
 			if name != "" {
 				partials = append(partials, name)
 			}
