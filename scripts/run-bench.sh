@@ -32,6 +32,7 @@ BENCH_TIME="${BENCH_TIME:-1s}"
 BENCH_PATTERN="${BENCH_PATTERN:-.}"
 BENCH_PKGS="${BENCH_PKGS:-./tui/... ./nomadnet/micron/...}"
 GO_TEST_TIMEOUT="${GO_TEST_TIMEOUT:-10m}"
+NOW_SECONDS=$(date +%s)
 
 # GOCACHE=/tmp/go-cache matches the convention in tooling/sweep.sh:68.
 export GOCACHE=/tmp/go-cache
@@ -44,9 +45,9 @@ GOCACHE=/tmp/go-cache go test \
   -count="$BENCH_COUNT" \
   -benchtime="$BENCH_TIME" \
   -timeout "$GO_TEST_TIMEOUT" \
-  $BENCH_PKGS 2>&1 | tee /tmp/gonomadnet-bench-latest.txt
+  $BENCH_PKGS 2>&1 | tee /tmp/gonomadnet-bench-latest-${NOW_SECONDS}.txt
 
 if [ -n "${SAVE:-}" ]; then
-  cp /tmp/gonomadnet-bench-latest.txt "$SAVE"
+  cp /tmp/gonomadnet-bench-latest-${NOW_SECONDS}.txt "$SAVE"
   echo "wrote $SAVE"
 fi

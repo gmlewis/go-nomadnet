@@ -1,2 +1,2 @@
 #!/bin/bash -ex
-go run ./cmd/gonomadnet
+go install ./cmd/gonomadnet && gonomadnet

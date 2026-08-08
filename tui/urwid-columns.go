@@ -458,6 +458,24 @@ func (c *urwidColumns) MouseHandler() func(action tview.MouseAction, event *tcel
 			}
 			cx, cy, cw, ch := child.GetRect()
 			if mx >= cx && mx < cx+cw && my >= cy && my < cy+ch {
+				// A bare mouse-move over a column must NOT change focus or mark the
+				// event consumed. The previous behavior called SetFocusIndex +
+				// setFocus and returned consumed=true for every action including
+				// MouseMove, which forced a full Clear+Draw+Show on every
+				// mouse-position event — the cursor-flicker root cause
+				// (BenchmarkURWIDColumnsMouseMove ≈ 0.9ms/8692 allocs per move vs
+				// ~0.3µs/14 allocs when not consumed, ~4400×). Focus follows the
+				// click instead, matching Python urwid Columns and the menu-bar
+				// convention in main-display.go (MouseMove returns not-consumed so
+				// no redraw fires). The move is still routed to the child so a
+				// hover-aware child can act on it, returning the child's verdict
+				// unchanged.
+				if action == tview.MouseMove {
+					if h := child.MouseHandler(); h != nil {
+						return h(action, event, setFocus)
+					}
+					return false, nil
+				}
 				c.SetFocusIndex(i)
 				if setFocus != nil {
 					setFocus(child)
