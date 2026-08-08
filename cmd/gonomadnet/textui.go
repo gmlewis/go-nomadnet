@@ -278,8 +278,19 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		}
 		networkDisplay.UpdateNodes(nodes)
 	}
-	// Wire up real announce data via callback
-	a.SetUIChangeCallback(func() {
+	// refreshAll is the full Network/Conversations/LocalPeer refresh, run on
+	// the event loop. It is invoked through the debouncer below so a burst of
+	// announces/messages collapses into a single refresh instead of one refresh
+	// per event. Each refresh does an os.ReadDir for the conversation list plus
+	// a full screen redraw, so N simultaneous announces would otherwise queue N
+	// redundant refreshes (each spawning its own goroutine via the non-blocking
+	// QueueUpdateDraw wrapper) and keep the event loop busy long enough to make
+	// the UI appear hung — key events sit in the tcell queue while the loop
+	// drains the pile. Python's directory_change_callback (Network.py:1744)
+	// avoids this by doing only cheap in-memory widget rebuilds per announce;
+	// the Go refresh is heavier, so coalescing is necessary for parity under a
+	// burst (e.g. the path-response storm that follows announce-at-start).
+	refreshAll := func() {
 		tuiApp.QueueUpdateDraw(func() {
 			refreshAnnounces()
 			refreshNodes()
@@ -293,7 +304,18 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 			lxmfAddr, idhash, lann := localPeerInfo()
 			networkDisplay.UpdateLocalPeer(lxmfAddr, idhash, lann)
 		})
-	})
+	}
+
+	// Debounce UIChangeCallback (fired from transport goroutines: one call per
+	// incoming announce/message, plus the end of async initRNS). Resetting a
+	// short timer on each fire coalesces a burst into one refreshAll, bounding
+	// the refresh rate to ~1 per refreshCoalesceWindow regardless of how fast
+	// announces arrive. An 80 ms window is imperceptible for a single event but
+	// collapses a tight path-response storm (hundreds of announces within a
+	// second or two) to a handful of refreshes.
+	const refreshCoalesceWindow = 80 * time.Millisecond
+	refreshTrigger := tui.NewDebouncedCall(refreshCoalesceWindow, refreshAll)
+	a.SetUIChangeCallback(refreshTrigger.Trigger)
 	main.SetDisplay("network", networkDisplay.Widget())
 	main.SetShortcut("network", "[C-l] Nodes/Announces  [C-x] Remove  [C-w] Disconnect  [C-d] Back  [C-f] Forward  [C-r] Reload  [C-u] URL  [C-g] Fullscreen  [C-s / C-b] Save Node")
 

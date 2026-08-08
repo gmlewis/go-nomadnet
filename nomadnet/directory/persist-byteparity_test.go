@@ -115,7 +115,7 @@ func TestSaveToDiskLoadFromDiskOrderPreserved(t *testing.T) {
 	// Capture the entry order right after load.
 	firstOrder := append([]string(nil), d.entryOrder...)
 	if len(firstOrder) != 2 {
-		t.Fatalf("expected 2 entries loaded, got %d", len(firstOrder))
+		t.Fatalf("expected 2 entries loaded, got %v", len(firstOrder))
 	}
 
 	if err := d.SaveToDisk(path); err != nil {

@@ -45,7 +45,7 @@ func writeProbeRNSServerConfig(t *testing.T, dir string, port int) {
     type = TCPServerInterface
     enabled = yes
     listen_ip = 127.0.0.1
-    listen_port = %d
+    listen_port = %v
 `, port)
 	if err := os.WriteFile(filepath.Join(dir, "config"), []byte(content), 0o600); err != nil {
 		t.Fatal(err)
@@ -71,7 +71,7 @@ func writeProbeRNSClientConfig(t *testing.T, dir string, port int) {
     type = TCPClientInterface
     enabled = yes
     target_host = 127.0.0.1
-    target_port = %d
+    target_port = %v
 `, port)
 	if err := os.WriteFile(filepath.Join(dir, "config"), []byte(content), 0o600); err != nil {
 		t.Fatal(err)

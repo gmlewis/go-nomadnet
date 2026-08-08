@@ -90,7 +90,7 @@ func TestServeLocalFile(t *testing.T) {
 		t.Errorf("savedName = %q, want readme.txt", name)
 	}
 	if size != 5 {
-		t.Errorf("size = %d, want 5", size)
+		t.Errorf("size = %v, want 5", size)
 	}
 	if _, err := os.Stat(filepath.Join(dl, name)); err != nil {
 		t.Errorf("downloaded file missing: %v", err)

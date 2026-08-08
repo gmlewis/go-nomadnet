@@ -44,6 +44,15 @@ var defaultIndexContent string
 // ensureDefaultPages creates the pages directory and a default index.mu file
 // if they don't already exist. This gives node operators a starter page to
 // customize rather than serving only the in-memory fallback.
+//
+// It is called unconditionally on every startup (from Init and
+// InitWithTransport, after applyConfig so a config-overridden pages_path is
+// honored) so a fresh install — whose default config has enable_node = no and
+// therefore never enters startNode — still gets the starter index.mu. It is
+// also called from startNode so an explicit node start (e.g. the cross-process
+// node-serving test) seeds the page even when Init was bypassed. Both call
+// sites are safe: the write is gated on os.IsNotExist, so an existing
+// index.mu (the operator's customized home page) is never overwritten.
 func (a *App) ensureDefaultPages() error {
 	// Create pages directory if it doesn't exist
 	if _, err := os.Stat(a.PagesPath); os.IsNotExist(err) {

@@ -312,6 +312,21 @@ func (a *App) Init() error {
 		a.applyConfig(cfg)
 	}
 
+	// Seed the pages directory with a starter index.mu when one is absent
+	// (the embedded default-index.mu mascot page). This is run on every
+	// startup, independent of enable_node, so a fresh install — where the
+	// default config has enable_node = no and startNode is therefore a no-op
+	// — still gets the starter page copied into storage/pages/index.mu for
+	// the operator to customize once they enable node hosting. Python only
+	// creates the pages directory unconditionally (NomadNetworkApp.py:182-183)
+	// and serves an in-memory placeholder when no index.mu exists; gonomadnet
+	// additionally seeds a starter file. Idempotent: an existing index.mu is
+	// never overwritten. (Also called from startNode; both calls are safe
+	// because the write is gated on os.IsNotExist.)
+	if err := a.ensureDefaultPages(); err != nil {
+		return fmt.Errorf("seeding default pages: %w", err)
+	}
+
 	// Initialize logger
 	a.Logger = rns.NewLogger()
 	a.Logger.SetLogLevel(rns.LogNotice)
@@ -493,6 +508,13 @@ func (a *App) InitWithTransport(ts *rns.TransportSystem, identity *rns.Identity)
 	}
 	a.Config = cfg
 	a.applyConfig(cfg)
+
+	// Seed storage/pages/index.mu with the starter page when absent — see the
+	// matching call in Init for rationale. Run unconditionally (independent of
+	// enable_node) so the test harness mirrors production startup.
+	if err := a.ensureDefaultPages(); err != nil {
+		return fmt.Errorf("seeding default pages: %w", err)
+	}
 
 	if a.Logger == nil {
 		a.Logger = rns.NewLogger()
