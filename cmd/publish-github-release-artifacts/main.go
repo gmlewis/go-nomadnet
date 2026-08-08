@@ -33,6 +33,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -61,8 +62,8 @@ var majorTargets = []target{
 	{"linux", "arm64"},
 	{"darwin", "amd64"},
 	{"darwin", "arm64"},
-	{"windows", "amd64"},
-	{"windows", "arm64"},
+	// {"windows", "amd64"},
+	// {"windows", "arm64"},
 	{"freebsd", "amd64"},
 	{"freebsd", "arm64"},
 }
@@ -78,23 +79,22 @@ func main() {
 			"stdout and exit, without publishing (artifacts are still built so "+
 			"the sha256 checksums are real)")
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: %v [--force] [-n]\n", os.Args[0])
+		log.Printf("Usage: %v [--force] [-n]\n", os.Args[0])
 		flag.PrintDefaults()
 	}
 	flag.Parse()
 
 	if err := run(*force, *dryRun); err != nil {
-		fmt.Fprintf(os.Stderr, "publish-github-release-artifacts: %v\n", err)
+		log.Printf("publish-github-release-artifacts: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func pprintf(w *os.File, format string, args ...any) {
-	if _, err := fmt.Fprintf(w, format, args...); err != nil {
-		log.Fatalf("pprintf: %v", err)
-	}
-}
-
+// run builds the release artifacts and either publishes them as a new GitHub
+// release (when dryRun is false) or prints the Markdown release description
+// that would be written to stdout and returns (when dryRun is true). In dry-run
+// mode all progress output is routed to stderr so stdout contains only the
+// Markdown description.
 func run(force, dryRun bool) error {
 	if _, err := exec.LookPath("gh"); err != nil {
 		return fmt.Errorf("gh CLI not found in PATH: %w", err)
@@ -115,13 +115,13 @@ func run(force, dryRun bool) error {
 		return err
 	}
 	tag := "v" + version
-	pprintf(progress, "Publishing release for version %v (tag %v)\n", version, tag)
+	mustFprintf(progress, "Publishing release for version %v (tag %v)\n", version, tag)
 
 	repo, err := ghRepoSlug()
 	if err != nil {
 		return err
 	}
-	pprintf(progress, "Repository: %v\n", repo)
+	mustFprintf(progress, "Repository: %v\n", repo)
 
 	exists := false
 	if !dryRun {
@@ -159,7 +159,7 @@ func run(force, dryRun bool) error {
 	}
 
 	if exists && force {
-		pprintf(progress, "--force: deleting existing release %v and its assets\n", tag)
+		mustFprintf(progress, "--force: deleting existing release %v and its assets\n", tag)
 		if err := gh("release", "delete", tag, "--yes"); err != nil {
 			return fmt.Errorf("delete existing release: %w", err)
 		}
@@ -171,23 +171,23 @@ func run(force, dryRun bool) error {
 		return fmt.Errorf("create release: %w", err)
 	}
 
-	pprintf(progress, "\nPublished release %v with %v asset(s):\n", tag, len(assets))
+	mustFprintf(progress, "\nPublished release %v with %v asset(s):\n", tag, len(assets))
 	for _, a := range assets {
-		pprintf(progress, "  %v\n", filepath.Base(a))
+		mustFprintf(progress, "  %v\n", filepath.Base(a))
 	}
 	return nil
 }
 
-// readVersion parses the Version constant out of nomadnet/version/version.go.
+// readVersion parses the VERSION constant out of nomadnet/version/version.go.
 func readVersion() (string, error) {
 	data, err := os.ReadFile(versionFile)
 	if err != nil {
 		return "", fmt.Errorf("read %v: %w", versionFile, err)
 	}
-	re := regexp.MustCompile(`Version\s*=\s*"([^"]+)"`)
+	re := regexp.MustCompile(`VERSION\s*=\s*"([^"]+)"`)
 	m := re.FindSubmatch(data)
 	if m == nil {
-		return "", fmt.Errorf("no Version string constant found in %v", versionFile)
+		return "", fmt.Errorf("no VERSION string constant found in %v", versionFile)
 	}
 	v := string(m[1])
 	if !regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+$`).MatchString(v) {
@@ -248,7 +248,7 @@ func buildAll(outDir, version string, progress *os.File) ([]string, error) {
 		}
 		outPath := filepath.Join(outDir, name)
 
-		pprintf(progress, "Building %v/%v -> %v\n", t.goos, t.goarch, name)
+		mustFprintf(progress, "Building %v/%v -> %v\n", t.goos, t.goarch, name)
 		cmd := exec.Command("go", "build", "-trimpath", "-o", outPath, "./cmd/gonomadnet")
 		cmd.Env = append(os.Environ(),
 			"GOOS="+t.goos,
@@ -269,12 +269,12 @@ func buildAll(outDir, version string, progress *os.File) ([]string, error) {
 // sha256 checksum table for every artifact.
 func buildReleaseNotes(version, repo string, assets []string) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "# Go NomadNet v%v\n\n", version)
-	fmt.Fprintf(&b, "Standalone executables built from [github.com/%v](https://github.com/%v) at tag v%v.\n\n", repo, repo, version)
-	fmt.Fprintf(&b, "Built with Go on %v/%v with `CGO_ENABLED=0`.\n\n", runtime.GOOS, runtime.GOARCH)
-	fmt.Fprintf(&b, "## Artifacts\n\n")
-	fmt.Fprintf(&b, "| File | sha256 |\n")
-	fmt.Fprintf(&b, "| --- | --- |\n")
+	mustFprintf(&b, "# Go NomadNet v%v\n\n", version)
+	mustFprintf(&b, "Standalone executables built from [github.com/%v](https://github.com/%v) at tag v%v.\n\n", repo, repo, version)
+	mustFprintf(&b, "Built with Go on %v/%v with `CGO_ENABLED=0`.\n\n", runtime.GOOS, runtime.GOARCH)
+	mustFprintf(&b, "## Artifacts\n\n")
+	mustFprintf(&b, "| File | sha256 |\n")
+	mustFprintf(&b, "| --- | --- |\n")
 	// Sort the artifact rows by filename so the published table is stable and
 	// easy to scan regardless of the build order above.
 	sorted := make([]string, len(assets))
@@ -286,19 +286,19 @@ func buildReleaseNotes(version, repo string, assets []string) string {
 		sum, err := sha256sum(a)
 		if err != nil {
 			// Keep going; record the error in the table rather than aborting.
-			fmt.Fprintf(&b, "| %v | <error: %v> |\n", filepath.Base(a), err)
+			mustFprintf(&b, "| %v | <error: %v> |\n", filepath.Base(a), err)
 			continue
 		}
-		fmt.Fprintf(&b, "| %v | `%v` |\n", filepath.Base(a), sum)
+		mustFprintf(&b, "| %v | `%v` |\n", filepath.Base(a), sum)
 	}
-	fmt.Fprintf(&b, "\nVerify a download with `shasum -a 256 <file>`.\n")
-	fmt.Fprintf(&b, "\n## Post-download setup\n\n")
-	fmt.Fprintf(&b, "Make the downloaded executable runnable:\n\n")
-	fmt.Fprintf(&b, "```\nchmod a+x gonomadnet-<version>-<os>-<arch>\n```\n\n")
-	fmt.Fprintf(&b, "On macOS, executables downloaded from the internet carry a\n")
-	fmt.Fprintf(&b, "quarantine attribute that blocks them from running until you approve\n")
-	fmt.Fprintf(&b, "them. Clear it with:\n\n")
-	fmt.Fprintf(&b, "```\nxattr -d com.apple.quarantine gonomadnet-<version>-<os>-<arch>\n```\n")
+	mustFprintf(&b, "\nVerify a download with `shasum -a 256 <file>`.\n")
+	mustFprintf(&b, "\n## Post-download setup\n\n")
+	mustFprintf(&b, "Make the downloaded executable runnable:\n\n")
+	mustFprintf(&b, "```\nchmod a+x gonomadnet-<version>-<os>-<arch>\n```\n\n")
+	mustFprintf(&b, "On macOS, executables downloaded from the internet carry a\n")
+	mustFprintf(&b, "quarantine attribute that blocks them from running until you approve\n")
+	mustFprintf(&b, "them. Clear it with:\n\n")
+	mustFprintf(&b, "```\nxattr -d com.apple.quarantine gonomadnet-<version>-<os>-<arch>\n```\n")
 	return b.String()
 }
 
@@ -314,4 +314,10 @@ func sha256sum(path string) (string, error) {
 		return "", fmt.Errorf("unexpected shasum output: %q", string(out))
 	}
 	return fields[0], nil
+}
+
+func mustFprintf(w io.Writer, fmtStr string, args ...any) {
+	if _, err := fmt.Fprintf(w, fmtStr, args...); err != nil {
+		log.Fatalf("Fprintf failed: %v", err)
+	}
 }
