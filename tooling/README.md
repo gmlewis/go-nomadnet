@@ -241,6 +241,154 @@ redrawn). If a Python topic frame's body looks like the wrong topic, it is a
 frame-selection artifact, not a port bug — cross-check against the Go frame
 (which renders the full topic) and against the Python source `.mu` content.
 
+## Performance profiling & benchmarking
+
+`cmd/gonomadnet` had severe visible perf problems (cursor flicker while moving
+the mouse over Network/Guide, sluggish wheel-scroll on any browser/guide page,
+idle CPU). The harness below was built **measure-first**: quantify each hot
+path before fixing, then prove each fix with `benchstat` before/after **and** a
+re-captured live profile. The harness itself only *measures* — it changes no
+production rendering code.
+
+### 1. Headless benchmark suite
+
+Seven layers, all headless via `tcell.NewSimulationScreen("UTF-8")`, so they
+isolate the **Go-side render/event CPU** — *not* the real-terminal flush/cursor
+cost (that needs the live pprof in §2). Every benchmark uses `b.ReportAllocs()`,
+setup outside the loop, and `for b.Loop()` (the Go 1.24+ idiom).
+
+Files:
+- `nomadnet/micron/bench_test.go` — Layer 1: `Parse`, `RenderToStyledLines`,
+  `RenderToTView`, `BuildAnchorMap` (scaled Realistic/Small/Medium/Large).
+- `tui/perf_test.go` — shared helpers: `newBenchScreen`, `drawFrame` (the
+  event-loop's `Clear+Draw+Show`), `benchSyntheticMicron`, `benchGuideTopicMarkups`.
+- `tui/perf-render_test.go` — Layers 2+3: `StyledLinesToTviewText`, `BodyMarkup`,
+  `FormatChannelMessage`, `FormatConversationItem`, `ScrollBarDraw`,
+  `GuideReaderDraw`, `BrowserPageViewDraw`, `TextViewDrawWrappedLarge`
+  (TopOffset/DeepOffset/WidthOscillate).
+- `tui/perf-draw_test.go` — Layer 4: full `MainDisplay.Root().Draw` per body page
+  (Guide/Network/Channels/Log/Interfaces/Config/Conversations) + StandaloneBrowser
+  + 12-topic Guide corpus.
+- `tui/perf-input_test.go` — Layer 5: synthesized `tcell.EventMouse` → handler →
+  `drawFrame`. `URWIDColumnsMouseMove`, `PlainFlexMouseMove`, `GuideWheelScroll`,
+  `BrowserWheelScroll`, `GuideWheelScrollDeepOffset`.
+- `tui/perf-idle_test.go` — Layer 6: `UnreadBlinkTick`, `UpdateUnreadIndicator`,
+  `RedrawMenuBar`.
+
+Run them:
+
+```bash
+# All benchmarks, count=5, 1s each (writes /tmp/gonomadnet-bench-latest-<ts>.txt):
+scripts/run-bench.sh
+
+# Tighter stats / longer per-bench:
+BENCH_COUNT=10 BENCH_TIME=3s scripts/run-bench.sh
+
+# Filter by name:
+BENCH_PATTERN='ScrollBar|Wheel|MouseMove' scripts/run-bench.sh
+
+# Save a named baseline, then diff a fix with benchstat:
+scripts/run-bench.sh SAVE=before.txt
+# ...make the change...
+scripts/run-bench.sh SAVE=after.txt
+benchstat before.txt after.txt
+```
+
+`run-bench.sh` env vars: `BENCH_COUNT` (default 5), `BENCH_TIME` (default 1s),
+`BENCH_PATTERN` (default `.`), `BENCH_PKGS` (default
+`./tui/... ./nomadnet/micron/...`), `GO_TEST_TIMEOUT` (default 10m), `SAVE`.
+It sets `GOCACHE=/tmp/go-cache` (repo convention). Benchmarks are **opt-in**:
+`test-all.sh`/`test-integration.sh` never pass `-bench`, so CI and `-short` runs
+pay zero cost.
+
+Direct form (no script):
+
+```bash
+GOCACHE=/tmp/go-cache go test -run='^$' \
+  -bench='URWIDColumnsMouseMove|GuideWheelScroll' \
+  -benchmem -count=5 -benchtime=1s ./tui/
+```
+
+### 2. Live-app pprof harness (real-terminal CPU)
+
+The headless `SimulationScreen.Show()` is a no-op, so it **cannot** reproduce the
+terminal flush / cursor / per-`Show` costs that drive the visible flicker.
+`cmd/gonomadnet` has an opt-in `-pprof-addr` flag that starts a `net/http/pprof`
+server (zero overhead when unset):
+
+```bash
+# Terminal A — the app keeps running the whole time:
+gonomadnet -textui -pprof-addr 127.0.0.1:6060
+
+# Terminal B — start a 60s CPU recording:
+go tool pprof -http :8080 'http://127.0.0.1:6060/debug/pprof/profile?seconds=60'
+```
+
+**`seconds=60` is the recording window, not a short snapshot.** The moment you
+hit Enter in Terminal B, switch to Terminal A and **continuously reproduce the
+slow behavior for the full 60 s** — scroll a long guide page with the wheel
+nonstop, move the mouse over Network, etc. When the window elapses, pprof saves
+a `.pb.gz` to `~/pprof/` and opens a flame-graph web UI. If you sit idle, you
+capture idle — useless. Use a longer window (`seconds=120`) for more samples,
+but only if you stay busy the whole time. Capture **one activity per profile**
+(one for guide-scroll, one for mouse-move) for clean attribution; mixed captures
+are hard to read.
+
+Text analysis (an image-capable model is not required — the flame graph is just
+a visualization of this same data, and the text form is better for precise
+attribution):
+
+```bash
+F=~/pprof/pprof.gonomadnet.samples.cpu.002.pb.gz   # any saved profile
+
+# Top by cumulative (inclusive) CPU — the expensive call trees:
+go tool pprof -top -nodecount=40 -cum "$F"
+
+# Top by flat (self) CPU — the functions burning CPU themselves:
+go tool pprof -top -nodecount=40 "$F"
+
+# Interactive: callers/callees of a symbol (regex), or annotated source:
+printf 'peek draw\npeek wrappedRowCount\n' | go tool pprof "$F"
+printf 'list WordWrap\n' | go tool pprof "$F"
+```
+
+How to read it: in `-cum`, the widest bars near the top are where CPU goes.
+`Application.draw` at ~95% means almost all CPU is redrawing. `uniseg.StepString`
+/ `parseTag` = per-cell text render; `syscall.rawsyscalln` / `Show` = terminal
+flush; `resize` / `WindowSize` = tcell's per-`Show` winsize ioctl;
+`QueueUpdateDraw.gowrap1` = background-driven redraws. In the web UI, use the
+regex filter box (`tui|micron`) to hide runtime noise. The `.pb.gz` is
+self-contained — reopen it any time with `go tool pprof -http :8080 <file>`; the
+app need not be running.
+
+The live profile sees costs the benchmarks cannot: the terminal write syscall,
+the per-`Show` resize ioctl, real-cursor cost. Use **both**: benchmarks prove a
+Go-side fix and give a number to diff; pprof proves the flush/redraw benefit
+downstream and localizes anything the benchmarks miss.
+
+### 3. Fixes applied (baseline context)
+
+Measured-then-fixed so far (BEFORE baselines in the repo-root
+`gonomadnet-bench-latest-1786222767.txt`):
+
+1. **Mouse-move flicker** — `tui/urwid-columns.go` `MouseHandler` no longer calls
+   `SetFocusIndex`/`setFocus`/consumes on `MouseMove` (click/scroll/drag
+   unchanged). `BenchmarkURWIDColumnsMouseMove` 895 µs / 8692 allocs → 204 ns /
+   9 allocs (~4400×).
+2. **Guide scroll re-wrap** — `tui/scroll-bar.go` caches the wrapped row count
+   keyed on `(GetText(false) raw text, width)`; scrolling is a cache hit so
+   `Draw` no longer tag-strips + `WordWrap`s the whole document every frame.
+   `BenchmarkGuideWheelScroll` 0.89 ms → 0.66 ms / notch (~25% on the small
+   synthetic doc; the live profile showed ~60% of guide-scroll CPU was this
+   re-wrap on the real large guide topic).
+
+### Conventions
+
+`GOCACHE=/tmp/go-cache` (repo convention). On macOS use `/tmp` explicitly for
+temp dirs you inspect, never `os.MkdirTemp("")`/`$TMPDIR`. Hyphenated filenames
+(`perf-render_test.go`; the `_test.go` suffix is required by Go). Modern
+`for b.Loop()` over `for range b.N`. Run `gopls check` after edits.
+
 ## Known tooling limitations
 
 - **UTF-8 multibyte glyphs are not decoded.** `Term` treats each input byte as

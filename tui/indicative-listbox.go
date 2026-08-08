@@ -180,6 +180,25 @@ func (i *IndicativeListBox) InputHandler() func(event *tcell.EventKey, setFocus 
 }
 
 // MouseHandler delegates to the wrapped List (whose rect was set in SetRect).
+//
+// When the mouse-debug logger is enabled (GONOMADNET_MOUSE_DEBUG), wheel events
+// are traced: the event point, whether it falls in the IndicativeListBox's full
+// rect vs the inset List rect (the inset is one row top/bottom for the ▲/▼
+// indicator bars — wheel over those rows would otherwise no-op because
+// tview.List bails on !InRect), the current offset, item count and visible
+// height, plus the consumed result. This localizes live-only wheel failures on
+// the Network Announce Stream / Saved Nodes lists.
 func (i *IndicativeListBox) MouseHandler() func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(p tview.Primitive)) (consumed bool, capture tview.Primitive) {
-	return i.List.MouseHandler()
+	base := i.List.MouseHandler()
+	return func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(p tview.Primitive)) (consumed bool, capture tview.Primitive) {
+		consumed, capture = base(action, event, setFocus)
+		if mouseDebug != nil && (action == tview.MouseScrollUp || action == tview.MouseScrollDown) {
+			x, y := event.Position()
+			_, _, _, listH := i.List.GetRect()
+			off, _ := i.List.GetOffset()
+			dbgMouse("ILB wheel %v at (%v,%v): inBox=%v inList=%v offset=%v items=%v listH=%v consumed=%v",
+				action, x, y, i.InRect(x, y), i.List.InRect(x, y), off, i.List.GetItemCount(), listH, consumed)
+		}
+		return consumed, capture
+	}
 }

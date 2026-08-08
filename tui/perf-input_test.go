@@ -224,3 +224,85 @@ func BenchmarkGuideWheelScrollDeepOffset(b *testing.B) {
 		mouseScrollFrame(screen, root, handler, mx, my, setFocus)
 	}
 }
+
+// wheelFrameCond is one iteration of the mouse-wheel event loop exactly as
+// tview runs it (application.go:494-498): dispatch the wheel, and only redraw
+// when the handler consumed the event. The scroll-boundary guard returns
+// consumed=false at the top/bottom, so a boundary notch redraws nothing —
+// contrast with mouseScrollFrame above, which always draws.
+func wheelFrameCond(screen tcell.Screen, root tview.Primitive, handler func(tview.MouseAction, *tcell.EventMouse, func(tview.Primitive)) (bool, tview.Primitive), action tview.MouseAction, mx, my int, setFocus func(tview.Primitive)) bool {
+	ev := tcell.NewEventMouse(mx, my, tcell.ButtonNone, tcell.ModNone)
+	consumed, _ := handler(action, ev, setFocus)
+	if consumed {
+		drawFrame(screen, root)
+	}
+	return consumed
+}
+
+// BenchmarkBrowserWheelScrollAtBoundary measures the cost of a wheel notch AT
+// the scroll boundary (parked at the bottom, scrolling down) on the Browser
+// page. The boundary guard returns consumed=false so tview skips the redraw —
+// the fix for the "scroll hangs at the ends" symptom. Contrast with
+// BenchmarkBrowserWheelScroll (mid-page, full redraw per notch): the boundary
+// number should be ~negligible (handler only, no Draw).
+func BenchmarkBrowserWheelScrollAtBoundary(b *testing.B) {
+	app := NewApp(ThemeDark, GlyphUnicode, ColorModeTrue)
+	bd := NewBrowserDisplay(app)
+	markup := benchSyntheticMicron(64)
+	lines := micron.RenderToStyledLines(markup, micronTheme(app.Theme))
+	text, _ := StyledLinesToTviewText(lines, benchScreenW-2)
+	bd.content.SetText(text)
+	bd.renderedWidth = benchScreenW - 2
+	setFocus := func(p tview.Primitive) { app.SetFocus(p) }
+
+	screen := newBenchScreen()
+	defer screen.Fini()
+	root := bd.Widget()
+	root.SetRect(0, 0, benchScreenW, benchScreenH)
+	drawFrame(screen, root)
+
+	// Park the page at the bottom so a downward wheel is a no-op.
+	bd.content.ScrollTo(1<<20, 0)
+	drawFrame(screen, root)
+
+	mx, my := center(bd.content)
+	handler := bd.content.MouseHandler()
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for b.Loop() {
+		wheelFrameCond(screen, root, handler, tview.MouseScrollDown, mx, my, setFocus)
+	}
+}
+
+// BenchmarkGuideWheelScrollAtBoundary measures the cost of a wheel notch AT the
+// scroll boundary (parked at the bottom, scrolling down) on the Guide page. The
+// boundary guard returns consumed=false so tview skips the redraw. Contrast
+// with BenchmarkGuideWheelScroll (mid-page, full redraw per notch).
+func BenchmarkGuideWheelScrollAtBoundary(b *testing.B) {
+	app := NewApp(ThemeDark, GlyphUnicode, ColorModeTrue)
+	gd := NewGuideDisplay(app)
+	gd.showMarkupForTest(benchSyntheticMicron(64))
+	app.Main.SetDisplay("guide", gd.Widget())
+	app.Main.SelectPage("guide")
+	setFocus := func(p tview.Primitive) { app.SetFocus(p) }
+
+	screen := newBenchScreen()
+	defer screen.Fini()
+	root := app.Main.Root()
+	root.SetRect(0, 0, benchScreenW, benchScreenH)
+	drawFrame(screen, root)
+
+	// Park at the bottom so a downward wheel is a no-op.
+	gd.reader.ScrollTo(1<<20, 0)
+	drawFrame(screen, root)
+
+	mx, my := center(gd.reader)
+	handler := gd.scroll.MouseHandler()
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for b.Loop() {
+		wheelFrameCond(screen, root, handler, tview.MouseScrollDown, mx, my, setFocus)
+	}
+}

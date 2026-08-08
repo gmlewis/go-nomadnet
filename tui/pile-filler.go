@@ -314,6 +314,18 @@ func (p *pileFiller) syncFocusIndex() {
 	}
 }
 
+// visibleCount reports how many of the pile's items are currently visible, for
+// the mouse-wheel debug trace.
+func (p *pileFiller) visibleCount() int {
+	n := 0
+	for _, v := range p.visible {
+		if v {
+			n++
+		}
+	}
+	return n
+}
+
 // InputHandler implements urwid-Pile-style focus traversal: Tab/Down moves
 // focus to the next selectable item, BackTab/Up to the previous (wrapping),
 // and all other keys are forwarded to the focused item's own handler.
@@ -404,13 +416,22 @@ func (p *pileFiller) InputHandler() func(event *tcell.EventKey, setFocus func(p 
 }
 
 func (p *pileFiller) MouseHandler() func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(p tview.Primitive)) (consumed bool, capture tview.Primitive) {
-	return func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(p tview.Primitive)) (bool, tview.Primitive) {
+	return func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(tview.Primitive)) (bool, tview.Primitive) {
+		isWheel := action == tview.MouseScrollUp || action == tview.MouseScrollDown
+		if mouseDebug != nil && isWheel {
+			x, y := event.Position()
+			dbgMouse("pileFiller wheel %v at (%v,%v): %v visible items", action, x, y, p.visibleCount())
+		}
 		for i, it := range p.items {
 			if !p.visible[i] {
 				continue
 			}
 			if h := it.widget.MouseHandler(); h != nil {
-				if consumed, capture := h(action, event, setFocus); consumed {
+				consumed, capture := h(action, event, setFocus)
+				if mouseDebug != nil && isWheel {
+					dbgMouse("  pileFiller item[%v] consumed=%v", i, consumed)
+				}
+				if consumed {
 					return consumed, capture
 				}
 			}

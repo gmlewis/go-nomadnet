@@ -16,7 +16,11 @@
 package tui
 
 import (
+	"strings"
 	"testing"
+
+	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 )
 
 func TestHandleLinkAnchor(t *testing.T) {
@@ -57,6 +61,92 @@ func TestHandleLinkEmpty(t *testing.T) {
 	_, _, err := HandleLink("")
 	if err == nil {
 		t.Error("HandleLink(empty) should return error")
+	}
+}
+
+// TestBrowserPageViewWheelNoOpAtBoundary pins the browser page's scroll-boundary
+// guard: a wheel notch at the top (scrolling up) or bottom (scrolling down)
+// must decline to consume so tview skips the no-op redraw, while a mid-page
+// notch still consumes and moves the offset. This is the fix for the "scroll
+// hangs at the ends" symptom on the Browser page — the underlying TextView
+// bumps lineOffset past the clamp and returns consumed=true, so without the
+// guard every past-the-end notch is a full Clear+Draw+Show that changes nothing.
+func TestBrowserPageViewWheelNoOpAtBoundary(t *testing.T) {
+	t.Parallel()
+	app := NewApp(ThemeDark, GlyphUnicode, ColorModeTrue)
+	bd := NewBrowserDisplay(app)
+	var b strings.Builder
+	for i := range 40 {
+		b.WriteString("line ")
+		b.WriteString(itoa(i))
+		b.WriteByte('\n')
+	}
+	bd.content.SetText(b.String())
+
+	screen := newBenchScreen()
+	defer screen.Fini()
+	v := bd.content
+	const w, h = 40, 10
+	v.SetRect(0, 0, w, h)
+	v.Draw(screen) // settle the line index + clamp lineOffset to 0
+
+	_, _, cw, ch := v.GetInnerRect()
+	total := v.wrappedRows(cw)
+	posmax := total - ch
+	if posmax <= 0 {
+		t.Fatalf("need overflow for a boundary test: total=%v h=%v cw=%v", total, ch, cw)
+	}
+
+	handler := v.MouseHandler()
+	ev := func() *tcell.EventMouse { return tcell.NewEventMouse(w/2, h/2, tcell.ButtonNone, tcell.ModNone) }
+	setFocus := func(p tview.Primitive) {}
+
+	if row, _ := v.GetScrollOffset(); row != 0 {
+		t.Fatalf("after Draw at top: lineOffset=%v, want 0", row)
+	}
+
+	// At the top, scrolling up is a no-op: must NOT consume, lineOffset stays 0.
+	if consumed, _ := handler(tview.MouseScrollUp, ev(), setFocus); consumed {
+		t.Error("ScrollUp at top: consumed=true, want false (no-op should skip redraw)")
+	}
+	if row, _ := v.GetScrollOffset(); row != 0 {
+		t.Errorf("ScrollUp at top moved lineOffset to %v, want unchanged 0", row)
+	}
+
+	// Scroll to the bottom and re-Draw so lineOffset clamps to posmax.
+	v.ScrollTo(1<<20, 0)
+	v.Draw(screen)
+	if row, _ := v.GetScrollOffset(); row != posmax {
+		t.Fatalf("after ScrollTo end: lineOffset=%v, want posmax=%v (total=%v cw=%v)", row, posmax, total, cw)
+	}
+
+	// At the bottom, scrolling down is a no-op: must NOT consume.
+	if consumed, _ := handler(tview.MouseScrollDown, ev(), setFocus); consumed {
+		t.Error("ScrollDown at bottom: consumed=true, want false (no-op should skip redraw)")
+	}
+	if row, _ := v.GetScrollOffset(); row != posmax {
+		t.Errorf("ScrollDown at bottom moved lineOffset to %v, want unchanged %v", row, posmax)
+	}
+
+	// Mid-page: a wheel must consume AND move the offset.
+	mid := posmax / 2
+	v.ScrollTo(mid, 0)
+	v.Draw(screen)
+	if consumed, _ := handler(tview.MouseScrollDown, ev(), setFocus); !consumed {
+		t.Error("ScrollDown at mid: consumed=false, want true")
+	}
+	if row, _ := v.GetScrollOffset(); row != mid+1 {
+		t.Errorf("ScrollDown at mid moved lineOffset to %v, want %v", row, mid+1)
+	}
+
+	// Scroll up from mid: must consume and decrement.
+	v.ScrollTo(mid, 0)
+	v.Draw(screen)
+	if consumed, _ := handler(tview.MouseScrollUp, ev(), setFocus); !consumed {
+		t.Error("ScrollUp at mid: consumed=false, want true")
+	}
+	if row, _ := v.GetScrollOffset(); row != mid-1 {
+		t.Errorf("ScrollUp at mid moved lineOffset to %v, want %v", row, mid-1)
 	}
 }
 

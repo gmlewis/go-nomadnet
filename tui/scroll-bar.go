@@ -66,6 +66,19 @@ type ScrollBar struct {
 	// the "scrollbar" palette color; callers (e.g. a themed reader) may override
 	// it via SetThumbColor.
 	thumbColor tcell.Color
+
+	// row-count cache for Draw. rowsMax (the total wrapped row count) only
+	// changes when the Text content or content width changes — NOT on scroll,
+	// where only the offset moves. Recomputing it every Draw via GetText(true)
+	// tag-strip + WordWrap over the whole document was the guide-scroll hotspot
+	// (~60% of scroll CPU in the live pprof), all pure waste on scroll. The
+	// cache is keyed on the raw tagged text (GetText(false), a single memcpy —
+	// tag-stripping is deterministic, so identical tagged text ⇒ identical
+	// stripped text ⇒ identical row count) plus the content width, so a scroll
+	// is a cache hit and skips the per-frame full-document re-wrap.
+	cachedRaw     string
+	cachedWidth   int
+	cachedRowsMax int
 }
 
 // NewScrollBar wraps the given scrollable TextView with a right-edge scrollbar.
@@ -127,6 +140,26 @@ func wrappedRowCount(text string, width int) int {
 	return total
 }
 
+// wrappedRows returns the total wrapped row count of the Text content at the
+// content width cw, using the row-count cache. The total only changes when the
+// text or content width changes — not on scroll — so a scroll is a cache hit
+// and skips the GetText(true) tag-strip + WordWrap over the whole document that
+// was the guide-scroll hotspot. The raw tagged text (GetText(false), a single
+// memcpy with no per-char work) is the key: stripping is deterministic, so
+// identical tagged text yields identical stripped text and thus identical row
+// count. See Draw for why the total is computed from the stripped text rather
+// than GetWrappedLineCount.
+func (s *ScrollBar) wrappedRows(cw int) int {
+	raw := s.Text.GetText(false)
+	if raw == s.cachedRaw && cw == s.cachedWidth {
+		return s.cachedRowsMax
+	}
+	s.cachedRaw = raw
+	s.cachedWidth = cw
+	s.cachedRowsMax = wrappedRowCount(s.Text.GetText(true), cw)
+	return s.cachedRowsMax
+}
+
 // Draw draws the wrapped TextView then, if the content overflows, the scrollbar
 // in the rightmost column. When the content fits the TextView is redrawn at the
 // full width and no bar is drawn.
@@ -139,17 +172,13 @@ func (s *ScrollBar) Draw(screen tcell.Screen) {
 
 	// First pass: render the TextView at width-1 and measure the total wrapped
 	// row count, mirroring urwid's render-at-ow_size then rows_max(ow_size)
-	// check. The total is computed from the stripped text via tview.WordWrap
-	// rather than GetWrappedLineCount: the latter is height-dependent (Draw only
-	// parseAheads to the visible window, textview.go:1141, and its resume-parse
-	// does not always reach the full end at small heights), which under-counts
-	// and makes the thumb too large. WordWrap at the content width yields the
-	// true total (verified to match GetWrappedLineCount after a full-height
-	// parse), so the thumb size matches urwid's.
+	// check. The total comes from the cached wrappedRows (see wrappedRows for
+	// why it is computed from the stripped text via tview.WordWrap rather than
+	// GetWrappedLineCount, and why it is cached: it does not change on scroll).
 	cw := s.contentWidth(w)
 	s.Text.SetRect(x, y, cw, h)
 	s.Text.Draw(screen)
-	rowsMax := wrappedRowCount(s.Text.GetText(true), cw)
+	rowsMax := s.wrappedRows(cw)
 	pos, _ := s.Text.GetScrollOffset()
 
 	if rowsMax <= h || w < 2 {
@@ -215,8 +244,44 @@ func (s *ScrollBar) InputHandler() func(event *tcell.EventKey, setFocus func(tvi
 	return s.Text.InputHandler()
 }
 
+// scrollWheelNoOp reports whether a wheel action on a scrollable text region
+// would change nothing: scrolling up at/below the top, scrolling down at/above
+// the bottom, or content that fits the viewport (nothing to scroll at all).
+// Returning true lets a MouseHandler decline to consume the event so tview
+// skips the full Clear+Draw+Show it would otherwise run for an identical frame
+// — the "scroll hangs at the ends" symptom. tview clamps lineOffset in Draw,
+// not in its wheel handler (textview.go: MouseScrollUp does
+// `t.lineOffset--; consumed = true` with no clamp), so without this guard every
+// past-the-end notch is a full no-op redraw.
+func scrollWheelNoOp(action tview.MouseAction, offset, height, total int) bool {
+	if total <= 0 || height <= 0 || total <= height {
+		return true
+	}
+	switch action {
+	case tview.MouseScrollUp:
+		return offset <= 0
+	case tview.MouseScrollDown:
+		return offset >= total-height
+	}
+	return false
+}
+
 // MouseHandler delegates to the wrapped TextView (whose rect was set in
-// SetRect/Draw).
+// SetRect/Draw), but short-circuits wheel events at the scroll boundaries: when
+// the page is already at the top/bottom the underlying TextView would still
+// return consumed=true (it bumps lineOffset past the clamp point and lets Draw
+// fix it up), forcing a full no-op redraw per notch. Declining to consume at the
+// boundary makes tview skip that redraw (application.go: `if consumed { draw }`).
 func (s *ScrollBar) MouseHandler() func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(tview.Primitive)) (consumed bool, capture tview.Primitive) {
-	return s.Text.MouseHandler()
+	base := s.Text.MouseHandler()
+	return func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(tview.Primitive)) (consumed bool, capture tview.Primitive) {
+		if action == tview.MouseScrollUp || action == tview.MouseScrollDown {
+			_, _, w, h := s.GetRect()
+			row, _ := s.Text.GetScrollOffset()
+			if scrollWheelNoOp(action, row, h, s.wrappedRows(s.contentWidth(w))) {
+				return false, nil
+			}
+		}
+		return base(action, event, setFocus)
+	}
 }

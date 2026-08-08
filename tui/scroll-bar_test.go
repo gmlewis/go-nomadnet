@@ -213,3 +213,162 @@ func TestScrollBarThumbSizeWrappedContent(t *testing.T) {
 			gotThumb, thumbStart, thumbEnd, wantThumb, h, trueRowsMax, string(col))
 	}
 }
+
+// TestScrollBarWheelNoOpAtBoundary pins the scroll-boundary guard: a wheel notch
+// at the top (scrolling up) or bottom (scrolling down) must decline to consume so
+// tview skips the no-op redraw, while a mid-page notch still consumes and moves
+// the offset. This is the fix for the "scroll hangs at the ends" symptom —
+// tview's wheel handler bumps lineOffset past the clamp point and returns
+// consumed=true, so without this guard every past-the-end notch is a full
+// Clear+Draw+Show that changes nothing (application.go: `if consumed { draw }`).
+func TestScrollBarWheelNoOpAtBoundary(t *testing.T) {
+	t.Parallel()
+	tv := tview.NewTextView()
+	tv.SetScrollable(true)
+	tv.SetWrap(false)
+	var b strings.Builder
+	for i := range 40 {
+		b.WriteString("line")
+		b.WriteString(itoa(i))
+		b.WriteByte('\n')
+	}
+	tv.SetText(b.String())
+
+	s := NewScrollBar(tv)
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatalf("screen.Init: %v", err)
+	}
+	defer screen.Fini()
+	const w, h = 20, 10
+	screen.SetSize(w, h)
+	s.SetRect(0, 0, w, h)
+	s.Text.Focus(func(p tview.Primitive) {})
+	s.Draw(screen) // settle the line index + clamp lineOffset to 0
+
+	total := s.wrappedRows(s.contentWidth(w))
+	posmax := total - h
+	if posmax <= 0 {
+		t.Fatalf("need content overflow for a boundary test: total=%v h=%v", total, h)
+	}
+
+	handler := s.MouseHandler()
+	ev := func() *tcell.EventMouse { return tcell.NewEventMouse(w/2, h/2, tcell.ButtonNone, tcell.ModNone) }
+	setFocus := func(p tview.Primitive) {}
+
+	if row, _ := tv.GetScrollOffset(); row != 0 {
+		t.Fatalf("after Draw at top: lineOffset=%v, want 0", row)
+	}
+
+	// At the top, scrolling up is a no-op: must NOT consume, and lineOffset
+	// must stay 0 (the old behavior returned consumed=true and left it at -1).
+	if consumed, _ := handler(tview.MouseScrollUp, ev(), setFocus); consumed {
+		t.Error("ScrollUp at top: consumed=true, want false (no-op should skip redraw)")
+	}
+	if row, _ := tv.GetScrollOffset(); row != 0 {
+		t.Errorf("ScrollUp at top moved lineOffset to %v, want unchanged 0", row)
+	}
+
+	// Scroll to the bottom and re-Draw so lineOffset clamps to posmax.
+	tv.ScrollTo(1<<20, 0)
+	s.Draw(screen)
+	if row, _ := tv.GetScrollOffset(); row != posmax {
+		t.Fatalf("after ScrollTo end: lineOffset=%v, want posmax=%v (total=%v)", row, posmax, total)
+	}
+
+	// At the bottom, scrolling down is a no-op: must NOT consume.
+	if consumed, _ := handler(tview.MouseScrollDown, ev(), setFocus); consumed {
+		t.Error("ScrollDown at bottom: consumed=true, want false (no-op should skip redraw)")
+	}
+	if row, _ := tv.GetScrollOffset(); row != posmax {
+		t.Errorf("ScrollDown at bottom moved lineOffset to %v, want unchanged %v", row, posmax)
+	}
+
+	// Mid-page: a wheel must consume AND move the offset.
+	mid := posmax / 2
+	tv.ScrollTo(mid, 0)
+	s.Draw(screen)
+	if consumed, _ := handler(tview.MouseScrollDown, ev(), setFocus); !consumed {
+		t.Error("ScrollDown at mid: consumed=false, want true")
+	}
+	if row, _ := tv.GetScrollOffset(); row != mid+1 {
+		t.Errorf("ScrollDown at mid moved lineOffset to %v, want %v", row, mid+1)
+	}
+
+	// Scroll up from mid: must consume and decrement.
+	tv.ScrollTo(mid, 0)
+	s.Draw(screen)
+	if consumed, _ := handler(tview.MouseScrollUp, ev(), setFocus); !consumed {
+		t.Error("ScrollUp at mid: consumed=false, want true")
+	}
+	if row, _ := tv.GetScrollOffset(); row != mid-1 {
+		t.Errorf("ScrollUp at mid moved lineOffset to %v, want %v", row, mid-1)
+	}
+}
+
+// TestScrollBarRowCountCache pins the wrappedRows cache invariant: the cached
+// total must equal an independent recomputation, and it must stay valid across
+// a scroll (cache hit — text/width unchanged) while being recomputed when the
+// text changes (cache miss). This guards the perf fix that stopped Draw from
+// re-wrapping the whole document every frame.
+func TestScrollBarRowCountCache(t *testing.T) {
+	t.Parallel()
+	const w, h = 40, 8
+	tv := tview.NewTextView()
+	tv.SetScrollable(true).SetWrap(true).SetWordWrap(true)
+	tv.SetText(benchSyntheticMicron(64)) // large enough to overflow h
+
+	s := NewScrollBar(tv)
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatalf("screen.Init: %v", err)
+	}
+	defer screen.Fini()
+	screen.SetSize(w, h)
+	s.SetRect(0, 0, w, h)
+
+	cw := w - 1
+	truth := func() int { return wrappedRowCount(tv.GetText(true), cw) }
+
+	// First Draw: cache miss → populates cache. Cached value must match ground truth.
+	s.Draw(screen)
+	if s.cachedRowsMax != truth() {
+		t.Fatalf("after first Draw: cachedRowsMax = %v, want ground truth %v", s.cachedRowsMax, truth())
+	}
+	wantFirst := s.cachedRowsMax
+	if wantFirst <= h {
+		t.Fatalf("want content to overflow h=%v for a meaningful scroll test, got rowsMax=%v", h, wantFirst)
+	}
+
+	// Scroll the TextView (offset only — text/width unchanged) and re-Draw: this
+	// is a cache hit. The cached total must be unchanged and still match truth.
+	tv.ScrollTo(wantFirst/2, 0)
+	s.Draw(screen)
+	if s.cachedRowsMax != wantFirst {
+		t.Errorf("after scroll (cache hit): cachedRowsMax = %v, want unchanged %v", s.cachedRowsMax, wantFirst)
+	}
+	if s.cachedRowsMax != truth() {
+		t.Errorf("after scroll: cachedRowsMax = %v, want ground truth %v", s.cachedRowsMax, truth())
+	}
+
+	// Change the text (cache miss). The cached total must recompute and match
+	// the new ground truth, differing from the old.
+	tv.SetText(benchSyntheticMicron(8)) // much shorter → fewer wrapped rows
+	s.Draw(screen)
+	if s.cachedRowsMax == wantFirst {
+		t.Errorf("after SetText (cache miss): cachedRowsMax still %v, want recomputed", s.cachedRowsMax)
+	}
+	if s.cachedRowsMax != truth() {
+		t.Errorf("after SetText: cachedRowsMax = %v, want new ground truth %v", s.cachedRowsMax, truth())
+	}
+
+	// Change the width (cache miss). The cached total must recompute at the new
+	// width and match truth at that width.
+	newCW := w/2 - 1
+	s.SetRect(0, 0, w/2, h)
+	s.Draw(screen)
+	if s.cachedRowsMax != wrappedRowCount(tv.GetText(true), newCW) {
+		t.Errorf("after width change: cachedRowsMax = %v, want ground truth at cw=%v = %v",
+			s.cachedRowsMax, newCW, wrappedRowCount(tv.GetText(true), newCW))
+	}
+}
