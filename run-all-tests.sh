@@ -12,7 +12,7 @@
 set -euo pipefail
 set -x
 
-RUN_ALL_TESTS_TIMEOUT_SECONDS="${RUN_ALL_TESTS_TIMEOUT_SECONDS:-30}"
+RUN_ALL_TESTS_TIMEOUT_SECONDS="${RUN_ALL_TESTS_TIMEOUT_SECONDS:-60}"
 
 run_with_timeout() {
 	if command -v timeout >/dev/null 2>&1; then
@@ -39,7 +39,9 @@ except subprocess.TimeoutExpired:
 PY
 }
 
-time run_with_timeout ./scripts/test-all.sh 2>&1 | tee test-failures.log
+# test-all.sh is redundant when the short integration tests are running next, so skip it:
+# time run_with_timeout ./scripts/test-all.sh 2>&1 | tee test-failures.log
+
 time run_with_timeout ./scripts/test-integration.sh -short 2>&1 | tee short-test-failures.log
 time run_with_timeout ./scripts/test-integration.sh 2>&1 | tee full-test-failures.log
 

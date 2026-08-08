@@ -9,6 +9,11 @@
 # (at your option) any later version.
 
 # test-all.sh runs all unit tests with race detection and static analysis.
+# It runs in -short mode so every test stays well under 5 seconds: any test that
+# cannot meet that budget (a full-package type check, a live network round-trip,
+# a cross-process tmux harness, ...) calls testutils.SkipShortIntegration at
+# its top and is skipped here. Those tests still run in the full integration
+# suite (scripts/test-integration.sh), which omits -short and allows 4m.
 
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 REPO_ROOT="${SCRIPT_DIR}/.."
@@ -39,8 +44,8 @@ echo "Running gofmt..."
 # "${GOIMPORTS_BIN}" -w .
 gofmt -s -w .
 
-echo "Running unit tests with race detector..."
-go test -race -count=1 --timeout "${GO_TEST_TIMEOUT}" "$@" ./...
+echo "Running unit tests with race detector (-short, <5s per test)..."
+go test -race -count=1 -short --timeout "${GO_TEST_TIMEOUT}" "$@" ./...
 
 echo "Running go vet..."
 go vet ./...

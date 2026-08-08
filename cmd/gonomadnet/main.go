@@ -40,6 +40,7 @@ func main() {
 		daemon    bool
 		console   bool
 		showVer   bool
+		pprofAddr string
 	)
 
 	flag.StringVar(&configDir, "config", "", "path to alternative Nomad Network config directory")
@@ -51,6 +52,7 @@ func main() {
 	flag.BoolVar(&console, "console", false, "in daemon mode, log to console instead of file")
 	flag.BoolVar(&console, "c", false, "in daemon mode, log to console instead of file")
 	flag.BoolVar(&showVer, "version", false, "show version and exit")
+	flag.StringVar(&pprofAddr, "pprof-addr", "", "if set, serve net/http/pprof on this address (e.g. 127.0.0.1:6060) for live CPU profiling; zero overhead when unset")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Go Nomad Network Client %v\n\n", version.VERSION)
@@ -79,8 +81,10 @@ func main() {
 
 	// Run the appropriate mode
 	if daemon {
+		startPProf(pprofAddr)
 		runDaemon(configDir, rnsConfig, console)
 	} else {
+		startPProf(pprofAddr)
 		runTextUI(configDir, rnsConfig)
 	}
 }

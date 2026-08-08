@@ -35,13 +35,14 @@ import (
 
 // LogDisplay shows the tail of the log file with optional live tailing.
 type LogDisplay struct {
-	app     *App
-	widget  tview.Primitive
-	logView *tview.TextView
-	logPath string
-	lines   int
-	stopCh  chan struct{}
-	wg      sync.WaitGroup
+	app      *App
+	widget   tview.Primitive
+	logView  *tview.TextView
+	logPath  string
+	lines    int
+	stopCh   chan struct{}
+	stopOnce sync.Once
+	wg       sync.WaitGroup
 }
 
 // NewLogDisplay creates a new log display that shows the last N lines and tails
@@ -163,9 +164,15 @@ func (ld *LogDisplay) StartTailing() {
 	})
 }
 
-// StopTailing stops the live tail goroutine.
+// StopTailing stops the live tail goroutine. It is idempotent and safe to call
+// any number of times, including concurrently: the cleanup path that wires the
+// log display into the application (cmd/gonomadnet/textui.go) can be invoked
+// more than once when the user issues the quit key sequence, and an
+// unconditional close here previously panicked with "close of closed channel".
 func (ld *LogDisplay) StopTailing() {
-	close(ld.stopCh)
+	ld.stopOnce.Do(func() {
+		close(ld.stopCh)
+	})
 	ld.wg.Wait()
 }
 

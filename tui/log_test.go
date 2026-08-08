@@ -19,7 +19,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/gdamore/tcell/v2"
 )
@@ -109,4 +111,84 @@ func TestLogDisplayPreservesLevelField(t *testing.T) {
 	if !strings.Contains(got, "[Notice]") {
 		t.Errorf("Log display stripped the [Level] field (B6: tview parsed [Notice] as a color tag).\ngettext = %q", got)
 	}
+}
+
+// TestStopTailingIdempotent pins the "close of closed channel" panic regression.
+// The application cleanup path that wires a LogDisplay into the running UI
+// (cmd/gonomadnet/textui.go wireDisplays cleanup, invoked from the Ctrl-Q /
+// Ctrl-C quit handler) can fire more than once when the user issues the quit
+// key sequence. The original StopTailing did an unconditional close(stopCh),
+// so the second call panicked. StopTailing must be safe to call repeatedly.
+func TestStopTailingIdempotent(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	ld := NewLogDisplay(app, "", 50)
+
+	// Calling StopTailing without StartTailing exercises the bare close path:
+	// wg.Wait() returns immediately and the only thing that can fail is the
+	// double-close. Two sequential calls must both be safe.
+	ld.StopTailing()
+	ld.StopTailing()
+}
+
+// TestStopTailingConcurrentSafe asserts concurrent StopTailing calls (e.g. the
+// quit handler racing a teardown path) never panic on close of a closed
+// channel. sync.Once serializes exactly one close; the rest see it as a no-op.
+func TestStopTailingConcurrentSafe(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	ld := NewLogDisplay(app, "", 50)
+
+	const n = 32
+	var wg sync.WaitGroup
+	wg.Add(n)
+	start := make(chan struct{})
+	for range n {
+		go func() {
+			defer wg.Done()
+			<-start
+			ld.StopTailing() // must not panic, regardless of who wins the close.
+		}()
+	}
+	close(start)
+	wg.Wait()
+}
+
+// TestStopTailingStopsGoroutine asserts StopTailing actually terminates the live
+// tail goroutine and returns, rather than hanging. StartTailing opens the file
+// and seeks to the end; because the test never appends new lines, the goroutine
+// never calls QueueUpdateDraw (which would otherwise block on the not-running
+// test event loop), so the only thing StopTailing waits on is the goroutine
+// noticing stopCh and returning.
+func TestStopTailingStopsGoroutine(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "logfile")
+	// Seed with content so os.Open succeeds; StartTailing seeks past it.
+	if err := os.WriteFile(path, []byte("seed line one\nseed line two\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	app := newTestApp()
+	ld := NewLogDisplay(app, path, 50)
+	ld.StartTailing()
+
+	done := make(chan struct{})
+	go func() {
+		ld.StopTailing()
+		close(done)
+	}()
+	select {
+	case <-done:
+		// StopTailing returned: the tail goroutine observed stopCh and exited.
+	case <-time.After(3 * time.Second):
+		t.Fatal("StopTailing did not return within 3s — tail goroutine failed to stop")
+	}
+
+	// A StopTailing after the goroutine has stopped must still be a cheap no-op
+	// (and must not panic), proving the once-guarded close is reusable.
+	ld.StopTailing()
 }
