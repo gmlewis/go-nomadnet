@@ -209,10 +209,10 @@ go-nomadnet/
 
 ### Dependencies
 
-- `github.com/gmlewis/go-reticulum` — Reticulum Network Stack
-- `github.com/rivo/tview` — Terminal UI framework
-- `github.com/gdamore/tcell/v2` — Terminal cell library
-- `github.com/fxamacker/cbor/v2` — CBOR codec
+- `[github.com/gmlewis/go-reticulum](https://github.com/gmlewis/go-reticulum)` — Reticulum Network Stack
+- `[github.com/rivo/tview](https://github.com/rivo/tview)` — Terminal UI framework
+- `[github.com/gdamore/tcell/v2](https://github.com/gdamore/tcell/v2)` — Terminal cell library
+- `[github.com/fxamacker/cbor/v2](https://github.com/fxamacker/cbor/v2)` — CBOR codec
 
 ## Status
 
