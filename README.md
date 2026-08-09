@@ -176,6 +176,13 @@ sub-displays reached from within those pages, not top-level menu buttons.)
 Per-page shortcuts (open a URL, sync, back, etc.) are shown in the
 shortcut bar at the bottom of each display.
 
+## Note for Ghostty users
+
+If you find that your TUI seems sluggish and can't keep up with your mouse
+scrolls and are using Ghostty, please try using a different terminal emulator
+and see if performance improves. For some reason, event handling and rendering
+in Ghostty appear to get extremely bogged down and can even crash with too much I/O.
+
 ## Testing
 
 ```bash

@@ -16,9 +16,40 @@
 package tui
 
 import (
+	"os"
+	"strconv"
+	"strings"
+
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
+
+// mouseWheelLines is how many list rows one mouse-wheel notch moves the
+// highlight. The wheel is translated into a SetCurrentItem jump (arrow-key
+// semantics) instead of tview's default itemOffset-only viewport move, which the
+// Draw keep-current-visible clamp cancels at the viewport edges — the "wheel
+// stuck at the highlight" bug on the Network Announce Stream / Saved Nodes
+// lists. Configurable per launch via GONOMADNET_WHEEL_LINES; tests
+// override it via SetMouseWheelLines. This is a set-once-at-startup config var,
+// the same pattern as the mouseDebug logger (tui/mouse-debug.go).
+var mouseWheelLines = 8
+
+func init() {
+	if v := strings.TrimSpace(os.Getenv("GONOMADNET_WHEEL_LINES")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 1 {
+			mouseWheelLines = n
+		}
+	}
+}
+
+// SetMouseWheelLines sets the rows-per-wheel-notch multiplier. It is a test
+// hook (production reads GONOMADNET_WHEEL_LINES once at startup); tests use it
+// to exercise specific multipliers deterministically.
+func SetMouseWheelLines(n int) {
+	if n >= 1 {
+		mouseWheelLines = n
+	}
+}
 
 // IndicativeListBox wraps a *tview.List with centered top and bottom indicator
 // bars, mirroring nomadnet's IndicativeListBox
@@ -179,26 +210,62 @@ func (i *IndicativeListBox) InputHandler() func(event *tcell.EventKey, setFocus 
 	}
 }
 
-// MouseHandler delegates to the wrapped List (whose rect was set in SetRect).
+// MouseHandler intercepts the mouse wheel before delegating the rest to the
+// wrapped List. tview's List wheel handler moves itemOffset (the viewport)
+// while arrow keys move currentItem (the highlight); the Draw keep-current-
+// visible clamp then snaps itemOffset back when the highlight sits at a viewport
+// edge, so the wheel "sticks" at the edges and arrow keys do not. Translating
+// the wheel into a SetCurrentItem jump (arrow-key semantics) makes the highlight
+// follow the wheel and the viewport follow the highlight — never stuck.
+//
+// The jump is the rows-per-notch multiplier (GONOMADNET_WHEEL_LINES), so one
+// notch moves N rows. Lists do not use tview TextView's trackEnd, so this
+// per-primitive multiplier (one delivery of N rows) is safe — unlike a root
+// re-dispatch, which triggers the TextView trackEnd jump-to-bottom bug on
+// TextView-based regions (see applyWheelMultiplier).
+//
+// The wheel uses i.InRect (the full bar+list rect), not the inset List rect, so
+// a wheel over the indicator rows also scrolls (the inset excludes them, so
+// List.InRect would bail — the old indicator-row no-op gap). At a scroll
+// boundary (next == current) the handler declines to consume so tview skips the
+// no-op redraw, the same philosophy as the boundary guard in scroll-bar.go /
+// browser-nav.go. SetCurrentItem fires only the changed callback; no
+// IndicativeListBox list wires SetChangedFunc (guide.go:179 even comments "no
+// SetChangedFunc"), so a wheel fires nothing.
 //
 // When the mouse-debug logger is enabled (GONOMADNET_MOUSE_DEBUG), wheel events
-// are traced: the event point, whether it falls in the IndicativeListBox's full
-// rect vs the inset List rect (the inset is one row top/bottom for the ▲/▼
-// indicator bars — wheel over those rows would otherwise no-op because
-// tview.List bails on !InRect), the current offset, item count and visible
-// height, plus the consumed result. This localizes live-only wheel failures on
-// the Network Announce Stream / Saved Nodes lists.
-func (i *IndicativeListBox) MouseHandler() func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(p tview.Primitive)) (consumed bool, capture tview.Primitive) {
+// are traced with the current/next index and item count.
+func (i *IndicativeListBox) MouseHandler() func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(tview.Primitive)) (consumed bool, capture tview.Primitive) {
 	base := i.List.MouseHandler()
-	return func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(p tview.Primitive)) (consumed bool, capture tview.Primitive) {
-		consumed, capture = base(action, event, setFocus)
-		if mouseDebug != nil && (action == tview.MouseScrollUp || action == tview.MouseScrollDown) {
+	return func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(tview.Primitive)) (consumed bool, capture tview.Primitive) {
+		if action == tview.MouseScrollUp || action == tview.MouseScrollDown {
 			x, y := event.Position()
-			_, _, _, listH := i.List.GetRect()
-			off, _ := i.List.GetOffset()
-			dbgMouse("ILB wheel %v at (%v,%v): inBox=%v inList=%v offset=%v items=%v listH=%v consumed=%v",
-				action, x, y, i.InRect(x, y), i.List.InRect(x, y), off, i.List.GetItemCount(), listH, consumed)
+			if !i.InRect(x, y) {
+				return false, nil
+			}
+			count := i.List.GetItemCount()
+			if count == 0 {
+				return false, nil
+			}
+			current := i.List.GetCurrentItem()
+			delta := mouseWheelLines
+			next := current - delta
+			if action == tview.MouseScrollDown {
+				next = current + delta
+			}
+			next = max(0, min(count-1, next))
+			if next == current {
+				// Already at the boundary: decline to consume so tview skips
+				// the no-op redraw.
+				return false, nil
+			}
+			i.List.SetCurrentItem(next)
+			if mouseDebug != nil {
+				dbgMouse("ILB wheel %v: current=%v next=%v delta=%v items=%v",
+					action, current, next, delta, count)
+			}
+			return true, nil
 		}
-		return consumed, capture
+		return base(action, event, setFocus)
 	}
 }

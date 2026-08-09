@@ -161,3 +161,152 @@ func itoa(n int) string {
 	}
 	return string(buf[i:])
 }
+
+// newWheelILB builds an IndicativeListBox of n items laid out on a simulation
+// screen of w×h, settled with a Draw so currentItem/itemOffset are valid. It
+// returns the box, its mouse handler and the screen (for any follow-up Draws).
+// Callers fire wheel events via the handler with an event positioned over the
+// list body.
+func newWheelILB(t *testing.T, n, w, h int) (*IndicativeListBox, func(tview.MouseAction, *tcell.EventMouse, func(tview.Primitive)) (bool, tview.Primitive), tcell.Screen) {
+	t.Helper()
+	list := tview.NewList()
+	list.ShowSecondaryText(false)
+	for i := range n {
+		list.AddItem("item"+itoa(i), "", 0, nil)
+	}
+	ilb := NewIndicativeListBox(list)
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatalf("screen.Init: %v", err)
+	}
+	t.Cleanup(screen.Fini)
+	screen.SetSize(w, h)
+	ilb.SetRect(0, 0, w, h)
+	ilb.List.Focus(func(p tview.Primitive) {})
+	ilb.Draw(screen) // settle currentItem=0, itemOffset=0
+	screen.Sync()
+	return ilb, ilb.MouseHandler(), screen
+}
+
+// TestIndicativeListBoxWheelMovesHighlight pins the wheel fix: one wheel
+// delivery moves the highlight (currentItem) by mouseWheelLines rows via
+// SetCurrentItem — arrow-key semantics — instead of tview's default
+// itemOffset-only viewport move that the Draw keep-current-visible clamp
+// cancels at the edges. This is the fix for the "wheel stuck at the highlight"
+// bug on the Network Announce Stream / Saved Nodes lists.
+//
+// The rows-per-notch MULTIPLIER (GONOMADNET_WHEEL_LINES) is applied inside this
+// handler — the per-primitive multiplier — so with it pinned to 3, one delivery
+// moves exactly 3 rows. (TextView-based scroll regions apply the same
+// multiplier through applyWheelMultiplier; lists apply it directly because they
+// don't use tview TextView's trackEnd, so a single SetCurrentItem jump is safe.)
+//
+// Mutates the package-global mouseWheelLines, so it runs sequentially (no
+// t.Parallel) and restores the prior value on cleanup.
+func TestIndicativeListBoxWheelMovesHighlight(t *testing.T) {
+	orig := mouseWheelLines
+	t.Cleanup(func() { mouseWheelLines = orig })
+	SetMouseWheelLines(3)
+
+	const w, h = 20, 7 // list area height = 5; 20 items don't all fit
+	ilb, handler, screen := newWheelILB(t, 20, w, h)
+	list := ilb.List
+	ev := func() *tcell.EventMouse { return tcell.NewEventMouse(w/2, h/2, tcell.ButtonNone, tcell.ModNone) }
+	setFocus := func(p tview.Primitive) {}
+
+	if got := list.GetCurrentItem(); got != 0 {
+		t.Fatalf("initial currentItem = %v, want 0", got)
+	}
+
+	// Down over the list body: highlight moves 3 rows per delivery (the pinned
+	// multiplier), via SetCurrentItem.
+	if consumed, _ := handler(tview.MouseScrollDown, ev(), setFocus); !consumed {
+		t.Error("MouseScrollDown: consumed=false, want true")
+	}
+	if got := list.GetCurrentItem(); got != 3 {
+		t.Errorf("after 1 down: currentItem = %v, want 3", got)
+	}
+
+	// Second down: 6.
+	handler(tview.MouseScrollDown, ev(), setFocus)
+	if got := list.GetCurrentItem(); got != 6 {
+		t.Errorf("after 2 down: currentItem = %v, want 6", got)
+	}
+
+	// Up: back to 3.
+	if consumed, _ := handler(tview.MouseScrollUp, ev(), setFocus); !consumed {
+		t.Error("MouseScrollUp: consumed=false, want true")
+	}
+	if got := list.GetCurrentItem(); got != 3 {
+		t.Errorf("after up: currentItem = %v, want 3", got)
+	}
+
+	// After a Draw the viewport must keep the highlight visible (the Draw
+	// keep-current-visible clamp follows the highlight — never stuck).
+	ilb.Draw(screen)
+	cur := list.GetCurrentItem()
+	off, _ := list.GetOffset()
+	_, _, _, listH := ilb.listRect()
+	if cur < off || cur > off+listH-1 {
+		t.Errorf("highlight %v not visible after Draw: offset=%v listH=%v", cur, off, listH)
+	}
+}
+
+// TestIndicativeListBoxWheelBoundaryNoOp pins the boundary guard: a wheel
+// delivery at the top (scrolling up) or bottom (scrolling down) declines to
+// consume so tview skips the no-op redraw, while a mid-list delivery still
+// consumes and moves the highlight by the pinned multiplier (3). Mirrors
+// TestScrollBarWheelMultiplier's shape.
+//
+// Mutates the package-global mouseWheelLines, so it runs sequentially.
+func TestIndicativeListBoxWheelBoundaryNoOp(t *testing.T) {
+	orig := mouseWheelLines
+	t.Cleanup(func() { mouseWheelLines = orig })
+	SetMouseWheelLines(3)
+
+	const w, h = 20, 7
+	ilb, handler, screen := newWheelILB(t, 20, w, h)
+	list := ilb.List
+	ev := func() *tcell.EventMouse { return tcell.NewEventMouse(w/2, h/2, tcell.ButtonNone, tcell.ModNone) }
+	setFocus := func(p tview.Primitive) {}
+
+	// At the top (item 0), scrolling up is a no-op: must NOT consume and the
+	// highlight must stay put.
+	list.SetCurrentItem(0)
+	ilb.Draw(screen) // keep event.Position inside the settled rect
+	if consumed, _ := handler(tview.MouseScrollUp, ev(), setFocus); consumed {
+		t.Error("ScrollUp at top: consumed=true, want false (no-op should skip redraw)")
+	}
+	if got := list.GetCurrentItem(); got != 0 {
+		t.Errorf("ScrollUp at top moved highlight to %v, want 0", got)
+	}
+
+	// At the bottom (item 19), scrolling down is a no-op.
+	list.SetCurrentItem(19)
+	ilb.Draw(screen)
+	if consumed, _ := handler(tview.MouseScrollDown, ev(), setFocus); consumed {
+		t.Error("ScrollDown at bottom: consumed=true, want false (no-op should skip redraw)")
+	}
+	if got := list.GetCurrentItem(); got != 19 {
+		t.Errorf("ScrollDown at bottom moved highlight to %v, want 19", got)
+	}
+
+	// From the middle, both consume and move by the multiplier (3).
+	list.SetCurrentItem(10)
+	ilb.Draw(screen)
+	if consumed, _ := handler(tview.MouseScrollDown, ev(), setFocus); !consumed {
+		t.Error("ScrollDown at mid: consumed=false, want true")
+	}
+	if got := list.GetCurrentItem(); got != 13 {
+		t.Errorf("ScrollDown at mid moved highlight to %v, want 13", got)
+	}
+
+	list.SetCurrentItem(10)
+	ilb.Draw(screen)
+	if consumed, _ := handler(tview.MouseScrollUp, ev(), setFocus); !consumed {
+		t.Error("ScrollUp at mid: consumed=false, want true")
+	}
+	if got := list.GetCurrentItem(); got != 7 {
+		t.Errorf("ScrollUp at mid moved highlight to %v, want 7", got)
+	}
+}

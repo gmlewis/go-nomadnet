@@ -35,11 +35,11 @@ type MicronViewDisplay struct {
 func NewMicronViewDisplay(app *App) *MicronViewDisplay {
 	mvd := &MicronViewDisplay{app: app}
 
-	mvd.view = tview.NewTextView().
+	mvd.view = applyWheelMultiplier(tview.NewTextView().
 		SetDynamicColors(true).
 		SetScrollable(true).
 		SetTextColor(tcell.NewHexColor(0xbbbbbb)).
-		SetTextAlign(tview.AlignLeft)
+		SetTextAlign(tview.AlignLeft))
 
 	mvd.widget = mvd.view
 	return mvd

@@ -51,11 +51,11 @@ func NewMessageViewDisplay(app *App) *MessageViewDisplay {
 		SetTextColor(tcell.NewHexColor(0xdddddd)).
 		SetText("[::b]Message[-]")
 
-	mvd.view = tview.NewTextView().
+	mvd.view = applyWheelMultiplier(tview.NewTextView().
 		SetDynamicColors(true).
 		SetScrollable(true).
 		SetTextColor(tcell.NewHexColor(0xbbbbbb)).
-		SetTextAlign(tview.AlignLeft)
+		SetTextAlign(tview.AlignLeft))
 
 	layout := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(title, 2, 0, false).

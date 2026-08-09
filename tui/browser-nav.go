@@ -42,46 +42,18 @@ const cursorKeyTimeout = 2 * time.Second
 type browserPageView struct {
 	*tview.TextView
 	bd *BrowserDisplay
-
-	// row-count cache for the wheel boundary guard. rowsMax (the total wrapped
-	// row count) only changes when the page text or content width changes — NOT
-	// on scroll, where only the offset moves. It is keyed on the raw tagged text
-	// (GetText(false), a single memcpy — tag-stripping is deterministic, so
-	// identical tagged text ⇒ identical stripped text ⇒ identical row count)
-	// plus the content width, so a scroll is a cache hit and skips the
-	// GetText(true) tag-strip + WordWrap over the whole page. Mirrors the
-	// ScrollBar cache (scroll-bar.go); the first wheel after a render is a
-	// single cache miss, same as there.
-	cachedRaw     string
-	cachedWidth   int
-	cachedRowsMax int
 }
 
 func newBrowserPageView(bd *BrowserDisplay) *browserPageView {
 	return &browserPageView{
-		TextView: tview.NewTextView().
-			SetDynamicColors(true).
-			SetScrollable(true).
-			SetRegions(true),
+		TextView: applyWheelMultiplier(
+			tview.NewTextView().
+				SetDynamicColors(true).
+				SetScrollable(true).
+				SetRegions(true),
+		),
 		bd: bd,
 	}
-}
-
-// wrappedRows returns the total wrapped row count of the page content at the
-// content width cw, using the row-count cache. The total only changes when the
-// page text or content width changes — not on scroll — so a scroll is a cache
-// hit and skips the GetText(true) tag-strip + WordWrap over the whole page.
-// Used by MouseHandler's wheel boundary guard so a past-the-end wheel notch
-// declines to consume and tview skips the no-op redraw (see scrollWheelNoOp).
-func (v *browserPageView) wrappedRows(cw int) int {
-	raw := v.GetText(false)
-	if raw == v.cachedRaw && cw == v.cachedWidth {
-		return v.cachedRowsMax
-	}
-	v.cachedRaw = raw
-	v.cachedWidth = cw
-	v.cachedRowsMax = wrappedRowCount(v.GetText(true), cw)
-	return v.cachedRowsMax
 }
 
 // Draw renders the page text and, when the page body is focused and the cursor
@@ -141,19 +113,12 @@ func (bd *BrowserDisplay) reflowIfWidthChanged() {
 func (v *browserPageView) MouseHandler() func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(p tview.Primitive)) (consumed bool, capture tview.Primitive) {
 	base := v.TextView.MouseHandler()
 	return func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(p tview.Primitive)) (consumed bool, capture tview.Primitive) {
-		// Wheel boundary guard: if the page is already at the top/bottom,
-		// decline to consume so tview skips the full no-op Clear+Draw+Show the
-		// underlying TextView would otherwise trigger (it bumps lineOffset past
-		// the clamp point and returns consumed=true). This must run BEFORE base
-		// so base never sees (and over-applies) a boundary wheel. Click/link
-		// handling below is untouched.
-		if action == tview.MouseScrollUp || action == tview.MouseScrollDown {
-			_, _, w, h := v.GetInnerRect()
-			row, _ := v.GetScrollOffset()
-			if scrollWheelNoOp(action, row, h, v.wrappedRows(w)) {
-				return false, nil
-			}
-		}
+		// The TextView's wheel multiplier capture (installed in
+		// newBrowserPageView via applyWheelMultiplier) handles wheel notches —
+		// scrolling mouseWheelLines rows in one delivery and declining to
+		// consume at the boundaries so tview skips the no-op redraw. Non-wheel
+		// actions pass through to base (click → region highlight → link
+		// dispatch below).
 		consumed, capture = base(action, event, setFocus)
 		if v.bd == nil || v.bd.content == nil {
 			return

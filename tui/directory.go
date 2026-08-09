@@ -75,7 +75,7 @@ func NewDirectoryDisplay(app *App, entries []DirectoryEntry) *DirectoryDisplay {
 	// direct Python color spec, so body_text (3-hex #ddd / #222, cube-quantized
 	// to #d7d7d7 / #000000) is the closest defensible base — the prior 0xbbbbbb
 	// is a color Python never emits.
-	dd.detail = tview.NewTextView()
+	dd.detail = applyWheelMultiplier(tview.NewTextView())
 	dd.detail.SetDynamicColors(true)
 	dd.detail.SetScrollable(true)
 	dd.detail.SetTextColor(GetThemeColors(app.Theme)["body_text"])

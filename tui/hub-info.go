@@ -53,10 +53,10 @@ func NewHubInfoArea(app *App, hubName string) *HubInfoArea {
 		hubName: hubName,
 	}
 
-	hia.view = tview.NewTextView().
+	hia.view = applyWheelMultiplier(tview.NewTextView().
 		SetDynamicColors(true).
 		SetScrollable(true).
-		SetTextColor(tcell.NewHexColor(0xbbbbbb))
+		SetTextColor(tcell.NewHexColor(0xbbbbbb)))
 
 	hia.widget = tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(hia.view, 0, 1, false)

@@ -163,13 +163,13 @@ func NewChannelsDisplay(app *App, rooms []ChannelInfo) *ChannelsDisplay {
 	// Show* methods are safe to call before a room is opened; they are not part
 	// of the boot layout (the right pane shows the placeholder until a room is
 	// selected, Phase 5 RRC).
-	cd.messages = tview.NewTextView().
+	cd.messages = applyWheelMultiplier(tview.NewTextView().
 		SetDynamicColors(true).
 		SetScrollable(true).
 		// Python's channel message list is a bare _StickyMessageListBox with
 		// no AttrMap (Channels.py:784); message widgets carry their own
 		// styling. The base is the terminal default, not #bbbbbb.
-		SetTextColor(tcell.ColorDefault)
+		SetTextColor(tcell.ColorDefault))
 	cd.members = tview.NewList()
 	cd.members.SetHighlightFullLine(true)
 	ApplyListFocusStyle(cd.members, app.Theme)

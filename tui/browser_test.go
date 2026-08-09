@@ -64,15 +64,20 @@ func TestHandleLinkEmpty(t *testing.T) {
 	}
 }
 
-// TestBrowserPageViewWheelNoOpAtBoundary pins the browser page's scroll-boundary
-// guard: a wheel notch at the top (scrolling up) or bottom (scrolling down)
-// must decline to consume so tview skips the no-op redraw, while a mid-page
-// notch still consumes and moves the offset. This is the fix for the "scroll
-// hangs at the ends" symptom on the Browser page — the underlying TextView
-// bumps lineOffset past the clamp and returns consumed=true, so without the
-// guard every past-the-end notch is a full Clear+Draw+Show that changes nothing.
-func TestBrowserPageViewWheelNoOpAtBoundary(t *testing.T) {
-	t.Parallel()
+// TestBrowserPageViewWheelMultiplier pins the browser page's per-primitive
+// wheel multiplier (applyWheelMultiplier, installed in newBrowserPageView): a
+// wheel notch scrolls mouseWheelLines rows in one delivery via ScrollTo, and at
+// the top/bottom boundary it declines to consume so tview skips the no-op
+// redraw (the fix for the "scroll hangs at the ends" symptom and the
+// trackEnd-jump-after-topic-switch bug — scrolling by N in one ScrollTo keeps
+// trackEnd=false, so no leap to the bottom). mid-page notches consume and move
+// the offset by N rows, not tview's default 1.
+func TestBrowserPageViewWheelMultiplier(t *testing.T) {
+	orig := mouseWheelLines
+	t.Cleanup(func() { mouseWheelLines = orig })
+	const delta = 3
+	SetMouseWheelLines(delta)
+
 	app := NewApp(ThemeDark, GlyphUnicode, ColorModeTrue)
 	bd := NewBrowserDisplay(app)
 	var b strings.Builder
@@ -91,10 +96,11 @@ func TestBrowserPageViewWheelNoOpAtBoundary(t *testing.T) {
 	v.Draw(screen) // settle the line index + clamp lineOffset to 0
 
 	_, _, cw, ch := v.GetInnerRect()
-	total := v.wrappedRows(cw)
+	_ = cw
+	total := v.GetWrappedLineCount()
 	posmax := total - ch
 	if posmax <= 0 {
-		t.Fatalf("need overflow for a boundary test: total=%v h=%v cw=%v", total, ch, cw)
+		t.Fatalf("need overflow for a boundary test: total=%v h=%v", total, ch)
 	}
 
 	handler := v.MouseHandler()
@@ -117,7 +123,7 @@ func TestBrowserPageViewWheelNoOpAtBoundary(t *testing.T) {
 	v.ScrollTo(1<<20, 0)
 	v.Draw(screen)
 	if row, _ := v.GetScrollOffset(); row != posmax {
-		t.Fatalf("after ScrollTo end: lineOffset=%v, want posmax=%v (total=%v cw=%v)", row, posmax, total, cw)
+		t.Fatalf("after ScrollTo end: lineOffset=%v, want posmax=%v (total=%v)", row, posmax, total)
 	}
 
 	// At the bottom, scrolling down is a no-op: must NOT consume.
@@ -128,25 +134,25 @@ func TestBrowserPageViewWheelNoOpAtBoundary(t *testing.T) {
 		t.Errorf("ScrollDown at bottom moved lineOffset to %v, want unchanged %v", row, posmax)
 	}
 
-	// Mid-page: a wheel must consume AND move the offset.
+	// Mid-page: a wheel notch must consume AND move the offset by delta rows.
 	mid := posmax / 2
 	v.ScrollTo(mid, 0)
 	v.Draw(screen)
 	if consumed, _ := handler(tview.MouseScrollDown, ev(), setFocus); !consumed {
 		t.Error("ScrollDown at mid: consumed=false, want true")
 	}
-	if row, _ := v.GetScrollOffset(); row != mid+1 {
-		t.Errorf("ScrollDown at mid moved lineOffset to %v, want %v", row, mid+1)
+	if row, _ := v.GetScrollOffset(); row != mid+delta {
+		t.Errorf("ScrollDown at mid moved lineOffset to %v, want %v", row, mid+delta)
 	}
 
-	// Scroll up from mid: must consume and decrement.
+	// Scroll up from mid: must consume and decrement by delta.
 	v.ScrollTo(mid, 0)
 	v.Draw(screen)
 	if consumed, _ := handler(tview.MouseScrollUp, ev(), setFocus); !consumed {
 		t.Error("ScrollUp at mid: consumed=false, want true")
 	}
-	if row, _ := v.GetScrollOffset(); row != mid-1 {
-		t.Errorf("ScrollUp at mid moved lineOffset to %v, want %v", row, mid-1)
+	if row, _ := v.GetScrollOffset(); row != mid-delta {
+		t.Errorf("ScrollUp at mid moved lineOffset to %v, want %v", row, mid-delta)
 	}
 }
 

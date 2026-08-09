@@ -171,7 +171,7 @@ func NewConversationWidget(app *App, sourceHash string) *ConversationWidget {
 	cw.refreshTrustBanner()
 
 	// Message list
-	cw.messageList = tview.NewTextView()
+	cw.messageList = applyWheelMultiplier(tview.NewTextView())
 	cw.messageList.SetDynamicColors(true)
 	cw.messageList.SetScrollable(true)
 	// Python's messagelist is a bare IndicativeListBox with NO AttrMap

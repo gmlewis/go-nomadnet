@@ -79,11 +79,11 @@ type LinkableText struct {
 // it receives the link target and optional fields string.
 func NewLinkableText(onHandle func(target, fields string)) *LinkableText {
 	lt := &LinkableText{
-		TextView: tview.NewTextView().
+		TextView: applyWheelMultiplier(tview.NewTextView().
 			SetDynamicColors(true).
 			SetScrollable(true).
 			SetRegions(true).
-			SetTextColor(tcell.NewHexColor(0xbbbbbb)),
+			SetTextColor(tcell.NewHexColor(0xbbbbbb))),
 		onHandle:   onHandle,
 		keyTimeout: 2 * time.Second, // Python key_timeout = 2
 	}
@@ -195,10 +195,10 @@ func (lt *LinkableText) activateRegion(regionID string) {
 // runs (MicronParser.py:921-929).
 func NewLinkableTextFromSpans(spans []micron.StyledSpan, delegate LinkDelegate) *LinkableText {
 	lt := &LinkableText{
-		TextView: tview.NewTextView().
+		TextView: applyWheelMultiplier(tview.NewTextView().
 			SetDynamicColors(true).
 			SetScrollable(true).
-			SetRegions(true),
+			SetRegions(true)),
 		delegate:   delegate,
 		keyTimeout: 2 * time.Second, // Python key_timeout = 2
 	}

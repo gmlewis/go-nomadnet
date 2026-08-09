@@ -56,7 +56,7 @@ func NewLogDisplay(app *App, logPath string, lines int) *LogDisplay {
 		stopCh:  make(chan struct{}),
 	}
 
-	ld.logView = tview.NewTextView()
+	ld.logView = applyWheelMultiplier(tview.NewTextView())
 	ld.logView.SetDynamicColors(true)
 	ld.logView.SetScrollable(true)
 	ld.logView.SetWrap(true)

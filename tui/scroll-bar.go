@@ -89,6 +89,15 @@ func NewScrollBar(text scrollableText) *ScrollBar {
 	if text == nil {
 		text = tview.NewTextView()
 	}
+	// Apply the wheel multiplier to the wrapped TextView so a wheel notch
+	// scrolls mouseWheelLines rows in one delivery (see applyWheelMultiplier).
+	// ScrollBar delegates its mouse handling to this TextView, so installing the
+	// capture here covers the Guide reader. installWheelCapture works via the
+	// wheelScrollable interface so it also covers TextView wrappers like the
+	// Guide's guideReader (which embeds *tview.TextView rather than being one).
+	if ws, ok := text.(wheelScrollable); ok {
+		installWheelCapture(ws)
+	}
 	return &ScrollBar{Box: tview.NewBox(), Text: text, thumbColor: darkColors["scrollbar"]}
 }
 
@@ -244,44 +253,11 @@ func (s *ScrollBar) InputHandler() func(event *tcell.EventKey, setFocus func(tvi
 	return s.Text.InputHandler()
 }
 
-// scrollWheelNoOp reports whether a wheel action on a scrollable text region
-// would change nothing: scrolling up at/below the top, scrolling down at/above
-// the bottom, or content that fits the viewport (nothing to scroll at all).
-// Returning true lets a MouseHandler decline to consume the event so tview
-// skips the full Clear+Draw+Show it would otherwise run for an identical frame
-// — the "scroll hangs at the ends" symptom. tview clamps lineOffset in Draw,
-// not in its wheel handler (textview.go: MouseScrollUp does
-// `t.lineOffset--; consumed = true` with no clamp), so without this guard every
-// past-the-end notch is a full no-op redraw.
-func scrollWheelNoOp(action tview.MouseAction, offset, height, total int) bool {
-	if total <= 0 || height <= 0 || total <= height {
-		return true
-	}
-	switch action {
-	case tview.MouseScrollUp:
-		return offset <= 0
-	case tview.MouseScrollDown:
-		return offset >= total-height
-	}
-	return false
-}
-
-// MouseHandler delegates to the wrapped TextView (whose rect was set in
-// SetRect/Draw), but short-circuits wheel events at the scroll boundaries: when
-// the page is already at the top/bottom the underlying TextView would still
-// return consumed=true (it bumps lineOffset past the clamp point and lets Draw
-// fix it up), forcing a full no-op redraw per notch. Declining to consume at the
-// boundary makes tview skip that redraw (application.go: `if consumed { draw }`).
+// MouseHandler delegates to the wrapped TextView. The TextView's wheel
+// multiplier capture (installed in NewScrollBar via applyWheelMultiplier)
+// handles wheel notches — scrolling mouseWheelLines rows in one delivery and
+// declining to consume at the boundaries so tview skips the no-op redraw.
+// Non-wheel actions (clicks, region highlighting) pass through unchanged.
 func (s *ScrollBar) MouseHandler() func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(tview.Primitive)) (consumed bool, capture tview.Primitive) {
-	base := s.Text.MouseHandler()
-	return func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(tview.Primitive)) (consumed bool, capture tview.Primitive) {
-		if action == tview.MouseScrollUp || action == tview.MouseScrollDown {
-			_, _, w, h := s.GetRect()
-			row, _ := s.Text.GetScrollOffset()
-			if scrollWheelNoOp(action, row, h, s.wrappedRows(s.contentWidth(w))) {
-				return false, nil
-			}
-		}
-		return base(action, event, setFocus)
-	}
+	return s.Text.MouseHandler()
 }

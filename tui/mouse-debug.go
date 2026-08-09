@@ -58,6 +58,6 @@ func init() {
 // the repo debug style.
 func dbgMouse(format string, args ...any) {
 	if mouseDebug != nil {
-		mouseDebug.Output(3, fmt.Sprintf(format, args...))
+		_ = mouseDebug.Output(3, fmt.Sprintf(format, args...))
 	}
 }

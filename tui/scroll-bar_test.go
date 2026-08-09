@@ -214,15 +214,19 @@ func TestScrollBarThumbSizeWrappedContent(t *testing.T) {
 	}
 }
 
-// TestScrollBarWheelNoOpAtBoundary pins the scroll-boundary guard: a wheel notch
-// at the top (scrolling up) or bottom (scrolling down) must decline to consume so
-// tview skips the no-op redraw, while a mid-page notch still consumes and moves
-// the offset. This is the fix for the "scroll hangs at the ends" symptom —
-// tview's wheel handler bumps lineOffset past the clamp point and returns
-// consumed=true, so without this guard every past-the-end notch is a full
-// Clear+Draw+Show that changes nothing (application.go: `if consumed { draw }`).
-func TestScrollBarWheelNoOpAtBoundary(t *testing.T) {
-	t.Parallel()
+// TestScrollBarWheelMultiplier pins the ScrollBar's per-primitive wheel
+// multiplier (applyWheelMultiplier, installed in NewScrollBar): a wheel notch
+// scrolls mouseWheelLines rows in one delivery via ScrollTo, and at the
+// top/bottom boundary it declines to consume so tview skips the no-op redraw
+// (the fix for the "scroll hangs at the ends" symptom and the trackEnd
+// jump-after-topic-switch bug). mid-page notches consume and move the offset
+// by N rows, not tview's default 1.
+func TestScrollBarWheelMultiplier(t *testing.T) {
+	orig := mouseWheelLines
+	t.Cleanup(func() { mouseWheelLines = orig })
+	const delta = 3
+	SetMouseWheelLines(delta)
+
 	tv := tview.NewTextView()
 	tv.SetScrollable(true)
 	tv.SetWrap(false)
@@ -246,7 +250,11 @@ func TestScrollBarWheelNoOpAtBoundary(t *testing.T) {
 	s.Text.Focus(func(p tview.Primitive) {})
 	s.Draw(screen) // settle the line index + clamp lineOffset to 0
 
-	total := s.wrappedRows(s.contentWidth(w))
+	// total is the TextView's own lineIndex length — the same figure the capture
+	// clamps against (GetWrappedLineCount) — so the boundary math agrees. With
+	// SetWrap(false) and short lines there is no wrapping, so this also equals
+	// the ScrollBar's wrappedRows total.
+	total := tv.GetWrappedLineCount()
 	posmax := total - h
 	if posmax <= 0 {
 		t.Fatalf("need content overflow for a boundary test: total=%v h=%v", total, h)
@@ -284,25 +292,25 @@ func TestScrollBarWheelNoOpAtBoundary(t *testing.T) {
 		t.Errorf("ScrollDown at bottom moved lineOffset to %v, want unchanged %v", row, posmax)
 	}
 
-	// Mid-page: a wheel must consume AND move the offset.
+	// Mid-page: a wheel notch must consume AND move the offset by delta rows.
 	mid := posmax / 2
 	tv.ScrollTo(mid, 0)
 	s.Draw(screen)
 	if consumed, _ := handler(tview.MouseScrollDown, ev(), setFocus); !consumed {
 		t.Error("ScrollDown at mid: consumed=false, want true")
 	}
-	if row, _ := tv.GetScrollOffset(); row != mid+1 {
-		t.Errorf("ScrollDown at mid moved lineOffset to %v, want %v", row, mid+1)
+	if row, _ := tv.GetScrollOffset(); row != mid+delta {
+		t.Errorf("ScrollDown at mid moved lineOffset to %v, want %v", row, mid+delta)
 	}
 
-	// Scroll up from mid: must consume and decrement.
+	// Scroll up from mid: must consume and decrement by delta.
 	tv.ScrollTo(mid, 0)
 	s.Draw(screen)
 	if consumed, _ := handler(tview.MouseScrollUp, ev(), setFocus); !consumed {
 		t.Error("ScrollUp at mid: consumed=false, want true")
 	}
-	if row, _ := tv.GetScrollOffset(); row != mid-1 {
-		t.Errorf("ScrollUp at mid moved lineOffset to %v, want %v", row, mid-1)
+	if row, _ := tv.GetScrollOffset(); row != mid-delta {
+		t.Errorf("ScrollUp at mid moved lineOffset to %v, want %v", row, mid-delta)
 	}
 }
 

@@ -410,33 +410,6 @@ test or a matching `parity.sh` summary):
   as the `SetFocusFunc` of the channels list / room editor / room body
   primitives, re-capture the three bar strings from `Channels.py:217-229`, and
   add a channels shortcut-bar test (`shortcut-bar_test.go`-style) using them.
-- **Announce Stream / Saved Nodes list: mouse wheel does not scroll (live
-  only):** The user reports the mouse wheel over the Network "Announce Stream"
-  list (and Saved Nodes) does not scroll a long list on a real terminal, and is
-  confident it is NOT a stale `go install` binary — a long-standing live bug.
-  It does NOT reproduce headless: through the full `app.Dialogs.Pages()` root,
-  wheeling over the list body scrolls both lists correctly. One real gap WAS
-  found and is the likely partial cause: `IndicativeListBox` insets its `List`
-  by one row top and bottom for the ▲/▼ indicator bars
-  (`tui/indicative-listbox.go` `SetRect`→`listRect()`), so a wheel over those
-  indicator rows no-ops because `tview.List.MouseHandler` bails on `!InRect`
-  (the point is outside the inset List rect). Separately, `tview.List` returns
-  `consumed=true` at scroll boundaries (it clamps `itemOffset` in-handler, so it
-  is a no-op redraw, not an over-scroll — same redraw-waste class the
-  browser/guide scroll-boundary guard just fixed, but List clamps so a
-  before/after-`GetOffset` check is the right no-op signal there, not a total
-  pre-check). Debug instrumentation is already in place to localize the live
-  failure: set `GONOMADNET_MOUSE_DEBUG=/tmp/mouse.log` and run
-  `gonomadnet -textui`, then wheel over the Announce Stream middle —
-  `tui/indicative-listbox.go` and `tui/pile-filler.go` log each wheel event
-  (action, point, `inBox`/`inList`, `offset`, `items`, `listH`, `consumed`) to
-  that file. Next steps when revisited: (a) read the live log to see whether the
-  event reaches the `IndicativeListBox` at all, whether `InRect` bails, and
-  whether `itemOffset`/item count say the list fits the viewport; (b) override
-  `IndicativeListBox.MouseHandler` to handle a wheel over its FULL rect by
-  translating the wheel point into the inset List rect so `InRect` passes; (c)
-  add before/after `GetOffset` no-op detection so a boundary wheel returns
-  `consumed=false` (skipping the no-op redraw).
 
 ---
 

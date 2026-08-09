@@ -73,7 +73,7 @@ func NewRoomWidget(app *App, hubName, roomName string) *RoomWidget {
 	}
 
 	// Messages view
-	rw.messages = tview.NewTextView()
+	rw.messages = applyWheelMultiplier(tview.NewTextView())
 	rw.messages.SetDynamicColors(true)
 	rw.messages.SetScrollable(true)
 	// Message bodies are rendered as `[#66cc55]<nick>[-] <text>` (renderMessages),

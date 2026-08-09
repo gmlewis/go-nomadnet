@@ -236,7 +236,7 @@ func NewConversationsDisplay(app *App, convs []ConversationInfo) *ConversationsD
 	// default base. (The populated "Trust/Messages/Last" summary Go renders here
 	// is a Go-specific format with no Python equivalent; the empty state is the
 	// only Python-specified surface.)
-	cd.detail = tview.NewTextView()
+	cd.detail = applyWheelMultiplier(tview.NewTextView())
 	cd.detail.SetDynamicColors(true)
 	cd.detail.SetScrollable(true)
 	cd.detail.SetTextColor(tcell.ColorDefault)
