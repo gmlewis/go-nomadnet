@@ -55,11 +55,11 @@ To run gonomadnet yourself:
    or alternatively, you can download the latest binary release for your platform from:
    `_`*`[https://github.com/gmlewis/go-nomadnet/releases`https://github.com/gmlewis/go-nomadnet/releases]`*`_
 
-2. `!Configure`! by editing `*~/.nomadnet/config`*:
+3. `!Configure`! by editing `*~/.nomadnet/config`*:
    - Set `!enable_node = yes`! to host pages
    - Set `!announce_at_start = yes`! to announce on startup
 
-3. `!Create pages`! by placing `*.mu`* files in `*~/.nomadnet/storage/pages/`*
+4. `!Create pages`! by placing `*.mu`* files in `*~/.nomadnet/storage/pages/`*
 
 >> Learn More
 
