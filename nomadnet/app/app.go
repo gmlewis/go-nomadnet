@@ -488,10 +488,17 @@ func (a *App) initRNS() {
 	// Announce at start (Python peer_announce_at_start, NomadNetworkApp.py:415-
 	// 421): a daemon thread sleeps START_ANNOUNCE_DELAY then sends the first
 	// announce so the Local Peer Info "Announced : …" line reads "just now"
-	// shortly after boot instead of "Never".
+	// shortly after boot instead of "Never". Python makes that thread a daemon
+	// and os._exits on Quit so a never-fired announce is simply abandoned; Go
+	// has no daemon goroutines, so the sleep selects on jobsStop to exit on
+	// shutdown instead of firing AnnounceNow against a torn-down transport.
 	if a.PeerAnnounceAtStart {
 		go func() {
-			time.Sleep(startAnnounceDelay)
+			select {
+			case <-time.After(startAnnounceDelay):
+			case <-a.jobsStop:
+				return
+			}
 			a.AnnounceNow()
 			if a.UIChangeCallback != nil {
 				a.UIChangeCallback()

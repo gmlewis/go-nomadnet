@@ -104,6 +104,18 @@ func TestIntegrationTwoAppTCPRoundTrip(t *testing.T) {
 	if err := appA.Init(); err != nil {
 		t.Fatalf("Init A: %v", err)
 	}
+	// Wait for A's async initRNS to finish BEFORE starting B. A is the TCP
+	// server: NewTCPServerInterface binds/listens synchronously inside initRNS,
+	// so once initWG completes A is listening on `port`. If B's TCP client
+	// starts before A is listening, its first connect is refused and it waits
+	// reconnectDelay (5s) to retry — but it has already registered with B's
+	// transport (and announced B's destinations) while disconnected, so that
+	// announce is lost, and reconnect does not re-announce. Under load that
+	// means A never learns B and the test times out. Waiting here makes B's
+	// first connect succeed, so B registers while connected and the announce
+	// propagates both ways (the same path the isolation run takes in ~200ms).
+	appA.initWG.Wait()
+
 	appB := NewApp(cfgB, rnsB, false, false)
 	if err := appB.Init(); err != nil {
 		t.Fatalf("Init B: %v", err)
@@ -113,9 +125,8 @@ func TestIntegrationTwoAppTCPRoundTrip(t *testing.T) {
 		appB.Shutdown()
 	})
 
-	// Wait for both initRNS goroutines to finish (transport + LXMF router + the
+	// Wait for B's initRNS goroutine to finish (transport + LXMF router + the
 	// TCP interface loaded from rnsconfig + announce-at-start goroutine spawned).
-	appA.initWG.Wait()
 	appB.initWG.Wait()
 
 	if appA.LXMFDest == nil || appB.LXMFDest == nil {

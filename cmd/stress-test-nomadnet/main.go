@@ -76,10 +76,10 @@ import (
 
 const (
 	defaultPathTimeout    = 15.0
-	defaultLinkTimeout     = 15.0
+	defaultLinkTimeout    = 15.0
 	defaultRequestTimeout = 10.0
 	defaultDuration       = 30.0
-	defaultConcurrency     = 4
+	defaultConcurrency    = 4
 	defaultRequests       = 50
 	// pollInterval is the granularity at which path state is polled.
 	pollInterval = 100 * time.Millisecond
@@ -150,10 +150,10 @@ type target struct {
 // to be stressed with links.
 type resolved struct {
 	target
-	app       string
-	aspects   []string
+	app        string
+	aspects    []string
 	targetHash []byte
-	hops      int
+	hops       int
 }
 
 // reachable holds the resolution outcome for a target that could not be
@@ -283,18 +283,14 @@ func run(args []string) int {
 
 	var stormWG sync.WaitGroup
 	if opts.announceStorm {
-		stormWG.Add(1)
-		go func() {
-			defer stormWG.Done()
+		stormWG.Go(func() {
 			runAnnounceStorm(ctx, ts, logger)
-		}()
+		})
 	}
 	if opts.malformed {
-		stormWG.Add(1)
-		go func() {
-			defer stormWG.Done()
+		stormWG.Go(func() {
 			runMalformedAnnounceStorm(ctx, ts, logger)
-		}()
+		})
 	}
 
 	// Stress each reachable target concurrently. Each target gets its own
@@ -407,8 +403,8 @@ func discoverTarget(ts *rns.TransportSystem, opts *options) (target, bool) {
 	case ann := <-annCh:
 		return target{
 			hashHex:  hex.EncodeToString(ann.destHash),
-			label:   announceLabel(ann.appData),
-			src:     "discover:" + aspectFilter,
+			label:    announceLabel(ann.appData),
+			src:      "discover:" + aspectFilter,
 			identity: ann.identity,
 		}, true
 	case <-time.After(deadline):
@@ -436,9 +432,7 @@ func stressTarget(ctx context.Context, ts *rns.TransportSystem, res resolved, op
 
 	var workers sync.WaitGroup
 	for w := 0; w < opts.concurrency; w++ {
-		workers.Add(1)
-		go func() {
-			defer workers.Done()
+		workers.Go(func() {
 			defer func() {
 				if r := recover(); r != nil {
 					log.Printf("stress worker recovered: %v", r)
@@ -449,7 +443,7 @@ func stressTarget(ctx context.Context, ts *rns.TransportSystem, res resolved, op
 			} else {
 				runSustainedWorker(ctx, ts, res, opts, st, corpus, lim, linkDeadline, reqTimeout)
 			}
-		}()
+		})
 	}
 	workers.Wait()
 }
@@ -479,10 +473,9 @@ func runSustainedWorker(ctx context.Context, ts *rns.TransportSystem, res resolv
 			continue
 		}
 
-		var dropped int32
+		var dropped atomic.Int32
 		link.SetLinkClosedCallback(func(*rns.Link) {
-			if atomic.LoadInt32(&dropped) == 0 {
-				atomic.StoreInt32(&dropped, 1)
+			if dropped.CompareAndSwap(0, 1) {
 				st.recordLinkDrop()
 			}
 		})
@@ -502,7 +495,7 @@ func runSustainedWorker(ctx context.Context, ts *rns.TransportSystem, res resolv
 			sent++
 			status, rtt := sendOne(link, rc.path, rc.data, reqTimeout)
 			st.recordRequest(status, rtt)
-			if atomic.LoadInt32(&dropped) == 1 || status == statusSendError {
+			if dropped.Load() == 1 || status == statusSendError {
 				// Link died under us; re-establish and continue sending.
 				break
 			}
@@ -953,9 +946,9 @@ func runMalformedAnnounceStorm(ctx context.Context, ts *rns.TransportSystem, log
 			cp.Raw = raw
 			cp.Packed = true
 			cp.Data = nil
-			if err := ts.Outbound(&cp); err != nil {
-				// Keep going; a down interface or transient error is not fatal.
-			}
+			// A down interface or transient error is not fatal to the storm;
+			// intentionally ignore the result and keep going.
+			_ = ts.Outbound(&cp)
 			count++
 		}
 		select {
@@ -978,23 +971,17 @@ func corruptAnnounceVariants(p *rns.Packet) [][]byte {
 		return nil
 	}
 	headerLen := len(valid) - len(p.Data)
-	if headerLen < 0 {
-		headerLen = 0
-	}
+	headerLen = max(headerLen, 0)
 	var out [][]byte
 	// Truncations: keep the header, drop the tail of the data.
 	for _, keep := range []int{0, 8, 16, 32, 64, 128} {
 		end := headerLen + keep
-		if end > len(valid) {
-			end = len(valid)
-		}
-		if end < headerLen {
-			end = headerLen
-		}
+		end = min(end, len(valid))
+		end = max(end, headerLen)
 		out = append(out, append([]byte(nil), valid[:end]...))
 	}
 	// Bit flips in the data region (signatures/hashes will not verify).
-	for _, off := range []int{0, 16, 32, 64, len(p.Data)/2} {
+	for _, off := range []int{0, 16, 32, 64, len(p.Data) / 2} {
 		pos := headerLen + off
 		if pos <= 0 || pos >= len(valid) {
 			continue
@@ -1132,8 +1119,8 @@ func collectTargets(opts *options) ([]target, error) {
 		hash := rns.CalculateHash(id, app, aspects...)
 		out = append(out, target{
 			hashHex:  hex.EncodeToString(hash),
-			label:   fmt.Sprintf("(identity %s)", opts.identityFile),
-			src:     opts.identityFile,
+			label:    fmt.Sprintf("(identity %s)", opts.identityFile),
+			src:      opts.identityFile,
 			identity: id,
 		})
 	}
@@ -1228,13 +1215,13 @@ var errHelp = fmt.Errorf("help requested")
 
 func parseFlags(args []string) (*options, error) {
 	opts := &options{
-		pathTimeout:    defaultPathTimeout,
-		linkTimeout:    defaultLinkTimeout,
-		requestPath:    "/page/index.mu",
-		duration:       defaultDuration,
-		concurrency:    defaultConcurrency,
+		pathTimeout:     defaultPathTimeout,
+		linkTimeout:     defaultLinkTimeout,
+		requestPath:     "/page/index.mu",
+		duration:        defaultDuration,
+		concurrency:     defaultConcurrency,
 		requestsPerLink: defaultRequests,
-		requestTimeout: defaultRequestTimeout,
+		requestTimeout:  defaultRequestTimeout,
 	}
 	for i := 0; i < len(args); i++ {
 		arg := args[i]

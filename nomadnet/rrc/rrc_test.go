@@ -1228,7 +1228,7 @@ func TestHubCleanHistoryRemovesOldNotices(t *testing.T) {
 
 	now := time.Now().Unix()
 	// Force the interval check to run on the first cleanHistory call.
-	hub.lastHistoryClean = 0
+	hub.lastHistoryClean.Store(0)
 
 	hub.lock.Lock()
 	hub.Messages["general"] = []*RRCMessage{
@@ -1255,7 +1255,7 @@ func TestHubCleanHistoryRemovesOldNotices(t *testing.T) {
 			t.Errorf("cleanHistory removed %q, want it kept: %v", w, texts)
 		}
 	}
-	if hub.cleanLastRemoved == 0 {
+	if hub.cleanLastRemoved.Load() == 0 {
 		t.Error("cleanLastRemoved not set after a cleanup that removed messages")
 	}
 }
@@ -1272,7 +1272,7 @@ func TestHubCleanHistoryRespectsInterval(t *testing.T) {
 
 	now := time.Now().Unix()
 	// Pretend a cleanup just ran, so the interval gate should skip the body.
-	hub.lastHistoryClean = now
+	hub.lastHistoryClean.Store(now)
 
 	hub.lock.Lock()
 	hub.Messages["general"] = []*RRCMessage{
@@ -1287,7 +1287,7 @@ func TestHubCleanHistoryRespectsInterval(t *testing.T) {
 	if len(hub.Messages["general"]) != 1 {
 		t.Errorf("messages = %v, want untouched within interval", hub.Messages["general"])
 	}
-	if hub.cleanLastRemoved != 0 {
+	if hub.cleanLastRemoved.Load() != 0 {
 		t.Error("cleanLastRemoved set despite interval gate skipping cleanup")
 	}
 }

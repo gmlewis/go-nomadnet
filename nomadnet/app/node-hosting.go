@@ -127,10 +127,17 @@ func (a *App) startNode() error {
 	a.Node.OnAnnounced = a.onNodeAnnounced
 
 	// Announce at start (Node.py:40-47): a daemon thread sleeps
-	// START_ANNOUNCE_DELAY then sends the first node announce.
+	// START_ANNOUNCE_DELAY then sends the first node announce. Python makes
+	// that thread a daemon and os._exits on Quit; Go has no daemon goroutines,
+	// so the sleep selects on jobsStop to exit on shutdown instead of firing
+	// n.Announce against a torn-down transport.
 	if a.NodeAnnounceAtStart {
 		go func() {
-			time.Sleep(startAnnounceDelay)
+			select {
+			case <-time.After(startAnnounceDelay):
+			case <-a.jobsStop:
+				return
+			}
 			if err := n.Announce(); err != nil && a.Logger != nil {
 				a.Logger.Error("node announce-at-start failed: %v", err)
 			}

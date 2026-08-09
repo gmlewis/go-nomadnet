@@ -107,6 +107,16 @@ type Node struct {
 	// transport. Without this, n.Announce/RegisterPages can race ahead of
 	// a.RNS.Close() in App.Shutdown and dereference a torn-down transport.
 	jobsWG sync.WaitGroup
+
+	// jobsStop is closed by Stop to interrupt the Jobs loop's inter-pass sleep
+	// so the goroutine exits promptly instead of blocking up to JobInterval
+	// (5 s) in time.Sleep. Go has no daemon goroutines, so unlike Python
+	// (which marks the jobs thread daemon and os._exits), we must make the
+	// sleep cancellable or Quit waits the full interval. This mirrors the
+	// App.jobsStop pattern (app/jobs.go). jobsStopOnce guards the close so
+	// repeated Stop calls are safe.
+	jobsStop     chan struct{}
+	jobsStopOnce sync.Once
 }
 
 // NewNode creates a new Node with the given configuration.
@@ -123,6 +133,7 @@ func NewNode(name, pagesPath, filesPath string, announceInterval, pageRefresh, f
 		LastAnnounce:        time.Now(),
 		LastPageRefresh:     time.Now(),
 		LastFileRefresh:     time.Now(),
+		jobsStop:            make(chan struct{}),
 	}
 
 	return n
@@ -154,10 +165,13 @@ func (n *Node) Start(ts rns.Transport, identity *rns.Identity) error {
 // Stop shuts down the node by marking jobs as stopped and waiting for the
 // background Jobs goroutine to exit, so the caller can safely tear down the
 // RNS transport (App.Shutdown closes a.RNS immediately after stopNode).
+// Closing jobsStop interrupts the loop's inter-pass sleep so the wait is
+// immediate rather than blocking up to JobInterval (5 s) seconds.
 func (n *Node) Stop() {
 	n.mu.Lock()
 	n.ShouldRunJobs = false
 	n.mu.Unlock()
+	n.jobsStopOnce.Do(func() { close(n.jobsStop) })
 	n.jobsWG.Wait()
 }
 
@@ -336,7 +350,14 @@ func (n *Node) Jobs() {
 		if err := n.runJobsOnce(time.Now()); err != nil {
 			log.Printf("node jobs: %v", err)
 		}
-		time.Sleep(JobInterval * time.Second)
+		// Sleep JobInterval between passes, but wake immediately when Stop
+		// closes jobsStop so Shutdown does not block up to JobInterval (5 s).
+		// Mirrors the App.jobsStop select (app/jobs.go).
+		select {
+		case <-n.jobsStop:
+			return
+		case <-time.After(JobInterval * time.Second):
+		}
 	}
 }
 

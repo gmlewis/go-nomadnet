@@ -29,6 +29,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/fxamacker/cbor/v2"
@@ -104,8 +105,14 @@ type RRCHub struct {
 	// normal operation.
 	onSend func(env map[any]any)
 
-	lastHistoryClean int64 // unix seconds of last cleanup (Python _last_history_clean)
-	cleanLastRemoved int64 // unix seconds when cleanup last removed messages
+	// lastHistoryClean/cleanLastRemoved are accessed atomically because
+	// cleanHistory runs concurrently from the inbound link-callback path
+	// (HandleData→recordMessage) and from SendMessage→recordMessage. Python
+	// guards these with the GIL; Go ports them to atomic.Int64 so the
+	// unlocked check/update in cleanHistory (which mirrors Python's
+	// structure) stays race-free without taking h.lock on every message.
+	lastHistoryClean atomic.Int64 // unix seconds of last cleanHistory call (Python _last_history_clean)
+	cleanLastRemoved atomic.Int64 // unix seconds when cleanup last removed messages
 
 	// Testing seams (nil in production). They mirror Python dependencies that
 	// otherwise require a live RNS transport or background goroutine, allowing
@@ -1418,7 +1425,7 @@ func (h *RRCHub) cleanHistory() {
 	now := time.Now().Unix()
 	cleaned := false
 	removeAfter := int64(h.ephemeralNoticesHistory())
-	if now > h.lastHistoryClean+CleanHistoryInterval {
+	if now > h.lastHistoryClean.Load()+CleanHistoryInterval {
 		h.lock.Lock()
 		for r := range h.Messages {
 			kept := h.Messages[r][:0]
@@ -1441,9 +1448,9 @@ func (h *RRCHub) cleanHistory() {
 		}
 		h.lock.Unlock()
 	}
-	h.lastHistoryClean = now
+	h.lastHistoryClean.Store(now)
 	if cleaned {
-		h.cleanLastRemoved = now
+		h.cleanLastRemoved.Store(now)
 	}
 }
 

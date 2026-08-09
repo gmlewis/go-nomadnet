@@ -119,22 +119,22 @@ func destAppAspects(opts *options) (string, []string) {
 type target struct {
 	hashHex  string
 	label    string
-	src      string         // origin (arg or file:line) for diagnostics
-	identity *rns.Identity  // when set (from --identity), used directly instead of RecallIdentity
+	src      string        // origin (arg or file:line) for diagnostics
+	identity *rns.Identity // when set (from --identity), used directly instead of RecallIdentity
 }
 
 type result struct {
 	target
-	hash        []byte
-	pathKnown   bool   // path was already cached before the run
-	pathResolved bool  // path is known now (cached or freshly resolved)
-	pathFresh   bool   // path had to be requested and resolved
-	hops        int    // HopsTo at report time (PathfinderM if unknown)
-	identity    bool   // identity was recalled from an announce
-	linkUp      bool   // outbound lxmf.delivery link established
-	rtt         time.Duration
-	status      string // UNREACHABLE / NO ANNOUNCE / LINK FAILED / ONLINE
-	detail      string // extra context (errors, times)
+	hash         []byte
+	pathKnown    bool // path was already cached before the run
+	pathResolved bool // path is known now (cached or freshly resolved)
+	pathFresh    bool // path had to be requested and resolved
+	hops         int  // HopsTo at report time (PathfinderM if unknown)
+	identity     bool // identity was recalled from an announce
+	linkUp       bool // outbound lxmf.delivery link established
+	rtt          time.Duration
+	status       string // UNREACHABLE / NO ANNOUNCE / LINK FAILED / ONLINE
+	detail       string // extra context (errors, times)
 }
 
 func main() {
@@ -478,8 +478,8 @@ func discover(ts *rns.TransportSystem, opts *options) result {
 		// path/link/browse stages against the announced destination hash.
 		t := target{
 			hashHex:  hex.EncodeToString(ann.destHash),
-			label:   announceLabel(ann.appData),
-			src:     "discover:" + aspectFilter,
+			label:    announceLabel(ann.appData),
+			src:      "discover:" + aspectFilter,
 			identity: ann.identity,
 		}
 		r := pingOne(ts, t, opts)
@@ -605,8 +605,8 @@ func collectTargets(opts *options) ([]target, error) {
 		hash := rns.CalculateHash(id, app, aspects...)
 		out = append(out, target{
 			hashHex:  hex.EncodeToString(hash),
-			label:   fmt.Sprintf("(identity %s)", opts.identityFile),
-			src:     opts.identityFile,
+			label:    fmt.Sprintf("(identity %s)", opts.identityFile),
+			src:      opts.identityFile,
 			identity: id,
 		})
 	}
