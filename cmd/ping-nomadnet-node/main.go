@@ -56,6 +56,7 @@
 //	--rnsconfig DIR    Reticulum config dir (default: ~/.reticulum)
 //	--path-timeout D   seconds to wait for a path request (default 15)
 //	--link-timeout D   seconds to wait for link establishment (default 15)
+//	--identity FILE    ping the node whose identity is in FILE directly
 //	-v                 verbose RNS logging
 //	-h, --help         show help and exit
 package main
@@ -99,13 +100,15 @@ type options struct {
 	pathTimeout  float64
 	linkTimeout  float64
 	verbose      bool
+	identityFile string // optional: load target identity from file (skip announce wait)
 	args         []string
 }
 
 type target struct {
-	hashHex string
-	label   string
-	src     string // origin (arg or file:line) for diagnostics
+	hashHex  string
+	label    string
+	src      string         // origin (arg or file:line) for diagnostics
+	identity *rns.Identity  // when set (from --identity), used directly instead of RecallIdentity
 }
 
 type result struct {
@@ -139,7 +142,7 @@ func run(args []string) int {
 		return 2
 	}
 
-	targets, err := collectTargets(opts.args)
+	targets, err := collectTargets(opts)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 2
@@ -235,8 +238,12 @@ func pingOne(ts *rns.TransportSystem, t target, opts *options) result {
 	}
 
 	// Stage 2: identity. The peer's public key must have been heard via an
-	// announce before an outbound SINGLE destination can be built.
-	identity := rns.RecallIdentity(ts, hash)
+	// announce before an outbound SINGLE destination can be built. When the
+	// identity was supplied via --identity, use it directly (no announce wait).
+	identity := t.identity
+	if identity == nil {
+		identity = rns.RecallIdentity(ts, hash)
+	}
 	r.identity = identity != nil
 
 	// Stage 3: link. Only attempt when both a path and an identity exist; a
@@ -397,10 +404,25 @@ func reportExitCode(results []result) int {
 }
 
 // collectTargets turns the raw arguments into a flat list of ping targets,
-// classifying each arg as an LXMF address or a filename.
-func collectTargets(args []string) ([]target, error) {
+// classifying each arg as an LXMF address or a filename. When opts.identityFile
+// is set, a target is added from that identity file (its lxmf.delivery hash is
+// computed directly, so no announce needs to be heard).
+func collectTargets(opts *options) ([]target, error) {
 	var out []target
-	for _, arg := range args {
+	if opts.identityFile != "" {
+		id, err := rns.FromFile(opts.identityFile, nil)
+		if err != nil {
+			return nil, fmt.Errorf("--identity %s: %w", opts.identityFile, err)
+		}
+		hash := rns.CalculateHash(id, "lxmf", "delivery")
+		out = append(out, target{
+			hashHex:  hex.EncodeToString(hash),
+			label:   fmt.Sprintf("(identity %s)", opts.identityFile),
+			src:     opts.identityFile,
+			identity: id,
+		})
+	}
+	for _, arg := range opts.args {
 		if hexStr, ok := parseArgAsAddress(arg); ok {
 			out = append(out, target{hashHex: hexStr, src: arg})
 			continue
@@ -527,6 +549,13 @@ func parseFlags(args []string) (*options, error) {
 			}
 			opts.linkTimeout = f
 			i = next
+		case "--identity":
+			v, next, err := flagValue(args, i, "--identity")
+			if err != nil {
+				return nil, err
+			}
+			opts.identityFile = v
+			i = next
 		default:
 			if strings.HasPrefix(arg, "-") && arg != "-" {
 				return nil, fmt.Errorf("flag provided but not defined: %s", arg)
@@ -573,6 +602,9 @@ options:
   --rnsconfig DIR       Reticulum config dir (default: ~/.reticulum)
   --path-timeout SECS   seconds to wait for a path request (default 15)
   --link-timeout SECS   seconds to wait for link establishment (default 15)
+  --identity FILE       ping the node whose identity is in FILE (its
+                      lxmf.delivery hash is computed directly; no announce
+                      needs to be heard first)
 
 exit codes:
   0   every node is ONLINE
