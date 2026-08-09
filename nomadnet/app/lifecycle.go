@@ -27,6 +27,12 @@ func (a *App) ExitHandler() {
 	a.mu.Lock()
 	a.ShouldRunJobs = false
 	a.mu.Unlock()
+	// Interrupt the jobs loop's sleeps so it observes ShouldRunJobs=false
+	// promptly (otherwise it can block up to DeferJobs/JobInterval seconds in
+	// time.After before re-checking). jobsStopOnce makes this safe to call even
+	// if Shutdown later closes the same channel.
+	a.jobsStopOnce.Do(func() { close(a.jobsStop) })
+	a.jobsWG.Wait()
 
 	// Stop the hosted node's background job loop.
 	a.stopNode()

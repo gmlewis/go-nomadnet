@@ -154,9 +154,11 @@ func FormatSyncStatus(lastSyncTime time.Time, hasSynced bool, nodeLabel string) 
 
 // FormatHubStatus produces a formatted status line for a hub entry.
 // Includes status icon, name, room count, and unread indicator.
-func FormatHubStatus(hub HubEntry) string {
+func FormatHubStatus(hub *HubEntry) string {
 	icon := StatusIcon(hub.Status)
+	hub.mu.RLock()
 	roomCount := len(hub.Rooms)
+	hub.mu.RUnlock()
 	unread := hub.UnreadCount()
 
 	status := "Disconnected"

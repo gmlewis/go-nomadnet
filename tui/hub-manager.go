@@ -57,15 +57,31 @@ type HubEntry struct {
 	Status        HubStatus
 	AutoReconnect bool
 	Rooms         map[string]*HubRoom
+
+	// mu guards the Rooms map. The HubManager-level mu (hm.mu) protects the
+	// hubs collection and is acquired before hub.mu in every path that holds
+	// both (AddRoom/RemoveRoom/TotalUnreadCount), so the lock order is always
+	// hm.mu → hub.mu and never the reverse — no deadlock. Standalone HubEntry
+	// accessors (GetRoom/UnreadCount/HubSummary/FormatHubStatus) acquire only
+	// hub.mu, which synchronizes them against AddRoom/RemoveRoom writes that
+	// mutate Rooms from a background RRC-event goroutine. Without this lock,
+	// a concurrent AddRoom/RemoveRoom write and a UI-side range/len/read of
+	// Rooms triggers "fatal error: concurrent map read/write" /
+	// "concurrent map iteration and map write".
+	mu sync.RWMutex
 }
 
 // GetRoom returns the room by name, or nil if not found.
 func (h *HubEntry) GetRoom(name string) *HubRoom {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
 	return h.Rooms[name]
 }
 
 // UnreadCount returns the number of rooms with unread messages.
 func (h *HubEntry) UnreadCount() int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
 	n := 0
 	for _, r := range h.Rooms {
 		if r.Unread {
@@ -143,7 +159,9 @@ func (hm *HubManager) AddRoom(hubAddr, roomName string) *HubRoom {
 		return nil
 	}
 	room := &HubRoom{Name: roomName}
+	hub.mu.Lock()
 	hub.Rooms[roomName] = room
+	hub.mu.Unlock()
 	return room
 }
 
@@ -153,7 +171,9 @@ func (hm *HubManager) RemoveRoom(hubAddr, roomName string) {
 	defer hm.mu.Unlock()
 
 	if hub, ok := hm.hubs[hubAddr]; ok {
+		hub.mu.Lock()
 		delete(hub.Rooms, roomName)
+		hub.mu.Unlock()
 	}
 }
 
@@ -220,11 +240,13 @@ func (hm *HubManager) TotalUnreadCount() int {
 	defer hm.mu.RUnlock()
 	n := 0
 	for _, h := range hm.hubs {
+		h.mu.RLock()
 		for _, r := range h.Rooms {
 			if r.Unread {
 				n++
 			}
 		}
+		h.mu.RUnlock()
 	}
 	return n
 }
@@ -232,7 +254,9 @@ func (hm *HubManager) TotalUnreadCount() int {
 // HubSummary returns a formatted summary of a hub for display.
 // Includes status icon, name, room count, and unread indicator.
 func HubSummary(hub *HubEntry) string {
+	hub.mu.RLock()
 	roomCount := len(hub.Rooms)
+	hub.mu.RUnlock()
 	unread := hub.UnreadCount()
 	icon := StatusIcon(hub.Status)
 

@@ -70,7 +70,7 @@ func TestNonAsciiNamesRoundTrip(t *testing.T) {
 
 		t.Run("hub/"+name, func(t *testing.T) {
 			t.Parallel()
-			hub := HubEntry{Name: name, Status: "connected"}
+			hub := &HubEntry{Name: name, Status: "connected"}
 			got := FormatHubEntry(hub)
 			if !utf8.ValidString(got) {
 				t.Errorf("FormatHubEntry invalid UTF-8: %q", got)

@@ -333,10 +333,18 @@ func fetchBytes(ctx context.Context, ts *rns.TransportSystem, destHash []byte, p
 	if timeout <= 0 {
 		timeout = time.Duration(DefaultTimeout) * time.Second
 	}
-	if ts != nil {
-		if hops := ts.HopsTo(destHash); hops > 0 && hops < 128 {
-			timeout += time.Duration(hops*3) * time.Second
-		}
+	// A nil transport (no RNS initialized yet, or after teardown) cannot resolve
+	// a path, recall an identity, or build a destination — every subsequent step
+	// dereferences ts, so bail out here rather than nil-deref at ts.HasPath below.
+	// The hops guard above already tolerates a nil ts; the unguarded dereferences
+	// at ts.HasPath/ts.RequestPath/ts.Recall did not, which would panic if a fetch
+	// goroutine (page load or partial refresh) raced ahead of async initRNS or
+	// outlived Shutdown closing the transport.
+	if ts == nil {
+		return nil, nil, ErrNoPath
+	}
+	if hops := ts.HopsTo(destHash); hops > 0 && hops < 128 {
+		timeout += time.Duration(hops*3) * time.Second
 	}
 	// Cancellation guard: a superseding Connect cancels this fetch's ctx before
 	// it reaches the network; bail out immediately rather than rendering a stale

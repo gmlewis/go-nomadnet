@@ -137,8 +137,10 @@ func (a *App) startNode() error {
 		}()
 	}
 
-	// Run the node job loop in the background (Node.py:49-51).
-	go n.Jobs()
+	// Run the node job loop in the background (Node.py:49-51). StartJobs
+	// tracks the goroutine so Stop waits for it to exit before the transport
+	// is torn down.
+	n.StartJobs()
 
 	return nil
 }

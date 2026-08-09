@@ -49,6 +49,13 @@ type RRCManager struct {
 	activeRoom      string
 	loaded          bool
 	nickname        string
+	// stopped is set by Shutdown so hubs can decline to schedule a reconnect
+	// or spawn a connectWorker after the manager (and the RNS transport) has
+	// been torn down. Without this, a link-closed callback dispatched as
+	// `go callback(l)` by go-reticulum fires after RRCManager.Shutdown has
+	// returned, scheduleReconnect arms a reconnect, and the connectWorker
+	// drives a stopped TransportSystem — a use-after-teardown nil deref.
+	stopped bool
 }
 
 // NewManager creates a new RRCManager rooted at the given storage path.
@@ -429,9 +436,18 @@ func (m *RRCManager) Load() error {
 	return nil
 }
 
-// Shutdown disconnects all hubs.
+// Shutdown disconnects all hubs and marks the manager stopped so that any
+// link-closed callback still in flight (go-reticulum dispatches closed
+// callbacks as `go callback(l)`, which can run after this method returns)
+// will not schedule a reconnect against the now-torn-down transport. The
+// change/message callbacks are cleared so post-shutdown NotifyChange /
+// NotifyMessage invocations from in-flight RRC worker callbacks become no-ops
+// rather than queueing draws onto a stopped tview Application.
 func (m *RRCManager) Shutdown() {
 	m.lock.Lock()
+	m.stopped = true
+	m.changeCallback = nil
+	m.messageCallback = nil
 	hubs := make([]*RRCHub, len(m.Hubs))
 	copy(hubs, m.Hubs)
 	m.lock.Unlock()
@@ -439,6 +455,15 @@ func (m *RRCManager) Shutdown() {
 	for _, hub := range hubs {
 		hub.Disconnect()
 	}
+}
+
+// IsStopped reports whether Shutdown has been called. Hubs consult this before
+// scheduling a reconnect or spawning a connectWorker so a late closed-callback
+// does not drive a stopped transport.
+func (m *RRCManager) IsStopped() bool {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	return m.stopped
 }
 
 func (m *RRCManager) storePath() string {

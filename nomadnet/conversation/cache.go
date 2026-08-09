@@ -174,13 +174,18 @@ func (cc *ConversationCache) Ingest(msg *lxmf.Message, conversationsPath string,
 		_ = ExtractAttachmentsFromLXM(msg, cc.attachmentPath)
 	}
 
-	cc.mu.Lock()
-	if cached, ok := cc.cached[sourceHex]; ok {
-		cc.mu.Unlock()
-		_ = cached.ScanStorage()
-	} else {
-		cc.mu.Unlock()
-	}
+	// NOTE: a previously-cached conversation's storage is NOT rescanned here.
+	// Ingest runs on the LXMF delivery goroutine (and the outbound delivery
+	// callback goroutine), while ConversationMessages/DisplayMessages read
+	// c.Messages on the tview event loop. Calling cached.ScanStorage() here
+	// would reassign c.Messages concurrently with the UI loop's ScanStorage/
+	// DisplayMessages — a data race on the unsynchronized []*Message slice
+	// header that, after hours of message traffic, produces a torn read in
+	// DisplayMessages' copy(msgs, c.Messages) and panics with "slice bounds
+	// out of range". The on-disk file written above is picked up by the UI
+	// loop's ScanStorage, triggered by OnChanged below (marshalled to the
+	// event loop in the wiring layer), so the new message still appears
+	// without a manual reload.
 
 	if !originator {
 		unreadPath := filepath.Join(convDir, "unread")

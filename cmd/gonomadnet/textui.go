@@ -1796,6 +1796,15 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	return func() {
 		logDisplay.StopTailing()
 		ifaceTicker.Stop()
+		// Stop the partial-refresh goroutines BEFORE a.Shutdown() closes the
+		// RNS transport: each tick dereferences a.Transport via the
+		// OnFetchPartial closure, and a closed TransportSystem panics. The
+		// standalone browser page and the Network pane's in-page browser each
+		// own their own partial loops.
+		browserDisplay.StopPartials()
+		if ndBd := networkDisplay.BrowserDisplay(); ndBd != nil {
+			ndBd.StopPartials()
+		}
 	}
 }
 

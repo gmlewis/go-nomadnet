@@ -17,14 +17,24 @@ package app
 
 import "time"
 
-// jobs runs the background job loop for periodic tasks.
+// jobs runs the background job loop for periodic tasks. The initial defer and
+// the inter-iteration waits select on jobsStop so Shutdown (which closes it)
+// interrupts the loop immediately rather than blocking up to DeferJobs seconds.
 func (a *App) jobs() {
-	// Defer initial jobs
-	time.Sleep(time.Duration(a.DeferJobs) * time.Second)
+	// Defer initial jobs, but bail out immediately if Shutdown closes jobsStop
+	// during the defer.
+	select {
+	case <-a.jobsStop:
+		return
+	case <-time.After(time.Duration(a.DeferJobs) * time.Second):
+	}
 	a.Logger.Info("Starting background job scheduler")
 
 	for {
-		if !a.ShouldRunJobs {
+		a.mu.Lock()
+		run := a.ShouldRunJobs
+		a.mu.Unlock()
+		if !run {
 			return
 		}
 
@@ -42,6 +52,10 @@ func (a *App) jobs() {
 			a.AnnounceNow()
 		}
 
-		time.Sleep(time.Duration(a.JobInterval) * time.Second)
+		select {
+		case <-a.jobsStop:
+			return
+		case <-time.After(time.Duration(a.JobInterval) * time.Second):
+		}
 	}
 }

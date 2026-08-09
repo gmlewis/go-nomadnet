@@ -28,6 +28,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="${SCRIPT_DIR}/.."
 VERSION_FILE="${REPO_ROOT}/nomadnet/version/version.go"
+README_FILE="${REPO_ROOT}/README.md"
 
 if [[ ! -f "${VERSION_FILE}" ]]; then
 	echo "error: version file not found: ${VERSION_FILE}" >&2
@@ -69,3 +70,22 @@ fi
 rm -f "${VERSION_FILE}.bak"
 
 echo "Bumped version: ${CURRENT} -> ${NEW_VERSION} in ${VERSION_FILE}"
+
+# Update the pinned install version in README.md, e.g.
+#   go install github.com/gmlewis/go-nomadnet/cmd/gonomadnet@v0.5.0
+# We anchor on the literal install path and replace whatever semver follows
+# "@v", so this stays correct regardless of the prior pinned version.
+if [[ -f "${README_FILE}" ]]; then
+	if ! grep -Eq '^go install github.com/gmlewis/go-nomadnet/cmd/gonomadnet@v[0-9]+\.[0-9]+\.[0-9]+$' "${README_FILE}"; then
+		echo "error: could not find pinned install line in ${README_FILE}" >&2
+		exit 1
+	fi
+	if ! sed -i.bak -E \
+		"s|^go install github.com/gmlewis/go-nomadnet/cmd/gonomadnet@v[0-9]+\.[0-9]+\.[0-9]+|go install github.com/gmlewis/go-nomadnet/cmd/gonomadnet@v${NEW_VERSION}|" \
+		"${README_FILE}"; then
+		echo "error: failed to update ${README_FILE}" >&2
+		exit 1
+	fi
+	rm -f "${README_FILE}.bak"
+	echo "Updated install pin: -> v${NEW_VERSION} in ${README_FILE}"
+fi

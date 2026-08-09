@@ -259,12 +259,12 @@ func TestFormatHubEntry(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		hub      HubEntry
+		hub      *HubEntry
 		wantText string
 	}{
 		{
 			name: "connected hub",
-			hub: HubEntry{
+			hub: &HubEntry{
 				Name:   "My Hub",
 				Status: HubConnected,
 				Rooms: map[string]*HubRoom{
@@ -276,7 +276,7 @@ func TestFormatHubEntry(t *testing.T) {
 		},
 		{
 			name: "disconnected hub",
-			hub: HubEntry{
+			hub: &HubEntry{
 				Name:   "Test Hub",
 				Status: HubDisconnected,
 				Rooms:  map[string]*HubRoom{},

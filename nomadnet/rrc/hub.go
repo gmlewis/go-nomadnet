@@ -270,7 +270,11 @@ func (h *RRCHub) onClosed() {
 	if cb != nil {
 		cb()
 	}
-	if shouldReconnect {
+	// Do not schedule a reconnect after the manager (and its transport) have
+	// been torn down: the closed callback is dispatched asynchronously by
+	// go-reticulum and can fire after RRCManager.Shutdown returned, so without
+	// this guard the reconnect worker would drive a stopped TransportSystem.
+	if shouldReconnect && h.Manager != nil && !h.Manager.IsStopped() {
 		h.scheduleReconnect()
 	}
 }
@@ -298,6 +302,11 @@ func (h *RRCHub) scheduleReconnect() {
 		proceed := h.AutoReconnect && !h.manualDisconnect
 		h.lock.Unlock()
 		if !proceed {
+			return
+		}
+		// A shutdown between arming and firing must not launch a connectWorker
+		// against the now-stopped transport.
+		if h.Manager != nil && h.Manager.IsStopped() {
 			return
 		}
 		if connectFn != nil {
@@ -336,6 +345,11 @@ func reconnectBackoff(attempts int) time.Duration {
 // timer, sets the status to Connecting, and launches the connect worker. The
 // transport must have been configured via SetTransport.
 func (h *RRCHub) ConnectAsync() {
+	// Refuse to (re)connect once the manager has been shut down: the transport
+	// is gone and a connectWorker would dereference a stopped TransportSystem.
+	if h.Manager != nil && h.Manager.IsStopped() {
+		return
+	}
 	h.lock.Lock()
 	if h.Status == StatusConnecting || h.Status == StatusConnected {
 		h.lock.Unlock()

@@ -552,7 +552,7 @@ func TestFormatHubStatus(t *testing.T) {
 		},
 	}
 
-	got := FormatHubStatus(hub)
+	got := FormatHubStatus(&hub)
 	if !strings.Contains(got, "My Hub") {
 		t.Errorf("FormatHubStatus() missing hub name: %q", got)
 	}

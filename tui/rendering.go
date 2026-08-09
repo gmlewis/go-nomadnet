@@ -304,7 +304,7 @@ func sortSpans(spans []spanInfo) {
 }
 
 // FormatHubEntry formats a hub entry for display in the channel list.
-func FormatHubEntry(hub HubEntry) string {
+func FormatHubEntry(hub *HubEntry) string {
 	return fmt.Sprintf("%v %v", StatusIcon(hub.Status), hub.Name)
 }
 

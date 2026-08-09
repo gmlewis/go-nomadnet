@@ -212,6 +212,17 @@ type App struct {
 	// mutating a.PeerSettings field must do so under psMu as well.
 	psMu   sync.Mutex
 	initWG sync.WaitGroup
+	// jobsWG tracks the background a.jobs() goroutine so Shutdown can wait for
+	// it to observe ShouldRunJobs=false and exit before a.RNS.Close() tears down
+	// the transport. Without this, a.RequestLXMFSync/a.AnnounceNow can race
+	// ahead of RNS close and dereference a torn-down transport/router.
+	// jobsStop is closed by Shutdown to interrupt the loop's sleeps so the wait
+	// is immediate rather than blocking up to DeferJobs (90 s) seconds.
+	// jobsStopOnce guards the close so a second Shutdown call (or ExitHandler
+	// followed by Shutdown) does not panic closing an already-closed channel.
+	jobsWG       sync.WaitGroup
+	jobsStop     chan struct{}
+	jobsStopOnce sync.Once
 }
 
 // AppOption configures an App during construction.
@@ -245,6 +256,7 @@ func NewApp(configDir, rnsConfigDir string, daemon, forceConsole bool) *App {
 		ShouldRunJobs:             true,
 		JobInterval:               5,
 		DeferJobs:                 90,
+		jobsStop:                  make(chan struct{}),
 		AnnounceInterval:          6 * 60 * 60, // 6 hours
 		PeerAnnounceAtStart:       true,
 		TryPropagationOnFail:      true,
@@ -487,8 +499,10 @@ func (a *App) initRNS() {
 		}()
 	}
 
-	// Start background jobs
-	go a.jobs()
+	// Start background jobs. Tracked on jobsWG so Shutdown waits for the loop
+	// to exit before closing a.RNS (otherwise a.RequestLXMFSync/a.AnnounceNow
+	// can dereference a torn-down transport/router).
+	a.jobsWG.Go(a.jobs)
 }
 
 // InitWithTransport initializes the App synchronously using the provided
@@ -760,10 +774,20 @@ func (a *App) applyUIMode(ui string) {
 func (a *App) Shutdown() {
 	a.initWG.Wait()
 
+	// Signal the background jobs loop to stop, then wait for it to exit BEFORE
+	// closing RNS. The loop's RequestLXMFSync/AnnounceNow take a.mu briefly, so
+	// a.mu must NOT be held across jobsWG.Wait() or the wait deadlocks with a
+	// goroutine blocked acquiring a.mu. Closing jobsStop interrupts the loop's
+	// time.After waits so the wait is immediate rather than blocking up to
+	// DeferJobs (90 s) seconds.
+	a.mu.Lock()
+	a.ShouldRunJobs = false
+	a.mu.Unlock()
+	a.jobsStopOnce.Do(func() { close(a.jobsStop) })
+	a.jobsWG.Wait()
+
 	a.mu.Lock()
 	defer a.mu.Unlock()
-
-	a.ShouldRunJobs = false
 
 	// Persist the in-memory directory (known peers, trust levels, announce
 	// stream) to disk before tearing anything down — Python's exit_handler does
@@ -776,7 +800,9 @@ func (a *App) Shutdown() {
 	}
 
 	// Stop the hosted node's background job loop (Python exit_handler sets
-	// should_run_jobs false, which halts Node.__jobs).
+	// should_run_jobs false, which halts Node.__jobs). stopNode waits for the
+	// node Jobs goroutine to exit so n.Announce/RegisterPages do not race
+	// ahead of a.RNS.Close below.
 	a.stopNode()
 
 	if a.RRC != nil {

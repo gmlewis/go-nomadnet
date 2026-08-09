@@ -19,6 +19,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gdamore/tcell/v2"
@@ -91,8 +92,13 @@ type BrowserDisplay struct {
 
 	// currentDest is the 16-byte destination hash of the page currently loaded
 	// (nil until the first successful navigation), used to resolve relative
-	// ":<path>" URLs (Python Browser.destination_hash).
+	// ":<path>" URLs (Python Browser.destination_hash). It is read from the
+	// partial-refresh goroutine (via CurrentDest) while the event loop writes
+	// it (SetCurrentDest / Disconnect), so destMu guards the []byte slice
+	// header against a torn concurrent read that would otherwise surface as a
+	// "slice bounds out of range" panic in FetchPartial/identifyOnConnect.
 	currentDest []byte
+	destMu      sync.Mutex
 	// Rendered-page metadata, mirroring GuideDisplay: links/anchors are cached
 	// for handleLink dispatch and jumpToAnchor; currentLines feeds the anchor
 	// line lookup.
@@ -375,7 +381,7 @@ func (bd *BrowserDisplay) setURLHeader(url string) {
 // destination), falling back to the raw url on a parse error. Mirrors Python
 // Browser.current_url (Browser.py:146-163) for the displayable form.
 func (bd *BrowserDisplay) canonicalURL(url string) string {
-	dest, path, rd, err := browser.ParseURL(url, bd.currentDest, nil)
+	dest, path, rd, err := browser.ParseURL(url, bd.CurrentDest(), nil)
 	if err != nil {
 		return url
 	}
@@ -667,6 +673,19 @@ func (bd *BrowserDisplay) runPartialRefresh(p browser.Partial, interval time.Dur
 // content (or an error message) in partialContents and re-renders. Stale
 // results from a cancelled loop are dropped.
 func (bd *BrowserDisplay) fetchAndSubstitute(p browser.Partial, cancel chan struct{}) {
+	// Bail out before the network fetch when the loop has been cancelled by
+	// navigation/Disconnect/teardown — the QueueUpdateDraw callback below also
+	// checks cancel, but without this guard a cancelled loop still launches a
+	// fetch (and dereferences bd.OnFetchPartial / the captured transport) after
+	// the page has moved on, racing teardown.
+	select {
+	case <-cancel:
+		return
+	default:
+	}
+	if bd.OnFetchPartial == nil {
+		return
+	}
 	data, err := bd.OnFetchPartial(p)
 	bd.app.QueueUpdateDraw(func() {
 		select {
@@ -699,6 +718,14 @@ func (bd *BrowserDisplay) stopPartials() {
 	}
 }
 
+// StopPartials is the exported teardown entry point for the partial-refresh
+// goroutines. It must be called on shutdown BEFORE the underlying RNS transport
+// is closed so the per-page refresh loops (runPartialRefresh, which call
+// bd.OnFetchPartial → browser.FetchPartial → fetchBytes on the app's transport)
+// stop before that transport is torn down; otherwise a tick fired after
+// a.Shutdown() dereferences a closed TransportSystem.
+func (bd *BrowserDisplay) StopPartials() { bd.stopPartials() }
+
 // contentWidth is the content TextView's inner column count (the wrap/divider
 // width), falling back to 80 before the first layout — mirroring
 // GuideDisplay.readerWidth.
@@ -727,7 +754,7 @@ func (bd *BrowserDisplay) Disconnect() {
 	bd.CancelRequest()
 	bd.history = nil
 	bd.histIdx = 0
-	bd.currentDest = nil
+	bd.SetCurrentDest(nil)
 	bd.stopPartials()
 	bd.urlHeader.SetText(glyph(bd.app.Glyphs, "node"))
 	bd.currentURLDisp = ""
@@ -793,14 +820,31 @@ func (bd *BrowserDisplay) NotifyLinkError(msg string) {
 	bd.footerStatus.SetText("[red]" + tview.Escape(msg) + "[-]")
 }
 
-// CurrentDest returns the 16-byte destination hash of the currently loaded page
-// (nil until the first successful navigation), used by the retrieveURL wiring
-// to resolve relative ":<path>" URLs (Python Browser.destination_hash).
-func (bd *BrowserDisplay) CurrentDest() []byte { return bd.currentDest }
+// CurrentDest returns a copy of the 16-byte destination hash of the currently
+// loaded page (nil until the first successful navigation), used by the
+// retrieveURL wiring to resolve relative ":<path>" URLs (Python
+// Browser.destination_hash). A copy is returned because the partial-refresh
+// goroutine reads this off the event loop while SetCurrentDest/Disconnect
+// write concurrently; returning the live slice header would expose a torn read
+// to FetchPartial/identifyOnConnect, which len/index the hash.
+func (bd *BrowserDisplay) CurrentDest() []byte {
+	bd.destMu.Lock()
+	defer bd.destMu.Unlock()
+	if bd.currentDest == nil {
+		return nil
+	}
+	out := make([]byte, len(bd.currentDest))
+	copy(out, bd.currentDest)
+	return out
+}
 
 // SetCurrentDest records the destination hash of the page now being loaded, so
 // subsequent relative URLs resolve against it.
-func (bd *BrowserDisplay) SetCurrentDest(dest []byte) { bd.currentDest = dest }
+func (bd *BrowserDisplay) SetCurrentDest(dest []byte) {
+	bd.destMu.Lock()
+	bd.currentDest = dest
+	bd.destMu.Unlock()
+}
 
 // BeginRequest cancels any in-flight page fetch, increments the request
 // sequence, and installs a fresh cancellation context for the new fetch. It is

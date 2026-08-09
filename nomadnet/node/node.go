@@ -101,6 +101,12 @@ type Node struct {
 	transport   rns.Transport
 
 	mu sync.Mutex
+
+	// jobsWG tracks the background Jobs goroutine so Stop can wait for it to
+	// observe ShouldRunJobs=false and exit before the caller tears down the RNS
+	// transport. Without this, n.Announce/RegisterPages can race ahead of
+	// a.RNS.Close() in App.Shutdown and dereference a torn-down transport.
+	jobsWG sync.WaitGroup
 }
 
 // NewNode creates a new Node with the given configuration.
@@ -145,11 +151,20 @@ func (n *Node) Start(ts rns.Transport, identity *rns.Identity) error {
 	return nil
 }
 
-// Stop shuts down the node by marking jobs as stopped.
+// Stop shuts down the node by marking jobs as stopped and waiting for the
+// background Jobs goroutine to exit, so the caller can safely tear down the
+// RNS transport (App.Shutdown closes a.RNS immediately after stopNode).
 func (n *Node) Stop() {
 	n.mu.Lock()
 	n.ShouldRunJobs = false
 	n.mu.Unlock()
+	n.jobsWG.Wait()
+}
+
+// StartJobs launches the background Jobs loop tracked on jobsWG so Stop can
+// wait for it to exit. Call once after Start; Stop is the matching teardown.
+func (n *Node) StartJobs() {
+	n.jobsWG.Go(n.Jobs)
 }
 
 // ResetStats zeros the in-memory stat counters (served page/file requests and
