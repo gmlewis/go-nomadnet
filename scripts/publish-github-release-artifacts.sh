@@ -33,3 +33,6 @@ REPO_ROOT="${SCRIPT_DIR}/.."
 cd "${REPO_ROOT}"
 
 go run ./cmd/publish-github-release-artifacts "$@"
+
+# Pull the tags into this repo
+git pull --tags
