@@ -1343,6 +1343,18 @@ func (h *RRCHub) recordMessage(msg *RRCMessage, local bool) {
 		return
 	}
 
+	// Snapshot the manager's active room BEFORE acquiring h.lock so the lock
+	// order stays manager.lock → hub.lock (SetActive/Save/HasUnread acquire in
+	// that order). Calling ActiveRoomFor (which takes manager.lock) while
+	// holding h.lock would invert that order and AB/BA-deadlock against
+	// SetActive. A TOCTOU here can at worst transiently mis-flag the unread
+	// indicator for a message whose room is switched to/from active as it
+	// arrives — cosmetic, not a correctness hazard.
+	var activeRoom string
+	if !local && h.Manager != nil {
+		activeRoom = h.Manager.ActiveRoomFor(h)
+	}
+
 	h.lock.Lock()
 	// Cap message buffer at 256
 	msgs := h.Messages[room]
@@ -1353,7 +1365,6 @@ func (h *RRCHub) recordMessage(msg *RRCMessage, local bool) {
 
 	// Mark unread for non-local messages
 	if !local && h.Manager != nil {
-		activeRoom := h.Manager.ActiveRoomFor(h)
 		if activeRoom != room {
 			h.UnreadRooms[room] = true
 			if msg.Mention {
@@ -1442,11 +1453,21 @@ func (h *RRCHub) cleanHistory() {
 // room is not active, persisted to history, and followed by a history cleanup.
 func (h *RRCHub) recordNotice(msg *RRCMessage) {
 	targetRoom := strings.ToLower(msg.Room)
-	if targetRoom == "" && h.Manager != nil {
-		if active := strings.ToLower(h.Manager.ActiveRoomFor(h)); active != "" {
-			targetRoom = active
-			msg.Room = active
-		}
+
+	// Snapshot the active room BEFORE acquiring h.lock so the lock order stays
+	// manager.lock → hub.lock (SetActive/Save/HasUnread acquire in that order).
+	// Calling ActiveRoomFor (which takes manager.lock) while holding h.lock
+	// would invert that order and AB/BA-deadlock against SetActive. The same
+	// snapshot serves the no-target-room fallback below and the unread check
+	// inside the lock; a TOCTOU can at worst transiently mis-flag the unread
+	// indicator — cosmetic, not a correctness hazard.
+	var activeRoom string
+	if h.Manager != nil {
+		activeRoom = strings.ToLower(h.Manager.ActiveRoomFor(h))
+	}
+	if targetRoom == "" && activeRoom != "" {
+		targetRoom = activeRoom
+		msg.Room = activeRoom
 	}
 
 	cap := h.perRoomCap()
@@ -1465,7 +1486,7 @@ func (h *RRCHub) recordNotice(msg *RRCMessage) {
 			buf = buf[len(buf)-cap:]
 		}
 		h.Messages[targetRoom] = buf
-		if h.Manager != nil && targetRoom != strings.ToLower(h.Manager.ActiveRoomFor(h)) {
+		if h.Manager != nil && targetRoom != activeRoom {
 			h.UnreadRooms[targetRoom] = true
 		}
 	}
