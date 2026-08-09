@@ -405,3 +405,19 @@ temp dirs you inspect, never `os.MkdirTemp("")`/`$TMPDIR`. Hyphenated filenames
   approximations of *dim* (urwid `gNN`) can be confused with truecolor grays.
   Always confirm a suspected color bug against the Python source palette (see
   the colormode caveat) before treating it as real.
+
+===
+
+# Debug techniques
+
+# 1. Find the process and see CPU% — deadlock ≈ 0% CPU, starvation/loop ≈ high CPU
+pgrep -fa gonomadnet          # or: pgrep -fa nomadnet
+ps -o pid,%cpu,%mem,etime,command -p <PID>
+
+# 2. INSTANT deadlock diagnosis: Go dumps every goroutine stack to STDERR
+kill -QUIT <PID>
+# Capture the dump: if it's in a tmux/terminal, copy the scrollback;
+# if it's a -d daemon, its stderr went to a file (e.g. nohup.out / your launcher log) — grab that.
+
+# 3. The app's own log (~1hr of wedge history, last events before the freeze)
+tail -300 ~/.nomadnetwork/logfile ~/.nomadnetwork/logfile.1
