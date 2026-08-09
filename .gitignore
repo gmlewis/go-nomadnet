@@ -2,7 +2,7 @@ AGENTS.md
 PARITY-REPORT.md
 SKILLS.md
 TODO.md
-copyright_header.txt
+*.txt
 captures/
 /skills/
 /test-all.sh
