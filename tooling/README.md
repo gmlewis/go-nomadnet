@@ -366,6 +366,29 @@ the per-`Show` resize ioctl, real-cursor cost. Use **both**: benchmarks prove a
 Go-side fix and give a number to diff; pprof proves the flush/redraw benefit
 downstream and localizes anything the benchmarks miss.
 
+### Heap & goroutine dumps (text, no browser)
+
+`tooling/heap-dump.sh` captures the same `net/http/pprof` endpoints to text
+files for offline memory analysis — no web UI. It dumps in-use heap (bytes +
+objects), 30s alloc churn, and the goroutine profile, plus the process RSS /
+VmSize / thread count from `/proc/<pid>/status` (Linux) so you can tell "live
+heap small but RSS huge" (GC headroom + lazy scavenge) apart from a true
+live-heap leak. Capture it while the node feels bloated — a startup capture
+won't show cumulative growth — and capture twice (early vs. after hours of use)
+to diff:
+
+```sh
+gonomadnet -textui -pprof-addr 127.0.0.1:6060
+./tooling/heap-dump.sh                    # default addr, auto-finds PID
+./tooling/heap-dump.sh 127.0.0.1:6060 12345
+```
+
+To bound RSS on small hosts, gonomadnet auto-sets a Go soft memory limit when
+the machine has < 4 GiB RAM (no-op on larger machines). Override with
+`GONOMADNET_MEMLIMIT` (MiB; `0` disables) and `GONOMADNET_GOGC` (percent). For
+prompt return of freed memory to the OS, also launch with
+`GODEBUG=madvdontneed=1`. See `cmd/gonomadnet/memlimit.go`.
+
 ### 3. Fixes applied (baseline context)
 
 Measured-then-fixed so far (BEFORE baselines in the repo-root

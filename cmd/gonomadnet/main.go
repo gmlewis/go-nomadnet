@@ -79,6 +79,13 @@ func main() {
 		configDir = filepath.Join(home, ".nomadnetwork")
 	}
 
+	// Apply memory tuning (soft heap limit / GC percent) before starting. On
+	// small devices (< 4 GiB RAM) this auto-sets a soft memory limit so a
+	// long-running node can't balloon and starve the system; on larger machines
+	// it is a no-op (Go defaults). Override with GONOMADNET_MEMLIMIT (MiB,
+	// 0=disable) and GONOMADNET_GOGC (percent). See memlimit.go.
+	applyMemoryTuning()
+
 	// Run the appropriate mode
 	if daemon {
 		startPProf(pprofAddr)

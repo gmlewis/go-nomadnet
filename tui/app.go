@@ -41,6 +41,15 @@ type App struct {
 	Dialogs   *DialogManager
 	Styles    *StyleRegistry
 	killRing  *killRing
+
+	// updates is a bounded queue of functions to run on the event loop, drained
+	// by a single long-lived goroutine (drainUpdates) that calls tview's
+	// blocking Application.QueueUpdateDraw serially. See QueueUpdateDraw.
+	updates chan func()
+	// done is closed by Stop to release drainUpdates and any producer blocked
+	// in QueueUpdateDraw's select.
+	done      chan struct{}
+	stopOnce  sync.Once
 }
 
 // NewApp creates a new tview Application with the given theme, color depth,
@@ -63,7 +72,10 @@ func NewApp(theme int, glyphSet string, colorMode int) *App {
 		Dialogs:     &DialogManager{},
 		Styles:      newStyleRegistry(),
 		killRing:    &killRing{},
+		updates:     make(chan func(), 128),
+		done:        make(chan struct{}),
 	}
+	go a.drainUpdates()
 	a.Styles.Register(theme, colorMode)
 	ApplySingleLineBorders()
 	ApplyDefaultStyles()
@@ -131,16 +143,74 @@ func (a *App) ShowIntro(intro tview.Primitive, seconds float64) {
 
 // Stop stops the tview application event loop.
 func (a *App) Stop() {
+	a.stopOnce.Do(func() { close(a.done) })
 	a.Application.Stop()
 }
 
-// QueueUpdateDraw queues f to be executed on the application event loop
-// non-blockingly, avoiding deadlocks when invoked from the main thread or during shutdown.
+// drainUpdates is the single long-lived goroutine that serializes queued
+// functions onto tview's blocking Application.QueueUpdateDraw. It exits when
+// Stop closes done. At most one of these exists per App, replacing the prior
+// one-goroutine-per-QueueUpdateDraw-call pattern.
+func (a *App) drainUpdates() {
+	for {
+		select {
+		case f := <-a.updates:
+			a.Application.QueueUpdateDraw(f)
+		case <-a.done:
+			return
+		}
+	}
+}
+
+// QueueUpdateDraw queues f to be executed on the application event loop.
+//
+// It is non-blocking and safe to call from any goroutine, including the event
+// loop itself and during shutdown — the same deadlock-safety the prior
+// go-spawned wrapper provided, but without spawning a goroutine per call.
+//
+// Why the old `go a.Application.QueueUpdateDraw(f)` is gone: tview's
+// QueueUpdateDraw blocks on a buffered updates channel and then waits for the
+// draw to finish. When the event loop cannot keep up (e.g. a slow terminal on a
+// memory-constrained device), that channel fills and every per-call goroutine
+// blocks forever, accumulating at the producer rate for the life of the process
+// — unbounded memory growth. A live profile of a long-running node showed ~85%
+// of allocated objects flowing through that wrapper's gowrap1. Handing f to a
+// single drainer caps goroutines at one and bounds queued work to the channel
+// buffer (no per-call allocation).
+//
+// If the buffer is full (the event loop is behind), the oldest pending update is
+// dropped to make room for the newest, which reflects the most current state.
+// Every caller here is a background refresh (tickers, network/fetch callbacks)
+// that rebuilds UI state from the underlying model, so a dropped call only
+// delays a redraw until the next producer tick (1-5s); no model state is lost.
 func (a *App) QueueUpdateDraw(f func()) {
 	if a == nil || a.Application == nil || f == nil {
 		return
 	}
-	go a.Application.QueueUpdateDraw(f)
+	if a.updates == nil {
+		// Not constructed via NewApp (e.g. a minimal test fixture): fall back to
+		// the direct non-blocking spawn to preserve prior behavior.
+		go a.Application.QueueUpdateDraw(f)
+		return
+	}
+	select {
+	case a.updates <- f:
+		return
+	case <-a.done:
+		return
+	default:
+	}
+	// Buffer full: drop the oldest pending update and try once more. The newest
+	// update wins because it reflects the most current model state.
+	select {
+	case <-a.updates:
+	default:
+	}
+	select {
+	case a.updates <- f:
+	case <-a.done:
+	default:
+	}
 }
 
 // SetQuitCallback sets the callback invoked when the user quits.
