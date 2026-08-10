@@ -380,6 +380,15 @@ func resolveTarget(ts *rns.TransportSystem, t target, opts *options) (resolved, 
 	}
 
 	rb.ok = true
+	// Store the recalled identity back onto the target so establishLink can
+	// build the outbound SINGLE destination. Without this, targets loaded from
+	// a hash file (no preloaded identity) reach establishLink with a nil
+	// identity and NewDestination fails immediately ("can't create outbound
+	// SINGLE destination without an identity") — every link fails before a
+	// single request is sent. ping-nomadnet-node keeps the recalled identity
+	// in local scope through NewDestination; this tool splits resolution and
+	// link setup across functions, so the identity must be carried in res.
+	t.identity = identity
 	return resolved{
 		target:     t,
 		app:        app,
