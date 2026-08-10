@@ -102,18 +102,28 @@ type options struct {
 	verbose      bool
 	identityFile string // optional: load target identity from file (skip announce wait)
 	browse       bool   // browse mode: target nomadnetwork.node and fetch a page
+	lxmf         bool   // target the node's lxmf.delivery destination instead of nomadnetwork.node
 	discover     bool   // discover mode: listen for an announce, then link/browse it
 	requestPath  string // page/file path to request in browse mode
 	args         []string
 }
 
-// destAppAspects returns the RNS app name and aspects for the active mode:
-// ping mode targets "lxmf.delivery"; browse mode targets "nomadnetwork.node".
+// destAppAspects returns the RNS app name and aspects for the active mode.
+//
+// The default (and --browse) target is the node's "nomadnetwork.node"
+// destination — the destination whose hash the user supplies (a nomadnet
+// node's primary address). --lxmf switches the ping target to the same node's
+// "lxmf.delivery" destination (a different hash derived from the same
+// identity); --browse always targets nomadnetwork.node since only it serves
+// pages.
 func destAppAspects(opts *options) (string, []string) {
 	if opts != nil && opts.browse {
 		return "nomadnetwork", []string{"node"}
 	}
-	return "lxmf", []string{"delivery"}
+	if opts != nil && opts.lxmf {
+		return "lxmf", []string{"delivery"}
+	}
+	return "nomadnetwork", []string{"node"}
 }
 
 type target struct {
@@ -188,7 +198,7 @@ func run(args []string) int {
 	if opts.discover {
 		app, aspects := destAppAspects(opts)
 		aspectFilter := app + "." + strings.Join(aspects, ".")
-		action := "pinging lxmf.delivery"
+		action := "pinging " + aspectFilter
 		if opts.browse {
 			action = fmt.Sprintf("browsing %s", opts.requestPath)
 		}
@@ -240,18 +250,19 @@ func pingAll(ts *rns.TransportSystem, targets []target, opts *options) []result 
 
 // pingOne performs the staged reachability check for a single target.
 //
-// In ping mode (default) it targets the node's "lxmf.delivery" destination and
-// reports link establishment (a "pong"). In browse mode (--browse) it targets
-// the node's "nomadnetwork.node" destination and issues a page request, exactly
-// mirroring what the nomadnet/Python browser does to "browse" a node.
+// In ping mode (default) it targets the node's "nomadnetwork.node" destination
+// and reports link establishment (a "pong"). With --lxmf it instead targets the
+// node's "lxmf.delivery" destination. In browse mode (--browse) it targets
+// "nomadnetwork.node" and issues a page request, exactly mirroring what the
+// nomadnet/Python browser does to "browse" a node.
 func pingOne(ts *rns.TransportSystem, t target, opts *options) result {
 	r := result{target: t, hops: -1}
 	app, aspects := destAppAspects(opts)
 
 	// Source hash: the address given on the command line. When --identity was
 	// supplied this is already the (mode-correct) target hash; otherwise it is a
-	// known destination hash of the node (e.g. its lxmf.delivery hash) used to
-	// recall the peer's identity.
+	// known destination hash of the node (e.g. its nomadnetwork.node hash) used
+	// to recall the peer's identity.
 	sourceHash, err := hex.DecodeString(t.hashHex)
 	if err != nil || len(sourceHash) != rns.TruncatedHashLength/8 {
 		r.status = "INVALID"
@@ -263,27 +274,55 @@ func pingOne(ts *rns.TransportSystem, t target, opts *options) result {
 	// outbound SINGLE destination. With --identity it is loaded directly;
 	// otherwise it is recalled from a received announce (any of the node's
 	// announced destinations will yield the same identity).
+	//
+	// A client of a shared Reticulum instance only knows identities that were
+	// persisted to the shared instance's on-disk known_destinations before it
+	// started, or that are forwarded to it after it connects. A node whose
+	// announce arrived while this client was offline is therefore not recallable
+	// until the next announce. Issuing a path request for the source hash
+	// prompts the network (and the shared instance) to re-announce, which
+	// carries the identity — so we kick one off and poll RecallIdentity for the
+	// full path timeout instead of giving up on the first miss.
+	//
+	// Note: a shared Reticulum instance does not learn its OWN node's identity
+	// (it never receives its own announce), so pinging the local node by its
+	// nomadnetwork.node hash always reports NO ANNOUNCE — pass --identity FILE
+	// (e.g. ~/.nomadnetwork/storage/identity) for the local node.
 	identity := t.identity
 	if identity == nil {
-		identity = rns.RecallIdentity(ts, sourceHash)
+		_ = ts.RequestPath(sourceHash) // best effort; triggers announce/identity propagation
+		deadline := time.Now().Add(time.Duration(opts.pathTimeout * float64(time.Second)))
+		for time.Now().Before(deadline) {
+			if id := rns.RecallIdentity(ts, sourceHash); id != nil {
+				identity = id
+				break
+			}
+			time.Sleep(pollInterval)
+		}
 	}
 	r.identity = identity != nil
 	if !r.identity {
 		r.status = "NO ANNOUNCE"
-		r.detail = "identity never recalled (no announce received from this node); pass --identity FILE"
+		r.detail = "identity never recalled (no announce received from this node within timeout); pass --identity FILE"
 		return r
 	}
 
 	// The destination we actually link to is derived from the identity + the
-	// mode's app/aspects (lxmf.delivery for ping, nomadnetwork.node for browse).
+	// mode's app/aspects (nomadnetwork.node by default, lxmf.delivery with
+	// --lxmf). When the input hash is the node's nomadnetwork.node hash and the
+	// mode targets nomadnetwork.node, targetHash equals the input hash; with
+	// --lxmf the input nomadnetwork.node hash yields a different lxmf.delivery
+	// hash (noted below), and vice versa.
 	targetHash := rns.CalculateHash(identity, app, aspects...)
 	r.hash = targetHash
 	if hex.EncodeToString(targetHash) != t.hashHex {
-		r.detail = fmt.Sprintf("browsing nomadnetwork.node %s (from %s)", hex.EncodeToString(targetHash), t.hashHex)
+		r.detail = fmt.Sprintf("targeting %s.%s %s (from %s)", app, strings.Join(aspects, "."), hex.EncodeToString(targetHash), t.hashHex)
 	}
 
 	// Stage 2: path. A path is needed to establish a link, and a path request
-	// is itself a transport-level reachability probe.
+	// is itself a transport-level reachability probe. The stage-1 path request
+	// for the source hash may have already resolved this when targetHash equals
+	// sourceHash.
 	r.pathKnown = ts.HasPath(targetHash)
 	if r.pathKnown {
 		r.pathResolved = true
@@ -303,7 +342,7 @@ func pingOne(ts *rns.TransportSystem, t target, opts *options) result {
 	}
 	if !r.pathResolved {
 		r.status = "UNREACHABLE"
-		if !strings.Contains(r.detail, "browsing") {
+		if r.detail == "" {
 			r.detail = "no transport path within timeout (node not announcing / interfaces down)"
 		} else {
 			r.detail += " — no transport path within timeout"
@@ -710,6 +749,8 @@ func parseFlags(args []string) (*options, error) {
 			opts.verbose = true
 		case "--browse":
 			opts.browse = true
+		case "--lxmf":
+			opts.lxmf = true
 		case "--discover":
 			opts.discover = true
 		case "--request-path":
@@ -783,17 +824,20 @@ func parseFloat(s string) (float64, error) {
 const usageText = `
 usage: ping-nomadnet-node [-h] [-v] [--rnsconfig DIR]
                           [--path-timeout SECONDS] [--link-timeout SECONDS]
-                          <addr|file> [<addr|file> ...]
+                          [--lxmf | --browse] <addr|file> [<addr|file> ...]
 
-Check the reachability of LXMF (nomadnet) nodes from the local Reticulum
-instance. Each argument is an LXMF address (a 32-hex destination hash, bare or
-prefixed with lxm:/lxmf:/lxmf@/lxmf://) or a path to a file of addresses.
+Check the reachability of nomadnet nodes from the local Reticulum instance.
+Each argument is a 32-hex destination hash (bare or prefixed with
+lxm:/lxmf:/lxmf@/lxmf:///node://) or a path to a file of addresses. By default
+the hash is the node's "nomadnetwork.node" destination (the address a nomadnet
+node lists); pass --lxmf to instead target the same node's "lxmf.delivery"
+destination.
 
 positional arguments:
-  addr                an LXMF address (32-hex hash of an lxmf.delivery node)
+  addr                a 32-hex nomadnetwork.node destination hash
   file                a file with one address per line; lines not starting
-                      with an LXMF address are skipped; trailing text on a
-                      line is used as the node label
+                      with an address are skipped; trailing text on a line
+                      is used as the node label
 
 options:
   -h, --help            show this help message and exit
@@ -801,15 +845,17 @@ options:
   --rnsconfig DIR       Reticulum config dir (default: ~/.reticulum)
   --path-timeout SECS   seconds to wait for a path request (default 15)
   --link-timeout SECS   seconds to wait for link establishment (default 15)
-  --identity FILE       ping the node whose identity is in FILE (its
-                      lxmf.delivery hash is computed directly; no announce
+  --identity FILE       ping the node whose identity is in FILE (the target
+                      hash is computed directly from the identity; no announce
                       needs to be heard first)
-  --browse              browse mode: target the node's nomadnetwork.node
-                      destination and request a page (what a browser does),
-                      instead of pinging lxmf.delivery
+  --lxmf                target the node's lxmf.delivery destination instead of
+                      nomadnetwork.node (a different hash from the same
+                      identity; useful for checking LXMF reachability)
+  --browse              browse mode: target nomadnetwork.node and request a
+                      page (what a browser does), instead of a link-only ping
   --discover            discover mode: listen for an announce matching the
-                      active aspect (nomadnetwork.node with --browse,
-                      lxmf.delivery otherwise), then link to the announced
+                      active aspect (nomadnetwork.node by default, or
+                      lxmf.delivery with --lxmf), then link to the announced
                       node. This exercises the real announce/discovery path
                       a browser relies on (unlike --identity, which bypasses
                       it). No positional addresses are required.

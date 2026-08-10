@@ -41,9 +41,10 @@
 //	--path-timeout D       seconds to wait for a path request (default 15)
 //	--link-timeout D       seconds to wait for link establishment (default 15)
 //	--identity FILE        stress the node whose identity is in FILE
-//	--browse               target nomadnetwork.node (page serving) instead of
-//	                      lxmf.delivery — recommended, this is the surface where
-//	                      nomadnet page/micron parsing bugs live
+//	--browse               target nomadnetwork.node and request pages (the
+//	                      surface where nomadnet page/micron parsing bugs live)
+//	--lxmf                 target the node's lxmf.delivery destination instead
+//	                      of nomadnetwork.node
 //	--discover            listen for an announce, then stress that node
 //	--request-path PATH    default page path for normal requests (default /page/index.mu)
 //	--duration SECS        run length in seconds (default 30; 0 = request-bounded)
@@ -115,6 +116,7 @@ type options struct {
 	verbose      bool
 	identityFile string // optional: load target identity from file (skip announce wait)
 	browse       bool   // browse mode: target nomadnetwork.node and request pages
+	lxmf         bool   // target the node's lxmf.delivery destination instead of nomadnetwork.node
 	discover     bool   // discover mode: listen for an announce, then stress it
 	requestPath  string // default page/file path for normal requests
 	args         []string
@@ -130,13 +132,21 @@ type options struct {
 	churn           bool // rapid link establish/teardown instead of sustained
 }
 
-// destAppAspects returns the RNS app name and aspects for the active mode:
-// ping mode targets "lxmf.delivery"; browse mode targets "nomadnetwork.node".
+// destAppAspects returns the RNS app name and aspects for the active mode.
+//
+// The default (and --browse) target is nomadnetwork.node — the destination
+// whose hash the user supplies and the surface where page-serving stress is
+// meaningful. --lxmf switches the target to the same node's lxmf.delivery
+// destination (a different hash from the same identity); --browse always
+// targets nomadnetwork.node since only it serves pages.
 func destAppAspects(opts *options) (string, []string) {
 	if opts != nil && opts.browse {
 		return "nomadnetwork", []string{"node"}
 	}
-	return "lxmf", []string{"delivery"}
+	if opts != nil && opts.lxmf {
+		return "lxmf", []string{"delivery"}
+	}
+	return "nomadnetwork", []string{"node"}
 }
 
 type target struct {
@@ -207,10 +217,7 @@ func run(args []string) int {
 	printInterfaces(ret)
 
 	app, aspects := destAppAspects(opts)
-	mode := "lxmf.delivery"
-	if opts.browse {
-		mode = app + "." + strings.Join(aspects, ".")
-	}
+	mode := app + "." + strings.Join(aspects, ".")
 	fmt.Printf("Mode: stress %s — concurrency %d, requests/link %d, duration %.0fs, malformed=%v, churn=%v, announce-storm=%v\n",
 		mode, opts.concurrency, opts.requestsPerLink, opts.duration, opts.malformed, opts.churn, opts.announceStorm)
 
@@ -331,12 +338,26 @@ func resolveTarget(ts *rns.TransportSystem, t target, opts *options) (resolved, 
 
 	identity := t.identity
 	if identity == nil {
-		identity = rns.RecallIdentity(ts, sourceHash)
+		// A shared-instance client only knows identities persisted before it
+		// started or forwarded after it connected. A path request for the source
+		// hash prompts the network to re-announce (carrying the identity), so we
+		// issue one and poll RecallIdentity for the full timeout rather than
+		// failing on the first miss. (The local node's own identity is never
+		// learned this way — use --identity FILE for it.)
+		_ = ts.RequestPath(sourceHash)
+		deadline := time.Now().Add(time.Duration(opts.pathTimeout * float64(time.Second)))
+		for time.Now().Before(deadline) {
+			if id := rns.RecallIdentity(ts, sourceHash); id != nil {
+				identity = id
+				break
+			}
+			time.Sleep(pollInterval)
+		}
 	}
 	if identity == nil {
 		rb.ok = false
 		rb.status = "NO ANNOUNCE"
-		rb.detail = "identity never recalled (no announce received from this node); pass --identity FILE"
+		rb.detail = "identity never recalled (no announce received from this node within timeout); pass --identity FILE"
 		return resolved{target: t}, rb
 	}
 
@@ -1232,6 +1253,8 @@ func parseFlags(args []string) (*options, error) {
 			opts.verbose = true
 		case "--browse":
 			opts.browse = true
+		case "--lxmf":
+			opts.lxmf = true
 		case "--discover":
 			opts.discover = true
 		case "--request-path":
@@ -1383,24 +1406,25 @@ func parseInt(s string) (int, error) {
 const usageText = `
 usage: stress-test-nomadnet [-h] [-v] [--rnsconfig DIR]
                            [--path-timeout SECONDS] [--link-timeout SECONDS]
-                           [--identity FILE] [--browse] [--discover]
+                           [--identity FILE] [--lxmf | --browse] [--discover]
                            [--duration SECONDS] [--concurrency N] [--requests N]
                            [--request-timeout SECONDS] [--rate N]
                            [--malformed] [--announce-storm] [--churn]
                            <addr|file> [<addr|file> ...]
 
-Stress-test LXMF (nomadnet) nodes reachable from the local Reticulum instance by
+Stress-test nomadnet nodes reachable from the local Reticulum instance by
 opening concurrent links and barraging them with requests — including malformed
 paths and payloads — plus optional link churn and announce storms, to surface
 panics, deadlocks, and wedges in go-reticulum or go-nomadnet.
 
-Command-line parsing is identical to ping-nomadnet-node: each argument is an LXMF
-address (a 32-hex destination hash, bare or prefixed with lxm:/lxmf:/lxmf@/lxmf://)
-or a path to a file of addresses (one per line; lines not starting with an
-address are skipped; trailing text is the label).
+Command-line parsing is identical to ping-nomadnet-node: each argument is a
+32-hex destination hash (bare or prefixed with lxm:/lxmf:/lxmf@/lxmf://) or a
+path to a file of addresses (one per line; lines not starting with an address
+are skipped; trailing text is the label). By default the hash is the node's
+nomadnetwork.node destination; pass --lxmf to target lxmf.delivery instead.
 
 positional arguments:
-  addr                an LXMF address (32-hex hash of a node)
+  addr                a 32-hex nomadnetwork.node destination hash
   file                a file with one address per line
 
 options:
@@ -1410,9 +1434,11 @@ options:
   --path-timeout SECS   seconds to wait for a path request (default 15)
   --link-timeout SECS   seconds to wait for link establishment (default 15)
   --identity FILE       stress the node whose identity is in FILE
-  --browse              target nomadnetwork.node (page serving) instead of
-                        lxmf.delivery — recommended; this is the surface where
-                        nomadnet page/micron parsing bugs live
+  --lxmf                target the node's lxmf.delivery destination instead of
+                        nomadnetwork.node (a different hash from the same
+                        identity)
+  --browse              target nomadnetwork.node and request pages (the surface
+                        where nomadnet page/micron parsing bugs live)
   --discover            listen for an announce matching the active aspect, then
                         stress that node (no positional addresses required)
   --request-path PATH   default page path for normal requests (default /page/index.mu)
