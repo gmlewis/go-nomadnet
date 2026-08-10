@@ -20,7 +20,9 @@
 //
 // If a release for that version already exists, the command fails unless
 // --force is supplied, in which case the previous release (and its assets) is
-// deleted and replaced with freshly built ones. The release notes embed a
+// deleted and replaced with freshly built ones. With --force the version's git
+// tag is also deleted and recreated on the latest commit, so the tag always
+// points at the commit the artifacts were built from. The release notes embed a
 // sha256 checksum table for every uploaded artifact.
 //
 // Usage:
@@ -160,8 +162,25 @@ func run(force, dryRun bool) error {
 
 	if exists && force {
 		mustFprintf(progress, "--force: deleting existing release %v and its assets\n", tag)
-		if err := gh("release", "delete", tag, "--yes"); err != nil {
+		// --cleanup-tag also deletes the git tag ref so that the create
+		// below re-creates it on the latest commit instead of reusing the
+		// stale tag still pointing at the old one.
+		if err := gh("release", "delete", tag, "--yes", "--cleanup-tag"); err != nil {
 			return fmt.Errorf("delete existing release: %w", err)
+		}
+	} else if force {
+		// A tag may exist without a release (e.g. someone pushed the tag
+		// manually, or a prior release was deleted without --cleanup-tag).
+		// Drop the ref so the create re-tags the latest commit.
+		hasTag, err := tagExists(tag)
+		if err != nil {
+			return err
+		}
+		if hasTag {
+			mustFprintf(progress, "--force: deleting existing tag %v so it moves to the latest commit\n", tag)
+			if err := deleteTagRef(tag); err != nil {
+				return fmt.Errorf("delete existing tag: %w", err)
+			}
 		}
 	}
 
@@ -218,6 +237,30 @@ func releaseExists(tag string) (bool, error) {
 		return false, fmt.Errorf("check existing release %v: %w", tag, err)
 	}
 	return true, nil
+}
+
+// tagExists reports whether a git tag named tag exists on the remote.
+func tagExists(tag string) (bool, error) {
+	cmd := exec.Command("gh", "api", "--method", "GET",
+		"repos/:owner/:repo/git/refs/tags/"+tag, "--silent")
+	if err := cmd.Run(); err != nil {
+		// gh exits non-zero with a "not found" / 404 message when the ref
+		// does not exist; treat that as "no such tag".
+		if ee, ok := err.(*exec.ExitError); ok && len(ee.Stderr) > 0 {
+			if strings.Contains(string(ee.Stderr), "not found") ||
+				strings.Contains(string(ee.Stderr), "404") {
+				return false, nil
+			}
+		}
+		return false, fmt.Errorf("check existing tag %v: %w", tag, err)
+	}
+	return true, nil
+}
+
+// deleteTagRef deletes the git tag ref named tag from the remote so that a
+// subsequent release create can re-create it on the latest commit.
+func deleteTagRef(tag string) error {
+	return gh("api", "--method", "DELETE", "repos/:owner/:repo/git/refs/tags/"+tag)
 }
 
 // ghRepoSlug returns the "owner/repo" slug gh is authenticated against.

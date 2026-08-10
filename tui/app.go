@@ -50,6 +50,15 @@ type App struct {
 	// in QueueUpdateDraw's select.
 	done     chan struct{}
 	stopOnce sync.Once
+
+	// onPanic, when set, is invoked by the recover handlers in GoSafe and
+	// drainUpdates for an unrecovered panic in a background goroutine.
+	// cmd/gonomadnet installs a handler that restores the terminal and writes
+	// the stack to a crash file instead of letting the runtime spray a
+	// GOTRACEBACK dump at the (raw, alt-screen) terminal — which forces a manual
+	// `reset` and bloats the terminal emulator's scrollback. When nil, a
+	// recovered panic is re-panicked so tests still fail loudly.
+	onPanic func(any)
 }
 
 // NewApp creates a new tview Application with the given theme, color depth,
@@ -147,11 +156,59 @@ func (a *App) Stop() {
 	a.Application.Stop()
 }
 
+// SetOnPanic installs the crash handler invoked by GoSafe and drainUpdates when
+// a background goroutine panics. See the onPanic field docs.
+func (a *App) SetOnPanic(fn func(any)) { a.onPanic = fn }
+
+// GoSafe launches fn on a new goroutine whose panic is routed to onPanic (or
+// re-panicked when no handler is set, preserving test behavior). Long-lived
+// gonomadnet goroutines (tickers, the draw drainer, the unread-blink loop)
+// should be launched through GoSafe so a panic in any of them restores the
+// terminal and writes a crash file instead of killing the process mid-draw and
+// leaving the tty in raw mode.
+func (a *App) GoSafe(fn func()) {
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				if a.onPanic != nil {
+					a.onPanic(r)
+				} else {
+					panic(r)
+				}
+			}
+		}()
+		fn()
+	}()
+}
+
+// RestoreTerminal best-effort finalizes the tcell screen — exiting the
+// alternate screen and restoring cooked termios — so a crash doesn't leave the
+// terminal in raw mode spewing escape-sequence garbage (the state that forces a
+// manual `reset`). Safe to call from any goroutine; never propagates a panic.
+// The launcher's EXIT trap is the reliable backstop; this covers users running
+// the binary directly.
+func (a *App) RestoreTerminal() {
+	if a == nil || a.Application == nil {
+		return
+	}
+	defer func() { _ = recover() }()
+	a.Application.Stop()
+}
+
 // drainUpdates is the single long-lived goroutine that serializes queued
 // functions onto tview's blocking Application.QueueUpdateDraw. It exits when
 // Stop closes done. At most one of these exists per App, replacing the prior
 // one-goroutine-per-QueueUpdateDraw-call pattern.
 func (a *App) drainUpdates() {
+	defer func() {
+		if r := recover(); r != nil {
+			if a.onPanic != nil {
+				a.onPanic(r)
+			} else {
+				panic(r)
+			}
+		}
+	}()
 	for {
 		select {
 		case f := <-a.updates:

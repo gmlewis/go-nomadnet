@@ -853,7 +853,7 @@ func (md *MainDisplay) startUnreadBlink(ticker *time.Ticker, marshal bool) {
 	}
 	quit := md.quitCh
 	md.mu.Unlock()
-	go func() {
+	run := func() {
 		defer ticker.Stop()
 		for {
 			select {
@@ -867,7 +867,16 @@ func (md *MainDisplay) startUnreadBlink(ticker *time.Ticker, marshal bool) {
 				}
 			}
 		}
-	}()
+	}
+	// Production (marshal, md.app set): route through App.GoSafe so a panic in
+	// the blink loop restores the terminal + writes a crash file instead of
+	// killing the process mid-draw. Tests (no app): a plain goroutine, so a
+	// panic still fails the test.
+	if marshal && md.app != nil {
+		md.app.GoSafe(run)
+	} else {
+		go run()
+	}
 }
 
 // StopUnreadBlink stops the unread blink goroutine. Idempotent: a second call

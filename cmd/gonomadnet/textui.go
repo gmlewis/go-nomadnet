@@ -24,6 +24,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
@@ -89,6 +90,36 @@ func runTextUI(configDir, rnsConfigDir string) {
 
 	// Create and run the TUI
 	tuiApp := tui.NewApp(theme, glyphSet, colorMode)
+
+	// Crash recovery. An unrecovered panic in a gonomadnet goroutine restores
+	// the terminal and writes the stack to a crash file instead of letting the
+	// runtime spray a GOTRACEBACK dump at the (raw, alt-screen) terminal — which
+	// is what leaves the tty in raw mode spewing escape-sequence garbage and
+	// forces a manual `reset`. tview restores the tty ONLY for panics in its own
+	// event-loop goroutine (and then re-panics); this defer catches that
+	// re-panic, and App.GoSafe/drainUpdates route background-goroutine panics
+	// here too. The launcher's EXIT trap remains the final backstop for panics
+	// in go-reticulum's own goroutines (which we cannot wrap from here).
+	handleCrash := func(r any) {
+		// Best-effort restore the tty so a bare-run user isn't left in raw mode.
+		go func() { defer func() { _ = recover() }(); tuiApp.RestoreTerminal() }()
+		time.Sleep(300 * time.Millisecond) // let Stop emit ExitCA + restore termios
+		crashDir := filepath.Join(configDir, "logs")
+		_ = os.MkdirAll(crashDir, 0o755)
+		path := filepath.Join(crashDir, "crash-"+time.Now().Format("20060102-150405")+".log")
+		if f, err := os.Create(path); err == nil {
+			_, _ = fmt.Fprintf(f, "gonomadnet panic: %v\n\n", r)
+			_, _ = f.Write(debug.Stack())
+			_ = f.Close()
+		}
+		os.Exit(1)
+	}
+	tuiApp.SetOnPanic(handleCrash)
+	defer func() {
+		if r := recover(); r != nil {
+			handleCrash(r)
+		}
+	}()
 
 	// Wire up real displays BEFORE setting root. The returned cleanup releases
 	// background resources (log tail) on shutdown.
@@ -646,13 +677,13 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	// _refresh_sync_status). Also refreshed after a sync completes (below).
 	conversationsDisplay.LastSyncInfo = a.LastSyncInfo
 	conversationsDisplay.RefreshSyncStatus()
-	go func() {
+	tuiApp.GoSafe(func() {
 		ticker := time.NewTicker(30 * time.Second)
 		defer ticker.Stop()
 		for range ticker.C {
 			conversationsDisplay.RefreshSyncStatus()
 		}
-	}()
+	})
 
 	// Wire conversation keyboard shortcuts
 	conversationsDisplay.OnDeleteConv = func() {
@@ -1269,11 +1300,11 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	// completes.
 	interfacesDisplay.SetInterfaces(interfaceInfos())
 	ifaceTicker := time.NewTicker(1 * time.Second)
-	go func() {
+	tuiApp.GoSafe(func() {
 		for range ifaceTicker.C {
 			refreshInterfaces()
 		}
-	}()
+	})
 
 	// Wire interfaces keyboard shortcuts
 	interfacesDisplay.OnAddInterface = func() {
