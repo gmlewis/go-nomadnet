@@ -48,8 +48,8 @@ type App struct {
 	updates chan func()
 	// done is closed by Stop to release drainUpdates and any producer blocked
 	// in QueueUpdateDraw's select.
-	done      chan struct{}
-	stopOnce  sync.Once
+	done     chan struct{}
+	stopOnce sync.Once
 }
 
 // NewApp creates a new tview Application with the given theme, color depth,
