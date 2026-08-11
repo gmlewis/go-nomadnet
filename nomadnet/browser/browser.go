@@ -29,6 +29,7 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -329,7 +330,7 @@ func CurrentURL(destHash []byte, path string, requestData map[string]string) str
 //
 // The returned link is OPEN on success (the caller decides whether to retain
 // or tear it down); it is torn down on every failure/timeout path.
-func fetchBytes(ctx context.Context, ts *rns.TransportSystem, destHash []byte, path string, requestData map[string]string, timeout time.Duration, onProgress func(float64), onLinkEstablished func(*rns.Link)) ([]byte, *rns.Link, error) {
+func fetchBytes(ctx context.Context, ts *rns.TransportSystem, destHash []byte, path string, requestData map[string]string, timeout time.Duration, onProgress func(float64), onLinkEstablished func(*rns.Link), existing *rns.Link) ([]byte, *rns.Link, error) {
 	if timeout <= 0 {
 		timeout = time.Duration(DefaultTimeout) * time.Second
 	}
@@ -343,8 +344,15 @@ func fetchBytes(ctx context.Context, ts *rns.TransportSystem, destHash []byte, p
 	if ts == nil {
 		return nil, nil, ErrNoPath
 	}
-	if hops := ts.HopsTo(destHash); hops > 0 && hops < 128 {
-		timeout += time.Duration(hops*3) * time.Second
+	// Pre-resolution hop count: when the path is already known this adjusts the
+	// timeout up front for the multi-hop DH handshake. When the path is NOT yet
+	// known (e.g. the first fetch to a destination whose connect page was served
+	// from the page cache, so no path was resolved), HopsTo returns 0 and no
+	// adjustment is added here; the establishment wait below then uses the bare
+	// adjusted timeout.
+	preHops := ts.HopsTo(destHash)
+	if preHops > 0 && preHops < 128 {
+		timeout += time.Duration(preHops*3) * time.Second
 	}
 	// Cancellation guard: a superseding Connect cancels this fetch's ctx before
 	// it reaches the network; bail out immediately rather than rendering a stale
@@ -358,60 +366,87 @@ func fetchBytes(ctx context.Context, ts *rns.TransportSystem, destHash []byte, p
 		return nil, nil, ctx.Err()
 	}
 
-	// 1. Path resolution.
-	if !ts.HasPath(destHash) {
-		_ = ts.RequestPath(destHash)
-		deadline := time.Now().Add(timeout)
-		for time.Now().Before(deadline) && !ts.HasPath(destHash) {
-			if ctx.Err() != nil {
-				return nil, nil, ctx.Err()
-			}
-			time.Sleep(250 * time.Millisecond)
+	// 0. Reuse a retained link if it is still ACTIVE. Python Browser.__load
+	// reuses self_link across fetches to the same destination (Browser.py:1375
+	// -1451): a form-submit re-fetch rides the already-established link instead
+	// of re-running the DH handshake + identification, which is flaky over a
+	// remote multi-hop path (link-establishment timeout, stalled response
+	// resource). The caller (wiring layer) guarantees `existing` belongs to
+	// destHash — it tears the link down on destination change — so reusing it
+	// here fetches the right node. A stale/closed link falls through to the
+	// fresh-establish path below.
+	var link *rns.Link
+	reusedLink := false
+	existingStatus := -1
+	if existing != nil {
+		existingStatus = existing.GetStatus()
+	}
+	diagFile("/tmp/fetch-diag.log", fmt.Sprintf("[%s] fetchBytes ENTER path=%q existing=%v status=%d", time.Now().Format("15:04:05.000"), path, existing != nil, existingStatus))
+	if existing != nil && existing.GetStatus() == rns.LinkActive {
+		link = existing
+		reusedLink = true
+	} else {
+		// The retained link is stale (remote closed it / teardown raced). Tear it
+		// down so it is not leaked when the fresh link below replaces it as the
+		// caller's retained link. Teardown is idempotent (a concurrently torn-down
+		// link is a no-op).
+		if existing != nil {
+			existing.Teardown()
 		}
+		// 1. Path resolution.
 		if !ts.HasPath(destHash) {
+			_ = ts.RequestPath(destHash)
+			deadline := time.Now().Add(timeout)
+			for time.Now().Before(deadline) && !ts.HasPath(destHash) {
+				if ctx.Err() != nil {
+					return nil, nil, ctx.Err()
+				}
+				time.Sleep(250 * time.Millisecond)
+			}
+			if !ts.HasPath(destHash) {
+				return nil, nil, ErrNoPath
+			}
+		}
+		// 2. Recall identity + build outbound destination.
+		identity := ts.Recall(destHash)
+		if identity == nil {
 			return nil, nil, ErrNoPath
 		}
-	}
-
-	// 2. Recall identity + build outbound destination.
-	identity := ts.Recall(destHash)
-	if identity == nil {
-		return nil, nil, ErrNoPath
-	}
-	dest, err := rns.NewDestination(ts, identity, rns.DestinationOut, rns.DestinationSingle, nodeAspect[0], nodeAspect[1:]...)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	// 3. Establish the link (non-blocking Establish + wait for ACTIVE).
-	link, err := rns.NewLink(ts, dest)
-	if err != nil {
-		return nil, nil, err
-	}
-	established := make(chan struct{}, 1)
-	link.SetLinkEstablishedCallback(func(l *rns.Link) {
-		select {
-		case established <- struct{}{}:
-		default:
+		dest, err := rns.NewDestination(ts, identity, rns.DestinationOut, rns.DestinationSingle, nodeAspect[0], nodeAspect[1:]...)
+		if err != nil {
+			return nil, nil, err
 		}
-	})
-	if err := link.Establish(); err != nil {
-		return nil, nil, err
-	}
-	select {
-	case <-established:
-	case <-time.After(timeout):
-		link.Teardown()
-		return nil, nil, ErrLinkTimeout
-	case <-ctx.Done():
-		link.Teardown()
-		return nil, nil, ctx.Err()
-	}
 
-	// 3b. Link is ACTIVE — give the caller a chance to identify to the remote
-	// node (Python link_established, Browser.py:1454-1459) before the request.
-	if onLinkEstablished != nil {
-		onLinkEstablished(link)
+		// 3. Establish the link (non-blocking Establish + wait for ACTIVE).
+		link, err = rns.NewLink(ts, dest)
+		if err != nil {
+			return nil, nil, err
+		}
+		established := make(chan struct{}, 1)
+		link.SetLinkEstablishedCallback(func(l *rns.Link) {
+			select {
+			case established <- struct{}{}:
+			default:
+			}
+		})
+		if err := link.Establish(); err != nil {
+			return nil, nil, err
+		}
+		select {
+		case <-established:
+		case <-time.After(timeout):
+			link.Teardown()
+			return nil, nil, ErrLinkTimeout
+		case <-ctx.Done():
+			link.Teardown()
+			return nil, nil, ctx.Err()
+		}
+
+		// 3b. Link is ACTIVE — give the caller a chance to identify to the remote
+		// node (Python link_established, Browser.py:1454-1459) before the request.
+		if onLinkEstablished != nil {
+			onLinkEstablished(link)
+		}
 	}
 
 	// 4. Issue the request and wait for the response.
@@ -419,39 +454,52 @@ func fetchBytes(ctx context.Context, ts *rns.TransportSystem, destHash []byte, p
 	if requestData != nil {
 		dataArg = requestData
 	}
+	diagFile("/tmp/fetch-diag.log", fmt.Sprintf("[%s] fetchBytes path=%q rdNil=%v rd=%v timeout=%v hops=%d", time.Now().Format("15:04:05.000"), path, requestData == nil, requestData, timeout, ts.HopsTo(destHash)))
 	type result struct {
 		data []byte
 		err  error
 	}
 	resCh := make(chan result, 1)
-	_, err = link.Request(path, dataArg, func(rr *rns.RequestReceipt) {
+	_, err := link.Request(path, dataArg, func(rr *rns.RequestReceipt) {
+		diagFile("/tmp/fetch-diag.log", fmt.Sprintf("response cb status=%v dataLen=%d", rr.Status, len(rr.GetResponse())))
 		if rr.Status != rns.RequestReady {
 			resCh <- result{err: ErrRequestFailed}
 			return
 		}
 		resCh <- result{data: rr.GetResponse()}
 	}, func(rr *rns.RequestReceipt) {
+		diagFile("/tmp/fetch-diag.log", fmt.Sprintf("failed cb status=%v", rr.Status))
 		resCh <- result{err: ErrRequestFailed}
 	}, func(rr *rns.RequestReceipt) {
+		diagFile("/tmp/fetch-diag.log", fmt.Sprintf("progress cb status=%v prog=%v", rr.Status, rr.GetProgress()))
 		if onProgress != nil {
 			onProgress(rr.GetProgress())
 		}
-	}, timeout)
+	}, timeout, 0)
 	if err != nil {
-		link.Teardown()
+		// A send error on a freshly established link closes it; tear it down so
+		// it is not returned for reuse. A reused (retained) link is left for the
+		// caller — its GetStatus check on the next fetch will catch a closed
+		// link and re-establish — so the caller can still drop/teardown it.
+		if !reusedLink {
+			link.Teardown()
+		}
 		return nil, nil, err
 	}
 	select {
 	case r := <-resCh:
+		diagFile("/tmp/fetch-diag.log", fmt.Sprintf("resCh err=%v dataLen=%d", r.err, len(r.data)))
 		if r.err != nil {
 			link.Teardown()
 			return nil, nil, r.err
 		}
 		return r.data, link, nil
 	case <-time.After(timeout):
+		diagFile("/tmp/fetch-diag.log", fmt.Sprintf("TIMEOUT after %v", timeout))
 		link.Teardown()
 		return nil, nil, ErrRequestTimeout
 	case <-ctx.Done():
+		diagFile("/tmp/fetch-diag.log", "ctx.Done")
 		link.Teardown()
 		return nil, nil, ctx.Err()
 	}
@@ -460,17 +508,29 @@ func fetchBytes(ctx context.Context, ts *rns.TransportSystem, destHash []byte, p
 // FetchPage establishes an RNS link to the nomadnetwork.node destination for
 // destHash and issues a request for path, returning the raw response bytes. It
 // is the Go port of Python Browser.__load (Browser.py:1375-1451). It is a
-// one-shot fetch: the link is torn down after the response (the Go BrowserDisplay
-// does not yet retain a per-destination link the way Python retains self.link;
-// link reuse is a TUI-ownership concern). See fetchBytes for the per-step
-// behavior and the requestData/onProgress/onLinkEstablished/timeout semantics.
+// one-shot fetch: the link is torn down after the response (the caller does not
+// retain it). For cross-fetch link reuse (Python self_link), use
+// FetchPageReuseLink. See fetchBytes for the per-step behavior and the
+// requestData/onProgress/onLinkEstablished/timeout semantics.
 func FetchPage(ctx context.Context, ts *rns.TransportSystem, destHash []byte, path string, requestData map[string]string, timeout time.Duration, onProgress func(float64), onLinkEstablished func(*rns.Link)) ([]byte, error) {
-	data, link, err := fetchBytes(ctx, ts, destHash, path, requestData, timeout, onProgress, onLinkEstablished)
+	data, link, err := fetchBytes(ctx, ts, destHash, path, requestData, timeout, onProgress, onLinkEstablished, nil)
 	if err != nil {
 		return nil, err
 	}
 	link.Teardown()
 	return data, nil
+}
+
+// FetchPageReuseLink is the link-retaining variant of FetchPage, mirroring
+// Python Browser.__load's reuse of self_link (Browser.py:1375-1451). If existing
+// is an ACTIVE link it is reused (the DH handshake + identification are
+// skipped); otherwise a fresh link is established. The link used is returned
+// WITHOUT teardown so the caller can retain it for the next fetch to the same
+// destination and tear it down on destination change / disconnect. The caller
+// guarantees existing belongs to destHash (it must tear the link down when the
+// destination changes).
+func FetchPageReuseLink(ctx context.Context, ts *rns.TransportSystem, destHash []byte, path string, requestData map[string]string, timeout time.Duration, onProgress func(float64), onLinkEstablished func(*rns.Link), existing *rns.Link) ([]byte, *rns.Link, error) {
+	return fetchBytes(ctx, ts, destHash, path, requestData, timeout, onProgress, onLinkEstablished, existing)
 }
 
 // DownloadFile fetches a /file/<name> path from the nomadnetwork.node
@@ -486,7 +546,7 @@ func FetchPage(ctx context.Context, ts *rns.TransportSystem, destHash []byte, pa
 // used, with a ".N" suffix appended on collision, matching Python's
 // saved_file_name) and its size in bytes.
 func DownloadFile(ctx context.Context, ts *rns.TransportSystem, destHash []byte, path string, requestData map[string]string, downloadsDir string, timeout time.Duration, onProgress func(float64), onLinkEstablished func(*rns.Link)) (savedName string, savedSize int, err error) {
-	data, link, err := fetchBytes(ctx, ts, destHash, path, requestData, timeout, onProgress, onLinkEstablished)
+	data, link, err := fetchBytes(ctx, ts, destHash, path, requestData, timeout, onProgress, onLinkEstablished, nil)
 	if err != nil {
 		return "", 0, err
 	}
@@ -627,4 +687,14 @@ func ServeLocalFile(filesPath, path, downloadsDir string) (savedName string, sav
 		return "", 0, err
 	}
 	return SaveDownload(downloadsDir, path, data)
+}
+
+// diagFile appends a diagnostic line to a file (temporary debug).
+func diagFile(path, line string) {
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	f.WriteString(line + "\n")
 }

@@ -450,7 +450,7 @@ func browseRequest(link *rns.Link, path string, timeout time.Duration) ([]byte, 
 		res <- bres{data: rr.GetResponse()}
 	}, func(rr *rns.RequestReceipt) {
 		res <- bres{err: errBrowseFailed}
-	}, nil, timeout)
+	}, nil, timeout, 0)
 	if err != nil {
 		return nil, err
 	}

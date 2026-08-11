@@ -113,7 +113,17 @@ func (bd *BrowserDisplay) HandleRRCLink(linkTarget string) {
 
 // HandleLink dispatches a browser link target to the appropriate
 // handler based on its format. Matches Python's handle_link() at
-// Browser.py:216.
+// Browser.py:216-268.
+//
+// linkFields is the link's pipe-separated field-name component (the 3rd
+// backtick segment of a micron submit link, e.g. `[Search](page`query)`).
+// For a nomadnetwork.node link, a non-empty linkFields collects the live
+// values of the named form fields from the rendered page (Python
+// recurse_down) into request_data before fetching the target — the fetch
+// backend (fetchBytes → link.Request(path, requestData)) already forwards
+// request_data over the wire, so this is the sole collection point. "*"
+// collects every field on the page. Other link types (rrc, lxmf, partial)
+// ignore linkFields.
 //
 // Link formats:
 //   - "#name"       → anchor jump (OnJumpAnchor)
@@ -121,7 +131,7 @@ func (bd *BrowserDisplay) HandleRRCLink(linkTarget string) {
 //   - "type@target" → typed dispatch (node, lxmf, rrc, partial)
 //   - "p:ids"       → partial update (OnPartialUpdate)
 //   - plain hash    → nomadnetwork.node (OnRetrieveURL)
-func (bd *BrowserDisplay) HandleLink(linkTarget string) {
+func (bd *BrowserDisplay) HandleLink(linkTarget, linkFields string) {
 	if strings.HasPrefix(linkTarget, "#") {
 		if bd.OnJumpAnchor != nil {
 			bd.OnJumpAnchor(linkTarget[1:])
@@ -160,7 +170,11 @@ func (bd *BrowserDisplay) HandleLink(linkTarget string) {
 	switch destType {
 	case "nomadnetwork.node":
 		if bd.OnRetrieveURL != nil {
-			bd.OnRetrieveURL(target)
+			// A submit link names the form fields to send (linkFields). Collect
+			// their live values from the rendered page (recurse_down analog) and
+			// forward as request_data; a plain link has no fields → nil request
+			// data (the cache + var_*-suffix path is unchanged).
+			bd.OnRetrieveURL(target, bd.collectFields(linkFields))
 		}
 	case "lxmf.delivery":
 		bd.HandleLXMFLink(target)

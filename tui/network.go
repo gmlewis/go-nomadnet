@@ -17,12 +17,38 @@ package tui
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
+
+// debugNetLog is a TEMPORARY diagnostic appended to /tmp/peek-debug.log tracing
+// every key the network display sees + the mainCols focus index and which pane
+// has focus. Remove after diagnosing the test-gonomadnet-input-box focus failure.
+func debugNetLog(nd *NetworkDisplay, event *tcell.EventKey) {
+	f, err := os.OpenFile("/tmp/peek-debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	key := event.Name()
+	fi := -1
+	if nd.mainCols != nil {
+		fi = nd.mainCols.FocusIndex()
+	}
+	browser := "no"
+	if nd.browser != nil && nd.browser.Widget().HasFocus() {
+		browser = "yes"
+	}
+	left := "no"
+	if nd.leftPanel.HasFocus() {
+		left = "yes"
+	}
+	fmt.Fprintf(f, "NET key=%s focusIdx=%d browserHasFocus=%s leftHasFocus=%s\n", key, fi, browser, left)
+}
 
 // AnnounceEntry holds a single announce for display.
 type AnnounceEntry struct {
@@ -273,6 +299,7 @@ func (nd *NetworkDisplay) SetNavigateCallback(fn func(url string)) {
 // handleInput processes keyboard shortcuts for the network display.
 // Matches Python's NetworkDisplay.keypress() at Network.py:1600.
 func (nd *NetworkDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
+	debugNetLog(nd, event)
 	// When AnnounceInfo is open, only Esc is handled (via MainDisplay.onEsc).
 	if nd.inInfoView {
 		return event

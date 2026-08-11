@@ -86,6 +86,13 @@ type ReadlineEdit struct {
 	*tview.InputField
 	killRing  *killRing
 	cursorPos int // rune offset, mirrors Python edit_pos
+	// onExit, when set, is invoked for Down/Up/Tab while editing so an embedded
+	// field editor (the browser's in-place field overlay) can hand focus back to
+	// the surrounding nav model — mirroring Python's urwid.Edit returning these
+	// keys to the Pile/Scrollable. Enter/Esc are consumed (stay editing) to match
+	// Python's Edit not submitting from a field row. nil for standalone editors
+	// (compose, dialogs, conversations) preserves the existing behavior.
+	onExit func(key tcell.Key)
 }
 
 // NewReadLineEdit creates a new ReadlineEdit with the given shared kill ring,
@@ -157,6 +164,22 @@ func (re *ReadlineEdit) Draw(screen tcell.Screen) {
 // returns nil when it consumes the event (readline keys and regular rune
 // insertion) or the event itself to let tview handle non-readline keys.
 func (re *ReadlineEdit) handleKey(event *tcell.EventKey) *tcell.EventKey {
+	// Embedded field-overlay nav keys: hand Down/Up/Tab back to the browser nav
+	// model (Python Edit returns these to the Pile/Scrollable). Enter/Esc stay
+	// editing (a field row does not submit on Enter — only links do). Only
+	// active when onExit is set (the browser overlay); standalone editors are
+	// unaffected.
+	if re.onExit != nil {
+		switch event.Key() {
+		case tcell.KeyDown, tcell.KeyUp, tcell.KeyTab:
+			re.killRing.resetChain()
+			re.onExit(event.Key())
+			return nil
+		case tcell.KeyEnter, tcell.KeyEsc:
+			re.killRing.resetChain()
+			return nil
+		}
+	}
 	runes := []rune(re.GetText())
 	pos := min(re.cursorPos, len(runes))
 

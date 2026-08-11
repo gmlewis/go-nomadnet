@@ -150,7 +150,7 @@ func FetchPartial(ctx context.Context, ts *rns.TransportSystem, partial Partial,
 	if err != nil {
 		return nil, err
 	}
-	data, link, err := fetchBytes(ctx, ts, dest, path, rd, timeout, onProgress, onLinkEstablished)
+	data, link, err := fetchBytes(ctx, ts, dest, path, rd, timeout, onProgress, onLinkEstablished, nil)
 	if err != nil {
 		return nil, err
 	}

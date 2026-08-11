@@ -17,11 +17,27 @@ package tui
 
 import (
 	"fmt"
+	"os"
 	"sync"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
+
+// debugFocusLog is a TEMPORARY diagnostic appended to /tmp/peek-debug.log
+// tracing dialog open/close focus. Remove after diagnosing.
+func debugFocusLog(tag string, p tview.Primitive) {
+	f, err := os.OpenFile("/tmp/peek-debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	name := "<nil>"
+	if p != nil {
+		name = fmt.Sprintf("%T", p)
+	}
+	f.WriteString("DIALOG " + tag + " focus=" + name + "\n")
+}
 
 // dialogEntry is one frame on the modal dialog stack.
 type dialogEntry struct {
@@ -104,6 +120,7 @@ func (dm *DialogManager) showOverlay(app *tview.Application, title string, conte
 	}
 
 	prevFocus := app.GetFocus()
+	debugFocusLog("open prevFocus", prevFocus)
 	dialog := NewDialogLineBox(title, content, func() { dm.dismissTop() })
 	entry := &dialogEntry{
 		pageName:  fmt.Sprintf("dialog-%v", dm.seq),
@@ -151,6 +168,7 @@ func (dm *DialogManager) dismissTop() {
 	// concurrency-safety reasons as showOverlay (shared tview.Pages and app
 	// focus are not safe for concurrent access).
 	pages.RemovePage(top.pageName)
+	debugFocusLog("close restore", focus)
 	if focus != nil && app != nil {
 		app.SetFocus(focus)
 	}

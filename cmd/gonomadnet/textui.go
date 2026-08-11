@@ -36,10 +36,22 @@ import (
 	"github.com/gmlewis/go-nomadnet/nomadnet/directory"
 	"github.com/gmlewis/go-nomadnet/nomadnet/rrc"
 	"github.com/gmlewis/go-nomadnet/tui"
+
 	"github.com/gmlewis/go-reticulum/lxmf"
 	"github.com/gmlewis/go-reticulum/rns"
 	"github.com/rivo/tview"
 )
+
+// diagFile appends a line to a diagnostic file (TEMP debug for the input-box
+// reliability investigation).
+func diagFile(path, line string) {
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	f.WriteString(line + "\n")
+}
 
 // runTextUI starts NomadNet with the terminal UI.
 func runTextUI(configDir, rnsConfigDir string) {
@@ -1251,12 +1263,13 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	// Guide reader's OnHandleLink was nil, so clicking/Enter on a non-anchor
 	// link like the Introduction's "Aleph git" page link did NOTHING — the user
 	// could not click it (Python's mouse_event fires handle_link directly, so
-	// nomadnet could). fields (request_data) is dropped, matching the rest of
-	// the Go port's OnRetrieveURL signature; Guide links currently carry none.
+	// nomadnet could). The link's field-names component is now threaded through
+	// to HandleLink so a Guide submit link can collect form fields like a page
+	// link (Python recurse_down).
 	guideDisplay.OnHandleLink = func(target, fields string) {
 		main.SelectPage("network")
 		if ndBd := networkDisplay.BrowserDisplay(); ndBd != nil {
-			ndBd.HandleLink(target)
+			ndBd.HandleLink(target, fields)
 		}
 	}
 
@@ -1476,6 +1489,23 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		return func(link *rns.Link) { _ = link.Identify(identity) }
 	}
 
+	// activeRetainedLink returns the browser's retained *rns.Link if it is still
+	// ACTIVE (LinkActive), nil otherwise. The retained link is stored opaquely
+	// on the BrowserDisplay (the tui package does not import rns), so the wiring
+	// layer owns the activeness check. Used both to gate the page cache (a cached
+	// page is served only when a link is already active — see OnRetrieveURL) and
+	// to pass the reusable link into FetchPageReuseLink.
+	activeRetainedLink := func(bd *tui.BrowserDisplay) *rns.Link {
+		l, ok := bd.RetainedLink().(*rns.Link)
+		if !ok || l == nil {
+			return nil
+		}
+		if l.GetStatus() != rns.LinkActive {
+			return nil
+		}
+		return l
+	}
+
 	// OnRetrieveURL runs the real fetch backend (Browser.retrieve_url →
 	// load_page → __load): parse the RNS address (resolving relative ":<path>"
 	// URLs against the current destination), check the on-disk cache when no
@@ -1498,6 +1528,16 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		if bd == nil {
 			return
 		}
+		// Register the retained-link teardown so BrowserDisplay can tear down
+		// the per-destination *rns.Link (Python self_link) when the destination
+		// changes or the browser disconnects. BrowserDisplay stores the link
+		// opaquely (any) to avoid importing go-reticulum into the tui package;
+		// this closure is the one side that knows the concrete type.
+		bd.SetRetainedLinkTeardown(func(link any) {
+			if l, ok := link.(*rns.Link); ok && l != nil {
+				l.Teardown()
+			}
+		})
 		// Navigation + link-handling callbacks are shared by BOTH the standalone
 		// browser page and the Network right pane (Python's BrowserFrame and
 		// NetworkDisplay both drive the same Browser instance, Browser.py:21-40 /
@@ -1660,9 +1700,17 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 				time.Duration(browser.DefaultTimeout)*time.Second, nil,
 				identifyOnConnect(bd.CurrentDest()))
 		}
-		bd.OnRetrieveURL = func(url string) {
+		bd.OnRetrieveURL = func(url string, requestData map[string]string) {
+			diagFile("/tmp/fetch-diag.log", fmt.Sprintf("[%s] OnRetrieveURL bd=%p url=%q rdNil=%v", time.Now().Format("15:04:05.000"), bd, url, requestData == nil))
 			ctx, seq := bd.BeginRequest()
-			dest, path, rd, err := browser.ParseURL(url, bd.CurrentDest(), nil)
+			// requestData carries the live form-field values collected by
+			// HandleLink's collectFields (Python recurse_down), or nil for a
+			// plain link / typed URL. ParseURL merges any backtick var_*
+			// field-suffix embedded in the URL into requestData and returns the
+			// combined map; the cache is only consulted when rd is nil (Python
+			// load_page caches only when no request_data is attached), so a form
+			// submit always re-fetches.
+			dest, path, rd, err := browser.ParseURL(url, bd.CurrentDest(), requestData)
 			if err != nil {
 				tuiApp.QueueUpdateDraw(func() {
 					if seq != bd.CurrentRequestSeq() || ctx.Err() != nil {
@@ -1683,7 +1731,22 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 			}
 			bd.SetCurrentDest(dest)
 			canonURL := fmt.Sprintf("%x:%v", dest, path)
-			if rd == nil {
+			// Serve from the page cache only when a retained link is already
+			// ACTIVE for this destination. The cache short-circuits the fetch
+			// (no fetchBytes → no link established/retained), so a cached connect
+			// leaves the FIRST real fetch (e.g. navigating to /page/search.mu) to
+			// establish a fresh link over a flaky multi-hop path — with no retry
+			// (only the Ctrl-u connect has the harness's 3-attempt retry). By
+			// bypassing the cache when there is no active retained link, the
+			// connect itself does the network fetch that establishes + retains the
+			// link; the connect's retries absorb transient path/establishment
+			// failures, and every subsequent fetch to this destination (the
+			// search page, the form submit) reuses the retained link. This mirrors
+			// Python self_link: Python's connect also establishes the link (its
+			// cache stores the page, not the link, but Python's establishment is
+			// reliable enough that the gap never surfaced). A re-visit while the
+			// retained link is still active uses the cache as before.
+			if rd == nil && activeRetainedLink(bd) != nil {
 				if cached := pageCache.GetCached(canonURL); cached != nil {
 					tuiApp.QueueUpdateDraw(func() {
 						if seq != bd.CurrentRequestSeq() || ctx.Err() != nil {
@@ -1744,15 +1807,44 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 			}
 			go func() {
 				start := time.Now()
-				data, ferr := browser.FetchPage(ctx, a.Transport, dest, path, rd,
+				// Reuse the per-destination retained link (Python self_link,
+				// Browser.py:1375-1451) so a form-submit re-fetch rides the
+				// already-ACTIVE link instead of re-establishing — the reliability
+				// gap that made the search-results fetch flaky over a remote
+				// multi-hop path. activeRetainedLink returns nil when the retained
+				// link is absent or has gone stale (remote closed it), in which
+				// case FetchPageReuseLink establishes a fresh one.
+				existing := activeRetainedLink(bd)
+				data, link, ferr := browser.FetchPageReuseLink(ctx, a.Transport, dest, path, rd,
 					time.Duration(browser.DefaultTimeout)*time.Second, nil,
-					identifyOnConnect(dest))
+					identifyOnConnect(dest), existing)
 				elapsed := time.Since(start).Seconds()
 				tuiApp.QueueUpdateDraw(func() {
 					if seq != bd.CurrentRequestSeq() || ctx.Err() != nil {
+						// A superseding fetch superseded this one. Tear down this
+						// result's link ONLY if it is not the currently retained
+						// link: a superseded fetch that REUSED the retained link
+						// shares it with the newer fetch (which may still be using
+						// it), so tearing it down would break the newer fetch. A
+						// fresh link (the common case — e.g. the double-fetch from
+						// the URL dialog) is an orphan and is torn down. The
+						// retained-link comparison is by pointer; both callbacks
+						// run serialized on the event loop, so there is no race
+						// with the newer fetch's SetRetainedLink.
+						if link != nil && bd.RetainedLink() != link {
+							link.Teardown()
+						}
 						return
 					}
 					if ferr != nil {
+						// On error drop the retained link so a retry re-establishes
+						// (a stale/closed link would fail the GetStatus reuse check
+						// anyway, but clearing is explicit and avoids leaking a link
+						// whose request failed).
+						bd.SetRetainedLink(nil)
+						if link != nil {
+							link.Teardown()
+						}
 						bd.SetContent(fmt.Sprintf("[red]%v[-]", browser.StatusText(browser.ErrToStatus(ferr))))
 						return
 					}
@@ -1762,6 +1854,12 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 								float64(time.Now().UnixNano())/1e9+float64(ct))
 						}
 					}
+					// Retain the link for the next fetch to this destination
+					// (Python self_link). A fresh link is stored here on first
+					// fetch; a reused link is re-stored (no-op). The link is torn
+					// down via SetCurrentDest/Disconnect when the destination
+					// changes or the browser disconnects.
+					bd.SetRetainedLink(link)
 					bd.SetTransferStats(int64(len(data)), int64(len(data)), elapsed, false)
 					bd.RenderPage(string(data))
 				})

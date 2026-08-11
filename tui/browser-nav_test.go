@@ -187,7 +187,7 @@ func TestNavEnterSpaceFollowLink(t *testing.T) {
 	_, bd := newNavTestBrowser(t)
 
 	var retrieved string
-	bd.OnRetrieveURL = func(url string) { retrieved = url }
+	bd.OnRetrieveURL = func(url string, requestData map[string]string) { retrieved = url }
 
 	linkLine := findLine(bd, "Go")
 	for bd.focusLine != linkLine {

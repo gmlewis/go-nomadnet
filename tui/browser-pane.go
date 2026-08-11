@@ -135,12 +135,29 @@ func (bp *BrowserPane) Disconnect() {
 
 // LoadURL loads a URL and displays the content inside the Remote Node pane.
 func (bp *BrowserPane) LoadURL(url string) {
-	if bp.display != nil {
-		bp.widget.Clear()
-		bp.widget.AddItem(bp.display.Widget(), 0, 1, true)
-		SetTitledBorder(bp.widget, FormatRemoteNodeTitle(url))
-		bp.display.LoadURL(url)
+	if bp.display == nil {
+		return
 	}
+	bp.widget.Clear()
+	bp.widget.AddItem(bp.display.Widget(), 0, 1, true)
+	SetTitledBorder(bp.widget, FormatRemoteNodeTitle(url))
+	// While disconnected the pane holds leaf (Box) focus — its spacers are not
+	// focusable, so Flex.Focus falls through to Box.Focus (which sets hasFocus
+	// without calling the delegate), and app.GetFocus() stays on bp.widget. The
+	// URL-dialog connect dismisses the dialog (restoring that leaf focus) and
+	// THEN calls LoadURL here, so the newly mounted BrowserDisplay never receives
+	// a SetFocus cascade: bd.layout.HasFocus() stays false, Flex.InputHandler
+	// finds no focused child, and every Down/typing key is silently dropped
+	// (BrowserDisplay.handleInput never fires). When the pane already has focus,
+	// re-cascade focus into the browser body BEFORE the fetch starts so
+	// showLoading sees bd.content.HasFocus() and shuttles focus loading→content
+	// across the fetch. The gate avoids stealing focus from another page (e.g.
+	// an Announce-Info Connect, where focus is on the left list and Right later
+	// cascades into the browser itself).
+	if bp.app != nil && bp.widget.HasFocus() {
+		bp.app.SetFocus(bp.display.Widget())
+	}
+	bp.display.LoadURL(url)
 }
 
 // BrowserDisplay returns the underlying BrowserDisplay instance for wiring.

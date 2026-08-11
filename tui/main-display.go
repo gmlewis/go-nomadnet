@@ -17,6 +17,7 @@ package tui
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -547,6 +548,7 @@ func (md *MainDisplay) focusMenuIndex(index int) {
 // FocusMenu moves focus to the menu bar (MainFrame.focus_position = "header").
 // Body pages call this when an Up key reaches the top of their list.
 func (md *MainDisplay) FocusMenu() {
+	diagFileMD("/tmp/quit-diag.log", fmt.Sprintf("FocusMenu activeMenu=%d", md.activeMenu))
 	md.mu.Lock()
 	md.focusRegion = "menu"
 	md.redrawMenuBar()
@@ -566,6 +568,7 @@ func (md *MainDisplay) FocusMenu() {
 // cursor appears to stay in the menu after Down/Tab even though tview focus
 // has moved to the body (mirrors FocusMenu, which redraws to install it).
 func (md *MainDisplay) FocusBody() {
+	diagFileMD("/tmp/quit-diag.log", fmt.Sprintf("FocusBody focusRegion=%q focus=%T", md.focusRegion, md.app.GetFocus()))
 	if md.app != nil {
 		md.app.SetFocus(md.contentArea)
 	}
@@ -614,6 +617,9 @@ func (md *MainDisplay) handleClick(x int) {
 func (md *MainDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 	if event == nil {
 		return event
+	}
+	if p := md.app.GetFocus(); p != nil {
+		diagFileMD("/tmp/quit-diag.log", fmt.Sprintf("HANDLE key=%v focusRegion=%q focus=%T menuBarHasFocus=%v", event.Key(), md.focusRegion, p, md.menuBar.HasFocus()))
 	}
 
 	// Global quit — the only keys the dispatcher always owns. Ctrl-Q is the
@@ -665,9 +671,13 @@ func (md *MainDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 	// does NOT fire SetDoneFunc on Up-at-top (only on Escape) — so no page can
 	// detect this on its own; the dispatcher must own the transition. Anything
 	// else is forwarded to the page (pane focus, Esc→dialog, per-page keys).
-	if event.Key() == tcell.KeyUp && md.bodyListAtTop() {
-		md.FocusMenu()
-		return nil
+	if event.Key() == tcell.KeyUp {
+		top := md.bodyListAtTop()
+		diagFileMD("/tmp/quit-diag.log", fmt.Sprintf("Up focusRegion=%q bodyListAtTop=%v focus=%T", md.focusRegion, top, md.app.GetFocus()))
+		if top {
+			md.FocusMenu()
+			return nil
+		}
 	}
 	return event
 }
@@ -694,13 +704,29 @@ func (md *MainDisplay) bodyListAtTop() bool {
 		list = v
 	case *IndicativeListBox:
 		list = v.List
+	case *centeredText:
+		// The network left pane swaps the saved-nodes IndicativeListBox for a
+		// centeredText empty-state placeholder when no nodes are saved (Python
+		// KnownNodes empty-state, Network.py:833-882). In Python the empty-state
+		// widget is still the top of the body Pile, so MainFrame collapses focus
+		// to the header on Up-at-top regardless of whether the top widget is a
+		// ListBox or the placeholder. Treat the non-scrollable placeholder as an
+		// empty list at item 0 so the dispatcher's Up-at-top→FocusMenu transition
+		// still fires (without this, escapeToMenu on an empty left pane strands
+		// focus — Up does nothing and the menu is never reached). Other
+		// centeredText body placeholders (config explainer, node-info, empty
+		// peers) get the same correct body-top→header parity.
+		return true
 	default:
+		diagFileMD("/tmp/quit-diag.log", fmt.Sprintf("bodyListAtTop default focus=%T", v))
 		return false
 	}
 	if list == nil {
 		return false
 	}
-	return list.GetCurrentItem() == 0
+	cur := list.GetCurrentItem()
+	diagFileMD("/tmp/quit-diag.log", fmt.Sprintf("bodyListAtTop list cur=%d", cur))
+	return cur == 0
 }
 
 // handleMenuInput dispatches keys while the menu bar is focused.
@@ -897,4 +923,14 @@ func (md *MainDisplay) RequestRedraw() {
 		time.Sleep(250 * time.Millisecond)
 		md.app.QueueUpdateDraw(func() {})
 	}()
+}
+
+// diagFileMD appends a diagnostic line to a file (temporary debug).
+func diagFileMD(path, line string) {
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	f.WriteString(line + "\n")
 }

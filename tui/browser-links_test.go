@@ -186,6 +186,7 @@ func TestBrowserHandleLink(t *testing.T) {
 	tests := []struct {
 		name          string
 		link          string
+		linkFields    string
 		expectAnchor  bool
 		expectRRC     bool
 		expectLXMF    bool
@@ -256,6 +257,13 @@ func TestBrowserHandleLink(t *testing.T) {
 			nodeURL:    "aabb1122aabb1122aabb1122aabb1122",
 		},
 		{
+			name:       "submit link with field names routes to node",
+			link:       "aabb1122aabb1122aabb1122aabb1122",
+			linkFields: "query",
+			expectNode: true,
+			nodeURL:    "aabb1122aabb1122aabb1122aabb1122",
+		},
+		{
 			name:        "unknown destination type",
 			link:        "unknown_type@abc",
 			expectError: true,
@@ -279,11 +287,11 @@ func TestBrowserHandleLink(t *testing.T) {
 			bd.OnJumpAnchor = func(name string) { gotAnchor = name }
 			bd.OnOpenRRC = func(hub, room string) { gotRRCHub = hub; gotRRCRoom = room }
 			bd.OnOpenLXMF = func(hash string) { gotLXMFHash = hash }
-			bd.OnRetrieveURL = func(url string) { gotNodeURL = url }
+			bd.OnRetrieveURL = func(url string, requestData map[string]string) { gotNodeURL = url }
 			bd.OnPartialUpdate = func(ids []string) { gotPartialIDs = ids }
 			bd.OnBrowserError = func(msg string) { gotError = msg }
 
-			bd.HandleLink(tt.link)
+			bd.HandleLink(tt.link, tt.linkFields)
 
 			if tt.expectAnchor && gotAnchor != tt.anchorName {
 				t.Errorf("anchor = %q, want %q", gotAnchor, tt.anchorName)

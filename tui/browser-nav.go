@@ -16,6 +16,7 @@
 package tui
 
 import (
+	"fmt"
 	"strconv"
 	"time"
 	"unicode/utf8"
@@ -69,6 +70,9 @@ func newBrowserPageView(bd *BrowserDisplay) *browserPageView {
 func (v *browserPageView) Draw(screen tcell.Screen) {
 	v.TextView.Draw(screen)
 	v.bd.drawCursor(screen)
+	// Draw the mounted text-field ReadlineEdit overlay over the field's screen
+	// cells (after the TextView, so typed text + caret cover the placeholder).
+	v.bd.drawFieldOverlay(screen)
 	v.bd.reflowIfWidthChanged()
 }
 
@@ -144,7 +148,7 @@ func (v *browserPageView) MouseHandler() func(action tview.MouseAction, event *t
 				return
 			}
 			link := v.bd.links[idx] // capture before dispatch (HandleLink may re-render)
-			v.bd.HandleLink(link.URL)
+			v.bd.HandleLink(link.URL, link.Fields)
 		}
 		return
 	}
@@ -189,6 +193,11 @@ func (bd *BrowserDisplay) resetNavState() {
 	bd.focusLine = -1
 	bd.cursorHasKeypress = false
 	bd.stopCursorHideTimer()
+	// Drop any rendered field widgets + mounted overlay (a non-rendered body has
+	// no fields; collectFields on a stale table would send wrong values).
+	bd.lineFields = nil
+	bd.unmountFieldOverlay()
+	bd.radioGroups = nil
 }
 
 // selectableLine reports whether line idx is focusable in the Pile sense: a
@@ -197,11 +206,24 @@ func (bd *BrowserDisplay) resetNavState() {
 // LinkableText in Python (selectable); partial placeholders and tables are
 // flattened to ordinary styled lines in the Go renderer, so they are selectable
 // here too. (Python's partial Pile is non-selectable, a minor edge divergence.)
+//
+// A line whose only content is a micron <field> with an empty placeholder still
+// counts as selectable: in Python the field renders as an Edit widget, which is
+// selectable regardless of its text (so Pile traversal lands on it). The Go
+// renderer flattens the field to a styled span whose Text is the (possibly
+// empty) placeholder, so a field-only line can have empty linePlainText and
+// would otherwise be skipped — stranding the field off the navigation path.
 func (bd *BrowserDisplay) selectableLine(idx int) bool {
 	if idx < 0 || idx >= len(bd.currentLines) {
 		return false
 	}
-	return utf8.RuneCountInString(bd.linePlainText(idx)) > 0
+	if utf8.RuneCountInString(bd.linePlainText(idx)) > 0 {
+		return true
+	}
+	if idx < len(bd.lineFields) && len(bd.lineFields[idx]) > 0 {
+		return true
+	}
+	return false
 }
 
 func (bd *BrowserDisplay) firstSelectableLine() int {
@@ -339,6 +361,7 @@ func (bd *BrowserDisplay) scheduleCursorHide() {
 // on a plain part), mirroring LinkableText.peek_link (MicronParser.py:910-918).
 func (bd *BrowserDisplay) peekLink() {
 	link := bd.lineLinkAtCursor(bd.focusLine)
+	debugPeekLog(bd, link)
 	if link != nil {
 		bd.MarkedLink(link.URL, link.Fields)
 	} else {
@@ -571,8 +594,15 @@ func (bd *BrowserDisplay) handleNavKey(event *tcell.EventKey) bool {
 	switch event.Key() {
 	case tcell.KeyEnter:
 		bd.stampKeypress()
+		// A checkbox/radio field at the cursor toggles on Enter/Space (Python
+		// CheckBox/RadioButton keypress). A text field is handled by the overlay
+		// (it takes focus when its row is selected), so this branch only fires on
+		// a checkbox/radio row when the overlay is not mounted.
+		if bd.toggleFieldAtCursor() {
+			return true
+		}
 		if link := bd.lineLinkAtCursor(bd.focusLine); link != nil {
-			bd.HandleLink(link.URL)
+			bd.HandleLink(link.URL, link.Fields)
 		}
 		return true
 
@@ -586,6 +616,7 @@ func (bd *BrowserDisplay) handleNavKey(event *tcell.EventKey) bool {
 		} else {
 			bd.scrollUpOne()
 		}
+		bd.syncFieldFocus()
 		return true
 
 	case tcell.KeyDown:
@@ -598,6 +629,7 @@ func (bd *BrowserDisplay) handleNavKey(event *tcell.EventKey) bool {
 		} else {
 			bd.scrollDownOne()
 		}
+		bd.syncFieldFocus()
 		return true
 
 	case tcell.KeyRight:
@@ -621,14 +653,17 @@ func (bd *BrowserDisplay) handleNavKey(event *tcell.EventKey) bool {
 			bd.ensureVisible()
 			bd.peekLink()
 		}
+		bd.syncFieldFocus()
 		return true
 
 	case tcell.KeyLeft:
 		bd.stampKeypress()
+		diagFileMD("/tmp/quit-diag.log", fmt.Sprintf("BROWDER-Left focusLine=%d cursor=%d focus=%T", bd.focusLine, bd.lineCursors[bd.focusLine], bd.app.GetFocus()))
 		if bd.lineCursors[bd.focusLine] > 0 {
 			bd.lineCursors[bd.focusLine] = findPrevPartPos(bd.lineCursors[bd.focusLine], bd.linePartPositions(bd.focusLine))
 			bd.ensureVisible()
 			bd.peekLink()
+			bd.syncFieldFocus()
 		} else {
 			// Left at the line's start releases focus to the owning view
 			// (Python delegate.micron_released_focus → focus_lists,
@@ -642,6 +677,7 @@ func (bd *BrowserDisplay) handleNavKey(event *tcell.EventKey) bool {
 		bd.stampKeypress()
 		bd.content.ScrollTo(0, 0)
 		bd.automoveFocus()
+		bd.syncFieldFocus()
 		return true
 
 	case tcell.KeyEnd:
@@ -653,18 +689,21 @@ func (bd *BrowserDisplay) handleNavKey(event *tcell.EventKey) bool {
 		endRow := max(0, bd.totalWrappedRows()-h)
 		bd.content.ScrollTo(endRow, 0)
 		bd.automoveFocus()
+		bd.syncFieldFocus()
 		return true
 
 	case tcell.KeyPgUp:
 		bd.stampKeypress()
 		bd.scrollByPage(-1)
 		bd.automoveFocus()
+		bd.syncFieldFocus()
 		return true
 
 	case tcell.KeyPgDn:
 		bd.stampKeypress()
 		bd.scrollByPage(1)
 		bd.automoveFocus()
+		bd.syncFieldFocus()
 		return true
 	}
 
@@ -679,11 +718,15 @@ func (bd *BrowserDisplay) handleNavKey(event *tcell.EventKey) bool {
 	}
 
 	// Space activates the link at the cursor (Python ACTIVATE, command_map
-	// " " → ACTIVATE, MicronParser.py:937-941).
+	// " " → ACTIVATE, MicronParser.py:937-941), or toggles a checkbox/radio field
+	// at the cursor (Python CheckBox/RadioButton keypress).
 	if event.Key() == tcell.KeyRune && event.Rune() == ' ' {
 		bd.stampKeypress()
+		if bd.toggleFieldAtCursor() {
+			return true
+		}
 		if link := bd.lineLinkAtCursor(bd.focusLine); link != nil {
-			bd.HandleLink(link.URL)
+			bd.HandleLink(link.URL, link.Fields)
 		}
 		return true
 	}

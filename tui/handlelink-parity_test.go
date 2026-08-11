@@ -169,11 +169,11 @@ func TestHandleLinkDispatchPythonParity(t *testing.T) {
 			bd.OnJumpAnchor = func(name string) { gotAnchor = name; gotAnchorFired = true }
 			bd.OnOpenRRC = func(hub, room string) { gotRRC = true }
 			bd.OnOpenLXMF = func(hash string) { gotLXMF = hash }
-			bd.OnRetrieveURL = func(url string) { gotNode = url; gotNodeFired = true }
+			bd.OnRetrieveURL = func(url string, requestData map[string]string) { gotNode = url; gotNodeFired = true }
 			bd.OnPartialUpdate = func(ids []string) { gotPartial = ids }
 			bd.OnBrowserError = func(msg string) { gotError = msg }
 
-			bd.HandleLink(tt.link)
+			bd.HandleLink(tt.link, "")
 
 			if tt.wantAnchor != "" || (tt.name == "empty anchor") {
 				if !gotAnchorFired {

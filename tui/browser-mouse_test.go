@@ -71,7 +71,7 @@ func TestBrowserMouseClickFollowsLink(t *testing.T) {
 	mouseScreen(t, bd)
 
 	var got string
-	bd.OnRetrieveURL = func(url string) { got = url }
+	bd.OnRetrieveURL = func(url string, requestData map[string]string) { got = url }
 
 	// "Go" is the first link (region "0") at the start of its line.
 	clickAt(bd, 0, linkScreenY(bd, "Go trailing"))
@@ -99,7 +99,7 @@ func TestBrowserMouseClickOnPlainTextNoDispatch(t *testing.T) {
 	mouseScreen(t, bd)
 
 	called := false
-	bd.OnRetrieveURL = func(url string) { called = true }
+	bd.OnRetrieveURL = func(url string, requestData map[string]string) { called = true }
 
 	clickAt(bd, 0, linkScreenY(bd, "intro line one"))
 	if called {
@@ -125,7 +125,7 @@ func TestBrowserMouseReclickSameLinkDispatches(t *testing.T) {
 	mouseScreen(t, bd)
 
 	count := 0
-	bd.OnRetrieveURL = func(url string) {
+	bd.OnRetrieveURL = func(url string, requestData map[string]string) {
 		if url != "/page/a.mu" {
 			t.Errorf("OnRetrieveURL = %q, want /page/a.mu", url)
 		}
@@ -151,7 +151,7 @@ func TestBrowserMouseClickFocussesContent(t *testing.T) {
 	bd.renderPage()
 	mouseScreen(t, bd)
 
-	bd.OnRetrieveURL = func(string) {}
+	bd.OnRetrieveURL = func(string, map[string]string) {}
 
 	var focused tview.Primitive
 	setFocus := func(p tview.Primitive) {

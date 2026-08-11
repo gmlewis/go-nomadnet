@@ -16,8 +16,10 @@
 package tui
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -99,6 +101,24 @@ type BrowserDisplay struct {
 	// "slice bounds out of range" panic in FetchPartial/identifyOnConnect.
 	currentDest []byte
 	destMu      sync.Mutex
+	// retainedLink is the per-destination RNS link kept open across fetches,
+	// mirroring Python Browser.self_link (Browser.py:1375-1451): Python
+	// establishes a link once and reuses it for every page/partial request to
+	// the same destination, so a form-submit re-fetch (search page → search
+	// results) rides the already-ACTIVE link instead of re-running the
+	// DH handshake + identification. The Go port used a one-shot link per
+	// fetch (torn down in FetchPage), which made the second fetch re-establish
+	// — flaky over a remote 2-hop path (link-establishment timeout, stalled
+	// response resource). Retaining the link closes that reliability gap.
+	//
+	// It is opaque (any) so this package does not import go-reticulum; the
+	// wiring layer (cmd/gonomadnet) owns the *rns.Link lifecycle — it passes
+	// the link into FetchPageReuseLink and registers teardownLink to call
+	// link.Teardown() when the destination changes or the browser disconnects.
+	// destMu guards the field against the fetch goroutine reading it while the
+	// event loop writes (SetCurrentDest/Disconnect), matching currentDest.
+	retainedLink    any
+	teardownLink    func(any) // tears down a retained *rns.Link (link.Teardown)
 	// Rendered-page metadata, mirroring GuideDisplay: links/anchors are cached
 	// for handleLink dispatch and jumpToAnchor; currentLines feeds the anchor
 	// line lookup.
@@ -108,6 +128,26 @@ type BrowserDisplay struct {
 	// lineTexts is the per-line tview-tagged text of the rendered page, used by
 	// JumpToAnchor to measure each line's wrapped height (mirrors GuideDisplay).
 	lineTexts []string
+	// lineFields is the per-line table of rendered micron <field> spans, built
+	// alongside currentLines in renderPage. Each entry records the field's spec,
+	// its interactive widget (a ReadlineEdit for text fields, a *tview.Checkbox
+	// for checkbox/radio), the display-column where the field begins on its line,
+	// and the field width. The browser body is a single tview.TextView that
+	// cannot host child primitives, so text fields are rendered as an in-place
+	// ReadlineEdit overlay mounted over the field's screen cells when its row is
+	// focused (syncFieldFocus/drawFieldOverlay); checkbox/radio fields toggle in
+	// place via Space/Enter. On a form-submit link, collectFields walks this
+	// table to build request_data (Python recurse_down, Browser.py:232-268).
+	lineFields [][]*renderedField
+	// fieldOverlay is the currently mounted text-field ReadlineEdit overlay, or
+	// nil when no text field is in edit mode. fieldOverlayLine is the line it is
+	// mounted for (so a no-op re-focus on the same field does not rebuild it).
+	fieldOverlay     *ReadlineEdit
+	fieldOverlayLine int
+	// radioGroups tracks per-page radio-button groups by field name (mirroring
+	// Python's per-parse radio grouping, MicronParser.py:385-394) so same-name
+	// radios share a RadioGroup across one rendered page. Rebuilt each render.
+	radioGroups map[string]*RadioGroup
 
 	// Partials: the original markup is kept (with directives) and each partial's
 	// latest fetched content is stored in partialContents keyed by the directive
@@ -167,7 +207,7 @@ type BrowserDisplay struct {
 	OnOpenRRC          func(hubHex, room string)
 	OnBrowserError     func(msg string)
 	OnJumpAnchor       func(name string)
-	OnRetrieveURL      func(url string)
+	OnRetrieveURL      func(url string, requestData map[string]string)
 	OnPartialUpdate    func(ids []string)
 }
 
@@ -183,6 +223,10 @@ type BrowserDisplay struct {
 // "Browser" box. There is no top nav bar; controls live in the footer.
 func NewBrowserDisplay(app *App) *BrowserDisplay {
 	bd := &BrowserDisplay{app: app}
+	if f, err := os.OpenFile("/tmp/peek-debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+		f.WriteString("=== NewBrowserDisplay created ===\n")
+		f.Close()
+	}
 	g := app.Glyphs
 	divGlyph := glyph(g, "divider1")
 	if divGlyph == "" {
@@ -252,6 +296,26 @@ func NewBrowserDisplay(app *App) *BrowserDisplay {
 func (bd *BrowserDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 	if event == nil {
 		return event
+	}
+	debugInputLog(bd, event)
+	// A mounted text-field overlay (ReadlineEdit) is drawn over the page body by
+	// drawFieldOverlay but is NOT a child of bd.layout, so tview's dispatch
+	// cascades to bd.content (the tree leaf) and would never reach the editor —
+	// printable runes would be dropped by the TextView and the field would never
+	// accept text. Route the key through the overlay's handleKey instead:
+	// printable runes + readline keys edit; Down/Up/Tab trigger onExit
+	// (moveFieldFocus unmounts + advances focusLine); Enter/Esc stay editing.
+	// When the overlay consumes the key, trigger a redraw (the editor is off-tree
+	// so its SetText does not auto-invalidate the screen) and return nil so
+	// bd.content never sees the key. A non-consumed key falls through to the
+	// browser shortcuts / nav model below.
+	if bd.fieldOverlay != nil {
+		if bd.fieldOverlay.handleKey(event) == nil {
+			if bd.app != nil {
+				bd.app.QueueUpdateDraw(func() {})
+			}
+			return nil
+		}
 	}
 	switch event.Key() {
 	case tcell.KeyCtrlW:
@@ -358,7 +422,11 @@ func (bd *BrowserDisplay) displayURL(url string) {
 	bd.setURLHeader(url)
 	bd.showLoading(bd.currentURLDisp)
 	if bd.OnRetrieveURL != nil {
-		bd.OnRetrieveURL(url)
+		// displayURL is the typed-URL/dialog path: entered URLs carry no
+		// collected field values, so request data is nil. A backtick var_*
+		// field-suffix embedded in the URL is still parsed by ParseURL in the
+		// app-layer wiring (textui.go).
+		bd.OnRetrieveURL(url, nil)
 	}
 }
 
@@ -476,6 +544,10 @@ func (bd *BrowserDisplay) renderPage() {
 	bd.links = links
 	bd.anchors = micron.BuildAnchorMap(lines)
 	bd.lineTexts = splitLineTexts(text)
+	// Build the per-line interactive field widgets (text → ReadlineEdit overlay,
+	// checkbox/radio → Checkbox) from the rendered field spans, so the overlay
+	// can mount on focus and collectFields can gather live values on submit.
+	bd.buildLineFields(lines)
 
 	// Apply page #!bg=/#!fg= as the TextView default colors so unstyled spans
 	// (which emit plain text inheriting the TextView default) pick them up,
@@ -745,11 +817,10 @@ func (bd *BrowserDisplay) Reload() {
 }
 
 // Disconnect tears down the browser session, mirroring Python Browser.disconnect
-// (Browser.py:862-881): the link is torn down (the Go port has no persistent
-// link — each fetch is one-shot — so there is nothing to teardown here), the
+// (Browser.py:862-881): the retained link is torn down (via SetCurrentDest(nil),
+// which sees the destination change and invokes teardownRetainedLink), the
 // history is cleared, the history pointer reset, the current-destination hint
-// dropped, and the content set to the disconnected state. request_data is
-// cleared implicitly since the Go port does not retain it between fetches.
+// dropped, and the content set to the disconnected state.
 func (bd *BrowserDisplay) Disconnect() {
 	bd.CancelRequest()
 	bd.history = nil
@@ -839,11 +910,62 @@ func (bd *BrowserDisplay) CurrentDest() []byte {
 }
 
 // SetCurrentDest records the destination hash of the page now being loaded, so
-// subsequent relative URLs resolve against it.
+// subsequent relative URLs resolve against it. When the destination changes the
+// retained link (if any) is torn down: a link is only valid for the destination
+// it was established to, so reusing it against a new destination would fetch the
+// wrong node. A same-destination SetCurrentDest (e.g. a form submit re-fetching
+// the same node) keeps the link — mirroring Python self_link reuse.
 func (bd *BrowserDisplay) SetCurrentDest(dest []byte) {
 	bd.destMu.Lock()
+	prev := bd.currentDest
+	same := prev != nil && dest != nil && bytes.Equal(prev, dest) || prev == nil && dest == nil
 	bd.currentDest = dest
+	link := bd.retainedLink
 	bd.destMu.Unlock()
+	if !same && link != nil {
+		bd.teardownRetainedLink(link)
+	}
+}
+
+// RetainedLink returns the opaque retained RNS link (a *rns.Link the wiring
+// layer cast in), or nil. The wiring layer checks it is still ACTIVE before
+// reusing it for a fetch.
+func (bd *BrowserDisplay) RetainedLink() any {
+	bd.destMu.Lock()
+	defer bd.destMu.Unlock()
+	return bd.retainedLink
+}
+
+// SetRetainedLink stores the RNS link returned by a fetch so the next fetch to
+// the same destination can reuse it. Pass nil to clear it (e.g. after a fetch
+// error, so a retry re-establishes).
+func (bd *BrowserDisplay) SetRetainedLink(link any) {
+	bd.destMu.Lock()
+	bd.retainedLink = link
+	bd.destMu.Unlock()
+}
+
+// SetRetainedLinkTeardown registers the callback that tears down a retained
+// *rns.Link (link.Teardown). It is set once by the wiring layer, which is the
+// only side that knows the concrete go-reticulum type.
+func (bd *BrowserDisplay) SetRetainedLinkTeardown(fn func(any)) {
+	bd.destMu.Lock()
+	bd.teardownLink = fn
+	bd.destMu.Unlock()
+}
+
+// teardownRetainedLink clears the retained link and invokes the registered
+// teardown callback outside destMu (the callback may take the link's own lock).
+func (bd *BrowserDisplay) teardownRetainedLink(link any) {
+	bd.destMu.Lock()
+	if bd.retainedLink == link {
+		bd.retainedLink = nil
+	}
+	fn := bd.teardownLink
+	bd.destMu.Unlock()
+	if fn != nil {
+		fn(link)
+	}
 }
 
 // BeginRequest cancels any in-flight page fetch, increments the request
