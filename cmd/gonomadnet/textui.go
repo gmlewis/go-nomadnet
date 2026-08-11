@@ -430,8 +430,14 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		tuiApp.Dialogs.ShowDialog("!", layout, 60, 6, nil)
 	}
 	networkDisplay.OnURLDialog = func() {
-		tuiApp.Dialogs.ShowInputDialog("Navigate",
-			"Enter URL:", "",
+		// Match Python Browser.url_dialog text exactly (Browser.py:1135-1162):
+		// title "Enter URL", caption "URL : ", "Cancel"/"Go" buttons. This handler
+		// fires when the browser frame is empty/disconnected (current_url is "",
+		// matching Python's empty-when-disconnected prefill); the focused browser
+		// frame's bd.OnURLDialog below fires the same dialog pre-filled with the
+		// live URL. Both share identical text so the user sees one dialog.
+		tuiApp.Dialogs.ShowInputDialogBtns("Enter URL",
+			"URL : ", "", "Go", "Cancel",
 			func(text string) {
 				if text != "" {
 					navigateTo(browser.NormalizeEnteredURL(text))
@@ -1523,12 +1529,12 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 			_ = tui.OSC52Copy(url)
 		}
 		bd.OnURLDialog = func() {
-			// Python Browser.url_dialog (Browser.py:1135-1182): pre-fill the
-			// current URL, let the user edit it, and on "Go" apply the "|"`→"`"
-			// normalization (a user can type "hash:path|x=1" instead of using a
-			// backtick) then retrieve_url.
-			tuiApp.Dialogs.ShowInputDialog("Enter URL",
-				"URL : ", bd.CurrentURL(),
+			// Python Browser.url_dialog (Browser.py:1135-1182): title "Enter URL",
+			// caption "URL : ", pre-fill current_url, "Cancel"/"Go" buttons. On
+			// "Go" apply the "|"`→"`" normalization (a user can type
+			// "hash:path|x=1" instead of using a backtick) then retrieve_url.
+			tuiApp.Dialogs.ShowInputDialogBtns("Enter URL",
+				"URL : ", bd.CurrentURL(), "Go", "Cancel",
 				func(text string) {
 					text = strings.TrimSpace(text)
 					if text == "" {

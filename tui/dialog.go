@@ -249,34 +249,64 @@ func (dm *DialogManager) ShowConfirmDialog(message string, onYes, onNo func()) {
 	dm.ShowDialog("Confirm", layout, 40, 6, nil)
 }
 
-// ShowInputDialog shows a text input dialog with Save/Cancel buttons.
+// ShowInputDialog shows a text input dialog with Save/Cancel buttons. It is
+// the common-case wrapper around ShowInputDialogBtns for dialogs whose confirm
+// button is "Save" (New Hub, Join Room, Add Interface, …). URL-entry dialogs
+// should call ShowInputDialogBtns directly with "Go"/"Cancel" to match Python's
+// Browser.url_dialog (Browser.py:1154-1162).
 func (dm *DialogManager) ShowInputDialog(title, label, defaultValue string, onSubmit func(string), onCancel func()) {
+	dm.ShowInputDialogBtns(title, label, defaultValue, "Save", "Cancel", onSubmit, onCancel)
+}
+
+// ShowInputDialogBtns shows a text input dialog with caller-supplied button
+// labels. It mirrors Python's url_dialog/Pile key model: Enter on the input
+// field confirms (Python's UrlEdit.keypress "enter" → confirmed, Browser.py
+// :1843-1849), Tab/Down moves focus input → confirm → cancel (urwid Pile
+// focus traversal), and Escape cancels. The confirm button is the first button
+// so an Enter typed while the field is focused submits immediately, matching
+// the Python UX where the user never has to tab to a button.
+func (dm *DialogManager) ShowInputDialogBtns(title, label, defaultValue, confirmLabel, cancelLabel string, onSubmit func(string), onCancel func()) {
 	input := tview.NewInputField()
 	input.SetLabel(label)
 	input.SetText(defaultValue)
 	input.SetFieldBackgroundColor(tcell.NewHexColor(0x222222))
 	input.SetFieldTextColor(tcell.NewHexColor(0xdddddd))
 
-	saveBtn := tview.NewButton("Save").SetSelectedFunc(func() {
+	triggerConfirm := func() {
 		value := input.GetText()
 		dm.DismissTop()
 		if onSubmit != nil {
 			onSubmit(value)
 		}
-	})
-	cancelBtn := tview.NewButton("Cancel").SetSelectedFunc(func() {
+	}
+	triggerCancel := func() {
 		dm.DismissTop()
 		if onCancel != nil {
 			onCancel()
 		}
+	}
+
+	confirmBtn := tview.NewButton(confirmLabel).SetSelectedFunc(triggerConfirm)
+	cancelBtn := tview.NewButton(cancelLabel).SetSelectedFunc(triggerCancel)
+	buttons := CreateButtonRow(confirmBtn, cancelBtn)
+
+	// Enter on the input submits (Python UrlEdit.keypress "enter" → confirmed).
+	// Tab/Escape are intercepted by wireDialogNav below (for traversal/dismiss)
+	// before the InputField's finish() runs, so done only fires on Enter here.
+	input.SetDoneFunc(func(key tcell.Key) {
+		if key == tcell.KeyEnter {
+			triggerConfirm()
+		}
 	})
-	buttons := CreateButtonRow(saveBtn, cancelBtn)
 
 	layout := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(input, 1, 0, true).
 		AddItem(buttons, 1, 0, false)
 
 	dm.ShowDialog(title, layout, 50, 5, nil)
+	// Tab/Down/Up/Esc traversal across input → confirm → cancel (urwid Pile
+	// focus model). wireDialogNav re-focuses the first item (the input).
+	wireDialogNav(dm.app, triggerCancel, []tview.Primitive{input, confirmBtn, cancelBtn})
 }
 
 // ShowRadioDialog shows a radio button selection dialog.

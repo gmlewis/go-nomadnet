@@ -30,6 +30,15 @@ type captureSetter interface {
 	GetInputCapture() func(*tcell.EventKey) *tcell.EventKey
 }
 
+// focuser is the subset of tview's application/root primitives that can move
+// keyboard focus. Both *tui.App (which embeds *tview.Application) and a raw
+// *tview.Application satisfy it, so wireDialogNav can be called from the
+// DialogManager (which only holds the raw *tview.Application) as well as from
+// widget displays (which hold a *tui.App).
+type focuser interface {
+	SetFocus(p tview.Primitive) *tview.Application
+}
+
 // setItemCapture installs a new input capture on a dialog widget, dispatching
 // by concrete type because tview's SetInputCapture returns a different
 // (chained) type on *tview.InputField versus *tview.Box, so no single interface
@@ -71,7 +80,7 @@ func getItemCapture(p tview.Primitive) func(*tcell.EventKey) *tcell.EventKey {
 // moves focus on Tab/Up/Down when the focused widget returns the key unhandled)
 // without relying on tview's Flex, whose InputHandler only forwards to an
 // already-focused child and provides no Tab traversal.
-func wireDialogNav(app *App, dismiss func(), items []tview.Primitive) {
+func wireDialogNav(app focuser, dismiss func(), items []tview.Primitive) {
 	if len(items) == 0 {
 		return
 	}

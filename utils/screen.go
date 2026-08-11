@@ -1299,6 +1299,72 @@ func (v *View) BrowserPaneSig() string {
 	return b.String()
 }
 
+// BrowserPaneText returns the rendered browser LineBox — the right-pane rows
+// from the browser's outer top border ('┌') through its outer bottom border
+// ('└'), inclusive: the frame, the URL bar, the page content, and the transfer
+// status footer — i.e. everything the browser is displaying. It EXCLUDES the
+// app menu bar above the box and the app shortcut bar below it (those rows fall
+// in the same right-pane column range but are not part of the browser). The
+// outer borders are the first '┌' from the top and the last '└' from the top
+// (i.e. the bottom-most '└'), so inner boxes a page might render do not clip
+// the capture. Returns "" if the browser LineBox is not present.
+func (v *View) BrowserPaneText() string {
+	if v.Screen == nil {
+		return ""
+	}
+	top, bot := v.browserFrameRows()
+	if top < 0 || bot < 0 {
+		return ""
+	}
+	var b strings.Builder
+	for y := top; y <= bot; y++ {
+		b.WriteString(v.rightPaneText(y))
+		b.WriteByte('\n')
+	}
+	return b.String()
+}
+
+// browserFrameRows returns the outer browser LineBox's top ('┌') and bottom
+// ('└') row indices (the first '┌' and the bottom-most '└' in the right pane).
+// Returns (-1,-1) if the browser frame is not on screen.
+func (v *View) browserFrameRows() (int, int) {
+	top, bot := -1, -1
+	for y := 0; y < v.Screen.H; y++ {
+		t := v.rightPaneText(y)
+		if top < 0 && strings.HasPrefix(t, "┌") {
+			top = y
+		}
+		if strings.HasPrefix(t, "└") {
+			bot = y // keep the bottom-most '└' (outer frame)
+		}
+	}
+	return top, bot
+}
+
+// BrowserContentLines returns the scrollable page-body rows of the browser
+// LineBox — the content between the fixed chrome. The browser frame layout
+// (tui/browser.go) is, top to bottom: ┌ border, URL header (Ⓝ <url>), header
+// divider (┄), page body (scrollable TextView), footer divider (┄), footer
+// status, └ border. So the body is rows (top+3) through (bot-3) inclusive.
+// These are the rows that change as the page scrolls, so a caller can page
+// top-to-bottom and stitch the per-frame body lines into the full page.
+// Returns nil if the browser frame is not present or too short to contain a
+// body region.
+func (v *View) BrowserContentLines() []string {
+	if v.Screen == nil {
+		return nil
+	}
+	top, bot := v.browserFrameRows()
+	if top < 0 || bot < 0 || bot-top < 6 { // need ┌,url,div,[body],div,status,└
+		return nil
+	}
+	var lines []string
+	for y := top + 3; y <= bot-3; y++ {
+		lines = append(lines, v.rightPaneText(y))
+	}
+	return lines
+}
+
 // GuideSelectedTopic returns the index (0..11) of the selected topic in the
 // "Topics" list. The PRIMARY signal is the hardware cursor: like the announce
 // stream, the Python original signals topic selection via the cursor with no
