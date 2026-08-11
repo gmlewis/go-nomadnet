@@ -510,6 +510,7 @@ func runSustainedWorker(ctx context.Context, ts *rns.TransportSystem, res resolv
 			}
 		})
 
+		linkOK := 0
 		for sent < opts.requestsPerLink {
 			select {
 			case <-ctx.Done():
@@ -525,10 +526,25 @@ func runSustainedWorker(ctx context.Context, ts *rns.TransportSystem, res resolv
 			sent++
 			status, rtt := sendOne(link, rc.path, rc.data, reqTimeout)
 			st.recordRequest(status, rtt)
-			if dropped.Load() == 1 || status == statusSendError {
-				// Link died under us; re-establish and continue sending.
+			if dropped.Load() == 1 || status != statusOK {
+				// The link is no longer usable — either it closed (dropped),
+				// the send failed, or the request timed out / was failed by the
+				// receipt. Stop sending into it and re-establish. Continuing to
+				// fire requests into a silent link only racks up 12s backstop
+				// timeouts (which used to false-positive UNRESPONSIVE); a fresh
+				// handshake both resets the fail streak and tests whether the
+				// node is still accepting links.
+				//
+				// Diagnostic: record whether the link CLOSED (and why) vs stayed
+				// ACTIVE-but-silent. This fork is what pins the go-reticulum
+				// client-link defect on a real (multi-hop) network — the symptom
+				// does not reproduce in-process.
+				log.Printf("link-break target=%x ok=%v status=%v rtt=%v linkStatus=%v dropped=%v teardownReason=%v",
+					res.targetHash, linkOK, status, rtt, linkStatusName(link.GetStatus()),
+					dropped.Load(), teardownReasonName(link.TeardownReason()))
 				break
 			}
+			linkOK++
 		}
 		teardownLink(link)
 	}
@@ -627,6 +643,43 @@ const (
 	statusTimeout   = "timeout"
 )
 
+// linkStatusName maps a go-reticulum link status code to a readable label for
+// the link-break diagnostic log.
+func linkStatusName(code int) string {
+	switch code {
+	case rns.LinkPending:
+		return "pending"
+	case rns.LinkHandshake:
+		return "handshake"
+	case rns.LinkActive:
+		return "active"
+	case rns.LinkStale:
+		return "stale"
+	case rns.LinkClosed:
+		return "closed"
+	default:
+		return "unknown"
+	}
+}
+
+// teardownReasonName maps a go-reticulum link teardown reason code to a label.
+func teardownReasonName(code int) string {
+	switch code {
+	case rns.TeardownTimeout:
+		return "timeout"
+	case rns.TeardownDestinationClosed:
+		return "destination-closed"
+	case rns.TeardownInitiatorClosed:
+		return "initiator-closed"
+	case rns.TeardownTransportClosed:
+		return "transport-closed"
+	case rns.TeardownStale:
+		return "stale"
+	default:
+		return "none/unknown"
+	}
+}
+
 // sendOne issues a single request over an active link and waits for the
 // response, a failure, or a backstop timeout. Returns a status and RTT.
 func sendOne(link *rns.Link, path string, data any, timeout time.Duration) (string, time.Duration) {
@@ -666,21 +719,32 @@ type requestCase struct {
 	tag  string
 }
 
-// buildCorpus returns the request corpus. Without --malformed it is a small set
-// of plausible nomadnet page paths with nil data; with --malformed it adds long
-// paths, path traversal, NUL/control bytes, wide unicode, huge segments, and
-// odd request payload types — the inputs most likely to find parsing panics.
+// buildCorpus returns the request corpus. Without --malformed it requests only
+// paths every nomadnet node is guaranteed to serve (nil data), so a healthy
+// target yields a 100% success rate and any failure indicates a real node/link
+// defect rather than a missing page. With --malformed it adds unhandled/edge
+// paths (bare root, plausible-but-unserved pages, long paths, path traversal,
+// NUL/control bytes, wide unicode, huge segments) and odd request payload types
+// — the inputs most likely to find parsing panics; a no-response there is
+// expected and does not indicate a defect.
 func buildCorpus(opts *options) []requestCase {
 	var out []requestCase
 	add := func(path string, data any, tag string) {
 		out = append(out, requestCase{path: path, data: data, tag: tag})
 	}
 
-	// Normal cases: plausible page fetches against nomadnetwork.node.
+	// Normal cases: page fetches against nomadnetwork.node. Without
+	// --malformed the corpus only requests paths every nomadnet node is
+	// guaranteed to serve, so a healthy target yields a 100% success rate
+	// and any failure points at a real node/link defect rather than a
+	// missing page. /page/index.mu is always registered: a served index.mu
+	// maps to that request path, and when no served index exists the node
+	// registers a default index handler for it (Node.registerRequestHandlers).
+	// Other plausible-but-not-universal paths (e.g. "/", "/page/conversations.mu")
+	// are exercised by the --malformed corpus below, where a no-response is
+	// expected and does not indicate a defect.
 	add(opts.requestPath, nil, "normal")
 	add("/page/index.mu", nil, "index")
-	add("/", nil, "root")
-	add("/page/conversations.mu", nil, "conversations")
 
 	if !opts.malformed {
 		return out
@@ -689,6 +753,7 @@ func buildCorpus(opts *options) []requestCase {
 	// Malformed paths.
 	add("", nil, "empty-path")
 	add("/", nil, "slash")
+	add("/page/conversations.mu", nil, "conversations")
 	add(strings.Repeat("/", 500), nil, "slashes")
 	add("/page/"+strings.Repeat("../", 80)+"etc/passwd", nil, "traversal")
 	add("/page/%2e%2e%2f%2e%2e%2fetc%2fpasswd", nil, "encoded-traversal")
@@ -793,6 +858,12 @@ func (s *targetStats) recordFail() {
 func (s *targetStats) recordEstablish() {
 	s.mu.Lock()
 	s.establishes++
+	// A successful link establishment proves the target is alive and answering
+	// at the Reticulum layer (the link handshake completed). Any prior request
+	// fail streak therefore cannot mean the node wedged, so reset it — this
+	// prevents flagging a node UNRESPONSIVE when it keeps accepting links but
+	// individual page requests time out (a link/request issue, not a crash).
+	s.consecutiveFails = 0
 	s.mu.Unlock()
 }
 
