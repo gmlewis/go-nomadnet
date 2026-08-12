@@ -1905,12 +1905,21 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		}
 	}
 
-	// Wire network connect to browser (loads page in Network display's Remote Node pane and full browser)
+	// Wire network connect to the Network display's own browser pane only.
+	// Python's Network page routes every navigation (Ctrl-u url_dialog,
+	// node/announce Enter, NodeInfo Browse) to its own browser
+	// (Network.py:1612/129/695/893/1421 → self.parent.browser.retrieve_url) —
+	// there is no standalone "browser" sub-display in Python (SubDisplays lists
+	// network/conversations/channels/directory/config/interface/map/log/guide
+	// only). Loading the standalone browserDisplay here too spawned a SECOND
+	// concurrent link establishment to the same destination (two fresh
+	// existing=false handshakes racing), which intermittently made both time
+	// out — the last flakiness source. The standalone browserDisplay keeps
+	// its own Ctrl-u (bd.OnURLDialog → bd.LoadURL) for when it is shown.
 	navigateTo = func(url string) {
 		if ndBp := networkDisplay.BrowserPane(); ndBp != nil {
 			ndBp.LoadURL(url)
 		}
-		browserDisplay.LoadURL(url)
 	}
 	networkDisplay.SetNavigateCallback(navigateTo)
 
