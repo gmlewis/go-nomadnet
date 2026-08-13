@@ -44,7 +44,7 @@ func TestConversationsDetailBaseColor(t *testing.T) {
 	cd.detail.SetRect(0, 0, 40, 5)
 	cd.detail.Draw(screen)
 	// cd.detail has a border; probe the interior cell (1,1) where "X" lands.
-	if c, _, style, _ := screen.GetContent(1, 1); c != 'X' {
+	if c, _, style, _ := cellContent(screen, 1, 1); c != 'X' {
 		t.Fatalf("detail cell (1,1) = %q, want 'X'", string(c))
 	} else {
 		fg, _, _ := style.Decompose()

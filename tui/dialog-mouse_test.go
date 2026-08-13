@@ -41,7 +41,7 @@ func TestStatusDialogOKButtonMouseClick(t *testing.T) {
 	for y := range 14 {
 		var line strings.Builder
 		for x := range 60 {
-			c, _, _, _ := screen.GetContent(x, y)
+			c, _, _, _ := cellContent(screen, x, y)
 			line.WriteRune(c)
 		}
 		if strings.Contains(line.String(), "OK") {

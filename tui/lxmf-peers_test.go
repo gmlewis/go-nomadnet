@@ -41,7 +41,7 @@ func renderPrimitive(t *testing.T, p tview.Primitive, width, height int) []strin
 	for y := range height {
 		var b strings.Builder
 		for x := range width {
-			c, _, _, _ := screen.GetContent(x, y)
+			c, _, _, _ := cellContent(screen, x, y)
 			b.WriteRune(c)
 		}
 		rows[y] = b.String()

@@ -63,7 +63,7 @@ func TestRoomWidgetPaletteColors(t *testing.T) {
 			screen.SetSize(40, 3)
 			rw.messages.SetRect(0, 0, 40, 3)
 			rw.messages.Draw(screen)
-			if c, _, style, _ := screen.GetContent(0, 0); c != 'X' {
+			if c, _, style, _ := cellContent(screen, 0, 0); c != 'X' {
 				t.Fatalf("messages cell (0,0) = %q, want 'X'", string(c))
 			} else {
 				fg, _, _ := style.Decompose()

@@ -49,8 +49,8 @@ func diagFile(path, line string) {
 	if err != nil {
 		return
 	}
-	defer f.Close()
-	f.WriteString(line + "\n")
+	defer func() { _ = f.Close() }()
+	_, _ = f.WriteString(line + "\n")
 }
 
 // runTextUI starts NomadNet with the terminal UI.

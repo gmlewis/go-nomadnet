@@ -282,7 +282,7 @@ func TestConversationsToggleFullscreen(t *testing.T) {
 	screen.SetSize(80, 12)
 
 	cell := func(x, y int) rune {
-		c, _, _, _ := screen.GetContent(x, y)
+		c, _, _, _ := cellContent(screen, x, y)
 		return c
 	}
 
@@ -1431,7 +1431,7 @@ func TestShowPeerInfoDialogGolden(t *testing.T) {
 	for y := range 30 {
 		var b strings.Builder
 		for x := range 80 {
-			c, _, _, _ := screen.GetContent(x, y)
+			c, _, _, _ := cellContent(screen, x, y)
 			b.WriteRune(c)
 		}
 		rows[y] = b.String()
@@ -1503,7 +1503,7 @@ func TestShowPeerInfoDialogKnownDivider(t *testing.T) {
 	for y := range 30 {
 		var b strings.Builder
 		for x := range 80 {
-			c, _, _, _ := screen.GetContent(x, y)
+			c, _, _, _ := cellContent(screen, x, y)
 			b.WriteRune(c)
 		}
 		rows[y] = b.String()

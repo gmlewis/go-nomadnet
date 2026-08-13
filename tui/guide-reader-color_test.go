@@ -69,7 +69,7 @@ func TestGuideReaderBaseColor(t *testing.T) {
 			var foundBase, foundWrong bool
 			for y := range 24 {
 				for x := range 100 {
-					c, _, style, _ := screen.GetContent(x, y)
+					c, _, style, _ := cellContent(screen, x, y)
 					if c != ' ' && c != 0 {
 						continue
 					}

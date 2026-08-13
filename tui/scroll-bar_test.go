@@ -42,7 +42,7 @@ func drawScrollBar(t *testing.T, s *ScrollBar, w, h int) []string {
 	for y := range h {
 		var b strings.Builder
 		for x := range w {
-			c, _, _, _ := screen.GetContent(x, y)
+			c, _, _, _ := cellContent(screen, x, y)
 			b.WriteRune(c)
 		}
 		rows[y] = b.String()

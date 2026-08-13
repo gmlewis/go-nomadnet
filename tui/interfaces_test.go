@@ -245,10 +245,10 @@ func TestInterfacesDisplayTitleCeilLeftCentering(t *testing.T) {
 	id.layout.Draw(screen)
 
 	// 'I' of "Interfaces" on row 0 at the ceil-left column (36).
-	if main, _, _, _ := screen.GetContent(36, 0); main != 'I' {
+	if main, _, _, _ := cellContent(screen, 36, 0); main != 'I' {
 		t.Errorf("title 'I' at col 36 = %q, want 'I' (ceil-left)", main)
 	}
-	if main, _, _, _ := screen.GetContent(35, 0); main == 'I' {
+	if main, _, _, _ := cellContent(screen, 35, 0); main == 'I' {
 		t.Errorf("title 'I' found at col 35 (floor-left); want ceil-left at 36")
 	}
 }
@@ -363,10 +363,10 @@ func TestInterfacesDisplayListFocusDraw(t *testing.T) {
 	// No outer border (Python has none): title(2) => first box top at y=2, title
 	// row y=3. Box content starts at x = border(1) + pad(2) = 3. No item is
 	// focused at boot (Python's list focus is on the header) => ○ on all.
-	if c, _, _, _ := screen.GetContent(3, 3); c != '○' {
+	if c, _, _, _ := cellContent(screen, 3, 3); c != '○' {
 		t.Errorf("first item selection glyph at boot = %q, want ○", c)
 	}
-	if c, _, _, _ := screen.GetContent(3, 10); c != '○' {
+	if c, _, _, _ := cellContent(screen, 3, 10); c != '○' {
 		t.Errorf("second item selection glyph at boot = %q, want ○", c)
 	}
 	if id.SelectedIndex() != -1 {
@@ -376,10 +376,10 @@ func TestInterfacesDisplayListFocusDraw(t *testing.T) {
 	// First Down focuses the first item (Python: Down from header -> item 0).
 	id.handleInput(tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone))
 	id.layout.Draw(screen)
-	if c, _, _, _ := screen.GetContent(3, 3); c != '●' {
+	if c, _, _, _ := cellContent(screen, 3, 3); c != '●' {
 		t.Errorf("after first Down, first item glyph = %q, want ●", c)
 	}
-	if c, _, _, _ := screen.GetContent(3, 10); c != '○' {
+	if c, _, _, _ := cellContent(screen, 3, 10); c != '○' {
 		t.Errorf("after first Down, second item glyph = %q, want ○", c)
 	}
 	if id.SelectedIndex() != 0 {
@@ -389,10 +389,10 @@ func TestInterfacesDisplayListFocusDraw(t *testing.T) {
 	// A second Down moves focus to the second item.
 	id.handleInput(tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone))
 	id.layout.Draw(screen)
-	if c, _, _, _ := screen.GetContent(3, 3); c != '○' {
+	if c, _, _, _ := cellContent(screen, 3, 3); c != '○' {
 		t.Errorf("after second Down, first item glyph = %q, want ○", c)
 	}
-	if c, _, _, _ := screen.GetContent(3, 10); c != '●' {
+	if c, _, _, _ := cellContent(screen, 3, 10); c != '●' {
 		t.Errorf("after second Down, second item glyph = %q, want ●", c)
 	}
 	if id.SelectedIndex() != 1 {

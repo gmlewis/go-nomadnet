@@ -182,8 +182,8 @@ func TestBrowserCheckboxRadioCollect(t *testing.T) {
 	}
 
 	// Line 3: radio choice (value a). Down past opt2 (line 2) to choice (line 3).
-	bd.handleInput(key(tcell.KeyDown, 0)) // → opt2 line
-	bd.handleInput(key(tcell.KeyDown, 0)) // → choice line
+	bd.handleInput(key(tcell.KeyDown, 0))   // → opt2 line
+	bd.handleInput(key(tcell.KeyDown, 0))   // → choice line
 	bd.handleInput(key(tcell.KeyRune, ' ')) // toggle radio
 	if !bd.lineFields[bd.focusLine][0].checkbox.IsChecked() {
 		t.Error("choice radio not toggled on")

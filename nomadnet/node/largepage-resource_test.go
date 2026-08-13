@@ -96,7 +96,7 @@ func TestIntegrationLargePageResourceTransfer(t *testing.T) {
 		case failCh <- struct{}{}:
 		default:
 		}
-	}, nil, 30*time.Second)
+	}, nil, 30*time.Second, 0)
 	if err != nil {
 		t.Fatalf("Request error: %v", err)
 	}

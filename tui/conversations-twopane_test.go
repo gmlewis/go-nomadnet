@@ -45,7 +45,7 @@ func renderConversationsContent(t *testing.T) []string {
 	for y := range 24 {
 		var b strings.Builder
 		for x := range 80 {
-			c, _, _, _ := screen.GetContent(x, y)
+			c, _, _, _ := cellContent(screen, x, y)
 			b.WriteRune(c)
 		}
 		rows[y] = b.String()

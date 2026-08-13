@@ -67,7 +67,7 @@ func TestTerminalDefaultBackgroundAndBorders(t *testing.T) {
 	box.SetRect(0, 0, 20, 5)
 	box.Draw(screen)
 
-	_, _, style, _ := screen.GetContent(0, 0) // top-left border corner
+	_, _, style, _ := cellContent(screen, 0, 0) // top-left border corner
 	fg, bg, _ := style.Decompose()
 	if bg != tcell.ColorDefault {
 		t.Errorf("border cell bg = %v, want ColorDefault (Python \\x1b[...49m)", bg)

@@ -46,7 +46,7 @@ func TestTabBarWidgetWidthDistribution(t *testing.T) {
 
 	var row strings.Builder
 	for x := range 50 {
-		c, _, _, _ := screen.GetContent(x, 0)
+		c, _, _, _ := cellContent(screen, x, 0)
 		row.WriteRune(c)
 	}
 	got := row.String()
@@ -77,7 +77,7 @@ func TestTabBarWidgetEvenWidth(t *testing.T) {
 
 	var row strings.Builder
 	for x := range 21 {
-		c, _, _, _ := screen.GetContent(x, 0)
+		c, _, _, _ := cellContent(screen, x, 0)
 		row.WriteRune(c)
 	}
 	want := "[ ABC    ]" + " " + "[ DEFG   ]"

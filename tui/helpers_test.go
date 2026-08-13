@@ -17,7 +17,30 @@ package tui
 
 import (
 	"testing"
+
+	"github.com/gdamore/tcell/v2"
 )
+
+// cellContent returns the primary rune, combining runes, style, and display
+// width of the cell at (x, y) on s. It is a test-only stand-in for the
+// deprecated tcell Screen.GetContent: upstream now implements GetContent in
+// terms of Screen.Get, splitting Get's result string into a leading primary
+// rune and the remaining combining runes. Mirroring that here keeps the suite
+// free of the SA1019 deprecation warning without altering any rune-level
+// assertion (the return signature is identical to GetContent).
+func cellContent(s tcell.Screen, x, y int) (rune, []rune, tcell.Style, int) {
+	str, style, width := s.Get(x, y)
+	var primary rune
+	var combining []rune
+	for i, r := range str {
+		if i == 0 {
+			primary = r
+		} else {
+			combining = append(combining, r)
+		}
+	}
+	return primary, combining, style, width
+}
 
 func TestNewClickableIcon(t *testing.T) {
 	t.Parallel()

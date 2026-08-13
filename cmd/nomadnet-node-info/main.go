@@ -685,12 +685,12 @@ func fatal(format string, args ...any) {
 
 func usage() {
 	out := flag.CommandLine.Output()
-	fmt.Fprintln(out, "usage: nomadnet-node-info [--rnsconfig DIR] [--json] <name-or-address>")
-	fmt.Fprintln(out)
-	fmt.Fprintln(out, "Searches the local Reticulum announce history (offline) for a node by name")
-	fmt.Fprintln(out, "(substring, case-insensitive) or destination/identity hash (hex prefix) and")
-	fmt.Fprintln(out, "prints everything known about each match.")
-	fmt.Fprintln(out)
-	fmt.Fprintln(out, "Flags:")
+	_, _ = fmt.Fprintln(out, "usage: nomadnet-node-info [--rnsconfig DIR] [--json] <name-or-address>")
+	_, _ = fmt.Fprintln(out)
+	_, _ = fmt.Fprintln(out, "Searches the local Reticulum announce history (offline) for a node by name")
+	_, _ = fmt.Fprintln(out, "(substring, case-insensitive) or destination/identity hash (hex prefix) and")
+	_, _ = fmt.Fprintln(out, "prints everything known about each match.")
+	_, _ = fmt.Fprintln(out)
+	_, _ = fmt.Fprintln(out, "Flags:")
 	flag.PrintDefaults()
 }

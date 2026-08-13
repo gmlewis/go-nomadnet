@@ -65,7 +65,7 @@ func TestChannelsDisplayPaletteColors(t *testing.T) {
 			cd.messages.SetText("X")
 			cd.messages.SetRect(0, 0, 10, 1)
 			cd.messages.Draw(mlScreen)
-			if c, _, style, _ := mlScreen.GetContent(0, 0); c != 'X' {
+			if c, _, style, _ := cellContent(mlScreen, 0, 0); c != 'X' {
 				t.Fatalf("messages cell (0,0) = %q, want 'X'", string(c))
 			} else {
 				mfg, _, _ := style.Decompose()

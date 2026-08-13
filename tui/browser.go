@@ -117,8 +117,8 @@ type BrowserDisplay struct {
 	// link.Teardown() when the destination changes or the browser disconnects.
 	// destMu guards the field against the fetch goroutine reading it while the
 	// event loop writes (SetCurrentDest/Disconnect), matching currentDest.
-	retainedLink    any
-	teardownLink    func(any) // tears down a retained *rns.Link (link.Teardown)
+	retainedLink any
+	teardownLink func(any) // tears down a retained *rns.Link (link.Teardown)
 	// Rendered-page metadata, mirroring GuideDisplay: links/anchors are cached
 	// for handleLink dispatch and jumpToAnchor; currentLines feeds the anchor
 	// line lookup.
@@ -224,8 +224,8 @@ type BrowserDisplay struct {
 func NewBrowserDisplay(app *App) *BrowserDisplay {
 	bd := &BrowserDisplay{app: app}
 	if f, err := os.OpenFile("/tmp/peek-debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
-		f.WriteString("=== NewBrowserDisplay created ===\n")
-		f.Close()
+		_, _ = f.WriteString("=== NewBrowserDisplay created ===\n")
+		_ = f.Close()
 	}
 	g := app.Glyphs
 	divGlyph := glyph(g, "divider1")

@@ -22,7 +22,11 @@ go install ./cmd/gonomadnet
 #                            restore the primary screen + its scrollback)
 #   \033[?25h              -> unhide the cursor (tcell hides it on engage)
 #   \033[0m                -> reset SGR attributes
-trap 'stty sane 2>/dev/null; printf "\033[?1049l\033[?25h\033[0m"' EXIT
+# Capture the real exit status BEFORE the trap's own commands overwrite $?,
+# then re-`exit` with it at the end. Without this, bash adopts the status of the
+# trap's last command (the printf, which succeeds) as the script's exit status,
+# masking any upstream failure (e.g. `go install`) and reporting success.
+trap 'rc=$?; stty sane 2>/dev/null; printf "\033[?1049l\033[?25h\033[0m"; exit $rc' EXIT
 
 GOTRACEBACK=all "$(go env GOPATH)/bin/gonomadnet" -pprof-addr 127.0.0.1:6060 \
     2>"gonomadnet-$(hostname -s)-kill-QUIT-$(date +%s).log"

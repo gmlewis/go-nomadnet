@@ -61,7 +61,7 @@ func TestSelectableInterfaceItemStatusColors(t *testing.T) {
 		return sc
 	}
 	fgAt := func(sc tcell.Screen, x, y int) tcell.Color {
-		_, _, st, _ := sc.GetContent(x, y)
+		_, _, st, _ := cellContent(sc, x, y)
 		f, _, _ := st.Decompose()
 		return f
 	}

@@ -160,7 +160,7 @@ func TestLoopbackBrowseViaSharedInstance(t *testing.T) {
 		case failCh <- fmt.Sprintf("failed callback status=%v", rr.Status):
 		default:
 		}
-	}, nil, 30*time.Second)
+	}, nil, 30*time.Second, 0)
 	if err != nil {
 		t.Fatalf("Request: %v", err)
 	}

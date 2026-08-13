@@ -34,7 +34,7 @@ func TestShowStatusDialogRendersOKButton(t *testing.T) {
 	var b strings.Builder
 	for y := range 14 {
 		for x := range 60 {
-			c, _, _, _ := screen.GetContent(x, y)
+			c, _, _, _ := cellContent(screen, x, y)
 			b.WriteRune(c)
 		}
 		b.WriteByte('\n')

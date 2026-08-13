@@ -260,9 +260,9 @@ func run(args []string) error {
 	}()
 
 	d := &driver{
-		sess:       sess,
-		logf:       logf,
-		stepDelay:   cfg.stepDelay,
+		sess:         sess,
+		logf:         logf,
+		stepDelay:    cfg.stepDelay,
 		announceWait: cfg.announceWait,
 		connectWait:  cfg.connectWait,
 		responseWait: cfg.responseWait,
@@ -343,11 +343,11 @@ type driver struct {
 	responseWait time.Duration
 
 	// checkpoints, reported in the final summary.
-	asserts        int
-	assertOK       int
-	failures       int
-	fieldFound     bool
-	textAccepted   bool
+	asserts         int
+	assertOK        int
+	failures        int
+	fieldFound      bool
+	textAccepted    bool
 	searchSubmitted bool
 
 	// preSubmitSig is the browser right-pane signature captured AFTER the submit

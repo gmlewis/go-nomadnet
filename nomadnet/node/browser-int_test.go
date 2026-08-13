@@ -105,7 +105,7 @@ func TestIntegrationBrowserRequestsPageReceivesMicron(t *testing.T) {
 		}
 	}, func(rr *rns.RequestReceipt) {
 		t.Logf("request failed")
-	}, nil, 15*time.Second)
+	}, nil, 15*time.Second, 0)
 	if err != nil {
 		t.Fatalf("Request error: %v", err)
 	}
@@ -201,7 +201,7 @@ func TestIntegrationBrowserRendersMicronPage(t *testing.T) {
 		}
 	}, func(rr *rns.RequestReceipt) {
 		t.Logf("request failed")
-	}, nil, 15*time.Second)
+	}, nil, 15*time.Second, 0)
 	if err != nil {
 		t.Fatalf("Request error: %v", err)
 	}
@@ -301,7 +301,7 @@ func TestIntegrationBrowserServesFromCache(t *testing.T) {
 		}
 	}, func(rr *rns.RequestReceipt) {
 		t.Logf("request failed")
-	}, nil, 15*time.Second)
+	}, nil, 15*time.Second, 0)
 	if err != nil {
 		t.Fatalf("Request error: %v", err)
 	}
@@ -335,7 +335,7 @@ func TestIntegrationBrowserServesFromCache(t *testing.T) {
 		}
 	}, func(rr *rns.RequestReceipt) {
 		t.Logf("request failed")
-	}, nil, 15*time.Second)
+	}, nil, 15*time.Second, 0)
 	if err != nil {
 		t.Fatalf("Request error: %v", err)
 	}
@@ -445,7 +445,7 @@ func TestIntegrationPartialsTriggerSubRequests(t *testing.T) {
 		}
 	}, func(rr *rns.RequestReceipt) {
 		t.Logf("request failed")
-	}, nil, 15*time.Second)
+	}, nil, 15*time.Second, 0)
 	if err != nil {
 		t.Fatalf("Request error: %v", err)
 	}
@@ -473,7 +473,7 @@ func TestIntegrationPartialsTriggerSubRequests(t *testing.T) {
 		}
 	}, func(rr *rns.RequestReceipt) {
 		t.Logf("request failed")
-	}, nil, 15*time.Second)
+	}, nil, 15*time.Second, 0)
 	if err != nil {
 		t.Fatalf("Request error: %v", err)
 	}

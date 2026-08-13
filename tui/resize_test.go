@@ -207,7 +207,7 @@ func TestMainDisplayReflowAt80x24(t *testing.T) {
 	// "Conversations" is rendered, so row 0 must contain a non-blank cell.
 	rowHasText := false
 	for x := range W {
-		c, _, _, _ := screen.GetContent(x, 0)
+		c, _, _, _ := cellContent(screen, x, 0)
 		if c != ' ' && c != 0 {
 			rowHasText = true
 			break
@@ -220,5 +220,5 @@ func TestMainDisplayReflowAt80x24(t *testing.T) {
 	// The shortcut bar is the bottom row (row 23). It may legitimately be
 	// empty for the default page, so only assert the row is reachable (the
 	// screen did not crash drawing it); the content area spans rows 1..22.
-	_, _, _, _ = screen.GetContent(0, H-1)
+	_, _, _, _ = cellContent(screen, 0, H-1)
 }

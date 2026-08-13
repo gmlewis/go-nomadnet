@@ -88,7 +88,7 @@ func TestFocusedBoxRendersSingleLine(t *testing.T) {
 	box.Draw(screen)
 
 	mustCell := func(x, y int, want rune) {
-		c, _, _, _ := screen.GetContent(x, y)
+		c, _, _, _ := cellContent(screen, x, y)
 		if c != want {
 			t.Errorf("focused box cell(%v,%v) = %q, want %q", x, y, c, want)
 		}
@@ -121,7 +121,7 @@ func TestBorderedBoxSingleLine(t *testing.T) {
 	box.Draw(screen)
 
 	mustCell := func(x, y int, want rune) {
-		c, _, _, _ := screen.GetContent(x, y)
+		c, _, _, _ := cellContent(screen, x, y)
 		if c != want {
 			t.Errorf("cell(%v,%v) = %q, want %q", x, y, c, want)
 		}
@@ -159,7 +159,7 @@ func TestBorderedBoxRounded(t *testing.T) {
 	box.Draw(screen)
 
 	mustCell := func(x, y int, want rune) {
-		c, _, _, _ := screen.GetContent(x, y)
+		c, _, _, _ := cellContent(screen, x, y)
 		if c != want {
 			t.Errorf("cell(%v,%v) = %q, want %q", x, y, c, want)
 		}
@@ -194,16 +194,16 @@ func TestBorderedBoxDrawsContent(t *testing.T) {
 	box.Draw(screen)
 
 	// Inner rect is (1,1)-(10,3). "Hi" is left-aligned at (1,1).
-	c, _, _, _ := screen.GetContent(1, 1)
+	c, _, _, _ := cellContent(screen, 1, 1)
 	if c != 'H' {
 		t.Errorf("content cell(1,1) = %q, want 'H'", c)
 	}
-	c, _, _, _ = screen.GetContent(2, 1)
+	c, _, _, _ = cellContent(screen, 2, 1)
 	if c != 'i' {
 		t.Errorf("content cell(2,1) = %q, want 'i'", c)
 	}
 	// Border must not be clobbered by content.
-	c, _, _, _ = screen.GetContent(0, 0)
+	c, _, _, _ = cellContent(screen, 0, 0)
 	if c != BorderTopLeft {
 		t.Errorf("border cell(0,0) = %q, want %q", c, BorderTopLeft)
 	}

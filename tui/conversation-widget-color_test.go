@@ -77,7 +77,7 @@ func TestConversationWidgetPaletteColors(t *testing.T) {
 			piScreen.SetSize(60, 1)
 			cw.peerInfoBar.SetRect(0, 0, 60, 1)
 			cw.peerInfoBar.Draw(piScreen)
-			if c, _, style, _ := piScreen.GetContent(1, 0); c == ' ' || c == 0 {
+			if c, _, style, _ := cellContent(piScreen, 1, 0); c == ' ' || c == 0 {
 				t.Fatalf("peerInfoBar cell (1,0) is blank; cannot probe base color")
 			} else {
 				fg, bg, _ := style.Decompose()
@@ -100,7 +100,7 @@ func TestConversationWidgetPaletteColors(t *testing.T) {
 			cw.messageList.SetText("X")
 			cw.messageList.SetRect(0, 0, 10, 1)
 			cw.messageList.Draw(mlScreen)
-			if c, _, style, _ := mlScreen.GetContent(0, 0); c != 'X' {
+			if c, _, style, _ := cellContent(mlScreen, 0, 0); c != 'X' {
 				t.Fatalf("messageList cell (0,0) = %q, want 'X'", string(c))
 			} else {
 				fg, _, _ := style.Decompose()

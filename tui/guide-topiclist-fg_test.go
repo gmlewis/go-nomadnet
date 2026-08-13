@@ -75,7 +75,7 @@ func TestGuideTopicListUnfocusedFg(t *testing.T) {
 			found := false
 			for y := 2; y < 30 && !found; y++ {
 				for x := 2; x < 5; x++ {
-					c, combc, style, width := screen.GetContent(x, y)
+					c, combc, style, width := cellContent(screen, x, y)
 					_ = combc
 					_ = width
 					if c == ' ' || c == 0 {

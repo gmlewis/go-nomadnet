@@ -179,7 +179,7 @@ func TestLoopbackRepeatRequestOnSameLink(t *testing.T) {
 			}{fail: fmt.Sprintf("failed status=%v", rr.Status)}:
 			default:
 			}
-		}, nil, reqTimeout)
+		}, nil, reqTimeout, 0)
 		if err != nil {
 			t.Fatalf("req %d: Request error: %v", i, err)
 		}

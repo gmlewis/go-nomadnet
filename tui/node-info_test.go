@@ -43,7 +43,7 @@ func renderNodeInfo(t *testing.T, ni *NodeInfoDisplay, width, height int) []stri
 	for y := range height {
 		var b strings.Builder
 		for x := range width {
-			c, _, _, _ := screen.GetContent(x, y)
+			c, _, _, _ := cellContent(screen, x, y)
 			b.WriteRune(c)
 		}
 		rows[y] = b.String()

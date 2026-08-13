@@ -98,7 +98,7 @@ func TestStyledLinesToTviewTextUnderlineNoLeak(t *testing.T) {
 	found := 0
 	for y := range 6 {
 		for x := range 90 {
-			c, _, _, _ := screen.GetContent(x, y)
+			c, _, _, _ := cellContent(screen, x, y)
 			if c != runes[found] {
 				found = 0
 				continue
@@ -122,7 +122,7 @@ func TestStyledLinesToTviewTextUnderlineNoLeak(t *testing.T) {
 
 // styleAt returns the tcell Style of the cell at (x,y), decomposed.
 func styleAt(screen tcell.Screen, x, y int) (c tcell.Color, bg tcell.Color, attr tcell.AttrMask) {
-	r, _, style, _ := screen.GetContent(x, y)
+	r, _, style, _ := cellContent(screen, x, y)
 	_ = r
 	c, bg, attr = style.Decompose()
 	return

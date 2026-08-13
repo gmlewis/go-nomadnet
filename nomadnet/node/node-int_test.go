@@ -207,7 +207,7 @@ func TestIntegrationNodeServesDefaultIndexPage(t *testing.T) {
 		}
 	}, func(rr *rns.RequestReceipt) {
 		t.Logf("request failed")
-	}, nil, 15*time.Second)
+	}, nil, 15*time.Second, 0)
 	if err != nil {
 		t.Fatalf("Request error: %v", err)
 	}
@@ -314,7 +314,7 @@ func TestIntegrationNodeServesCustomPage(t *testing.T) {
 		}
 	}, func(rr *rns.RequestReceipt) {
 		t.Logf("request failed")
-	}, nil, 15*time.Second)
+	}, nil, 15*time.Second, 0)
 	if err != nil {
 		t.Fatalf("Request error: %v", err)
 	}
@@ -429,7 +429,7 @@ func TestIntegrationNodeAllowedFileRestrictsAccess(t *testing.T) {
 		case responseCh <- nil:
 		default:
 		}
-	}, nil, 15*time.Second)
+	}, nil, 15*time.Second, 0)
 	if err != nil {
 		t.Fatalf("Request error: %v", err)
 	}
@@ -544,7 +544,7 @@ func TestIntegrationNodeServesBinaryFile(t *testing.T) {
 		}
 	}, func(rr *rns.RequestReceipt) {
 		t.Logf("request failed")
-	}, nil, 15*time.Second)
+	}, nil, 15*time.Second, 0)
 	if err != nil {
 		t.Fatalf("Request error: %v", err)
 	}

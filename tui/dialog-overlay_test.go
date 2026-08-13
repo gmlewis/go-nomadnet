@@ -179,11 +179,11 @@ func TestCenterDialogInPanePlacement(t *testing.T) {
 	flex.SetRect(0, 0, 80, 24)
 	flex.Draw(screen)
 
-	c, _, _, _ := screen.GetContent(1, 8)
+	c, _, _, _ := cellContent(screen, 1, 8)
 	if c != '┌' {
 		t.Errorf("dialog top-left corner at (1,8) = %q, want '┌'", c)
 	}
-	cSide, _, _, _ := screen.GetContent(1, 9)
+	cSide, _, _, _ := cellContent(screen, 1, 9)
 	if cSide != '│' {
 		t.Errorf("dialog side border at (1,9) = %q, want '│'", cSide)
 	}

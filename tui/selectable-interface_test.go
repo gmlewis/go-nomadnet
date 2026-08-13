@@ -206,15 +206,15 @@ func TestSelectableInterfaceItemDraw(t *testing.T) {
 	s.Draw(screen)
 
 	// Rounded top-left corner.
-	if main, _, _, _ := screen.GetContent(0, 0); main != BorderTopLeftRounded {
+	if main, _, _, _ := cellContent(screen, 0, 0); main != BorderTopLeftRounded {
 		t.Errorf("top-left = %q, want %q", main, BorderTopLeftRounded)
 	}
 	// Focused selection glyph ● at content start (x=3, y=1).
-	if main, _, _, _ := screen.GetContent(3, 1); main != '●' {
+	if main, _, _, _ := cellContent(screen, 3, 1); main != '●' {
 		t.Errorf("selection glyph = %q, want ●", main)
 	}
 	// Icon at x=7 (3 pad + 4-wide sel field).
-	if main, _, _, _ := screen.GetContent(7, 1); main != 'ᚱ' {
+	if main, _, _, _ := cellContent(screen, 7, 1); main != 'ᚱ' {
 		t.Errorf("icon = %q, want ᚱ", main)
 	}
 }
@@ -241,19 +241,19 @@ func TestSelectableInterfaceItemPartialDraw(t *testing.T) {
 	s.Draw(screen)
 
 	// Top border present.
-	if main, _, _, _ := screen.GetContent(0, 0); main != BorderTopLeftRounded {
+	if main, _, _, _ := cellContent(screen, 0, 0); main != BorderTopLeftRounded {
 		t.Errorf("top-left = %q, want %q", main, BorderTopLeftRounded)
 	}
 	// Last visible row (y=4) is the divider content row flanked by verticals,
 	// NOT a bottom border.
-	if main, _, _, _ := screen.GetContent(0, 4); main != BorderVertical {
+	if main, _, _, _ := cellContent(screen, 0, 4); main != BorderVertical {
 		t.Errorf("last row left = %q, want %v (vertical, no bottom border when clipped)", main, BorderVertical)
 	}
-	if main, _, _, _ := screen.GetContent(59, 4); main != BorderVertical {
+	if main, _, _, _ := cellContent(screen, 59, 4); main != BorderVertical {
 		t.Errorf("last row right = %q, want %v", main, BorderVertical)
 	}
 	// Title row (y=1) content present.
-	if main, _, _, _ := screen.GetContent(3, 1); main != '○' {
+	if main, _, _, _ := cellContent(screen, 3, 1); main != '○' {
 		t.Errorf("selection glyph = %q, want ○", main)
 	}
 }
@@ -285,15 +285,15 @@ func TestInterfaceListBoxPartialLastItem(t *testing.T) {
 	b.Draw(screen)
 
 	// Box A top border at y=0, Box B top border at y=7, Box C top border at y=14.
-	if main, _, _, _ := screen.GetContent(0, 14); main != BorderTopLeftRounded {
+	if main, _, _, _ := cellContent(screen, 0, 14); main != BorderTopLeftRounded {
 		t.Errorf("partial box C top-left at y=14 = %q, want %q", main, BorderTopLeftRounded)
 	}
 	// Box C last visible row (y=16) is a vertical (clipped, no bottom border).
-	if main, _, _, _ := screen.GetContent(0, 16); main != BorderVertical {
+	if main, _, _, _ := cellContent(screen, 0, 16); main != BorderVertical {
 		t.Errorf("partial box C last row y=16 = %q, want %v (clipped, no bottom border)", main, BorderVertical)
 	}
 	// Box C title row (y=15) shows the name.
-	if main, _, _, _ := screen.GetContent(3, 15); main != '○' {
+	if main, _, _, _ := cellContent(screen, 3, 15); main != '○' {
 		t.Errorf("partial box C selection glyph y=15 = %q, want ○", main)
 	}
 }

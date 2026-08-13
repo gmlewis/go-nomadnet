@@ -30,7 +30,7 @@ func TestCenteredTextLeftPad(t *testing.T) {
 	// Check line 0: "Currently, no nodes are saved" (29 chars) in width 60
 	// Ceil-left pad: (60 - 29 + 1) / 2 = 16
 	// First non-blank char on row 0 should be 'C' at x=16
-	mainc, _, _, _ := screen.GetContent(16, 0)
+	mainc, _, _, _ := cellContent(screen, 16, 0)
 	if mainc != 'C' {
 		t.Errorf("cell (16, 0) = %q, want 'C'", mainc)
 	}

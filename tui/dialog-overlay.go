@@ -31,12 +31,12 @@ func debugFocusLog(tag string, p tview.Primitive) {
 	if err != nil {
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	name := "<nil>"
 	if p != nil {
 		name = fmt.Sprintf("%T", p)
 	}
-	f.WriteString("DIALOG " + tag + " focus=" + name + "\n")
+	_, _ = f.WriteString("DIALOG " + tag + " focus=" + name + "\n")
 }
 
 // dialogEntry is one frame on the modal dialog stack.

@@ -36,7 +36,7 @@ func debugPeekLog(bd *BrowserDisplay, link *micron.LinkSpec) {
 	if err != nil {
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	cur := 0
 	if bd.focusLine >= 0 && bd.focusLine < len(bd.lineCursors) {
 		cur = bd.lineCursors[bd.focusLine]
@@ -49,7 +49,7 @@ func debugPeekLog(bd *BrowserDisplay, link *micron.LinkSpec) {
 	if link != nil {
 		linkURL = link.URL
 	}
-	f.WriteString("focusLine=" + strconv.Itoa(bd.focusLine) + " cursor=" + strconv.Itoa(cur) + " plain=" + plain + " link=" + linkURL + "\n")
+	_, _ = f.WriteString("focusLine=" + strconv.Itoa(bd.focusLine) + " cursor=" + strconv.Itoa(cur) + " plain=" + plain + " link=" + linkURL + "\n")
 }
 
 // debugInputLog is a TEMPORARY diagnostic appended to /tmp/peek-debug.log
@@ -60,13 +60,13 @@ func debugInputLog(bd *BrowserDisplay, event *tcell.EventKey) {
 	if err != nil {
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	name := event.Name()
 	hasFocus := "no"
 	if bd.content != nil && bd.content.HasFocus() {
 		hasFocus = "yes"
 	}
-	f.WriteString("INPUT key=" + name + " contentHasFocus=" + hasFocus + "\n")
+	_, _ = f.WriteString("INPUT key=" + name + " contentHasFocus=" + hasFocus + "\n")
 }
 
 // DebugAppKey is a TEMPORARY diagnostic appended to /tmp/peek-debug.log tracing
@@ -76,13 +76,13 @@ func DebugAppKey(app *tview.Application, event *tcell.EventKey) {
 	if err != nil {
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	name := event.Name()
 	focus := "<nil>"
 	if p := app.GetFocus(); p != nil {
 		focus = fmt.Sprintf("%T", p)
 	}
-	f.WriteString("APPKEY key=" + name + " focus=" + focus + "\n")
+	_, _ = f.WriteString("APPKEY key=" + name + " focus=" + focus + "\n")
 }
 
 // renderedField is one rendered micron <field> span on a page line. The browser
@@ -93,13 +93,13 @@ func DebugAppKey(app *tview.Application, event *tcell.EventKey) {
 // value from editor (text) or checkbox (checkbox/radio), mirroring Python
 // recurse_down (Browser.py:232-268).
 type renderedField struct {
-	spec     *micron.FieldSpec
-	editor   *ReadlineEdit   // non-nil for text fields (the overlay primitive)
-	checkbox *tview.Checkbox // non-nil for checkbox/radio fields
-	startCol int             // display width of text before this field on its line
-	width    int             // field width in columns (defaultFieldWidth default)
-	runeStart int            // rune offset of this field's span within its line
-	runeEnd   int            // rune offset just past this field's span
+	spec      *micron.FieldSpec
+	editor    *ReadlineEdit   // non-nil for text fields (the overlay primitive)
+	checkbox  *tview.Checkbox // non-nil for checkbox/radio fields
+	startCol  int             // display width of text before this field on its line
+	width     int             // field width in columns (defaultFieldWidth default)
+	runeStart int             // rune offset of this field's span within its line
+	runeEnd   int             // rune offset just past this field's span
 }
 
 // buildLineFields populates bd.lineFields from the rendered styled lines,
@@ -135,9 +135,7 @@ func (bd *BrowserDisplay) buildLineFields(lines []*micron.StyledLine) {
 				textWidth += runewidth.StringWidth(s.Text)
 			}
 			avail := width - line.Indent
-			if avail < textWidth {
-				avail = textWidth
-			}
+			avail = max(avail, textWidth)
 			pad := 0
 			switch line.Align {
 			case micron.AlignCenter:
@@ -163,11 +161,11 @@ func (bd *BrowserDisplay) buildLineFields(lines []*micron.StyledLine) {
 		}
 	}
 	if f, err := os.OpenFile("/tmp/peek-debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
-		fmt.Fprintf(f, "BUILDFIELDS total=%d specs=%v\n", totalFields, fieldSpecs)
+		_, _ = fmt.Fprintf(f, "BUILDFIELDS total=%d specs=%v\n", totalFields, fieldSpecs)
 		if totalFields > 0 {
-			fmt.Fprintf(f, "LINES %v\n", allLines)
+			_, _ = fmt.Fprintf(f, "LINES %v\n", allLines)
 		}
-		f.Close()
+		_ = f.Close()
 	}
 }
 
@@ -219,7 +217,7 @@ func (bd *BrowserDisplay) collectFields(linkFields string) map[string]string {
 	rd := map[string]string{}
 	all := false
 	want := map[string]bool{}
-	for _, e := range strings.Split(linkFields, "|") {
+	for e := range strings.SplitSeq(linkFields, "|") {
 		if strings.Contains(e, "=") {
 			c := strings.SplitN(e, "=", 2)
 			if len(c) == 2 {

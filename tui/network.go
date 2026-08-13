@@ -33,7 +33,7 @@ func debugNetLog(nd *NetworkDisplay, event *tcell.EventKey) {
 	if err != nil {
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	key := event.Name()
 	fi := -1
 	if nd.mainCols != nil {
@@ -47,7 +47,7 @@ func debugNetLog(nd *NetworkDisplay, event *tcell.EventKey) {
 	if nd.leftPanel.HasFocus() {
 		left = "yes"
 	}
-	fmt.Fprintf(f, "NET key=%s focusIdx=%d browserHasFocus=%s leftHasFocus=%s\n", key, fi, browser, left)
+	_, _ = fmt.Fprintf(f, "NET key=%s focusIdx=%d browserHasFocus=%s leftHasFocus=%s\n", key, fi, browser, left)
 }
 
 // AnnounceEntry holds a single announce for display.

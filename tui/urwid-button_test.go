@@ -37,7 +37,7 @@ func drawUrwidButtonAt(t *testing.T, b *UrwidButton, w int) string {
 	screen.Sync()
 	var bu strings.Builder
 	for x := range w {
-		c, _, _, _ := screen.GetContent(x, 0)
+		c, _, _, _ := cellContent(screen, x, 0)
 		bu.WriteRune(c)
 	}
 	return bu.String()

@@ -172,7 +172,7 @@ func TestPipeRepeatRequestOnSameLink(t *testing.T) {
 					}{fail: fmt.Sprintf("failed status=%v", rr.Status)}:
 					default:
 					}
-				}, nil, reqTimeout)
+				}, nil, reqTimeout, 0)
 				if err != nil {
 					lr.results = append(lr.results, fmt.Sprintf("req%d: send err %v", i, err))
 					lr.fail++
