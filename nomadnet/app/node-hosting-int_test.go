@@ -75,7 +75,7 @@ func TestAppNodeHostingStartsAndAnnounces(t *testing.T) {
 
 	// The recorded node announce carries the node name as app data.
 	var found bool
-	for _, ev := range appB.GetAnnounces() {
+	for _, ev := range appB.DirAnnounceEvents() {
 		if ev.AnnounceType == "node" {
 			if string(ev.AppData) != "AppHostedNode" {
 				t.Errorf("node announce appdata = %q, want %q", string(ev.AppData), "AppHostedNode")

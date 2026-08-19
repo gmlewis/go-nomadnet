@@ -175,9 +175,6 @@ type App struct {
 	// here rather than at package level so parallel tests get isolated state.
 	ConversationCache *conversation.ConversationCache
 
-	// Announce streams (populated by RNS announce handlers)
-	Announces []AnnounceEvent
-
 	// RNS/LXMF references
 	Logger       *rns.Logger
 	Transport    *rns.TransportSystem
@@ -879,40 +876,13 @@ func (a *App) AutoSelectPropagationNode() {
 	}
 }
 
-// GetAnnounces returns a copy of the announce stream.
-func (a *App) GetAnnounces() []AnnounceEvent {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	result := make([]AnnounceEvent, len(a.Announces))
-	copy(result, a.Announces)
-	return result
-}
-
-// prependAnnounce inserts ev at the front of the announce stream, mirroring
-// Python's Directory per-type list.insert(0, ...) (Directory.py:171,195,236):
-// each received announce is newest-first. The Network panel's AnnounceStream
-// filters by tab, so prepending (rather than appending) makes the displayed
-// list descending by time, matching the original. Callers must NOT hold a.mu.
-func (a *App) prependAnnounce(ev AnnounceEvent) {
-	a.mu.Lock()
-	a.Announces = append([]AnnounceEvent{ev}, a.Announces...)
-	a.mu.Unlock()
-}
-
-// AnnounceCount returns the number of announces received.
-func (a *App) AnnounceCount() int {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	return len(a.Announces)
-}
-
 // DirAnnounceEvents returns the persisted directory announce stream as display
 // events (AnnounceEvent), mirroring Python's AnnounceStream widget which
 // iterates app.directory.announce_stream (Network.py:489) — the on-disk-persisted,
-// per-source-compacted stream restored by LoadFromDisk at boot. Unlike the
-// ephemeral a.Announces feed (empty until a live announce arrives), this reads
-// the directory's loaded history, so the Network panel populates at boot from
-// the previous run's discovered nodes rather than waiting for new announces.
+// per-source-compacted stream restored by LoadFromDisk at boot. This is the
+// single source of truth for the Network panel's announce stream, matching
+// the original nomadnet, which keeps announce history solely on Directory
+// (Directory.py:59-61 announce_stream property combining the per-type lists).
 // Display names are derived from app_data: node announces store the raw UTF-8
 // name (Directory.py:198), peer/pn announces use the LXMF app_data format.
 func (a *App) DirAnnounceEvents() []AnnounceEvent {
@@ -1080,14 +1050,6 @@ func (a *App) handleLXMFAnnounce(destHash []byte, identity *rns.Identity, appDat
 
 	now := time.Now()
 	nowF := float64(now.UnixNano()) / 1e9
-	a.prependAnnounce(AnnounceEvent{
-		Timestamp:    now,
-		TimestampF:   nowF,
-		SourceHash:   destHash,
-		AppData:      appData,
-		AnnounceType: "peer",
-		DisplayName:  displayName,
-	})
 
 	a.Dir.PeerAnnounceReceived(directory.Announce{
 		Timestamp:    nowF,
@@ -1110,14 +1072,6 @@ func (a *App) handleNodeAnnounce(destHash []byte, identity *rns.Identity, appDat
 
 	now := time.Now()
 	nowF := float64(now.UnixNano()) / 1e9
-	a.prependAnnounce(AnnounceEvent{
-		Timestamp:    now,
-		TimestampF:   nowF,
-		SourceHash:   destHash,
-		AppData:      appData,
-		AnnounceType: "node",
-		DisplayName:  displayName,
-	})
 
 	a.Dir.NodeAnnounceReceived(directory.Announce{
 		Timestamp:    nowF,
@@ -1152,14 +1106,6 @@ func (a *App) handlePNAnnounce(destHash []byte, identity *rns.Identity, appData 
 
 	now := time.Now()
 	nowF := float64(now.UnixNano()) / 1e9
-	a.prependAnnounce(AnnounceEvent{
-		Timestamp:    now,
-		TimestampF:   nowF,
-		SourceHash:   destHash,
-		AppData:      appData,
-		AnnounceType: "pn",
-		DisplayName:  displayName,
-	})
 
 	a.Dir.PNAnnounceReceived(directory.Announce{
 		Timestamp:    nowF,
@@ -1180,13 +1126,6 @@ func (a *App) handleRRCAnnounce(destHash []byte, identity *rns.Identity, appData
 	if a.RRC != nil {
 		a.RRC.AddHub(destHash, "rrc.chat", "")
 	}
-
-	a.prependAnnounce(AnnounceEvent{
-		Timestamp:    time.Now(),
-		SourceHash:   destHash,
-		AppData:      appData,
-		AnnounceType: "rrc",
-	})
 
 	if a.UIChangeCallback != nil {
 		a.UIChangeCallback()

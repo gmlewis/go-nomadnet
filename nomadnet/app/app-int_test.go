@@ -81,14 +81,14 @@ func setupTwoNodeApps(t *testing.T) (*App, *App, func()) {
 	return appA, appB, cleanup
 }
 
-// waitForAnnounce polls app.Announces until an announce of the given
-// type appears, or times out.
+// waitForAnnounce polls the directory announce stream (app.DirAnnounceEvents)
+// until an announce of the given type appears, or times out.
 func waitForAnnounce(t *testing.T, app *App, announceType string, timeout time.Duration) {
 	t.Helper()
 
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		for _, ev := range app.GetAnnounces() {
+		for _, ev := range app.DirAnnounceEvents() {
 			if ev.AnnounceType == announceType {
 				return
 			}

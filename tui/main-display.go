@@ -836,13 +836,17 @@ func (md *MainDisplay) SetUnreadCheck(fn func() bool) {
 // MenuDisplay.update_display job (Main.py:216-230): probe for unread
 // conversations and, when the result differs from the current indicator, swap
 // the leading menu glyph (decoration_menu ⇄ unread_menu) and redraw the bar.
-// The probe runs OUTSIDE md.mu to avoid holding the lock across app work; only
-// the read/swap/redraw is under the lock. It does no UI-thread marshalling, so
-// it is safe to call directly from tests — production wraps it in
-// QueueUpdateDraw via startUnreadBlink(marshal=true).
+// The hasUnread field is read under md.mu (it is written by SetUnreadCheck
+// under the same lock), but the probe callback runs OUTSIDE md.mu to avoid
+// holding the lock across app work; only the snapshot/swap/redraw is under the
+// lock. It does no UI-thread marshalling, so it is safe to call directly from
+// tests — production wraps it in QueueUpdateDraw via startUnreadBlink(marshal=true).
 func (md *MainDisplay) updateUnreadIndicator() {
+	md.mu.Lock()
+	fn := md.hasUnread
+	md.mu.Unlock()
 	unread := false
-	if fn := md.hasUnread; fn != nil {
+	if fn != nil {
 		unread = fn()
 	}
 	md.mu.Lock()

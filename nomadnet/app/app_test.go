@@ -459,15 +459,15 @@ func TestInitWithTransportReceivesAnnounces(t *testing.T) {
 	}
 	defer a.Shutdown()
 
-	if a.AnnounceCount() != 0 {
-		t.Errorf("AnnounceCount = %v, want 0", a.AnnounceCount())
+	if len(a.DirAnnounceEvents()) != 0 {
+		t.Errorf("DirAnnounceEvents len = %v, want 0", len(a.DirAnnounceEvents()))
 	}
 
 	// Simulate receiving a peer announce directly
 	a.handleLXMFAnnounce(id.Hash, id, []byte("test"), false)
 
-	if a.AnnounceCount() != 1 {
-		t.Errorf("AnnounceCount = %v, want 1 after announce", a.AnnounceCount())
+	if len(a.DirAnnounceEvents()) != 1 {
+		t.Errorf("DirAnnounceEvents len = %v, want 1 after announce", len(a.DirAnnounceEvents()))
 	}
 }
 
@@ -475,9 +475,10 @@ func TestInitWithTransportReceivesAnnounces(t *testing.T) {
 // (Directory.py: the per-type lists use list.insert(0, ...), so each type is
 // newest-first; announce_stream = _node_announces+_peer_announces+_pn_announces).
 // The Network panel's AnnounceStream filters by tab, so within each type the
-// most-recently-received announce must come first. The app-level Announces list
-// feeds the TUI via GetAnnounces, so it must preserve newest-first per type
-// (a prepend, matching the directory), not oldest-first (an append).
+// most-recently-received announce must come first. The TUI reads this stream via
+// DirAnnounceEvents (which wraps Directory.AnnounceStream, the single source of
+// truth mirroring Python's app.directory.announce_stream), so it must preserve
+// newest-first per type (a prepend, matching the directory), not oldest-first.
 func TestAnnounceStreamNewestFirst(t *testing.T) {
 	t.Parallel()
 
@@ -500,13 +501,13 @@ func TestAnnounceStreamNewestFirst(t *testing.T) {
 	a.handleNodeAnnounce(old, nil, []byte("OldNode"), false)
 	a.handleNodeAnnounce(newer, nil, []byte("NewNode"), false)
 
-	got := a.GetAnnounces()
+	got := a.DirAnnounceEvents()
 	if len(got) != 2 {
-		t.Fatalf("GetAnnounces len = %v, want 2", len(got))
+		t.Fatalf("DirAnnounceEvents len = %v, want 2", len(got))
 	}
 	// Newest-first: the second-received ("NewNode") must be at index 0.
 	if string(got[0].AppData) != "NewNode" || string(got[1].AppData) != "OldNode" {
-		t.Errorf("GetAnnounces order = %q, %q; want newest-first %q, %q",
+		t.Errorf("DirAnnounceEvents order = %q, %q; want newest-first %q, %q",
 			got[0].AppData, got[1].AppData, "NewNode", "OldNode")
 	}
 
@@ -518,7 +519,7 @@ func TestAnnounceStreamNewestFirst(t *testing.T) {
 	// (DisplayNameFromAppData's non-msgpack branch returns it verbatim).
 	a.handleLXMFAnnounce(peerHash, nil, []byte("PeerOne"), false)
 
-	got = a.GetAnnounces()
+	got = a.DirAnnounceEvents()
 	// Nodes newest-first among node entries, peer newest among peer entries.
 	var nodes, peers []string
 	for _, ev := range got {
@@ -576,8 +577,8 @@ func TestInitWithTransportSetsRRCIdentity(t *testing.T) {
 // doesn't retain node history across runs": the Network panel must read the
 // persisted directory announce stream (a.DirAnnounceEvents, mirroring Python's
 // AnnounceStream widget iterating app.directory.announce_stream, Network.py:489)
-// so it populates at boot from the previous run's discovered nodes, instead of
-// the ephemeral a.Announces feed which is empty until a live announce arrives.
+// so it populates at boot from the previous run's discovered nodes loaded by
+// Dir.LoadFromDisk.
 // AppA receives announces, shuts down (persisting the stream); AppB loads the
 // same storage dir and must see the announces — the "same list of live nodes
 // from history" the user needs for parity capture.

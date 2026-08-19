@@ -275,9 +275,9 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	// refreshAnnounces re-fetches the announce stream from the app and updates
 	// the network display's left pane. It reads the persisted directory
 	// announce stream (a.DirAnnounceEvents, mirroring Python's AnnounceStream
-	// widget iterating app.directory.announce_stream, Network.py:489) rather
-	// than the ephemeral a.Announces feed, so the panel populates at boot from
-	// the previous run's discovered nodes loaded by Dir.LoadFromDisk.
+	// widget iterating app.directory.announce_stream, Network.py:489), which
+	// is the single source of truth, so the panel populates at boot from the
+	// previous run's discovered nodes loaded by Dir.LoadFromDisk.
 	refreshAnnounces := func() {
 		anns := a.DirAnnounceEvents()
 		tuiConvs := make([]tui.AnnounceEntry, len(anns))

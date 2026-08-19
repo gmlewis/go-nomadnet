@@ -48,7 +48,7 @@ func TestAppPingPeer(t *testing.T) {
 	deadline := time.Now().Add(10 * time.Second)
 	var saw bool
 	for time.Now().Before(deadline) {
-		for _, ev := range appA.GetAnnounces() {
+		for _, ev := range appA.DirAnnounceEvents() {
 			if ev.AnnounceType == "peer" && fmt.Sprintf("%x", ev.SourceHash) == peerHash {
 				saw = true
 				break
