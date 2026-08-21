@@ -96,8 +96,8 @@ func TestRenderHalfBlockToMicronPreScaled(t *testing.T) {
 	img := image.NewRGBA(image.Rect(0, 0, 8, 4))
 
 	// Simple gradient pattern
-	for y := 0; y < 4; y++ {
-		for x := 0; x < 8; x++ {
+	for y := range 4 {
+		for x := range 8 {
 			img.Set(x, y, color.RGBA{uint8(x * 32), uint8(y * 64), 128, 255})
 		}
 	}
@@ -136,8 +136,8 @@ func TestRenderHalfBlockToMicronGoNative(t *testing.T) {
 	img := image.NewRGBA(image.Rect(0, 0, 16, 8))
 
 	// Fill with solid color
-	for y := 0; y < 8; y++ {
-		for x := 0; x < 16; x++ {
+	for y := range 8 {
+		for x := range 16 {
 			img.Set(x, y, color.RGBA{100, 150, 200, 255})
 		}
 	}
@@ -165,8 +165,8 @@ func TestRenderHalfBlockToMicronGoNative(t *testing.T) {
 // TestRenderHalfBlockToMicronComments verifies comment generation
 func TestRenderHalfBlockToMicronComments(t *testing.T) {
 	img := image.NewRGBA(image.Rect(0, 0, 8, 4))
-	for y := 0; y < 4; y++ {
-		for x := 0; x < 8; x++ {
+	for y := range 4 {
+		for x := range 8 {
 			img.Set(x, y, color.RGBA{128, 128, 128, 255})
 		}
 	}
@@ -203,8 +203,8 @@ func TestRenderHalfBlockToMicronTransparent(t *testing.T) {
 	img := image.NewRGBA(image.Rect(0, 0, 8, 4))
 
 	// All transparent
-	for y := 0; y < 4; y++ {
-		for x := 0; x < 8; x++ {
+	for y := range 4 {
+		for x := range 8 {
 			img.Set(x, y, color.RGBA{0, 0, 0, 0})
 		}
 	}

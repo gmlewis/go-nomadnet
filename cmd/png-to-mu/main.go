@@ -41,6 +41,7 @@ import (
 	"image"
 	"image/color"
 	"io"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -62,6 +63,10 @@ type config struct {
 }
 
 func main() {
+	// Status and diagnostics go to stderr via the log package (no date prefix,
+	// since the .mu output is written to stdout/a file).
+	log.SetFlags(0)
+
 	cfg := config{
 		width:      120,
 		dither:     false,
@@ -75,14 +80,14 @@ func main() {
 	flag.StringVar(&cfg.inputFile, "input", "", "Original input filename (for comment header)")
 
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: %s [options] input.png [output.mu]\n\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "Converts PNG images to 24-bit color micron markdown (.mu) files.\n\n")
-		fmt.Fprintf(os.Stderr, "Options:\n")
+		log.Printf("Usage: %s [options] input.png [output.mu]", os.Args[0])
+		log.Printf("Converts PNG images to 24-bit color micron markdown (.mu) files.")
+		log.Printf("Options:")
 		flag.PrintDefaults()
-		fmt.Fprintf(os.Stderr, "\nThis tool uses half-block characters (▀) with separate foreground\n")
-		fmt.Fprintf(os.Stderr, "(`FT) and background (`BT) colors for maximum fidelity ASCII art.\n")
-		fmt.Fprintf(os.Stderr, "\nWhen -dither is specified, ImageMagick performs a high-quality\n")
-		fmt.Fprintf(os.Stderr, "Lanczos resample to 2× the target resolution for optimal sampling.\n")
+		log.Printf("This tool uses half-block characters (▀) with separate foreground")
+		log.Printf("(`FT) and background (`BT) colors for maximum fidelity ASCII art.")
+		log.Printf("When -dither is specified, ImageMagick performs a high-quality")
+		log.Printf("Lanczos resample to 2× the target resolution for optimal sampling.")
 	}
 
 	flag.Parse()
@@ -122,13 +127,13 @@ func main() {
 	}
 
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error loading image: %v\n", err)
+		log.Printf("Error loading image: %v", err)
 		os.Exit(1)
 	}
 
 	micron, err := renderHalfBlockToMicron(img, outW, outH, originalFile, cfg.noComments)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error converting image: %v\n", err)
+		log.Printf("Error converting image: %v", err)
 		os.Exit(1)
 	}
 
@@ -138,17 +143,17 @@ func main() {
 	} else {
 		f, err := os.Create(outputPath)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error creating output file: %v\n", err)
+			log.Printf("Error creating output file: %v", err)
 			os.Exit(1)
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 		out = f
-		fmt.Fprintf(os.Stderr, "Written to: %s\n", outputPath)
+		log.Printf("Written to: %s", outputPath)
 	}
 
 	_, err = io.WriteString(out, micron)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error writing output: %v\n", err)
+		log.Printf("Error writing output: %v", err)
 		os.Exit(1)
 	}
 }
@@ -160,7 +165,7 @@ func preprocessWithImageMagick(inputPath string, targetWidth int) (image.Image, 
 	if err != nil {
 		return nil, 0, 0, err
 	}
-	defer imgFile.Close()
+	defer func() { _ = imgFile.Close() }()
 
 	img, format, err := image.Decode(imgFile)
 	if err != nil {
@@ -185,8 +190,8 @@ func preprocessWithImageMagick(inputPath string, targetWidth int) (image.Image, 
 		return nil, 0, 0, fmt.Errorf("creating temp file: %w", err)
 	}
 	tmpPath := tmpFile.Name()
-	tmpFile.Close()
-	defer os.Remove(tmpPath)
+	defer func() { _ = tmpFile.Close() }()
+	defer func() { _ = os.Remove(tmpPath) }()
 
 	// Use ImageMagick's magick (IMv7) or convert (IMv6) with Lanczos filter
 	// Try "magick" first (IMv7), fall back to "convert" if not available
@@ -216,7 +221,7 @@ func preprocessWithImageMagick(inputPath string, targetWidth int) (image.Image, 
 	if err != nil {
 		return nil, 0, 0, err
 	}
-	defer rescaledFile.Close()
+	defer func() { _ = rescaledFile.Close() }()
 
 	rescaledImg, _, err := image.Decode(rescaledFile)
 	if err != nil {
@@ -233,7 +238,7 @@ func loadImageAndResize(inputPath string, targetWidth int) (image.Image, int, in
 	if err != nil {
 		return nil, 0, 0, err
 	}
-	defer imgFile.Close()
+	defer func() { _ = imgFile.Close() }()
 
 	img, format, err := image.Decode(imgFile)
 	if err != nil {
@@ -292,9 +297,9 @@ func renderHalfBlockToMicron(img image.Image, outW, outH int, originalFile strin
 	// Check if image is pre-scaled (from ImageMagick, imgH should be outH*2)
 	isPreScaled := (imgH == outH*2) && (imgW == outW)
 
-	for y := 0; y < outH; y++ {
+	for y := range outH {
 		var lastFGKey, lastBGKey string
-		for x := 0; x < outW; x++ {
+		for x := range outW {
 			var upper, lower color.Color
 
 			if isPreScaled {
@@ -317,7 +322,7 @@ func renderHalfBlockToMicron(img image.Image, outW, outH int, originalFile strin
 
 				// Sample 4 pixels
 				pixels := make([]color.Color, 4)
-				for i := 0; i < 4; i++ {
+				for i := range 4 {
 					yi := baseY + i
 					if yi >= imgH {
 						yi = imgH - 1

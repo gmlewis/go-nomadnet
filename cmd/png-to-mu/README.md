@@ -84,8 +84,7 @@ The output is a micron markdown file that uses 24-bit color codes:
 ## Building
 
 ```bash
-cd tooling/png-to-mu
-go build -o png-to-mu .
+go build -o png-to-mu ./cmd/png-to-mu
 ```
 
 ## Viewing Output

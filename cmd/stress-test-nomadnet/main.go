@@ -125,17 +125,17 @@ var addressPrefixes = []string{
 }
 
 type options struct {
-	rnsConfigDir string
-	pathTimeout  float64
+	rnsConfigDir   string
+	pathTimeout    float64
 	pathTimeoutSet bool // true when --path-timeout was passed explicitly
-	linkTimeout  float64
-	verbose      bool
-	identityFile string // optional: load target identity from file (skip announce wait)
-	browse       bool   // browse mode: target nomadnetwork.node and request pages
-	lxmf         bool   // target the node's lxmf.delivery destination instead of nomadnetwork.node
-	discover     bool   // discover mode: listen for an announce, then stress it
-	requestPath  string // default page/file path for normal requests
-	args         []string
+	linkTimeout    float64
+	verbose        bool
+	identityFile   string // optional: load target identity from file (skip announce wait)
+	browse         bool   // browse mode: target nomadnetwork.node and request pages
+	lxmf           bool   // target the node's lxmf.delivery destination instead of nomadnetwork.node
+	discover       bool   // discover mode: listen for an announce, then stress it
+	requestPath    string // default page/file path for normal requests
+	args           []string
 
 	// stress-specific
 	duration        float64 // seconds; 0 = request-bounded (sustained mode only)
