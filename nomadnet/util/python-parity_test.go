@@ -86,6 +86,7 @@ func pyStr(v any) (string, bool) {
 
 func TestStripModifiersPythonParity(t *testing.T) {
 	t.Parallel()
+	testutils.SkipIfNoPythonNomadnet(t)
 	want := utilPython(t)["strip_modifiers"]
 	for i, in := range utilInputs["strip_modifiers"] {
 		got := StripModifiers(&in)
@@ -108,6 +109,7 @@ func TestStripModifiersPythonParity(t *testing.T) {
 
 func TestSanitizeNamePythonParity(t *testing.T) {
 	t.Parallel()
+	testutils.SkipIfNoPythonNomadnet(t)
 	want := utilPython(t)["sanitize_name"]
 	for i, in := range utilInputs["sanitize_name"] {
 		got := SanitizeName(&in)
@@ -130,6 +132,7 @@ func TestSanitizeNamePythonParity(t *testing.T) {
 
 func TestStripMicronPythonParity(t *testing.T) {
 	t.Parallel()
+	testutils.SkipIfNoPythonNomadnet(t)
 	want := utilPython(t)["strip_micron"]
 	for i, in := range utilInputs["strip_micron"] {
 		wv, _ := pyStr(want[i])
@@ -141,6 +144,7 @@ func TestStripMicronPythonParity(t *testing.T) {
 
 func TestStripEscapedMicronPythonParity(t *testing.T) {
 	t.Parallel()
+	testutils.SkipIfNoPythonNomadnet(t)
 	want := utilPython(t)["strip_escaped_micron"]
 	for i, in := range utilInputs["strip_escaped_micron"] {
 		wv, _ := pyStr(want[i])
@@ -152,6 +156,7 @@ func TestStripEscapedMicronPythonParity(t *testing.T) {
 
 func TestUnescapeMicronPythonParity(t *testing.T) {
 	t.Parallel()
+	testutils.SkipIfNoPythonNomadnet(t)
 	want := utilPython(t)["unescape_micron"]
 	for i, in := range utilInputs["unescape_micron"] {
 		wv, _ := pyStr(want[i])
@@ -163,6 +168,7 @@ func TestUnescapeMicronPythonParity(t *testing.T) {
 
 func TestStripNonFormattingTagsPythonParity(t *testing.T) {
 	t.Parallel()
+	testutils.SkipIfNoPythonNomadnet(t)
 	want := utilPython(t)["strip_non_formatting_tags"]
 	for i, in := range utilInputs["strip_non_formatting_tags"] {
 		wv, _ := pyStr(want[i])
