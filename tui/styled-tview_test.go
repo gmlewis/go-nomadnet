@@ -161,9 +161,10 @@ func TestMicronHeadingDepthAndDividerFormatting(t *testing.T) {
 // TestStyledLinesToTviewTextAlignment pins micron `c`/`r` alignment rendering
 // (B3): Python's urwid.Text(align=state["align"]) centers/right-aligns each
 // line within the pane width, so `cThis line will be centered.` at width 40
-// renders with (40-27)//2 = 6 leading spaces, and `r...` right-aligns with
-// 40-textlen leading spaces. The Go converter must emit that leading padding
-// (matching Python's urwid center/right math), not left-align the line.
+// renders with (40-27+1)//2 = 7 leading spaces (urwid's center pad is the
+// ceiling of half the slack, urwid/text_layout.py:177), and `r...` right-aligns
+// with 40-textlen leading spaces. The Go converter must emit that leading
+// padding (matching Python's urwid center/right math), not left-align the line.
 func TestStyledLinesToTviewTextAlignment(t *testing.T) {
 	t.Parallel()
 
@@ -173,7 +174,7 @@ func TestStyledLinesToTviewTextAlignment(t *testing.T) {
 		markup  string
 		wantPad int // expected leading spaces before the first color tag
 	}{
-		{"center", "`cThis line will be centered.", (w - len("This line will be centered.")) / 2},
+		{"center", "`cThis line will be centered.", (w - len("This line will be centered.") + 1) / 2},
 		{"right", "`rThis will be aligned to the right", w - len("This will be aligned to the right")},
 	}
 	for _, tc := range cases {

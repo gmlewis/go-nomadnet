@@ -18,6 +18,7 @@ package tui
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -374,6 +375,16 @@ func (bd *BrowserDisplay) peekLink() {
 // the wrapped line; y is the wrapped-row offset from the focused line's top.
 // Uses tview.WordWrap (the same wrap the TextView uses to draw) so the cursor
 // lands on the rendered glyph, then runeWidth for the column.
+//
+// For right/center-aligned lines the column is shifted by the per-row alignment
+// pad, mirroring Python LinkableText.get_cursor_coords → urwid calc_coords,
+// which walks the line layout whose first segment is the alignment padding
+// (urwid/text_layout.py:166-178: right pad = width-sc, center pad =
+// (width-sc+1)//2, where sc is the wrapped row's content width; no pad when
+// sc == width). Without this the hardware cursor sat at the left edge of a
+// right-justified menu line while the glyphs — and Python's cursor — sit at the
+// right edge, so arrow-key navigation appeared to move the cursor in empty
+// space instead of along the menu items.
 func (bd *BrowserDisplay) cursorScreenXY() (x, y int, ok bool) {
 	if bd.focusLine < 0 || bd.focusLine >= len(bd.currentLines) {
 		return 0, 0, false
@@ -393,28 +404,54 @@ func (bd *BrowserDisplay) cursorScreenXY() (x, y int, ok bool) {
 	// the hardware cursor lands on the rendered glyph, not 2*Indent columns to
 	// its left. (Aligned `c`/`r` lines are depth-0 → Indent 0, so this is a
 	// no-op for them.)
+	line := bd.currentLines[bd.focusLine]
 	indent := 0
-	if bd.focusLine < len(bd.currentLines) && bd.currentLines[bd.focusLine] != nil {
-		indent = bd.currentLines[bd.focusLine].Indent
+	align := micron.AlignLeft
+	if line != nil {
+		indent = line.Indent
+		align = line.Align
 	}
 	wrapW := width - 2*indent
 	if wrapW <= 0 {
 		wrapW = width
 	}
 	pos := bd.lineCursors[bd.focusLine]
-	x, y, _ = wrapCursorXY(plain, wrapW, pos)
-	x += indent
+	col, row, rowW, _ := wrapCursorRow(plain, wrapW, pos)
+	pad := alignPad(align, wrapW, rowW)
+	x = indent + pad + col
+	y = row
 	return x, y, true
 }
 
-// wrapCursorXY maps a rune offset pos within plain text to a (column, row)
-// within its tview.WordWrap layout. Row 0 is the first wrapped line; column is
-// the display width from the wrapped line's start to pos. WordWrap returns
-// substrings that concatenate back to the input, so accumulating each line's
-// rune length tiles the original offsets exactly.
-func wrapCursorXY(plain string, width, pos int) (x, y int, ok bool) {
+// alignPad returns the leading-cell pad urwid applies before a wrapped row's
+// content for the given alignment, matching urwid/text_layout.py:166-178:
+// right → width-sc, center → (width-sc+1)//2, left → 0. sc (rowW) == width
+// yields no pad. The pad is clamped at 0 so an unbreakable row wider than the
+// pane (rowW > width) does not shift the cursor left of the content.
+func alignPad(align micron.Alignment, width, rowW int) int {
+	if rowW >= width {
+		return 0
+	}
+	switch align {
+	case micron.AlignRight:
+		return width - rowW
+	case micron.AlignCenter:
+		return (width - rowW + 1) / 2
+	default:
+		return 0
+	}
+}
+
+// wrapCursorRow maps a rune offset pos within plain text to its wrapped-row
+// index y, the display column from that row's start to pos, and the display
+// width of that row's visible content (after trimming the break space
+// tview.WordWrap leaves at row ends, matching the row the renderer emits).
+// Row 0 is the first wrapped line. WordWrap returns substrings that concatenate
+// back to the input, so accumulating each line's rune length tiles the original
+// offsets exactly. The row width lets callers add per-row alignment padding.
+func wrapCursorRow(plain string, width, pos int) (col, y, rowW int, ok bool) {
 	if width <= 0 {
-		return 0, 0, false
+		return 0, 0, 0, false
 	}
 	runes := []rune(plain)
 	if pos < 0 {
@@ -432,14 +469,26 @@ func wrapCursorXY(plain string, width, pos int) (x, y int, ok bool) {
 			for i := off; i < pos && i < len(runes); i++ {
 				w += runeWidth(runes[i])
 			}
-			return w, yi, true
+			return w, yi, trimmedDisplayWidth(ln), true
 		}
 		off += rl
 	}
 	if len(lines) > 0 {
-		return 0, len(lines) - 1, true
+		return 0, len(lines) - 1, trimmedDisplayWidth(lines[len(lines)-1]), true
 	}
-	return 0, 0, false
+	return 0, 0, 0, false
+}
+
+// trimmedDisplayWidth is the display width of s after stripping trailing
+// spaces, matching the renderer's strings.TrimRight(row, " ") before it measures
+// a row for alignment padding.
+func trimmedDisplayWidth(s string) int {
+	w := 0
+	trimmed := strings.TrimRight(s, " ")
+	for _, r := range trimmed {
+		w += runeWidth(r)
+	}
+	return w
 }
 
 // cursorAbsRow is the focused cursor's absolute wrapped-row index in the page

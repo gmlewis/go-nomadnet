@@ -21,7 +21,6 @@ import (
 	"strings"
 
 	"github.com/gmlewis/go-nomadnet/nomadnet/micron"
-	"github.com/mattn/go-runewidth"
 	"github.com/rivo/tview"
 )
 
@@ -131,50 +130,47 @@ func StyledLinesToTviewText(lines []*micron.StyledLine, width int) (string, []mi
 			underlineOn = cu
 			continue
 		}
-		// Aligned (`c`/`r`) lines are emitted as a single row with the alignment
-		// pad, as before. Aligned content is depth-0 in practice (Indent 0), and
-		// aligned text that wraps is not exercised by the guide/pages, so the
-		// single-row emission is preserved rather than re-deriving per-row
-		// centering for the pre-wrap path below.
+		// Aligned (`c`/`r`) lines: wrap the tagged content at the pane width and
+		// prefix each wrapped row with the per-row alignment pad, mirroring urwid's
+		// text_layout (urwid/text_layout.py:166-178): right pad = width-sc, center
+		// pad = (width-sc+1)//2, where sc is the wrapped row's content width and no
+		// pad is added when sc == width. The previous emission wrote the whole line
+		// as a single row with one pad computed from the full text width, which (a)
+		// left-aligned tview's wrapped continuation rows instead of right-aligning
+		// each, diverging from Python, and (b) used floor (avail-textWidth)/2 for
+		// center instead of urwid's ceiling, off by one on odd slack. The per-row
+		// pad also keeps the hardware cursor (cursorScreenXY → alignPad) on the
+		// rendered glyphs of a right-justified menu.
 		if line.Align == micron.AlignCenter || line.Align == micron.AlignRight {
-			// Plain indent spaces inherit the latched underline; clear it first.
-			if line.Indent > 0 {
-				underlineOn = clearUnderline(&b, underlineOn)
-			}
-			b.WriteString(strings.Repeat(" ", line.Indent))
-			// Python centers/right-aligns within Padding(left=left_indent,
-			// right=right_indent): the centering space is (avail-textWidth)//2
-			// where avail = width-left_indent-right_indent, and the left_indent
-			// (already written) shifts the block right. right_indent is 0 for
-			// depth-0 aligned content (the only place `c`/`r` appear).
-			textWidth := 0
-			for _, span := range line.Spans {
-				textWidth += runewidth.StringWidth(span.Text)
-			}
-			avail := max(width-line.Indent, textWidth)
-			pad := 0
-			switch line.Align {
-			case micron.AlignCenter:
-				pad = (avail - textWidth) / 2
-			case micron.AlignRight:
-				pad = avail - textWidth
-			}
-			if pad > 0 {
-				underlineOn = clearUnderline(&b, underlineOn)
-				b.WriteString(strings.Repeat(" ", pad))
-			}
+			var cb strings.Builder
+			cu := underlineOn
 			for _, span := range line.Spans {
 				if span.Link != nil {
 					idx := len(links)
 					links = append(links, *span.Link)
-					fmt.Fprintf(&b, `["%v"]`, idx)
-					underlineOn = writeSpanTag(&b, span, underlineOn)
-					b.WriteString(`[""]`)
+					fmt.Fprintf(&cb, `["%v"]`, idx)
+					cu = writeSpanTag(&cb, span, cu)
+					cb.WriteString(`[""]`)
 					continue
 				}
-				underlineOn = writeSpanTag(&b, span, underlineOn)
+				cu = writeSpanTag(&cb, span, cu)
 			}
-			b.WriteByte('\n')
+			wrapW := max(width-2*line.Indent, 1)
+			for _, row := range tview.WordWrap(cb.String(), wrapW) {
+				row = strings.TrimRight(row, " ")
+				rowW := tview.TaggedStringWidth(row)
+				if line.Indent > 0 {
+					underlineOn = clearUnderline(&b, underlineOn)
+				}
+				b.WriteString(strings.Repeat(" ", line.Indent))
+				if pad := alignPad(line.Align, wrapW, rowW); pad > 0 {
+					underlineOn = clearUnderline(&b, underlineOn)
+					b.WriteString(strings.Repeat(" ", pad))
+				}
+				b.WriteString(row)
+				b.WriteByte('\n')
+			}
+			underlineOn = cu
 			continue
 		}
 		// Left-aligned text line: mirror Python's Padding(left_indent,
