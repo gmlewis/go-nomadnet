@@ -16,10 +16,13 @@
 package main
 
 import (
+	"bytes"
 	"encoding/hex"
+	"encoding/json"
 	"testing"
 
 	"github.com/gmlewis/go-nomadnet/nomadnet/browser"
+	"github.com/gmlewis/go-nomadnet/nomadnet/micron"
 )
 
 const testHash = "c388d720f56483a8dc8668ee5bea3577"
@@ -97,4 +100,83 @@ func equalData(a, b map[string]string) bool {
 		}
 	}
 	return true
+}
+
+func TestRenderToJSON(t *testing.T) {
+	markup := []byte(">> Title\n\nA `[Go`9388d720f56483a8dc8668ee5bea3577:/page/x.mu] link.\n\n----\n")
+	var buf bytes.Buffer
+	if err := renderToJSON(&buf, markup, micron.ThemeDark, "test.mu"); err != nil {
+		t.Fatalf("renderToJSON: %v", err)
+	}
+	var doc jsonDoc
+	if err := json.Unmarshal(buf.Bytes(), &doc); err != nil {
+		t.Fatalf("unmarshal: %v\nraw:\n%s", err, buf.String())
+	}
+	if doc.Source != "test.mu" || doc.Theme != "dark" {
+		t.Errorf("source/theme = %q/%q, want test.mu/dark", doc.Source, doc.Theme)
+	}
+	if len(doc.Lines) < 5 {
+		t.Fatalf("expected at least 5 lines, got %d", len(doc.Lines))
+	}
+	// Line 0 is the ">> Title" heading at level 2 with a slug anchor.
+	h0 := doc.Lines[0]
+	if h0.HeadingLevel != 2 {
+		t.Errorf("line 0 heading_level = %d, want 2", h0.HeadingLevel)
+	}
+	if h0.Anchor == "" {
+		t.Error("line 0 anchor is empty, want a slug")
+	}
+	// One of the lines carries the link span with the full URL.
+	var foundLink *jsonSpan
+	for i := range doc.Lines {
+		for j := range doc.Lines[i].Spans {
+			if l := doc.Lines[i].Spans[j].Link; l != nil {
+				foundLink = &doc.Lines[i].Spans[j]
+			}
+		}
+	}
+	if foundLink == nil {
+		t.Fatal("no link span in output")
+	}
+	if foundLink.Link.URL != "9388d720f56483a8dc8668ee5bea3577:/page/x.mu" {
+		t.Errorf("link url = %q, want the page URL", foundLink.Link.URL)
+	}
+	// One line is a divider.
+	foundDivider := false
+	for _, ln := range doc.Lines {
+		if ln.Divider {
+			foundDivider = true
+		}
+	}
+	if !foundDivider {
+		t.Error("no divider line in output")
+	}
+}
+
+func TestRenderToJSONRawBytes(t *testing.T) {
+	// Bytes that would be mangled by a string round-trip through invalid UTF-8
+	// must survive the -raw path unchanged. The JSON path takes []byte and
+	// passes string(markup) to the renderer, so it must not panic on bad UTF-8.
+	bad := []byte{0xff, 0xfe, '>', '>', ' ', 'x', 0x00}
+	var buf bytes.Buffer
+	if err := renderToJSON(&buf, bad, micron.ThemeDark, "bad"); err != nil {
+		t.Fatalf("renderToJSON on bad bytes: %v", err)
+	}
+	var doc jsonDoc
+	if err := json.Unmarshal(buf.Bytes(), &doc); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+}
+
+func TestAlignName(t *testing.T) {
+	cases := map[micron.Alignment]string{
+		micron.AlignLeft:   "left",
+		micron.AlignCenter: "center",
+		micron.AlignRight:  "right",
+	}
+	for in, want := range cases {
+		if got := alignName(in); got != want {
+			t.Errorf("alignName(%d) = %q, want %q", in, got, want)
+		}
+	}
 }

@@ -45,6 +45,8 @@
 //	-width int       Terminal width for rendering (default: auto-detect or 80)
 //	-theme string    Color theme: "dark" or "light" (default: "dark")
 //	-no-color        Disable ANSI color output
+//	-raw             Write the raw micron markup bytes to stdout (no rendering)
+//	-json            Emit per-line styled JSON (logical-line parity schema)
 //	-rnsconfig DIR   Reticulum config dir (default: ~/.reticulum)
 //	-timeout SECS    Seconds to wait for path/link/request (default 25)
 //	-v               Verbose RNS logging
@@ -53,8 +55,10 @@ package main
 import (
 	"context"
 	"encoding/hex"
+	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"strconv"
@@ -74,6 +78,8 @@ type config struct {
 	rnsConfig string
 	timeout   float64
 	verbose   bool
+	raw       bool
+	jsonOut   bool
 }
 
 // remotePrefixes are stripped (case-insensitively) from the start of an
@@ -106,6 +112,8 @@ func main() {
 	flag.StringVar(&cfg.rnsConfig, "rnsconfig", "", "Reticulum config dir (default: ~/.reticulum)")
 	flag.Float64Var(&cfg.timeout, "timeout", 25, "Seconds to wait for path/link/request")
 	flag.BoolVar(&cfg.verbose, "v", false, "Verbose RNS logging")
+	flag.BoolVar(&cfg.raw, "raw", false, "Write the raw micron markup bytes to stdout (no rendering)")
+	flag.BoolVar(&cfg.jsonOut, "json", false, "Emit per-line styled JSON (logical-line parity schema) instead of ANSI")
 
 	flag.Usage = func() {
 		log.Printf("Usage: %s [options] <file.mu | node-address>\n", os.Args[0])
@@ -140,26 +148,47 @@ func main() {
 
 	arg := args[0]
 
-	// Local file: if the argument names an existing file, render it directly.
+	// Gather the raw micron markup bytes, either from a local file or by
+	// fetching a remote node page. The bytes are then either dumped raw
+	// (-raw), rendered to structured JSON (-json), or rendered to ANSI
+	// (default).
+	var markup []byte
+	var source string
 	if info, err := os.Stat(arg); err == nil && !info.IsDir() {
 		content, err := os.ReadFile(arg)
 		if err != nil {
 			log.Printf("Error reading file: %v", err)
 			os.Exit(1)
 		}
-		render(string(content), theme, cfg.width, cfg.noColor)
+		markup = content
+		source = arg
+	} else {
+		destHash, path, requestData, display, err := parseRemoteAddress(arg)
+		if err != nil {
+			log.Printf("Error: %q is not an existing file and not a valid node address: %v", arg, err)
+			os.Exit(2)
+		}
+		markup = fetchRemote(cfg, destHash, path, requestData, display)
+		source = display
+	}
+
+	if cfg.raw {
+		if _, err := os.Stdout.Write(markup); err != nil {
+			log.Printf("Error writing output: %v", err)
+			os.Exit(1)
+		}
 		return
 	}
 
-	// Otherwise treat the argument as a remote node address.
-	destHash, path, requestData, display, err := parseRemoteAddress(arg)
-	if err != nil {
-		log.Printf("Error: %q is not an existing file and not a valid node address: %v", arg, err)
-		os.Exit(2)
+	if cfg.jsonOut {
+		if err := renderToJSON(os.Stdout, markup, theme, source); err != nil {
+			log.Printf("Error rendering JSON: %v", err)
+			os.Exit(1)
+		}
+		return
 	}
 
-	data := fetchRemote(cfg, destHash, path, requestData, display)
-	render(string(data), theme, cfg.width, cfg.noColor)
+	render(string(markup), theme, cfg.width, cfg.noColor)
 }
 
 // render renders micron markup to stdout, exiting the process on error.
@@ -170,6 +199,126 @@ func render(markup string, theme micron.Theme, width int, noColor bool) {
 		os.Exit(1)
 	}
 	fmt.Print(output)
+}
+
+// renderToJSON emits the logical-line parity schema: one entry per micron source
+// line with its styled spans (including link/field targets, which the ANSI path
+// drops) and layout metadata. It is pre-wrap — both view-mu and the gonomadnet
+// browser share micron.RenderToStyledLines for segmentation, so this is faithful
+// to the browser's logical-line structure. Wrapping/layout parity is compared
+// separately by the live loopback comparator, not here.
+func renderToJSON(w io.Writer, markup []byte, theme micron.Theme, source string) error {
+	lines := micron.RenderToStyledLines(string(markup), theme)
+	doc := jsonDoc{Source: source, Theme: themeName(theme), Lines: make([]jsonLine, 0, len(lines))}
+	for i, line := range lines {
+		jl := jsonLine{Index: i, Align: alignName(micron.AlignLeft), Spans: []jsonSpan{}}
+		if line != nil {
+			jl = jsonLine{
+				Index:        i,
+				Align:        alignName(line.Align),
+				Indent:       line.Indent,
+				HeadingLevel: line.HeadingLevel,
+				Divider:      line.Divider,
+				DividerChar:  line.DividerChar,
+				DividerRight: line.DividerRight,
+				Anchor:       line.Anchor,
+				Spans:        make([]jsonSpan, 0, len(line.Spans)),
+			}
+			for _, sp := range line.Spans {
+				js := jsonSpan{
+					Text:      sp.Text,
+					FG:        sp.FG,
+					BG:        sp.BG,
+					Bold:      sp.Bold,
+					Underline: sp.Underline,
+					Italic:    sp.Italic,
+				}
+				if sp.Link != nil {
+					js.Link = &jsonLink{Label: sp.Link.Label, URL: sp.Link.URL, Fields: sp.Link.Fields}
+				}
+				if sp.Field != nil {
+					js.Field = &jsonField{
+						Name:       sp.Field.Name,
+						Type:       sp.Field.Type,
+						Data:       sp.Field.Data,
+						Value:      sp.Field.Value,
+						Width:      sp.Field.Width,
+						Masked:     sp.Field.Masked,
+						Prechecked: sp.Field.Prechecked,
+					}
+				}
+				jl.Spans = append(jl.Spans, js)
+			}
+		}
+		doc.Lines = append(doc.Lines, jl)
+	}
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	return enc.Encode(doc)
+}
+
+// jsonDoc is the top-level parity schema document.
+type jsonDoc struct {
+	Source string     `json:"source"`
+	Theme  string     `json:"theme"`
+	Lines  []jsonLine `json:"lines"`
+}
+
+type jsonLine struct {
+	Index        int        `json:"index"`
+	Align        string     `json:"align"`
+	Indent       int        `json:"indent"`
+	HeadingLevel int        `json:"heading_level"`
+	Divider      bool       `json:"divider"`
+	DividerChar  string     `json:"divider_char,omitempty"`
+	DividerRight int        `json:"divider_right,omitempty"`
+	Anchor       string     `json:"anchor,omitempty"`
+	Spans        []jsonSpan `json:"spans"`
+}
+
+type jsonSpan struct {
+	Text      string     `json:"text"`
+	FG        string     `json:"fg"`
+	BG        string     `json:"bg"`
+	Bold      bool       `json:"bold"`
+	Underline bool       `json:"underline"`
+	Italic    bool       `json:"italic"`
+	Link      *jsonLink  `json:"link,omitempty"`
+	Field     *jsonField `json:"field,omitempty"`
+}
+
+type jsonLink struct {
+	Label  string `json:"label"`
+	URL    string `json:"url"`
+	Fields string `json:"fields"`
+}
+
+type jsonField struct {
+	Name       string `json:"name"`
+	Type       string `json:"type"`
+	Data       string `json:"data"`
+	Value      string `json:"value"`
+	Width      int    `json:"width"`
+	Masked     bool   `json:"masked"`
+	Prechecked bool   `json:"prechecked"`
+}
+
+func themeName(t micron.Theme) string {
+	if t == micron.ThemeLight {
+		return "light"
+	}
+	return "dark"
+}
+
+func alignName(a micron.Alignment) string {
+	switch a {
+	case micron.AlignCenter:
+		return "center"
+	case micron.AlignRight:
+		return "right"
+	default:
+		return "left"
+	}
 }
 
 // fetchRemote initializes Reticulum, fetches path from the nomadnetwork.node
@@ -219,7 +368,7 @@ func fetchRemote(cfg config, destHash []byte, path string, requestData map[strin
 		log.Printf("Fetch failed: %v", err)
 		os.Exit(1)
 	}
-	log.Printf("Received %d bytes, rendering.", len(data))
+	log.Printf("Received %d bytes.", len(data))
 	return data
 }
 

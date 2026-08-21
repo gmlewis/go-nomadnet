@@ -5,6 +5,7 @@ TODO.md
 *.txt
 captures/
 /.claude
+/original*
 /skills/
 /test-all.sh
 go.work*
