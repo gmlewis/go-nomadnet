@@ -18,7 +18,6 @@ package tui
 import (
 	"fmt"
 	"strconv"
-	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -442,6 +441,23 @@ func alignPad(align micron.Alignment, width, rowW int) int {
 	}
 }
 
+// rtrimBreakSpace drops the single trailing break space tview.WordWrap leaves at
+// the end of a wrapped (non-final) row. urwid's space-wrap excludes that one
+// break space from the row's content (text_layout line_width), so the alignment
+// pad and the rendered glyphs land where urwid places them. isLast reports
+// whether s is the final wrapped row; the final row keeps its trailing spaces
+// (content), and force-broken rows end mid-word (no trailing space), so the
+// trim only fires for non-final rows that broke at a space. s is a tview
+// color/region-tagged string; a trailing break space is a literal ' ' byte at
+// the end (never inside a [... tag, which ends with ']'), so a byte-length trim
+// is exact.
+func rtrimBreakSpace(s string, isLast bool) string {
+	if !isLast && len(s) > 0 && s[len(s)-1] == ' ' {
+		return s[:len(s)-1]
+	}
+	return s
+}
+
 // wrapCursorRow maps a rune offset pos within plain text to its wrapped-row
 // index y, the display column from that row's start to pos, and the display
 // width of that row's visible content (after trimming the break space
@@ -464,29 +480,46 @@ func wrapCursorRow(plain string, width, pos int) (col, y, rowW int, ok bool) {
 	off := 0
 	for yi, ln := range lines {
 		rl := utf8.RuneCountInString(ln)
-		if pos <= off+rl {
+		isLast := yi == len(lines)-1
+		// A position at the row boundary (pos == off+rl) is the first rune of
+		// the NEXT wrapped row: tview.WordWrap includes the break space at
+		// off+rl-1, so the next row starts at off+rl. Only the final row absorbs
+		// pos == off+rl (the cursor-at-end case), which keeps a link starting
+		// exactly at a wrapped boundary (e.g. "About" after the menu's break
+		// space) on the correct row instead of one row too high.
+		if pos < off+rl || isLast {
 			w := 0
 			for i := off; i < pos && i < len(runes); i++ {
 				w += runeWidth(runes[i])
 			}
-			return w, yi, trimmedDisplayWidth(ln), true
+			return w, yi, rowContentWidth(ln, isLast), true
 		}
 		off += rl
 	}
 	if len(lines) > 0 {
-		return 0, len(lines) - 1, trimmedDisplayWidth(lines[len(lines)-1]), true
+		return 0, len(lines) - 1, rowContentWidth(lines[len(lines)-1], true), true
 	}
 	return 0, 0, 0, false
 }
 
-// trimmedDisplayWidth is the display width of s after stripping trailing
-// spaces, matching the renderer's strings.TrimRight(row, " ") before it measures
-// a row for alignment padding.
-func trimmedDisplayWidth(s string) int {
+// rowContentWidth is the display width of s, minus the single trailing break
+// space tview.WordWrap leaves at the end of a wrapped (non-final) row. urwid's
+// space-wrap drops that break space (text_layout line_width excludes it), so the
+// alignment pad computed from this width matches urwid's right/center offset.
+// The final row keeps any trailing spaces (content); force-broken rows end
+// mid-word (no trailing space), so the drop only affects non-final rows that
+// broke at a space.
+func rowContentWidth(s string, isLast bool) int {
 	w := 0
-	trimmed := strings.TrimRight(s, " ")
-	for _, r := range trimmed {
+	n := 0
+	var last rune
+	for _, r := range s {
 		w += runeWidth(r)
+		last = r
+		n++
+	}
+	if !isLast && n > 0 && last == ' ' {
+		w -= runeWidth(' ')
 	}
 	return w
 }

@@ -156,8 +156,19 @@ func StyledLinesToTviewText(lines []*micron.StyledLine, width int) (string, []mi
 				cu = writeSpanTag(&cb, span, cu)
 			}
 			wrapW := max(width-2*line.Indent, 1)
-			for _, row := range tview.WordWrap(cb.String(), wrapW) {
-				row = strings.TrimRight(row, " ")
+			rows := tview.WordWrap(cb.String(), wrapW)
+			for i, row := range rows {
+				// Drop the single break space tview.WordWrap leaves at the end of
+				// a wrapped (non-final) row so the row's content width sc matches
+				// urwid's line_width (which excludes it). This keeps the intra-word
+				// trailing spaces urwid keeps (e.g. 2 of 3 separator spaces) so the
+				// right/center pad lands the glyphs where urwid does, instead of
+				// shifting them left by the full trailing-space count an
+				// all-spaces TrimRight would drop. The final row keeps its
+				// trailing spaces (content); force-broken rows end mid-word (no
+				// trailing space), so the drop only affects non-final rows that
+				// broke at a space.
+				row = rtrimBreakSpace(row, i == len(rows)-1)
 				rowW := tview.TaggedStringWidth(row)
 				if line.Indent > 0 {
 					underlineOn = clearUnderline(&b, underlineOn)
