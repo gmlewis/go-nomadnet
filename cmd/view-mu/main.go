@@ -450,6 +450,71 @@ func renderToANSI(markup string, theme micron.Theme, width int, noColor bool) (s
 			continue
 		}
 
+		// Heading lines: Python wraps the heading in urwid.AttrMap(...,
+		// heading_style) (MicronParser.py:318), whose fallback attribute fills
+		// the ENTIRE row — the left-indent spaces, the heading text, and the
+		// right padding — with the heading background. The general path below
+		// only colors the text characters, so the highlight stops after the
+		// last letter. Reproduce the full-width highlight here so this
+		// offline renderer matches the browser (tui.StyledLinesToTviewText)
+		// and the Python source of truth.
+		if line.HeadingLevel > 0 && len(line.Spans) > 0 {
+			base := line.Spans[0]
+			hfg, hbg := base.FG, base.BG
+			if !noColor {
+				writeANSICode(&sb, hfg, hbg, false, false, false)
+			}
+			sb.WriteString(strings.Repeat(" ", line.Indent))
+			colPos := line.Indent
+			var lastFG, lastBG string
+			var lastBold, lastUnderline, lastItalic bool
+			for _, span := range line.Spans {
+				runes := []rune(span.Text)
+				for len(runes) > 0 {
+					remaining := width - colPos
+					if remaining <= 0 {
+						if !noColor {
+							sb.WriteString("\033[0m")
+						}
+						sb.WriteByte('\n')
+						if !noColor {
+							writeANSICode(&sb, hfg, hbg, false, false, false)
+						}
+						sb.WriteString(strings.Repeat(" ", line.Indent))
+						colPos = line.Indent
+						lastFG, lastBG = "", ""
+						lastBold, lastUnderline, lastItalic = false, false, false
+						remaining = width - colPos
+					}
+					toWrite := min(len(runes), remaining)
+					if !noColor {
+						styleChanged := span.FG != lastFG || span.BG != lastBG ||
+							span.Bold != lastBold || span.Underline != lastUnderline || span.Italic != lastItalic
+						if styleChanged {
+							writeANSICode(&sb, span.FG, span.BG, span.Bold, span.Underline, span.Italic)
+							lastFG, lastBG = span.FG, span.BG
+							lastBold, lastUnderline, lastItalic = span.Bold, span.Underline, span.Italic
+						}
+					}
+					sb.WriteString(string(runes[:toWrite]))
+					colPos += toWrite
+					runes = runes[toWrite:]
+				}
+			}
+			// Pad the final row to the full width with the heading background.
+			if pad := width - colPos; pad > 0 {
+				if !noColor {
+					writeANSICode(&sb, hfg, hbg, false, false, false)
+				}
+				sb.WriteString(strings.Repeat(" ", pad))
+			}
+			if !noColor {
+				sb.WriteString("\033[0m")
+			}
+			sb.WriteByte('\n')
+			continue
+		}
+
 		// Handle alignment
 		if line.Align == micron.AlignCenter || line.Align == micron.AlignRight {
 			textWidth := 0

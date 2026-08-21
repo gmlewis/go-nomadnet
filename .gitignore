@@ -5,6 +5,7 @@ TODO.md
 *.txt
 captures/
 /.claude
+/.dsh
 /original*
 /skills/
 /test-all.sh

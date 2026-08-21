@@ -77,6 +77,60 @@ func StyledLinesToTviewText(lines []*micron.StyledLine, width int) (string, []mi
 			b.WriteByte('\n')
 			continue
 		}
+		// Heading lines: Python wraps the heading Text in
+		// urwid.AttrMap(urwid.Text(output, align=...), heading_style)
+		// (MicronParser.py:300-318). The AttrMap's heading_style is the
+		// fallback attribute for every cell the Text does not cover, so urwid
+		// fills the ENTIRE row — the left-indent spaces, the heading text, and
+		// the right padding — with the heading background. The left-aligned
+		// path below only colors the text characters, so the highlight stops
+		// after the last letter (the reported parity bug). Reproduce the
+		// full-width highlight: emit the heading background across the whole
+		// row (indent + text + trailing pad), wrapping at the full width like
+		// Python's heading Text (the indent lives inside the text, not as a
+		// Padding inset, so the wrap width is the full pane width).
+		if line.HeadingLevel > 0 && len(line.Spans) > 0 {
+			base := line.Spans[0]
+			hfg := tviewColor(base.FG)
+			hbg := tviewColor(base.BG)
+			cu := underlineOn
+			var cb strings.Builder
+			// Indent spaces carry the heading background: Python inserts them
+			// as a plain-text run inside the AttrMap, so the fallback style
+			// paints them. Emit them as a heading-styled run.
+			if line.Indent > 0 {
+				cb.WriteString(headingFillTag(hfg, hbg, cu))
+				cb.WriteString(strings.Repeat(" ", line.Indent))
+				cb.WriteString("[-:-:-]")
+			}
+			for _, span := range line.Spans {
+				if span.Link != nil {
+					idx := len(links)
+					links = append(links, *span.Link)
+					fmt.Fprintf(&cb, `["%v"]`, idx)
+					cu = writeSpanTag(&cb, span, cu)
+					cb.WriteString(`[""]`)
+					continue
+				}
+				cu = writeSpanTag(&cb, span, cu)
+			}
+			for _, row := range tview.WordWrap(cb.String(), width) {
+				row = strings.TrimRight(row, " ")
+				b.WriteString(row)
+				// Pad the row to the full pane width with heading-background
+				// spaces (the AttrMap fallback in Python). The heading style is
+				// non-bold/non-underline, so the pad uses the plain heading
+				// colors regardless of any inline toggles inside the text.
+				if pad := width - tview.TaggedStringWidth(row); pad > 0 {
+					b.WriteString(headingFillTag(hfg, hbg, underlineOn))
+					b.WriteString(strings.Repeat(" ", pad))
+					b.WriteString("[-:-:-]")
+				}
+				b.WriteByte('\n')
+			}
+			underlineOn = cu
+			continue
+		}
 		// Aligned (`c`/`r`) lines are emitted as a single row with the alignment
 		// pad, as before. Aligned content is depth-0 in practice (Indent 0), and
 		// aligned text that wraps is not exercised by the guide/pages, so the
@@ -177,6 +231,21 @@ func StyledLinesToTviewText(lines []*micron.StyledLine, width int) (string, []mi
 		underlineOn = cu
 	}
 	return b.String(), links
+}
+
+// headingFillTag emits the tview color-tag prefix that opens a run painted
+// with the heading foreground/background but no bold/italic, and clears a
+// latched underline toggle so the run is not underlined. It is used to color
+// the indent and trailing-pad spaces of a heading line so the heading
+// highlight fills the full row width — matching Python's urwid.AttrMap
+// fallback style (MicronParser.py:318), which is the plain heading style
+// (non-bold, non-underline) regardless of inline toggles inside the text.
+func headingFillTag(fg, bg string, underlineOn bool) string {
+	flags := tviewFlags(false, false, false, underlineOn)
+	if flags == "" {
+		return fmt.Sprintf("[%v:%v]", fg, bg)
+	}
+	return fmt.Sprintf("[%v:%v:%v]", fg, bg, flags)
 }
 
 // clearUnderline emits a tview tag that turns the latched underline toggle OFF
