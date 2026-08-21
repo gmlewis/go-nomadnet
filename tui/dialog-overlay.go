@@ -169,7 +169,17 @@ func (dm *DialogManager) dismissTop() {
 	// focus are not safe for concurrent access).
 	pages.RemovePage(top.pageName)
 	debugFocusLog("close restore", focus)
-	if focus != nil && app != nil {
+	if app != nil {
+		// Never leave a.focus nil: a nil prevFocus (the dialog was opened while
+		// focus was already lost) must not propagate — dismissing would then
+		// skip SetFocus and leave the app with no focused primitive, so every
+		// subsequent key (arrows) dispatches to nil and the UI appears frozen
+		// until a mouse click re-focuses. Fall back to the main content, whose
+		// Focus cascades down to a real primitive.
+		if focus == nil {
+			focus = dm.main
+			debugFocusLog("close nil prevFocus -> main", focus)
+		}
 		app.SetFocus(focus)
 	}
 	dm.mu.Unlock()

@@ -18,6 +18,7 @@ package tui
 import (
 	"fmt"
 	"os"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"time"
@@ -618,6 +619,24 @@ func (md *MainDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 	if event == nil {
 		return event
 	}
+
+	// Invariant: a running app always has a focused primitive. nil focus is
+	// never a valid steady state — it is always a bug (a SetFocus(nil), a
+	// container Focus delegate(nil), or a dialog dismiss that skipped
+	// restoration) and it manifests as "arrow keys do nothing" because tview
+	// dispatches keys to a.focus. Recover BEFORE any dispatch so no key is ever
+	// lost, and dump a stack so the violation surfaces immediately instead of
+	// festering for hours. FocusBody cascades contentArea→page→…→a real
+	// primitive; if that still fails, FocusMenu targets menuBar, which is
+	// always a valid non-nil primitive.
+	if md.app != nil && md.app.GetFocus() == nil {
+		dumpFocusInvariantViolation(fmt.Sprintf("nil focus on key=%v focusRegion=%q", event.Key(), md.focusRegion))
+		md.FocusBody()
+		if md.app.GetFocus() == nil {
+			md.FocusMenu()
+		}
+	}
+
 	if p := md.app.GetFocus(); p != nil {
 		diagFileMD("/tmp/quit-diag.log", fmt.Sprintf("HANDLE key=%v focusRegion=%q focus=%T menuBarHasFocus=%v", event.Key(), md.focusRegion, p, md.menuBar.HasFocus()))
 	}
@@ -937,4 +956,18 @@ func diagFileMD(path, line string) {
 	}
 	defer func() { _ = f.Close() }()
 	_, _ = f.WriteString(line + "\n")
+}
+
+// focusInvariantDump is the sink for focus-invariant violations (a nil
+// a.focus). It defaults to appending the offending stack to the diagnostic log
+// so the culprit surfaces immediately; tests swap it to capture the dump. The
+// program keeps running regardless — the caller recovers focus after dumping.
+var focusInvariantDump = func(msg string, stack []byte) {
+	diagFileMD("/tmp/quit-diag.log", fmt.Sprintf("FOCUS INVARIANT VIOLATION: %v\n%s", msg, stack))
+}
+
+// dumpFocusInvariantViolation captures the current goroutine stack and reports
+// a focus-invariant violation through focusInvariantDump.
+func dumpFocusInvariantViolation(msg string) {
+	focusInvariantDump(msg, debug.Stack())
 }

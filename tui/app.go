@@ -61,6 +61,27 @@ type App struct {
 	onPanic func(any)
 }
 
+// SetFocus shadows tview.Application.SetFocus to enforce the focus invariant:
+// a running app must never end up with a nil focused primitive. A nil argument
+// is always a bug (no caller intentionally clears focus), and left unchecked it
+// freezes the UI — tview dispatches keys to a.focus, so nil means arrows do
+// nothing until a mouse click re-focuses. So a nil argument is refused: the
+// violation is reported with a stack trace (via focusInvariantDump) so the
+// culprit surfaces, and the existing focus is left untouched instead of being
+// replaced with nil. Non-nil arguments delegate to the real tview SetFocus,
+// returning the underlying *tview.Application to preserve tview's chaining
+// signature (the focuser interface). tview's internal focus cascade (delegate
+// closures) still calls the embedded *tview.Application.SetFocus directly —
+// those internal nil-delegates are caught by MainDisplay.handleInput's
+// nil-focus recovery instead.
+func (a *App) SetFocus(p tview.Primitive) *tview.Application {
+	if p == nil {
+		dumpFocusInvariantViolation("App.SetFocus(nil) refused")
+		return a.Application
+	}
+	return a.Application.SetFocus(p)
+}
+
 // NewApp creates a new tview Application with the given theme, color depth,
 // and glyph set. colorMode selects the palette variant (mono/16/256/true);
 // pass ColorModeTrue for the shipped 24-bit default.
