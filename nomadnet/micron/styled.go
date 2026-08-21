@@ -146,7 +146,15 @@ func (rs *renderState) restore(s renderState) { *rs = s }
 // headingN fg/bg from the theme table. Inline formatting toggles and section
 // depth persist across lines, matching Python's shared state.
 func RenderToStyledLines(markup string, theme Theme) []*StyledLine {
-	lines := splitLines(markup)
+	// Python strip_modifiers ends with .strip() (util.py:88), which trims
+	// whitespace from the whole markup before parsing. Mirror that here so a
+	// markup that starts or ends with blank lines does not emit blank
+	// StyledLines Python does not. Trimming the raw markup (not the rendered
+	// spans) is what Python does: a line of spaces carrying background color
+	// (a Display Test gradient bar) is NOT markup whitespace, so it is kept,
+	// while a genuinely empty trailing line is dropped. Internal blank lines
+	// are preserved because TrimSpace only touches the ends.
+	lines := splitLines(strings.TrimSpace(markup))
 	ps := &parseState{}
 	rs := newRenderState(theme)
 	plain := themeStyle(theme, "plain")

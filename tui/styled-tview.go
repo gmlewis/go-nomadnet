@@ -77,24 +77,22 @@ func StyledLinesToTviewText(lines []*micron.StyledLine, width int) (string, []mi
 			b.WriteByte('\n')
 			continue
 		}
-		// Plain indent spaces carry no color tag, so they inherit the latched
-		// underline; clear it first so indented content starts ununderlined.
-		// (Indent == 0 lines have no plain spaces before the first span, so the
-		// per-span 'U' in writeSpanTag is enough and no leading reset is needed.)
-		if line.Indent > 0 {
-			underlineOn = clearUnderline(&b, underlineOn)
-		}
-		b.WriteString(strings.Repeat(" ", line.Indent))
-		// Apply micron `c`/`r` alignment (Python urwid.Text(align=state["align"])
-		// centers/right-aligns the line within the pane). Python wraps the
-		// aligned text in Padding(left=left_indent, right=right_indent), so the
-		// centering space is (avail - textWidth)//2 where avail = width -
-		// left_indent - right_indent; the left_indent (line.Indent, already
-		// written above) shifts the whole block right. For depth-0 aligned
-		// content line.Indent is 0. (StyledLine does not track right_indent for
-		// text lines, so it is treated as 0 — correct for depth 0, the only
-		// place `c`/`r` appear in the guide/pages in practice.)
+		// Aligned (`c`/`r`) lines are emitted as a single row with the alignment
+		// pad, as before. Aligned content is depth-0 in practice (Indent 0), and
+		// aligned text that wraps is not exercised by the guide/pages, so the
+		// single-row emission is preserved rather than re-deriving per-row
+		// centering for the pre-wrap path below.
 		if line.Align == micron.AlignCenter || line.Align == micron.AlignRight {
+			// Plain indent spaces inherit the latched underline; clear it first.
+			if line.Indent > 0 {
+				underlineOn = clearUnderline(&b, underlineOn)
+			}
+			b.WriteString(strings.Repeat(" ", line.Indent))
+			// Python centers/right-aligns within Padding(left=left_indent,
+			// right=right_indent): the centering space is (avail-textWidth)//2
+			// where avail = width-left_indent-right_indent, and the left_indent
+			// (already written) shifts the block right. right_indent is 0 for
+			// depth-0 aligned content (the only place `c`/`r` appear).
 			textWidth := 0
 			for _, span := range line.Spans {
 				textWidth += runewidth.StringWidth(span.Text)
@@ -111,19 +109,72 @@ func StyledLinesToTviewText(lines []*micron.StyledLine, width int) (string, []mi
 				underlineOn = clearUnderline(&b, underlineOn)
 				b.WriteString(strings.Repeat(" ", pad))
 			}
+			for _, span := range line.Spans {
+				if span.Link != nil {
+					idx := len(links)
+					links = append(links, *span.Link)
+					fmt.Fprintf(&b, `["%v"]`, idx)
+					underlineOn = writeSpanTag(&b, span, underlineOn)
+					b.WriteString(`[""]`)
+					continue
+				}
+				underlineOn = writeSpanTag(&b, span, underlineOn)
+			}
+			b.WriteByte('\n')
+			continue
 		}
+		// Left-aligned text line: mirror Python's Padding(left_indent,
+		// right_indent) around the line's urwid.Text. Python's left_indent =
+		// right_indent = (depth-1)*SECTION_INDENT (MicronParser.py:418-422); the
+		// Go StyledLine carries left_indent as line.Indent and right_indent is
+		// the same value, so the content wraps at width-2*Indent and EVERY
+		// wrapped row — including continuations — is offset line.Indent. The
+		// page body is a single tview.TextView, so per-line Padding cannot be a
+		// layout inset; instead the content is pre-wrapped here (rows joined by
+		// newlines, each prefixed with the indent) so the TextView displays the
+		// indented continuation rows Python's Padding produces. The previous
+		// code baked only the first row's indent and let the TextView wrap at
+		// the full width, so depth>=2 body text wrapped one word too wide and
+		// continuation rows sat at column 0.
+		//
+		// Build the line's tagged content (spans + region tags) into a scratch
+		// buffer, tracking the post-line underline latch (cu) so the next line
+		// sees the correct state. tview.WordWrap parses color AND region tags as
+		// zero-width (parseTag handles both), so wrapping the tagged content
+		// breaks by visible width and preserves the ["N"]…[""] region tags. A
+		// link region that straddles a wrapped row stays open across the hard
+		// newline (tview carries the region state into the next line), so clicks
+		// on the continuation row still resolve to the link.
+		var cb strings.Builder
+		cu := underlineOn
 		for _, span := range line.Spans {
 			if span.Link != nil {
 				idx := len(links)
 				links = append(links, *span.Link)
-				fmt.Fprintf(&b, `["%v"]`, idx)
-				underlineOn = writeSpanTag(&b, span, underlineOn)
-				b.WriteString(`[""]`)
+				fmt.Fprintf(&cb, `["%v"]`, idx)
+				cu = writeSpanTag(&cb, span, cu)
+				cb.WriteString(`[""]`)
 				continue
 			}
-			underlineOn = writeSpanTag(&b, span, underlineOn)
+			cu = writeSpanTag(&cb, span, cu)
 		}
-		b.WriteByte('\n')
+		wrapW := max(width-2*line.Indent, 1)
+		for _, row := range tview.WordWrap(cb.String(), wrapW) {
+			// WordWrap leaves the break space at the end of a row; drop it so the
+			// trailing cells are pure background fill (matching Python, which
+			// pads rows with the background color rather than a trailing space).
+			row = strings.TrimRight(row, " ")
+			if line.Indent > 0 {
+				underlineOn = clearUnderline(&b, underlineOn)
+			}
+			b.WriteString(strings.Repeat(" ", line.Indent))
+			b.WriteString(row)
+			b.WriteByte('\n')
+		}
+		// Sync the real underline latch to the post-line state (the rows were
+		// written as opaque tagged strings, so the live latch was not updated by
+		// their tags). The next line starts from the correct state.
+		underlineOn = cu
 	}
 	return b.String(), links
 }

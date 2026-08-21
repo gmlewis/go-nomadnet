@@ -169,6 +169,20 @@ func (bd *BrowserDisplay) HandleLink(linkTarget, linkFields string) {
 
 	switch destType {
 	case "nomadnetwork.node":
+		// Push the target onto history eagerly (mirroring LoadURL) so Ctrl-d
+		// (GoBack) returns to the page the link was on. Python's retrieve_url
+		// appends to history only on success (Browser.py:131-145, 216-268); the
+		// Go fetch resolves via an async app-layer callback that calls RenderPage
+		// with markup (not the URL), so the tui layer cannot push on success.
+		// Instead HandleLink pushes now and the failure paths roll it back:
+		// NotifyLinkError (a malformed/dispatch-error link) and SetContent (a
+		// fetch-fatal timeout/no-path) pop the just-pushed entry, and RenderPage
+		// clears the pending flag on success (keeping it). pendingLinkHist marks
+		// the push so only a link click (not a typed-URL LoadURL, which displayURL
+		// clears) is rolled back — see the pendingLinkHist field doc.
+		bd.rollbackPendingLink()
+		bd.pushHistory(target)
+		bd.pendingLinkHist = true
 		if bd.OnRetrieveURL != nil {
 			// A submit link names the form fields to send (linkFields). Collect
 			// their live values from the rendered page (recurse_down analog) and

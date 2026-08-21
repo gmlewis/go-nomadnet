@@ -307,6 +307,82 @@ func TestRenderToStyledLinesEmptyLine(t *testing.T) {
 	}
 }
 
+// TestRenderToStyledLinesStripsTrailingBlank asserts that trailing (and leading)
+// blank lines in the markup are dropped from the rendered output, matching
+// Python strip_modifiers' final .strip() (util.py:88), which trims whitespace
+// from the whole markup before parsing. Internal blank lines are preserved.
+func TestRenderToStyledLinesStripsTrailingBlank(t *testing.T) {
+	t.Parallel()
+
+	// A single trailing newline must not become an extra blank line — the
+	// retibooks fixture ends with "...12:46`*\n" and Python emits no trailing
+	// blank, so Go must not either.
+	lines := RenderToStyledLines("alpha\n", ThemeDark)
+	if len(lines) != 1 {
+		t.Fatalf("trailing newline: len(lines) = %v, want 1", len(lines))
+	}
+	if lines[0].Spans[0].Text != "alpha" {
+		t.Errorf("trailing newline: text = %q, want %q", lines[0].Spans[0].Text, "alpha")
+	}
+
+	// Multiple trailing blank lines collapse to nothing trailing.
+	lines = RenderToStyledLines("alpha\n\n\n", ThemeDark)
+	if len(lines) != 1 {
+		t.Fatalf("trailing blanks: len(lines) = %v, want 1", len(lines))
+	}
+
+	// Leading blank lines are also stripped (str.strip() trims both ends).
+	lines = RenderToStyledLines("\n\nbeta", ThemeDark)
+	if len(lines) != 1 {
+		t.Fatalf("leading blanks: len(lines) = %v, want 1", len(lines))
+	}
+	if lines[0].Spans[0].Text != "beta" {
+		t.Errorf("leading blanks: text = %q, want %q", lines[0].Spans[0].Text, "beta")
+	}
+
+	// Internal blank lines are preserved (strip only touches the ends).
+	lines = RenderToStyledLines("a\n\nb", ThemeDark)
+	if len(lines) != 3 {
+		t.Fatalf("internal blank: len(lines) = %v, want 3", len(lines))
+	}
+	if len(lines[1].Spans) != 1 || lines[1].Spans[0].Text != "" {
+		t.Errorf("internal blank line = %+v, want one empty span", lines[1].Spans)
+	}
+}
+
+// TestRenderToStyledLinesKeepsTrailingDividerAndField asserts the trailing-blank
+// trim does NOT swallow an intentional trailing divider or field line, which
+// strip_modifiers' .strip() preserves (their markup is not whitespace).
+func TestRenderToStyledLinesKeepsTrailingDividerAndField(t *testing.T) {
+	t.Parallel()
+
+	// Trailing divider followed by a newline: the divider stays, the blank
+	// trailing line from the newline is dropped.
+	lines := RenderToStyledLines("alpha\n-\n", ThemeDark)
+	if len(lines) != 2 {
+		t.Fatalf("trailing divider: len(lines) = %v, want 2", len(lines))
+	}
+	if !lines[1].Divider {
+		t.Error("trailing divider: last line Divider = false, want true")
+	}
+
+	// A trailing field line is content, not whitespace, so it is kept.
+	lines = RenderToStyledLines("alpha\n`<20|username`alice>", ThemeDark)
+	last := lines[len(lines)-1]
+	if last == nil {
+		t.Fatal("trailing field: nil last line")
+	}
+	hasField := false
+	for _, sp := range last.Spans {
+		if sp.Field != nil {
+			hasField = true
+		}
+	}
+	if !hasField {
+		t.Errorf("trailing field: last line has no field span, spans=%+v", last.Spans)
+	}
+}
+
 // TestRenderToStyledLinesCommentAndLiteralOmitted asserts comments and the
 // literal-toggle line produce no output line (Python parse_line returns None).
 func TestRenderToStyledLinesCommentAndLiteralOmitted(t *testing.T) {

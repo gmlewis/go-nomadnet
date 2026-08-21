@@ -161,8 +161,11 @@ func TestBrowserDisplayURLHeader(t *testing.T) {
 	}
 
 	// A 32-hex hash URL loads as "<hash>:/page/index.mu"; the header shows the
-	// node glyph + " " + that canonical URL.
+	// node glyph + " " + that canonical URL. Give the content a wide rect so the
+	// URL-bar ellipsis truncation (Q2) does not clip it — this test targets
+	// canonicalization, not truncation (see TestSetURLHeaderEllipsizes).
 	hash := "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6"
+	bd.content.SetRect(0, 0, 100, 10)
 	bd.LoadURL(hash)
 	want := app.Glyphs["node"] + " " + hash + ":/page/index.mu"
 	if got := bd.urlHeader.GetText(true); got != want {
@@ -231,6 +234,10 @@ func TestBrowserDisplayLinkPeekFooter(t *testing.T) {
 	t.Parallel()
 	app := NewApp(ThemeDark, GlyphUnicode, ColorModeTrue)
 	bd := NewBrowserDisplay(app)
+	// Wide content rect so the "Link to <target>" peek is not ellipsized here —
+	// this test targets the link-peek text + restore-on-clear, not truncation
+	// (see TestMarkedLinkEllipsizes).
+	bd.content.SetRect(0, 0, 100, 10)
 	bd.LoadURL("a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6")
 	bd.SetTransferStats(815, 815, 0.77, false)
 	bd.RenderPage(">Welcome\nbody")

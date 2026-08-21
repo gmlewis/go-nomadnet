@@ -236,12 +236,7 @@ var renderMuScriptPath = filepath.Join("..", "..", "tooling", "render-mu.py")
 // carry a one-line reason so a future reader knows whether to fix it or leave
 // it. A diff that is NOT listed here fails the test, so new regressions are
 // caught immediately.
-var acceptedParityDiffs = map[string]map[string]string{
-	"retibooks-index.mu": {
-		"line_count: go=%d py=%d": "Go RenderToStyledLines does not strip trailing whitespace; Python strip_modifiers does, so Go emits one extra trailing blank line.",
-		"line %d: missing_in_py":  "Consequence of the trailing-blank-line divergence (Go has one more line than Python).",
-	},
-}
+var acceptedParityDiffs = map[string]map[string]string{}
 
 // TestRenderParityFixtures diffs the Go micron renderer against the Python
 // MicronParser for every checked-in .mu fixture under testdata/parity. Expected

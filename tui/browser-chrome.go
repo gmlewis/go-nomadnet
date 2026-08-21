@@ -144,6 +144,26 @@ func glyph(g map[string]string, key string) string {
 	return g[key]
 }
 
+// truncateEllipsis truncates s to fit within max code points, appending the
+// single-cell ellipsis "…" when the string is too long — mirroring Python
+// Browser.make_control_widget and marked_link_job (Browser.py:514-515,
+// 199-200): if len(s) > max: s = s[:max-1] + "…". Python len() counts Unicode
+// code points, so this operates on runes, not bytes; the result is never
+// longer than max code points. max is the full target width including the
+// ellipsis. A non-positive max leaves the string unchanged (it cannot happen
+// in practice — content_cols is clamped to at least 40 — and avoids a negative
+// slice index).
+func truncateEllipsis(s string, max int) string {
+	if max < 1 {
+		return s
+	}
+	r := []rune(s)
+	if len(r) <= max {
+		return s
+	}
+	return string(r[:max-1]) + "…"
+}
+
 // browserControlsColor is the header/footer chrome text color (Python
 // "browser_controls" style: #bbb dark / #444 light), falling back to #bbb when
 // the theme lookup yields ColorDefault (e.g. a test app with no palette).

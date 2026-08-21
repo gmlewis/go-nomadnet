@@ -386,8 +386,24 @@ func (bd *BrowserDisplay) cursorScreenXY() (x, y int, ok bool) {
 	if width <= 0 {
 		width = bd.contentWidth()
 	}
+	// StyledLinesToTviewText pre-wraps each left-aligned line at width-2*Indent
+	// (Python's Padding(left_indent, right_indent), where right_indent ==
+	// left_indent == line.Indent), offsetting every row by Indent. The cursor
+	// model must wrap at the SAME width the display used and add the indent so
+	// the hardware cursor lands on the rendered glyph, not 2*Indent columns to
+	// its left. (Aligned `c`/`r` lines are depth-0 → Indent 0, so this is a
+	// no-op for them.)
+	indent := 0
+	if bd.focusLine < len(bd.currentLines) && bd.currentLines[bd.focusLine] != nil {
+		indent = bd.currentLines[bd.focusLine].Indent
+	}
+	wrapW := width - 2*indent
+	if wrapW <= 0 {
+		wrapW = width
+	}
 	pos := bd.lineCursors[bd.focusLine]
-	x, y, _ = wrapCursorXY(plain, width, pos)
+	x, y, _ = wrapCursorXY(plain, wrapW, pos)
+	x += indent
 	return x, y, true
 }
 

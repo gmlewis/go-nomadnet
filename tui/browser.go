@@ -66,6 +66,20 @@ type BrowserDisplay struct {
 	contentFG tcell.Color
 	history   []string
 	histIdx   int
+	// pendingLinkHist marks that a nomadnetwork.node link click (HandleLink)
+	// eagerly pushed its target onto history and the fetch is still in flight.
+	// Python's retrieve_url appends to history only on SUCCESS (Browser.py:131-145,
+	// 216-268); the Go single-callback fetch model cannot push on success from
+	// the tui layer (the success callback lives in the app layer and calls
+	// RenderPage with markup, not the URL), so HandleLink pushes eagerly and the
+	// failure paths (NotifyLinkError for a malformed/dispatch-error link, SetContent
+	// for a fetch-fatal timeout/no-path) roll it back by popping. RenderPage clears
+	// the flag on success (keeping the entry), and any new fetch (displayURL for a
+	// typed URL / Back / Forward, or another HandleLink) pops a still-pending entry
+	// first so a superseded click does not leave a stale history row. This mirrors
+	// Python's "raise before touching history" for a failed link so the user is not
+	// stranded on an error page with Ctrl-d a no-op.
+	pendingLinkHist bool
 	// loading is the MIDDLE-centered "Retrieving\n[<url>]" body shown while a
 	// page fetch is in flight (Python Browser.update_display REQUEST_SENT branch,
 	// Browser.py:593-598: Filler(Text("Retrieving\n["+url+"]", CENTER), MIDDLE)).
@@ -384,15 +398,46 @@ func (bd *BrowserDisplay) LoadURL(url string) {
 	if url == "" {
 		return
 	}
+	bd.pushHistory(url)
+	bd.displayURL(url)
+}
 
-	// If we're not at the end of history, truncate forward
+// pushHistory appends url to the navigation history, truncating any forward
+// entries beyond the current position (mirroring Python Browser.history append
+// on a successful retrieve_url, Browser.py:131-145). bd.histIdx advances to the
+// new (now last) entry. A still-pending link-click history push is rolled back
+// first so a superseded click does not leave a stale row below the new entry.
+func (bd *BrowserDisplay) pushHistory(url string) {
+	bd.rollbackPendingLink()
 	if bd.histIdx < len(bd.history)-1 {
 		bd.history = bd.history[:bd.histIdx+1]
 	}
 	bd.history = append(bd.history, url)
 	bd.histIdx = len(bd.history) - 1
+}
 
-	bd.displayURL(url)
+// popHistory drops the last history entry, restoring histIdx to the previous
+// page. Used to roll back a link click's eager push when its fetch fails so the
+// user is left on the prior page (Python's retrieve_url raises before touching
+// history). It never empties history below the entry histIdx points at when
+// called from a failure callback (the failed link sat above it).
+func (bd *BrowserDisplay) popHistory() {
+	if len(bd.history) == 0 {
+		bd.histIdx = 0
+		return
+	}
+	bd.history = bd.history[:len(bd.history)-1]
+	bd.histIdx = max(len(bd.history)-1, 0)
+}
+
+// rollbackPendingLink pops a link-click history push whose fetch never reached
+// a success/failure callback (it was superseded by this new navigation) and
+// clears the pending flag. No-op when no link click is in flight.
+func (bd *BrowserDisplay) rollbackPendingLink() {
+	if bd.pendingLinkHist {
+		bd.popHistory()
+		bd.pendingLinkHist = false
+	}
 }
 
 // GoBack navigates to the previous URL in history.
@@ -417,8 +462,10 @@ func (bd *BrowserDisplay) GoForward() {
 // (nomadnet/browser ParseURL + FetchPage over the app's TransportSystem) and
 // calls back into RenderPage on success or OnBrowserError on failure. This
 // mirrors Python Browser.retrieve_url → __load, run on a background thread so
-// the UI stays responsive.
+// the UI stays responsive. A still-pending link-click push is rolled back first
+// (a typed URL / Back / Forward supersedes it).
 func (bd *BrowserDisplay) displayURL(url string) {
+	bd.rollbackPendingLink()
 	bd.setURLHeader(url)
 	bd.showLoading(bd.currentURLDisp)
 	if bd.OnRetrieveURL != nil {
@@ -440,8 +487,23 @@ func (bd *BrowserDisplay) displayURL(url string) {
 func (bd *BrowserDisplay) setURLHeader(url string) {
 	disp := bd.canonicalURL(url)
 	bd.currentURLDisp = disp
+	bd.refreshURLHeader()
+}
+
+// refreshURLHeader re-applies the "Ⓝ <url>" header text, truncated to the
+// current pane width. The URL bar is first set in displayURL at request time,
+// before the browser pane may have been laid out at its final width, so the
+// initial truncation can use a stale narrow width. Re-truncating once the page
+// has rendered mirrors Python make_control_widget (Browser.py:508-515), which
+// builds the control widget at page-build time with the settled content_cols,
+// truncating lstr = g["node"]+" "+current_url() to lmax = content_cols-1 with
+// s[:lmax-1]+"…" (clipboard copy is off in the default config).
+func (bd *BrowserDisplay) refreshURLHeader() {
+	disp := bd.currentURLDisp
 	g := bd.app.Glyphs
-	bd.urlHeader.SetText(glyph(g, "node") + " " + disp)
+	lstr := glyph(g, "node") + " " + disp
+	lmax := bd.contentWidth() - 1
+	bd.urlHeader.SetText(truncateEllipsis(lstr, lmax))
 }
 
 // canonicalURL returns the "<hex>:<path>" form of url when it parses as a
@@ -535,6 +597,10 @@ func (bd *BrowserDisplay) RenderPage(markup string) {
 // so it is safe to call from a partial-fetch callback to refresh the page
 // without restarting the refresh timers.
 func (bd *BrowserDisplay) renderPage() {
+	// A successful page render keeps a link click's eager history push (the
+	// fetch succeeded), clearing the rollback flag. No-op for a typed-URL load
+	// (LoadURL → displayURL already cleared it).
+	bd.pendingLinkHist = false
 	markup := bd.effectiveMarkup()
 	lines := micron.RenderToStyledLines(markup, micronTheme(bd.app.Theme))
 	width := bd.contentWidth()
@@ -570,6 +636,12 @@ func (bd *BrowserDisplay) renderPage() {
 	// Swap the page content back in if the centered loading body was showing
 	// (displayURL swaps it out while a fetch is in flight).
 	bd.showContent()
+	// Re-truncate the URL bar against the now-settled pane width. setURLHeader
+	// ran at request time when the pane may still have been narrow, so the
+	// initial ellipsization can be too aggressive; by page-build time the layout
+	// has settled and contentWidth() is correct (Python builds the control
+	// widget here too).
+	bd.refreshURLHeader()
 
 	// Reset the per-line focus + part-cursor nav model for the freshly rendered
 	// page (browser-nav.go): focus defaults to the first selectable line, each
@@ -857,6 +929,14 @@ func (bd *BrowserDisplay) CurrentURL() string {
 // non-responding node appeared to never time out). showContent is a no-op when
 // no fetch is in flight (bd.loading == nil).
 func (bd *BrowserDisplay) SetContent(text string) {
+	// A fetch-fatal failure (timeout / no path) or a local /file/ download
+	// lands here. If the fetch was a nomadnetwork.node link click, HandleLink
+	// pushed its target eagerly; roll that back so the user is not left on the
+	// error/download page with Ctrl-d a no-op (Python's retrieve_url raises or
+	// downloads without touching history). A typed-URL fetch-fatal has
+	// pendingLinkHist already false (displayURL cleared it), so this is a no-op
+	// for it — preserving the prior eager-push behavior for typed URLs.
+	bd.rollbackPendingLink()
 	bd.showContent()
 	bd.content.SetText(text)
 	// Error text is not a rendered micron page (no renderPage/initNavState ran):
@@ -874,18 +954,17 @@ func (bd *BrowserDisplay) SetContent(text string) {
 // destination_hash, or history, so the page the user was viewing stays put and
 // Back (Ctrl-d) works as normal (it has nothing to undo for the failed link).
 //
-// The Go app-layer OnRetrieveURL closure previously called SetContent on a
-// ParseURL error (e.g. an https:// link, which is ErrMalformedURL), which
-// OVERWROTE the current page with the error text. Because a failed link never
-// pushed a history entry, the user was then stranded on the error page with no
-// way back — Ctrl-d did nothing (and the Network pane's OnBack was unwired).
-// NotifyLinkError restores the prior page instead: showContent swaps the
+// HandleLink now pushes a nomadnetwork.node link's target eagerly (so a
+// SUCCESSFUL click's Back works), so a FAILED link must roll that push back;
+// rollbackPendingLink pops the just-pushed entry, leaving the user on the page
+// they were viewing with the footer carrying the error. showContent swaps the
 // "Retrieving" loading body back out if a URL-bar load had shown it (a no-op
-// for a link click, which never showed loading), and the footer carries the
-// error. The rendered page's nav state is left intact so the user keeps
-// navigating it. Fetch-FATAL errors (timeout / no path) still use SetContent,
+// for a link click, which never showed loading). The rendered page's nav state
+// is left intact so the user keeps navigating it. Fetch-FATAL errors (timeout
+// / no path) still use SetContent (which also rolls back a pending link),
 // matching Python's make_request_failed_widget replacing the body.
 func (bd *BrowserDisplay) NotifyLinkError(msg string) {
+	bd.rollbackPendingLink()
 	bd.showContent()
 	bd.linkStatusShowing = false
 	bd.footerStatus.SetText("[red]" + tview.Escape(msg) + "[-]")
@@ -1026,7 +1105,13 @@ func (bd *BrowserDisplay) MarkedLink(target, fields string) {
 	}
 	t := browser.MarkedLinkTarget(target, f)
 	bd.linkStatusShowing = true
-	bd.footerStatus.SetText("Link to " + t)
+	// Python marked_link_job (Browser.py:196-200) builds lstr = "Link to " +
+	// target and truncates it to lmax = content_cols with s[:lmax-1]+"…".
+	// Replicate that so a long link target ends in "…" instead of being clipped
+	// to spaces by the footer TextView.
+	lstr := "Link to " + t
+	lmax := bd.contentWidth()
+	bd.footerStatus.SetText(truncateEllipsis(lstr, lmax))
 }
 
 // SetTransferStats records the response size, transfer size, and elapsed time

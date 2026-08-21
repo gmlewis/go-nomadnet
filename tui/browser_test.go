@@ -426,6 +426,9 @@ func TestBrowserDisplayMarkedLink(t *testing.T) {
 	bd := NewBrowserDisplay(app)
 	app.Main.SetDisplay("browser", bd.Widget())
 	app.Main.activePage = "browser"
+	// Wide content rect so "Link to <target>`<fields>" is not ellipsized here —
+	// this test targets the link-peek text + fields, not truncation.
+	bd.content.SetRect(0, 0, 100, 10)
 
 	bd.MarkedLink("http://example.com", "f1|f2")
 	got := bd.footerStatus.GetText(true)
