@@ -77,6 +77,7 @@ import (
 
 const (
 	defaultPathTimeout    = 15.0
+	batchPathTimeout      = 30.0 // auto-raised path timeout in batch/file mode (>1 target): multi-hop shared-instance paths can take 20+s to land.
 	defaultLinkTimeout    = 15.0
 	defaultRequestTimeout = 10.0
 	defaultDuration       = 30.0
@@ -84,6 +85,20 @@ const (
 	defaultRequests       = 50
 	// pollInterval is the granularity at which path state is polled.
 	pollInterval = 100 * time.Millisecond
+	// pathGrace is a short re-check window after the path-wait deadline: a
+	// shared-instance path response can land just past the deadline (it is
+	// delivered asynchronously), so we poll a little longer before declaring a
+	// target UNREACHABLE to avoid a tick-level near-miss false-negative.
+	pathGrace = 2 * time.Second
+	// pathRetries is how many times a path request is re-issued when the
+	// previous one goes unanswered. A shared instance intermittently drops a
+	// path request even for a cached path (the same request succeeds via
+	// gornpath moments later), so a single attempt false-negatives a reachable
+	// node. Re-issuing recovers it.
+	pathRetries = 2
+	// retryPathWait is the per-retry wait budget (seconds) after the first
+	// full-timeout attempt.
+	retryPathWait = 10.0
 	// startupGrace gives AutoInterface discovery a moment before probing.
 	startupGrace = 1500 * time.Millisecond
 	// unresponsiveStreak is the number of consecutive request failures (after at
@@ -112,6 +127,7 @@ var addressPrefixes = []string{
 type options struct {
 	rnsConfigDir string
 	pathTimeout  float64
+	pathTimeoutSet bool // true when --path-timeout was passed explicitly
 	linkTimeout  float64
 	verbose      bool
 	identityFile string // optional: load target identity from file (skip announce wait)
@@ -246,14 +262,31 @@ func run(args []string) int {
 		rawTargets = ts2
 	}
 
+	// In batch/file mode (>1 target) the shared instance serves several path
+	// requests and multi-hop paths can take 20+s to arrive, so auto-raise the
+	// path timeout unless the user set it explicitly. Resolution below is
+	// sequential, so this budget is per-target: a slow or down node does extend
+	// the total resolution time, but each reachable node still gets the full
+	// window for its own path to land.
+	if !opts.pathTimeoutSet && len(rawTargets) > 1 && opts.pathTimeout < batchPathTimeout {
+		opts.pathTimeout = batchPathTimeout
+	}
+
 	fmt.Printf("Stressing %d node(s) — path timeout %.0fs, link timeout %.0fs\n",
 		len(rawTargets), opts.pathTimeout, opts.linkTimeout)
 
 	// Give AutoInterface discovery a moment to bring interfaces up.
 	time.Sleep(startupGrace)
 
-	// Resolve identity + path for each target (ping stages 1-2). Targets that
-	// cannot be resolved are reported as unreachable and skipped.
+	// Resolve identity + path for each target (ping stages 1-2), one at a time.
+	// Resolution is deliberately sequential: a shared instance reliably answers
+	// a single outstanding path request (the pattern gornpath relies on), but
+	// when several path requests are in flight at once it services some and
+	// drops others — so concurrent resolution made reachable nodes flap to
+	// UNREACHABLE nondeterministically. The batch path timeout is raised above
+	// (batchPathTimeout) so a multi-hop path that takes 20+s to land still fits
+	// within one target's budget. Targets that cannot be resolved are reported
+	// as unreachable and skipped.
 	var resolvedTargets []resolved
 	var unreachable []reachable
 	for _, t := range rawTargets {
@@ -364,12 +397,31 @@ func resolveTarget(ts *rns.TransportSystem, t target, opts *options) (resolved, 
 	targetHash := rns.CalculateHash(identity, app, aspects...)
 
 	if !ts.HasPath(targetHash) {
-		if err := ts.RequestPath(targetHash); err != nil {
-			rb.detail = fmt.Sprintf("path request failed: %v", err)
-		}
-		deadline := time.Now().Add(time.Duration(opts.pathTimeout * float64(time.Second)))
-		for time.Now().Before(deadline) && !ts.HasPath(targetHash) {
-			time.Sleep(pollInterval)
+		for attempt := 0; attempt < pathRetries && !ts.HasPath(targetHash); attempt++ {
+			if err := ts.RequestPath(targetHash); err != nil {
+				rb.detail = fmt.Sprintf("path request failed: %v", err)
+			}
+			// The first attempt gets the full path timeout; a retry (issued
+			// because the shared instance dropped the previous request) gets a
+			// shorter window.
+			wait := opts.pathTimeout
+			if attempt > 0 {
+				wait = retryPathWait
+			}
+			deadline := time.Now().Add(time.Duration(wait * float64(time.Second)))
+			for time.Now().Before(deadline) && !ts.HasPath(targetHash) {
+				time.Sleep(pollInterval)
+			}
+			// A shared-instance path response is delivered asynchronously and
+			// can land just past the deadline. Poll a short grace window before
+			// giving up on this attempt, so a near-miss does not become a
+			// false-negative UNREACHABLE for a node that is in fact reachable.
+			if !ts.HasPath(targetHash) {
+				graceDeadline := time.Now().Add(pathGrace)
+				for time.Now().Before(graceDeadline) && !ts.HasPath(targetHash) {
+					time.Sleep(pollInterval)
+				}
+			}
 		}
 	}
 	if !ts.HasPath(targetHash) {
@@ -1172,6 +1224,12 @@ func targetStatus(s targetStatsSnapshot) string {
 		return "ALL LINKS FAILED"
 	case s.responsesOK == 0 && s.requestsSent > 0:
 		return "NO RESPONSES"
+	// Every issued request succeeded (sent==ok, ok>0, zero failures): the
+	// target answered cleanly with no timeouts, send-errors, or failed
+	// receipts. Distinguish that from STRESSED, which means the target was
+	// reached and answered at least once but also had some failures.
+	case s.responsesOK > 0 && s.failures == 0:
+		return "PASSED"
 	case s.responsesOK > 0:
 		return "STRESSED"
 	default:
@@ -1361,6 +1419,7 @@ func parseFlags(args []string) (*options, error) {
 				return nil, fmt.Errorf("--path-timeout: %w", err)
 			}
 			opts.pathTimeout = f
+			opts.pathTimeoutSet = true
 			i = next
 		case "--link-timeout":
 			v, next, err := flagValue(args, i, "--link-timeout")
@@ -1511,7 +1570,9 @@ options:
   -h, --help            show this help message and exit
   -v, --verbose         verbose RNS logging
   --rnsconfig DIR       Reticulum config dir (default: ~/.reticulum)
-  --path-timeout SECS   seconds to wait for a path request (default 15)
+  --path-timeout SECS   seconds to wait for a path request (default 15; auto-raised
+                        to 30 in batch/file mode, where multi-hop shared-instance
+                        paths can take 20+s to arrive)
   --link-timeout SECS   seconds to wait for link establishment (default 15)
   --identity FILE       stress the node whose identity is in FILE
   --lxmf                target the node's lxmf.delivery destination instead of

@@ -4,6 +4,7 @@ SKILLS.md
 TODO.md
 *.txt
 captures/
+/.claude
 /skills/
 /test-all.sh
 go.work*
