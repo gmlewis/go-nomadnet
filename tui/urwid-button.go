@@ -125,7 +125,7 @@ func (b *UrwidButton) SetLabel(label string) *UrwidButton { b.label = label; ret
 // (label area 6; "Nodes (3)" wraps to "Nodes" + "(3)"). urwid applies no color
 // to a plain Button, so the row is drawn in the default text style. The
 // SelectableIcon cursor (label position 0) is shown on the first row when
-// focused (Phase 0 hardware-cursor parity).
+// focused (hardware-cursor parity).
 func (b *UrwidButton) Draw(screen tcell.Screen) {
 	b.Box.DrawForSubclass(screen, b)
 	x, y, w, h := b.GetInnerRect()
@@ -200,7 +200,7 @@ func (b *UrwidButton) Draw(screen tcell.Screen) {
 		}
 	}
 	// urwid's SelectableIcon places the cursor at label position 0; show it
-	// when focused so the hardware cursor matches the original (Phase 0).
+	// when focused so the hardware cursor matches the original.
 	if b.HasFocus() {
 		screen.ShowCursor(x+len([]rune(b.leftBracket))+urwidButtonDivideChars, y)
 	}

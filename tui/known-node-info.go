@@ -25,16 +25,16 @@ import (
 // LXMF propagation-node address line, and the two checkbox preselections (use as
 // default PN, identify on connect). The RNS-dependent fields (operator string
 // via Identity.recall, hop count via Transport.hops_to, the PN address hash, the
-// current user-selected PN) are stubs until Phase 5; identify-on-connect comes
+// current user-selected PN) are stubs until node hosting is wired in; identify-on-connect comes
 // from the directory entry and is wired now.
 type KnownNodeInfoData struct {
 	DisplayStr        string // directory display name (or "<hex>")
 	SortStr           string // "None" or str(sort_rank)
 	TrustLevel        string // "untrusted"/"unknown"/"trusted"/"warning" (radio preselect)
-	OpStr             string // node operator display (Phase 5: "Unknown")
-	HopsStr           string // "N hop(s)" or "Unknown" (Phase 5: "Unknown")
-	LXMFAddrStr       string // centered PN-address line (Phase 5 stub: "No associated …")
-	UseAsPN           bool   // preselected "Use as default propagation node" (Phase 5: false)
+	OpStr             string // node operator display (stub: "Unknown")
+	HopsStr           string // "N hop(s)" or "Unknown" (stub: "Unknown")
+	LXMFAddrStr       string // centered PN-address line (stub: "No associated …")
+	UseAsPN           bool   // preselected "Use as default propagation node" (stub: false)
 	IdentifyOnConnect bool   // directory.should_identify_on_connect(source_hash)
 }
 

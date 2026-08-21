@@ -16,6 +16,7 @@
 package tui
 
 import (
+	"encoding/hex"
 	"strings"
 	"testing"
 )
@@ -73,50 +74,90 @@ func TestNickColorByHashConsistency(t *testing.T) {
 	}
 }
 
-// TestNickColorByHashPythonParity verifies the full-hash modular reduction
-// against Python's get_nick_color (Channels.py:1254):
+// TestNickColorByHashPythonParity is a LIVE cross-implementation check: it
+// execs Python's real Channels.get_nick_color (nomadnet.ui.textui.Channels)
+// with a mock app whose rrc_nick_colors_theme is None (so the theme palette is
+// used) and derives the expected nick color freshly on every run. Go owns the
+// input battery (byte hashes of varied lengths, including the empty-hash edge
+// case); Python owns the reference behavior:
 //
 //	nick_colors[(int.from_bytes(sender_hash, "big") + shift) % len(nick_colors)]
 //
-// with the default shift of 15. Expected values were captured from the Python
-// source. These cases exercise bytes beyond the first 8, which the previous
-// implementation (truncating to the first 8 bytes as a uint64) got wrong.
+// with the default shift of 15. The same battery is run against both the dark
+// and light theme palettes. The test SKIPs, not fails, when the Python
+// reference is not importable.
+//
+// Python returns the bare hex (no '#' prefix); Go prefixes '#', so the '#'
+// is stripped before comparison. Python's get_nick_color returns
+// theme["nick_peer"] only for a non-bytes sender_hash; the battery always
+// passes bytes (including empty bytes b""), for which Python computes
+// (int.from_bytes(b"","big")+15)%24 == 15, i.e. palette[15] — NOT palette[0].
 func TestNickColorByHashPythonParity(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name      string
-		hash      []byte
-		wantColor string
-	}{
-		{"last byte set 16B", bytes16(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1), "#95a0fd"},
-		{"first byte set 16B", bytes16(1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0), "#81b385"},
-		{"all 0xff 16B", bytes16(0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff), "#76a9ee"},
-		{"range 0..15 16B", bytes16(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15), "#76a9ee"},
-		{"range 1..16 16B", bytes16(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16), "#81b385"},
-		{"all 7 32B", bytes32(7), "#98a8c3"},
-		{"31 zeros then 23 32B", append(make([]byte, 31), 23), "#98a8c3"},
+	// Battery of byte hashes as hex strings, exercising lengths beyond the
+	// first 8 bytes (the old uint64-truncating implementation diverged here),
+	// the empty-hash edge case, single bytes, and string/multibyte content.
+	hashHex := []string{
+		"",                                  // empty bytes
+		strings.Repeat("00", 16),            // 16 zero bytes
+		"00000000000000000000000000000001",  // last byte set, 16B
+		"01" + strings.Repeat("00", 15),     // first byte set, 16B
+		strings.Repeat("ff", 16),            // all 0xff, 16B
+		"000102030405060708090a0b0c0d0e0f",  // range 0..15, 16B
+		"0102030405060708090a0b0c0d0e0f10",  // range 1..16, 16B
+		strings.Repeat("07", 32),            // all 0x07, 32B
+		strings.Repeat("00", 31) + "17",     // 31 zeros then 23, 32B
+		"42",                                // single byte
+		hexEncodeString("some-nick-name!!"), // nick string bytes
+		"c3a9",                              // multibyte 'é'
+		"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", // full 32-byte hash
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	type nickInput struct {
+		Hex   string `json:"hex"`
+		Theme string `json:"theme"` // "dark" | "light"
+	}
+	var inputs []nickInput
+	for _, h := range hashHex {
+		inputs = append(inputs, nickInput{Hex: h, Theme: "dark"}, nickInput{Hex: h, Theme: "light"})
+	}
+
+	const script = `
+import sys, json
+import nomadnet.ui.textui.Channels as C
+class MockApp:
+    rrc_nick_colors_theme = None
+app = MockApp()
+cases = json.load(sys.stdin)
+out = []
+for c in cases:
+    hb = bytes.fromhex(c["hex"]) if c["hex"] else b""
+    theme = C.theme_dark if c["theme"] == "dark" else C.theme_light
+    out.append(C.get_nick_color(hb, theme, app, 15))
+json.dump(out, sys.stdout)
+`
+
+	var want []string
+	runPythonNomadnet(t, inputs, script, &want)
+
+	for i, inp := range inputs {
+		name := inp.Theme + "/" + inp.Hex
+		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			got := NickColorByHash(tt.hash, DarkThemeNickColors)
-			if got != tt.wantColor {
-				t.Errorf("NickColorByHash(%x) = %q, want %q", tt.hash, got, tt.wantColor)
+			hb, err := hexDecode(inp.Hex)
+			if err != nil {
+				t.Fatalf("bad hex %q: %v", inp.Hex, err)
+			}
+			palette := DarkThemeNickColors
+			if inp.Theme == "light" {
+				palette = LightThemeNickColors
+			}
+			got := strings.TrimPrefix(NickColorByHash(hb, palette), "#")
+			if got != want[i] {
+				t.Errorf("NickColorByHash(%x, %s) = #%s, want #%s (Python)", hb, inp.Theme, got, want[i])
 			}
 		})
-	}
-}
-
-// TestNickColorByHashPythonParityLight runs the same parity check against the
-// light-theme palette (captured from Python).
-func TestNickColorByHashPythonParityLight(t *testing.T) {
-	t.Parallel()
-
-	got := NickColorByHash(bytes16(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15), LightThemeNickColors)
-	if want := "#004ac0"; got != want {
-		t.Errorf("light parity: got %q, want %q", got, want)
 	}
 }
 
@@ -128,6 +169,19 @@ func bytes32(fill byte) []byte {
 		b[i] = fill
 	}
 	return b
+}
+
+// hexEncodeString returns the lowercase hex of the UTF-8 bytes of s.
+func hexEncodeString(s string) string {
+	return hex.EncodeToString([]byte(s))
+}
+
+// hexDecode decodes a hex string; the empty string decodes to empty bytes.
+func hexDecode(s string) ([]byte, error) {
+	if s == "" {
+		return []byte{}, nil
+	}
+	return hex.DecodeString(s)
 }
 
 func TestNickColorByHashDifferentHashes(t *testing.T) {

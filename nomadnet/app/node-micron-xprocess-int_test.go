@@ -134,7 +134,7 @@ print("DONE=1", flush=True)
 time.sleep(1)
 `
 
-// TestIntegrationNodeServesMicronToPython verifies the Phase 6 cross-process
+// TestIntegrationNodeServesMicronToPython verifies the cross-process
 // parity goal: a Go nomadnet node serves a Micron page, and a Python RNS client
 // fetches it over a real TCP RNS transport and receives byte-identical bytes.
 //

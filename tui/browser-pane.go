@@ -24,8 +24,8 @@ import (
 // display. Matches Python's Browser.display_widget (Browser.py:486): a LineBox
 // titled "Remote Node" wrapping a BrowserFrame whose body is a MIDDLE-filled,
 // centered "Disconnected\n<arrow_l>  <arrow_r>" while no page is loaded
-// (browser_inactive fg #444). URL fetching / page rendering arrive in Phase 5
-// (the RNS link); until then the disconnected state is the boot appearance.
+// (browser_inactive fg #444). URL fetching / page rendering arrive with the RNS
+// link; until then the disconnected state is the boot appearance.
 type BrowserPane struct {
 	app     *App
 	widget  *tview.Flex

@@ -21,8 +21,8 @@ import (
 	"github.com/rivo/tview"
 )
 
-// TestGuideFocusModelTopic7DownsToBottom is the B2 golden test. The root cause
-// (TODO.md B2): Python's Guide reader is a urwid Scrollable(Pile(LinkableText)),
+// TestGuideFocusModelTopic7DownsToBottom is the B2 golden test. The root cause:
+// Python's Guide reader is a urwid Scrollable(Pile(LinkableText)),
 // so each Down advances the Pile focus to the next SELECTABLE line — headings,
 // dividers and blank lines are urwid.Text/Divider (non-selectable) and are
 // skipped. The number of Downs to reach the bottom therefore equals the number

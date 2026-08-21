@@ -515,7 +515,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	// KnownNodeInfo form needs (Python KnownNodeInfo __init__, Network.py:612-
 	// 740). The RNS-dependent fields (operator string via Identity.recall, hop
 	// distance via Transport.hops_to, the PN address hash, the current
-	// user-selected PN) need Phase 5 RNS and are stubbed here; identify-on-
+	// user-selected PN) need RNS identity recall and are stubbed here; identify-on-
 	// connect, display name, sort rank and trust come from the directory.
 	networkDisplay.OnResolveKnownNodeInfo = func(nodeHash string) (tui.KnownNodeInfoData, bool) {
 		data := tui.KnownNodeInfoData{
@@ -564,7 +564,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	}
 
 	// OnKnownNodeSave writes the edited KnownNodeInfo form to the directory
-	// (Python save_node, Network.py:755-785). Phase 5 wiring: the default-PN
+	// (Python save_node, Network.py:755-785). The default-PN
 	// toggle and autoselect need RNS (set_user_selected_propagation_node,
 	// autoselect_propagation_node) and are stubbed; trust/name/sort/identify
 	// are written to the directory entry.
@@ -1029,7 +1029,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	// LXMF message (App.SendConversation wires Conversation.SetSendDeps and
 	// dispatches via the router) and refreshes the list so the new message's
 	// last-activity/unread state shows. This closes the "Wire conversation
-	// send" gap (TODO Phase 1).
+	// send" gap (TODO).
 	conversationsDisplay.OnSend = func(sourceHash, content, title string, attachments []string) {
 		a.SendConversation(sourceHash, content, title, attachments...)
 		refreshConvs()
@@ -1040,7 +1040,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	// from disk via App.ConversationMessages), this app's own LXMF hash (so
 	// the LXMessageWidget header can tell outbound from inbound), and the
 	// configured time format. Together these let the ConversationWidget render
-	// Python-parity message headers + bodies (TODO Phase 1 "ConversationWidget
+	// Python-parity message headers + bodies ("ConversationWidget
 	// — messages").
 	conversationsDisplay.OnLoadMessages = func(sourceHash string) []tui.ConversationMessage {
 		return toConversationMessages(a.ConversationMessages(sourceHash))
@@ -2103,7 +2103,7 @@ func buildNodeInfoData(a *app.App, navigateTo func(string), showAnnounceSent fun
 	}
 
 	// Browse → load the node's own page in the browser (connect_query,
-	// Network.py:1402-1404). The Phase 2 RNS page fetch is wired through the
+	// Network.py:1402-1404). The RNS page fetch is wired through the
 	// same navigate callback the network list uses.
 	data.OnBrowse = func() { navigateTo(data.Addr) }
 

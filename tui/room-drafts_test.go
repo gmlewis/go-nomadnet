@@ -95,48 +95,95 @@ func TestRoomDraftsRemove(t *testing.T) {
 	}
 }
 
-// TestRoomDraftsPythonParity locks the room-draft store against Python's
-// _save_room_draft / _restore_room_draft (Channels.py:1506,1519) keyed by
-// _draft_key (hub_hash, dest_name, room) (Channels.py:1500). Expected restore
-// results were captured from /tmp/draft_ref.py. The crucial parity point is
-// that a shared hub_hash with differing dest_name is a distinct key.
+// TestRoomDraftsPythonParity is a LIVE cross-implementation check: it replays
+// a save/restore sequence through Python's real ChannelsDisplay._save_room_draft
+// / _restore_room_draft (nomadnet.ui.textui.Channels), keyed by _draft_key
+// (hub_hash, dest_name, room), with a mock self holding the _room_drafts dict
+// and a bound _draft_key, and mock room_widgets whose editor carries the
+// save text / captures the restored text. Go owns the operation sequence;
+// Python owns the reference behavior. The test SKIPs, not fails, when the
+// Python reference is not importable.
+//
+// The crucial parity point is that a shared hub_hash with a differing
+// dest_name is a distinct key (Python's key tuple includes dest_name).
 func TestRoomDraftsPythonParity(t *testing.T) {
 	t.Parallel()
 
+	type draftOp struct {
+		Op   string `json:"op"` // "save" | "restore"
+		Hub  string `json:"hub"`
+		Dest string `json:"dest"`
+		Room string `json:"room"`
+		Text string `json:"text"` // save only
+	}
+	ops := []draftOp{
+		{"save", "h1", "dn1", "room1", "draft text"},
+		{"restore", "h1", "dn1", "room1", ""},
+		{"restore", "h1", "dn1", "room2", ""},
+		{"save", "h1", "dn1", "room1", ""},
+		{"restore", "h1", "dn1", "room1", ""},
+		{"save", "h1", "dn1", "room1", "draft1"},
+		{"save", "h1", "dn1", "room2", "draft2"},
+		{"save", "h2", "dn1", "room1", "draft3"},
+		{"restore", "h1", "dn1", "room1", ""},
+		{"restore", "h1", "dn1", "room2", ""},
+		{"restore", "h2", "dn1", "room1", ""},
+		{"save", "h1", "dn1", "room1", "new draft"},
+		{"restore", "h1", "dn1", "room1", ""},
+		{"save", "h1", "dn2", "room1", "dn2draft"},
+		{"restore", "h1", "dn2", "room1", ""},
+		{"restore", "h1", "dn1", "room1", ""},
+	}
+
+	const script = `
+import sys, json, types
+import nomadnet.ui.textui.Channels as C
+class Editor:
+    def __init__(self, t=""): self._t = t
+    def get_edit_text(self): return self._t
+    def set_edit_text(self, t): self._t = t
+    def set_edit_pos(self, p): pass
+class Hub:
+    def __init__(self, h, d): self.hub_hash = h; self.dest_name = d
+class RoomWidget:
+    def __init__(self, h, d, r, t=""): self.hub = Hub(h, d); self.room = r; self.editor = Editor(t)
+class Self:
+    pass
+s = Self(); s._room_drafts = {}
+s._draft_key = types.MethodType(C.ChannelsDisplay._draft_key, s)
+ops = json.load(sys.stdin)
+results = []
+for op in ops:
+    if op["op"] == "save":
+        rw = RoomWidget(op["hub"], op["dest"], op["room"], op["text"])
+        C.ChannelsDisplay._save_room_draft(s, rw)
+    else:
+        rw = RoomWidget(op["hub"], op["dest"], op["room"])
+        C.ChannelsDisplay._restore_room_draft(s, rw)
+        results.append(rw.editor._t)
+json.dump(results, sys.stdout)
+`
+
+	var want []string
+	runPythonNomadnet(t, ops, script, &want)
+
+	// Replay the same sequence through Go and collect restore results.
 	d := NewRoomDrafts()
-	d.Save("h1", "dn1", "room1", "draft text")
-	if got := d.Restore("h1", "dn1", "room1"); got != "draft text" {
-		t.Errorf("restore h1/dn1/room1 = %q, want %q", got, "draft text")
+	var got []string
+	for _, op := range ops {
+		if op.Op == "save" {
+			d.Save(op.Hub, op.Dest, op.Room, op.Text)
+		} else {
+			got = append(got, d.Restore(op.Hub, op.Dest, op.Room))
+		}
 	}
-	if got := d.Restore("h1", "dn1", "room2"); got != "" {
-		t.Errorf("restore missing = %q, want empty", got)
+
+	if len(got) != len(want) {
+		t.Fatalf("restore count = %v, want %v (Python)", len(got), len(want))
 	}
-	d.Save("h1", "dn1", "room1", "")
-	if got := d.Restore("h1", "dn1", "room1"); got != "" {
-		t.Errorf("after empty save = %q, want empty", got)
-	}
-	d.Save("h1", "dn1", "room1", "draft1")
-	d.Save("h1", "dn1", "room2", "draft2")
-	d.Save("h2", "dn1", "room1", "draft3")
-	if got := d.Restore("h1", "dn1", "room1"); got != "draft1" {
-		t.Errorf("multi room1 = %q, want %q", got, "draft1")
-	}
-	if got := d.Restore("h1", "dn1", "room2"); got != "draft2" {
-		t.Errorf("multi room2 = %q, want %q", got, "draft2")
-	}
-	if got := d.Restore("h2", "dn1", "room1"); got != "draft3" {
-		t.Errorf("multi h2 room1 = %q, want %q", got, "draft3")
-	}
-	d.Save("h1", "dn1", "room1", "new draft")
-	if got := d.Restore("h1", "dn1", "room1"); got != "new draft" {
-		t.Errorf("overwrite = %q, want %q", got, "new draft")
-	}
-	// Same hub_hash, different dest_name -> distinct keys.
-	d.Save("h1", "dn2", "room1", "dn2draft")
-	if got := d.Restore("h1", "dn2", "room1"); got != "dn2draft" {
-		t.Errorf("same hash diff dest dn2 = %q, want %q", got, "dn2draft")
-	}
-	if got := d.Restore("h1", "dn1", "room1"); got != "new draft" {
-		t.Errorf("same hash diff dest dn1 = %q, want %q", got, "new draft")
+	for i := range got {
+		if got[i] != want[i] {
+			t.Errorf("restore[%d] = %q, want %q (Python)", i, got[i], want[i])
+		}
 	}
 }

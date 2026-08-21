@@ -31,7 +31,7 @@ import (
 // retains stale HasFocus()==true, and tview.Pages.InputHandler routes the next
 // key to that hidden page instead of the now-visible one. In the Go port this
 // was the root cause of the Guide page never receiving keys after switching
-// from Network (Phase 3) to Guide (Phase 4): Down/Enter were dispatched to the
+// from Network to Guide: Down/Enter were dispatched to the
 // hidden Network page's pileFiller/list, which blurred the guide topic list and
 // prevented any topic from rendering.
 //

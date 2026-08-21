@@ -110,46 +110,113 @@ func TestCalculateRNodeParametersSpreadingFactors(t *testing.T) {
 	}
 }
 
-// TestCalculateRNodeParametersPythonParity locks the exact on-air parameter
-// strings against Python's calculate_rnode_parameters (Interfaces.py:185),
-// captured by inlining the Python function (the module import pulls in urwid).
-// It covers the high-bandwidth sensitivity override (>500000 Hz and the
-// 203125/406250 special cases) and the spreading-factor / coding-rate
-// variants, all with the Python defaults noise_floor=6, antenna_gain=0,
-// transmit_power=17 (which the Go zero-value RNodeParams{} maps to).
+// TestCalculateRNodeParametersPythonParity is a LIVE cross-implementation
+// check: it execs Python's real Interfaces.calculate_rnode_parameters
+// (nomadnet.ui.textui.Interfaces) — a module-level function needing no
+// app/urwid instance — and derives the expected (data_rate, link_budget,
+// sensitivity) strings freshly on every run. Go owns the input battery;
+// Python owns the reference behavior. The test SKIPs, not fails, when the
+// Python reference is not importable.
+//
+// The battery covers: the bps (<1000) and kbps (>=1000) data-rate branches;
+// the high-bandwidth sensitivity override (>500000 Hz) and the 203125/406250
+// special cases; all spreading factors 5..12; coding rates 5..8; and custom
+// noise_floor / antenna_gain / transmit_power. The "useGoDefault" cases pass
+// Go RNodeParams{} (zero) — which Go defaults to noise_floor=6,
+// antenna_gain=0, transmit_power=17 — and pass those same explicit defaults
+// to Python, exercising Go's sentinel-defaulting path against Python's
+// keyword defaults. Custom-param cases pass the same explicit values to both.
+//
+// Note: Go treats NoiseFloor==0 and TransmitPower==0 as "unset" and
+// substitutes the Python defaults (6 and 17), so a noise_floor of exactly 0
+// is not representable in Go; the battery therefore uses non-zero noise
+// floors (the realistic range), which is the only region where the two
+// implementations are required to agree.
 func TestCalculateRNodeParametersPythonParity(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name            string
-		bandwidth       float64
-		sf              int
-		cr              int
-		wantDataRate    string
-		wantLinkBudget  string
-		wantSensitivity string
+		name         string
+		bandwidth    float64
+		sf           int
+		cr           int
+		noiseFloor   float64
+		antennaGain  float64
+		txPower      float64
+		useGoDefault bool // true: Go gets RNodeParams{}, Python gets (6,0,17)
 	}{
-		{"500001 high bw override", 500001, 7, 5, "21.88 kbps", "127.1 dB", "-110.1 dBm"},
-		{"203125 special case", 203125, 7, 5, "8.89 kbps", "131.0 dB", "-114.0 dBm"},
-		{"406250 special case", 406250, 7, 5, "17.77 kbps", "128.0 dB", "-111.0 dBm"},
-		{"125000 coding rate 6", 125000, 7, 6, "4.56 kbps", "141.5 dB", "-124.5 dBm"},
-		{"125000 coding rate 8", 125000, 7, 8, "3.42 kbps", "141.5 dB", "-124.5 dBm"},
-		{"125000 spreading factor 12", 125000, 12, 5, "293 bps", "154.0 dB", "-137.0 dBm"},
+		{"7800 sf7 cr5 default", 7800, 7, 5, 6, 0, 17, true},
+		{"125000 sf7 cr5 default", 125000, 7, 5, 6, 0, 17, true},
+		{"500001 high bw override", 500001, 7, 5, 6, 0, 17, true},
+		{"203125 special case", 203125, 7, 5, 6, 0, 17, true},
+		{"406250 special case", 406250, 7, 5, 6, 0, 17, true},
+		{"125000 cr6", 125000, 7, 6, 6, 0, 17, true},
+		{"125000 cr8", 125000, 7, 8, 6, 0, 17, true},
+		{"125000 sf12", 125000, 12, 5, 6, 0, 17, true},
+		{"125000 sf5", 125000, 5, 5, 6, 0, 17, true},
+		{"125000 sf6", 125000, 6, 5, 6, 0, 17, true},
+		{"125000 sf10", 125000, 10, 5, 6, 0, 17, true},
+		{"125000 sf11", 125000, 11, 5, 6, 0, 17, true},
+		{"125000 sf8 cr7", 125000, 8, 7, 6, 0, 17, true},
+		{"62500 sf9 custom noise/gain/power", 62500, 9, 5, 6, 3, 20, false},
+		{"250000 sf7 custom params", 250000, 7, 5, 10, 2, 25, false},
+		{"10000 sf7 cr5 custom", 10000, 7, 5, 8, 5, 13, false},
 	}
 
-	for _, tt := range tests {
+	type rnodeInput struct {
+		Bandwidth   float64 `json:"bandwidth"`
+		SF          int     `json:"sf"`
+		CR          int     `json:"cr"`
+		NoiseFloor  float64 `json:"noise_floor"`
+		AntennaGain float64 `json:"antenna_gain"`
+		TxPower     float64 `json:"tx_power"`
+	}
+	inputs := make([]rnodeInput, len(tests))
+	for i, tt := range tests {
+		nf, ag, tp := tt.noiseFloor, tt.antennaGain, tt.txPower
+		inputs[i] = rnodeInput{Bandwidth: tt.bandwidth, SF: tt.sf, CR: tt.cr,
+			NoiseFloor: nf, AntennaGain: ag, TxPower: tp}
+	}
+
+	const script = `
+import sys, json
+import nomadnet.ui.textui.Interfaces as I
+cases = json.load(sys.stdin)
+out = []
+for c in cases:
+    r = I.calculate_rnode_parameters(c["bandwidth"], c["sf"], c["cr"],
+                                     c["noise_floor"], c["antenna_gain"], c["tx_power"])
+    out.append({"data_rate": r["data_rate"], "link_budget": r["link_budget"], "sensitivity": r["sensitivity"]})
+json.dump(out, sys.stdout)
+`
+
+	var want []rnodeLiveWant
+	runPythonNomadnet(t, inputs, script, &want)
+
+	for i, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			result := CalculateRNodeParameters(tt.bandwidth, tt.sf, tt.cr, RNodeParams{})
-			if result.DataRate != tt.wantDataRate {
-				t.Errorf("DataRate = %q, want %q", result.DataRate, tt.wantDataRate)
+			opts := RNodeParams{NoiseFloor: tt.noiseFloor, AntennaGain: tt.antennaGain, TransmitPower: tt.txPower}
+			if tt.useGoDefault {
+				opts = RNodeParams{}
 			}
-			if result.LinkBudget != tt.wantLinkBudget {
-				t.Errorf("LinkBudget = %q, want %q", result.LinkBudget, tt.wantLinkBudget)
+			result := CalculateRNodeParameters(tt.bandwidth, tt.sf, tt.cr, opts)
+			w := want[i]
+			if result.DataRate != w.DataRate {
+				t.Errorf("DataRate = %q, want %q (Python)", result.DataRate, w.DataRate)
 			}
-			if result.Sensitivity != tt.wantSensitivity {
-				t.Errorf("Sensitivity = %q, want %q", result.Sensitivity, tt.wantSensitivity)
+			if result.LinkBudget != w.LinkBudget {
+				t.Errorf("LinkBudget = %q, want %q (Python)", result.LinkBudget, w.LinkBudget)
+			}
+			if result.Sensitivity != w.Sensitivity {
+				t.Errorf("Sensitivity = %q, want %q (Python)", result.Sensitivity, w.Sensitivity)
 			}
 		})
 	}
+}
+
+type rnodeLiveWant struct {
+	DataRate    string `json:"data_rate"`
+	LinkBudget  string `json:"link_budget"`
+	Sensitivity string `json:"sensitivity"`
 }

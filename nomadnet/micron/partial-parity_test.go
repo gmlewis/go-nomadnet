@@ -17,135 +17,128 @@ package micron
 
 import (
 	"reflect"
+	"sync"
 	"testing"
+
+	"github.com/gmlewis/go-nomadnet/testutils"
 )
 
-// Expected values captured from Python MicronParser.parse_partial
-// (MicronParser.py:149-195), extracted and run in /tmp/parse_partial.py
-// against the upstream source. The markup passed to Parse is "`{" + inner,
-// where inner already includes the closing brace, matching the Python call
-// parse_partial(line[2:]).
+// partialInnerInputs is the input battery for the live cross-implementation
+// parity check of parsePartial. Each entry is the "inner" text that follows the
+// leading "`{" partial directive and includes the closing brace, matching the
+// Python call parse_partial(line[2:]) on a line "`{" + inner. The Go test calls
+// Parse("`{" + inner) which dispatches to parsePartial(inner). The expected
+// structure is derived FRESH on every run by executing the real Python
+// nomadnet.ui.textui.MicronParser.parse_partial reference (see
+// partialPythonOnce).
+//
+// The battery covers: url-only, url+refresh, url+refresh+pid, refresh below one
+// (dropped), multi-field pid, empty url (no node), too many components (no
+// node), pid-only field, non-numeric refresh (no node), and a pid value
+// containing an "=" (pid=a=b → Python keeps only the segment between the first
+// and second "=", i.e. "a").
+var partialInnerInputs = []string{
+	"page_name}",
+	"page_name`5}",
+	"page_name`5`pid=foo}",
+	"page_name`0.5}",
+	"page_name`2`field1|pid=abc}",
+	"page_name`10`a|b|pid=xyz}",
+	"}",
+	"a`b`c`d}",
+	"page_name`2`pid=bar}",
+	"page_name`abc}",
+	"page_name`2`pid=a=b}",
+}
+
+// partialParityScript imports the real nomadnet.ui.textui.MicronParser
+// reference and applies parse_partial to each inner string supplied as JSON on
+// stdin, emitting the fresh parsed structure as JSON on stdout. Each result is
+// either {"node":0} (Python returned None/empty) or {"node":1,...} with the
+// fields the Go test inspects (url, has_refresh, refresh, fields, partial_id).
+const partialParityScript = `
+import sys, json
+import nomadnet.ui.textui.MicronParser as M
+inners = json.loads(sys.stdin.read() or "[]")
+out = []
+for inner in inners:
+    r = M.parse_partial(inner)
+    if not r:
+        out.append({"node": 0})
+        continue
+    p = r[0]
+    refresh = p.partial_refresh
+    out.append({
+        "node": 1,
+        "url": p.partial_url,
+        "has_refresh": refresh is not None,
+        "refresh": refresh if refresh is not None else 0.0,
+        "fields": p.partial_fields,
+        "partial_id": p.partial_id if p.partial_id is not None else "",
+    })
+print(json.dumps(out, ensure_ascii=False))
+`
+
+// partialPythonOnce caches the single live Python run that derives fresh
+// expected parse_partial structures, so every subtest shares one python3 exec.
+var (
+	partialPythonOnce sync.Once
+	partialPythonOut  []map[string]any
+)
+
+func partialPython(t *testing.T) []map[string]any {
+	t.Helper()
+	partialPythonOnce.Do(func() {
+		testutils.RunPythonNomadnet(t, partialInnerInputs, partialParityScript, &partialPythonOut)
+	})
+	return partialPythonOut
+}
+
 func TestParsePartialParity(t *testing.T) {
 	t.Parallel()
-
-	cases := []struct {
-		name       string
-		inner      string // text after the leading `{
-		wantNodes  int
-		url        string
-		hasRefresh bool
-		refresh    float64
-		fields     []string
-		partialID  string
-	}{
-		{
-			name:      "url_only",
-			inner:     "page_name}",
-			wantNodes: 1,
-			url:       "page_name",
-			fields:    []string{""},
-		},
-		{
-			name:       "url_and_refresh",
-			inner:      "page_name`5}",
-			wantNodes:  1,
-			url:        "page_name",
-			hasRefresh: true,
-			refresh:    5.0,
-			fields:     []string{""},
-		},
-		{
-			name:       "url_refresh_pid",
-			inner:      "page_name`5`pid=foo}",
-			wantNodes:  1,
-			url:        "page_name",
-			hasRefresh: true,
-			refresh:    5.0,
-			fields:     []string{"pid=foo"},
-			partialID:  "foo",
-		},
-		{
-			name:      "refresh_below_one_dropped",
-			inner:     "page_name`0.5}",
-			wantNodes: 1,
-			url:       "page_name",
-			fields:    []string{""},
-		},
-		{
-			name:       "fields_with_pid",
-			inner:      "page_name`2`field1|pid=abc}",
-			wantNodes:  1,
-			url:        "page_name",
-			hasRefresh: true,
-			refresh:    2.0,
-			fields:     []string{"field1", "pid=abc"},
-			partialID:  "abc",
-		},
-		{
-			name:       "multi_fields_pid_last",
-			inner:      "page_name`10`a|b|pid=xyz}",
-			wantNodes:  1,
-			url:        "page_name",
-			hasRefresh: true,
-			refresh:    10.0,
-			fields:     []string{"a", "b", "pid=xyz"},
-			partialID:  "xyz",
-		},
-		{
-			name:      "empty_url_no_node",
-			inner:     "}",
-			wantNodes: 0,
-		},
-		{
-			name:      "too_many_components_no_node",
-			inner:     "a`b`c`d}",
-			wantNodes: 0,
-		},
-		{
-			name:       "pid_only_field",
-			inner:      "page_name`2`pid=bar}",
-			wantNodes:  1,
-			url:        "page_name",
-			hasRefresh: true,
-			refresh:    2.0,
-			fields:     []string{"pid=bar"},
-			partialID:  "bar",
-		},
-		{
-			name:      "non_numeric_refresh_no_node",
-			inner:     "page_name`abc}",
-			wantNodes: 0,
-		},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
+	want := partialPython(t)
+	for i, inner := range partialInnerInputs {
+		name := inner
+		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			nodes := Parse("`{" + tc.inner)
-			if len(nodes) != tc.wantNodes {
-				t.Fatalf("Parse partial len = %v, want %v", len(nodes), tc.wantNodes)
+			w := want[i]
+			nodeCount, _ := w["node"].(float64)
+			nodes := Parse("`{" + inner)
+			if len(nodes) != int(nodeCount) {
+				t.Fatalf("Parse partial len = %v, want %v (inner %q)", len(nodes), int(nodeCount), inner)
 			}
-			if tc.wantNodes == 0 {
+			if nodeCount == 0 {
 				return
 			}
 			n := nodes[0]
 			if n.Type != NodePartial {
 				t.Fatalf("node type = %v, want %v", n.Type, NodePartial)
 			}
-			if n.PartialURL != tc.url {
-				t.Errorf("partial url = %q, want %q", n.PartialURL, tc.url)
+			wantURL, _ := w["url"].(string)
+			if n.PartialURL != wantURL {
+				t.Errorf("partial url = %q, want %q", n.PartialURL, wantURL)
 			}
-			if n.HasRefresh != tc.hasRefresh {
-				t.Errorf("has refresh = %v, want %v", n.HasRefresh, tc.hasRefresh)
+			wantHasRefresh, _ := w["has_refresh"].(bool)
+			if n.HasRefresh != wantHasRefresh {
+				t.Errorf("has refresh = %v, want %v", n.HasRefresh, wantHasRefresh)
 			}
-			if n.HasRefresh && n.PartialRefresh != tc.refresh {
-				t.Errorf("partial refresh = %v, want %v", n.PartialRefresh, tc.refresh)
+			wantRefresh, _ := w["refresh"].(float64)
+			if n.PartialRefresh != wantRefresh {
+				t.Errorf("partial refresh = %v, want %v", n.PartialRefresh, wantRefresh)
 			}
-			if !reflect.DeepEqual(n.PartialFields, tc.fields) {
-				t.Errorf("partial fields = %v, want %v", n.PartialFields, tc.fields)
+			wantFields, _ := w["fields"].([]any)
+			gotFields := make([]string, len(n.PartialFields))
+			copy(gotFields, n.PartialFields)
+			wantStrs := make([]string, len(wantFields))
+			for j, f := range wantFields {
+				wantStrs[j], _ = f.(string)
 			}
-			if n.PartialID != tc.partialID {
-				t.Errorf("partial id = %q, want %q", n.PartialID, tc.partialID)
+			if !reflect.DeepEqual(gotFields, wantStrs) {
+				t.Errorf("partial fields = %v, want %v", gotFields, wantStrs)
+			}
+			wantPID, _ := w["partial_id"].(string)
+			if n.PartialID != wantPID {
+				t.Errorf("partial id = %q, want %q", n.PartialID, wantPID)
 			}
 		})
 	}

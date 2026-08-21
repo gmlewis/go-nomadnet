@@ -26,8 +26,8 @@ import (
 
 // NodeInfoData supplies the Local Node Info panel's content. When HasNode is
 // false the panel renders the "This instance is not hosting a node" message
-// (the only reachable state until node hosting is wired in Phase 5); the
-// remaining fields are used by the node-hosting branch (Phase 5).
+// (the only reachable state until node hosting is wired in); the
+// remaining fields are used by the node-hosting branch.
 type NodeInfoData struct {
 	HasNode            bool
 	Addr               string // node destination hex, no delimiters (RNS.hexrep delimit=False)
@@ -90,7 +90,7 @@ type NodeInfoDisplay struct {
 }
 
 // NewNodeInfoDisplay builds the Local Node Info panel for the given data. Until
-// node hosting is wired (Phase 5) only the not-hosting branch is reachable; it
+// node hosting is wired in only the not-hosting branch is reachable; it
 // is the branch pinned by the tests.
 func NewNodeInfoDisplay(app *App, data NodeInfoData) *NodeInfoDisplay {
 	ni := &NodeInfoDisplay{app: app, data: data}
@@ -306,7 +306,7 @@ func (ni *NodeInfoDisplay) Stop() {
 
 // animationInterval returns the stat-refresh interval (Python
 // config["textui"]["animation_interval"]). Until the Go config exposes it,
-// default to 1 second (the Phase 4 NodeInfo task spec: "1 s refresh").
+// default to 1 second (the NodeInfo task spec: "1 s refresh").
 func animationInterval() time.Duration {
 	// TODO: read from app config when exposed; 1s matches the task spec and
 	// Python's default animation_interval.

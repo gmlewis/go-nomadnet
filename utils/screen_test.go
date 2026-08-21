@@ -336,9 +336,9 @@ func TestBrowserURLParsing(t *testing.T) {
 }
 
 // TestBrowserURLBordered confirms browserURL strips BOTH the leading '││' border
-// AND the trailing '   ││' border of the URL bar row — the bug that made
-// Phase 3 record 0 successes (url came back as "<hash>││", never matching the
-// target hash, so every connect timed out as state="").
+// AND the trailing '   ││' border of the URL bar row — the bug that made the
+// connect step record 0 successes (url came back as "<hash>││", never matching
+// the target hash, so every connect timed out as state="").
 func TestBrowserURLBordered(t *testing.T) {
 	bar := menuBar()
 	// Nested node-page box: "││URL: <hash>   ││" with leading AND trailing

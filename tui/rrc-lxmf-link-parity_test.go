@@ -16,96 +16,192 @@
 package tui
 
 import (
-	_ "embed"
-	"encoding/json"
 	"testing"
 )
 
-//go:embed testdata/rrc_lxmf_link_parity.json
-var rrcLXMFLinkParityJSON string
-
-// TestParseRRCLinkPythonParity verifies ParseRRCLink matches Python's
-// handle_rrc_link parsing (hub hex, dest, normalized room) for a battery of
-// link targets captured from the Python reference. Python normalizes the room
-// as room.strip().lstrip("#").strip().lower() — strip whitespace first, then
-// strip all leading "#", then strip again, then lowercase — and treats an
-// empty room as absent. Go must match this order.
+// TestParseRRCLinkPythonParity and TestValidateLXMFLinkPythonParity are LIVE
+// cross-implementation checks: they exec the VALIDATION prologues of Python's
+// Browser.handle_rrc_link and Browser.handle_lxmf_link (nomadnet.ui.textui
+// .Browser), extracted fresh from the current source via AST, and derive the
+// expected (hub, dest, room, error) / (error) freshly on every run. Only the
+// pure parse/validate prologue (before the self.app dispatch) is exercised, so
+// no app/urwid instance is required. Go owns the input battery; Python owns
+// the reference behavior. Tests SKIP, not fail, when the Python reference is
+// not importable.
+//
+// Python normalizes the room as room.strip().lstrip("#").strip().lower() and
+// treats an empty room / dest as None (Go callers treat "" as absent). Python
+// validates the hub hash is exactly TRUNCATED_HASHLENGTH//8 bytes and hex.
 func TestParseRRCLinkPythonParity(t *testing.T) {
 	t.Parallel()
 
-	var golden struct {
-		RRC []struct {
-			URL   string  `json:"url"`
-			Hub   string  `json:"hub"`
-			Dest  string  `json:"dest"`
-			Room  string  `json:"room"`
-			Error *string `json:"error"`
-		} `json:"rrc"`
-	}
-	if err := json.Unmarshal([]byte(rrcLXMFLinkParityJSON), &golden); err != nil {
-		t.Fatalf("unmarshal golden: %v", err)
+	const hub = "aabb1122aabb1122aabb1122aabb1122"
+	urls := []string{
+		hub + "/general",
+		hub + ":myhub/general",
+		hub,
+		"/" + hub + "/random",
+		hub + "/#random",
+		hub + "/##doubled",
+		hub + "/ #spaced ",
+		hub + "/Room",
+		hub + "/",
+		hub + ":dest/",
+		hub + ": dest /room",
+		hub + ":dest",
+		"zzzz1122aabb1122aabb1122aabb1122/general",
+		"aabb/general",
+		hub + "aa/general",
+		"",
+		hub + "/room/extra",
 	}
 
-	for _, tc := range golden.RRC {
-		t.Run(tc.URL, func(t *testing.T) {
+	const script = `
+import sys, json, ast, inspect, textwrap
+import nomadnet.ui.textui.Browser as B
+import RNS
+cls = B.Browser
+def try_prologue(method_name, stop_targets):
+    src = textwrap.dedent(inspect.getsource(getattr(cls, method_name)))
+    fn = ast.parse(src).body[0]
+    tn = fn.body[0]
+    assert isinstance(tn, ast.Try), method_name
+    collected = []
+    for s in tn.body:
+        if isinstance(s, ast.Assign) and len(s.targets) == 1 and isinstance(s.targets[0], ast.Name) and s.targets[0].id in stop_targets:
+            break
+        collected.append(s)
+    mod = ast.Module(body=collected, type_ignores=[]); ast.fix_missing_locations(mod)
+    return compile(mod, "<" + method_name + ">", "exec")
+rrc_code = try_prologue("handle_rrc_link", {"existing"})
+urls = json.load(sys.stdin)
+out = []
+for u in urls:
+    ns = {"RNS": RNS, "__builtins__": __builtins__, "link_target": u}
+    try:
+        exec(rrc_code, ns)
+    except Exception as e:
+        out.append({"hub": None, "dest": "", "room": "", "error": str(e)})
+        continue
+    hh = ns.get("hub_hash")
+    out.append({"hub": hh.hex() if isinstance(hh, (bytes, bytearray)) else None,
+                "dest": ns.get("dest") or "", "room": ns.get("room_norm") or "",
+                "error": None})
+json.dump(out, sys.stdout)
+`
+
+	var want []rrcLiveWant
+	runPythonNomadnet(t, urls, script, &want)
+
+	for i, url := range urls {
+		t.Run(url, func(t *testing.T) {
 			t.Parallel()
+			w := want[i]
+			hubGot, roomGot, destGot, err := ParseRRCLink(url)
 
-			hub, room, dest, err := ParseRRCLink(tc.URL)
-
-			if tc.Error != nil {
+			if w.Error != nil {
 				if err == nil {
 					t.Fatalf("ParseRRCLink(%q) want error %q, got nil (hub=%q room=%q dest=%q)",
-						tc.URL, *tc.Error, hub, room, dest)
+						url, *w.Error, hubGot, roomGot, destGot)
 				}
 				return
 			}
 			if err != nil {
-				t.Fatalf("ParseRRCLink(%q) want success, got error: %v", tc.URL, err)
+				t.Fatalf("ParseRRCLink(%q) want success, got error: %v", url, err)
 			}
-			if hub != tc.Hub {
-				t.Errorf("hub = %q, want %q", hub, tc.Hub)
+			if w.Hub == nil {
+				t.Fatalf("Python returned success but no hub for %q", url)
 			}
-			if dest != tc.Dest {
-				t.Errorf("dest = %q, want %q", dest, tc.Dest)
+			if hubGot != *w.Hub {
+				t.Errorf("hub = %q, want %q (Python)", hubGot, *w.Hub)
 			}
-			if room != tc.Room {
-				t.Errorf("room = %q, want %q", room, tc.Room)
+			if destGot != w.Dest {
+				t.Errorf("dest = %q, want %q (Python)", destGot, w.Dest)
+			}
+			if roomGot != w.Room {
+				t.Errorf("room = %q, want %q (Python)", roomGot, w.Room)
 			}
 		})
 	}
 }
 
 // TestValidateLXMFLinkPythonParity verifies ValidateLXMFLink matches Python's
-// handle_lxmf_link validation (length == 32 hex chars, decodable hex) for a
-// battery of inputs captured from the Python reference.
+// handle_lxmf_link validation (type str, length == 32 hex chars, decodable
+// hex), executed live via the AST-extracted validation prologue.
 func TestValidateLXMFLinkPythonParity(t *testing.T) {
 	t.Parallel()
 
-	var golden struct {
-		LXMF []struct {
-			URL   string  `json:"url"`
-			Hash  string  `json:"hash"`
-			Error *string `json:"error"`
-		} `json:"lxmf"`
-	}
-	if err := json.Unmarshal([]byte(rrcLXMFLinkParityJSON), &golden); err != nil {
-		t.Fatalf("unmarshal golden: %v", err)
+	urls := []string{
+		"aabb1122aabb1122aabb1122aabb1122",
+		"aabb1122",
+		"aabb1122aabb1122aabb1122aabb1122aa",
+		"zzbb1122aabb1122aabb1122aabb1122",
+		"",
+		"aabb1122aabb1122aabb1122aabb1122a",
+		"aabb1122aabb1122aabb1122aabb112",
 	}
 
-	for _, tc := range golden.LXMF {
-		t.Run(tc.URL, func(t *testing.T) {
+	const script = `
+import sys, json, ast, inspect, textwrap
+import nomadnet.ui.textui.Browser as B
+import RNS
+cls = B.Browser
+def try_prologue(method_name, stop_targets):
+    src = textwrap.dedent(inspect.getsource(getattr(cls, method_name)))
+    fn = ast.parse(src).body[0]
+    tn = fn.body[0]
+    assert isinstance(tn, ast.Try), method_name
+    collected = []
+    for s in tn.body:
+        if isinstance(s, ast.Assign) and len(s.targets) == 1 and isinstance(s.targets[0], ast.Name) and s.targets[0].id in stop_targets:
+            break
+        collected.append(s)
+    mod = ast.Module(body=collected, type_ignores=[]); ast.fix_missing_locations(mod)
+    return compile(mod, "<" + method_name + ">", "exec")
+lxmf_code = try_prologue("handle_lxmf_link", {"existing_conversations"})
+urls = json.load(sys.stdin)
+out = []
+for u in urls:
+    ns = {"RNS": RNS, "__builtins__": __builtins__, "link_target": u}
+    try:
+        exec(lxmf_code, ns)
+    except Exception as e:
+        out.append({"error": str(e)})
+        continue
+    out.append({"error": None})
+json.dump(out, sys.stdout)
+`
+
+	var want []*lxmfLiveWant
+	runPythonNomadnet(t, urls, script, &want)
+
+	for i, url := range urls {
+		t.Run(url, func(t *testing.T) {
 			t.Parallel()
-
-			err := ValidateLXMFLink(tc.URL)
-			if tc.Error != nil {
-				if err == nil {
-					t.Fatalf("ValidateLXMFLink(%q) want error, got nil", tc.URL)
-				}
-				return
-			}
-			if err != nil {
-				t.Errorf("ValidateLXMFLink(%q) want success, got error: %v", tc.URL, err)
+			w := want[i]
+			err := ValidateLXMFLink(url)
+			pyErr := w != nil && w.Error != nil
+			goErr := err != nil
+			if goErr != pyErr {
+				t.Errorf("ValidateLXMFLink(%q) error = %v, want error=%v (Python: %q)",
+					url, err, pyErr, func() string {
+						if w != nil && w.Error != nil {
+							return *w.Error
+						}
+						return ""
+					}())
 			}
 		})
 	}
+}
+
+type rrcLiveWant struct {
+	Hub   *string `json:"hub"`
+	Dest  string  `json:"dest"`
+	Room  string  `json:"room"`
+	Error *string `json:"error"`
+}
+
+type lxmfLiveWant struct {
+	Error *string `json:"error"`
 }

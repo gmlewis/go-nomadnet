@@ -16,145 +16,158 @@
 package util
 
 import (
-	"embed"
-	"encoding/json"
+	"sync"
 	"testing"
+
+	"github.com/gmlewis/go-nomadnet/testutils"
 )
 
-//go:embed testdata/util_parity.json
-var parityFS embed.FS
-
-// parityCase is a single [input, expected-output] pair captured from the
-// Python reference implementation in markqvist/NomadNet (nomadnet/util.py).
-// expected is nil when the Python function returned None.
-type parityCase [2]any
-
-func loadParity(t *testing.T, fn string) []parityCase {
-	t.Helper()
-	data, err := parityFS.ReadFile("testdata/util_parity.json")
-	if err != nil {
-		t.Fatalf("read embed: %v", err)
-	}
-	var raw map[string][]parityCase
-	if err := json.Unmarshal(data, &raw); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	return raw[fn]
+// utilInputs is the input battery for the live cross-implementation parity
+// check. The Go test owns these inputs; the expected outputs are derived FRESH
+// on every run by executing the real Python nomadnet.util reference (see
+// utilPythonOnce). The battery covers default, unicode-category, combining-mark,
+// variation-selector, ZWJ/ZWNJ, control-character, micron-formatting, and
+// edge cases that exercise the category-based filtering Go must replicate.
+var utilInputs = map[string][]string{
+	"strip_modifiers":           {"", "hello world", "café", "123", "Ⅰ", "①", "☃snowman", "hello\x00world", "hello\x07world", "áe", "äb", "test​‌", "abc‍def", "test️", "test󠄀", "test🏻", "🕵️", "😀emoji😁", "hello\r\nworld", "hello\rworld", "line1\r\nline2\r\nline3", "  spaces  ", "hello  world  test", "🕵️☝", "\t", "\n", "price $5", "2+2=4", "a_b-c.d", "(bracket)", "'quote'", "你好", "ʰmodifier", "café́", "‮mirror‬", "\uFEFFBOM", "⁠wordjoiner", " nbsp", "mix😀😎text", "`F000colored`B123text", "before`F000after", "`FT0000FF`BT123456", "`*`!`_`=", "`f`b", "`<heading`>", "`{image}"},
+	"sanitize_name":             {"", "hello world", "café", "123", "Ⅰ", "①", "☃snowman", "hello\x00world", "hello\x07world", "áe", "äb", "test​‌", "abc‍def", "test️", "test󠄀", "test🏻", "🕵️", "😀emoji😁", "hello\r\nworld", "hello\rworld", "line1\r\nline2\r\nline3", "  spaces  ", "hello  world  test", "🕵️☝", "\t", "\n", "price $5", "2+2=4", "a_b-c.d", "(bracket)", "'quote'", "你好", "ʰmodifier", "café́", "‮mirror‬", "\uFEFFBOM", "⁠wordjoiner", " nbsp", "mix😀😎text", "`F000colored`B123text", "before`F000after", "`FT0000FF`BT123456", "`*`!`_`=", "`f`b", "`<heading`>", "`{image}"},
+	"strip_micron":              {"hello", "`F000`B123", "`FT0000FF`BT123456", "`*`!`_`=", "`f`b", "`<heading`>", "`{image_data}", "before`F000after", "normal text", "`FAB`BCD", "`r`c`l align", "color`Faaared"},
+	"strip_escaped_micron":      {"hello", "¦F000", "¦FT0000FF", "¦*¦!¦_", "¦f¦b", "¦<heading¦>", "¦{image_data}", "¦r¦c¦l", "text¦Fabc more"},
+	"unescape_micron":           {"hello", "¦F000", "¦FT0000FF", "¦*¦!¦_", "¦f¦b", "¦<heading¦>", "¦{image_data}", "¦r¦c¦l", "text¦Fabc more"},
+	"strip_non_formatting_tags": {"hello", "`<`>`{`r`c`l", "`<heading`>", "all`<`>`{`r`c`lstripped", "`r`c`l align me", "`F000keep`r`c`l"},
 }
 
-// strOrZero returns the string value of v, or "" for nil/missing.
-func strOrZero(v any) (string, bool) {
+// utilParityScript imports the real nomadnet.util reference and applies each
+// function to the input battery supplied as JSON on stdin, emitting the fresh
+// outputs as JSON on stdout. None results become JSON null.
+const utilParityScript = `
+import sys, json
+import nomadnet.util as U
+req = json.loads(sys.stdin.read() or "{}")
+fns = {
+    "strip_modifiers": U.strip_modifiers,
+    "sanitize_name": U.sanitize_name,
+    "strip_micron": U.strip_micron,
+    "strip_escaped_micron": U.strip_escaped_micron,
+    "unescape_micron": U.unescape_micron,
+    "strip_non_formatting_tags": U.strip_non_formatting_tags,
+}
+out = {}
+for fn, inputs in req.items():
+    f = fns[fn]
+    out[fn] = [f(s) for s in inputs]
+print(json.dumps(out, ensure_ascii=False))
+`
+
+// utilPythonOnce caches the single live Python run that derives fresh expected
+// outputs for every util parity function, so the six tests below share one
+// python3 exec instead of one each.
+var (
+	utilPythonOnce sync.Once
+	utilPythonOut  map[string][]any
+)
+
+func utilPython(t *testing.T) map[string][]any {
+	t.Helper()
+	utilPythonOnce.Do(func() {
+		testutils.RunPythonNomadnet(t, utilInputs, utilParityScript, &utilPythonOut)
+	})
+	return utilPythonOut
+}
+
+// pyStr converts a Python output element (string or nil) to (value, ok).
+func pyStr(v any) (string, bool) {
 	if v == nil {
 		return "", false
 	}
 	s, ok := v.(string)
-	if !ok {
-		return "", false
-	}
-	return s, true
+	return s, ok
 }
 
 func TestStripModifiersPythonParity(t *testing.T) {
 	t.Parallel()
-	cases := loadParity(t, "strip_modifiers")
-	for i, c := range cases {
-		in, inOk := strOrZero(c[0])
-		want, wantOk := strOrZero(c[1])
-		got := StripModifiers(func() *string {
-			if !inOk {
-				return nil
-			}
-			return &in
-		}())
-		_ = i
-		if !wantOk {
+	want := utilPython(t)["strip_modifiers"]
+	for i, in := range utilInputs["strip_modifiers"] {
+		got := StripModifiers(&in)
+		wv, wok := pyStr(want[i])
+		if !wok {
 			if got != nil {
 				t.Errorf("case %v (%q): got %q, want nil", i, in, *got)
 			}
 			continue
 		}
 		if got == nil {
-			t.Errorf("case %v (%q): got nil, want %q", i, in, want)
+			t.Errorf("case %v (%q): got nil, want %q", i, in, wv)
 			continue
 		}
-		if *got != want {
-			t.Errorf("case %v (%q): got %q, want %q", i, in, *got, want)
+		if *got != wv {
+			t.Errorf("case %v (%q): got %q, want %q", i, in, *got, wv)
 		}
 	}
 }
 
 func TestSanitizeNamePythonParity(t *testing.T) {
 	t.Parallel()
-	cases := loadParity(t, "sanitize_name")
-	for i, c := range cases {
-		in, inOk := strOrZero(c[0])
-		want, wantOk := strOrZero(c[1])
-		got := SanitizeName(func() *string {
-			if !inOk {
-				return nil
-			}
-			return &in
-		}())
-		if !wantOk {
+	want := utilPython(t)["sanitize_name"]
+	for i, in := range utilInputs["sanitize_name"] {
+		got := SanitizeName(&in)
+		wv, wok := pyStr(want[i])
+		if !wok {
 			if got != nil {
 				t.Errorf("case %v (%q): got %q, want nil", i, in, *got)
 			}
 			continue
 		}
 		if got == nil {
-			t.Errorf("case %v (%q): got nil, want %q", i, in, want)
+			t.Errorf("case %v (%q): got nil, want %q", i, in, wv)
 			continue
 		}
-		if *got != want {
-			t.Errorf("case %v (%q): got %q, want %q", i, in, *got, want)
+		if *got != wv {
+			t.Errorf("case %v (%q): got %q, want %q", i, in, *got, wv)
 		}
 	}
 }
 
 func TestStripMicronPythonParity(t *testing.T) {
 	t.Parallel()
-	cases := loadParity(t, "strip_micron")
-	for i, c := range cases {
-		in, _ := strOrZero(c[0])
-		want, _ := strOrZero(c[1])
-		if got := StripMicron(in); got != want {
-			t.Errorf("case %v (%q): got %q, want %q", i, in, got, want)
+	want := utilPython(t)["strip_micron"]
+	for i, in := range utilInputs["strip_micron"] {
+		wv, _ := pyStr(want[i])
+		if got := StripMicron(in); got != wv {
+			t.Errorf("case %v (%q): got %q, want %q", i, in, got, wv)
 		}
 	}
 }
 
 func TestStripEscapedMicronPythonParity(t *testing.T) {
 	t.Parallel()
-	cases := loadParity(t, "strip_escaped_micron")
-	for i, c := range cases {
-		in, _ := strOrZero(c[0])
-		want, _ := strOrZero(c[1])
-		if got := StripEscapedMicron(in); got != want {
-			t.Errorf("case %v (%q): got %q, want %q", i, in, got, want)
+	want := utilPython(t)["strip_escaped_micron"]
+	for i, in := range utilInputs["strip_escaped_micron"] {
+		wv, _ := pyStr(want[i])
+		if got := StripEscapedMicron(in); got != wv {
+			t.Errorf("case %v (%q): got %q, want %q", i, in, got, wv)
 		}
 	}
 }
 
 func TestUnescapeMicronPythonParity(t *testing.T) {
 	t.Parallel()
-	cases := loadParity(t, "unescape_micron")
-	for i, c := range cases {
-		in, _ := strOrZero(c[0])
-		want, _ := strOrZero(c[1])
-		if got := UnescapeMicron(in); got != want {
-			t.Errorf("case %v (%q): got %q, want %q", i, in, got, want)
+	want := utilPython(t)["unescape_micron"]
+	for i, in := range utilInputs["unescape_micron"] {
+		wv, _ := pyStr(want[i])
+		if got := UnescapeMicron(in); got != wv {
+			t.Errorf("case %v (%q): got %q, want %q", i, in, got, wv)
 		}
 	}
 }
 
 func TestStripNonFormattingTagsPythonParity(t *testing.T) {
 	t.Parallel()
-	cases := loadParity(t, "strip_non_formatting_tags")
-	for i, c := range cases {
-		in, _ := strOrZero(c[0])
-		want, _ := strOrZero(c[1])
-		if got := StripNonFormattingTags(in); got != want {
-			t.Errorf("case %v (%q): got %q, want %q", i, in, got, want)
+	want := utilPython(t)["strip_non_formatting_tags"]
+	for i, in := range utilInputs["strip_non_formatting_tags"] {
+		wv, _ := pyStr(want[i])
+		if got := StripNonFormattingTags(in); got != wv {
+			t.Errorf("case %v (%q): got %q, want %q", i, in, got, wv)
 		}
 	}
 }

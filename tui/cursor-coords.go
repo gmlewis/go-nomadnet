@@ -299,7 +299,6 @@ func unwrapPrevSpace(text []rune, segments *[][]layoutSeg, width, nlPos int) (in
 		newLine := []layoutSeg{{sc: sc, offs: idx, end: pos}}
 		if idx < len(text) && (text[idx] == ' ' || text[idx] == '\n') {
 			newLine = append(newLine, layoutSeg{sc: 0, offs: idx, end: -1})
-			idx++
 		}
 		*segments = append(*segments, newLine)
 		idx = pos

@@ -162,7 +162,7 @@ func NewChannelsDisplay(app *App, rooms []ChannelInfo) *ChannelsDisplay {
 	// Message view, members list and compose editor are created up front so the
 	// Show* methods are safe to call before a room is opened; they are not part
 	// of the boot layout (the right pane shows the placeholder until a room is
-	// selected, Phase 5 RRC).
+	// selected, RRC).
 	cd.messages = applyWheelMultiplier(tview.NewTextView().
 		SetDynamicColors(true).
 		SetScrollable(true).

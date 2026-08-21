@@ -37,18 +37,19 @@ var LightThemeNickColors = []string{
 // based on the sender's identity hash. Matches Python's get_nick_color():
 // (int.from_bytes(hash, "big") + shift) % len(palette).
 // The shift defaults to 15 to match Python's default.
+//
+// An empty hash reduces to 0 (int.from_bytes(b"", "big") == 0), yielding
+// palette[(0+15)%len], matching Python — NOT palette[0].
 func NickColorByHash(hash []byte, palette []string) string {
 	if len(palette) == 0 {
 		return "#bbbbbb"
-	}
-	if len(hash) == 0 {
-		return "#" + palette[0]
 	}
 
 	// Reduce the full hash modulo len(palette) using Horner's method so the
 	// result matches Python's int.from_bytes(hash, "big") % len(palette) for
 	// any hash length, without needing a big.Int. val stays below len(palette)
-	// at every step, so there is no overflow even for very long hashes.
+	// at every step, so there is no overflow even for very long hashes. An
+	// empty hash leaves val == 0, exactly like Python's int.from_bytes(b"").
 	m := uint64(len(palette))
 	var val uint64
 	for _, b := range hash {

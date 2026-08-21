@@ -52,7 +52,7 @@ func renderNodeInfo(t *testing.T, ni *NodeInfoDisplay, width, height int) []stri
 }
 
 // TestNodeInfoNotHostingLayout pins the "Local Node Info" panel's not-hosting
-// branch (the only reachable state until node hosting is wired in Phase 5)
+// branch (the only reachable state until node hosting is wired in)
 // against the Python ground truth (Network.py:1543-1551): a bordered "Local
 // Node Info" LineBox wrapping a Pile of a centered info glyph, the centered
 // "This instance is not hosting a node" message, and a centered "< Back >"

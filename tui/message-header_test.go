@@ -21,16 +21,23 @@ import (
 	"time"
 )
 
-// TestLXMessageHeaderPythonParity checks LXMessageHeader against golden title
-// strings + styles captured from the live Python nomadnet LXMessageWidget
-// (Conversations.py:2596-2670) via tooling/tui-parity-style capture. The
-// capture stubs urwid (GLib is broken on this host) and instantiates
-// LXMessageWidget with a fake app + fake message at a fixed now (UTC) so
-// relative_time and the strftime timestamp are deterministic.
+// TestLXMessageHeaderPythonParity is a LIVE cross-implementation check: it
+// runs the stubbed-urwid golden capture script tooling/tui-parity/
+// lxmsg_title_golden.py fresh on every run. That script stubs gi/urwid (GLib
+// is broken on this host), instantiates the real Python nomadnet
+// LXMessageWidget (Conversations.py:2596-2670) with a fake app + fake message
+// at a fixed now (unix 1700000000) and 1h-prior timestamp, and prints the
+// title string + header style for each named case. The Go test reproduces each
+// case through LXMessageHeader and compares title+style to the freshly
+// captured Python values, matched by case name.
 //
-// Fixed now = 2023-11-14 22:13:20 UTC (unix 1700000000); timestamp = 1h prior
-// (unix 1699996400) so relative_time == "1h ago" and the strftime timestamp
-// (default app.time_format "%Y-%m-%d %H:%M:%S") == "2023-11-14 21:13:20".
+// Both sides render the strftime timestamp in the machine's LOCAL zone — Go via
+// time.Unix(ts,0) (matching production, which feeds msg.Timestamp straight
+// through without forcing UTC) and Python via datetime.fromtimestamp — so the
+// timestamp portion is zone-consistent across implementations rather than a
+// UTC-vs-local artifact. relative_time ("1h ago") is a delta and zone-
+// independent. The test SKIPs, not fails, when the Python reference is not
+// importable or the script file is not accessible.
 func TestLXMessageHeaderPythonParity(t *testing.T) {
 	t.Parallel()
 
@@ -38,8 +45,10 @@ func TestLXMessageHeaderPythonParity(t *testing.T) {
 		nowUnix = 1700000000
 		tsUnix  = nowUnix - 3600
 	)
-	now := time.Unix(nowUnix, 0).UTC()
-	ts := time.Unix(tsUnix, 0).UTC()
+	// Local zone, matching production (msg.Timestamp flows through unchanged)
+	// and Python's datetime.fromtimestamp — no forced UTC.
+	now := time.Unix(nowUnix, 0)
+	ts := time.Unix(tsUnix, 0)
 	timeFormat := "%Y-%m-%d %H:%M:%S"
 	g := GetGlyphSet(GlyphUnicode)
 
@@ -47,82 +56,84 @@ func TestLXMessageHeaderPythonParity(t *testing.T) {
 	peerHash := bytes.Repeat([]byte{0xAA}, 32)
 
 	cases := []struct {
-		name  string
-		in    MessageHeaderInputs
-		want  string
-		style string
+		name string
+		in   MessageHeaderInputs
 	}{
 		{
 			"outbound_sent",
 			MessageHeaderInputs{Timestamp: ts, Now: now, State: lxmfStateSent, Method: lxmfMethodPropagated, SourceHash: ownHash, OwnHash: ownHash, TransportEncrypted: true, TimeFormat: timeFormat, Glyphs: g},
-			"↑ → 1h ago | 2023-11-14 21:13:20 ⚿", "msg_header_propagated",
 		},
 		{
 			"outbound_delivered",
 			MessageHeaderInputs{Timestamp: ts, Now: now, State: lxmfStateDelivered, Method: lxmfMethodPropagated, SourceHash: ownHash, OwnHash: ownHash, TransportEncrypted: true, TimeFormat: timeFormat, Glyphs: g},
-			"✓ → 1h ago | 2023-11-14 21:13:20 ⚿", "msg_header_delivered",
 		},
 		{
 			"outbound_failed",
 			MessageHeaderInputs{Timestamp: ts, Now: now, State: lxmfStateFailed, Method: lxmfMethodPropagated, SourceHash: ownHash, OwnHash: ownHash, TransportEncrypted: true, TimeFormat: timeFormat, Glyphs: g},
-			"✕ → 1h ago | 2023-11-14 21:13:20 ⚿", "msg_header_failed",
 		},
 		{
 			"outbound_rejected",
 			MessageHeaderInputs{Timestamp: ts, Now: now, State: lxmfStateRejected, Method: lxmfMethodPropagated, SourceHash: ownHash, OwnHash: ownHash, TransportEncrypted: true, TimeFormat: timeFormat, Glyphs: g},
-			"✕ → Rejected 1h ago | 2023-11-14 21:13:20 ⚿", "msg_header_failed",
 		},
 		{
 			"outbound_paper",
 			MessageHeaderInputs{Timestamp: ts, Now: now, State: lxmfStatePaper, Method: lxmfMethodPaper, SourceHash: ownHash, OwnHash: ownHash, TransportEncrypted: true, TimeFormat: timeFormat, Glyphs: g},
-			"▤ → 1h ago | 2023-11-14 21:13:20 ⚿", "msg_header_propagated",
 		},
 		{
 			"outbound_pending",
 			MessageHeaderInputs{Timestamp: ts, Now: now, State: 0x02, Method: lxmfMethodPropagated, SourceHash: ownHash, OwnHash: ownHash, TransportEncrypted: true, TimeFormat: timeFormat, Glyphs: g},
-			"→ 1h ago | 2023-11-14 21:13:20 ⚿", "msg_header_sent",
 		},
 		{
 			"inbound_trusted_sig",
 			MessageHeaderInputs{Timestamp: ts, Now: now, State: lxmfStateSent, Method: lxmfMethodPropagated, SourceHash: peerHash, OwnHash: ownHash, TransportEncrypted: true, SignatureValidated: true, TimeFormat: timeFormat, Glyphs: g},
-			"✓ ← 1h ago | 2023-11-14 21:13:20 ⚿", "msg_header_ok",
 		},
 		{
 			"inbound_untrusted_sig",
 			MessageHeaderInputs{Timestamp: ts, Now: now, State: lxmfStateSent, Method: lxmfMethodPropagated, SourceHash: peerHash, OwnHash: ownHash, TransportEncrypted: true, SignatureValidated: false, SignatureDescription: "Signature could not be verified", TimeFormat: timeFormat, Glyphs: g},
-			"⚠ ← Signature could not be verified\n  1h ago | 2023-11-14 21:13:20 ⚿", "msg_header_caution",
 		},
 		{
 			"failed_no_source",
 			MessageHeaderInputs{Timestamp: ts, Now: now, State: lxmfStateFailed, Method: lxmfMethodPropagated, SourceHash: nil, OwnHash: ownHash, TransportEncrypted: true, TimeFormat: timeFormat, Glyphs: g},
-			"⚠ 1h ago | 2023-11-14 21:13:20 ⚿", "msg_header_failed",
 		},
 		{
 			"with_title",
 			MessageHeaderInputs{Timestamp: ts, Now: now, State: lxmfStateSent, Method: lxmfMethodPropagated, SourceHash: ownHash, OwnHash: ownHash, TransportEncrypted: true, Title: "My Subject", TimeFormat: timeFormat, Glyphs: g},
-			"↑ → 1h ago | 2023-11-14 21:13:20 ⚿ | My Subject", "msg_header_propagated",
 		},
 		{
 			"plaintext",
 			MessageHeaderInputs{Timestamp: ts, Now: now, State: lxmfStateSent, Method: lxmfMethodPropagated, SourceHash: ownHash, OwnHash: ownHash, TransportEncrypted: false, TimeFormat: timeFormat, Glyphs: g},
-			"↑ → 1h ago | 2023-11-14 21:13:20 !", "msg_header_propagated",
 		},
 		{
 			"with_attachment",
 			MessageHeaderInputs{Timestamp: ts, Now: now, State: lxmfStateSent, Method: lxmfMethodPropagated, SourceHash: ownHash, OwnHash: ownHash, TransportEncrypted: true, AttachmentTypes: []string{"file"}, AttachmentNames: []string{"report.pdf"}, TimeFormat: timeFormat, Glyphs: g},
-			"↑ → 1h ago | 2023-11-14 21:13:20 ⚿ | ▤ report.pdf", "msg_header_propagated",
 		},
+	}
+
+	type goldenEntry struct {
+		Name  string `json:"name"`
+		Title string `json:"title"`
+		Style string `json:"style"`
+	}
+	var entries []goldenEntry
+	runPythonNomadnetScript(t, "../tooling/tui-parity/lxmsg_title_golden.py", &entries)
+	want := make(map[string]goldenEntry, len(entries))
+	for _, e := range entries {
+		want[e.Name] = e
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got, gotStyle := LXMessageHeader(tc.in)
-			if got != tc.want {
-				t.Errorf("title = %q\nwant   %q", got, tc.want)
+			w, ok := want[tc.name]
+			if !ok {
+				t.Fatalf("no golden entry named %q in script output", tc.name)
 			}
-			if gotStyle != tc.style {
-				t.Errorf("style = %q, want %q", gotStyle, tc.style)
+			got, gotStyle := LXMessageHeader(tc.in)
+			if got != w.Title {
+				t.Errorf("title = %q\nwant   %q (Python)", got, w.Title)
+			}
+			if gotStyle != w.Style {
+				t.Errorf("style = %q, want %q (Python)", gotStyle, w.Style)
 			}
 		})
 	}

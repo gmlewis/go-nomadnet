@@ -370,12 +370,12 @@ func (lt *LinkableText) CursorVisible(now time.Time, focused bool) bool {
 //
 // CAVEAT — best-effort, NOT golden-tested: tmux capture-pane records the cell
 // buffer, not the terminal hardware cursor, so capture parity tooling is blind
-// to it (see TODO.md Phase 0 cursor task). The vertical scroll offset of the
+// to it. The vertical scroll offset of the
 // underlying tview.TextView is internal and not exposed, so when the page is
 // scrolled the caret row is approximate. LinkableText is not yet wired into the
 // live page tree (the browser/guide bodies render via guideReader +
 // StyledLinesToTviewText into a plain TextView), so this override is currently
-// dormant; it becomes active once a Phase 2/3 change hosts a LinkableText as the
+// dormant; it becomes active once a LinkableText is hosted as the
 // focusable page primitive. The verified, testable deliverable for cursor
 // parity is the golden CalcCoords table in cursor-coords_test.go.
 func (lt *LinkableText) Draw(screen tcell.Screen) {

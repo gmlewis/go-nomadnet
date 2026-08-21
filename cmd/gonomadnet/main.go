@@ -25,7 +25,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 
 	"github.com/gmlewis/go-nomadnet/nomadnet/version"
 )
@@ -76,7 +75,7 @@ func main() {
 	// Default config directory
 	if configDir == "" {
 		home, _ := os.UserHomeDir()
-		configDir = filepath.Join(home, ".nomadnetwork")
+		configDir = resolveDefaultConfigDir(home)
 	}
 
 	// Apply memory tuning (soft heap limit / GC percent) before starting. On

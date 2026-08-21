@@ -70,18 +70,32 @@ func TestConversationsDisplayEmpty(t *testing.T) {
 // Python's _label (Conversations.py:461-465): no digit prefixes, an envelope
 // glyph + alert count when a tab has unread/failed conversations. The glyph
 // here is the unicode set's "✉" (glyphs["unread"]).
+// TestTabBarTextPythonParity is a LIVE cross-implementation check: it
+// AST-extracts the trusted/untrusted count + _label block from Python's
+// ConversationsDisplay.update_listbox (Conversations.py:453-464), execs it
+// with mock conversations (tuples with c[2]=trust level, c[4]=unread,
+// c[6]=failed, matching the tuple layout app.conversations() yields) and a
+// real unicode glyph dict, and captures the two tab labels freshly on every
+// run. Go owns the input battery ([]ConversationInfo); Python owns the
+// reference behavior. Go's Unread/Failed map to Python's c[4]/c[6] alert
+// flags; Go's "trusted" maps to DirectoryEntry.TRUSTED and every other level
+// to the untrusted bucket (UNTRUSTED/WARNING/UNKNOWN), matching Python. The
+// test SKIPs, not fails, when the Python reference is not importable.
 func TestTabBarTextPythonParity(t *testing.T) {
 	t.Parallel()
 
+	type tabConv struct {
+		TrustLevel string `json:"trust"`
+		Unread     bool   `json:"unread"`
+		Failed     bool   `json:"failed"`
+	}
 	tests := []struct {
 		name  string
 		convs []ConversationInfo
-		want  string
 	}{
 		{
 			"empty",
 			nil,
-			"Trusted (0)  Untrusted (0)",
 		},
 		{
 			"no alerts",
@@ -90,7 +104,6 @@ func TestTabBarTextPythonParity(t *testing.T) {
 				{TrustLevel: "trusted"},
 				{TrustLevel: "unknown"},
 			},
-			"Trusted (2)  Untrusted (1)",
 		},
 		{
 			"trusted alerts",
@@ -100,7 +113,6 @@ func TestTabBarTextPythonParity(t *testing.T) {
 				{TrustLevel: "trusted"},
 				{TrustLevel: "unknown"},
 			},
-			"Trusted (3) ✉ 2  Untrusted (1)",
 		},
 		{
 			"both alert",
@@ -110,109 +122,256 @@ func TestTabBarTextPythonParity(t *testing.T) {
 				{TrustLevel: "trusted"},
 				{TrustLevel: "untrusted", Failed: true},
 			},
-			"Trusted (3) ✉ 2  Untrusted (1) ✉ 1",
 		},
 	}
-	for _, tt := range tests {
+
+	// Build the JSON input: one list of mock conversations per test case.
+	type caseInput struct {
+		Convs []tabConv `json:"convs"`
+	}
+	inputs := make([]caseInput, len(tests))
+	for i, tt := range tests {
+		convs := make([]tabConv, len(tt.convs))
+		for j, c := range tt.convs {
+			convs[j] = tabConv{TrustLevel: c.TrustLevel, Unread: c.Unread, Failed: c.Failed}
+		}
+		inputs[i] = caseInput{Convs: convs}
+	}
+
+	const script = `
+import sys, json, ast, inspect, textwrap, types
+import nomadnet.ui.textui.Conversations as C
+from nomadnet.ui import TextUI as T
+from nomadnet.Directory import DirectoryEntry
+
+def glyph_dict(gs):
+    g={}; idx=T.GLYPHSETS[gs]
+    for tup in T.GLYPHS: g[tup[0]]=tup[idx]
+    return g
+G = glyph_dict("unicode")
+
+# AST-extract the count + _label block from update_listbox: from the
+# glyphs = self.app.ui.glyphs assignment through the tab_untrusted set_label.
+src = textwrap.dedent(inspect.getsource(C.ConversationsDisplay.update_listbox))
+fn = ast.parse(src).body[0]
+collected = []
+started = False
+for s in fn.body:
+    if not started:
+        if isinstance(s, ast.Assign) and any(isinstance(t, ast.Name) and t.id=="glyphs" for t in s.targets):
+            started = True
+    if started:
+        collected.append(s)
+        if isinstance(s, ast.Expr) and isinstance(s.value, ast.Call) and isinstance(s.value.func, ast.Attribute) and s.value.func.attr=="set_label":
+            # second set_label (tab_untrusted) ends the block
+            if len(collected) >= 2 and isinstance(collected[-2], ast.Expr) and isinstance(collected[-2].value, ast.Call):
+                break
+mod = ast.Module(body=collected, type_ignores=[]); ast.fix_missing_locations(mod)
+code = compile(mod, "<tabbar>", "exec")
+
+class Tab:
+    def __init__(self): self.label=None
+    def set_label(self, l): self.label=l
+
+TRUST_MAP = {"trusted": DirectoryEntry.TRUSTED, "untrusted": DirectoryEntry.UNTRUSTED,
+             "warning": DirectoryEntry.WARNING, "unknown": DirectoryEntry.UNKNOWN}
+
+cases = json.load(sys.stdin)
+out = []
+for c in cases:
+    # Build conversation tuples matching app.conversations() layout:
+    # c[2]=trust, c[4]=unread alert, c[6]=failed alert.
+    conversations = []
+    for cv in c["convs"]:
+        conversations.append(("", "", TRUST_MAP.get(cv["trust"], DirectoryEntry.UNKNOWN), "", bool(cv["unread"]), False, bool(cv["failed"])))
+    class S: pass
+    s = S(); s.app = types.SimpleNamespace(ui=types.SimpleNamespace(glyphs=G))
+    s.tab_trusted = Tab(); s.tab_untrusted = Tab()
+    ns = {"__builtins__": __builtins__, "self": s, "conversations": conversations, "DirectoryEntry": DirectoryEntry}
+    exec(code, ns)
+    out.append(s.tab_trusted.label + "  " + s.tab_untrusted.label)
+json.dump(out, sys.stdout)
+`
+
+	var want []string
+	runPythonNomadnet(t, inputs, script, &want)
+
+	for i, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			got := tabBarText(tt.convs, "✉")
-			if got != tt.want {
-				t.Errorf("tabBarText = %q, want %q", got, tt.want)
+			if got != want[i] {
+				t.Errorf("tabBarText = %q, want %q (Python)", got, want[i])
 			}
 		})
 	}
 }
 
-// TestConversationRowMainPythonParity checks the first line of a conversation
-// list row against golden values captured from Python's conversation_list_widget
-// (Conversations.py:1687-1755) run live. Glyphs are the unicode set
-// (check=✓ cross=✕ warning=⚠ unread=✉ pin=★).
+// TestConversationRowMainPythonParity is a LIVE cross-implementation check:
+// it AST-extracts the body of Python's
+// ConversationsDisplay.conversation_list_widget (Conversations.py:1687-1755)
+// up to the ListEntry construction, execs it with a mock self (app.ui.glyphs,
+// directory.find returning a sort_rank-bearing entry for pinned
+// conversations, currently_displayed_conversation) and a conversation tuple
+// matching the app.conversations() layout (c[0]=source_hash, c[1]=display_name,
+// c[2]=trust, c[4]=unread count, c[5]=last_activity, c[6]=failed count), and
+// captures the markup list freshly on every run. The Go first line
+// (conversationRowMain) is compared to the concatenation of the non-newline
+// markup elements (head + badge); the Go second line (conversationRowSecondary)
+// is compared to the newline-prefixed element with its leading "\n" stripped.
+//
+// last_activity = 1000 (unix) is well over 30 days ago for any run date, so
+// Python's relative_time hits its date branch (datetime.fromtimestamp(1000).
+// strftime("%Y-%m-%d") == "1970-01-01", local-zone-stable) without needing to
+// mock time.time. Go's relativeTime produces the same date. Glyphs are the
+// unicode set (check=✓ cross=✕ warning=⚠ unread=✉ pin=★). The test SKIPs,
+// not fails, when the Python reference is not importable.
 func TestConversationRowMainPythonParity(t *testing.T) {
 	t.Parallel()
 
 	glyphs := glyphsUnicode
-	// lastActivity 1000s after epoch — well over 30 days ago, so the date
-	// branch of relative_time applies; the secondary line uses the same
-	// Format call in both Go and Python.
 	old := time.Unix(1000, 0)
-	dateLine := "  " + old.Format("2006-01-02")
 
 	tests := []struct {
-		name          string
-		conv          ConversationInfo
-		current       string // currently-displayed conversation source hash
-		wantMain      string
-		wantSecondary string
+		name    string
+		conv    ConversationInfo
+		current string // currently-displayed conversation source hash
 	}{
 		{
 			"trusted unread",
 			ConversationInfo{SourceHash: "aabbccdd", DisplayName: "Alice", TrustLevel: "trusted", UnreadCount: 3, LastTime: old},
 			"",
-			"✓ Alice ✉ (3)",
-			dateLine,
 		},
 		{
 			"untrusted",
 			ConversationInfo{SourceHash: "eeff0011", DisplayName: "Bob", TrustLevel: "untrusted", LastTime: old},
 			"",
-			"✕ Bob <eeff0011>",
-			dateLine,
 		},
 		{
 			"unknown no activity",
 			ConversationInfo{SourceHash: "22334455", DisplayName: "Carol", TrustLevel: "unknown"},
-			"",
-			"? Carol <22334455>",
 			"",
 		},
 		{
 			"warning failed",
 			ConversationInfo{SourceHash: "66778899", DisplayName: "Dave", TrustLevel: "warning", FailedCount: 2, LastTime: old},
 			"",
-			"⚠ Dave <66778899> ⚠ (2)",
-			dateLine,
 		},
 		{
 			"trusted empty name unread",
 			ConversationInfo{SourceHash: "aabbccdd", TrustLevel: "trusted", UnreadCount: 1, LastTime: old},
 			"",
-			"✓ ✉ (1)",
-			dateLine,
 		},
 		{
 			"pinned trusted",
 			ConversationInfo{SourceHash: "aabbccdd", DisplayName: "Pinned", TrustLevel: "trusted", Pinned: true, LastTime: old},
 			"",
-			"★ ✓ Pinned",
-			dateLine,
 		},
 		{
 			"full hash non-trusted",
 			ConversationInfo{SourceHash: "0102030405060708010203040506070801020304050607080102030405060708", DisplayName: "Bob", TrustLevel: "untrusted", LastTime: old},
 			"",
-			"✕ Bob <0102030405060708010203040506070801020304050607080102030405060708>",
-			dateLine,
 		},
 		{
 			"currently displayed suppresses badge",
 			ConversationInfo{SourceHash: "aabbccdd", DisplayName: "Alice", TrustLevel: "trusted", Pinned: true, UnreadCount: 3, LastTime: old},
 			"aabbccdd",
-			"★ ✓ Alice",
-			dateLine,
 		},
 	}
 
-	for _, tt := range tests {
+	type rowInput struct {
+		SourceHash   string `json:"source_hash"`
+		DisplayName  string `json:"display_name"`
+		TrustLevel   string `json:"trust"`
+		UnreadCount  int    `json:"unread"`
+		LastActivity int64  `json:"last_activity"`
+		FailedCount  int    `json:"failed"`
+		Pinned       bool   `json:"pinned"`
+		Current      string `json:"current"`
+	}
+	inputs := make([]rowInput, len(tests))
+	for i, tt := range tests {
+		var lastAct int64
+		if !tt.conv.LastTime.IsZero() {
+			lastAct = tt.conv.LastTime.Unix()
+		}
+		inputs[i] = rowInput{
+			SourceHash: tt.conv.SourceHash, DisplayName: tt.conv.DisplayName, TrustLevel: tt.conv.TrustLevel,
+			UnreadCount: tt.conv.UnreadCount, LastActivity: lastAct, FailedCount: tt.conv.FailedCount,
+			Pinned: tt.conv.Pinned, Current: tt.current,
+		}
+	}
+
+	const script = `
+import sys, json, ast, inspect, textwrap, types
+import nomadnet.ui.textui.Conversations as C
+from nomadnet.ui import TextUI as T
+from nomadnet.Directory import DirectoryEntry
+
+def glyph_dict(gs):
+    g={}; idx=T.GLYPHSETS[gs]
+    for tup in T.GLYPHS: g[tup[0]]=tup[idx]
+    return g
+G = glyph_dict("unicode")
+
+src = textwrap.dedent(inspect.getsource(C.ConversationsDisplay.conversation_list_widget))
+fn = ast.parse(src).body[0]
+body = []
+for s in fn.body:
+    if isinstance(s, ast.Assign) and any(isinstance(t, ast.Name) and t.id=="widget" for t in s.targets):
+        break
+    body.append(s)
+mod = ast.Module(body=body, type_ignores=[]); ast.fix_missing_locations(mod)
+code = compile(mod, "<convrow>", "exec")
+
+TRUST_MAP = {"trusted": DirectoryEntry.TRUSTED, "untrusted": DirectoryEntry.UNTRUSTED,
+             "warning": DirectoryEntry.WARNING, "unknown": DirectoryEntry.UNKNOWN}
+
+class Dir:
+    def __init__(self, entry): self._e=entry
+    def find(self, b): return self._e
+class App:
+    def __init__(self, entry): self.ui=types.SimpleNamespace(glyphs=G); self.directory=Dir(entry)
+
+cases = json.load(sys.stdin)
+out = []
+for c in cases:
+    entry = types.SimpleNamespace(sort_rank=0) if c["pinned"] else None
+    s = types.SimpleNamespace()
+    s.app = App(entry)
+    s.currently_displayed_conversation = c["current"]
+    conv = (c["source_hash"], c["display_name"], TRUST_MAP.get(c["trust"], DirectoryEntry.UNKNOWN),
+            "", c["unread"], c["last_activity"], c["failed"])
+    ns = {"__builtins__": __builtins__, "self": s, "conversation": conv,
+          "DirectoryEntry": DirectoryEntry, "relative_time": C.relative_time}
+    exec(code, ns)
+    markup = ns["markup"]
+    main = "".join(m for m in markup if not (isinstance(m, str) and m.startswith("\n")))
+    sec = ""
+    for m in markup:
+        if isinstance(m, str) and m.startswith("\n"):
+            sec = m[1:]; break
+    out.append({"main": main, "secondary": sec})
+json.dump(out, sys.stdout)
+`
+
+	type rowWant struct {
+		Main      string `json:"main"`
+		Secondary string `json:"secondary"`
+	}
+	var want []rowWant
+	runPythonNomadnet(t, inputs, script, &want)
+
+	for i, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			gotMain := conversationRowMain(tt.conv, glyphs, tt.current)
-			if gotMain != tt.wantMain {
-				t.Errorf("conversationRowMain = %q, want %q", gotMain, tt.wantMain)
+			if gotMain != want[i].Main {
+				t.Errorf("conversationRowMain = %q, want %q (Python)", gotMain, want[i].Main)
 			}
 			gotSec := conversationRowSecondary(tt.conv)
-			if gotSec != tt.wantSecondary {
-				t.Errorf("conversationRowSecondary = %q, want %q", gotSec, tt.wantSecondary)
+			if gotSec != want[i].Secondary {
+				t.Errorf("conversationRowSecondary = %q, want %q (Python)", gotSec, want[i].Secondary)
 			}
 		})
 	}
@@ -328,7 +487,7 @@ func TestConversationsToggleFullscreen(t *testing.T) {
 // TestDisplayConversationWiresOnSend verifies that DisplayConversation wires
 // the ConversationWidget's OnSend to delegate to the display-level OnSend,
 // forwarding the conversation's source hash plus the composed content/title.
-// This pins the TUI-side of the "Wire conversation send" task (TODO Phase 1):
+// This pins the TUI-side of the "Wire conversation send" task:
 // C-d in the composer must reach the display's OnSend(sourceHash, content,
 // title), which the wiring layer (cmd/gonomadnet/textui.go) connects to
 // App.SendConversation. The C-d key path itself (handleInput → sendMessage →
@@ -460,8 +619,8 @@ func TestDisplayConversationWiresCtrlGFullscreen(t *testing.T) {
 // TestDisplayConversationLoadsMessages verifies DisplayConversation calls the
 // display-level OnLoadMessages hook to populate the conversation widget's
 // message list, and injects OnOwnHash so the LXMessageWidget header can tell
-// inbound from outbound. This pins the TUI side of message loading (TODO
-// Phase 1 "ConversationWidget — messages").
+// inbound from outbound. This pins the TUI side of message loading
+// ("ConversationWidget — messages").
 func TestDisplayConversationLoadsMessages(t *testing.T) {
 	t.Parallel()
 
@@ -619,8 +778,7 @@ func TestDisplayConversationWiresPaperMessage(t *testing.T) {
 // attachment flow: ConfirmAttachFile stages file paths on the widget, and
 // C-d (sendMessage) forwards them through OnSend along with the content,
 // then clears the staged list (Python send_message, Conversations.py:2412-
-// 2436 + clear_editor). This pins the TUI side of the "attachFile" TODO
-// (Phase 1).
+// 2436 + clear_editor). This pins the TUI side of the "attachFile" TODO.
 func TestConversationWidgetPendingAttachments(t *testing.T) {
 	t.Parallel()
 

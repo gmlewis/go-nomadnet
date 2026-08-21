@@ -19,17 +19,20 @@ import (
 	"testing"
 )
 
-// TestLinkifyMOTDPythonParity verifies LinkifyMOTD against Python's
-// _linkify_motd (Channels.py:1231), which substitutes #room references with
-// the Micron link form `[`#room`room://room]` using the _MOTD_ROOM_RE pattern
-// (Channels.py:1229):
+// TestLinkifyMOTDPythonParity is a LIVE cross-implementation check: it execs
+// Python's real Channels._linkify_motd (nomadnet.ui.textui.Channels), which
+// substitutes #room references with the Micron link form `[`#room`room://room]`
+// using the _MOTD_ROOM_RE pattern:
 //
 //	(?<!\[)(?<!\w)#([A-Za-z0-9][A-Za-z0-9_\-]{0,62})
 //
 // The two lookbehinds reject a `#` that is preceded by `[` (so already-linked
 // rooms are not re-linkified) or by a word character (so `word#room` is left
 // alone). Go's regexp lacks lookarounds, so LinkifyMOTD replicates them with a
-// manual scan. Expected values were captured from /tmp/linkify_ref.py.
+// manual scan; this test proves that replication matches Python's regex
+// behavior across a wide battery, freshly derived on every run. Go owns the
+// input battery; Python owns the reference behavior. The test SKIPs, not
+// fails, when the Python reference is not importable.
 func TestLinkifyMOTDPythonParity(t *testing.T) {
 	t.Parallel()
 
@@ -37,55 +40,62 @@ func TestLinkifyMOTDPythonParity(t *testing.T) {
 		"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" // 63 a's
 	a64 := a63 + "a"
 
-	tests := []struct {
-		name  string
-		input string
-		want  string
-	}{
-		{"empty", "", ""},
-		{"plain text", "Welcome to the hub", "Welcome to the hub"},
-		{"single room", "Join #general for chat", "Join `[#general`room://general] for chat"},
-		{"two rooms", "Rooms: #general and #random",
-			"Rooms: `[#general`room://general] and `[#random`room://random]"},
-		{"already linked left alone",
-			"Already linked `[#foo`room://foo] stay",
-			"Already linked `[#foo`room://foo] stay"},
-		{"word before hash rejected", "word#notaroom", "word#notaroom"},
-		{"multibyte before space", "café #room", "café `[#room`room://room]"},
-		{"room at start", "#room-at-start", "`[#room-at-start`room://room-at-start]"},
-		{"room at end", "end with #room", "end with `[#room`room://room]"},
-		{"underscore and hyphen names",
-			"underscore #my_room and hyphen #my-room",
-			"underscore `[#my_room`room://my_room] and hyphen `[#my-room`room://my-room]"},
-		{"trailing digits", "number #room123", "number `[#room123`room://room123]"},
-		{"leading digit name", "#123starts", "`[#123starts`room://123starts]"},
-		{"lone hash no name", "no room # here", "no room # here"},
-		{"bare hash", "#", "#"},
-		{"single char room", "#a", "`[#a`room://a]"},
-		{"63 char room", "#" + a63, "`[#" + a63 + "`room://" + a63 + "]"},
-		{"64 char room truncates to 63", "#" + a64,
-			"`[#" + a63 + "`room://" + a63 + "]a"},
-		{"trailing punctuation", "trailing #room!", "trailing `[#room`room://room]!"},
-		{"in parens", "parens (#general) here", "parens (`[#general`room://general]) here"},
-		{"bracket already linked", "bracket [#general] already", "bracket [#general] already"},
-		{"double hash links second", "double ##double",
-			"double #`[#double`room://double]"},
-		{"mixed case preserved", "Mixed #General CASE",
-			"Mixed `[#General`room://General] CASE"},
-		{"dot stops room name", "dot #room.test stops",
-			"dot `[#room`room://room].test stops"},
-		{"newline before room", "newlines\n#room\nhere",
-			"newlines\n`[#room`room://room]\nhere"},
-		{"tab before room", "tab\t#room", "tab\t`[#room`room://room]"},
+	inputs := []string{
+		"",
+		"Welcome to the hub",
+		"Join #general for chat",
+		"Rooms: #general and #random",
+		"Already linked `[#foo`room://foo] stay",
+		"word#notaroom",
+		"café #room",
+		"#room-at-start",
+		"end with #room",
+		"underscore #my_room and hyphen #my-room",
+		"number #room123",
+		"#123starts",
+		"no room # here",
+		"#",
+		"#a",
+		"#" + a63,
+		"#" + a64,
+		"trailing #room!",
+		"parens (#general) here",
+		"bracket [#general] already",
+		"double ##double",
+		"Mixed #General CASE",
+		"dot #room.test stops",
+		"newlines\n#room\nhere",
+		"tab\t#room",
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	const script = `
+import sys, json
+import nomadnet.ui.textui.Channels as C
+inputs = json.load(sys.stdin)
+json.dump([C._linkify_motd(s) for s in inputs], sys.stdout)
+`
+
+	var want []string
+	runPythonNomadnet(t, inputs, script, &want)
+
+	for i, in := range inputs {
+		t.Run(linkifyCaseName(in), func(t *testing.T) {
 			t.Parallel()
-			got := LinkifyMOTD(tt.input)
-			if got != tt.want {
-				t.Errorf("LinkifyMOTD(%q) = %q, want %q", tt.input, got, tt.want)
+			got := LinkifyMOTD(in)
+			if got != want[i] {
+				t.Errorf("LinkifyMOTD(%q) = %q, want %q (Python)", in, got, want[i])
 			}
 		})
+	}
+}
+
+func linkifyCaseName(in string) string {
+	switch in {
+	case "":
+		return "empty"
+	case "#":
+		return "bare_hash"
+	default:
+		return in
 	}
 }

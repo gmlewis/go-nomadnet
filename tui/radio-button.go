@@ -47,7 +47,7 @@ type DialogRadioGroup struct {
 // (urwid/widget/wimp.py:460). It renders "(X) label" when checked or
 // "( ) label" when unchecked (4-column indicator cell + label), in the default
 // text color — urwid applies no focus color to a radio, only a hardware cursor
-// on the middle cell, which is handled separately (Phase 0 cursor parity).
+// on the middle cell, which is handled separately (cursor parity).
 //
 // Construction matches urwid's quirk: creating a RadioButton with a checked
 // state does NOT uncheck the other members of its group (RadioButton.__init__

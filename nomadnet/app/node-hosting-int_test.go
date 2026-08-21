@@ -25,7 +25,7 @@ import (
 	"github.com/gmlewis/go-reticulum/rns"
 )
 
-// TestAppNodeHostingStartsAndAnnounces verifies the Phase 6 node-hosting wiring:
+// TestAppNodeHostingStartsAndAnnounces verifies the node-hosting wiring:
 // App.startNode instantiates and starts a nomadnet/node.Node on the app's
 // transport, the node's destination is the "nomadnetwork.node" hash of the
 // app identity (mirroring Python NomadNetworkApp.py:399 self.node =

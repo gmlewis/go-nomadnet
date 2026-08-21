@@ -19,10 +19,14 @@ import (
 	"testing"
 )
 
-// TestGetInterfaceIconPythonParity verifies GetInterfaceIcon against Python's
-// _get_interface_icon (Interfaces.py:28). Expected values were captured from
-// /tmp/icon_ref.py, which inlines the Python function (the module import pulls
-// in urwid). Python maps each interface type to a glyph tuple
+// TestGetInterfaceIconPythonParity is a LIVE cross-implementation check: it
+// execs Python's nomadnet.ui.textui.Interfaces._get_interface_icon
+// (Interfaces.py:28) and derives the expected glyph for every (glyphset,
+// interface type) pair freshly on every run. Go owns the input battery; Python
+// owns the reference behavior. The test SKIPs, not fails, when the Python
+// reference is not importable.
+//
+// Python maps each interface type to a glyph tuple
 // (NetworkInterfaceType / RNodeInterfaceType / SerialInterfaceType /
 // OtherInterfaceType) and selects the plain / unicode / nerd-font glyph by
 // the glyphset index, falling back to the OtherInterfaceType glyph for
@@ -31,90 +35,93 @@ import (
 func TestGetInterfaceIconPythonParity(t *testing.T) {
 	t.Parallel()
 
-	networkPlain := "(IP)"
-	networkUnicode := "\U0001f5a7"
-	networkNerd := "\U000f0200"
-
-	rnodePlain := "(R)"
-	rnodeUnicode := "ᚱ"
-	rnodeNerd := "\U000f043a"
-
-	serialPlain := "(<->)"
-	serialUnicode := "↔"
-	serialNerd := "\U000f065c"
-
-	otherPlain := "(#)"
-	otherUnicode := "\U0001f67e"
-	otherNerd := ""
-
+	type iconInput struct {
+		Glyphset string `json:"glyphset"`
+		Iface    string `json:"iface_type"`
+	}
 	tests := []struct {
 		name     string
 		glyphset string
 		ifType   string
-		want     string
 	}{
 		// NetworkInterfaceType
-		{"backbone plain", GlyphPlain, IfaceBackbone, networkPlain},
-		{"backbone unicode", GlyphUnicode, IfaceBackbone, networkUnicode},
-		{"backbone nerd", GlyphNerd, IfaceBackbone, networkNerd},
-		{"auto plain", GlyphPlain, IfaceAuto, networkPlain},
-		{"auto unicode", GlyphUnicode, IfaceAuto, networkUnicode},
-		{"auto nerd", GlyphNerd, IfaceAuto, networkNerd},
-		{"tcpclient plain", GlyphPlain, IfaceTCPClient, networkPlain},
-		{"tcpclient unicode", GlyphUnicode, IfaceTCPClient, networkUnicode},
-		{"tcpclient nerd", GlyphNerd, IfaceTCPClient, networkNerd},
-		{"tcpserver plain", GlyphPlain, IfaceTCPServer, networkPlain},
-		{"tcpserver unicode", GlyphUnicode, IfaceTCPServer, networkUnicode},
-		{"tcpserver nerd", GlyphNerd, IfaceTCPServer, networkNerd},
-		{"udp plain", GlyphPlain, IfaceUDP, networkPlain},
-		{"udp unicode", GlyphUnicode, IfaceUDP, networkUnicode},
-		{"udp nerd", GlyphNerd, IfaceUDP, networkNerd},
-		{"i2p plain", GlyphPlain, IfaceI2P, networkPlain},
-		{"i2p unicode", GlyphUnicode, IfaceI2P, networkUnicode},
-		{"i2p nerd", GlyphNerd, IfaceI2P, networkNerd},
+		{"backbone plain", GlyphPlain, IfaceBackbone},
+		{"backbone unicode", GlyphUnicode, IfaceBackbone},
+		{"backbone nerd", GlyphNerd, IfaceBackbone},
+		{"auto plain", GlyphPlain, IfaceAuto},
+		{"auto unicode", GlyphUnicode, IfaceAuto},
+		{"auto nerd", GlyphNerd, IfaceAuto},
+		{"tcpclient plain", GlyphPlain, IfaceTCPClient},
+		{"tcpclient unicode", GlyphUnicode, IfaceTCPClient},
+		{"tcpclient nerd", GlyphNerd, IfaceTCPClient},
+		{"tcpserver plain", GlyphPlain, IfaceTCPServer},
+		{"tcpserver unicode", GlyphUnicode, IfaceTCPServer},
+		{"tcpserver nerd", GlyphNerd, IfaceTCPServer},
+		{"udp plain", GlyphPlain, IfaceUDP},
+		{"udp unicode", GlyphUnicode, IfaceUDP},
+		{"udp nerd", GlyphNerd, IfaceUDP},
+		{"i2p plain", GlyphPlain, IfaceI2P},
+		{"i2p unicode", GlyphUnicode, IfaceI2P},
+		{"i2p nerd", GlyphNerd, IfaceI2P},
 
 		// RNodeInterfaceType
-		{"rnode plain", GlyphPlain, IfaceRNode, rnodePlain},
-		{"rnode unicode", GlyphUnicode, IfaceRNode, rnodeUnicode},
-		{"rnode nerd", GlyphNerd, IfaceRNode, rnodeNerd},
-		{"rnodemulti plain", GlyphPlain, IfaceRNodeMulti, rnodePlain},
-		{"rnodemulti unicode", GlyphUnicode, IfaceRNodeMulti, rnodeUnicode},
-		{"rnodemulti nerd", GlyphNerd, IfaceRNodeMulti, rnodeNerd},
+		{"rnode plain", GlyphPlain, IfaceRNode},
+		{"rnode unicode", GlyphUnicode, IfaceRNode},
+		{"rnode nerd", GlyphNerd, IfaceRNode},
+		{"rnodemulti plain", GlyphPlain, IfaceRNodeMulti},
+		{"rnodemulti unicode", GlyphUnicode, IfaceRNodeMulti},
+		{"rnodemulti nerd", GlyphNerd, IfaceRNodeMulti},
 
 		// SerialInterfaceType
-		{"serial plain", GlyphPlain, IfaceSerial, serialPlain},
-		{"serial unicode", GlyphUnicode, IfaceSerial, serialUnicode},
-		{"serial nerd", GlyphNerd, IfaceSerial, serialNerd},
-		{"kiss plain", GlyphPlain, IfaceKISS, serialPlain},
-		{"kiss unicode", GlyphUnicode, IfaceKISS, serialUnicode},
-		{"kiss nerd", GlyphNerd, IfaceKISS, serialNerd},
-		{"ax25kiss plain", GlyphPlain, IfaceAX25KISS, serialPlain},
-		{"ax25kiss unicode", GlyphUnicode, IfaceAX25KISS, serialUnicode},
-		{"ax25kiss nerd", GlyphNerd, IfaceAX25KISS, serialNerd},
+		{"serial plain", GlyphPlain, IfaceSerial},
+		{"serial unicode", GlyphUnicode, IfaceSerial},
+		{"serial nerd", GlyphNerd, IfaceSerial},
+		{"kiss plain", GlyphPlain, IfaceKISS},
+		{"kiss unicode", GlyphUnicode, IfaceKISS},
+		{"kiss nerd", GlyphNerd, IfaceKISS},
+		{"ax25kiss plain", GlyphPlain, IfaceAX25KISS},
+		{"ax25kiss unicode", GlyphUnicode, IfaceAX25KISS},
+		{"ax25kiss nerd", GlyphNerd, IfaceAX25KISS},
 
 		// OtherInterfaceType (PipeInterface + fallbacks)
-		{"pipe plain", GlyphPlain, IfacePipe, otherPlain},
-		{"pipe unicode", GlyphUnicode, IfacePipe, otherUnicode},
-		{"pipe nerd", GlyphNerd, IfacePipe, otherNerd},
-		{"custom plain", GlyphPlain, IfaceCustom, otherPlain},
-		{"custom unicode", GlyphUnicode, IfaceCustom, otherUnicode},
-		{"custom nerd", GlyphNerd, IfaceCustom, otherNerd},
-		{"unknown plain", GlyphPlain, "UnknownType", otherPlain},
-		{"unknown unicode", GlyphUnicode, "UnknownType", otherUnicode},
-		{"unknown nerd", GlyphNerd, "UnknownType", otherNerd},
+		{"pipe plain", GlyphPlain, IfacePipe},
+		{"pipe unicode", GlyphUnicode, IfacePipe},
+		{"pipe nerd", GlyphNerd, IfacePipe},
+		{"custom plain", GlyphPlain, IfaceCustom},
+		{"custom unicode", GlyphUnicode, IfaceCustom},
+		{"custom nerd", GlyphNerd, IfaceCustom},
+		{"unknown plain", GlyphPlain, "UnknownType"},
+		{"unknown unicode", GlyphUnicode, "UnknownType"},
+		{"unknown nerd", GlyphNerd, "UnknownType"},
 
 		// Empty/blank glyphset defaults to unicode (Python default index 1).
-		{"blank glyphset defaults unicode", "", IfaceBackbone, networkUnicode},
-		{"unrecognized glyphset defaults unicode", "weird", IfaceRNode, rnodeUnicode},
+		{"blank glyphset defaults unicode", "", IfaceBackbone},
+		{"unrecognized glyphset defaults unicode", "weird", IfaceRNode},
 	}
 
-	for _, tt := range tests {
+	inputs := make([]iconInput, len(tests))
+	for i, tt := range tests {
+		inputs[i] = iconInput{Glyphset: tt.glyphset, Iface: tt.ifType}
+	}
+
+	const script = `
+import sys, json
+import nomadnet.ui.textui.Interfaces as I
+inputs = json.load(sys.stdin)
+out = [I._get_interface_icon(inp["glyphset"], inp["iface_type"]) for inp in inputs]
+json.dump(out, sys.stdout)
+`
+
+	var want []string
+	runPythonNomadnet(t, inputs, script, &want)
+
+	for i, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			got := GetInterfaceIcon(tt.glyphset, tt.ifType)
-			if got != tt.want {
-				t.Errorf("GetInterfaceIcon(%q, %q) = %q, want %q",
-					tt.glyphset, tt.ifType, got, tt.want)
+			if got != want[i] {
+				t.Errorf("GetInterfaceIcon(%q, %q) = %q, want %q (Python)",
+					tt.glyphset, tt.ifType, got, want[i])
 			}
 		})
 	}

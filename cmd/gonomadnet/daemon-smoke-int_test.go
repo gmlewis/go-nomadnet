@@ -127,7 +127,7 @@ func repoRoot(t *testing.T) string {
 	}
 }
 
-// TestDaemonSmokeEndToEnd verifies the `-daemon` mode end-to-end (TODO Phase 6):
+// TestDaemonSmokeEndToEnd verifies the `-daemon` mode end-to-end (TODO):
 // build the gonomadnet binary, start it with a fresh temp config + RNS config,
 // confirm it registers its LXMF delivery destination and stays alive, then send
 // SIGTERM and confirm it shuts down gracefully.

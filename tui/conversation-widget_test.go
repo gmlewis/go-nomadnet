@@ -159,71 +159,106 @@ func TestConversationWidgetKeyboardShortcuts(t *testing.T) {
 	}
 }
 
-// TestPeerInfoPythonParity checks the peer-info header bar text against golden
-// values captured from Python's _update_peer_info (Conversations.py:2084-2120).
+// TestPeerInfoPythonParity is a LIVE cross-implementation check: it binds
+// Python's real ConversationWidget._update_peer_info (Conversations.py:2084-
+// 2120) to a mock self whose app supplies controlled display_name /
+// outbound_stamp_cost / glyphs, whose RNS.Transport.hops_to / RNS.Identity.
+// recall_app_data / RNS.prettyhexrep are mocked, and whose
+// peer_info_widget.original_widget captures the set_text string. Go owns the
+// input battery (source hash, display name, stamp cost, hops); Python owns the
+// reference behavior. The display name, stamp cost and hops are injected
+// identically on both sides (Go via DisplayName/StampCost/Hops fields, Python
+// via the mock app/directory/router); hops=nil on the Go side maps to a
+// hops_to value >= PATHFINDER_M so Python renders "unknown" too. The test
+// SKIPs, not fails, when the Python reference is not importable.
 func TestPeerInfoPythonParity(t *testing.T) {
 	t.Parallel()
 
 	fullHash := "aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899"
-	stamp3 := 3
-	hops2 := 2
-	hops1 := 1
 
-	tests := []struct {
-		name string
-		cw   *ConversationWidget
-		want string
-	}{
-		{
-			"unknown peer",
-			func() *ConversationWidget {
-				cw := NewConversationWidget(newTestApp(), fullHash)
-				return cw
-			}(),
-			" <" + fullHash + "> | ◷ unknown ",
-		},
-		{
-			"named 2 hops stamp 3",
-			func() *ConversationWidget {
-				cw := NewConversationWidget(newTestApp(), fullHash)
-				cw.DisplayName = "Alice"
-				cw.StampCost = &stamp3
-				cw.Hops = &hops2
-				cw.updatePeerInfo()
-				return cw
-			}(),
-			" Alice | Stamp: 3  ◷ 2 hops ",
-		},
-		{
-			"named 1 hop",
-			func() *ConversationWidget {
-				cw := NewConversationWidget(newTestApp(), fullHash)
-				cw.DisplayName = "Alice"
-				cw.StampCost = &stamp3
-				cw.Hops = &hops1
-				cw.updatePeerInfo()
-				return cw
-			}(),
-			" Alice | Stamp: 3  ◷ 1 hop ",
-		},
-		{
-			"named no stamp unknown hops",
-			func() *ConversationWidget {
-				cw := NewConversationWidget(newTestApp(), fullHash)
-				cw.DisplayName = "Bob"
-				cw.updatePeerInfo()
-				return cw
-			}(),
-			" Bob | ◷ unknown ",
-		},
+	type peerCase struct {
+		Name        string  `json:"name"`
+		SourceHash  string  `json:"source_hash"`
+		DisplayName *string `json:"display_name"` // nil -> not in directory -> prettyhexrep
+		StampCost   *int    `json:"stamp_cost"`
+		Hops        *int    `json:"hops"` // nil -> "unknown"
+	}
+	strPtr := func(s string) *string { return &s }
+	intPtr := func(v int) *int { return &v }
+	cases := []peerCase{
+		{Name: "unknown peer", SourceHash: fullHash, DisplayName: nil, StampCost: nil, Hops: nil},
+		{Name: "named 2 hops stamp 3", SourceHash: fullHash, DisplayName: strPtr("Alice"), StampCost: intPtr(3), Hops: intPtr(2)},
+		{Name: "named 1 hop", SourceHash: fullHash, DisplayName: strPtr("Alice"), StampCost: intPtr(3), Hops: intPtr(1)},
+		{Name: "named no stamp unknown hops", SourceHash: fullHash, DisplayName: strPtr("Bob"), StampCost: nil, Hops: nil},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	const script = `
+import sys, json, types
+import nomadnet.ui.textui.Conversations as C
+from nomadnet.ui import TextUI as T
+import RNS
+
+def glyph_dict(gs):
+    g={}; idx=T.GLYPHSETS[gs]
+    for tup in T.GLYPHS: g[tup[0]]=tup[idx]
+    return g
+G = glyph_dict("unicode")
+
+class Orig:
+    def __init__(self): self.t=None
+    def set_text(self, t): self.t=t
+class PIW:
+    def __init__(self): self.original_widget=Orig()
+class Dir:
+    def __init__(self, name): self._name=name
+    def display_name(self, b): return self._name
+class Router:
+    def __init__(self, sc): self._sc=sc
+    def get_outbound_stamp_cost(self, b): return self._sc
+class App:
+    def __init__(self, name, sc):
+        self.ui=types.SimpleNamespace(glyphs=G)
+        self.config={"textui":{"sanitize_names":False}}
+        self.directory=Dir(name)
+        self.message_router=Router(sc)
+
+RNS.Transport.PATHFINDER_M = 128
+RNS.Identity.recall_app_data = lambda b: None
+RNS.prettyhexrep = lambda b, delimit=False: "<"+b.hex()+">"
+
+_state = {"hops": 999}
+RNS.Transport.hops_to = lambda b: _state["hops"]
+
+cases = json.load(sys.stdin)
+out=[]
+for c in cases:
+    _state["hops"] = c["hops"] if c["hops"] is not None else 999
+    app = App(c["display_name"], c["stamp_cost"])
+    s = types.SimpleNamespace()
+    s.source_hash = c["source_hash"]
+    s.app = app
+    s.peer_info_widget = PIW()
+    C.ConversationWidget._update_peer_info(s)
+    out.append(s.peer_info_widget.original_widget.t)
+json.dump(out, sys.stdout)
+`
+
+	var want []string
+	runPythonNomadnet(t, cases, script, &want)
+
+	for i, c := range cases {
+		t.Run(c.Name, func(t *testing.T) {
 			t.Parallel()
-			got := tt.cw.peerInfoBar.GetText(false)
-			if got != tt.want {
-				t.Errorf("peerInfo = %q, want %q", got, tt.want)
+			cw := NewConversationWidget(newTestApp(), c.SourceHash)
+			if c.DisplayName != nil {
+				cw.DisplayName = *c.DisplayName
+			}
+			cw.StampCost = c.StampCost
+			cw.Hops = c.Hops
+			cw.updatePeerInfo()
+			got := cw.peerInfoBar.GetText(false)
+			if got != want[i] {
+				t.Errorf("peerInfo = %q, want %q (Python)", got, want[i])
 			}
 		})
 	}

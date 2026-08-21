@@ -23,13 +23,13 @@ import (
 // computes at view time (Network.py:76-78,96-100,138-144): the trust level +
 // its palette style, the simplest display string, and (for nodes) the operator
 // display string. The wiring layer resolves these from the app directory; the
-// operator string needs RNS identity recall (Phase 5) and is "Unknown" until
+// operator string needs RNS identity recall and is "Unknown" until
 // then.
 type AnnounceInfoData struct {
 	DisplayStr string // directory.simplest_display_str(source_hash)
 	TrustStr   string // "Untrusted" / "Unknown" / "Trusted" / "Warning"
 	TrustStyle string // palette key: list_untrusted/list_unknown/list_trusted/list_warning
-	OpStr      string // node operator display (Phase 5: "Unknown")
+	OpStr      string // node operator display (stub: "Unknown")
 }
 
 // trustPaletteHex maps a trust palette key to the hex color tview color tags

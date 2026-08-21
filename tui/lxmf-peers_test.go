@@ -109,7 +109,7 @@ func TestLXMFPeersNoContentLayout(t *testing.T) {
 }
 
 // TestLXMFPeersSetPeersEmpty keeps the no-content branch when SetPeers is given
-// an empty slice (Phase 5 will call this with real peers).
+// an empty slice (real peers are passed once the LXMF router is wired in).
 func TestLXMFPeersSetPeersEmpty(t *testing.T) {
 	t.Parallel()
 

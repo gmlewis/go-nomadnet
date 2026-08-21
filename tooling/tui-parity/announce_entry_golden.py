@@ -139,21 +139,22 @@ TODAY = _fixed_now - 3600       # same day, 21:13:20
 OTHERDAY = _fixed_now - 7*86400 # 2023-11-07, date format
 
 cases = [
-    {"name":"node_trusted_today",        "ts":TODAY,    "name":b"Alice",         "atype":"node",  "trust":DirectoryEntry.TRUSTED},
-    {"name":"peer_untrusted_today",      "ts":TODAY,    "name":b"Bob",           "atype":"peer",  "trust":DirectoryEntry.UNTRUSTED},
-    {"name":"pn_unknown_today",          "ts":TODAY,    "name":b"PN-1",          "atype":"pn",    "trust":DirectoryEntry.UNKNOWN},
-    {"name":"node_warning_otherday",     "ts":OTHERDAY, "name":b"Carol",         "atype":"node",  "trust":DirectoryEntry.WARNING},
-    {"name":"long_name_truncate",        "ts":TODAY,    "name":b"A"+b"x"*40,     "atype":"node",  "trust":DirectoryEntry.TRUSTED},
-    {"name":"show_destination_hexrep",   "ts":TODAY,    "name":b"Alice",         "atype":"node",  "trust":DirectoryEntry.TRUSTED, "show_dest":True},
-    {"name":"sanitize_on",               "ts":TODAY,    "name":b"Hello > world", "atype":"node",  "trust":DirectoryEntry.TRUSTED, "sanitize":True},
-    {"name":"sanitize_off_strip_mods",   "ts":TODAY,    "name":b"Hello > world", "atype":"node",  "trust":DirectoryEntry.TRUSTED, "sanitize":False},
-    {"name":"empty_name_prettyhex",      "ts":TODAY,    "name":b"",              "atype":"node",  "trust":DirectoryEntry.TRUSTED},
+    {"case":"node_trusted_today",        "ts":TODAY,    "name":b"Alice",         "atype":"node",  "trust":DirectoryEntry.TRUSTED},
+    {"case":"peer_untrusted_today",      "ts":TODAY,    "name":b"Bob",           "atype":"peer",  "trust":DirectoryEntry.UNTRUSTED},
+    {"case":"pn_unknown_today",          "ts":TODAY,    "name":b"PN-1",          "atype":"pn",    "trust":DirectoryEntry.UNKNOWN},
+    {"case":"node_warning_otherday",     "ts":OTHERDAY, "name":b"Carol",         "atype":"node",  "trust":DirectoryEntry.WARNING},
+    {"case":"long_name_truncate",        "ts":TODAY,    "name":b"A"+b"x"*40,     "atype":"node",  "trust":DirectoryEntry.TRUSTED},
+    {"case":"show_destination_hexrep",   "ts":TODAY,    "name":b"Alice",         "atype":"node",  "trust":DirectoryEntry.TRUSTED, "show_dest":True},
+    {"case":"sanitize_on",               "ts":TODAY,    "name":b"Hello > world", "atype":"node",  "trust":DirectoryEntry.TRUSTED, "sanitize":True},
+    {"case":"sanitize_off_strip_mods",   "ts":TODAY,    "name":b"Hello > world", "atype":"node",  "trust":DirectoryEntry.TRUSTED, "sanitize":False},
+    {"case":"empty_name_prettyhex",      "ts":TODAY,    "name":b"",              "atype":"node",  "trust":DirectoryEntry.TRUSTED},
 ]
 
 out=[]
 for c in cases:
     r = capture(c["ts"], c["name"], c["atype"], trust=c.get("trust",DirectoryEntry.TRUSTED),
                 show_dest=c.get("show_dest",False), sanitize=c.get("sanitize",False))
-    r["name"]=c["name"].decode("utf-8","replace"); r["input_name"]=c["name"].decode("utf-8","replace")
+    r["case"]=c["case"]
+    r["input_name"]=c["name"].decode("utf-8","replace")
     out.append(r)
 print(json.dumps(out, ensure_ascii=False, indent=2))

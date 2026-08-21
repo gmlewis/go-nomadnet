@@ -67,11 +67,11 @@ func TestBodyPagesDispatchesOnlyToVisible(t *testing.T) {
 	bp.AddPage("network", hidden, true, false)
 	bp.AddPage("guide", visible, true, false)
 
-	// Phase 3: focus the network page's widget (it becomes the focused leaf).
+	// Focus the network page's widget (it becomes the focused leaf).
 	bp.SwitchToPage("network")
 	hidden.focused = true
 
-	// Phase 4: switch to the guide page WITHOUT blurring the network page's
+	// Switch to the guide page WITHOUT blurring the network page's
 	// widget — this is exactly what MainDisplay.selectMenuLocked does
 	// (SwitchToPage only re-focuses when Pages itself HasFocus, and on a menu
 	// Enter focus stays in the menu, not the body). The hidden page retains

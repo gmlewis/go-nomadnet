@@ -234,6 +234,80 @@ test or a matching `parity.sh` summary):
 
 ---
 
+## Phase P — Parity-test remediation: replace fake "parity" tests with live python3 cross-checks
+
+> **Why this phase exists.** An audit (2026-08-19) found tests across the
+> non-tui packages that *claim* Go/Python parity in their name/comments but
+> never execute Python — they compare Go to a committed golden file
+> (`testdata/*_parity.json` / `*.bin` / `*.msgpack`) or to hand-typed literals
+> labeled "Python". They cannot catch a real divergence. (The `tui/` package was
+> already converted to live cross-impl via `runPythonNomadnet` in
+> `tui/parity_live_test.go` — those are the template and are NOT re-flagged here.)
+>
+> **What counts as a REAL cross-impl test (the template every task must match):**
+> the Go test owns the input battery; it execs the real Python nomadnet reference
+> via `testutils.RunPythonNomadnet` / `testutils.RunPythonNomadnetRaw` (gated on
+> `testutils.SkipIfNoPythonNomadnet` — SKIP cleanly when Python/nomadnet absent)
+> and diffs Go output against **freshly produced** Python output — not a
+> committed literal. Reference conversion: `nomadnet/util/python-parity_test.go`.
+>
+> **Triage policy:** FIX the byte/on-disk/logic tests by wiring them live (and
+> FIX any Go/Python mismatch in production code — TDD, keep the failing test,
+> fix production, re-run until green); DELETE pure tautologies that assert
+> nothing; for Go-vs-Go tests that assert real Go behavior with no false Python
+> claim, leave as-is. Remove each `[ ]` when green.
+
+**Phase P COMPLETE (2026-08-20).** Every fake-"parity" test in the non-tui
+packages was converted to a live python3 cross-implementation test (Go test
+owns the inputs, execs the real Python nomadnet reference via
+`testutils.RunPythonNomadnet`/`RunPythonNomadnetRaw`, gated on
+`SkipIfNoPythonNomadnet`, diffs FRESH Python output) or, for pure Go-vs-Go
+tautologies that asserted nothing, deleted. All committed golden files
+(`testdata/*_parity.json`, `*.bin`, `*.msgpack`) used by these tests were
+removed. Every converted package is green under `-race -tags integration`.
+
+Conversions completed this phase:
+- `nomadnet/util/python-parity_test.go` — 6 tests live; `util_parity.json`
+  golden deleted.
+- `nomadnet/micron/slugify-parity_test.go` + `partial-parity_test.go` — live;
+  `slugify_parity.json` golden deleted. **REAL BUG FIXED** in `micron.go`
+  `parsePartial` pid extraction (case-3 path): Python `parse_partial` splits on
+  `=` and takes segment[1]; Go was taking `f[4:]`. Changed to split-on-`=`.
+- `nomadnet/asciichart/ascii-parity_test.go::TestPlotPythonParity` — live via
+  `nomadnet.vendor.AsciiChart.plot`; `ascii_parity.json` golden deleted.
+- `nomadnet/storage/paths-parity_test.go::TestPathsPythonParity` — live via
+  `NomadNetworkApp` path construction; `paths_parity.json` golden deleted.
+- `nomadnet/config/applyconfig-parity_test.go` + `config/config-parity_test.go`
+  + `nomadnet/app/applyconfig-parity_test.go` — live via mock-self +
+  `types.SimpleNamespace` binding of the real Python `applyConfig`;
+  `applyconfig_parity.json` (x2) + `default_parsed.json` goldens deleted.
+- `nomadnet/peersettings/peersettings-byteparity_test.go::TestSavePythonByteParity`
+  — live `msgpack.packb` byte diff; `peersettings_*.bin` goldens deleted.
+- `nomadnet/peersettings/peersettings-parity_test.go::TestLoadPythonCompat` —
+  rewritten live (Python `packb`→bytes + `unpackb`→expected, fresh each run);
+  `peersettings_{filled,defaults}.bin/.json` goldens deleted.
+- `nomadnet/directory/persist-byteparity_test.go::TestSaveToDiskPythonByteParity`
+  — live `Directory.save_to_disk` bytes; `py-directory-save.msgpack` deleted.
+- `nomadnet/conversation/index-byteparity_test.go::TestWriteIndexPythonByteParity`
+  — live `Conversation.write_index` bytes; `py-index-byteparity.msgpack` deleted.
+- `nomadnet/conversation/attachments-manifest-byteparity_test.go`
+  `TestExtractAttachmentsManifestByteParity` — live
+  `extract_attachments_from_lxm` manifest bytes; `py-attachment-manifest.msgpack`
+  deleted.
+- `nomadnet/rrc/cbor-parity_test.go::TestIntegrationProtocolConstantsMatch` —
+  now execs `nomadnet.RRC` fresh; hardcoded "Python values" map removed.
+- `cmd/gonomadnet/main_test.go::TestDefaultConfigDir` — rewritten live against
+  the Python default configdir; `TestFlagParsing` (no-op) deleted;
+  `TestResolveConfigDirOrderPythonParity` added (drives all 4 resolution
+  branches live). **REAL BUG FIXED**: `cmd/gonomadnet/main.go` only ever used
+  `~/.nomadnetwork`; now mirrors Python's 3-way order (`/etc/nomadnetwork` →
+  `~/.config/nomadnetwork` → `~/.nomadnetwork`) via new `configdir.go`.
+- `nomadnet/app/applyconfig-fields_test.go::TestApplyConfigWiresFields` —
+  Go-vs-Go wiring tautology, deleted (live applyconfig parity covers fields
+  end-to-end).
+
+---
+
 ## tmux-suite run-diff parity (nomadnet vs gonomadnet, 2026-08-05)
 
 > Source: full `tmux-test-suite` run against the Python source-of-truth

@@ -22,16 +22,29 @@ import (
 	"time"
 )
 
-// TestFormatAnnounceStreamRowPythonParity checks the announce-stream row text
-// against golden values captured from the live Python nomadnet
-// AnnounceStreamEntry (Network.py:259-390) via tooling/tui-parity-style capture.
-// Fixed now = 2023-11-14 22:13:20 UTC; same-day announce uses %H:%M:%S, an
-// announce 7 days ago uses %Y-%m-%d. Source hash is bytes(0..31) so the hex
-// form is "000102…1f".
+// TestFormatAnnounceStreamRowPythonParity is a LIVE cross-implementation
+// check: it runs the stubbed-urwid golden capture script tooling/tui-parity/
+// announce_entry_golden.py fresh on every run. That script stubs gi/urwid
+// (GLib is broken on this host), instantiates the real Python nomadnet
+// AnnounceStreamEntry (Network.py:259-390) with a fake directory at a fixed
+// now (unix 1700000000), and prints the row text + style for each named case.
+// The Go test reproduces each case through FormatAnnounceStreamRow and
+// compares the row text to the freshly captured Python value, matched by case
+// name.
+//
+// Both sides render the timestamp in the machine's LOCAL zone — Go via
+// time.Unix(ts,0) (matching Python's datetime.fromtimestamp) — so the
+// same-day %H:%M:%S vs other-day %Y-%m-%d choice and the rendered value are
+// zone-consistent across implementations. now=2023-11-14 (local); same-day
+// announce = 1h prior; other-day announce = 7 days prior (-> "2023-11-07",
+// whose date is zone-stable). Source hash is bytes(0..31) so the hex form is
+// "000102…1f". The test SKIPs, not fails, when the Python reference is not
+// importable or the script file is not accessible.
 func TestFormatAnnounceStreamRowPythonParity(t *testing.T) {
 	t.Parallel()
 
-	now := time.Unix(1700000000, 0).UTC()
+	// Local zone, matching Python's datetime.fromtimestamp — no forced UTC.
+	now := time.Unix(1700000000, 0)
 	today := now.Add(-time.Hour)
 	otherDay := now.Add(-7 * 24 * time.Hour)
 	srcHex := hex.EncodeToString(bytesRange(32)) // "000102…1f"
@@ -44,52 +57,39 @@ func TestFormatAnnounceStreamRowPythonParity(t *testing.T) {
 		ann             AnnounceEntry
 		showDestination bool
 		sanitize        bool
-		want            string
 	}{
-		{
-			"node_trusted_today", AnnounceEntry{Timestamp: today, SourceHash: srcHex, Type: "node", DisplayName: "Alice"}, false, false,
-			"21:13:20 Ⓝ  Alice",
-		},
-		{
-			"peer_untrusted_today", AnnounceEntry{Timestamp: today, SourceHash: srcHex, Type: "peer", DisplayName: "Bob"}, false, false,
-			"21:13:20 Ⓟ  Bob",
-		},
-		{
-			"pn_unknown_today", AnnounceEntry{Timestamp: today, SourceHash: srcHex, Type: "pn", DisplayName: "PN-1"}, false, false,
-			"21:13:20 ↑ PN-1",
-		},
-		{
-			"node_warning_otherday", AnnounceEntry{Timestamp: otherDay, SourceHash: srcHex, Type: "node", DisplayName: "Carol"}, false, false,
-			"2023-11-07 Ⓝ  Carol",
-		},
-		{
-			"long_name_truncate", AnnounceEntry{Timestamp: today, SourceHash: srcHex, Type: "node", DisplayName: longName}, false, false,
-			"21:13:20 Ⓝ  " + truncateRunes(longName, 34),
-		},
-		{
-			"show_destination_hexrep", AnnounceEntry{Timestamp: today, SourceHash: srcHex, Type: "node", DisplayName: "Alice"}, true, false,
-			"21:13:20 Ⓝ  " + truncateRunes(srcHex, 34),
-		},
-		{
-			"sanitize_on", AnnounceEntry{Timestamp: today, SourceHash: srcHex, Type: "node", DisplayName: "Hello > world"}, false, true,
-			"21:13:20 Ⓝ  Hello world",
-		},
-		{
-			"sanitize_off_strip_mods", AnnounceEntry{Timestamp: today, SourceHash: srcHex, Type: "node", DisplayName: "Hello > world"}, false, false,
-			"21:13:20 Ⓝ  Hello > world",
-		},
-		{
-			"empty_name_prettyhex", AnnounceEntry{Timestamp: today, SourceHash: srcHex, Type: "node", DisplayName: ""}, false, false,
-			"21:13:20 Ⓝ  " + truncateRunes("<"+srcHex+">", 34),
-		},
+		{"node_trusted_today", AnnounceEntry{Timestamp: today, SourceHash: srcHex, Type: "node", DisplayName: "Alice"}, false, false},
+		{"peer_untrusted_today", AnnounceEntry{Timestamp: today, SourceHash: srcHex, Type: "peer", DisplayName: "Bob"}, false, false},
+		{"pn_unknown_today", AnnounceEntry{Timestamp: today, SourceHash: srcHex, Type: "pn", DisplayName: "PN-1"}, false, false},
+		{"node_warning_otherday", AnnounceEntry{Timestamp: otherDay, SourceHash: srcHex, Type: "node", DisplayName: "Carol"}, false, false},
+		{"long_name_truncate", AnnounceEntry{Timestamp: today, SourceHash: srcHex, Type: "node", DisplayName: longName}, false, false},
+		{"show_destination_hexrep", AnnounceEntry{Timestamp: today, SourceHash: srcHex, Type: "node", DisplayName: "Alice"}, true, false},
+		{"sanitize_on", AnnounceEntry{Timestamp: today, SourceHash: srcHex, Type: "node", DisplayName: "Hello > world"}, false, true},
+		{"sanitize_off_strip_mods", AnnounceEntry{Timestamp: today, SourceHash: srcHex, Type: "node", DisplayName: "Hello > world"}, false, false},
+		{"empty_name_prettyhex", AnnounceEntry{Timestamp: today, SourceHash: srcHex, Type: "node", DisplayName: ""}, false, false},
+	}
+
+	type goldenEntry struct {
+		Case string `json:"case"`
+		Row  string `json:"row"`
+	}
+	var entries []goldenEntry
+	runPythonNomadnetScript(t, "../tooling/tui-parity/announce_entry_golden.py", &entries)
+	want := make(map[string]string, len(entries))
+	for _, e := range entries {
+		want[e.Case] = e.Row
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
+			w, ok := want[tc.name]
+			if !ok {
+				t.Fatalf("no golden entry named %q in script output", tc.name)
+			}
 			got := FormatAnnounceStreamRow(tc.ann, now, tc.showDestination, tc.sanitize, g)
-			if got != tc.want {
-				t.Errorf("row = %q\nwant  %q", got, tc.want)
+			if got != w {
+				t.Errorf("row = %q\nwant  %q (Python)", got, w)
 			}
 		})
 	}

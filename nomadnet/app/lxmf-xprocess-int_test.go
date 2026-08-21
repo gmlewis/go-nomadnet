@@ -110,7 +110,7 @@ print("MSG_SENT=1", flush=True)
 time.sleep(3)
 `
 
-// TestIntegrationLXMFReceiveFromPython verifies the Phase 6 cross-process
+// TestIntegrationLXMFReceiveFromPython verifies the cross-process
 // parity goal: a Python sender sends an LXMF message over a real TCP RNS
 // transport to the Go app; the Go app ingests it into a conversation whose
 // on-disk layout matches Python's — conversations/<source_hash_hex>/

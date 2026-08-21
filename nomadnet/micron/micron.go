@@ -438,7 +438,13 @@ func parsePartial(line string) []*Node {
 		p.PartialFields = strings.Split(components[2], "|")
 		for _, f := range p.PartialFields {
 			if strings.HasPrefix(f, "pid=") {
-				p.PartialID = f[4:]
+				// Python: pcs = f.split("="); partial_id = pcs[1].
+				// split on every "=" and take the second element, so a
+				// value like "pid=a=b" yields "a" (not "a=b").
+				pcs := strings.Split(f, "=")
+				if len(pcs) >= 2 {
+					p.PartialID = pcs[1]
+				}
 			}
 		}
 	default:

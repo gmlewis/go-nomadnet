@@ -321,7 +321,7 @@ func fieldLookupInt(fields map[any]any, key int) (any, bool) {
 // attachment flow: App.SendConversation with attachment file paths reads each
 // file, builds the LXMF FIELD_FILE_ATTACHMENTS field ([[name, data], ...]),
 // and dispatches a message the receiver unpacks with those attachments intact.
-// This pins the send side of the "attachFile" TODO (Phase 1). The receive-side
+// This pins the send side of the "attachFile" TODO. The receive-side
 // extraction (ExtractAttachmentsFromLXM) is a separate, still-unwired gap.
 func TestIntegrationSendConversationWithAttachment(t *testing.T) {
 	appA, appB, cleanup := setupTwoNodeApps(t)
@@ -396,7 +396,7 @@ func TestIntegrationSendConversationWithAttachment(t *testing.T) {
 // per-message attachment directory (mirroring Python Conversation.ingest →
 // extract_attachments_from_lxm, Conversation.py:73-76). The extracted file
 // "file_0" must equal the original attachment bytes, and a msgpack manifest must
-// be written. This pins the receive side of the attachment TODO (Phase 1); the
+// be written. This pins the receive side of the attachment TODO; the
 // C-s save-focattachments path then copies these extracted files to downloads.
 func TestIntegrationAttachmentExtractionOnReceive(t *testing.T) {
 	appA, appB, cleanup := setupTwoNodeApps(t)
@@ -539,8 +539,8 @@ func TestIntegrationSaveConversationAttachments(t *testing.T) {
 // App.PaperMessage with the "SaveURI" action builds a paper LXMF message
 // addressed to the peer, writes a .txt file under downloads_path containing
 // the lxm:// URI, ingests the outbound message into the sender's conversation,
-// and returns the save path. This pins the app side of the paperMessage TODO
-// (Phase 1); the QR modes share the same paper_output path (unit-tested in
+// and returns the save path. This pins the app side of the paperMessage TODO;
+// the QR modes share the same paper_output path (unit-tested in
 // conversation/paper_test.go).
 func TestIntegrationPaperMessageSaveURI(t *testing.T) {
 	appA, appB, cleanup := setupTwoNodeApps(t)
@@ -590,8 +590,8 @@ func TestIntegrationPaperMessageSaveURI(t *testing.T) {
 // that URI via the router's granular IngestLXMURIOutcome, the message is
 // decrypted and delivered locally (IngestOutcomeLocalDelivery, the
 // signal_local_delivery equivalent), and the ingested message appears in B's
-// conversation with A. This pins the receive side of the ingestLXMURI TODO
-// (Phase 1): the URI is parsed, the message is created, and parity with
+// conversation with A. This pins the receive side of the ingestLXMURI TODO:
+// the URI is parsed, the message is created, and parity with
 // Python's ingest_lxm_uri local-delivery branch holds.
 func TestIntegrationIngestLXMURI(t *testing.T) {
 	appA, appB, cleanup := setupTwoNodeApps(t)

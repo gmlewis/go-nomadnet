@@ -207,7 +207,7 @@ func NewNetworkDisplay(app *App, announces []AnnounceEntry, nodes []NodeEntry) *
 	// Right pane: the "Remote Node" browser (Python self.browser.display_widget,
 	// Browser.py:486). Boot state is the disconnected view — a bordered "Remote
 	// Node" LineBox with a centered "Disconnected / ←  →" (browser_inactive
-	// #444). URL fetching / page rendering arrive in Phase 5 (the RNS link);
+	// #444). URL fetching / page rendering arrive with the RNS link;
 	// until then this matches Python's boot appearance. The pane carries its
 	// own border so the two panes render with separate borders and no outer box
 	// around the page.
@@ -227,8 +227,8 @@ func NewNetworkDisplay(app *App, announces []AnnounceEntry, nodes []NodeEntry) *
 
 	// LXMF Propagation Peers list (Python LXMFPeers, Network.py:1752). Built
 	// with no peered nodes (the no-content branch) until the wiring layer
-	// populates it via UpdateLXMFPeers in Phase 5 (the LXMF message router is
-	// not wired yet). C-p swaps it into the left-pane list slot.
+	// populates it via UpdateLXMFPeers once the LXMF message router is
+	// wired in. C-p swaps it into the left-pane list slot.
 	nd.lxmfPeers = NewLXMFPeersDisplay(app)
 	// Forward the wiring-layer ctrl-x/ctrl-r callbacks to the peers display.
 	// These are read live each keypress, so wiring can set them after NewNetworkDisplay.
@@ -320,7 +320,7 @@ func (nd *NetworkDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 	case tcell.KeyCtrlP:
 		// Python ctrl p: reinit_lxmf_peers() then show_peers()
 		// (Network.py:1608-1609). OnShowPeers lets the wiring layer refresh
-		// the peer set from the LXMF message router (Phase 5); showPeers
+		// the peer set from the LXMF message router; showPeers
 		// swaps the left-pane slot to the peers list regardless.
 		if nd.OnShowPeers != nil {
 			nd.OnShowPeers()
@@ -444,7 +444,7 @@ func trustStyleFromLevel(level string) string {
 // node hash (Python selected_node_info → KnownNodeInfo, Network.py:1697-1710,
 // triggered by Ctrl-E on the Saved Nodes list). The directory-backed fields
 // resolve at view time via OnResolveKnownNodeInfo; RNS-dependent fields (operator
-// string, hop distance, PN address) are stubs until Phase 5. Esc returns to the
+// string, hop distance, PN address) are stubs until the RNS wiring is in. Esc returns to the
 // saved-nodes list.
 func (nd *NetworkDisplay) ShowKnownNodeInfo(nodeHash string) {
 	data := KnownNodeInfoData{
@@ -888,7 +888,7 @@ func (nd *NetworkDisplay) showPeers() {
 }
 
 // UpdateLXMFPeers repopulates the LXMF Propagation Peers list (Python
-// reinit_lxmf_peers, Network.py:1717). Called by the wiring layer in Phase 5
+// reinit_lxmf_peers, Network.py:1717). Called by the wiring layer
 // once the LXMF message router's peer set is known; until then the no-content
 // branch renders.
 func (nd *NetworkDisplay) UpdateLXMFPeers(peers []LXMFPeerEntry) {

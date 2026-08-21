@@ -18,12 +18,15 @@
 package rrc
 
 import (
+	"bytes"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	nnutils "github.com/gmlewis/go-nomadnet/testutils"
 	"github.com/gmlewis/go-reticulum/testutils"
 )
 
@@ -210,30 +213,46 @@ print("OK")
 }
 
 func TestIntegrationProtocolConstantsMatch(t *testing.T) {
-	// Verify Go protocol constants match Python values.
-	// This ensures the Go and Python implementations use the same wire format.
-	expected := map[string]int{
-		"RRCVersion":   1,
-		"TypeHello":    1,
-		"TypeWelcome":  2,
-		"TypeJoin":     10,
-		"TypeJoined":   11,
-		"TypePart":     12,
-		"TypeParted":   13,
-		"TypeMsg":      20,
-		"TypeNotice":   21,
-		"TypeAction":   22,
-		"TypePing":     30,
-		"TypePong":     31,
-		"TypeError":    40,
-		"KeyVersion":   0,
-		"KeyType":      1,
-		"KeyMessageID": 2,
-		"KeyTimestamp": 3,
-		"KeySource":    4,
-		"KeyRoom":      5,
-		"KeyBody":      6,
-		"KeyNick":      7,
+	// Verify Go protocol constants match the FRESH Python values by execing the
+	// real nomadnet.RRC reference. This ensures the Go and Python implementations
+	// use the same wire format, with the expected values derived live on every
+	// run rather than from a hardcoded literal. SKIPs (not fails) when the Python
+	// nomadnet reference is not importable.
+	nnutils.SkipIfNoPythonNomadnet(t)
+
+	const script = `
+import json
+import nomadnet.RRC as R
+# Map each Go constant name to the Python attribute it must match.
+mapping = {
+    "RRCVersion":   "RRC_VERSION",
+    "TypeHello":    "T_HELLO",  "TypeWelcome": "T_WELCOME",
+    "TypeJoin":     "T_JOIN",   "TypeJoined":  "T_JOINED",
+    "TypePart":     "T_PART",   "TypeParted":  "T_PARTED",
+    "TypeMsg":      "T_MSG",    "TypeNotice":  "T_NOTICE",
+    "TypeAction":   "T_ACTION",
+    "TypePing":     "T_PING",   "TypePong":    "T_PONG",
+    "TypeError":    "T_ERROR",
+    "KeyVersion":   "K_V",  "KeyType":      "K_T",
+    "KeyMessageID": "K_ID", "KeyTimestamp": "K_TS",
+    "KeySource":    "K_SRC","KeyRoom":      "K_ROOM",
+    "KeyBody":      "K_BODY","KeyNick":     "K_NICK",
+}
+out = {}
+for goname, pynam in mapping.items():
+    out[goname] = getattr(R, pynam, None)
+print(json.dumps(out))
+`
+	cmd := exec.Command(nnutils.PythonNomadnetExe(), "-c", script)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	stdout, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("python nomadnet.RRC constants failed: %v\nstderr:\n%s", err, stderr.String())
+	}
+	var want map[string]int
+	if err := json.Unmarshal(stdout, &want); err != nil {
+		t.Fatalf("decode python RRC constants: %v\nraw:\n%s", err, stdout)
 	}
 
 	actual := map[string]int{
@@ -260,9 +279,9 @@ func TestIntegrationProtocolConstantsMatch(t *testing.T) {
 		"KeyNick":      KeyNick,
 	}
 
-	for name, want := range expected {
-		if got := actual[name]; got != want {
-			t.Errorf("%v = %v, want %v", name, got, want)
+	for name, w := range want {
+		if got := actual[name]; got != w {
+			t.Errorf("%v = %v, want %v (fresh from Python)", name, got, w)
 		}
 	}
 }

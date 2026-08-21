@@ -16,55 +16,52 @@
 package tui
 
 import (
+	"strconv"
 	"testing"
 )
 
-// TestPrettysizePythonParity verifies Prettysize against RNS.prettysize
-// (RNS/__init__.py:191), the base-1000 byte-size formatter used by NodeStorage
-// stats and elsewhere. Unlike FormatBytes/FormatSize (base-1024, matching
-// NomadNet's format_bytes), RNS.prettysize divides by 1000 and prints 2 decimal
-// places for K/M/G/... and 0 decimals for plain bytes. Expected values were
-// captured from /tmp/prettysize_ref.py.
+// TestPrettysizePythonParity is a LIVE cross-implementation check: it execs
+// Python's real RNS.prettysize (RNS/__init__.py), the base-1000 byte-size
+// formatter used by NodeStorage stats and elsewhere, and derives the expected
+// string freshly on every run. Unlike FormatBytes/FormatSize (base-1024,
+// matching NomadNet's format_bytes), RNS.prettysize divides by 1000 and prints
+// 2 decimal places for K/M/G/... and 0 decimals for plain bytes. Go owns the
+// input battery; Python owns the reference behavior. The test SKIPs, not
+// fails, when the Python reference is not importable.
 func TestPrettysizePythonParity(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name string
-		n    float64
-		want string
-	}{
-		{"zero", 0, "0 B"},
-		{"one", 1, "1 B"},
-		{"500 bytes", 500, "500 B"},
-		{"999 bytes", 999, "999 B"},
-		{"1000 -> 1.00 KB", 1000, "1.00 KB"},
-		{"1024 -> 1.02 KB", 1024, "1.02 KB"},
-		{"1500 -> 1.50 KB", 1500, "1.50 KB"},
-		{"999999 -> 1000.00 KB", 999999, "1000.00 KB"},
-		{"1000000 -> 1.00 MB", 1000000, "1.00 MB"},
-		{"1500000 -> 1.50 MB", 1500000, "1.50 MB"},
-		{"1e9 -> 1.00 GB", 1000000000, "1.00 GB"},
-		{"1073741824 -> 1.07 GB", 1073741824, "1.07 GB"},
-		{"2147483648 -> 2.15 GB", 2147483648, "2.15 GB"},
-		{"1099511627776 -> 1.10 TB", 1099511627776, "1.10 TB"},
-		{"500000 KB", 500000, "500.00 KB"},
-		{"500000000 MB", 500000000, "500.00 MB"},
-		{"500000000000 GB", 500000000000, "500.00 GB"},
-		{"225 bytes", 225, "225 B"},
-		{"3750 -> 3.75 KB", 3750, "3.75 KB"},
-		{"10000 -> 10.00 KB", 10000, "10.00 KB"},
-		{"negative bytes", -500, "-500 B"},
-		{"negative KB", -1500, "-1.50 KB"},
-		{"1234567890 -> 1.23 GB", 1234567890, "1.23 GB"},
+	nums := []float64{
+		0, 1, 500, 999, 1000, 1024, 1500, 999999, 1000000, 1500000,
+		1000000000, 1073741824, 2147483648, 1099511627776, 500000,
+		500000000, 500000000000, 225, 3750, 10000, -500, -1500, 1234567890,
+		// Boundary cases for the unit-stepping loop: values at and just past
+		// each 1000x threshold, plus very large values exceeding all listed
+		// units (exercises the final 'Y' fallback branch).
+		999.999999, 1000.000001, 999999999999999, 1e18, 1e21, 1e24, 1e27,
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	const script = `
+import sys, json
+import RNS
+nums = json.load(sys.stdin)
+json.dump([RNS.prettysize(n) for n in nums], sys.stdout)
+`
+
+	var want []string
+	runPythonNomadnet(t, nums, script, &want)
+
+	for i, n := range nums {
+		t.Run(prettysizeCaseName(n), func(t *testing.T) {
 			t.Parallel()
-			got := Prettysize(tt.n)
-			if got != tt.want {
-				t.Errorf("Prettysize(%v) = %q, want %q", tt.n, got, tt.want)
+			got := Prettysize(n)
+			if got != want[i] {
+				t.Errorf("Prettysize(%v) = %q, want %q (Python)", n, got, want[i])
 			}
 		})
 	}
+}
+
+func prettysizeCaseName(n float64) string {
+	return strconv.FormatFloat(n, 'f', -1, 64)
 }

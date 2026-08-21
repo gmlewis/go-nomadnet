@@ -106,12 +106,18 @@ func TestSelectableInterfaceItemByteFormatting(t *testing.T) {
 	}
 }
 
-// TestInterfaceItemRowTextPythonParity checks the five content rows of an
-// interface box against golden values captured from Python's
-// SelectableInterfaceItem (Interfaces.py:1125) rendered at width 60 (content
-// width 54). It verifies both the meaningful content (TrimRight) and that each
-// row is padded to the full content display width, matching urwid's
-// left-aligned fill — including the wide emoji icon (🖧, display width 2).
+// TestInterfaceItemRowTextPythonParity is a LIVE cross-implementation check:
+// it stubs only gi (GLib is broken on this host) but uses the REAL urwid
+// (4.0.3, whose text render engine does not need GLib), instantiates Python's
+// real SelectableInterfaceItem (Interfaces.py:1125) with the real
+// _get_interface_icon, calls its render at width 60 (which sets the focus
+// selection glyph ●/○ and title style), then renders the inner Pile at the
+// 54-wide content width and captures the five content rows freshly on every
+// run. Go's InterfaceItemRowText is compared to those rows exactly (full
+// padded strings, display width 54), which subsumes the content, the
+// left-aligned padding, the divider row, and the wide emoji icon (🖧, display
+// width 2). The test SKIPs, not fails, when the Python reference is not
+// importable.
 func TestInterfaceItemRowTextPythonParity(t *testing.T) {
 	t.Parallel()
 
@@ -122,11 +128,10 @@ func TestInterfaceItemRowTextPythonParity(t *testing.T) {
 	tcpIcon := GetInterfaceIcon(GlyphUnicode, "TCPClientInterface")
 
 	tests := []struct {
-		name string
-		item *SelectableInterfaceItem
-		// wantContent[i] is the meaningful (right-trimmed) content of row i;
-		// row index 3 is the divider (checked separately).
-		wantContent []string
+		name      string
+		item      *SelectableInterfaceItem
+		focused   bool
+		ifaceType string
 	}{
 		{
 			"rnode connected focused",
@@ -135,13 +140,7 @@ func TestInterfaceItemRowTextPythonParity(t *testing.T) {
 				s.SetFocused(true)
 				return s
 			}(),
-			[]string{
-				"●   ᚱ  RNode Test",
-				"Status:   Enabled    | Connected",
-				"Type:     RNodeInterface",
-				"",
-				"TX:       1.2 MB         RX:       89 bytes",
-			},
+			true, "RNodeInterface",
 		},
 		{
 			"tcpclient disabled unfocused",
@@ -149,36 +148,92 @@ func TestInterfaceItemRowTextPythonParity(t *testing.T) {
 				s := NewSelectableInterfaceItem("Michmesh", "TCPClientInterface", false, false, 0, 0, tcpIcon)
 				return s
 			}(),
-			[]string{
-				"○   🖧  Michmesh",
-				"Status:   Disabled   | Disconnected",
-				"Type:     TCPClientInterface",
-				"",
-				"TX:       0 bytes        RX:       0 bytes",
-			},
+			false, "TCPClientInterface",
 		},
 	}
 
-	for _, tt := range tests {
+	type ifaceInput struct {
+		Name      string `json:"name"`
+		Connected bool   `json:"connected"`
+		Enabled   bool   `json:"enabled"`
+		IfaceType string `json:"iface_type"`
+		TX        int64  `json:"tx"`
+		RX        int64  `json:"rx"`
+		Focus     bool   `json:"focus"`
+	}
+	inputs := []ifaceInput{
+		{Name: "RNode Test", Connected: true, Enabled: true, IfaceType: "RNodeInterface", TX: 1234567, RX: 89, Focus: true},
+		{Name: "Michmesh", Connected: false, Enabled: false, IfaceType: "TCPClientInterface", TX: 0, RX: 0, Focus: false},
+	}
+
+	const script = `
+import sys, json, types
+gi=types.ModuleType("gi"); girepo=types.ModuleType("gi.repository")
+glib=types.ModuleType("gi.repository.GLib")
+for n in ["MainLoop","MainContext"]: setattr(glib,n,object)
+glib.PRIORITY_HIGH=glib.PRIORITY_DEFAULT=0
+glib.timeout_add_seconds=glib.timeout_add=glib.idle_add=glib.source_remove=lambda *a,**k:0
+glib.IOCondition=object; glib.IO_IN=1
+gio=types.ModuleType("gi.repository.Gio")
+for n in ["UnixInputStream","Socket"]: setattr(gio,n,object)
+girepo.GLib=glib; girepo.Gio=gio; gi.repository=girepo
+gi.require_version=lambda *a,**k:None
+sys.modules["gi"]=gi; sys.modules["gi.repository"]=girepo
+sys.modules["gi.repository.GLib"]=glib; sys.modules["gi.repository.Gio"]=gio
+
+import urwid
+from nomadnet.ui import TextUI as T
+from nomadnet.ui.textui import Interfaces as I
+
+def glyph_dict(gs):
+    g={}; idx=T.GLYPHSETS[gs]
+    for tup in T.GLYPHS: g[tup[0]]=tup[idx]
+    return g
+G=glyph_dict("unicode")
+class Parent:
+    def __init__(self): self.g=G; self.glyphset="unicode"
+    def switch_to_show_interface(self, n): pass
+
+cases=json.load(sys.stdin)
+out=[]
+for c in cases:
+    p=Parent()
+    icon=I._get_interface_icon("unicode", c["iface_type"])
+    item=I.SelectableInterfaceItem(p, c["name"], c["connected"], c["enabled"], c["iface_type"], c["tx"], c["rx"], icon=icon)
+    item.render((60,), focus=c["focus"])  # set selection glyph + title style
+    pile=item._w.original_widget.original_widget  # LineBox -> Padding -> Pile
+    canv=pile.render((54,), focus=c["focus"])
+    out.append([r.decode("utf-8") if isinstance(r,bytes) else r for r in canv.text])
+json.dump(out, sys.stdout, ensure_ascii=False)
+`
+
+	var want [][]string
+	runPythonNomadnet(t, inputs, script, &want)
+
+	for i, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			rows := InterfaceItemRowText(tt.item, w)
 			if len(rows) != 5 {
 				t.Fatalf("got %v rows, want 5", len(rows))
 			}
-			for i, got := range rows {
+			wRows := want[i]
+			if len(wRows) != 5 {
+				t.Fatalf("python rows = %v, want 5", len(wRows))
+			}
+			for j, got := range rows {
 				if runewidth.StringWidth(got) != cw {
-					t.Errorf("row %v display width = %v, want %v (%q)", i, runewidth.StringWidth(got), cw, got)
+					t.Errorf("row %v display width = %v, want %v (%q)", j, runewidth.StringWidth(got), cw, got)
 				}
-				if i == 3 {
-					want := strings.Repeat("-", cw)
-					if got != want {
-						t.Errorf("divider row = %q, want %q", got, want)
+				if j == 3 {
+					divWant := strings.Repeat("-", cw)
+					if got != divWant {
+						t.Errorf("divider row = %q, want %q", got, divWant)
 					}
 					continue
 				}
-				if got := strings.TrimRight(rows[i], " "); got != tt.wantContent[i] {
-					t.Errorf("row %v content = %q, want %q", i, got, tt.wantContent[i])
+				if got != wRows[j] {
+					t.Errorf("row %v = %q\nwant       %q (Python)", j, got, wRows[j])
 				}
 			}
 		})

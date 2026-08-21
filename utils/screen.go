@@ -710,9 +710,9 @@ func (v *View) CursorOnAnnounceNodeRow() bool {
 }
 
 // HasAnnounceNode reports whether any announce-stream NODE row (a left-pane
-// row containing Ⓝ) is present on screen. Used by Phase 2 to wait for
-// announcing nodes to populate WITHOUT relying on the cursor (which flickers
-// because the stream re-sorts as new announces arrive).
+// row containing Ⓝ) is present on screen. Used to wait for announcing nodes to
+// populate WITHOUT relying on the cursor (which flickers because the stream
+// re-sorts as new announces arrive).
 func (v *View) HasAnnounceNode() bool {
 	if v.Screen == nil {
 		return false
@@ -792,7 +792,7 @@ func (v *View) AnnounceListRows() []ListRow {
 // makes the cursor reading flicker (the ilb cursor is sometimes hidden at
 // (0,0) even while the list has focus). Callers that must identify a node
 // robustly should key on the Announce Info address hash (content-based), not
-// on this row — see Phase 3.
+// on this row (see the node-connection step in the tmux harness).
 func (v *View) SelectedAnnounceRow() *ListRow {
 	if v.CursorOnAnnounceNodeRow() {
 		return &ListRow{Y: v.CursorY, Text: v.leftPaneText(v.CursorY), Selected: true}

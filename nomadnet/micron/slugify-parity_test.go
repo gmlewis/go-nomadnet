@@ -16,37 +16,100 @@
 package micron
 
 import (
-	"embed"
-	"encoding/json"
+	"sync"
 	"testing"
+
+	"github.com/gmlewis/go-nomadnet/testutils"
 )
 
-//go:embed testdata/slugify_parity.json
-var slugifyFS embed.FS
+// slugifyInputs is the input battery for the live cross-implementation parity
+// check of Slugify. The Go test owns these inputs; the expected outputs are
+// derived FRESH on every run by executing the real Python
+// nomadnet.ui.textui.MicronParser.slugify_micron reference (see
+// slugifyPythonOnce). The battery covers empty input, plain text, mixed case,
+// micron formatting directives (colors, links, headings, partials, alignment,
+// emphasis), unicode, whitespace, newlines, tabs, emoji, and punctuation — the
+// cases that exercise the format-stripping and category-based slugification Go
+// must replicate.
+var slugifyInputs = []string{
+	"",
+	"Hello World",
+	"This is a Test",
+	"Special!@#Chars",
+	"`!bold` text",
+	"Mixed CASE",
+	"`F00acolor text",
+	"`FT0000FF`BT123456",
+	"`:link_target",
+	"`<heading`>",
+	"`{image}",
+	"`}braceclose",
+	"`r`c`l aligned",
+	"café ünïcode",
+	"  leading  spaces  ",
+	"trailing---dashes---",
+	"ALLCAPS",
+	"snake_case_var",
+	"multiple   spaces",
+	"tab\there",
+	"newline\nhere",
+	"emoji😎text",
+	"100% pure",
+	"a/b\\c",
+	"kebab-case-already",
+	"`_underline`_",
+	"`=equals`=",
+	"MiXeD CaSe HeRe",
+	"`f`b",
+	"before`F000after",
+	"`*`!`_`=",
+	"`<heading`>",
+	"`{image_data}",
+	"`r`c`l",
+	"price $5",
+	"2+2=4",
+	"(bracket)",
+	"'quote'",
+	"你好",
+	"‮mirror‬",
+	"\uFEFFBOM",
+	" nbsp",
+	"mix😀😎text",
+}
+
+// slugifyParityScript imports the real nomadnet.ui.textui.MicronParser
+// reference and applies slugify_micron to each input supplied as JSON on stdin,
+// emitting the fresh outputs as JSON on stdout.
+const slugifyParityScript = `
+import sys, json
+import nomadnet.ui.textui.MicronParser as M
+inputs = json.loads(sys.stdin.read() or "[]")
+out = [M.slugify_micron(s) for s in inputs]
+print(json.dumps(out, ensure_ascii=False))
+`
+
+// slugifyPythonOnce caches the single live Python run that derives fresh
+// expected slugify outputs, so the test shares one python3 exec.
+var (
+	slugifyPythonOnce sync.Once
+	slugifyPythonOut  []any
+)
+
+func slugifyPython(t *testing.T) []any {
+	t.Helper()
+	slugifyPythonOnce.Do(func() {
+		testutils.RunPythonNomadnet(t, slugifyInputs, slugifyParityScript, &slugifyPythonOut)
+	})
+	return slugifyPythonOut
+}
 
 func TestSlugifyPythonParity(t *testing.T) {
 	t.Parallel()
-	data, err := slugifyFS.ReadFile("testdata/slugify_parity.json")
-	if err != nil {
-		t.Fatalf("read embed: %v", err)
-	}
-	var cases [][2]any
-	if err := json.Unmarshal(data, &cases); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	for i, c := range cases {
-		var in string
-		if c[0] != nil {
-			s, ok := c[0].(string)
-			if !ok {
-				t.Fatalf("case %v: input not string", i)
-			}
-			in = s
-		}
-		want, _ := c[1].(string)
-		got := Slugify(in)
-		if got != want {
-			t.Errorf("case %v (%q): got %q, want %q", i, in, got, want)
+	want := slugifyPython(t)
+	for i, in := range slugifyInputs {
+		wv, _ := want[i].(string)
+		if got := Slugify(in); got != wv {
+			t.Errorf("case %v (%q): got %q, want %q", i, in, got, wv)
 		}
 	}
 }
