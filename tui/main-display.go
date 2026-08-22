@@ -610,7 +610,10 @@ func (md *MainDisplay) handleClick(x int) {
 // Left/Right move the button highlight WITHOUT switching the body page;
 // Enter/Space activate the focused button (switch page, focus STAYS in the
 // menu — Python's show_* does not move focus_position);
-// Tab/Down drop to the body without switching.
+// Tab/Down drop to the body without switching the page, and FORWARD the key
+// to the body (Python MenuColumns.keypress sets focus_position="body" and
+// urwid.Frame re-dispatches the key to the body, so one Down also advances
+// the body list — e.g. the Interfaces list focuses item 0).
 //
 // Body region: Left/Right/Up/Tab are forwarded to the page (returned
 // unconsumed) so the page can do pane focus and Up-at-top→FocusMenu. The main
@@ -774,8 +777,18 @@ func (md *MainDisplay) handleMenuInput(event *tcell.EventKey) *tcell.EventKey {
 		md.selectMenu(md.activeMenu)
 		return nil
 	case tcell.KeyTab, tcell.KeyDown:
+		// Mirror Python's MenuColumns.keypress (Main.py:172-176): it sets
+		// frame.focus_position = "body" for Tab/Down and then returns
+		// super().keypress, leaving the key unhandled. urwid.Frame.keypress then
+		// re-dispatches that same key to the now-focused body, so a single Down
+		// both enters the body AND advances its list (e.g. the Interfaces list
+		// focuses item 0). FocusBody moves focus to the body; returning the
+		// event (instead of nil) lets tview forward it to the body's focused
+		// widget, matching that cascade. Consuming it (the old behavior) dropped
+		// the key, so the first Down from the menu did nothing visible and the
+		// user had to press Down a second time to move the cursor.
 		md.FocusBody()
-		return nil
+		return event
 	}
 
 	// Space arrives as a Rune, not a Key.

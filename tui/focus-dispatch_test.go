@@ -29,7 +29,10 @@ import (
 //   - In the menu region: Left/Right move focus between buttons WITHOUT
 //     switching the body page; Enter/Space activate (switch page, focus STAYS
 //     in the menu — Python's show_* does not move focus_position);
-//     Tab/Down drop to body without switching.
+//     Tab/Down drop to body without switching the page, and FORWARD the key
+//     to the body (Python MenuColumns.keypress sets focus_position="body"
+//     and urwid.Frame re-dispatches the key to the body, so a single Down
+//     also advances the body list — e.g. the Interfaces list focuses item 0).
 //   - In the body region: Left/Right/Up/Tab/Esc are forwarded to the page
 //     (returned unconsumed) so the page can do pane focus / Esc-to-dialog /
 //     Up-at-top→menu. The body page is unchanged by the main dispatcher.
@@ -126,10 +129,10 @@ func TestFocusDispatch(t *testing.T) {
 			"menu", last, "conversations", true, true},
 		{"menu/tab drops to body, no switch", "menu", 1, "conversations",
 			tcell.NewEventKey(tcell.KeyTab, 0, tcell.ModNone),
-			"body", 1, "conversations", true, false},
+			"body", 1, "conversations", false, false},
 		{"menu/down drops to body, no switch", "menu", 3, "conversations",
 			tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone),
-			"body", 3, "conversations", true, false},
+			"body", 3, "conversations", false, false},
 		{"menu/ctrl-q quits", "menu", 0, "conversations",
 			tcell.NewEventKey(tcell.KeyCtrlQ, 0, tcell.ModNone),
 			"menu", 0, "conversations", true, true},

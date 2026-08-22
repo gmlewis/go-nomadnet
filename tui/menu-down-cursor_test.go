@@ -63,6 +63,9 @@ func TestFocusBodyRemovesMenuCursor(t *testing.T) {
 // TestHandleMenuInputDownRemovesMenuCursor pins the full key path: a Down key
 // while the menu region is focused routes through handleMenuInput → FocusBody
 // and must leave the menu cursor DrawFunc cleared, not just flip focusRegion.
+// handleMenuInput returns the Down event (forwards it to the body) to mirror
+// Python's MenuColumns.keypress + urwid.Frame re-dispatch, so the assertion is
+// that the event is returned (non-nil), not consumed.
 func TestHandleMenuInputDownRemovesMenuCursor(t *testing.T) {
 	t.Parallel()
 
@@ -75,8 +78,8 @@ func TestHandleMenuInputDownRemovesMenuCursor(t *testing.T) {
 	}
 
 	got := md.handleMenuInput(tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone))
-	if got != nil {
-		t.Errorf("handleMenuInput(Down) = %v, want nil (consumed)", got)
+	if got == nil {
+		t.Errorf("handleMenuInput(Down) = nil, want the event forwarded to the body (Python MenuColumns.keypress re-dispatches Down to the body)")
 	}
 	if df := md.menuBar.GetDrawFunc(); df != nil {
 		t.Error("Down in menu left the cursor DrawFunc installed; want nil")
