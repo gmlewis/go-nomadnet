@@ -36,7 +36,8 @@ type SlotOverlay struct {
 	*tview.Box
 	bottom       tview.Primitive // slot content drawn underneath (show-through)
 	dialog       *DialogLineBox  // centered dialog drawn on top
-	widthPct     int             // 100 = RELATIVE_100; else relative N%
+	widthPct     int             // >0 = relative N% of slot width; 0 = use fixedWidth
+	fixedWidth   int             // used when widthPct == 0 (urwid Overlay width=N)
 	dialogHeight int             // PACK natural height of the dialog
 }
 
@@ -56,18 +57,39 @@ func NewSlotOverlay(bottom tview.Primitive, dialog *DialogLineBox, widthPct, dia
 	}
 }
 
+// NewSlotOverlayFixed builds an overlay placing dialog centered over bottom with
+// a fixed width (urwid Overlay width=N, align=CENTER, left=2/right=2 — capped to
+// the slot width minus left/right) and the dialog's natural (PACK) height. Used
+// by Conversations dialogs whose Python Overlay uses a fixed width (34/45/60).
+func NewSlotOverlayFixed(bottom tview.Primitive, dialog *DialogLineBox, fixedWidth, dialogHeight int) *SlotOverlay {
+	dialog.SetBorderInside(true)
+	return &SlotOverlay{
+		Box:          tview.NewBox(),
+		bottom:       bottom,
+		dialog:       dialog,
+		fixedWidth:   fixedWidth,
+		dialogHeight: dialogHeight,
+	}
+}
+
 // Dialog returns the overlaid DialogLineBox.
 func (o *SlotOverlay) Dialog() *DialogLineBox { return o.dialog }
 
 // SetRect lays out the bottom at the full slot rect and the dialog centered
 // within it (valign MIDDLE, align CENTER), sized to widthPct% of the slot width
-// (inset at least left/right=2), at its natural PACK height.
+// (or fixedWidth when widthPct == 0), inset at least left/right=2, at its
+// natural PACK height.
 func (o *SlotOverlay) SetRect(x, y, w, h int) {
 	o.Box.SetRect(x, y, w, h)
 	if o.bottom != nil {
 		o.bottom.SetRect(x, y, w, h)
 	}
-	dw := w * o.widthPct / 100
+	dw := 0
+	if o.widthPct > 0 {
+		dw = w * o.widthPct / 100
+	} else {
+		dw = o.fixedWidth
+	}
 	dw = min(dw, w-4) // urwid caps width at maxcol - left - right
 	dw = max(dw, 0)
 	dx := x + (w-dw)/2

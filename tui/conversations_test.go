@@ -1771,8 +1771,8 @@ func TestShowSyncDialogLiveProgress(t *testing.T) {
 	if got := cd.syncStatusText.GetText(true); got != "Idle (0%)" {
 		t.Errorf("idle status = %q, want %q", got, "Idle (0%)")
 	}
-	if cd.syncSyncBtn.GetLabel() != "Sync Now" {
-		t.Errorf("idle button = %q, want Sync Now", cd.syncSyncBtn.GetLabel())
+	if cd.syncSyncBtn.Label() != "Sync Now" {
+		t.Errorf("idle button = %q, want Sync Now", cd.syncSyncBtn.Label())
 	}
 
 	prog = 0.73
@@ -1781,8 +1781,8 @@ func TestShowSyncDialogLiveProgress(t *testing.T) {
 	if got := cd.syncStatusText.GetText(true); got != "Receiving messages (73%)" {
 		t.Errorf("active status = %q, want %q", got, "Receiving messages (73%)")
 	}
-	if cd.syncSyncBtn.GetLabel() != "Cancel Sync" {
-		t.Errorf("active button = %q, want Cancel Sync", cd.syncSyncBtn.GetLabel())
+	if cd.syncSyncBtn.Label() != "Cancel Sync" {
+		t.Errorf("active button = %q, want Cancel Sync", cd.syncSyncBtn.Label())
 	}
 
 	// A non-percent status omits the parenthetical.

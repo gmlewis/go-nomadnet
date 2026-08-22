@@ -77,6 +77,14 @@ type ChannelsDisplay struct {
 	input              *ReadlineEdit
 	channelListVisible bool
 	collapseJoinPart   bool
+	// pages wraps cd.content so a dialog can overlay the WHOLE channels display
+	// (Python's self.widget = WidgetPlaceholder(columns_widget) + _show_dialog_
+	// overlay setting original_widget = urwid.Overlay(dialog, columns_widget,
+	// width=(RELATIVE,60), min_width=40, height=PACK), Channels.py:2196-2210).
+	// "main" = cd.content; "dialog" = the SlotOverlay. dialogOverlay tracks the
+	// active overlay for closeDialog.
+	pages         *tview.Pages
+	dialogOverlay *SlotOverlay
 
 	// hubEntries is the last ComposeHubList output rendered by SetHubs, indexed
 	// 1:1 with the rooms list. selectEntry uses it to dispatch hub/room
@@ -195,9 +203,107 @@ func NewChannelsDisplay(app *App, rooms []ChannelInfo) *ChannelsDisplay {
 		AddItem(cd.leftPanel, cd.leftWidth, 0, true).
 		AddItem(cd.rightPane, 0, 1, false)
 	cd.content.SetInputCapture(cd.handleInput)
-	cd.widget = cd.content
+	cd.pages = tview.NewPages().AddPage("main", cd.content, true, true)
+	cd.widget = cd.pages
 
 	return cd
+}
+
+// showDialogOverlay overlays a DialogLineBox on the whole channels display
+// (Python's _show_dialog_overlay, Channels.py:2196-2210: urwid.Overlay(dialog,
+// columns_widget, align=CENTER, width=(RELATIVE,60), min_width=40,
+// valign=MIDDLE, height=PACK)). The display shows through around the 60%-width
+// dialog. Esc/confirm dismisses via closeDialog, restoring the display.
+// dialogHeight is the dialog's PACK height.
+func (cd *ChannelsDisplay) showDialogOverlay(dialog *DialogLineBox, dialogHeight int) {
+	if cd.dialogOverlay != nil {
+		cd.closeDialog()
+	}
+	ov := NewSlotOverlay(cd.content, dialog, 60, dialogHeight)
+	dialog.onDismiss = cd.closeDialog
+	cd.dialogOverlay = ov
+	cd.pages.AddPage("dialog", ov, true, true)
+	cd.pages.SwitchToPage("dialog")
+	if cd.app != nil {
+		cd.app.SetFocus(ov)
+	}
+}
+
+// closeDialog restores the channels display after a showDialogOverlay.
+func (cd *ChannelsDisplay) closeDialog() {
+	if cd.dialogOverlay == nil {
+		return
+	}
+	cd.pages.RemovePage("dialog")
+	cd.dialogOverlay = nil
+	cd.pages.SwitchToPage("main")
+	if cd.app != nil {
+		cd.app.SetFocus(cd.content)
+	}
+}
+
+// showDialogOverlayInput shows an input dialog overlaid on the channels display
+// (Python's _show_dialog_overlay, 60% width, PACK). Enter on the field or the
+// confirm button submits; Esc/Cancel dismisses.
+func (cd *ChannelsDisplay) showDialogOverlayInput(title, label, defaultValue, confirmLabel, cancelLabel string, onSubmit func(string), onCancel func()) {
+	input := tview.NewInputField()
+	input.SetLabel(label)
+	input.SetText(defaultValue)
+	input.SetFieldBackgroundColor(tcell.ColorDefault)
+	input.SetFieldTextColor(tcell.ColorDefault)
+	close := cd.closeDialog
+	submit := func() {
+		v := strings.TrimSpace(input.GetText())
+		close()
+		if onSubmit != nil {
+			onSubmit(v)
+		}
+	}
+	confirmBtn := NewUrwidButton(confirmLabel).SetSelectedFunc(submit)
+	cancelBtn := NewUrwidButton(cancelLabel).SetSelectedFunc(func() {
+		close()
+		if onCancel != nil {
+			onCancel()
+		}
+	})
+	row := CreateUrwidButtonRow(confirmBtn, cancelBtn)
+	input.SetDoneFunc(func(key tcell.Key) {
+		if key == tcell.KeyEnter {
+			submit()
+		}
+	})
+	layout := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(input, 1, 0, true).
+		AddItem(row, 1, 0, false)
+	dialog := NewDialogLineBox(title, layout, close)
+	cd.showDialogOverlay(dialog, 4) // input 1 + button row 1 + 2 border
+	wireDialogNav(cd.app, close, []tview.Primitive{input, confirmBtn, cancelBtn})
+}
+
+// showDialogOverlayConfirm shows a Yes/No confirm overlaid on the channels
+// display (Python's _show_dialog_overlay, 60% width, PACK).
+func (cd *ChannelsDisplay) showDialogOverlayConfirm(message string, onYes, onNo func()) {
+	close := cd.closeDialog
+	yes := NewUrwidButton("Yes").SetSelectedFunc(func() {
+		close()
+		if onYes != nil {
+			onYes()
+		}
+	})
+	no := NewUrwidButton("No").SetSelectedFunc(func() {
+		close()
+		if onNo != nil {
+			onNo()
+		}
+	})
+	row := CreateUrwidButtonRow(yes, no)
+	msgRows := strings.Count(message, "\n") + 1
+	layout := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(NewUrwidCenterText(message), msgRows, 0, false).
+		AddItem(row, 1, 0, true)
+	dialog := NewDialogLineBox("Confirm", layout, close)
+	cd.showDialogOverlay(dialog, msgRows+1+2)
+	wireDialogNav(cd.app, close, []tview.Primitive{yes, no})
 }
 
 // populateRooms fills the room list from the given channel infos.
@@ -475,27 +581,34 @@ func (cd *ChannelsDisplay) ShowUserInfoDialog(nick, identityHash string, isSelf 
 	if isSelf {
 		sb.WriteString("\n (This is you)\n")
 	}
+	text := sb.String()
+	textRows := strings.Count(text, "\n") + 1
 
-	buttons := tview.NewFlex().SetDirection(tview.FlexColumn)
+	close := cd.closeDialog
+	var row *urwidColumns
 	if isSelf {
-		buttons.AddItem(tview.NewButton("Close").SetSelectedFunc(func() {}), 0, 1, true)
+		row = CreateUrwidButtonRow(NewUrwidButton("Close").SetSelectedFunc(close))
 	} else {
-		buttons.AddItem(tview.NewButton("Open Conversation").SetSelectedFunc(func() {
+		openBtn := NewUrwidButton("Open Conversation").SetSelectedFunc(func() {
+			close()
 			if onOpenConversation != nil {
 				onOpenConversation()
 			}
-		}), 0, 1, true)
-		buttons.AddItem(tview.NewButton("Close").SetSelectedFunc(func() {}), 0, 1, false)
+		})
+		closeBtn := NewUrwidButton("Close").SetSelectedFunc(close)
+		row = CreateUrwidButtonRow(openBtn, closeBtn)
 	}
 
+	info := tview.NewTextView().
+		SetDynamicColors(true).
+		SetTextColor(tcell.ColorDefault).
+		SetText(text)
 	layout := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(tview.NewTextView().
-			SetDynamicColors(true).
-			SetTextColor(tcell.NewHexColor(0xdddddd)).
-			SetText(sb.String()), 0, 1, false).
-		AddItem(buttons, 1, 0, false)
+		AddItem(info, textRows, 0, false).
+		AddItem(row, 1, 0, true)
 
-	cd.app.Dialogs.ShowDialog("User Info", layout, 40, 8, nil)
+	dialog := NewDialogLineBox("User Info", layout, close)
+	cd.showDialogOverlay(dialog, textRows+1+2)
 }
 
 // MaybeAutoconnect connects hub if it is disconnected or in a failed state,
@@ -521,19 +634,20 @@ func (cd *ChannelsDisplay) SelectedEntry() (HubListEntry, bool) {
 	return cd.hubEntries[idx], true
 }
 
-// NewHubDialog shows the dialog to add a new RRC hub (Python Channels.new_hub_dialog).
+// NewHubDialog shows the dialog to add a new RRC hub (Python Channels.new_hub_
+// dialog), overlaid on the channels display (60% width).
 func (cd *ChannelsDisplay) NewHubDialog() {
-	if cd.app == nil || cd.app.Dialogs == nil {
+	if cd.app == nil {
 		return
 	}
-	cd.app.Dialogs.ShowInputDialog("New Hub", "Hub address (hex hash):", "", func(hashText string) {
+	cd.showDialogOverlayInput("New Hub", "Hub address (hex hash):", "", "Add", "Back", func(hashText string) {
 		hashText = strings.TrimSpace(strings.TrimPrefix(strings.ToLower(hashText), "0x"))
 		hashBytes, err := hex.DecodeString(hashText)
 		if err != nil || len(hashBytes) != 16 {
 			return
 		}
 		// Search for hub name or default
-		cd.app.Dialogs.ShowInputDialog("New Hub Name", "Display name:", "", func(nameText string) {
+		cd.showDialogOverlayInput("New Hub Name", "Display name:", "", "Add", "Back", func(nameText string) {
 			nameText = strings.TrimSpace(nameText)
 			if cd.app != nil {
 				_ = nameText
@@ -543,12 +657,13 @@ func (cd *ChannelsDisplay) NewHubDialog() {
 	}, nil)
 }
 
-// JoinRoomDialog shows the dialog to join a room on the selected hub (Python Channels.join_room_dialog).
+// JoinRoomDialog shows the dialog to join a room on the selected hub (Python
+// Channels.join_room_dialog), overlaid on the channels display (60% width).
 func (cd *ChannelsDisplay) JoinRoomDialog() {
-	if cd.app == nil || cd.app.Dialogs == nil {
+	if cd.app == nil {
 		return
 	}
-	cd.app.Dialogs.ShowInputDialog("Join Room", "Room name:", "", func(roomText string) {
+	cd.showDialogOverlayInput("Join Room", "Room name:", "", "Join", "Cancel", func(roomText string) {
 		roomText = strings.TrimSpace(strings.TrimPrefix(roomText, "#"))
 		if roomText == "" {
 			return
@@ -556,20 +671,22 @@ func (cd *ChannelsDisplay) JoinRoomDialog() {
 	}, nil)
 }
 
-// RemoveSelectedDialog shows confirmation dialog to remove selected hub/room (Python Channels.remove_selected_dialog).
+// RemoveSelectedDialog shows confirmation dialog to remove selected hub/room
+// (Python Channels.remove_selected_dialog), overlaid on the channels display.
 func (cd *ChannelsDisplay) RemoveSelectedDialog() {
-	if cd.app == nil || cd.app.Dialogs == nil {
+	if cd.app == nil {
 		return
 	}
-	cd.app.Dialogs.ShowConfirmDialog("Remove selected hub/room?", func() {
+	cd.showDialogOverlayConfirm("Remove selected hub/room?", func() {
 	}, nil)
 }
 
-// EditHubDialog shows dialog to edit the display name of selected hub (Python Channels.edit_hub_dialog).
+// EditHubDialog shows dialog to edit the display name of selected hub (Python
+// Channels.edit_hub_dialog), overlaid on the channels display (60% width).
 func (cd *ChannelsDisplay) EditHubDialog() {
-	if cd.app == nil || cd.app.Dialogs == nil {
+	if cd.app == nil {
 		return
 	}
-	cd.app.Dialogs.ShowInputDialog("Edit Hub", "Display name:", "", func(nameText string) {
+	cd.showDialogOverlayInput("Edit Hub", "Display name:", "", "Save", "Cancel", func(nameText string) {
 	}, nil)
 }

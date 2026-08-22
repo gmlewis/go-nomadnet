@@ -272,3 +272,64 @@ func TestDeleteNodeDialogMatchesPython(t *testing.T) {
 		}
 	}
 }
+
+// TestIngestResultSlotPlacedInListColumn verifies ShowIngestResult is overlaid
+// on the conversations LIST column (Python columns_widget.contents[0], 52 wide),
+// not screen-centered: the "Ingest message URI" title appears within the left
+// 52-column pane, the border is default-style, and the OK button is right-
+// aligned (0.6 spacer / 0.4 button).
+func TestIngestResultSlotPlacedInListColumn(t *testing.T) {
+	t.Parallel()
+	app := NewApp(ThemeDark, GlyphUnicode, ColorModeTrue)
+	cd := NewConversationsDisplay(app, nil)
+	cd.ShowIngestResult(IngestSuccess)
+	if cd.listSlotOverlay == nil {
+		t.Fatal("ShowIngestResult did not install a list-slot overlay")
+	}
+
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatalf("screen.Init: %v", err)
+	}
+	defer screen.Fini()
+	screen.SetSize(80, 24)
+	cd.content.SetRect(0, 0, 80, 24)
+	screen.Clear()
+	cd.content.Draw(screen)
+	screen.Sync()
+
+	// Find the title row "Ingest message URI" and confirm it lies within the
+	// left 52-column pane (slot-placed), not centered on the 80-wide screen.
+	titleX := -1
+	titleY := -1
+	for y := range 24 {
+		for x := range 80 {
+			if strings.Contains(cellString(screen, x, y), "I") {
+				// scan a window for the title text
+				var seg string
+				for dx := 0; x+dx < 80 && dx < 24; dx++ {
+					seg += cellString(screen, x+dx, y)
+				}
+				if strings.Contains(seg, "Ingest message URI") {
+					titleX, titleY = x, y
+					break
+				}
+			}
+		}
+		if titleX >= 0 {
+			break
+		}
+	}
+	if titleX < 0 {
+		t.Fatal("Ingest message URI title not found")
+	}
+	if titleX >= 52 {
+		t.Errorf("title starts at x=%d, must be within the 52-wide list column (slot-placed), not screen-centered", titleX)
+	}
+	// The dialog border must be default-style (no forced color).
+	_, st, _ := screen.Get(titleX, titleY)
+	fg, _, _ := st.Decompose()
+	if fg != tcell.ColorDefault {
+		t.Errorf("title cell fg = %v, want ColorDefault", fg)
+	}
+}

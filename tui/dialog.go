@@ -322,6 +322,18 @@ func CreateUrwidButtonRow(buttons ...*UrwidButton) *urwidColumns {
 	return row
 }
 
+// CreateUrwidButtonRowRight builds a flat urwid-style row with a single button
+// right-aligned via a leading blank spacer column (Python's
+// `(WEIGHT 0.6 Text("")) + (WEIGHT 0.4 Button)` pattern, e.g. Conversations.py
+// ingest-result / paper-message-saved/failed dialogs). The spacer:button weight
+// ratio is 0.6:0.4 = 3:2.
+func CreateUrwidButtonRowRight(btn *UrwidButton) *urwidColumns {
+	row := newURWIDColumns(0, tview.NewBox(), btn)
+	row.SetWeight(0, 3) // spacer 0.6
+	row.SetWeight(1, 2) // button 0.4
+	return row
+}
+
 // ShowConfirmDialog shows a Yes/No confirmation dialog matching Python's
 // confirm dialogs (e.g. Conversations.py:797-810): a DialogLineBox titled
 // "Confirm" wrapping a Pile of a centered message Text + a button Columns

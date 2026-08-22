@@ -51,6 +51,12 @@ type InterfacesDisplay struct {
 	listBox  *interfaceListBox
 	items    []InterfaceInfo
 	glyphset string
+	// pages wraps id.layout so a dialog can overlay the WHOLE interfaces display
+	// (Python's frame.body = urwid.Overlay(dialog, frame.body, width=50,
+	// height=7), Interfaces.py:2578-2590/2608-2620/2633-2645). "main" = id.layout;
+	// "dialog" = the SlotOverlay. dialogOverlay tracks the active overlay.
+	pages         *tview.Pages
+	dialogOverlay *SlotOverlay
 
 	// Keyboard shortcut callbacks (Python: InterfaceFiller.keypress)
 	OnAddInterface    func()
@@ -89,8 +95,41 @@ func NewInterfacesDisplay(app *App, interfaces []InterfaceInfo) *InterfacesDispl
 	layout.SetInputCapture(id.handleInput)
 
 	id.layout = layout
-	id.widget = layout
+	id.pages = tview.NewPages().AddPage("main", layout, true, true)
+	id.widget = id.pages
 	return id
+}
+
+// showDialogOverlay overlays a DialogLineBox on the whole interfaces display
+// (Python's frame.body = urwid.Overlay(dialog, frame.body, align=CENTER,
+// width=N, valign=MIDDLE, height=N), Interfaces.py:2578/2608/2633/2801). The
+// display shows through around the fixed-width, fixed-height dialog. Esc/OK
+// dismisses via closeDialog, restoring the display.
+func (id *InterfacesDisplay) showDialogOverlay(dialog *DialogLineBox, fixedWidth, dialogHeight int) {
+	if id.dialogOverlay != nil {
+		id.closeDialog()
+	}
+	ov := NewSlotOverlayFixed(id.layout, dialog, fixedWidth, dialogHeight)
+	dialog.onDismiss = id.closeDialog
+	id.dialogOverlay = ov
+	id.pages.AddPage("dialog", ov, true, true)
+	id.pages.SwitchToPage("dialog")
+	if id.app != nil {
+		id.app.SetFocus(ov)
+	}
+}
+
+// closeDialog restores the interfaces display after a showDialogOverlay.
+func (id *InterfacesDisplay) closeDialog() {
+	if id.dialogOverlay == nil {
+		return
+	}
+	id.pages.RemovePage("dialog")
+	id.dialogOverlay = nil
+	id.pages.SwitchToPage("main")
+	if id.app != nil {
+		id.app.SetFocus(id.layout)
+	}
 }
 
 // SetInterfaces replaces the interface list, rebuilding the selectable items.
@@ -414,47 +453,71 @@ func FormatInterfaceDetail(iface InterfaceInfo) string {
 	return sb.String()
 }
 
-// ShowEnableDisableConfirm shows a confirmation dialog for enabling or
-// disabling an interface. Matches Python's Interfaces.py:2570-2590.
+// ShowEnableDisableConfirm shows a confirm dialog overlaid on the interfaces
+// display (Python Interfaces.py:2570-2590: frame.body = urwid.Overlay(...,
+// width=50, height=7), title "Confirm").
 func (id *InterfacesDisplay) ShowEnableDisableConfirm(name string, enabled bool, onConfirm func()) {
 	action := "Enable"
 	if enabled {
 		action = "Disable"
 	}
 	msg := fmt.Sprintf("%v interface %v?", action, name)
-
-	id.app.Dialogs.ShowConfirmDialog(msg, func() {
+	close := id.closeDialog
+	yes := NewUrwidButton("Yes").SetSelectedFunc(func() {
+		close()
 		if onConfirm != nil {
 			onConfirm()
 		}
-	}, nil)
+	})
+	no := NewUrwidButton("No").SetSelectedFunc(close)
+	row := CreateUrwidButtonRow(yes, no)
+	layout := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(NewUrwidCenterText(msg), 3, 0, false).
+		AddItem(row, 1, 0, true)
+	dialog := NewDialogLineBox("Confirm", layout, close)
+	id.showDialogOverlay(dialog, 50, 7)
+	wireDialogNav(id.app, close, []tview.Primitive{yes, no})
 }
 
-// ShowRestartRequired shows a notice that a restart is required after
-// interface changes. Matches Python's Interfaces.py:2589-2610 (a DialogLineBox
-// with an OK button).
+// ShowRestartRequired shows a notice that a restart is required, overlaid on
+// the interfaces display (Python Interfaces.py:2589-2610: title "Notice",
+// width=50, height=7, message + OK).
 func (id *InterfacesDisplay) ShowRestartRequired() {
 	msg := "RNS must be restarted for interface changes to take effect.\nRestart Nomad Network to apply changes."
-	id.app.Dialogs.ShowStatusDialog("Restart Required", msg, 50, 7)
+	close := id.closeDialog
+	ok := NewUrwidButton("OK").SetSelectedFunc(close)
+	row := CreateUrwidButtonRow(ok)
+	layout := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(NewUrwidCenterText(msg), 0, 1, false).
+		AddItem(row, 1, 0, true)
+	dialog := NewDialogLineBox("Notice", layout, close)
+	id.showDialogOverlay(dialog, 50, 7)
+	wireDialogNav(id.app, close, []tview.Primitive{ok})
 }
 
-// ShowInterfaceError shows an error message for interface operations.
-// Matches Python's Interfaces.py:2619-2650 (a DialogLineBox with an OK button).
+// ShowInterfaceError shows an error message, overlaid on the interfaces display
+// (Python Interfaces.py:2619-2650: title "Error", width=50, height=7, message +
+// OK).
 func (id *InterfacesDisplay) ShowInterfaceError(errMsg string) {
-	msg := fmt.Sprintf("[red]Error:[-] %v", errMsg)
-	id.app.Dialogs.ShowStatusDialog("Interface Error", msg, 50, 7)
+	msg := fmt.Sprintf("Error: %v", errMsg)
+	close := id.closeDialog
+	ok := NewUrwidButton("OK").SetSelectedFunc(close)
+	row := CreateUrwidButtonRow(ok)
+	layout := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(NewUrwidCenterText(msg), 0, 1, false).
+		AddItem(row, 1, 0, true)
+	dialog := NewDialogLineBox("Error", layout, close)
+	id.showDialogOverlay(dialog, 50, 7)
+	wireDialogNav(id.app, close, []tview.Primitive{ok})
 }
 
-// ShowRNSDisconnected shows an overlay when the RNS transport is lost.
-// Matches Python's Interfaces.py:2794-2830.
+// ShowRNSDisconnected shows an overlay when the RNS transport is lost, overlaid
+// on the interfaces display (Python Interfaces.py:2794-2830: width=35, height=4,
+// a passive notice with no button).
 func (id *InterfacesDisplay) ShowRNSDisconnected() {
-	msg := "[red]RNS Instance Disconnected[-]\n\nThe RNS transport connection has been lost.\nCheck your network configuration and restart if necessary."
-
-	id.app.Dialogs.ShowDialog("Disconnected",
-		tview.NewTextView().
-			SetDynamicColors(true).
-			SetTextColor(tcell.NewHexColor(0xdddddd)).
-			SetTextAlign(tview.AlignCenter).
-			SetText(msg),
-		50, 8, nil)
+	msg := "(!) RNS Instance Disconnected\nWaiting to Reconnect..."
+	layout := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(NewUrwidCenterText(msg), 0, 1, false)
+	dialog := NewDialogLineBox("Disconnected", layout, id.closeDialog)
+	id.showDialogOverlay(dialog, 35, 4)
 }

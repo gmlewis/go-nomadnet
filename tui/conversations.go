@@ -75,6 +75,21 @@ type ConversationsDisplay struct {
 	dialogOpen          bool
 	ingestURIValue      string
 	shortcutFocus       string // "list" (default), "editor", or "body" — selects the shortcut bar (Conversations.py:1765-1779)
+	// listSlotOverlay, when non-nil, is a SlotOverlay temporarily replacing
+	// leftPanel in content[0] for an in-slot dialog (Python's
+	// columns_widget.contents[0] = urwid.Overlay(...), Conversations.py:381/
+	// 607/810/1022/1116/1269/1474/1604/2054). CloseListSlotDialog restores
+	// leftPanel. Python places these dialogs in the 52-wide conversations list
+	// column (RELATIVE_100 or a fixed width), NOT as a screen-centered modal.
+	listSlotOverlay *SlotOverlay
+	// detailSlotOverlay, when non-nil, is a SlotOverlay temporarily replacing
+	// the right-pane (conversation body / detail) item in content[1] for an
+	// in-body dialog (Python's frame.contents["body"] = urwid.Overlay(...),
+	// Conversations.py:2352/2408/2442/2469/2542: paper-message / attachments
+	// dialogs over self.messagelist). detailSlotBottom is the swapped-out right
+	// pane item (cd.detail or the conversation widget) restored on close.
+	detailSlotOverlay *SlotOverlay
+	detailSlotBottom  tview.Primitive
 
 	// Keyboard shortcut callbacks (Python: ConversationsArea.keypress)
 	OnEditPeerInfo     func()
@@ -170,7 +185,7 @@ type ConversationsDisplay struct {
 	// the live values; syncStop cancels the refresh goroutine on dismiss.
 	syncStatusText  *tview.TextView
 	syncProgressBox *tview.TextView
-	syncSyncBtn     *tview.Button
+	syncSyncBtn     *UrwidButton
 	syncHooks       SyncDialogHooks
 	syncStop        chan struct{}
 	syncWG          sync.WaitGroup
@@ -756,6 +771,104 @@ func (cd *ConversationsDisplay) Widget() tview.Primitive {
 	return cd.widget
 }
 
+// ShowListSlotDialog overlays a DialogLineBox on the conversations list column
+// (Python's columns_widget.contents[0] = urwid.Overlay(dialog, bottom=listbox,
+// align=CENTER, width=..., valign=MIDDLE, height=PACK, left=2, right=2),
+// Conversations.py:381/607/810/1022/1116/1269/1474/1604/2054): the bordered
+// list shows through around the dialog, which is centered in the 52-wide list
+// column. widthPct>0 selects a relative width (100 = RELATIVE_100); widthPct==0
+// uses fixedWidth (urwid Overlay width=N). dialogHeight is the dialog's PACK
+// height. Esc/confirm dismisses via CloseListSlotDialog, restoring the list.
+func (cd *ConversationsDisplay) ShowListSlotDialog(dialog *DialogLineBox, widthPct, fixedWidth, dialogHeight int) {
+	if cd.listSlotOverlay != nil {
+		cd.CloseListSlotDialog()
+	}
+	var ov *SlotOverlay
+	if widthPct > 0 {
+		ov = NewSlotOverlay(cd.leftPanel, dialog, widthPct, dialogHeight)
+	} else {
+		ov = NewSlotOverlayFixed(cd.leftPanel, dialog, fixedWidth, dialogHeight)
+	}
+	dialog.onDismiss = cd.CloseListSlotDialog
+	cd.listSlotOverlay = ov
+	cd.content.RemoveItem(cd.leftPanel)
+	cd.content.AddItem(ov, cd.listWidth, 0, true)
+	if cd.app != nil {
+		cd.app.SetFocus(ov)
+	}
+}
+
+// CloseListSlotDialog restores the conversations list column after a
+// ShowListSlotDialog overlay. Safe to call when no overlay is active (no-op).
+func (cd *ConversationsDisplay) CloseListSlotDialog() {
+	if cd.listSlotOverlay == nil {
+		return
+	}
+	cd.content.RemoveItem(cd.listSlotOverlay)
+	cd.content.AddItem(cd.leftPanel, cd.listWidth, 0, true)
+	cd.listSlotOverlay = nil
+	if cd.app != nil {
+		cd.app.SetFocus(cd.leftPanel)
+	}
+}
+
+// ShowDetailSlotDialog overlays a DialogLineBox on the right-hand conversation
+// body pane (Python's frame.contents["body"] = urwid.Overlay(dialog,
+// bottom=messagelist, align=CENTER, width=..., valign=MIDDLE, height=PACK,
+// left=2, right=2), Conversations.py:2469/2542/2352/2408/2442: paper-message
+// and attachments dialogs). The conversation body shows through around the
+// dialog. widthPct>0 selects a relative width; widthPct==0 uses fixedWidth.
+// dialogHeight is the dialog's PACK height. Esc/confirm dismisses via
+// CloseDetailSlotDialog, restoring the right pane.
+func (cd *ConversationsDisplay) ShowDetailSlotDialog(dialog *DialogLineBox, widthPct, fixedWidth, dialogHeight int) {
+	if cd.detailSlotOverlay != nil {
+		cd.CloseDetailSlotDialog()
+	}
+	// The current right-pane item is the open conversation widget, or the empty
+	// detail placeholder when no conversation is open.
+	var bottom tview.Primitive
+	if cd.currentWidget != nil {
+		bottom = cd.currentWidget.Widget()
+	} else {
+		bottom = cd.detail
+	}
+	var ov *SlotOverlay
+	if widthPct > 0 {
+		ov = NewSlotOverlay(bottom, dialog, widthPct, dialogHeight)
+	} else {
+		ov = NewSlotOverlayFixed(bottom, dialog, fixedWidth, dialogHeight)
+	}
+	dialog.onDismiss = cd.CloseDetailSlotDialog
+	cd.detailSlotBottom = bottom
+	cd.detailSlotOverlay = ov
+	cd.content.RemoveItem(bottom)
+	cd.content.AddItem(ov, 0, 1, true)
+	if cd.app != nil {
+		cd.app.SetFocus(ov)
+	}
+}
+
+// CloseDetailSlotDialog restores the right-hand conversation body pane after a
+// ShowDetailSlotDialog overlay. Safe to call when no overlay is active (no-op).
+func (cd *ConversationsDisplay) CloseDetailSlotDialog() {
+	if cd.detailSlotOverlay == nil {
+		return
+	}
+	cd.content.RemoveItem(cd.detailSlotOverlay)
+	if cd.detailSlotBottom != nil {
+		cd.content.AddItem(cd.detailSlotBottom, 0, 1, true)
+	}
+	cd.detailSlotOverlay = nil
+	cd.detailSlotBottom = nil
+	if cd.app != nil {
+		if cd.currentWidget != nil {
+			cd.app.SetFocus(cd.currentWidget.Widget())
+		} else {
+			cd.app.SetFocus(cd.detail)
+		}
+	}
+}
+
 // showDetail displays the conversation detail in the right panel.
 func (cd *ConversationsDisplay) showDetail(idx int) {
 	if idx < 0 || idx >= len(cd.conversations) {
@@ -1153,45 +1266,68 @@ func (cd *ConversationsDisplay) DismissSyncDialog() {
 	cd.dialogOpen = false
 }
 
-// IngestURIDialog shows a dialog to ingest an LXM URI.
-// Matches Python's ingest_lxm_uri() at Conversations.py:1118.
+// IngestURIDialog shows a dialog to ingest an LXM URI, overlaid on the
+// conversations list column (Python's ingest_lxm_uri, Conversations.py:1118-
+// 1147: columns_widget.contents[0] = urwid.Overlay(dialog, bottom=listbox,
+// width=RELATIVE_100, height=PACK, left=2, right=2), title "Ingest message URI",
+// a "URI : " ReadlineEdit + Ingest/Back buttons).
 func (cd *ConversationsDisplay) IngestURIDialog(onSubmit func(uri string)) {
 	cd.dialogOpen = true
-	cd.app.Dialogs.ShowInputDialog("Ingest LXM URI", "URI : ", "",
-		func(uri string) {
-			cd.dialogOpen = false
-			if onSubmit != nil {
-				onSubmit(uri)
-			}
-		},
-		func() {
-			cd.dialogOpen = false
-		},
-	)
+	input := tview.NewInputField()
+	input.SetLabel("URI : ")
+	input.SetFieldBackgroundColor(tcell.ColorDefault)
+	input.SetFieldTextColor(tcell.ColorDefault)
+
+	close := func() { cd.CloseListSlotDialog(); cd.dialogOpen = false }
+	submit := func() {
+		uri := strings.TrimSpace(input.GetText())
+		close()
+		if uri != "" && onSubmit != nil {
+			onSubmit(uri)
+		}
+	}
+	ingestBtn := NewUrwidButton("Ingest").SetSelectedFunc(submit)
+	backBtn := NewUrwidButton("Back").SetSelectedFunc(close)
+	row := CreateUrwidButtonRow(ingestBtn, backBtn)
+	input.SetDoneFunc(func(key tcell.Key) {
+		if key == tcell.KeyEnter {
+			submit()
+		}
+	})
+	layout := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(input, 1, 0, true).
+		AddItem(tview.NewTextView(), 1, 0, false).
+		AddItem(row, 1, 0, false)
+	dialog := NewDialogLineBox("Ingest message URI", layout, close)
+	// input 1 + blank 1 + button row 1 + 2 border = 5 PACK height.
+	cd.ShowListSlotDialog(dialog, 100, 0, 5)
+	wireDialogNav(cd.app, close, []tview.Primitive{input, ingestBtn, backBtn})
 }
 
-// ShowIngestResult shows the result of an LXM URI ingest operation.
-// Matches Python's ingest_lxm_uri result dialogs (Conversations.py:1143-1237).
+// ShowIngestResult shows the result of an LXM URI ingest operation, overlaid on
+// the conversations list column (Python's ingest_lxm_uri result roverlay,
+// Conversations.py:1143-1237: columns_widget.contents[0] = urwid.Overlay(
+// dialog, bottom=listbox, width=RELATIVE_100, height=PACK, left=2, right=2),
+// title "Ingest message URI", a message Text + a 0.6-spacer/0.4-OK button row).
 func (cd *ConversationsDisplay) ShowIngestResult(result IngestResult) {
 	cd.dialogOpen = true
 	msg := IngestResultText(result)
+	msgRows := strings.Count(msg, "\n") + 1
 
-	buttons := tview.NewFlex().SetDirection(tview.FlexColumn).
-		AddItem(tview.NewButton("OK").SetSelectedFunc(func() {
-			cd.dialogOpen = false
-		}), 0, 1, false)
+	close := func() {
+		cd.CloseListSlotDialog()
+		cd.dialogOpen = false
+	}
+	ok := NewUrwidButton("OK").SetSelectedFunc(close)
+	row := CreateUrwidButtonRowRight(ok)
 
 	layout := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(tview.NewTextView().
-			SetDynamicColors(true).
-			SetTextColor(tcell.NewHexColor(0xdddddd)).
-			SetTextAlign(tview.AlignCenter).
-			SetText(msg), 3, 0, false).
-		AddItem(buttons, 1, 0, false)
+		AddItem(NewUrwidCenterText(msg), msgRows, 0, false).
+		AddItem(row, 1, 0, true)
 
-	cd.app.Dialogs.ShowDialog("Ingest message URI", layout, 50, 6, func() {
-		cd.dialogOpen = false
-	})
+	dialog := NewDialogLineBox("Ingest message URI", layout, close)
+	// RELATIVE_100 of the 52-wide list column; msg + OK row + border = PACK.
+	cd.ShowListSlotDialog(dialog, 100, 0, msgRows+1+2)
 }
 
 // IngestResultText returns the verbatim dialog text Python nomadnet shows for
@@ -1231,95 +1367,94 @@ const (
 	IngestDiscarded
 )
 
-// PaperMessageDialog shows the paper message output options.
-// Matches Python's paper_message() at Conversations.py:2505-2570.
+// PaperMessageDialog shows the paper message output options, overlaid on the
+// conversation body (Python's paper_message, Conversations.py:2505-2545:
+// frame.contents["body"] = urwid.Overlay(..., width=60, height=PACK),
+// title "Create Paper Message", centered message + Print QR / Save QR /
+// Save URI / Cancel buttons).
 func (cd *ConversationsDisplay) PaperMessageDialog(
 	onPrintQR func(),
 	onSaveQR func(),
 	onSaveURI func(),
 ) {
 	cd.dialogOpen = true
-
-	buttons := tview.NewFlex().SetDirection(tview.FlexColumn).
-		AddItem(tview.NewButton("Print QR").SetSelectedFunc(func() {
-			cd.dialogOpen = false
-			if onPrintQR != nil {
-				onPrintQR()
-			}
-		}), 0, 1, false).
-		AddItem(tview.NewButton("Save QR").SetSelectedFunc(func() {
-			cd.dialogOpen = false
-			if onSaveQR != nil {
-				onSaveQR()
-			}
-		}), 0, 1, false).
-		AddItem(tview.NewButton("Save URI").SetSelectedFunc(func() {
-			cd.dialogOpen = false
-			if onSaveURI != nil {
-				onSaveURI()
-			}
-		}), 0, 1, false).
-		AddItem(tview.NewButton("Cancel").SetSelectedFunc(func() {
-			cd.dialogOpen = false
-		}), 0, 1, false)
-
-	layout := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(tview.NewTextView().
-			SetDynamicColors(true).
-			SetTextColor(tcell.NewHexColor(0xdddddd)).
-			SetTextAlign(tview.AlignCenter).
-			SetText("Select the desired paper message output method."), 2, 0, false).
-		AddItem(buttons, 1, 0, false)
-
-	cd.app.Dialogs.ShowDialog("Create Paper Message", layout, 60, 5, func() {
-		cd.dialogOpen = false
+	msg := "Select the desired paper message output method."
+	msgRows := strings.Count(msg, "\n") + 1
+	close := func() { cd.CloseDetailSlotDialog(); cd.dialogOpen = false }
+	printBtn := NewUrwidButton("Print QR").SetSelectedFunc(func() {
+		close()
+		if onPrintQR != nil {
+			onPrintQR()
+		}
 	})
+	saveQRBtn := NewUrwidButton("Save QR").SetSelectedFunc(func() {
+		close()
+		if onSaveQR != nil {
+			onSaveQR()
+		}
+	})
+	saveURIBtn := NewUrwidButton("Save URI").SetSelectedFunc(func() {
+		close()
+		if onSaveURI != nil {
+			onSaveURI()
+		}
+	})
+	cancelBtn := NewUrwidButton("Cancel").SetSelectedFunc(close)
+	row := CreateUrwidButtonRow(printBtn, saveQRBtn, saveURIBtn, cancelBtn)
+	layout := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(NewUrwidCenterText(msg), msgRows, 0, false).
+		AddItem(row, 1, 0, true)
+	dialog := NewDialogLineBox("Create Paper Message", layout, close)
+	cd.ShowDetailSlotDialog(dialog, 0, 60, msgRows+1+2)
+	wireDialogNav(cd.app, close, []tview.Primitive{printBtn, saveQRBtn, saveURIBtn, cancelBtn})
 }
 
-// PaperMessageFailed shows a failure message for paper message operations.
-// Matches Python's paper_message_failed() at Conversations.py:2580-2600.
+// PaperMessageFailed shows a failure message for paper message operations,
+// overlaid on the conversation body (Python's paper_message_failed,
+// Conversations.py:2547-2570: frame.contents["body"] = urwid.Overlay(dialog,
+// bottom=messagelist, width=34, height=PACK, left=2, right=2), title "!", a
+// centered message + a 0.6-spacer/0.4-OK button row).
 func (cd *ConversationsDisplay) PaperMessageFailed() {
 	cd.dialogOpen = true
-
-	buttons := tview.NewFlex().SetDirection(tview.FlexColumn).
-		AddItem(tview.NewButton("OK").SetSelectedFunc(func() {
-			cd.dialogOpen = false
-		}), 0, 1, false)
-
+	msg := "Could not output paper message,\ncheck your settings. See the log\nfile for any error messages.\n"
+	msgRows := strings.Count(msg, "\n") + 1
+	close := func() { cd.CloseDetailSlotDialog(); cd.dialogOpen = false }
+	ok := NewUrwidButton("OK").SetSelectedFunc(close)
+	row := CreateUrwidButtonRowRight(ok)
 	layout := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(tview.NewTextView().
-			SetDynamicColors(true).
-			SetTextColor(tcell.NewHexColor(0xdddddd)).
-			SetTextAlign(tview.AlignCenter).
-			SetText("Could not output paper message,\ncheck your settings. See the log\nfile for any error messages."), 4, 0, false).
-		AddItem(buttons, 1, 0, false)
-
-	cd.app.Dialogs.ShowDialog("!", layout, 40, 6, func() {
-		cd.dialogOpen = false
-	})
+		AddItem(NewUrwidCenterText(msg), msgRows, 0, false).
+		AddItem(row, 1, 0, true)
+	dialog := NewDialogLineBox("!", layout, close)
+	cd.ShowDetailSlotDialog(dialog, 0, 34, msgRows+1+2)
 }
 
 // PaperMessageSaved shows the saved-path confirmation for a paper message,
-// matching Python's paper_message_saved() at Conversations.py:2451-2472.
+// overlaid on the conversation body (Python's paper_message_saved,
+// Conversations.py:2451-2472: frame.contents["body"] = urwid.Overlay(...,
+// width=60, height=PACK), title = g["papermsg"] glyph, centered message +
+// 0.6/0.4 OK row).
 func (cd *ConversationsDisplay) PaperMessageSaved(path string) {
 	cd.dialogOpen = true
-
-	buttons := tview.NewFlex().SetDirection(tview.FlexColumn).
-		AddItem(tview.NewButton("OK").SetSelectedFunc(func() {
-			cd.dialogOpen = false
-		}), 0, 1, false)
-
+	msg := "The paper message was saved to:\n\n" + path + "\n"
+	msgRows := strings.Count(msg, "\n") + 1
+	close := func() { cd.CloseDetailSlotDialog(); cd.dialogOpen = false }
+	ok := NewUrwidButton("OK").SetSelectedFunc(close)
+	row := CreateUrwidButtonRowRight(ok)
 	layout := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(tview.NewTextView().
-			SetDynamicColors(true).
-			SetTextColor(tcell.NewHexColor(0xdddddd)).
-			SetTextAlign(tview.AlignCenter).
-			SetText("The paper message was saved to:\n\n"+path+"\n"), 4, 0, false).
-		AddItem(buttons, 1, 0, false)
+		AddItem(NewUrwidCenterText(msg), msgRows, 0, false).
+		AddItem(row, 1, 0, true)
+	dialog := NewDialogLineBox(cd.paperMsgGlyph(), layout, close)
+	cd.ShowDetailSlotDialog(dialog, 0, 60, msgRows+1+2)
+}
 
-	cd.app.Dialogs.ShowDialog("Paper Message", layout, 60, 6, func() {
-		cd.dialogOpen = false
-	})
+// paperMsgGlyph returns the papermsg glyph for the active glyph set (Python's
+// g["papermsg"].replace(" ", "") title for paper-message dialogs), falling back
+// to the unicode set.
+func (cd *ConversationsDisplay) paperMsgGlyph() string {
+	if cd.app != nil && cd.app.Glyphs != nil {
+		return cd.app.Glyphs["papermsg"]
+	}
+	return glyphsUnicode["papermsg"]
 }
 
 // AttachFileDialog shows a file browser dialog for selecting files.
@@ -1368,6 +1503,7 @@ func (cd *ConversationsDisplay) SaveAttachmentsDialog(sourceHash string, refs []
 		SetDynamicColors(true).
 		SetTextColor(tcell.NewHexColor(0xdddddd))
 
+	close := func() { cd.CloseDetailSlotDialog(); cd.dialogOpen = false }
 	buttons := tview.NewFlex().SetDirection(tview.FlexColumn).
 		AddItem(tview.NewButton("Copy to Downloads").SetSelectedFunc(func() {
 			var chosen []AttachmentRef
@@ -1397,18 +1533,17 @@ func (cd *ConversationsDisplay) SaveAttachmentsDialog(sourceHash string, refs []
 			}
 			statusText.SetText(strings.Join(lines, "\n"))
 		}), 0, 1, true).
-		AddItem(tview.NewButton("Close").SetSelectedFunc(func() {
-			cd.dialogOpen = false
-		}), 0, 1, false)
+		AddItem(tview.NewButton("Close").SetSelectedFunc(close), 0, 1, false)
 
 	layout := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(list, 0, 1, true).
 		AddItem(statusText, 2, 0, false).
 		AddItem(buttons, 1, 0, false)
 
-	cd.app.Dialogs.ShowDialog("Attachments", layout, 50, 14, func() {
-		cd.dialogOpen = false
-	})
+	// Slot-place on the conversation body (Python frame.contents["body"],
+	// width=("relative", 80)). 12 content rows + 2 border = 14 PACK height.
+	dialog := NewDialogLineBox("Attachments", layout, close)
+	cd.ShowDetailSlotDialog(dialog, 80, 0, 14)
 }
 
 // saveDirOf returns the common directory of the saved paths (for the status
@@ -1570,7 +1705,7 @@ func (cd *ConversationsDisplay) ShowPeerInfoDialog(entry PeerInfoEntry, hooks Pe
 		AddItem(blank(), 1, 0, false).
 		AddItem(qrBtn, 0, 1, false)
 
-	dismiss := func() { cd.app.Dialogs.DismissTop() }
+	dismiss := func() { cd.CloseListSlotDialog(); cd.dialogOpen = false }
 
 	// Save builds the edited PeerInfoEntry and fires onSave, mirroring Python's
 	// confirmed() (Conversations.py:901-929).
@@ -1628,9 +1763,11 @@ func (cd *ConversationsDisplay) ShowPeerInfoDialog(entry PeerInfoEntry, hooks Pe
 		AddItem(buttons, 1, 0, false)
 
 	items := []tview.Primitive{eName, eCopy, rUntrusted, rUnknown, rTrusted, rDirect, rPropagated, cbPin, eNotes, pingBtn, blockBtn, qrBtn, saveBtn, backBtn}
-	cd.app.Dialogs.ShowDialog("Peer Info", layout, 50, 24, func() {
-		cd.dialogOpen = false
-	})
+	dialog := NewDialogLineBox("Peer Info", layout, dismiss)
+	// Slot-place in the 52-wide list column (Python columns_widget.contents[0],
+	// RELATIVE_100). height 24 content + 2 border = 26 PACK; the SlotOverlay
+	// caps it to the slot height.
+	cd.ShowListSlotDialog(dialog, 100, 0, 24+2)
 	wireDialogNav(cd.app, dismiss, items)
 }
 
@@ -1697,9 +1834,9 @@ func (cd *ConversationsDisplay) showNewConversationDialog(addr, name string, sho
 		AddItem(blank(), 1, 0, false).
 		AddItem(buttons, 1, 0, false)
 
-	// Inner content width 46 → bordered dialog 48 wide (DialogLineBox draws
-	// its border one cell outside the box). 8 content rows → 10 rows tall.
-	width, height := 46, 8
+	// Inner content width 46 (the RELATIVE_100 slot overlay is 48 wide → 46
+	// content after the border). 8 content rows → 10 rows tall (PACK + border).
+	height := 8
 	if showError {
 		errText := tview.NewTextView().SetDynamicColors(true)
 		errText.SetTextAlign(tview.AlignCenter)
@@ -1714,7 +1851,7 @@ func (cd *ConversationsDisplay) showNewConversationDialog(addr, name string, sho
 		height = 11
 	}
 
-	dismiss := func() { cd.app.Dialogs.DismissTop() }
+	dismiss := func() { cd.CloseListSlotDialog(); cd.dialogOpen = false }
 
 	createBtn.SetSelectedFunc(func() {
 		addrHex := strings.TrimSpace(eID.GetText())
@@ -1740,15 +1877,17 @@ func (cd *ConversationsDisplay) showNewConversationDialog(addr, name string, sho
 		// preserves the typed Addr/Name. Python appends the error without
 		// rebuilding (so focus stays on Create there) — a minor parity gap not
 		// visible in static captures (the tmux capture cannot see the cursor).
-		cd.app.Dialogs.DismissTop()
+		cd.CloseListSlotDialog()
 		cd.showNewConversationDialog(addrHex, displayName, true, onCreate)
 	})
 	backBtn.SetSelectedFunc(dismiss)
 
 	items := []tview.Primitive{eID, eName, rUntrusted, rUnknown, rTrusted, createBtn, backBtn}
-	cd.app.Dialogs.ShowDialog("New Conversation", pile, width, height, func() {
-		cd.dialogOpen = false
-	})
+	dialog := NewDialogLineBox("New Conversation", pile, dismiss)
+	// Slot-place in the 52-wide list column (Python columns_widget.contents[0],
+	// RELATIVE_100, left=right=2 → 48-wide dialog). height is the content-row
+	// count; +2 for the border = the dialog's PACK (total) height.
+	cd.ShowListSlotDialog(dialog, 100, 0, height+2)
 	// Wire urwid-Pile-style Tab/Up/Down/Esc traversal and focus the Addr field
 	// (the dialog's first focusable widget, matching the original).
 	wireDialogNav(cd.app, dismiss, items)
@@ -1842,7 +1981,7 @@ func (cd *ConversationsDisplay) ShowSyncDialog(
 
 	// The Sync Now / Cancel Sync button label toggles with transfer state
 	// (Python swaps real_sync_button / hidden_sync_button, Conversations.py:1393-1396).
-	cd.syncSyncBtn = tview.NewButton("Sync Now")
+	cd.syncSyncBtn = NewUrwidButton("Sync Now")
 	cd.syncSyncBtn.SetSelectedFunc(func() {
 		if cd.isSyncActive() {
 			// Currently a transfer is in progress → this is "Cancel Sync".
@@ -1860,19 +1999,16 @@ func (cd *ConversationsDisplay) ShowSyncDialog(
 		}
 	})
 
-	closeBtn := tview.NewButton("Close")
-	closeBtn.SetSelectedFunc(func() {
+	dismiss := func() {
+		cd.CloseListSlotDialog()
 		cd.dialogOpen = false
 		cd.stopSyncRefresh()
 		if onSync != nil {
 			onSync(SyncDialogResult{Action: "dismiss"})
 		}
-	})
-
-	buttons := tview.NewFlex().SetDirection(tview.FlexColumn).
-		AddItem(cd.syncSyncBtn, 0, 1, true).
-		AddItem(tview.NewTextView().SetText("  "), 1, 0, false).
-		AddItem(closeBtn, 0, 1, false)
+	}
+	closeBtn := NewUrwidButton("Close").SetSelectedFunc(dismiss)
+	buttons := CreateUrwidButtonRow(cd.syncSyncBtn, closeBtn)
 
 	// Layout
 	layout := tview.NewFlex().SetDirection(tview.FlexRow).
@@ -1886,13 +2022,11 @@ func (cd *ConversationsDisplay) ShowSyncDialog(
 		AddItem(buttons, 1, 0, false)
 
 	cd.updateSyncProgress()
-	cd.app.Dialogs.ShowDialog("Sync", layout, 50, 11, func() {
-		cd.dialogOpen = false
-		cd.stopSyncRefresh()
-		if onSync != nil {
-			onSync(SyncDialogResult{Action: "dismiss"})
-		}
-	})
+	// Slot-place in the 52-wide list column (Python columns_widget.contents[0],
+	// RELATIVE_100). 9 content rows + 2 border = 11 PACK height.
+	dialog := NewDialogLineBox("Sync", layout, dismiss)
+	cd.ShowListSlotDialog(dialog, 100, 0, 11)
+	wireDialogNav(cd.app, dismiss, []tview.Primitive{limitInput, cd.syncSyncBtn, closeBtn})
 }
 
 // isSyncActive reports whether a transfer is currently in progress, mirroring
