@@ -163,14 +163,6 @@ json.dump(out, sys.stdout)
 
 func bytes16(b ...byte) []byte { return b }
 
-func bytes32(fill byte) []byte {
-	b := make([]byte, 32)
-	for i := range b {
-		b[i] = fill
-	}
-	return b
-}
-
 // hexEncodeString returns the lowercase hex of the UTF-8 bytes of s.
 func hexEncodeString(s string) string {
 	return hex.EncodeToString([]byte(s))

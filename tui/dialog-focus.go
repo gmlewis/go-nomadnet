@@ -39,6 +39,19 @@ type focuser interface {
 	SetFocus(p tview.Primitive) *tview.Application
 }
 
+// Focuser is the exported form of focuser, for wiring-layer callers that build
+// slot-placed dialogs (e.g. the URL dialog) and need the same Pile-style
+// Tab/Down/Up/Esc focus traversal across the dialog's items.
+type Focuser = focuser
+
+// WireDialogNav is the exported form of wireDialogNav: it wires urwid-Pile-style
+// keyboard focus traversal across the given focusable dialog items (Tab/Down →
+// next, BackTab/Up → previous, Escape → dismiss), focusing the first item. Used
+// by slot-placed dialogs that are not owned by the DialogManager.
+func WireDialogNav(app Focuser, dismiss func(), items []tview.Primitive) {
+	wireDialogNav(app, dismiss, items)
+}
+
 // setItemCapture installs a new input capture on a dialog widget, dispatching
 // by concrete type because tview's SetInputCapture returns a different
 // (chained) type on *tview.InputField versus *tview.Box, so no single interface

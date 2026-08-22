@@ -249,16 +249,85 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	navigateTo := func(string) {}
 	_ = navigateTo
 
+	// showURLDialog shows the "Enter URL" dialog as a slot overlay on the
+	// Network browser pane (Python Browser.url_dialog, Browser.py:1135-1182:
+	// columns.contents[1] = urwid.Overlay(..., width=("relative", 65),
+	// height=PACK, left=2, right=2), title "Enter URL", "URL : " edit, Cancel/
+	// Go buttons). The browser frame shows through around the 65%-width dialog.
+	// Enter on the field or "Go" submits; Esc/Cancel dismisses.
+	showURLDialog := func(prefill string, onGo func(string)) {
+		input := tview.NewInputField()
+		input.SetLabel("URL : ")
+		input.SetText(prefill)
+		input.SetFieldBackgroundColor(tcell.ColorDefault)
+		input.SetFieldTextColor(tcell.ColorDefault)
+		close := func() { networkDisplay.CloseBrowserSlotDialog() }
+		submit := func() {
+			text := strings.TrimSpace(input.GetText())
+			close()
+			if text != "" {
+				onGo(text)
+			}
+		}
+		goBtn := tui.NewUrwidButton("Go").SetSelectedFunc(submit)
+		cancelBtn := tui.NewUrwidButton("Cancel").SetSelectedFunc(close)
+		// Python button order: Cancel(0.45), spacer(0.10), Go(0.45).
+		row := tui.CreateUrwidButtonRow(cancelBtn, goBtn)
+		input.SetDoneFunc(func(key tcell.Key) {
+			if key == tcell.KeyEnter {
+				submit()
+			}
+		})
+		layout := tview.NewFlex().SetDirection(tview.FlexRow).
+			AddItem(input, 1, 0, true).
+			AddItem(row, 1, 0, false)
+		dialog := tui.NewDialogLineBox("Enter URL", layout, nil)
+		// input 1 + button row 1 + border 2 = 4 PACK height; 65% pane width.
+		networkDisplay.ShowBrowserSlotDialog(dialog, 65, 4)
+		tui.WireDialogNav(tuiApp, close, []tview.Primitive{input, goBtn, cancelBtn})
+	}
+
+	// showBrowserConfirm shows a Cancel/Confirm dialog as a slot overlay on the
+	// Network browser pane (Python Browser.save_node_dialog, Browser.py:1184-
+	// 1234: columns.contents[1] = urwid.Overlay(..., width=("relative", 50),
+	// height=PACK), title "Save Node"). The browser frame shows through around
+	// the widthPct%-width dialog.
+	showBrowserConfirm := func(title, message, cancelLabel, confirmLabel string, widthPct int, onConfirm func()) {
+		close := func() { networkDisplay.CloseBrowserSlotDialog() }
+		confirmBtn := tui.NewUrwidButton(confirmLabel).SetSelectedFunc(func() {
+			close()
+			if onConfirm != nil {
+				onConfirm()
+			}
+		})
+		cancelBtn := tui.NewUrwidButton(cancelLabel).SetSelectedFunc(close)
+		row := tui.CreateUrwidButtonRow(cancelBtn, confirmBtn)
+		msgRows := strings.Count(message, "\n") + 1
+		msg := tui.NewUrwidCenterText(message)
+		layout := tview.NewFlex().SetDirection(tview.FlexRow).
+			AddItem(msg, msgRows, 0, false).
+			AddItem(row, 1, 0, true)
+		dialog := tui.NewDialogLineBox(title, layout, nil)
+		networkDisplay.ShowBrowserSlotDialog(dialog, widthPct, msgRows+1+2)
+		tui.WireDialogNav(tuiApp, close, []tview.Primitive{confirmBtn, cancelBtn})
+	}
+
 	networkDisplay.SetLocalPeerHandlers(
 		func(name string) {
 			a.SetDisplayName(name)
-			tuiApp.Dialogs.ShowStatusDialog("Saved", "\n\n\nSaved\n\n", 40, 9)
+			// Python LocalPeer.save_query (Network.py:1282-1295): the "Saved"
+			// notice is a LineBox swapped into the left_pile LocalPeer slot
+			// (contents[1]) at PACK height, titled with the info glyph — NOT a
+			// centered modal. "\n\n\nSaved\n\n" = 6 message rows.
+			networkDisplay.ShowLocalPeerStatus("\n\n\nSaved\n\n", 6)
 		},
 		func() {
 			a.AnnounceNow()
 			lxmfAddr, idhash, lann = localPeerInfo()
 			networkDisplay.UpdateLocalPeer(lxmfAddr, idhash, lann)
-			tuiApp.Dialogs.ShowStatusDialog("Announce Sent", "\n\n\nAnnounce Sent\n\n\n", 40, 10)
+			// Python LocalPeer.announce_query (Network.py:1305-1319): "Announce
+			// Sent" LineBox in the LocalPeer slot, PACK height. 7 message rows.
+			networkDisplay.ShowLocalPeerStatus("\n\n\nAnnounce Sent\n\n\n", 7)
 		},
 		func() {
 			// Swap the left pile's PACK slot from Local Peer Info to the Local
@@ -267,7 +336,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 			// is hosted (EnableNode false) the panel renders the "not hosting a
 			// node" branch (Python NodeInfo else-branch, Network.py:1541-1551).
 			data := buildNodeInfoData(a, navigateTo, func() {
-				tuiApp.Dialogs.ShowStatusDialog("Announce Sent", "\n\n\nAnnounce Sent\n\n\n", 40, 10)
+				networkDisplay.ShowLocalPeerStatus("\n\n\nAnnounce Sent\n\n\n", 7)
 			})
 			networkDisplay.ShowNodeInfo(data)
 		},
@@ -370,29 +439,37 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 
 	// Wire network keyboard shortcuts
 	networkDisplay.OnDeleteSelected = func() {
-		tuiApp.Dialogs.ShowConfirmDialog("Delete selected entry?",
-			func() {
-				if networkDisplay.ShowingNodes() {
-					node, ok := networkDisplay.SelectedNode()
-					if !ok {
-						return
-					}
-					hash, ok := app.SourceHashFromHex(node.SourceHash)
-					if ok {
-						a.ForgetNode(hash)
-					}
-					refreshNodes()
-				} else {
-					ann, ok := networkDisplay.SelectedAnnounce()
-					if !ok {
-						return
-					}
-					a.RemoveAnnounce(ann.TimestampF)
-					refreshAnnounces()
+		if networkDisplay.ShowingNodes() {
+			// Python KnownNodes.delete_selected_entry (Network.py:921-961): a
+			// "?" dialog overlaid on the left_pile list slot, message
+			// "Delete Node\n<display>\n", Yes/No, RELATIVE_100/PACK.
+			node, ok := networkDisplay.SelectedNode()
+			if !ok {
+				return
+			}
+			displayStr := node.DisplayName
+			if hash, ok := app.SourceHashFromHex(node.SourceHash); ok {
+				displayStr = a.Dir.SimplestDisplayStr(hash)
+			}
+			if displayStr == "" {
+				displayStr = "<" + node.SourceHash + ">"
+			}
+			networkDisplay.ShowListSlotConfirm("?", "Delete Node\n"+displayStr+"\n", func() {
+				if hash, ok := app.SourceHashFromHex(node.SourceHash); ok {
+					a.ForgetNode(hash)
 				}
-			},
-			func() {},
-		)
+				refreshNodes()
+			}, nil)
+		} else {
+			// Python AnnounceStream.delete_selected_entry (Network.py:468-473):
+			// direct removal — NO confirmation dialog.
+			ann, ok := networkDisplay.SelectedAnnounce()
+			if !ok {
+				return
+			}
+			a.RemoveAnnounce(ann.TimestampF)
+			refreshAnnounces()
+		}
 	}
 	networkDisplay.OnShowPeers = func() {
 		// Python reinit_lxmf_peers (Network.py:1717): rebuild the peer list
@@ -429,35 +506,27 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		// Peer.Sync blocks on link requests; mirror Python's
 		// threading.Thread(target=peer.sync).
 		go peer.Sync()
-		msg := tview.NewTextView().
-			SetDynamicColors(true).
-			SetTextAlign(tview.AlignCenter).
-			SetText("\nA delivery sync of all unhandled LXMs was manually requested for the selected node\n")
-		okBtn := tview.NewButton("OK").SetSelectedFunc(func() {
+		msg := tui.NewUrwidCenterText("\nA delivery sync of all unhandled LXMs was manually requested for the selected node\n")
+		okBtn := tui.NewUrwidButton("OK").SetSelectedFunc(func() {
 			tuiApp.Dialogs.DismissTop()
 			refreshLXMFPeers()
 		})
+		buttons := tui.CreateUrwidButtonRow(okBtn)
 		layout := tview.NewFlex().SetDirection(tview.FlexRow).
 			AddItem(msg, 0, 1, false).
-			AddItem(okBtn, 1, 0, true)
-		tuiApp.Dialogs.ShowDialog("!", layout, 60, 6, nil)
+			AddItem(buttons, 1, 0, true)
+		tuiApp.Dialogs.ShowDialog("!", layout, 0, 6, nil)
 	}
 	networkDisplay.OnURLDialog = func() {
-		// Match Python Browser.url_dialog text exactly (Browser.py:1135-1162):
-		// title "Enter URL", caption "URL : ", "Cancel"/"Go" buttons. This handler
-		// fires when the browser frame is empty/disconnected (current_url is "",
-		// matching Python's empty-when-disconnected prefill); the focused browser
-		// frame's bd.OnURLDialog below fires the same dialog pre-filled with the
-		// live URL. Both share identical text so the user sees one dialog.
-		tuiApp.Dialogs.ShowInputDialogBtns("Enter URL",
-			"URL : ", "", "Go", "Cancel",
-			func(text string) {
-				if text != "" {
-					navigateTo(browser.NormalizeEnteredURL(text))
-				}
-			},
-			func() {},
-		)
+		// Python Browser.url_dialog (Browser.py:1135-1182): title "Enter URL",
+		// caption "URL : ", Cancel/Go, overlaid on the browser pane at 65% width.
+		// This handler fires when the browser frame is empty/disconnected
+		// (current_url is ""); the focused browser frame's bd.OnURLDialog below
+		// fires the same dialog pre-filled with the live URL. Both share identical
+		// text so the user sees one dialog.
+		showURLDialog("", func(text string) {
+			navigateTo(browser.NormalizeEnteredURL(text))
+		})
 	}
 	networkDisplay.OnSaveNode = func() {
 		tuiApp.Dialogs.ShowConfirmDialog("Save selected node?",
@@ -1584,20 +1653,13 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		}
 		bd.OnURLDialog = func() {
 			// Python Browser.url_dialog (Browser.py:1135-1182): title "Enter URL",
-			// caption "URL : ", pre-fill current_url, "Cancel"/"Go" buttons. On
-			// "Go" apply the "|"`→"`" normalization (a user can type
-			// "hash:path|x=1" instead of using a backtick) then retrieve_url.
-			tuiApp.Dialogs.ShowInputDialogBtns("Enter URL",
-				"URL : ", bd.CurrentURL(), "Go", "Cancel",
-				func(text string) {
-					text = strings.TrimSpace(text)
-					if text == "" {
-						return
-					}
-					bd.LoadURL(browser.NormalizeEnteredURL(text))
-				},
-				func() {},
-			)
+			// caption "URL : ", pre-fill current_url, Cancel/Go buttons, overlaid
+			// on the browser pane at 65% width. On "Go" apply the "|"`→"`"
+			// normalization (a user can type "hash:path|x=1" instead of using a
+			// backtick) then retrieve_url.
+			showURLDialog(bd.CurrentURL(), func(text string) {
+				bd.LoadURL(browser.NormalizeEnteredURL(text))
+			})
 		}
 		bd.OnSaveNode = func() {
 			// Python Browser.save_node_dialog (Browser.py:1184-1234): only when a
@@ -1618,10 +1680,12 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 				namePart = " \"" + dispName + "\""
 			}
 			msg := "Save connected node" + namePart + " " + rns.PrettyHexRep(dest) + " to Known Nodes?\n"
-			tuiApp.Dialogs.ShowConfirmDialog(msg, func() {
+			// Python Browser.save_node_dialog (Browser.py:1184-1234): overlaid on
+			// the browser pane at 50% width, title "Save Node", Cancel/Save.
+			showBrowserConfirm("Save Node", msg, "Cancel", "Save", 50, func() {
 				a.SaveConnectedNode(dest, dispName)
 				refreshNodes()
-			}, func() {})
+			})
 		}
 		bd.OnJumpAnchor = func(name string) {
 			// Python Browser._jump_to_anchor (Browser.py:324-357): scroll the page
@@ -1745,22 +1809,19 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 			}
 			bd.SetCurrentDest(dest)
 			canonURL := fmt.Sprintf("%x:%v", dest, path)
-			// Serve from the page cache only when a retained link is already
-			// ACTIVE for this destination. The cache short-circuits the fetch
-			// (no fetchBytes → no link established/retained), so a cached connect
-			// leaves the FIRST real fetch (e.g. navigating to /page/search.mu) to
-			// establish a fresh link over a flaky multi-hop path — with no retry
-			// (only the Ctrl-u connect has the harness's 3-attempt retry). By
-			// bypassing the cache when there is no active retained link, the
-			// connect itself does the network fetch that establishes + retains the
-			// link; the connect's retries absorb transient path/establishment
-			// failures, and every subsequent fetch to this destination (the
-			// search page, the form submit) reuses the retained link. This mirrors
-			// Python self_link: Python's connect also establishes the link (its
-			// cache stores the page, not the link, but Python's establishment is
-			// reliable enough that the gap never surfaced). A re-visit while the
-			// retained link is still active uses the cache as before.
-			if rd == nil && activeRetainedLink(bd) != nil {
+			// Serve from the page cache whenever no request_data is attached,
+			// matching Python's load_page (Browser.py:1237-1244), which checks
+			// get_cached based ONLY on request_data — NOT on whether an RNS link
+			// is active. The former Go-only gate (cache only when an active
+			// retained link existed) made Back/Forward re-fetch over the network
+			// whenever the retained link had gone stale, so Ctrl-d back to a cached
+			// page (e.g. RetiBooks' index after visiting an Author page) was slow
+			// where Python returns instantly from the cache. A form submit (rd !=
+			// nil) still always re-fetches. The retained link is reused for the
+			// next fetch via activeRetainedLink below; a cache hit simply does not
+			// establish one, exactly as in Python (Python's connect cache-hits and
+			// leaves link establishment to the next click).
+			if tui.ServeFromCache(rd) {
 				if cached := pageCache.GetCached(canonURL); cached != nil {
 					tuiApp.QueueUpdateDraw(func() {
 						if seq != bd.CurrentRequestSeq() || ctx.Err() != nil {
@@ -1953,27 +2014,28 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		if displayStr == "" {
 			displayStr = "<" + node.SourceHash + ">"
 		}
-		yesBtn := tview.NewButton("Yes").SetSelectedFunc(func() {
-			tuiApp.Dialogs.DismissTop()
+		yesBtn := tui.NewUrwidButton("Yes").SetSelectedFunc(func() {
+			networkDisplay.CloseListSlotDialog()
 			navigateTo(node.SourceHash)
 		})
-		noBtn := tview.NewButton("No").SetSelectedFunc(func() {
-			tuiApp.Dialogs.DismissTop()
+		noBtn := tui.NewUrwidButton("No").SetSelectedFunc(func() {
+			networkDisplay.CloseListSlotDialog()
 		})
-		infoBtn := tview.NewButton("Info").SetSelectedFunc(func() {
-			tuiApp.Dialogs.DismissTop()
+		infoBtn := tui.NewUrwidButton("Info").SetSelectedFunc(func() {
+			networkDisplay.CloseListSlotDialog()
 			networkDisplay.ShowKnownNodeInfo(node.SourceHash)
 		})
-		buttons := tui.CreateButtonRow(yesBtn, noBtn, infoBtn)
-		msg := tview.NewTextView().
-			SetTextAlign(tview.AlignCenter).
-			SetDynamicColors(true).
-			SetTextColor(tcell.NewHexColor(0xdddddd)).
-			SetText("Connect to node\n" + displayStr + "\n")
+		buttons := tui.CreateUrwidButtonRow(yesBtn, noBtn, infoBtn)
+		msg := tui.NewUrwidCenterText("Connect to node\n" + displayStr + "\n")
 		layout := tview.NewFlex().SetDirection(tview.FlexRow).
 			AddItem(msg, 3, 0, false).
 			AddItem(buttons, 1, 0, true)
-		tuiApp.Dialogs.ShowDialog("?", layout, 40, 6, nil)
+		// Python connect_node (Network.py:881-919): urwid.Overlay over the
+		// left_pile list slot, width=RELATIVE_100, left=2/right=2, height=PACK,
+		// title "?". Render it in the list slot (show-through), not a centered
+		// modal. msg 3 + button row 1 + border 2 = 6 PACK height.
+		dialog := tui.NewDialogLineBox("?", layout, nil)
+		networkDisplay.ShowListSlotDialog(dialog, 6)
 	}
 
 	// The Quit menu item triggers graceful shutdown (selectMenu special-cases

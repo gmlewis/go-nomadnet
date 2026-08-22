@@ -71,7 +71,7 @@ var slugifyInputs = []string{
 	"(bracket)",
 	"'quote'",
 	"你好",
-	"‮mirror‬",
+	"\u202emirror\u202c",
 	"\uFEFFBOM",
 	" nbsp",
 	"mix😀😎text",

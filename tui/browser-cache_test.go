@@ -285,3 +285,27 @@ func TestCacheFilenameMatchesPython(t *testing.T) {
 		t.Errorf("filename expiry = %q, want %q (str(float) form)", name[len(prefix):], want)
 	}
 }
+
+// TestServeFromCache pins the page-cache consultation policy (Python
+// Browser.load_page, Browser.py:1237-1244): the cache is consulted whenever no
+// request_data is attached, REGARDLESS of retained-link state. A form submit
+// (request_data present) always re-fetches. The former Go-only gate (cache only
+// when an active retained link existed) made Back/Forward re-fetch when the link
+// was stale; this test pins the parity fix that consults the cache based solely
+// on request_data, matching Python's instant cache hit on back.
+func TestServeFromCache(t *testing.T) {
+	t.Parallel()
+	if !ServeFromCache(nil) {
+		t.Errorf("ServeFromCache(nil) = false, want true (plain nav / back / forward consult the cache)")
+	}
+	// Python load_page checks `request_data == None`, so a non-nil map (even
+	// empty) does NOT cache. In practice ParseURL returns nil for plain nav,
+	// so the empty-map case does not arise, but the semantics must match Python.
+	if ServeFromCache(map[string]string{}) {
+		t.Errorf("ServeFromCache(empty map) = true, want false (request_data != None → not cached)")
+	}
+	rd := map[string]string{"var_q": "test"}
+	if ServeFromCache(rd) {
+		t.Errorf("ServeFromCache(form data) = true, want false (a form submit always re-fetches)")
+	}
+}

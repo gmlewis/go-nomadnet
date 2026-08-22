@@ -41,6 +41,18 @@ func NewBrowserCache(cachePath string) *BrowserCache {
 	return &BrowserCache{cachePath: cachePath}
 }
 
+// ServeFromCache reports whether a navigation carrying the given request data
+// should consult the page cache before fetching. It mirrors Python's
+// Browser.load_page (Browser.py:1237-1244), which checks get_cached ONLY when
+// request_data is None — a form submit (request_data present) always re-fetches.
+// The retained-link state is deliberately NOT consulted: Python caches
+// regardless of whether an RNS link is currently active, so Back/Forward (and a
+// re-visit) to a cached page return instantly from the cache instead of
+// re-fetching over the network. Gating the cache on an active retained link (a
+// former Go-only workaround) made Back slow whenever the retained link had gone
+// stale, diverging from Python's instant cache hit.
+func ServeFromCache(requestData map[string]string) bool { return requestData == nil }
+
 // URLHash returns the SHA-256 full hash of url as a 64-character
 // lowercase hex string. Matches Python's url_hash() at Browser.py:165.
 func URLHash(url string) string {

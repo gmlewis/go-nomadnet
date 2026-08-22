@@ -89,10 +89,24 @@ type NetworkDisplay struct {
 	lxmfPeers      *LXMFPeersDisplay
 	browser        *BrowserPane
 	mainCols       *urwidColumns
-	showingNodes   bool
-	showingPeers   bool
-	inInfoView     bool
-	displayMode    DisplayMode
+	// listSlotOverlay, when non-nil, is a SlotOverlay temporarily replacing
+	// listBox in leftPanel[0] for an in-slot dialog (Python's left_pile
+	// contents[0] = urwid.Overlay(...), Network.py:916/948). CloseListSlotDialog
+	// restores listBox.
+	listSlotOverlay *SlotOverlay
+	// statusInPeerSlot, when non-nil, is a status LineBox temporarily replacing
+	// localPeer in leftPanel[1] (Python left_pile contents[1] = dialog,
+	// Network.py:1295/1319/1418). CloseLocalPeerStatus restores localPeer.
+	statusInPeerSlot tview.Primitive
+	// browserSlotOverlay, when non-nil, is a SlotOverlay temporarily replacing
+	// the browser pane in mainCols[1] for an in-browser-pane dialog (Python's
+	// columns.contents[1] = urwid.Overlay(...), Browser.py:1169/1184). Used by
+	// the URL dialog (relative 65) and save-node dialog (relative 50).
+	browserSlotOverlay *SlotOverlay
+	showingNodes       bool
+	showingPeers       bool
+	inInfoView         bool
+	displayMode        DisplayMode
 	// listWidth is the normal (non-fullscreen) fixed width of the left list
 	// pane (Python NetworkDisplay.given_list_width = 52, Network.py:1622).
 	// fullscreen is true while Ctrl-G has collapsed the left pane to width 0 so
@@ -883,6 +897,146 @@ func (nd *NetworkDisplay) ShowLocalPeer() {
 		nd.nodeInfo.Stop()
 	}
 	nd.leftPanel.AddItem(nd.localPeer.Widget(), nd.localPeer.Height(), 0, false)
+}
+
+// ShowListSlotDialog overlays a DialogLineBox on the left-pane list slot
+// (Python's left_pile.contents[0] = urwid.Overlay(dialog, bottom=self, align=
+// CENTER, width=RELATIVE_100, valign=MIDDLE, height=PACK, left=2, right=2),
+// Network.py:916/948): the bordered list shows through around the dialog, which
+// is centered in the slot at the slot's width (RELATIVE_100) and its natural
+// (PACK) height. Esc/confirm dismisses via CloseListSlotDialog, restoring the
+// list. dialogHeight is the dialog's PACK height (content rows + 2 border).
+//
+// This replaces the former screen-centered modal placement so Network confirm
+// dialogs (connect / delete-node) render in the correct slot at the correct
+// width, byte-identical to nomadnet.
+func (nd *NetworkDisplay) ShowListSlotDialog(dialog *DialogLineBox, dialogHeight int) {
+	if nd.listSlotOverlay != nil {
+		nd.CloseListSlotDialog()
+	}
+	ov := NewSlotOverlay(nd.listBox, dialog, 100, dialogHeight)
+	dialog.onDismiss = nd.CloseListSlotDialog
+	nd.listSlotOverlay = ov
+	nd.leftPanel.RemoveItem(nd.listBox)
+	nd.leftPanel.AddItem(ov, 0, 1, true)
+	if nd.app != nil {
+		nd.app.SetFocus(ov)
+	}
+}
+
+// CloseListSlotDialog restores the left-pane list slot after a ShowListSlotDialog
+// overlay, removing the overlay and putting listBox back. Safe to call when no
+// overlay is active (no-op).
+func (nd *NetworkDisplay) CloseListSlotDialog() {
+	if nd.listSlotOverlay == nil {
+		return
+	}
+	nd.leftPanel.RemoveItem(nd.listSlotOverlay)
+	nd.leftPanel.AddItem(nd.listBox, 0, 1, true)
+	nd.listSlotOverlay = nil
+	nd.focusLeftList()
+}
+
+// ShowListSlotConfirm shows a Yes/No confirmation dialog overlaid on the
+// left-pane list slot (Python KnownNodes.delete_selected_entry, Network.py:921-
+// 961): title "?", a centered message, and a Yes/No button row (0.45/0.10/0.45),
+// RELATIVE_100 width, PACK height, list show-through. Yes/No (or Esc) closes the
+// overlay via CloseListSlotDialog then runs the callback.
+func (nd *NetworkDisplay) ShowListSlotConfirm(title, message string, onYes, onNo func()) {
+	msgRows := strings.Count(message, "\n") + 1
+	msg := NewUrwidCenterText(message)
+	yes := NewUrwidButton("Yes").SetSelectedFunc(func() {
+		nd.CloseListSlotDialog()
+		if onYes != nil {
+			onYes()
+		}
+	})
+	no := NewUrwidButton("No").SetSelectedFunc(func() {
+		nd.CloseListSlotDialog()
+		if onNo != nil {
+			onNo()
+		}
+	})
+	row := CreateUrwidButtonRow(yes, no)
+	layout := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(msg, msgRows, 0, false).
+		AddItem(row, 1, 0, true)
+	dialog := NewDialogLineBox(title, layout, nil)
+	nd.ShowListSlotDialog(dialog, msgRows+1+2) // message + OK/Yes row + border
+}
+
+// ShowLocalPeerStatus swaps the Local Peer Info panel for a centered status
+// LineBox (Python's left_pile.contents[1] = dialog — a plain LineBox, NOT an
+// overlay — with PACK height, Network.py:1282-1295/1305-1319): the "Saved" /
+// "Announce Sent" notices render inline in the LocalPeer slot at the slot's
+// width, titled with the info glyph (Python title=g["info"]). The OK button (or
+// Esc) calls CloseLocalPeerStatus, restoring the Local Peer panel. messageRows
+// is the natural row count of the message Text (drives the PACK height).
+func (nd *NetworkDisplay) ShowLocalPeerStatus(message string, messageRows int) {
+	if nd.statusInPeerSlot != nil {
+		nd.CloseLocalPeerStatus()
+	}
+	msg := NewUrwidCenterText(message)
+	ok := NewUrwidButton("OK").SetSelectedFunc(nd.CloseLocalPeerStatus)
+	row := CreateUrwidButtonRow(ok)
+	layout := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(msg, messageRows, 0, false).
+		AddItem(row, 1, 0, true)
+	dialog := NewDialogLineBox(nd.glyphs()["info"], layout, nd.CloseLocalPeerStatus).SetBorderInside(true)
+	height := messageRows + 1 + 2 // message + OK row + border
+	nd.statusInPeerSlot = dialog
+	nd.leftPanel.RemoveItem(nd.localPeer.Widget())
+	nd.leftPanel.AddItem(dialog, height, 0, false)
+	if nd.app != nil {
+		nd.app.SetFocus(dialog)
+	}
+}
+
+// CloseLocalPeerStatus restores the Local Peer Info panel after a
+// ShowLocalPeerStatus swap. Safe to call when no status is shown (no-op).
+func (nd *NetworkDisplay) CloseLocalPeerStatus() {
+	if nd.statusInPeerSlot == nil {
+		return
+	}
+	nd.leftPanel.RemoveItem(nd.statusInPeerSlot)
+	nd.statusInPeerSlot = nil
+	nd.leftPanel.AddItem(nd.localPeer.Widget(), nd.localPeer.Height(), 0, false)
+}
+
+// ShowBrowserSlotDialog overlays a DialogLineBox on the right-hand browser pane
+// (Python's columns.contents[1] = urwid.Overlay(dialog, bottom=browser,
+// align=CENTER, width=("relative", N), valign=MIDDLE, height=PACK, left=2,
+// right=2), Browser.py:1169/1184): the browser frame shows through around the
+// dialog, which is centered in the pane at widthPct% of the pane width and its
+// natural (PACK) height. Esc/confirm dismisses via CloseBrowserSlotDialog,
+// restoring the browser pane. dialogHeight is the dialog's PACK height.
+func (nd *NetworkDisplay) ShowBrowserSlotDialog(dialog *DialogLineBox, widthPct, dialogHeight int) {
+	if nd.browserSlotOverlay != nil {
+		nd.CloseBrowserSlotDialog()
+	}
+	if nd.mainCols == nil || nd.browser == nil {
+		return
+	}
+	ov := NewSlotOverlay(nd.browser.Widget(), dialog, widthPct, dialogHeight)
+	dialog.onDismiss = nd.CloseBrowserSlotDialog
+	nd.browserSlotOverlay = ov
+	nd.mainCols.children[1] = ov
+	if nd.app != nil {
+		nd.app.SetFocus(ov)
+	}
+}
+
+// CloseBrowserSlotDialog restores the browser pane after a ShowBrowserSlotDialog
+// overlay. Safe to call when no overlay is active (no-op).
+func (nd *NetworkDisplay) CloseBrowserSlotDialog() {
+	if nd.browserSlotOverlay == nil || nd.mainCols == nil || nd.browser == nil {
+		return
+	}
+	nd.mainCols.children[1] = nd.browser.Widget()
+	nd.browserSlotOverlay = nil
+	if nd.app != nil {
+		nd.app.SetFocus(nd.browser.Widget())
+	}
 }
 
 // nodesView returns the left-pane widget for the saved-nodes mode: the

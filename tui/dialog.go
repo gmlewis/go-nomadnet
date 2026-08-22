@@ -16,9 +16,58 @@
 package tui
 
 import (
+	"strings"
+
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
+
+// urwidCenterText renders text centered in its rect using urwid's CENTER
+// alignment convention: the leftover cell for an odd (width-len) goes on the
+// LEFT (left = ceil((width-len)/2)), not the right as tview's AlignCenter does.
+// nomadnet's urwid Text(align=CENTER) dialogs (e.g. "Saved", "Block peer?")
+// use this convention, so matching it is required for byte-exact dialog parity.
+// The text is rendered in the default style (urwid dialog Text is attr=None),
+// one source line per row, clipped to the rect.
+type urwidCenterText struct {
+	*tview.Box
+	text string
+}
+
+// NewUrwidCenterText builds a default-style centered text widget.
+func NewUrwidCenterText(text string) *urwidCenterText {
+	return &urwidCenterText{Box: tview.NewBox(), text: text}
+}
+
+// SetText updates the displayed text.
+func (c *urwidCenterText) SetText(text string) { c.text = text }
+
+func (c *urwidCenterText) Draw(screen tcell.Screen) {
+	c.Box.DrawForSubclass(screen, c)
+	x, y, w, h := c.GetRect()
+	if w <= 0 || h <= 0 {
+		return
+	}
+	style := tcell.StyleDefault
+	lines := strings.Split(c.text, "\n")
+	for i, line := range lines {
+		if i >= h {
+			break
+		}
+		lw := stringWidth(line)
+		lw = min(lw, w)
+		left := (w - lw + 1) / 2 // ceil → extra on the left (urwid CENTER)
+		left = max(left, 0)
+		px := x + left
+		for _, r := range line {
+			if px >= x+w {
+				break
+			}
+			screen.SetContent(px, y+i, r, nil, style)
+			px += cellWidth(r)
+		}
+	}
+}
 
 // DialogLineBox wraps a tview.Primitive with a border that dismisses on Escape.
 // Matches Python's DialogLineBox which extends urwid.LineBox with esc handling.
@@ -27,7 +76,21 @@ type DialogLineBox struct {
 	content   tview.Primitive
 	title     string
 	onDismiss func()
+	// borderInside selects the border placement. False (default, used by the
+	// DialogManager's screen-centered centerDialog): the border is drawn one
+	// cell OUTSIDE the box rect so the surrounding transparent margins absorb
+	// it (the box rect is the content area; visible = content+2). True (used by
+	// slot-placed dialogs via SlotOverlay/ShowLocalPeerStatus): the border is
+	// drawn INSIDE the box rect (rect = border + content, urwid LineBox model)
+	// so the dialog occupies exactly its allocated rows/cols with no overflow
+	// into the neighboring slot widget.
+	borderInside bool
 }
+
+// SetBorderInside switches the border placement to inside-the-rect (urwid
+// LineBox model), used by slot-placed dialogs whose rect already includes the
+// border. See DialogLineBox.borderInside.
+func (d *DialogLineBox) SetBorderInside(v bool) *DialogLineBox { d.borderInside = v; return d }
 
 // NewDialogLineBox creates a new dialog with border and escape handling.
 func NewDialogLineBox(title string, content tview.Primitive, onDismiss func()) *DialogLineBox {
@@ -40,21 +103,30 @@ func NewDialogLineBox(title string, content tview.Primitive, onDismiss func()) *
 	return d
 }
 
-// Draw draws the dialog with a border and title.
+// Draw draws the dialog with a border and title. The border placement is
+// selected by borderInside: inside-the-rect (urwid LineBox model, rect = border
+// + content) for slot-placed dialogs, or one-cell-outside-the-rect for the
+// DialogManager's screen-centered centerDialog (whose transparent margins
+// absorb the border; box rect = content, visible = content+2). The border and
+// title use the default style (urwid LineBox attrs are None), and the title is
+// centered with the leftover on the LEFT (urwid's convention).
 func (d *DialogLineBox) Draw(screen tcell.Screen) {
 	d.Box.DrawForSubclass(screen, d)
 
-	x, y, w, h := d.Box.GetInnerRect()
-	if w <= 0 || h <= 0 {
+	var bx, by, bw, bh int // border rect (where ┌─┐│└─┘ + title go)
+	var cx, cy, cw, ch int // content rect
+	if d.borderInside {
+		bx, by, bw, bh = d.Box.GetRect()
+		cx, cy, cw, ch = bx+1, by+1, bw-2, bh-2
+	} else {
+		ix, iy, iw, ih := d.Box.GetInnerRect()
+		bx, by, bw, bh = ix-1, iy-1, iw+2, ih+2
+		cx, cy, cw, ch = ix, iy, iw, ih
+	}
+	if bw < 2 || bh < 2 {
 		return
 	}
 
-	// The border is drawn one cell outside the inner rect (x-1..x+w,
-	// y-1..y+h). When the dialog is positioned at a screen edge or is larger
-	// than the terminal (which happens during a resize to a small window),
-	// those coordinates go negative or past the edge. tcell clips such writes
-	// silently, but relying on that is fragile and produces stray glyphs, so
-	// every border/title cell is clamped to the screen bounds here.
 	sw, sh := screen.Size()
 	set := func(px, py int, r rune, st tcell.Style) {
 		if px < 0 || py < 0 || px >= sw || py >= sh {
@@ -63,50 +135,47 @@ func (d *DialogLineBox) Draw(screen tcell.Screen) {
 		screen.SetContent(px, py, r, nil, st)
 	}
 
-	// Draw border using tview.Box primitives
-	style := tcell.StyleDefault.
-		Foreground(tcell.NewHexColor(0xdddddd)).
-		Background(tcell.ColorDefault)
+	// urwid LineBox border is the default style (attr=None).
+	style := tcell.StyleDefault
 
-	// Top border
-	set(x-1, y-1, '┌', style)
-	for i := range w {
-		set(x+i, y-1, '─', style)
+	// Top border (row by): ┌─...─┐
+	set(bx, by, '┌', style)
+	for i := 1; i < bw-1; i++ {
+		set(bx+i, by, '─', style)
 	}
-	set(x+w, y-1, '┐', style)
+	set(bx+bw-1, by, '┐', style)
 
-	// Bottom border
-	set(x-1, y+h, '└', style)
-	for i := range w {
-		set(x+i, y+h, '─', style)
+	// Bottom border (row by+bh-1): └─...─┘
+	set(bx, by+bh-1, '└', style)
+	for i := 1; i < bw-1; i++ {
+		set(bx+i, by+bh-1, '─', style)
 	}
-	set(x+w, y+h, '┘', style)
+	set(bx+bw-1, by+bh-1, '┘', style)
 
-	// Side borders
-	for i := range h {
-		set(x-1, y+i, '│', style)
-		set(x+w, y+i, '│', style)
+	// Side borders (rows by+1..by+bh-2): │ ... │
+	for i := 1; i < bh-1; i++ {
+		set(bx, by+i, '│', style)
+		set(bx+bw-1, by+i, '│', style)
 	}
 
-	// Title — urwid LineBox.format_title wraps the text in a leading and
-	// trailing space (" title ") and centers it (title_align=CENTER default,
-	// line_box.py:189) over the top border, with the ─ tline filling both
-	// sides (left=floor, right=ceil, the urwid Columns leftover-to-last). The
-	// top-border ─ loop above already drew the full line; writing the spaced
-	// title segment centered here overwrites just the title portion, leaving
-	// the ─ fill on either side.
+	// Title — urwid LineBox.format_title wraps the text in a leading and trailing
+	// space (" title ") and centers it over the top border with the leftover on
+	// the LEFT (left = ceil). The ─ loop above drew the full line; the title
+	// segment overwrites just the title portion. Default style (attr=None).
 	if d.title != "" {
-		titleStyle := style.Foreground(tcell.NewHexColor(0xdddddd))
 		seg := []rune(" " + d.title + " ")
-		titleX := x + (w-len(seg))/2 // floor division → left ─ = floor, right = ceil
-		for i, r := range seg {
-			set(titleX+i, y-1, r, titleStyle)
+		inner := bw - 2 // usable border cells between the corners
+		if len(seg) <= inner {
+			titleX := bx + 1 + (inner-len(seg)+1)/2 // ceil → leftover on left
+			for i, r := range seg {
+				set(titleX+i, by, r, style)
+			}
 		}
 	}
 
-	// Draw content
-	if d.content != nil {
-		d.content.SetRect(x, y, w, h)
+	// Draw content in the content rect.
+	if d.content != nil && cw > 0 && ch > 0 {
+		d.content.SetRect(cx, cy, cw, ch)
 		d.content.Draw(screen)
 	}
 }
@@ -222,31 +291,63 @@ func CreateButtonRow(buttons ...*tview.Button) *tview.Flex {
 	return flex
 }
 
-// ShowConfirmDialog shows a Yes/No confirmation dialog.
+// CreateUrwidButtonRow builds a flat urwid-style button row matching Python's
+// dialog button Columns (Conversations.py:801-805, Network.py:905-910,
+// Browser.py:1157-1161): a sequence of urwid.Button columns separated by blank
+// spacer columns. Each button renders as a flat "< label >" in the DEFAULT
+// style (urwid.Button applies no color), not tview's bordered/colored button —
+// so the row looks identical to nomadnet's. Left/Right/Tab move focus between
+// buttons (skipping the spacers) via the urwidColumns focus model, mirroring
+// urwid Columns; Enter/Space activates the focused button.
+//
+// The button:spacer weight ratio is 0.45:0.10 (Python's urwid.WEIGHT 0.45 /
+// 0.10), expressed as the integer ratio 9:2.
+func CreateUrwidButtonRow(buttons ...*UrwidButton) *urwidColumns {
+	const btnW, spacerW = 9, 2
+	var children []tview.Primitive
+	for i, btn := range buttons {
+		if i > 0 {
+			children = append(children, tview.NewBox()) // blank spacer column
+		}
+		children = append(children, btn)
+	}
+	row := newURWIDColumns(0, children...)
+	for i := range children {
+		w := btnW
+		if _, isBox := children[i].(*tview.Box); isBox {
+			w = spacerW
+		}
+		row.SetWeight(i, w)
+	}
+	return row
+}
+
+// ShowConfirmDialog shows a Yes/No confirmation dialog matching Python's
+// confirm dialogs (e.g. Conversations.py:797-810): a DialogLineBox titled
+// "Confirm" wrapping a Pile of a centered message Text + a button Columns
+// (Yes / Cancel), overlaid full-width (RELATIVE_100, left=2/right=2) at
+// natural height. The message and buttons render in the default style, and the
+// buttons are flat "< label >" urwid buttons, not tview's colored buttons.
 func (dm *DialogManager) ShowConfirmDialog(message string, onYes, onNo func()) {
-	yesBtn := tview.NewButton("Yes").SetSelectedFunc(func() {
+	yesBtn := NewUrwidButton("Yes").SetSelectedFunc(func() {
 		dm.DismissTop()
 		if onYes != nil {
 			onYes()
 		}
 	})
-	noBtn := tview.NewButton("No").SetSelectedFunc(func() {
+	noBtn := NewUrwidButton("No").SetSelectedFunc(func() {
 		dm.DismissTop()
 		if onNo != nil {
 			onNo()
 		}
 	})
-	buttons := CreateButtonRow(yesBtn, noBtn)
+	buttons := CreateUrwidButtonRow(yesBtn, noBtn)
 
 	layout := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(tview.NewTextView().
-			SetTextAlign(tview.AlignCenter).
-			SetDynamicColors(true).
-			SetTextColor(tcell.NewHexColor(0xdddddd)).
-			SetText(message), 3, 0, false).
+		AddItem(NewUrwidCenterText(message), 3, 0, false).
 		AddItem(buttons, 1, 0, true)
 
-	dm.ShowDialog("Confirm", layout, 40, 6, nil)
+	dm.ShowDialog("Confirm", layout, 0, 6, nil)
 }
 
 // ShowInputDialog shows a text input dialog with Save/Cancel buttons. It is
@@ -269,8 +370,11 @@ func (dm *DialogManager) ShowInputDialogBtns(title, label, defaultValue, confirm
 	input := tview.NewInputField()
 	input.SetLabel(label)
 	input.SetText(defaultValue)
-	input.SetFieldBackgroundColor(tcell.NewHexColor(0x222222))
-	input.SetFieldTextColor(tcell.NewHexColor(0xdddddd))
+	// Python's UrlEdit is a bare ReadlineEdit (default style, no background),
+	// so the input field uses the terminal-default background + default text,
+	// not a forced dark/gray fill.
+	input.SetFieldBackgroundColor(tcell.ColorDefault)
+	input.SetFieldTextColor(tcell.ColorDefault)
 
 	triggerConfirm := func() {
 		value := input.GetText()
@@ -286,9 +390,9 @@ func (dm *DialogManager) ShowInputDialogBtns(title, label, defaultValue, confirm
 		}
 	}
 
-	confirmBtn := tview.NewButton(confirmLabel).SetSelectedFunc(triggerConfirm)
-	cancelBtn := tview.NewButton(cancelLabel).SetSelectedFunc(triggerCancel)
-	buttons := CreateButtonRow(confirmBtn, cancelBtn)
+	confirmBtn := NewUrwidButton(confirmLabel).SetSelectedFunc(triggerConfirm)
+	cancelBtn := NewUrwidButton(cancelLabel).SetSelectedFunc(triggerCancel)
+	buttons := CreateUrwidButtonRow(confirmBtn, cancelBtn)
 
 	// Enter on the input submits (Python UrlEdit.keypress "enter" → confirmed).
 	// Tab/Escape are intercepted by wireDialogNav below (for traversal/dismiss)
@@ -303,7 +407,8 @@ func (dm *DialogManager) ShowInputDialogBtns(title, label, defaultValue, confirm
 		AddItem(input, 1, 0, true).
 		AddItem(buttons, 1, 0, false)
 
-	dm.ShowDialog(title, layout, 50, 5, nil)
+	// input 1 + button row 1 + 2 border = 4 PACK height (Python url_dialog).
+	dm.ShowDialog(title, layout, 50, 4, nil)
 	// Tab/Down/Up/Esc traversal across input → confirm → cancel (urwid Pile
 	// focus model). wireDialogNav re-focuses the first item (the input).
 	wireDialogNav(dm.app, triggerCancel, []tview.Primitive{input, confirmBtn, cancelBtn})
@@ -327,14 +432,10 @@ func (dm *DialogManager) ShowRadioDialog(title, message string, options []string
 	}
 
 	layout := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(tview.NewTextView().
-			SetTextAlign(tview.AlignCenter).
-			SetDynamicColors(true).
-			SetTextColor(tcell.NewHexColor(0xdddddd)).
-			SetText(message), 1, 0, false).
+		AddItem(NewUrwidCenterText(message), 1, 0, false).
 		AddItem(list, 0, 1, true)
 
-	dm.ShowDialog(title, layout, 40, 10, nil)
+	dm.ShowDialog(title, layout, 0, 10, nil)
 }
 
 // ShowStatusDialog shows a centered status/notice message with an OK button
@@ -353,13 +454,9 @@ func (dm *DialogManager) ShowRadioDialog(title, message string, options []string
 // this reason. The OK button restores the Python UX and gives a guaranteed
 // click/Enter dismiss path that does not depend on tview's focus routing.
 func (dm *DialogManager) ShowStatusDialog(title, message string, width, height int) {
-	text := tview.NewTextView().
-		SetDynamicColors(true).
-		SetTextColor(tcell.NewHexColor(0xdddddd)).
-		SetTextAlign(tview.AlignCenter).
-		SetText(message)
-	okBtn := tview.NewButton("OK").SetSelectedFunc(func() { dm.DismissTop() })
-	buttons := CreateButtonRow(okBtn)
+	text := NewUrwidCenterText(message)
+	okBtn := NewUrwidButton("OK").SetSelectedFunc(func() { dm.DismissTop() })
+	buttons := CreateUrwidButtonRow(okBtn)
 	layout := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(text, 0, 1, false).
 		AddItem(buttons, 1, 0, true)
