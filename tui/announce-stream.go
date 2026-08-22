@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
@@ -77,6 +78,13 @@ func newAnnounceStreamDisplay(nd *NetworkDisplay) *announceStreamDisplay {
 
 	as.search = NewReadlineEdit(nd.app.killRing, "Search: ", "")
 	as.search.SetChangedFunc(func(_ string) { as.onSearchChange() })
+	// Python's search_edit is a bare ReadlineEdit (no AttrMap, Network.py:419),
+	// so urwid renders it in the default text style with NO background. tview's
+	// InputField otherwise paints its text area with Styles.ContrastBackgroundColor
+	// (blue), making the Search input area render with a colored background the
+	// original does not have. Force the terminal-default (transparent) background
+	// to match.
+	as.search.SetFieldBackgroundColor(tcell.ColorDefault)
 
 	as.toggle = NewTabButton(as.nd.DisplayModeLabel()).SetSelectedFunc(as.toggleDisplayMode)
 	as.filterBar = newURWIDColumns(1, as.search, as.toggle).

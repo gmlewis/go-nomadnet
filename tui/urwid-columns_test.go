@@ -115,10 +115,31 @@ func TestUrwidColumnsWithInputField(t *testing.T) {
 
 	handler := cols.InputHandler()
 
-	// RightArrow on input field should be passed to input field, not change column focus
+	// RightArrow on an EMPTY input field moves column focus to btn. urwid's Edit
+	// returns "right" UNHANDLED at the buffer boundary (pos>=len, edit.py:448-
+	// 450), so the enclosing Columns moves focus to the next selectable column
+	// (columns.py:1242-1252). The Go port reproduces that boundary behavior.
+	handler(tcell.NewEventKey(tcell.KeyRight, 0, tcell.ModNone), setFocus)
+	if !btn.HasFocus() {
+		t.Errorf("expected btn to have focus after RightArrow on empty input (urwid Edit returns right unhandled at end-of-text)")
+	}
+
+	// Backtab on btn should switch column focus back to input
+	handler(tcell.NewEventKey(tcell.KeyBacktab, 0, tcell.ModNone), setFocus)
+	if !input.HasFocus() {
+		t.Errorf("expected input to have focus after Backtab")
+	}
+
+	// RightArrow with the cursor in the MIDDLE of the buffer moves the text
+	// cursor, not column focus (urwid Edit consumes "right" when pos < len).
+	input.SetText("abc")  // cursor at end (pos 3)
+	input.SetCursorPos(1) // move cursor to the middle
 	handler(tcell.NewEventKey(tcell.KeyRight, 0, tcell.ModNone), setFocus)
 	if !input.HasFocus() {
-		t.Errorf("expected input field to retain focus on RightArrow")
+		t.Errorf("expected input to retain focus on RightArrow with cursor in the middle of the buffer")
+	}
+	if got := input.CursorPos(); got != 2 {
+		t.Errorf("after RightArrow in middle of buffer, cursorPos = %d, want 2", got)
 	}
 
 	// Tab on input field should switch column focus to btn

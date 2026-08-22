@@ -16,6 +16,7 @@
 package tui
 
 import (
+	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
@@ -103,6 +104,12 @@ func newKnownNodeInfoDisplay(nd *NetworkDisplay, nodeHash string, data KnownNode
 	k.nameEdit.SetText(data.DisplayStr)
 	k.sortEdit = NewReadlineEdit(kr, "Sort Rank : ", "")
 	k.sortEdit.SetText(data.SortStr)
+	// Python's KnownNodeInfo e_name/e_sort are bare ReadlineEdit (no AttrMap,
+	// Network.py:678-679), rendered with NO background. tview's InputField
+	// otherwise paints them with the contrast background (blue). Force the
+	// terminal-default background to match.
+	k.nameEdit.SetFieldBackgroundColor(tcell.ColorDefault)
+	k.sortEdit.SetFieldBackgroundColor(tcell.ColorDefault)
 
 	// Trust radio group (Network.py:660-663). Warning leaves none preselected.
 	group := &DialogRadioGroup{}

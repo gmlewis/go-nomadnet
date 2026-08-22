@@ -93,6 +93,16 @@ func TestNetworkRightEntersBrowserPane(t *testing.T) {
 	// Show the Announce Stream (showingNodes starts true; toggle to the stream).
 	nd.toggleList() // showingNodes -> false, left list = announce stream, focused.
 
+	// A real user reaches the Announce Info view by pressing Down twice to move
+	// the AnnounceStream Pile focus off the tab bar (Python's urwid Pile defaults
+	// focus_position to 0 = the tab bar) onto the entry list, then Enter on a
+	// row. The pile preserves that list focus across the info-view swap, so
+	// after Connect focus returns to the LIST (Python close_list_dialogs reuses
+	// the same AnnounceStream instance, Network.py:1728-1734) — not the tab bar.
+	// Reproduce that navigation here so the post-Connect state matches Python.
+	dispatchApp(t, app, tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone)) // tab bar -> filter bar
+	dispatchApp(t, app, tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone)) // filter bar -> list
+
 	// Open the Announce Info detail for the node (as Enter on the list does).
 	nd.showAnnounceDetail(0)
 	if !nd.inInfoView {

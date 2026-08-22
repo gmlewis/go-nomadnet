@@ -170,6 +170,15 @@ type urwidColumns struct {
 	// marks the columns that would consume Left/Right. Tab/Backtab and all other
 	// keys keep their usual (moveFocus / forward) behavior either way.
 	selfManaging []bool
+	// selfManagingFunc[i], when non-nil, is a dynamic counterpart to
+	// selfManaging[i]: it is consulted at key-dispatch time so a column can
+	// consume Left/Right only while its current focus state wants them. The
+	// Network left pane uses this to forward Left/Right to the Announce Stream's
+	// tab bar / filter bar (which move between their own children) while those
+	// bars have focus, but let the outer Columns move pane focus when the
+	// plain list has focus — matching urwid, where the inner Columns consumes
+	// Left/Right only while a child that handles them is focused.
+	selfManagingFunc []func() bool
 }
 
 // newURWIDColumns builds a urwid-style Columns row of the given weighted
@@ -199,6 +208,23 @@ func (c *urwidColumns) SetSelfManaging(i int, v bool) *urwidColumns {
 			c.selfManaging = make([]bool, len(c.children))
 		}
 		c.selfManaging[i] = v
+	}
+	return c
+}
+
+// SetSelfManagingFunc installs a dynamic predicate for column i that reports
+// whether the column currently owns Left/Right (see urwidColumns.selfManaging
+// and selfManagingFunc). It is consulted at key-dispatch time alongside the
+// static selfManaging flag; either being true forwards Left/Right to the
+// column's subtree. Used by the Network left pane so Left/Right traverse the
+// Announce Stream's tab bar / filter bar while those have focus, but move pane
+// focus when the plain list has focus.
+func (c *urwidColumns) SetSelfManagingFunc(i int, fn func() bool) *urwidColumns {
+	if i >= 0 && i < len(c.children) {
+		if c.selfManagingFunc == nil {
+			c.selfManagingFunc = make([]func() bool, len(c.children))
+		}
+		c.selfManagingFunc[i] = fn
 	}
 	return c
 }
@@ -405,7 +431,16 @@ func (c *urwidColumns) InputHandler() func(event *tcell.EventKey, setFocus func(
 		// Columns.keypress forwarding to the focused column first; tview can't
 		// report consumption, so the flag marks the columns that would consume
 		// Left/Right. Tab/Backtab still move column focus (see the switch below).
-		if c.focusIndex < len(c.selfManaging) && c.selfManaging[c.focusIndex] {
+		// The flag is the OR of the static selfManaging[i] (e.g. the browser
+		// pane, or the AnnounceInfo button row while a detail view is open) and
+		// the dynamic selfManagingFunc[i] (e.g. the Network left pane, which
+		// consumes Left/Right only while the Announce Stream's tab bar / filter
+		// bar has focus).
+		selfManaging := c.focusIndex < len(c.selfManaging) && c.selfManaging[c.focusIndex]
+		if !selfManaging && c.focusIndex < len(c.selfManagingFunc) && c.selfManagingFunc[c.focusIndex] != nil {
+			selfManaging = c.selfManagingFunc[c.focusIndex]()
+		}
+		if selfManaging {
 			if event.Key() == tcell.KeyRight || event.Key() == tcell.KeyLeft {
 				if h := focusedChild.InputHandler(); h != nil {
 					h(event, setFocus)
@@ -414,24 +449,45 @@ func (c *urwidColumns) InputHandler() func(event *tcell.EventKey, setFocus func(
 			}
 		}
 
-		// For text input fields (e.g. ReadlineEdit or tview.InputField), plain KeyLeft and KeyRight move the text cursor.
-		// Tab and Backtab move column focus.
-		// For other widgets (e.g. UrwidButton), KeyLeft, KeyRight, KeyTab, KeyBacktab all move column focus.
+		// For text input fields (e.g. ReadlineEdit or tview.InputField), plain
+		// KeyLeft and KeyRight move the text cursor. Tab and Backtab move column
+		// focus. For other widgets (e.g. UrwidButton), KeyLeft, KeyRight, KeyTab,
+		// KeyBacktab all move column focus.
+		//
+		// Boundary exception for ReadlineEdit: urwid's Edit returns the key
+		// UNHANDLED at the buffer boundary (pos==0 for left, pos>=len for right,
+		// urwid/widget/edit.py:441-453), so the enclosing Columns then moves
+		// focus to the next/prev selectable column (urwid/widget/columns.py:1242-
+		// 1252). Reproduce that: at the boundary, treat Left/Right as a column-
+		// focus move instead of forwarding to the edit. This is what lets Right
+		// at the end of the Announce Stream "Search" field move to the
+		// "[ Show: Name ]" toggle.
 		isTextInput := false
-		if _, isRL := focusedChild.(*ReadlineEdit); isRL {
+		atLeftBoundary := false
+		atRightBoundary := false
+		if re, isRL := focusedChild.(*ReadlineEdit); isRL {
 			isTextInput = true
+			runes := []rune(re.GetText())
+			if re.CursorPos() <= 0 {
+				atLeftBoundary = true
+			}
+			if re.CursorPos() >= len(runes) {
+				atRightBoundary = true
+			}
 		} else if _, isIF := focusedChild.(*tview.InputField); isIF {
 			isTextInput = true
+			// tview.InputField exposes no readable cursor position, so assume
+			// it is never at a boundary: Left/Right always edit the field.
 		}
 
 		switch event.Key() {
 		case tcell.KeyRight:
-			if !isTextInput {
+			if !isTextInput || atRightBoundary {
 				c.moveFocus(1, setFocus)
 				return
 			}
 		case tcell.KeyLeft:
-			if !isTextInput {
+			if !isTextInput || atLeftBoundary {
 				c.moveFocus(-1, setFocus)
 				return
 			}

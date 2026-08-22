@@ -37,6 +37,7 @@ import (
 	"github.com/gmlewis/go-nomadnet/nomadnet/rrc"
 	"github.com/gmlewis/go-nomadnet/tui"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/gmlewis/go-reticulum/lxmf"
 	"github.com/gmlewis/go-reticulum/rns"
 	"github.com/rivo/tview"
@@ -1935,6 +1936,45 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		}
 	}
 	networkDisplay.SetNavigateCallback(navigateTo)
+
+	// Enter on a Saved Nodes list row opens the "Connect to node?" dialog
+	// (Python KnownNodes NodeEntry "click" signal → connect_node,
+	// Network.py:881-919): a Yes/No/Info button row. Yes connects by loading
+	// the node's page URL in the Network browser pane (Python confirmed →
+	// browser.retrieve_url(RNS.hexrep(source_hash, delimit=False)) +
+	// close_list_dialogs); No dismisses; Info opens the editable KnownNodeInfo
+	// form (Python show_info → KnownNodeInfo). The display string mirrors
+	// Python's simplest_display_str(source_hash).
+	networkDisplay.OnConnectNode = func(node tui.NodeEntry) {
+		displayStr := node.DisplayName
+		if hash, ok := app.SourceHashFromHex(node.SourceHash); ok {
+			displayStr = a.Dir.SimplestDisplayStr(hash)
+		}
+		if displayStr == "" {
+			displayStr = "<" + node.SourceHash + ">"
+		}
+		yesBtn := tview.NewButton("Yes").SetSelectedFunc(func() {
+			tuiApp.Dialogs.DismissTop()
+			navigateTo(node.SourceHash)
+		})
+		noBtn := tview.NewButton("No").SetSelectedFunc(func() {
+			tuiApp.Dialogs.DismissTop()
+		})
+		infoBtn := tview.NewButton("Info").SetSelectedFunc(func() {
+			tuiApp.Dialogs.DismissTop()
+			networkDisplay.ShowKnownNodeInfo(node.SourceHash)
+		})
+		buttons := tui.CreateButtonRow(yesBtn, noBtn, infoBtn)
+		msg := tview.NewTextView().
+			SetTextAlign(tview.AlignCenter).
+			SetDynamicColors(true).
+			SetTextColor(tcell.NewHexColor(0xdddddd)).
+			SetText("Connect to node\n" + displayStr + "\n")
+		layout := tview.NewFlex().SetDirection(tview.FlexRow).
+			AddItem(msg, 3, 0, false).
+			AddItem(buttons, 1, 0, true)
+		tuiApp.Dialogs.ShowDialog("?", layout, 40, 6, nil)
+	}
 
 	// The Quit menu item triggers graceful shutdown (selectMenu special-cases
 	// key "quit" → onQuit, mirroring Python's handler.quit raise ExitMainLoop →

@@ -66,6 +66,11 @@ func NewLocalPeerDisplay(app *App, lxmfAddr, identityHash, name string, lastAnno
 		lp.nameEdit = NewReadlineEdit(&killRing{}, "Name      : ", "")
 	}
 	lp.nameEdit.SetText(name)
+	// Python's LocalPeer e_name is a bare ReadlineEdit (no AttrMap,
+	// Network.py:1273), so urwid renders it with NO background. tview's
+	// InputField otherwise paints the text area with the contrast background
+	// (blue), mismatching the original. Force the terminal-default background.
+	lp.nameEdit.SetFieldBackgroundColor(tcell.ColorDefault)
 
 	lp.announce = tview.NewTextView().
 		SetDynamicColors(false).

@@ -127,6 +127,14 @@ type NetworkDisplay struct {
 	OnUseAsPN  func() // [Use as default] — set default propagation node
 	OnConverse func() // [Converse] — open a conversation with the peer
 
+	// OnConnectNode is fired by Enter on a Saved Nodes list row (Python
+	// KnownNodes NodeEntry "click" signal → connect_node, Network.py:1019 +
+	// 881-919). Python opens a "Connect to node?" dialog (Yes/No/Info); the
+	// wiring layer builds that dialog. Yes connects (browser.retrieve_url of the
+	// node hash), No dismisses, Info opens the KnownNodeInfo form
+	// (ShowKnownNodeInfo). Receives the selected node entry.
+	OnConnectNode func(node NodeEntry)
+
 	// OnResolveAnnounceInfo resolves the directory-backed fields an AnnounceInfo
 	// view needs at view time (Python AnnounceInfo __init__: trust_level,
 	// simplest_display_str, op_str). Returns ok=false when no resolver is wired
@@ -269,6 +277,18 @@ func NewNetworkDisplay(app *App, announces []AnnounceEntry, nodes []NodeEntry) *
 	// forwards Left/Right to it instead of pane-wrapping (Python keeps the
 	// browser body's keypress, which never bubbles Left/Right to the Columns).
 	mainCols.SetSelfManaging(1, true)
+	// The left pane consumes Left/Right only while the Announce Stream's tab
+	// bar or filter bar has focus (those bars move between their own children,
+	// like Python's nested Columns which consumes Left/Right for its children),
+	// or while a detail view (AnnounceInfo/KnownNodeInfo button row) is open.
+	// When the plain Saved-Nodes / Announce-Stream / Peers list has focus it
+	// does NOT consume Left/Right, so the outer Columns moves pane focus to the
+	// browser — matching urwid, where the list's Left/Right bubble up to the
+	// outer Columns. Without this dynamic predicate the outer Columns grabs
+	// Left/Right before the inner tab bar can move between [ Nodes ] /
+	// [ Peers ] / [ Propagation Nodes ], and before the filter bar can move
+	// between "Search" and "[ Show: Name ]" (the reported parity bugs).
+	mainCols.SetSelfManagingFunc(0, nd.leftPaneConsumesLeftRight)
 	nd.mainCols = mainCols
 	nd.widget = mainCols
 
@@ -282,10 +302,22 @@ func NewNetworkDisplay(app *App, announces []AnnounceEntry, nodes []NodeEntry) *
 		}
 		nd.showAnnounceDetailFor(ann)
 	})
-	// Saved-nodes list: Enter is a no-op (Python KnownNodes.node_list_selection
-	// is `pass`, Network.py:888). The editable KnownNodeInfo form is opened by
-	// Ctrl-E (NetworkLeftPile.keypress → selected_node_info, Network.py:1603),
-	// wired via OnEditNode → ShowKnownNodeInfo in the wiring layer.
+	// Saved-nodes list: Enter opens the "Connect to node?" flow (Python
+	// KnownNodes NodeEntry "click" signal → connect_node, Network.py:1019 +
+	// 881-919). The ListEntry "click" signal fires on Enter (and mouse click),
+	// NOT on selection change — node_list_selection (Network.py:878-879) is the
+	// selection-change callback (`pass`), which the prior no-op comment mistook
+	// for the Enter handler. Resolve the row through nodeData (which maps 1:1 to
+	// list rows) and dispatch to OnConnectNode; the wiring layer builds the
+	// Yes/No/Info dialog.
+	nd.nodes.SetSelectedFunc(func(i int, _, _ string, _ rune) {
+		if i < 0 || i >= len(nd.nodeData) {
+			return
+		}
+		if nd.OnConnectNode != nil {
+			nd.OnConnectNode(nd.nodeData[i])
+		}
+	})
 
 	return nd
 }
@@ -710,6 +742,39 @@ func (nd *NetworkDisplay) setInfoView(active bool) {
 	if nd.mainCols != nil {
 		nd.mainCols.SetSelfManaging(0, active)
 	}
+}
+
+// leftPaneConsumesLeftRight reports whether the Network left pane should own
+// Left/Right (so the outer mainCols forwards those keys into the left pane's
+// subtree instead of moving pane focus to the browser). It mirrors urwid's
+// nested-Columns-first key dispatch: the left pane consumes Left/Right only
+// while a widget that handles them is focused.
+//
+//   - While a detail view (AnnounceInfo / KnownNodeInfo button row) is open,
+//     the left pane holds a button row that consumes Left/Right (Back→Connect
+//     →Msg Op→Save…), so it always owns them. (setInfoView also sets the static
+//     self-managing flag for this; the dynamic predicate returns true too so
+//     the two stay consistent.)
+//   - While the Announce Stream is shown and its tab bar ([ Nodes ]/[ Peers ]/
+//     [ Propagation Nodes ]) or filter bar (Search / [ Show: Name ]) has focus,
+//     those inner Columns consume Left/Right to move between their children.
+//   - While a plain list (Saved Nodes, the Announce Stream entry list, or the
+//     LXMF Peers list) has focus, Left/Right are NOT consumed: they bubble up
+//     to the outer Columns, which moves pane focus to the browser — matching
+//     Python, where a urwid ListBox does not handle Left/Right.
+func (nd *NetworkDisplay) leftPaneConsumesLeftRight() bool {
+	if nd.inInfoView {
+		return true
+	}
+	if nd.showingNodes || nd.showingPeers {
+		return false
+	}
+	as := nd.announceStream
+	if as == nil {
+		return false
+	}
+	return (as.tabBar != nil && as.tabBar.HasFocus()) ||
+		(as.filterBar != nil && as.filterBar.HasFocus())
 }
 
 // focusLeftList establishes keyboard focus on the primitive currently swapped
