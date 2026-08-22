@@ -26,6 +26,7 @@ import (
 	"os/exec"
 	"runtime"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
@@ -111,6 +112,17 @@ func NewConfigDisplay(app *App, configPath string) *ConfigDisplay {
 
 	cd.pages = tview.NewPages().AddPage("main", cd.widget, true, true)
 
+	// Port Python's ConfigFiller.keypress "up" escape (Config.py:19-23): while
+	// the explainer ("main") page is mounted, Up returns focus to the menu bar
+	// (MainFrame.focus_position = "header") regardless of which pile child —
+	// the explainer text or the "Open Editor" button — has focus. The capture
+	// is attached to cd.widget (the "main" page itself), NOT cd.pages, so
+	// tview's Pages dispatches it only while the "main" page is the focused
+	// entry; while the "editor" page is mounted the EmbeddedTerminal receives
+	// all keys (it owns Up for cursor movement), so the capture cannot fire
+	// during editing.
+	cd.widget.SetInputCapture(cd.handleInput)
+
 	return cd
 }
 
@@ -118,6 +130,39 @@ func NewConfigDisplay(app *App, configPath string) *ConfigDisplay {
 // explainer so the embedded editor can swap in).
 func (cd *ConfigDisplay) Widget() tview.Primitive {
 	return cd.pages
+}
+
+// handleInput ports Python's ConfigFiller.keypress "up" escape (Config.py:19-23):
+// pressing Up while the config body has focus moves focus to the menu bar
+// (MainFrame.focus_position = "header"), regardless of which pile child — the
+// explainer text or the "Open Editor" button — currently has focus. The
+// centralized MainDisplay.bodyListAtTop only recognizes *tview.List,
+// IndicativeListBox, and centeredText, so the button-focused config page must
+// own this transition itself, exactly as Python's ConfigFiller wrapper does.
+// This is the fix for the reported bug where, after Ctrl-x exits the embedded
+// editor and the cursor lands back on "Open Editor", Up could no longer reach
+// the main menu.
+//
+// The capture is attached to cd.widget (the "main" page), so tview's Pages
+// only invokes it while the "main" page is the focused entry — during editing
+// the EmbeddedTerminal (the "editor" page) is focused and receives Up for its
+// own cursor movement. A modal dialog overlay suppresses the transition so
+// the dispatcher never steals focus from an open dialog.
+func (cd *ConfigDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
+	if event == nil {
+		return event
+	}
+	if event.Key() != tcell.KeyUp {
+		return event
+	}
+	if cd.app != nil && cd.app.Dialogs != nil && cd.app.Dialogs.Open() {
+		return event
+	}
+	if cd.app != nil && cd.app.Main != nil {
+		cd.app.Main.FocusMenu()
+		return nil
+	}
+	return event
 }
 
 // openEditor launches the configured editor on the NomadNet config file. If

@@ -19,6 +19,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/gdamore/tcell/v2"
 )
 
 // TestConfigDisplayExplainerText asserts the Config page shows Python's
@@ -144,5 +146,105 @@ func TestConfigDisplayLayout(t *testing.T) {
 		if rows[i] != "" {
 			t.Errorf("row %v = %q, want blank (TOP-filled below the pile)", i, rows[i])
 		}
+	}
+}
+
+// TestConfigDisplayUpToMenu asserts the config page ports Python's
+// ConfigFiller.keypress "up" escape (Config.py:19-23): pressing Up while the
+// config body has focus — specifically while the "Open Editor" button is
+// focused, as it is after quitting the embedded editor (Config.py:74-78
+// quit_term restores the explainer and re-focuses the button) — moves focus
+// to the menu bar (MainFrame.focus_position = "header"). The centralized
+// MainDisplay.bodyListAtTop only recognizes *tview.List / IndicativeListBox /
+// centeredText, so the button-focused config page must own this transition
+// itself, exactly as Python's ConfigFiller wrapper does. This reproduces the
+// reported bug where, after Ctrl-x exits the editor and the cursor lands back
+// on "Open Editor", Up could no longer reach the main menu.
+func TestConfigDisplayUpToMenu(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	app.Main = NewMainDisplay(app, ThemeDark, GlyphUnicode)
+	cd := NewConfigDisplay(app, "/test/config")
+
+	// The "Open Editor" button is the config body's only focusable primitive.
+	app.SetFocus(cd.openBtn)
+	app.Main.focusRegion = "body"
+
+	up := tcell.NewEventKey(tcell.KeyUp, 0, tcell.ModNone)
+
+	capture := cd.widget.GetInputCapture()
+	if capture == nil {
+		t.Fatal("config display widget has no InputCapture")
+	}
+
+	got := capture(up)
+	if got != nil {
+		t.Errorf("Up on config body = %v, want nil (consumed → menu)", got)
+	}
+	if app.Main.focusRegion != "menu" {
+		t.Errorf("focusRegion = %q, want menu", app.Main.focusRegion)
+	}
+	if app.GetFocus() != app.Main.menuBar {
+		t.Errorf("app focus = %v, want menuBar", app.GetFocus())
+	}
+}
+
+// TestConfigDisplayUpToMenuDialogOpen asserts the Up→menu transition does
+// NOT fire while a modal dialog overlay is open (the dispatcher must not steal
+// focus from an open dialog), matching the guard in LogDisplay.handleInput.
+func TestConfigDisplayUpToMenuDialogOpen(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	app.Main = NewMainDisplay(app, ThemeDark, GlyphUnicode)
+	cd := NewConfigDisplay(app, "/test/config")
+
+	app.SetFocus(cd.openBtn)
+	app.Main.focusRegion = "body"
+
+	app.Dialogs.stack = append(app.Dialogs.stack, &dialogEntry{})
+	defer func() { app.Dialogs.stack = app.Dialogs.stack[:0] }()
+
+	up := tcell.NewEventKey(tcell.KeyUp, 0, tcell.ModNone)
+	capture := cd.widget.GetInputCapture()
+	if capture == nil {
+		t.Fatal("config display widget has no InputCapture")
+	}
+	got := capture(up)
+	if got == nil {
+		t.Error("Up on config body consumed while dialog open; want forwarded")
+	}
+	if app.Main.focusRegion != "body" {
+		t.Errorf("focusRegion = %q, want body (dialog keeps focus)", app.Main.focusRegion)
+	}
+}
+
+// TestConfigDisplayUpNotConsumedWhenEditorOpen asserts the Up→menu capture
+// does not intercept keys while the embedded editor is mounted. The capture
+// is attached to cd.widget (the "main" page); tview's Pages dispatches input
+// only to the focused page, so while the "editor" page is mounted and focused
+// the main page is outside the dispatch path and its InputCapture cannot fire.
+// We verify that structural guarantee: while the editor is shown, cd.widget
+// does not have focus and the EmbeddedTerminal does. Uses sleep 5 as a
+// stand-in editor; closeEditor closes the PTY master (SIGHUP) so no child
+// leaks.
+func TestConfigDisplayUpNotConsumedWhenEditorOpen(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	cd := NewConfigDisplay(app, "/tmp/cfg")
+
+	cd.ShowEditor("sleep", "5")
+	defer cd.closeEditor()
+
+	if cd.editor == nil {
+		t.Fatal("ShowEditor did not mount the editor")
+	}
+	if got := app.GetFocus(); got != cd.editor {
+		t.Errorf("editor open: focus = %T, want *EmbeddedTerminal", got)
+	}
+	if cd.widget.HasFocus() {
+		t.Error("main page has focus while editor is mounted; its InputCapture could steal Up from the editor")
 	}
 }
