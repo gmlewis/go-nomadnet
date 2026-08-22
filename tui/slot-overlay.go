@@ -39,6 +39,7 @@ type SlotOverlay struct {
 	widthPct     int             // >0 = relative N% of slot width; 0 = use fixedWidth
 	fixedWidth   int             // used when widthPct == 0 (urwid Overlay width=N)
 	dialogHeight int             // PACK natural height of the dialog
+	heightPct    int             // >0 = relative N% of slot height; 0 = use dialogHeight
 }
 
 // NewSlotOverlay builds an overlay placing dialog centered over bottom with the
@@ -95,6 +96,9 @@ func (o *SlotOverlay) SetRect(x, y, w, h int) {
 	dx := x + (w-dw)/2
 	dx = max(dx, x+2) // at least left=2
 	dh := o.dialogHeight
+	if o.heightPct > 0 {
+		dh = h * o.heightPct / 100
+	}
 	dh = min(dh, h)
 	dy := y + (h-dh)/2 // valign MIDDLE
 	dy = max(dy, y)
@@ -102,6 +106,10 @@ func (o *SlotOverlay) SetRect(x, y, w, h int) {
 		o.dialog.SetRect(dx, dy, dw, dh)
 	}
 }
+
+// SetHeightPct makes the dialog height a percentage of the slot height (urwid
+// Overlay height=("relative", N)), used by the Attach File browser (80%).
+func (o *SlotOverlay) SetHeightPct(pct int) *SlotOverlay { o.heightPct = pct; return o }
 
 // Draw draws the bottom (show-through) then the dialog on top.
 func (o *SlotOverlay) Draw(screen tcell.Screen) {

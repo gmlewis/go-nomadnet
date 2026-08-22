@@ -510,14 +510,13 @@ func (cd *ConversationsDisplay) DisplayConversation(sourceHash string) {
 	}
 	cw.OnAttach = func() {
 		// Python attach_file (Conversations.py:2438) opens a file browser; the
-		// display's AttachFileDialog is the input-dialog equivalent. On
-		// selection, ConfirmAttachFile fires OnAttachFiles so the app layer can
-		// stage the pending attachment.
-		cd.AttachFileDialog("", func(path string) {
-			if path == "" {
-				return
+		// display's AttachFileDialog is the browser equivalent. On Done, the
+		// selected paths are confirmed via ConfirmAttachFile, which fires
+		// OnAttachFiles so the app layer can stage the pending attachments.
+		cd.AttachFileDialog("", func(paths []string) {
+			if len(paths) > 0 {
+				cw.ConfirmAttachFile(paths)
 			}
-			cw.ConfirmAttachFile([]string{path})
 		})
 	}
 	cw.OnPaperMessageRequested = func() {
@@ -1457,21 +1456,22 @@ func (cd *ConversationsDisplay) paperMsgGlyph() string {
 	return glyphsUnicode["papermsg"]
 }
 
-// AttachFileDialog shows a file browser dialog for selecting files.
-// Matches Python's attach_file() at Conversations.py:2438.
-func (cd *ConversationsDisplay) AttachFileDialog(directory string, onSelect func(path string)) {
+// AttachFileDialog shows a filesystem browser dialog for selecting files to
+// attach, overlaid on the conversation body (Python's attach_file,
+// Conversations.py:2438-2447: frame.contents["body"] = urwid.Overlay(
+// FileBrowserDialog, bottom=messagelist, width=("relative",90),
+// height=("relative",80), left=2, right=2)). The browser navigates dirs with
+// Enter, toggles file selection with Enter, and Done fires onDone with the
+// selected paths; Cancel/Esc clears the selection and fires onDone(nil).
+func (cd *ConversationsDisplay) AttachFileDialog(directory string, onDone func(paths []string)) {
 	cd.dialogOpen = true
-	cd.app.Dialogs.ShowInputDialog("Attach File", "Path:", directory,
-		func(path string) {
-			cd.dialogOpen = false
-			if onSelect != nil {
-				onSelect(path)
-			}
-		},
-		func() {
-			cd.dialogOpen = false
-		},
-	)
+	close := func() { cd.CloseDetailSlotDialog(); cd.dialogOpen = false }
+	content := fileBrowserContent(cd.app, directory, onDone, close)
+	dialog := NewDialogLineBox("Attach File", content, close)
+	cd.ShowDetailSlotDialog(dialog, 90, 0, 0)
+	if cd.detailSlotOverlay != nil {
+		cd.detailSlotOverlay.SetHeightPct(80) // height=("relative",80)
+	}
 }
 
 // SaveAttachmentsDialog shows a dialog with checkboxes for each attachment in

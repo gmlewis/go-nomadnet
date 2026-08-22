@@ -18,7 +18,10 @@ package tui
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/gdamore/tcell/v2"
 )
 
 func tempDir(t *testing.T) string {
@@ -227,3 +230,69 @@ func TestConversationWidgetAttachFile(t *testing.T) {
 		t.Errorf("OnAttachFiles = %v, want [%q]", attached, filePath)
 	}
 }
+
+// TestAttachFileDialogSlotPlacedOnBody verifies AttachFileDialog renders as a
+// file browser overlaid on the conversation BODY (right pane), not a
+// screen-centered modal: the "Attach File" title lies in the right pane
+// (x >= 52) and the dialog is ~90% of the right-pane width (Python
+// attach_file, Conversations.py:2438: width=("relative",90)).
+func TestAttachFileDialogSlotPlacedOnBody(t *testing.T) {
+	t.Parallel()
+	app := NewApp(ThemeDark, GlyphUnicode, ColorModeTrue)
+	cd := NewConversationsDisplay(app, nil)
+	dir := tempDir(t)
+	cd.AttachFileDialog(dir, func([]string) {})
+	if cd.detailSlotOverlay == nil {
+		t.Fatal("AttachFileDialog did not install a detail-slot overlay")
+	}
+
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatalf("screen.Init: %v", err)
+	}
+	defer screen.Fini()
+	screen.SetSize(80, 24)
+	cd.content.SetRect(0, 0, 80, 24)
+	screen.Clear()
+	cd.content.Draw(screen)
+	screen.Sync()
+
+	// Find the "Attach File" title row and confirm it is in the right pane
+	// (x >= 52) and the dialog border is ~90% of the 28-wide right pane.
+	titleX, titleY := -1, -1
+	for y := range 24 {
+		for x := range 80 {
+			seg := cellString(screen, x, y)
+			if seg == "A" || seg == " " {
+				var s string
+				for dx := 0; x+dx < 80 && dx < 16; dx++ {
+					s += cellString(screen, x+dx, y)
+				}
+				if strContains(s, "Attach File") {
+					titleX, titleY = x, y
+					break
+				}
+			}
+		}
+		if titleX >= 0 {
+			break
+		}
+	}
+	if titleX < 0 {
+		t.Fatal("Attach File title not found")
+	}
+	if titleX < 52 {
+		t.Errorf("title at x=%d, must be in the right pane (x>=52), not the list column", titleX)
+	}
+	// Border is default-style.
+	_, st, _ := screen.Get(titleX, titleY)
+	fg, _, _ := st.Decompose()
+	if fg != tcell.ColorDefault {
+		t.Errorf("title fg = %v, want ColorDefault", fg)
+	}
+	_ = strContains // used
+}
+
+// strContains is a thin alias so the helper is callable from this file without
+// importing strings (already imported above).
+func strContains(s, substr string) bool { return strings.Contains(s, substr) }

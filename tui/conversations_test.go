@@ -1481,15 +1481,15 @@ func TestAttachFileDialog(t *testing.T) {
 	app := newTestApp()
 	cd := NewConversationsDisplay(app, nil)
 
-	var selectedPath string
-	cd.AttachFileDialog("/tmp/", func(path string) {
-		selectedPath = path
+	var selectedPaths []string
+	cd.AttachFileDialog("/tmp/", func(paths []string) {
+		selectedPaths = paths
 	})
 
 	if !cd.dialogOpen {
 		t.Error("dialog should be open")
 	}
-	_ = selectedPath
+	_ = selectedPaths
 }
 
 func TestSaveAttachmentsDialog(t *testing.T) {

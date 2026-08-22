@@ -19,7 +19,11 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
+
+	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 )
 
 // FileBrowserEntry represents a single entry in the file browser.
@@ -150,4 +154,147 @@ func (fbd *FileBrowserDialog) refresh() {
 
 	fbd.entries = append(fbd.entries, dirs...)
 	fbd.entries = append(fbd.entries, files...)
+}
+
+// fileBrowserContent builds the content of the "Attach File" file-browser dialog
+// (Python's FileBrowserDialog, Conversations.py:2948-3083): a header (current
+// path + "N selected: ..." status + divider), a scrollable list of directory
+// entries (parent "..", dirs "▸ name/", files "  name"/"✓ name"), and a footer
+// (divider + Done/Cancel buttons). Enter on a dir/parent navigates into it;
+// Enter on a file toggles its selection. Down at the bottom of the list moves
+// focus to the Done button (Python frame.focus_position body→footer); Up from
+// the buttons moves focus back to the list. Done calls onDone with the selected
+// files; Cancel/Esc clears the selection and calls onDone(nil). close restores
+// the slot.
+func fileBrowserContent(app *App, startPath string, onDone func(selected []string), close func()) tview.Primitive {
+	if startPath == "" {
+		startPath, _ = os.UserHomeDir()
+	}
+	fbd := NewFileBrowserDialog(startPath)
+	g := glyphsUnicode
+	if app != nil && app.Glyphs != nil {
+		g = app.Glyphs
+	}
+
+	pathLabel := tview.NewTextView().SetText("  " + fbd.CurrentPath())
+	statusLabel := tview.NewTextView()
+	list := tview.NewList()
+	list.SetHighlightFullLine(true)
+	ApplyListFocusStyle(list, appThemeVal(app))
+
+	doneBtn := NewUrwidButton("Done")
+	cancelBtn := NewUrwidButton("Cancel")
+	buttonRow := CreateUrwidButtonRow(doneBtn, cancelBtn)
+
+	updateStatus := func() {
+		sel := fbd.SelectedFiles()
+		if len(sel) > 0 {
+			names := make([]string, len(sel))
+			for i, p := range sel {
+				names[i] = filepath.Base(p)
+			}
+			statusLabel.SetText("  " + g["file"] + " " + strconv.Itoa(len(sel)) + " selected: " + strings.Join(names, ", "))
+		} else {
+			statusLabel.SetText("  No files selected")
+		}
+	}
+
+	repopulate := func(keepFocus int) {
+		pathLabel.SetText("  " + fbd.CurrentPath())
+		updateStatus()
+		list.Clear()
+		for _, e := range fbd.Entries() {
+			var disp string
+			switch {
+			case e.IsParent:
+				disp = g["arrow_l"] + " .."
+			case e.IsDir:
+				disp = g["arrow_r"] + " " + e.Name + "/"
+			case e.Selected:
+				disp = g["check"] + " " + e.Name
+			default:
+				disp = "  " + e.Name
+			}
+			list.AddItem(disp, "", 0, nil)
+		}
+		if keepFocus >= 0 && keepFocus < list.GetItemCount() {
+			list.SetCurrentItem(keepFocus)
+		} else if list.GetItemCount() > 0 {
+			list.SetCurrentItem(0)
+		}
+	}
+
+	list.SetSelectedFunc(func(i int, _, _ string, _ rune) {
+		entries := fbd.Entries()
+		if i < 0 || i >= len(entries) {
+			return
+		}
+		e := entries[i]
+		if e.IsDir || e.IsParent {
+			fbd.NavigateTo(e.FullPath)
+			repopulate(-1)
+		} else {
+			fbd.ToggleFileSelection(e.FullPath)
+			repopulate(i)
+		}
+	})
+
+	doneBtn.SetSelectedFunc(func() {
+		sel := fbd.SelectedFiles()
+		close()
+		if onDone != nil {
+			onDone(sel)
+		}
+	})
+	cancelBtn.SetSelectedFunc(func() {
+		fbd.CancelSelection()
+		close()
+		if onDone != nil {
+			onDone(nil)
+		}
+	})
+
+	content := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(pathLabel, 1, 0, false).
+		AddItem(statusLabel, 1, 0, false).
+		AddItem(newDividerRow(g["divider1"]), 1, 0, false).
+		AddItem(list, 0, 1, true).
+		AddItem(newDividerRow(g["divider1"]), 1, 0, false).
+		AddItem(buttonRow, 1, 0, false)
+
+	// Down at the bottom of the list → focus Done (Python body→footer); Up from
+	// a button → focus the list (footer→body). All other keys pass through to
+	// the focused child (list scrolls, button row moves Done↔Cancel, Enter
+	// activates).
+	content.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyDown:
+			if list.HasFocus() && list.GetCurrentItem() >= list.GetItemCount()-1 {
+				if app != nil {
+					app.SetFocus(doneBtn)
+				}
+				return nil
+			}
+		case tcell.KeyUp:
+			if (doneBtn.HasFocus() || cancelBtn.HasFocus()) && list.GetItemCount() > 0 {
+				if app != nil {
+					app.SetFocus(list)
+				}
+				return nil
+			}
+		}
+		return event
+	})
+
+	repopulate(-1)
+	return content
+}
+
+// appThemeVal returns the app's theme or ThemeDark (for list focus styling when
+// the dialog is built without a fully-wired app, e.g. in tests).
+func appThemeVal(app *App) int {
+	if app != nil {
+		return app.Theme
+	}
+	return ThemeDark
 }
