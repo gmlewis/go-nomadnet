@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime/debug"
 	"sort"
@@ -1302,6 +1301,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		configPath = filepath.Join(a.ConfigDir, "config")
 	}
 	configDisplay := tui.NewConfigDisplay(tuiApp, configPath)
+	configDisplay.SetEditorCmd(tui.ResolveEditorCmd(a.Config.TextUI.Editor))
 	main.SetDisplay("config", configDisplay.Widget())
 	main.SetShortcut("config", "")
 
@@ -1442,10 +1442,11 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	}
 	interfacesDisplay.OnConfigEditor = func() {
 		// Python's open_config_editor (Interfaces.py:3160-3185) runs $EDITOR
-		// on the RNS config (self.app.rns.configpath), titled "Editing RNS
-		// Config". tview has no embedded terminal widget, so suspend the screen
-		// and let the editor own the real terminal — the same path the Config
-		// page's "Open Editor" button uses (ConfigDisplay.openEditor).
+		// on the RNS config (self.app.rns.configpath), embedded in the body as a
+		// LineBox titled "Editing RNS Config". gonomadnet embeds the editor via
+		// the EmbeddedTerminal widget (the tview analogue of urwid.Terminal) so
+		// the menu bar + footer stay visible while editing; on editor exit the
+		// interface list is restored.
 		rnsPath := a.RNSConfigPath()
 		if rnsPath == "" {
 			tuiApp.Dialogs.ShowDialog("Config Editor",
@@ -1456,13 +1457,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 			return
 		}
 		editor := tui.ResolveEditorCmd(a.Config.TextUI.Editor)
-		tuiApp.Application.Suspend(func() {
-			cmd := exec.Command(editor, rnsPath)
-			cmd.Stdin = os.Stdin
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-			_ = cmd.Run()
-		})
+		interfacesDisplay.ShowEditor(editor, rnsPath)
 	}
 	interfacesDisplay.OnEditInterface = func() {
 		idx := interfacesDisplay.SelectedIndex()

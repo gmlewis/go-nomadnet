@@ -43,10 +43,12 @@ func TestConfigDisplayWidgetType(t *testing.T) {
 	app := newTestApp()
 	cd := NewConfigDisplay(app, "/test/config")
 
-	// Should be a Flex layout
-	_, ok := cd.Widget().(*tview.Flex)
+	// The config display wraps its explainer in a tview.Pages so the embedded
+	// editor can swap in as the "editor" page (matching Python's open_editor
+	// setting self.widget = LineBox(editor); Config.py:30-35).
+	_, ok := cd.Widget().(*tview.Pages)
 	if !ok {
-		t.Error("Widget is not a Flex")
+		t.Errorf("Widget is %T, want *tview.Pages", cd.Widget())
 	}
 }
 

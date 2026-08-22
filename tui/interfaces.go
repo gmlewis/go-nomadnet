@@ -17,6 +17,7 @@ package tui
 
 import (
 	"fmt"
+	"os/exec"
 	"strings"
 
 	"github.com/gdamore/tcell/v2"
@@ -57,6 +58,12 @@ type InterfacesDisplay struct {
 	// "dialog" = the SlotOverlay. dialogOverlay tracks the active overlay.
 	pages         *tview.Pages
 	dialogOverlay *SlotOverlay
+
+	// editor is the embedded terminal running an external editor (Ctrl-W /
+	// "Open Text Editor"), mounted as the "editor" page over the interface
+	// list while the menu bar + footer stay visible (Python's open_config_editor
+	// swaps self.widget for a LineBox(urwid.Terminal); Interfaces.py:3160).
+	editor *EmbeddedTerminal
 
 	// Keyboard shortcut callbacks (Python: InterfaceFiller.keypress)
 	OnAddInterface    func()
@@ -126,6 +133,57 @@ func (id *InterfacesDisplay) closeDialog() {
 	}
 	id.pages.RemovePage("dialog")
 	id.dialogOverlay = nil
+	id.pages.SwitchToPage("main")
+	if id.app != nil {
+		id.app.SetFocus(id.layout)
+	}
+}
+
+// ShowEditor embeds an external editor (editorCmd on filePath) inside the
+// interfaces display as a full-body page titled "Editing RNS Config", matching
+// Python's open_config_editor (Interfaces.py:3160): the editor replaces the
+// interface list while the menu bar + footer stay visible. On editor exit the
+// page is removed and focus returns to the interface list. TERM is "xterm" so
+// line editors emit ANSI the embedded emulator supports.
+func (id *InterfacesDisplay) ShowEditor(editorCmd, filePath string) {
+	if id.editor != nil {
+		id.closeEditor()
+	}
+	_, _, w, h := id.layout.GetRect()
+	if w <= 0 {
+		w = 80
+	}
+	if h <= 0 {
+		h = 24
+	}
+	cmd := exec.Command(editorCmd, filePath)
+	et, err := NewEmbeddedTerminal(id.app, cmd, w, h, "linux", id.closeEditor)
+	if err != nil {
+		id.ShowInterfaceError(err.Error())
+		return
+	}
+	et.SetBorder(true)
+	// urwid.LineBox wraps the title in a leading + trailing space
+	// (format_title: " "+title+" "); match it so the title reads identically.
+	et.SetTitle(" Editing RNS Config ")
+	id.editor = et
+	id.pages.AddPage("editor", et, true, true)
+	id.pages.SwitchToPage("editor")
+	if id.app != nil {
+		id.app.SetFocus(et)
+	}
+}
+
+// closeEditor removes the embedded editor page and restores the interface list
+// + focus. It is the onClose callback fired when the editor child exits
+// (matching Python's urwid.Terminal 'closed' signal → restore self.widget).
+func (id *InterfacesDisplay) closeEditor() {
+	if id.editor == nil {
+		return
+	}
+	id.editor.Close()
+	id.editor = nil
+	id.pages.RemovePage("editor")
 	id.pages.SwitchToPage("main")
 	if id.app != nil {
 		id.app.SetFocus(id.layout)
@@ -379,9 +437,7 @@ func (b *interfaceListBox) MouseHandler() func(action tview.MouseAction, event *
 		case tview.MouseLeftClick:
 			_, by, _, _ := b.GetRect()
 			idx := b.offset + (y-by)/InterfaceItemHeight
-			if idx < 0 {
-				idx = 0
-			}
+			idx = max(idx, 0)
 			if idx >= len(b.items) {
 				idx = len(b.items) - 1
 			}

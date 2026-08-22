@@ -3,6 +3,7 @@ module github.com/gmlewis/go-nomadnet
 go 1.26.4
 
 require (
+	github.com/creack/pty/v2 v2.0.1
 	github.com/fxamacker/cbor/v2 v2.9.2
 	github.com/gdamore/tcell/v2 v2.13.10
 	github.com/gmlewis/go-reticulum v0.38.0

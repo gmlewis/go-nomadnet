@@ -23,7 +23,6 @@
 package tui
 
 import (
-	"os"
 	"os/exec"
 	"runtime"
 
@@ -32,15 +31,25 @@ import (
 
 // ConfigDisplay shows the config-file explainer and an "Open Editor" button,
 // matching Python's ConfigDisplay (Config.py:25-48). Python embeds an
-// urwid.Terminal running the editor; tview has no embedded terminal widget, so
-// the button launches $EDITOR via Application.Suspend (screen paused, editor
-// runs on the real terminal, then the TUI resumes) — same user-visible effect.
+// urwid.Terminal running the editor on the NomadNet config (Config.py:57-71);
+// the Go port embeds it via the EmbeddedTerminal widget (the tview analogue of
+// urwid.Terminal) so the menu bar + footer stay visible while editing.
 type ConfigDisplay struct {
 	app        *App
 	widget     *tview.Flex
 	explainer  *centeredText
 	configPath string
 	editorCmd  string
+	openBtn    *UrwidButton
+
+	// pages wraps the explainer so the embedded editor can swap in as the
+	// "editor" page (Python's open_editor sets self.widget = LineBox(editor);
+	// Config.py:30-35). "main" = the explainer; "editor" = the EmbeddedTerminal.
+	pages *tview.Pages
+
+	// editor is the embedded terminal running the external editor while the
+	// "editor" page is mounted.
+	editor *EmbeddedTerminal
 
 	// OnOpenEditor, if set, is invoked by openEditor instead of launching the
 	// editor. The app can use it to customize launch; tests use it to avoid
@@ -85,10 +94,10 @@ func NewConfigDisplay(app *App, configPath string) *ConfigDisplay {
 
 	// "Open Editor" as a flat urwid "< Open Editor >" button (15 wide), then
 	// floor-left-center it in a Flex row (Padding CENTER is floor-left).
-	openBtn := NewUrwidButton("Open Editor").SetSelectedFunc(func() { cd.openEditor() })
+	cd.openBtn = NewUrwidButton("Open Editor").SetSelectedFunc(func() { cd.openEditor() })
 	buttonRow := tview.NewFlex().
 		AddItem(tview.NewBox(), 0, 1, false).
-		AddItem(openBtn, 15, 0, true).
+		AddItem(cd.openBtn, 15, 0, true).
 		AddItem(tview.NewBox(), 0, 1, false)
 
 	// Pile [explainer(7), button(1)] = 8 rows, TOP-filled (blank below).
@@ -100,35 +109,80 @@ func NewConfigDisplay(app *App, configPath string) *ConfigDisplay {
 		AddItem(pile, 8, 0, true).
 		AddItem(tview.NewBox(), 0, 1, false)
 
+	cd.pages = tview.NewPages().AddPage("main", cd.widget, true, true)
+
 	return cd
 }
 
-// Widget returns the tview primitive for this display.
+// Widget returns the tview primitive for this display (a Pages wrapping the
+// explainer so the embedded editor can swap in).
 func (cd *ConfigDisplay) Widget() tview.Primitive {
-	return cd.widget
+	return cd.pages
 }
 
-// openEditor launches the configured editor on the config file. If OnOpenEditor
-// is set it is called instead (test/app seam). Otherwise the editor is run with
-// the screen suspended via Application.Suspend so it owns the real terminal,
-// matching Python's EditorTerminal (Config.py:50-71).
+// openEditor launches the configured editor on the NomadNet config file. If
+// OnOpenEditor is set it is called instead (test/app seam). Otherwise the editor
+// is embedded in the body via the EmbeddedTerminal widget, matching Python's
+// EditorTerminal (Config.py:30-35,57-71): the editor replaces the explainer
+// while the menu bar + footer stay visible, and on editor exit the explainer is
+// restored. The LineBox has no title (Python's urwid.LineBox(self.editor_term)
+// passes no title; Config.py:32).
 func (cd *ConfigDisplay) openEditor() {
 	if cd.OnOpenEditor != nil {
 		cd.OnOpenEditor()
 		return
 	}
-	if cd.app == nil || cd.app.Application == nil {
+	cd.ShowEditor(cd.editorCmd, cd.configPath)
+}
+
+// SetEditorCmd overrides the editor command (the app passes the configured
+// [textui] editor resolved via ResolveEditorCmd; tests use the default).
+func (cd *ConfigDisplay) SetEditorCmd(cmd string) { cd.editorCmd = cmd }
+
+// ShowEditor embeds an external editor (editorCmd on filePath) inside the
+// config display as a full-body page (no title, matching Python's
+// urwid.LineBox(self.editor_term); Config.py:32). On editor exit the explainer
+// is restored and focus returns to the "Open Editor" button (Python's
+// quit_term restores self.parent.config_explainer; Config.py:74-78).
+func (cd *ConfigDisplay) ShowEditor(editorCmd, filePath string) {
+	if cd.editor != nil {
+		cd.closeEditor()
+	}
+	_, _, w, h := cd.widget.GetRect()
+	if w <= 0 {
+		w = 80
+	}
+	if h <= 0 {
+		h = 24
+	}
+	cmd := exec.Command(editorCmd, filePath)
+	et, err := NewEmbeddedTerminal(cd.app, cmd, w, h, "linux", cd.closeEditor)
+	if err != nil {
 		return
 	}
-	editor := cd.editorCmd
-	configPath := cd.configPath
-	cd.app.Application.Suspend(func() {
-		cmd := exec.Command(editor, configPath)
-		cmd.Stdin = os.Stdin
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		_ = cmd.Run()
-	})
+	et.SetBorder(true)
+	cd.editor = et
+	cd.pages.AddPage("editor", et, true, true)
+	cd.pages.SwitchToPage("editor")
+	if cd.app != nil {
+		cd.app.SetFocus(et)
+	}
+}
+
+// closeEditor removes the embedded editor page and restores the explainer +
+// focus. It is the onClose callback fired when the editor child exits
+// (matching Python's urwid.Terminal 'closed' signal → quit_term).
+func (cd *ConfigDisplay) closeEditor() {
+	if cd.editor == nil {
+		return
+	}
+	cd.editor.Close()
+	cd.editor = nil
+	cd.pages.RemovePage("editor")
+	cd.pages.SwitchToPage("main")
+	if cd.app != nil && cd.openBtn != nil {
+		cd.app.SetFocus(cd.openBtn)
+	}
 }
 
 // ResolveEditorCmd resolves the editor command the way Python's EditorTerminal

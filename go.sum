@@ -1,3 +1,5 @@
+github.com/creack/pty/v2 v2.0.1 h1:RDY1VY5b+7m2mfPsugucOYPIxMp+xal5ZheSyVzUA+k=
+github.com/creack/pty/v2 v2.0.1/go.mod h1:2dSssKp3b86qYEMwA/FPwc3ff+kYpDdQI8osU8J7gxQ=
 github.com/fxamacker/cbor/v2 v2.9.2 h1:X4Ksno9+x3cz0TZv69ec1hxP/+tymuR8PXQJyDwfh78=
 github.com/fxamacker/cbor/v2 v2.9.2/go.mod h1:vM4b+DJCtHn+zz7h3FFp/hDAI9WNWCsZj23V5ytsSxQ=
 github.com/gdamore/encoding v1.0.1 h1:YzKZckdBL6jVt2Gc+5p82qhrGiqMdG/eNs6Wy0u3Uhw=

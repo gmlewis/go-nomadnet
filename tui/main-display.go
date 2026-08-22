@@ -644,6 +644,17 @@ func (md *MainDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 		diagFileMD("/tmp/quit-diag.log", fmt.Sprintf("HANDLE key=%v focusRegion=%q focus=%T menuBarHasFocus=%v", event.Key(), md.focusRegion, p, md.menuBar.HasFocus()))
 	}
 
+	// When an embedded terminal (the in-body editor) has focus, it owns ALL
+	// keys — including Ctrl-C/Ctrl-Q, which editors like vim use — so the
+	// global quit/menu logic must not intercept them. This mirrors Python's
+	// urwid.Terminal, which grabs every key while focused (the editor is quit
+	// via its own keys, e.g. nano Ctrl-X; the 'closed' signal then restores the
+	// interfaces display). Forward the event unchanged so tview dispatches it
+	// to the embedded terminal's InputHandler.
+	if _, ok := md.app.GetFocus().(*EmbeddedTerminal); ok {
+		return event
+	}
+
 	// Global quit — the only keys the dispatcher always owns. Ctrl-Q is the
 	// documented quit (TextUI.py:262-264 unhandled_input). Ctrl-C is also
 	// routed here: in Python, Ctrl-C raises KeyboardInterrupt which the urwid
