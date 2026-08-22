@@ -130,3 +130,31 @@ func TestAppSetFocusRefusesNil(t *testing.T) {
 		t.Fatal("SetFocus(nil) was not reported (no stack dump captured)")
 	}
 }
+
+// TestSetFocusInvariantSink pins the wiring API the cmd/gonomadnet layer uses to
+// route focus-invariant dumps into the app logger (the "[ Log ]" menu's file):
+// SetFocusInvariantSink redirects the sink, and a nil argument restores the
+// default /tmp sink. This is what makes the stack trace appear in-menu rather
+// than only in a scratch file.
+func TestSetFocusInvariantSink(t *testing.T) {
+	focusDumpMu.Lock()
+	defer focusDumpMu.Unlock()
+	defer SetFocusInvariantSink(nil) // restore default
+
+	var got string
+	SetFocusInvariantSink(func(msg string, stack []byte) {
+		got = msg + "|" + string(stack)
+	})
+	dumpFocusInvariantViolation("wired-sink-test")
+
+	if !strings.Contains(got, "wired-sink-test") {
+		t.Errorf("wired sink captured %q, want it to contain the message", got)
+	}
+	if !strings.Contains(got, "focus-invariant_test.go") {
+		t.Errorf("wired sink captured no stack (want this file in the trace), got %q", got)
+	}
+
+	// nil restores the default sink (no panic, dump goes to /tmp again).
+	SetFocusInvariantSink(nil)
+	dumpFocusInvariantViolation("default-restored") // must not panic.
+}

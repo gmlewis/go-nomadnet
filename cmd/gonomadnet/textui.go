@@ -1244,6 +1244,19 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	main.SetDisplay("log", logDisplay.Widget())
 	main.SetShortcut("log", "")
 
+	// Route focus-invariant violation dumps (a nil a.focus — the "arrow keys do
+	// nothing" lock-up root cause) into the application logger, which writes
+	// logPath — the same file the "[ Log ]" menu tails — so a stack trace
+	// surfaces in-menu instead of only in a /tmp scratch file. The dump still
+	// fires from MainDisplay.handleInput / App.SetFocus; this just chooses the
+	// destination. a.Logger writes at or above Notice, so Error always emits.
+	logger := a.Logger
+	tui.SetFocusInvariantSink(func(msg string, stack []byte) {
+		if logger != nil {
+			logger.Error("FOCUS INVARIANT VIOLATION: %s\n%s", msg, stack)
+		}
+	})
+
 	// Begin live tailing (Python's LogTerminal runs `tail -fn50` continuously
 	// while the page exists). It is a no-op when the log file is absent. The
 	// returned cleanup stops the goroutine on shutdown.

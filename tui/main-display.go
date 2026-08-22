@@ -966,6 +966,20 @@ var focusInvariantDump = func(msg string, stack []byte) {
 	diagFileMD("/tmp/quit-diag.log", fmt.Sprintf("FOCUS INVARIANT VIOLATION: %v\n%s", msg, stack))
 }
 
+// SetFocusInvariantSink redirects the focus-invariant violation sink so dumps
+// land in the application's real log (the file the "[ Log ]" menu tails)
+// instead of the default /tmp scratch file. The wiring layer calls this once
+// startup has created the app logger. Passing nil restores the default sink.
+func SetFocusInvariantSink(fn func(msg string, stack []byte)) {
+	if fn == nil {
+		focusInvariantDump = func(msg string, stack []byte) {
+			diagFileMD("/tmp/quit-diag.log", fmt.Sprintf("FOCUS INVARIANT VIOLATION: %v\n%s", msg, stack))
+		}
+		return
+	}
+	focusInvariantDump = fn
+}
+
 // dumpFocusInvariantViolation captures the current goroutine stack and reports
 // a focus-invariant violation through focusInvariantDump.
 func dumpFocusInvariantViolation(msg string) {
