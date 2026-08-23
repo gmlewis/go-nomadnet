@@ -95,6 +95,11 @@ in `tooling/parity-reference/` (see `nomadnet-trusted-chat-reference.md`).
   `tui/conversations.go:1868` claims it "matches Python where the dialog closes
   into the conversation's focused footer" — but the live Python 1.2.8 does not.
   Fix: drop the auto-open (or confirm against the exact ported version).
+  USER NOTE: I think we have to be careful with this one because the behavior
+  changes once a remote note becomes "trusted", even if the conversation is
+  deleted, this trusted user is remembered. So to fully verify this, we should
+  perform this experiment AGAIN with TWO DIFFERENT nodes that have never conversed
+  before... BEFORE we declare any behavioral parity differences here. TODO.
 
 - **B2 (confirmed): gonomadnet conversation header shows the peer's LXMF hash
   `<hash>`; nomadnet shows the peer's display name.** Both had the peer named
@@ -111,6 +116,13 @@ in `tooling/parity-reference/` (see `nomadnet-trusted-chat-reference.md`).
   Esc; nomadnet's QR popup does NOT dismiss on Esc — it dismisses on Space (and
   a key like C-n is absorbed by the popup rather than dismissed). Confirm and
   match the dismiss semantics.
+  USER NOTE: I like the additional (very natural) support for the Esc key to
+  dismiss modals, and I don't mind having `gonomadnet` have ADDITIONAL nice
+  features for the user as long as they don't interfere with parity operation.
+  So in other words, if gonomadnet supports everything that nomadnet supports,
+  but in addition has added functionality that is helpful for the user, then
+  let's keep the added helpful capabilities (like the Esc key support which
+  seems really natural, obvious, and intuitive).
 
 - **B5 (candidate): New Conversation dialog field-advance key.** gonomadnet
   advances Addr→Name on Tab; nomadnet does NOT — Tab is consumed by the
