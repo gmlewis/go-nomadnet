@@ -78,3 +78,83 @@ printf '`[Label`url]\n`<field`data>\n>Heading\n' | python3 micron_inline.py
 ```
 
 ---
+
+## Parity bugs found: nomadnet 1.2.8 (Python reference) vs gonomadnet
+
+Discovered by running the identical trusted-chat experiment on both runtimes
+(Mac + Linux, both on nomadnet 1.2.8, shared LXMF identities) and diffing
+against the earlier gonomadnet run. Full reference capture + screen grabs live
+in `tooling/parity-reference/` (see `nomadnet-trusted-chat-reference.md`).
+**Remove each entry when the Go test proves parity.**
+
+- **B1 (confirmed): gonomadnet auto-opens the conversation after New
+  Conversation (C-n) Create.** nomadnet 1.2.8 does NOT — after Create it returns
+  to the list with "No conversation selected"; the user must select the peer and
+  press Enter to open it. gonomadnet `cmd/gonomadnet/textui.go:816` calls
+  `DisplayConversation(addrHex)` after Create and the comment at
+  `tui/conversations.go:1868` claims it "matches Python where the dialog closes
+  into the conversation's focused footer" — but the live Python 1.2.8 does not.
+  Fix: drop the auto-open (or confirm against the exact ported version).
+
+- **B2 (confirmed): gonomadnet conversation header shows the peer's LXMF hash
+  `<hash>`; nomadnet shows the peer's display name.** Both had the peer named
+  "Linux-OMEN". nomadnet header: `Linux-OMEN | ◷ 2 hops`; gonomadnet header:
+  `<9a2fe7…> | ◷ 2 hops`. Fix: use the directory display name in the header.
+
+- **B3 (confirmed): gonomadnet "My LXMF" (C-p) is an "LXMF Address" modal with
+  `<hash>` (no internal spaces) and a "not available" placeholder; nomadnet is a
+  "QR Code" modal rendering an actual QR code + `< hash >` (spaces inside the
+  brackets).** gonomadnet `OnShowQR` (`textui.go:823`) emits "LXMF address
+  display — not available". Fix: render the QR code and match the title/format.
+
+- **B4 (candidate): modal dismiss key.** gonomadnet dismisses the C-p modal on
+  Esc; nomadnet's QR popup does NOT dismiss on Esc — it dismisses on Space (and
+  a key like C-n is absorbed by the popup rather than dismissed). Confirm and
+  match the dismiss semantics.
+
+- **B5 (candidate): New Conversation dialog field-advance key.** gonomadnet
+  advances Addr→Name on Tab; nomadnet does NOT — Tab is consumed by the
+  ReadlineEdit (text appended to the current field) and the advance key is Down.
+  Confirm which behavior the port targets.
+
+- **B6 (candidate, MAJOR): gonomadnet LXMF announce does not propagate to remote
+  peers, so a remote peer cannot learn a path to a gonomadnet instance and
+  cannot reply.** In the gonomadnet run the Linux side showed `Mac | ◷ unknown`
+  after 10+ min and the reply never sent; in the nomadnet run the Linux side
+  showed `Mac | ◷ 2 hops` and the reply delivered. Both boxes share the same
+  public RNS transport (dfw.us.g00n.cloud:6969), and `gornpath` from the Linux
+  box to the Mac's LXMF hash succeeded (4 hops) — so the network is fine; the
+  gonomadnet instance's own announce is not being learned by the remote
+  gonomadnet. Investigate gonomadnet/go-reticulum announce emission + flood.
+
+- **B7 (candidate): outgoing/incoming message status glyph.** nomadnet uses `✓`
+  as the leading marker for both outgoing (`✓ →`) and trusted-incoming (`✓ ←`);
+  gonomadnet uses `↑` for outgoing and `⚠` for untrusted-incoming. The `→`/`←`
+  direction arrows match; the leading status glyph differs. Confirm the trusted
+  vs untrusted incoming glyph set against nomadnet and match it.
+
+- **B8 (candidate): failed/queued outgoing message not shown.** When the
+  gonomadnet reply could not send (no path, see B6) it did not appear in the
+  conversation at all; nomadnet shows the outgoing message immediately
+  (`✓ → just now … ⚿`) before delivery. Disambiguate from B6 (does gonomadnet
+  only show outgoing after successful send/path-resolution?).
+
+### Reference behaviors to verify gonomadnet matches (not yet confirmed as bugs)
+
+- **R1:** "Delete conversation" (C-x) removes the conversation/messages but
+  RETAINS the directory entry (name + trust). An incoming message then
+  re-creates the conversation under the retained entry (nomadnet: deleted "Mac"
+  → Trusted 3→2; Mac's next message re-added "✓ Mac" Trusted). Verify gonomadnet
+  retains the directory entry across delete.
+
+- **R2:** An open conversation auto-refreshes when a new message arrives
+  (nomadnet: the Linux reply appeared live in the Mac's open conversation
+  without re-selecting). Verify gonomadnet auto-refreshes (could not test
+  earlier because the reply never arrived — blocked by B6).
+
+- **R3:** "Unknown Origin" warning (`⚠ ← Unknown Origin`) is shown for messages
+  from untrusted/unknown peers and suppressed for trusted peers (nomadnet: the
+  trusted Mac message showed `✓ ← …`, no warning). Verify gonomadnet's
+  trust-dependent warning matches.
+
+---

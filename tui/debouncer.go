@@ -20,6 +20,28 @@ import (
 	"time"
 )
 
+// timer is the handle returned by a clock's AfterFunc. It mirrors the subset
+// of *time.Timer the debouncer needs (Reset to reschedule a pending call).
+type timer interface {
+	Reset(d time.Duration) bool
+	Stop() bool
+}
+
+// clock schedules fn to run after a duration, as time.AfterFunc does. It is
+// abstracted so the debouncer can be tested with a deterministic fake clock
+// instead of real wall-clock time: the tests advance the clock explicitly, so
+// they never depend on the scheduler and cannot flake under load.
+type clock interface {
+	AfterFunc(d time.Duration, fn func()) timer
+}
+
+// realClock wraps time.AfterFunc. *time.Timer satisfies timer.
+type realClock struct{}
+
+func (realClock) AfterFunc(d time.Duration, fn func()) timer {
+	return time.AfterFunc(d, fn)
+}
+
 // debouncedCall coalesces a burst of Trigger calls into a single invocation of
 // fn. The first Trigger schedules fn to run after window; each subsequent
 // Trigger before the window elapses resets the timer, so a burst of N calls
@@ -32,21 +54,28 @@ import (
 // in-memory widget rebuilds; the Go refresh is heavier, so coalescing is the
 // parity-preserving fix.
 //
-// Trigger is safe for concurrent use. fn runs on a time.AfterFunc goroutine; it
-// is the caller's responsibility to marshal any tview mutations inside fn onto
-// the event loop (e.g. via App.QueueUpdateDraw).
+// Trigger is safe for concurrent use. fn runs on the clock's AfterFunc
+// goroutine; it is the caller's responsibility to marshal any tview mutations
+// inside fn onto the event loop (e.g. via App.QueueUpdateDraw).
 type debouncedCall struct {
 	fn     func()
 	window time.Duration
+	clock  clock
 
 	mu    sync.Mutex
-	timer *time.Timer
+	timer timer
 }
 
 // NewDebouncedCall creates a debouncedCall that runs fn at most once per window
-// no matter how rapidly Trigger is called.
+// no matter how rapidly Trigger is called. It uses the real wall-clock.
 func NewDebouncedCall(window time.Duration, fn func()) *debouncedCall {
-	return &debouncedCall{fn: fn, window: window}
+	return &debouncedCall{fn: fn, window: window, clock: realClock{}}
+}
+
+// newDebouncedCallWithClock is a test constructor that injects a deterministic
+// clock so tests can advance time explicitly instead of sleeping.
+func newDebouncedCallWithClock(window time.Duration, fn func(), c clock) *debouncedCall {
+	return &debouncedCall{fn: fn, window: window, clock: c}
 }
 
 // Trigger schedules (or reschedules) the debounced fn call. A burst of Trigger
@@ -55,7 +84,7 @@ func (d *debouncedCall) Trigger() {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if d.timer == nil {
-		d.timer = time.AfterFunc(d.window, d.fn)
+		d.timer = d.clock.AfterFunc(d.window, d.fn)
 		return
 	}
 	d.timer.Reset(d.window)
