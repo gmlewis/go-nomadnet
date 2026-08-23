@@ -139,6 +139,14 @@ in `tooling/parity-reference/` (see `nomadnet-trusted-chat-reference.md`).
   (`✓ → just now … ⚿`) before delivery. Disambiguate from B6 (does gonomadnet
   only show outgoing after successful send/path-resolution?).
 
+- **B9 (candidate): tab switching via keyboard Up-at-top → menu.** nomadnet 1.2.8
+  does NOT move focus to the menu header on Up-at-top of the Conversations list
+  (the `IndicativeListBox` doesn't return `"up"` unhandled at top, so the
+  `ConversationsArea` Up→header transition never fires); tab switching is done
+  by mouse-clicking the menu bar. Verify whether gonomadnet's keyboard
+  Up-at-top→menu fires (it likely does, since gonomadnet's dispatcher owns the
+  Up-at-top→FocusMenu transition) — if so, that is a divergence to reconcile.
+
 ### Reference behaviors to verify gonomadnet matches (not yet confirmed as bugs)
 
 - **R1:** "Delete conversation" (C-x) removes the conversation/messages but
