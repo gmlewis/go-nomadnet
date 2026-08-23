@@ -20,13 +20,21 @@ require (
 	github.com/lucasb-eyer/go-colorful v1.3.0 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
-	golang.org/x/sys v0.38.0 // indirect
+	golang.org/x/sys v0.42.0 // indirect
 )
 
-// tcell: carry the inputLoop keychan/keyQ shutdown-deadlock guard (upstream
-// PR https://github.com/gdamore/tcell/pull/673 was closed without merge; revived
-// as https://github.com/gdamore/tcell/pull/1155). The fork is gmlewis/tcell.
-// Also carries the eventQ post guard (input.go), cursor flicker optimization
-// (showCursor position-unchanged shortcut), and always-on mode 2026.
-// See memory/tcell-inputloop-keychan-send-deadlock.md for the full analysis.
-replace github.com/gdamore/tcell/v2 => github.com/gmlewis/tcell/v2 v2.13.10-quitguard.1
+// tcell fork (gmlewis/tcell): carries the inputLoop keychan/keyQ
+// shutdown-deadlock guard, eventQ post quit-guard, cursor flicker
+// optimization (showCursor position-unchanged shortcut + lastShowVisible
+// tracking), always-on mode 2026 (synchronized output), and per-cell
+// incremental rendering (forcedDirty flag — Put no longer clobbers
+// lastStr, so unchanged cells are skipped by drawCell).
+replace github.com/gdamore/tcell/v2 => github.com/gmlewis/tcell/v2 v2.13.11-0.20260823113451-e5d19bcf6c9b
+
+// tview fork (gmlewis/tview): carries the fullRedraw flag (draw skips
+// screen.Clear on normal redraws, relying on tcell per-cell dirty
+// checking), SetFocus early-return when focus unchanged (eliminates
+// redundant Blur/HideCursor cursor flicker), v0.42.0-compatible
+// SetFocus/GetFocus (direct a.focus field), and v0.42.0-style HasFocus
+// methods on all containers.
+replace github.com/rivo/tview => github.com/gmlewis/tview v0.0.0-20260823113522-3ec2ab956f0b
