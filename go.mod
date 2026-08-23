@@ -29,7 +29,7 @@ require (
 // tracking), always-on mode 2026 (synchronized output), and per-cell
 // incremental rendering (forcedDirty flag — Put no longer clobbers
 // lastStr, so unchanged cells are skipped by drawCell).
-replace github.com/gdamore/tcell/v2 => github.com/gmlewis/tcell/v2 v2.13.11-0.20260823113451-e5d19bcf6c9b
+replace github.com/gdamore/tcell/v2 => github.com/gmlewis/tcell/v2 v2.13.11-0.20260823183226-42e2772e8f47
 
 // tview fork (gmlewis/tview): carries the fullRedraw flag (draw skips
 // screen.Clear on normal redraws, relying on tcell per-cell dirty
@@ -38,4 +38,4 @@ replace github.com/gdamore/tcell/v2 => github.com/gmlewis/tcell/v2 v2.13.11-0.20
 // SetFocus/GetFocus (direct a.focus field), v0.42.0-style HasFocus
 // methods on all containers, Box.Focus/Blur callback restoration,
 // List.Draw adjustOffset call, and WordWrap/stripTags region-tag fix.
-replace github.com/rivo/tview => github.com/gmlewis/tview v0.0.0-20260823142410-dceb76a122d6
+replace github.com/rivo/tview => github.com/gmlewis/tview v0.0.0-20260823184729-1fc7dd7d2e6f
