@@ -623,20 +623,40 @@ func (md *MainDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 		return event
 	}
 
-	// Invariant: a running app always has a focused primitive. nil focus is
-	// never a valid steady state — it is always a bug (a SetFocus(nil), a
-	// container Focus delegate(nil), or a dialog dismiss that skipped
-	// restoration) and it manifests as "arrow keys do nothing" because tview
-	// dispatches keys to a.focus. Recover BEFORE any dispatch so no key is ever
-	// lost, and dump a stack so the violation surfaces immediately instead of
-	// festering for hours. FocusBody cascades contentArea→page→…→a real
-	// primitive; if that still fails, FocusMenu targets menuBar, which is
-	// always a valid non-nil primitive.
-	if md.app != nil && md.app.GetFocus() == nil {
-		dumpFocusInvariantViolation(fmt.Sprintf("nil focus on key=%v focusRegion=%q", event.Key(), md.focusRegion))
-		md.FocusBody()
-		if md.app.GetFocus() == nil {
-			md.FocusMenu()
+	// Invariant: a running app always has a focused primitive whose
+	// HasFocus() returns true. Two failure modes are caught here:
+	//
+	//  1. nil focus: a.focus == nil (a SetFocus(nil), a container
+	//     Focus delegate(nil), or a dialog dismiss that skipped
+	//     restoration).
+	//  2. zombie focus: a.focus is non-nil but root.HasFocus() returns
+	//     false — e.g. a.focus points to a container (pileFiller,
+	//     urwidColumns) whose Focus() didn't cascade to any child and
+	//     didn't set its own hasFocus flag, or to a widget removed from
+	//     the tree while a dialog was open. tview's event loop gate at
+	//     application.go:439 silently drops ALL key events when
+	//     root.HasFocus() is false, so the UI appears frozen (arrow keys
+	//     do nothing, cursor disappears) with no stack trace because
+	//     a.focus is non-nil.
+	//
+	// Recover BEFORE any dispatch so no key is ever lost, and dump a stack
+	// so the violation surfaces immediately instead of festering for hours.
+	// FocusBody cascades contentArea→page→…→a real primitive; if that still
+	// fails, FocusMenu targets menuBar, which is always a valid non-nil
+	// primitive.
+	if md.app != nil {
+		focus := md.app.GetFocus()
+		root := md.app.GetRoot()
+		if focus == nil || (root != nil && !root.HasFocus()) {
+			dumpFocusInvariantViolation(fmt.Sprintf(
+				"nil/zombie focus on key=%v focusRegion=%q focus=%T rootHasFocus=%v",
+				event.Key(), md.focusRegion, focus, root != nil && root.HasFocus()))
+			md.FocusBody()
+			focus = md.app.GetFocus()
+			root = md.app.GetRoot()
+			if focus == nil || (root != nil && !root.HasFocus()) {
+				md.FocusMenu()
+			}
 		}
 	}
 

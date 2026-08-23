@@ -265,10 +265,19 @@ func (p *pileFiller) Draw(screen tcell.Screen) {
 // Focus, HasFocus, InputHandler and MouseHandler delegate to the focused
 // selectable item so the pile behaves like a single selectable group (urwid
 // Pile forwards focus to focus_position).
+//
+// When no selectable child exists (focusedItem returns nil), the fallback
+// calls Box.Focus(delegate) so the pile's own hasFocus flag is set and
+// HasFocus() returns true. Without this, tview's event loop gate at
+// application.go:439 (root.HasFocus()) silently drops all key events,
+// producing the "arrow keys do nothing / cursor disappears" freeze. This
+// mirrors tview.Flex.Focus, which has the same Box.Focus fallback.
 func (p *pileFiller) Focus(delegate func(tview.Primitive)) {
 	if fi := p.focusedItem(); fi != nil {
 		fi.Focus(delegate)
+		return
 	}
+	p.Box.Focus(delegate)
 }
 
 // Blur clears focus on the pile AND its focused selectable child. The
@@ -302,7 +311,7 @@ func (p *pileFiller) HasFocus() bool {
 			return true
 		}
 	}
-	return false
+	return p.Box.HasFocus()
 }
 
 func (p *pileFiller) syncFocusIndex() {

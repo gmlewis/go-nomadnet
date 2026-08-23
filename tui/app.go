@@ -42,6 +42,11 @@ type App struct {
 	Styles    *StyleRegistry
 	killRing  *killRing
 
+	// root is the current root primitive passed to tview.Application.SetRoot.
+	// tview does not expose this field, so App tracks it for the zombie-focus
+	// recovery in MainDisplay.handleInput, which needs to check root.HasFocus().
+	root tview.Primitive
+
 	// updates is a bounded queue of functions to run on the event loop, drained
 	// by a single long-lived goroutine (drainUpdates) that calls tview's
 	// blocking Application.QueueUpdateDraw serially. See QueueUpdateDraw.
@@ -145,7 +150,16 @@ func ApplyDefaultStyles() {
 // screen.
 func (a *App) SetRoot() {
 	root := a.Dialogs.Init(a.Application, a.Main.Root())
+	a.root = root
 	a.Application.SetRoot(root, true)
+}
+
+// GetRoot returns the current root primitive, or nil if SetRoot has not been
+// called. tview.Application does not expose its root field; App tracks it so
+// the zombie-focus recovery in MainDisplay.handleInput can check
+// root.HasFocus().
+func (a *App) GetRoot() tview.Primitive {
+	return a.root
 }
 
 // Run starts the tview application event loop.
@@ -162,6 +176,7 @@ func (a *App) ShowIntro(intro tview.Primitive, seconds float64) {
 		a.SetRoot()
 		return
 	}
+	a.root = intro
 	a.Application.SetRoot(intro, true)
 	duration := time.Duration(seconds * float64(time.Second))
 	time.AfterFunc(duration, func() {

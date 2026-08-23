@@ -71,8 +71,8 @@ func TestHandleInputRecoversNilFocus(t *testing.T) {
 	if len(*dumps) == 0 {
 		t.Fatal("nil-focus violation was not reported (no stack dump captured)")
 	}
-	if !strings.Contains((*dumps)[0], "nil focus") {
-		t.Errorf("dump message = %q, want it to mention nil focus", (*dumps)[0])
+	if !strings.Contains((*dumps)[0], "nil/zombie focus") {
+		t.Errorf("dump message = %q, want it to mention nil/zombie focus", (*dumps)[0])
 	}
 }
 

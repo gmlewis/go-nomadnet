@@ -181,6 +181,17 @@ func (dm *DialogManager) dismissTop() {
 			debugFocusLog("close nil prevFocus -> main", focus)
 		}
 		app.SetFocus(focus)
+		// Guard against zombie focus: if a background QueueUpdateDraw
+		// replaced page content while the dialog was open, prevFocus may
+		// point to a widget that is no longer in the tree. SetFocus sets
+		// a.focus = focus and calls focus.Focus(delegate), but if focus is
+		// not a descendant of any page, root.HasFocus() returns false and
+		// tview's event loop gate silently drops all subsequent key
+		// events. Detect this immediately and fall back to main.
+		if pages != nil && !pages.HasFocus() {
+			debugFocusLog("close zombie prevFocus -> main", dm.main)
+			app.SetFocus(dm.main)
+		}
 	}
 	dm.mu.Unlock()
 
@@ -217,6 +228,17 @@ func newTransparentBox() *transparentBox {
 
 // Draw does nothing — the spacer is transparent and does not clear its rect.
 func (t *transparentBox) Draw(screen tcell.Screen) {}
+
+// MouseHandler overrides the inherited Box.MouseHandler so that mouse clicks
+// on the dialog margin never steal focus. The default Box.MouseHandler calls
+// setFocus(b) on MouseLeftDown, which bypasses the App.SetFocus nil-guard and
+// leaves a.focus pointing at the transparent spacer — keys then go to a
+// primitive whose InputHandler does nothing, making the dialog appear stuck.
+func (t *transparentBox) MouseHandler() func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(p tview.Primitive)) (consumed bool, capture tview.Primitive) {
+	return func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(p tview.Primitive)) (consumed bool, capture tview.Primitive) {
+		return false, nil
+	}
+}
 
 // centerDialog wraps content in a full-screen Flex that centers it at the
 // given width and height. The surrounding space is transparent (non-clearing)

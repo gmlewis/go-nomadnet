@@ -365,8 +365,14 @@ func (c *urwidColumns) Draw(screen tcell.Screen) {
 // Focus, HasFocus, InputHandler and MouseHandler delegate to the focused child
 // so the row behaves like a single selectable group (urwid Columns forwards
 // focus to focus_position).
+//
+// When no focusable child exists, the fallback calls Box.Focus(delegate) so
+// the row's own hasFocus flag is set and HasFocus() returns true. Without
+// this, tview's event loop gate at application.go:439 (root.HasFocus())
+// silently drops all key events. This mirrors tview.Flex.Focus.
 func (c *urwidColumns) Focus(delegate func(p tview.Primitive)) {
 	if len(c.children) == 0 {
+		c.Box.Focus(delegate)
 		return
 	}
 	if c.focusIndex < 0 || c.focusIndex >= len(c.children) || !isFocusable(c.children[c.focusIndex]) {
@@ -380,7 +386,9 @@ func (c *urwidColumns) Focus(delegate func(p tview.Primitive)) {
 	}
 	if c.focusIndex >= 0 && c.focusIndex < len(c.children) {
 		c.children[c.focusIndex].Focus(delegate)
+		return
 	}
+	c.Box.Focus(delegate)
 }
 
 func (c *urwidColumns) Blur() {
@@ -398,7 +406,7 @@ func (c *urwidColumns) HasFocus() bool {
 			return true
 		}
 	}
-	return false
+	return c.Box.HasFocus()
 }
 
 func (c *urwidColumns) InputHandler() func(event *tcell.EventKey, setFocus func(p tview.Primitive)) {
