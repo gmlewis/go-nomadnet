@@ -495,7 +495,16 @@ func (md *MainDisplay) selectMenu(index int) {
 		return
 	}
 	md.selectMenuLocked(index)
+	wasMenu := md.focusRegion == "menu"
 	md.mu.Unlock()
+	// SwitchToPage calls p.Focus(p.setFocus) when p.HasFocus() is true,
+	// which can steal focus to the new page's first child. Python's
+	// MenuButton on_press (Main.py show_* + update_active_sub_display)
+	// never touches MainFrame.focus_position — focus stays on the menu
+	// bar until Tab/Down. Restore it when the menu was focused.
+	if wasMenu && md.app != nil {
+		md.app.SetFocus(md.menuBar)
+	}
 }
 
 // SelectPage switches the body to the menu page with the given key (e.g.

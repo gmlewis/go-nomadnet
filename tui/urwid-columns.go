@@ -96,7 +96,7 @@ func urwidColumnWidthsEx(maxcol int, weights []int, fixedWidths []int, dividecha
 	}
 	hasFixed := false
 	for _, fw := range fixedWidths {
-		if fw > 0 {
+		if fw >= 0 {
 			hasFixed = true
 			break
 		}
@@ -115,7 +115,7 @@ func urwidColumnWidthsEx(maxcol int, weights []int, fixedWidths []int, dividecha
 	var weightedIdxs []int
 	wtotal := 0
 	for i := range n {
-		if fixedWidths[i] > 0 {
+		if fixedWidths[i] >= 0 {
 			fw := min(fixedWidths[i], shared)
 			widths[i] = fw
 			shared -= fw
@@ -188,6 +188,7 @@ func newURWIDColumns(dividechars int, children ...tview.Primitive) *urwidColumns
 	fixedWidths := make([]int, len(children))
 	for i := range children {
 		weights[i] = 1
+		fixedWidths[i] = -1 // -1 = not fixed (use weight); 0 = hidden
 	}
 	return &urwidColumns{
 		Box:         tview.NewBox(),
@@ -500,9 +501,38 @@ func (c *urwidColumns) InputHandler() func(event *tcell.EventKey, setFocus func(
 				return
 			}
 		case tcell.KeyTab:
+			// Dispatch Tab to the focused child first. If the child
+			// handles Tab internally (e.g. a pileFiller cycling its
+			// items: tab bar → filter bar → list), it calls setFocus
+			// and we must NOT move column focus. This mirrors urwid's
+			// Columns.keypress, which forwards the key to the focused
+			// column's keypress first and only moves column focus when
+			// the column returns the key unhandled. Without this, the
+			// Announce Stream pile never receives Tab — the columns
+			// steals it to move to the browser pane.
+			if h := focusedChild.InputHandler(); h != nil {
+				var childConsumed bool
+				h(event, func(p tview.Primitive) {
+					childConsumed = true
+					setFocus(p)
+				})
+				if childConsumed {
+					return
+				}
+			}
 			c.moveFocus(1, setFocus)
 			return
 		case tcell.KeyBacktab:
+			if h := focusedChild.InputHandler(); h != nil {
+				var childConsumed bool
+				h(event, func(p tview.Primitive) {
+					childConsumed = true
+					setFocus(p)
+				})
+				if childConsumed {
+					return
+				}
+			}
 			c.moveFocus(-1, setFocus)
 			return
 		}

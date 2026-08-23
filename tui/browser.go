@@ -440,16 +440,28 @@ func (bd *BrowserDisplay) rollbackPendingLink() {
 	}
 }
 
-// GoBack navigates to the previous URL in history.
+// GoBack navigates to the previous URL in history. It is a no-op while a
+// link-click fetch is still in flight (pendingLinkHist), matching Python's
+// Browser.back() guard: `if not self.history_inc and not self.history_dec`
+// (Browser.py:1079). Without this, GoBack would roll back the pending push
+// and start a new fetch, but the original link fetch would overwrite the
+// back-navigated page when it completed.
 func (bd *BrowserDisplay) GoBack() {
+	if bd.pendingLinkHist {
+		return
+	}
 	if bd.histIdx > 0 {
 		bd.histIdx--
 		bd.displayURL(bd.history[bd.histIdx])
 	}
 }
 
-// GoForward navigates to the next URL in history.
+// GoForward navigates to the next URL in history. It is a no-op while a
+// link-click fetch is still in flight, matching the same guard as GoBack.
 func (bd *BrowserDisplay) GoForward() {
+	if bd.pendingLinkHist {
+		return
+	}
 	if bd.histIdx < len(bd.history)-1 {
 		bd.histIdx++
 		bd.displayURL(bd.history[bd.histIdx])

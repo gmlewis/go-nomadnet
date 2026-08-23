@@ -138,8 +138,9 @@ func (b *UrwidButton) Draw(screen tcell.Screen) {
 			screen.SetContent(col, row, r, nil, style)
 		}
 	}
-	// Label cell width = w - brackets - 2*dividechars (one blank each side).
-	labelW := max(w-len([]rune(b.leftBracket))-len([]rune(b.rightBracket))-2*urwidButtonDivideChars, 0)
+	// Label cell width = w - brackets - dividechars (one blank after left
+	// bracket only; urwid Button has no right dividechars).
+	labelW := max(w-len([]rune(b.leftBracket))-len([]rune(b.rightBracket))-urwidButtonDivideChars, 0)
 	lines := urwidSpaceWrap(b.label, labelW)
 	if len(lines) == 0 {
 		lines = []string{""}
@@ -181,11 +182,6 @@ func (b *UrwidButton) Draw(screen tcell.Screen) {
 			setRune(px, y+r, ' ')
 			px++
 		}
-		// Right dividechars blank.
-		for range urwidButtonDivideChars {
-			setRune(px, y+r, ' ')
-			px++
-		}
 		// Right bracket on row 0 only; blank below.
 		if r == 0 {
 			for _, br := range b.rightBracket {
@@ -210,7 +206,7 @@ func (b *UrwidButton) Draw(screen tcell.Screen) {
 // matching urwid Columns render height (the max child height) for a button
 // placed in a column of that width. Used by urwidColumns to size the tab bar.
 func (b *UrwidButton) RequiredHeight(w int) int {
-	labelW := w - len([]rune(b.leftBracket)) - len([]rune(b.rightBracket)) - 2*urwidButtonDivideChars
+	labelW := w - len([]rune(b.leftBracket)) - len([]rune(b.rightBracket)) - urwidButtonDivideChars
 	if labelW < 1 {
 		return 1
 	}
