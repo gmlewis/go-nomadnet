@@ -52,7 +52,7 @@ func TestCheckboxGlyphFormat(t *testing.T) {
 
 			// Read the first 8 characters of the rendered output.
 			got := ""
-			for x := 0; x < 8; x++ {
+			for x := range 8 {
 				str, _, _ := screen.Get(x, 0)
 				for _, r := range str {
 					got += string(r)

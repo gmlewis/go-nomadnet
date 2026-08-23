@@ -54,7 +54,7 @@ func TestInterfaceListBufferRow(t *testing.T) {
 	// content), matching Python's 1-row buffer.
 	lastRow := 21
 	blankRow := true
-	for x := 0; x < 80; x++ {
+	for x := range 80 {
 		c, _, _, _ := cellContent(screen, x, lastRow)
 		if c != 0 && c != ' ' {
 			blankRow = false
