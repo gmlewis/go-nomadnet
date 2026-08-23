@@ -453,13 +453,19 @@ func (gd *GuideDisplay) rerender(width int) {
 // readerWidth is the reader's current inner column count (the wrap/divider
 // width). The reader is a borderless TextView laid out inside the readerBox
 // LineBox, so its GetInnerRect already excludes the readerBox border — no
-// further subtraction. It falls back to 80 before the first layout.
+// further subtraction. When the rect hasn't been laid out yet (width is 0 or
+// the tview default 15×10), it falls back to the last rendered width
+// (reader.lastW) so re-renders use a sensible width. If lastW is also 0
+// (very first render), 80 is used as a conventional terminal width.
 func (gd *GuideDisplay) readerWidth() int {
 	_, _, w, _ := gd.reader.GetInnerRect()
-	if w <= 0 {
-		return 80
+	if w > 15 {
+		return w
 	}
-	return w
+	if gd.reader.lastW > 0 {
+		return gd.reader.lastW
+	}
+	return 80
 }
 
 // jumpToAnchor scrolls the reader so the named anchor's line sits at the top,

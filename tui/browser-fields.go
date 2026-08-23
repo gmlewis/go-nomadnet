@@ -114,7 +114,7 @@ func (bd *BrowserDisplay) buildLineFields(lines []*micron.StyledLine) {
 	bd.radioGroups = map[string]*RadioGroup{}
 	width := bd.renderedWidth
 	if width <= 0 {
-		width = 60
+		width = 80
 	}
 	// TEMPORARY: log field-span count + specs per render to diagnose whether
 	// the ICP Board search page's `query` field becomes a Field span. Remove.

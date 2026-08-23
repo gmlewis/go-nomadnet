@@ -40,7 +40,7 @@ import (
 // returned so the caller can dispatch activations.
 func StyledLinesToTviewText(lines []*micron.StyledLine, width int) (string, []micron.LinkSpec) {
 	if width <= 0 {
-		width = 60
+		width = 80
 	}
 	var b strings.Builder
 	var links []micron.LinkSpec

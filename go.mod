@@ -35,6 +35,7 @@ replace github.com/gdamore/tcell/v2 => github.com/gmlewis/tcell/v2 v2.13.11-0.20
 // screen.Clear on normal redraws, relying on tcell per-cell dirty
 // checking), SetFocus early-return when focus unchanged (eliminates
 // redundant Blur/HideCursor cursor flicker), v0.42.0-compatible
-// SetFocus/GetFocus (direct a.focus field), and v0.42.0-style HasFocus
-// methods on all containers.
-replace github.com/rivo/tview => github.com/gmlewis/tview v0.0.0-20260823113522-3ec2ab956f0b
+// SetFocus/GetFocus (direct a.focus field), v0.42.0-style HasFocus
+// methods on all containers, Box.Focus/Blur callback restoration,
+// List.Draw adjustOffset call, and WordWrap/stripTags region-tag fix.
+replace github.com/rivo/tview => github.com/gmlewis/tview v0.0.0-20260823142410-dceb76a122d6

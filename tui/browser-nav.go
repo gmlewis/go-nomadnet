@@ -86,7 +86,9 @@ func (bd *BrowserDisplay) reflowIfWidthChanged() {
 		return
 	}
 	_, _, w, _ := bd.content.GetInnerRect()
-	if w <= 0 || w == bd.renderedWidth {
+	// Skip when the rect hasn't been properly set (0 or the tview default 15)
+	// or when the width matches the last render — no reflow needed.
+	if w <= 15 || w == bd.renderedWidth {
 		return
 	}
 	bd.app.QueueUpdateDraw(func() {

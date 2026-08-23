@@ -871,14 +871,20 @@ func (bd *BrowserDisplay) stopPartials() {
 func (bd *BrowserDisplay) StopPartials() { bd.stopPartials() }
 
 // contentWidth is the content TextView's inner column count (the wrap/divider
-// width), falling back to 80 before the first layout — mirroring
-// GuideDisplay.readerWidth.
+// width). When the rect hasn't been laid out yet (width is 0 or the tview
+// default 15×10), it falls back to the last rendered width (renderedWidth) so
+// re-renders triggered before the first SetRect use a sensible width rather
+// than the 15-column default. If renderedWidth is also 0 (very first render),
+// 80 is used as a conventional terminal width.
 func (bd *BrowserDisplay) contentWidth() int {
 	_, _, w, _ := bd.content.GetInnerRect()
-	if w <= 0 {
-		return 80
+	if w > 15 {
+		return w
 	}
-	return w
+	if bd.renderedWidth > 0 {
+		return bd.renderedWidth
+	}
+	return 80
 }
 
 // Reload refreshes the current page.
