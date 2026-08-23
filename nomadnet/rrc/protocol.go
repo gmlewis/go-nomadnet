@@ -13,11 +13,6 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-// Package rrc implements the Reticulum Relay Chat protocol.
-//
-// RRC is a real-time chat protocol built on top of Reticulum's
-// encrypted link layer. It supports rooms, presence, nicknames,
-// actions, pings, and resource transfers.
 package rrc
 
 // Protocol version.

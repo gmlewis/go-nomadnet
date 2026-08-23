@@ -83,7 +83,7 @@ func NewLinkableText(onHandle func(target, fields string)) *LinkableText {
 			SetDynamicColors(true).
 			SetScrollable(true).
 			SetRegions(true).
-			SetTextColor(tcell.NewHexColor(0xbbbbbb))),
+			SetTextColor(tcell.NewHexColor(0xdddddd))),
 		onHandle:   onHandle,
 		keyTimeout: 2 * time.Second, // Python key_timeout = 2
 	}

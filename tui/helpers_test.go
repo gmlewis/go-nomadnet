@@ -85,6 +85,38 @@ func TestClickableIconClickWithText(t *testing.T) {
 	}
 }
 
+// TestClickableIconGlyphColor pins the ClickableIcon glyph color to the
+// browser_controls palette value (#bbb dark, 3-hex cube-quantized to
+// #afafaf). Python's ClickableIcon is a bare urwid.Text inside an
+// AttrMap("browser_controls") so it inherits #bbb. The Go port previously
+// used 0xdddddd which Python never emits.
+//
+// Python source: Browser.py:516-521 (ClickableIcon inside
+// AttrMap(..., "browser_controls")); TextUI.py:53 (browser_controls = #bbb).
+func TestClickableIconGlyphColor(t *testing.T) {
+	t.Parallel()
+
+	ci := NewClickableIcon("X", nil)
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatalf("screen.Init: %v", err)
+	}
+	defer screen.Fini()
+	screen.SetSize(10, 3)
+	ci.SetRect(0, 0, 10, 3)
+	ci.Draw(screen)
+
+	if c, _, style, _ := cellContent(screen, 0, 0); c != 'X' {
+		t.Fatalf("cell (0,0) = %q, want 'X'", string(c))
+	} else {
+		fg, _, _ := style.Decompose()
+		if got := uint32(fg.Hex()) & 0xffffff; got != 0xafafaf {
+			t.Errorf("ClickableIcon glyph fg = #%06x, want #afafaf "+
+				"(browser_controls #bbb cube-quantized)", got)
+		}
+	}
+}
+
 func TestOSC52CopyEmpty(t *testing.T) {
 	t.Parallel()
 

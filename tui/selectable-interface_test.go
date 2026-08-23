@@ -326,7 +326,8 @@ func TestInterfaceListBoxPartialLastItem(t *testing.T) {
 	}
 	b := newInterfaceListBox(nil, "")
 	b.SetItems(items)
-	// Height fits 2 full boxes (14) + 3 rows of a partial 3rd.
+	// Height fits 2 full boxes (14) + 2 rows of a partial 3rd (the 17th row
+	// is a blank buffer, matching Python's iface_row_offset behavior).
 	b.SetRect(0, 0, 60, 17)
 	screen := tcell.NewSimulationScreen("UTF-8")
 	if screen == nil {
@@ -343,9 +344,10 @@ func TestInterfaceListBoxPartialLastItem(t *testing.T) {
 	if main, _, _, _ := cellContent(screen, 0, 14); main != BorderTopLeftRounded {
 		t.Errorf("partial box C top-left at y=14 = %q, want %q", main, BorderTopLeftRounded)
 	}
-	// Box C last visible row (y=16) is a vertical (clipped, no bottom border).
-	if main, _, _, _ := cellContent(screen, 0, 16); main != BorderVertical {
-		t.Errorf("partial box C last row y=16 = %q, want %v (clipped, no bottom border)", main, BorderVertical)
+	// Box C last visible row (y=15) is the title row (clipped, no bottom
+	// border). The 17th row (y=16) is a blank buffer row.
+	if main, _, _, _ := cellContent(screen, 0, 16); main != 0 && main != ' ' {
+		t.Errorf("buffer row y=16 = %q, want blank (Python iface_row_offset buffer)", main)
 	}
 	// Box C title row (y=15) shows the name.
 	if main, _, _, _ := cellContent(screen, 3, 15); main != '○' {

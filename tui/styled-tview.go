@@ -311,24 +311,22 @@ func tviewFlags(bold, underline, italic, underlineOn bool) string {
 
 // tviewColor converts a micron high-color spec ("#RRGGBB", "default", or
 // "gNN" grayscale) into a tview color-tag color token. "default"/"" becomes
-// "-" (tview's default placeholder); "gNN" is mapped to a linear #RRGGBB
-// grayscale (NN 00..99 → 0..255); "#RRGGBB" passes through unchanged.
+// "-" (tview's default placeholder); "gNN" is mapped to the urwid 256-color
+// grayscale ramp (matching palette.go's gray256Color); "#RRGGBB" passes
+// through unchanged.
 func tviewColor(spec string) string {
 	if spec == "" || spec == "default" {
 		return "-"
 	}
-	if len(spec) >= 3 && spec[0] == 'g' {
-		// Grayscale gNN, NN is two decimal digits 00..99.
+	if len(spec) >= 2 && spec[0] == 'g' {
 		digits := spec[1:]
 		val, err := strconv.Atoi(digits)
-		if err != nil || val < 0 {
+		if err != nil || val < 0 || val > 100 {
 			return "-"
 		}
-		if val > 99 {
-			val = 99
-		}
-		level := val * 255 / 99
-		return fmt.Sprintf("#%02x%02x%02x", level, level, level)
+		c := gray256Color(val)
+		h := uint32(c.Hex()) & 0xffffff
+		return fmt.Sprintf("#%06x", h)
 	}
 	return spec
 }

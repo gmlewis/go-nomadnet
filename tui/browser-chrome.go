@@ -173,5 +173,5 @@ func browserControlsColor(app *App) tcell.Color {
 			return c
 		}
 	}
-	return tcell.NewHexColor(0xbbbbbb)
+	return cubeHex3("#bbb")
 }

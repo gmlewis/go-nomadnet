@@ -377,6 +377,13 @@ func (b *interfaceListBox) scrollIntoView() {
 func (b *interfaceListBox) Draw(screen tcell.Screen) {
 	b.Box.DrawForSubclass(screen, b)
 	x, y, w, h := b.GetRect()
+	// Leave 1 blank buffer row at the bottom, matching Python's
+	// iface_row_offset behavior (Interfaces.py:2837: list_rows =
+	// terminal_rows - iface_row_offset; the ListBox renders 1 blank
+	// buffer row after the last item).
+	if h > 1 {
+		h--
+	}
 	if w < 4 || h < InterfaceItemHeight || len(b.items) == 0 {
 		if len(b.items) == 0 {
 			tview.Print(screen, "No interfaces configured", x, y, w, tview.AlignCenter, tcell.ColorYellow)

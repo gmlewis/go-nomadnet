@@ -49,7 +49,7 @@ func NewBrowserPane(app *App) *BrowserPane {
 func (bp *BrowserPane) setDisconnected() {
 	color := GetThemeColors(bp.app.Theme)["browser_inactive"]
 	if color == tcell.ColorDefault {
-		color = tcell.NewHexColor(0x444444)
+		color = cubeHex3("#444")
 	}
 	arrowL, arrowR := "<-", "->"
 	if g := bp.app.Glyphs; g != nil {

@@ -77,6 +77,7 @@ type ChannelsDisplay struct {
 	input              *ReadlineEdit
 	channelListVisible bool
 	collapseJoinPart   bool
+	shortcutFocus      string
 	// pages wraps cd.content so a dialog can overlay the WHOLE channels display
 	// (Python's self.widget = WidgetPlaceholder(columns_widget) + _show_dialog_
 	// overlay setting original_widget = urwid.Overlay(dialog, columns_widget,
@@ -110,6 +111,40 @@ type ChannelsDisplay struct {
 	OnLeaveRoom           func()
 	OnToggleCollapse      func()
 	OnMemberClick         func(nick, hash string)
+}
+
+// SetShortcutFocus sets which of the three Channels shortcut bars
+// GetShortcutText returns, matching Python's Channels.py:217-229 (three
+// regions: list / editor / body).
+func (cd *ChannelsDisplay) SetShortcutFocus(region string) {
+	cd.shortcutFocus = region
+}
+
+// setShortcutRegion records the active focus region and refreshes the main
+// display's shortcut bar so the footer text tracks the focused pane. It is
+// wired as the SetFocusFunc of channels list / room editor / room body.
+func (cd *ChannelsDisplay) setShortcutRegion(region string) {
+	cd.shortcutFocus = region
+	if cd.app != nil && cd.app.Main != nil {
+		cd.app.Main.refreshShortcuts()
+	}
+}
+
+// GetShortcutText returns the appropriate shortcut bar text for the current
+// focus context. Matches Python's Channels.py:217-229. An open dialog
+// suppresses the bar.
+func (cd *ChannelsDisplay) GetShortcutText() string {
+	if cd.dialogOverlay != nil {
+		return ""
+	}
+	switch cd.shortcutFocus {
+	case "editor":
+		return "[C-d] Send  [C-x] Leave  [F8] Collapse  [Tab] Complete Nick"
+	case "body":
+		return "[C-x] Leave  [C-u] Users  [C-y] Channels  [F8] Collapse Joins  [Tab] ↓ Editor"
+	default: // "list"
+		return "[C-n] New Hub  [C-a] Add Room  [C-r] Connect  [C-w] Disconnect  [C-t] Auto-reconnect  [C-e] Edit Hub  [C-x] Remove"
+	}
 }
 
 // NewChannelsDisplay creates a new channels display.
@@ -194,6 +229,11 @@ func NewChannelsDisplay(app *App, rooms []ChannelInfo) *ChannelsDisplay {
 	cd.input = NewReadlineEdit(app.killRing, "", "Type a message...")
 	cd.input.SetFieldBackgroundColor(tc["msg_editor_bg"])
 	cd.input.SetFieldTextColor(tc["msg_editor_fg"])
+	cd.input.SetFocusFunc(func() { cd.setShortcutRegion("editor") })
+
+	// Wire focus-region shortcut bars for list and body.
+	cd.ilb.SetFocusFunc(func() { cd.setShortcutRegion("list") })
+	cd.messages.SetFocusFunc(func() { cd.setShortcutRegion("body") })
 
 	// Two-pane Columns: left list (given 36) + right pane (weight 1). No outer
 	// border — each pane carries its own (Python columns_widget, Channels.py:

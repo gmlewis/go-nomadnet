@@ -93,6 +93,7 @@ func (lp *LocalPeer) Widget() tview.Primitive {
 type LXMFPeersView struct {
 	widget tview.Primitive
 	list   *tview.List
+	title  *tview.TextView
 }
 
 // LXMFPeerEntry holds info about a single propagation peer.
@@ -121,8 +122,9 @@ func NewLXMFPeersView(peers []LXMFPeerEntry) *LXMFPeersView {
 	title := tview.NewTextView()
 	title.SetTextAlign(tview.AlignCenter)
 	title.SetDynamicColors(true)
-	title.SetTextColor(tcell.NewHexColor(0xdddddd))
+	title.SetTextColor(tcell.ColorDefault)
 	title.SetText("[::b]LXMF Propagation Peers[-]")
+	lv.title = title
 
 	lv.list = tview.NewList()
 	lv.list.SetHighlightFullLine(true)

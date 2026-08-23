@@ -161,7 +161,7 @@ func NewConversationWidget(app *App, sourceHash string) *ConversationWidget {
 	// reveals it for non-trusted peers (Python _refresh_trust_banner,
 	// Conversations.py:1962).
 	cw.trustBanner = tview.NewFlex().SetDirection(tview.FlexColumn)
-	cw.trustBanner.SetBackgroundColor(tcell.NewHexColor(0x800000))
+	cw.trustBanner.SetBackgroundColor(tcell.ColorMaroon)
 
 	// Header: peer info (1 row) + optional trust banner (0 rows when hidden).
 	header := tview.NewFlex().SetDirection(tview.FlexRow).
@@ -488,8 +488,8 @@ func (cw *ConversationWidget) buildTrustBanner() {
 	if g == nil {
 		g = glyphsUnicode
 	}
-	fg := tcell.NewHexColor(0x111111)
-	bg := tcell.NewHexColor(0x800000)
+	fg := cubeHex3("#111")
+	bg := tcell.ColorMaroon
 
 	msg := tview.NewTextView()
 	msg.SetDynamicColors(true)
@@ -501,8 +501,8 @@ func (cw *ConversationWidget) buildTrustBanner() {
 		b := tview.NewButton(label).SetSelectedFunc(fn)
 		b.SetBackgroundColor(bg)
 		b.SetLabelColor(fg)
-		b.SetLabelColorActivated(tcell.NewHexColor(0x800000))
-		b.SetBackgroundColorActivated(tcell.NewHexColor(0x111111))
+		b.SetLabelColorActivated(tcell.ColorMaroon)
+		b.SetBackgroundColorActivated(cubeHex3("#111"))
 		return b
 	}
 	btnTrust := button("Trust", cw.trustClick)

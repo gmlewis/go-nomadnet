@@ -143,7 +143,7 @@ func (ci *ClickableIcon) Draw(screen tcell.Screen) {
 		if x+i >= x+w {
 			break
 		}
-		screen.SetContent(x+i, y, r, nil, tcell.StyleDefault.Foreground(tcell.NewHexColor(0xdddddd)))
+		screen.SetContent(x+i, y, r, nil, tcell.StyleDefault.Foreground(cubeHex3("#bbb")))
 	}
 }
 
@@ -153,26 +153,26 @@ func (ci *ClickableIcon) Draw(screen tcell.Screen) {
 func BuildTrustBanner(onTrust, onBlock, onIgnore func()) *tview.Flex {
 	warning := tview.NewTextView().
 		SetDynamicColors(true).
-		SetTextColor(tcell.NewHexColor(0xffdd33)).
+		SetTextColor(cubeHex3("#111")).
 		SetText(" ⚠ This peer isn't trusted yet.")
 
 	trustBtn := tview.NewButton("[Trust]")
-	trustBtn.SetBackgroundColor(tcell.NewHexColor(0x444444))
-	trustBtn.SetLabelColor(tcell.NewHexColor(0xdddddd))
+	trustBtn.SetBackgroundColor(tcell.ColorMaroon)
+	trustBtn.SetLabelColor(cubeHex3("#111"))
 	if onTrust != nil {
 		trustBtn.SetSelectedFunc(func() { onTrust() })
 	}
 
 	blockBtn := tview.NewButton("[Block]")
-	blockBtn.SetBackgroundColor(tcell.NewHexColor(0x444444))
-	blockBtn.SetLabelColor(tcell.NewHexColor(0xdddddd))
+	blockBtn.SetBackgroundColor(tcell.ColorMaroon)
+	blockBtn.SetLabelColor(cubeHex3("#111"))
 	if onBlock != nil {
 		blockBtn.SetSelectedFunc(func() { onBlock() })
 	}
 
 	ignoreBtn := tview.NewButton("[Do nothing]")
-	ignoreBtn.SetBackgroundColor(tcell.NewHexColor(0x444444))
-	ignoreBtn.SetLabelColor(tcell.NewHexColor(0xdddddd))
+	ignoreBtn.SetBackgroundColor(tcell.ColorMaroon)
+	ignoreBtn.SetLabelColor(cubeHex3("#111"))
 	if onIgnore != nil {
 		ignoreBtn.SetSelectedFunc(func() { onIgnore() })
 	}
@@ -184,7 +184,7 @@ func BuildTrustBanner(onTrust, onBlock, onIgnore func()) *tview.Flex {
 		AddItem(blockBtn, 8, 0, false).
 		AddItem(tview.NewTextView().SetText(" "), 1, 0, false).
 		AddItem(ignoreBtn, 13, 0, false)
-	banner.SetBackgroundColor(tcell.NewHexColor(0x553300))
+	banner.SetBackgroundColor(tcell.ColorMaroon)
 
 	return banner
 }

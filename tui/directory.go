@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
@@ -37,6 +36,7 @@ type DirectoryDisplay struct {
 	app    *App
 	widget *tview.Flex
 	list   *tview.List
+	title  *tview.TextView
 	detail *tview.TextView
 }
 
@@ -48,8 +48,9 @@ func NewDirectoryDisplay(app *App, entries []DirectoryEntry) *DirectoryDisplay {
 	title := tview.NewTextView()
 	title.SetTextAlign(tview.AlignCenter)
 	title.SetDynamicColors(true)
-	title.SetTextColor(tcell.NewHexColor(0xdddddd))
+	title.SetTextColor(GetThemeColors(app.Theme)["body_text"])
 	title.SetText("[::b]Directory[-]")
+	dd.title = title
 
 	// Peer list
 	dd.list = tview.NewList()

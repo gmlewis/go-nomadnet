@@ -38,7 +38,7 @@ func NewMicronViewDisplay(app *App) *MicronViewDisplay {
 	mvd.view = applyWheelMultiplier(tview.NewTextView().
 		SetDynamicColors(true).
 		SetScrollable(true).
-		SetTextColor(tcell.NewHexColor(0xbbbbbb)).
+		SetTextColor(tcell.NewHexColor(0xdddddd)).
 		SetTextAlign(tview.AlignLeft))
 
 	mvd.widget = mvd.view

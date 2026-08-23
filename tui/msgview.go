@@ -54,7 +54,7 @@ func NewMessageViewDisplay(app *App) *MessageViewDisplay {
 	mvd.view = applyWheelMultiplier(tview.NewTextView().
 		SetDynamicColors(true).
 		SetScrollable(true).
-		SetTextColor(tcell.NewHexColor(0xbbbbbb)).
+		SetTextColor(tcell.NewHexColor(0xdddddd)).
 		SetTextAlign(tview.AlignLeft))
 
 	layout := tview.NewFlex().SetDirection(tview.FlexRow).

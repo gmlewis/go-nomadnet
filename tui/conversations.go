@@ -242,7 +242,8 @@ func NewConversationsDisplay(app *App, convs []ConversationInfo) *ConversationsD
 	// 517-545), left-aligned in the shortcutbar style.
 	cd.syncStatus = tview.NewTextView()
 	cd.syncStatus.SetTextAlign(tview.AlignLeft)
-	cd.syncStatus.SetTextColor(tcell.NewHexColor(0xaaaaaa))
+	cd.syncStatus.SetTextColor(GetThemeColors(cd.app.Theme)["menubar_fg"])
+	cd.syncStatus.SetBackgroundColor(GetThemeColors(cd.app.Theme)["menubar_bg"])
 	cd.syncStatus.SetText(cd.syncStatusLine())
 
 	// Detail view (right pane). Empty state matches Python's ConversationWidget
@@ -1501,7 +1502,7 @@ func (cd *ConversationsDisplay) SaveAttachmentsDialog(sourceHash string, refs []
 
 	statusText := tview.NewTextView().
 		SetDynamicColors(true).
-		SetTextColor(tcell.NewHexColor(0xdddddd))
+		SetTextColor(tcell.ColorDefault)
 
 	close := func() { cd.CloseDetailSlotDialog(); cd.dialogOpen = false }
 	buttons := tview.NewFlex().SetDirection(tview.FlexColumn).
@@ -1598,14 +1599,14 @@ func (cd *ConversationsDisplay) ShowPeerInfoDialog(entry PeerInfoEntry, hooks Pe
 	// Name (editable): ReadlineEdit "Name : ".
 	eName := NewReadlineEdit(cd.app.killRing, "Name : ", "")
 	eName.SetText(entry.DisplayName)
-	eName.SetFieldBackgroundColor(tcell.NewHexColor(0x222222))
-	eName.SetFieldTextColor(tcell.NewHexColor(0xdddddd))
+	eName.SetFieldBackgroundColor(tcell.ColorDefault)
+	eName.SetFieldTextColor(tcell.ColorDefault)
 
 	// Copy (editable): ReadlineEdit "Copy : ", pre-filled with the hash.
 	eCopy := NewReadlineEdit(cd.app.killRing, "Copy : ", "")
 	eCopy.SetText(entry.SourceHash)
-	eCopy.SetFieldBackgroundColor(tcell.NewHexColor(0x222222))
-	eCopy.SetFieldTextColor(tcell.NewHexColor(0xdddddd))
+	eCopy.SetFieldBackgroundColor(tcell.ColorDefault)
+	eCopy.SetFieldTextColor(tcell.ColorDefault)
 
 	// Trust radio group (Untrusted/Unknown/Trusted). Defaults: Unknown selected,
 	// matching Python (unknown_selected=True).
@@ -1638,8 +1639,8 @@ func (cd *ConversationsDisplay) ShowPeerInfoDialog(entry PeerInfoEntry, hooks Pe
 	// Notes (ReadlineEdit "Notes: ").
 	eNotes := NewReadlineEdit(cd.app.killRing, "Notes: ", "")
 	eNotes.SetText(entry.Notes)
-	eNotes.SetFieldBackgroundColor(tcell.NewHexColor(0x222222))
-	eNotes.SetFieldTextColor(tcell.NewHexColor(0xdddddd))
+	eNotes.SetFieldBackgroundColor(tcell.ColorDefault)
+	eNotes.SetFieldTextColor(tcell.ColorDefault)
 
 	// Known-section: divider if the peer identity is known, else the "Query
 	// network for keys" section (Python Conversations.py:957-983).
@@ -1958,21 +1959,21 @@ func (cd *ConversationsDisplay) ShowSyncDialog(
 	limitInput := tview.NewInputField()
 	limitInput.SetLabel("Messages: ")
 	limitInput.SetText("5")
-	limitInput.SetFieldBackgroundColor(tcell.NewHexColor(0x222222))
-	limitInput.SetFieldTextColor(tcell.NewHexColor(0xdddddd))
+	limitInput.SetFieldBackgroundColor(tcell.ColorDefault)
+	limitInput.SetFieldTextColor(tcell.ColorDefault)
 
 	// Live status/progress line (refreshed by updateSyncProgress).
 	cd.syncStatusText = tview.NewTextView()
 	cd.syncStatusText.SetDynamicColors(true)
-	cd.syncStatusText.SetTextColor(tcell.NewHexColor(0xdddddd))
+	cd.syncStatusText.SetTextColor(tcell.ColorDefault)
 	cd.syncProgressBox = tview.NewTextView()
 	cd.syncProgressBox.SetDynamicColors(true)
-	cd.syncProgressBox.SetTextColor(tcell.NewHexColor(0xdddddd))
+	cd.syncProgressBox.SetTextColor(tcell.ColorDefault)
 
 	// Propagation node display
 	pnText := tview.NewTextView()
 	pnText.SetDynamicColors(true)
-	pnText.SetTextColor(tcell.NewHexColor(0xdddddd))
+	pnText.SetTextColor(tcell.ColorDefault)
 	if currentPN != "" {
 		pnText.SetText("Node: " + currentPN)
 	} else {

@@ -119,7 +119,7 @@ func (g *ExpandGutter) Draw(screen tcell.Screen) {
 			glyph = "▾"
 		}
 	}
-	style := tcell.StyleDefault.Foreground(tcell.NewHexColor(0x666666))
+	style := tcell.StyleDefault.Foreground(cubeHex3("#111"))
 	screen.SetContent(x, y, []rune(glyph)[0], nil, style)
 }
 

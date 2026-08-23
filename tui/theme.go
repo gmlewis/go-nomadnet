@@ -13,11 +13,6 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-// Package tui implements the NomadNet terminal UI using rivo/tview.
-//
-// It provides dark and light themes, configurable glyph sets
-// (plain, unicode, nerdfont), and a top menu bar with content
-// area switching for all NomadNet displays.
 package tui
 
 import (
@@ -42,14 +37,14 @@ const (
 
 // Color definitions for the dark theme.
 var darkColors = map[string]tcell.Color{
-	"heading":                    tcell.NewHexColor(0x999999), // g93 grayscale (not 3-hex; unchanged)
+	"heading":                    parseColor("g93"), // g93 grayscale ramp → #eeeeee
 	"menubar_fg":                 cubeHex3("#111"),
 	"menubar_bg":                 cubeHex3("#bbb"),
 	"scrollbar":                  cubeHex3("#444"),
 	"body_text":                  cubeHex3("#ddd"),
-	"error_text":                 tcell.NewHexColor(0xaa2222), // Python "dark red" (named; separate gap)
+	"error_text":                 tcell.ColorMaroon, // Python "dark red" (named; urwid 16-color SGR 31)
 	"warning_text":               cubeHex3("#ba4"),
-	"inactive_text":              tcell.NewHexColor(0x666666), // Python "dark gray" (named; separate gap)
+	"inactive_text":              tcell.ColorGray, // Python "dark gray" (named; urwid 16-color 1;30)
 	"browser_inactive":           cubeHex3("#444"),
 	"buttons":                    tcell.NewHexColor(0x00a533), // 6-hex, exact (not quantized)
 	"msg_editor_fg":              cubeHex3("#111"),
@@ -67,7 +62,7 @@ var darkColors = map[string]tcell.Color{
 	"msg_header_failed_fg":       cubeHex3("#000"),
 	"msg_header_failed_bg":       cubeHex3("#777"),
 	"msg_warning_untrusted_fg":   cubeHex3("#111"),
-	"msg_warning_untrusted_bg":   tcell.ColorRed, // Python "dark red" (named)
+	"msg_warning_untrusted_bg":   tcell.ColorMaroon, // Python "dark red" (named; urwid 16-color SGR 31)
 	"msg_notice_unread":          cubeHex3("#28b"),
 	"msg_notice_caution":         cubeHex3("#fd3"),
 	"list_focus_fg":              cubeHex3("#111"),
@@ -90,8 +85,8 @@ var darkColors = map[string]tcell.Color{
 	"progress_full_fg":           cubeHex3("#111"),
 	"progress_full_bg":           cubeHex3("#bbb"),
 	"progress_empty":             cubeHex3("#ddd"),
-	"placeholder":                tcell.NewHexColor(0x666666), // Python "dark gray" (named; separate gap)
-	"placeholder_text":           tcell.NewHexColor(0x666666), // Python "dark gray" (named; separate gap)
+	"placeholder":                tcell.ColorGray, // Python "dark gray" (named; urwid 16-color 1;30)
+	"placeholder_text":           tcell.ColorGray, // Python "dark gray" (named; urwid 16-color 1;30)
 	"irc_ts":                     cubeHex3("#888"),
 	"irc_nick_self":              cubeHex3("#6c5"),
 	"irc_nick_peer":              cubeHex3("#3cd"),
@@ -99,23 +94,23 @@ var darkColors = map[string]tcell.Color{
 	"irc_error":                  cubeHex3("#f55"),
 	"irc_system":                 cubeHex3("#888"),
 	"irc_mention_fg":             cubeHex3("#fb4"),
-	"interface_title":            tcell.NewHexColor(0xdddddd), // dark = "" (default; separate gap)
-	"interface_title_selected":   tcell.NewHexColor(0xaaaaaa), // dark = "bold" no color (separate gap)
-	"connected_status":           tcell.NewHexColor(0x66bb22), // Python "dark green" (named; separate gap)
-	"disconnected_status":        tcell.NewHexColor(0xaa2222), // Python "dark red" (named; separate gap)
+	"interface_title":            tcell.ColorDefault,          // dark = "" (default; named-color resolved)
+	"interface_title_selected":   tcell.ColorDefault,          // dark = "bold" no color (named-color resolved)
+	"connected_status":           tcell.ColorGreen,            // Python "dark green" (named; urwid 16-color SGR 32)
+	"disconnected_status":        tcell.ColorMaroon,           // Python "dark red" (named; urwid 16-color SGR 31)
 	"shortcutbar":                tcell.NewHexColor(0xdddddd), // unused; left as-is
 }
 
 // Color definitions for the light theme.
 var lightColors = map[string]tcell.Color{
-	"heading":                    tcell.NewHexColor(0x999999), // g93 grayscale (not 3-hex; unchanged)
+	"heading":                    parseColor("g93"), // g93 grayscale ramp → #eeeeee
 	"menubar_fg":                 cubeHex3("#111"),
 	"menubar_bg":                 cubeHex3("#bbb"),
 	"scrollbar":                  cubeHex3("#444"),
 	"body_text":                  cubeHex3("#222"),
-	"error_text":                 tcell.NewHexColor(0xaa2222), // Python "dark red" (named; separate gap)
+	"error_text":                 tcell.ColorMaroon, // Python "dark red" (named; urwid 16-color SGR 31)
 	"warning_text":               cubeHex3("#ba4"),
-	"inactive_text":              tcell.NewHexColor(0x666666), // Python "dark gray" (named; separate gap)
+	"inactive_text":              tcell.ColorGray,             // Python "dark gray" (named; urwid 16-color 1;30)
 	"buttons":                    tcell.NewHexColor(0x00a533), // 6-hex, exact (not quantized)
 	"msg_editor_fg":              cubeHex3("#111"),
 	"msg_editor_bg":              cubeHex3("#0bb"),
@@ -132,7 +127,7 @@ var lightColors = map[string]tcell.Color{
 	"msg_header_failed_fg":       cubeHex3("#000"),
 	"msg_header_failed_bg":       cubeHex3("#777"),
 	"msg_warning_untrusted_fg":   cubeHex3("#111"),
-	"msg_warning_untrusted_bg":   tcell.ColorRed, // Python "dark red" (named)
+	"msg_warning_untrusted_bg":   tcell.ColorMaroon, // Python "dark red" (named; urwid 16-color SGR 31)
 	"msg_notice_unread":          cubeHex3("#069"),
 	"msg_notice_caution":         cubeHex3("#fd3"),
 	"list_focus_fg":              cubeHex3("#111"),

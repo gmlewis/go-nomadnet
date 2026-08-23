@@ -90,7 +90,7 @@ func EmptyStateMessage(text string) tview.Primitive {
 	tv := tview.NewTextView()
 	tv.SetTextAlign(tview.AlignCenter)
 	tv.SetDynamicColors(true)
-	tv.SetTextColor(tcell.NewHexColor(0x999999))
+	tv.SetTextColor(tcell.ColorDefault)
 	tv.SetText("\n\n" + text)
 	return tv
 }

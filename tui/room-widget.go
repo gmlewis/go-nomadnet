@@ -32,7 +32,9 @@ type RoomWidget struct {
 	widget           tview.Primitive
 	columns          *tview.Flex
 	chatBox          *tview.Flex
+	header           *tview.TextView
 	usersBox         *tview.Flex
+	usersTitle       *tview.TextView
 	messages         *tview.TextView
 	usersList        *tview.List
 	editor           *ReadlineEdit
@@ -96,8 +98,10 @@ func NewRoomWidget(app *App, hubName, roomName string) *RoomWidget {
 	header := tview.NewTextView()
 	header.SetTextAlign(tview.AlignCenter)
 	header.SetDynamicColors(true)
-	header.SetTextColor(tcell.NewHexColor(0xdddddd))
+	header.SetTextColor(tc["msg_header_sent_fg"])
+	header.SetBackgroundColor(tc["msg_header_sent_bg"])
 	header.SetText(fmt.Sprintf("[::b]#%v[-] @ %v", roomName, hubName))
+	rw.header = header
 
 	// Chat box: header + messages + editor
 	rw.chatBox = tview.NewFlex().SetDirection(tview.FlexRow).
@@ -115,8 +119,9 @@ func NewRoomWidget(app *App, hubName, roomName string) *RoomWidget {
 	usersTitle := tview.NewTextView()
 	usersTitle.SetTextAlign(tview.AlignCenter)
 	usersTitle.SetDynamicColors(true)
-	usersTitle.SetTextColor(tcell.NewHexColor(0xdddddd))
+	usersTitle.SetTextColor(tcell.ColorDefault)
 	usersTitle.SetText("[::b]Users[-]")
+	rw.usersTitle = usersTitle
 	usersBox.AddItem(usersTitle, 1, 0, false)
 	usersBox.AddItem(rw.usersList, 0, 1, true)
 	usersBox.SetBorder(true)

@@ -277,16 +277,68 @@ func parseColor(spec string) tcell.Color {
 		}
 		return tcell.ColorDefault
 	}
-	if len(s) == 3 && s[0] == 'g' {
-		d1, ok1 := decDigit(s[1])
-		d2, ok2 := decDigit(s[2])
-		if !ok1 || !ok2 {
-			return tcell.ColorDefault
+	if s[0] == 'g' && len(s) >= 2 {
+		nn := 0
+		for i := 1; i < len(s); i++ {
+			d, ok := decDigit(s[i])
+			if !ok {
+				return tcell.ColorDefault
+			}
+			nn = nn*10 + d
 		}
-		v := (d1*10 + d2) * 255 / 99
-		return tcell.NewHexColor(int32(v<<16 | v<<8 | v))
+		return gray256Color(nn)
 	}
 	return tcell.ColorDefault
+}
+
+// gray256Lookup101 mirrors urwid's _GRAY_256_LOOKUP_101: maps a 0-100
+// grayscale percentage to a 0-25 ramp step (0=black, 25=white, 1-24 the
+// 24-step 256-gray ramp at indices 232-255).
+var gray256Lookup101 = [101]int{
+	0, 0, 1, 1, 1, 2, 2, 2, 2, 3,
+	3, 3, 3, 4, 4, 4, 4, 5, 5, 5,
+	5, 6, 6, 6, 6, 7, 7, 7, 7, 8,
+	8, 8, 8, 9, 9, 9, 9, 10, 10, 10,
+	10, 11, 11, 11, 11, 12, 12, 12, 12, 13,
+	13, 14, 14, 14, 14, 15, 15, 15, 15, 15,
+	16, 16, 16, 16, 17, 17, 17, 17, 18, 18,
+	18, 18, 19, 19, 19, 19, 20, 20, 20, 20,
+	21, 21, 21, 21, 22, 22, 22, 22, 23, 23,
+	23, 23, 24, 24, 24, 24, 24, 25, 25, 25,
+	25,
+}
+
+// gray256Ramp holds the per-channel RGB values for the 24-step 256-color
+// grayscale ramp (urwid _COLOR_VALUES_256 indices 232-255). These are the
+// exact values urwid emits in truecolor mode, NOT a linear formula.
+var gray256Ramp = [24]int32{
+	8, 18, 28, 38, 48, 58, 68, 78, 88, 98,
+	108, 118, 128, 132, 148, 158, 168, 178, 188, 198,
+	208, 218, 228, 238,
+}
+
+// gray256Color returns the urwid 256-color grayscale ramp value for a gNN
+// spec (0-100). Mirrors urwid's _parse_color_256 grayscale path: 0→black,
+// 100→white, intermediate values through the 24-step ramp.
+func gray256Color(nn int) tcell.Color {
+	if nn < 0 || nn > 100 {
+		return tcell.ColorDefault
+	}
+	step := gray256Lookup101[nn]
+	if step == 0 {
+		// g0 maps to 256-color black (idx 16, RGB 0,0,0). In tcell,
+		// NewHexColor(0) equals ColorDefault — a tcell limitation where
+		// RGB(0,0,0) is indistinguishable from the terminal default. g0 is
+		// not used in the nomadnet palette (only g93 for the heading), so
+		// this edge case does not affect rendering.
+		return tcell.NewHexColor(0)
+	}
+	step--
+	if step == 24 {
+		return tcell.NewHexColor(0xffffff) // white (256-color idx 231)
+	}
+	v := gray256Ramp[step]
+	return tcell.NewHexColor(v<<16 | v<<8 | v)
 }
 
 // hexNibble parses a single hex digit to its value 0-15.

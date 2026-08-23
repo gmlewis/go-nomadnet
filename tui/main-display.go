@@ -149,7 +149,7 @@ func NewMainDisplay(app *App, theme int, glyphSetName string) *MainDisplay {
 		placeholder := tview.NewTextView().
 			SetTextAlign(tview.AlignCenter).
 			SetDynamicColors(true).
-			SetTextColor(tcell.NewHexColor(0x999999)).
+			SetTextColor(tcell.ColorDefault).
 			SetText(fmt.Sprintf("\n\n%v\n\n[yellow]Content will appear here[-]", item.Label))
 		md.contentArea.AddPage(item.Key, placeholder, true, false)
 	}

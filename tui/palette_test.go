@@ -248,7 +248,7 @@ func TestRegisterThemeStylesTrueColor(t *testing.T) {
 		{"menubar", tcell.NewHexColor(0x000000), tcell.NewHexColor(0xafafaf), 0, false},
 		{"list_focus", tcell.NewHexColor(0x000000), tcell.NewHexColor(0xafafaf), 0, false},
 		{"body_text", tcell.NewHexColor(0xd7d7d7), tcell.ColorDefault, 0, false},
-		{"heading", tcell.NewHexColor(0xefefef), tcell.ColorDefault, tcell.AttrUnderline, true},
+		{"heading", tcell.NewHexColor(0xeeeeee), tcell.ColorDefault, tcell.AttrUnderline, true},
 		{"error", tcell.NewHexColor(0xff5f5f), tcell.ColorDefault, tcell.AttrBlink, true},
 		{"irc_mention", tcell.NewHexColor(0xffaf5f), tcell.ColorDefault, tcell.AttrBold, true},
 	}

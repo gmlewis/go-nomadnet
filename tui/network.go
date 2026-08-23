@@ -1241,7 +1241,7 @@ func (nd *NetworkDisplay) ShowLocalPeerDialog(lxmfAddr, identityHash, name strin
 	layout := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(tview.NewTextView().
 			SetDynamicColors(true).
-			SetTextColor(tcell.NewHexColor(0xdddddd)).
+			SetTextColor(tcell.ColorDefault).
 			SetText(sb.String()), 0, 1, false).
 		AddItem(buttons, 1, 0, false)
 
