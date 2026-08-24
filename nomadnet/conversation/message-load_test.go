@@ -44,10 +44,10 @@ func writeLXMFixture(t *testing.T, dir string) (path string, hash []byte) {
 	if err := msg.Pack(); err != nil {
 		t.Fatal(err)
 	}
-	msg.State = lxmf.StateSent
+	msg.SetState(lxmf.StateSent)
 	msg.TransportEncrypted = true
 	msg.TransportEncryption = "AES-128"
-	msg.Method = lxmf.MethodDirect
+	msg.SetMethod(lxmf.MethodDirect)
 
 	written, err := msg.WriteToDirectory(dir)
 	if err != nil {

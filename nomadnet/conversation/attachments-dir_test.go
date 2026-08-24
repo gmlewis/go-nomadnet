@@ -49,7 +49,7 @@ func buildLXMWithAttachments(t *testing.T, dir, _ string) (string, []byte, []byt
 	if err := msg.Pack(); err != nil {
 		t.Fatal(err)
 	}
-	msg.State = lxmf.StateDelivered
+	msg.SetState(lxmf.StateDelivered)
 
 	path, err := msg.WriteToDirectory(dir)
 	if err != nil {

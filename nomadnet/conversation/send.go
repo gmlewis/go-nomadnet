@@ -146,7 +146,7 @@ func (c *Conversation) Send(content, title string, fields map[any]any) bool {
 // state transition of the Python flow.
 func (c *Conversation) MessageNotification(message *lxmf.Message) {
 	deps := c.sendDeps
-	if message.State == lxmf.StateFailed && message.TryPropagationOnFail {
+	if message.State() == lxmf.StateFailed && message.TryPropagationOnFail {
 		message.TryPropagationOnFail = false
 		message.DesiredMethod = lxmf.MethodPropagated
 		if deps != nil {

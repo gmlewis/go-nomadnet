@@ -293,7 +293,7 @@ func TestMessageNotificationDeliveredIngests(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lxm.State = lxmf.StateDelivered
+	lxm.SetState(lxmf.StateDelivered)
 
 	c.MessageNotification(lxm)
 
@@ -326,7 +326,7 @@ func TestMessageNotificationFailedRetriesAsPropagated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lxm.State = lxmf.StateFailed
+	lxm.SetState(lxmf.StateFailed)
 	lxm.TryPropagationOnFail = true
 
 	c.MessageNotification(lxm)
@@ -367,7 +367,7 @@ func TestMessageNotificationFailedNoTryPropIngests(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lxm.State = lxmf.StateFailed
+	lxm.SetState(lxmf.StateFailed)
 	lxm.TryPropagationOnFail = false
 
 	c.MessageNotification(lxm)

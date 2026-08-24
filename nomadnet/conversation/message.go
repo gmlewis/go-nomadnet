@@ -348,15 +348,15 @@ func (m *Message) Load() {
 	if len(lxm.SourceHash) > 0 {
 		m.CachedSourceHash = lxm.SourceHash
 	}
-	m.CachedRawState = lxm.State
+	m.CachedRawState = lxm.State()
 	m.CachedTitle = lxm.TitleString()
 	m.CachedContent = lxm.ContentString()
 	m.CachedTransportEncrypted = lxm.TransportEncrypted
 	m.CachedTransportEncryption = lxm.TransportEncryption
-	m.CachedMethod = lxm.Method
+	m.CachedMethod = lxm.Method()
 	m.cachedFields = lxm.Fields
 
-	st := mapLXMFState(lxm.State)
+	st := mapLXMFState(lxm.State())
 	m.CachedState = &st
 
 	validated := lxm.SignatureValidated

@@ -47,8 +47,8 @@ func writeLXMFixtureAt(t *testing.T, dir string, content, title string, state in
 	if err := msg.Pack(); err != nil {
 		t.Fatal(err)
 	}
-	msg.State = state
-	msg.Method = method
+	msg.SetState(state)
+	msg.SetMethod(method)
 	msg.TransportEncrypted = true
 	msg.TransportEncryption = "AES-128"
 
