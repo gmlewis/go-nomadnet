@@ -91,21 +91,56 @@ against the earlier gonomadnet run. Full reference capture + screen grabs live
 in `tooling/parity-reference/` (see `nomadnet-trusted-chat-reference.md`).
 **Remove each entry when the Go test proves parity.**
 
-- **B6 (CONFIRMED gonomadnet-specific, MAJOR): gonomadnet LXMF announce/path
-  does not let a remote peer reply.** In the gonomadnet run the Linux side
-  showed `Mac | ◷ unknown` after 10+ min and the reply never sent; in the
-  nomadnet run the Linux side showed `Mac | ◷ 2 hops` and the reply delivered.
-  Both boxes share the same public RNS transport (dfw.us.g00n.cloud:6969), and
-  `gornpath` from the Linux box to the Mac's LXMF hash succeeded (4 hops) — so
-  the network is fine; the gonomadnet instance's own announce is not being
-  learned by the remote gonomadnet. Investigate gonomadnet/go-reticulum announce
-  emission + flood. CONFIRMED clean with the Mac Mini (never-conversed):
-  nomadnet Python learned the path on send (`unknown` → `2 hops`) and replied
-  successfully; gonomadnet stayed `unknown`/failed (see B11). Investigate
-  gonomadnet/go-reticulum announce emission + flood AND on-send path resolution.
-  AGENT NOTE: B13 fix (announce rebroadcast hop count inflation) may resolve
-  this — the inflated hop count (2N-1 instead of N) caused announces to exceed
-  ReticulumHopsMax and stop propagating. Needs live verification.
+- **B6 (FIXED): gonomadnet LXMF announce/path does not let a remote peer
+  reply.** Three root causes found and fixed:
+  1. AnnounceNow was not updating PeerSettings.LastAnnounce before saving
+     (only the App-level LastAnnounce was set). FIXED in nomadnet/app/app.go.
+  2. Mac Mini was missing go.work file, so its binary used the published
+     go-reticulum instead of the local source with all fixes. FIXED by
+     creating go.work on Mac Mini.
+  3. go-reticulum ingress limiting held unknown-destination announces
+     indefinitely on busy network interfaces (announce frequency never
+     dropped below the burst threshold). FIXED in go-reticulum rns/transport.go:
+     RequestPath now calls ReleaseHeldAnnounce on all interfaces to
+     immediately release any held announce for the requested destination,
+     bypassing the frequency gate. New ReleaseHeldAnnounce method added
+     to Interface interface and BaseInterface.
+
+- **B11 (FIXED): gonomadnet↔gonomadnet direct delivery fails both ways.**
+  Root cause: go-reticulum's LXMF router sent direct-delivery messages as
+  raw fire-and-forget packets instead of establishing a Link (as Python
+  LXMRouter.process_outbound does). FIXED in go-reticulum lxmf/router.go:
+  ProcessOutbound for MethodDirect now checks for existing direct links,
+  uses active ones, or establishes new Links. sendMessagePacketLocked has
+  a new MethodDirect link-based branch with delivery/timeout callbacks.
+  DeliveryLinkAvailable now checks directLinks. 16 tests updated.
+  Also fixed: the list's SetSelectedFunc called showDetail instead of
+  DisplayConversation — pressing Enter on the conversation list didn't open
+  the conversation. FIXED: changed SetSelectedFunc to call DisplayConversation.
+
+### NEW: TUI rendering bugs found during live bidirectional test (2026-08-24)
+
+- **B14 (NEW): Conversation window does not auto-scroll to latest messages.**
+  After sending/receiving messages, the conversation view stays stuck at
+  old messages instead of scrolling to show the newest. Both Mac and Mac
+  Mini gonomadnet show messages from 20+ minutes ago while the latest
+  messages (sent seconds ago) are not visible.
+
+- **B15 (NEW): Incoming messages not displayed in conversation view.**
+  The Mac Mini's conversation with the Mac shows only outgoing messages.
+  The Mac's incoming messages are on disk (confirmed by file count) but
+  are not rendered in the conversation view. The Mac side shows incoming
+  messages with "✓ ←" but the Mac Mini side does not show them at all.
+
+- **B16 (NEW): Message state indicator rendering differs from nomadnet.**
+  gonomadnet shows different state indicators than nomadnet:
+  - Mac (gonomadnet): `↑ →` for delivered, `✕ →` for failed, `✓ ←` for
+    incoming, `!` and `⛿` suffixes
+  - Mac Mini (gonomadnet): `✓ →` for delivered, `→` for sent, no incoming
+    markers, empty suffix
+  - nomadnet (Python): consistent `↑ →`/`✕ →`/`✓ ←` with `!`/`⛿` suffixes
+  The gonomadnet rendering is inconsistent between the two instances and
+  differs from the Python reference.
 
 ### Reference behaviors to verify gonomadnet matches (not yet confirmed as bugs)
 
@@ -123,44 +158,13 @@ transports, shared `~/.nomadnetwork` identities (Mac LXMF `2a6105…`, Mac Mini
 
 ### CRITICAL
 
-- **B11 (NEW, CRITICAL — gonomadnet↔gonomadnet direct delivery fails both
-  ways):** The Mac gonomadnet sent a message to the Mac Mini gonomadnet
-  (conversation header `MacMini | ◷ 2 hops`, outgoing rendered
-  `↑ → just now | 17:44:02 ⚿`), but it NEVER arrived at the Mac Mini — no
-  on-disk message file in `~/.nomadnetwork/storage/conversations/712ffbf…/` and
-  nothing displayed. The Mac Mini's reply likewise did not send/store (no file)
-  and did not arrive at the Mac. So gonomadnet→gonomadnet LXMF direct delivery
-  is broken both ways (the sender shows `↑ → ⚿` as if sent, but nothing
-  delivers). This subsumes/confirms B6 (announce/path) and B8 (failed outgoing
-  not surfaced) for the gonomadnet↔gonomadnet case. Investigate LXMF direct-send
-  + path resolution in gonomadnet/go-reticulum. Second-highest-priority interop
-  bug.
-  AGENT NOTE: A TCP-based Go→Go integration test (TestB11TCPDirectDelivery in
-  go-reticulum/lxmf/lxmf-int-tcp_test.go) PASSES — direct delivery over a
-  loopback TCP transport works. The bug requires the actual public multi-hop
-  RNS network to reproduce. Needs live debugging with gornpath/gornstatus.
-  AGENT LIVE TEST (2026-08-23): With both gonomadnet instances running on the
-  live network, Mac Mini→Mac delivery WORKS (✓ ← signature verified — B10 fix
-  confirmed!). But Mac→Mac Mini delivery FAILS — the packet is sent
-  (sendMessagePacketLocked succeeds, receipt=true) but lost in transit. Root
-  cause was B13 (hop count inflation, now FIXED): go-reticulum's rebroadcast
-  hop count was packet.Hops+1 instead of packet.Hops, compounding across hops
-  (N actual hops showed as 2N-1). The inflated hop count caused announces to
-  exceed ReticulumHopsMax and stop propagating, leading to long/missing paths.
-  The Mac Mini→Mac direction worked because the Mac Mini had a shorter path.
-  Needs live verification that B13 fix resolves this.
-  Also found: the list's SetSelectedFunc called showDetail (peer info text)
-  instead of DisplayConversation (conversation widget with composer) — pressing
-  Enter on the conversation list didn't open the conversation. FIXED: changed
-  SetSelectedFunc to call DisplayConversation.
-
 ### Re-confirmed on gonomadnet 0.22.0
 
 ### Operational note (not a bug, but affects debugging)
 
-- gonomadnet's stderr log (`gonomadnet-*.log`) is nearly empty (only the pprof
-  line) — it does NOT log LXMF send/receive/deliver events, which made
-  diagnosing B11 (delivery failure) hard. Consider adding LXMF delivery logging
-  to gonomadnet.
+- gonomadnet's application log (`~/.nomadnetwork/logfile`) logs announce
+  receives, path learning, and (after B6 fix) announce sends/failures, but
+  does NOT log LXMF send/receive/deliver events. Consider adding LXMF delivery
+  logging to gonomadnet for easier debugging.
 
 ---

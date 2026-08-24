@@ -827,12 +827,24 @@ func (a *App) AnnounceNow() {
 	if a.Router != nil && a.LXMFDest != nil {
 		a.Router.SetInboundStampCost(a.LXMFDest.Hash, a.RequiredStampCost)
 		a.Router.SetDisplayName(a.LXMFDest.Hash, a.GetDisplayName())
-		_ = a.Router.Announce(a.LXMFDest.Hash)
+		if err := a.Router.Announce(a.LXMFDest.Hash); err != nil {
+			a.Logger.Error("Announce failed for %x: %v", a.LXMFDest.Hash, err)
+		} else {
+			a.Logger.Info("Announce sent for %x", a.LXMFDest.Hash)
+		}
+	} else {
+		a.Logger.Error("AnnounceNow skipped: router=%v lxmfDest=%v", a.Router != nil, a.LXMFDest != nil)
 	}
+	now := time.Now()
 	a.mu.Lock()
-	a.LastAnnounce = time.Now()
+	a.LastAnnounce = now
 	a.mu.Unlock()
-	a.SavePeerSettings()
+	a.psMu.Lock()
+	if a.PeerSettings != nil {
+		a.PeerSettings.LastAnnounce = float64(now.UnixNano()) / 1e9
+	}
+	a.savePeerSettingsLocked()
+	a.psMu.Unlock()
 }
 
 // AutoSelectPropagationNode selects a default LXMF propagation node.
