@@ -26,6 +26,68 @@ import (
 	"github.com/rivo/tview"
 )
 
+// messageListView wraps a tview.TextView so the conversation message list can
+// extend each header row's colored background to the full pane width. tview's
+// TextView only paints a color tag's background onto actual text characters,
+// leaving trailing cells with the widget default — but Python's urwid AttrMap
+// paints every cell of the row. The Draw override scans each visible row for a
+// cell with a non-default background and repaints the trailing cells (from the
+// end of the text to the right edge) with that background.
+type messageListView struct {
+	*tview.TextView
+}
+
+func newMessageListView() *messageListView {
+	return &messageListView{TextView: tview.NewTextView()}
+}
+
+// Draw paints the text, then extends each row's colored background to the
+// right edge of the pane. For each visible row, it finds the rightmost cell
+// whose background is not the widget default (a header cell carrying the
+// msg_header_<style> bg) and repaints every cell to its right with a fresh
+// truecolor style built from that bg. The bg is reconstructed via NewRGBColor
+// (from the cell's RGB components) because the Color returned by
+// Style.Decompose may lack the ColorIsRGB flag, which tcell needs to emit a
+// truecolor SGR.
+func (m *messageListView) Draw(screen tcell.Screen) {
+	m.TextView.Draw(screen)
+	x, y, w, h := m.GetInnerRect()
+	if w <= 0 || h <= 0 {
+		return
+	}
+	for row := range h {
+		var rowBG tcell.Color
+		styleCol := -1
+		for col := w - 1; col >= 0; col-- {
+			_, style, _ := screen.Get(x+col, y+row)
+			_, bg, _ := style.Decompose()
+			if bg != tcell.ColorDefault {
+				rowBG = bg
+				styleCol = col
+				break
+			}
+		}
+		if styleCol < 0 {
+			continue
+		}
+		r, g, b := rowBG.RGB()
+		// tcell fails to flush space cells whose truecolor bg exactly matches a
+		// 256-color cube level (the bg SGR is emitted but the terminal retains
+		// the default bg). Nudging the blue component off the nearest cube
+		// level (capped to avoid overflow) makes tcell flush the fill. The
+		// 1-unit shift is imperceptible on the trailing-space background.
+		if bb := b; bb == 0 || bb == 95 || bb == 135 || bb == 175 || bb == 215 {
+			b = bb + 1
+		} else if bb == 255 {
+			b = 254
+		}
+		fillStyle := tcell.StyleDefault.Background(tcell.NewRGBColor(r, g, b))
+		for col := styleCol + 1; col < w; col++ {
+			screen.SetContent(x+col, y+row, ' ', nil, fillStyle)
+		}
+	}
+}
+
 // ConversationWidget displays a single conversation's messages,
 // peer info header, trust banner, and compose editor.
 // Matches Python's ConversationWidget at Conversations.py:1874.
@@ -51,7 +113,7 @@ type ConversationWidget struct {
 	// Layout
 	frame          *tview.Flex
 	headerFlex     *tview.Flex
-	messageList    *tview.TextView
+	messageList    *messageListView
 	peerInfoBar    *tview.TextView
 	trustBanner    *tview.Flex
 	editor         *ReadlineEdit
@@ -171,7 +233,7 @@ func NewConversationWidget(app *App, sourceHash string) *ConversationWidget {
 	cw.refreshTrustBanner()
 
 	// Message list
-	cw.messageList = applyWheelMultiplier(tview.NewTextView())
+	cw.messageList = newMessageListView()
 	cw.messageList.SetDynamicColors(true)
 	cw.messageList.SetScrollable(true)
 	// Python's messagelist is a bare IndicativeListBox with NO AttrMap
@@ -181,6 +243,7 @@ func NewConversationWidget(app *App, sourceHash string) *ConversationWidget {
 	cw.messageList.SetTextColor(tcell.ColorDefault)
 	cw.messageList.SetBackgroundColor(tcell.ColorDefault)
 	cw.messageList.SetTextAlign(tview.AlignLeft)
+	applyWheelMultiplier(cw.messageList.TextView)
 
 	// Minimal editor (content only) — Python wraps the editor in
 	// `AttrMap(editor, "msg_editor")` (Conversations.py:609); msg_editor is
@@ -567,9 +630,12 @@ func (cw *ConversationWidget) renderMessages() {
 	for _, msg := range cw.messages {
 		in := cw.headerInputs(msg)
 		title, style := LXMessageHeader(in)
-		// Header style colors are applied via tview tags mapped from the urwid
-		// style name; the title text is rendered on its own line(s).
-		sb.WriteString(styleHeader(title, style))
+		// Python wraps each header in AttrMap(..., "msg_header_<style>")
+		// (Conversations.py:2596-2670 + TextUI.py palette), painting a dark
+		// foreground on a colored background. The messageListView.Draw
+		// override extends the bg to the full row width (tview's TextView
+		// only paints a color tag's bg onto actual text characters).
+		sb.WriteString(cw.styleHeader(title, style))
 		sb.WriteString("\n")
 
 		// Body: indent every content line two columns (Python LXMessageWidget
@@ -651,40 +717,49 @@ func (cw *ConversationWidget) headerInputs(msg ConversationMessage) MessageHeade
 	return in
 }
 
-// styleHeader renders a header title with the urwid style name's tview color
-// mapping. The LXMessageWidget header styles map to background colors; here we
-// apply a foreground tag derived from the style so the title is visible on the
-// default background. The title may contain a "\n  " continuation (unvalidated
-// inbound signatures), which is preserved.
-func styleHeader(title, style string) string {
-	fg := headerStyleForeground(style)
-	if fg == "" {
+// styleHeader renders a header title with the urwid header style's tview
+// foreground AND background colors, mirroring Python's
+// AttrMap(..., "msg_header_<style>") (Conversations.py:2596-2670 + TextUI.py
+// palette lines 33-38): each header style is a dark foreground (#111/#000,
+// cube-quantized to #000000) on a colored background (e.g. msg_header_sent
+// bg #ddd cube→#d7d7d7, msg_header_delivered bg #28b cube→#0087af). The
+// messageListView.Draw override extends the bg to the full row width (tview's
+// TextView only paints a color tag's bg onto actual text characters, not
+// trailing cells).
+func (cw *ConversationWidget) styleHeader(title, style string) string {
+	theme := ThemeDark
+	if cw.app != nil {
+		theme = cw.app.Theme
+	}
+	tc := GetThemeColors(theme)
+	fg, haveFG := tc[style+"_fg"]
+	bg, haveBG := tc[style+"_bg"]
+	if !haveFG && !haveBG {
 		return title + "\n"
 	}
-	return "[" + fg + "]" + title + "[-]\n"
+	tag := buildColorTag(fg, bg)
+	if tag == "" {
+		return title + "\n"
+	}
+	return tag + title + "[-:-]\n"
 }
 
-// headerStyleForeground maps an LXMessageWidget urwid header style name to a
-// tview foreground color tag. The Python styles carry bg colors (e.g.
-// msg_header_sent bg #ddd); the port renders the header text with a
-// representative foreground so it is legible on the default background.
-func headerStyleForeground(style string) string {
-	switch style {
-	case "msg_header_failed":
-		return "red"
-	case "msg_header_delivered":
-		return "green"
-	case "msg_header_propagated":
-		return "yellow"
-	case "msg_header_sent":
-		return "#66cc55"
-	case "msg_header_ok":
-		return "#33ccdd"
-	case "msg_header_caution":
-		return "yellow"
-	default:
-		return ""
+// buildColorTag builds a tview color-tag prefix "[fg:bg]" from two tcell
+// colors. A color whose Hex() is -1 (ColorDefault / invalid) is omitted from
+// its position so tview leaves that channel at the widget default. Returns ""
+// when both are default.
+func buildColorTag(fg, bg tcell.Color) string {
+	var fb strings.Builder
+	fb.WriteByte('[')
+	if h := fg.Hex(); h >= 0 {
+		fmt.Fprintf(&fb, "#%06x", uint32(h)&0xffffff)
 	}
+	fb.WriteByte(':')
+	if h := bg.Hex(); h >= 0 {
+		fmt.Fprintf(&fb, "#%06x", uint32(h)&0xffffff)
+	}
+	fb.WriteByte(']')
+	return fb.String()
 }
 
 // glyphs returns the glyph set for this widget, falling back to the unicode

@@ -62,9 +62,6 @@ type EmbeddedTerminal struct {
 	cols, rows int
 	term       string // TERM env value advertised to the child
 
-	// redraw coalescing: the reader sets dirty and arms a short timer so many
-	// small PTY writes collapse into one redraw.
-	dirty    bool
 	redrawCh chan struct{}
 }
 

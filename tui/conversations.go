@@ -875,30 +875,6 @@ func (cd *ConversationsDisplay) CloseDetailSlotDialog() {
 	}
 }
 
-// showDetail displays the conversation detail in the right panel.
-func (cd *ConversationsDisplay) showDetail(idx int) {
-	if idx < 0 || idx >= len(cd.conversations) {
-		return
-	}
-
-	conv := cd.conversations[idx]
-	// Mark this conversation as the currently-displayed one so its
-	// unread/failed badge is suppressed in the list (Python parity,
-	// Conversations.py:1743-1749).
-	prev := cd.currentConversation
-	cd.currentConversation = conv.SourceHash
-	if prev != cd.currentConversation {
-		cd.populateList()
-	}
-	cd.detail.SetText(fmt.Sprintf(
-		"[::b]%v[-]\n\nTrust: %v\nMessages: %v\nLast: %v\n\n[gray]Select a message to read[-]",
-		conv.DisplayName,
-		conv.TrustLevel,
-		conv.MessageCount,
-		relativeTime(conv.LastTime),
-	))
-}
-
 // relativeTime formats a timestamp as a relative string.
 // Delegates to RelativeTime for consistent behavior.
 func relativeTime(t time.Time) string {

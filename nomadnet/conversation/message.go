@@ -215,9 +215,11 @@ func (m *Message) SignatureValidated() bool {
 
 // GetSignatureDescription returns a human-readable signature status, mirroring
 // the Python NomadNet get_signature_description branches: verified, unknown
-// origin, invalid signature, or an unknown failure.
+// origin, invalid signature, or an unknown failure. When the index supplied
+// CachedSignatureValidated (restore_from_index), use it without loading from
+// disk — matching Python's lazy behavior.
 func (m *Message) GetSignatureDescription() string {
-	if !m.Loaded {
+	if m.CachedSignatureValidated == nil && !m.Loaded {
 		m.Load()
 	}
 	if m.CachedSignatureValidated != nil && *m.CachedSignatureValidated {
@@ -278,8 +280,15 @@ func (m *Message) ContentRenderer() any {
 	return m.Renderer
 }
 
-// HasAttachments returns whether the message has any attachments.
+// HasAttachments returns whether the message has any attachments. When the
+// index supplied CachedHasAttachments (restore_from_index), return it without
+// loading from disk — matching Python's has_attachments which returns
+// _cached_has_attachments when it is not None. Only load from disk when the
+// index flag is unset.
 func (m *Message) HasAttachments() bool {
+	if m.CachedHasAttachments {
+		return true
+	}
 	if !m.Loaded {
 		m.Load()
 	}
@@ -489,15 +498,29 @@ func (m *Message) computeAttachmentCache() {
 // Python's unsigned encoding for non-negative values (a Go int packs values
 // above 0x7f as signed int16/int32, e.g. a 1024-byte attachment size would
 // become 0xd1 0x04 0x00 instead of Python's uint16 0xcd 0x04 0x00).
+//
+// The "state" field stores the RAW LXMF wire state (CachedRawState, e.g. 0x04
+// SENT, 0x08 DELIVERED, 0xFF FAILED), matching Python's to_index_entry which
+// stores self._cached_state = self.lxm.state (the raw LXMF constant). Storing
+// the MAPPED conversation MessageState (0-6) here is incompatible: when
+// Python reads a Go-written .index it interprets the value as a raw LXMF
+// constant, and mapped values (3, 5) match no LXMF state (SENT=4,
+// DELIVERED=8, FAILED=255), so every outbound header falls to the default
+// branch.
 func (m *Message) ToIndexEntry() rnsmsgpack.OrderedMap {
 	var ts any
 	if m.Timestamp != nil {
 		ts = *m.Timestamp
 	}
 
+	// Store the raw LXMF state (matching Python's self._cached_state =
+	// self.lxm.state). CachedRawState is populated by Load (from the on-disk
+	// envelope) and by RestoreFromIndex (from the index). It is 0 for the
+	// GENERATING state, which is a valid raw value, so guard on CachedState
+	// being set (state is known) rather than on CachedRawState being non-zero.
 	var state any
 	if m.CachedState != nil {
-		state = uint(*m.CachedState)
+		state = uint(m.CachedRawState)
 	}
 
 	var sigValid any
@@ -558,7 +581,12 @@ func (m *Message) RestoreFromIndex(entry rnsmsgpack.OrderedMap) {
 	}
 	if v, ok := entry.Get("state"); ok && v != nil {
 		if i, ok := toInt(v); ok {
-			s := MessageState(i)
+			// The index stores the RAW LXMF wire state (matching Python's
+			// self._cached_state = self.lxm.state), so populate both the
+			// raw state (for header rendering) and the mapped conversation
+			// state (for GetState callers).
+			m.CachedRawState = i
+			s := mapLXMFState(i)
 			m.CachedState = &s
 		}
 	}
@@ -662,6 +690,16 @@ func toInt(v any) (int, bool) {
 	case int32:
 		return int(val), true
 	case int64:
+		return int(val), true
+	case uint:
+		return int(val), true
+	case uint8:
+		return int(val), true
+	case uint16:
+		return int(val), true
+	case uint32:
+		return int(val), true
+	case uint64:
 		return int(val), true
 	case float64:
 		return int(val), true

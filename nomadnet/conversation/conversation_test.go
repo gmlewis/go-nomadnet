@@ -190,6 +190,7 @@ func TestToIndexEntryAndRestore(t *testing.T) {
 	msg := NewMessage(path)
 	msg.Timestamp = &ts
 	msg.CachedState = &state
+	msg.CachedRawState = 0x04
 	msg.CachedTitle = "Test Title"
 	msg.CachedContent = "Hello World"
 	msg.CachedSourceHash = []byte{0x01, 0x02}
@@ -265,6 +266,7 @@ func TestReadWriteIndex(t *testing.T) {
 	msg := NewMessage(msgPath)
 	msg.Timestamp = &ts
 	msg.CachedState = &state
+	msg.CachedRawState = 0x04
 	msg.CachedTitle = "Test"
 
 	// Write index
@@ -416,6 +418,7 @@ func TestPurgeFailed(t *testing.T) {
 	failedState := StateFailed
 	if len(conv.Messages) > 0 {
 		conv.Messages[0].CachedState = &failedState
+		conv.Messages[0].CachedRawState = 0xFF
 		conv.Messages[0].Loaded = true
 	}
 

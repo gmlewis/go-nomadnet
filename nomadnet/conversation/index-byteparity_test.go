@@ -87,6 +87,7 @@ func TestWriteIndexPythonByteParity(t *testing.T) {
 	msg1.Timestamp = &ts
 	msg1.SortTimestamp = 1234567890.0
 	msg1.CachedState = &stateSent
+	msg1.CachedRawState = 0x04 // raw LXMF SENT, matching Python's lxm.state
 	msg1.CachedTitle = "Test Title"
 	msg1.CachedContent = "Hello World"
 	msg1.CachedSourceHash = []byte{0x01, 0x02}
@@ -104,6 +105,7 @@ func TestWriteIndexPythonByteParity(t *testing.T) {
 	msg2 := NewMessage(filepath.Join(convPath, nameB))
 	msg2.SortTimestamp = 9999999999.0
 	msg2.CachedState = &stateDraft
+	msg2.CachedRawState = 0x00 // raw LXMF GENERATING
 
 	messages := []*Message{msg1, msg2}
 
@@ -179,7 +181,7 @@ func messageToIndexPy(m *Message) map[string]any {
 	}
 	var state any
 	if m.CachedState != nil {
-		state = uint(*m.CachedState)
+		state = uint(m.CachedRawState)
 	}
 	var sigValid any
 	if m.CachedSignatureValidated != nil {

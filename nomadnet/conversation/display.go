@@ -65,7 +65,18 @@ func (c *Conversation) DisplayMessages() []MessageDisplayData {
 
 	out := make([]MessageDisplayData, 0, len(msgs))
 	for _, m := range msgs {
-		m.Load()
+		// Match Python's lazy-load: when the index already supplied the
+		// cached state (restore_from_index set _cached_state), Python's
+		// get_state/get_title/get_content return the cached values WITHOUT
+		// loading from disk (Conversation.py:592-597, 2281-2284). Only load
+		// from disk when the index lacks the state. Loading unconditionally
+		// would overwrite the index-restored raw state with the on-disk
+		// container state, which can differ (the index state is the value
+		// captured at first load; the on-disk state may have been updated by
+		// the router since) — causing header glyph divergence from nomadnet.
+		if m.CachedState == nil {
+			m.Load()
+		}
 		d := MessageDisplayData{
 			Content:              m.GetContent(),
 			Title:                m.GetTitle(),
