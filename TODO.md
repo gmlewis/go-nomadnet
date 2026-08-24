@@ -103,6 +103,9 @@ in `tooling/parity-reference/` (see `nomadnet-trusted-chat-reference.md`).
   nomadnet Python learned the path on send (`unknown` → `2 hops`) and replied
   successfully; gonomadnet stayed `unknown`/failed (see B11). Investigate
   gonomadnet/go-reticulum announce emission + flood AND on-send path resolution.
+  AGENT NOTE: B13 fix (announce rebroadcast hop count inflation) may resolve
+  this — the inflated hop count (2N-1 instead of N) caused announces to exceed
+  ReticulumHopsMax and stop propagating. Needs live verification.
 
 ### Reference behaviors to verify gonomadnet matches (not yet confirmed as bugs)
 
@@ -140,34 +143,18 @@ transports, shared `~/.nomadnetwork` identities (Mac LXMF `2a6105…`, Mac Mini
   live network, Mac Mini→Mac delivery WORKS (✓ ← signature verified — B10 fix
   confirmed!). But Mac→Mac Mini delivery FAILS — the packet is sent
   (sendMessagePacketLocked succeeds, receipt=true) but lost in transit. Root
-  cause is B13: go-reticulum chooses a 7-9 hop path to the Mac Mini while
-  nomadnet uses 2 hops. The longer path causes packet loss. The Mac Mini→Mac
-  direction works because the Mac Mini has a shorter 2-hop path to the Mac.
+  cause was B13 (hop count inflation, now FIXED): go-reticulum's rebroadcast
+  hop count was packet.Hops+1 instead of packet.Hops, compounding across hops
+  (N actual hops showed as 2N-1). The inflated hop count caused announces to
+  exceed ReticulumHopsMax and stop propagating, leading to long/missing paths.
+  The Mac Mini→Mac direction worked because the Mac Mini had a shorter path.
+  Needs live verification that B13 fix resolves this.
   Also found: the list's SetSelectedFunc called showDetail (peer info text)
   instead of DisplayConversation (conversation widget with composer) — pressing
   Enter on the conversation list didn't open the conversation. FIXED: changed
   SetSelectedFunc to call DisplayConversation.
 
 ### Re-confirmed on gonomadnet 0.22.0
-
-### New, needs investigation
-  AGENT NOTE: tcell's SGR-1006 parsing (input.go handleCsi + handleMouse) is
-  correct, and the simulation test (TestMenuClickRedrawsPage) passes — mouse
-  clicks on menu items work in the simulation. The issue is specific to the
-  real terminal + tmux environment. Browser pane mouse clicks DO work (parity
-  skill D finding #3), but menu bar and tab button clicks do not. This
-  suggests a tview mouse event routing issue under tmux, not a tcell parsing
-  issue. Needs live terminal debugging to reproduce.
-
-- **B13 (NEW — path/hop count discrepancy):** the Mac Mini gonomadnet showed
-  `Mac |  9 hops` for the Mac, where nomadnet (same machines, same transports)
-  showed `2 hops`. Either gonomadnet is choosing a far longer path or its hop
-  count display/calculation differs. Confirm whether this is a real path-choice
-  difference or a display bug.
-  AGENT NOTE: HopsTo (transport.go:1189) returns entry.Hops from the path table,
-  which is populated by announce propagation. The hop count depends on the
-  path learned over the real network. This requires live network debugging
-  with gornpath/gornstatus to compare path tables between Go and Python.
 
 ### Operational note (not a bug, but affects debugging)
 
