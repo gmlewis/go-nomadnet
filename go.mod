@@ -29,7 +29,7 @@ require (
 // tracking), always-on mode 2026 (synchronized output), and per-cell
 // incremental rendering (forcedDirty flag — Put no longer clobbers
 // lastStr, so unchanged cells are skipped by drawCell).
-replace github.com/gdamore/tcell/v2 => github.com/gmlewis/tcell/v2 v2.13.11-0.20260824195930-6b9ce703781c
+replace github.com/gdamore/tcell/v2 => github.com/gmlewis/tcell/v2 v2.13.11-0.20260824212538-e24b6c4fe8a2
 
 // tview fork (gmlewis/tview): carries the fullRedraw flag (draw skips
 // screen.Clear on normal redraws, relying on tcell per-cell dirty
