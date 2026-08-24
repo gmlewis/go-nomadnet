@@ -28,5 +28,6 @@ go install ./cmd/gonomadnet
 # masking any upstream failure (e.g. `go install`) and reporting success.
 trap 'rc=$?; stty sane 2>/dev/null; printf "\033[?1049l\033[?25h\033[0m"; exit $rc' EXIT
 
+env -u NO_COLOR TERM=xterm-256color COLORTERM=truecolor TCELL_TRUECOLOR=1 \
 GOTRACEBACK=all "$(go env GOPATH)/bin/gonomadnet" -pprof-addr 127.0.0.1:6060 \
     2>"gonomadnet-$(hostname -s)-kill-QUIT-$(date +%s).log"
