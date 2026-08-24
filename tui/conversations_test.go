@@ -66,6 +66,43 @@ func TestConversationsDisplayEmpty(t *testing.T) {
 	}
 }
 
+// TestListEnterOpensConversation verifies that pressing Enter on the
+// conversation list opens the conversation widget (DisplayConversation), not
+// just the peer info text (showDetail). In nomadnet, pressing Enter/Space on
+// a list item opens the conversation (Python's "click" signal →
+// display_conversation). Before the fix, gonomadnet's SetSelectedFunc called
+// showDetail which only showed peer info text without a composer.
+func TestListEnterOpensConversation(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	const hash = "1111111111111111111111111111111111111111"
+	convs := []ConversationInfo{
+		{SourceHash: hash, DisplayName: "TestPeer", TrustLevel: "trusted"},
+	}
+	cd := NewConversationsDisplay(app, convs)
+
+	cd.OnLoadMessages = func(sourceHash string) []ConversationMessage {
+		return nil
+	}
+
+	// Before any interaction, no conversation widget should be open.
+	if cd.currentWidget != nil {
+		t.Fatal("currentWidget should be nil before opening a conversation")
+	}
+
+	// Simulate pressing Enter on the first list item.
+	cd.list.SetCurrentItem(0)
+	if handler := cd.list.InputHandler(); handler != nil {
+		handler(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone), func(p tview.Primitive) { app.SetFocus(p) })
+	}
+
+	// The conversation widget should now be open.
+	if cd.currentWidget == nil {
+		t.Fatal("Enter on list did not open conversation (DisplayConversation not called)")
+	}
+}
+
 // TestB14ConversationsColumnOrder verifies B14: the Conversations page must
 // have the list on the LEFT and the conversation/view on the RIGHT, matching
 // nomadnet 1.2.8 (and the node browser). The content Flex must have leftPanel

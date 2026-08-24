@@ -278,9 +278,15 @@ func NewConversationsDisplay(app *App, convs []ConversationInfo) *ConversationsD
 	cd.content = content
 	cd.widget = content
 
-	// Set up list callback
+	// Set up list callback — pressing Enter/Space on a list item opens the
+	// conversation (Python's "click" signal → display_conversation,
+	// Conversations.py:1637-1639), matching nomadnet where the user must
+	// select the peer and press Enter to open it.
 	cd.list.SetSelectedFunc(func(i int, mainText, secondaryText string, shortcut rune) {
-		cd.showDetail(i)
+		if i < 0 || i >= len(cd.conversations) {
+			return
+		}
+		cd.DisplayConversation(cd.conversations[i].SourceHash)
 	})
 
 	// Set up keyboard shortcuts matching Python's ConversationsArea.keypress()

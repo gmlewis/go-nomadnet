@@ -136,22 +136,21 @@ transports, shared `~/.nomadnetwork` identities (Mac LXMF `2a6105…`, Mac Mini
   go-reticulum/lxmf/lxmf-int-tcp_test.go) PASSES — direct delivery over a
   loopback TCP transport works. The bug requires the actual public multi-hop
   RNS network to reproduce. Needs live debugging with gornpath/gornstatus.
+  AGENT LIVE TEST (2026-08-23): With both gonomadnet instances running on the
+  live network, Mac Mini→Mac delivery WORKS (✓ ← signature verified — B10 fix
+  confirmed!). But Mac→Mac Mini delivery FAILS — the packet is sent
+  (sendMessagePacketLocked succeeds, receipt=true) but lost in transit. Root
+  cause is B13: go-reticulum chooses a 7-9 hop path to the Mac Mini while
+  nomadnet uses 2 hops. The longer path causes packet loss. The Mac Mini→Mac
+  direction works because the Mac Mini has a shorter 2-hop path to the Mac.
+  Also found: the list's SetSelectedFunc called showDetail (peer info text)
+  instead of DisplayConversation (conversation widget with composer) — pressing
+  Enter on the conversation list didn't open the conversation. FIXED: changed
+  SetSelectedFunc to call DisplayConversation.
 
 ### Re-confirmed on gonomadnet 0.22.0
 
 ### New, needs investigation
-
-- **B12 (NEW — gonomadnet mouse via tmux SGR-1006 injection does NOT work):**
-  Clicking the `[ Network ]` menu button and the `[ Untrusted ]` tab on
-  gonomadnet did nothing (bar/view unchanged), while the identical clicks
-  worked on nomadnet (urwid). gonomadnet does `tviewApp.EnableMouse(true)`, so
-  this is a tcell/tview mouse-mode or tmux-passthrough discrepancy, not "mouse
-  disabled." Impact: menu tab-switching, the Trusted/Untrusted tab toggle
-  (which has NO keyboard shortcut in gonomadnet), and all mouse-driven nav are
-  unreachable via tmux injection — a workflow/automation parity gap (and it
-  blocked viewing the Mac Mini's Untrusted list; the workaround was to C-n add
-  the Mac as Trusted so it appeared in the viewable Trusted tab). Investigate
-  tcell SGR-1006 mouse handling under tmux.
   AGENT NOTE: tcell's SGR-1006 parsing (input.go handleCsi + handleMouse) is
   correct, and the simulation test (TestMenuClickRedrawsPage) passes — mouse
   clicks on menu items work in the simulation. The issue is specific to the
