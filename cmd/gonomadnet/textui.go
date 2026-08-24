@@ -813,7 +813,10 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 				conversationsDisplay.SetShowTrusted(false)
 			}
 			refreshConvs()
-			conversationsDisplay.DisplayConversation(addrHex)
+			// B1: nomadnet 1.2.8 does NOT auto-open the conversation after
+			// Create — it returns to the list with the right pane showing
+			// "No conversation selected". The user must select the peer and
+			// press Enter to open it. Do NOT call DisplayConversation here.
 			return true
 		})
 	}
@@ -822,16 +825,37 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	}
 	conversationsDisplay.OnShowQR = func() {
 		addr := a.LXMFAddressHex()
-		text := "[gray]LXMF address display — not available[-]"
-		if addr != "" {
-			text = fmt.Sprintf("[lightblue]LXMF Address[-]\n\n[white]<%v>[-]", addr)
+		// B3: render an actual QR code + title "QR Code" + `< hash >` (spaces
+		// inside brackets), matching nomadnet 1.2.8's show_qr_dialog
+		// (Conversations.py:641-679). Falls back to "LXMF Address" title
+		// without QR when rendering fails.
+		qrText := tui.RenderQRText(addr)
+		title := "QR Code"
+		var contentStr string
+		if qrText != "" {
+			contentStr = "[white]" + qrText + "[-]\n\n[white]< " + addr + " >[-]"
+		} else {
+			title = "LXMF Address"
+			contentStr = "[lightblue]LXMF destination address:[-]\n\n[white]< " + addr + " >[-]"
 		}
-		tuiApp.Dialogs.ShowDialog("LXMF Address",
-			tview.NewTextView().
-				SetDynamicColors(true).
-				SetTextAlign(tview.AlignCenter).
-				SetText(text),
-			50, 8, nil)
+
+		textView := tview.NewTextView().
+			SetDynamicColors(true).
+			SetTextAlign(tview.AlignCenter).
+			SetText(contentStr)
+
+		// B4: add Space as a dismiss key (nomadnet's QR popup dismisses on
+		// Space). Keep Esc (gonomadnet enhancement) which DialogLineBox already
+		// handles. Space on the TextView content dismisses the dialog.
+		textView.SetInputCapture(func(ev *tcell.EventKey) *tcell.EventKey {
+			if ev.Rune() == ' ' {
+				tuiApp.Dialogs.DismissTop()
+				return nil
+			}
+			return ev
+		})
+
+		tuiApp.Dialogs.ShowDialog(title, textView, 50, 22, nil)
 	}
 	conversationsDisplay.OnEditPeerInfo = func() {
 		conv, ok := conversationsDisplay.GetSelectedConversation()

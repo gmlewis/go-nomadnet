@@ -946,6 +946,17 @@ func (a *App) ConversationList() []conversation.ConversationInfo {
 				displayNames[hashHex] = a.Dir.DisplayName(hashBytes)
 				trustLevels[hashHex] = a.Dir.TrustLevel(hashBytes, nil)
 			}
+			// B2: when the directory has no display name for the peer, fall
+			// back to the announce app data (LXMF display_name_from_app_data),
+			// matching nomadnet 1.2.8's _update_peer_info
+			// (Conversations.py:2092-2101): directory → announce app data → hash.
+			if displayNames[hashHex] == "" && a.Transport != nil {
+				if appData := a.Transport.RecallAppData(hashBytes); len(appData) > 0 {
+					if name, err := lxmf.DisplayNameFromAppData(appData); err == nil && name != "" {
+						displayNames[hashHex] = name
+					}
+				}
+			}
 		}
 	}
 	return conversation.ConversationList(a.ConversationPath, displayNames, trustLevels)

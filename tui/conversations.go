@@ -1865,11 +1865,11 @@ func (cd *ConversationsDisplay) showNewConversationDialog(addr, name string, sho
 		}
 		if onCreate(addrHex, displayName, trust) {
 			dismiss()
-			// onCreate already displayed the conversation (DisplayConversation
-			// focused the editor), but dismiss() just restored focus to the list
-			// (the dialog's prevFocus), stealing it from the composer. Re-focus
-			// the editor so the user can type immediately, matching Python where
-			// the dialog closes into the conversation's focused footer.
+			// B1: nomadnet 1.2.8 does NOT auto-open the conversation after
+			// Create. After dismiss, focus returns to the list (the dialog's
+			// prevFocus), matching Python where the dialog closes back to the
+			// list, not the conversation editor. focusEditor is a no-op when
+			// no conversation is open.
 			cd.focusEditor()
 			return
 		}

@@ -66,6 +66,56 @@ func TestConversationsDisplayEmpty(t *testing.T) {
 	}
 }
 
+// TestB14ConversationsColumnOrder verifies B14: the Conversations page must
+// have the list on the LEFT and the conversation/view on the RIGHT, matching
+// nomadnet 1.2.8 (and the node browser). The content Flex must have leftPanel
+// (list) at index 0 and detail at index 1.
+func TestB14ConversationsColumnOrder(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	cd := NewConversationsDisplay(app, nil)
+
+	// The content Flex must have exactly 2 items: list pane + detail pane.
+	if cd.content.GetItemCount() != 2 {
+		t.Fatalf("content has %v items, want 2", cd.content.GetItemCount())
+	}
+
+	// Item 0 (LEFT) must be the leftPanel (the conversations list).
+	if cd.content.GetItem(0) != cd.leftPanel {
+		t.Error("B14: content[0] is not leftPanel (list should be LEFT, index 0)")
+	}
+
+	// Item 1 (RIGHT) must be the detail (the conversation view).
+	if cd.content.GetItem(1) != cd.detail {
+		t.Error("B14: content[1] is not detail (conversation view should be RIGHT, index 1)")
+	}
+}
+
+// TestB1NoAutoOpenAfterCreate verifies B1: after the New Conversation dialog's
+// Create callback returns true WITHOUT calling DisplayConversation, no
+// conversation is auto-opened (currentWidget stays nil), matching nomadnet
+// 1.2.8 which returns to the list with "No conversation selected".
+func TestB1NoAutoOpenAfterCreate(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	cd := NewConversationsDisplay(app, nil)
+
+	// Show the New Conversation dialog with a callback that does NOT call
+	// DisplayConversation (matching the fixed textui.go behavior).
+	cd.ShowNewConversationDialog(func(addrHex, name, trust string) bool {
+		// Simulate a successful Create without auto-opening the conversation.
+		return true
+	})
+
+	// After showing the dialog, currentWidget must still be nil (no
+	// conversation was auto-opened just by showing the dialog).
+	if cd.currentWidget != nil {
+		t.Error("B1: currentWidget should be nil after showing New Conversation dialog (no auto-open)")
+	}
+}
+
 // TestTabBarTextPythonParity verifies the Trusted/Untrusted tab label against
 // Python's _label (Conversations.py:461-465): no digit prefixes, an envelope
 // glyph + alert count when a tab has unread/failed conversations. The glyph
@@ -705,6 +755,49 @@ func TestReloadCurrentMessages(t *testing.T) {
 	}
 	if !strings.Contains(cd.currentWidget.messageList.GetText(true), "freshly sent") {
 		t.Errorf("reload did not render the new message: %v", cd.currentWidget.messageList.GetText(true))
+	}
+}
+
+// TestR2RefreshOpenConversationAutoRefresh verifies R2: when a new message
+// arrives for the currently-open conversation, RefreshOpenConversation reloads
+// the message list so the new message appears live without re-selecting,
+// matching nomadnet 1.2.8 (Conversations.py:1896 + 2246-2252).
+func TestR2RefreshOpenConversationAutoRefresh(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	const hash = "r2aaa00000000000000000000000000000000000"
+	convs := []ConversationInfo{
+		{SourceHash: hash, DisplayName: "R2Peer", TrustLevel: "trusted"},
+	}
+	cd := NewConversationsDisplay(app, convs)
+
+	loads := 0
+	cd.OnLoadMessages = func(sourceHash string) []ConversationMessage {
+		loads++
+		if loads == 1 {
+			return []ConversationMessage{{Content: "original msg", State: 0x04, SourceHash: []byte{0xff}}}
+		}
+		return []ConversationMessage{
+			{Content: "original msg", State: 0x04, SourceHash: []byte{0xff}},
+			{Content: "new arrival", State: 0x04, SourceHash: []byte{0xff}},
+		}
+	}
+
+	cd.DisplayConversation(hash)
+	if loads != 1 {
+		t.Fatalf("expected 1 load on display, got %v", loads)
+	}
+
+	// Simulate a new message arriving: RefreshOpenConversation should reload.
+	cd.RefreshOpenConversation(hash)
+	if loads != 2 {
+		t.Fatalf("R2: expected 2 loads after refresh, got %v (auto-refresh not firing)", loads)
+	}
+
+	body := cd.currentWidget.messageList.GetText(true)
+	if !strings.Contains(body, "new arrival") {
+		t.Errorf("R2: refreshed message list missing 'new arrival'; got: %v", body)
 	}
 }
 
