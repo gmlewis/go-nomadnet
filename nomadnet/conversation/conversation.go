@@ -50,6 +50,13 @@ type Conversation struct {
 	// carry title/content/state/source-hash for display.
 	Transport rns.Transport
 
+	// PendingChecker, when set, is stamped onto ScanStorage-created messages
+	// so Load can mark interrupted pending messages FAILED, mirroring
+	// Python's ConversationMessage.load (Conversation.py:451-460). The app
+	// wires it to the LXMF router's pending-outbound / pending-deferred-stamps
+	// lookup. nil skips the check.
+	PendingChecker func(hash []byte) bool
+
 	changedCallback func()
 	sendDeps        SendDeps
 
@@ -83,6 +90,18 @@ func (c *Conversation) SetTransport(t rns.Transport) {
 	c.Transport = t
 	for _, m := range c.Messages {
 		m.Transport = t
+	}
+}
+
+// SetPendingChecker stamps the pending-outbound lookup onto the conversation
+// and all of its already-scanned messages so Load can mark interrupted pending
+// messages FAILED (Python Conversation.py:451-460). It must be called before
+// ScanStorage/DisplayMessages for the check to apply to freshly loaded
+// messages.
+func (c *Conversation) SetPendingChecker(fn func(hash []byte) bool) {
+	c.PendingChecker = fn
+	for _, m := range c.Messages {
+		m.PendingChecker = fn
 	}
 }
 
@@ -143,6 +162,7 @@ func (c *Conversation) ScanStorage() error {
 		msg := NewMessage(filePath)
 		msg.AttachmentPath = c.attachmentPath
 		msg.Transport = c.Transport
+		msg.PendingChecker = c.PendingChecker
 
 		// Restore from index if available
 		if ie, ok := index.Get(name); ok {

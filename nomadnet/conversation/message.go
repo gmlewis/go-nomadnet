@@ -60,6 +60,14 @@ type Message struct {
 	// Transport, when set, allows Load to parse the LXMF envelope from disk.
 	// When nil, Load falls back to file-mtime metadata only.
 	Transport rns.Transport
+	// PendingChecker, when set, reports whether the given LXMF message hash is
+	// still queued for outbound delivery (in the router's pending-outbound or
+	// pending-deferred-stamps queue). Load uses it to mark interrupted
+	// pending messages FAILED, mirroring Python's ConversationMessage.load
+	// (Conversation.py:451-460): a message on disk whose state is between
+	// GENERATING and SENT that is no longer in the pending queue is marked
+	// FAILED. nil skips the check (headless/tests).
+	PendingChecker func(hash []byte) bool
 	// AttachmentPath, when set, overrides the global attachment directory
 	// base for this message. Tests set it directly to avoid touching shared
 	// global state; the app sets it when constructing messages.
@@ -348,7 +356,28 @@ func (m *Message) Load() {
 	if len(lxm.SourceHash) > 0 {
 		m.CachedSourceHash = lxm.SourceHash
 	}
-	m.CachedRawState = lxm.State()
+
+	// Mark interrupted pending messages FAILED, mirroring Python's
+	// ConversationMessage.load (Conversation.py:451-460): a message on disk
+	// whose LXMF state is between GENERATING (0x00) and SENT (0x04) — i.e.
+	// OUTBOUND/SENDING — that is no longer in the router's pending-outbound
+	// or pending-deferred-stamps queue is marked FAILED. Without this, an
+	// outbound message interrupted mid-send (app restart, crash) renders
+	// with the default "→" header branch instead of the "✕ →" FAILED glyph
+	// (B16). Skipped when no PendingChecker is wired (headless/tests) and
+	// when the message hash is unknown.
+	rawState := lxm.State()
+	if m.PendingChecker != nil && rawState > lxmf.StateGenerating && rawState < lxmf.StateSent {
+		hash := m.CachedHash
+		if hash == nil {
+			hash = lxm.Hash
+		}
+		if hash != nil && !m.PendingChecker(hash) {
+			rawState = lxmf.StateFailed
+		}
+	}
+
+	m.CachedRawState = rawState
 	m.CachedTitle = lxm.TitleString()
 	m.CachedContent = lxm.ContentString()
 	m.CachedTransportEncrypted = lxm.TransportEncrypted
@@ -356,7 +385,7 @@ func (m *Message) Load() {
 	m.CachedMethod = lxm.Method()
 	m.cachedFields = lxm.Fields
 
-	st := mapLXMFState(lxm.State())
+	st := mapLXMFState(rawState)
 	m.CachedState = &st
 
 	validated := lxm.SignatureValidated

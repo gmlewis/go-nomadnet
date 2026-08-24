@@ -373,6 +373,49 @@ func TestConversationWidgetRenderMessages(t *testing.T) {
 	}
 }
 
+// TestConversationWidgetAutoScrollBottom verifies that after SetMessages the
+// message list is scrolled to the bottom (newest message visible), matching
+// Python's update_message_widgets which constructs the IndicativeListBox with
+// position = len(message_widgets)-1 (Conversations.py:2304) so the newest
+// message is focused/visible. Without this, the Go TextView stays at the top
+// after SetText, leaving the newest messages off-screen (B14).
+func TestConversationWidgetAutoScrollBottom(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	app.Glyphs = GetGlyphSet(GlyphUnicode)
+	cw := NewConversationWidget(app, "aabb1122")
+
+	now := time.Now()
+	msgs := make([]ConversationMessage, 40)
+	for i := range msgs {
+		msgs[i] = ConversationMessage{
+			Content:   "message line " + itoa(i),
+			Timestamp: now.Add(time.Duration(i) * time.Minute),
+			IsSent:    true,
+		}
+	}
+	cw.SetMessages(msgs)
+
+	screen := newBenchScreen()
+	defer screen.Fini()
+	v := cw.messageList
+	const w, h = 60, 8
+	v.SetRect(0, 0, w, h)
+	v.Draw(screen)
+
+	total := v.GetWrappedLineCount()
+	_, _, _, ch := v.GetInnerRect()
+	posmax := total - ch
+	if posmax <= 0 {
+		t.Fatalf("need overflow: total=%v ch=%v", total, ch)
+	}
+	row, _ := v.GetScrollOffset()
+	if row != posmax {
+		t.Errorf("after SetMessages: scrollOffset=%v, want %v (bottom, newest visible); total=%v ch=%v", row, posmax, total, ch)
+	}
+}
+
 // TestConversationWidgetRenderHeaderParity checks renderMessages emits the
 // LXMessageWidget header (prefix glyph + strftime timestamp + encryption glyph)
 // for a fully-specified LXMF message, matching the Python parity format.

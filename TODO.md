@@ -118,29 +118,6 @@ in `tooling/parity-reference/` (see `nomadnet-trusted-chat-reference.md`).
   DisplayConversation — pressing Enter on the conversation list didn't open
   the conversation. FIXED: changed SetSelectedFunc to call DisplayConversation.
 
-### NEW: TUI rendering bugs found during live bidirectional test (2026-08-24)
-
-- **B14 (NEW): Conversation window does not auto-scroll to latest messages.**
-  After sending/receiving messages, the conversation view stays stuck at
-  old messages instead of scrolling to show the newest. Both Mac and Mac
-  Mini gonomadnet show messages from 20+ minutes ago while the latest
-  messages (sent seconds ago) are not visible.
-
-- **B15 (NEW): Incoming messages not displayed in conversation view.**
-  The Mac Mini's conversation with the Mac shows only outgoing messages.
-  The Mac's incoming messages are on disk (confirmed by file count) but
-  are not rendered in the conversation view. The Mac side shows incoming
-  messages with "✓ ←" but the Mac Mini side does not show them at all.
-
-- **B16 (NEW): Message state indicator rendering differs from nomadnet.**
-  gonomadnet shows different state indicators than nomadnet:
-  - Mac (gonomadnet): `↑ →` for delivered, `✕ →` for failed, `✓ ←` for
-    incoming, `!` and `⛿` suffixes
-  - Mac Mini (gonomadnet): `✓ →` for delivered, `→` for sent, no incoming
-    markers, empty suffix
-  - nomadnet (Python): consistent `↑ →`/`✕ →`/`✓ ←` with `!`/`⛿` suffixes
-  The gonomadnet rendering is inconsistent between the two instances and
-  differs from the Python reference.
 
 ### Reference behaviors to verify gonomadnet matches (not yet confirmed as bugs)
 

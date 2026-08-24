@@ -590,6 +590,14 @@ func (cw *ConversationWidget) renderMessages() {
 	}
 
 	cw.messageList.SetText(sb.String())
+	// Match Python's update_message_widgets, which constructs the
+	// IndicativeListBox with position = len(message_widgets)-1
+	// (Conversations.py:2304) so the newest message (last in the
+	// oldest-first sort) is focused and visible. tview's TextView stays at
+	// the top after SetText, so scroll to the end to surface the newest
+	// messages (B14: the conversation view otherwise stays stuck at the
+	// oldest messages after a send/receive).
+	cw.messageList.ScrollToEnd()
 }
 
 // headerInputs builds MessageHeaderInputs for a message, deriving the LXMF

@@ -44,6 +44,15 @@ func (a *App) ConversationMessages(sourceHash string) []conversation.MessageDisp
 	if a.Transport != nil {
 		conv.SetTransport(a.Transport)
 	}
+	// Wire the pending-outbound lookup so Load marks interrupted pending
+	// messages FAILED, mirroring Python's ConversationMessage.load
+	// (Conversation.py:451-460). The router reports a hash as pending when
+	// it is still in the pending-outbound or pending-deferred-stamps queue.
+	if a.Router != nil {
+		conv.SetPendingChecker(func(hash []byte) bool {
+			return a.Router.GetOutboundProgress(hash) != nil
+		})
+	}
 	if err := conv.ScanStorage(); err != nil {
 		return nil
 	}
