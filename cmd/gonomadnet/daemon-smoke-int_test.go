@@ -151,6 +151,11 @@ func TestDaemonSmokeEndToEnd(t *testing.T) {
 		"-config", cfgDir,
 		"-rnsconfig", rnsDir,
 	)
+	// The single-instance guard refuses to start gonomadnet if a nomadnet
+	// (Python) process is running on the host. During integration tests the
+	// developer may well have nomadnet running for parity checks, so bypass
+	// that check here (the fresh temp config dir already isolates the lock).
+	cmd.Env = append(os.Environ(), "GONOMADNET_IGNORE_RUNNING_NOMADNET=1")
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		t.Fatalf("stdout pipe: %v", err)

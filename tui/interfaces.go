@@ -71,6 +71,12 @@ type InterfacesDisplay struct {
 	OnRemoveInterface func()
 	OnConfigEditor    func()
 	OnShowInterface   func(idx int)
+
+	// OnReleaseFocus is called when the user navigates Up past the top interface
+	// item, so focus returns to the menu bar (mirroring the browser pane's
+	// OnReleaseFocus → FocusMenu). Without it, UpArrow at the top item is a
+	// no-op that traps focus in the list.
+	OnReleaseFocus func()
 }
 
 // NewInterfacesDisplay creates a new interfaces display.
@@ -246,6 +252,14 @@ func (id *InterfacesDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey 
 		}
 		return nil
 	case tcell.KeyUp, tcell.KeyDown, tcell.KeyPgUp, tcell.KeyPgDn, tcell.KeyHome, tcell.KeyEnd:
+		// Navigating Up past the top interface item releases focus back to the
+		// menu bar (matching the browser pane's OnReleaseFocus → FocusMenu), so
+		// UpArrow from the first interface returns to the main menu instead of
+		// clamping at the top and trapping focus in the list.
+		if event.Key() == tcell.KeyUp && id.listBox.focusIdx <= 0 && id.OnReleaseFocus != nil {
+			id.OnReleaseFocus()
+			return nil
+		}
 		id.listBox.HandleKey(event.Key())
 		return nil
 	}

@@ -41,6 +41,7 @@
 package main
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
 	"io"
@@ -273,18 +274,20 @@ func releaseExists(tag string) (bool, error) {
 
 // tagExists reports whether a git tag named tag exists on the remote.
 func tagExists(tag string) (bool, error) {
+	var stderr bytes.Buffer
 	cmd := exec.Command("gh", "api", "--method", "GET",
-		"repos/:owner/:repo/git/refs/tags/"+tag, "--silent")
+		"repos/:owner/:repo/git/refs/tags/"+tag)
+	cmd.Stdout = io.Discard
+	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		// gh exits non-zero with a "not found" / 404 message when the ref
-		// does not exist; treat that as "no such tag".
-		if ee, ok := err.(*exec.ExitError); ok && len(ee.Stderr) > 0 {
-			if strings.Contains(string(ee.Stderr), "not found") ||
-				strings.Contains(string(ee.Stderr), "404") {
-				return false, nil
-			}
+		// gh exits non-zero with a "Not Found" / 404 message when the ref
+		// does not exist; treat that as "no such tag". The check is
+		// case-insensitive because gh outputs "Not Found" (capitalized).
+		s := strings.ToLower(stderr.String())
+		if strings.Contains(s, "not found") || strings.Contains(s, "404") {
+			return false, nil
 		}
-		return false, fmt.Errorf("check existing tag %v: %w", tag, err)
+		return false, fmt.Errorf("check existing tag %v: %w (stderr: %s)", tag, err, stderr.String())
 	}
 	return true, nil
 }

@@ -1433,6 +1433,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	})
 
 	// Wire interfaces keyboard shortcuts
+	interfacesDisplay.OnReleaseFocus = func() { main.FocusMenu() }
 	interfacesDisplay.OnAddInterface = func() {
 		tuiApp.Dialogs.ShowInputDialog("Add Interface",
 			"Interface name:", "",

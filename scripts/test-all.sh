@@ -52,8 +52,7 @@ go vet ./...
 
 echo "Running errcheck..."
 "${ERRCHECK_BIN}" ./...
-
-echo "Running staticcheck..."
-"${STATICCHECK_BIN}" -checks=SA* ./...
+# staticcheck is run with full checks (including U1000/ST*) in run-all-tests.sh
+# with -tags=integration, so it is not duplicated here.
 
 echo "Done."

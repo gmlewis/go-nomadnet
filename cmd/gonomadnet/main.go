@@ -78,6 +78,19 @@ func main() {
 		configDir = resolveDefaultConfigDir(home)
 	}
 
+	// Idiot-proof single-instance guard: refuse to start if a nomadnet
+	// (Python) process is already running, and acquire a per-config-dir
+	// exclusive lock so only one gonomadnet runs per config directory. This
+	// prevents the stale-second-instance situation where one gonomadnet stays
+	// the RNS shared instance while a second reports every interface
+	// Disconnected. Bypass the nomadnet check with
+	// GONOMADNET_IGNORE_RUNNING_NOMADNET=1 (e.g. for a false positive).
+	releaseLock, err := enforceSingleInstance(configDir)
+	if err != nil {
+		log.Fatalf("gonomadnet: %v", err)
+	}
+	defer releaseLock()
+
 	// Apply memory tuning (soft heap limit / GC percent) before starting. On
 	// small devices (< 4 GiB RAM) this auto-sets a soft memory limit so a
 	// long-running node can't balloon and starve the system; on larger machines

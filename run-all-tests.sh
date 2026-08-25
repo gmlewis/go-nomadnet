@@ -85,4 +85,14 @@ if ! go run golang.org/x/tools/go/analysis/passes/modernize/cmd/modernize@latest
 fi
 echo "modernize: clean (no suggestions)"
 
-echo "Repo is squeaky-clean (gopls check + modernize)."
+echo "Running full staticcheck (all checks, with integration tags)..."
+STATICCHECK_LOG="staticcheck.log"
+staticcheck -tags=integration ./... >"${STATICCHECK_LOG}" 2>&1 || true
+if [[ -s "${STATICCHECK_LOG}" ]]; then
+    echo "FAIL: staticcheck reported issues (see ${STATICCHECK_LOG}):" >&2
+    cat "${STATICCHECK_LOG}" >&2
+    exit 1
+fi
+echo "staticcheck: clean (all checks, with integration tags)"
+
+echo "Repo is squeaky-clean (gopls check + modernize + staticcheck)."
