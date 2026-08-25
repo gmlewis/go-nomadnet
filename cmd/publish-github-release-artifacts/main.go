@@ -15,15 +15,23 @@
 
 // Command publish-github-release-artifacts builds standalone executables for
 // the major supported platforms/targets and publishes them as assets of a
-// new GitHub Release (via the gh CLI) tagged with the current version string
-// read from nomadnet/version/version.go.
+// GitHub Release (via the gh CLI) tagged with the current version string read
+// from nomadnet/version/version.go.
+//
+// Tagging happens FIRST: the version's git tag is created and pushed before the
+// (slow) build/upload, so downstream modules can `go mod tidy` against the tag
+// immediately. An existing tag is never modified.
 //
 // If a release for that version already exists, the command fails unless
-// --force is supplied, in which case the previous release (and its assets) is
-// deleted and replaced with freshly built ones. With --force the version's git
-// tag is also deleted and recreated on the latest commit, so the tag always
-// points at the commit the artifacts were built from. The release notes embed a
-// sha256 checksum table for every uploaded artifact.
+// --force is supplied. --force deletes the existing GitHub Release (the
+// release page and its uploaded asset binaries) and recreates it with freshly
+// built artifacts — but it does NOT touch the git tag. Keeping the tag
+// immutable means the Go module proxy (proxy.golang.org / pkg.go.dev) checksum
+// for the tagged source never changes, so `go mod tidy` / `go get` in downstream
+// modules never fails with a "verifying ... checksum mismatch" ("hacker
+// modifying a known tagged release") error, while the published binaries can
+// still be refreshed. The release notes embed a sha256 checksum table for
+// every uploaded artifact.
 //
 // Usage:
 //
@@ -126,6 +134,7 @@ func run(force, dryRun bool) error {
 	mustFprintf(progress, "Repository: %v\n", repo)
 
 	exists := false
+	hasTag := false
 	if !dryRun {
 		exists, err = releaseExists(tag)
 		if err != nil {
@@ -137,6 +146,41 @@ func run(force, dryRun bool) error {
 					"bump the minor version in %v, then retry "+
 					"(or re-run with --force to replace the existing release)",
 				tag, versionFile)
+		}
+		hasTag, err = tagExists(tag)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Tag FIRST, before the (slow) build/upload, so downstream modules can
+	// `go mod tidy` against the tag immediately. The tag is created only when
+	// absent; an existing tag is NEVER modified — that immutability is what
+	// keeps the proxy.golang.org / pkg.go.dev module checksum stable so
+	// consumers never hit a "verifying ... checksum mismatch" error. Dry-run
+	// skips all remote mutation.
+	if !dryRun {
+		if hasTag {
+			mustFprintf(progress,
+				"Tag %v already exists; not modifying it (--force never touches tags). "+
+					"Artifacts will be rebuilt against the existing tag.\n", tag)
+		} else {
+			clean, cerr := workingTreeClean()
+			if cerr != nil {
+				return cerr
+			}
+			if !clean {
+				return fmt.Errorf(
+					"working tree has uncommitted changes to tracked files; commit them "+
+						"(including the version bump in %v) and push before publishing so "+
+						"the tag points at the exact source the artifacts are built from",
+					versionFile)
+			}
+			mustFprintf(progress,
+				"Creating and pushing tag %v first (consumers can `go mod tidy` immediately).\n", tag)
+			if err := createAndPushTag(tag); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -160,27 +204,15 @@ func run(force, dryRun bool) error {
 		return nil
 	}
 
-	if exists && force {
-		mustFprintf(progress, "--force: deleting existing release %v and its assets\n", tag)
-		// --cleanup-tag also deletes the git tag ref so that the create
-		// below re-creates it on the latest commit instead of reusing the
-		// stale tag still pointing at the old one.
-		if err := gh("release", "delete", tag, "--yes", "--cleanup-tag"); err != nil {
+	// Recreate the GitHub Release (release page + uploaded binaries) WITHOUT
+	// touching the git tag. With --force the existing release is deleted first
+	// (no --cleanup-tag, so the tag stays); `gh release create` then reuses the
+	// existing (immutable) tag.
+	if force && exists {
+		mustFprintf(progress,
+			"--force: deleting existing release %v and its assets (tag is left untouched)\n", tag)
+		if err := gh("release", "delete", tag, "--yes"); err != nil {
 			return fmt.Errorf("delete existing release: %w", err)
-		}
-	} else if force {
-		// A tag may exist without a release (e.g. someone pushed the tag
-		// manually, or a prior release was deleted without --cleanup-tag).
-		// Drop the ref so the create re-tags the latest commit.
-		hasTag, err := tagExists(tag)
-		if err != nil {
-			return err
-		}
-		if hasTag {
-			mustFprintf(progress, "--force: deleting existing tag %v so it moves to the latest commit\n", tag)
-			if err := deleteTagRef(tag); err != nil {
-				return fmt.Errorf("delete existing tag: %w", err)
-			}
 		}
 	}
 
@@ -257,10 +289,34 @@ func tagExists(tag string) (bool, error) {
 	return true, nil
 }
 
-// deleteTagRef deletes the git tag ref named tag from the remote so that a
-// subsequent release create can re-create it on the latest commit.
-func deleteTagRef(tag string) error {
-	return gh("api", "--method", "DELETE", "repos/:owner/:repo/git/refs/tags/"+tag)
+// workingTreeClean reports whether the working tree has no uncommitted changes
+// to tracked files (untracked files are ignored). The publisher tags HEAD, so a
+// clean tree ensures the tag points at the exact source the artifacts are built
+// from — keeping the published module source and the built binaries in sync.
+func workingTreeClean() (bool, error) {
+	err := exec.Command("git", "diff", "--quiet", "HEAD").Run()
+	if err == nil {
+		return true, nil
+	}
+	if ee, ok := err.(*exec.ExitError); ok && ee.ExitCode() == 1 {
+		return false, nil
+	}
+	return false, fmt.Errorf("check working tree clean: %w", err)
+}
+
+// createAndPushTag creates a lightweight git tag at HEAD and pushes it to
+// origin. The local tag is refreshed with -f (local-only, no remote effect);
+// the push uses no --force, so an existing remote tag is rejected rather than
+// moved. The caller only reaches here when tagExists reported the remote tag as
+// absent, so the push creates a new remote tag without ever modifying one.
+func createAndPushTag(tag string) error {
+	if err := exec.Command("git", "tag", "-f", tag).Run(); err != nil {
+		return fmt.Errorf("git tag %v: %w", tag, err)
+	}
+	if err := exec.Command("git", "push", "origin", tag).Run(); err != nil {
+		return fmt.Errorf("git push origin %v (ensure HEAD is pushed and the tag is new to the remote): %w", tag, err)
+	}
+	return nil
 }
 
 // ghRepoSlug returns the "owner/repo" slug gh is authenticated against.
