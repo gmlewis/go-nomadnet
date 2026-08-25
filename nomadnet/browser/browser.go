@@ -51,6 +51,14 @@ const (
 	// DefaultCacheTime is the page-cache time-to-live in seconds, matching
 	// Python Browser.DEFAULT_CACHE_TIME = 12*60*60.
 	DefaultCacheTime = 12 * 60 * 60
+	// establishmentTimeoutPerHop matches RNS's per-hop establishment timeout
+	// (Reticulum DEFAULT_PER_HOP_TIMEOUT = 6s, go-reticulum
+	// establishmentTimeoutPerHop = 6*time.Second). The Go browser must not
+	// impose an external link-establishment deadline shorter than RNS's own
+	// internal watchdog, or it tears down links that were still establishing
+	// on multi-hop paths — the root cause of "Link establishment timed out"
+	// on every remote node.
+	establishmentTimeoutPerHop = 6 * time.Second
 )
 
 // Request-lifecycle status states, matching Python Browser (Browser.py:77-88).
@@ -431,23 +439,50 @@ func fetchBytes(ctx context.Context, ts *rns.TransportSystem, destHash []byte, p
 		}
 
 		// 3. Establish the link (non-blocking Establish + wait for ACTIVE).
+		// Python Browser.__load (Browser.py:1413-1419) imposes NO external
+		// link-establishment deadline: it loops on
+		// `while self.status == ESTABLISHING_LINK` and lets RNS's own
+		// establishment watchdog call link_closed, which exits the loop.
+		// RNS's internal timeout is establishmentTimeoutPerHop*(1+max(1,hops))
+		// ≈ 6s+6s×hops. The Go port previously used the request timeout
+		// (10s+3s×hops) as the deadline, which is shorter than RNS's own
+		// for ≥2 hops — aborting a handshake that would have succeeded.
+		// Fix: register SetLinkClosedCallback so RNS's watchdog exits the
+		// wait immediately, and use RNS's own establishment timeout as the
+		// external safety-net deadline (with a small margin).
 		link, err = rns.NewLink(ts, dest)
 		if err != nil {
 			return nil, nil, err
 		}
 		established := make(chan struct{}, 1)
+		closed := make(chan struct{}, 1)
 		link.SetLinkEstablishedCallback(func(l *rns.Link) {
 			select {
 			case established <- struct{}{}:
 			default:
 			}
 		})
+		link.SetLinkClosedCallback(func(l *rns.Link) {
+			select {
+			case closed <- struct{}{}:
+			default:
+			}
+		})
 		if err := link.Establish(); err != nil {
 			return nil, nil, err
 		}
+		// Compute the link-establishment deadline from RNS's own formula
+		// (link.go:474): establishmentTimeoutPerHop + PER_HOP*max(1, hops).
+		// Add a 2s margin so RNS's watchdog (and our closed-channel arm)
+		// fires first under normal conditions; the external timer is only a
+		// safety net against a missed close callback.
+		estHops := max(1, ts.HopsTo(destHash))
+		linkEstablishTimeout := establishmentTimeoutPerHop + establishmentTimeoutPerHop*time.Duration(estHops) + 2*time.Second
 		select {
 		case <-established:
-		case <-time.After(timeout):
+		case <-closed:
+			return nil, nil, ErrLinkTimeout
+		case <-time.After(linkEstablishTimeout):
 			link.Teardown()
 			return nil, nil, ErrLinkTimeout
 		case <-ctx.Done():
