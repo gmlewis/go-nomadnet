@@ -2158,16 +2158,12 @@ func buildNodeInfoData(a *app.App, navigateTo func(string), showAnnounceSent fun
 		data.Addr = fmt.Sprintf("%x", dest.Hash)
 	}
 	// Name: the local peer's display name (the same value the Local Peer Info
-	// panel shows in its "Name" field), NOT the node's own name. The node's
-	// Name is derived from the display name with a "'s Node" suffix appended
-	// (nodeName, node-hosting.go, mirroring Python Node.py:38-39) so the
-	// announced node identity reads "Alice's Node" to other peers — but the
-	// "Name" field in the Local Node Info panel should match the "Name" field
-	// in the Local Peer Info panel (the bare display name), not flip to
-	// "Alice's Node" the moment the user opens Node Info. The user explicitly
-	// wants this field to always render the same as the main panel, without
-	// the "'s Node" suffix (a deliberate, documented divergence from Python's
-	// NodeInfo, which shows app.node.name = "Alice's Node").
+	// panel shows in its "Name" field). The node's announce app_data also
+	// carries this display name directly (nodeName, node-hosting.go), so
+	// the announced node identity reads the same as what the user configured
+	// — e.g. "Alice" rather than "Alice's Node". The Local Node Info panel
+	// shows the same bare display name, consistent with the Local Peer Info
+	// panel and the announce stream.
 	data.Name = a.GetDisplayName()
 	data.DisablePropagation = a.DisablePropagation
 	if !a.DisablePropagation && a.Identity != nil {

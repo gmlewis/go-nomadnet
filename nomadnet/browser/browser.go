@@ -407,6 +407,19 @@ func fetchBytes(ctx context.Context, ts *rns.TransportSystem, destHash []byte, p
 				return nil, nil, ErrNoPath
 			}
 		}
+		// Re-read hop count after path resolution: when preHops was 0
+		// (path not yet known at the pre-resolution read on line 353),
+		// a freshly-resolved multi-hop path needs the hop allowance
+		// that was missed. Without this the request timeout stays at
+		// the bare DefaultTimeout even though the path turns out to be
+		// 3+ hops, causing "Request timed out" on multi-hop fetches.
+		if preHops == 0 {
+			postHops := ts.HopsTo(destHash)
+			if postHops > 0 && postHops < 128 {
+				timeout += time.Duration(postHops*3) * time.Second
+			}
+		}
+
 		// 2. Recall identity + build outbound destination.
 		identity := ts.Recall(destHash)
 		if identity == nil {
@@ -446,6 +459,26 @@ func fetchBytes(ctx context.Context, ts *rns.TransportSystem, destHash []byte, p
 		// node (Python link_established, Browser.py:1454-1459) before the request.
 		if onLinkEstablished != nil {
 			onLinkEstablished(link)
+		}
+	}
+
+	// Recompute the request/response timeout from the measured RTT now
+	// that the link is ACTIVE (RTT is known). Python Browser.__load passes
+	// no timeout to Link.request, so Link.request computes
+	// rtt*TRAFFIC_TIMEOUT_FACTOR + grace (≈ rtt*6 + 11.25s) after the link
+	// is active. The Go port previously used a fixed 10s + preHops*3s
+	// computed before establishment, which is too short for multi-hop
+	// resource transfers (a 3-hop radio path with rtt≈4-6s needs 35-47s;
+	// the fixed budget was 10-19s). The resource watchdog would recover
+	// a stalled transfer given enough time, but the outer deadline cut
+	// it off first — surfacing as "Request timed out" on the furthest
+	// nodes. Keep the pre-established hop allowance as a floor so
+	// very-low-RTT local links are unaffected.
+	rttSec := link.RTT()
+	if rttSec > 0 {
+		rttTimeout := time.Duration(rttSec*link.TrafficTimeoutFactor()*float64(time.Second)) + 12*time.Second
+		if rttTimeout > timeout {
+			timeout = rttTimeout
 		}
 	}
 

@@ -17,24 +17,6 @@ REPO_ROOT="${SCRIPT_DIR}/.."
 # Point to the original Python repo directories for parity testing
 export ORIGINAL_NOMADNET_REPO_DIR="${ORIGINAL_NOMADNET_REPO_DIR:-$HOME/src/github.com/markqvist/nomadnet}"
 
-ERRCHECK_BIN="$(command -v errcheck || true)"
-if [[ -z "${ERRCHECK_BIN}" ]]; then
-	go install github.com/kisielk/errcheck@latest
-	ERRCHECK_BIN="$(go env GOPATH)/bin/errcheck"
-fi
-
-# GOIMPORTS_BIN="$(command -v goimports || true)"
-# if [[ -z "${GOIMPORTS_BIN}" ]]; then
-# 	go install golang.org/x/tools/cmd/goimports@latest
-# 	GOIMPORTS_BIN="$(go env GOPATH)/bin/goimports"
-# fi
-
-STATICCHECK_BIN="$(command -v staticcheck || true)"
-if [[ -z "${STATICCHECK_BIN}" ]]; then
-	go install honnef.co/go/tools/cmd/staticcheck@latest
-	STATICCHECK_BIN="$(go env GOPATH)/bin/staticcheck"
-fi
-
 GO_TEST_TIMEOUT="${GO_TEST_TIMEOUT:-4m}"
 
 if [[ -z "${GO_TEST_TAGS:-}" ]]; then
@@ -69,7 +51,6 @@ fi
 cd "${REPO_ROOT}"
 
 echo "Running gofmt..."
-# "${GOIMPORTS_BIN}" -w .
 gofmt -s -w .
 
 echo "Running integration tests..."
@@ -77,10 +58,5 @@ go test "${GO_TEST_ARGS[@]}" -race -tags="${GO_TEST_TAGS}" -count=1 -timeout "${
 
 echo "Running go vet..."
 go vet ./...
-
-echo "Running errcheck..."
-"${ERRCHECK_BIN}" ./...
-# staticcheck is run with full checks (including U1000/ST*) in run-all-tests.sh
-# with -tags=integration, so it is not duplicated here.
 
 echo "Done."

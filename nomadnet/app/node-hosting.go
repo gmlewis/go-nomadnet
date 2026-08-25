@@ -221,9 +221,14 @@ func (a *App) ResetNodeStats() {
 	}
 }
 
-// nodeName resolves the hosted node's display name, mirroring Node.py:35-36:
-// when the configured node name is empty, the node is named after the peer
-// settings display name with "'s Node" appended.
+// nodeName resolves the hosted node's display name. When the configured
+// node_name is empty, the node name falls back to the peer settings
+// display_name directly — without appending "'s Node". Python's Node.py:36
+// appends "'s Node" to the display_name as a fallback, but that suffix
+// looks inconsistent with other nodes on the network that set node_name
+// explicitly (and therefore don't carry the suffix). Using display_name
+// directly keeps the announce app_data identical to what the Local Peer
+// Info panel shows, so peers see the same name the user configured.
 func (a *App) nodeName() string {
 	if a.NodeName != "" {
 		return a.NodeName
@@ -234,10 +239,7 @@ func (a *App) nodeName() string {
 		displayName = a.PeerSettings.DisplayName
 	}
 	a.psMu.Unlock()
-	if displayName != "" {
-		return displayName + "'s Node"
-	}
-	return ""
+	return displayName
 }
 
 // stopNode stops the hosted node's background job loop, mirroring the shutdown

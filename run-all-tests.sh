@@ -8,6 +8,8 @@
 # (at your option) any later version.
 
 # run-all-tests.sh runs all unit tests and integration tests with timeouts.
+# Static cleanliness checks (errcheck, staticcheck, modernize, gopls check)
+# run FIRST so a lint failure fails fast before spending time on tests.
 
 set -euo pipefail
 set -x
@@ -39,16 +41,10 @@ except subprocess.TimeoutExpired:
 PY
 }
 
-# test-all.sh is redundant when the short integration tests are running next, so skip it:
-# time run_with_timeout ./scripts/test-all.sh 2>&1 | tee test-failures.log
-
-time run_with_timeout ./scripts/test-integration.sh -short 2>&1 | tee short-test-failures.log
-time run_with_timeout ./scripts/test-integration.sh 2>&1 | tee full-test-failures.log
-
-echo "All tests completed."
-
 # ---------------------------------------------------------------------------
 # Static cleanliness checks: verify the repo is "squeaky-clean" per gopls.
+#
+# 0. errcheck     — verifies all error return values are checked.
 #
 # 1. gopls check  — workspace diagnostics (compiler errors, vet-style
 #    warnings). gopls check always exits 0 and prints diagnostics to stdout,
@@ -63,6 +59,15 @@ echo "All tests completed."
 #    Without -fix it only reports; it exits non-zero when suggestions exist.
 #    Requires network on first run to fetch the analyzer module.
 # ---------------------------------------------------------------------------
+
+echo "Running errcheck..."
+ERRCHECK_LOG="errcheck.log"
+if ! errcheck ./... >"${ERRCHECK_LOG}" 2>&1; then
+    echo "FAIL: errcheck reported unchecked errors (see ${ERRCHECK_LOG}):" >&2
+    cat "${ERRCHECK_LOG}" >&2
+    exit 1
+fi
+echo "errcheck: clean (all errors checked)"
 
 echo "Running gopls check (workspace diagnostics)..."
 GOPLS_CHECK_LOG="gopls-check.log"
@@ -87,7 +92,7 @@ echo "modernize: clean (no suggestions)"
 
 echo "Running full staticcheck (all checks, with integration tags)..."
 STATICCHECK_LOG="staticcheck.log"
-staticcheck -tags=integration ./... >"${STATICCHECK_LOG}" 2>&1 || true
+staticcheck -checks=SA* -tags=integration ./... >"${STATICCHECK_LOG}" 2>&1 || true
 if [[ -s "${STATICCHECK_LOG}" ]]; then
     echo "FAIL: staticcheck reported issues (see ${STATICCHECK_LOG}):" >&2
     cat "${STATICCHECK_LOG}" >&2
@@ -95,4 +100,16 @@ if [[ -s "${STATICCHECK_LOG}" ]]; then
 fi
 echo "staticcheck: clean (all checks, with integration tags)"
 
-echo "Repo is squeaky-clean (gopls check + modernize + staticcheck)."
+# ---------------------------------------------------------------------------
+# Integration tests: short then full, with per-suite timeouts.
+# ---------------------------------------------------------------------------
+
+# test-all.sh is redundant when the short integration tests are running next, so skip it:
+# time run_with_timeout ./scripts/test-all.sh 2>&1 | tee test-failures.log
+
+time run_with_timeout ./scripts/test-integration.sh -short 2>&1 | tee short-test-failures.log
+time run_with_timeout ./scripts/test-integration.sh 2>&1 | tee full-test-failures.log
+
+echo "All tests completed."
+
+echo "Repo is squeaky-clean (errcheck + gopls check + modernize + staticcheck + all tests)."

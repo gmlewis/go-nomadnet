@@ -152,6 +152,14 @@ func (n *Node) Start(ts rns.Transport, identity *rns.Identity) error {
 	n.identity = identity
 	n.transport = ts
 
+	// Set default app data so re-announces (e.g. when a TCP interface
+	// (re)connects and announceDestinationsOnInterface calls d.Announce(nil))
+	// include the node name rather than sending a nameless announce.
+	// Mirrors Python Destination.announce's default_app_data fallback
+	// (Destination.py:275-279), which the Go port's buildAnnouncePacket
+	// now also implements.
+	dest.SetDefaultAppData([]byte(n.Name))
+
 	dest.SetLinkEstablishedCallback(n.PeerConnected)
 
 	n.RegisterPages()
@@ -285,6 +293,19 @@ func (n *Node) defaultIndexHandler(path string, data []byte, requestID []byte, l
 	return ServeDefaultIndex()
 }
 
+// SetName updates the node's display name, which is used as the announce
+// app data on the next Announce call. This allows the app layer to propagate
+// a display_name change (set through the TUI) to the node without restarting
+// it, so subsequent announces carry the new name instead of the stale one
+// from startup. Python's Node.__init__ sets self.name once and never updates
+// it on display_name change; the Go port adds this setter so a TUI name
+// change takes effect immediately on the next announce.
+func (n *Node) SetName(name string) {
+	n.mu.Lock()
+	n.Name = name
+	n.mu.Unlock()
+}
+
 // Announce sends an announce for this node on the RNS network with
 // the node name as app data. Matches Python's Node.announce().
 func (n *Node) Announce() error {
@@ -296,6 +317,9 @@ func (n *Node) Announce() error {
 	n.LastAnnounce = time.Now()
 	appData := n.AppData
 	n.mu.Unlock()
+	// Keep defaultAppData in sync so re-announces (which pass nil) include
+	// the current node name via the defaultAppData fallback.
+	n.destination.SetDefaultAppData(appData)
 	if n.OnAnnounced != nil {
 		n.OnAnnounced()
 	}
