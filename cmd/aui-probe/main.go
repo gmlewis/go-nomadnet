@@ -194,9 +194,9 @@ func sendTokens(groupID, ifaceName string, port, count int, src, addr string) {
 	if err != nil {
 		log.Fatalf("aui-probe: %v", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
-	for i := 0; i < count; i++ {
+	for i := range count {
 		if _, err := conn.WriteToUDP(token, dst); err != nil {
 			log.Fatalf("aui-probe: send %d/%d to %v: %v", i+1, count, dst, err)
 		}
@@ -222,7 +222,7 @@ func listenTokens(groupID, ifaceName string, port int, timeout time.Duration) er
 	if err != nil {
 		return fmt.Errorf("join %v on %v: %w", groupAddr.IP, iface.Name, err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	fmt.Printf("listening on %v (%v) for %v; expect tokens claiming sha256(%q + src)\n",
 		groupAddr.IP, iface.Name, timeout, groupID)
 

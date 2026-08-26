@@ -78,7 +78,7 @@ func TestListenTokensHonorsDeadline(t *testing.T) {
 	// listenTokens must return on its deadline even when nothing arrives.
 	done := make(chan struct{})
 	go func() {
-		listenTokens("reticulum-unreachable-group-test", "", defaultDiscoveryPort, 50*time.Millisecond)
+		_ = listenTokens("reticulum-unreachable-group-test", "", defaultDiscoveryPort, 50*time.Millisecond)
 		close(done)
 	}()
 	select {

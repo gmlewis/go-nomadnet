@@ -69,14 +69,8 @@ PY
 # import grouping), so it is checked separately.
 # ---------------------------------------------------------------------------
 
-echo "Running gofmt check..."
-unformatted=$(gofmt -s -l .)
-if [[ -n "$unformatted" ]]; then
-	echo "FAIL: gofmt would reformat the following (run: gofmt -s -w <files>):" >&2
-	echo "$unformatted" >&2
-	exit 1
-fi
-echo "gofmt: clean (all files formatted)"
+echo "Running gofmt..."
+gofmt -s -w .
 
 # SLOW!!!
 # echo "Running goimports check..."

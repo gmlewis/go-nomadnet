@@ -80,7 +80,7 @@ func parseDump(r io.Reader) ([]goroutine, error) {
 			cur = nil
 		}
 	}
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		line = strings.TrimRight(line, "\r")
 		if strings.HasPrefix(line, "goroutine ") && strings.Contains(line, "[") {
 			flush()
@@ -233,7 +233,7 @@ func main() {
 			fmt.Fprintf(os.Stderr, "dumpsum: %v\n", err)
 			os.Exit(1)
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 		r = f
 	}
 
@@ -284,7 +284,7 @@ func main() {
 	}
 	if *verbose || *states != "" || *created != "" {
 		want := map[string]bool{}
-		for _, w := range strings.Split(*states, ",") {
+		for w := range strings.SplitSeq(*states, ",") {
 			if w = strings.TrimSpace(w); w != "" {
 				want[strings.ToLower(w)] = true
 			}
