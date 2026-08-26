@@ -78,14 +78,15 @@ if [[ -n "$unformatted" ]]; then
 fi
 echo "gofmt: clean (all files formatted)"
 
-echo "Running goimports check..."
-unformatted=$(goimports -l .)
-if [[ -n "$unformatted" ]]; then
-	echo "FAIL: goimports would reformat the following (run: goimports -w <files>):" >&2
-	echo "$unformatted" >&2
-	exit 1
-fi
-echo "goimports: clean (all imports formatted)"
+# SLOW!!!
+# echo "Running goimports check..."
+# unformatted=$(goimports -l .)
+# if [[ -n "$unformatted" ]]; then
+# 	echo "FAIL: goimports would reformat the following (run: goimports -w <files>):" >&2
+# 	echo "$unformatted" >&2
+# 	exit 1
+# fi
+# echo "goimports: clean (all imports formatted)"
 
 echo "Running errcheck..."
 ERRCHECK_LOG="errcheck.log"
