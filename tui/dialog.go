@@ -39,6 +39,47 @@ func NewUrwidCenterText(text string) *urwidCenterText {
 	return &urwidCenterText{Box: tview.NewBox(), text: text}
 }
 
+// urwidLeftText renders text left-aligned in its rect, matching urwid's default
+// LEFT alignment (urwid.Text with no align= kwarg). Used by nomadnet dialog
+// Text widgets like the Save Node confirmation message (Browser.py:1205). The
+// text is rendered in the default style, one source line per row, clipped to
+// the rect.
+type urwidLeftText struct {
+	*tview.Box
+	text string
+}
+
+// NewUrwidLeftText builds a default-style left-aligned text widget.
+func NewUrwidLeftText(text string) *urwidLeftText {
+	return &urwidLeftText{Box: tview.NewBox(), text: text}
+}
+
+// SetText updates the displayed text.
+func (c *urwidLeftText) SetText(text string) { c.text = text }
+
+func (c *urwidLeftText) Draw(screen tcell.Screen) {
+	c.Box.DrawForSubclass(screen, c)
+	x, y, w, h := c.GetRect()
+	if w <= 0 || h <= 0 {
+		return
+	}
+	style := tcell.StyleDefault
+	lines := strings.Split(c.text, "\n")
+	for i, line := range lines {
+		if i >= h {
+			break
+		}
+		px := x
+		for _, r := range line {
+			if px >= x+w {
+				break
+			}
+			screen.SetContent(px, y+i, r, nil, style)
+			px += cellWidth(r)
+		}
+	}
+}
+
 // SetText updates the displayed text.
 func (c *urwidCenterText) SetText(text string) { c.text = text }
 

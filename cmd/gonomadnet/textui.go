@@ -290,7 +290,9 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	// Network browser pane (Python Browser.save_node_dialog, Browser.py:1184-
 	// 1234: columns.contents[1] = urwid.Overlay(..., width=("relative", 50),
 	// height=PACK), title "Save Node"). The browser frame shows through around
-	// the widthPct%-width dialog.
+	// the widthPct%-width dialog. Python's urwid.Text wraps the message to the
+	// dialog's content width and height=PACK adapts; we pre-wrap via
+	// tview.WordWrap to the known pane width so the Go dialog matches.
 	showBrowserConfirm := func(title, message, cancelLabel, confirmLabel string, widthPct int, onConfirm func()) {
 		close := func() { networkDisplay.CloseBrowserSlotDialog() }
 		confirmBtn := tui.NewUrwidButton(confirmLabel).SetSelectedFunc(func() {
@@ -301,8 +303,32 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		})
 		cancelBtn := tui.NewUrwidButton(cancelLabel).SetSelectedFunc(close)
 		row := tui.CreateUrwidButtonRow(cancelBtn, confirmBtn)
-		msgRows := strings.Count(message, "\n") + 1
-		msg := tui.NewUrwidCenterText(message)
+		// Compute the dialog content width so we can pre-wrap the message
+		// to the same width Python's urwid.Text would wrap to. The dialog
+		// is widthPct% of the browser pane; the LineBox border takes 2 cols.
+		paneW := networkDisplay.BrowserPaneWidth()
+		contentW := 0
+		if paneW > 4 {
+			contentW = paneW*widthPct/100 - 2
+		}
+		// Split on explicit newlines, word-wrap each segment, then rejoin
+		// so the urwidLeftText draws one wrapped line per row (matching
+		// urwid.Text's pack-height behavior).
+		var wrappedLines []string
+		for _, seg := range strings.Split(message, "\n") {
+			if contentW > 0 {
+				rows := tview.WordWrap(seg, contentW)
+				wrappedLines = append(wrappedLines, rows...)
+			} else {
+				wrappedLines = append(wrappedLines, seg)
+			}
+		}
+		wrappedMsg := strings.Join(wrappedLines, "\n")
+		msgRows := len(wrappedLines)
+		if msgRows < 1 {
+			msgRows = 1
+		}
+		msg := tui.NewUrwidLeftText(wrappedMsg)
 		layout := tview.NewFlex().SetDirection(tview.FlexRow).
 			AddItem(msg, msgRows, 0, false).
 			AddItem(row, 1, 0, true)
@@ -528,22 +554,54 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		})
 	}
 	networkDisplay.OnSaveNode = func() {
-		tuiApp.Dialogs.ShowConfirmDialog("Save selected node?",
-			func() {
-				if ann, ok := networkDisplay.SelectedAnnounce(); ok {
-					hash, ok := app.SourceHashFromHex(ann.SourceHash)
-					if ok {
-						a.SaveNode(hash, ann.DisplayName)
-					}
-				} else if node, ok := networkDisplay.SelectedNode(); ok {
-					hash, ok := app.SourceHashFromHex(node.SourceHash)
-					if ok {
-						a.SaveNode(hash, node.DisplayName)
-					}
-				}
-			},
-			func() {},
-		)
+		// Python NetworkLeftPile.keypress "ctrl s" (Network.py:1613-1614)
+		// and BrowserFrame.keypress "ctrl s" (Browser.py:32-33) BOTH forward
+		// to browser.save_node_dialog(), which shows a 50%-width overlay
+		// dialog asking "Save connected node … to Known Nodes?" with
+		// Cancel/Save buttons (Browser.py:1184-1234). The save only happens
+		// on user confirmation — it is NOT an immediate silent save.
+		//
+		// When the browser has a connected destination, delegate to
+		// bd.OnSaveNode which calls showBrowserConfirm to display that
+		// dialog (matching Python). The handleInput InputCapture on mainCols
+		// intercepts Ctrl-s before the browser's HandleKey sees it, so
+		// bd.OnSaveNode would never fire without this delegation.
+		if bd := networkDisplay.BrowserDisplay(); bd != nil {
+			dest := bd.CurrentDest()
+			if len(dest) > 0 {
+				bd.OnSaveNode()
+				return
+			}
+		}
+		// Fall back to saving the selected announce/list entry when no
+		// browser node is connected (a Go-specific extension; Python's
+		// save_node_dialog is a no-op when no destination is connected).
+		if ann, ok := networkDisplay.SelectedAnnounce(); ok {
+			hash, ok := app.SourceHashFromHex(ann.SourceHash)
+			if ok {
+				a.SaveNode(hash, ann.DisplayName)
+				refreshNodes()
+				return
+			}
+		}
+		if node, ok := networkDisplay.SelectedNode(); ok {
+			hash, ok := app.SourceHashFromHex(node.SourceHash)
+			if ok {
+				a.SaveNode(hash, node.DisplayName)
+				refreshNodes()
+			}
+		}
+	}
+	// OnSaveSpecificNode saves a specific announce entry (from the
+	// AnnounceInfo "Save" button). It uses the entry's SourceHash and
+	// DisplayName directly, instead of relying on the stream list selection.
+	networkDisplay.OnSaveSpecificNode = func(ann tui.AnnounceEntry) {
+		hash, ok := app.SourceHashFromHex(ann.SourceHash)
+		if !ok {
+			return
+		}
+		a.SaveNode(hash, ann.DisplayName)
+		refreshNodes()
 	}
 	// Resolve directory-backed fields for the AnnounceInfo view (Python
 	// AnnounceInfo __init__: trust_level, simplest_display_str, op_str). The

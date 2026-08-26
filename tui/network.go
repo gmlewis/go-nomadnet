@@ -126,6 +126,10 @@ type NetworkDisplay struct {
 	OnDisconnect       func()
 	OnURLDialog        func()
 	OnSaveNode         func()
+	// OnSaveSpecificNode saves a specific announce entry (from the
+	// AnnounceInfo "Save" button), bypassing the list-selection-based
+	// OnSaveNode which fails when no list entry is selected.
+	OnSaveSpecificNode func(AnnounceEntry)
 	OnDeleteSelected   func()
 
 	// LXMF peers list callbacks (Python LXMFPeers.keypress, Network.py:1793-
@@ -596,9 +600,17 @@ func (nd *NetworkDisplay) msgOpNode(_ AnnounceEntry) {
 }
 
 // saveNode saves the node to the directory.
-// Matches Python's save_node(sender).
-func (nd *NetworkDisplay) saveNode(_ AnnounceEntry) {
+// Matches Python's save_node(sender). When invoked from the AnnounceInfo
+// "Save" button, the specific AnnounceEntry is passed so the wiring layer
+// can save that exact node — not whichever entry happens to be selected
+// in the stream list (which may be wrong or absent when the AnnounceInfo
+// overlay is open).
+func (nd *NetworkDisplay) saveNode(ann AnnounceEntry) {
 	nd.showAnnounceStream()
+	if nd.OnSaveSpecificNode != nil {
+		nd.OnSaveSpecificNode(ann)
+		return
+	}
 	if nd.OnSaveNode != nil {
 		nd.OnSaveNode()
 	}
@@ -633,6 +645,16 @@ func (nd *NetworkDisplay) BrowserDisplay() *BrowserDisplay {
 		return nd.browser.BrowserDisplay()
 	}
 	return nil
+}
+
+// BrowserPaneWidth returns the current width of the right-hand browser pane
+// (the column that slot dialogs overlay). Returns 0 before layout.
+func (nd *NetworkDisplay) BrowserPaneWidth() int {
+	if nd.browser == nil {
+		return 0
+	}
+	_, _, w, _ := nd.browser.Widget().GetRect()
+	return w
 }
 
 // Widget returns the tview primitive for this display.

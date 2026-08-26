@@ -80,21 +80,45 @@ func (o *SlotOverlay) Dialog() *DialogLineBox { return o.dialog }
 // within it (valign MIDDLE, align CENTER), sized to widthPct% of the slot width
 // (or fixedWidth when widthPct == 0), inset at least left/right=2, at its
 // natural PACK height.
+//
+// The width and horizontal positioning replicate urwid's
+// calculate_left_right_padding (widget.py): for RELATIVE widths the percentage
+// is applied to (maxcol - left - right) with round-half-up rounding, then the
+// remaining padding is distributed for CENTER alignment via int_scale. This
+// matches Python's urwid.Overlay exactly, including the off-by-one rounding
+// that a naive w*pct/100 truncation gets wrong.
 func (o *SlotOverlay) SetRect(x, y, w, h int) {
 	o.Box.SetRect(x, y, w, h)
 	if o.bottom != nil {
 		o.bottom.SetRect(x, y, w, h)
 	}
+
+	// urwid Overlay fixed left/right insets.
+	const left, right = 2, 2
+
 	dw := 0
 	if o.widthPct > 0 {
-		dw = w * o.widthPct / 100
+		// urwid: maxwidth = max(maxcol - left - right, 0);
+		//        width = int(maxwidth * amount / 100 + 0.5)
+		maxwidth := max(w-left-right, 0)
+		dw = int(float64(maxwidth)*float64(o.widthPct)/100 + 0.5)
 	} else {
 		dw = o.fixedWidth
 	}
-	dw = min(dw, w-4) // urwid caps width at maxcol - left - right
 	dw = max(dw, 0)
-	dx := x + (w-dw)/2
-	dx = max(dx, x+2) // at least left=2
+
+	// urwid CENTER alignment: distribute the remaining padding.
+	// padding = maxcol - width - left - right
+	// right += int_scale(100 - align, 101, padding + 1)  [align=50 for CENTER]
+	// left = maxcol - width - right
+	padding := w - dw - left - right
+	rightPad := right + intScale(50, 101, padding+1)
+	leftPad := w - dw - rightPad
+	if leftPad < 0 {
+		leftPad = 0
+	}
+	dx := x + leftPad
+
 	dh := o.dialogHeight
 	if o.heightPct > 0 {
 		dh = h * o.heightPct / 100
@@ -105,6 +129,12 @@ func (o *SlotOverlay) SetRect(x, y, w, h int) {
 	if o.dialog != nil {
 		o.dialog.SetRect(dx, dy, dw, dh)
 	}
+}
+
+// intScale replicates urwid's int_scale(n, rn, v) = (n*v + rn/2) / rn,
+// used by calculate_left_right_padding to distribute padding for alignment.
+func intScale(n, rn, v int) int {
+	return (n*v + rn/2) / rn
 }
 
 // SetHeightPct makes the dialog height a percentage of the slot height (urwid

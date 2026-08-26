@@ -193,8 +193,10 @@ func TestSlotOverlayURLDialog65Percent(t *testing.T) {
 	ov.Draw(screen)
 	screen.Sync()
 
-	// The dialog is 18 wide (floor(28*0.65)), centered in 28 → x=5..22, valign
-	// MIDDLE in 12 → rows 4-7 (4 tall). Find the top border row.
+	// The dialog width matches urwid's calculate_left_right_padding:
+	// maxwidth = max(28-2-2, 0) = 24; width = int(24*65/100+0.5) = 16,
+	// centered in 28 → x=6..21, valign MIDDLE in 12 → rows 4-7 (4 tall).
+	// Find the top border row.
 	var top string
 	topY := -1
 	for y := range sh {
@@ -234,15 +236,15 @@ func TestSlotOverlayURLDialog65Percent(t *testing.T) {
 		}
 	}
 	width := right - left + 1
-	if width != 18 {
-		t.Errorf("URL dialog width = %d (x=%d..%d), want 18 (65%% of 28)", width, left, right)
+	if width != 16 {
+		t.Errorf("URL dialog width = %d (x=%d..%d), want 16 (urwid: int(24*65/100+0.5))", width, left, right)
 	}
 	if !strings.Contains(top, " Enter URL ") {
 		t.Errorf("URL dialog top border missing title \" Enter URL \":\n  %q", top)
 	}
 	// Centered: left margin ≈ right margin.
-	if left < 4 || left > 6 {
-		t.Errorf("URL dialog left margin = %d, want ~5 (centered in 28)", left)
+	if left < 5 || left > 7 {
+		t.Errorf("URL dialog left margin = %d, want ~6 (centered in 28)", left)
 	}
 }
 

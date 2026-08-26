@@ -404,7 +404,16 @@ func fetchBytes(ctx context.Context, ts *rns.TransportSystem, destHash []byte, p
 		// 1. Path resolution.
 		if !ts.HasPath(destHash) {
 			_ = ts.RequestPath(destHash)
-			deadline := time.Now().Add(timeout)
+			// Python Browser.__load (Browser.py:1404-1409) waits
+			// first_hop_timeout(hash) + self.timeout for a path. Go does
+			// not implement first_hop_timeout (it always uses the bare
+			// PER_HOP value), so add establishmentTimeoutPerHop here to
+			// match Python's minimum deadline of 6s + 10s = 16s. Without
+			// this, multi-hop path discovery that takes 10-16s (path
+			// request flood + announce response through 2+ hubs) gives up
+			// 6s before Python would, surfacing as "no path to
+			// destination" rather than proceeding to link establishment.
+			deadline := time.Now().Add(timeout + establishmentTimeoutPerHop)
 			for time.Now().Before(deadline) && !ts.HasPath(destHash) {
 				if ctx.Err() != nil {
 					return nil, nil, ctx.Err()
@@ -562,10 +571,6 @@ func fetchBytes(ctx context.Context, ts *rns.TransportSystem, destHash []byte, p
 			return nil, nil, r.err
 		}
 		return r.data, link, nil
-	case <-time.After(timeout):
-		diagFile("/tmp/fetch-diag.log", fmt.Sprintf("TIMEOUT after %v", timeout))
-		link.Teardown()
-		return nil, nil, ErrRequestTimeout
 	case <-ctx.Done():
 		diagFile("/tmp/fetch-diag.log", "ctx.Done")
 		link.Teardown()
