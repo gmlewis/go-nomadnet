@@ -98,7 +98,7 @@ func TestListSlotDialogRepeatPreservesOrder(t *testing.T) {
 	app.GlyphSet = GlyphUnicode
 	nd := NewNetworkDisplay(app, nil, nil)
 
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		dialog := NewDialogLineBox("?", tview.NewFlex(), nil)
 		nd.ShowListSlotDialog(dialog, 6)
 		nd.CloseListSlotDialog()

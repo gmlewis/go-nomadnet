@@ -113,10 +113,7 @@ func (o *SlotOverlay) SetRect(x, y, w, h int) {
 	// left = maxcol - width - right
 	padding := w - dw - left - right
 	rightPad := right + intScale(50, 101, padding+1)
-	leftPad := w - dw - rightPad
-	if leftPad < 0 {
-		leftPad = 0
-	}
+	leftPad := max(w-dw-rightPad, 0)
 	dx := x + leftPad
 
 	dh := o.dialogHeight

@@ -315,7 +315,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		// so the urwidLeftText draws one wrapped line per row (matching
 		// urwid.Text's pack-height behavior).
 		var wrappedLines []string
-		for _, seg := range strings.Split(message, "\n") {
+		for seg := range strings.SplitSeq(message, "\n") {
 			if contentW > 0 {
 				rows := tview.WordWrap(seg, contentW)
 				wrappedLines = append(wrappedLines, rows...)
@@ -324,10 +324,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 			}
 		}
 		wrappedMsg := strings.Join(wrappedLines, "\n")
-		msgRows := len(wrappedLines)
-		if msgRows < 1 {
-			msgRows = 1
-		}
+		msgRows := max(len(wrappedLines), 1)
 		msg := tui.NewUrwidLeftText(wrappedMsg)
 		layout := tview.NewFlex().SetDirection(tview.FlexRow).
 			AddItem(msg, msgRows, 0, false).
