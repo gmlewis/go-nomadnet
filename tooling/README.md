@@ -444,3 +444,67 @@ kill -QUIT <PID>
 
 # 3. The app's own log (~1hr of wedge history, last events before the freeze)
 tail -300 ~/.nomadnetwork/logfile ~/.nomadnetwork/logfile.1
+
+## Runtime forensics tools — `cmd/dumpsum` and `cmd/aui-probe`
+
+These two Go tools (added after the 2026-08-25 OMEN-875 overnight CPU-storm
+investigation; see the `go-runtime-forensics` skill in `.dsh/skills/`) package
+the debugging techniques that case relied on.
+
+### `cmd/dumpsum` — offline goroutine-dump analyzer
+
+Reads a GOTRACEBACK=all SIGQUIT capture, a panic trace tail, or a captured
+`/debug/pprof/goroutine?debug=2` page and prints a forensic summary: total
+goroutines, state histogram, per-goroutine "role" table (first non-runtime
+frame — missing subsystem readers jump out), `created by` lineage histogram,
+max goroutine ID (combine with uptime to estimate spawn churn), and callouts
+for `[running]`/`[runnable]`/`[syscall]` goroutines.
+
+```sh
+go run ./cmd/dumpsum gonomadnet-glenn-OMEN-875-kill-QUIT-1787710981.log
+kill -QUIT <pid> && sleep 1 && go run ./cmd/dumpsum -state running,runnable <stderr-log>
+curl -s localhost:6060/debug/pprof/goroutine?debug=2 | go run ./cmd/dumpsum -
+```
+
+Key interpretation rules (all learned the hard way):
+
+- **Zero `[running]`+`[runnable]` during a claimed CPU storm** means the
+  burners had already exited, were kernel-side (softirq/driver), or belonged
+  to another process. The dump exonerates as often as it convicts.
+- **Absent goroutines are evidence**: enumerate what each subsystem *should*
+  have (AutoInterface = `discoveryLoop`×2 + `dataLoop` + `announceLoop` per
+  adopted NIC + one `peerJobs`; TCP clients = one `readLoop`, ≤ one
+  `reconnectLoop`). Open sockets with no reader goroutine (`ss -ulnp6` vs the
+  dump) is the birth-race signature.
+- **Filename epoch ≠ incident time**: `gonomadnet.sh` names stderr at LAUNCH;
+  the dump lands at file mtime. And `GOTRACEBACK=all` dumps without killing.
+
+### `cmd/aui-probe` — AutoInterface LAN-discovery prober
+
+Splits "nodes don't discover each other" into software vs network faults by
+speaking the exact AutoInterface discovery protocol on demand:
+
+```sh
+aui-probe group                                   # ff12:0:d70b:fb1c:... for "reticulum"
+# Box B (receiver):
+aui-probe listen -iface wlan0 -timeout 30s
+# Box A (sender):
+aui-probe send   -iface wlan0 -count 5
+```
+
+If B prints `verified` tokens from A's link-local address, IPv6 multicast
+crosses your network and discovery failures are code bugs. If B stays silent,
+the network drops IPv6 multicast (consumer APs routinely do — MLD snooping) and
+no node-side change can help. Verify group membership on a receiver with
+`/proc/net/igmp6`, and host-level delivery differentially via `/proc/net/snmp`
+`Udp6:` counters around a `-count 50` burst.
+
+Golden values are pinned by tests: group `ff12:0:d70b:fb1c:16e4:5e39:485e:31e1`
+for `"reticulum"` was confirmed against a live `/proc/net/igmp6` on 2026-08-26.
+
+### `~/bin/cpu-watch.sh` on glenn-OMEN-875
+
+A rootless cron (`* * * * *`) appends top-5 CPU processes plus gonomadnet's
+hottest threads to `~/cpu-watch.log` every minute, rotating at ~8 MB. When the
+fans next race, `tail ~/cpu-watch.log` names the culprit even if it vanished
+before anyone looked; remove via `crontab -e`.
