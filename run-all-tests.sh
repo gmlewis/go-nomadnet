@@ -60,6 +60,33 @@ PY
 #    Requires network on first run to fetch the analyzer module.
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Formatting checks: mirror the CI fmt/imports jobs in build.yml. Both run in
+# CHECK mode (-l lists unformatted files) rather than the -w rewrite mode the
+# test-all.sh / test-integration.sh scripts use, so an unformatted file fails
+# the run instead of being silently fixed in the working tree (and then
+# committed broken). goimports is a superset of gofmt (it also normalizes
+# import grouping), so it is checked separately.
+# ---------------------------------------------------------------------------
+
+echo "Running gofmt check..."
+unformatted=$(gofmt -s -l .)
+if [[ -n "$unformatted" ]]; then
+	echo "FAIL: gofmt would reformat the following (run: gofmt -s -w <files>):" >&2
+	echo "$unformatted" >&2
+	exit 1
+fi
+echo "gofmt: clean (all files formatted)"
+
+echo "Running goimports check..."
+unformatted=$(goimports -l .)
+if [[ -n "$unformatted" ]]; then
+	echo "FAIL: goimports would reformat the following (run: goimports -w <files>):" >&2
+	echo "$unformatted" >&2
+	exit 1
+fi
+echo "goimports: clean (all imports formatted)"
+
 echo "Running errcheck..."
 ERRCHECK_LOG="errcheck.log"
 if ! errcheck ./... >"${ERRCHECK_LOG}" 2>&1; then
