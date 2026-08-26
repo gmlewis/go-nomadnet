@@ -405,15 +405,16 @@ func fetchBytes(ctx context.Context, ts *rns.TransportSystem, destHash []byte, p
 		if !ts.HasPath(destHash) {
 			_ = ts.RequestPath(destHash)
 			// Python Browser.__load (Browser.py:1404-1409) waits
-			// first_hop_timeout(hash) + self.timeout for a path. Go does
-			// not implement first_hop_timeout (it always uses the bare
-			// PER_HOP value), so add establishmentTimeoutPerHop here to
-			// match Python's minimum deadline of 6s + 10s = 16s. Without
-			// this, multi-hop path discovery that takes 10-16s (path
-			// request flood + announce response through 2+ hubs) gives up
-			// 6s before Python would, surfacing as "no path to
-			// destination" rather than proceeding to link establishment.
-			deadline := time.Now().Add(timeout + establishmentTimeoutPerHop)
+			// first_hop_timeout(hash) + self.timeout for a path. Use
+			// TransportSystem.FirstHopTimeout to include the bitrate-latency
+			// term for slow radio links, matching Python's deadline of
+			// first_hop_timeout + 10s. Without this, multi-hop path discovery
+			// that takes 10-16s (path request flood + announce response
+			// through 2+ hubs) gives up before Python would, surfacing as
+			// "no path to destination" rather than proceeding to link
+			// establishment.
+			firstHop := ts.FirstHopTimeout(destHash)
+			deadline := time.Now().Add(timeout + firstHop)
 			for time.Now().Before(deadline) && !ts.HasPath(destHash) {
 				if ctx.Err() != nil {
 					return nil, nil, ctx.Err()
@@ -452,13 +453,14 @@ func fetchBytes(ctx context.Context, ts *rns.TransportSystem, destHash []byte, p
 		// link-establishment deadline: it loops on
 		// `while self.status == ESTABLISHING_LINK` and lets RNS's own
 		// establishment watchdog call link_closed, which exits the loop.
-		// RNS's internal timeout is establishmentTimeoutPerHop*(1+max(1,hops))
-		// ≈ 6s+6s×hops. The Go port previously used the request timeout
-		// (10s+3s×hops) as the deadline, which is shorter than RNS's own
-		// for ≥2 hops — aborting a handshake that would have succeeded.
-		// Fix: register SetLinkClosedCallback so RNS's watchdog exits the
-		// wait immediately, and use RNS's own establishment timeout as the
-		// external safety-net deadline (with a small margin).
+		// RNS's internal timeout is first_hop_timeout + PER_HOP*max(1,hops)
+		// ≈ 6s+6s×hops on fast links, more on slow radio links. The Go port
+		// previously used the request timeout (10s+3s×hops) as the deadline,
+		// which is shorter than RNS's own for ≥2 hops — aborting a handshake
+		// that would have succeeded. Fix: register SetLinkClosedCallback so
+		// RNS's watchdog exits the wait immediately, and use RNS's own
+		// establishment timeout (now bitrate-aware via FirstHopTimeout) as
+		// the external safety-net deadline (with a small margin).
 		link, err = rns.NewLink(ts, dest)
 		if err != nil {
 			return nil, nil, err
@@ -481,12 +483,15 @@ func fetchBytes(ctx context.Context, ts *rns.TransportSystem, destHash []byte, p
 			return nil, nil, err
 		}
 		// Compute the link-establishment deadline from RNS's own formula
-		// (link.go:474): establishmentTimeoutPerHop + PER_HOP*max(1, hops).
-		// Add a 2s margin so RNS's watchdog (and our closed-channel arm)
-		// fires first under normal conditions; the external timer is only a
-		// safety net against a missed close callback.
+		// (link.go): first_hop_timeout + PER_HOP*max(1, hops), where
+		// first_hop_timeout includes a bitrate-latency term for slow radio
+		// links (Transport.FirstHopTimeout). Add a 2s margin so RNS's
+		// watchdog (and our closed-channel arm) fires first under normal
+		// conditions; the external timer is only a safety net against a
+		// missed close callback.
 		estHops := max(1, ts.HopsTo(destHash))
-		linkEstablishTimeout := establishmentTimeoutPerHop + establishmentTimeoutPerHop*time.Duration(estHops) + 2*time.Second
+		firstHop := ts.FirstHopTimeout(destHash)
+		linkEstablishTimeout := firstHop + establishmentTimeoutPerHop*time.Duration(estHops) + 2*time.Second
 		select {
 		case <-established:
 		case <-closed:

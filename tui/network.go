@@ -939,8 +939,16 @@ func (nd *NetworkDisplay) ShowListSlotDialog(dialog *DialogLineBox, dialogHeight
 	ov := NewSlotOverlay(nd.listBox, dialog, 100, dialogHeight)
 	dialog.onDismiss = nd.CloseListSlotDialog
 	nd.listSlotOverlay = ov
+	// tview Flex.AddItem always appends to the end, so removing only listBox
+	// would leave localPeer at index 0 and the overlay appended after it —
+	// swapping the panels. Remove both items and re-add in the correct order
+	// (overlay at index 0, localPeer at index 1) to preserve the layout.
+	// Python uses indexed assignment (left_pile.contents[0] = overlay) which
+	// keeps contents[1] (LocalPeer) in place (Network.py:918-919).
 	nd.leftPanel.RemoveItem(nd.listBox)
+	nd.leftPanel.RemoveItem(nd.localPeer.Widget())
 	nd.leftPanel.AddItem(ov, 0, 1, true)
+	nd.leftPanel.AddItem(nd.localPeer.Widget(), nd.localPeer.Height(), 0, false)
 	if nd.app != nil {
 		nd.app.SetFocus(ov)
 	}
@@ -953,8 +961,13 @@ func (nd *NetworkDisplay) CloseListSlotDialog() {
 	if nd.listSlotOverlay == nil {
 		return
 	}
+	// Same ordering fix as ShowListSlotDialog: remove both items and re-add
+	// listBox at index 0, localPeer at index 1, so localPeer stays at the
+	// bottom (Python left_pile.contents[1]).
 	nd.leftPanel.RemoveItem(nd.listSlotOverlay)
+	nd.leftPanel.RemoveItem(nd.localPeer.Widget())
 	nd.leftPanel.AddItem(nd.listBox, 0, 1, true)
+	nd.leftPanel.AddItem(nd.localPeer.Widget(), nd.localPeer.Height(), 0, false)
 	nd.listSlotOverlay = nil
 	nd.focusLeftList()
 }
