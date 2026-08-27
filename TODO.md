@@ -157,19 +157,23 @@ transports, shared `~/.nomadnetwork` identities (Mac LXMF `2a6105…`, Mac Mini
   maintenance loop. Follow-up candidates: adaptive UI coalescing design
   session (trailing-edge debounce semantics are load-bearing for 4 tests;
   a throttle variant needs careful spec), urwidColumns.Draw cost.
-- Truncation (120B frames into specific receivers): no new events since
-  instrumentation shipped; watch for "data too short" lines fleet-wide.
+- glenn-nano2gb announces-not-received + unreachable-by-links (RESOLVED
+  2026-08-27, remove when the fix ships): the "120-byte truncated frames"
+  theory was wrong — Raw[:120] was only the ValidateAnnounce preview cap and
+  fleet announces arrived complete (167/200/216 wire bytes). The real blocker:
+  persisted destination_table entries on nano (and the Mac hub's entry for
+  nano) carried poisoned random blobs whose embedded uint40 emission
+  timebases were misparsed signature bytes (~6e10..1.1e12, e.g. 0xB7F1963C4E).
+  timebaseFromRandomBlobs takes the max, so no real announce could ever be
+  "newer": the path was never replaced and, because Python parity gates the
+  announce handlers on a path add/replace, no handler fired — the node saw no
+  peers, and the Mac kept using a stale 40-hop path (link timeouts). Fix
+  shipped in go-reticulum transport-pathtable-heal.go: implausible timebases
+  (< 2020-09-13 or > now+24h) are skipped at compare time, dropped at table
+  load (the 30s re-persist heals the file), and never stored from badly
+  skewed emitters. Wire behavior stays Python-exact.
 
-
-
-Live evidence (glenn-nano2gb, Debug capture): penguin's ~180-byte LXMF/node
-announces arrive at nano on ALL planes (g00n relay, mobilefabrik, Local TCP
-Hub) as exactly 120-total-byte frames => datalen=85 < minLen 148 =>
-ValidateAnnounce silently returned false (now logs "data too short"); sibling
-hosts processed the SAME emission fine, so corruption is specific to the
-receiver-path decode for payloads containing particular HDLC-escape byte
-patterns — investigate hdlcReassemble/KISS unescape and per-plane frame
-reassembly against the captured Raw[:120] hex logged on nano 22:00Z. Also
-remember-on-first-sight for announce hashes remains a latent poisoning hazard
-(Python remembers post-validation) — pair the truncation fix with
-remember-after-validate parity.
+- gonomadnet hardcodes the RNS logger at LogNotice and ignores the
+  [logging] loglevel config key (Python NomadNetworkApp sets RNS.loglevel
+  from it). Honor the config so operators can enable Debug/Extreme without
+  code changes (this cost real time during the announce investigation).

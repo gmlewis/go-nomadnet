@@ -2212,14 +2212,12 @@ func buildNodeInfoData(a *app.App, navigateTo func(string), showAnnounceSent fun
 	if dest := a.Node.Destination(); dest != nil {
 		data.Addr = fmt.Sprintf("%x", dest.Hash)
 	}
-	// Name: the local peer's display name (the same value the Local Peer Info
-	// panel shows in its "Name" field). The node's announce app_data also
-	// carries this display name directly (nodeName, node-hosting.go), so
-	// the announced node identity reads the same as what the user configured
-	// — e.g. "Alice" rather than "Alice's Node". The Local Node Info panel
-	// shows the same bare display name, consistent with the Local Peer Info
-	// panel and the announce stream.
-	data.Name = a.GetDisplayName()
+	// Name: the hosted node's announce name (Python Network.py:1381-1386
+	// reads app.node.name, the same value Node.announce sends as app_data —
+	// Node.py:216). nodeName mirrors Python Node.py:28-36: the configured
+	// node_name, falling back to the peer display name with "'s Node"
+	// appended, so the panel always shows exactly what peers receive.
+	data.Name = a.ResolveNodeName()
 	data.DisablePropagation = a.DisablePropagation
 	if !a.DisablePropagation && a.Identity != nil {
 		// Python: RNS.prettyhexrep(RNS.Destination.hash_from_name_and_identity(

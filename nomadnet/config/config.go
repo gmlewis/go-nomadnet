@@ -240,15 +240,49 @@ func asList(s string) []string {
 	if s == "" {
 		return nil
 	}
-	parts := strings.Split(s, ",")
-	result := make([]string, 0, len(parts))
-	for _, p := range parts {
+	result := make([]string, 0, len(s)/2+1)
+	for _, p := range splitList(s) {
 		p = strings.TrimSpace(p)
+		// Element-wise unquoting matches ConfigObj, which unquotes each
+		// member of a comma-separated list value (e.g.
+		// `static_peers = "00112233", "445566"` → ['00112233', '445566']).
+		p = stripQuotes(p)
 		if p != "" {
 			result = append(result, p)
 		}
 	}
 	return result
+}
+
+// splitList splits a comma-separated config value on commas that sit OUTSIDE
+// quotes, mirroring ConfigObj's list parsing: `"abcd,ef12"` is one element
+// (the comma is inside the quotes) while `"a", "b"` is two. Quote characters
+// are kept in the returned parts; callers unquote each element.
+func splitList(s string) []string {
+	var parts []string
+	var cur strings.Builder
+	inQuote := byte(0)
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if inQuote != 0 {
+			if c == inQuote {
+				inQuote = 0
+			}
+			cur.WriteByte(c)
+			continue
+		}
+		switch c {
+		case '"', '\'':
+			inQuote = c
+			cur.WriteByte(c)
+		case ',':
+			parts = append(parts, cur.String())
+			cur.Reset()
+		default:
+			cur.WriteByte(c)
+		}
+	}
+	return append(parts, cur.String())
 }
 
 // isHexColor reports whether s is a 6-character hexadecimal color string,

@@ -43,6 +43,12 @@ var applyCfgVariants = map[string]string{
 	"printing_edges": "[printing]\nprint_messages = yes\nprint_command = lpr\nprint_from = trusted\nmessage_template = ~/tmpl.txt\n",
 	"rrc_edges":      "[rrc]\nhistory_per_room_cap = 5\nfilter_loaded_history = false\nephemeral_notices = 10\ncolor_mention_timestamps = false\nrender_markdown = false\nrender_micron = false\nnick_colors = false\njustify_msgs = false\nspace_msgs = true\nshow_gutters = true\nmention_color = ff00ff\nnick_colors_theme = ff00ff,xyz,00ff00\nenable_esoterics = true\n",
 	"rrc_edges2":     "[rrc]\nhistory_per_room_cap = 0\nephemeral_notices = 3\nmention_color = xyz\nnick_colors_theme = abcdef\n",
+	// Quoted values: ConfigObj (Python) strips one matching pair of
+	// surrounding quotes from scalars and from each element of a list value,
+	// so the Go parser must strip them the same way. The OMEN node in the
+	// fleet ships `node_name = "Go port of NomadNet"` — quoted — and before
+	// this was parity-fixed the quotes were announced verbatim to peers.
+	"quoted_values": "[client]\nannounce_at_start = yes\n[rrc]\nnick_colors_theme = \"ff00ff\", \"00ff00\"\n[node]\nnode_name = \"Go port of NomadNet\"\nprioritise_destinations = \"abcd,ef12\"\nstatic_peers = \"00112233\", \"445566\"\n[printing]\nprint_messages = yes\nprint_command = \"lpr -P hp\"\n",
 }
 
 // applyCfgParityScript imports the real nomadnet NomadNetworkApp reference,

@@ -220,7 +220,7 @@ func parseINI(f *os.File) (map[string]map[string]string, error) {
 		// Key = Value
 		if idx := strings.Index(line, "="); idx > 0 {
 			key := strings.TrimSpace(line[:idx])
-			value := strings.TrimSpace(line[idx+1:])
+			value := unquoteValue(strings.TrimSpace(line[idx+1:]))
 			if currentSection != "" {
 				result[currentSection][key] = value
 			}
@@ -231,4 +231,41 @@ func parseINI(f *os.File) (map[string]map[string]string, error) {
 		return nil, fmt.Errorf("parsing config: %w", err)
 	}
 	return result, nil
+}
+
+// unquoteValue strips one matching pair of surrounding double or single quotes
+// from a config value, matching Python's RNS.vendor.configobj.ConfigObj
+// unquoting of scalar values when it reads the config file. ConfigObj strips
+// only one level and only when the entire value is wrapped in a matching pair;
+// values without a matching surrounding pair — or with quotes only at one end,
+// or with interior quotes — are returned unchanged. A fully-quoted value
+// containing a comma is left quoted here because ConfigObj treats it as a list
+// value; asList performs the quote-aware element split and element unquoting.
+// Triple-quoted (multiline) values never occur in NomadNet's line-oriented
+// config and are not handled.
+func unquoteValue(s string) string {
+	s = strings.TrimSpace(s)
+	if len(s) >= 2 && (s[0] == '"' || s[0] == '\'') && s[len(s)-1] == s[0] && strings.Contains(s, ",") {
+		return s
+	}
+	return stripQuotes(s)
+}
+
+// stripQuotes trims surrounding whitespace and strips ONE matching pair of
+// surrounding double or single quotes, preserving interior whitespace and
+// quotes (ConfigObj: `" spaced "` → ` spaced `). Values without a matching
+// surrounding pair are returned unchanged.
+func stripQuotes(s string) string {
+	s = strings.TrimSpace(s)
+	if len(s) < 2 {
+		return s
+	}
+	q := s[0]
+	if q != '"' && q != '\'' {
+		return s
+	}
+	if s[len(s)-1] != q {
+		return s
+	}
+	return s[1 : len(s)-1]
 }

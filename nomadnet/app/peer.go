@@ -73,15 +73,13 @@ func (a *App) SetDisplayName(displayName string) {
 		a.Router.SetDisplayName(a.LXMFDest.Hash, displayName)
 	}
 	// Propagate the new display name to the hosted node so the next
-	// announce carries it. When NodeName is set (from config), it takes
-	// precedence; otherwise the node name is the display_name directly
-	// (without "'s Node" suffix, matching the Local Peer Info panel).
+	// announce carries it. The derived name mirrors nodeName (Python
+	// Node.py:28-36): node_name from config when set, otherwise the display
+	// name with "'s Node" appended — Python fixes Node.name at startup and
+	// never updates it, but keeping it in sync here is strictly better and
+	// wire-identical for announces made after the change.
 	if a.Node != nil {
-		newName := displayName
-		if a.NodeName != "" {
-			newName = a.NodeName
-		}
-		a.Node.SetName(newName)
+		a.Node.SetName(a.nodeName())
 	}
 }
 

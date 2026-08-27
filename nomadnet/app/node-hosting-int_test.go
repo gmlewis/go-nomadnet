@@ -111,10 +111,12 @@ func TestAppNodeHostingDisabled(t *testing.T) {
 }
 
 // TestAppNodeHostingNameFallback verifies the node name fallback: when
-// node_name is unset, the node name is the peer display name directly
-// (without a "'s Node" suffix). Python's Node.py:36 appends "'s Node",
-// but the Go port uses the display name as-is so the announce app_data
-// matches what the Local Peer Info panel shows.
+// node_name is unset, the node name is the peer display name with "'s Node"
+// appended, mirroring Python Node.py:28-36 (`self.name =
+// self.app.node_name; if self.name == None: self.name =
+// self.app.peer_settings["display_name"]+"'s Node"`). The Local Node Info
+// panel shows this same name (Network.py:1381-1386), so the announce
+// app_data and the panel always agree.
 func TestAppNodeHostingNameFallback(t *testing.T) {
 	appA, _, cleanup := setupTwoNodeApps(t)
 	defer cleanup()
@@ -129,8 +131,35 @@ func TestAppNodeHostingNameFallback(t *testing.T) {
 	if err := appA.startNode(); err != nil {
 		t.Fatalf("startNode: %v", err)
 	}
-	if want := "Anonymous Peer"; appA.Node.Name != want {
+	if want := "Anonymous Peer's Node"; appA.Node.Name != want {
 		t.Errorf("node name = %q, want %q", appA.Node.Name, want)
+	}
+	if got, want := appA.ResolveNodeName(), "Anonymous Peer's Node"; got != want {
+		t.Errorf("ResolveNodeName() = %q, want %q", got, want)
+	}
+	appA.Shutdown()
+}
+
+// TestAppNodeHostingConfigNamePinsPanelAndAnnounce verifies that a configured
+// node_name (ConfigObj-stripped of surrounding quotes before it reaches here)
+// is used verbatim for both the announce and ResolveNodeName — the OMEN
+// fleet case where `node_name = "Go port of NomadNet"` must announce as
+// `Go port of NomadNet`, matching Python Node.py:28.
+func TestAppNodeHostingConfigNamePinsPanelAndAnnounce(t *testing.T) {
+	appA, _, cleanup := setupTwoNodeApps(t)
+	defer cleanup()
+
+	appA.EnableNode = true
+	appA.NodeName = "Go port of NomadNet"
+	appA.NodeAnnounceAtStart = false
+	if err := appA.startNode(); err != nil {
+		t.Fatalf("startNode: %v", err)
+	}
+	if want := "Go port of NomadNet"; appA.Node.Name != want {
+		t.Errorf("node name = %q, want %q", appA.Node.Name, want)
+	}
+	if got, want := appA.ResolveNodeName(), "Go port of NomadNet"; got != want {
+		t.Errorf("ResolveNodeName() = %q, want %q", got, want)
 	}
 	appA.Shutdown()
 }

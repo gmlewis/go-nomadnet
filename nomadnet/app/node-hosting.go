@@ -221,14 +221,11 @@ func (a *App) ResetNodeStats() {
 	}
 }
 
-// nodeName resolves the hosted node's display name. When the configured
-// node_name is empty, the node name falls back to the peer settings
-// display_name directly — without appending "'s Node". Python's Node.py:36
-// appends "'s Node" to the display_name as a fallback, but that suffix
-// looks inconsistent with other nodes on the network that set node_name
-// explicitly (and therefore don't carry the suffix). Using display_name
-// directly keeps the announce app_data identical to what the Local Peer
-// Info panel shows, so peers see the same name the user configured.
+// nodeName resolves the hosted node's display name, mirroring Python
+// Node.py:28-36: the node name is the configured node_name, and when that is
+// unset it falls back to the peer settings display_name with "'s Node"
+// appended. The Local Node Info panel (Network.py:1381-1386) shows this same
+// name, so the announced app_data always matches what the panel displays.
 func (a *App) nodeName() string {
 	if a.NodeName != "" {
 		return a.NodeName
@@ -239,7 +236,14 @@ func (a *App) nodeName() string {
 		displayName = a.PeerSettings.DisplayName
 	}
 	a.psMu.Unlock()
-	return displayName
+	return displayName + "'s Node"
+}
+
+// ResolveNodeName is the exported form of nodeName for callers outside the
+// app package (the TUI's Local Node Info panel shows this exact name,
+// mirroring Python Network.py:1381-1386 reading app.node.name).
+func (a *App) ResolveNodeName() string {
+	return a.nodeName()
 }
 
 // stopNode stops the hosted node's background job loop, mirroring the shutdown
