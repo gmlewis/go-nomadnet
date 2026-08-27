@@ -26,8 +26,27 @@ import (
 	"log"
 	"os"
 
+	"golang.org/x/term"
+
 	"github.com/gmlewis/go-nomadnet/nomadnet/version"
 )
+
+// hasTTY reports whether the process has a terminal on stdin. The tview TUI
+// requires a terminal; without one, Application.Run() fails and gonomadnet
+// exits silently with code 0, leaving the operator with no node and no error.
+// Used to auto-fallback to daemon mode when launched without a terminal
+// (e.g. via nohup, systemd, or a non-interactive SSH session).
+func hasTTY() bool {
+	return hasTTYFromFile(os.Stdin)
+}
+
+// hasTTYFromFile reports whether the given file is a terminal. Uses
+// term.IsTerminal (ioctl-based) rather than os.File Stat ModeCharDevice
+// because /dev/null IS a character device but is NOT a terminal. Separated
+// from hasTTY so tests can inject non-stdin files.
+func hasTTYFromFile(f *os.File) bool {
+	return term.IsTerminal(int(f.Fd()))
+}
 
 func main() {
 	log.SetFlags(0)
@@ -70,6 +89,19 @@ func main() {
 	// textui overrides daemon
 	if textUI {
 		daemon = false
+	}
+
+	// Auto-fallback to daemon mode when no TTY is available. The tview TUI
+	// requires a terminal; launched via nohup, systemd, or a non-interactive
+	// SSH session, Application.Run() fails and gonomadnet exits silently with
+	// code 0, leaving the operator with no running node and no error message.
+	// Detecting this and falling back to daemon mode ensures the node always
+	// starts, even without a terminal. An explicit -t or -d flag overrides
+	// this auto-detection.
+	if !daemon && !textUI && !hasTTY() {
+		log.Println("gonomadnet: no TTY detected (stdin is not a terminal); " +
+			"falling back to daemon mode. Use -t for TUI or -d for explicit daemon mode.")
+		daemon = true
 	}
 
 	// Default config directory

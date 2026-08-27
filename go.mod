@@ -10,8 +10,8 @@ require (
 	github.com/mattn/go-runewidth v0.0.16
 	github.com/mdp/qrterminal/v3 v3.2.1
 	github.com/rivo/tview v0.42.0
-	golang.org/x/sys v0.42.0
-	golang.org/x/term v0.37.0
+	golang.org/x/sys v0.47.0
+	golang.org/x/term v0.45.0
 	golang.org/x/text v0.38.0
 	rsc.io/qr v0.2.0
 )
