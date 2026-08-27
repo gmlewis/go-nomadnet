@@ -147,7 +147,20 @@ transports, shared `~/.nomadnetwork` identities (Mac LXMF `2a6105…`, Mac Mini
 ---
 ---
 
-## OPEN: truncated announces reach some Go nodes (found 2026-08-26 evening)
+## OPEN (updated 2026-08-26 late): nano slowness + remaining delivery gaps
+
+- pprof verdict on glenn-nano2gb: NO busy loop active (37 goroutines stable,
+  0 cs CPU in sampled windows). Cost splits ~50% tview/tcell full-screen
+  redraws under public-relay announce firehose + `maintenance` self-time
+  spike attributed to serial pathTable persist on slow eMMC. Shipped fix:
+  async single-flight persistPathTable/flushKnownDestinations inside the
+  maintenance loop. Follow-up candidates: adaptive UI coalescing design
+  session (trailing-edge debounce semantics are load-bearing for 4 tests;
+  a throttle variant needs careful spec), urwidColumns.Draw cost.
+- Truncation (120B frames into specific receivers): no new events since
+  instrumentation shipped; watch for "data too short" lines fleet-wide.
+
+
 
 Live evidence (glenn-nano2gb, Debug capture): penguin's ~180-byte LXMF/node
 announces arrive at nano on ALL planes (g00n relay, mobilefabrik, Local TCP
