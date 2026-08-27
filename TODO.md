@@ -145,3 +145,18 @@ transports, shared `~/.nomadnetwork` identities (Mac LXMF `2a6105…`, Mac Mini
   logging to gonomadnet for easier debugging.
 
 ---
+---
+
+## OPEN: truncated announces reach some Go nodes (found 2026-08-26 evening)
+
+Live evidence (glenn-nano2gb, Debug capture): penguin's ~180-byte LXMF/node
+announces arrive at nano on ALL planes (g00n relay, mobilefabrik, Local TCP
+Hub) as exactly 120-total-byte frames => datalen=85 < minLen 148 =>
+ValidateAnnounce silently returned false (now logs "data too short"); sibling
+hosts processed the SAME emission fine, so corruption is specific to the
+receiver-path decode for payloads containing particular HDLC-escape byte
+patterns — investigate hdlcReassemble/KISS unescape and per-plane frame
+reassembly against the captured Raw[:120] hex logged on nano 22:00Z. Also
+remember-on-first-sight for announce hashes remains a latent poisoning hazard
+(Python remembers post-validation) — pair the truncation fix with
+remember-after-validate parity.
