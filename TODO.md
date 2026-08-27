@@ -83,44 +83,6 @@ printf '`[Label`url]\n`<field`data>\n>Heading\n' | python3 micron_inline.py
 
 ---
 
-## Parity bugs found: nomadnet 1.2.8 (Python reference) vs gonomadnet
-
-Discovered by running the identical trusted-chat experiment on both runtimes
-(Mac + Linux, both on nomadnet 1.2.8, shared LXMF identities) and diffing
-against the earlier gonomadnet run. Full reference capture + screen grabs live
-in `tooling/parity-reference/` (see `nomadnet-trusted-chat-reference.md`).
-**Remove each entry when the Go test proves parity.**
-
-- **B6 (FIXED): gonomadnet LXMF announce/path does not let a remote peer
-  reply.** Three root causes found and fixed:
-  1. AnnounceNow was not updating PeerSettings.LastAnnounce before saving
-     (only the App-level LastAnnounce was set). FIXED in nomadnet/app/app.go.
-  2. Mac Mini was missing go.work file, so its binary used the published
-     go-reticulum instead of the local source with all fixes. FIXED by
-     creating go.work on Mac Mini.
-  3. go-reticulum ingress limiting held unknown-destination announces
-     indefinitely on busy network interfaces (announce frequency never
-     dropped below the burst threshold). FIXED in go-reticulum rns/transport.go:
-     RequestPath now calls ReleaseHeldAnnounce on all interfaces to
-     immediately release any held announce for the requested destination,
-     bypassing the frequency gate. New ReleaseHeldAnnounce method added
-     to Interface interface and BaseInterface.
-
-- **B11 (FIXED): gonomadnet↔gonomadnet direct delivery fails both ways.**
-  Root cause: go-reticulum's LXMF router sent direct-delivery messages as
-  raw fire-and-forget packets instead of establishing a Link (as Python
-  LXMRouter.process_outbound does). FIXED in go-reticulum lxmf/router.go:
-  ProcessOutbound for MethodDirect now checks for existing direct links,
-  uses active ones, or establishes new Links. sendMessagePacketLocked has
-  a new MethodDirect link-based branch with delivery/timeout callbacks.
-  DeliveryLinkAvailable now checks directLinks. 16 tests updated.
-  Also fixed: the list's SetSelectedFunc called showDetail instead of
-  DisplayConversation — pressing Enter on the conversation list didn't open
-  the conversation. FIXED: changed SetSelectedFunc to call DisplayConversation.
-
-
-### Reference behaviors to verify gonomadnet matches (not yet confirmed as bugs)
-
 ---
 
 ## gonomadnet 0.22.0 exploration findings (live run vs nomadnet 1.2.8 reference)
@@ -132,10 +94,6 @@ transports, shared `~/.nomadnetwork` identities (Mac LXMF `2a6105…`, Mac Mini
 `712ffbf…`), in 24-bit via
 `env -u NO_COLOR COLORTERM=truecolor TERM=xterm-256color ./gonomadnet.sh`.
 **These are gonomadnet (Go) bugs to fix TDD-style; do not fix here.**
-
-### CRITICAL
-
-### Re-confirmed on gonomadnet 0.22.0
 
 ### Operational note (not a bug, but affects debugging)
 
@@ -157,21 +115,6 @@ transports, shared `~/.nomadnetwork` identities (Mac LXMF `2a6105…`, Mac Mini
   maintenance loop. Follow-up candidates: adaptive UI coalescing design
   session (trailing-edge debounce semantics are load-bearing for 4 tests;
   a throttle variant needs careful spec), urwidColumns.Draw cost.
-- glenn-nano2gb announces-not-received + unreachable-by-links (RESOLVED
-  2026-08-27, remove when the fix ships): the "120-byte truncated frames"
-  theory was wrong — Raw[:120] was only the ValidateAnnounce preview cap and
-  fleet announces arrived complete (167/200/216 wire bytes). The real blocker:
-  persisted destination_table entries on nano (and the Mac hub's entry for
-  nano) carried poisoned random blobs whose embedded uint40 emission
-  timebases were misparsed signature bytes (~6e10..1.1e12, e.g. 0xB7F1963C4E).
-  timebaseFromRandomBlobs takes the max, so no real announce could ever be
-  "newer": the path was never replaced and, because Python parity gates the
-  announce handlers on a path add/replace, no handler fired — the node saw no
-  peers, and the Mac kept using a stale 40-hop path (link timeouts). Fix
-  shipped in go-reticulum transport-pathtable-heal.go: implausible timebases
-  (< 2020-09-13 or > now+24h) are skipped at compare time, dropped at table
-  load (the 30s re-persist heals the file), and never stored from badly
-  skewed emitters. Wire behavior stays Python-exact.
 
 - gonomadnet hardcodes the RNS logger at LogNotice and ignores the
   [logging] loglevel config key (Python NomadNetworkApp sets RNS.loglevel
