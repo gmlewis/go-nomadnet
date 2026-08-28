@@ -243,6 +243,12 @@ func NewConversationsDisplay(app *App, convs []ConversationInfo) *ConversationsD
 	// EMPTY list collapses straight to the menubar (ilb.body_is_empty,
 	// Conversations.py:1800-1802).
 	cd.ilb = &conversationsListBox{IndicativeListBox: NewIndicativeListBox(cd.list)}
+	// Empty-state placeholder style: Python paints the centered
+	// "No trusted/untrusted conversations" row with the list_off_focus palette
+	// across the full inner width in every focus state (live captures
+	// pyaconv_100x28_00/01/02 row 4) — see the ILB empty-style test.
+	colors := GetThemeColors(app.Theme)
+	cd.ilb.SetEmptyStyle(colors["list_off_focus_fg"], colors["list_off_focus_bg"])
 
 	// Default the shortcut region to "list": on first display the list pane
 	// (left column) is the focused region, and Python's focus-path dispatch

@@ -68,6 +68,14 @@ type IndicativeListBox struct {
 	List        *tview.List
 	emptyText   string          // centered placeholder drawn when the List has no items
 	emptyWidget tview.Primitive // optional widget drawn in the list area when empty
+	// emptyFG/emptyBG, when set, style the emptyText placeholder row. Python
+	// paints the Conversations empty-state placeholder with the list_off_focus
+	// palette across the full inner width in EVERY focus state (live captures
+	// pyaconv_100x28_00/01/02 row 4: fg 0,0,0 bg 135,135,135 — the vendor ILB's
+	// off-focus attribute sticks to the placeholder item), so the style is
+	// applied unconditionally, not only while focused.
+	emptyFG tcell.Color
+	emptyBG tcell.Color
 }
 
 // NewIndicativeListBox wraps the given List with indicator bars. If list is
@@ -85,6 +93,13 @@ func NewIndicativeListBox(list *tview.List) *IndicativeListBox {
 // `[urwid.Text(empty_label, align='center')]` (Conversations.py:496). Without a
 // real item the indicator bars still render "───" above and below it.
 func (i *IndicativeListBox) SetEmptyText(text string) { i.emptyText = text }
+
+// SetEmptyStyle sets the foreground/background painted on the emptyText
+// placeholder row (list_off_focus for the Conversations empty state). Has no
+// effect on the SetEmptyWidget path, whose primitive carries its own styling.
+func (i *IndicativeListBox) SetEmptyStyle(fg, bg tcell.Color) {
+	i.emptyFG, i.emptyBG = fg, bg
+}
 
 // SetEmptyWidget sets a widget drawn in the list area (between the indicator
 // bars) when the wrapped List has no items, mirroring nomadnet's IndicativeListBox
@@ -130,7 +145,20 @@ func (i *IndicativeListBox) Draw(screen tcell.Screen) {
 			i.emptyWidget.SetRect(lx, ly, lw, lh)
 			i.emptyWidget.Draw(screen)
 		} else if i.emptyText != "" {
-			tview.Print(screen, i.emptyText, lx, ly, lw, tview.AlignCenter, tcell.ColorDefault)
+			if i.emptyBG != tcell.ColorDefault && i.emptyBG != 0 {
+				// Python paints the placeholder row across the full inner
+				// width (urwid AttrMap fill) — replicate before the text.
+				fill := tcell.StyleDefault.Background(i.emptyBG)
+				if i.emptyFG != tcell.ColorDefault && i.emptyFG != 0 {
+					fill = fill.Foreground(i.emptyFG)
+				}
+				for x := lx; x < lx+lw; x++ {
+					screen.SetContent(x, ly, ' ', nil, fill)
+				}
+				tview.Print(screen, i.emptyText, lx, ly, lw, tview.AlignCenter, i.emptyFG)
+			} else {
+				tview.Print(screen, i.emptyText, lx, ly, lw, tview.AlignCenter, tcell.ColorDefault)
+			}
 		}
 	}
 

@@ -62,6 +62,19 @@ func TestUrwidSpaceWrap(t *testing.T) {
 				"Sort  [C-p] My LXMF  [C-g] Fullscreen",
 			},
 		},
+		{
+			// Live capture (tooling/tui-parity/captures/pyaconv_100x28_00_esc.txt
+			// row 27): Python's wrapped bar line ends at "My LXMF" with NO
+			// trailing styled space — urwid trims the whitespace run at the
+			// break. The Go port kept one space ("...My LXMF "), painting one
+			// extra shortcutbar-background column.
+			"conversations list bar at 100 — break trims the trailing space",
+			listBar, 100,
+			[]string{
+				"[C-e] Peer Info  [C-x] Delete  [C-r] Sync  [C-n] New  [C-u] Ingest URI  [C-o] Sort  [C-p] My LXMF",
+				"[C-g] Fullscreen",
+			},
+		},
 		{"network bar at 200 fits one row", networkBar, 200, []string{networkBar}},
 		{"empty yields one empty line", "", 80, []string{""}},
 		{"short fits one row", "[C-d] Back  [C-f] Forward", 80, []string{"[C-d] Back  [C-f] Forward"}},

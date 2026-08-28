@@ -347,8 +347,13 @@ func urwidWrapSegment(seg string, width int) []string {
 			pos = idx + 1 // pathological: a rune wider than `width`; emit it
 		}
 		if runes[pos] == ' ' {
-			// Perfect space wrap: break here, drop the break space.
-			lines = append(lines, string(runes[idx:pos]))
+			// Perfect space wrap: break here, drop the break space. Any
+			// REMAINING spaces of the run that fit before the boundary are
+			// trimmed from the line end too — Python's layout line carries no
+			// trailing whitespace (live capture pyaconv_100x28_00 row 27: the
+			// styled bar ends at "My LXMF", not "My LXMF ").
+			line := strings.TrimRight(string(runes[idx:pos]), " ")
+			lines = append(lines, line)
 			idx = pos + 1
 			continue
 		}
@@ -361,7 +366,11 @@ func urwidWrapSegment(seg string, width int) []string {
 			}
 		}
 		if prev >= 0 {
-			lines = append(lines, string(runes[idx:prev]))
+			// Break at the previous space; trim any remaining run spaces from
+			// the line end (Python's layout lines carry no trailing
+			// whitespace — live capture pyaconv_100x28_00 row 27).
+			line := strings.TrimRight(string(runes[idx:prev]), " ")
+			lines = append(lines, line)
 			idx = prev + 1
 			continue
 		}

@@ -83,68 +83,12 @@ printf '`[Label`url]\n`<field`data>\n>Heading\n' | python3 micron_inline.py
 
 ---
 
-## UI keyboard/dialog parity bugs (live tmux A/B sweep, 2026-08-27) — KEEP-GREEN RE-CHECKS ONLY
+## OPEN (remaining work)
 
-Found by driving the REAL instances with identical tmux keystrokes and diffing
-SGR captures (`ansiview.py --json`) plus the Go focus diagnostics
-(`/tmp/quit-diag.log` on the gonomadnet host). Targets: Python `nomadnet`
-(local tmux `local`) vs `gonomadnet` (tmux `glenn-mac-mini-m2`), both 232x50.
-"LV" = live-verified on both instances; "SRC" = derived from the Python source
-path that Go must replicate. Fix TDD-style, one item per session.
-
-**ACCEPTED ENHANCEMENT (owner decision 2026-08-27 — do NOT "fix"):** closing
-dialogs/overlays with **Esc** in addition to Python's dismissal buttons is an
-intentional Go-port enhancement (natural muscle memory from other tools). It
-STAYS. Parity work must preserve Esc-to-close AND additionally make Python's
-button-based dismissal paths and their keyboard traversal exist and work.
-
-### D. Network page
-
-- **D4 (LV, keep green)** Announce Stream (tabs, Search field, Show toggle), C-l
-  toggle, saved-nodes list, Connect-to-node dialog (Yes/No/Info), browser
-  chrome + page render + Down cursor traversal: AT PARITY — keep green.
-
-### E. Guide page
-
-- **E3 (LV, keep green)** Topic content Down on plain (unlinked) text is a no-op on BOTH
-  — parity, keep green. Topic list content itself matches exactly.
-
-### G. Interfaces page
-
-- **G3 (LV, keep green)** Interface list: Up/Down selection, ●/○ markers, shortcut bar
-  `[C-a] Add [C-e] Edit [C-x] Remove [Enter] Show [C-w] Open Text Editor`,
-  and the empty-state/config pages (Config page = exact parity): keep green.
-  Note: interface list ORDER follows each host's own `~/.reticulum/config` —
-  not a bug.
-
-### H. Menubar (verify-then-fix)
-
-- **H2 (LV, keep green)** Menubar Left/Right movement, Enter activation, focus RETENTION
-  on the activated button across pages, and Tab/Down → body: at parity.
-  Verified: identical page-advance behavior on both targets.
-
----
-
-
-## New findings (2026-08-28, from A-class verification captures)
-
-- Empty-state placeholder highlight: on the Conversations empty list Python
-  paints the centered "No trusted/untrusted conversations" row with the
-  list_focus background while the list is focused (live capture
-  tooling/tui-parity/captures/pyaconv_100x28_00_esc.txt row 4, bg #878787);
-  the Go port renders the placeholder without the focus highlight (see
-  IndicativeListBox.SetEmptyText drawing path).
-- Conversations list shortcut bar wrap at 100 cols: Go's wrapped second line
-  ends "My LXMF " with one trailing space; Python ends "My LXMF". Cosmetic
-  one-space diff in urwidSpaceWrap output.
-
-## OPEN (updated 2026-08-26 late): nano slowness + remaining delivery gaps
-
-- pprof verdict on glenn-nano2gb: NO busy loop active (37 goroutines stable,
-  0 cs CPU in sampled windows). Cost splits ~50% tview/tcell full-screen
-  redraws under public-relay announce firehose + `maintenance` self-time
-  spike attributed to serial pathTable persist on slow eMMC. Shipped fix:
-  async single-flight persistPathTable/flushKnownDestinations inside the
-  maintenance loop. Follow-up candidates: adaptive UI coalescing design
-  session (trailing-edge debounce semantics are load-bearing for 4 tests;
-  a throttle variant needs careful spec), urwidColumns.Draw cost.
+- **Adaptive UI coalescing under announce firehose:** design session for
+  reducing tview/tcell full-screen redraw cost during public-relay announce
+  storms. A throttle variant must be specified carefully — the trailing-edge
+  debounce semantics of the existing UI change coalescer are load-bearing for
+  4 tests.
+- **urwidColumns.Draw cost:** profile and reduce the draw cost of the
+  Columns widget (second-largest contributor to full-screen redraw time).
