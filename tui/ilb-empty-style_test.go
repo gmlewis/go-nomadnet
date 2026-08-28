@@ -56,20 +56,16 @@ func TestEmptyPlaceholderOffFocusStyle(t *testing.T) {
 	// indicator bars) — screen row 1. Every cell of the row must carry the
 	// list_off_focus style (urwid's AttrMap fills the full canvas width).
 	for x := range 50 {
-		c, _, style, _ := screen.GetContent(x, 1)
-		if c == ' ' && (x < 13 || x > 37) {
-			// Padding cells outside the text still carry the background.
-		}
-		f, bgs, _ := style.Decompose()
-		_ = f
-		if bgs != bg {
+		// Padding cells outside the text still carry the background.
+		_, style, _ := screen.Get(x, 1)
+		if _, bgs, _ := style.Decompose(); bgs != bg {
 			t.Fatalf("placeholder row cell (%v,1) bg = %v, want %v (list_off_focus)", x, bgs, bg)
 		}
 	}
 	// The text itself carries the foreground color.
-	c, _, style, _ := screen.GetContent(13, 1) // (50-24)/2 = 13 → 'N'
-	if c != 'N' {
-		t.Fatalf("placeholder text cell (13,1) = %q, want 'N'", string(c))
+	str, style, _ := screen.Get(13, 1) // (50-24)/2 = 13 → 'N'
+	if str != "N" {
+		t.Fatalf("placeholder text cell (13,1) = %q, want 'N'", str)
 	}
 	if f, _, _ := style.Decompose(); f != fg {
 		t.Errorf("placeholder text fg = %v, want %v", f, fg)
@@ -80,7 +76,7 @@ func TestEmptyPlaceholderOffFocusStyle(t *testing.T) {
 	ilb.Blur()
 	screen.Clear()
 	ilb.Draw(screen)
-	_, _, style, _ = screen.GetContent(14, 1)
+	_, style, _ = screen.Get(14, 1)
 	if _, bgs, _ := style.Decompose(); bgs != bg {
 		t.Errorf("unfocused placeholder bg = %v, want %v (live shows it in every focus state)", bgs, bg)
 	}
@@ -114,7 +110,7 @@ func TestEmptyStyleNotAppliedToEmptyWidget(t *testing.T) {
 
 	// Whatever the widget draws, the ILB must not paint a background over the
 	// row — the custom widget's own TextView carries the default bg here.
-	_, _, style, _ := screen.GetContent(2, 1)
+	_, style, _ := screen.Get(2, 1)
 	if _, bgs, _ := style.Decompose(); bgs == colors["list_off_focus_bg"] {
 		t.Error("SetEmptyStyle must not affect the SetEmptyWidget path")
 	}

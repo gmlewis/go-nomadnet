@@ -56,6 +56,7 @@ type EmbeddedTerminal struct {
 	mu        sync.Mutex // guards vt (reader writes, Draw reads)
 	writeCh   chan []byte
 	stopCh    chan struct{}
+	stopOnce  sync.Once
 	doneCh    chan struct{}
 	closeOnce sync.Once
 
@@ -398,13 +399,13 @@ func (et *EmbeddedTerminal) close() {
 	})
 }
 
+// stop closes stopCh exactly once. It is called from both Close (the UI
+// goroutine) and the child-exit watcher goroutine, so the old
+// check-then-close pattern could race into "close of closed channel" (a
+// pre-existing flake that panics the whole process — under -race it killed
+// the entire test binary). sync.Once makes it idempotent and race-free.
 func (et *EmbeddedTerminal) stop() {
-	select {
-	case <-et.stopCh:
-		return
-	default:
-	}
-	close(et.stopCh)
+	et.stopOnce.Do(func() { close(et.stopCh) })
 }
 
 // keyToANSI translates a tcell key event to the ANSI byte sequence the child

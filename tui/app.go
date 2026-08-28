@@ -42,6 +42,12 @@ type App struct {
 	Styles    *StyleRegistry
 	killRing  *killRing
 
+	// clipboard writes selected text to the system clipboard (mouse text
+	// selection, a Go-only enhancement); selection tracks the mouse-drag /
+	// double-click / triple-click selection state.
+	clipboard textClipboard
+	selection *selectionTracker
+
 	// root is the current root primitive passed to tview.Application.SetRoot.
 	// tview does not expose this field, so App tracks it for the zombie-focus
 	// recovery in MainDisplay.handleInput, which needs to check root.HasFocus().
@@ -116,6 +122,23 @@ func NewApp(theme int, glyphSet string, colorMode int) *App {
 	ApplyDefaultStyles()
 
 	a.Main = NewMainDisplay(a, theme, glyphSet)
+
+	// Mouse text selection (Go-only enhancement): drag anywhere to select and
+	// copy the on-screen text; double-click selects AND copies the
+	// whitespace-delimited word (e.g. a full LXMF address); triple-click the
+	// whole row. The app-level mouse capture runs before every widget handler,
+	// the after-draw hook re-paints the highlight over each frame, and any key
+	// press abandons the selection (standard terminal behavior).
+	a.clipboard = newSystemClipboard()
+	a.selection = newSelectionTracker(a, tview.DoubleClickInterval)
+	tviewApp.SetMouseCapture(a.selection.capture)
+	tviewApp.SetAfterDrawFunc(a.selection.paintAfter)
+	if prev := tviewApp.GetInputCapture(); prev != nil {
+		tviewApp.SetInputCapture(func(ev *tcell.EventKey) *tcell.EventKey {
+			a.selection.clearOnKey()
+			return prev(ev)
+		})
+	}
 
 	return a
 }

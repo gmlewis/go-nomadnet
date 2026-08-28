@@ -45,9 +45,9 @@ type processArg struct {
 func enforceSingleInstance(configDir string) (func(), error) {
 	if pids := runningNomadnetPIDs(); len(pids) > 0 {
 		if os.Getenv("GONOMADNET_IGNORE_RUNNING_NOMADNET") == "" {
-			return nil, fmt.Errorf("nomadnet appears to be running (PID %v).\n"+
-				"Stop it before starting gonomadnet, or set GONOMADNET_IGNORE_RUNNING_NOMADNET=1\n"+
-				"to bypass this check (e.g. if this is a false positive).", pids[0])
+			return nil, fmt.Errorf("nomadnet appears to be running (PID %v)\n"+
+				"stop it before starting gonomadnet, or set GONOMADNET_IGNORE_RUNNING_NOMADNET=1\n"+
+				"to bypass this check (e.g. if this is a false positive)", pids[0])
 		}
 		log.Printf("gonomadnet: warning — nomadnet appears to be running (PID %v); "+
 			"continuing because GONOMADNET_IGNORE_RUNNING_NOMADNET is set", pids[0])
@@ -59,8 +59,8 @@ func enforceSingleInstance(configDir string) (func(), error) {
 		return nil, fmt.Errorf("acquire instance lock %v: %w", lockPath, err)
 	}
 	if release == nil {
-		return nil, fmt.Errorf("gonomadnet is already running (PID %v) for config dir %v.\n"+
-			"Stop the existing instance (or use a different --config dir) before starting a new one.",
+		return nil, fmt.Errorf("gonomadnet is already running (PID %v) for config dir %v\n"+
+			"stop the existing instance (or use a different --config dir) before starting a new one",
 			holderPID, configDir)
 	}
 	return release, nil
