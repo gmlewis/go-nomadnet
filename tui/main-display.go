@@ -766,6 +766,20 @@ func (md *MainDisplay) bodyListAtTop() bool {
 		list = v
 	case *IndicativeListBox:
 		list = v.List
+	case *conversationsListBox:
+		// The Conversations page owns its Up-at-top path: Python's
+		// ConversationsArea.keypress sends Up from the top of a NON-empty
+		// list to the Pile, which focuses the tab bar (Conversations.py:
+		// 1800-1808, A6) — only an EMPTY list collapses straight to the
+		// menubar (ilb.body_is_empty branch).
+		return v.List.GetItemCount() == 0
+	case *messageListBox:
+		// The open conversation's message list: Up at its top collapses to
+		// the trust banner FIRST when one is visible (Python
+		// ConversationFrame.keypress → _header_pile.focus_position = 1,
+		// Conversations.py:1854-1862) and to the menu bar otherwise. The
+		// banner transition is owned by the conversation frame capture.
+		return v.TopIsVisible() && (v.bannerVisible == nil || !v.bannerVisible())
 	case *centeredText:
 		// The network left pane swaps the saved-nodes IndicativeListBox for a
 		// centeredText empty-state placeholder when no nodes are saved (Python
@@ -800,18 +814,21 @@ func (md *MainDisplay) handleMenuInput(event *tcell.EventKey) *tcell.EventKey {
 
 	switch event.Key() {
 	case tcell.KeyLeft:
-		prev := md.activeMenu - 1
-		if prev < 0 {
-			prev = n - 1
+		// Python urwid Columns.keypress (4.0.3 container.py): LEFT at the
+		// leftmost button has no candidate column, so the key is returned
+		// unhandled and DIES at the MainFrame — the highlight STAYS (H1;
+		// verified with a urwid probe: Left at 0 keeps focus 0). Never wrap
+		// into Quit.
+		if md.activeMenu > 0 {
+			md.focusMenuIndex(md.activeMenu - 1)
 		}
-		md.focusMenuIndex(prev)
 		return nil
 	case tcell.KeyRight:
-		next := md.activeMenu + 1
-		if next >= n {
-			next = 0
+		// Mirror of the Left edge: Right at the rightmost button stays
+		// (urwid returns the key unhandled; no wrap).
+		if md.activeMenu < n-1 {
+			md.focusMenuIndex(md.activeMenu + 1)
 		}
-		md.focusMenuIndex(next)
 		return nil
 	case tcell.KeyEnter:
 		md.selectMenu(md.activeMenu)

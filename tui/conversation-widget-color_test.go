@@ -92,23 +92,31 @@ func TestConversationWidgetPaletteColors(t *testing.T) {
 
 			// Message-list base must be the terminal default (Python's
 			// messagelist is a bare IndicativeListBox with no AttrMap). Probe
-			// with a directly-set glyph; disable the resize re-render hook so
-			// it does not overwrite the probe text with renderMessages output.
+			// a rendered message entry's plain content row (below the styled
+			// header): the entry TextView base is the list base. OwnHash is
+			// set so the message renders a single-line outbound header.
+			cw.OwnHash = []byte{1}
+			cw.SetMessages([]ConversationMessage{{
+				Content:   "X",
+				Timestamp: time.Unix(1700000000, 0),
+				State:     lxmfStateSent, SourceHash: []byte{1},
+			}})
 			mlScreen := tcell.NewSimulationScreen("UTF-8")
 			if err := mlScreen.Init(); err != nil {
 				t.Fatalf("messageList screen.Init: %v", err)
 			}
 			defer mlScreen.Fini()
-			mlScreen.SetSize(10, 1)
-			cw.messageList.SetText("X")
-			cw.messageList.SetRect(0, 0, 10, 1)
-			cw.messageList.Draw(mlScreen)
-			if c, _, style, _ := cellContent(mlScreen, 0, 0); c != 'X' {
-				t.Fatalf("messageList cell (0,0) = %q, want 'X'", string(c))
+			mlScreen.SetSize(80, 3)
+			entry := cw.messageList.entries[0]
+			entry.SetRect(0, 0, 80, 3)
+			entry.Draw(mlScreen)
+			// Row 1 is the content row ("  X") — an unstyled glyph.
+			if c, _, style, _ := cellContent(mlScreen, 2, 1); c != 'X' {
+				t.Fatalf("message entry content cell (2,1) = %q, want 'X'", string(c))
 			} else {
 				fg, _, _ := style.Decompose()
 				if fg != tcell.ColorDefault {
-					t.Errorf("messageList base fg = %v, want ColorDefault (Python messagelist has no AttrMap)", fg)
+					t.Errorf("message entry base fg = %v, want ColorDefault (Python messagelist has no AttrMap)", fg)
 				}
 			}
 		})

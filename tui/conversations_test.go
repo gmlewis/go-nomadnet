@@ -747,7 +747,7 @@ func TestDisplayConversationLoadsMessages(t *testing.T) {
 	}
 
 	// The rendered message list must contain the message bodies.
-	body := cw.messageList.GetText(true)
+	body := cw.renderedMessageText(true)
 	if !strings.Contains(body, "hello world") {
 		t.Errorf("messageList missing %q; got: %v", "hello world", body)
 	}
@@ -790,8 +790,8 @@ func TestReloadCurrentMessages(t *testing.T) {
 	if loads != 2 {
 		t.Errorf("expected 2 loads after reload, got %v", loads)
 	}
-	if !strings.Contains(cd.currentWidget.messageList.GetText(true), "freshly sent") {
-		t.Errorf("reload did not render the new message: %v", cd.currentWidget.messageList.GetText(true))
+	if !strings.Contains(cd.currentWidget.renderedMessageText(true), "freshly sent") {
+		t.Errorf("reload did not render the new message: %v", cd.currentWidget.renderedMessageText(true))
 	}
 }
 
@@ -832,7 +832,7 @@ func TestR2RefreshOpenConversationAutoRefresh(t *testing.T) {
 		t.Fatalf("R2: expected 2 loads after refresh, got %v (auto-refresh not firing)", loads)
 	}
 
-	body := cd.currentWidget.messageList.GetText(true)
+	body := cd.currentWidget.renderedMessageText(true)
 	if !strings.Contains(body, "new arrival") {
 		t.Errorf("R2: refreshed message list missing 'new arrival'; got: %v", body)
 	}
@@ -1897,9 +1897,11 @@ func TestShowSyncDialogLiveProgress(t *testing.T) {
 		ShowPercent: func() bool { return true },
 	}, func(SyncDialogResult) {})
 
+	// Python SyncProgressBar.get_text (Conversations.py:3086-3093) appends
+	// " N%" (a space, not parens) when sync_status_show_percent is on.
 	cd.updateSyncProgress()
-	if got := cd.syncStatusText.GetText(true); got != "Idle (0%)" {
-		t.Errorf("idle status = %q, want %q", got, "Idle (0%)")
+	if got := cd.syncStatusText.GetText(true); got != "Idle 0%" {
+		t.Errorf("idle status = %q, want %q", got, "Idle 0%")
 	}
 	if cd.syncSyncBtn.Label() != "Sync Now" {
 		t.Errorf("idle button = %q, want Sync Now", cd.syncSyncBtn.Label())
@@ -1908,8 +1910,8 @@ func TestShowSyncDialogLiveProgress(t *testing.T) {
 	prog = 0.73
 	stat = "Receiving messages"
 	cd.updateSyncProgress()
-	if got := cd.syncStatusText.GetText(true); got != "Receiving messages (73%)" {
-		t.Errorf("active status = %q, want %q", got, "Receiving messages (73%)")
+	if got := cd.syncStatusText.GetText(true); got != "Receiving messages 73%" {
+		t.Errorf("active status = %q, want %q", got, "Receiving messages 73%")
 	}
 	if cd.syncSyncBtn.Label() != "Cancel Sync" {
 		t.Errorf("active button = %q, want Cancel Sync", cd.syncSyncBtn.Label())

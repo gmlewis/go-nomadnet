@@ -111,11 +111,15 @@ type ConversationWidget struct {
 	TimeFormat string
 
 	// Layout
-	frame          *tview.Flex
-	headerFlex     *tview.Flex
-	messageList    *messageListView
-	peerInfoBar    *tview.TextView
+	frame       *tview.Flex
+	headerFlex  *tview.Flex
+	messageList *messageListBox
+	peerInfoBar *tview.TextView
+	// trustBanner is the header banner row (a Flex of the warning text and the
+	// three buttons); bannerBtns holds the buttons in row order (Trust, Block,
+	// Do nothing) for the keyboard traversal paths.
 	trustBanner    *tview.Flex
+	bannerBtns     []*tview.Button
 	editor         *ReadlineEdit
 	titleEditor    *ReadlineEdit
 	fullEditorArea *tview.Flex
@@ -162,6 +166,26 @@ type ConversationWidget struct {
 
 	// Dialog state
 	dialogOpen bool
+
+	// focusPart mirrors Python's ConversationFrame.focus_position ("header",
+	// "body" or "footer"): it records which frame region last held focus so
+	// the conversations display can restore it when Left/Right column
+	// traversal moves focus into this pane (urwid Columns keeps each column's
+	// own focus).
+	focusPart string
+
+	// OnSwitchToList is fired when Left reaches the right pane's non-consuming
+	// widgets (message list, banner buttons) — Python's urwid Columns keypress
+	// moves focus back to the conversations list column
+	// (Conversations.py:221-229 columns_widget traversal).
+	OnSwitchToList func()
+	// OnBannerFocus fires when a trust-banner button gains focus (Python's
+	// shortcuts() dispatch treats the frame header as the body shortcut bar,
+	// Conversations.py:1772-1779).
+	OnBannerFocus func()
+	// OnBodyFocus fires when the message list gains focus (the body shortcut
+	// bar region, Conversations.py:1772-1779).
+	OnBodyFocus func()
 
 	// pendingAttachments is the list of staged file paths to attach to the
 	// next sent message (Python ConversationWidget.pending_attachments,
@@ -232,25 +256,26 @@ func NewConversationWidget(app *App, sourceHash string) *ConversationWidget {
 	cw.headerFlex = header
 	cw.refreshTrustBanner()
 
-	// Message list
-	cw.messageList = newMessageListView()
-	cw.messageList.SetDynamicColors(true)
-	cw.messageList.SetScrollable(true)
-	// Python's messagelist is a bare IndicativeListBox with NO AttrMap
-	// (Conversations.py:2287), so its base color is the terminal default;
-	// message widgets carry their own styling. Do not impose a #bbbbbb
-	// base (Python never does).
-	cw.messageList.SetTextColor(tcell.ColorDefault)
-	cw.messageList.SetBackgroundColor(tcell.ColorDefault)
-	cw.messageList.SetTextAlign(tview.AlignLeft)
-	applyWheelMultiplier(cw.messageList.TextView)
+	// Message list — a per-message selectable ListBox (Python messagelist,
+	// IndicativeListBox of LXMessageWidget piles, Conversations.py:2286-2287).
+	// It exposes the IndicativeListBox top/bottom visibility flags the frame
+	// keypress branches on, and its bannerVisible hook lets the main
+	// dispatcher's Up-at-top check respect the trust banner (A3/A7).
+	cw.messageList = newMessageListBox()
+	cw.messageList.bannerVisible = cw.hasVisibleTrustBanner
+	cw.messageList.SetFocusFunc(func() {
+		cw.focusPart = "body"
+		if cw.OnBodyFocus != nil {
+			cw.OnBodyFocus()
+		}
+	})
 
-	// Minimal editor (content only) — Python wraps the editor in
-	// `AttrMap(editor, "msg_editor")` (Conversations.py:609); msg_editor is
-	// 3-hex #111 / #0bb (ui/TextUI.py:32/85), cube-quantized to #000000 /
-	// #00afaf. Route through the palette; the prior 0x222222/0xdddddd did
-	// not match Python's msg_editor at all.
-	cw.editor = NewReadlineEdit(app.killRing, "", "Type a message... (Ctrl-D to send)")
+	// Minimal editor (content only) — Python builds MessageEdit(caption="",
+	// edit_text="", multiline=True) wrapped in AttrMap(..., "msg_editor")
+	// (Conversations.py:1916): an INVISIBLE empty one-line footer with no
+	// caption and no placeholder (B2). msg_editor is 3-hex #111 / #0bb
+	// (ui/TextUI.py:32/85), cube-quantized to #000000 / #00afaf.
+	cw.editor = NewReadlineEdit(app.killRing, "", "")
 	cw.editor.SetFieldBackgroundColor(tc["msg_editor_bg"])
 	cw.editor.SetFieldTextColor(tc["msg_editor_fg"])
 
@@ -308,6 +333,18 @@ func (cw *ConversationWidget) ClearEditor() {
 // Matches Python's ConversationWidget.keypress() at Conversations.py:2222.
 func (cw *ConversationWidget) handleInput(event *tcell.EventKey) *tcell.EventKey {
 	switch event.Key() {
+	case tcell.KeyUp:
+		if !cw.dialogOpen {
+			return cw.handleFrameUp(event)
+		}
+	case tcell.KeyDown:
+		if !cw.dialogOpen {
+			return cw.handleFrameDown(event)
+		}
+	case tcell.KeyLeft, tcell.KeyRight:
+		if !cw.dialogOpen {
+			return cw.handleFrameLeftRight(event)
+		}
 	case tcell.KeyCtrlW:
 		if cw.OnClose != nil {
 			cw.OnClose()
@@ -373,6 +410,162 @@ func (cw *ConversationWidget) handleInput(event *tcell.EventKey) *tcell.EventKey
 	}
 
 	return event
+}
+
+// handleFrameUp implements the Python "up" focus path of an open conversation:
+//
+//   - minimal (content) editor at cursor y==0 → frame body (message list)
+//     (Python MessageEdit.keypress, Conversations.py:1816-1825);
+//   - full-editor content editor Up escapes to the title editor and the full
+//     editor title editor Up → frame body (Python: urwid Edit returns "up" at
+//     y==0 and the full_editor Pile moves focus to the previous selectable —
+//     Conversations.py:1918-1930 — and MessageEdit "up" for the title editor
+//     with the full editor active sets frame.focus_position = "body");
+//   - message-list top: the trust banner's Trust button when a banner is
+//     visible (ConversationFrame.keypress → _header_pile.focus_position = 1 +
+//     focus_position = "header", Conversations.py:1854-1862), otherwise the
+//     menu bar (main_display.frame.focus_position = "header");
+//   - banner buttons Up → menu bar (Python: Frame header "up" result →
+//     main_display.frame.focus_position = "header").
+func (cw *ConversationWidget) handleFrameUp(event *tcell.EventKey) *tcell.EventKey {
+	if cw.app == nil {
+		return event
+	}
+	focused := cw.app.GetFocus()
+	switch {
+	case focused == cw.editor && !cw.fullEditorActive:
+		cw.app.SetFocus(cw.messageList)
+		return nil
+	case focused == cw.titleEditor && cw.fullEditorActive:
+		cw.app.SetFocus(cw.messageList)
+		return nil
+	case focused == cw.editor && cw.fullEditorActive:
+		// Single-line Go editor: Up always escapes (Python does at y==0).
+		cw.app.SetFocus(cw.titleEditor)
+		return nil
+	case cw.isBannerButton(focused):
+		if cw.app.Main != nil {
+			cw.app.Main.FocusMenu()
+		}
+		return nil
+	case focused == cw.messageList && cw.messageList.TopIsVisible():
+		if buttons := cw.bannerButtons(); cw.hasVisibleTrustBanner() && len(buttons) > 0 {
+			cw.app.SetFocus(buttons[0])
+			return nil
+		}
+		if cw.app.Main != nil {
+			cw.app.Main.FocusMenu()
+		}
+		return nil
+	}
+	return event
+}
+
+// handleFrameDown implements the Python "down" focus path of an open
+// conversation:
+//
+//   - message-list bottom → frame footer composer (ConversationFrame.keypress
+//     "down" + bottom_is_visible → focus_position = "footer",
+//     Conversations.py:1866-1867); with the full editor active Python's footer
+//     is the full_editor Pile whose focus lands on the title editor;
+//   - banner buttons Down → frame body (Python: Frame header "down" result →
+//     focus_position = "body");
+//   - full-editor title editor Down → content editor (Python: urwid Edit
+//     returns "down" at the last line and the full_editor Pile moves focus to
+//     the next selectable).
+func (cw *ConversationWidget) handleFrameDown(event *tcell.EventKey) *tcell.EventKey {
+	if cw.app == nil {
+		return event
+	}
+	focused := cw.app.GetFocus()
+	switch {
+	case focused == cw.messageList && cw.messageList.BottomIsVisible():
+		if cw.fullEditorActive {
+			cw.app.SetFocus(cw.titleEditor)
+		} else {
+			cw.app.SetFocus(cw.editor)
+		}
+		return nil
+	case cw.isBannerButton(focused):
+		cw.app.SetFocus(cw.messageList)
+		return nil
+	case focused == cw.titleEditor && cw.fullEditorActive:
+		cw.app.SetFocus(cw.editor)
+		return nil
+	}
+	return event
+}
+
+// handleFrameLeftRight implements the Python urwid Columns traversal for the
+// conversation column (columns_widget, Conversations.py:221-229): the message
+// list and the banner buttons do not consume Left/Right, so they bubble to the
+// Columns. Left from the conversation column moves focus back to the
+// conversations list; within the banner row Left/Right move between the
+// Trust/Block/Do nothing buttons, and at the row's edges the key bubbles
+// (leftmost Left → the list column, rightmost Right → dies at the last
+// column). The editors consume Left/Right as cursor movement, so they fall
+// through unchanged.
+func (cw *ConversationWidget) handleFrameLeftRight(event *tcell.EventKey) *tcell.EventKey {
+	if cw.app == nil {
+		return event
+	}
+	focused := cw.app.GetFocus()
+	if event.Key() == tcell.KeyLeft {
+		if idx, ok := cw.bannerButtonIndex(focused); ok {
+			if idx == 0 {
+				if cw.OnSwitchToList != nil {
+					cw.OnSwitchToList()
+					return nil
+				}
+				return event
+			}
+			cw.app.SetFocus(cw.bannerButtons()[idx-1])
+			return nil
+		}
+		if focused == cw.messageList && cw.OnSwitchToList != nil {
+			cw.OnSwitchToList()
+			return nil
+		}
+		return event
+	}
+	// Right
+	if idx, ok := cw.bannerButtonIndex(focused); ok {
+		if buttons := cw.bannerButtons(); idx < len(buttons)-1 {
+			cw.app.SetFocus(buttons[idx+1])
+		}
+		// Rightmost button: the key bubbles to the Columns, which has no
+		// further column — Python drops it.
+		return nil
+	}
+	return event
+}
+
+// bannerButtons returns the current trust-banner buttons (empty when the
+// banner is hidden).
+func (cw *ConversationWidget) bannerButtons() []*tview.Button {
+	return cw.bannerBtns
+}
+
+// BannerButtons is the exported view of the current trust-banner buttons
+// (Trust, Block, Do nothing) for focus-path tests.
+func (cw *ConversationWidget) BannerButtons() []*tview.Button {
+	return cw.bannerButtons()
+}
+
+// isBannerButton reports whether focused is one of the trust-banner buttons.
+func (cw *ConversationWidget) isBannerButton(focused tview.Primitive) bool {
+	_, ok := cw.bannerButtonIndex(focused)
+	return ok
+}
+
+// bannerButtonIndex returns the index of focused within the banner buttons.
+func (cw *ConversationWidget) bannerButtonIndex(focused tview.Primitive) (int, bool) {
+	for i, b := range cw.bannerBtns {
+		if b == focused {
+			return i, true
+		}
+	}
+	return 0, false
 }
 
 // toggleFocusArea swaps focus between the composer (editor, frame footer) and
@@ -537,6 +730,7 @@ func (cw *ConversationWidget) refreshTrustBanner() {
 		cw.headerFlex.ResizeItem(cw.trustBanner, 1, 0)
 	} else {
 		cw.trustBanner.Clear()
+		cw.bannerBtns = nil
 		cw.headerFlex.ResizeItem(cw.trustBanner, 0, 0)
 	}
 }
@@ -566,11 +760,22 @@ func (cw *ConversationWidget) buildTrustBanner() {
 		b.SetLabelColor(fg)
 		b.SetLabelColorActivated(tcell.ColorMaroon)
 		b.SetBackgroundColorActivated(cubeHex3("#111"))
+		// Focus part + shortcut bar: the banner lives in the frame header, so
+		// Python's shortcuts() dispatches the body shortcut bar while a banner
+		// button holds focus (Conversations.py:1772-1779 shortcuts():
+		// frame.focus_position != "footer" → body_shortcuts).
+		b.SetFocusFunc(func() {
+			cw.focusPart = "header"
+			if cw.OnBannerFocus != nil {
+				cw.OnBannerFocus()
+			}
+		})
 		return b
 	}
 	btnTrust := button("Trust", cw.trustClick)
 	btnBlock := button("Block", cw.blockClick)
 	btnNothing := button("Do nothing", cw.ignoreClick)
+	cw.bannerBtns = []*tview.Button{btnTrust, btnBlock, btnNothing}
 	spacer := func() *tview.TextView {
 		s := tview.NewTextView()
 		s.SetBackgroundColor(bg)
@@ -620,50 +825,73 @@ func (cw *ConversationWidget) ignoreClick() {
 	}
 }
 
-// renderMessages renders all messages into the message list.
-// renderMessages renders the message list into the messageList TextView. Each
-// message header (title string + style) is built by LXMessageHeader for
-// Python LXMessageWidget parity (Conversations.py:2576-2670); the message body
-// is the indented content (Python indents every line two columns).
+// renderMessages renders the message list into per-message entries (Python
+// update_message_widgets builds one LXMessageWidget Pile per message and puts
+// them in the messagelist IndicativeListBox, Conversations.py:2254-2304). Each
+// entry carries the header line(s) FIRST (title string + style), then the
+// indented content lines, then the trailing blank row — the LXMessageWidget
+// Pile order [title, content, ""] (Conversations.py:2670-2762).
 func (cw *ConversationWidget) renderMessages() {
-	var sb strings.Builder
+	entries := make([]*messageListView, 0, len(cw.messages))
 	for _, msg := range cw.messages {
-		in := cw.headerInputs(msg)
-		title, style := LXMessageHeader(in)
-		// Python wraps each header in AttrMap(..., "msg_header_<style>")
-		// (Conversations.py:2596-2670 + TextUI.py palette), painting a dark
-		// foreground on a colored background. The messageListView.Draw
-		// override extends the bg to the full row width (tview's TextView
-		// only paints a color tag's bg onto actual text characters).
-		sb.WriteString(cw.styleHeader(title, style))
-		sb.WriteString("\n")
+		entries = append(entries, cw.renderMessageEntry(msg))
+	}
+	cw.messageList.SetEntries(entries)
+}
 
-		// Body: indent every content line two columns (Python LXMessageWidget
-		// "  "+line for non-markdown content).
-		for line := range strings.SplitSeq(msg.Content, "\n") {
-			sb.WriteString("  ")
-			sb.WriteString(line)
-			sb.WriteString("\n")
-		}
-		if msg.HasAttach && len(msg.AttachmentNames) == 0 {
-			fmt.Fprintf(&sb, "  [gray]%v %v attachment(s)[-]\n", cw.glyphs()["file"], msg.AttachCount)
-		}
+// renderedMessageText returns the concatenated per-message entry text (tags
+// stripped when strip is true) — the diagnostics view of what the message
+// list renders, mirroring reading the old flat TextView.
+func (cw *ConversationWidget) renderedMessageText(strip bool) string {
+	var sb strings.Builder
+	for _, e := range cw.messageList.entries {
+		sb.WriteString(e.GetText(strip))
+	}
+	return sb.String()
+}
+
+// renderMessageEntry renders one message into its list entry view: the header
+// line(s) first (LXMessageHeader title + msg_header style), then the indented
+// content lines (Python "  "+line), an attachment count fallback row when the
+// wire attachment names are absent, and the trailing empty row. Python wraps
+// the title in AttrMap(..., "msg_header_<style>") (Conversations.py:2596-2670
+// + TextUI.py palette); the messageListView.Draw override extends that
+// background to the full row width (tview's TextView only paints a color tag's
+// bg onto actual text characters).
+func (cw *ConversationWidget) renderMessageEntry(msg ConversationMessage) *messageListView {
+	var sb strings.Builder
+	in := cw.headerInputs(msg)
+	title, style := LXMessageHeader(in)
+	// styleHeader appends the newline after the header row(s); the content
+	// rows follow IMMEDIATELY (Python's LXMessageWidget Pile is
+	// [title, content, ""] — no blank between title and content,
+	// Conversations.py:2757-2762).
+	sb.WriteString(cw.styleHeader(title, style))
+
+	// Body: indent every content line two columns (Python LXMessageWidget
+	// "  "+line for non-markdown content).
+	for line := range strings.SplitSeq(msg.Content, "\n") {
+		sb.WriteString("  ")
+		sb.WriteString(line)
 		sb.WriteString("\n")
 	}
-
-	if len(cw.messages) == 0 {
-		sb.WriteString("[gray]No messages yet. Type below to send.[-]\n")
+	if msg.HasAttach && len(msg.AttachmentNames) == 0 {
+		fmt.Fprintf(&sb, "  [gray]%v %v attachment(s)[-]\n", cw.glyphs()["file"], msg.AttachCount)
 	}
+	sb.WriteString("\n")
 
-	cw.messageList.SetText(sb.String())
-	// Match Python's update_message_widgets, which constructs the
-	// IndicativeListBox with position = len(message_widgets)-1
-	// (Conversations.py:2304) so the newest message (last in the
-	// oldest-first sort) is focused and visible. tview's TextView stays at
-	// the top after SetText, so scroll to the end to surface the newest
-	// messages (B14: the conversation view otherwise stays stuck at the
-	// oldest messages after a send/receive).
-	cw.messageList.ScrollToEnd()
+	v := newMessageListView()
+	v.SetDynamicColors(true)
+	v.SetScrollable(true)
+	// Python's messagelist is a bare IndicativeListBox with NO AttrMap
+	// (Conversations.py:2287), so its base color is the terminal default;
+	// message widgets carry their own styling. Do not impose a #bbbbbb
+	// base (Python never does).
+	v.SetTextColor(tcell.ColorDefault)
+	v.SetBackgroundColor(tcell.ColorDefault)
+	v.SetTextAlign(tview.AlignLeft)
+	v.SetText(sb.String())
+	return v
 }
 
 // headerInputs builds MessageHeaderInputs for a message, deriving the LXMF

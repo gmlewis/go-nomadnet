@@ -104,7 +104,11 @@ func (ld *LogDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 	if event == nil {
 		return event
 	}
-	if event.Key() == tcell.KeyUp && ld.logAtTop() {
+	if event.Key() == tcell.KeyUp {
+		// Python LogTerminal.keypress (Log.py:55-61): EVERY Up goes straight
+		// to the main display header — the embedded `tail -fn50` terminal never
+		// scrolls via keys, so there is no scroll-then-escape dance (F1). The
+		// log content is untouched by the transition.
 		if ld.app != nil && ld.app.Main != nil {
 			ld.app.Main.FocusMenu()
 		}
@@ -113,8 +117,10 @@ func (ld *LogDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 	return event
 }
 
-// logAtTop reports whether the log view is scrolled to its top (so Up should
-// collapse focus to the menu). It is false while a modal dialog is open.
+// logAtTop reports whether the log view is scrolled to its top. It is false
+// while a modal dialog is open. No longer part of the Up transition (F1:
+// Python's first Up goes to the header regardless of scroll position), but
+// kept as a scroll-state helper for tests and diagnostics.
 func (ld *LogDisplay) logAtTop() bool {
 	if ld.app != nil && ld.app.Dialogs != nil && ld.app.Dialogs.Open() {
 		return false

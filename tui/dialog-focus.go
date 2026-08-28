@@ -70,6 +70,8 @@ func setItemCapture(p tview.Primitive, cap func(*tcell.EventKey) *tcell.EventKey
 		v.SetInputCapture(cap)
 	case *tview.TextView:
 		v.SetInputCapture(cap)
+	case *tview.Checkbox:
+		v.SetInputCapture(cap)
 	}
 }
 

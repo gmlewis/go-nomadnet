@@ -314,11 +314,32 @@ func (p *pileFiller) HasFocus() bool {
 	return p.Box.HasFocus()
 }
 
+// syncFocusIndex reconciles focusIndex with the actual hasFocus flags so key
+// routing matches Python's Pile.focus_position (which is authoritative —
+// urwid routes keys to focus_position regardless of leaf focus):
+//
+//  1. the item at focusIndex has focus → nothing to do;
+//  2. a DIFFERENT selectable item gained focus (e.g. a mouse click on the
+//     Search field) → adopt it;
+//  3. nothing has focus (a.focus is this pile itself — the common state after
+//     App.SetFocus(pile) early-returns on the already-focused pile while its
+//     children are blurred) → re-focus the item at focusIndex. Without this
+//     branch Enter on the announce list was routed to whichever stale child
+//     still held hasFocus (the tab bar) and swallowed — the D1 bug.
 func (p *pileFiller) syncFocusIndex() {
+	if p.focusIndex >= 0 && p.focusIndex < len(p.selectable) &&
+		p.items[p.selectable[p.focusIndex]].widget.HasFocus() {
+		return
+	}
 	for idx, selIdx := range p.selectable {
 		if p.items[selIdx].widget.HasFocus() {
 			p.focusIndex = idx
 			return
+		}
+	}
+	if p.focusIndex >= 0 && p.focusIndex < len(p.selectable) {
+		if fi := p.focusedItem(); fi != nil {
+			fi.Focus(func(tview.Primitive) {})
 		}
 	}
 }

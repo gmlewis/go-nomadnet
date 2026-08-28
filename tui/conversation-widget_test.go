@@ -357,9 +357,8 @@ func TestConversationWidgetRenderMessages(t *testing.T) {
 	cw := NewConversationWidget(app, "aabb1122")
 
 	cw.SetMessages(nil)
-	text := cw.messageList.GetText(false)
-	if text == "" {
-		t.Error("Empty message list should show placeholder")
+	if got := cw.messageList.EntryCount(); got != 0 {
+		t.Errorf("empty message list entries = %v, want 0 (Python's empty IndicativeListBox)", got)
 	}
 
 	now := time.Now()
@@ -367,18 +366,20 @@ func TestConversationWidgetRenderMessages(t *testing.T) {
 		{Content: "Hello", Timestamp: now, IsSent: true},
 		{Content: "Hi", Timestamp: now.Add(time.Minute), IsSent: false, HasAttach: true, AttachCount: 2},
 	})
-	text = cw.messageList.GetText(false)
-	if text == "" {
-		t.Error("Message list should have content after SetMessages")
+	if got := cw.messageList.EntryCount(); got != 2 {
+		t.Errorf("message list entries = %v, want 2 (one per message)", got)
+	}
+	if got := cw.messageList.entries[1].GetText(false); got == "" {
+		t.Error("second message entry should have content after SetMessages")
 	}
 }
 
 // TestConversationWidgetAutoScrollBottom verifies that after SetMessages the
-// message list is scrolled to the bottom (newest message visible), matching
+// message list is focused on and scrolled to the newest message, matching
 // Python's update_message_widgets which constructs the IndicativeListBox with
 // position = len(message_widgets)-1 (Conversations.py:2304) so the newest
-// message is focused/visible. Without this, the Go TextView stays at the top
-// after SetText, leaving the newest messages off-screen (B14).
+// message is focused/visible. Without this, the view stays at the top after
+// a send/receive, leaving the newest messages off-screen (B14).
 func TestConversationWidgetAutoScrollBottom(t *testing.T) {
 	t.Parallel()
 
@@ -404,15 +405,14 @@ func TestConversationWidgetAutoScrollBottom(t *testing.T) {
 	v.SetRect(0, 0, w, h)
 	v.Draw(screen)
 
-	total := v.GetWrappedLineCount()
-	_, _, _, ch := v.GetInnerRect()
-	posmax := total - ch
-	if posmax <= 0 {
-		t.Fatalf("need overflow: total=%v ch=%v", total, ch)
+	if got := v.FocusIndex(); got != 39 {
+		t.Errorf("focus after SetMessages = %v, want 39 (newest message)", got)
 	}
-	row, _ := v.GetScrollOffset()
-	if row != posmax {
-		t.Errorf("after SetMessages: scrollOffset=%v, want %v (bottom, newest visible); total=%v ch=%v", row, posmax, total, ch)
+	if !v.BottomIsVisible() {
+		t.Error("after SetMessages the newest message must be visible (bottom_is_visible)")
+	}
+	if v.TopIsVisible() {
+		t.Error("a 40-message list in an 8-row viewport must not show the top after SetMessages")
 	}
 }
 
@@ -438,7 +438,7 @@ func TestConversationWidgetRenderHeaderParity(t *testing.T) {
 		Title:              "My Subject",
 	}})
 
-	text := cw.messageList.GetText(false)
+	text := cw.messageList.entries[0].GetText(false)
 	// Prefix "↑ → " (sent + arrow_r) and the deterministic strftime timestamp +
 	// encryption glyph must appear; relative_time is now-dependent so not asserted.
 	for _, want := range []string{"↑ → ", "2023-11-14 21:13:20 ⚿", "| My Subject", "  Hello world"} {

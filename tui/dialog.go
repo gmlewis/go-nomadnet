@@ -133,6 +133,12 @@ type DialogLineBox struct {
 // border. See DialogLineBox.borderInside.
 func (d *DialogLineBox) SetBorderInside(v bool) *DialogLineBox { d.borderInside = v; return d }
 
+// GetTitle returns the dialog's title string (the LineBox top label).
+func (d *DialogLineBox) GetTitle() string { return d.title }
+
+// Content returns the dialog's content primitive (for tree walks in tests).
+func (d *DialogLineBox) Content() tview.Primitive { return d.content }
+
 // NewDialogLineBox creates a new dialog with border and escape handling.
 func NewDialogLineBox(title string, content tview.Primitive, onDismiss func()) *DialogLineBox {
 	d := &DialogLineBox{

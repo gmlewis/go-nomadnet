@@ -31,7 +31,6 @@ type tabBarWidget struct {
 	*tview.Box
 	left, right *UrwidButton
 	divider     int // columns between the two buttons (urwid dividechars)
-	focusRight  bool
 }
 
 // newTabBarWidget lays out left and right TabButtons with a one-column divider.
@@ -64,7 +63,7 @@ func (t *tabBarWidget) Draw(screen tcell.Screen) {
 
 // Focus delegates to the currently-focused button (left by default).
 func (t *tabBarWidget) Focus(delegate func(p tview.Primitive)) {
-	if t.focusRight {
+	if t.right.HasFocus() {
 		t.right.Focus(delegate)
 		return
 	}
@@ -80,7 +79,7 @@ func (t *tabBarWidget) HasFocus() bool {
 func (t *tabBarWidget) InputHandler() func(event *tcell.EventKey, setFocus func(tview.Primitive)) {
 	return t.WrapInputHandler(func(event *tcell.EventKey, setFocus func(tview.Primitive)) {
 		var handler func(event *tcell.EventKey, setFocus func(tview.Primitive))
-		if t.focusRight {
+		if t.right.HasFocus() {
 			handler = t.right.InputHandler()
 		} else {
 			handler = t.left.InputHandler()

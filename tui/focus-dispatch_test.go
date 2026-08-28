@@ -102,15 +102,17 @@ func TestFocusDispatch(t *testing.T) {
 			"body", 0, "conversations", false, false},
 
 		// ---- Menu region ----
-		{"menu/left wraps focus, no page switch", "menu", 0, "conversations",
+		// H1: urwid Columns does NOT wrap menu focus at the edges (verified
+		// with a urwid 4.0.3 probe) — Left at the leftmost keeps the highlight.
+		{"menu/left at edge stays, no page switch", "menu", 0, "conversations",
 			tcell.NewEventKey(tcell.KeyLeft, 0, tcell.ModNone),
-			"menu", last, "conversations", true, false},
+			"menu", 0, "conversations", true, false},
 		{"menu/right moves focus, no page switch", "menu", 0, "conversations",
 			tcell.NewEventKey(tcell.KeyRight, 0, tcell.ModNone),
 			"menu", 1, "conversations", true, false},
-		{"menu/right at end wraps", "menu", last, "conversations",
+		{"menu/right at end stays", "menu", last, "conversations",
 			tcell.NewEventKey(tcell.KeyRight, 0, tcell.ModNone),
-			"menu", 0, "conversations", true, false},
+			"menu", last, "conversations", true, false},
 		{"menu/enter activates page, keeps menu focus", "menu", 1, "conversations",
 			tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone),
 			"menu", 1, "network", true, false},

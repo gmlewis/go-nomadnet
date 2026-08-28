@@ -54,19 +54,19 @@ func TestLogDisplayUpAtTopToMenu(t *testing.T) {
 	}
 }
 
-// TestLogDisplayUpMidScrollForwards asserts Up when the log is scrolled down
-// (not at the top) is forwarded to the view for scrolling, NOT stolen to focus
-// the menu.
-func TestLogDisplayUpMidScrollForwards(t *testing.T) {
+// TestLogDisplayUpMidScrollGoesToMenu pins F1 (Python Log.py:55-61): EVERY Up
+// collapses focus to the menu — even mid-scroll — because the embedded
+// `tail -fn50` terminal never scrolls via keys. The log content is untouched.
+// (This reverses the earlier Go behavior of scrolling until the very top.)
+func TestLogDisplayUpMidScrollGoesToMenu(t *testing.T) {
 	t.Parallel()
 
 	app := newTestApp()
 	app.Main = NewMainDisplay(app, ThemeDark, GlyphUnicode)
 	ld := NewLogDisplay(app, "", 50)
 
-	// Put content in the view and force a non-top scroll offset by scrolling to
-	// the end (offset becomes large once laid out; without a screen we simulate
-	// "not at top" by setting the view's scroll position directly).
+	// Force a non-top scroll offset to prove the transition happens regardless
+	// of scroll position.
 	ld.logView.SetText("line\nline\nline\nline\nline")
 	ld.logView.ScrollTo(3, 0)
 
@@ -74,12 +74,11 @@ func TestLogDisplayUpMidScrollForwards(t *testing.T) {
 	app.Main.focusRegion = "body"
 
 	up := tcell.NewEventKey(tcell.KeyUp, 0, tcell.ModNone)
-	got := ld.handleInput(up)
-	if got == nil {
-		t.Error("handleInput(Up) consumed mid-scroll; want forwarded for scrolling")
+	if got := ld.handleInput(up); got != nil {
+		t.Error("handleInput(Up) not consumed; want the FocusMenu transition (Log.py:58-61)")
 	}
-	if app.Main.focusRegion != "body" {
-		t.Errorf("focusRegion = %q, want body (Up should scroll, not steal focus)", app.Main.focusRegion)
+	if app.Main.focusRegion != "menu" {
+		t.Errorf("focusRegion = %q, want menu (first Up goes to the header)", app.Main.focusRegion)
 	}
 }
 

@@ -40,6 +40,10 @@ type InterfaceInfo struct {
 	RX        int64 // cumulative bytes received
 	Bandwidth float64
 	Traffic   []float64 // recent traffic samples for chart
+	// Params holds the interface's raw config parameters for the ShowInterface
+	// detail view's Connection/Radio/Network/IFAC/Additional blocks (G1,
+	// Python Interfaces.py:2436-2492). nil when unavailable.
+	Params map[string]string
 }
 
 // InterfacesDisplay shows RNS interface status as a list of selectable,
@@ -58,6 +62,16 @@ type InterfacesDisplay struct {
 	// "dialog" = the SlotOverlay. dialogOverlay tracks the active overlay.
 	pages         *tview.Pages
 	dialogOverlay *SlotOverlay
+
+	// showWidget is the full-page ShowInterface detail view (G1) mounted as
+	// the "show" page over the interface list (Python self.widget =
+	// show_interface, Interfaces.py:3004-3007).
+	showWidget *interfaceShow
+
+	// OnToggleInterface fires the Disable/Enable action from the ShowInterface
+	// footer (Python on_toggle_enabled, Interfaces.py:2516). The wiring layer
+	// owns the config write + confirm flow.
+	OnToggleInterface func(info InterfaceInfo)
 
 	// editor is the embedded terminal running an external editor (Ctrl-W /
 	// "Open Text Editor"), mounted as the "editor" page over the interface
@@ -190,6 +204,49 @@ func (id *InterfacesDisplay) closeEditor() {
 	id.editor.Close()
 	id.editor = nil
 	id.pages.RemovePage("editor")
+	id.pages.SwitchToPage("main")
+	if id.app != nil {
+		id.app.SetFocus(id.layout)
+	}
+}
+
+// ShowInterfaceDetail mounts the full-page ShowInterface detail view (G1,
+// Python switch_to_show_interface, Interfaces.py:3004-3007) for the given
+// interface, replacing the list. Back (button/Esc) returns to the list
+// (Python switch_to_list, Interfaces.py:3011-3016, G2).
+func (id *InterfacesDisplay) ShowInterfaceDetail(info InterfaceInfo) {
+	if id.showWidget != nil {
+		id.closeShowInterface()
+	}
+	show := NewInterfaceShow(id.app, info)
+	show.OnBack = func() { id.closeShowInterface() }
+	show.OnEdit = func() {
+		id.closeShowInterface()
+		if id.OnEditInterface != nil {
+			id.OnEditInterface()
+		}
+	}
+	show.OnToggle = func() {
+		if id.OnToggleInterface != nil {
+			id.OnToggleInterface(info)
+		}
+	}
+	id.showWidget = show
+	id.pages.AddPage("show", show.Widget(), true, true)
+	id.pages.SwitchToPage("show")
+	if id.app != nil {
+		id.app.SetFocus(show.body)
+	}
+}
+
+// closeShowInterface restores the interface list after the detail view
+// (Python switch_to_list, Interfaces.py:3011-3016).
+func (id *InterfacesDisplay) closeShowInterface() {
+	if id.showWidget == nil {
+		return
+	}
+	id.showWidget = nil
+	id.pages.RemovePage("show")
 	id.pages.SwitchToPage("main")
 	if id.app != nil {
 		id.app.SetFocus(id.layout)

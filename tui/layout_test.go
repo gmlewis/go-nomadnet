@@ -243,7 +243,7 @@ func TestLayoutConversationWidgetMessages(t *testing.T) {
 		{Content: "Failed msg", Timestamp: now.Add(2 * time.Minute), IsFailed: true},
 	}
 	cw.SetMessages(msgs)
-	text := cw.messageList.GetText(false)
+	text := cw.renderedMessageText(false)
 	if text == "" {
 		t.Error("message list should have content after SetMessages")
 	}

@@ -17,6 +17,7 @@ package app
 
 import (
 	"bufio"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -36,15 +37,29 @@ type InterfaceStat struct {
 	TX        int64
 	RX        int64
 	Bitrate   int
+	// Params holds the interface's raw config parameters (everything except
+	// type/interface_enabled/enabled/selected_interface_mode/name, which the
+	// detail view shows elsewhere), keyed by config key. It feeds the
+	// ShowInterface parameter blocks (G1, Python Interfaces.py:2436-2492).
+	Params map[string]string
 }
 
 // interfaceConfigEntry is one [[Name]] subsection under [interfaces] in the RNS
 // config, in file order, with the properties the list view needs.
 type interfaceConfigEntry struct {
-	name    string // the [[...]] section key
-	iface   string // display name: the "name" property, else the section key
-	typeStr string // the "type" property
-	enabled bool   // interface_enabled AND enabled both non-false (default true)
+	name    string            // the [[...]] section key
+	iface   string            // display name: the "name" property, else the section key
+	typeStr string            // the "type" property
+	enabled bool              // interface_enabled AND enabled both non-false (default true)
+	params  map[string]string // remaining config keys, for the detail view
+}
+
+// detailSkipParams are the config keys ShowInterface never lists as parameter
+// rows (they are displayed in the Type/Status rows instead), matching Python's
+// skip list (Interfaces.py:2442).
+var detailSkipParams = map[string]bool{
+	"type": true, "interface_enabled": true, "enabled": true,
+	"selected_interface_mode": true, "name": true,
 }
 
 // RNSConfigPath returns the path to the RNS config file in use, or "" if it is
@@ -131,6 +146,10 @@ func parseInterfaceConfig(path string) []interfaceConfigEntry {
 					cur.enabled = false
 				}
 			}
+			if cur.params == nil {
+				cur.params = map[string]string{}
+			}
+			cur.params[key] = value
 		}
 	}
 	if err := sc.Err(); err != nil {
@@ -192,6 +211,17 @@ func (a *App) InterfaceStats() []InterfaceStat {
 			Type:    e.typeStr,
 			Enabled: e.enabled,
 		}
+		// Strip the keys the detail view shows elsewhere (Python
+		// Interfaces.py:2442); empty values are skipped too (Interfaces.py:2439).
+		for k, v := range e.params {
+			if detailSkipParams[k] || v == "" {
+				continue
+			}
+			if stat.Params == nil {
+				stat.Params = map[string]string{}
+			}
+			stat.Params[k] = v
+		}
 		if live, ok := statsByName[e.name]; ok {
 			stat.Connected = live.Connected
 			stat.TX = live.TX
@@ -201,4 +231,64 @@ func (a *App) InterfaceStats() []InterfaceStat {
 		out = append(out, stat)
 	}
 	return out
+}
+
+// ToggleInterfaceEnabled flips the interface_enabled flag of the named
+// [[interface]] section in the RNS config file and persists it, matching
+// Python's on_toggle_enabled config write (Interfaces.py:2538-2556). The
+// interface list is rebuilt from the config, so the change shows after the
+// caller refreshes (a restart is still required to apply it to a running
+// transport — Python says the same).
+func (a *App) ToggleInterfaceEnabled(name string) error {
+	path := a.RNSConfigPath()
+	if path == "" {
+		return fmt.Errorf("RNS config path not available")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read RNS config: %w", err)
+	}
+
+	lines := strings.Split(string(data), "\n")
+	section := ""
+	inTarget := false
+	found := false
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(trimmed, "[[") && strings.HasSuffix(trimmed, "]]") && !strings.HasPrefix(trimmed, "[[["):
+			section = strings.Trim(trimmed, "[] ")
+			inTarget = section == name
+			if inTarget {
+				found = true
+			}
+		case strings.HasPrefix(trimmed, "["):
+			// Single-bracket sections can never match a target [[interface]]
+			// section, so section doesn't need updating here — just stop
+			// scanning the current target.
+			inTarget = false
+		default:
+			if !inTarget {
+				continue
+			}
+			key, value, ok := strings.Cut(trimmed, "=")
+			if !ok || strings.TrimSpace(key) != "interface_enabled" {
+				continue
+			}
+			current := !isFalseyConfigBool(value)
+			lines[i] = "interface_enabled = " + boolConfigWord(!current)
+		}
+	}
+	if !found {
+		return fmt.Errorf("interface %v not found in the RNS config", name)
+	}
+	return os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0o600)
+}
+
+// boolConfigWord renders a bool the way RNS config files spell it.
+func boolConfigWord(v bool) string {
+	if v {
+		return "True"
+	}
+	return "False"
 }

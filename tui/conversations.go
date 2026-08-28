@@ -58,7 +58,7 @@ type ConversationsDisplay struct {
 	content             *tview.Flex
 	leftPanel           *tview.Flex
 	list                *tview.List
-	ilb                 *IndicativeListBox
+	ilb                 *conversationsListBox
 	detail              *tview.TextView
 	tabBar              *tabBarWidget
 	tabTrusted          *UrwidButton
@@ -75,12 +75,22 @@ type ConversationsDisplay struct {
 	dialogOpen          bool
 	ingestURIValue      string
 	shortcutFocus       string // "list" (default), "editor", or "body" — selects the shortcut bar (Conversations.py:1765-1779)
+	// tabFocus is the focused tab index within the tab bar (0=Trusted,
+	// 1=Untrusted), mirroring Python's tab_bar Columns focus_position
+	// (Conversations.py:392-398). It decides which tab button receives focus
+	// when Up from the list reaches the tab bar (A6).
+	tabFocus int
 	// listSlotOverlay, when non-nil, is a SlotOverlay temporarily replacing
 	// leftPanel in content[0] for an in-slot dialog (Python's
 	// columns_widget.contents[0] = urwid.Overlay(...), Conversations.py:381/
 	// 607/810/1022/1116/1269/1474/1604/2054). CloseListSlotDialog restores
 	// leftPanel. Python places these dialogs in the 52-wide conversations list
 	// column (RELATIVE_100 or a fixed width), NOT as a screen-centered modal.
+	// outer wraps content so the My LXMF QR dialog can replace the WHOLE
+	// display (Python self.widget.original_widget = overlay,
+	// Conversations.py:685-692); fullSlotOverlay is that overlay when shown.
+	outer           *tview.Flex
+	fullSlotOverlay *SlotOverlay
 	listSlotOverlay *SlotOverlay
 	// detailSlotOverlay, when non-nil, is a SlotOverlay temporarily replacing
 	// the right-pane (conversation body / detail) item in content[1] for an
@@ -183,13 +193,15 @@ type ConversationsDisplay struct {
 	// Conversations.py:1566-1575). The status/progress widgets are held so
 	// updateSyncProgress can mutate them in place each tick; syncHooks supplies
 	// the live values; syncStop cancels the refresh goroutine on dismiss.
-	syncStatusText  *tview.TextView
-	syncProgressBox *tview.TextView
-	syncSyncBtn     *UrwidButton
-	syncHooks       SyncDialogHooks
-	syncStop        chan struct{}
-	syncWG          sync.WaitGroup
-	syncMutex       sync.Mutex
+	syncStatusText *tview.TextView
+	syncSyncBtn    *UrwidButton
+	// syncLimitRadio is the "Limit to" radio of the sync dialog (Python
+	// r_mlim, Conversations.py:1369); checked → SyncNow reports SyncLimited.
+	syncLimitRadio *RadioButton
+	syncHooks      SyncDialogHooks
+	syncStop       chan struct{}
+	syncWG         sync.WaitGroup
+	syncMutex      sync.Mutex
 }
 
 // NewConversationsDisplay creates a new conversations display.
@@ -217,8 +229,20 @@ func NewConversationsDisplay(app *App, convs []ConversationInfo) *ConversationsD
 	// IndicativeListBox, Conversations.py:403-408).
 	cd.list = tview.NewList()
 	cd.list.SetHighlightFullLine(true)
+	// Python's IndicativeListBox (urwid ListBox) does NOT wrap: Up at the top
+	// bubbles "up" to the Pile (→ tab bar) and Down at the bottom bubbles
+	// "down" and is dropped by the MainFrame — the live-verified A5 behavior
+	// (selection stays on the last entry). tview's forked List defaults to
+	// wrapAround=true, which would jump the selection to item 0 instead.
+	cd.list.SetWrapAround(false)
 	ApplyListFocusStyle(cd.list, cd.app.Theme)
-	cd.ilb = NewIndicativeListBox(cd.list)
+	// conversationsListBox marks this list as the Conversations page's list so
+	// the main dispatcher's Up-at-top→menu transition defers to the page: Up
+	// at the top of a NON-empty list must land on the tab bar first (Python
+	// ConversationsArea.keypress → Pile previous-selectable, A6); only an
+	// EMPTY list collapses straight to the menubar (ilb.body_is_empty,
+	// Conversations.py:1800-1802).
+	cd.ilb = &conversationsListBox{IndicativeListBox: NewIndicativeListBox(cd.list)}
 
 	// Default the shortcut region to "list": on first display the list pane
 	// (left column) is the focused region, and Python's focus-path dispatch
@@ -276,7 +300,12 @@ func NewConversationsDisplay(app *App, convs []ConversationInfo) *ConversationsD
 	content.AddItem(leftPanel, cd.listWidth, 0, true)
 	content.AddItem(cd.detail, 0, 1, false)
 	cd.content = content
-	cd.widget = content
+	// Python's conversations display widget is a WidgetPlaceholder around the
+	// columns_widget (Conversations.py:230) so whole-display overlays (the My
+	// LXMF QR dialog, Conversations.py:685-692) can swap original_widget. The
+	// outer Flex mirrors that placeholder.
+	cd.outer = tview.NewFlex().SetDirection(tview.FlexRow).AddItem(content, 0, 1, true)
+	cd.widget = cd.outer
 
 	// Set up list callback — pressing Enter/Space on a list item opens the
 	// conversation (Python's "click" signal → display_conversation,
@@ -299,8 +328,14 @@ func NewConversationsDisplay(app *App, convs []ConversationInfo) *ConversationsD
 	// primitives get their own focus funcs in DisplayConversation.
 	listFocus := func() { cd.setShortcutRegion("list") }
 	cd.list.SetFocusFunc(listFocus)
-	cd.tabTrusted.SetFocusFunc(listFocus)
-	cd.tabUntrusted.SetFocusFunc(listFocus)
+	cd.tabTrusted.SetFocusFunc(func() {
+		cd.tabFocus = 0
+		listFocus()
+	})
+	cd.tabUntrusted.SetFocusFunc(func() {
+		cd.tabFocus = 1
+		listFocus()
+	})
 	cd.showBlockedCheckbox.SetFocusFunc(listFocus)
 
 	return cd
@@ -375,12 +410,40 @@ func (cd *ConversationsDisplay) GetShortcutText() string {
 // funcs), so it accurately reflects which column has focus. When a dialog overlay
 // is open this capture does not run at all (the overlay sits in a separate Pages
 // layer and receives keys directly), so dialogs are unaffected.
+// conversationsListBox wraps the Conversations page's IndicativeListBox. The
+// distinct type is the marker the main dispatcher's bodyListAtTop checks:
+// Python's ConversationsArea.keypress sends Up from the top of a NON-empty
+// list to the Pile, which focuses the tab bar (Conversations.py:1800-1808,
+// A6) — only an EMPTY list goes straight to the menubar.
+type conversationsListBox struct {
+	*IndicativeListBox
+}
+
+// handleInput implements the list-region keyboard dispatch (Python
+// ConversationsArea.keypress, Conversations.py:87-107): the C-e/C-x/C-n/C-u/
+// C-r/C-g/C-o/C-p shortcuts, plus the arrow focus paths urwid provides through
+// its Pile/Columns traversal:
+//
+//   - Up at the top of the list (non-empty): the tab bar — or the "Show
+//     blocked" checkbox first on the untrusted tab, where it sits between the
+//     tab bar and the list in the Pile (Conversations.py:392-410 + A6);
+//   - Up from a tab button or the checkbox: the menubar (Python: the Pile
+//     returns "up" and ConversationsArea sends it to the main display header);
+//   - Down from a tab button: the checkbox (untrusted layout) or the list
+//     (trusted); Down from the checkbox: the list;
+//   - Right from the list, the checkbox, or the rightmost tab: focus moves to
+//     the conversation column (urwid Columns.keypress candidates to the
+//     right, Conversations.py:221-229) — a no-op when no conversation is open
+//     (the empty placeholder column is not selectable);
+//   - Left from the list, checkbox, or leftmost tab: bubbles past the Columns
+//     (no column to the left) and dies — a no-op.
 func (cd *ConversationsDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 	if cd.shortcutFocus != "list" {
 		// Editor or body (right column) has focus: pass the key through to the
 		// conversation widget's frame capture so the editor/body meaning wins.
 		return event
 	}
+	focused := cd.app.GetFocus()
 	switch event.Key() {
 	case tcell.KeyCtrlE:
 		if cd.OnEditPeerInfo != nil {
@@ -420,9 +483,134 @@ func (cd *ConversationsDisplay) handleInput(event *tcell.EventKey) *tcell.EventK
 			cd.OnShowQR()
 		}
 		return nil
+	case tcell.KeyUp:
+		switch {
+		case focused == cd.tabTrusted || focused == cd.tabUntrusted:
+			// Pile top reached: ConversationsArea sends "up" to the header.
+			if cd.app.Main != nil {
+				cd.app.Main.FocusMenu()
+			}
+			return nil
+		case focused == cd.showBlockedCheckbox:
+			// Pile traversal: the checkbox sits BELOW the tab bar in the
+			// untrusted layout, so Up lands on the tab bar first.
+			cd.app.SetFocus(cd.tabButtons()[cd.tabFocus])
+			return nil
+		case focused == tview.Primitive(cd.ilb) || focused == tview.Primitive(cd.list):
+			if cd.ilb.List.GetItemCount() == 0 {
+				// Empty list: Python's ilb.body_is_empty branch goes straight
+				// to the menubar (Conversations.py:1800-1802).
+				if cd.app.Main != nil {
+					cd.app.Main.FocusMenu()
+				}
+				return nil
+			}
+			if cd.ilb.List.GetCurrentItem() != 0 {
+				// Not at the top item: the inner ListBox consumes the key and
+				// moves the selection (Python: urwid ListBox "up" handled).
+				return event
+			}
+			// Pile traversal: previous selectable above the list — the
+			// "Show blocked" checkbox on the untrusted layout, else the tab bar.
+			if !cd.showTrusted && cd.showBlockedCheckbox != nil && cd.pileHasItem(cd.showBlockedCheckbox) {
+				cd.app.SetFocus(cd.showBlockedCheckbox)
+			} else {
+				cd.app.SetFocus(cd.tabButtons()[cd.tabFocus])
+			}
+			return nil
+		}
+	case tcell.KeyDown:
+		switch {
+		case focused == cd.tabTrusted || focused == cd.tabUntrusted:
+			// Pile traversal: next selectable below the tab bar.
+			if !cd.showTrusted && cd.showBlockedCheckbox != nil && cd.pileHasItem(cd.showBlockedCheckbox) {
+				cd.app.SetFocus(cd.showBlockedCheckbox)
+			} else {
+				cd.app.SetFocus(cd.ilb)
+			}
+			return nil
+		case focused == cd.showBlockedCheckbox:
+			cd.app.SetFocus(cd.ilb)
+			return nil
+		}
+	case tcell.KeyRight:
+		// urwid Columns: an unconsumed Right moves focus to the next
+		// selectable column — the conversation column. From the trusted tab
+		// the key first moves the tab focus (the tab_bar Columns consumes it);
+		// from the rightmost tab it bubbles to the outer Columns.
+		if focused == tview.Primitive(cd.tabTrusted) {
+			cd.tabFocus = 1
+			cd.app.SetFocus(cd.tabUntrusted)
+			return nil
+		}
+		if cd.conversationColumnSelectable() &&
+			(focused == tview.Primitive(cd.ilb) || focused == tview.Primitive(cd.list) ||
+				focused == tview.Primitive(cd.tabUntrusted) || focused == tview.Primitive(cd.showBlockedCheckbox)) {
+			cd.focusConversationColumn()
+			return nil
+		}
+	case tcell.KeyLeft:
+		// urwid Columns: from column 0 there is no previous column, so Left
+		// bubbles past the Columns and dies — except within the tab bar.
+		if focused == tview.Primitive(cd.tabUntrusted) {
+			cd.tabFocus = 0
+			cd.app.SetFocus(cd.tabTrusted)
+			return nil
+		}
 	}
 
 	return event
+}
+
+// tabButtons returns the tab-bar buttons in row order.
+func (cd *ConversationsDisplay) tabButtons() []*UrwidButton {
+	return []*UrwidButton{cd.tabTrusted, cd.tabUntrusted}
+}
+
+// pileHasItem reports whether the checkbox is part of the current pile layout
+// (Python _apply_pile_layout only includes show_blocked_checkbox on the
+// untrusted tab, Conversations.py:316-318).
+func (cd *ConversationsDisplay) pileHasItem(w tview.Primitive) bool {
+	for i := 0; i < cd.leftPanel.GetItemCount(); i++ {
+		if cd.leftPanel.GetItem(i) == w {
+			return true
+		}
+	}
+	return false
+}
+
+// conversationColumnSelectable reports whether the right column can take
+// focus (Python: urwid Columns skips non-selectable columns; the empty
+// "No conversation selected" placeholder is a Filler over a Text — not
+// selectable — so Right is a no-op without an open conversation).
+func (cd *ConversationsDisplay) conversationColumnSelectable() bool {
+	return cd.currentWidget != nil
+}
+
+// focusConversationColumn moves focus into the open conversation's pane at its
+// current focus part (Python's Columns keeps each column's own focus; the
+// ConversationFrame's focus_position is footer/body/header).
+func (cd *ConversationsDisplay) focusConversationColumn() {
+	cw := cd.currentWidget
+	if cw == nil {
+		return
+	}
+	switch cw.focusPart {
+	case "body":
+		cd.app.SetFocus(cw.messageList)
+	case "header":
+		if buttons := cw.BannerButtons(); len(buttons) > 0 {
+			cd.app.SetFocus(buttons[0])
+			return
+		}
+		cd.app.SetFocus(cw.editor)
+	default:
+		if cw.fullEditorActive {
+			cd.app.SetFocus(cw.titleEditor)
+		} else {
+			cd.app.SetFocus(cw.editor)
+		}
+	}
 }
 
 // GetSelectedConversation returns the currently selected ConversationInfo.
@@ -495,7 +683,10 @@ func (cd *ConversationsDisplay) DisplayConversation(sourceHash string) {
 		// and keeps cd.handleInput's list-region gate (shortcutFocus=="list")
 		// accurate so list shortcuts work again.
 		if cd.app != nil {
-			cd.app.SetFocus(cd.list)
+			// Focus the list wrapper (not the bare List) so the main
+			// dispatcher's Up-at-top logic sees the conversationsListBox
+			// marker (A6: Up at the top lands on the tab bar, not the menu).
+			cd.app.SetFocus(cd.ilb)
 		}
 		cd.setShortcutRegion("list")
 	}
@@ -586,10 +777,27 @@ func (cd *ConversationsDisplay) DisplayConversation(sourceHash string) {
 	// Wire focus-region shortcut bars for the conversation widget's editor and
 	// message body (Python shortcuts() frame.focus_position dispatch,
 	// Conversations.py:1772-1779): editor/title editor (frame footer) →
-	// "editor"; message list (frame body) → "body".
-	cw.editor.SetFocusFunc(func() { cd.setShortcutRegion("editor") })
-	cw.titleEditor.SetFocusFunc(func() { cd.setShortcutRegion("editor") })
-	cw.messageList.SetFocusFunc(func() { cd.setShortcutRegion("body") })
+	// "editor"; message list (frame body) → "body"; trust banner buttons
+	// (frame header) → "body" as well (Python's shortcuts() returns
+	// body_shortcuts for any non-footer frame focus). Each also records the
+	// widget's focus part so A2's column traversal can restore it.
+	cw.OnBodyFocus = func() { cd.setShortcutRegion("body") }
+	cw.OnBannerFocus = func() { cd.setShortcutRegion("body") }
+	cw.editor.SetFocusFunc(func() {
+		cw.focusPart = "footer"
+		cd.setShortcutRegion("editor")
+	})
+	cw.titleEditor.SetFocusFunc(func() {
+		cw.focusPart = "footer"
+		cd.setShortcutRegion("editor")
+	})
+	// A2: Left from the conversation column's non-consuming widgets (message
+	// list, banner buttons) moves focus back to the list column — Python's
+	// urwid Columns.keypress "left" traversal (Conversations.py:221-229).
+	cw.OnSwitchToList = func() {
+		cd.app.SetFocus(cd.ilb)
+		cd.setShortcutRegion("list")
+	}
 	// Populate the message list from the wiring layer (mirrors Python
 	// ConversationWidget.__init__ calling update_message_widgets,
 	// Conversations.py:1894).
@@ -777,6 +985,33 @@ func (cd *ConversationsDisplay) Widget() tview.Primitive {
 	return cd.widget
 }
 
+// rightPaneItem returns the current right-column item and its focusable flag:
+// the open conversation widget (focusable, Python's make_conversation_widget
+// column) or the empty detail placeholder (not focusable — urwid's Filler over
+// a Text is not selectable, Conversations.py:222-228).
+func (cd *ConversationsDisplay) rightPaneItem() (tview.Primitive, bool) {
+	if cd.currentWidget != nil {
+		return cd.currentWidget.Widget(), true
+	}
+	return cd.detail, false
+}
+
+// setListColumn replaces the LIST column in place at content index 0, keeping
+// the right column (open conversation or empty detail) at index 1 — Python's
+// columns_widget.contents[0] = (widget, options) replacement
+// (Conversations.py:1024-1029, 381, 607, 810, 1116, 1269, 1474, 1604, 2054).
+// Rebuilding the two items preserves the column ORDER: the previous
+// RemoveItem+AddItem approach APPENDED the dialog at the end, throwing the
+// layout to [conversation | dialog], and CloseListSlotDialog appended
+// leftPanel at the end again, leaving the panes swapped until the next
+// conversation open self-healed them (C2).
+func (cd *ConversationsDisplay) setListColumn(item tview.Primitive) {
+	right, rightFocus := cd.rightPaneItem()
+	cd.content.Clear()
+	cd.content.AddItem(item, cd.listWidth, 0, true)
+	cd.content.AddItem(right, 0, 1, rightFocus)
+}
+
 // ShowListSlotDialog overlays a DialogLineBox on the conversations list column
 // (Python's columns_widget.contents[0] = urwid.Overlay(dialog, bottom=listbox,
 // align=CENTER, width=..., valign=MIDDLE, height=PACK, left=2, right=2),
@@ -797,8 +1032,7 @@ func (cd *ConversationsDisplay) ShowListSlotDialog(dialog *DialogLineBox, widthP
 	}
 	dialog.onDismiss = cd.CloseListSlotDialog
 	cd.listSlotOverlay = ov
-	cd.content.RemoveItem(cd.leftPanel)
-	cd.content.AddItem(ov, cd.listWidth, 0, true)
+	cd.setListColumn(ov)
 	if cd.app != nil {
 		cd.app.SetFocus(ov)
 	}
@@ -810,12 +1044,122 @@ func (cd *ConversationsDisplay) CloseListSlotDialog() {
 	if cd.listSlotOverlay == nil {
 		return
 	}
-	cd.content.RemoveItem(cd.listSlotOverlay)
-	cd.content.AddItem(cd.leftPanel, cd.listWidth, 0, true)
 	cd.listSlotOverlay = nil
+	cd.setListColumn(cd.leftPanel)
 	if cd.app != nil {
 		cd.app.SetFocus(cd.leftPanel)
 	}
+}
+
+// ShowFullSlotDialog overlays a DialogLineBox over the ENTIRE conversations
+// display (Python _overlay_dialog: self.widget.original_widget = urwid.Overlay(
+// dialog, self.columns_widget, align=CENTER, width=("relative", N),
+// valign=MIDDLE, height=PACK, min_width=M), Conversations.py:678-692): the
+// two-pane page shows through around the dialog. widthPct is the relative
+// width, minWidth the urwid min_width floor. Esc/confirm dismisses via
+// CloseFullSlotDialog.
+func (cd *ConversationsDisplay) ShowFullSlotDialog(dialog *DialogLineBox, widthPct, minWidth, dialogHeight int) {
+	if cd.fullSlotOverlay != nil {
+		cd.CloseFullSlotDialog()
+	}
+	ov := NewSlotOverlay(cd.content, dialog, widthPct, dialogHeight)
+	// Python's QR overlay uses the urwid DEFAULT insets (0), not the in-slot
+	// left/right=2 (Conversations.py:678-682).
+	ov.SetInsets(0, 0)
+	if minWidth > 0 {
+		ov.SetMinWidth(minWidth)
+	}
+	dialog.onDismiss = cd.CloseFullSlotDialog
+	cd.fullSlotOverlay = ov
+	cd.outer.Clear()
+	cd.outer.AddItem(ov, 0, 1, true)
+	if cd.app != nil {
+		cd.app.SetFocus(ov)
+	}
+}
+
+// CloseFullSlotDialog restores the two-pane display after a ShowFullSlotDialog
+// overlay. Safe to call when no overlay is active (no-op).
+func (cd *ConversationsDisplay) CloseFullSlotDialog() {
+	if cd.fullSlotOverlay == nil {
+		return
+	}
+	cd.fullSlotOverlay = nil
+	cd.outer.Clear()
+	cd.outer.AddItem(cd.content, 0, 1, true)
+	if cd.app != nil {
+		cd.app.SetFocus(cd.ilb)
+	}
+}
+
+// ShowMyQRDialog renders the My LXMF QR dialog (Python show_my_qr →
+// show_qr_dialog, Conversations.py:630-682): a WHOLE-display centered overlay
+// at 70% relative width (min_width 44) showing the QR code, the address as
+// "< addr >" (spaces inside the brackets), and a 12-wide Close button in a
+// [weight, 12, weight] row. Title "QR Code" when the QR renders, "LXMF
+// Address" (no QR) on failure. Space dismisses (B4 owner decision 2026-08-23).
+func (cd *ConversationsDisplay) ShowMyQRDialog(addr string) {
+	qrText := RenderQRText(addr)
+	title := "QR Code"
+	header := ""
+	if qrText == "" {
+		title = "LXMF Address"
+		header = "LXMF destination address:"
+	}
+
+	centered := func(text string) *tview.TextView {
+		v := tview.NewTextView()
+		v.SetTextAlign(tview.AlignCenter)
+		v.SetText(text)
+		v.SetDynamicColors(true)
+		return v
+	}
+	var qrView *tview.TextView
+	qrLines := 0
+	if qrText != "" {
+		qrView = tview.NewTextView()
+		qrView.SetTextAlign(tview.AlignCenter)
+		qrView.SetText("[white]" + qrText + "[-]")
+		qrView.SetDynamicColors(true)
+		qrLines = strings.Count(qrText, "\n") + 1
+	} else {
+		qrView = tview.NewTextView()
+		qrView.SetTextAlign(tview.AlignCenter)
+		qrView.SetText(header)
+		qrLines = 1
+	}
+
+	addrView := centered("< " + addr + " >")
+	blank := func() *tview.TextView { return tview.NewTextView().SetText("") }
+
+	closeBtn := NewUrwidButton("Close").SetSelectedFunc(cd.CloseFullSlotDialog)
+	buttonRow := newURWIDColumns(0, blank(), closeBtn, blank())
+	buttonRow.SetWeight(0, 1)
+	buttonRow.SetFixedWidth(1, 12)
+	buttonRow.SetWeight(2, 1)
+
+	// Space on the QR/address view dismisses (nomadnet's QR popup dismisses on
+	// Space; B4 owner decision 2026-08-23). Keep Esc (Go enhancement).
+	qrView.SetInputCapture(func(ev *tcell.EventKey) *tcell.EventKey {
+		if ev.Rune() == ' ' {
+			cd.CloseFullSlotDialog()
+			return nil
+		}
+		return ev
+	})
+
+	layout := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(blank(), 1, 0, false).
+		AddItem(qrView, qrLines, 0, false).
+		AddItem(blank(), 1, 0, false).
+		AddItem(addrView, 1, 0, false).
+		AddItem(blank(), 1, 0, false).
+		AddItem(buttonRow, 1, 0, false).
+		AddItem(blank(), 1, 0, false)
+
+	dialog := NewDialogLineBox(title, layout, cd.CloseFullSlotDialog)
+	cd.ShowFullSlotDialog(dialog, 70, 44, qrLines+6)
+	wireDialogNav(cd.app, cd.CloseFullSlotDialog, []tview.Primitive{qrView, closeBtn})
 }
 
 // ShowDetailSlotDialog overlays a DialogLineBox on the right-hand conversation
@@ -1905,12 +2249,25 @@ type SyncDialogHooks struct {
 	ShowPercent func() bool
 }
 
-// ShowSyncDialog shows the sync configuration dialog with propagation node
-// selection, download limit, and a live-refreshing status/progress line.
-// Matches Python's sync_conversations() (Conversations.py:1359-1500) plus
-// update_sync_dialog (Conversations.py:1566-1575): the status line + the
-// Sync Now/Cancel Sync button toggle from the live hooks each refresh tick
-// (200ms) while the dialog is open.
+// ShowSyncDialog shows the Message Sync dialog, matching Python's
+// sync_conversations layout/strings/row order (Conversations.py:1359-1541):
+//
+//	title "Message Sync"
+//	"Ⓝ <label>" / "Ⓝ (no default)" centered glyph header row
+//	┄┄┄ divider
+//	centered sync status row (the SyncProgressBar label text)
+//	┄┄┄ divider
+//	[ Sync Now | | Close ]
+//	blank
+//	(X) Download all
+//	( ) Limit to  5          ← GridFlow cell width 12
+//	┄┄┄ divider + node selector (when options exist)
+//
+// and the no-nodes variant (no default propagation node and no options,
+// Conversations.py:1534-1540): the "No trusted nodes found, cannot sync!"
+// explainer with a Close-only button row. The status line + the Sync
+// Now/Cancel Sync button toggle from the live hooks each refresh tick
+// (Python update_sync_dialog, Conversations.py:1566-1575).
 func (cd *ConversationsDisplay) ShowSyncDialog(
 	currentPN string,
 	pnOptions []string,
@@ -1922,45 +2279,41 @@ func (cd *ConversationsDisplay) ShowSyncDialog(
 	cd.syncHooks = hooks
 	mode := SyncAll
 
-	// Mode selection via list
-	modeList := tview.NewList()
-	modeList.SetHighlightFullLine(true)
-	ApplyListFocusStyle(modeList, cd.app.Theme)
-	modeList.AddItem("Download all", "", 0, nil)
-	modeList.AddItem("Limit to:", "", 0, nil)
-	modeList.SetSelectedFunc(func(i int, _ string, _ string, _ rune) {
-		switch i {
-		case 0:
-			mode = SyncAll
-		case 1:
-			mode = SyncLimited
-		}
-	})
+	g := glyphsUnicode
+	if cd.app != nil && cd.app.Glyphs != nil {
+		g = cd.app.Glyphs
+	}
+	generalLayout := currentPN != "" || len(pnOptions) > 0
 
-	// Limit input
+	// Limit input (Python IntEdit("", 5) in a 12-wide GridFlow cell,
+	// Conversations.py:1369-1372).
 	limitInput := tview.NewInputField()
-	limitInput.SetLabel("Messages: ")
 	limitInput.SetText("5")
 	limitInput.SetFieldBackgroundColor(tcell.ColorDefault)
 	limitInput.SetFieldTextColor(tcell.ColorDefault)
 
-	// Live status/progress line (refreshed by updateSyncProgress).
+	// Live status line (refreshed by updateSyncProgress) — Python's
+	// SyncProgressBar label (get_text: status + " N%" when shown).
 	cd.syncStatusText = tview.NewTextView()
 	cd.syncStatusText.SetDynamicColors(true)
+	cd.syncStatusText.SetTextAlign(tview.AlignCenter)
 	cd.syncStatusText.SetTextColor(tcell.ColorDefault)
-	cd.syncProgressBox = tview.NewTextView()
-	cd.syncProgressBox.SetDynamicColors(true)
-	cd.syncProgressBox.SetTextColor(tcell.ColorDefault)
 
-	// Propagation node display
-	pnText := tview.NewTextView()
-	pnText.SetDynamicColors(true)
-	pnText.SetTextColor(tcell.ColorDefault)
-	if currentPN != "" {
-		pnText.SetText("Node: " + currentPN)
-	} else {
-		pnText.SetText("[gray]No propagation node selected[-]")
-	}
+	// Download-mode radios (Python r_mall state=True / r_mlim state=False,
+	// Conversations.py:1368-1369).
+	radioGroup := &DialogRadioGroup{}
+	rAll := NewRadioButton(radioGroup, "Download all", true, false)
+	cd.syncLimitRadio = NewRadioButton(radioGroup, "Limit to", false, false)
+	rAll.SetChangedFunc(func(checked bool) {
+		if checked {
+			mode = SyncAll
+		}
+	})
+	cd.syncLimitRadio.SetChangedFunc(func(checked bool) {
+		if checked {
+			mode = SyncLimited
+		}
+	})
 
 	// The Sync Now / Cancel Sync button label toggles with transfer state
 	// (Python swaps real_sync_button / hidden_sync_button, Conversations.py:1393-1396).
@@ -1993,23 +2346,72 @@ func (cd *ConversationsDisplay) ShowSyncDialog(
 	closeBtn := NewUrwidButton("Close").SetSelectedFunc(dismiss)
 	buttons := CreateUrwidButtonRow(cd.syncSyncBtn, closeBtn)
 
-	// Layout
-	layout := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(pnText, 1, 0, false).
-		AddItem(cd.syncStatusText, 1, 0, false).
-		AddItem(cd.syncProgressBox, 1, 0, false).
-		AddItem(tview.NewTextView().SetText("Download mode:"), 1, 0, false).
-		AddItem(modeList, 2, 0, false).
-		AddItem(limitInput, 1, 0, false).
-		AddItem(tview.NewTextView().SetText(""), 1, 0, false).
-		AddItem(buttons, 1, 0, false)
+	blank := func() tview.Primitive { return tview.NewTextView().SetText("") }
+	radioW := len("( ) ") + len("Limit to")
+
+	var layout *tview.Flex
+	var navItems []tview.Primitive
+	if generalLayout {
+		// Propagation-node header row (Python urwid.Text(g["node"]+header_str,
+		// align=CENTER), Conversations.py:1512-1532): "Ⓝ <label>" — the wiring
+		// supplies the label (display name or hash); empty → "(no default)".
+		pnLabel := currentPN
+		if pnLabel == "" {
+			pnLabel = "(no default)"
+		}
+		pnHeader := tview.NewTextView().SetText(g["node"] + " " + pnLabel)
+		pnHeader.SetTextAlign(tview.AlignCenter)
+		pnHeader.SetDynamicColors(true)
+		pnHeader.SetTextColor(tcell.ColorDefault)
+
+		layout = tview.NewFlex().SetDirection(tview.FlexRow).
+			AddItem(pnHeader, 1, 0, false).
+			AddItem(newDividerRow(g["divider1"]), 1, 0, false).
+			AddItem(cd.syncStatusText, 1, 0, false).
+			AddItem(newDividerRow(g["divider1"]), 1, 0, false).
+			AddItem(buttons, 1, 0, false).
+			AddItem(blank(), 1, 0, false).
+			AddItem(rAll, 1, 0, false).
+			AddItem(tview.NewFlex().SetDirection(tview.FlexColumn).
+				AddItem(cd.syncLimitRadio, radioW, 0, false).
+				AddItem(blank(), 1, 0, false).
+				AddItem(limitInput, 12, 0, false), 1, 0, false)
+
+		navItems = []tview.Primitive{rAll, cd.syncLimitRadio, limitInput, cd.syncSyncBtn, closeBtn}
+
+		if len(pnOptions) > 0 {
+			// Node selector (Python node_selector Pile, Conversations.py:1500-1507):
+			// a "Propagation node:" label, the collapsed PropNodePicker button,
+			// and the "Custom Node..." button.
+			layout.AddItem(newDividerRow(g["divider1"]), 1, 0, false).
+				AddItem(tview.NewTextView().SetText("Propagation node:"), 1, 0, false).
+				AddItem(NewUrwidButton("▾  "+pnOptions[0]), 1, 0, false).
+				AddItem(NewUrwidButton("Custom Node..."), 1, 0, false)
+		}
+	} else {
+		// No trusted nodes variant (Conversations.py:1534-1540): explainer text
+		// and a Close-only button row.
+		closeOnly := tview.NewFlex().SetDirection(tview.FlexColumn).
+			AddItem(blank(), 0, 45, false).
+			AddItem(blank(), 1, 10, false).
+			AddItem(closeBtn, 0, 45, false)
+		layout = tview.NewFlex().SetDirection(tview.FlexRow).
+			AddItem(blank(), 1, 0, false).
+			AddItem(tview.NewTextView().SetText("No trusted nodes found, cannot sync!\n"), 2, 0, false).
+			AddItem(tview.NewTextView().SetText(
+				"To synchronise messages from the network, one or more nodes must be marked as trusted in the Known Nodes list, or a node must manually be selected as the default propagation node. Nomad Network will then automatically sync from the nearest trusted node, or the manually selected one."), 5, 0, false).
+			AddItem(blank(), 1, 0, false).
+			AddItem(closeOnly, 1, 0, false)
+		navItems = []tview.Primitive{closeBtn}
+	}
 
 	cd.updateSyncProgress()
 	// Slot-place in the 52-wide list column (Python columns_widget.contents[0],
-	// RELATIVE_100). 9 content rows + 2 border = 11 PACK height.
-	dialog := NewDialogLineBox("Sync", layout, dismiss)
-	cd.ShowListSlotDialog(dialog, 100, 0, 11)
-	wireDialogNav(cd.app, dismiss, []tview.Primitive{limitInput, cd.syncSyncBtn, closeBtn})
+	// RELATIVE_100). PACK height = content rows + 2 border.
+	dialog := NewDialogLineBox("Message Sync", layout, dismiss)
+	contentRows := layout.GetItemCount()
+	cd.ShowListSlotDialog(dialog, 100, 0, contentRows+2)
+	wireDialogNav(cd.app, dismiss, navItems)
 }
 
 // isSyncActive reports whether a transfer is currently in progress, mirroring
@@ -2045,14 +2447,13 @@ func (cd *ConversationsDisplay) updateSyncProgress() {
 		showPercent = cd.syncHooks.ShowPercent()
 	}
 
+	// Python SyncProgressBar.get_text (Conversations.py:3086-3093): the label
+	// is the status, with " N%" appended when sync_status_show_percent is on.
 	if showPercent {
-		cd.syncStatusText.SetText(fmt.Sprintf("%v (%.0f%%)", status, prog*100))
+		cd.syncStatusText.SetText(fmt.Sprintf("%v %.0f%%", status, prog*100))
 	} else {
 		cd.syncStatusText.SetText(status)
 	}
-	// The progress bar always shows the numeric progress so the bar is visible
-	// even when the status line suppresses the percent (e.g. while connecting).
-	cd.syncProgressBox.SetText(fmt.Sprintf("[%.0f%%]", prog*100))
 
 	if cd.syncSyncBtn != nil {
 		if cd.isSyncActive() {

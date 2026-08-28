@@ -383,6 +383,16 @@ func (nd *NetworkDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 		}
 		return nil
 	case tcell.KeyCtrlU:
+		// Python routes "ctrl u" to browser.url_dialog() from BOTH the
+		// NetworkLeftPile (Network.py:1607-1608) and the BrowserFrame
+		// (Browser.py:30-33), and url_dialog pre-fills the edit with the
+		// browser's current URL (Browser.py:1136, D2). Delegate to the
+		// browser frame's dialog so the pre-filled variant fires; the
+		// display-level OnURLDialog is only the no-browser fallback.
+		if bd := nd.BrowserDisplay(); bd != nil && bd.OnURLDialog != nil {
+			bd.OnURLDialog()
+			return nil
+		}
 		if nd.OnURLDialog != nil {
 			nd.OnURLDialog()
 		}

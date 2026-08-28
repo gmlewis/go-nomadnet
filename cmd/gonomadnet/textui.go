@@ -542,10 +542,10 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	networkDisplay.OnURLDialog = func() {
 		// Python Browser.url_dialog (Browser.py:1135-1182): title "Enter URL",
 		// caption "URL : ", Cancel/Go, overlaid on the browser pane at 65% width.
-		// This handler fires when the browser frame is empty/disconnected
-		// (current_url is ""); the focused browser frame's bd.OnURLDialog below
-		// fires the same dialog pre-filled with the live URL. Both share identical
-		// text so the user sees one dialog.
+		// D2: with a browser frame present, nd.handleInput delegates C-u to the
+		// frame's bd.OnURLDialog (which pre-fills with the live URL), so this
+		// display-level handler now only fires when no browser frame exists —
+		// the field is empty either way, matching Python's current_url() == "".
 		showURLDialog("", func(text string) {
 			navigateTo(browser.NormalizeEnteredURL(text))
 		})
@@ -879,38 +879,11 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		conversationsDisplay.ToggleSort()
 	}
 	conversationsDisplay.OnShowQR = func() {
-		addr := a.LXMFAddressHex()
-		// B3: render an actual QR code + title "QR Code" + `< hash >` (spaces
-		// inside brackets), matching nomadnet 1.2.8's show_qr_dialog
-		// (Conversations.py:641-679). Falls back to "LXMF Address" title
-		// without QR when rendering fails.
-		qrText := tui.RenderQRText(addr)
-		title := "QR Code"
-		var contentStr string
-		if qrText != "" {
-			contentStr = "[white]" + qrText + "[-]\n\n[white]< " + addr + " >[-]"
-		} else {
-			title = "LXMF Address"
-			contentStr = "[lightblue]LXMF destination address:[-]\n\n[white]< " + addr + " >[-]"
-		}
-
-		textView := tview.NewTextView().
-			SetDynamicColors(true).
-			SetTextAlign(tview.AlignCenter).
-			SetText(contentStr)
-
-		// B4: add Space as a dismiss key (nomadnet's QR popup dismisses on
-		// Space). Keep Esc (gonomadnet enhancement) which DialogLineBox already
-		// handles. Space on the TextView content dismisses the dialog.
-		textView.SetInputCapture(func(ev *tcell.EventKey) *tcell.EventKey {
-			if ev.Rune() == ' ' {
-				tuiApp.Dialogs.DismissTop()
-				return nil
-			}
-			return ev
-		})
-
-		tuiApp.Dialogs.ShowDialog(title, textView, 50, 22, nil)
+		// C5: the My LXMF dialog is a WHOLE-display 70%-relative overlay with
+		// the QR, "< addr >" and a Close button (Python show_my_qr →
+		// show_qr_dialog, Conversations.py:630-692) — built inside the tui
+		// package, which owns the slot mechanics.
+		conversationsDisplay.ShowMyQRDialog(a.LXMFAddressHex())
 	}
 	conversationsDisplay.OnEditPeerInfo = func() {
 		conv, ok := conversationsDisplay.GetSelectedConversation()
@@ -1592,21 +1565,28 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		)
 	}
 	interfacesDisplay.OnShowInterface = func(idx int) {
+		// G1: Enter opens Python's FULL-PAGE ShowInterface view (title header,
+		// info rows, RX/TX charts, parameter blocks, footer Back/Toggle/Edit
+		// row, Interfaces.py:2198-2620) — not a tiny modal.
 		items := interfacesDisplay.Items()
 		if idx < 0 || idx >= len(items) {
 			return
 		}
-		iface := items[idx]
-		status := "disconnected"
-		if iface.Connected {
-			status = "connected"
+		interfacesDisplay.ShowInterfaceDetail(items[idx])
+	}
+	interfacesDisplay.OnToggleInterface = func(info tui.InterfaceInfo) {
+		// Python on_toggle_enabled (Interfaces.py:2516-2600): flip
+		// interface_enabled in the RNS config and write it. The Go config file
+		// is the source of truth for the interface list, so flip the value in
+		// place. The confirm dialog + restart-required notice are a follow-up
+		// (deviation noted here).
+		if err := a.ToggleInterfaceEnabled(info.Name); err != nil {
+			tuiApp.QueueUpdateDraw(func() {
+				interfacesDisplay.ShowInterfaceError(err.Error())
+			})
+			return
 		}
-		tuiApp.Dialogs.ShowDialog("Interface: "+iface.Name,
-			tview.NewTextView().
-				SetDynamicColors(true).
-				SetText(fmt.Sprintf("[::b]%v[-]\n\nType: %v\nStatus: %v\nTarget: %v",
-					iface.Name, iface.Type, status, iface.Target)),
-			50, 9, nil)
+		refreshInterfaces()
 	}
 
 	// Browser display (hidden by default, shown when navigating from network)

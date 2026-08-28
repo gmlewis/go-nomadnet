@@ -40,6 +40,9 @@ type SlotOverlay struct {
 	fixedWidth   int             // used when widthPct == 0 (urwid Overlay width=N)
 	dialogHeight int             // PACK natural height of the dialog
 	heightPct    int             // >0 = relative N% of slot height; 0 = use dialogHeight
+	minWidth     int             // >0 = urwid Overlay min_width floor on the relative width
+	insetLeft    int             // urwid Overlay left inset (default 2)
+	insetRight   int             // urwid Overlay right inset (default 2)
 }
 
 // NewSlotOverlay builds an overlay placing dialog centered over bottom with the
@@ -55,6 +58,8 @@ func NewSlotOverlay(bottom tview.Primitive, dialog *DialogLineBox, widthPct, dia
 		dialog:       dialog,
 		widthPct:     widthPct,
 		dialogHeight: dialogHeight,
+		insetLeft:    2,
+		insetRight:   2,
 	}
 }
 
@@ -70,6 +75,8 @@ func NewSlotOverlayFixed(bottom tview.Primitive, dialog *DialogLineBox, fixedWid
 		dialog:       dialog,
 		fixedWidth:   fixedWidth,
 		dialogHeight: dialogHeight,
+		insetLeft:    2,
+		insetRight:   2,
 	}
 }
 
@@ -93,8 +100,8 @@ func (o *SlotOverlay) SetRect(x, y, w, h int) {
 		o.bottom.SetRect(x, y, w, h)
 	}
 
-	// urwid Overlay fixed left/right insets.
-	const left, right = 2, 2
+	// urwid Overlay left/right insets (default 2; the QR overlay uses 0).
+	left, right := o.insetLeft, o.insetRight
 
 	dw := 0
 	if o.widthPct > 0 {
@@ -106,6 +113,11 @@ func (o *SlotOverlay) SetRect(x, y, w, h int) {
 		dw = o.fixedWidth
 	}
 	dw = max(dw, 0)
+	if o.minWidth > 0 {
+		// urwid Overlay min_width: a relative width is floored at min_width
+		// (Conversations.py:680 show_qr_dialog overlay min_width=44).
+		dw = max(dw, min(o.minWidth, max(w-left-right, 0)))
+	}
 
 	// urwid CENTER alignment: distribute the remaining padding.
 	// padding = maxcol - width - left - right
@@ -137,6 +149,18 @@ func intScale(n, rn, v int) int {
 // SetHeightPct makes the dialog height a percentage of the slot height (urwid
 // Overlay height=("relative", N)), used by the Attach File browser (80%).
 func (o *SlotOverlay) SetHeightPct(pct int) *SlotOverlay { o.heightPct = pct; return o }
+
+// SetMinWidth floors the relative dialog width (urwid Overlay min_width),
+// used by the My LXMF QR overlay (44, Conversations.py:680).
+func (o *SlotOverlay) SetMinWidth(n int) *SlotOverlay { o.minWidth = n; return o }
+
+// SetInsets overrides the default left/right=2 insets (urwid Overlay left/right
+// args). The My LXMF QR overlay uses Python's default 0
+// (Conversations.py:678-682).
+func (o *SlotOverlay) SetInsets(left, right int) *SlotOverlay {
+	o.insetLeft, o.insetRight = left, right
+	return o
+}
 
 // Draw draws the bottom (show-through) then the dialog on top.
 func (o *SlotOverlay) Draw(screen tcell.Screen) {
