@@ -55,7 +55,7 @@ func TestEmptyPlaceholderOffFocusStyle(t *testing.T) {
 	// The placeholder row is the FIRST row of the list area (between the
 	// indicator bars) — screen row 1. Every cell of the row must carry the
 	// list_off_focus style (urwid's AttrMap fills the full canvas width).
-	for x := 0; x < 50; x++ {
+	for x := range 50 {
 		c, _, style, _ := screen.GetContent(x, 1)
 		if c == ' ' && (x < 13 || x > 37) {
 			// Padding cells outside the text still carry the background.
