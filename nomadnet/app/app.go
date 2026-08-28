@@ -337,9 +337,15 @@ func (a *App) Init() error {
 		return fmt.Errorf("seeding default pages: %w", err)
 	}
 
-	// Initialize logger
+	// Initialize logger. The [logging] loglevel config key drives the level
+	// (Python NomadNetworkApp.applyConfig sets RNS.loglevel from it,
+	// NomadNetworkApp.py:804-809); the config package applies the Python
+	// default (4 = info) and the 0..7 clamp. The RNS stack may re-apply its
+	// own config's loglevel later in NewReticulumWithLogger, matching Python
+	// where Reticulum init reads ~/.reticulum/config after the app's
+	// applyConfig.
 	a.Logger = rns.NewLogger()
-	a.Logger.SetLogLevel(rns.LogNotice)
+	a.Logger.SetLogLevel(a.Config.Logging.LogLevel)
 
 	// Configure logging destination — always log to file in TUI mode
 	// to prevent RNS logs from destroying the terminal display.
@@ -533,7 +539,8 @@ func (a *App) InitWithTransport(ts *rns.TransportSystem, identity *rns.Identity)
 
 	if a.Logger == nil {
 		a.Logger = rns.NewLogger()
-		a.Logger.SetLogLevel(rns.LogNotice)
+		// Honor the [logging] loglevel config key — see Init.
+		a.Logger.SetLogLevel(a.Config.Logging.LogLevel)
 		a.Logger.SetLogDest(rns.LogStdout)
 	}
 

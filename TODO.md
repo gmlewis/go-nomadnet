@@ -95,13 +95,6 @@ transports, shared `~/.nomadnetwork` identities (Mac LXMF `2a6105…`, Mac Mini
 `env -u NO_COLOR COLORTERM=truecolor TERM=xterm-256color ./gonomadnet.sh`.
 **These are gonomadnet (Go) bugs to fix TDD-style; do not fix here.**
 
-### Operational note (not a bug, but affects debugging)
-
-- gonomadnet's application log (`~/.nomadnetwork/logfile`) logs announce
-  receives, path learning, and (after B6 fix) announce sends/failures, but
-  does NOT log LXMF send/receive/deliver events. Consider adding LXMF delivery
-  logging to gonomadnet for easier debugging.
-
 ---
 ---
 
@@ -115,8 +108,3 @@ transports, shared `~/.nomadnetwork` identities (Mac LXMF `2a6105…`, Mac Mini
   maintenance loop. Follow-up candidates: adaptive UI coalescing design
   session (trailing-edge debounce semantics are load-bearing for 4 tests;
   a throttle variant needs careful spec), urwidColumns.Draw cost.
-
-- gonomadnet hardcodes the RNS logger at LogNotice and ignores the
-  [logging] loglevel config key (Python NomadNetworkApp sets RNS.loglevel
-  from it). Honor the config so operators can enable Debug/Extreme without
-  code changes (this cost real time during the announce investigation).
