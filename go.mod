@@ -6,10 +6,11 @@ require (
 	github.com/creack/pty/v2 v2.0.1
 	github.com/fxamacker/cbor/v2 v2.9.2
 	github.com/gdamore/tcell/v2 v2.13.10
-	github.com/gmlewis/go-reticulum v0.60.0
+	github.com/gmlewis/go-reticulum v0.61.0
 	github.com/mattn/go-runewidth v0.0.16
 	github.com/mdp/qrterminal/v3 v3.2.1
 	github.com/rivo/tview v0.42.0
+	golang.design/x/clipboard v0.9.0
 	golang.org/x/sys v0.47.0
 	golang.org/x/term v0.45.0
 	golang.org/x/text v0.38.0
@@ -22,7 +23,6 @@ require (
 	github.com/lucasb-eyer/go-colorful v1.3.0 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
-	golang.design/x/clipboard v0.9.0 // indirect
 	golang.design/x/x11 v0.2.0 // indirect
 	golang.org/x/exp/shiny v0.0.0-20250606033433-dcc06ee1d476 // indirect
 	golang.org/x/image v0.28.0 // indirect
