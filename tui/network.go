@@ -139,11 +139,14 @@ type NetworkDisplay struct {
 	OnLXMFPeerUnpeer func(destinationHash []byte)
 	OnLXMFPeerSync   func(destinationHash []byte)
 
-	// In-detail action callbacks (Python AnnounceInfo buttons). Each is no-arg;
-	// the wiring layer resolves the target via SelectedAnnounce/SelectedNode.
-	OnMsgOp    func() // [Msg Op] — message the node operator
+	// In-detail action callbacks (Python AnnounceInfo buttons).
 	OnUseAsPN  func() // [Use as default] — set default propagation node
 	OnConverse func() // [Converse] — open a conversation with the peer
+	// OnMsgOp is fired by [Msg Op] on the node announce/node info views. It
+	// receives the operator's LXMF destination hash (hex) — Python msg_op
+	// messages RNS.Destination.hash_from_name_and_identity("lxmf.delivery",
+	// node_ident), not the node's own address (Network.py:146-166).
+	OnMsgOp func(opHashHex string)
 
 	// OnConnectNode is fired by Enter on a Saved Nodes list row (Python
 	// KnownNodes NodeEntry "click" signal → connect_node, Network.py:1019 +
@@ -546,11 +549,13 @@ func (nd *NetworkDisplay) connectKnownNode(nodeHash string) {
 }
 
 // msgOpKnownNode starts a conversation with the node's operator then returns to
-// the saved-nodes list (Python msg_op, Network.py:707-731).
-func (nd *NetworkDisplay) msgOpKnownNode(_ string) {
+// the saved-nodes list (Python msg_op, Network.py:698-718). opHashHex is the
+// node's operator LXMF address (hex); empty when the identity is not
+// recallable (Python skips the action in that case).
+func (nd *NetworkDisplay) msgOpKnownNode(opHashHex string) {
 	nd.showKnownNodes()
 	if nd.OnMsgOp != nil {
-		nd.OnMsgOp()
+		nd.OnMsgOp(opHashHex)
 	}
 }
 
@@ -600,12 +605,15 @@ func (nd *NetworkDisplay) connectToNode(ann AnnounceEntry) {
 	}
 }
 
-// msgOpNode starts a conversation with the node's operator.
-// Matches Python's msg_op(sender).
-func (nd *NetworkDisplay) msgOpNode(_ AnnounceEntry) {
+// msgOpNode starts a conversation with the node's operator (Python msg_op,
+// Network.py:146-166: it targets the operator's LXMF address op_hash, not the
+// announce's own source hash). opHashHex is the operator's LXMF destination
+// hash (hex); empty when the node identity is not recallable (Python's
+// KeyError branch skips the action).
+func (nd *NetworkDisplay) msgOpNode(opHashHex string) {
 	nd.showAnnounceStream()
 	if nd.OnMsgOp != nil {
-		nd.OnMsgOp()
+		nd.OnMsgOp(opHashHex)
 	}
 }
 

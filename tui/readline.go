@@ -229,6 +229,18 @@ func (re *ReadlineEdit) handleKey(event *tcell.EventKey) *tcell.EventKey {
 			runes = newRunes
 			pos += len(kr)
 		}
+	case tcell.KeyBackspace, tcell.KeyBackspace2:
+		// Delete backward, matching urwid.Edit's own backspace handling. The
+		// model must consume this itself: letting the embedded InputField
+		// delete its own (display-only) buffer would desync the model cursor.
+		if pos > 0 {
+			runes = append(runes[:pos-1], runes[pos:]...)
+			pos--
+		}
+	case tcell.KeyDelete:
+		if pos < len(runes) {
+			runes = append(runes[:pos], runes[pos+1:]...)
+		}
 	case tcell.KeyLeft:
 		if event.Modifiers()&(tcell.ModCtrl|tcell.ModAlt) != 0 {
 			for pos > 0 && !isWordChar(runes[pos-1]) {

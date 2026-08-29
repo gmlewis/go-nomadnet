@@ -86,13 +86,17 @@ func TestDirectorySaveLoadRoundTrip(t *testing.T) {
 		t.Errorf("Notes = %q, want 'a note'", e.Notes)
 	}
 
-	// empty display name becomes "Undefined"
+	// An empty display name round-trips as an empty string: Python's
+	// load_from_disk (Directory.py:116-117) substitutes "Undefined" only for
+	// a nil display_name (saved None), never for a saved empty string, so an
+	// empty stored name keeps falling back to the announced app-data name
+	// (Conversation.py:151-152) after a restart.
 	e2 := d2.Find([]byte{9, 9, 9, 9, 9, 9, 9, 9})
 	if e2 == nil {
 		t.Fatal("second entry not found")
 	}
-	if e2.DisplayName != "Undefined" {
-		t.Errorf("empty DisplayName = %q, want Undefined", e2.DisplayName)
+	if e2.DisplayName != "" {
+		t.Errorf("empty DisplayName round-trip = %q, want empty", e2.DisplayName)
 	}
 
 	// announces split by type

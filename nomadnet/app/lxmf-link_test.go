@@ -92,6 +92,58 @@ func TestOpenLXMFLinkInvalid(t *testing.T) {
 	}
 }
 
+// TestOpenLXMFLinkPreservesExistingEntryName pins the New Conversation
+// dialog's create path for a peer the operator already NAMED (Python
+// new_conversation confirmed, Conversations.py:1063-1072): re-creating the
+// conversation for an address with a stored directory entry must not wipe the
+// entry's display name when the dialog's Name field is left empty. Python
+// protects the reported case with its existing-conversation guard
+// (Conversations.py:1065) — the wipe there is only reachable through this
+// create path, so the effect is the same: the row keeps rendering the name.
+func TestOpenLXMFLinkPreservesExistingEntryName(t *testing.T) {
+	t.Parallel()
+	a := NewApp(tempDir(t), "", false, false)
+	a.setupPaths()
+
+	hashHex := "aabb1122aabb1122aabb1122aabb1122"
+	hash := parseHex(t, hashHex)
+	const peerName = "Go port of NomadNet on RaspPi"
+
+	// A peer the operator named earlier (Peer Info dialog / saved node), with
+	// an existing conversation on disk (the dialog re-create scenario).
+	a.CreateDirectoryEntry(hash, peerName)
+
+	// Re-create with an empty display name, mirroring the dialog submitted
+	// with an empty Name field and no announce app data to recall
+	// (no transport wired). The stored name must survive.
+	isNew, err := a.OpenLXMFLink(hashHex)
+	if err != nil {
+		t.Fatalf("OpenLXMFLink: %v", err)
+	}
+	if !isNew {
+		t.Error("first open for a conversation-less peer: isNew = false, want true")
+	}
+	if got := a.PeerDisplayName(hash); got != peerName {
+		t.Errorf("re-create with empty name wiped the stored display name: got %q, want %q", got, peerName)
+	}
+
+	// The conversation directory exists so the peer shows up in the list.
+	convDir := filepath.Join(a.ConversationPath, hashHex)
+	if info, err := os.Stat(convDir); err != nil || !info.IsDir() {
+		t.Errorf("conversation dir not created at %v: %v", convDir, err)
+	}
+
+	// The created list row resolves the display name (an empty stored name
+	// falls back to the announced name via ConversationList's B2 fallback).
+	aDir := a.ConversationList()
+	if len(aDir) != 1 {
+		t.Fatalf("ConversationList returned %v items, want 1", len(aDir))
+	}
+	if aDir[0].DisplayName != peerName {
+		t.Errorf("list row DisplayName = %q, want %q", aDir[0].DisplayName, peerName)
+	}
+}
+
 func parseHex(t *testing.T, s string) []byte {
 	t.Helper()
 	b := make([]byte, len(s)/2)

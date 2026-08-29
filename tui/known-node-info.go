@@ -29,10 +29,14 @@ import (
 // current user-selected PN) are stubs until node hosting is wired in; identify-on-connect comes
 // from the directory entry and is wired now.
 type KnownNodeInfoData struct {
-	DisplayStr        string // directory display name (or "<hex>")
-	SortStr           string // "None" or str(sort_rank)
-	TrustLevel        string // "untrusted"/"unknown"/"trusted"/"warning" (radio preselect)
-	OpStr             string // node operator display (stub: "Unknown")
+	DisplayStr string // directory display name (or "<hex>")
+	SortStr    string // "None" or str(sort_rank)
+	TrustLevel string // "untrusted"/"unknown"/"trusted"/"warning" (radio preselect)
+	OpStr      string // node operator display (stub: "Unknown")
+	// OpHash is the hex "lxmf.delivery" destination hash derived from the
+	// node's recallable identity (Network.py:704) — the address the Msg Op
+	// button targets; empty when the identity is not recallable.
+	OpHash            string
 	HopsStr           string // "N hop(s)" or "Unknown" (stub: "Unknown")
 	LXMFAddrStr       string // centered PN-address line (stub: "No associated …")
 	UseAsPN           bool   // preselected "Use as default propagation node" (stub: false)
@@ -203,7 +207,7 @@ func (k *knownNodeInfoDisplay) buttonRow() *urwidColumns {
 		tview.NewBox(),
 		NewUrwidButton("Connect").SetSelectedFunc(func() { k.nd.connectKnownNode(k.nodeHash) }),
 		tview.NewBox(),
-		NewUrwidButton("Msg Op").SetSelectedFunc(func() { k.nd.msgOpKnownNode(k.nodeHash) }),
+		NewUrwidButton("Msg Op").SetSelectedFunc(func() { k.nd.msgOpKnownNode(k.data.OpHash) }),
 		tview.NewBox(),
 		NewUrwidButton("Save").SetSelectedFunc(func() { k.nd.saveKnownNode(k) }),
 	).

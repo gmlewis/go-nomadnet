@@ -330,8 +330,20 @@ func (cw *ConversationWidget) ClearEditor() {
 }
 
 // handleInput processes keyboard shortcuts for the conversation widget.
-// Matches Python's ConversationWidget.keypress() at Conversations.py:2222.
+// With the compose editor focused the keys are routed through
+// handleComposerKey first (Python's bottom-up dispatch: the focused composer
+// consumes its keys before the widget shortcuts run); otherwise this behaves
+// exactly like Python's ConversationWidget.keypress() at Conversations.py:2222.
 func (cw *ConversationWidget) handleInput(event *tcell.EventKey) *tcell.EventKey {
+	if cw.composerHasFocus() {
+		return cw.handleComposerKey(event)
+	}
+	return cw.handleWidgetKey(event)
+}
+
+// handleWidgetKey is the widget-level shortcut switch consumed by keys that no
+// inner widget did.
+func (cw *ConversationWidget) handleWidgetKey(event *tcell.EventKey) *tcell.EventKey {
 	switch event.Key() {
 	case tcell.KeyUp:
 		if !cw.dialogOpen {
@@ -409,6 +421,64 @@ func (cw *ConversationWidget) handleInput(event *tcell.EventKey) *tcell.EventKey
 		return nil
 	}
 
+	return event
+}
+
+// composerHasFocus reports whether one of the compose editors currently holds
+// focus. Python dispatches keys bottom-up, so with the composer focused its
+// MessageEdit/ReadlineMixin keypress runs before the widget-level shortcuts
+// ever see the key; tview input captures run top-down, so this check is the
+// port's equivalent: it makes the frame capture YIELD the composer's editing
+// keys, exactly the keys urwid's inner widgets would have consumed.
+func (cw *ConversationWidget) composerHasFocus() bool {
+	if cw.app == nil {
+		return false
+	}
+	focused := cw.app.GetFocus()
+	return focused == cw.editor || focused == cw.titleEditor
+}
+
+// handleComposerKey routes one key while the composer is focused, mirroring
+// Python's MessageEdit.keypress (Conversations.py:1807-1825) which consumes
+// only ctrl d/p/f/s (send/paper/attach/save) and its special "up" before
+// handing everything else to ReadlineMixin. The readline editing keys
+// (backspace, ctrl a/e/u/k/w/l/y, ctrl-arrows, plain arrows) fall through to
+// the focused editor's own handler — including ctrl a/w/u, which the
+// widget-level shortcuts (attach/close/purge) must NOT preempt here.
+func (cw *ConversationWidget) handleComposerKey(event *tcell.EventKey) *tcell.EventKey {
+	if cw.dialogOpen {
+		return event
+	}
+	switch event.Key() {
+	case tcell.KeyCtrlD:
+		cw.sendMessage()
+		return nil
+	case tcell.KeyCtrlP:
+		cw.PaperMessageDialog()
+		return nil
+	case tcell.KeyCtrlF:
+		if cw.OnAttach != nil {
+			cw.OnAttach()
+		}
+		return nil
+	case tcell.KeyCtrlS:
+		cw.saveFocusedAttachments()
+		return nil
+	case tcell.KeyUp:
+		// MessageEdit's special "up": a single-line composer always escapes at
+		// cursor line 0 (Conversations.py:1816-1825).
+		return cw.handleFrameUp(event)
+	case tcell.KeyDown:
+		// The full-editor title editor hands Down to the content editor (the
+		// full_editor Pile focus moves to the next selectable element).
+		return cw.handleFrameDown(event)
+	case tcell.KeyCtrlT, tcell.KeyCtrlX, tcell.KeyCtrlG, tcell.KeyCtrlO:
+		// Neither MessageEdit nor ReadlineMixin consumes these, so in Python
+		// they bubble past the composer to the widget-level shortcuts (toggle
+		// editor, clear history, fullscreen, sort) — keep them live while
+		// typing.
+		return cw.handleWidgetKey(event)
+	}
 	return event
 }
 

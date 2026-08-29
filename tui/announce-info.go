@@ -30,6 +30,10 @@ type AnnounceInfoData struct {
 	TrustStr   string // "Untrusted" / "Unknown" / "Trusted" / "Warning"
 	TrustStyle string // palette key: list_untrusted/list_unknown/list_trusted/list_warning
 	OpStr      string // node operator display (stub: "Unknown")
+	// OpHash is the hex "lxmf.delivery" destination hash derived from the
+	// announced node's recallable identity (Network.py:143). It is the address
+	// the Msg Op button targets; empty when the identity cannot be recalled.
+	OpHash string
 }
 
 // trustPaletteHex maps a trust palette key to the hex color tview color tags
@@ -200,7 +204,7 @@ func (ai *announceInfoDisplay) buttonRow() *urwidColumns {
 			tview.NewBox(),
 			NewUrwidButton("Connect").SetSelectedFunc(func() { ai.nd.connectToNode(ai.ann) }),
 			tview.NewBox(),
-			NewUrwidButton("Msg Op").SetSelectedFunc(func() { ai.nd.msgOpNode(ai.ann) }),
+			NewUrwidButton("Msg Op").SetSelectedFunc(func() { ai.nd.msgOpNode(ai.data.OpHash) }),
 			tview.NewBox(),
 			NewUrwidButton("Save").SetSelectedFunc(func() { ai.nd.saveNode(ai.ann) }),
 		).

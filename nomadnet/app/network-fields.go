@@ -46,6 +46,23 @@ func (a *App) NodeOperatorDisplay(nodeHash []byte) string {
 	return a.Dir.SimplestDisplayStr(opHash)
 }
 
+// NodeOperatorHash returns the LXMF "lxmf.delivery" destination hash for the
+// operator of the node identified by nodeHash, mirroring Python's op_hash
+// derivation (AnnounceInfo Network.py:143): RNS.Identity.recall(node_hash) →
+// derive the "lxmf.delivery" destination hash. It returns nil when the identity
+// cannot be recalled; node announce dialogs then skip the message-operator
+// action (Python's KeyError branch, Network.py:140-141).
+func (a *App) NodeOperatorHash(nodeHash []byte) []byte {
+	if a.Transport == nil || nodeHash == nil {
+		return nil
+	}
+	id := rns.RecallIdentity(a.Transport, nodeHash)
+	if id == nil {
+		return nil
+	}
+	return rns.CalculateHash(id, "lxmf", "delivery")
+}
+
 // NodePropagationHash returns the LXMF "lxmf.propagation" destination hash for
 // the node identified by nodeHash, mirroring Python's pn_hash derivation
 // (KnownNodeInfo Network.py:629): RNS.Identity.recall(node_hash) → derive the

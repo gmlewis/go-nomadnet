@@ -125,9 +125,14 @@ func (d *Directory) LoadFromDisk(path string) error {
 			if len(sourceHash) == 0 {
 				continue
 			}
-			displayName, _ := tuple[1].(string)
-			if displayName == "" {
-				displayName = "Undefined"
+			// Python's load_from_disk (Directory.py:116-117) substitutes
+			// "Undefined" ONLY for a nil display_name (a saved Python None):
+			// an empty-string display name is kept as-is, so the announced
+			// app-data name fallback (Conversation.py:151-152) still applies
+			// to it after a restart instead of the row reading "Undefined".
+			displayName := "Undefined"
+			if s, ok := tuple[1].(string); ok {
+				displayName = s
 			}
 			trustLevel := byte(TrustUnknown)
 			if v, ok := toInt(tuple[2]); ok {

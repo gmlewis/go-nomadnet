@@ -163,10 +163,13 @@ const truncatedHashHexLen = rns.TruncatedHashLength / 8 * 2
 // a directory entry (so the peer shows up in the directory) and an on-disk
 // conversation directory (so the conversation persists and appears in
 // conversation_list, matching Python's Conversation(source_hash, initiator=True)
-// creating the directory). It returns whether a new conversation was created.
+// creating the directory). The variadic displayNameFallback names the new
+// directory entry when no announced app_data can be recalled (the announce-stream
+// paths pass the operator/peer display string, Python Network.py:152-157/705-709).
+// It returns whether a new conversation was created.
 // The TUI wiring refreshes the conversation list, displays the conversation, and
 // switches to the Conversations page on success.
-func (a *App) OpenLXMFLink(sourceHashHex string) (isNew bool, err error) {
+func (a *App) OpenLXMFLink(sourceHashHex string, displayNameFallback ...string) (isNew bool, err error) {
 	if len(sourceHashHex) != truncatedHashHexLen {
 		return false, fmt.Errorf("invalid length for LXMF link: got %v, want %v", len(sourceHashHex), truncatedHashHexLen)
 	}
@@ -190,6 +193,23 @@ func (a *App) OpenLXMFLink(sourceHashHex string) (isNew bool, err error) {
 	if a.Transport != nil {
 		if id := a.Transport.Recall(hash); id != nil && len(id.AppData) > 0 {
 			displayName, _ = lxmf.DisplayNameFromAppData(id.AppData)
+		}
+	}
+	// Fall back to the caller-supplied display name (Python remembers the
+	// entry with the simplest_display_str of the target, Network.py:156/709).
+	if displayName == "" && len(displayNameFallback) > 0 {
+		displayName = displayNameFallback[0]
+	}
+	// A peer the operator already NAMED must not lose that stored name when
+	// the create path resolves no announced name: Python's Directory.remember
+	// (Directory.py:340-341) replaces the whole entry, so remembering an
+	// entry with an empty display name here would wipe the stored name and
+	// blank the conversation row. Keep the existing name in that case — the
+	// announce app-data fallback still takes precedence for a genuinely new
+	// announcement.
+	if displayName == "" && a.Dir != nil {
+		if entry := a.Dir.Find(hash); entry != nil {
+			displayName = entry.DisplayName
 		}
 	}
 

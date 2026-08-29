@@ -66,6 +66,12 @@ type ConversationsDisplay struct {
 	showBlockedCheckbox *tview.Checkbox
 	syncStatus          *tview.TextView
 	conversations       []ConversationInfo
+	// visible is the subset of conversations currently RENDERED in the list
+	// (after the trusted/untrusted + show-blocked filters), in row order. Row
+	// indices from the list (highlight, Enter, clicks) always resolve into
+	// visible — never into conversations, whose unfiltered indices drift apart
+	// from the rendered rows and opened the "Undefined" conversation.
+	visible             []ConversationInfo
 	listWidth           int
 	fullscreen          bool
 	selected            int
@@ -318,10 +324,11 @@ func NewConversationsDisplay(app *App, convs []ConversationInfo) *ConversationsD
 	// Conversations.py:1637-1639), matching nomadnet where the user must
 	// select the peer and press Enter to open it.
 	cd.list.SetSelectedFunc(func(i int, mainText, secondaryText string, shortcut rune) {
-		if i < 0 || i >= len(cd.conversations) {
-			return
-		}
-		cd.DisplayConversation(cd.conversations[i].SourceHash)
+		// Resolve the row against the RENDERED conversations (visible), not
+		// the unfiltered model — with the trusted/untrusted filter active the
+		// raw indices map to different conversations, which opened the
+		// "Undefined" conversation for both keyboard Enter and mouse clicks.
+		cd.selectVisibleConversation(i, cd.DisplayConversation)
 	})
 
 	// Set up keyboard shortcuts matching Python's ConversationsArea.keypress()
@@ -444,6 +451,16 @@ type conversationsListBox struct {
 //   - Left from the list, checkbox, or leftmost tab: bubbles past the Columns
 //     (no column to the left) and dies — a no-op.
 func (cd *ConversationsDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
+	// While a dialog is open (the whole-display QR/friends overlay, a list
+	// slot dialog, or a right-pane dialog), keys belong to the dialog alone —
+	// Python's overlay REPLACES the page widget, so the page's keypress never
+	// runs with the QR dialog up. Without this guard, C-n pressed while the
+	// QR dialog was open still opened the New Conversation dialog ON TOP of
+	// it, drawing both at once (they interpenetrated; Esc then had to unwind
+	// two stacked dialogs).
+	if cd.dialogOpen || cd.listSlotOverlay != nil || cd.fullSlotOverlay != nil || cd.detailSlotOverlay != nil {
+		return event
+	}
 	if cd.shortcutFocus != "list" {
 		// Editor or body (right column) has focus: pass the key through to the
 		// conversation widget's frame capture so the editor/body meaning wins.
@@ -619,13 +636,36 @@ func (cd *ConversationsDisplay) focusConversationColumn() {
 	}
 }
 
-// GetSelectedConversation returns the currently selected ConversationInfo.
+// visibleList returns the conversations currently rendered in the list, in
+// row order (the model filtered to the active tab's trust level). List row
+// indices from the highlight, Enter, and mouse clicks resolve into THIS
+// slice: the raw cd.conversations indices drift apart from the rendered rows
+// whenever the trusted/untrusted filter hides entries, which made both Enter
+// and mouse clicks open the "Undefined" conversation (the model row the
+// rendered row happened to overlap).
+func (cd *ConversationsDisplay) visibleList() []ConversationInfo {
+	return cd.visible
+}
+
+// selectVisibleConversation resolves a rendered list row to its conversation
+// and fires open with the source hash. Out-of-range rows (a highlight that
+// raced ahead of the model population between events) are dropped silently.
+func (cd *ConversationsDisplay) selectVisibleConversation(row int, open func(sourceHash string)) {
+	visible := cd.visible
+	if row < 0 || row >= len(visible) {
+		return
+	}
+	open(visible[row].SourceHash)
+}
+
+// GetSelectedConversation returns the currently selected ConversationInfo,
+// resolved against the RENDERED rows (visible), not the unfiltered model.
 func (cd *ConversationsDisplay) GetSelectedConversation() (ConversationInfo, bool) {
 	idx := cd.list.GetCurrentItem()
-	if idx < 0 || idx >= len(cd.conversations) {
+	if idx < 0 || idx >= len(cd.visible) || cd.list.GetItemCount() == 0 {
 		return ConversationInfo{}, false
 	}
-	return cd.conversations[idx], true
+	return cd.visible[idx], true
 }
 
 // DisplayConversation replaces the detail panel with a ConversationWidget
@@ -672,11 +712,22 @@ func (cd *ConversationsDisplay) DisplayConversation(sourceHash string) {
 		}
 	}
 	cw.OnClose = func() {
-		// Restore the empty detail pane: remove the conversation widget (the
-		// content Flex's index-1 item) and re-add the bordered detail view.
-		cd.content.RemoveItem(cd.content.GetItem(1))
-		cd.content.AddItem(cd.detail, 0, 1, false)
+		// Restore the empty detail pane by REBUILDING both columns: the
+		// previous RemoveItem(content.GetItem(1)) removed whatever happened to
+		// sit at index 1 — the conversation widget only while the two columns
+		// are still in the built order. Once a slot dialog or a detail overlay
+		// had shuffled the items, index 1 was the (only copy of the) left list
+		// panel, which got removed and left the page in a full-width
+		// "No conversation selected" state that never recovered from C-w,
+		// page-away/back, or C-g.
+		if cd.detailSlotOverlay != nil {
+			// An open right-pane dialog dies with the conversation that owned
+			// it; dropping the tracked state also stale-proofs its dismiss.
+			cd.detailSlotOverlay = nil
+			cd.detailSlotBottom = nil
+		}
 		cd.currentWidget = nil
+		cd.rebuildContent(cd.listPaneItem(), cd.detail, false)
 		// Return focus to the conversation LIST (left column), matching Python's
 		// close_conversation → display_conversation(source_hash=None) →
 		// columns_widget.focus_position = 0 (Conversations.py:1677 + 1638-1639).
@@ -810,23 +861,23 @@ func (cd *ConversationsDisplay) DisplayConversation(sourceHash string) {
 	if cd.OnLoadMessages != nil {
 		cw.SetMessages(cd.OnLoadMessages(sourceHash))
 	}
-	// Replace the detail pane's content: remove the empty placeholder (when
-	// this is the first conversation opened from the empty state) OR the
-	// previously-open conversation widget (when a conversation is already
-	// open), then add the new one — mirroring Python's
+	// Replace the detail pane's content: REBUILD the two columns with the new
+	// conversation widget at index 1 — mirroring Python's
 	// columns_widget.contents[1] = (make_conversation_widget(source_hash),
 	// options) (Conversations.py:1637), which REPLACES index 1 rather than
-	// appending. Without removing the previous widget, opening a second
-	// conversation while one is already open leaves both visible (list + old
-	// + new = 3 columns) and focus/send go to the wrong pane.
-	prev := cd.currentWidget
+	// appending. RemoveItem+AddItem here appended the new widget after any
+	// dialog overlay that had grabbed index 1 (3-column layout, focus/send to
+	// the wrong pane); the rebuild re-establishes the order unconditionally.
 	cd.currentWidget = cw
-	if prev != nil {
-		cd.content.RemoveItem(prev.Widget())
-	} else {
-		cd.content.RemoveItem(cd.detail)
+	if cd.detailSlotOverlay != nil {
+		// An open right-pane dialog belonged to the conversation it covered;
+		// a re-open replaces the whole pane, so drop the tracked overlay state
+		// to stale-proof its late dismiss (it would otherwise re-add the OLD
+		// pane after the layout was rebuilt).
+		cd.detailSlotOverlay = nil
+		cd.detailSlotBottom = nil
 	}
-	cd.content.AddItem(cw.Widget(), 0, 1, true)
+	cd.rebuildContent(cd.listPaneItem(), cw.Widget(), true)
 	// Focus the composer (frame footer), matching Python's ConversationFrame
 	// construction with focus_part="footer" + display_conversation setting
 	// columns_widget.focus_position = 1 (Conversations.py:1645,1962): opening a
@@ -885,9 +936,24 @@ func (cd *ConversationsDisplay) RefreshOpenConversation(sourceHex string) {
 	cd.currentWidget.refreshTrustBanner()
 }
 
-// populateList fills the list based on current tab (trusted/untrusted).
+// populateList fills the list based on current tab (trusted/untrusted),
+// preserving the selected CONVERSATION across the refresh: the previous
+// Clear()+re-Add reset the list cursor to row 0, so every background
+// refresh (SetConversations under an announce firehose) dragged the
+// highlight back to the top with no user input while the user was
+// navigating. The selection is remembered by source hash and restored
+// after the re-population (degrading to the default when the selected
+// conversation no longer passes the filter).
 func (cd *ConversationsDisplay) populateList() {
+	// Remember the source hash of the currently highlighted row (resolved
+	// against the previously-rendered rows, which may be empty).
+	var prevSelected string
+	if idx := cd.list.GetCurrentItem(); idx >= 0 && idx < len(cd.visible) {
+		prevSelected = cd.visible[idx].SourceHash
+	}
+
 	cd.list.Clear()
+	cd.visible = cd.visible[:0]
 
 	var glyphs GlyphSet
 	if cd.app != nil {
@@ -907,7 +973,18 @@ func (cd *ConversationsDisplay) populateList() {
 
 		main := conversationRowMain(conv, glyphs, cd.currentConversation)
 		secondary := conversationRowSecondary(conv)
+		cd.visible = append(cd.visible, conv)
 		cd.list.AddItem(main, secondary, 0, nil)
+	}
+
+	// Restore the highlight onto the same conversation's (new) row.
+	if prevSelected != "" {
+		for i, conv := range cd.visible {
+			if conv.SourceHash == prevSelected {
+				cd.list.SetCurrentItem(i)
+				break
+			}
+		}
 	}
 
 	if cd.list.GetItemCount() == 0 {
@@ -1002,6 +1079,46 @@ func (cd *ConversationsDisplay) rightPaneItem() (tview.Primitive, bool) {
 	return cd.detail, false
 }
 
+// listPaneItem returns the current list column: the slot dialog overlaying it
+// when one is open, else the bordered left panel itself.
+func (cd *ConversationsDisplay) listPaneItem() tview.Primitive {
+	if cd.listSlotOverlay != nil {
+		return cd.listSlotOverlay
+	}
+	return cd.leftPanel
+}
+
+// listPaneWidth returns the fixed width of the list column: 0 while the page
+// is fullscreen (the detail spans the whole page), the normal list width
+// otherwise. Dialog overlays still REPLACE the collapsed column, so the
+// collapsed state is expressed by the width given to whatever occupies slot 0.
+func (cd *ConversationsDisplay) listPaneWidth() int {
+	if cd.fullscreen {
+		return 0
+	}
+	return cd.listWidth
+}
+
+// rebuildContent restores the two-column invariant — exactly [list column,
+// right pane] in that order — from scratch, replacing whatever interleaved
+// open/close/dialog mutations have accumulated. Every right-pane mutation
+// (open/close conversation, detail-slot dialogs, list-slot dialogs) funnels
+// through this, so no sequence of RemoveItem+AddItem appends (which produced
+// swapped or collapsed panes that only self-healed by accident) can leave a
+// third item behind: RemoveItem removes ALL occurrences of a primitive and
+// AddItem appends to the end, so mixed sequences used to append the dialog or
+// the detail at the wrong position and leave the layout unrecoverable
+// (list panel gone, "No conversation selected" rendered full-width).
+func (cd *ConversationsDisplay) rebuildContent(left, right tview.Primitive, rightFocusable bool) {
+	cd.content.Clear()
+	if left != nil {
+		cd.content.AddItem(left, cd.listPaneWidth(), 0, true)
+	}
+	if right != nil {
+		cd.content.AddItem(right, 0, 1, rightFocusable)
+	}
+}
+
 // setListColumn replaces the LIST column in place at content index 0, keeping
 // the right column (open conversation or empty detail) at index 1 — Python's
 // columns_widget.contents[0] = (widget, options) replacement
@@ -1013,9 +1130,7 @@ func (cd *ConversationsDisplay) rightPaneItem() (tview.Primitive, bool) {
 // conversation open self-healed them (C2).
 func (cd *ConversationsDisplay) setListColumn(item tview.Primitive) {
 	right, rightFocus := cd.rightPaneItem()
-	cd.content.Clear()
-	cd.content.AddItem(item, cd.listWidth, 0, true)
-	cd.content.AddItem(right, 0, 1, rightFocus)
+	cd.rebuildContent(item, right, rightFocus)
 }
 
 // ShowListSlotDialog overlays a DialogLineBox on the conversations list column
@@ -1197,25 +1312,32 @@ func (cd *ConversationsDisplay) ShowDetailSlotDialog(dialog *DialogLineBox, widt
 	dialog.onDismiss = cd.CloseDetailSlotDialog
 	cd.detailSlotBottom = bottom
 	cd.detailSlotOverlay = ov
-	cd.content.RemoveItem(bottom)
-	cd.content.AddItem(ov, 0, 1, true)
+	// Rebuild (not RemoveItem+AddItem): a RemoveItem+AddItem here appended the
+	// dialog at the END of the content Flex when an interleaving (e.g. a
+	// re-invoked Ctrl-f, or a conversation re-open) had already disturbed the
+	// item order, stacking a second dialog item that stayed on screen while
+	// keystrokes fell through to the page underneath.
+	cd.rebuildContent(cd.listPaneItem(), ov, true)
 	if cd.app != nil {
 		cd.app.SetFocus(ov)
 	}
 }
 
 // CloseDetailSlotDialog restores the right-hand conversation body pane after a
-// ShowDetailSlotDialog overlay. Safe to call when no overlay is active (no-op).
+// ShowDetailSlotDialog overlay. Safe to call when no overlay is active (no-op),
+// and safe to call after the covered pane was replaced while the dialog was
+// open (the rebuild discards stale overlay state instead of re-adding it).
 func (cd *ConversationsDisplay) CloseDetailSlotDialog() {
 	if cd.detailSlotOverlay == nil {
 		return
 	}
-	cd.content.RemoveItem(cd.detailSlotOverlay)
-	if cd.detailSlotBottom != nil {
-		cd.content.AddItem(cd.detailSlotBottom, 0, 1, true)
-	}
 	cd.detailSlotOverlay = nil
 	cd.detailSlotBottom = nil
+	if cd.currentWidget != nil {
+		cd.rebuildContent(cd.listPaneItem(), cd.currentWidget.Widget(), true)
+	} else {
+		cd.rebuildContent(cd.listPaneItem(), cd.detail, false)
+	}
 	if cd.app != nil {
 		if cd.currentWidget != nil {
 			cd.app.SetFocus(cd.currentWidget.Widget())
@@ -1326,7 +1448,12 @@ func (cd *ConversationsDisplay) SetConversations(convs []ConversationInfo) {
 func (cd *ConversationsDisplay) ToggleFullscreen() {
 	cd.fullscreen = !cd.fullscreen
 	if cd.content != nil && cd.leftPanel != nil {
-		if cd.fullscreen {
+		if cd.listSlotOverlay != nil {
+			// A slot dialog currently occupies the list column: re-run the
+			// column rebuild so the (possibly collapsed) width applies to the
+			// overlay too (ResizeItem only reaches the bare leftPanel).
+			cd.setListColumn(cd.listSlotOverlay)
+		} else if cd.fullscreen {
 			cd.content.ResizeItem(cd.leftPanel, 0, 0)
 		} else {
 			cd.content.ResizeItem(cd.leftPanel, cd.listWidth, 0)

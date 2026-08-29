@@ -71,7 +71,7 @@ func TestNetworkDetailActionCallbacks(t *testing.T) {
 
 	var fired string
 	nd.OnSaveNode = func() { fired = "save" }
-	nd.OnMsgOp = func() { fired = "msgop" }
+	nd.OnMsgOp = func(string) { fired = "msgop" }
 	nd.OnUseAsPN = func() { fired = "useaspn" }
 	nd.OnConverse = func() { fired = "converse" }
 
@@ -82,7 +82,7 @@ func TestNetworkDetailActionCallbacks(t *testing.T) {
 		want string
 	}{
 		{"save node", 0, func() { nd.saveNode(announces[0]) }, "save"},
-		{"msg op", 0, func() { nd.msgOpNode(announces[0]) }, "msgop"},
+		{"msg op", 0, func() { nd.msgOpNode("") }, "msgop"},
 		{"use as pn", 1, func() { nd.useAsPN(announces[1]) }, "useaspn"},
 		{"converse", 2, func() { nd.converseWith(announces[2]) }, "converse"},
 	}

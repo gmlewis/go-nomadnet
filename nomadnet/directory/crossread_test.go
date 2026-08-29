@@ -58,8 +58,14 @@ func TestLoadFromDiskPythonWritten(t *testing.T) {
 	if e2 == nil {
 		t.Fatal("second entry not found")
 	}
-	if e2.DisplayName != "Undefined" {
-		t.Errorf("DisplayName = %q, want Undefined", e2.DisplayName)
+	// The fixture's second entry was written by the real Python NomadNet with
+	// display_name '' (firmware: msgpack fixstr, not nil). Python's
+	// load_from_disk (Directory.py:116-117) keeps an empty string as-is and
+	// only substitutes "Undefined" for a nil display_name, so the empty stored
+	// name stays empty here — keeping the announced app-data name fallback
+	// (Conversation.py:151-152) alive across restarts.
+	if e2.DisplayName != "" {
+		t.Errorf("DisplayName = %q, want empty (Python keeps an empty-string display_name)", e2.DisplayName)
 	}
 	if e2.PreferredDelivery != DeliveryDirect {
 		t.Errorf("nil PreferredDelivery should default to direct, got %v", e2.PreferredDelivery)

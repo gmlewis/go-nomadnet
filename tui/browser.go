@@ -223,6 +223,15 @@ type BrowserDisplay struct {
 	OnJumpAnchor       func(name string)
 	OnRetrieveURL      func(url string, requestData map[string]string)
 	OnPartialUpdate    func(ids []string)
+	// OnLoadURL, when set, overrides the URL-dialog submit path (Python's
+	// url_dialog "Go" → retrieve_url, Browser.py:1160). The Network right pane
+	// mounts its BrowserDisplay lazily — BrowserPane.LoadURL swaps the raw
+	// BrowserDisplay widget into the "Remote Node" frame — so a submit routed
+	// straight to bd.LoadURL would render into an unmounted widget and leave
+	// the visible pane on the disconnected placeholder. The wiring layer sets
+	// this to navigateTo (which mounts the pane); the standalone browser page
+	// needs no mount step and leaves it nil.
+	OnLoadURL func(url string)
 }
 
 // NewBrowserDisplay creates a new browser display.

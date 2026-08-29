@@ -176,6 +176,86 @@ func TestDebouncedCallRetriggerAfterFire(t *testing.T) {
 	}
 }
 
+// TestDebouncedCallMaxWaitShortBurstUnchanged verifies that with maxWait
+// armed, a burst that FITS within maxWait still collapses to exactly ONE fn
+// invocation — the trailing-edge debounce semantics are load-bearing for the
+// refresh path and must not change when the max-wait bound is configured.
+func TestDebouncedCallMaxWaitShortBurstUnchanged(t *testing.T) {
+	t.Parallel()
+
+	var calls atomic.Int64
+	fc := &fakeClock{}
+	d := newDebouncedCallWithMaxWait(15*time.Millisecond, 50*time.Millisecond, func() { calls.Add(1) }, fc)
+
+	for range 200 {
+		d.Trigger()
+	}
+	fc.advance(50 * time.Millisecond)
+	if got := calls.Load(); got != 1 {
+		t.Errorf("burst within maxWait produced %v fn calls, want 1", got)
+	}
+}
+
+// TestDebouncedCallMaxWaitBoundsSustainedBurst verifies the adaptive bound:
+// a SUSTAINED burst (each Trigger arrives before the window elapses, so the
+// plain debounce would postpone fn forever — an announce firehose keeps the
+// UI frozen) must still fire fn at least once per maxWait, keeping the UI
+// eventually-fresh under load. The trailing-edge debounce semantics are kept:
+// after the burst subsides, exactly one more (trailing) call runs with the
+// final state.
+func TestDebouncedCallMaxWaitBoundsSustainedBurst(t *testing.T) {
+	t.Parallel()
+
+	var calls atomic.Int64
+	fc := &fakeClock{}
+	// window 15ms, maxWait 50ms, sustained for 200ms: the plain debounce
+	// would fire ZERO times in that span (every Trigger re-arms the window);
+	// the max-wait bound must fire roughly every 50ms → 4 calls, then the
+	// trailing call after the burst ends.
+	d := newDebouncedCallWithMaxWait(15*time.Millisecond, 50*time.Millisecond, func() { calls.Add(1) }, fc)
+
+	for range 200 {
+		d.Trigger()
+		fc.advance(1 * time.Millisecond)
+	}
+	sustained := calls.Load()
+	if sustained != 4 {
+		t.Errorf("sustained 200ms burst produced %v fn calls, want 4 (one per maxWait)", sustained)
+	}
+
+	// Trailing edge: after the burst subsides, exactly one more call with the
+	// final state must run.
+	d.Trigger()
+	fc.advance(15 * time.Millisecond)
+	if got := calls.Load() - sustained; got != 1 {
+		t.Errorf("trailing call after burst = %v, want 1", got)
+	}
+}
+
+// TestDebouncedCallMaxWaitNotExceededByWindow verifies a maxWait below the
+// window is clamped to the window (the debounce window is the fastest rate;
+// maxWait can only bound LONGER postponements).
+func TestDebouncedCallMaxWaitNotExceededByWindow(t *testing.T) {
+	t.Parallel()
+
+	var calls atomic.Int64
+	fc := &fakeClock{}
+	d := newDebouncedCallWithMaxWait(15*time.Millisecond, 5*time.Millisecond, func() { calls.Add(1) }, fc)
+
+	for range 20 {
+		d.Trigger()
+	}
+	// The clamped maxWait must NOT fire earlier than the debounce window.
+	fc.advance(5 * time.Millisecond)
+	if got := calls.Load(); got != 0 {
+		t.Errorf("maxWait<window fired after %v ms with %v calls, want 0 before the window", 5, got)
+	}
+	fc.advance(10 * time.Millisecond)
+	if got := calls.Load(); got != 1 {
+		t.Errorf("maxWait<window burst produced %v fn calls at the window, want exactly 1", got)
+	}
+}
+
 // TestDebouncedCallConcurrentTriggers verifies coalescing holds when Trigger
 // is called concurrently from many goroutines (as it is from transport
 // goroutines processing announces in parallel). The fn call count must be

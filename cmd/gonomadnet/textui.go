@@ -474,8 +474,17 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	// announces arrive. An 80 ms window is imperceptible for a single event but
 	// collapses a tight path-response storm (hundreds of announces within a
 	// second or two) to a handful of refreshes.
-	const refreshCoalesceWindow = 80 * time.Millisecond
-	refreshTrigger := tui.NewDebouncedCall(refreshCoalesceWindow, refreshAll)
+	// maxWait bounds the SUSTAINED-storm case the plain debounce cannot: with
+	// announces arriving faster than the window elapses, retriggering would
+	// postpone refreshAll indefinitely (the UI freezes on stale data). The
+	// 500 ms cap keeps the eventual refresh rate at ~2 Hz under a firehose
+	// while leaving quiet and burst-y traffic at the plain 80 ms trailing-edge
+	// behavior.
+	const (
+		refreshCoalesceWindow = 80 * time.Millisecond
+		refreshMaxWait        = 500 * time.Millisecond
+	)
+	refreshTrigger := tui.NewDebouncedCallWithMaxWait(refreshCoalesceWindow, refreshMaxWait, refreshAll)
 	a.SetUIChangeCallback(refreshTrigger.Trigger)
 	main.SetDisplay("network", networkDisplay.Widget())
 	main.SetShortcut("network", "[C-l] Nodes/Announces  [C-x] Remove  [C-w] Disconnect  [C-d] Back  [C-f] Forward  [C-r] Reload  [C-u] URL  [C-g] Fullscreen  [C-s / C-b] Save Node")
@@ -643,6 +652,9 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		data.DisplayStr = a.Dir.SimplestDisplayStr(hash)
 		if ann.Type == "node" {
 			data.OpStr = a.NodeOperatorDisplay(hash)
+			if opHash := a.NodeOperatorHash(hash); opHash != nil {
+				data.OpHash = fmt.Sprintf("%x", opHash)
+			}
 		}
 		switch a.Dir.TrustLevel(hash, nil) {
 		case directory.TrustTrusted:
@@ -692,6 +704,9 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		// LXMF Propagation Node address line (lxmf.propagation hash), and the
 		// default-PN checkbox preselection (current user-selected PN == pn_hash).
 		data.OpStr = a.NodeOperatorDisplay(hash)
+		if opHash := a.NodeOperatorHash(hash); opHash != nil {
+			data.OpHash = fmt.Sprintf("%x", opHash)
+		}
 		data.HopsStr = tui.FormatHopsStr(a.PeerHops(hash))
 		pnHash := a.NodePropagationHash(hash)
 		data.LXMFAddrStr = tui.FormatLXMFAddrStr(pnHash, tuiApp.Glyphs["sent"])
@@ -873,21 +888,43 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 			if addrHex == "" {
 				return false
 			}
-			hash, ok := app.SourceHashFromHex(addrHex)
-			if !ok {
+			// Python new_conversation confirmed() (Conversations.py:1063-1093):
+			// the entry and the on-disk conversation directory are created ONLY
+			// when the peer does not have a conversation yet — a peer that
+			// already has one is left untouched, so re-creating it with an
+			// empty Name field cannot wipe the stored display name, and the
+			// chosen trust applies only to a genuinely new peer. OpenLXMFLink
+			// provides that create path: it guards on existing conversations,
+			// recalls the announced app-data display name (falling back to the
+			// typed name), remembers the entry, and creates the conversation
+			// directory (Python Conversation(source_hash, initiator=True)).
+			isNew, err := a.OpenLXMFLink(addrHex, name)
+			if err != nil {
+				// Python catches the parse failure and shows the dialog's
+				// centered "Could not start conversation. Check your input."
 				return false
 			}
-			a.CreateDirectoryEntry(hash, name)
-			var trustByte byte
-			switch trust {
-			case "trusted":
-				trustByte = directory.TrustTrusted
-			case "unknown":
-				trustByte = directory.TrustUnknown
-			default:
-				trustByte = directory.TrustUntrusted
+			if isNew {
+				// Python's confirmed() sets the typed display name and the
+				// chosen trust level only on the create path.
+				if name != "" {
+					if hash, ok := app.SourceHashFromHex(addrHex); ok {
+						a.SetPeerDisplayName(hash, name)
+					}
+				}
+				var trustByte byte
+				switch trust {
+				case "trusted":
+					trustByte = directory.TrustTrusted
+				case "unknown":
+					trustByte = directory.TrustUnknown
+				default:
+					trustByte = directory.TrustUntrusted
+				}
+				if hash, ok := app.SourceHashFromHex(addrHex); ok {
+					a.SetPeerTrustLevel(hash, trustByte)
+				}
 			}
-			a.SetPeerTrustLevel(hash, trustByte)
 			// Reveal the new entry: switch to the Untrusted tab unless the
 			// entry was created trusted (Conversations.py:1066-1068).
 			if trust != "trusted" {
@@ -1293,26 +1330,40 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		return a.SaveConversationAttachments(sourceHash, selections)
 	}
 
-	// Network "Converse" / "Msg Op": open a conversation with the selected
-	// announce's identity — create a directory entry, refresh the conversation
-	// list, and switch to the Conversations page. (Python converse(msg) /
-	// msg_op resolve the operator's LXMF address; until RNS identity resolution
-	// is wired, both open a conversation with the announce's own identity.)
-	openConversationFromAnnounce := func() {
+	// Network "Converse" / "Msg Op" (Python converse, Network.py:168-187, and
+	// msg_op, Network.py:146-166): create a directory entry + on-disk
+	// conversation for the target LXMF address, refresh the conversation list,
+	// display the conversation, and switch to the Conversations page. The
+	// target is the announce's own address for Converse and the operator's
+	// derived "lxmf.delivery" hash for Msg Op — an empty target (the operator
+	// identity was not recallable) skips the action, as Python's KeyError
+	// branch does.
+	ensureConversationAndShow := func(targetHashHex, displayName string) {
+		if targetHashHex == "" {
+			return
+		}
+		if _, err := a.OpenLXMFLink(targetHashHex, displayName); err != nil {
+			a.Logger.Error("could not start conversation from announce: %v", err)
+			return
+		}
+		refreshConvs()
+		conversationsDisplay.DisplayConversation(targetHashHex)
+		main.SelectPage("conversations")
+	}
+	networkDisplay.OnConverse = func() {
 		ann, ok := networkDisplay.SelectedAnnounce()
 		if !ok {
 			return
 		}
-		hash, ok := app.SourceHashFromHex(ann.SourceHash)
+		ensureConversationAndShow(ann.SourceHash, ann.DisplayName)
+	}
+	networkDisplay.OnMsgOp = func(opHashHex string) {
+		opHash, ok := app.SourceHashFromHex(opHashHex)
 		if !ok {
 			return
 		}
-		a.CreateDirectoryEntry(hash, ann.DisplayName)
-		refreshConvs()
-		main.SelectPage("conversations")
+		ensureConversationAndShow(opHashHex, a.Dir.SimplestDisplayStr(opHash))
 	}
-	networkDisplay.OnConverse = openConversationFromAnnounce
-	networkDisplay.OnMsgOp = openConversationFromAnnounce
 
 	// Channels display
 	channelsDisplay := tui.NewChannelsDisplay(tuiApp, nil)
@@ -1739,6 +1790,14 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 			// normalization (a user can type "hash:path|x=1" instead of using a
 			// backtick) then retrieve_url.
 			showURLDialog(bd.CurrentURL(), func(text string) {
+				// Route the submit through OnLoadURL when the wiring layer
+				// provides one (the Network right pane must mount its display
+				// before a load renders into the visible frame), else load
+				// directly (the standalone browser page is always mounted).
+				if bd.OnLoadURL != nil {
+					bd.OnLoadURL(browser.NormalizeEnteredURL(text))
+					return
+				}
 				bd.LoadURL(browser.NormalizeEnteredURL(text))
 			})
 		}
@@ -2033,6 +2092,12 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	if ndBd := networkDisplay.BrowserDisplay(); ndBd != nil {
 		wireBrowser(ndBd)
 		ndBd.OnReleaseFocus = func() { networkDisplay.FocusLists() }
+		// URL-dialog submits from the Network right-pane browser must mount the
+		// pane before loading: navigateTo → BrowserPane.LoadURL swaps the
+		// BrowserDisplay's widget into the "Remote Node" frame AND loads the
+		// URL — bd.LoadURL alone renders into the still-unmounted display and
+		// the visible pane keeps its disconnected placeholder.
+		ndBd.OnLoadURL = func(url string) { navigateTo(url) }
 		// C-w while the Network right-pane browser holds focus routes through
 		// the BrowserDisplay's own key handler (browser.go handleInput KeyCtrlW
 		// → OnDisconnect). Python's BrowserFrame.keypress (Browser.py:21-22) calls
