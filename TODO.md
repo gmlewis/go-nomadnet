@@ -232,3 +232,17 @@ node pair. Recorded as found; reproduce steps included.
   Conversations) fully heals it and the list reappears. So list-pane
   collapse/loss is a live state corruption on current builds, not a stale
   binary.
+  ROOT-CAUSE POINTER (code read): `cw.OnClose` (tui/conversations.go:677)
+  does `cd.content.RemoveItem(cd.content.GetItem(1))` — it removes whatever
+  is at content index 1, which is the conversation widget ONLY while the
+  two columns are still in the built order [leftPanel, right]. If the pane
+  order has been flipped (BUG-3's swap) or a detail/slot overlay shifted the
+  indices, index 1 is the corrected right pane or worse, and the ONLY copy
+  of the left list panel can be removed from the Flex entirely. Nothing ever
+  re-AddItems `leftPanel` to `content` after construction (grep: only line
+  306), so once removed the page cannot recover by navigating away/back or
+  by C-g (the collapsed panel keeps a focus rectangle, but
+  `cd.handleInput`'s list-region gate short-circuits so C-g/C-n never fire).
+  Observed end state on glenn-mac-mini-m2: full-width "No conversation
+  selected" pane, no tab bar/list/footer, unresponsive to C-g/C-n/page
+  cycles — requires restarting the app.
