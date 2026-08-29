@@ -95,6 +95,29 @@ printf '`[Label`url]\n`<field`data>\n>Heading\n' | python3 micron_inline.py
 
 ## Bugs found (6-node trusted-conversation mesh sweep, 2026-08-28)
 
+Sweep outcome (honest report): of 30 directed LXMF pairs only 2 pairs closed
+bidirectionally —
+- local ↔ mac-mini: A→B and B→A delivered both pre-existing history and this
+  round's "Local->MacMini trusted ping p2" (22:52:30, outbound) +
+  mac-mini's reply (received on local as unread; note the body render did not
+  show the new inbound — stale message view) — see BUG-12/BUG-2.
+- local ↔ OMEN: local→OMEN delivered and read on OMEN (21:59:19). OMEN→local
+  reply was SENT from OMEN (22:07:54) but did NOT arrive on local within 45+
+  minutes (OMEN's send showed the ✕ failure marker, see BUG-9/bugs below);
+  retry impossible because OMEN's UI became unrecoverable.
+- All remaining 26 directed pairs: BLOCKED — the remotes cannot seed
+  conversations with each other (C-n create silently no-ops in the flipped
+  layout — BUG-6/BUG-3; announce-stream Msg Op no-op — BUG-11) and local
+  cannot message its freshly created conversations because their bodies never
+  render a composer (BUG-12).
+Also observed: remotes' replies show ✕ (transfer failure) markers while
+local→remote sends deliver fine — directs LXMF reverse-path trouble on the
+shared-instance network, consistent with BUG-7.
+
+The bug list below is the full record.
+
+## Details
+
 Driven live over tmux on 6 gonomadnet sessions (1 local + 5 remote, same
 version), setting up trusted bidirectional LXMF conversations between every
 node pair. Recorded as found; reproduce steps included.
@@ -246,3 +269,130 @@ node pair. Recorded as found; reproduce steps included.
   Observed end state on glenn-mac-mini-m2: full-width "No conversation
   selected" pane, no tab bar/list/footer, unresponsive to C-g/C-n/page
   cycles — requires restarting the app.
+  UPDATE 2 (OMEN, ~22:25Z): the same full-width state is reachable WITHOUT
+  C-w: click a list row to open a conversation (which switches the right pane
+  to the conversation), then the page can end up rendering the conversation
+  FULL-WIDTH with no left panel at all, and in that state C-w, C-g and C-g
+  C-g are ALL no-ops while typing still reaches the composer and menubar
+  clicks still switch pages. Same unrecoverable-without-restart class as the
+  C-w stronger repro above.
+  DIALOG-RENDER UPDATE (fresh instances, all 6 nodes rebuilt today; OMEN
+  byte-level evidence ~21:55Z): Ctrl-N DOES open the New Conversation dialog
+  every time — but it renders at the FAR RIGHT edge of the pane (its
+  "New Conversation" box drawn around columns ~189-235 of a ~248-wide pane,
+  i.e. as if placed in a right-hand slot) instead of centered in the 52-wide
+  list column, AND the left panel draws EMPTY (no tab bar, no list rows, the
+  bordered line boxes vanish) while the full-width "No conversation selected"
+  detail is the only frame. The dialog is still FULLY INTERACTIVE over tmux:
+  typing the 32-hex address lands in `Addr :` (verified echoed), Tab×4+Space
+  visibly flips to `(X) Trusted`, Tab+Enter hits `< Create >`. So the dialog's
+  geometry/hit region is offset right while its focus chain is intact. After
+  Create, the list still does not repaint and the two-pane layout does not
+  recover — navigating to Network and back (mouse-click on the menubar)
+  returns the page in the same broken one-frame state. The earlier
+  BUG-6 "Create silently does nothing" is most plausibly THIS bug: the
+  dialog works but is drawn at an unmapped position, and whether the entry
+  was created is unverifiable through the (now blank) list. Filtering or
+  reading the list is impossible from this state — the sweep could not
+  confirm any new trusted entries on OMEN. Pointer: SlotOverlay.SetRect
+  places the dialog by padding of the slot rect (tui/slot-overlay.go:97-141);
+  the far-right placement + vanished left panel smells like the LIST SLOT's
+  SetRect being called with a wrong x/width (or the content Flex ending up
+  as [detail, ov] instead of [ov, detail] after setListColumn, since the
+  observed dialog offset equals "rightmost 52 columns").
+  UPDATE 3 (boot-layout nondeterminism, ~23:00Z): a FRESH boot of
+  glenn-mac-mini-m2 twice in a row produced DIFFERENT Conversations layouts —
+  first boot rendered [detail LEFT | list RIGHT] (swapped) at first paint,
+  the immediately following boot (Ctrl-Q + relaunch, no UI interaction)
+  rendered the normal [list LEFT | detail RIGHT]. Trust data on disk is
+  identical, so the two-pane ORDER at boot is nondeterministic. Also: on
+  both penguin and mac-mini, pressing C-n on a HEALTHY two-pane page flips
+  it into the swapped brick state ([detail | list]) and the create then
+  no-ops (verified on penguin: recipe completes, tab counts stay (0)/(0)
+  after forced repaints). On local, the same C-n rendered the dialog
+  CENTERED-LEFT in the list slot without flipping — so the flip depends on
+  per-node/page state that is currently invisible.
+  UPDATE 2 (nano2gb fresh rebuild, ~22:40Z — reproduces on current builds):
+  C-n on a fresh two-pane page turns it into the full-width
+  "No conversation selected" brick (list panel gone), returns to a TWO-PANE
+  layout with columns SWAPPED (list far RIGHT ~col 166-232, detail LEFT) after
+  a menubar page-away/back, and in that swapped state the blind recipe
+  (addr → Tab×4 → Space → Tab → Enter) does NOT create the entry — tab counts
+  stay Trusted (0)/Untrusted (0) even after another page-away/back forcing a
+  repaint. Re-opening C-n there renders the New Conversation box at the FAR
+  RIGHT edge (~cols 190-232, half cut off by the pane edge) — i.e. the dialog
+  is anchored to the (now right-hand) list slot. Strong conclusion: BUG-6's "Create silently does nothing" and BUG-3's "columns
+  swap" are the SAME defect — sedListColumn/slot placement reorders the
+  content Flex to [detail, list] and the dialog still targets the list slot
+  at its NEW (right) position, while dialog input and created-entry refresh
+  break with the reordering. When the same C-n recipe is typed with the
+  swapped columns visible, the 32-hex address does not even echo into the
+  dialog's "Addr :" field (focus is elsewhere), so nothing at all is created.
+
+- **BUG-9 — Quit does not work while a conversation is open (app cannot be
+  exited from its own UI):** on glenn-OMEN-875, with a conversation open
+  (composer focus), neither Ctrl-Q nor Ctrl-C nor clicking the [ Quit ]
+  menubar item terminated the app — the UI kept redrawing (typed text echoed,
+  menubar page switches worked) while every quit attempt was a no-op ("Last
+  sync" kept incrementing for 20+ min). The app was NOT wedged: it echoed
+  input and switched pages during the same window. Possible causes: (a) the
+  focused composer/editor consumes Ctrl-Q before the app-level capture sees
+  it, or (b) a ghost Dialogs-Open state (per BUG-6 the far-right dialog may
+  count as open) makes the app-level capture pass Ctrl-Q through
+  (tui/main-display.go:713-730 returns the event unchanged while a dialog is
+  open), and the [ Quit ] menubar click routes through the same blocked path.
+  Recovery required killing the process externally. NOTE: on glenn-mac-mini-m2
+  (same sweep, current build) Ctrl-Q DID quit cleanly from a bricked page —
+  so this is likely specific to the OMEN instance (stale binary) — verify the
+  build on OMEN. Expected: Ctrl-Q always
+  quits from any focus state.
+
+- **BUG-10 — C-n recipe types the peer address into the composer when the
+  conversation editor has focus (silent input misroute):** on OMEN, running
+  C-n → 32-hex → Tab×4 → Space → Tab → Enter with a conversation open
+  (shortcutFocus=="editor") produced NO dialog and NO entry: C-n is gated to
+  shortcutFocus=="list" (tui/conversations.go:445-451) and is silently
+  ignored, the typed 32-hex address went into the message composer, and Enter
+  became a newline. No dialog renders and no error appears; the address sits
+  in an unsent draft that a later C-d would send to a stranger. Expected: C-n
+  from the composer either opens the dialog or gives visible feedback; silent
+  draft corruption breaks scripted trust setup. (Same class as BUG-4.)
+
+- **BUG-11 — Announce-stream "< Msg Op >" button does not create/open any
+  conversation (swaps to an apparently UNTRUSTED/empty Conversations page):**
+  on glenn-nano2gb, Announce Info for "Go port of NomadNet on RaspPi"
+  (Oprtr <103eff1c…> = the correct LXMF peer address) shows the
+  &lt;Back / Connect / Msg Op / Save&gt; button row; clicking < Msg Op >
+  switches to the Conversations page but creates NO entry (tab counts stay
+  Trusted (0)/Untrusted (0) across a forced page-away/back repaint) and opens
+  no conversation — the page lands showing "No conversation selected". So the
+  announce-stream path can NOT seed conversations on the remotes either. In
+  Python, from the announce stream Msg Op opens a message composer to the
+  announced operator directly. Expected: Msg Op creates a conversation (or at
+  least a conversation draft) for the operator address and opens it.
+  Related rendering bug seen in the same flow: the New Conversation radios can
+  render with TWO checked boxes at once (~(X) Untrusted + (X) Unknown)
+  immediately after opening, before any key is pressed, then settle to a
+  single (X) after interaction.
+
+- **BUG-12 — Newly created conversation renders with NO message body, no
+  composer (empty right pane):** on `local`, after creating a conversation via
+  C-n for 103eff1c… (raspberrypi) and clicking its list row, the right pane
+  shows ONLY the header line "<103eff1c97a1bff6bb11664288ad0c0c> | 󰓅 1 hop"
+  with NOTHING below it — no message history area, no "Type a message…"
+  composer, no shortcut bar. Typed text does not echo anywhere, so the
+  conversation cannot be used at all. Compare: conversations created by
+  inbound messages render a full body+composer. Expected: a freshly created
+  conversation shows the same empty body + composer as any other.
+  RELATED NAME-WIPE: re-creating a C-n conversation for an address that
+  already has a named entry (e.g. "Go port of NomadNet on RaspPi") with an
+  empty Name field WIPES the display name — the row thereafter renders as a
+  checkmark with a blank name (list shows "✓" on an empty line); after a
+  local-app restart those wiped rows render as "Undefined" instead (four
+  consecutive "Undefined" rows where the named RaspPi/Jetson/PixelBook rows
+  used to be).
+  WORKAROUND NOTE: type-and-send works when the conversation was created by an
+  INBOUND message (mac-mini conv on local: opened, typed, C-d delivered), and
+  never for C-n-created conversations (BUG-12). Sending via the composer can
+  succeed even when the composer text does not visibly echo (mac-mini sent a
+  reply with no on-screen draft — BUG-5 render-lag family).
