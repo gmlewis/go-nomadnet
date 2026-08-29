@@ -22,11 +22,14 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
+	"syscall"
 	"time"
 
 	"github.com/gmlewis/go-nomadnet/nomadnet/app"
@@ -137,14 +140,37 @@ func runTextUI(configDir, rnsConfigDir string) {
 	// background resources (log tail) on shutdown.
 	logCleanup := wireDisplays(tuiApp, a)
 
-	tuiApp.SetQuitCallback(func() {
-		tuiApp.Main.StopUnreadBlink()
-		if logCleanup != nil {
-			logCleanup()
-		}
-		a.Shutdown()
-		tuiApp.Stop()
-	})
+	// quitFn is the single graceful-exit path, shared by Ctrl-Q / the [ Quit ]
+	// menubar item (SetQuitCallback) and external signals below. The sync.Once
+	// lets both fire concurrently (Ctrl-Q on the event loop while a signal
+	// arrives) without double-running a.Shutdown.
+	var quitOnce sync.Once
+	quitFn := func() {
+		quitOnce.Do(func() {
+			tuiApp.Main.StopUnreadBlink()
+			if logCleanup != nil {
+				logCleanup()
+			}
+			a.Shutdown()
+			tuiApp.Stop()
+		})
+	}
+	tuiApp.SetQuitCallback(quitFn)
+
+	// External signals (SIGINT/SIGTERM — `kill`, the recovery path when the UI
+	// becomes unresponsive) run the SAME graceful exit as Ctrl-Q, so the
+	// directory and RNS state are saved and tcell restores the terminal,
+	// instead of the default immediate-death behavior that leaves the tty in
+	// raw mode on the alt screen. While the tty is in raw mode (ISIG cleared)
+	// Ctrl-C reaches the app as a key event, not a signal — this path covers a
+	// lost raw mode or an explicit kill.
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		sig := <-sigChan
+		log.Printf("Received %v — shutting down gracefully", sig)
+		quitFn()
+	}()
 
 	// Probe unread conversations every 2 s and swap the menu indicator glyph
 	// (Python MenuDisplay.update_display job, Main.py:216-230). The app injects

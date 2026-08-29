@@ -347,6 +347,25 @@ node pair. Recorded as found; reproduce steps included.
   build on OMEN. Expected: Ctrl-Q always
   quits from any focus state.
 
+  FORENSIC UPDATE (2026-08-29, OMEN SIGQUIT dump `...-kill-QUIT-1787968723.log`
+  + `/tmp/quit-diag.log` on OMEN): NO runtime deadlock — all 63 goroutines were
+  parked healthily (tview event loop idle, input loop alive in tty Read, RNS
+  announcing normally), and the process was still healthy when SIGQUIT was
+  captured 8h42m after launch. The app's own diag log shows Ctrl-Q and Ctrl-C
+  (tcell key=81/key=67) quit successfully 14+ times in earlier sessions that
+  evening, then during the BUG-9 window (21:58–22:25) ZERO key=81/key=67
+  events arrived while rune/backspace/C-g traffic DID — the quit keys were
+  lost UPSTREAM of the app (local terminal/ssh flow control or typing into a
+  different pane), and the app was healthy the whole time. So the brick is an
+  input-delivery failure plus the BUG-3 layout confusion, not a handleInput
+  defect: the quit wiring in tui/main-display.go is byte-identical between the
+  OMEN build and HEAD, and Ctrl-Q quits cleanly on the same OMEN commit in a
+  live repro (2026-08-29). Mitigation shipped: in TUI mode there was NO signal
+  handling at all — `kill`/`pkill` (the BUG-9 recovery action) killed the
+  process instantly with no directory save and the tty left on the alt screen.
+  cmd/gonomadnet/textui.go now routes SIGINT/SIGTERM through the same graceful
+  exit as Ctrl-Q (directory saved, terminal restored), verified live on OMEN.
+
 - **BUG-10 — C-n recipe types the peer address into the composer when the
   conversation editor has focus (silent input misroute):** on OMEN, running
   C-n → 32-hex → Tab×4 → Space → Tab → Enter with a conversation open
