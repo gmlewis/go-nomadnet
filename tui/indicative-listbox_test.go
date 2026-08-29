@@ -139,6 +139,85 @@ func TestIndicativeListBoxEmptyList(t *testing.T) {
 	}
 }
 
+// TestIndicativeListBoxCursorTracksHighlightTwoLine pins the hardware-cursor
+// parity for two-line list items (the Conversations list): Python renders each
+// entry as one urwid Text (name + "\n  time"), so urwid's focus cursor sits on
+// the FIRST row of the current entry and every Up/Down moves it exactly one
+// CONVERSATION (two physical rows — live capture "py_*": both name and time
+// lines share the list_focus style). The old ILB handed ShowCursor the item
+// INDEX as a row offset (row = current-offset), so with 2-row items the cursor
+// landed a conversation below each press and drifted one row per keypress
+// against the highlight (live: highlight row 16 vs cursor (1,10), then 14 vs
+// (1,9), then 12 vs (1,8) across three Ups).
+//
+// It also pins the single-line case (Guide / Saved Nodes lists): one row per
+// item, cursor exactly on the highlighted row.
+func TestIndicativeListBoxCursorTracksHighlightTwoLine(t *testing.T) {
+	t.Parallel()
+
+	t.Run("secondary text on: cursor on the current item's first row", func(t *testing.T) {
+		t.Parallel()
+		list := tview.NewList() // showSecondaryText defaults to true
+		for i := range 4 {
+			list.AddItem("conv"+itoa(i), "  2w ago", 0, nil)
+		}
+		list.SetCurrentItem(2)
+		ilb := NewIndicativeListBox(list)
+		cx, cy, visible := cursorOf(t, ilb, 24, 9)
+		if !visible {
+			t.Fatal("cursor not visible, want it on the highlighted name row")
+		}
+
+		// List area = rows 1..7 (height 9 → listRect row 1, height 7); each
+		// item occupies 2 rows (main + secondary). Item 2's MAIN line (the
+		// highlighted row, where Python's entry-cursor sits) is at
+		// listY + 2*2 = 5.
+		if cy != 5 {
+			t.Errorf("cursor y = %v, want 5 (listY=1 + item 2's first of 2 rows)", cy)
+		}
+		if cx != 0 {
+			t.Errorf("cursor x = %v, want 0 (listX)", cx)
+		}
+	})
+
+	t.Run("secondary text off: cursor row equals the item index", func(t *testing.T) {
+		t.Parallel()
+		list := tview.NewList()
+		list.ShowSecondaryText(false)
+		for i := range 10 {
+			list.AddItem("item"+itoa(i), "", 0, nil)
+		}
+		list.SetCurrentItem(3)
+		ilb := NewIndicativeListBox(list)
+		_, cy, visible := cursorOf(t, ilb, 24, 9)
+		if !visible {
+			t.Fatal("cursor not visible, want it on the highlighted row")
+		}
+		// List area = rows 1..7 (height 9 → listRect row 1, height 7); item 3
+		// (one row per item, fully visible) is at listY+3 = 4.
+		if cy != 4 {
+			t.Errorf("cursor y = %v, want 4 (listY=1 + item 3)", cy)
+		}
+	})
+}
+
+// cursorOf draws ilb on a simulation screen of w×h and returns the hardware
+// cursor position and visibility after the draw.
+func cursorOf(t *testing.T, ilb *IndicativeListBox, w, h int) (int, int, bool) {
+	t.Helper()
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatalf("screen.Init: %v", err)
+	}
+	screen.SetSize(w, h)
+	ilb.SetRect(0, 0, w, h)
+	ilb.List.Focus(func(p tview.Primitive) {})
+	ilb.Draw(screen)
+	screen.Sync()
+	x, y, visible := screen.GetCursor()
+	return x, y, visible
+}
+
 // itoa is a tiny strconv.Itoa stand-in to keep the test file import-light.
 func itoa(n int) string {
 	if n == 0 {

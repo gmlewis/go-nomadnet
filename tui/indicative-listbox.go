@@ -176,7 +176,19 @@ func (i *IndicativeListBox) Draw(screen tcell.Screen) {
 			current := i.List.GetCurrentItem()
 			offset, _ := i.List.GetOffset()
 			lx, ly, _, lh := i.listRect()
-			row := current - offset
+			// rowHeight is how many PHYSICAL rows one list item occupies: 2 when
+			// secondary text is shown (main line + time/badge line — the
+			// Conversations list), 1 otherwise (Guide / Saved Nodes lists).
+			// urwid renders the hardware cursor on the FIRST row of the focused
+			// entry (single widget per entry), so with two-line entries the
+			// cursor offset must be scaled by the item height; the previous
+			// item-index-as-row math put the cursor one conversation below the
+			// highlight and drifted a row per arrow keypress.
+			rowHeight := 1
+			if i.List.GetShowSecondaryText() {
+				rowHeight = 2
+			}
+			row := (current - offset) * rowHeight
 			if row >= 0 && row < lh {
 				screen.ShowCursor(lx, ly+row)
 			}

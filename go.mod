@@ -44,4 +44,4 @@ replace github.com/gdamore/tcell/v2 => github.com/gmlewis/tcell/v2 v2.13.11-0.20
 // SetFocus/GetFocus (direct a.focus field), v0.42.0-style HasFocus
 // methods on all containers, Box.Focus/Blur callback restoration,
 // List.Draw adjustOffset call, and WordWrap/stripTags region-tag fix.
-replace github.com/rivo/tview => github.com/gmlewis/tview v0.0.0-20260823184729-1fc7dd7d2e6f
+replace github.com/rivo/tview => github.com/gmlewis/tview v0.0.0-20260829222600-b66371dbd539
