@@ -10,8 +10,8 @@ github.com/gmlewis/go-reticulum v0.61.0 h1:fbAdJomn1JrTbzJenjswEytsyEVKZALkFPfPI
 github.com/gmlewis/go-reticulum v0.61.0/go.mod h1:qraNVnM7EHvQvJiXLk3oQrivGgKlMpIPOkU/XYkduvA=
 github.com/gmlewis/tcell/v2 v2.13.11-0.20260824212538-e24b6c4fe8a2 h1:Vz90uuRVrKqYqVJgmaoplaqokNBson1DvDiYbDT9k2Q=
 github.com/gmlewis/tcell/v2 v2.13.11-0.20260824212538-e24b6c4fe8a2/go.mod h1:+Wfe208WDdB7INEtCsNrAN6O2m+wsTPk1RAovjaILlo=
-github.com/gmlewis/tview v0.0.0-20260829222600-b66371dbd539 h1:TvrMjfU245+bIRa9mOPur7syAAxWBVVWDsYATOr79bQ=
-github.com/gmlewis/tview v0.0.0-20260829222600-b66371dbd539/go.mod h1:aSE98tht06EmmRDJGtiP567KDaJQiOWNVEpSTO55zXM=
+github.com/gmlewis/tview v0.0.0-20260829232818-68e669800296 h1:jI+cDyP9o766QEdxO/KXvFf/EpCq3vxK2btoUuziZ/M=
+github.com/gmlewis/tview v0.0.0-20260829232818-68e669800296/go.mod h1:aSE98tht06EmmRDJGtiP567KDaJQiOWNVEpSTO55zXM=
 github.com/lucasb-eyer/go-colorful v1.3.0 h1:2/yBRLdWBZKrf7gB40FoiKfAWYQ0lqNcbuQwVHXptag=
 github.com/lucasb-eyer/go-colorful v1.3.0/go.mod h1:R4dSotOR9KMtayYi1e77YzuveK+i7ruzyGqttikkLy0=
 github.com/mattn/go-runewidth v0.0.16 h1:E5ScNMtiwvlvB5paMFdw9p4kSQzbXFikJ5SQO6TULQc=

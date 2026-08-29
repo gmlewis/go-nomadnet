@@ -974,7 +974,13 @@ func (cd *ConversationsDisplay) populateList() {
 		main := conversationRowMain(conv, glyphs, cd.currentConversation)
 		secondary := conversationRowSecondary(conv)
 		cd.visible = append(cd.visible, conv)
+		// Style the entry with Python's single per-entry attribute (both lines,
+		// replaced by the focus style on selection):
+		// urwid.AttrMap(ListEntry(...), style, focus_style) with style picked
+		// per trust level (and msg_notice_unread for a trusted conversation
+		// with unread messages), Conversations.py:1687-1756.
 		cd.list.AddItem(main, secondary, 0, nil)
+		cd.list.SetItemStyle(len(cd.visible)-1, tcell.StyleDefault.Foreground(conversationEntryFG(conv, cd.currentConversation, cd.app.Theme)))
 	}
 
 	// Restore the highlight onto the same conversation's (new) row.
@@ -1052,10 +1058,36 @@ func conversationRowMain(conv ConversationInfo, glyphs GlyphSet, currentConversa
 	return head
 }
 
+// conversationEntryFG picks the single per-entry foreground Python applies to
+// the WHOLE entry (name line and relative-time line) via
+// urwid.AttrMap(ListEntry(...), style, focus_style) — Conversations.py:1687-1756:
+// a trust-level attr (list_untrusted / list_unknown / list_normal / the SOT's
+// list_warning), overridden by msg_notice_unread for a trusted conversation
+// with unread messages that is not the currently displayed one. The focus
+// (selected) styling is handled by the list, which replaces this attr entirely
+// on selection — mirroring urwid's focus_attr semantics.
+func conversationEntryFG(conv ConversationInfo, currentConversation string, theme int) tcell.Color {
+	if conv.TrustLevel == "trusted" && conv.UnreadCount > 0 && conv.SourceHash != currentConversation {
+		return GetThemeColors(theme)["msg_notice_unread"]
+	}
+	switch conv.TrustLevel {
+	case "untrusted":
+		return GetThemeColors(theme)["list_untrusted"]
+	case "unknown":
+		return GetThemeColors(theme)["list_unknown"]
+	case "trusted":
+		return GetThemeColors(theme)["list_normal"]
+	case "warning":
+		return GetThemeColors(theme)["list_warning"]
+	default:
+		return GetThemeColors(theme)["list_untrusted"]
+	}
+}
+
 // conversationRowSecondary builds the second line of a conversation list row:
 // "  "+relative_time(last_activity), mirroring Python (Conversations.py:1751).
-// It returns "" when there is no last activity (last_activity <= 0), matching
-// Python's `if last_activity > 0` guard.
+// It returns "" when there is no last activity, matching the Go zero-time check
+// (Python guards with last_activity > 0).
 func conversationRowSecondary(conv ConversationInfo) string {
 	if conv.LastTime.IsZero() {
 		return ""

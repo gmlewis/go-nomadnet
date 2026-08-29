@@ -37,44 +37,49 @@ const (
 
 // Color definitions for the dark theme.
 var darkColors = map[string]tcell.Color{
-	"heading":                    parseColor("g93"), // g93 grayscale ramp → #eeeeee
-	"menubar_fg":                 cubeHex3("#111"),
-	"menubar_bg":                 cubeHex3("#bbb"),
-	"scrollbar":                  cubeHex3("#444"),
-	"body_text":                  cubeHex3("#ddd"),
-	"error_text":                 tcell.ColorMaroon, // Python "dark red" (named; urwid 16-color SGR 31)
-	"warning_text":               cubeHex3("#ba4"),
-	"inactive_text":              tcell.ColorGray, // Python "dark gray" (named; urwid 16-color 1;30)
-	"browser_inactive":           cubeHex3("#444"),
-	"buttons":                    tcell.NewHexColor(0x00a533), // 6-hex, exact (not quantized)
-	"msg_editor_fg":              cubeHex3("#111"),
-	"msg_editor_bg":              cubeHex3("#0bb"),
-	"msg_header_ok_fg":           cubeHex3("#111"),
-	"msg_header_ok_bg":           cubeHex3("#6b2"),
-	"msg_header_caution_fg":      cubeHex3("#111"),
-	"msg_header_caution_bg":      cubeHex3("#fd3"),
-	"msg_header_sent_fg":         cubeHex3("#111"),
-	"msg_header_sent_bg":         cubeHex3("#ddd"),
-	"msg_header_propagated_fg":   cubeHex3("#111"),
-	"msg_header_propagated_bg":   cubeHex3("#28b"),
-	"msg_header_delivered_fg":    cubeHex3("#111"),
-	"msg_header_delivered_bg":    cubeHex3("#28b"),
-	"msg_header_failed_fg":       cubeHex3("#000"),
-	"msg_header_failed_bg":       cubeHex3("#777"),
-	"msg_warning_untrusted_fg":   cubeHex3("#111"),
-	"msg_warning_untrusted_bg":   tcell.ColorMaroon, // Python "dark red" (named; urwid 16-color SGR 31)
-	"msg_notice_unread":          cubeHex3("#28b"),
-	"msg_notice_caution":         cubeHex3("#fd3"),
-	"list_focus_fg":              cubeHex3("#111"),
-	"list_focus_bg":              cubeHex3("#aaa"),
-	"list_off_focus_fg":          cubeHex3("#111"),
-	"list_off_focus_bg":          cubeHex3("#777"),
-	"list_trusted":               cubeHex3("#6b2"),
-	"list_focus_trusted_fg":      cubeHex3("#150"),
-	"list_focus_trusted_bg":      cubeHex3("#aaa"),
-	"list_unknown":               cubeHex3("#bbb"),
-	"list_normal":                cubeHex3("#bbb"),
-	"list_untrusted":             cubeHex3("#a22"),
+	"heading":                  parseColor("g93"), // g93 grayscale ramp → #eeeeee
+	"menubar_fg":               cubeHex3("#111"),
+	"menubar_bg":               cubeHex3("#bbb"),
+	"scrollbar":                cubeHex3("#444"),
+	"body_text":                cubeHex3("#ddd"),
+	"error_text":               tcell.ColorMaroon, // Python "dark red" (named; urwid 16-color SGR 31)
+	"warning_text":             cubeHex3("#ba4"),
+	"inactive_text":            tcell.ColorGray, // Python "dark gray" (named; urwid 16-color 1;30)
+	"browser_inactive":         cubeHex3("#444"),
+	"buttons":                  tcell.NewHexColor(0x00a533), // 6-hex, exact (not quantized)
+	"msg_editor_fg":            cubeHex3("#111"),
+	"msg_editor_bg":            cubeHex3("#0bb"),
+	"msg_header_ok_fg":         cubeHex3("#111"),
+	"msg_header_ok_bg":         cubeHex3("#6b2"),
+	"msg_header_caution_fg":    cubeHex3("#111"),
+	"msg_header_caution_bg":    cubeHex3("#fd3"),
+	"msg_header_sent_fg":       cubeHex3("#111"),
+	"msg_header_sent_bg":       cubeHex3("#ddd"),
+	"msg_header_propagated_fg": cubeHex3("#111"),
+	"msg_header_propagated_bg": cubeHex3("#28b"),
+	"msg_header_delivered_fg":  cubeHex3("#111"),
+	"msg_header_delivered_bg":  cubeHex3("#28b"),
+	"msg_header_failed_fg":     cubeHex3("#000"),
+	"msg_header_failed_bg":     cubeHex3("#777"),
+	"msg_warning_untrusted_fg": cubeHex3("#111"),
+	"msg_warning_untrusted_bg": tcell.ColorMaroon, // Python "dark red" (named; urwid 16-color SGR 31)
+	"msg_notice_unread":        cubeHex3("#28b"),
+	"msg_notice_caution":       cubeHex3("#fd3"),
+	"list_focus_fg":            cubeHex3("#111"),
+	"list_focus_bg":            cubeHex3("#aaa"),
+	"list_off_focus_fg":        cubeHex3("#111"),
+	"list_off_focus_bg":        cubeHex3("#777"),
+	"list_trusted":             cubeHex3("#6b2"),
+	"list_focus_trusted_fg":    cubeHex3("#150"),
+	"list_focus_trusted_bg":    cubeHex3("#aaa"),
+	"list_unknown":             cubeHex3("#bbb"),
+	"list_normal":              cubeHex3("#bbb"),
+	"list_untrusted":           cubeHex3("#a22"),
+	// list_warning has no Python palette entry (the SOT references the name in
+	// Conversations.py:1711 / Network.py:118 but never defines it — urwid would
+	// fail its screen attr lookup on a warning entry); #ba4 is the warning hue
+	// the repo established in trustPaletteHex (announce-info.go).
+	"list_warning":               cubeHex3("#ba4"),
 	"list_focus_untrusted_fg":    cubeHex3("#810"),
 	"list_focus_untrusted_bg":    cubeHex3("#aaa"),
 	"list_unresponsive":          cubeHex3("#b92"),
@@ -103,43 +108,46 @@ var darkColors = map[string]tcell.Color{
 
 // Color definitions for the light theme.
 var lightColors = map[string]tcell.Color{
-	"heading":                    parseColor("g93"), // g93 grayscale ramp → #eeeeee
-	"menubar_fg":                 cubeHex3("#111"),
-	"menubar_bg":                 cubeHex3("#bbb"),
-	"scrollbar":                  cubeHex3("#444"),
-	"body_text":                  cubeHex3("#222"),
-	"error_text":                 tcell.ColorMaroon, // Python "dark red" (named; urwid 16-color SGR 31)
-	"warning_text":               cubeHex3("#ba4"),
-	"inactive_text":              tcell.ColorGray,             // Python "dark gray" (named; urwid 16-color 1;30)
-	"buttons":                    tcell.NewHexColor(0x00a533), // 6-hex, exact (not quantized)
-	"msg_editor_fg":              cubeHex3("#111"),
-	"msg_editor_bg":              cubeHex3("#0bb"),
-	"msg_header_ok_fg":           cubeHex3("#111"),
-	"msg_header_ok_bg":           cubeHex3("#6b2"),
-	"msg_header_caution_fg":      cubeHex3("#111"),
-	"msg_header_caution_bg":      cubeHex3("#fd3"),
-	"msg_header_sent_fg":         cubeHex3("#111"),
-	"msg_header_sent_bg":         cubeHex3("#ddd"),
-	"msg_header_propagated_fg":   cubeHex3("#111"),
-	"msg_header_propagated_bg":   cubeHex3("#28b"),
-	"msg_header_delivered_fg":    cubeHex3("#111"),
-	"msg_header_delivered_bg":    cubeHex3("#28b"),
-	"msg_header_failed_fg":       cubeHex3("#000"),
-	"msg_header_failed_bg":       cubeHex3("#777"),
-	"msg_warning_untrusted_fg":   cubeHex3("#111"),
-	"msg_warning_untrusted_bg":   tcell.ColorMaroon, // Python "dark red" (named; urwid 16-color SGR 31)
-	"msg_notice_unread":          cubeHex3("#069"),
-	"msg_notice_caution":         cubeHex3("#fd3"),
-	"list_focus_fg":              cubeHex3("#111"),
-	"list_focus_bg":              cubeHex3("#aaa"),
-	"list_off_focus_fg":          cubeHex3("#111"),
-	"list_off_focus_bg":          cubeHex3("#777"),
-	"list_trusted":               cubeHex3("#4a0"),
-	"list_focus_trusted_fg":      cubeHex3("#150"),
-	"list_focus_trusted_bg":      cubeHex3("#aaa"),
-	"list_unknown":               cubeHex3("#444"),
-	"list_normal":                cubeHex3("#444"),
-	"list_untrusted":             cubeHex3("#a22"),
+	"heading":                  parseColor("g93"), // g93 grayscale ramp → #eeeeee
+	"menubar_fg":               cubeHex3("#111"),
+	"menubar_bg":               cubeHex3("#bbb"),
+	"scrollbar":                cubeHex3("#444"),
+	"body_text":                cubeHex3("#222"),
+	"error_text":               tcell.ColorMaroon, // Python "dark red" (named; urwid 16-color SGR 31)
+	"warning_text":             cubeHex3("#ba4"),
+	"inactive_text":            tcell.ColorGray,             // Python "dark gray" (named; urwid 16-color 1;30)
+	"buttons":                  tcell.NewHexColor(0x00a533), // 6-hex, exact (not quantized)
+	"msg_editor_fg":            cubeHex3("#111"),
+	"msg_editor_bg":            cubeHex3("#0bb"),
+	"msg_header_ok_fg":         cubeHex3("#111"),
+	"msg_header_ok_bg":         cubeHex3("#6b2"),
+	"msg_header_caution_fg":    cubeHex3("#111"),
+	"msg_header_caution_bg":    cubeHex3("#fd3"),
+	"msg_header_sent_fg":       cubeHex3("#111"),
+	"msg_header_sent_bg":       cubeHex3("#ddd"),
+	"msg_header_propagated_fg": cubeHex3("#111"),
+	"msg_header_propagated_bg": cubeHex3("#28b"),
+	"msg_header_delivered_fg":  cubeHex3("#111"),
+	"msg_header_delivered_bg":  cubeHex3("#28b"),
+	"msg_header_failed_fg":     cubeHex3("#000"),
+	"msg_header_failed_bg":     cubeHex3("#777"),
+	"msg_warning_untrusted_fg": cubeHex3("#111"),
+	"msg_warning_untrusted_bg": tcell.ColorMaroon, // Python "dark red" (named; urwid 16-color SGR 31)
+	"msg_notice_unread":        cubeHex3("#069"),
+	"msg_notice_caution":       cubeHex3("#fd3"),
+	"list_focus_fg":            cubeHex3("#111"),
+	"list_focus_bg":            cubeHex3("#aaa"),
+	"list_off_focus_fg":        cubeHex3("#111"),
+	"list_off_focus_bg":        cubeHex3("#777"),
+	"list_trusted":             cubeHex3("#4a0"),
+	"list_focus_trusted_fg":    cubeHex3("#150"),
+	"list_focus_trusted_bg":    cubeHex3("#aaa"),
+	"list_unknown":             cubeHex3("#444"),
+	"list_normal":              cubeHex3("#444"),
+	"list_untrusted":           cubeHex3("#a22"),
+	// No Python light-theme reference (list_warning is never defined in the
+	// urwid palette; see the dark-theme entry), so the dark hue is shared.
+	"list_warning":               cubeHex3("#ba4"),
 	"list_focus_untrusted_fg":    cubeHex3("#810"),
 	"list_focus_untrusted_bg":    cubeHex3("#aaa"),
 	"list_unresponsive":          cubeHex3("#b92"),
