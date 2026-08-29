@@ -179,6 +179,18 @@ type urwidColumns struct {
 	// plain list has focus — matching urwid, where the inner Columns consumes
 	// Left/Right only while a child that handles them is focused.
 	selfManagingFunc []func() bool
+	// widthsCache caches the urwid width table computed by the last SetRect,
+	// and widthsW is the total width it was computed for. SetRect runs on
+	// every column row on every full-screen redraw, and the table is pure
+	// function of (width, weights, fixedWidths, dividechars) — recomputing and
+	// re-sorting it per frame dominated the layout cost. widthsGen is bumped
+	// by the layout mutators (SetWeight/SetFixedWidth) so a config change
+	// (e.g. the Network page's fullscreen list toggle) invalidates the cache;
+	// layoutGen tracks the generation the cache was computed at.
+	widthsGen   int
+	layoutGen   int
+	widthsW     int
+	widthsCache []int
 }
 
 // newURWIDColumns builds a urwid-style Columns row of the given weighted
@@ -233,7 +245,10 @@ func (c *urwidColumns) SetSelfManagingFunc(i int, fn func() bool) *urwidColumns 
 // SetFixedWidth sets an explicit fixed character width for column i.
 func (c *urwidColumns) SetFixedWidth(i, width int) *urwidColumns {
 	if i >= 0 && i < len(c.fixedWidths) {
-		c.fixedWidths[i] = width
+		if c.fixedWidths[i] != width {
+			c.fixedWidths[i] = width
+			c.widthsGen++
+		}
 	}
 	return c
 }
@@ -335,6 +350,7 @@ func (c *urwidColumns) moveFocus(delta int, setFocus func(p tview.Primitive)) {
 func (c *urwidColumns) SetWeight(i, weight int) *urwidColumns {
 	if i >= 0 && i < len(c.weights) {
 		c.weights[i] = weight
+		c.widthsGen++
 	}
 	return c
 }
@@ -342,7 +358,12 @@ func (c *urwidColumns) SetWeight(i, weight int) *urwidColumns {
 // SetRect lays out the children at their urwid-computed widths across the row.
 func (c *urwidColumns) SetRect(x, y, w, h int) {
 	c.Box.SetRect(x, y, w, h)
-	widths := urwidColumnWidthsEx(w, c.weights, c.fixedWidths, c.dividechars)
+	if c.widthsCache == nil || c.widthsGen != c.layoutGen || c.widthsW != w {
+		c.widthsCache = urwidColumnWidthsEx(w, c.weights, c.fixedWidths, c.dividechars)
+		c.layoutGen = c.widthsGen
+		c.widthsW = w
+	}
+	widths := c.widthsCache
 	cx := x
 	for i, child := range c.children {
 		cw := widths[i]
