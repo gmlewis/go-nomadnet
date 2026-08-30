@@ -894,6 +894,23 @@ func (cd *ConversationsDisplay) DisplayConversation(sourceHash string) {
 	cd.focusEditor()
 }
 
+// RefreshRelativeTimes re-renders the open conversation's message list when
+// any message header's relative-time string would change (e.g. "1m ago" →
+// "2m ago"). Message headers are computed at render time, so without a
+// periodic refresh an open conversation's relative-time labels freeze until
+// the next event-driven reload — Python rebuilds all message widgets on every
+// conversation change (Conversations.py:2254) and re-arms a 30 s
+// _refresh_sync_status alarm (Conversations.py:550-557); this uses the same
+// 30 s cadence (wired next to RefreshSyncStatus) and skips the rebuild (and
+// its OnLoadMessages disk round-trip) when no label changed. Must run on the
+// UI thread.
+func (cd *ConversationsDisplay) RefreshRelativeTimes() {
+	if cd.currentWidget == nil || !cd.currentWidget.relativeTimesChanged() {
+		return
+	}
+	cd.ReloadCurrentMessages()
+}
+
 // focusEditor moves focus to the currently-open conversation's composer (the
 // frame footer), matching Python's ConversationFrame focus_part="footer". It
 // is also called after the New Conversation dialog dismisses, since dismissTop

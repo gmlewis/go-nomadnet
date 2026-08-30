@@ -66,6 +66,44 @@ func TestConversationWidgetSetMessages(t *testing.T) {
 	}
 }
 
+// TestConversationWidgetRelativeTimesChanged pins RefreshRelativeTimes' dirty
+// check: right after a render, no header's relative-time label has changed;
+// once the wall clock passed a label boundary ("just now" → "1m ago"), the
+// check reports dirty so the caller reloads the message list and the rendered
+// labels update (per-message relative times are embedded in headers computed
+// at render time and would otherwise freeze until the next event).
+func TestConversationWidgetRelativeTimesChanged(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	cw := NewConversationWidget(app, "aabb1122")
+
+	now := time.Now()
+	msgs := []ConversationMessage{
+		{Content: "Hello", Timestamp: now.Add(-55 * time.Second), IsSent: true, State: lxmfStateSent, SourceHash: []byte{1, 2}},
+		{Content: "Hi there", Timestamp: now.Add(-5 * time.Second), State: lxmfStateDelivered, SourceHash: nil},
+	}
+
+	// Hashes must be non-empty: renderedTitles is keyed by message hash.
+	for i := range msgs {
+		msgs[i].Hash = []byte{byte(i)}
+	}
+
+	cw.SetMessages(msgs)
+	if len(cw.renderedTitles) != 2 {
+		t.Fatalf("renderedTitles after SetMessages=%v, want 2", len(cw.renderedTitles))
+	}
+	if cw.relativeTimesChanged() {
+		t.Error("relativeTimesChanged immediately after render=true, want false")
+	}
+
+	// Simulate the aging that RefreshRelativeTimes' 30 s tick picks up.
+	cw.messages[0].Timestamp = now.Add(-90 * time.Second)
+	if !cw.relativeTimesChanged() {
+		t.Error("relativeTimesChanged after the label crossed a minute boundary=false, want true")
+	}
+}
+
 func TestConversationWidgetClearEditor(t *testing.T) {
 	t.Parallel()
 

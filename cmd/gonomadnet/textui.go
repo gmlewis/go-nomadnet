@@ -860,6 +860,10 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	// live (Python _sync_status_line, Conversations.py:517-545). Refresh every
 	// 30 s to age the relative time, matching Python's set_alarm_in(30,
 	// _refresh_sync_status). Also refreshed after a sync completes (below).
+	// The same tick re-renders the open conversation's message list when any
+	// per-message relative-time header ("1m ago") changed on the wall clock —
+	// those labels are computed at render time and would otherwise freeze
+	// until the next event-driven reload.
 	conversationsDisplay.LastSyncInfo = a.LastSyncInfo
 	conversationsDisplay.RefreshSyncStatus()
 	tuiApp.GoSafe(func() {
@@ -867,6 +871,9 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		defer ticker.Stop()
 		for range ticker.C {
 			conversationsDisplay.RefreshSyncStatus()
+			tuiApp.QueueUpdateDraw(func() {
+				conversationsDisplay.RefreshRelativeTimes()
+			})
 		}
 	})
 

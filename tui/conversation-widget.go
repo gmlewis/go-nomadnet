@@ -16,6 +16,7 @@
 package tui
 
 import (
+	"encoding/hex"
 	"fmt"
 	"path/filepath"
 	"sort"
@@ -35,6 +36,10 @@ import (
 // end of the text to the right edge) with that background.
 type messageListView struct {
 	*tview.TextView
+
+	// headerTitle is the header title string (which embeds the relative
+	// timestamp, e.g. "1m ago") this entry was rendered with.
+	headerTitle string
 }
 
 func newMessageListView() *messageListView {
@@ -133,6 +138,12 @@ type ConversationWidget struct {
 	sortByTimestamp      bool
 	trustBannerDismissed bool
 
+	// renderedTitles maps each rendered message's LXMF hash (hex) to the
+	// header title string built at render time. RefreshRelativeTimes compares
+	// freshly computed titles against these to detect when a relative-time
+	// label ("1m ago") would change.
+	renderedTitles map[string]string
+
 	// Callbacks
 	OnClose                  func()
 	OnPurgeFailed            func()
@@ -226,8 +237,9 @@ type ConversationMessage struct {
 // Matches Python's ConversationWidget.__init__().
 func NewConversationWidget(app *App, sourceHash string) *ConversationWidget {
 	cw := &ConversationWidget{
-		app:    app,
-		source: sourceHash,
+		app:            app,
+		source:         sourceHash,
+		renderedTitles: map[string]string{},
 	}
 	tc := GetThemeColors(app.Theme)
 
@@ -926,10 +938,32 @@ func (cw *ConversationWidget) ignoreClick() {
 // Pile order [title, content, ""] (Conversations.py:2670-2762).
 func (cw *ConversationWidget) renderMessages() {
 	entries := make([]*messageListView, 0, len(cw.messages))
+	rendered := make(map[string]string, len(cw.messages))
 	for _, msg := range cw.messages {
-		entries = append(entries, cw.renderMessageEntry(msg))
+		entry := cw.renderMessageEntry(msg)
+		entries = append(entries, entry)
+		rendered[hex.EncodeToString(msg.Hash)] = entry.headerTitle
 	}
+	cw.renderedTitles = rendered
 	cw.messageList.SetEntries(entries)
+}
+
+// relativeTimesChanged reports whether any rendered message's header title
+// (which embeds the relative timestamp, e.g. "1m ago") differs from what the
+// same message would render with the current wall clock. Message headers are
+// computed at render time; without a periodic refresh an open conversation's
+// relative-time labels would freeze until the next event-driven reload.
+func (cw *ConversationWidget) relativeTimesChanged() bool {
+	if cw == nil || len(cw.messages) == 0 || cw.renderedTitles == nil {
+		return false
+	}
+	for _, msg := range cw.messages {
+		title, _ := LXMessageHeader(cw.headerInputs(msg))
+		if cw.renderedTitles[hex.EncodeToString(msg.Hash)] != title {
+			return true
+		}
+	}
+	return false
 }
 
 // renderedMessageText returns the concatenated per-message entry text (tags
@@ -983,6 +1017,7 @@ func (cw *ConversationWidget) renderMessageEntry(msg ConversationMessage) *messa
 	v.SetTextColor(tcell.ColorDefault)
 	v.SetBackgroundColor(tcell.ColorDefault)
 	v.SetTextAlign(tview.AlignLeft)
+	v.headerTitle = title
 	v.SetText(sb.String())
 	return v
 }
