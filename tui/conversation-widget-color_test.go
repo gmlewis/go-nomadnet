@@ -206,11 +206,14 @@ func TestConversationWidgetHeaderColors(t *testing.T) {
 			wantFG := uint32(tc[c.style+"_fg"].Hex()) & 0xffffff
 			wantBG := uint32(tc[c.style+"_bg"].Hex()) & 0xffffff
 
-			// The header is the first non-blank row (row 0). Scan the first
+			// The header is the first row of the message list's inner area
+			// (row 1): rows 0 and 5 are the IndicativeListBox ▲/▼ indicator
+			// bars (unstyled default colors), and entries are inset one row
+			// below the top bar like Python's messagelist. Scan the first
 			// several cells for a styled header glyph cell.
 			found := false
 			for x := 0; x < 40 && !found; x++ {
-				r, _, style, _ := cellContent(screen, x, 0)
+				r, _, style, _ := cellContent(screen, x, 1)
 				if r == ' ' || r == 0 {
 					continue
 				}
@@ -235,7 +238,7 @@ func TestConversationWidgetHeaderColors(t *testing.T) {
 			// and assert it carries a bg within 1 unit of the header bg. The
 			// Draw-fill nudges the blue component off a 256-color cube level
 			// (a tcell flushing workaround), so the fill bg may differ by 1.
-			r, _, style, _ := cellContent(screen, 78, 0)
+			r, _, style, _ := cellContent(screen, 78, 1)
 			if r != ' ' && r != 0 {
 				t.Errorf("trailing cell (78,0) rune = %q, want space", string(r))
 			}

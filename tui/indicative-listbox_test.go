@@ -389,3 +389,65 @@ func TestIndicativeListBoxWheelBoundaryNoOp(t *testing.T) {
 		t.Errorf("ScrollUp at mid moved highlight to %v, want 7", got)
 	}
 }
+
+// TestIndicativeListBoxOffFocusHighlight pins the vendor ILB's
+// highlight_offFocus behavior (indicative_listbox.py:172-182): while the ILB
+// does NOT have the focus, the SELECTED row repaints with the off-focus
+// palette (list_off_focus #111/#777 → screen #7777x7), and once the widget is
+// focused the selected row returns to its own focus palette (list_focus
+// #111/#aaa → screen #afafaf). This is why Python's Conversations list shows
+// the selection in dark gray (135,135,135) while a conversation is open in
+// the right pane — the list pane is unfocused there.
+func TestIndicativeListBoxOffFocusHighlight(t *testing.T) {
+	t.Parallel()
+
+	list := tview.NewList()
+	list.SetHighlightFullLine(true)
+	list.AddItem("Conv A", "  1h ago", 0, nil)
+	list.AddItem("Conv B", "  2h ago", 0, nil)
+	ApplyListFocusStyle(list, ThemeDark)
+
+	ilb := NewIndicativeListBox(list)
+	c := GetThemeColors(ThemeDark)
+	ilb.SetHighlightStyles(c["list_focus_fg"], c["list_focus_bg"],
+		c["list_off_focus_fg"], c["list_off_focus_bg"])
+
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatalf("screen.Init: %v", err)
+	}
+	defer screen.Fini()
+	screen.SetSize(30, 5)
+
+	probe := func() (fg, bg tcell.Color) {
+		screen.Clear()
+		ilb.SetRect(0, 0, 30, 5)
+		ilb.Draw(screen)
+		screen.Show()
+		_, _, st, _ := cellContent(screen, 2, 1)
+		fg, bg, _ = st.Decompose() // selected row's first line
+		return fg, bg
+	}
+
+	// Unfocused: the selected row carries the off-focus palette
+	// (#111 cube→#000000 on #777 cube→#878787).
+	fg, bg := probe()
+	if got := uint32(bg.Hex()) & 0xffffff; got != 0x878787 {
+		t.Errorf("unfocused selected bg = #%06x, want #878787 (list_off_focus bg #777 cube-quantized)", got)
+	}
+	if got := uint32(fg.Hex()) & 0xffffff; got != 0x000000 {
+		t.Errorf("unfocused selected fg = #%06x, want #000000 (list_off_focus fg #111 cube-quantized)", got)
+	}
+
+	// Focused: the selected row carries the focus palette
+	// (#111 cube→#000000 on #aaa cube→#afafaf).
+	ilb.Blur()
+	ilb.Focus(func(tview.Primitive) {})
+	fg, bg = probe()
+	if got := uint32(bg.Hex()) & 0xffffff; got != 0xafafaf {
+		t.Errorf("focused selected bg = #%06x, want #afafaf (list_focus bg #aaa cube-quantized)", got)
+	}
+	if got := uint32(fg.Hex()) & 0xffffff; got != 0x000000 {
+		t.Errorf("focused selected fg = #%06x, want #000000 (list_focus fg #111 cube-quantized)", got)
+	}
+}

@@ -74,3 +74,49 @@ func TestUrwidButtonRenderingMatchesPython(t *testing.T) {
 		}
 	}
 }
+
+// TestUrwidButtonMultiByteLabelFillsCells pins the cell-vs-byte wrap bug: the
+// label print loop used the `range line` BYTE index as if it were a cell
+// offset, so every multi-byte rune (✉ is 3 bytes, 1 cell) truncated the line
+// one cell short and floated the right bracket away from the box edge — the
+// Conversations tab rendered "[ Untrusted (1) ✉ 1 ]· ·" with two blank cells
+// AFTER the bracket instead of urwid's label padding inside it. Python's tab
+// row (live capture nomadnet-glenn-mac-mini-m2_1788052270, row 3) is
+// "[ Untrusted (1)   1   ]": the leftover columns go BEFORE the "]".
+// With the ✉ glyph set the label is one cell narrower, so the inner pad is
+// four cells at this width.
+func TestUrwidButtonMultiByteLabelFillsCells(t *testing.T) {
+	t.Parallel()
+
+	const width = 24
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatalf("screen.Init: %v", err)
+	}
+	defer screen.Fini()
+	screen.SetSize(width, 1)
+
+	btn := NewTabButton("Untrusted (1) ✉ 1")
+	btn.SetRect(0, 0, width, 1)
+	btn.Draw(screen)
+	screen.Show()
+
+	cells, w, _ := screen.GetContents()
+	var row strings.Builder
+	for i := range w {
+		if len(cells[i].Runes) > 0 {
+			row.WriteRune(cells[i].Runes[0])
+		} else {
+			row.WriteByte(' ')
+		}
+	}
+	got := row.String()
+	const want = "[ Untrusted (1) ✉ 1    ]"
+	if got != want {
+		t.Errorf("tab button with multi-byte glyph at width %d = %q, want %q", width, got, want)
+	}
+	// The right bracket must sit at the LAST cell (brackets are not floating).
+	if last := rune(cells[width-1].Runes[0]); last != ']' {
+		t.Errorf("last cell = %q, want ']'", string(last))
+	}
+}

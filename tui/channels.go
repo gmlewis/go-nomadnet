@@ -173,6 +173,10 @@ func NewChannelsDisplay(app *App, rooms []ChannelInfo) *ChannelsDisplay {
 	// inner width (given_list_width 36 − 2 borders = 34) so the break lands where
 	// urwid breaks (after "add"), not where tview's WordWrap breaks (after "to").
 	colors := GetThemeColors(app.Theme)
+	// Python's Channels ILB repaints the selected hub row with list_off_focus
+	// while the list pane is unfocused (highlight_offFocus, Channels.py:1594).
+	cd.ilb.SetHighlightStyles(colors["list_focus_fg"], colors["list_focus_bg"],
+		colors["list_off_focus_fg"], colors["list_off_focus_bg"])
 	const noHubsRaw = "\n  No hubs yet. Press Ctrl-N to add one."
 	cd.noHubsText = tview.NewTextView().
 		SetTextColor(colors["list_unknown"]).

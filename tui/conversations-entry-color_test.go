@@ -79,7 +79,10 @@ func TestConversationsEntryColors(t *testing.T) {
 
 	app := newTestApp()
 	colors := GetThemeColors(app.Theme)
-	base := time.Date(2026, 8, 29, 12, 0, 0, 0, time.UTC)
+	// Anchored to now so every fixture stays within the "Nh ago" band of
+	// relativeTime at any wall clock — a fixed date (2026-08-29) silently
+	// became "yesterday" when the calendar rolled over.
+	base := time.Now().UTC()
 	convs := []ConversationInfo{
 		{SourceHash: "1111111111111111111111111111111111111111", DisplayName: "calm", TrustLevel: "trusted", LastTime: base.Add(-2 * time.Hour)},
 		{SourceHash: "2222222222222222222222222222222222222222", DisplayName: "buzz", TrustLevel: "trusted", UnreadCount: 2, LastTime: base.Add(-1 * time.Hour)},

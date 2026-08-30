@@ -109,7 +109,6 @@ func wireDialogNav(app focuser, dismiss func(), items []tview.Primitive) {
 		return
 	}
 	for i := range items {
-		i := i
 		orig := getItemCapture(items[i])
 		setItemCapture(items[i], func(ev *tcell.EventKey) *tcell.EventKey {
 			switch ev.Key() {

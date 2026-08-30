@@ -76,6 +76,17 @@ type IndicativeListBox struct {
 	// applied unconditionally, not only while focused.
 	emptyFG tcell.Color
 	emptyBG tcell.Color
+
+	// Selection styles for when the list itself loses focus. Python's ILB
+	// highlight_offFocus repaints the SELECTED row with the off-focus palette
+	// whenever the widget does not have the focus (vendor indicator
+	// indicative_listbox.py:172-182: set_attr_map(highlight_offFocus) at focus
+	// transitions), so the highlight stays visible against unfocused entry
+	// colors. offFocusSelSet is false until SetHighlightStyles opts in —
+	// highlight_offFocus=None (the default) highlights nothing off-focus.
+	selFG, selBG   tcell.Color // focused (list_focus)
+	offFG, offBG   tcell.Color // unfocused (list_off_focus)
+	offFocusSelSet bool
 }
 
 // NewIndicativeListBox wraps the given List with indicator bars. If list is
@@ -99,6 +110,16 @@ func (i *IndicativeListBox) SetEmptyText(text string) { i.emptyText = text }
 // effect on the SetEmptyWidget path, whose primitive carries its own styling.
 func (i *IndicativeListBox) SetEmptyStyle(fg, bg tcell.Color) {
 	i.emptyFG, i.emptyBG = fg, bg
+}
+
+// SetHighlightStyles wires the on-focus (list_focus) and off-focus
+// (list_off_focus) selection palettes. Before each draw the selected row's
+// colors are swapped for the current focus state, mirroring the vendor ILB's
+// set_attr_map(highlight_offFocus) / restore at focus transitions (vendor
+// indicative_listbox.py:172-182).
+func (i *IndicativeListBox) SetHighlightStyles(focusedFG, focusedBG, offFG, offBG tcell.Color) {
+	i.selFG, i.selBG, i.offFG, i.offBG = focusedFG, focusedBG, offFG, offBG
+	i.offFocusSelSet = true
 }
 
 // SetEmptyWidget sets a widget drawn in the list area (between the indicator
@@ -133,6 +154,19 @@ func (i *IndicativeListBox) Draw(screen tcell.Screen) {
 	x, y, w, h := i.GetRect()
 	if w <= 0 || h <= 0 {
 		return
+	}
+	// Python's vendor ILB swaps the selected row's palette on focus
+	// transitions (indicative_listbox.py:172-182): focused → the entry's own
+	// focus map (list_focus), unfocused → highlight_offFocus (list_off_focus).
+	// Do it before the List draws so the selection renders in the right state.
+	if i.offFocusSelSet {
+		if i.HasFocus() {
+			i.List.SetSelectedTextColor(i.selFG)
+			i.List.SetSelectedBackgroundColor(i.selBG)
+		} else {
+			i.List.SetSelectedTextColor(i.offFG)
+			i.List.SetSelectedBackgroundColor(i.offBG)
+		}
 	}
 	i.List.Draw(screen)
 

@@ -474,6 +474,13 @@ func (a *App) initRNS() {
 	})
 	a.Logger.Info("Announce handlers registered")
 
+	// Restore the saved (or best trusted) propagation node at boot (Python
+	// NomadNetworkApp.py:413 self.autoselect_propagation_node() right after the
+	// announce handlers register). Without this the LXMF router starts with no
+	// outbound propagation node, so propagation sync and the Conversations
+	// "Last sync: ... (<node>)" footer lose their default node.
+	a.AutoSelectPropagationNode()
+
 	// Start the hosted node when enable_node is set (Python
 	// NomadNetworkApp.py:399 self.node = nomadnet.Node(self)). A start failure is
 	// logged but does not abort the client, matching Python's daemon resilience.

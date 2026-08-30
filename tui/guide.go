@@ -219,6 +219,11 @@ func NewGuideDisplay(app *App) *GuideDisplay {
 	// ScrollBar so it shows the ┃ thumb on the right edge when content overflows
 	// (urwid ScrollBar, Guide.py:232).
 	gd.topicsList = NewIndicativeListBox(gd.topics)
+	// Python's Guide ILB repaints the selected topic row with list_off_focus
+	// while the list pane is unfocused (highlight_offFocus, Guide.py:183-185).
+	c := GetThemeColors(app.Theme)
+	gd.topicsList.SetHighlightStyles(c["list_focus_fg"], c["list_focus_bg"],
+		c["list_off_focus_fg"], c["list_off_focus_bg"])
 	gd.topicsBox = tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(gd.topicsList, 0, 1, true)
 	gd.topicsBox.SetBorder(true)

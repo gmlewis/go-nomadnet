@@ -16,6 +16,8 @@
 package tui
 
 import (
+	"unicode/utf8"
+
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
@@ -87,14 +89,20 @@ func (m *messageListBox) SetEntries(entries []*messageListView) {
 }
 
 // SetRect lays out the list; a width change re-wraps every entry height and
-// re-clamps the scroll position.
+// re-clamps the scroll position. A height change alone must also re-scroll:
+// SetEntries runs before the pane has its final height, so the offset computed
+// against the old viewport (and clamped to old-total) leaves the newest
+// messages stranded at the top with blank space below when the pane grows.
 func (m *messageListBox) SetRect(x, y, w, h int) {
+	_, _, ph, _ := m.GetRect()
 	if w != m.width {
 		m.width = w
 		m.layout()
 		if m.focus >= len(m.entries) {
 			m.focus = max(len(m.entries)-1, 0)
 		}
+		m.scrollToFocus()
+	} else if h != ph {
 		m.scrollToFocus()
 	}
 	m.Box.SetRect(x, y, w, h)
@@ -113,7 +121,11 @@ func (m *messageListBox) layout() {
 }
 
 // entryHeight returns the rendered height of entry i at the layout width,
-// matching tview's internal TextView wrapping (both use tview.WordWrap).
+// matching the Python LXMessageWidget Pile row count (both use space wrapping;
+// tview.TextView and urwid.Text wrap identically). The entry text always ends
+// with one trailing "\n" that represents the Pile's final urwid.Text("") row,
+// and tview.WordWrap turns that into an extra phantom empty element, so drop
+// exactly one trailing empty word-wrapped line.
 func (m *messageListBox) entryHeight(i int) int {
 	if m.width <= 0 || i >= len(m.entries) {
 		return 1
@@ -123,13 +135,20 @@ func (m *messageListBox) entryHeight(i int) int {
 	if len(lines) == 0 {
 		return 1
 	}
-	return len(lines)
+	if lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	return max(len(lines), 1)
 }
 
-// viewport height (the number of visible rows).
+// viewport height (the number of visible rows of the inner list). The widget
+// reserves one row for the IndicativeListBox top bar and one for the bottom
+// bar (vendor indicative_listbox.py render subtracts
+// "_top_bar.rows() + _bottom_bar.rows()" from the size), so the inner list is
+// two rows shorter than the widget rect.
 func (m *messageListBox) viewHeight() int {
 	_, _, _, h := m.GetRect()
-	return max(h, 1)
+	return max(h-2, 1)
 }
 
 // scrollToFocus adjusts the offset so the focused entry is fully visible
@@ -192,26 +211,54 @@ func (m *messageListBox) FocusedEntryRows() (top, bottom int, ok bool) {
 	return top, top + m.entryHeight(m.focus), true
 }
 
-// Draw paints the visible portion of every entry. Entries partially scrolled
-// off the top are drawn with their TextView scrolled to the first visible
-// line; entries cut off at the bottom get a clipped rect.
+// Draw paints the visible portion of every entry between the IndicativeListBox
+// top and bottom bars (top covered "▲" / exposed "───", bottom covered "▼" /
+// exposed "───", both centered — vendor indicative_listbox.py default
+// constructor props). Entries partially scrolled off the top are drawn with
+// their TextView scrolled to the first visible line; entries cut off at the
+// bottom get a clipped rect.
 func (m *messageListBox) Draw(screen tcell.Screen) {
 	m.Box.DrawForSubclass(screen, m)
+	x0, y0, w, h := m.GetRect()
+	if w <= 0 || h <= 0 {
+		return
+	}
+	barY := 0
+	// The covered/exposed glyphs render with no attr map (default terminal
+	// colors — the bars are urwid.AttrMap(None)), so no color is applied.
+	centerX := func(s string) int { return x0 + max((w-utf8.RuneCountInString(s))/2, 0) }
+	if h > 2 {
+		if m.TopIsVisible() {
+			m.drawBarText(screen, centerX("───"), y0, "───")
+			barY = 1
+		} else {
+			m.drawBarText(screen, centerX("▲"), y0, "▲")
+			barY = 1
+		}
+	}
+	if h > 2 {
+		if m.BottomIsVisible() {
+			m.drawBarText(screen, centerX("───"), y0+h-1, "───")
+		} else {
+			m.drawBarText(screen, centerX("▼"), y0+h-1, "▼")
+		}
+	}
 	if len(m.entries) == 0 {
 		return
 	}
-	x, y, w, h := m.GetRect()
-	if w <= 0 || h <= 0 {
+	x, y, hw := x0, y0+barY, w
+	hh := m.viewHeight()
+	if hw <= 0 || hh <= 0 {
 		return
 	}
 	for i, e := range m.entries {
 		top := m.rows[i]
 		bottom := top + m.entryHeight(i)
-		if bottom <= m.offset || top >= m.offset+h {
+		if bottom <= m.offset || top >= m.offset+hh {
 			continue
 		}
-		if w != m.width {
-			m.width = w
+		if hw != m.width {
+			m.width = hw
 			m.layout()
 		}
 		eh := m.entryHeight(i)
@@ -219,15 +266,29 @@ func (m *messageListBox) Draw(screen tcell.Screen) {
 		if top < m.offset {
 			// Partially above the viewport: scroll the entry's TextView to its
 			// first visible line and clip to the visible rows.
-			visible := min(bottom-m.offset, h)
-			e.SetRect(x, y, w, visible)
+			visible := min(bottom-m.offset, hh)
+			e.SetRect(x, y, hw, visible)
 			e.ScrollTo(min(m.offset-top, max(eh-1, 0)), 0)
 		} else {
-			visible := min(eh, h-(top-m.offset))
-			e.SetRect(x, vy, w, visible)
+			visible := min(eh, hh-(top-m.offset))
+			e.SetRect(x, vy, hw, visible)
 			e.ScrollTo(0, 0)
 		}
 		e.Draw(screen)
+	}
+}
+
+// drawBarText paints one centered bar glyph run with the screen's default
+// styling (Python AttrMap(None) leaves the bars uncolored). Cells are counted
+// per painted rune, not by the range byte index (─ is 3 bytes), so the glyphs
+// stay adjacent.
+func (m *messageListBox) drawBarText(screen tcell.Screen, x, y int, s string) {
+	defFG, defBG, defAttrs := tcell.ColorDefault, tcell.ColorDefault, tcell.AttrNone
+	style := tcell.StyleDefault.Foreground(defFG).Background(defBG).Attributes(defAttrs)
+	px := x
+	for _, r := range s {
+		screen.SetContent(px, y, r, nil, style)
+		px++
 	}
 }
 

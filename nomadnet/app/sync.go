@@ -139,9 +139,16 @@ func timeNow() time.Time { return time.Now() }
 // mirroring Python's _sync_status_line (Conversations.py:517-545). The time is
 // read live from PeerSettings.LastLXMFSync (peer_settings["last_lxmf_sync"]),
 // so it survives across runs (a sync writes the field via RequestLXMFSync).
+// LastSyncInfo returns the persisted last-LXMF-sync time and the default
+// propagation node's display label for the Conversations "Last sync:" footer,
+// mirroring Python's _sync_status_line (Conversations.py:517-545). The time is
+// read live from PeerSettings.LastLXMFSync (peer_settings["last_lxmf_sync"]),
+// so it survives across runs (a sync writes the field via RequestLXMFSync).
 // The label is the propagation node's directory display name, falling back to
 // "<" + the first 8 hex chars of its destination hash + "…" (Python lines
-// 530-543). A zero time (no sync recorded) formats as "never" upstream.
+// 530-543). A zero time (no sync recorded) formats as "never" upstream — the
+// label is still resolved in that case (Python computes node_label
+// independently of the sync time).
 func (a *App) LastSyncInfo() (time.Time, string) {
 	var t time.Time
 	a.psMu.Lock()
@@ -149,10 +156,6 @@ func (a *App) LastSyncInfo() (time.Time, string) {
 		t = time.Unix(int64(a.PeerSettings.LastLXMFSync), 0)
 	}
 	a.psMu.Unlock()
-
-	if t.IsZero() {
-		return t, ""
-	}
 
 	pnHash := a.GetDefaultPropagationNode()
 	if len(pnHash) == 0 {

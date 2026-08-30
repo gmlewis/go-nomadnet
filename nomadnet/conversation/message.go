@@ -18,6 +18,7 @@
 package conversation
 
 import (
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -98,6 +99,19 @@ type Message struct {
 	// cachedFields holds the parsed fields map (file/image/audio).
 	cachedFields map[any]any
 
+	// Presence flags for cached fields the index supplied. Python's lazy
+	// getters check `_cached_X is not None` — an index-restored EMPTY string
+	// or FALSE bool is still present and must not trigger a reload from disk
+	// (Conversation.py get_title/get_content/get_transport_encrypted/
+	// has_attachments). A reload would overwrite the index-restored state and
+	// signature fields with freshly parsed envelope values, which can differ
+	// (e.g. an interrupted outbound becomes FAILED via the pending check).
+	titleSet   bool
+	contentSet bool
+	encSet     bool
+	encMethSet bool
+	attachSet  bool
+
 	Renderer any // reserved for UI renderer cache
 }
 
@@ -118,9 +132,21 @@ func NewMessage(filePath string) *Message {
 		sortTimestamp = float64(info.ModTime().UnixNano()) / 1e9
 	}
 
+	// Python __init__ seeds _cached_hash from the hex filename
+	// (Conversation.py:443-447: bytes.fromhex(filename)), so get_hash never
+	// needs to load from disk. Do the same: without it, GetHash's
+	// "index didn't supply a hash" fallback reloads the envelope and clobbers
+	// index-restored fields.
+	var cachedHash []byte
+	if filename := filepath.Base(filePath); len(filename) == 64 {
+		if h, err := hex.DecodeString(filename); err == nil {
+			cachedHash = h
+		}
+	}
 	return &Message{
 		FilePath:      filePath,
 		SortTimestamp: sortTimestamp,
+		CachedHash:    cachedHash,
 	}
 }
 
@@ -151,8 +177,14 @@ func (m *Message) GetTimestamp() float64 {
 	return m.SortTimestamp
 }
 
-// GetTitle returns the message title, loading from disk if needed.
+// GetTitle returns the message title, loading from disk if needed. A title
+// the index restored as an EMPTY string still counts as present (Python
+// checks `_cached_title is not None`), so no reload clobbers the restored
+// state/signature fields with freshly parsed envelope values.
 func (m *Message) GetTitle() string {
+	if m.titleSet || m.Loaded {
+		return m.CachedTitle
+	}
 	if m.CachedTitle != "" {
 		return m.CachedTitle
 	}
@@ -162,9 +194,12 @@ func (m *Message) GetTitle() string {
 	return m.CachedTitle
 }
 
-// GetContent returns the message content, loading from disk if needed.
+// GetContent returns the message content, loading from disk if needed. Content
+// the index restored as an EMPTY string still counts as present (Python checks
+// `_cached_content is not None`), so it must not trigger a reload that would
+// clobber index-restored state/signature fields.
 func (m *Message) GetContent() string {
-	if m.CachedContent != "" {
+	if m.contentSet || m.Loaded {
 		return m.CachedContent
 	}
 	if !m.Loaded {
@@ -235,9 +270,10 @@ func (m *Message) GetSignatureDescription() string {
 }
 
 // GetTransportEncrypted returns whether the message transport was encrypted,
-// loading from disk if needed.
+// loading from disk if needed. A FALSE value restored from the index still
+// counts as present (Python checks `_cached_transport_encrypted is not None`).
 func (m *Message) GetTransportEncrypted() bool {
-	if m.Loaded {
+	if m.encSet || m.Loaded {
 		return m.CachedTransportEncrypted
 	}
 	m.Load()
@@ -245,9 +281,10 @@ func (m *Message) GetTransportEncrypted() bool {
 }
 
 // GetTransportEncryption returns the transport encryption method string,
-// loading from disk if needed.
+// loading from disk if needed. An empty string restored from the index still
+// counts as present (Python checks `_cached_transport_encryption is not None`).
 func (m *Message) GetTransportEncryption() string {
-	if m.CachedTransportEncryption != "" {
+	if m.encMethSet || (m.Loaded && m.CachedTransportEncryption != "") {
 		return m.CachedTransportEncryption
 	}
 	if !m.Loaded {
@@ -283,11 +320,11 @@ func (m *Message) ContentRenderer() any {
 // HasAttachments returns whether the message has any attachments. When the
 // index supplied CachedHasAttachments (restore_from_index), return it without
 // loading from disk — matching Python's has_attachments which returns
-// _cached_has_attachments when it is not None. Only load from disk when the
-// index flag is unset.
+// _cached_has_attachments when it is not None (so a restored FALSE is present
+// and authoritative). Only load from disk when the index flag is unset.
 func (m *Message) HasAttachments() bool {
-	if m.CachedHasAttachments {
-		return true
+	if m.attachSet || m.CachedHasAttachments {
+		return m.CachedHasAttachments
 	}
 	if !m.Loaded {
 		m.Load()
@@ -592,9 +629,11 @@ func (m *Message) RestoreFromIndex(entry rnsmsgpack.OrderedMap) {
 	}
 	if v, ok := entry.Get("title"); ok {
 		m.CachedTitle, _ = v.(string)
+		m.titleSet = true
 	}
 	if v, ok := entry.Get("content"); ok {
 		m.CachedContent, _ = v.(string)
+		m.contentSet = true
 	}
 	if v, ok := entry.Get("source_hash"); ok {
 		if b, ok := v.([]byte); ok {
@@ -603,9 +642,11 @@ func (m *Message) RestoreFromIndex(entry rnsmsgpack.OrderedMap) {
 	}
 	if v, ok := entry.Get("transport_encrypted"); ok {
 		m.CachedTransportEncrypted, _ = v.(bool)
+		m.encSet = true
 	}
 	if v, ok := entry.Get("transport_encryption"); ok {
 		m.CachedTransportEncryption, _ = v.(string)
+		m.encMethSet = true
 	}
 	if v, ok := entry.Get("signature_validated"); ok && v != nil {
 		if b, ok := v.(bool); ok {
@@ -620,6 +661,7 @@ func (m *Message) RestoreFromIndex(entry rnsmsgpack.OrderedMap) {
 	}
 	if v, ok := entry.Get("has_attachments"); ok {
 		m.CachedHasAttachments, _ = v.(bool)
+		m.attachSet = true
 	}
 }
 

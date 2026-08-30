@@ -255,6 +255,11 @@ func NewConversationsDisplay(app *App, convs []ConversationInfo) *ConversationsD
 	// pyaconv_100x28_00/01/02 row 4) — see the ILB empty-style test.
 	colors := GetThemeColors(app.Theme)
 	cd.ilb.SetEmptyStyle(colors["list_off_focus_fg"], colors["list_off_focus_bg"])
+	// Python's vendor ILB repaints the SELECTED row with the list_off_focus
+	// palette while the list pane is not focused (highlight_offFocus="list_off_focus",
+	// Conversations.py:407) and restores the per-entry/focus palette on focus.
+	cd.ilb.SetHighlightStyles(colors["list_focus_fg"], colors["list_focus_bg"],
+		colors["list_off_focus_fg"], colors["list_off_focus_bg"])
 
 	// Default the shortcut region to "list": on first display the list pane
 	// (left column) is the focused region, and Python's focus-path dispatch
