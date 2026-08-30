@@ -37,12 +37,13 @@ type MainDisplay struct {
 	menuItems         []MenuItem
 	contentArea       *bodyPages
 	shortcutBar       *tview.TextView
-	shortcutTextRaw   string // raw (unwrapped) shortcut text; the bar renders a pre-wrapped copy
-	shortcutWrapSrc   string // raw text last wrapped into the bar (cache invalidation)
-	shortcutWrapW     int    // width last wrapped at (-1 ⇒ cache cold)
-	activeMenu        int    // focused menu button (highlight); not necessarily the displayed page
-	activePage        string // key of the currently displayed body page
-	focusRegion       string // "body" (default) or "menu" — mirrors MainFrame.focus_position
+	shortcutTextRaw   string          // raw (unwrapped) shortcut text; the bar renders a pre-wrapped copy
+	shortcutWrapSrc   string          // raw text last wrapped into the bar (cache invalidation)
+	shortcutWrapW     int             // width last wrapped at (-1 ⇒ cache cold)
+	activeMenu        int             // focused menu button (highlight); not necessarily the displayed page
+	activePage        string          // key of the currently displayed body page
+	focusRegion       string          // "body" (default) or "menu" — mirrors MainFrame.focus_position
+	lastBodyFocus     tview.Primitive // last focused body primitive, restored on FocusBody (urwid Frame keeps the body's internal focus while the header has it)
 	theme             int
 	glyphs            GlyphSet
 	onQuit            func()
@@ -546,6 +547,11 @@ func (md *MainDisplay) selectMenuLocked(index int) {
 
 	md.activeMenu = index
 	md.redrawMenuBar()
+	if md.activePage != md.menuItems[index].Key {
+		// The remembered body focus belongs to the previous page; restoring it
+		// after a switch would steal focus to a hidden page's widget.
+		md.lastBodyFocus = nil
+	}
 	md.activePage = md.menuItems[index].Key
 	md.contentArea.SwitchToPage(md.activePage)
 	md.updateShortcutsLocked()
@@ -565,11 +571,30 @@ func (md *MainDisplay) focusMenuIndex(index int) {
 }
 
 // FocusMenu moves focus to the menu bar (MainFrame.focus_position = "header").
-// Body pages call this when an Up key reaches the top of their list.
+// Body pages call this when an Up key reaches the top of their list. The body
+// primitive that had focus is remembered so a later FocusBody can restore it —
+// urwid's Frame keeps the body's internal focus while the header owns focus,
+// so Down from the menu returns to wherever the body was (e.g. the open
+// conversation's message list mid-scroll), NOT the body's default widget.
 func (md *MainDisplay) FocusMenu() {
 	diagFileMD("/tmp/quit-diag.log", fmt.Sprintf("FocusMenu activeMenu=%d", md.activeMenu))
 	md.mu.Lock()
 	md.focusRegion = "menu"
+	if md.app != nil {
+		if prev := md.app.GetFocus(); prev != nil && prev != md.menuBar {
+			if _, stranded := prev.(*browserPageView); stranded {
+				// The browser page view never holds Python's body focus — the
+				// saved-nodes list keeps it (Network.py), and D3 requires menu
+				// re-entry to land there instead of on the stranded page view
+				// where every arrow key is dead. Treat that as no body focus,
+				// so the next FocusBody falls back to the content-area focus
+				// chain (⇒ the saved-nodes list) instead of restoring it.
+				md.lastBodyFocus = nil
+			} else {
+				md.lastBodyFocus = prev
+			}
+		}
+	}
 	md.redrawMenuBar()
 	md.mu.Unlock()
 	if md.app != nil {
@@ -577,22 +602,31 @@ func (md *MainDisplay) FocusMenu() {
 	}
 }
 
-// FocusBody moves focus to the content area (MainFrame.focus_position = "body").
+// FocusBody restores the body's most recent focus (MainFrame.focus_position =
+// "body"), defaulting to the content area's own focus chain when the body was
+// never focused (boot) or the remembered primitive can't be used.
 //
-// Focus is moved to the content area BEFORE redrawing the menu bar so that
-// menuBar.HasFocus() is already false when redrawMenuBar runs — its else
-// branch then clears the hardware-cursor DrawFunc, removing the solid green
-// menu cursor. Without this redraw, the DrawFunc installed while the menu was
-// focused keeps painting the cursor onto the menu bar on every frame, so the
-// cursor appears to stay in the menu after Down/Tab even though tview focus
-// has moved to the body (mirrors FocusMenu, which redraws to install it).
+// Focus is moved BEFORE redrawing the menu bar so that menuBar.HasFocus() is
+// already false when redrawMenuBar runs — its else branch then clears the
+// hardware-cursor DrawFunc, removing the solid green menu cursor. Without this
+// redraw, the DrawFunc installed while the menu was focused keeps painting the
+// cursor onto the menu bar on every frame, so the cursor appears to stay in
+// the menu after Down/Tab even though tview focus has moved to the body
+// (mirrors FocusMenu, which redraws to install it).
 func (md *MainDisplay) FocusBody() {
 	diagFileMD("/tmp/quit-diag.log", fmt.Sprintf("FocusBody focusRegion=%q focus=%T", md.focusRegion, md.app.GetFocus()))
-	if md.app != nil {
-		md.app.SetFocus(md.contentArea)
-	}
 	md.mu.Lock()
 	md.focusRegion = "body"
+	p := md.lastBodyFocus
+	md.mu.Unlock()
+	if md.app != nil {
+		if p != nil {
+			md.app.SetFocus(p)
+		} else {
+			md.app.SetFocus(md.contentArea)
+		}
+	}
+	md.mu.Lock()
 	md.redrawMenuBar()
 	md.mu.Unlock()
 }
@@ -843,18 +877,21 @@ func (md *MainDisplay) handleMenuInput(event *tcell.EventKey) *tcell.EventKey {
 		md.selectMenu(md.activeMenu)
 		return nil
 	case tcell.KeyTab, tcell.KeyDown:
-		// Mirror Python's MenuColumns.keypress (Main.py:172-176): it sets
+		// Mirror Python's MenuColumns.keypress (Main.py:171-176): it sets
 		// frame.focus_position = "body" for Tab/Down and then returns
-		// super().keypress, leaving the key unhandled. urwid.Frame.keypress then
-		// re-dispatches that same key to the now-focused body, so a single Down
-		// both enters the body AND advances its list (e.g. the Interfaces list
-		// focuses item 0). FocusBody moves focus to the body; returning the
-		// event (instead of nil) lets tview forward it to the body's focused
-		// widget, matching that cascade. Consuming it (the old behavior) dropped
-		// the key, so the first Down from the menu did nothing visible and the
-		// user had to press Down a second time to move the cursor.
+		// super().keypress, leaving the key unhandled — and that is where it
+		// STOPS. urwid's Frame.keypress dispatches by the focus part at ENTRY
+		// (header), so a focus_position change made mid-flight never
+		// re-dispatches the key into the body; the key dies, and
+		// TextUI.unhandled_input (TextUI.py:262-267) only handles
+		// Ctrl-Q/Ctrl-E. Verified on the live nomadnet 1.2.8 tmux pane: the
+		// first Down from the menu changes no rendering at all (the focus lands
+		// in the body, the key is dropped) and the SECOND Down scrolls the
+		// message list. Consuming the key here replicates that exactly;
+		// previously the key was forwarded, which scrolled the conversation one
+		// row sooner than Python.
 		md.FocusBody()
-		return event
+		return nil
 	}
 
 	// Space arrives as a Rune, not a Key.

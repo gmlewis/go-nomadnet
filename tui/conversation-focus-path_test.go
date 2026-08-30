@@ -188,9 +188,15 @@ func TestA6UpAtListTopFocusesTabBar(t *testing.T) {
 		t.Errorf("focus after Up from tab bar = %T, want the menu bar", got)
 	}
 
-	// Down from the tab bar returns to the list (Python: Pile next-selectable).
-	app.SetFocus(cd.tabTrusted)
-	redraw()
+	// Down from the menu after the bodyUp transition lands on the body's
+	// remembered focus — the TAB BAR (Python: MenuColumns down sets
+	// focus_position="body" and drops the key; the left Pile's focus is still
+	// the tab bar). A second Down moves from the tab to the list (Python: Pile
+	// next-selectable).
+	dispatchKey(app, app.GetRoot(), tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone))
+	if got := app.GetFocus(); got != tview.Primitive(cd.tabTrusted) {
+		t.Fatalf("focus after Down from menu = %T, want the tab bar (restored body focus)", got)
+	}
 	dispatchKey(app, app.GetRoot(), tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone))
 	if got := app.GetFocus(); got != tview.Primitive(cd.ilb) {
 		t.Errorf("focus after Down from tab bar = %T, want the list", got)

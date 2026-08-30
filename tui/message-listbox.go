@@ -24,16 +24,21 @@ import (
 
 // messageListBox is the conversation message list: a vertical list of
 // per-message entries (one rendered LXMessageWidget equivalent each) with a
-// movable focus and per-message autoscroll, mirroring Python's
+// movable focus and per-row keyboard scrolling, mirroring Python's
 // messagelist = IndicativeListBox(self.message_widgets)
 // (Conversations.py:2286-2287).
 //
-// Python renders each message as a selectable urwid Pile inside a ListBox;
-// Up/Down move the ListBox focus one WHOLE message at a time and the view
-// autoscrolls to keep the focused message visible. The wrapper AttrMaps use
-// no focus style (IndicativeListBox is built without highlight_offFocus), so
-// the movement is visible only through the per-message scroll steps — there
-// is deliberately no highlight bar and no cursor here either.
+// The Python LXMessageWidgets are NOT selectable, so stock urwid's ListBox
+// never hops the focus message-by-message: Up/Down fall through to the
+// viewport-shift fallback (_keypress_up/down "just shift the current focus"),
+// scrolling the view exactly ONE row per keypress. Verified against the live
+// nomadnet 1.2.8 source of truth: a ~250-row conversation scrolled to the top
+// in one Ups-per-row (and back down one row per Down), never aligned to
+// message boundaries. SetEntries still anchors the initial focus at the
+// newest entry (IndicativeListBox position=len-1, Conversations.py:2287); the
+// keyboard keeps a viewport-edge focus so save-focussed-attachments tracks
+// roughly what urwid's change_focus would select. There is deliberately no
+// highlight bar and no cursor.
 //
 // The FocusIndex starts at the newest message (IndicativeListBox
 // position=len-1, Conversations.py:2287). TopIsVisible/BottomIsVisible mirror
@@ -94,18 +99,24 @@ func (m *messageListBox) SetEntries(entries []*messageListView) {
 // against the old viewport (and clamped to old-total) leaves the newest
 // messages stranded at the top with blank space below when the pane grows.
 func (m *messageListBox) SetRect(x, y, w, h int) {
-	_, _, ph, _ := m.GetRect()
-	if w != m.width {
+	// Sample the PREVIOUS height before updating the rect: GetRect returns
+	// (x, y, width, height), so the height is the fourth value.
+	_, _, _, ph := m.GetRect()
+	// Update the rect FIRST: scrollToFocus must clamp against the NEW
+	// viewport height, or the bottom-aligned offset is computed against the
+	// stale rect and the newest message ends up misaligned.
+	m.Box.SetRect(x, y, w, h)
+	wChanged := w != m.width
+	if wChanged {
 		m.width = w
 		m.layout()
 		if m.focus >= len(m.entries) {
 			m.focus = max(len(m.entries)-1, 0)
 		}
-		m.scrollToFocus()
-	} else if h != ph {
+	}
+	if wChanged || h != ph {
 		m.scrollToFocus()
 	}
-	m.Box.SetRect(x, y, w, h)
 }
 
 // layout recomputes each entry's wrapped height at the current width and the
@@ -194,11 +205,21 @@ func (m *messageListBox) TopIsVisible() bool {
 }
 
 // BottomIsVisible mirrors IndicativeListBox.bottom_is_visible: the list end
-// is reached — either every row fits below the offset or the focused entry is
-// the last one (urwid get_next(pos)==(None,None) makes the bottom visible even
-// when the last message is cut off by the viewport).
+// is reached — either every row fits below the offset, or the focused entry
+// is taller than the viewport and therefore clipped (urwid's walk
+// get_next(pos)==(None,None) reports the end as visible once the entry being
+// cut off at the bottom edge IS the list focus, because nothing exists beyond
+// it). A normal-height entry merely scrolled partly under the bottom edge as
+// fill keeps bottom_is_visible false, so Down continues scrolling to the
+// exact end before the frame hands focus to the composer.
 func (m *messageListBox) BottomIsVisible() bool {
-	return m.offset+m.viewHeight() >= m.total || m.focus == len(m.entries)-1
+	if m.offset+m.viewHeight() >= m.total {
+		return true
+	}
+	if m.focus < 0 || m.focus >= len(m.entries) {
+		return false
+	}
+	return m.entryHeight(m.focus) > m.viewHeight()
 }
 
 // FocusedEntryRows returns the [top,bottom) rows of the focused entry within
@@ -294,10 +315,16 @@ func (m *messageListBox) drawBarText(screen tcell.Screen, x, y int, s string) {
 	}
 }
 
-// InputHandler moves the focus one entry per Up/Down with autoscroll. Keys at
-// the boundaries are returned unconsumed so the surrounding frame capture can
-// apply Python's ConversationFrame top/bottom transitions (up → trust banner
-// or menu, down → composer); inside the list the keys are consumed.
+// InputHandler scrolls the viewport ONE row per Up/Down (Python's message
+// widgets are non-selectable, so urwid'sListBox falls back to shifting the
+// view a single row per keypress instead of hopping the focus between
+// messages). The trackable focus follows the viewport edge after each shift.
+// Keys at the boundaries are left unconsumed so the surrounding frame capture
+// can apply Python's ConversationFrame top/bottom transitions (up → trust
+// banner or menu, down → composer). Home/End/PgUp/PgDn are likewise
+// unconsumed: Python's IndicativeListBox only routes the plain arrow keys to
+// the wrapped ListBox, so the modified-navigation keys bubble out of the
+// message list untouched.
 func (m *messageListBox) InputHandler() func(event *tcell.EventKey, setFocus func(p tview.Primitive)) {
 	return m.WrapInputHandler(func(event *tcell.EventKey, setFocus func(p tview.Primitive)) {
 		if len(m.entries) == 0 {
@@ -305,35 +332,31 @@ func (m *messageListBox) InputHandler() func(event *tcell.EventKey, setFocus fun
 		}
 		switch event.Key() {
 		case tcell.KeyUp:
-			if m.focus > 0 {
-				m.focus--
-				m.scrollToFocus()
-				return
+			if m.maxOffset() > 0 {
+				m.scrollRows(-1)
 			}
 		case tcell.KeyDown:
-			if m.focus < len(m.entries)-1 {
-				m.focus++
-				m.scrollToFocus()
-				return
+			if m.maxOffset() > 0 {
+				m.scrollRows(1)
 			}
-		case tcell.KeyHome:
-			m.SetFocusIndex(0)
-			return
-		case tcell.KeyEnd:
-			m.SetFocusIndex(len(m.entries) - 1)
-			return
-		case tcell.KeyPgUp, tcell.KeyPgDn:
-			// Move the focus to the entry nearest the opposite viewport edge
-			// (urwid moves the focus to the first/last widget in view).
-			h := m.viewHeight()
-			if event.Key() == tcell.KeyPgUp {
-				m.SetFocusIndex(m.entryAtRow(m.offset))
-			} else {
-				m.SetFocusIndex(m.entryAtRow(m.offset + h - 1))
-			}
-			return
 		}
 	})
+}
+
+// maxOffset is the highest scroll offset that shows the end of the list.
+func (m *messageListBox) maxOffset() int { return max(m.total-m.viewHeight(), 0) }
+
+// scrollRows shifts the viewport by n rows (-n up, +n down), clamped to the
+// scrollable range, and keeps the focus on the edge entry of the new viewport
+// (mirroring which widget urwid's change_focus would leave selected).
+func (m *messageListBox) scrollRows(n int) {
+	m.offset = min(max(m.offset+n, 0), m.maxOffset())
+	switch {
+	case n < 0:
+		m.focus = m.entryAtRow(m.offset)
+	default:
+		m.focus = m.entryAtRow(m.offset + m.viewHeight() - 1)
+	}
 }
 
 // entryAtRow returns the index of the entry containing the given virtual row.
@@ -349,8 +372,9 @@ func (m *messageListBox) entryAtRow(row int) int {
 	return idx
 }
 
-// MouseHandler translates the wheel into per-entry focus moves (the same
-// arrow-key semantics IndicativeListBox uses for its wrapped List), and
+// MouseHandler translates the wheel into row shifts (mouseWheelLines rows per
+// notch, the same knob the other IndicativeListBox-equivalents use; Python
+// feeds the wheel into the same one-row-per-keypress ListBox path), and
 // delegates other mouse actions to the entries.
 func (m *messageListBox) MouseHandler() func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(tview.Primitive)) (consumed bool, capture tview.Primitive) {
 	return func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(tview.Primitive)) (consumed bool, capture tview.Primitive) {
@@ -359,14 +383,16 @@ func (m *messageListBox) MouseHandler() func(action tview.MouseAction, event *tc
 			if !m.InRect(x, y) || len(m.entries) == 0 {
 				return false, nil
 			}
-			delta := mouseWheelLines
-			next := m.focus - delta
-			if action == tview.MouseScrollDown {
-				next = m.focus + delta
+			if m.maxOffset() == 0 {
+				return false, nil
 			}
-			before := m.focus
-			m.SetFocusIndex(next)
-			return m.focus != before, nil
+			before := m.offset
+			if action == tview.MouseScrollUp {
+				m.scrollRows(-mouseWheelLines)
+			} else {
+				m.scrollRows(mouseWheelLines)
+			}
+			return m.offset != before, nil
 		}
 		return false, nil
 	}

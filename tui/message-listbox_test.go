@@ -56,105 +56,121 @@ func TestMessageListBoxPerMessageEntries(t *testing.T) {
 	}
 }
 
-// TestMessageListBoxFocusMovement pins the per-message Up/Down focus path
-// (urwid ListBox semantics verified against urwid 4.0.3 in /tmp: focus moves
-// one item per key; Up at the first item returns the key unhandled; Down at
-// the last item returns the key unhandled — ConversationFrame intercepts both
-// cases before the list sees them, Conversations.py:1845-1870).
-func TestMessageListBoxFocusMovement(t *testing.T) {
+// TestMessageListBoxRowScrolling pins the scrolling model verified against
+// the live nomadnet 1.2.8 source of truth: the LXMessageWidgets are NOT
+// selectable, so each Up/Down shifts the viewport exactly ONE row (urwid
+// ListBox _keypress_up/down shift_focus fallback) — NOT one message per
+// keypress. The focus follows the viewport edge; the keys at the scroll
+// boundaries are declined so the ConversationFrame capture can apply the
+// banner/menu (up) and composer (down) transitions.
+func TestMessageListBoxRowScrolling(t *testing.T) {
 	t.Parallel()
 
 	app := newTestApp()
 	cw := NewConversationWidget(app, "aabb1122")
 	now := time.Unix(1700000000, 0)
-	msgs := make([]ConversationMessage, 4)
+	msgs := make([]ConversationMessage, 8)
 	for i := range msgs {
 		msgs[i] = ConversationMessage{
-			Content: "line " + itoa(i), Timestamp: now.Add(time.Duration(i) * time.Minute),
+			Content: "body " + itoa(i), Timestamp: now.Add(time.Duration(i) * time.Minute),
 			State: lxmfStateSent, SourceHash: []byte{1},
 		}
 	}
 	cw.SetMessages(msgs)
 	lb := cw.messageList
-	lb.SetRect(0, 0, 60, 10)
+	lb.SetRect(0, 0, 60, 6) // viewport height 4 after the two indicator bars
 
 	up := tcell.NewEventKey(tcell.KeyUp, 0, tcell.ModNone)
 	down := tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone)
 	handle := func(ev *tcell.EventKey) {
-		h := lb.InputHandler()
-		h(ev, func(p tview.Primitive) {})
+		lb.InputHandler()(ev, func(p tview.Primitive) {})
 	}
 
-	// Start at the newest (index 3). Down at the last entry must not move the
-	// focus (Python: the Frame's bottom_is_visible branch owns the transition
-	// to the editor; the ListBox itself returns "down" without moving).
+	startOffset := lb.Offset()
+	if got := startOffset; got != lb.maxOffset() {
+		t.Fatalf("fresh list offset = %v, want %v (bottom-aligned on the newest message)", got, lb.maxOffset())
+	}
+
+	// Down at the exact bottom is declined for the frame's composer transition.
 	handle(down)
-	if got := lb.FocusIndex(); got != 3 {
-		t.Errorf("focus after Down at last = %v, want 3", got)
+	if got := lb.Offset(); got != startOffset {
+		t.Errorf("offset after Down at bottom = %v, want %v (bottom boundary)", got, startOffset)
 	}
 
+	// Each Up scrolls exactly one row.
 	handle(up)
-	if got := lb.FocusIndex(); got != 2 {
-		t.Errorf("focus after Up = %v, want 2 (Up inside the list moves the focus)", got)
+	if got := lb.Offset(); got != startOffset-1 {
+		t.Errorf("offset after one Up = %v, want %v", got, startOffset-1)
+	}
+	if got := lb.FocusIndex(); got != lb.entryAtRow(lb.Offset()) {
+		t.Errorf("focus after Up = %v, want the top visible entry %v", got, lb.entryAtRow(lb.Offset()))
 	}
 
-	// Walk to the top; Up at the first entry does not move the focus.
-	for i := lb.FocusIndex(); i > 0; i = lb.FocusIndex() {
+	// Walk to the top one row at a time; Up at the top is declined.
+	for lb.Offset() > 0 {
 		handle(up)
 	}
-	if got := lb.FocusIndex(); got != 0 {
-		t.Fatalf("focus after walking up = %v, want 0", got)
+	if got := lb.Offset(); got != 0 {
+		t.Fatalf("offset after walking up = %v, want 0", got)
 	}
 	handle(up)
-	if got := lb.FocusIndex(); got != 0 {
-		t.Errorf("focus after Up at top = %v, want 0 (boundary: stays)", got)
+	if got := lb.Offset(); got != 0 {
+		t.Errorf("offset after Up at top = %v, want 0 (top boundary)", got)
+	}
+
+	// Down walks back one row at a time.
+	handle(down)
+	if got := lb.Offset(); got != 1 {
+		t.Errorf("offset after first Down from top = %v, want 1", got)
 	}
 }
 
-// TestMessageListBoxAutoscrollFollowsFocus pins the autoscroll contract
-// (urwid ListBox change_focus): after each Up the focused message must be
-// fully visible in the viewport, with the scroll offset following the focus
-// (Python messagelist IndicativeListBox: per-message scroll steps).
-func TestMessageListBoxAutoscrollFollowsFocus(t *testing.T) {
+// TestMessageListBoxRowScrollCounts pins the exact keystroke counts measured
+// against the Python 1.2.8 source of truth (the tmux panel A/B comparison):
+// reaching the top takes exactly one Up per conversation row above the
+// viewport, and returning to the bottom one Down per row — message-boundary
+// hops (3-4 rows per keypress) are a regression.
+func TestMessageListBoxRowScrollCounts(t *testing.T) {
 	t.Parallel()
 
 	app := newTestApp()
 	cw := NewConversationWidget(app, "aabb1122")
 	now := time.Unix(1700000000, 0)
-	msgs := make([]ConversationMessage, 12)
+	msgs := make([]ConversationMessage, 20) // one line each → 4 rendered rows per message
 	for i := range msgs {
 		msgs[i] = ConversationMessage{
-			Content: "message body line " + itoa(i), Timestamp: now.Add(time.Duration(i) * time.Minute),
+			Content: "msg " + itoa(i), Timestamp: now.Add(time.Duration(i) * time.Minute),
 			State: lxmfStateSent, SourceHash: []byte{1},
 		}
 	}
 	cw.SetMessages(msgs)
 	lb := cw.messageList
-	lb.SetRect(0, 0, 60, 6)
+	lb.SetRect(0, 0, 60, 8)
 
-	up := tcell.NewEventKey(tcell.KeyUp, 0, tcell.ModNone)
-	h := lb.InputHandler()
-
-	// After SetMessages the view is at the bottom (newest focused).
-	if got := lb.FocusIndex(); got != 11 {
-		t.Fatalf("initial focus = %v, want 11", got)
-	}
-	for step := 10; step >= 0; step-- {
-		h(up, func(p tview.Primitive) {})
-		if got := lb.FocusIndex(); got != step {
-			t.Fatalf("focus after Up = %v, want %v", got, step)
-		}
-		top, bottom, ok := lb.FocusedEntryRows()
-		if !ok {
-			t.Fatalf("no focused entry at index %v", step)
-		}
-		off := lb.Offset()
-		if top < off || bottom > off+6 {
-			t.Fatalf("focused entry [%v,%v) not visible in viewport [off=%v,+6) after Up (autoscroll broken)", top, bottom, off)
+	total, vh := lb.total, lb.viewHeight()
+	ups := lb.maxOffset()
+	for i := range ups {
+		lb.InputHandler()(tcell.NewEventKey(tcell.KeyUp, 0, tcell.ModNone), func(p tview.Primitive) {})
+		if got := lb.Offset(); got != ups-1-i {
+			t.Fatalf("offset after %v Ups = %v, want %v", i+1, got, ups-1-i)
 		}
 	}
-	if got := lb.Offset(); got != 0 {
-		t.Errorf("offset after walking to the top = %v, want 0", got)
+	if !lb.TopIsVisible() {
+		t.Error("after maxOffset Ups the top must be visible")
+	}
+	downs := 0
+	for lb.Offset() < total-vh {
+		lb.InputHandler()(tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone), func(p tview.Primitive) {})
+		downs++
+		if downs > ups+1 {
+			t.Fatal("Down never reached the exact bottom")
+		}
+	}
+	if downs != ups {
+		t.Errorf("Downs to return to the bottom = %v, want %v (same as the Ups to the top)", downs, ups)
+	}
+	if !lb.BottomIsVisible() {
+		t.Error("after walking back down, the exact bottom must be visible (composer handoff ready)")
 	}
 }
 

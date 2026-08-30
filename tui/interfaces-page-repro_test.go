@@ -24,19 +24,14 @@ import (
 
 // TestInterfacesPageDownFromMenuFocusesFirstItem is the regression test for the
 // reported "cursor movement via arrow keys does not work" bug on the [ Interfaces ]
-// page. Python's MenuColumns.keypress (Main.py:172-176) sets
-// frame.focus_position="body" for Down and returns the key unhandled; urwid.Frame
-// then re-dispatches that same Down to the body, so a SINGLE Down from the menu
-// both enters the body AND advances the Interfaces list to item 0 (the selection
-// glyph goes ○→●). The Go port previously consumed the Down in handleMenuInput
-// (returned nil), so the body never saw it: the first Down did nothing visible and
-// the user had to press Down a second time to move the cursor — matching the
-// "arrow keys do not work" report.
-//
-// This test mirrors the production key path: the app-level input capture
-// (MainDisplay.handleInput) runs first, then the root primitive InputHandler
-// dispatches the forwarded event to the focused Interfaces list. After one Down
-// from the menu, SelectedIndex must be 0 (item 0 focused), matching Python.
+// page. Python's MenuColumns.keypress (Main.py:171-176) sets
+// frame.focus_position="body" for Down and returns the key unhandled, and
+// urwid's Frame dispatches by the entry-time focus part — so the key DIES at
+// the main frame, but focus has already entered the body: the Interfaces list
+// gains the terminal focus and its CURRENT item renders the focus marker
+// (verified live on nomadnet 1.2.8: one Down lights up item 0, a SECOND Down
+// moves to item 1). A single Down from the menu must therefore leave the list
+// focused at its current item (0) WITHOUT moving the selection.
 func TestInterfacesPageDownFromMenuFocusesFirstItem(t *testing.T) {
 	t.Parallel()
 	app := newTestApp()
@@ -60,26 +55,33 @@ func TestInterfacesPageDownFromMenuFocusesFirstItem(t *testing.T) {
 		t.Fatalf("focusRegion = %q, want menu before Down", md.focusRegion)
 	}
 
-	set := func(p tview.Primitive) { app.SetFocus(p) }
-	root := md.Root()
-
-	// Send a single Down through the production key path: the app-level input
-	// capture (handleInput) first, then the root InputHandler for the forwarded
-	// event.
+	// A single Down from the menu enters the body and drops the key (Python
+	// MenuColumns.keypress Main.py:171-176 + urwid frame.py entry-time
+	// dispatch): no event reaches any body widget.
 	down := tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone)
 	if ev := md.handleInput(down); ev != nil {
-		down = ev
-	} else {
-		t.Fatal("handleInput(Down) from menu returned nil; want the event forwarded to the body")
-	}
-	if h := root.InputHandler(); h != nil {
-		h(down, set)
+		t.Fatalf("handleInput(Down) from menu forwarded %v; Python drops the key (first Down only enters the body)", ev)
 	}
 
 	if md.focusRegion != "body" {
 		t.Errorf("focusRegion = %q, want body after Down from menu", md.focusRegion)
 	}
+	// The Interfaces list must be the focused primitive (the focus marker
+	// moves to the list's non-selectable header in Python), and the selection
+	// must NOT have advanced.
+	if got := app.GetFocus(); got != tview.Primitive(id.listBox) {
+		t.Errorf("focus after Down from menu = %T, want the Interfaces list", got)
+	}
+	if got := id.SelectedIndex(); got != -1 {
+		t.Errorf("after one Down from menu, SelectedIndex = %d, want -1 (Python's list focus starts on the non-selectable header; the dropped key must not advance the list)", got)
+	}
+
+	// The SECOND Down now navigates the focused list (Python: focus moves from
+	// the header onto item 0, the ● glyph appears).
+	if h := md.Root().InputHandler(); h != nil {
+		h(tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone), func(p tview.Primitive) { app.SetFocus(p) })
+	}
 	if got := id.SelectedIndex(); got != 0 {
-		t.Errorf("after one Down from menu, SelectedIndex = %d, want 0 (Python focuses item 0 on the single Down that enters the body)", got)
+		t.Errorf("after two Downs, SelectedIndex = %d, want 0 (the second Down advances the list)", got)
 	}
 }
