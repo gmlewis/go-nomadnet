@@ -2085,6 +2085,7 @@ func (cd *ConversationsDisplay) ShowPeerInfoDialog(entry PeerInfoEntry, hooks Pe
 	// Address (read-only): urwid.Text("Addr : "+hash), Python selected_id_widget.
 	addrText := tview.NewTextView()
 	addrText.SetDynamicColors(true)
+	addrText.SetTextColor(tcell.ColorDefault)
 	addrText.SetText("Addr : " + entry.SourceHash)
 
 	// Name (editable): ReadlineEdit "Name : ".
@@ -2092,12 +2093,14 @@ func (cd *ConversationsDisplay) ShowPeerInfoDialog(entry PeerInfoEntry, hooks Pe
 	eName.SetText(entry.DisplayName)
 	eName.SetFieldBackgroundColor(tcell.ColorDefault)
 	eName.SetFieldTextColor(tcell.ColorDefault)
+	eName.SetLabelColor(tcell.ColorDefault)
 
 	// Copy (editable): ReadlineEdit "Copy : ", pre-filled with the hash.
 	eCopy := NewReadlineEdit(cd.app.killRing, "Copy : ", "")
 	eCopy.SetText(entry.SourceHash)
 	eCopy.SetFieldBackgroundColor(tcell.ColorDefault)
 	eCopy.SetFieldTextColor(tcell.ColorDefault)
+	eCopy.SetLabelColor(tcell.ColorDefault)
 
 	// Trust radio group (Untrusted/Unknown/Trusted). Defaults: Unknown selected,
 	// matching Python (unknown_selected=True).
@@ -2123,15 +2126,17 @@ func (cd *ConversationsDisplay) ShowPeerInfoDialog(entry PeerInfoEntry, hooks Pe
 	rDirect := NewRadioButton(methodGroup, "Deliver directly", !propagatedSel, true)
 	rPropagated := NewRadioButton(methodGroup, "Use propagation nodes", propagatedSel, false)
 
-	// Pin checkbox ("Pin to top").
-	cbPin := tview.NewCheckbox().SetLabel("Pin to top")
-	cbPin.SetChecked(entry.Pinned)
+	// Pin checkbox ("Pin to top"): urwid.CheckBox("[Pin to top", ...) ported as
+	// an "[X] label" checkbox widget (tview.Checkbox renders only the bare
+	// label and is not a faithful port of urwid's CheckBox).
+	cbPin := NewUrwidCheckBox("Pin to top", entry.Pinned)
 
-	// Notes (ReadlineEdit "Notes: ").
+	// Notes (ReadlineEdit "Notes: ", multiline=True).
 	eNotes := NewReadlineEdit(cd.app.killRing, "Notes: ", "")
 	eNotes.SetText(entry.Notes)
 	eNotes.SetFieldBackgroundColor(tcell.ColorDefault)
 	eNotes.SetFieldTextColor(tcell.ColorDefault)
+	eNotes.SetLabelColor(tcell.ColorDefault)
 
 	// Known-section: divider if the peer identity is known, else the "Query
 	// network for keys" section (Python Conversations.py:957-983).
@@ -2149,14 +2154,28 @@ func (cd *ConversationsDisplay) ShowPeerInfoDialog(entry PeerInfoEntry, hooks Pe
 				hooks.OnQueryKeys(entry.SourceHash)
 			}
 		})
+		// urwid.Text(g["info"]+"\n", align=CENTER) is two PACK rows: the glyph
+		// line plus the blank line from the trailing newline. The explainer
+		// also carries a trailing "\n", so its three wrapped lines take 4 rows
+		// (Conversations.py:951-961).
+		var infoGlyph string
+		if g != nil {
+			infoGlyph = g["info"]
+		}
+		if infoGlyph == "" {
+			infoGlyph = "i"
+		}
+		infoGlyphText := newCenteredText(tcell.ColorDefault, infoGlyph, "")
 		infoText := tview.NewTextView()
 		infoText.SetDynamicColors(true)
+		infoText.SetTextColor(tcell.ColorDefault)
 		infoText.SetTextAlign(tview.AlignCenter)
 		infoText.SetWrap(true)
-		infoText.SetText("The identity of this peer is not known, and you cannot currently send messages to it. You can query the network to obtain the identity.")
+		infoText.SetText("The identity of this peer is not known, and you cannot currently send messages to it. You can query the network to obtain the identity.\n")
 		knownSection = tview.NewFlex().SetDirection(tview.FlexRow).
 			AddItem(newDividerRow(divider), 1, 0, false).
-			AddItem(infoText, 3, 0, false).
+			AddItem(infoGlyphText, 2, 0, false).
+			AddItem(infoText, 4, 0, false).
 			AddItem(queryBtn, 1, 0, false).
 			AddItem(newDividerRow(divider), 1, 0, false)
 	}
@@ -2189,18 +2208,13 @@ func (cd *ConversationsDisplay) ShowPeerInfoDialog(entry PeerInfoEntry, hooks Pe
 			hooks.OnLXMFQR(entry.SourceHash, title)
 		}
 	})
-	blank := func() tview.Primitive { return tview.NewTextView() }
-	actionsRow := tview.NewFlex().SetDirection(tview.FlexColumn).
-		AddItem(pingBtn, 0, 1, true).
-		AddItem(blank(), 1, 0, false).
-		AddItem(blockBtn, 0, 1, false).
-		AddItem(blank(), 1, 0, false).
-		AddItem(qrBtn, 0, 1, false)
+	actionsRow := CreateUrwidButtonRow(pingBtn, blockBtn, qrBtn)
 
 	dismiss := func() { cd.CloseListSlotDialog(); cd.dialogOpen = false }
 
 	// Save builds the edited PeerInfoEntry and fires onSave, mirroring Python's
-	// confirmed() (Conversations.py:901-929).
+	// confirmed() (Conversations.py:901-929), which dismisses the dialog after
+	// remembering the entry.
 	saveBtn := NewUrwidButton("Save")
 	saveBtn.SetSelectedFunc(func() {
 		result := PeerInfoEntry{
@@ -2224,15 +2238,21 @@ func (cd *ConversationsDisplay) ShowPeerInfoDialog(entry PeerInfoEntry, hooks Pe
 		if onSave != nil {
 			onSave(result)
 		}
+		dismiss()
 	})
 
 	backBtn := NewUrwidButton("Back")
 	backBtn.SetSelectedFunc(dismiss)
 
-	buttons := tview.NewFlex().SetDirection(tview.FlexColumn).
-		AddItem(saveBtn, 0, 1, true).
-		AddItem(blank(), 1, 0, false).
-		AddItem(backBtn, 0, 1, false)
+	buttons := CreateUrwidButtonRow(saveBtn, backBtn)
+
+	// The known-section is 1 row (a divider) when the identity is known, or 9
+	// rows (divider + info glyph line + blank + 4-row explainer + query button +
+	// divider) when not (Python PACK heights, Conversations.py:939-961).
+	knownH := 1
+	if !known {
+		knownH = 9
+	}
 
 	layout := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(addrText, 1, 0, false).
@@ -2248,7 +2268,7 @@ func (cd *ConversationsDisplay) ShowPeerInfoDialog(entry PeerInfoEntry, hooks Pe
 		AddItem(newDividerRow(divider), 1, 0, false).
 		AddItem(cbPin, 1, 0, false).
 		AddItem(eNotes, 1, 0, false).
-		AddItem(knownSection, 0, 1, false).
+		AddItem(knownSection, knownH, 0, false).
 		AddItem(actionsRow, 1, 0, false).
 		AddItem(actionStatus, 1, 0, false).
 		AddItem(newDividerRow(divider), 1, 0, false).
@@ -2257,9 +2277,10 @@ func (cd *ConversationsDisplay) ShowPeerInfoDialog(entry PeerInfoEntry, hooks Pe
 	items := []tview.Primitive{eName, eCopy, rUntrusted, rUnknown, rTrusted, rDirect, rPropagated, cbPin, eNotes, pingBtn, blockBtn, qrBtn, saveBtn, backBtn}
 	dialog := NewDialogLineBox("Peer Info", layout, dismiss)
 	// Slot-place in the 52-wide list column (Python columns_widget.contents[0],
-	// RELATIVE_100). height 24 content + 2 border = 26 PACK; the SlotOverlay
-	// caps it to the slot height.
-	cd.ShowListSlotDialog(dialog, 100, 0, 24+2)
+	// RELATIVE_100). PACK height: 17 fixed content rows + knownSection + 2
+	// border (18 content rows when known, matching the original's 20-row
+	// overlay).
+	cd.ShowListSlotDialog(dialog, 100, 0, 17+knownH+2)
 	wireDialogNav(cd.app, dismiss, items)
 }
 

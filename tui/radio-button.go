@@ -47,7 +47,7 @@ type DialogRadioGroup struct {
 // (urwid/widget/wimp.py:460). It renders "(X) label" when checked or
 // "( ) label" when unchecked (4-column indicator cell + label), in the default
 // text color — urwid applies no focus color to a radio, only a hardware cursor
-// on the middle cell, which is handled separately (cursor parity).
+// on the middle cell, shown via screen.ShowCursor when focused.
 //
 // Construction matches urwid's quirk: creating a RadioButton with a checked
 // state does NOT uncheck the other members of its group (RadioButton.__init__
@@ -126,8 +126,8 @@ func (rb *RadioButton) SetChangedFunc(fn func(checked bool)) *RadioButton {
 func (rb *RadioButton) Label() string { return rb.label }
 
 // Draw renders "(X) label" or "( ) label" in the default text style. urwid
-// applies no focus color to a RadioButton (only a hardware cursor on the middle
-// cell), so focused and unfocused render identically here.
+// applies no focus color to a RadioButton (only a hardware cursor on the
+// middle cell, shown when focused).
 func (rb *RadioButton) Draw(screen tcell.Screen) {
 	rb.Box.DrawForSubclass(screen, rb)
 	x, y, w, h := rb.GetInnerRect()
@@ -155,6 +155,12 @@ func (rb *RadioButton) Draw(screen tcell.Screen) {
 		}
 		screen.SetContent(px, y, r, nil, style)
 		px++
+	}
+	// urwid's RadioButton wraps the state icon in a SelectableIcon whose cursor
+	// position is the middle cell ("( )"/"(X)" column 1); show it when focused
+	// so the hardware cursor matches the original.
+	if rb.HasFocus() {
+		screen.ShowCursor(x+1, y)
 	}
 }
 

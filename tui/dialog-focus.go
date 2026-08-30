@@ -62,6 +62,8 @@ func setItemCapture(p tview.Primitive, cap func(*tcell.EventKey) *tcell.EventKey
 		v.SetInputCapture(cap)
 	case *RadioButton:
 		v.SetInputCapture(cap)
+	case *UrwidCheckBox:
+		v.SetInputCapture(cap)
 	case *UrwidButton:
 		v.SetInputCapture(cap)
 	case *tview.InputField:
@@ -85,7 +87,7 @@ func getItemCapture(p tview.Primitive) func(*tcell.EventKey) *tcell.EventKey {
 
 // wireDialogNav wires urwid-Pile-style keyboard focus traversal across the
 // given focusable dialog items: Tab/Down moves focus to the next item,
-// BackTab/Up to the previous (wrapping), and Escape calls dismiss. All other
+// BackTab/Up to the previous, and Escape calls dismiss. All other
 // keys pass through to each widget's own handler (and, for widgets that already
 // install an input capture such as ReadlineEdit's emacs kill/yank, that
 // existing capture is chained so its behavior is preserved). The first item
@@ -94,22 +96,32 @@ func getItemCapture(p tview.Primitive) func(*tcell.EventKey) *tcell.EventKey {
 // This mirrors urwid's Pile focus model (urwid/widget/pile.py: Pile.keypress
 // moves focus on Tab/Up/Down when the focused widget returns the key unhandled)
 // without relying on tview's Flex, whose InputHandler only forwards to an
-// already-focused child and provides no Tab traversal.
+// already-focused child and provides no Tab traversal. Traversal does NOT
+// wrap: like urwid's Pile, pressing Up on the first item or Down on the last
+// leaves focus where it is (urwid returns the key unhandled; the enclosing
+// containers ignore up/down, so the visible effect is "stay put").
+//
+// Left/Right are deliberately NOT handled here: urwid's Pile does not consume
+// them, and inside a horizontal row of widgets (e.g. a button Columns) the
+// row's own Columns model moves focus between siblings.
 func wireDialogNav(app focuser, dismiss func(), items []tview.Primitive) {
 	if len(items) == 0 {
 		return
 	}
 	for i := range items {
-		prev := (i - 1 + len(items)) % len(items)
-		nxt := (i + 1) % len(items)
+		i := i
 		orig := getItemCapture(items[i])
 		setItemCapture(items[i], func(ev *tcell.EventKey) *tcell.EventKey {
 			switch ev.Key() {
 			case tcell.KeyTab, tcell.KeyDown:
-				app.SetFocus(items[nxt])
+				if i+1 < len(items) {
+					app.SetFocus(items[i+1])
+				}
 				return nil
 			case tcell.KeyBacktab, tcell.KeyUp:
-				app.SetFocus(items[prev])
+				if i > 0 {
+					app.SetFocus(items[i-1])
+				}
 				return nil
 			case tcell.KeyEscape:
 				if dismiss != nil {

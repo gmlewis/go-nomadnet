@@ -62,6 +62,12 @@ func dialogRowTexts(p tview.Primitive) []string {
 			out = append(out, marker+v.Label())
 		case *UrwidButton:
 			out = append(out, "< "+v.Label()+" >")
+		case *UrwidCheckBox:
+			marker := "[ ] "
+			if v.IsChecked() {
+				marker = "[X] "
+			}
+			out = append(out, marker+v.label)
 		case *tview.Checkbox:
 			marker := "[ ] "
 			if v.IsChecked() {
@@ -86,10 +92,10 @@ func dialogRowTexts(p tview.Primitive) []string {
 	return out
 }
 
-// findCheckbox walks the dialog tree for a tview.Checkbox with the given
+// findCheckbox walks the dialog tree for an UrwidCheckBox with the given
 // label, returning nil when absent.
-func findCheckbox(p tview.Primitive, label string) *tview.Checkbox {
-	var found *tview.Checkbox
+func findCheckbox(p tview.Primitive, label string) *UrwidCheckBox {
+	var found *UrwidCheckBox
 	var walk func(p tview.Primitive)
 	walk = func(p tview.Primitive) {
 		if found != nil {
@@ -110,8 +116,8 @@ func findCheckbox(p tview.Primitive, label string) *tview.Checkbox {
 			for i := 0; i < v.GetItemCount(); i++ {
 				walk(v.GetItem(i))
 			}
-		case *tview.Checkbox:
-			if v.GetLabel() == label {
+		case *UrwidCheckBox:
+			if v.label == label {
 				found = v
 			}
 		}

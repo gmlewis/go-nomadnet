@@ -334,7 +334,15 @@ func (c *urwidColumns) moveFocus(delta int, setFocus func(p tview.Primitive)) {
 			currPos = len(focusable) - 1
 		}
 	} else {
-		currPos = (currPos + delta%len(focusable) + len(focusable)) % len(focusable)
+		next := currPos + delta
+		if next < 0 || next >= len(focusable) {
+			// At the row edge: urwid's Columns.keypress returns the key
+			// UNHANDLED (columns.py: the focus-move candidates run off the
+			// row), so the enclosing container handles it — focus stays in
+			// this row for keys the enclosing containers ignore. No wrap.
+			return
+		}
+		currPos = next
 	}
 
 	c.focusIndex = focusable[currPos]
