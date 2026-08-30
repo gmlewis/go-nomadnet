@@ -21,7 +21,86 @@ import (
 	"time"
 )
 
-func TestRelativeTimeWeeks(t *testing.T) {
+func TestRelativeTimeAt1_2_8(t *testing.T) {
+	t.Parallel()
+
+	// Fixed "now" (2026-08-30 is a Sunday) so the calendar-day buckets below
+	// the 24h boundary are exercised deterministically. All times are LOCAL —
+	// Python's relative_time() subtracts datetimes in local time and takes the
+	// .date() difference of the same.
+	now := time.Date(2026, time.August, 30, 12, 0, 0, 0, time.Local)
+	y := func(m time.Month, d, h, min, s int) time.Time {
+		return time.Date(2026, m, d, h, min, s, 0, time.Local)
+	}
+
+	tests := []struct {
+		name string
+		t    time.Time
+		want string
+	}{
+		{name: "same instant", t: now, want: "just now"},
+		{name: "future timestamp", t: now.Add(30 * time.Second), want: "just now"},
+		{name: "59 seconds", t: now.Add(-59 * time.Second), want: "just now"},
+		{name: "60 seconds", t: now.Add(-60 * time.Second), want: "1m ago"},
+		{name: "59 minutes", t: now.Add(-59 * time.Minute), want: "59m ago"},
+		{name: "60 minutes", t: now.Add(-60 * time.Minute), want: "1h ago"},
+		{name: "23h59m59s same day", t: y(time.August, 30, 0, 0, 1), want: "11h ago"},
+		{name: "23h59m59s crossing midnight", t: y(time.August, 29, 12, 0, 1), want: "23h ago"},
+		// Sub-24h deltas stay in the minute/hour buckets even across calendar
+		// days (Python checks delta < 86400 before the date diff) — verified
+		// below with its own "now": a 23:45-yesterday message read at 00:15 is
+		// "30m ago", not "yesterday".
+		{name: "yesterday same time", t: y(time.August, 29, 12, 0, 0), want: "yesterday"},
+		{name: "yesterday midnight", t: y(time.August, 29, 0, 0, 0), want: "yesterday"},
+		{name: "two days ago", t: y(time.August, 28, 12, 0, 0), want: "2d ago"},
+		{name: "two days ago late night", t: y(time.August, 28, 23, 59, 0), want: "2d ago"},
+		{name: "six days ago", t: y(time.August, 24, 12, 0, 0), want: "6d ago"},
+		{name: "six days ago midnight", t: y(time.August, 24, 0, 0, 0), want: "6d ago"},
+		{name: "seven days ago", t: y(time.August, 23, 12, 0, 0), want: "1w ago"},
+		{name: "four weeks ago", t: y(time.August, 2, 12, 0, 0), want: "4w ago"},
+		{name: "29 days ago", t: y(time.August, 1, 12, 0, 0), want: "4w ago"},
+		{name: "30 days ago prints absolute date", t: y(time.July, 31, 12, 0, 0), want: "2026-07-31"},
+		{name: "far past prints absolute date", t: y(time.January, 2, 8, 30, 0), want: "2026-01-02"},
+	}
+
+	for _, tt := range tests {
+		if got := relativeTimeAt(tt.t, now); got != tt.want {
+			t.Errorf("%v: relativeTimeAt(%v, now) = %q, want %q", tt.name, tt.t, got, tt.want)
+		}
+	}
+
+	// 30 minutes across midnight stays in the minute bucket.
+	midnight := time.Date(2026, time.August, 30, 0, 15, 0, 0, time.Local)
+	if got, want := relativeTimeAt(time.Date(2026, time.August, 29, 23, 45, 0, 0, time.Local), midnight), "30m ago"; got != want {
+		t.Errorf("30m across midnight: relativeTimeAt = %q, want %q", got, want)
+	}
+}
+
+// TestRelativeTimeDSTDays checks that the >=24h buckets use civil-date math,
+// so DST spring-forward/fall-back days (23- and 25-hour days) do not shift the
+// day count.
+func TestRelativeTimeDSTDays(t *testing.T) {
+	t.Parallel()
+
+	// US spring-forward 2026: clocks jump 2026-03-08 02:00 → 03:00 local.
+	now := time.Date(2026, time.March, 9, 12, 0, 0, 0, time.Local)
+	tBeforeJump := time.Date(2026, time.March, 7, 12, 0, 0, 0, time.Local)
+	if got, want := relativeTimeAt(tBeforeJump, now), "2d ago"; got != want {
+		t.Errorf("spring-forward: relativeTimeAt = %q, want %q (elapsed is only 47h, calendar diff is 2)", got, want)
+	}
+
+	// US fall-back 2026: clocks fall back 2026-11-01 02:00 → 01:00 local; a
+	// 25-hour age still reads "yesterday".
+	nowFall := time.Date(2026, time.November, 2, 12, 0, 0, 0, time.Local)
+	tAcrossBack := time.Date(2026, time.November, 1, 12, 0, 0, 0, time.Local)
+	if got, want := relativeTimeAt(tAcrossBack, nowFall), "yesterday"; got != want {
+		t.Errorf("fall-back: relativeTimeAt = %q, want %q", got, want)
+	}
+}
+
+// TestRelativeTimeSubDay keeps coverage of the minute/hour buckets through the
+// wrapper (time.Now injection).
+func TestRelativeTimeSubDay(t *testing.T) {
 	t.Parallel()
 
 	now := time.Now()
@@ -38,28 +117,11 @@ func TestRelativeTimeWeeks(t *testing.T) {
 		{3600 * time.Second, "1h ago"},
 		{43200 * time.Second, "12h ago"},
 		{86399 * time.Second, "23h ago"},
-		{86400 * time.Second, "yesterday"},
-		{172799 * time.Second, "yesterday"},
-		{172800 * time.Second, "2d ago"},
-		{604799 * time.Second, "6d ago"},
-		{604800 * time.Second, "1w ago"},
-		{1209600 * time.Second, "2w ago"},
-		{1814400 * time.Second, "3w ago"},
-		{2591999 * time.Second, "4w ago"},
-		{2592000 * time.Second, ""},
 	}
 
 	for _, tt := range tests {
-		got := RelativeTime(now.Add(-tt.offset))
-		if tt.want == "" {
-			// Date format - just verify it's not a relative string
-			if got == "just now" || len(got) < 8 {
-				t.Errorf("RelativeTime(%v offset) = %q, want date format", tt.offset, got)
-			}
-		} else {
-			if got != tt.want {
-				t.Errorf("RelativeTime(%v offset) = %q, want %q", tt.offset, got, tt.want)
-			}
+		if got := RelativeTime(now.Add(-tt.offset)); got != tt.want {
+			t.Errorf("RelativeTime(%v offset) = %q, want %q", tt.offset, got, tt.want)
 		}
 	}
 }

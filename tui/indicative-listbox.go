@@ -19,6 +19,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -197,11 +198,16 @@ func (i *IndicativeListBox) Draw(screen tcell.Screen) {
 	}
 
 	top, bottom := i.indicators()
+	// The bars are centered like urwid Text, which pads the LEFT side with
+	// (w-len+1)//2 spaces — a ceil, not the floor tview.AlignCenter uses — so
+	// the "▲" sits one column right of a naive centering on odd leftovers.
+	// Draw them at the explicitly computed column with AlignLeft.
+	centerBarX := func(s string) int { return x + max((w-utf8.RuneCountInString(s)+1)/2, 0) }
 	if h >= 3 {
-		tview.Print(screen, top, x, y, w, tview.AlignCenter, tcell.ColorDefault)
-		tview.Print(screen, bottom, x, y+h-1, w, tview.AlignCenter, tcell.ColorDefault)
+		tview.Print(screen, top, centerBarX(top), y, w, tview.AlignLeft, tcell.ColorDefault)
+		tview.Print(screen, bottom, centerBarX(bottom), y+h-1, w, tview.AlignLeft, tcell.ColorDefault)
 	} else if h == 2 {
-		tview.Print(screen, top, x, y, w, tview.AlignCenter, tcell.ColorDefault)
+		tview.Print(screen, top, centerBarX(top), y, w, tview.AlignLeft, tcell.ColorDefault)
 	}
 
 	if i.HasFocus() {

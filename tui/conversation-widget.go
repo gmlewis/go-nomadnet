@@ -295,9 +295,11 @@ func NewConversationWidget(app *App, sourceHash string) *ConversationWidget {
 	// exists (it resizes the frame's footer slot).
 	cw.footerArea = tview.NewFlex().SetDirection(tview.FlexRow)
 
-	// Main frame: header | messages | editor
+	// Main frame: header | messages | editor. The header slot takes the
+	// header pile's rendered row count (1 + banner when visible) instead of a
+	// fixed 2, so a hidden trust banner leaves no blank row above the list.
 	cw.frame = tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(header, 2, 0, false).
+		AddItem(header, cw.headerPileRows(), 0, false).
 		AddItem(cw.messageList, 0, 1, false).
 		AddItem(cw.footerArea, 1, 0, true)
 	cw.frame.SetBorder(true)
@@ -793,7 +795,12 @@ func (cw *ConversationWidget) hasVisibleTrustBanner() bool {
 }
 
 // refreshTrustBanner shows or hides the trust banner in the header pile,
-// mirroring Python's _refresh_trust_banner (Conversations.py:1962-1973).
+// mirroring Python's _refresh_trust_banner (Conversations.py:1962-1973). The
+// widget frame's header slot is resized along with it so a hidden banner
+// collapses the header to a single row — Python's _header_pile is handed to
+// urwid.Frame as the header (Conversations.py:1924), which always takes exactly
+// the pile's rendered rows, leaving no blank row between the peer info bar and
+// the message list.
 func (cw *ConversationWidget) refreshTrustBanner() {
 	if cw.hasVisibleTrustBanner() {
 		cw.buildTrustBanner()
@@ -803,6 +810,22 @@ func (cw *ConversationWidget) refreshTrustBanner() {
 		cw.bannerBtns = nil
 		cw.headerFlex.ResizeItem(cw.trustBanner, 0, 0)
 	}
+	// The frame is built after the first refreshTrustBanner call in the
+	// constructor; the initial AddItem below already uses the correct height.
+	if cw.frame != nil {
+		cw.frame.ResizeItem(cw.headerFlex, cw.headerPileRows(), 0)
+	}
+}
+
+// headerPileRows returns the row count the header pile should occupy in the
+// widget frame: the peer info bar (1 row) plus the trust banner (1 row) when
+// it is visible.
+func (cw *ConversationWidget) headerPileRows() int {
+	rows := 1
+	if cw.hasVisibleTrustBanner() {
+		rows++
+	}
+	return rows
 }
 
 // buildTrustBanner populates the trust banner row, mirroring Python's

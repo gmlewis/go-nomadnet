@@ -31,8 +31,12 @@ func RelativeTime(t time.Time) string {
 }
 
 // relativeTimeAt is the time-injected core of RelativeTime, exposed for tests
-// so the age math is deterministic. Mirrors Python's relative_time() at
-// Conversations.py:28-44, using `now` in place of time.time().
+// so the age math is deterministic. It mirrors the reference nomadnet 1.2.8
+// relative_time() at ui/textui/Conversations.py:28-50, using `now` in place of
+// time.time(). Past 24h the buckets switch to a CALENDAR-day difference (the
+// date of `t` subtracted from the date of `now`, both converted to the local
+// date): 23:45 yesterday reads "yesterday" at 00:15 today even though the age
+// is only 30 minutes, and a 34-hour-old message from the 28th reads "2d ago".
 func relativeTimeAt(t, now time.Time) string {
 	delta := now.Sub(t)
 	switch {
@@ -44,15 +48,46 @@ func relativeTimeAt(t, now time.Time) string {
 		return fmt.Sprintf("%vm ago", int(delta.Minutes()))
 	case delta < 24*time.Hour:
 		return fmt.Sprintf("%vh ago", int(delta.Hours()))
-	case delta < 48*time.Hour:
-		return "yesterday"
-	case delta < 7*24*time.Hour:
-		return fmt.Sprintf("%vd ago", int(delta.Hours()/24))
-	case delta < 30*24*time.Hour:
-		return fmt.Sprintf("%vw ago", int(delta.Hours()/(7*24)))
-	default:
-		return t.Format("2006-01-02")
 	}
+	days := calendarDaysBetween(t, now)
+	switch {
+	case days <= 1:
+		return "yesterday"
+	case days < 7:
+		return fmt.Sprintf("%vd ago", days)
+	case days < 30:
+		return fmt.Sprintf("%vw ago", days/7)
+	default:
+		return t.In(time.Local).Format("2006-01-02")
+	}
+}
+
+// calendarDaysBetween returns the number of whole calendar days between the
+// LOCAL date of t and the LOCAL date of now (nowDate − tDate), mirroring
+// Python's (datetime.fromtimestamp(now).date() − datetime.fromtimestamp(ts)
+// .date()).days from relative_time(). Civil-date arithmetic is used instead of
+// dividing the age by 24h so DST transitions (23- and 25-hour days) cannot
+// shift the answer.
+func calendarDaysBetween(t, now time.Time) int {
+	ty, tm, td := t.In(time.Local).Date()
+	ny, nm, nd := now.In(time.Local).Date()
+	return absoluteDays(ny, nm, nd) - absoluteDays(ty, tm, td)
+}
+
+// absoluteDays converts a civil date to a day count (days since 1970-01-01).
+func absoluteDays(y int, m time.Month, d int) int {
+	yy, mm := y, int(m)
+	// Shift the year so March is month 0 (leap days fall at the end of the
+	// year cycle, per the standard Howard Hinnant civil-date algorithm).
+	if mm <= 2 {
+		yy--
+		mm += 12
+	}
+	era := yy / 400
+	yoe := yy - era*400           // [0, 399]
+	doy := (153*mm-457)/5 + d - 1 // [0, 365]
+	doe := yoe*365 + yoe/4 - yoe/100 + doy
+	return era*146097 + doe - 719468
 }
 
 // PrettyDate formats a timestamp as a relative phrase matching Python's

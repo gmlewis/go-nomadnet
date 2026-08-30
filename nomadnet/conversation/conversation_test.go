@@ -256,7 +256,7 @@ func TestReadWriteIndex(t *testing.T) {
 	}
 
 	// Create a message file
-	msgPath := filepath.Join(convPath, "0102030405060708010203040506070801020304050607080102030405060708")
+	msgPath := filepath.Join(convPath, "01020304050607080102030405060708")
 	if err := os.WriteFile(msgPath, []byte("test"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -280,7 +280,7 @@ func TestReadWriteIndex(t *testing.T) {
 		t.Fatalf("ReadIndex len = %v, want 1", len(index))
 	}
 
-	entry, ok := index.Get("0102030405060708010203040506070801020304050607080102030405060708")
+	entry, ok := index.Get("01020304050607080102030405060708")
 	if !ok {
 		t.Fatal("Index entry not found for message")
 	}
@@ -483,8 +483,8 @@ func TestConversationList(t *testing.T) {
 	}
 
 	// Create two conversations
-	hash1 := "0102030405060708010203040506070801020304050607080102030405060708"
-	hash2 := "090a0b0c0d0e0f10090a0b0c0d0e0f10090a0b0c0d0e0f10090a0b0c0d0e0f10"
+	hash1 := "01020304050607080102030405060708"
+	hash2 := "090a0b0c0d0e0f10090a0b0c0d0e0f10"
 	if err := os.MkdirAll(filepath.Join(convPath, hash1), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -506,7 +506,7 @@ func TestConversationList(t *testing.T) {
 		hash2: 0x02, // Unknown
 	}
 
-	list := ConversationList(convPath, displayNames, trustLevels)
+	list := ConversationList(convPath, displayNames, trustLevels, nil)
 	if len(list) != 2 {
 		t.Fatalf("ConversationList len = %v, want 2", len(list))
 	}
@@ -540,7 +540,7 @@ func TestConversationListUnreadFailedCount(t *testing.T) {
 
 	dir := tempDir(t)
 	convPath := filepath.Join(dir, "conversations")
-	hash := "0102030405060708010203040506070801020304050607080102030405060708"
+	hash := "01020304050607080102030405060708"
 	if err := os.MkdirAll(filepath.Join(convPath, hash), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -552,7 +552,7 @@ func TestConversationListUnreadFailedCount(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	list := ConversationList(convPath, nil, nil)
+	list := ConversationList(convPath, nil, nil, nil)
 	if len(list) != 1 {
 		t.Fatalf("ConversationList len = %v, want 1", len(list))
 	}
@@ -571,11 +571,11 @@ func TestConversationListUnreadFailedCount(t *testing.T) {
 	}
 
 	// Missing flag files → 0.
-	hash2 := "090a0b0c0d0e0f10090a0b0c0d0e0f10090a0b0c0d0e0f10090a0b0c0d0e0f10"
+	hash2 := "090a0b0c0d0e0f10090a0b0c0d0e0f10"
 	if err := os.MkdirAll(filepath.Join(convPath, hash2), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	list = ConversationList(convPath, nil, nil)
+	list = ConversationList(convPath, nil, nil, nil)
 	for _, info := range list {
 		if info.SourceHash == hash2 {
 			if info.UnreadCount != 0 || info.FailedCount != 0 {
@@ -590,7 +590,7 @@ func TestDeleteConversation(t *testing.T) {
 
 	dir := tempDir(t)
 	convPath := filepath.Join(dir, "conversations")
-	hash := "0102030405060708010203040506070801020304050607080102030405060708"
+	hash := "01020304050607080102030405060708"
 	if err := os.MkdirAll(filepath.Join(convPath, hash), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -674,7 +674,7 @@ func TestIngestCreatesConversationDirAndWritesMessage(t *testing.T) {
 		t.Error("Ingest should return the ingested file path")
 	}
 
-	list := ConversationList(dir, nil, nil)
+	list := ConversationList(dir, nil, nil, nil)
 	found := false
 	for _, ci := range list {
 		if ci.SourceHash == sourceHex {
@@ -725,7 +725,7 @@ func TestIngestTwoMessagesSameSourceSingleConversation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	list := ConversationList(dir, nil, nil)
+	list := ConversationList(dir, nil, nil, nil)
 	sourceHex := hex.EncodeToString(msg1.SourceHash)
 	if len(list) != 1 {
 		t.Errorf("ConversationList len = %v, want 1", len(list))

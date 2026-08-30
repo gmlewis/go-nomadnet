@@ -1055,9 +1055,9 @@ func conversationRowMain(conv ConversationInfo, glyphs GlyphSet, currentConversa
 	if conv.TrustLevel != "trusted" {
 		head += " <" + conv.SourceHash + ">"
 	}
-	if conv.FailedCount > 0 && conv.SourceHash != currentConversation {
+	if conv.FailedCount != 0 && conv.SourceHash != currentConversation {
 		head += " " + glyphs["warning"] + " (" + strconv.Itoa(conv.FailedCount) + ")"
-	} else if conv.UnreadCount > 0 && conv.SourceHash != currentConversation {
+	} else if conv.UnreadCount != 0 && conv.SourceHash != currentConversation {
 		head += " " + glyphs["unread"] + " (" + strconv.Itoa(conv.UnreadCount) + ")"
 	}
 	return head
@@ -1072,7 +1072,7 @@ func conversationRowMain(conv ConversationInfo, glyphs GlyphSet, currentConversa
 // (selected) styling is handled by the list, which replaces this attr entirely
 // on selection — mirroring urwid's focus_attr semantics.
 func conversationEntryFG(conv ConversationInfo, currentConversation string, theme int) tcell.Color {
-	if conv.TrustLevel == "trusted" && conv.UnreadCount > 0 && conv.SourceHash != currentConversation {
+	if conv.TrustLevel == "trusted" && conv.UnreadCount != 0 && conv.SourceHash != currentConversation {
 		return GetThemeColors(theme)["msg_notice_unread"]
 	}
 	switch conv.TrustLevel {

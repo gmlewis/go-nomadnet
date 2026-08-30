@@ -958,6 +958,7 @@ func (a *App) ConversationList() []conversation.ConversationInfo {
 	}
 	displayNames := map[string]string{}
 	trustLevels := map[string]byte{}
+	sortRanks := map[string]*int{}
 	if entries, err := os.ReadDir(a.ConversationPath); err == nil {
 		for _, e := range entries {
 			if !e.IsDir() {
@@ -971,6 +972,9 @@ func (a *App) ConversationList() []conversation.ConversationInfo {
 			if a.Dir != nil {
 				displayNames[hashHex] = a.Dir.DisplayName(hashBytes)
 				trustLevels[hashHex] = a.Dir.TrustLevel(hashBytes, nil)
+				if de := a.Dir.Find(hashBytes); de != nil {
+					sortRanks[hashHex] = de.SortRank
+				}
 			}
 			// B2: when the directory has no display name for the peer, fall
 			// back to the announce app data (LXMF display_name_from_app_data),
@@ -985,7 +989,7 @@ func (a *App) ConversationList() []conversation.ConversationInfo {
 			}
 		}
 	}
-	return conversation.ConversationList(a.ConversationPath, displayNames, trustLevels)
+	return conversation.ConversationList(a.ConversationPath, displayNames, trustLevels, sortRanks)
 }
 
 func expandUser(path string) string {

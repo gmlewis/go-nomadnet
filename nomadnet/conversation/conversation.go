@@ -20,6 +20,7 @@
 package conversation
 
 import (
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -245,10 +246,20 @@ type ConversationInfo struct {
 	LastActivity float64
 	Failed       bool
 	FailedCount  int
+	// SortRank carries the pinned-conversation rank from the directory entry
+	// (nil = not pinned). Python renders a pin glyph prefix and sorts pinned
+	// conversations first when this is set.
+	SortRank *int
 }
 
 // ConversationList returns a sorted list of all conversations.
-func ConversationList(conversationsPath string, displayNames map[string]string, trustLevels map[string]byte) []ConversationInfo {
+//
+// LastActivity mirrors Python's conversation_list() (Conversation.py), which
+// uses os.path.getmtime of the per-conversation DIRECTORY — updated whenever a
+// message file or flag is created/renamed there — not the max mtime of the
+// message files inside (message mtimes stay at write time and miss later
+// state-only changes like marking a conversation read).
+func ConversationList(conversationsPath string, displayNames map[string]string, trustLevels map[string]byte, sortRanks map[string]*int) []ConversationInfo {
 	entries, err := os.ReadDir(conversationsPath)
 	if err != nil {
 		return nil
@@ -261,32 +272,36 @@ func ConversationList(conversationsPath string, displayNames map[string]string, 
 		}
 
 		hash := entry.Name()
+
+		// Python's conversation_list only accepts directories whose name is a
+		// truncated identity hash in hex: len == Identity.TRUNCATED_HASHLENGTH//
+		// 8*2 == 32 AND bytes.fromhex succeeds (fromhex lives inside the
+		// per-entry try, so a 32-char non-hex name raises and the directory is
+		// skipped). Filter everything else out here too.
+		if len(hash) != 32 {
+			continue
+		}
+		if _, err := hex.DecodeString(hash); err != nil {
+			continue
+		}
+
 		convPath := filepath.Join(conversationsPath, hash)
 
 		// Check unread/failed flags. Python (Conversation.py:127-148) reads the
 		// flag file *content* as the count (defaulting to 1 when the file exists
-		// but the content is empty/unparseable), not just file existence.
+		// but the content is empty/unparseable), not just file existence. The
+		// flag is Python truthiness of the parsed int (used as `if failed:` /
+		// `elif unread:`), so any non-zero count — including a malformed
+		// negative one — counts as set.
 		unreadCount := readCountFile(filepath.Join(convPath, "unread"))
 		failedCount := readCountFile(filepath.Join(convPath, "failed"))
-		unread := unreadCount > 0
-		failed := failedCount > 0
+		unread := unreadCount != 0
+		failed := failedCount != 0
 
-		// Get last activity time
+		// Last activity = the conversation directory's mtime, as in Python.
 		lastActivity := float64(0)
-		msgs, err := os.ReadDir(convPath)
-		if err == nil {
-			for _, msg := range msgs {
-				if msg.IsDir() || msg.Name() == ".index" || msg.Name() == "unread" || msg.Name() == "failed" || msg.Name() == "read" {
-					continue
-				}
-				info, err := msg.Info()
-				if err == nil {
-					ts := float64(info.ModTime().UnixNano()) / 1e9
-					if ts > lastActivity {
-						lastActivity = ts
-					}
-				}
-			}
+		if info, err := os.Stat(convPath); err == nil {
+			lastActivity = float64(info.ModTime().UnixNano()) / 1e9
 		}
 
 		displayName := displayNames[hash]
@@ -306,11 +321,12 @@ func ConversationList(conversationsPath string, displayNames map[string]string, 
 			LastActivity: lastActivity,
 			Failed:       failed,
 			FailedCount:  failedCount,
+			SortRank:     sortRanks[hash],
 		})
 	}
 
-	// Sort by last activity descending
-	sort.Slice(list, func(i, j int) bool {
+	// Sort by last activity descending (stable, as Python's list.sort is)
+	sort.SliceStable(list, func(i, j int) bool {
 		return list[i].LastActivity > list[j].LastActivity
 	})
 
@@ -325,7 +341,8 @@ func fileExists(path string) bool {
 // readCountFile reads an unread/failed flag file and returns its integer
 // content, mirroring Python's Conversation.conversation_list (Conversation.py:
 // 127-148): a missing file means 0; a present file whose content parses as an
-// int yields that count; a present but empty/unparseable file yields 1 (the
+// int yields that count (kept verbatim — Python does not clamp negatives, it
+// relies on int truthiness); a present but empty/unparseable file yields 1 (the
 // flag exists, so at least one unread/failed message is implied).
 func readCountFile(path string) int {
 	data, err := os.ReadFile(path)
@@ -336,14 +353,52 @@ func readCountFile(path string) int {
 	if s == "" {
 		return 1
 	}
-	n, err := strconv.Atoi(s)
-	if err != nil {
+	n, ok := parsePyInt(s)
+	if !ok {
 		return 1
 	}
-	if n < 0 {
-		n = 0
-	}
 	return n
+}
+
+// parsePyInt mirrors Python's int(string) for the ASCII decimal subset —
+// optional sign, digits with single underscores allowed BETWEEN digits only
+// (int("1_0") == 10, but int("1_"), int("_1"), int("1__0") all raise). Go's
+// strconv.Atoi accepts none of the underscore forms. Python additionally
+// accepts non-ASCII unicode digits (int("١٢") == 12); those still fall through
+// to unparseable here, which the caller maps to count 1, matching how Python
+// would treat any other non-ASCII punctuation.
+func parsePyInt(s string) (int, bool) {
+	i := 0
+	if i < len(s) && (s[i] == '+' || s[i] == '-') {
+		i++
+	}
+	digits := s[i:]
+	if digits == "" {
+		return 0, false
+	}
+	prevUnderscore := false
+	for j := 0; j < len(digits); j++ {
+		c := digits[j]
+		switch {
+		case c >= '0' && c <= '9':
+			prevUnderscore = false
+		case c == '_':
+			if prevUnderscore || j == 0 || j == len(digits)-1 {
+				return 0, false
+			}
+			prevUnderscore = true
+		default:
+			return 0, false
+		}
+	}
+	n, err := strconv.Atoi(strings.ReplaceAll(digits, "_", ""))
+	if err != nil {
+		return 0, false
+	}
+	if i > 0 && s[0] == '-' {
+		n = -n
+	}
+	return n, true
 }
 
 func isHexString(s string) bool {

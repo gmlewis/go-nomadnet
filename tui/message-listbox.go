@@ -226,7 +226,9 @@ func (m *messageListBox) Draw(screen tcell.Screen) {
 	barY := 0
 	// The covered/exposed glyphs render with no attr map (default terminal
 	// colors — the bars are urwid.AttrMap(None)), so no color is applied.
-	centerX := func(s string) int { return x0 + max((w-utf8.RuneCountInString(s))/2, 0) }
+	// urwid.Text centers with a LEFT bias on odd leftovers ((w-len+1)//2 pad
+	// on the left), so use ceiling division to match it exactly.
+	centerX := func(s string) int { return x0 + max((w-utf8.RuneCountInString(s)+1)/2, 0) }
 	if h > 2 {
 		if m.TopIsVisible() {
 			m.drawBarText(screen, centerX("───"), y0, "───")

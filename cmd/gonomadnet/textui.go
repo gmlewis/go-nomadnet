@@ -810,6 +810,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 			UnreadCount: c.UnreadCount,
 			Failed:      c.Failed,
 			FailedCount: c.FailedCount,
+			Pinned:      c.SortRank != nil,
 		}
 	}
 	conversationsDisplay := tui.NewConversationsDisplay(tuiApp, tuiConvs)
@@ -849,6 +850,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 				UnreadCount: c.UnreadCount,
 				Failed:      c.Failed,
 				FailedCount: c.FailedCount,
+				Pinned:      c.SortRank != nil,
 			}
 		}
 		conversationsDisplay.SetConversations(tuiConvs)

@@ -32,7 +32,7 @@ import (
 // Conversations returns the list of known conversations, mirroring the
 // Python NomadNetworkApp.conversations accessor.
 func (a *App) Conversations() []conversation.ConversationInfo {
-	return conversation.ConversationList(a.ConversationPath, nil, nil)
+	return conversation.ConversationList(a.ConversationPath, nil, nil, nil)
 }
 
 // HasUnreadConversations reports whether any conversation is flagged unread
