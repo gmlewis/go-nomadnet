@@ -22,6 +22,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -984,6 +985,7 @@ func (h *RRCHub) sendEnv(env map[any]any) {
 	}
 	p := rns.NewPacketWithTransport(link.GetTransport(), link, data)
 	if err := p.Pack(); err != nil {
+		log.Printf("rrc: dropping envelope send over link: %v", err)
 		return
 	}
 	_ = link.SendPacket(p)
