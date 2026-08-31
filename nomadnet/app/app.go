@@ -421,6 +421,11 @@ func (a *App) initRNS() {
 		a.Logger.Error("Could not initialize Reticulum: %v", err)
 		return
 	}
+	// Re-assert the app's loglevel: Reticulum's applyConfig re-reads
+	// ~/.reticulum/config and overrides the level we set in Init (Python
+	// nomadnet instead passes its loglevel into the RNS constructor, so the
+	// app value always wins there).
+	a.Logger.SetLogLevel(a.Config.Logging.LogLevel)
 	// Publish the Reticulum under a.mu so concurrent readers (RNSConfigPath,
 	// polled from the Interfaces page / UI ticker) see the pointer safely.
 	// The pointer is assigned once here and never reassigned, but a bare

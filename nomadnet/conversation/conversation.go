@@ -165,10 +165,26 @@ func (c *Conversation) ScanStorage() error {
 		msg.Transport = c.Transport
 		msg.PendingChecker = c.PendingChecker
 
-		// Restore from index if available
+		// Restore cached fields from the index only when the entry matches the
+		// current file. The index is a snapshot taken at the previous scan; when
+		// a message file was re-written since then (an outbound message whose
+		// state advanced from SENT to DELIVERED rewrites its container), the
+		// on-disk state is newer than the entry and restoring would clobber the
+		// file state with the snapshot — and WriteIndex below would then persist
+		// the stale value back. Python's scan_storage avoids this by rebuilding
+		// each ConversationMessage from the file itself (Conversation.py:2246).
+		// When skipped here the message loads lazily from disk instead.
 		if ie, ok := index.Get(name); ok {
 			if om, ok := ie.(rnsmsgpack.OrderedMap); ok {
-				msg.RestoreFromIndex(om)
+				if v, ok := om.Get("sort_timestamp"); ok {
+					if f, ok := v.(float64); ok {
+						if info, err := entry.Info(); err == nil {
+							if f == float64(info.ModTime().UnixNano())/1e9 {
+								msg.RestoreFromIndex(om)
+							}
+						}
+					}
+				}
 			}
 		}
 
