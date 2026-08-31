@@ -22,6 +22,7 @@ package conversation
 import (
 	"encoding/hex"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -103,6 +104,28 @@ func (c *Conversation) SetPendingChecker(fn func(hash []byte) bool) {
 	c.PendingChecker = fn
 	for _, m := range c.Messages {
 		m.PendingChecker = fn
+	}
+}
+
+// RecallPeer mirrors Python Conversation.__init__ (Conversation.py:204-208):
+// recall the peer's identity with the default use-marking recall so the peer's
+// known-destinations entry is recorded as in use and survives the transport's
+// pathless/never-used cleanup, and request a path from the network when the
+// identity has not been recalled yet. It is a no-op when no transport is
+// stamped or the source hash is malformed.
+func (c *Conversation) RecallPeer() {
+	if c.Transport == nil {
+		return
+	}
+	hash, err := hex.DecodeString(c.SourceHash)
+	if err != nil {
+		log.Printf("Warning: RecallPeer could not decode source hash: %v", err)
+		return
+	}
+	if c.Transport.Recall(hash) == nil {
+		if err := c.Transport.RequestPath(hash); err != nil {
+			log.Printf("Warning: RequestPath failed: %v", err)
+		}
 	}
 }
 
@@ -198,7 +221,7 @@ func (c *Conversation) ScanStorage() error {
 
 	// Write index for any updated messages
 	if err := WriteIndex(c.MessagesPath, messages); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: could not write index: %v\n", err)
+		log.Printf("Warning: could not write index: %v\n", err)
 	}
 
 	c.Messages = messages
@@ -278,6 +301,7 @@ type ConversationInfo struct {
 func ConversationList(conversationsPath string, displayNames map[string]string, trustLevels map[string]byte, sortRanks map[string]*int) []ConversationInfo {
 	entries, err := os.ReadDir(conversationsPath)
 	if err != nil {
+		log.Printf("Warning: ConversationList error: %v", err)
 		return nil
 	}
 

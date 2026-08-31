@@ -981,6 +981,14 @@ func (a *App) ConversationList() []conversation.ConversationInfo {
 					sortRanks[hashHex] = de.SortRank
 				}
 			}
+			// Python builds a cached Conversation object for every list entry,
+			// whose __init__ recalls the peer (Conversation.py:204-208) and
+			// marks the peer's RNS known-destinations entry as used. Do the
+			// same here so peers the user talks to survive the transport's
+			// pathless/never-used cleanup even between direct openings.
+			if a.Transport != nil {
+				a.Transport.Recall(hashBytes)
+			}
 			// B2: when the directory has no display name for the peer, fall
 			// back to the announce app data (LXMF display_name_from_app_data),
 			// matching nomadnet 1.2.8's _update_peer_info
