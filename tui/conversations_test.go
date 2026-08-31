@@ -1029,23 +1029,28 @@ func TestMessageViewClear(t *testing.T) {
 	// Should not panic
 }
 
+// TestRelativeTime checks the relativeTime helper against a fixed "now" so the
+// multi-day buckets are deterministic: past 24h the age uses a calendar-day
+// difference, so a time.Now()-25h age reads "2d ago" (not "yesterday") when the
+// test runs in the hour after midnight.
 func TestRelativeTime(t *testing.T) {
 	t.Parallel()
 
+	now := time.Date(2026, time.August, 30, 12, 0, 0, 0, time.Local)
 	tests := []struct {
 		input time.Time
 		want  string
 	}{
-		{time.Now(), "just now"},
-		{time.Now().Add(-30 * time.Second), "just now"},
-		{time.Now().Add(-5 * time.Minute), "5m ago"},
-		{time.Now().Add(-3 * time.Hour), "3h ago"},
-		{time.Now().Add(-25 * time.Hour), "yesterday"},
-		{time.Now().Add(-3 * 24 * time.Hour), "3d ago"},
+		{now, "just now"},
+		{now.Add(-30 * time.Second), "just now"},
+		{now.Add(-5 * time.Minute), "5m ago"},
+		{now.Add(-3 * time.Hour), "3h ago"},
+		{now.Add(-25 * time.Hour), "yesterday"},
+		{now.Add(-3 * 24 * time.Hour), "3d ago"},
 	}
 
 	for _, tt := range tests {
-		got := relativeTime(tt.input)
+		got := relativeTimeAt(tt.input, now)
 		if got != tt.want {
 			t.Errorf("relativeTime(%v) = %q, want %q", tt.input, got, tt.want)
 		}
