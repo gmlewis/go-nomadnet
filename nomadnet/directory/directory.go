@@ -61,6 +61,14 @@ type Directory struct {
 	peerAnnounces []Announce
 	pnAnnounces   []Announce
 
+	// blockedFilter, when set via SetBlockedFilter, is a Go-only enhancement:
+	// announces whose source hash it reports as blocked are never recorded and
+	// are hidden from the stream getters. There is no Python SOT counterpart —
+	// the original only blackholes transport-level connectivity (paths, links,
+	// LXMF delivery) but still displays announces from blackholed nodes. See
+	// SetBlockedFilter.
+	blockedFilter func(sourceHash []byte) bool
+
 	// persistPath, when set via SetPersistPath, makes Remember eagerly save the
 	// directory (entries + announce stream) to this path after each update —
 	// mirroring Python's Directory.remember → save_to_disk (Directory.py:340-
@@ -329,7 +337,7 @@ func (d *Directory) AnnounceStream() []Announce {
 	result = append(result, d.nodeAnnounces...)
 	result = append(result, d.peerAnnounces...)
 	result = append(result, d.pnAnnounces...)
-	return result
+	return d.filterBlocked(result)
 }
 
 // PeerAnnounces returns all peer announces.
@@ -337,9 +345,7 @@ func (d *Directory) PeerAnnounces() []Announce {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	result := make([]Announce, len(d.peerAnnounces))
-	copy(result, d.peerAnnounces)
-	return result
+	return d.filterBlocked(d.peerAnnounces)
 }
 
 // NodeAnnounces returns all node announces.
@@ -347,8 +353,7 @@ func (d *Directory) NodeAnnounces() []Announce {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	result := make([]Announce, len(d.nodeAnnounces))
-	copy(result, d.nodeAnnounces)
+	result := d.filterBlocked(d.nodeAnnounces)
 	return result
 }
 
@@ -357,8 +362,33 @@ func (d *Directory) PNAnnounces() []Announce {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	result := make([]Announce, len(d.pnAnnounces))
-	copy(result, d.pnAnnounces)
+	result := d.filterBlocked(d.pnAnnounces)
+	return result
+}
+
+// SetBlockedFilter installs the Go-only blocked announce filter. There is NO
+// isBlockedLocked reports whether the given source hash is blocked by the
+// configured filter (false when no filter is set). The caller must hold d.mu.
+func (d *Directory) isBlockedLocked(sourceHash []byte) bool {
+	return d.blockedFilter != nil && len(sourceHash) > 0 && d.blockedFilter(sourceHash)
+}
+
+// filterBlocked returns a filtered copy of list with blocked-source announces
+// removed, mirroring the "never see announcements from blocked nodes"
+// enhancement. The caller must hold d.mu.
+func (d *Directory) filterBlocked(list []Announce) []Announce {
+	if d.blockedFilter == nil {
+		result := make([]Announce, len(list))
+		copy(result, list)
+		return result
+	}
+	result := make([]Announce, 0, len(list))
+	for _, announce := range list {
+		if d.isBlockedLocked(announce.SourceHash) {
+			continue
+		}
+		result = append(result, announce)
+	}
 	return result
 }
 
@@ -373,11 +403,33 @@ func (d *Directory) RemoveAnnounceWithTimestamp(timestamp float64) {
 	d.removeAnnounceFromList(&d.pnAnnounces, timestamp)
 }
 
+// SetBlockedFilter installs the Go-only blocked-announce filter. When set, a
+// node (or peer/PN) whose source hash the predicate reports as blocked is
+// never added to any announce stream, never auto-remembered in the directory
+// from a node announce, and existing stream announces for blocked sources are
+// hidden from every stream getter — so a blocked node's announcements are
+// never seen again, even ones already recorded this session. This is a
+// DELIBERATE gonomadnet enhancement with no Python nomadnet counterpart
+// (Python's transport blackhole cuts connectivity but still shows announces);
+// do not "fix" this back toward the Python original. The app wires
+// a.Dir.SetBlockedFilter(a.IsIgnored) so the filter tracks the ignored list
+// from block_destination/block node.
+func (d *Directory) SetBlockedFilter(fn func(sourceHash []byte) bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.blockedFilter = fn
+}
+
 // PeerAnnounceReceived adds a peer announce to the stream. If compact
 // mode is enabled, removes prior announces from the same source.
 func (d *Directory) PeerAnnounceReceived(announce Announce, compact bool) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+
+	// Go-only enhancement: never record announces from blocked sources.
+	if d.isBlockedLocked(announce.SourceHash) {
+		return
+	}
 
 	if compact {
 		d.compactList(&d.peerAnnounces, announce.SourceHash)
@@ -393,6 +445,11 @@ func (d *Directory) NodeAnnounceReceived(announce Announce, compact bool) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
+	// Go-only enhancement: never record announces from blocked sources.
+	if d.isBlockedLocked(announce.SourceHash) {
+		return
+	}
+
 	if compact {
 		d.compactList(&d.nodeAnnounces, announce.SourceHash)
 	}
@@ -406,6 +463,11 @@ func (d *Directory) NodeAnnounceReceived(announce Announce, compact bool) {
 func (d *Directory) PNAnnounceReceived(announce Announce, compact bool) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+
+	// Go-only enhancement: never record announces from blocked sources.
+	if d.isBlockedLocked(announce.SourceHash) {
+		return
+	}
 
 	if compact {
 		d.compactList(&d.pnAnnounces, announce.SourceHash)
@@ -558,6 +620,12 @@ func (d *Directory) SortRank(sourceHash []byte) *int {
 // using the announce app_data as the display name.
 func (d *Directory) NodeAnnounceReceivedPeer(announce Announce, compact bool, associatedPeer []byte) {
 	d.mu.Lock()
+	// Go-only enhancement: never record announces from blocked sources (and
+	// never auto-remember a directory entry for them below).
+	if d.isBlockedLocked(announce.SourceHash) {
+		d.mu.Unlock()
+		return
+	}
 	if compact {
 		d.compactList(&d.nodeAnnounces, announce.SourceHash)
 	}

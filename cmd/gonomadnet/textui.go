@@ -826,8 +826,9 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	// refreshConvs updates the conversation list from the app.
 	refreshConvs = func() {
 		newConvs := a.ConversationList()
-		tuiConvs = make([]tui.ConversationInfo, len(newConvs))
-		for i, c := range newConvs {
+		tuiConvs = make([]tui.ConversationInfo, 0, len(newConvs)+len(a.IgnoredList))
+		seenIgnored := make(map[string]bool)
+		for _, c := range newConvs {
 			trustStr := "unknown"
 			switch c.TrustLevel {
 			case 0xFF:
@@ -837,11 +838,19 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 			case 0x00:
 				trustStr = "warning"
 			}
+			// An ignored (blocked) destination renders Python's dedicated
+			// "[blocked]" row (Conversations.py:332-341 + update_listbox
+			// blocked-row append, Conversations.py:483-488) instead of its
+			// trust-derived row, so activating it offers the Unblock dialog.
+			if hashBytes, ok := app.SourceHashFromHex(c.SourceHash); ok && a.IsIgnored(hashBytes) {
+				trustStr = "blocked"
+				seenIgnored[c.SourceHash] = true
+			}
 			var lastTime time.Time
 			if c.LastActivity > 0 {
 				lastTime = time.Unix(int64(c.LastActivity), 0)
 			}
-			tuiConvs[i] = tui.ConversationInfo{
+			tuiConvs = append(tuiConvs, tui.ConversationInfo{
 				SourceHash:  c.SourceHash,
 				DisplayName: c.DisplayName,
 				TrustLevel:  trustStr,
@@ -851,7 +860,22 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 				Failed:      c.Failed,
 				FailedCount: c.FailedCount,
 				Pinned:      c.SortRank != nil,
+			})
+		}
+		// Python's update_listbox appends a visible row for EVERY entry of
+		// app.ignored_list (Conversations.py:483-488), including peers with no
+		// conversation on disk — without those rows a peer blocked before the
+		// first conversation could never be unblocked.
+		for _, h := range a.IgnoredList {
+			hashHex := fmt.Sprintf("%x", h)
+			if seenIgnored[hashHex] {
+				continue
 			}
+			tuiConvs = append(tuiConvs, tui.ConversationInfo{
+				SourceHash:  hashHex,
+				DisplayName: a.Dir.SimplestDisplayStr(h),
+				TrustLevel:  "blocked",
+			})
 		}
 		conversationsDisplay.SetConversations(tuiConvs)
 	}
@@ -1184,6 +1208,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 					return
 				}
 				a.UnblockDestination(hash)
+				refreshConvs()
 			},
 			func() {},
 		)
@@ -1197,8 +1222,11 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		// TODO: Actual ping via RNS transport
 	}
 	_ = blockPeer
-	_ = unblockPeer
 	_ = pingPeer
+
+	// A "[blocked]" row in the Untrusted tab runs the unblock flow (Python's
+	// blocked-row click → _unblock_dialog, Conversations.py:332-347).
+	conversationsDisplay.OnUnblockPeer = unblockPeer
 
 	// Trust banner button wiring (Python _on_trust_click/_on_block_click/
 	// _on_ignore_click). Defined after blockPeer so it can delegate to it.
@@ -1216,6 +1244,22 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	conversationsDisplay.OnIgnorePeer = func(sourceHash string) {
 		// "Do nothing" just dismisses the banner; no app action.
 		_ = sourceHash
+	}
+
+	// Go-only enhancement (no Python SOT counterpart — Python nomadnet has no
+	// way to block a node): the AnnounceInfo "Block" button blackholes the
+	// node's identity (App.BlockDestination → Transport.BlackholeIdentity +
+	// ignored list + LXMF router ignore) and the directory's Go-only blocked
+	// filter drops its announces from the Announce Stream on the refresh below.
+	// Keep this hook (and the dialog/blocked-filter comments) when auditing
+	// parity against the Python original.
+	networkDisplay.OnBlockNode = func(nodeHash string) {
+		hash, ok := app.SourceHashFromHex(nodeHash)
+		if !ok {
+			return
+		}
+		a.BlockDestination(hash, "user-blocked from node announce info (Go enhancement)")
+		refreshAll()
 	}
 
 	// Send hook: C-d in the open conversation's composer builds the outbound
@@ -1771,6 +1815,21 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		// malformed-link error with no way back.
 		bd.OnBack = func() { bd.GoBack() }
 		bd.OnForward = func() { bd.GoForward() }
+		// Go-only enhancement (no Python SOT counterpart — Python nomadnet
+		// cannot block nodes, so never remove this guard as a parity
+		// divergence): before ANY navigation (URL dialogs, node Connect, link
+		// clicks) the browser asks the app whether the destination is on the
+		// ignored list. Blocked destinations raise the "Blocked node" warning
+		// modal (default focus = Cancel, so a bare Enter cancels) loaded from
+		// tui.ShowBlockedNodeConfirmDialog, and only an explicit Connect
+		// proceeds.
+		bd.OnBlockedConnectCheck = func(nodeHashHex string) (string, bool) {
+			hash, ok := app.SourceHashFromHex(nodeHashHex)
+			if !ok || !a.IsIgnored(hash) {
+				return "", false
+			}
+			return a.Dir.SimplestDisplayStr(hash), true
+		}
 		bd.OnReload = func() {
 			// Python reload() uncaches the current URL then re-loads, so a reload
 			// always re-fetches instead of returning a stale cache hit.

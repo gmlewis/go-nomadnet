@@ -169,27 +169,14 @@ func (bd *BrowserDisplay) HandleLink(linkTarget, linkFields string) {
 
 	switch destType {
 	case "nomadnetwork.node":
-		// Push the target onto history eagerly (mirroring LoadURL) so Ctrl-d
-		// (GoBack) returns to the page the link was on. Python's retrieve_url
-		// appends to history only on success (Browser.py:131-145, 216-268); the
-		// Go fetch resolves via an async app-layer callback that calls RenderPage
-		// with markup (not the URL), so the tui layer cannot push on success.
-		// Instead HandleLink pushes now and the failure paths roll it back:
-		// NotifyLinkError (a malformed/dispatch-error link) and SetContent (a
-		// fetch-fatal timeout/no-path) pop the just-pushed entry, and RenderPage
-		// clears the pending flag on success (keeping it). pendingLinkHist marks
-		// the push so only a link click (not a typed-URL LoadURL, which displayURL
-		// clears) is rolled back — see the pendingLinkHist field doc.
-		bd.rollbackPendingLink()
-		bd.pushHistory(target)
-		bd.pendingLinkHist = true
-		if bd.OnRetrieveURL != nil {
-			// A submit link names the form fields to send (linkFields). Collect
-			// their live values from the rendered page (recurse_down analog) and
-			// forward as request_data; a plain link has no fields → nil request
-			// data (the cache + var_*-suffix path is unchanged).
-			bd.OnRetrieveURL(target, bd.collectFields(linkFields))
+		// Go-only enhancement (see BrowserDisplay.OnBlockedConnectCheck): a
+		// link click targeting a blocked destination defers the fetch behind
+		// the "Blocked node" warning modal; the unguarded link flow below runs
+		// only via the modal's explicit Connect.
+		if bd.interceptBlockedConnect(target, func() { bd.loadLinkDirect(target, linkFields) }) {
+			return
 		}
+		bd.loadLinkDirect(target, linkFields)
 	case "lxmf.delivery":
 		bd.HandleLXMFLink(target)
 	case "rrc.hub.session":
@@ -202,5 +189,32 @@ func (bd *BrowserDisplay) HandleLink(linkTarget, linkFields string) {
 		if bd.OnBrowserError != nil {
 			bd.OnBrowserError(fmt.Sprintf("No known handler for destination type %v", destType))
 		}
+	}
+}
+
+// loadLinkDirect performs the unguarded nomadnetwork.node link-click flow:
+// eager history push (marking pendingLinkHist so a failure rolls it back)
+// followed by the OnRetrieveURL fetch.
+func (bd *BrowserDisplay) loadLinkDirect(target, linkFields string) {
+	// Push the target onto history eagerly (mirroring LoadURL) so Ctrl-d
+	// (GoBack) returns to the page the link was on. Python's retrieve_url
+	// appends to history only on success (Browser.py:131-145, 216-268); the
+	// Go fetch resolves via an async app-layer callback that calls RenderPage
+	// with markup (not the URL), so the tui layer cannot push on success.
+	// Instead HandleLink pushes now and the failure paths roll it back:
+	// NotifyLinkError (a malformed/dispatch-error link) and SetContent (a
+	// fetch-fatal timeout/no-path) pop the just-pushed entry, and RenderPage
+	// clears the pending flag on success (keeping it). pendingLinkHist marks
+	// the push so only a link click (not a typed-URL LoadURL, which displayURL
+	// clears) is rolled back — see the pendingLinkHist field doc.
+	bd.rollbackPendingLink()
+	bd.pushHistory(target)
+	bd.pendingLinkHist = true
+	if bd.OnRetrieveURL != nil {
+		// A submit link names the form fields to send (linkFields). Collect
+		// their live values from the rendered page (recurse_down analog) and
+		// forward as request_data; a plain link has no fields → nil request
+		// data (the cache + var_*-suffix path is unchanged).
+		bd.OnRetrieveURL(target, bd.collectFields(linkFields))
 	}
 }

@@ -158,6 +158,15 @@ type NetworkDisplay struct {
 	// node_ident), not the node's own address (Network.py:146-166).
 	OnMsgOp func(opHashHex string)
 
+	// OnBlockNode is fired by the [Block] button on the NODE AnnounceInfo view
+	// (Go-only enhancement — Python's AnnounceInfo has no Block button and
+	// nomadnet has no way to block a node; do NOT remove this when auditing
+	// parity). It receives the announce's nomadnetwork.node destination hash
+	// (hex); the wiring layer runs App.BlockDestination (identity blackhole +
+	// ignored list + LXMF router ignore) and the directory's Go-only blocked
+	// filter hides the node's announces from the stream from then on.
+	OnBlockNode func(nodeHash string)
+
 	// OnConnectNode is fired by Enter on a Saved Nodes list row (Python
 	// KnownNodes NodeEntry "click" signal → connect_node, Network.py:1019 +
 	// 881-919). Python opens a "Connect to node?" dialog (Yes/No/Info); the
@@ -604,6 +613,19 @@ func (nd *NetworkDisplay) HandleEsc() bool {
 		return true
 	}
 	return false
+}
+
+// blockNode is the Go-only [Block] action handler for the node AnnounceInfo
+// view (no Python SOT counterpart — Python nomadnet cannot block nodes; keep
+// this when auditing parity). It pops back to the announce stream and fires
+// OnBlockNode with the announce's source hash; after the app blackholes the
+// node the directory's Go-only blocked filter removes its announce rows from
+// the stream on the next refresh.
+func (nd *NetworkDisplay) blockNode(ann AnnounceEntry) {
+	nd.showAnnounceStream()
+	if nd.OnBlockNode != nil {
+		nd.OnBlockNode(ann.SourceHash)
+	}
 }
 
 // connectToNode opens the browser to the node's page URL.

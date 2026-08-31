@@ -132,6 +132,14 @@ type ConversationsDisplay struct {
 	OnBlockPeer  func(sourceHash string)
 	OnIgnorePeer func(sourceHash string)
 
+	// OnUnblockPeer fires when the user activates a "[blocked]" conversation
+	// row in the Untrusted tab (Python's blocked-row "click" signal →
+	// _unblock_dialog, Conversations.py:332-347: it opens a "Confirm unblock"
+	// dialog, then app.unblock_destination lifts the RNS blackhole and removes
+	// the peer from the ignored list). The wiring layer builds the confirm
+	// dialog and runs App.UnblockDestination.
+	OnUnblockPeer func(sourceHash string)
+
 	// OnSend is the display-level send hook fired by the conversation
 	// widget's composer (C-d). The wiring layer (cmd/gonomadnet/textui.go)
 	// connects it to App.SendConversation so a composed message is built
@@ -333,7 +341,7 @@ func NewConversationsDisplay(app *App, convs []ConversationInfo) *ConversationsD
 		// the unfiltered model — with the trusted/untrusted filter active the
 		// raw indices map to different conversations, which opened the
 		// "Undefined" conversation for both keyboard Enter and mouse clicks.
-		cd.selectVisibleConversation(i, cd.DisplayConversation)
+		cd.activateListRow(i, cd.DisplayConversation)
 	})
 
 	// Set up keyboard shortcuts matching Python's ConversationsArea.keypress()
@@ -655,12 +663,33 @@ func (cd *ConversationsDisplay) visibleList() []ConversationInfo {
 // selectVisibleConversation resolves a rendered list row to its conversation
 // and fires open with the source hash. Out-of-range rows (a highlight that
 // raced ahead of the model population between events) are dropped silently.
+// activateListRow is the shared row-activation entry point behind the list's
+// SelectedFunc (Enter/Space and click). It routes through
+// selectVisibleConversation, which sends "[blocked]" rows to OnUnblockPeer and
+// everything else to the open conversation hook.
+func (cd *ConversationsDisplay) activateListRow(row int, open func(sourceHash string)) {
+	cd.selectVisibleConversation(row, open)
+}
+
+// selectVisibleConversation resolves a rendered list row to the action its
+// activation performs: a "[blocked]" row (an ignored destination, shown via
+// the Untrusted tab's "Show blocked" checkbox) runs the unblock flow (Python
+// blocked-row click → _unblock_dialog, Conversations.py:332-347), while any
+// other row opens the conversation (Python's "click" signal →
+// display_conversation, Conversations.py:1637-1639).
 func (cd *ConversationsDisplay) selectVisibleConversation(row int, open func(sourceHash string)) {
 	visible := cd.visible
 	if row < 0 || row >= len(visible) {
 		return
 	}
-	open(visible[row].SourceHash)
+	conv := visible[row]
+	if conv.TrustLevel == "blocked" {
+		if cd.OnUnblockPeer != nil {
+			cd.OnUnblockPeer(conv.SourceHash)
+		}
+		return
+	}
+	open(conv.SourceHash)
 }
 
 // GetSelectedConversation returns the currently selected ConversationInfo,
@@ -998,14 +1027,22 @@ func (cd *ConversationsDisplay) populateList() {
 			continue
 		}
 
-		main := conversationRowMain(conv, glyphs, cd.currentConversation)
-		secondary := conversationRowSecondary(conv)
 		cd.visible = append(cd.visible, conv)
 		// Style the entry with Python's single per-entry attribute (both lines,
 		// replaced by the focus style on selection):
 		// urwid.AttrMap(ListEntry(...), style, focus_style) with style picked
 		// per trust level (and msg_notice_unread for a trusted conversation
 		// with unread messages), Conversations.py:1687-1756.
+		// A "[blocked]" row (ignored destination) renders Python's
+		// _blocked_row_widget label (Conversations.py:332-341) with no
+		// secondary text; activating it runs the unblock flow.
+		var main, secondary string
+		if conv.TrustLevel == "blocked" {
+			main = BlockedRowLabel(conv.DisplayName, conv.SourceHash)
+		} else {
+			main = conversationRowMain(conv, glyphs, cd.currentConversation)
+			secondary = conversationRowSecondary(conv)
+		}
 		cd.list.AddItem(main, secondary, 0, nil)
 		cd.list.SetItemStyle(len(cd.visible)-1, tcell.StyleDefault.Foreground(conversationEntryFG(conv, cd.currentConversation, cd.app.Theme)))
 	}
@@ -1755,13 +1792,15 @@ func (cd *ConversationsDisplay) SetShowBlocked(show bool) {
 	cd.populateList()
 }
 
-// BlockedRowLabel formats the display label for a blocked peer row.
-// Matches Python's _blocked_row_widget() at Conversations.py:332.
+// BlockedRowLabel formats the display label for a blocked peer row, matching
+// Python's _blocked_row_widget (Conversations.py:340): " " + cross +
+// " [blocked] " + display_name + "  <" + hexrep + ">". An empty display name
+// renders the source hash as the name (Python's prettyhexrep fallback).
 func BlockedRowLabel(displayName, sourceHash string) string {
 	if displayName == "" {
 		displayName = sourceHash
 	}
-	return fmt.Sprintf("× [blocked] %v", displayName)
+	return fmt.Sprintf("× [blocked] %v  <%v>", displayName, sourceHash)
 }
 
 // OpenSyncDialog opens the LXMF sync dialog with propagation

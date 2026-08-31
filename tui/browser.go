@@ -223,6 +223,19 @@ type BrowserDisplay struct {
 	OnJumpAnchor       func(name string)
 	OnRetrieveURL      func(url string, requestData map[string]string)
 	OnPartialUpdate    func(ids []string)
+
+	// OnBlockedConnectCheck is the Go-only blocked-node connect guard hook
+	// (no Python SOT counterpart — Python nomadnet cannot block nodes at
+	// all): given a destination-hash hex parsed from a URL or link target,
+	// return the peer's display string for the warning modal and whether the
+	// destination is blocked. When it reports a blocked destination,
+	// LoadURL and HandleLink defer the fetch behind the "Blocked node"
+	// warning modal (ShowBlockedNodeConfirmDialog) whose default focus is
+	// Cancel, so a bare Enter never connects. When nil, navigation behaves
+	// exactly as before. Part of the deliberate gonomadnet block-node
+	// enhancement — keep it and the modal when auditing parity.
+	OnBlockedConnectCheck func(nodeHashHex string) (display string, blocked bool)
+
 	// OnLoadURL, when set, overrides the URL-dialog submit path (Python's
 	// url_dialog "Go" → retrieve_url, Browser.py:1160). The Network right pane
 	// mounts its BrowserDisplay lazily — BrowserPane.LoadURL swaps the raw
@@ -402,13 +415,52 @@ func (bd *BrowserDisplay) Widget() tview.Primitive {
 	return bd.widget
 }
 
-// LoadURL loads a URL and displays the content.
+// LoadURL loads a URL and displays the content inside the Remote Node pane.
+// When OnBlockedConnectCheck (Go-only enhancement, no Python counterpart)
+// reports the destination as blocked, the fetch is deferred behind the
+// "Blocked node" warning modal instead of proceeding.
 func (bd *BrowserDisplay) LoadURL(url string) {
 	if url == "" {
 		return
 	}
+	// Go-only enhancement (see BrowserDisplay.OnBlockedConnectCheck): the
+	// unguarded navigation runs only via the modal's explicit Connect.
+	if bd.interceptBlockedConnect(url, func() { bd.loadURLDirect(url) }) {
+		return
+	}
+	bd.loadURLDirect(url)
+}
+
+// loadURLDirect performs the unguarded LoadURL body (push history + display).
+func (bd *BrowserDisplay) loadURLDirect(url string) {
 	bd.pushHistory(url)
 	bd.displayURL(url)
+}
+
+// interceptBlockedConnect reports whether url targets a BLOCKED destination
+// and therefore must not proceed directly: when OnBlockedConnectCheck says
+// blocked, the "Blocked node" warning modal is raised and proceed is wired to
+// its explicit Connect button (default focus is Cancel, so Enter never
+// connects). Returns true when navigation was intercepted. Go-only
+// enhancement — no Python SOT counterpart.
+func (bd *BrowserDisplay) interceptBlockedConnect(url string, proceed func()) bool {
+	if bd.OnBlockedConnectCheck == nil {
+		return false
+	}
+	dest, _, _, err := browser.ParseURL(url, bd.CurrentDest(), nil)
+	if err != nil || len(dest) == 0 {
+		return false
+	}
+	display, blocked := bd.OnBlockedConnectCheck(fmt.Sprintf("%x", dest))
+	if !blocked {
+		return false
+	}
+	if bd.app != nil && bd.app.Dialogs != nil {
+		bd.app.Dialogs.ShowBlockedNodeConfirmDialog(
+			"Are you sure you want to connect to this blocked node?\n"+display,
+			proceed, nil)
+	}
+	return true
 }
 
 // pushHistory appends url to the navigation history, truncating any forward

@@ -387,6 +387,10 @@ func (a *App) Init() error {
 	a.RRC = rrc.NewManager(a.StoragePath, nil)
 	a.loadPeerSettings()
 	a.loadIgnoredList()
+	// Go-only enhancement: block the announce streams for every ignored
+	// destination ("never see announcements from blocked nodes"). No Python
+	// SOT counterpart — see directory.Directory.SetBlockedFilter.
+	a.Dir.SetBlockedFilter(a.IsIgnored)
 	a.ConversationCache.SetAttachmentPath(a.AttachmentPath)
 
 	// Start RNS initialization in a goroutine so the TUI can start immediately.
@@ -455,6 +459,9 @@ func (a *App) initRNS() {
 
 	// Register delivery callback
 	a.Router.RegisterDeliveryCallback(a.lxmfDelivery)
+	// Mirror Python NomadNetworkApp.py:351-352: seed the router's ignored list
+	// from the persisted ignored file at startup.
+	a.applyIgnoredDestinations()
 
 	// Register delivery identity for receiving messages
 	a.LXMFDest, err = a.Router.RegisterDeliveryIdentity(a.Identity, a.Config.Client.UserInterface, nil)
@@ -576,12 +583,19 @@ func (a *App) InitWithTransport(ts *rns.TransportSystem, identity *rns.Identity)
 	a.RRC.SetHistoryConfig(a.RRCHistoryPerRoomCap, a.RRCFilterLoadedHistory, a.RRCEphemeralNotices)
 	a.loadPeerSettings()
 	a.loadIgnoredList()
+	// Go-only enhancement: block the announce streams for every ignored
+	// destination ("never see announcements from blocked nodes"). No Python
+	// SOT counterpart — see directory.Directory.SetBlockedFilter.
+	a.Dir.SetBlockedFilter(a.IsIgnored)
 	a.ConversationCache.SetAttachmentPath(a.AttachmentPath)
 
 	a.Router, err = lxmf.NewRouter(a.Transport, a.Identity, a.StoragePath)
 	if err != nil {
 		return fmt.Errorf("creating LXMF router: %w", err)
 	}
+	// Mirror Python NomadNetworkApp.py:351-352: seed the router's ignored list
+	// from the persisted ignored file at startup.
+	a.applyIgnoredDestinations()
 	a.Router.RegisterDeliveryCallback(a.lxmfDelivery)
 
 	a.LXMFDest, err = a.Router.RegisterDeliveryIdentity(a.Identity, a.Config.Client.UserInterface, nil)
@@ -1134,7 +1148,11 @@ func (a *App) handleNodeAnnounce(destHash []byte, identity *rns.Identity, appDat
 		AnnounceType: "node",
 	}, true)
 
-	if identity != nil {
+	if identity != nil && !a.IsIgnored(destHash) {
+		// Go-only enhancement guard (no Python SOT counterpart): a blocked
+		// node is never auto-remembered as a trusted directory entry, even
+		// when its operator peer is trusted. See Directory.SetBlockedFilter,
+		// which already rejected the stream entry above.
 		associatedPeer := rns.CalculateHash(identity, "lxmf", "delivery")
 		if a.Dir.TrustLevel(associatedPeer, nil) == directory.TrustTrusted {
 			existing := a.Dir.Find(destHash)

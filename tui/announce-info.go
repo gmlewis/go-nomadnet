@@ -137,6 +137,15 @@ func newAnnounceInfoDisplay(nd *NetworkDisplay, ann AnnounceEntry, data Announce
 		pile.AddItem(ai.announceDataRow(dataStr), 2, false)
 		pile.AddItem(newDividerRow(g["divider1"]), 1, false)
 		pile.AddItem(ai.buttonRow(), 1, true)
+		if isNode {
+			// Go-only enhancement (no Python SOT counterpart): the node
+			// AnnounceInfo grows a second button row with the "Block" action
+			// that blackholes this node and filters its announces. See
+			// NetworkDisplay.OnBlockNode and directory.Directory.
+			// SetBlockedFilter. Deliberate divergence — keep it when auditing
+			// parity against the Python original.
+			pile.AddItem(ai.blockButtonRow(), 1, false)
+		}
 	}
 
 	ai.pile = pile
@@ -192,6 +201,10 @@ func (ai *announceInfoDisplay) announceDataRow(dataStr string) *tview.TextView {
 // same widths ([11,2,11,2,11,2,11] and [23,5,22] at inner 50). Buttons are flat
 // urwid.Button "< label >" (NewUrwidButton); the spacer columns are empty
 // Boxes. dividechars is 0 (urwid Columns default).
+//
+// The layout intentionally matches Python EXACTLY (same buttons, same weights)
+// so the pinned node/pn/peer layout tests keep passing; the Go-only "Block"
+// enhancement lives on the separate blockButtonRow below.
 func (ai *announceInfoDisplay) buttonRow() *urwidColumns {
 	isNode := ai.ann.Type == "node"
 	isPN := ai.ann.Type == "pn"
@@ -199,7 +212,7 @@ func (ai *announceInfoDisplay) buttonRow() *urwidColumns {
 	back := NewUrwidButton("Back").SetSelectedFunc(func() { ai.nd.showAnnounceStream() })
 
 	if isNode {
-		row := newURWIDColumns(0,
+		return newURWIDColumns(0,
 			back,
 			tview.NewBox(),
 			NewUrwidButton("Connect").SetSelectedFunc(func() { ai.nd.connectToNode(ai.ann) }),
@@ -210,7 +223,6 @@ func (ai *announceInfoDisplay) buttonRow() *urwidColumns {
 		).
 			SetWeight(0, 9).SetWeight(1, 2).SetWeight(2, 9).
 			SetWeight(3, 2).SetWeight(4, 9).SetWeight(5, 2).SetWeight(6, 9)
-		return row
 	}
 
 	var action *UrwidButton
@@ -221,4 +233,17 @@ func (ai *announceInfoDisplay) buttonRow() *urwidColumns {
 	}
 	return newURWIDColumns(0, back, tview.NewBox(), action).
 		SetWeight(0, 9).SetWeight(1, 2).SetWeight(2, 9)
+}
+
+// blockButtonRow returns the Go-only "Block" action row shown UNDER the
+// Python-parity button row on NODE announce-info views (Python parity row
+// stays Back/Connect/Msg Op/Save; gonomadnet adds Block because blocking a
+// node is a requested gonomadnet enhancement with NO Python SOT counterpart
+// — Python nomadnet cannot block nodes). The full-width Block button fires
+// NetworkDisplay.OnBlockNode with the announce's source (destination) hash.
+// Do not remove either row when auditing parity.
+func (ai *announceInfoDisplay) blockButtonRow() *urwidColumns {
+	block := NewUrwidButton("Block").SetSelectedFunc(func() { ai.nd.blockNode(ai.ann) })
+	return newURWIDColumns(0, block).
+		SetWeight(0, 9)
 }

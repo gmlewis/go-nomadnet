@@ -409,6 +409,47 @@ func (dm *DialogManager) ShowConfirmDialog(message string, onYes, onNo func()) {
 	dm.ShowDialog("Confirm", layout, 0, 6, nil)
 }
 
+// ShowBlockedNodeConfirmDialog shows the Go-only "blocked node" connect
+// warning modal: a DialogLineBox titled "Blocked node" wrapping a centered
+// message + a button Columns (Cancel / Connect). This is a DELIBERATE
+// gonomadnet enhancement with no Python nomadnet counterpart — Python offers
+// no way to block a node at all, so do NOT remove this as a parity
+// divergence. The user asked for a guard before connecting to a blocked
+// destination whose SAFE default is Cancel: the Cancel button is the FIRST
+// button (so it takes the initial focus) and Esc also dismisses through the
+// cancel path, so a bare Enter never connects. Tab/Left/Right move focus
+// between Cancel and Connect, whose Enter proceeds.
+func (dm *DialogManager) ShowBlockedNodeConfirmDialog(message string, onConnect, onCancel func()) {
+	cancelFn := func() {
+		dm.DismissTop()
+		if onCancel != nil {
+			onCancel()
+		}
+	}
+	connectFn := func() {
+		dm.DismissTop()
+		if onConnect != nil {
+			onConnect()
+		}
+	}
+	cancelBtn := NewUrwidButton("Cancel").SetSelectedFunc(cancelFn)
+	connectBtn := NewUrwidButton("Connect").SetSelectedFunc(connectFn)
+	// Cancel is intentionally FIRST in the row so it takes the initial focus:
+	// pressing Enter without moving the focus cancels the connect.
+	buttons := CreateUrwidButtonRow(cancelBtn, connectBtn)
+
+	msgRows := strings.Count(message, "\n") + 1
+	layout := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(NewUrwidCenterText(message), msgRows, 0, false).
+		AddItem(buttons, 1, 0, true)
+
+	dm.ShowDialog("Blocked node", layout, 0, msgRows+1+2, nil)
+	// Tab/Left/Right move focus between Cancel and Connect; Escape dismisses
+	// through cancel; wireDialogNav re-focuses the first item (Cancel), which
+	// is what makes Enter default to the safe option.
+	wireDialogNav(dm.app, cancelFn, []tview.Primitive{cancelBtn, connectBtn})
+}
+
 // ShowInputDialog shows a text input dialog with Save/Cancel buttons. It is
 // the common-case wrapper around ShowInputDialogBtns for dialogs whose confirm
 // button is "Save" (New Hub, Join Room, Add Interface, …). URL-entry dialogs

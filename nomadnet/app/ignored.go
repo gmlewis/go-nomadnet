@@ -118,8 +118,21 @@ func (a *App) UnblockDestination(destHash []byte) bool {
 	return true
 }
 
+// applyIgnoredDestinations replays every loaded ignored destination hash into
+// the LXMF router's ignored list, mirroring the Python NomadNetworkApp startup
+// loop (NomadNetworkApp.py:351-352: for destination_hash in self.ignored_list:
+// message_router.ignore_destination(destination_hash)). Must be called after
+// the router is created; it is a safe no-op when no router exists yet.
+func (a *App) applyIgnoredDestinations() {
+	if a.Router == nil {
+		return
+	}
+	for _, h := range a.IgnoredList {
+		a.Router.IgnoreDestination(h)
+	}
+}
+
 // splitLines splits data on newline bytes, dropping the trailing empty element that
-// follows a final newline so it is not treated as a (blank) hash entry.
 func splitLines(data []byte) [][]byte {
 	var lines [][]byte
 	start := 0
