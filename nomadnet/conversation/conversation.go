@@ -188,26 +188,17 @@ func (c *Conversation) ScanStorage() error {
 		msg.Transport = c.Transport
 		msg.PendingChecker = c.PendingChecker
 
-		// Restore cached fields from the index only when the entry matches the
-		// current file. The index is a snapshot taken at the previous scan; when
-		// a message file was re-written since then (an outbound message whose
-		// state advanced from SENT to DELIVERED rewrites its container), the
-		// on-disk state is newer than the entry and restoring would clobber the
-		// file state with the snapshot — and WriteIndex below would then persist
-		// the stale value back. Python's scan_storage avoids this by rebuilding
-		// each ConversationMessage from the file itself (Conversation.py:2246).
-		// When skipped here the message loads lazily from disk instead.
+		// Restore cached fields from the index whenever an entry exists,
+		// exactly like Python's scan_storage for newly-discovered message
+		// files (Conversation.py:2240-2246: `if filename in index:
+		// msg.restore_from_index(index[filename])` — no mtime comparison).
+		// Adding an mtime guard here diverged from Python: index-restored
+		// messages skipped the lazy disk load and re-verification, so
+		// gonomadnet rendered a fresh-verified header where nomadnet renders
+		// the cached one (e.g. "✓ ←" vs the indexed "← Unknown Origin").
 		if ie, ok := index.Get(name); ok {
 			if om, ok := ie.(rnsmsgpack.OrderedMap); ok {
-				if v, ok := om.Get("sort_timestamp"); ok {
-					if f, ok := v.(float64); ok {
-						if info, err := entry.Info(); err == nil {
-							if f == float64(info.ModTime().UnixNano())/1e9 {
-								msg.RestoreFromIndex(om)
-							}
-						}
-					}
-				}
+				msg.RestoreFromIndex(om)
 			}
 		}
 

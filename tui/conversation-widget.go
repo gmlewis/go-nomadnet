@@ -1066,8 +1066,16 @@ func (cw *ConversationWidget) headerInputs(msg ConversationMessage) MessageHeade
 		case msg.IsFailed:
 			in.State = lxmfStateFailed // failed_no_source
 		default:
-			in.SourceHash = []byte{0xff} // inbound, distinct from any own hash
-			in.SignatureValidated = true
+			// A message with no wire fields is one whose envelope could not
+			// be loaded (Message.Load fell back to mtime-only metadata).
+			// Python's ConversationMessage keeps _cached_source_hash = None in
+			// that case, so LXMessageWidget's FIRST branch renders
+			// "msg_header_failed" with the warning glyph and no arrow
+			// (Conversations.py:2607-2609). Fabricating an inbound source with
+			// a validated signature here instead rendered own-sent messages
+			// with the green "✓ ←" inbound header — the reported direction
+			// bug. Leave SourceHash nil so the header takes the same
+			// no-source → msg_header_failed branch Python takes.
 		}
 	}
 	return in

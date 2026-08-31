@@ -20,6 +20,7 @@ package conversation
 import (
 	"encoding/hex"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 
@@ -384,6 +385,12 @@ func (m *Message) Load() {
 
 	lxm, err := lxmf.UnpackMessageFromFile(m.Transport, f)
 	if err != nil {
+		// Python logs the same failure (Conversation.py load -> except:
+		// "Error while loading LXMF message … from disk") and keeps
+		// _cached_source_hash None afterward; mirror the log so an
+		// unparsable envelope is visible instead of silently rendering
+		// with no wire fields.
+		log.Printf("Error while loading LXMF message %v from disk. The contained exception was: %v", m.FilePath, err)
 		// Fall back to mtime-only metadata when the envelope cannot be parsed.
 		ts := m.SortTimestamp
 		m.Timestamp = &ts
