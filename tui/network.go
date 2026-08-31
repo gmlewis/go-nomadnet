@@ -94,10 +94,20 @@ type NetworkDisplay struct {
 	// contents[0] = urwid.Overlay(...), Network.py:916/948). CloseListSlotDialog
 	// restores listBox.
 	listSlotOverlay *SlotOverlay
+	// packPanelIsNodeInfo tracks which panel occupies the left pane's PACK
+	// slot (index 1): Local Peer Info (false) or the Local Node Info detail
+	// panel (true, Python node_info_query swapping contents[1],
+	// Network.py:1399-1401). The left-panel rebuild (rebuildLeftPanel)
+	// renders exactly two items from this state — the list slot at index 0
+	// and the pack panel at index 1 — so no interleaved dialog flow can ever
+	// scramble panel order, position, or visibility.
+	packPanelIsNodeInfo bool
 	// statusInPeerSlot, when non-nil, is a status LineBox temporarily replacing
-	// localPeer in leftPanel[1] (Python left_pile contents[1] = dialog,
-	// Network.py:1295/1319/1418). CloseLocalPeerStatus restores localPeer.
+	// the pack panel in leftPanel[1] (Python left_pile contents[1] = dialog,
+	// Network.py:1295/1319/1418). statusHeight is the dialog's PACK height.
+	// CloseLocalPeerStatus restores the pack panel.
 	statusInPeerSlot tview.Primitive
+	statusHeight     int
 	// browserSlotOverlay, when non-nil, is a SlotOverlay temporarily replacing
 	// the browser pane in mainCols[1] for an in-browser-pane dialog (Python's
 	// columns.contents[1] = urwid.Overlay(...), Browser.py:1169/1184). Used by
@@ -907,19 +917,52 @@ func (nd *NetworkDisplay) SetLocalPeerHandlers(onSave func(name string), onAnnou
 // Active/Total/Pages/Files) are live providers that re-read the app each tick
 // regardless, but the static fields (Name, Addr, LXMF propagation address) are
 // captured at construction — rebuilding them each open keeps them current if the
+// rebuildLeftPanel is the ONLY function allowed to mutate nd.leftPanel's
+// contents. It renders the canonical python-parity composition from the
+// widget state — index 0: the list slot (listBox or its listSlotOverlay),
+// index 1 (PACK): the pack panel (Local Peer Info, Local Node Info, or the
+// transient status dialog) — in exactly two items, every time. All panel
+// mutators (ShowNodeInfo/ShowLocalPeer/ShowLocalPeerStatus/
+// CloseLocalPeerStatus/ShowListSlotDialog/CloseListSlotDialog) set state and
+// call this, so panel ordering, position, and visibility can never drift the
+// way they did under the previous incremental remove/add swaps: tview's
+// AddItem always appends, so interleaved mutator sequences stranded panels
+// above the list and resurrected hidden ones (the penguin layout scramble:
+// [Local Node Info, Announce Stream, Local Peer Info] instead of
+// [list, Local Node Info-or-Local Peer Info], with the browser pane right).
+func (nd *NetworkDisplay) rebuildLeftPanel() {
+	listSlot := tview.Primitive(nd.listBox)
+	if nd.listSlotOverlay != nil {
+		listSlot = nd.listSlotOverlay
+	}
+	pack := tview.Primitive(nd.localPeer.Widget())
+	packHeight := nd.localPeer.Height()
+	if nd.packPanelIsNodeInfo && nd.nodeInfo != nil {
+		pack = nd.nodeInfo.Widget()
+		packHeight = nd.nodeInfo.Height()
+	}
+	if nd.statusInPeerSlot != nil {
+		pack = nd.statusInPeerSlot
+		packHeight = nd.statusHeight
+	}
+	nd.leftPanel.Clear()
+	nd.leftPanel.AddItem(listSlot, 0, 1, true)
+	nd.leftPanel.AddItem(pack, packHeight, 0, false)
+}
+
 // user changes their display name or propagation setting mid-session (the
 // previous `if nd.nodeInfo == nil` cache showed the first-open values forever).
-// Any previously built panel is stopped (halting its ticker) and removed first
-// so no background refresh goroutine leaks.
+// Any previously built panel is stopped first so no background refresh
+// goroutine leaks.
 func (nd *NetworkDisplay) ShowNodeInfo(data NodeInfoData) {
 	if nd.nodeInfo != nil {
 		nd.nodeInfo.Stop()
-		nd.leftPanel.RemoveItem(nd.nodeInfo.Widget())
 	}
 	nd.nodeInfo = NewNodeInfoDisplay(nd.app, data)
 	nd.nodeInfo.OnBack = nd.ShowLocalPeer
-	nd.leftPanel.RemoveItem(nd.localPeer.Widget())
-	nd.leftPanel.AddItem(nd.nodeInfo.Widget(), nd.nodeInfo.Height(), 0, false)
+	nd.packPanelIsNodeInfo = true
+	nd.statusInPeerSlot = nil
+	nd.rebuildLeftPanel()
 	// Start the periodic stat refresh while the panel is visible (Python
 	// NodeInfo.start, Network.py:1528-1535, runs the UpdatingText timers).
 	nd.nodeInfo.Start()
@@ -930,13 +973,14 @@ func (nd *NetworkDisplay) ShowNodeInfo(data NodeInfoData) {
 // panel if it was shown.
 func (nd *NetworkDisplay) ShowLocalPeer() {
 	if nd.nodeInfo != nil {
-		nd.leftPanel.RemoveItem(nd.nodeInfo.Widget())
 		// Halt the stat refresh while the panel is hidden (Python leaves the
 		// timers running, but stopping here is visually identical and avoids a
 		// background ticker churning while the NodeInfo panel is offscreen).
 		nd.nodeInfo.Stop()
 	}
-	nd.leftPanel.AddItem(nd.localPeer.Widget(), nd.localPeer.Height(), 0, false)
+	nd.packPanelIsNodeInfo = false
+	nd.statusInPeerSlot = nil
+	nd.rebuildLeftPanel()
 }
 
 // ShowListSlotDialog overlays a DialogLineBox on the left-pane list slot
@@ -957,16 +1001,14 @@ func (nd *NetworkDisplay) ShowListSlotDialog(dialog *DialogLineBox, dialogHeight
 	ov := NewSlotOverlay(nd.listBox, dialog, 100, dialogHeight)
 	dialog.onDismiss = nd.CloseListSlotDialog
 	nd.listSlotOverlay = ov
-	// tview Flex.AddItem always appends to the end, so removing only listBox
-	// would leave localPeer at index 0 and the overlay appended after it —
-	// swapping the panels. Remove both items and re-add in the correct order
-	// (overlay at index 0, localPeer at index 1) to preserve the layout.
-	// Python uses indexed assignment (left_pile.contents[0] = overlay) which
-	// keeps contents[1] (LocalPeer) in place (Network.py:918-919).
-	nd.leftPanel.RemoveItem(nd.listBox)
-	nd.leftPanel.RemoveItem(nd.localPeer.Widget())
-	nd.leftPanel.AddItem(ov, 0, 1, true)
-	nd.leftPanel.AddItem(nd.localPeer.Widget(), nd.localPeer.Height(), 0, false)
+	// Rebuild from state so the list slot is ALWAYS leftPanel index 0 and the
+	// pack panel (Local Peer Info OR the Local Node Info panel, whichever is
+	// showing) is ALWAYS index 1. Tview Flex.AddItem only appends, so the
+	// previous remove/re-add pair scrambled the stack whenever a third panel
+	// (the Local Node Info detail) was showing: python uses indexed
+	// assignment (left_pile.contents[0] = overlay, Network.py:918-919) which
+	// never reorders its other contents.
+	nd.rebuildLeftPanel()
 	if nd.app != nil {
 		nd.app.SetFocus(ov)
 	}
@@ -979,14 +1021,12 @@ func (nd *NetworkDisplay) CloseListSlotDialog() {
 	if nd.listSlotOverlay == nil {
 		return
 	}
-	// Same ordering fix as ShowListSlotDialog: remove both items and re-add
-	// listBox at index 0, localPeer at index 1, so localPeer stays at the
-	// bottom (Python left_pile.contents[1]).
-	nd.leftPanel.RemoveItem(nd.listSlotOverlay)
-	nd.leftPanel.RemoveItem(nd.localPeer.Widget())
-	nd.leftPanel.AddItem(nd.listBox, 0, 1, true)
-	nd.leftPanel.AddItem(nd.localPeer.Widget(), nd.localPeer.Height(), 0, false)
 	nd.listSlotOverlay = nil
+	// Same rebuild as ShowListSlotDialog: the list slot returns to leftPanel
+	// index 0 and the pack panel (Local Peer Info or Local Node Info, whichever
+	// is showing — python keeps contents[1] pointing at its current panel) to
+	// index 1.
+	nd.rebuildLeftPanel()
 	nd.focusLeftList()
 }
 
@@ -1038,8 +1078,8 @@ func (nd *NetworkDisplay) ShowLocalPeerStatus(message string, messageRows int) {
 	dialog := NewDialogLineBox(nd.glyphs()["info"], layout, nd.CloseLocalPeerStatus).SetBorderInside(true)
 	height := messageRows + 1 + 2 // message + OK row + border
 	nd.statusInPeerSlot = dialog
-	nd.leftPanel.RemoveItem(nd.localPeer.Widget())
-	nd.leftPanel.AddItem(dialog, height, 0, false)
+	nd.statusHeight = height
+	nd.rebuildLeftPanel()
 	if nd.app != nil {
 		nd.app.SetFocus(dialog)
 	}
@@ -1051,9 +1091,8 @@ func (nd *NetworkDisplay) CloseLocalPeerStatus() {
 	if nd.statusInPeerSlot == nil {
 		return
 	}
-	nd.leftPanel.RemoveItem(nd.statusInPeerSlot)
 	nd.statusInPeerSlot = nil
-	nd.leftPanel.AddItem(nd.localPeer.Widget(), nd.localPeer.Height(), 0, false)
+	nd.rebuildLeftPanel()
 }
 
 // ShowBrowserSlotDialog overlays a DialogLineBox on the right-hand browser pane
