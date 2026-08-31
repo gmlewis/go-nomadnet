@@ -249,12 +249,17 @@ func TestA6UntrustedCheckboxInFocusPath(t *testing.T) {
 	if got := app.GetFocus(); got != tview.Primitive(cd.showBlockedCheckbox) {
 		t.Fatalf("focus after Up at list top (untrusted) = %T, want the Show blocked checkbox", got)
 	}
+	// DELIBERATE GO ENHANCEMENT (do not "fix" back to parity): Up from the
+	// checkbox now focuses the tab bar's CURRENT tab (Untrusted here), not the
+	// stale first button — Python's urwid Columns keeps its focus on the tab
+	// that was last activated, and landing on the current tab gives the arrow
+	// keys a deterministic Left-path to the Trusted selector (fleet bug #3).
 	dispatchKey(app, app.GetRoot(), tcell.NewEventKey(tcell.KeyUp, 0, tcell.ModNone))
-	if got := app.GetFocus(); got != tview.Primitive(cd.tabTrusted) {
-		t.Errorf("focus after Up from checkbox = %T, want the tab bar", got)
+	if got := app.GetFocus(); got != tview.Primitive(cd.tabUntrusted) {
+		t.Errorf("focus after Up from checkbox = %T, want the current Untrusted tab", got)
 	}
 	// Down walks back: tab → checkbox → list.
-	app.SetFocus(cd.tabTrusted)
+	app.SetFocus(cd.tabUntrusted)
 	redraw()
 	dispatchKey(app, app.GetRoot(), tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone))
 	if got := app.GetFocus(); got != tview.Primitive(cd.showBlockedCheckbox) {
@@ -295,10 +300,15 @@ func TestA5DownAtLastEntryIsNoOp(t *testing.T) {
 	}
 }
 
-// TestA6EmptyListUpGoesToMenubar pins the empty-list branch of
-// ConversationsArea.keypress (Python ilb.body_is_empty → main display header,
-// Conversations.py:1800-1802): with no conversations at all, Up from the list
-// skips the tab bar and focuses the menubar.
+// TestA6EmptyListUpGoesToMenubar pins the empty-list Up path through the full
+// dispatch chain. Python's ilb.body_is_empty branch (Conversations.py:108-111)
+// jumps a single empty-list Up straight to the menubar — which left the
+// Trusted/Untrusted tab bar UNREACHABLE by arrow keys on an empty tab (live
+// fleet bug report). DELIBERATE GO ENHANCEMENT (do not "fix" back to parity):
+// the Go port routes an empty-list Up through the same Pile traversal a
+// non-empty list gets — the tab bar first (this fixture is on the Trusted tab
+// with an empty list, so no Show-blocked checkbox is in the pile), then the
+// menubar as before.
 func TestA6EmptyListUpGoesToMenubar(t *testing.T) {
 	t.Parallel()
 
@@ -306,8 +316,13 @@ func TestA6EmptyListUpGoesToMenubar(t *testing.T) {
 	app.SetFocus(cd.ilb)
 	redraw()
 	dispatchKey(app, app.GetRoot(), tcell.NewEventKey(tcell.KeyUp, 0, tcell.ModNone))
+	if got := app.GetFocus(); got != tview.Primitive(cd.tabTrusted) {
+		t.Errorf("focus after Up on empty list = %T, want the current tab (Trusted) in the tab bar", got)
+	}
+	// A second Up collapses to the menubar (Python ilb.body_is_empty).
+	dispatchKey(app, app.GetRoot(), tcell.NewEventKey(tcell.KeyUp, 0, tcell.ModNone))
 	if got := app.GetFocus(); got != app.Main.menuBar {
-		t.Errorf("focus after Up on empty list = %T, want the menu bar", got)
+		t.Errorf("focus after second Up = %T, want the menu bar", got)
 	}
 }
 

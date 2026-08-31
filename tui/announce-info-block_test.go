@@ -19,6 +19,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/gdamore/tcell/v2"
 )
 
 // buttonsInRow collects the UrwidButtons in a columns row in order, for
@@ -90,11 +92,14 @@ func TestAnnounceInfoNodeHasBlockButton(t *testing.T) {
 		}
 	}
 
-	// Second row: the Go enhancement Block button, full width.
+	// Second row: the Go enhancement Block button. It must NOT span the full
+	// panel width (bug report: "< Block >" filled the whole Announce Info
+	// panel); it renders in the same ~9/41 column share as the row above, so
+	// it aligns with the first button of the Python-parity row.
 	second := ai.blockButtonRow()
-	blockBtns := labelsInRow(second)
-	if len(blockBtns) != 1 || blockBtns[0] != "Block" {
-		t.Fatalf("block row buttons = %v, want [Block]", blockBtns)
+	weights := second.weights
+	if len(weights) != 3 || weights[0] != 9 || weights[1] != 2 || weights[2] != 30 {
+		t.Fatalf("block row weights = %v, want [9 2 30] (button + divider + trailing filler)", weights)
 	}
 	blockBtn := buttonsInRow(second)[0]
 	if blockBtn.selected == nil {
@@ -103,6 +108,75 @@ func TestAnnounceInfoNodeHasBlockButton(t *testing.T) {
 	blockBtn.selected()
 	if blocked != ann.SourceHash {
 		t.Errorf("Block click fired with %q, want the announce source hash %q", blocked, ann.SourceHash)
+	}
+}
+
+// TestAnnounceInfoBlockRowRendersNarrowWidth pins the fixed-width rendering of
+// the Go-only Block row (bug report: the Block button spanned the whole panel
+// width). At inner 50 the row above lays out as [11,2,11,2,11,2,11]; the Block
+// row must give its button the same 11-cell column as Back's, with the rest of
+// the row blank.
+func TestAnnounceInfoBlockRowRendersNarrowWidth(t *testing.T) {
+	t.Parallel()
+	nd, ann := newBlockTestNetworkDisplay(nil)
+
+	ai := newAnnounceInfoDisplay(nd, ann, AnnounceInfoData{
+		DisplayStr: "MyNode",
+		TrustStr:   "Trusted",
+		TrustStyle: "list_trusted",
+	})
+	rows := renderPrimitive(t, ai.Widget(), 50, 14)
+
+	// Node pile rows: 0-5 headers, 6 divider, 7-8 data, 9 divider,
+	// 10 Python-parity button row, 11 the Go-only Block row.
+	blockRow := rows[11]
+	if want := "< Block   >"; blockRow[:11] != want {
+		t.Errorf("Block row head = %q, want prefix %q (11 cells, like the Back column)", blockRow[:11], want)
+	}
+	if strings.TrimLeft(blockRow[11:], " ") != "" {
+		t.Errorf("Block row tail = %q, want blank filler past the button", blockRow)
+	}
+}
+
+// TestAnnounceInfoBlockRowFocusTraversal pins the arrow-key path to the Block
+// row (bug report: arrow keys could not reach Block — the row was not a
+// selectable pile item). Down from the Python-parity button row must focus
+// the Block row; Up must return; and Enter on the focused Block row must fire
+// OnBlockNode.
+func TestAnnounceInfoBlockRowFocusTraversal(t *testing.T) {
+	t.Parallel()
+	var blocked string
+	nd, ann := newBlockTestNetworkDisplay(func(hash string) { blocked = hash })
+
+	ai := newAnnounceInfoDisplay(nd, ann, AnnounceInfoData{
+		DisplayStr: "MyNode",
+		TrustStr:   "Trusted",
+		TrustStyle: "list_trusted",
+	})
+
+	if got := ai.pile.FocusIndex(); got != 0 {
+		t.Fatalf("initial pile focus index = %v, want 0 (the Python-parity button row)", got)
+	}
+
+	handler := ai.pile.InputHandler()
+	handler(tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone), nil)
+	if got := ai.pile.FocusIndex(); got != 1 {
+		t.Fatalf("pile focus after Down = %v, want 1 (the Block row)", got)
+	}
+
+	// Enter on the focused Block row fires OnBlockNode with the source hash.
+	if blocked != "" {
+		t.Fatalf("precondition: Block not fired yet, got %q", blocked)
+	}
+	handler(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone), nil)
+	if blocked != ann.SourceHash {
+		t.Errorf("Enter on the focused Block row fired with %q, want %q", blocked, ann.SourceHash)
+	}
+
+	// Up returns focus to the Python-parity button row.
+	handler(tcell.NewEventKey(tcell.KeyUp, 0, tcell.ModNone), nil)
+	if got := ai.pile.FocusIndex(); got != 0 {
+		t.Fatalf("pile focus after Up = %v, want 0 (the button row)", got)
 	}
 }
 

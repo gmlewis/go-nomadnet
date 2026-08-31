@@ -530,28 +530,30 @@ func (cd *ConversationsDisplay) handleInput(event *tcell.EventKey) *tcell.EventK
 		case focused == cd.showBlockedCheckbox:
 			// Pile traversal: the checkbox sits BELOW the tab bar in the
 			// untrusted layout, so Up lands on the tab bar first.
-			cd.app.SetFocus(cd.tabButtons()[cd.tabFocus])
+			cd.focusCurrentTab()
 			return nil
 		case focused == tview.Primitive(cd.ilb) || focused == tview.Primitive(cd.list):
-			if cd.ilb.List.GetItemCount() == 0 {
-				// Empty list: Python's ilb.body_is_empty branch goes straight
-				// to the menubar (Conversations.py:1800-1802).
-				if cd.app.Main != nil {
-					cd.app.Main.FocusMenu()
-				}
-				return nil
-			}
-			if cd.ilb.List.GetCurrentItem() != 0 {
+			if cd.ilb.List.GetItemCount() > 0 && cd.ilb.List.GetCurrentItem() != 0 {
 				// Not at the top item: the inner ListBox consumes the key and
 				// moves the selection (Python: urwid ListBox "up" handled).
 				return event
 			}
 			// Pile traversal: previous selectable above the list — the
 			// "Show blocked" checkbox on the untrusted layout, else the tab bar.
+			//
+			// Go-only enhancement (do not remove when auditing parity): this
+			// empty-list branch previously jumped straight to the menubar,
+			// copying Python's ilb.body_is_empty branch (Conversations.py:
+			// 108-111) — which left the Trusted/Untrusted tab bar UNREACHABLE
+			// by arrow keys whenever the current tab's list had no items (the
+			// live fleet bug report). Instead, an empty list now performs the
+			// SAME Pile traversal a non-empty list gets (checkbox → tab bar);
+			// the menubar path remains, one step later, as the Up from the
+			// tab bar below.
 			if !cd.showTrusted && cd.showBlockedCheckbox != nil && cd.pileHasItem(cd.showBlockedCheckbox) {
 				cd.app.SetFocus(cd.showBlockedCheckbox)
 			} else {
-				cd.app.SetFocus(cd.tabButtons()[cd.tabFocus])
+				cd.focusCurrentTab()
 			}
 			return nil
 		}
@@ -601,6 +603,28 @@ func (cd *ConversationsDisplay) handleInput(event *tcell.EventKey) *tcell.EventK
 // tabButtons returns the tab-bar buttons in row order.
 func (cd *ConversationsDisplay) tabButtons() []*UrwidButton {
 	return []*UrwidButton{cd.tabTrusted, cd.tabUntrusted}
+}
+
+// focusCurrentTab focuses the tab-bar button for the page's CURRENT filter tab
+// (showTrusted) and syncs the tab-bar focus index to it. Python's tab bar
+// behaves the same way after activating a tab: the tab bar's internal focus
+// stays on the tab that was just switched to (urwid Columns focus_position),
+// so an Up from the list/checkbox below lands on the live tab, where Left/
+// Right switch tabs. Focusing cd.tabButtons()[cd.tabFocus] instead could land
+// on a STALE button (e.g. Trusted while the Untrusted tab is showing), which
+// is exactly the live fleet bug report about reaching the Trusted selector.
+func (cd *ConversationsDisplay) focusCurrentTab() {
+	if cd.showTrusted {
+		cd.tabFocus = 0
+		if cd.tabTrusted != nil {
+			cd.app.SetFocus(cd.tabTrusted)
+		}
+		return
+	}
+	cd.tabFocus = 1
+	if cd.tabUntrusted != nil {
+		cd.app.SetFocus(cd.tabUntrusted)
+	}
 }
 
 // pileHasItem reports whether the checkbox is part of the current pile layout

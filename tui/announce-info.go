@@ -140,11 +140,14 @@ func newAnnounceInfoDisplay(nd *NetworkDisplay, ann AnnounceEntry, data Announce
 		if isNode {
 			// Go-only enhancement (no Python SOT counterpart): the node
 			// AnnounceInfo grows a second button row with the "Block" action
-			// that blackholes this node and filters its announces. See
+			// that blackholes this node and filters its announces. It is a
+			// SELECTABLE pile item so Down/Tab lands on it and Up returns to
+			// the Python-parity button row (bug report: the Block row was
+			// unreachable by arrow keys when marked non-selectable). See
 			// NetworkDisplay.OnBlockNode and directory.Directory.
 			// SetBlockedFilter. Deliberate divergence — keep it when auditing
 			// parity against the Python original.
-			pile.AddItem(ai.blockButtonRow(), 1, false)
+			pile.AddItem(ai.blockButtonRow(), 1, true)
 		}
 	}
 
@@ -239,11 +242,19 @@ func (ai *announceInfoDisplay) buttonRow() *urwidColumns {
 // Python-parity button row on NODE announce-info views (Python parity row
 // stays Back/Connect/Msg Op/Save; gonomadnet adds Block because blocking a
 // node is a requested gonomadnet enhancement with NO Python SOT counterpart
-// — Python nomadnet cannot block nodes). The full-width Block button fires
+// — Python nomadnet cannot block nodes). The Block button fires
 // NetworkDisplay.OnBlockNode with the announce's source (destination) hash.
-// Do not remove either row when auditing parity.
+// The layout is [button 9, divider 2, filler 30]: the button claims the same
+// 9/41 column share as the row above (11 cells at inner width 50, aligning
+// with the Back column) instead of stretching across the whole panel, and the
+// trailing filler absorbs the remaining width. Do not remove this row (or
+// make the button full-width) when auditing parity.
 func (ai *announceInfoDisplay) blockButtonRow() *urwidColumns {
 	block := NewUrwidButton("Block").SetSelectedFunc(func() { ai.nd.blockNode(ai.ann) })
-	return newURWIDColumns(0, block).
-		SetWeight(0, 9)
+	return newURWIDColumns(0,
+		block,          // same 9-weight column share as the Back button above
+		tview.NewBox(), // the same 2-weight blank spacer the row above uses
+		tview.NewBox(), // trailing filler holding the remaining width
+	).
+		SetWeight(0, 9).SetWeight(1, 2).SetWeight(2, 30)
 }

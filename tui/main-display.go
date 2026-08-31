@@ -810,12 +810,18 @@ func (md *MainDisplay) bodyListAtTop() bool {
 	case *IndicativeListBox:
 		list = v.List
 	case *conversationsListBox:
-		// The Conversations page owns its Up-at-top path: Python's
-		// ConversationsArea.keypress sends Up from the top of a NON-empty
-		// list to the Pile, which focuses the tab bar (Conversations.py:
-		// 1800-1808, A6) — only an EMPTY list collapses straight to the
-		// menubar (ilb.body_is_empty branch).
-		return v.List.GetItemCount() == 0
+		// The Conversations page owns its ENTIRE Up routing (Python's
+		// ConversationsArea.keypress sends Up from the top of a list to the
+		// Pile → tab bar, Conversations.py:1800-1808, A6). It previously only
+		// returned false for a non-empty list; an EMPTY list collapsed straight
+		// to the menubar here (copying Python's ilb.body_is_empty branch,
+		// Conversations.py:108-111) — which made the Trusted/Untrusted tab bar
+		// unreachable by arrow keys on an empty tab (live fleet bug report).
+		// Go-only enhancement: the page now owns the empty-list Up too (its
+		// handleInput performs the same Pile traversal a non-empty list gets,
+		// checkbox → tab bar → menubar), so this must always report false and
+		// defer to the page.
+		return false
 	case *messageListBox:
 		// The open conversation's message list: Up at its top collapses to
 		// the trust banner FIRST when one is visible (Python
