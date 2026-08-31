@@ -1738,11 +1738,12 @@ func TestSetAutoReconnectCancelsTimer(t *testing.T) {
 	mgr := NewManager(tempDir(t), func() []byte { return []byte("me") })
 	hub := mgr.AddHub([]byte{0x01}, "rrc.hub", "H")
 
-	fired := make(chan struct{}, 1)
+	var fire func()
 	hub.afterFunc = func(d time.Duration, f func()) *time.Timer {
-		go f()
+		fire = f
 		return time.NewTimer(d)
 	}
+	fired := make(chan struct{}, 1)
 	hub.connectFn = func() {
 		select {
 		case fired <- struct{}{}:
@@ -1761,6 +1762,10 @@ func TestSetAutoReconnectCancelsTimer(t *testing.T) {
 	if timer == nil {
 		t.Fatal("reconnect timer not scheduled")
 	}
+	// The injected afterFunc must hand back a still-pending timer.
+	if !timer.Stop() {
+		t.Error("returned timer already fired when scheduleReconnect stored it")
+	}
 
 	hub.SetAutoReconnect(false, false)
 
@@ -1769,6 +1774,14 @@ func TestSetAutoReconnectCancelsTimer(t *testing.T) {
 	hub.lock.Unlock()
 	if after != nil {
 		t.Error("reconnect timer not cleared after disabling auto-reconnect")
+	}
+
+	// An in-flight fire after auto-reconnect was disabled must not connect.
+	fire()
+	select {
+	case <-fired:
+		t.Error("connectFn invoked after auto-reconnect disabled")
+	default:
 	}
 }
 
