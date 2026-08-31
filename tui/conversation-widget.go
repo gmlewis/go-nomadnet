@@ -110,9 +110,17 @@ type ConversationWidget struct {
 
 	// OwnHash is this app's LXMF destination hash (app.lxmf_destination.hash),
 	// injected by the wiring layer so LXMessageHeader can tell outbound from
-	// inbound. TimeFormat is the configured strftime format (default
-	// "%Y-%m-%d %H:%M:%S", Python app.time_format).
+	// inbound. OnOwnHash, when set, supersedes the cached OwnHash at every
+	// render: Python reads app.lxmf_destination.hash FRESH inside
+	// LXMessageWidget.__init__ (Conversations.py:2607), while a widget that
+	// caches the value once could keep a nil/stale hash forever — e.g. when
+	// the conversation was opened before the LXMF router finished registering
+	// (a.LXMFDest still nil) — which classified every message, including
+	// own-sent ones, down the inbound branch (green "✓ ←" headers on sent
+	// messages, the reported bug). TimeFormat is the configured strftime
+	// format (default "%Y-%m-%d %H:%M:%S", Python app.time_format).
 	OwnHash    []byte
+	OnOwnHash  func() []byte
 	TimeFormat string
 
 	// Layout
@@ -1026,13 +1034,23 @@ func (cw *ConversationWidget) renderMessageEntry(msg ConversationMessage) *messa
 // wire fields from the legacy Is* bools when State/SourceHash are unset so
 // older callers still render a sensible header.
 func (cw *ConversationWidget) headerInputs(msg ConversationMessage) MessageHeaderInputs {
+	// Python reads app.lxmf_destination.hash fresh on every widget build, so
+	// resolve the own hash live here too: a one-shot snapshot taken while the
+	// LXMF router was still initializing kept OwnHash nil for the widget's
+	// whole lifetime and classified every message (sent included) as inbound.
+	ownHash := cw.OwnHash
+	if cw.OnOwnHash != nil {
+		if h := cw.OnOwnHash(); len(h) > 0 {
+			ownHash = h
+		}
+	}
 	in := MessageHeaderInputs{
 		Timestamp:            msg.Timestamp,
 		Now:                  time.Now(),
 		State:                msg.State,
 		Method:               msg.Method,
 		SourceHash:           msg.SourceHash,
-		OwnHash:              cw.OwnHash,
+		OwnHash:              ownHash,
 		TransportEncrypted:   msg.TransportEncrypted,
 		Title:                msg.Title,
 		SignatureValidated:   msg.SignatureValidated,

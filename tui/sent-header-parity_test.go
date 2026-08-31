@@ -223,11 +223,10 @@ func TestUnparsableSentMessageHeader(t *testing.T) {
 }
 
 // renderMessageHeader maps a MessageDisplayData through the production
-// header construction, mirroring ConversationWidget.headerInputs.
-// renderMessageHeader maps a MessageDisplayData through the production
 // composition: the wiring-layer passthrough (toConversationMessages) onto a
 // ConversationMessage, then ConversationWidget.headerInputs (including the
-// no-wire-fields legacy fallback), then LXMessageHeader.
+// no-wire-fields legacy fallback and the live OnOwnHash resolver), then
+// LXMessageHeader.
 func renderMessageHeader(d conversation.MessageDisplayData, ownHash []byte) (string, string) {
 	msg := ConversationMessage{
 		Content:              d.Content,
@@ -346,4 +345,92 @@ func unixSecondsToTime(f float64) time.Time {
 	sec := int64(f)
 	nsec := int64((f - float64(sec)) * 1e9)
 	return time.Unix(sec, nsec)
+}
+
+// TestLateOwnHashSelfCorrection pins the fleet symptom from the 0.54.0 run on
+// glenn-mac-mini-m2: the conversation widget was created while the LXMF
+// router was still registering, so its cached OwnHash snapshot was nil and
+// EVERY message — own-sent ones included — rendered with the inbound green
+// "✓ ←" msg_header_ok header. Python reads app.lxmf_destination.hash fresh at
+// every LXMessageWidget construction; the widget must do the same via the
+// OnOwnHash resolver, so the render self-corrects as soon as the app's LXMF
+// destination is registered.
+func TestLateOwnHashSelfCorrection(t *testing.T) {
+	t.Parallel()
+
+	ts := rns.NewTransportSystem(nil)
+	id, err := rns.NewIdentity(true, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dest, err := rns.NewDestination(ts, id, rns.DestinationIn, rns.DestinationSingle, "lxmf", "delivery")
+	if err != nil {
+		t.Fatal(err)
+	}
+	peerID, err := rns.NewIdentity(true, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	peerDest, err := rns.NewDestination(ts, peerID, rns.DestinationIn, rns.DestinationSingle, "lxmf", "delivery")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The production wiring: OnOwnHash reads app.LXMFDest, which is nil until
+	// the router registers the delivery identity.
+	var lxmfd *rns.Destination
+	widget := &ConversationWidget{
+		OnOwnHash: func() []byte {
+			if lxmfd == nil {
+				return nil
+			}
+			return lxmfd.Hash
+		},
+	}
+
+	d := conversation.MessageDisplayData{
+		Content:            "Message from glenn-mac-mini-m2 to glenn-macm2pro",
+		Timestamp:          1788174856.0,
+		State:              lxmf.StateDelivered,
+		Method:             lxmf.MethodDirect,
+		SourceHash:         dest.Hash, // own-sent message
+		TransportEncrypted: true,
+		SignatureValidated: true,
+	}
+	msg := ConversationMessage{
+		Content:              d.Content,
+		Timestamp:            unixSecondsToTime(d.Timestamp),
+		State:                d.State,
+		Method:               d.Method,
+		SourceHash:           d.SourceHash,
+		TransportEncrypted:   d.TransportEncrypted,
+		SignatureValidated:   d.SignatureValidated,
+		SignatureDescription: sigDescription(d.SignatureValidated),
+	}
+
+	// Pre-registration render: LXMFDest unset — the widget cannot classify
+	// outbound from inbound yet.
+	_, styleBefore := LXMessageHeader(widget.headerInputs(msg))
+	if styleBefore != "msg_header_ok" {
+		t.Errorf("pre-registration style = %q, want msg_header_ok (the transient inbound render)", styleBefore)
+	}
+
+	// The router registers the delivery identity.
+	lxmfd = dest
+
+	// The next render must self-correct via the live resolver: the same
+	// own-sent message now classifies outbound-delivered, matching nomadnet's
+	// blue "✓ →" header.
+	in := widget.headerInputs(msg)
+	if !bytes.Equal(in.OwnHash, dest.Hash) {
+		t.Errorf("post-registration OwnHash = %x, want %x", in.OwnHash, dest.Hash)
+	}
+	title, style := LXMessageHeader(in)
+	if style != "msg_header_delivered" {
+		t.Errorf("post-registration style = %q, want msg_header_delivered (title %q)", style, title)
+	}
+	if !strings.HasPrefix(title, "✓ →") {
+		t.Errorf("title %q does not carry the outbound ✓ → prefix", title)
+	}
+	_ = peerDest
 }

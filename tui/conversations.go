@@ -818,8 +818,13 @@ func (cd *ConversationsDisplay) DisplayConversation(sourceHash string) {
 	}
 	// Inject the app's own LXMF hash and time format so the LXMessageWidget
 	// header can tell outbound from inbound and format timestamps like the
-	// Python original.
+	// Python original. The widget keeps both a snapshot and the live
+	// resolver: python reads app.lxmf_destination.hash fresh at every render,
+	// so a widget created while the LXMF router was still registering (nil
+	// hash) self-corrects on its next render instead of classifying every
+	// message as inbound for its whole lifetime.
 	if cd.OnOwnHash != nil {
+		cw.OnOwnHash = cd.OnOwnHash
 		cw.OwnHash = cd.OnOwnHash()
 	}
 	if cd.OnTimeFormat != nil {
