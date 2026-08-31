@@ -6,7 +6,7 @@ require (
 	github.com/creack/pty/v2 v2.0.1
 	github.com/fxamacker/cbor/v2 v2.9.2
 	github.com/gdamore/tcell/v2 v2.13.10
-	github.com/gmlewis/go-reticulum v0.65.0
+	github.com/gmlewis/go-reticulum v0.66.0
 	github.com/mattn/go-runewidth v0.0.16
 	github.com/mdp/qrterminal/v3 v3.2.1
 	github.com/rivo/tview v0.42.0
@@ -25,7 +25,7 @@ require (
 	github.com/x448/float16 v0.8.4 // indirect
 	golang.design/x/x11 v0.2.0 // indirect
 	golang.org/x/exp/shiny v0.0.0-20250606033433-dcc06ee1d476 // indirect
-	golang.org/x/image v0.28.0 // indirect
+	golang.org/x/image v0.41.0 // indirect
 	golang.org/x/mobile v0.0.0-20250606033058-a2a15c67f36f // indirect
 )
 
