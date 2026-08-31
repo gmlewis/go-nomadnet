@@ -677,12 +677,16 @@ func (bd *BrowserDisplay) renderPage() {
 	markup := bd.effectiveMarkup()
 	lines := micron.RenderToStyledLines(markup, micronTheme(bd.app.Theme))
 	width := bd.contentWidth()
-	text, links := StyledLinesToTviewText(lines, width)
+	// lineTexts must stay 1:1 with currentLines (one tagged text per StyledLine,
+	// wrapped rows embedded via '\n') so the nav row model (rowsAbove,
+	// lineRowCount, cursorScreenXY) measures wrap heights exactly the way the
+	// display draws them; a drift desyncs the hardware-cursor row.
+	text, links, lineTexts := StyledLinesToTviewParts(lines, width)
 	bd.renderedWidth = width
 	bd.currentLines = lines
 	bd.links = links
 	bd.anchors = micron.BuildAnchorMap(lines)
-	bd.lineTexts = splitLineTexts(text)
+	bd.lineTexts = lineTexts
 	// Build the per-line interactive field widgets (text → ReadlineEdit overlay,
 	// checkbox/radio → Checkbox) from the rendered field spans, so the overlay
 	// can mount on focus and collectFields can gather live values on submit.

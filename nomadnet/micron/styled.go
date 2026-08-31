@@ -157,13 +157,24 @@ func RenderToStyledLines(markup string, theme Theme) []*StyledLine {
 	lines := splitLines(strings.TrimSpace(markup))
 	ps := &parseState{}
 	rs := newRenderState(theme)
-	plain := themeStyle(theme, "plain")
-	blank := StyledSpan{Text: "", FG: highColor(plain.FG), BG: highColor(plain.BG)}
 
 	var out []*StyledLine
 	for _, line := range lines {
 		if line == "" {
-			out = append(out, &StyledLine{Spans: []StyledSpan{blank}})
+			// Python renders an empty markup line as urwid.Text("") wrapped in
+			// AttrMap(make_style(state)) (MicronParser.py:117-120): the row
+			// carries the LIVE formatting state (an active `F<color>/`B<color>
+			// or bold/italic run continues across blank lines), not the theme
+			// plain defaults. Pinning this parity rule (see
+			// TestBlankLineCarriesFormattingState).
+			out = append(out, &StyledLine{Spans: []StyledSpan{{
+				Text:      "",
+				FG:        highColor(rs.fg),
+				BG:        highColor(rs.bg),
+				Bold:      rs.bold,
+				Underline: rs.underline,
+				Italic:    rs.italic,
+			}}})
 			continue
 		}
 		nodes := parseLine(line, ps)

@@ -418,24 +418,13 @@ func (gd *GuideDisplay) showMarkupForTest(markup string) {
 // the line data (anchor map + per-line text) that jumpToAnchor needs.
 func (gd *GuideDisplay) renderMarkup(markup string) {
 	lines := micron.RenderToStyledLines(markup, micronTheme(gd.app.Theme))
-	text, links := StyledLinesToTviewText(lines, gd.readerWidth())
+	text, links, lineTexts := StyledLinesToTviewParts(lines, gd.readerWidth())
 	gd.currentLines = lines
 	gd.links = links
 	gd.anchors = micron.BuildAnchorMap(lines)
-	gd.lineTexts = splitLineTexts(text)
+	gd.lineTexts = lineTexts
 	gd.reader.SetText(text)
 	gd.computeFocusLayout()
-}
-
-// splitLineTexts splits a StyledLinesToTviewText result into one entry per
-// rendered line (dropping the trailing newline), so jumpToAnchor can measure
-// each line's wrapped height independently.
-func splitLineTexts(text string) []string {
-	text = strings.TrimSuffix(text, "\n")
-	if text == "" {
-		return nil
-	}
-	return strings.Split(text, "\n")
 }
 
 // rerender re-renders the currently-displayed topic at the given width. Called
@@ -446,11 +435,11 @@ func (gd *GuideDisplay) rerender(width int) {
 		return
 	}
 	lines := micron.RenderToStyledLines(guideTopics[gd.currentIdx].markup, micronTheme(gd.app.Theme))
-	text, links := StyledLinesToTviewText(lines, width)
+	text, links, lineTexts := StyledLinesToTviewParts(lines, width)
 	gd.currentLines = lines
 	gd.links = links
 	gd.anchors = micron.BuildAnchorMap(lines)
-	gd.lineTexts = splitLineTexts(text)
+	gd.lineTexts = lineTexts
 	gd.reader.SetText(text)
 	gd.computeFocusLayout()
 }

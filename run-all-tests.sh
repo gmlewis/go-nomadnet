@@ -128,8 +128,8 @@ echo "staticcheck: clean (all checks, with integration tags)"
 
 # test-all.sh is redundant when the short integration tests are running next, so skip it:
 # time run_with_timeout ./scripts/test-all.sh 2>&1 | tee test-failures.log
-
-time run_with_timeout ./scripts/test-integration.sh -short 2>&1 | tee short-test-failures.log
+# There is not much time difference between `-short` and without, so just run the full suite:
+# time run_with_timeout ./scripts/test-integration.sh -short 2>&1 | tee short-test-failures.log
 time run_with_timeout ./scripts/test-integration.sh 2>&1 | tee full-test-failures.log
 
 echo "All tests completed."
