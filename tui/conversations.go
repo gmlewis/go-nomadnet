@@ -108,8 +108,18 @@ type ConversationsDisplay struct {
 	detailSlotBottom  tview.Primitive
 
 	// Keyboard shortcut callbacks (Python: ConversationsArea.keypress)
-	OnEditPeerInfo     func()
-	OnDeleteConv       func()
+	OnEditPeerInfo func()
+	// OnDeleteConv fires on Ctrl-X in the list pane with the SELECTED
+	// conversation, resolved against the RENDERED rows of the active trust
+	// tab: Python reads source_hash from self.ilb.get_selected_item()
+	// (Conversations.py:561-566). Forwarding the resolved row identity —
+	// rather than letting the wiring layer map a row index onto the
+	// unfiltered conversation model — is load-bearing: the full model's
+	// row N is a different conversation than the filtered list's row N, so
+	// an index-based delete named (and deleted) a TRUSTED conversation
+	// while the cursor sat on the Untrusted tab. Not fired when no row is
+	// selected (Python's "if item == None: return", Conversations.py:562).
+	OnDeleteConv       func(conv ConversationInfo)
 	OnNewConv          func()
 	OnIngestURI        func()
 	OnSync             func()
@@ -487,8 +497,14 @@ func (cd *ConversationsDisplay) handleInput(event *tcell.EventKey) *tcell.EventK
 		}
 		return nil
 	case tcell.KeyCtrlX:
+		// Resolve the highlighted row against the RENDERED rows of the
+		// active tab (Python get_selected_item, Conversations.py:561-566);
+		// see OnDeleteConv for why a row index must never cross this
+		// boundary. No selection → no dialog ("if item == None: return").
 		if cd.OnDeleteConv != nil {
-			cd.OnDeleteConv()
+			if conv, ok := cd.GetSelectedConversation(); ok {
+				cd.OnDeleteConv(conv)
+			}
 		}
 		return nil
 	case tcell.KeyCtrlN:
@@ -1546,11 +1562,6 @@ func FilterConversationsWithBlocked(convs []ConversationInfo, trustLevel string,
 		}
 	}
 	return result
-}
-
-// GetSelectedIndex returns the currently selected conversation index.
-func (cd *ConversationsDisplay) GetSelectedIndex() int {
-	return cd.list.GetCurrentItem()
 }
 
 // SetConversations replaces the conversation list and refreshes.

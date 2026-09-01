@@ -1092,12 +1092,14 @@ func TestConversationsDisplayKeyboardShortcuts(t *testing.T) {
 	t.Parallel()
 
 	app := newTestApp()
-	cd := NewConversationsDisplay(app, nil)
+	cd := NewConversationsDisplay(app, []ConversationInfo{
+		{SourceHash: "<a>", TrustLevel: "trusted", DisplayName: "Alice"},
+	})
 
 	// Track which callbacks fire
 	var fired []string
 	cd.OnEditPeerInfo = func() { fired = append(fired, "edit_peer") }
-	cd.OnDeleteConv = func() { fired = append(fired, "delete") }
+	cd.OnDeleteConv = func(_ ConversationInfo) { fired = append(fired, "delete") }
 	cd.OnNewConv = func() { fired = append(fired, "new") }
 	cd.OnIngestURI = func() { fired = append(fired, "ingest") }
 	cd.OnSync = func() { fired = append(fired, "sync") }

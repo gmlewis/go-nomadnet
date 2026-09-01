@@ -901,14 +901,23 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		}
 	})
 
-	// Wire conversation keyboard shortcuts
-	conversationsDisplay.OnDeleteConv = func() {
-		idx := conversationsDisplay.GetSelectedIndex()
-		if idx < 0 || idx >= len(tuiConvs) {
-			return
+	// Wire conversation keyboard shortcuts. OnDeleteConv forwards the SELECTED
+	// conversation as resolved by the display against the active tab's
+	// RENDERED rows (Python reads source_hash from
+	// self.ilb.get_selected_item(), Conversations.py:561-566). The former
+	// wiring resolved it here by list index against the UNFILTERED
+	// conversation list; with the Untrusted tab active the filtered row
+	// index maps onto a trusted row of the full model, so Ctrl-X offered —
+	// and on "Yes" deleted — the wrong (trusted) conversation.
+	conversationsDisplay.OnDeleteConv = func(conv tui.ConversationInfo) {
+		// Name the peer as Python does: directory.simplest_display_str of the
+		// source hash (Conversations.py:579-581), falling back to the row's
+		// display name for a malformed hash.
+		name := conv.DisplayName
+		if hash, ok := app.SourceHashFromHex(conv.SourceHash); ok {
+			name = a.Dir.SimplestDisplayStr(hash)
 		}
-		conv := tuiConvs[idx]
-		tuiApp.Dialogs.ShowConfirmDialog("Delete conversation with "+conv.DisplayName+"?",
+		tuiApp.Dialogs.ShowConfirmDialog("Delete conversation with "+name+"?",
 			func() {
 				a.DeleteConversation(conv.SourceHash)
 				refreshConvs()
