@@ -450,10 +450,29 @@ func (c *urwidColumns) InputHandler() func(event *tcell.EventKey, setFocus func(
 			return
 		}
 
+		// The row can hold focus WITHOUT a focused child (a SetFocus(row)
+		// whose child cascade was interrupted — observed live as a confirm
+		// dialog whose Enter landed on the bare button row and fired
+		// nothing, fleet bug #10). Recover by selecting the first focusable
+		// child (the row's primary action), mirroring Focus()'s own
+		// fallback, instead of dropping the key — a stale c.focusIndex from
+		// an earlier dispatch must not route the key to a different child.
+		focusedIdx := -1
 		for i, child := range c.children {
 			if child.HasFocus() {
-				c.focusIndex = i
+				focusedIdx = i
 				break
+			}
+		}
+		if focusedIdx >= 0 {
+			c.focusIndex = focusedIdx
+		} else {
+			c.focusIndex = -1
+			for i, child := range c.children {
+				if isFocusable(child) {
+					c.focusIndex = i
+					break
+				}
 			}
 		}
 

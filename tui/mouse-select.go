@@ -175,6 +175,13 @@ func (s *selectionTracker) selectLine(x, y int) {
 	s.copySelection()
 }
 
+// maxOSCPayload caps the OSC 52 clipboard payload. Terminals and tmux bound
+// the escape length; a 64 KiB cap comfortably covers text selections while
+// keeping the escape well inside every passthrough limit. Oversized
+// selections skip the terminal path (the system-clipboard write still
+// covers them).
+const maxOSCPayload = 64 * 1024
+
 // copySelection extracts the selected text and writes it to the clipboard.
 func (s *selectionTracker) copySelection() {
 	if s.app == nil {
@@ -184,7 +191,30 @@ func (s *selectionTracker) copySelection() {
 	if text == "" {
 		return
 	}
-	s.app.clipboard.WriteText(normalizeCopiedWord(text))
+	normalized := normalizeCopiedWord(text)
+	// The system-clipboard write below lands on the machine gonomadnet RUNS
+	// on. Over SSH (the glenn-mac-mini-m2 and every other fleet session) that
+	// is the remote box's pasteboard — Cmd-V on the machine the user is
+	// typing on never sees it (fleet bug #11). Also post OSC 52 THROUGH the
+	// terminal: the escape travels app → tmux (set-clipboard external
+	// forwards it) → outer terminal, which sets the clipboard of the machine
+	// the user actually types on. Running locally both paths write the same
+	// clipboard; over SSH OSC 52 is the only one that works.
+	s.app.clipboard.WriteText(normalized)
+	s.postOSCClipboard(normalized)
+}
+
+// postOSCClipboard emits the OSC 52 "set clipboard" escape through tcell's
+// own output channel, so the sequence is written under the screen lock and
+// interleaved safely with frame updates — a raw fmt.Print would race tcell's
+// buffered terminal writes. The live tcell screen is captured from the
+// after-draw hook; tests get the simulation screen, whose SetClipboard
+// records the payload for assertion.
+func (s *selectionTracker) postOSCClipboard(text string) {
+	if s.screen == nil || text == "" || len(text) > maxOSCPayload {
+		return
+	}
+	s.screen.SetClipboard([]byte(text))
 }
 
 // normalizeCopiedWord drops one surrounding angle-bracket pair when the

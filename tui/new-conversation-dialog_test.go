@@ -76,9 +76,12 @@ func containsRow(rows []string, substr string) bool {
 }
 
 // TestNewConversationDialogLayout pins the rendered layout of the New
-// Conversation dialog against the Python ground truth (Conversations.py:1024-
-// 1120): Addr/Name fields, the two-checked radio quirk, flat Create/Back
-// buttons, the "New Conversation" title, and a 48-wide bordered dialog.
+// Conversation dialog: Addr/Name fields, exactly ONE pre-checked radio
+// (Unknown), flat Create/Back buttons, the "New Conversation" title, and a
+// 48-wide bordered dialog. (Python's urwid.RadioButton "first True" default
+// leaves BOTH Untrusted and Unknown checked on open — verified True/True/False
+// for the Conversations.py:1028-1030 construction — but the owner asked for
+// one checked radio, a deliberate deviation; see showNewConversationDialog.)
 func TestNewConversationDialogLayout(t *testing.T) {
 	t.Parallel()
 	rows := renderNewConversationDialog(t, false)
@@ -92,13 +95,13 @@ func TestNewConversationDialogLayout(t *testing.T) {
 	if !containsRow(rows, "Name : ") {
 		t.Errorf("Name field label missing from render")
 	}
-	// urwid RadioButton construction quirk: both Untrusted and Unknown show
-	// "(X)" on open, Trusted shows "( )".
-	if !containsRow(rows, "(X) Untrusted") {
-		t.Errorf("(X) Untrusted missing — construction quirk not reproduced")
+	// Exactly ONE radio pre-checked (Unknown): Untrusted and Trusted show
+	// "( )" (owner-requested deviation from Python's two-checked quirk).
+	if !containsRow(rows, "( ) Untrusted") {
+		t.Errorf("( ) Untrusted missing")
 	}
 	if !containsRow(rows, "(X) Unknown") {
-		t.Errorf("(X) Unknown missing — construction quirk not reproduced")
+		t.Errorf("(X) Unknown missing")
 	}
 	if !containsRow(rows, "( ) Trusted") {
 		t.Errorf("( ) Trusted missing")

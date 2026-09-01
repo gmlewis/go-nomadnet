@@ -374,3 +374,69 @@ func TestClickCountTracking(t *testing.T) {
 		t.Errorf("clickCount after a stale click = %v, want 1", tr.clickCount)
 	}
 }
+
+// clipboardSpy wraps a screen to capture SetClipboard payloads (the OSC 52
+// path) while delegating everything else to the wrapped screen.
+type clipboardSpy struct {
+	tcell.Screen
+	payload []byte
+}
+
+func (c *clipboardSpy) SetClipboard(data []byte) {
+	c.payload = data
+	c.Screen.SetClipboard(data)
+}
+
+// TestMouseDragAlsoPostsOSC52 is the regression test for fleet bug #11 (the
+// glenn-mac-mini-m2 remote session): the system-clipboard write lands on the
+// machine gonomadnet RUNS on — over SSH the remote pasteboard, which the
+// local Cmd-V never sees. The selection must ALSO post OSC 52 through the
+// terminal (tcell Screen.SetClipboard) so the escape travels app → tmux →
+// outer terminal and sets the clipboard of the machine the user types on.
+func TestMouseDragAlsoPostsOSC52(t *testing.T) {
+	t.Parallel()
+
+	tr, fake, screen := newSelectTest(t, []string{
+		"✓ MacMini",
+	})
+	spy := &clipboardSpy{Screen: screen}
+	tr.screen = spy
+
+	tr.capture(tcell.NewEventMouse(0, 1, tcell.ButtonPrimary, tcell.ModNone), tview.MouseLeftDown)
+	tr.capture(tcell.NewEventMouse(9, 1, tcell.ButtonPrimary, tcell.ModNone), tview.MouseMove)
+	tr.capture(tcell.NewEventMouse(9, 1, tcell.ButtonNone, 0), tview.MouseLeftUp)
+
+	if len(fake.texts) != 1 || fake.texts[0] != "✓ MacMini" {
+		t.Fatalf("system clipboard writes = %v, want [✓ MacMini]", fake.texts)
+	}
+	if string(spy.payload) != "✓ MacMini" {
+		t.Errorf("OSC 52 clipboard payload = %q, want %q (the terminal path must carry the selection)", spy.payload, "✓ MacMini")
+	}
+}
+
+// TestDoubleClickAddressPostsOSC52 pins the double-click flow end to end: the
+// displayed angle brackets are dropped on BOTH clipboard paths so the pasted
+// value is the bare LXMF address.
+func TestDoubleClickAddressPostsOSC52(t *testing.T) {
+	t.Parallel()
+
+	tr, fake, screen := newSelectTest(t, []string{
+		"× <2a6105f57145860441a62fe3b2a1352c>",
+	})
+	spy := &clipboardSpy{Screen: screen}
+	tr.screen = spy
+
+	tr.capture(tcell.NewEventMouse(6, 1, tcell.ButtonPrimary, tcell.ModNone), tview.MouseLeftDown)
+	tr.capture(tcell.NewEventMouse(6, 1, tcell.ButtonPrimary, tcell.ModNone), tview.MouseLeftDoubleClick)
+
+	if len(fake.texts) != 1 {
+		t.Fatalf("clipboard writes = %v, want 1", fake.texts)
+	}
+	want := "2a6105f57145860441a62fe3b2a1352c"
+	if fake.texts[0] != want {
+		t.Errorf("system clipboard = %q, want bare address %q", fake.texts[0], want)
+	}
+	if string(spy.payload) != want {
+		t.Errorf("OSC 52 payload = %q, want bare address %q (brackets must be dropped on both paths)", spy.payload, want)
+	}
+}

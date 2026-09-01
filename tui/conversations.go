@@ -2262,8 +2262,13 @@ func (cd *ConversationsDisplay) ShowPeerInfoDialog(entry PeerInfoEntry, hooks Pe
 	eCopy.SetFieldTextColor(tcell.ColorDefault)
 	eCopy.SetLabelColor(tcell.ColorDefault)
 
-	// Trust radio group (Untrusted/Unknown/Trusted). Defaults: Unknown selected,
-	// matching Python (unknown_selected=True).
+	// Trust radio group (Untrusted/Unknown/Trusted), initialized to the
+	// entry's ACTUAL trust level — Python passes explicit states
+	// (Conversations.py:903-905: RadioButton(group, label, state=*_selected)),
+	// so exactly ONE radio is checked: the entry's trust. Passing firstTrue
+	// here forced Untrusted checked (first radio, empty group) and Trusted
+	// unchecked on every open — a saved Trusted entry opened as Untrusted,
+	// and saving it silently downgraded the peer to Untrusted (fleet bug #6).
 	utrust := entry.TrustLevelValue()
 	untrustedSel := false
 	unknownSel := true
@@ -2275,15 +2280,17 @@ func (cd *ConversationsDisplay) ShowPeerInfoDialog(entry PeerInfoEntry, hooks Pe
 		untrustedSel, unknownSel, trustedSel = false, false, true
 	}
 	trustGroup := &DialogRadioGroup{}
-	rUntrusted := NewRadioButton(trustGroup, "Untrusted", untrustedSel, true)
+	rUntrusted := NewRadioButton(trustGroup, "Untrusted", untrustedSel, false)
 	rUnknown := NewRadioButton(trustGroup, "Unknown", unknownSel, false)
-	rTrusted := NewRadioButton(trustGroup, "Trusted", trustedSel, true)
+	rTrusted := NewRadioButton(trustGroup, "Trusted", trustedSel, false)
 
-	// Delivery radio group (Deliver directly/Use propagation nodes). Default:
-	// direct, matching Python (direct_selected=True).
+	// Delivery radio group (Deliver directly/Use propagation nodes): same
+	// explicit-state construction as Python (Conversations.py:908-909) — the
+	// firstTrue flag would force "Deliver directly" checked even for a
+	// propagated entry (both radios then showed (X)).
 	propagatedSel := entry.PreferredDelivery == "propagated"
 	methodGroup := &DialogRadioGroup{}
-	rDirect := NewRadioButton(methodGroup, "Deliver directly", !propagatedSel, true)
+	rDirect := NewRadioButton(methodGroup, "Deliver directly", !propagatedSel, false)
 	rPropagated := NewRadioButton(methodGroup, "Use propagation nodes", propagatedSel, false)
 
 	// Pin checkbox ("Pin to top"): urwid.CheckBox("[Pin to top", ...) ported as
@@ -2479,10 +2486,18 @@ func (cd *ConversationsDisplay) showNewConversationDialog(addr, name string, sho
 	eName := NewReadlineEdit(cd.app.killRing, "Name : ", "")
 	eName.SetText(name)
 
+	// Trust radio group. DELIBERATE deviation from Python at the owner's
+	// request (fleet bug #7, 2026-09-01): urwid's RadioButton default
+	// ("first True") leaves BOTH "Untrusted" and "Unknown" checked on open
+	// (verified against the installed urwid: True/True/False for the
+	// Conversations.py:1028-1030 construction — Python's confirmed() then
+	// applies Unknown because it checks r_unknown first). The owner asked for
+	// exactly ONE pre-checked radio, so the dialog opens with only "Unknown"
+	// selected — the same trust a no-toggle Create would store.
 	group := &DialogRadioGroup{}
-	rUntrusted := NewRadioButton(group, "Untrusted", false, true)
+	rUntrusted := NewRadioButton(group, "Untrusted", false, false)
 	rUnknown := NewRadioButton(group, "Unknown", true, false)
-	rTrusted := NewRadioButton(group, "Trusted", false, true)
+	rTrusted := NewRadioButton(group, "Trusted", false, false)
 
 	createBtn := NewUrwidButton("Create")
 	backBtn := NewUrwidButton("Back")

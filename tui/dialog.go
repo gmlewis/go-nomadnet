@@ -425,6 +425,17 @@ func (dm *DialogManager) ShowConfirmDialog(message string, onYes, onNo func()) {
 		AddItem(buttons, 1, 0, true)
 
 	dm.ShowDialog("Confirm", layout, 0, msgRows+3, nil)
+
+	// GUARANTEE the Yes button owns the keyboard. ShowDialog's generic
+	// SetFocus(dialog) walk normally cascades to the first focusable child,
+	// but in some pre-dialog focus states it strands focus on the button-row
+	// CONTAINER — and a bare Enter on the row then died in the row's
+	// InputHandler without firing either button (fleet bug #10: Ctrl-x →
+	// confirm → Enter did nothing, the conversation was never deleted).
+	// Point focus at the primary action explicitly.
+	if dm.app != nil {
+		dm.app.SetFocus(yesBtn)
+	}
 }
 
 // ShowBlockedNodeConfirmDialog shows the Go-only "blocked node" connect
