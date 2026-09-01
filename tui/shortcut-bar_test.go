@@ -87,7 +87,8 @@ func TestShortcutBarPerPage(t *testing.T) {
 
 // TestConversationsShortcutBars asserts GetShortcutText returns the three
 // Python bars (Conversations.py:64-80) keyed by focus region: list, editor,
-// body. An open dialog suppresses the bar (returns "").
+// body. An open dialog does NOT suppress the bar (Python's shortcuts() has no
+// dialog check, so the footer never goes blank).
 func TestConversationsShortcutBars(t *testing.T) {
 	t.Parallel()
 
@@ -112,9 +113,12 @@ func TestConversationsShortcutBars(t *testing.T) {
 		})
 	}
 
-	// While a dialog is open the shortcut bar is suppressed.
+	// While a dialog is open the shortcut bar is NOT suppressed: Python's
+	// shortcuts() always returns one of the three bars (no dialog check), so
+	// the footer must keep advertising the Ctrl-key options.
+	cd.SetShortcutFocus("list")
 	cd.dialogOpen = true
-	if got := cd.GetShortcutText(); got != "" {
-		t.Errorf("open dialog shortcut = %q, want empty", got)
+	if got := cd.GetShortcutText(); got != shortcutConversationsList {
+		t.Errorf("open dialog shortcut = %q, want %q", got, shortcutConversationsList)
 	}
 }

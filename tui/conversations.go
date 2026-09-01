@@ -405,11 +405,10 @@ func (cd *ConversationsDisplay) setShortcutRegion(region string) {
 // GetShortcutText returns the appropriate shortcut bar text for the current
 // focus context. Matches Python's shortcuts() method at Conversations.py:1765
 // which returns list/editor/body shortcut sets based on which pane has focus.
-// An open dialog suppresses the bar.
+// The bar is NEVER blanked — Python's shortcuts() always returns one of the
+// three bars (with list/editor fallbacks) and has no dialog suppression, so
+// the Ctrl-key menu stays visible whenever the display is shown.
 func (cd *ConversationsDisplay) GetShortcutText() string {
-	if cd.dialogOpen {
-		return ""
-	}
 	switch cd.shortcutFocus {
 	case "editor":
 		return "[C-d] Send  [C-p] Paper Msg  [C-t] Title  [C-f] Attach  [C-s] Save  [Tab] ↑ Messages"
@@ -1287,7 +1286,17 @@ func (cd *ConversationsDisplay) ShowListSlotDialog(dialog *DialogLineBox, widthP
 	} else {
 		ov = NewSlotOverlayFixed(cd.leftPanel, dialog, fixedWidth, dialogHeight)
 	}
-	dialog.onDismiss = cd.CloseListSlotDialog
+	// Esc on the DialogLineBox fires the dialog's OWN onDismiss (every slot
+	// dialog constructor passes a dismiss closure that closes the overlay AND
+	// resets the dialog-open state, e.g. cd.dialogOpen = false). Do NOT
+	// overwrite it with the bare CloseListSlotDialog: tview dispatches the Esc
+	// key from the root down THROUGH this DialogLineBox before it ever reaches
+	// an inner nav item, so the bare close would dismiss the overlay while
+	// cd.dialogOpen stayed true — blanking the shortcut bar and blocking every
+	// list shortcut (C-e/C-n/C-r/…) until the process restarted.
+	if dialog.onDismiss == nil {
+		dialog.onDismiss = cd.CloseListSlotDialog
+	}
 	cd.listSlotOverlay = ov
 	cd.setListColumn(ov)
 	if cd.app != nil {
@@ -1326,7 +1335,12 @@ func (cd *ConversationsDisplay) ShowFullSlotDialog(dialog *DialogLineBox, widthP
 	if minWidth > 0 {
 		ov.SetMinWidth(minWidth)
 	}
-	dialog.onDismiss = cd.CloseFullSlotDialog
+	// Keep the dialog's own onDismiss (see ShowListSlotDialog): the Esc key is
+	// dispatched THROUGH this DialogLineBox before any inner nav item, and the
+	// constructor's dismiss resets the dialog-open state alongside the close.
+	if dialog.onDismiss == nil {
+		dialog.onDismiss = cd.CloseFullSlotDialog
+	}
 	cd.fullSlotOverlay = ov
 	cd.outer.Clear()
 	cd.outer.AddItem(ov, 0, 1, true)
@@ -1415,7 +1429,12 @@ func (cd *ConversationsDisplay) ShowMyQRDialog(addr string) {
 		AddItem(blank(), 1, 0, false)
 
 	dialog := NewDialogLineBox(title, layout, cd.CloseFullSlotDialog)
-	cd.ShowFullSlotDialog(dialog, 70, 44, qrLines+6)
+	// PACK height: 6 content rows beyond the QR block (leading blank, address,
+	// and 3 blanks around the Close row) + 2 border rows. The former
+	// qrLines+6 forgot the border rows, squeezing the Close button onto the
+	// dialog's bottom border — the bottom border was not drawn at all and the
+	// button's rect collapsed (mouse clicks on it could never hit).
+	cd.ShowFullSlotDialog(dialog, 70, 44, qrLines+8)
 	wireDialogNav(cd.app, cd.CloseFullSlotDialog, []tview.Primitive{qrView, closeBtn})
 }
 
@@ -1445,7 +1464,12 @@ func (cd *ConversationsDisplay) ShowDetailSlotDialog(dialog *DialogLineBox, widt
 	} else {
 		ov = NewSlotOverlayFixed(bottom, dialog, fixedWidth, dialogHeight)
 	}
-	dialog.onDismiss = cd.CloseDetailSlotDialog
+	// Keep the dialog's own onDismiss (see ShowListSlotDialog): the Esc key is
+	// dispatched THROUGH this DialogLineBox before any inner nav item, and the
+	// constructor's dismiss resets the dialog-open state alongside the close.
+	if dialog.onDismiss == nil {
+		dialog.onDismiss = cd.CloseDetailSlotDialog
+	}
 	cd.detailSlotBottom = bottom
 	cd.detailSlotOverlay = ov
 	// Rebuild (not RemoveItem+AddItem): a RemoveItem+AddItem here appended the
@@ -1901,10 +1925,23 @@ func (cd *ConversationsDisplay) IngestURIDialog(onSubmit func(uri string)) {
 // Conversations.py:1143-1237: columns_widget.contents[0] = urwid.Overlay(
 // dialog, bottom=listbox, width=RELATIVE_100, height=PACK, left=2, right=2),
 // title "Ingest message URI", a message Text + a 0.6-spacer/0.4-OK button row).
+// dialog, bottom=listbox, width=RELATIVE_100, height=PACK, left=2, right=2),
+// title "Ingest message URI", a message Text + a 0.6-spacer/0.4-OK button row).
+//
+// Python's result Pile is [Text(message), Text(""), Columns([0.6 blank,
+// 0.4 OK])] under a PACK overlay: urwid wraps the message at the dialog's
+// inner width (the 48-column overlay minus the 2-cell border) and the PACK
+// height follows the WRAPPED row count. Sizing from the raw "\n" count
+// chopped every message longer than one line (fleet bug: the ingest error
+// rendered as "Could ingest LXM from URI data. Check your inp"). Python's
+// result texts are left-aligned; only the error line is centered
+// (Conversations.py:1172,1233 align=CENTER on the error_text row).
 func (cd *ConversationsDisplay) ShowIngestResult(result IngestResult) {
 	cd.dialogOpen = true
 	msg := IngestResultText(result)
-	msgRows := strings.Count(msg, "\n") + 1
+	// The dialog is RELATIVE_100 of the 52-column list pane with left/right=2
+	// insets (48 columns) minus the 2-cell border = 46 wrap columns.
+	msgRows := len(urwidSpaceWrap(msg, 46))
 
 	close := func() {
 		cd.CloseListSlotDialog()
@@ -1913,13 +1950,30 @@ func (cd *ConversationsDisplay) ShowIngestResult(result IngestResult) {
 	ok := NewUrwidButton("OK").SetSelectedFunc(close)
 	row := CreateUrwidButtonRowRight(ok)
 
+	// Python alignment: result texts are plain urwid.Text (LEFT); only the
+	// error row is centered ("error_text", align=urwid.CENTER).
+	var msgView tview.Primitive
+	if result == IngestError {
+		msgView = NewUrwidCenterText(msg)
+	} else {
+		view := tview.NewTextView()
+		view.SetDynamicColors(true)
+		view.SetTextColor(tcell.ColorDefault)
+		view.SetText(msg)
+		msgView = view
+	}
+
+	// Python's result Pile carries a blank row between the message and the
+	// 0.6-spacer/0.4-OK Columns row.
 	layout := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(NewUrwidCenterText(msg), msgRows, 0, false).
+		AddItem(msgView, msgRows, 0, false).
+		AddItem(tview.NewTextView(), 1, 0, false).
 		AddItem(row, 1, 0, true)
 
 	dialog := NewDialogLineBox("Ingest message URI", layout, close)
-	// RELATIVE_100 of the 52-wide list column; msg + OK row + border = PACK.
-	cd.ShowListSlotDialog(dialog, 100, 0, msgRows+1+2)
+	// RELATIVE_100 of the 52-wide list column; msg + blank + OK row + 2
+	// border = PACK.
+	cd.ShowListSlotDialog(dialog, 100, 0, msgRows+1+1+2)
 }
 
 // IngestResultText returns the verbatim dialog text Python nomadnet shows for
@@ -2009,7 +2063,9 @@ func (cd *ConversationsDisplay) PaperMessageDialog(
 func (cd *ConversationsDisplay) PaperMessageFailed() {
 	cd.dialogOpen = true
 	msg := "Could not output paper message,\ncheck your settings. See the log\nfile for any error messages.\n"
-	msgRows := strings.Count(msg, "\n") + 1
+	// 34-wide dialog (inner 32): urwid PACK wraps the message and sizes the
+	// Pile from the wrapped row count.
+	msgRows := len(urwidSpaceWrap(msg, 32))
 	close := func() { cd.CloseDetailSlotDialog(); cd.dialogOpen = false }
 	ok := NewUrwidButton("OK").SetSelectedFunc(close)
 	row := CreateUrwidButtonRowRight(ok)
@@ -2028,7 +2084,10 @@ func (cd *ConversationsDisplay) PaperMessageFailed() {
 func (cd *ConversationsDisplay) PaperMessageSaved(path string) {
 	cd.dialogOpen = true
 	msg := "The paper message was saved to:\n\n" + path + "\n"
-	msgRows := strings.Count(msg, "\n") + 1
+	// urwid PACK wraps the message at the 60-wide dialog's inner width (58) —
+	// a long saved-path must grow the dialog, not clip (same wrap-sizing bug
+	// class as the ingest error chop).
+	msgRows := len(urwidSpaceWrap(msg, 58))
 	close := func() { cd.CloseDetailSlotDialog(); cd.dialogOpen = false }
 	ok := NewUrwidButton("OK").SetSelectedFunc(close)
 	row := CreateUrwidButtonRowRight(ok)
@@ -2638,6 +2697,9 @@ func (cd *ConversationsDisplay) ShowSyncDialog(
 
 	var layout *tview.Flex
 	var navItems []tview.Primitive
+	// PACK content height in ROWS (each variant sizes its own rows below —
+	// the previous item-count sizing chopped the no-trusted-nodes variant).
+	syncContentRows := 0
 	if generalLayout {
 		// Propagation-node header row (Python urwid.Text(g["node"]+header_str,
 		// align=CENTER), Conversations.py:1512-1532): "Ⓝ <label>" — the wiring
@@ -2666,6 +2728,8 @@ func (cd *ConversationsDisplay) ShowSyncDialog(
 
 		navItems = []tview.Primitive{rAll, cd.syncLimitRadio, limitInput, cd.syncSyncBtn, closeBtn}
 
+		// PACK row count: every item in the general layout is 1 row.
+		syncContentRows = layout.GetItemCount()
 		if len(pnOptions) > 0 {
 			// Node selector (Python node_selector Pile, Conversations.py:1500-1507):
 			// a "Propagation node:" label, the collapsed PropNodePicker button,
@@ -2674,6 +2738,7 @@ func (cd *ConversationsDisplay) ShowSyncDialog(
 				AddItem(tview.NewTextView().SetText("Propagation node:"), 1, 0, false).
 				AddItem(NewUrwidButton("▾  "+pnOptions[0]), 1, 0, false).
 				AddItem(NewUrwidButton("Custom Node..."), 1, 0, false)
+			syncContentRows += 4
 		}
 	} else {
 		// No trusted nodes variant (Conversations.py:1534-1540): explainer text
@@ -2682,22 +2747,31 @@ func (cd *ConversationsDisplay) ShowSyncDialog(
 			AddItem(blank(), 0, 45, false).
 			AddItem(blank(), 1, 10, false).
 			AddItem(closeBtn, 0, 45, false)
+		// The explainer WRAPS like any urwid.Text under PACK: size its rows
+		// from the wrapped length at the dialog's inner width (48 - 2 border),
+		// not a hard-coded 5 — the hard-coded height chopped the dialog bottom
+		// and let the wrapped text overflow the border.
+		explainer := "To synchronise messages from the network, one or more nodes must be marked as trusted in the Known Nodes list, or a node must manually be selected as the default propagation node. Nomad Network will then automatically sync from the nearest trusted node, or the manually selected one."
+		explainerRows := len(urwidSpaceWrap(explainer, 46))
 		layout = tview.NewFlex().SetDirection(tview.FlexRow).
 			AddItem(blank(), 1, 0, false).
 			AddItem(tview.NewTextView().SetText("No trusted nodes found, cannot sync!\n"), 2, 0, false).
-			AddItem(tview.NewTextView().SetText(
-				"To synchronise messages from the network, one or more nodes must be marked as trusted in the Known Nodes list, or a node must manually be selected as the default propagation node. Nomad Network will then automatically sync from the nearest trusted node, or the manually selected one."), 5, 0, false).
+			AddItem(tview.NewTextView().SetText(explainer), explainerRows, 0, false).
 			AddItem(blank(), 1, 0, false).
 			AddItem(closeOnly, 1, 0, false)
 		navItems = []tview.Primitive{closeBtn}
+		syncContentRows = 5 + explainerRows
 	}
 
 	cd.updateSyncProgress()
 	// Slot-place in the 52-wide list column (Python columns_widget.contents[0],
-	// RELATIVE_100). PACK height = content rows + 2 border.
+	// RELATIVE_100). PACK height = content rows + 2 border. Row count, NOT
+	// GetItemCount: the no-trusted-nodes layout packs a 2-row and a wrapped
+	// multi-row Text, so counting ITEMS under-sized the dialog and chopped its
+	// bottom rows (fleet bug). The tview Flex does not expose per-item fixed
+	// sizes, so the two layouts report their packed row count directly.
 	dialog := NewDialogLineBox("Message Sync", layout, dismiss)
-	contentRows := layout.GetItemCount()
-	cd.ShowListSlotDialog(dialog, 100, 0, contentRows+2)
+	cd.ShowListSlotDialog(dialog, 100, 0, syncContentRows+2)
 	wireDialogNav(cd.app, dismiss, navItems)
 }
 

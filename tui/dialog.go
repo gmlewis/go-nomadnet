@@ -57,6 +57,9 @@ func NewUrwidLeftText(text string) *urwidLeftText {
 // SetText updates the displayed text.
 func (c *urwidLeftText) SetText(text string) { c.text = text }
 
+// Draw renders the text left-aligned, WRAPPING each source line at the widget
+// width with urwid's "space" algorithm (urwid.Text wraps to maxcol; see the
+// urwidCenterText.Draw note).
 func (c *urwidLeftText) Draw(screen tcell.Screen) {
 	c.Box.DrawForSubclass(screen, c)
 	x, y, w, h := c.GetRect()
@@ -64,7 +67,7 @@ func (c *urwidLeftText) Draw(screen tcell.Screen) {
 		return
 	}
 	style := tcell.StyleDefault
-	lines := strings.Split(c.text, "\n")
+	lines := urwidSpaceWrap(c.text, w)
 	for i, line := range lines {
 		if i >= h {
 			break
@@ -83,6 +86,12 @@ func (c *urwidLeftText) Draw(screen tcell.Screen) {
 // SetText updates the displayed text.
 func (c *urwidCenterText) SetText(text string) { c.text = text }
 
+// Draw renders the text centered per row, WRAPPING each source line at the
+// widget width with urwid's "space" algorithm (urwid.Text wraps its content to
+// maxcol and the Pile PACK height follows the wrapped row count — a no-wrap
+// render chopped long dialog messages mid-word, e.g. the ingest error's
+// "Check your inp"). Extra columns go on the LEFT for odd slack (urwid
+// CENTER).
 func (c *urwidCenterText) Draw(screen tcell.Screen) {
 	c.Box.DrawForSubclass(screen, c)
 	x, y, w, h := c.GetRect()
@@ -90,7 +99,7 @@ func (c *urwidCenterText) Draw(screen tcell.Screen) {
 		return
 	}
 	style := tcell.StyleDefault
-	lines := strings.Split(c.text, "\n")
+	lines := urwidSpaceWrap(c.text, w)
 	for i, line := range lines {
 		if i >= h {
 			break
@@ -402,11 +411,20 @@ func (dm *DialogManager) ShowConfirmDialog(message string, onYes, onNo func()) {
 	})
 	buttons := CreateUrwidButtonRow(yesBtn, noBtn)
 
+	// The message row must hold the message's WRAPPED row count (urwid.Text
+	// under urwid PACK wraps to the dialog width; the caller's strings include
+	// arbitrary-length error text like "Could not open LXMF link: …"). Size at
+	// the 46-column inner width of the narrowest real terminal (the parity
+	// tooling floor) — wider terminals wrap the same or fewer rows, and the
+	// extra room just pads the dialog. Never fewer than 3 rows, matching the
+	// historical fixed sizing for the standard two-line questions.
+	msgRows := max(3, len(urwidSpaceWrap(message, 46)))
+
 	layout := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(NewUrwidCenterText(message), 3, 0, false).
+		AddItem(NewUrwidCenterText(message), msgRows, 0, false).
 		AddItem(buttons, 1, 0, true)
 
-	dm.ShowDialog("Confirm", layout, 0, 6, nil)
+	dm.ShowDialog("Confirm", layout, 0, msgRows+3, nil)
 }
 
 // ShowBlockedNodeConfirmDialog shows the Go-only "blocked node" connect

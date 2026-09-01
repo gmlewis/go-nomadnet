@@ -501,10 +501,14 @@ func (b *interfaceListBox) InputHandler() func(event *tcell.EventKey, setFocus f
 // click-to-focus — Interfaces.py:1125-1252). A left click maps the click row to
 // an item index via InterfaceItemHeight and the scroll offset, focuses that
 // item (○→●), and moves tview focus onto the list so subsequent arrow keys
-// navigate it. The wheel scrolls the list by one item per notch.
+// navigate it. The wheel moves the focused item one step per notch — urwid's
+// ListBox maps wheel to "up"/"down" keypresses and the viewport follows the
+// focus — which is also what makes the wheel visibly scroll this list, since
+// Draw re-pins the viewport to the focused item via scrollIntoView.
 func (b *interfaceListBox) MouseHandler() func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(tview.Primitive)) (consumed bool, capture tview.Primitive) {
 	return b.WrapMouseHandler(func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(tview.Primitive)) (consumed bool, capture tview.Primitive) {
 		x, y := event.Position()
+		_, by, _, _ := b.GetRect()
 		if !b.InRect(x, y) {
 			return false, nil
 		}
@@ -513,7 +517,6 @@ func (b *interfaceListBox) MouseHandler() func(action tview.MouseAction, event *
 		}
 		switch action {
 		case tview.MouseLeftClick:
-			_, by, _, _ := b.GetRect()
 			idx := b.offset + (y-by)/InterfaceItemHeight
 			idx = max(idx, 0)
 			if idx >= len(b.items) {
@@ -524,19 +527,27 @@ func (b *interfaceListBox) MouseHandler() func(action tview.MouseAction, event *
 			b.scrollIntoView()
 			setFocus(b)
 			return true, b
-		case tview.MouseScrollUp:
-			if b.offset > 0 {
-				b.offset--
-				return true, nil
+		case tview.MouseScrollUp, tview.MouseScrollDown:
+			// Wheel = move the focused item one step (urwid ListBox maps wheel
+			// to "up"/"down" keypresses, Interfaces.py:2911 SimpleFocusListWalker:
+			// the viewport follows the focus). An offset-only wheel is a no-op
+			// here: Draw's scrollIntoView re-pins the viewport to the focused
+			// item every frame, so the offset change never stuck.
+			if action == tview.MouseScrollDown {
+				b.focusIdx++
+				if b.focusIdx >= len(b.items) {
+					b.focusIdx = len(b.items) - 1
+					return false, nil
+				}
+			} else {
+				if b.focusIdx <= 0 {
+					return false, nil
+				}
+				b.focusIdx--
 			}
-			return false, nil
-		case tview.MouseScrollDown:
-			visible := max(b.visibleCount(), 1)
-			if b.offset+visible < len(b.items) {
-				b.offset++
-				return true, nil
-			}
-			return false, nil
+			b.applyFocus()
+			b.scrollIntoView()
+			return true, nil
 		}
 		return false, nil
 	})

@@ -131,12 +131,11 @@ func (cd *ChannelsDisplay) setShortcutRegion(region string) {
 }
 
 // GetShortcutText returns the appropriate shortcut bar text for the current
-// focus context. Matches Python's Channels.py:217-229. An open dialog
-// suppresses the bar.
+// focus context. Matches Python's Channels.py:217-229, whose shortcuts() always
+// returns one of the three bars — an open overlay does NOT blank the footer
+// (Python's shortcuts() reads the focus path with no dialog suppression), so
+// the Ctrl-key menu stays visible whenever the display is shown.
 func (cd *ChannelsDisplay) GetShortcutText() string {
-	if cd.dialogOverlay != nil {
-		return ""
-	}
 	switch cd.shortcutFocus {
 	case "editor":
 		return "[C-d] Send  [C-x] Leave  [F8] Collapse  [Tab] Complete Nick"
@@ -264,7 +263,13 @@ func (cd *ChannelsDisplay) showDialogOverlay(dialog *DialogLineBox, dialogHeight
 		cd.closeDialog()
 	}
 	ov := NewSlotOverlay(cd.content, dialog, 60, dialogHeight)
-	dialog.onDismiss = cd.closeDialog
+	// Keep the dialog's own onDismiss when set (every channels dialog
+	// constructor passes a dismiss closure that closes the overlay). The Esc
+	// key is dispatched THROUGH this DialogLineBox before any inner nav item,
+	// so a bare overwrite here would discard the constructor's dismiss.
+	if dialog.onDismiss == nil {
+		dialog.onDismiss = cd.closeDialog
+	}
 	cd.dialogOverlay = ov
 	cd.pages.AddPage("dialog", ov, true, true)
 	cd.pages.SwitchToPage("dialog")

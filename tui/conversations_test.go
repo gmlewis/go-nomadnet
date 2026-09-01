@@ -1293,10 +1293,13 @@ func TestShortcutFocusByRegion(t *testing.T) {
 		t.Errorf("after returning to list, shortcut bar = %q, want list bar", got)
 	}
 
-	// An open dialog suppresses the bar regardless of region.
+	// The bar is NEVER blanked, even with a dialog open: Python's shortcuts()
+	// (Conversations.py:1765-1779) always returns one of the three bars and
+	// has no dialog suppression, so the footer shows the focused region's
+	// Ctrl-key options whenever the display is on screen.
 	cd.dialogOpen = true
-	if got := cd.GetShortcutText(); got != "" {
-		t.Errorf("with dialog open, shortcut bar = %q, want empty", got)
+	if got := cd.GetShortcutText(); got != listBar {
+		t.Errorf("with dialog open, shortcut bar = %q, want list bar", got)
 	}
 }
 
