@@ -561,6 +561,14 @@ func (cd *ConversationsDisplay) handleInput(event *tcell.EventKey) *tcell.EventK
 			cd.OnShowQR()
 		}
 		return nil
+	case tcell.KeyTab:
+		// Python ConversationsArea.keypress "tab" moves focus to the menubar
+		// (frame.focus_position = "header", Conversations.py:97-98). Consumed
+		// so tview's default traversal cannot cycle into the detail column.
+		if cd.app != nil && cd.app.Main != nil {
+			cd.app.Main.FocusMenu()
+		}
+		return nil
 	case tcell.KeyUp:
 		switch {
 		case focused == cd.tabTrusted || focused == cd.tabUntrusted:

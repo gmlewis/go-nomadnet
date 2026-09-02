@@ -464,6 +464,16 @@ func (cd *ChannelsDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 	case tcell.KeyF8:
 		cd.ToggleCollapse()
 		return nil
+	case tcell.KeyTab:
+		// Python ChannelsListArea.keypress "tab" moves focus to the menubar
+		// (frame.focus_position = "header", Channels.py:374-375). Gated to the
+		// list region: with the room editor/body focused, Tab belongs to the
+		// room (nick completion / ↓ editor), matching Python where
+		// ChannelsListArea only sees keys while the list pane has focus.
+		if cd.shortcutFocus == "list" && cd.app != nil && cd.app.Main != nil {
+			cd.app.Main.FocusMenu()
+			return nil
+		}
 	}
 
 	return event
