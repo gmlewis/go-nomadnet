@@ -14,6 +14,8 @@
 #           both implementations read) also makes the Trusted tab non-empty so
 #           keyboard tab navigation aligns across implementations
 #   conv 3: one sent (originator) message to an unknown peer (+ "failed" flag)
+#   conv 4: a 3-message thread from one peer (+ "unread" flag, count 3) —
+#           exercises unread badge counts and multi-row message lists
 #
 # Run under the parity interpreter (the one that can import RNS and LXMF).
 #
@@ -70,8 +72,9 @@ def main():
     own_delivery = RNS.Destination(own, RNS.Destination.OUT, RNS.Destination.SINGLE,
                                    "lxmf", "delivery")
 
-    def received_message(text):
-        peer = RNS.Identity()
+    def received_message(text, peer=None):
+        if peer is None:
+            peer = RNS.Identity()
         peer_delivery = RNS.Destination(peer, RNS.Destination.OUT,
                                         RNS.Destination.SINGLE, "lxmf", "delivery")
         lxm = LXMF.LXMessage(own_delivery, peer_delivery, text)
@@ -92,7 +95,7 @@ def main():
         lxm.write_to_directory(conv_dir)
         return conv_dir, peer_delivery
 
-    shapes = min(args.count, 3)
+    shapes = min(args.count, 4)
     directory_entries = []
     seeded = 0
     for i in range(shapes):
@@ -108,9 +111,18 @@ def main():
                 # rendering in the conversation rows.
                 directory_entries.append((peer.hash, "Trusted Seed Peer", TRUSTED))
             seeded += 1
-        else:
+        elif i == 2:
             conv, _peer = sent_message("Sent seed message from the differential explorer")
             write_conv_flags(conv, {"failed": 1})
+            seeded += 1
+        else:
+            # A multi-message thread from ONE peer: exercises the unread
+            # badge count, multi-row message lists, and per-message headers.
+            thread_peer = RNS.Identity()
+            conv, _peer = received_message("Thread message 1 of 3 from the seed thread peer", thread_peer)
+            received_message("Thread message 2 of 3 from the seed thread peer", thread_peer)
+            received_message("Thread message 3 of 3 from the seed thread peer", thread_peer)
+            write_conv_flags(conv, {"unread": 3})
             seeded += 1
 
     if args.directory and directory_entries:

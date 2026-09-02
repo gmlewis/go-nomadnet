@@ -190,6 +190,13 @@ type ConversationsDisplay struct {
 	// to the cached TrustLevel.
 	OnResolveTrust func(sourceHash string) string
 
+	// OnEditorAllowed reports whether the peer's identity keys are known
+	// (Python directory.is_known, Conversations.py:2201). Threaded onto each
+	// ConversationWidget: when false the composer footer is replaced by the
+	// centered identity-unknown warning (Python check_editor_allowed,
+	// Conversations.py:2198-2215). nil ⇒ allowed (tests without wiring).
+	OnEditorAllowed func(sourceHash string) bool
+
 	// OnPaperMessage performs a paper (offline) message output for the open
 	// conversation (Python paper_output, Conversations.py:2474-2503). The
 	// wiring layer maps action ("PrintQR"/"SaveQR"/"SaveURI") to
@@ -805,6 +812,13 @@ func (cd *ConversationsDisplay) DisplayConversation(sourceHash string) {
 	// live in has_visible_trust_banner, Conversations.py:1957-1960.)
 	if cd.OnResolveTrust != nil {
 		cw.OnResolveTrust = cd.OnResolveTrust
+	}
+	if cd.OnEditorAllowed != nil {
+		cw.OnEditorAllowed = cd.OnEditorAllowed
+		// buildFooter ran during construction with the hook still nil, so the
+		// identity-unknown banner (check_editor_allowed) needs a re-eval now
+		// that the resolver is wired.
+		cw.buildFooter()
 	}
 	cw.refreshTrustBanner()
 	// Wire the trust banner buttons to the display-level peer callbacks so
@@ -1806,10 +1820,7 @@ func (cd *ConversationsDisplay) syncStatusLine() string {
 // row's trailing columns lose the menubar background (attribute-only parity
 // divergence caught by the differential explorer).
 func (cd *ConversationsDisplay) setSyncText(line string) {
-	width := cd.listWidth - 2
-	if width < 1 {
-		width = 1
-	}
+	width := max(cd.listWidth-2, 1)
 	for len(line) < width {
 		line += " "
 	}
@@ -2098,6 +2109,47 @@ func (cd *ConversationsDisplay) IngestURIDialog(onSubmit func(uri string)) {
 	// input 1 + blank 1 + button row 1 + 2 border = 5 PACK height.
 	cd.ShowListSlotDialog(dialog, 100, 0, 5)
 	wireDialogNav(cd.app, close, []tview.Primitive{input, ingestBtn, backBtn})
+}
+
+// DeleteConversationConfirm shows the delete-conversation confirmation as a
+// LIST-SLOT overlay in the conversations list column, mirroring Python's
+// delete_selected_conversation dialog (installed 1.2.8, Conversations.py:
+// 571-598): a DialogLineBox titled "?" with a centered two-line body
+// ("Delete conversation with\n<display name>\n") and flat Yes/No buttons in a
+// 0.45/0.1/0.45 column row. The former global DialogManager confirm centered
+// on the whole screen with a "Confirm" title and a one-line body — the
+// differential explorer flagged the divergence.
+func (cd *ConversationsDisplay) DeleteConversationConfirm(displayName string, onYes, onNo func()) {
+	cd.dialogOpen = true
+	close := func() { cd.CloseListSlotDialog(); cd.dialogOpen = false }
+	yes := func() {
+		close()
+		if onYes != nil {
+			onYes()
+		}
+	}
+	no := func() {
+		close()
+		if onNo != nil {
+			onNo()
+		}
+	}
+	body := NewUrwidCenterText("Delete conversation with\n" + displayName + "\n")
+	yesBtn := NewUrwidButton("Yes").SetSelectedFunc(yes)
+	noBtn := NewUrwidButton("No").SetSelectedFunc(no)
+	row := CreateUrwidButtonRow(yesBtn, noBtn)
+	layout := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(body, 3, 0, false).
+		AddItem(row, 1, 0, true)
+	dialog := NewDialogLineBox("?", layout, no)
+	// body 3 + buttons 1 + 2 border = 6 PACK height.
+	cd.ShowListSlotDialog(dialog, 100, 0, 6)
+	// GUARANTEE Yes owns the keyboard (fleet bug #10: a stranded focus killed
+	// the Enter path), then Tab/Left/Right traverse the two buttons.
+	if cd.app != nil {
+		cd.app.SetFocus(yesBtn)
+	}
+	wireDialogNav(cd.app, no, []tview.Primitive{yesBtn, noBtn})
 }
 
 // ShowIngestResult shows the result of an LXM URI ingest operation, overlaid on
@@ -2947,11 +2999,23 @@ func (cd *ConversationsDisplay) ShowSyncDialog(
 		// not a hard-coded 5 — the hard-coded height chopped the dialog bottom
 		// and let the wrapped text overflow the border.
 		explainer := "To synchronise messages from the network, one or more nodes must be marked as trusted in the Known Nodes list, or a node must manually be selected as the default propagation node. Nomad Network will then automatically sync from the nearest trusted node, or the manually selected one."
-		explainerRows := len(urwidSpaceWrap(explainer, 46))
+		// Both texts are PRE-WRAPPED with urwid's space wrap and rendered
+		// verbatim (SetWrap(false)): letting tview wrap at draw time diverged
+		// from Python's break positions (the differential explorer's wrap
+		// family — tview drops a word urwid fits exactly).
+		explainerLines := urwidSpaceWrap(explainer, 46)
+		explainerRows := len(explainerLines)
+		// Python centers the no-nodes line (Conversations.py:1534 in the
+		// installed 1.2.8: urwid.Text(..., align=urwid.CENTER)); the explainer
+		// stays left-aligned.
+		noNodes := tview.NewTextView().SetWrap(false).SetTextAlign(tview.AlignCenter)
+		noNodes.SetText("No trusted nodes found, cannot sync!\n")
+		explainerView := tview.NewTextView().SetWrap(false)
+		explainerView.SetText(strings.Join(explainerLines, "\n"))
 		layout = tview.NewFlex().SetDirection(tview.FlexRow).
 			AddItem(blank(), 1, 0, false).
-			AddItem(tview.NewTextView().SetText("No trusted nodes found, cannot sync!\n"), 2, 0, false).
-			AddItem(tview.NewTextView().SetText(explainer), explainerRows, 0, false).
+			AddItem(noNodes, 2, 0, false).
+			AddItem(explainerView, explainerRows, 0, false).
 			AddItem(blank(), 1, 0, false).
 			AddItem(closeOnly, 1, 0, false)
 		navItems = []tview.Primitive{closeBtn}

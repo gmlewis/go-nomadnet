@@ -183,6 +183,16 @@ type ConversationWidget struct {
 	// cached TrustLevel.
 	OnResolveTrust func(sourceHex string) string
 
+	// OnEditorAllowed, when set, reports whether the peer's identity keys are
+	// known (Python directory.is_known, Conversations.py:2201). When it
+	// returns false the composer footer is REPLACED by the centered "cannot
+	// message this peer" warning (Python check_editor_allowed,
+	// Conversations.py:2198-2215): without the peer's identity keys the
+	// editor is unusable, so Python swaps the whole footer for the banner and
+	// restores it when the identity arrives (editor_allowed state guard).
+	// Nil ⇒ allowed (tests without directory wiring).
+	OnEditorAllowed func(sourceHex string) bool
+
 	// Dialog state
 	dialogOpen bool
 
@@ -690,6 +700,44 @@ func (cw *ConversationWidget) toggleEditor() {
 // pendingAttachments is non-empty; otherwise only the editor shows. The frame's
 // footer slot is resized to the total row count.
 func (cw *ConversationWidget) buildFooter() {
+	// Python check_editor_allowed (Conversations.py:2198-2215): without the
+	// peer's identity keys the footer shows ONLY the centered warning — the
+	// editor cannot be used, and Python swaps it back when the identity
+	// arrives (the editor_allowed state guard).
+	if cw.OnEditorAllowed != nil && !cw.OnEditorAllowed(cw.source) {
+		cw.footerArea.Clear()
+		if cw.attachmentIndicator != nil {
+			cw.attachmentIndicator.Clear()
+		}
+		// The msg_header_caution palette colors the banner rows (Python's
+		// AttrMap(..., "msg_header_caution"), Conversations.py:2211). The
+		// banner is PRE-WRAPPED with urwid's space-wrap and ceil-left centered
+		// line by line (matching urwid.Text(align=CENTER) under PACK), then
+		// rendered verbatim — letting tview wrap at draw time diverged from
+		// Python's break positions and centering (the differential explorer's
+		// wrap/center family).
+		lines := urwidSpaceWrap(cw.editorAllowedBannerText(), 46)
+		theme := ThemeDark
+		if cw.app != nil {
+			theme = cw.app.Theme
+		}
+		colors := GetThemeColors(theme)
+		tag := buildColorTag(colors["msg_header_caution_fg"], colors["msg_header_caution_bg"])
+		styled := make([]string, len(lines))
+		for i, line := range lines {
+			rw := tview.TaggedStringWidth(line)
+			left := max((46-rw+1)/2, 0) // urwid ceil-left centering
+			styled[i] = tag + strings.Repeat(" ", left) + line + "[-]"
+		}
+		banner := tview.NewTextView().SetDynamicColors(true).SetWrap(false)
+		banner.SetText(strings.Join(styled, "\n"))
+		rows := len(lines)
+		cw.footerArea.AddItem(banner, rows, 0, false)
+		if cw.frame != nil {
+			cw.frame.ResizeItem(cw.footerArea, rows, 0)
+		}
+		return
+	}
 	cw.footerArea.Clear()
 	if cw.attachmentIndicator != nil {
 		cw.attachmentIndicator.Clear()
@@ -719,6 +767,21 @@ func (cw *ConversationWidget) buildFooter() {
 	if cw.frame != nil {
 		cw.frame.ResizeItem(cw.footerArea, rows, 0)
 	}
+}
+
+// editorAllowedBannerText builds the centered identity-unknown warning,
+// mirroring Python's check_editor_allowed text (Conversations.py:2209-2214 in
+// the installed 1.2.8): the info glyph, the "cannot message this peer"
+// paragraph, and the manual-query instructions, wrapped in the blank lines
+// urwid's "\n"+glyph+"\n\n…\n\n…\n" layout produces.
+func (cw *ConversationWidget) editorAllowedBannerText() string {
+	g := cw.glyphs()
+	return "\n" + g["info"] + "\n\n" +
+		"You cannot currently message this peer, since its identity keys are not known. " +
+		"The keys have been requested from the network, and you will be able to send messages " +
+		"as soon as they arrive.\n\n" +
+		"To query the network manually, select this conversation in the conversation list, " +
+		"press Ctrl-E, and use the query button.\n"
 }
 
 // footerIndicatorText returns the current pending-attachments indicator text

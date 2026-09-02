@@ -1,22 +1,28 @@
-{
- "entries": [
-  {
-   "key": "ctrl+n|text+style",
-   "paths": ["ctrl+n"],
-   "kind": "text+style",
-   "reason": "DELIBERATE owner decision (fleet bug #7, 2026-09-01): urwid's RadioButton group init leaves BOTH Untrusted and Unknown checked (True/True/False verified against the installed urwid); the owner asked for exactly one pre-checked radio (Unknown). Python's confirmed() checks r_unknown first, so a no-toggle Create stores the same trust in both."
-  },
-  {
-   "key": "ctrl+x|text+style+disk",
-   "paths": ["ctrl+x"],
-   "kind": "text+style+disk",
-   "reason": "Python 1.2.8 CRASHES on Ctrl-X with an empty conversations list: get_selected_item returns the empty-placeholder AttrMap (not None), the source_hash attribute is missing, and the unhandled AttributeError tears down the whole app (logfile: 'AttrMap object has no attribute source_hash'). The Go port deliberately survives: Ctrl-X is a no-op. Do not replicate the crash."
-  },
-  {
-   "key": "ctrl+y|text+style",
-   "paths": ["ctrl+y"],
-   "kind": "text+style",
-   "reason": "Python 1.2.8 CRASHES on Ctrl-Y at the seeded boot state (RuntimeError: stdin has been closed, urwid main-loop input EOF). The Go port survives. Do not replicate the crash."
-  }
- ]
-}
+ {
+  "entries": [
+   {
+    "key": "up right enter|text+style",
+    "paths": ["up right enter"],
+    "kind": "text+style",
+    "reason": "Go-only enhancement (documented in tui/conversations.go handleInput): an EMPTY conversation list routes Up to the tab bar (checkbox -> tab bar) so the tab bar stays keyboard-reachable; Python routes Up on an empty list straight to the menubar (Conversations.py:1800-1802 body_is_empty). With the seeded state the Trusted list was empty, so the start path landed on different widgets."
+   },
+   {
+    "key": "ctrl+n|text+style",
+    "paths": ["ctrl+n"],
+    "kind": "text+style",
+    "reason": "DELIBERATE owner decision (fleet bug #7, 2026-09-01): urwid's RadioButton group init leaves BOTH Untrusted and Unknown checked (True/True/False verified against the installed urwid); the owner asked for exactly one pre-checked radio (Unknown). Python's confirmed() checks r_unknown first, so a no-toggle Create stores the same trust in both."
+   },
+   {
+    "key": "ctrl+x|text+style+disk",
+    "paths": ["ctrl+x"],
+    "kind": "text+style+disk",
+    "reason": "Python 1.2.8 CRASHES on Ctrl-X with an empty conversations list: get_selected_item returns the empty-placeholder AttrMap (not None), the source_hash attribute is missing, and the unhandled AttributeError tears down the whole app (logfile: 'AttrMap object has no attribute source_hash'). The Go port deliberately survives: Ctrl-X is a no-op. Do not replicate the crash."
+   },
+   {
+    "key": "ctrl+y|text+style",
+    "paths": ["ctrl+y"],
+    "kind": "text+style",
+    "reason": "Python 1.2.8 CRASHES on Ctrl-Y at the seeded boot state (RuntimeError: stdin has been closed, urwid main-loop input EOF). The Go port survives. Do not replicate the crash."
+   }
+  ]
+ }

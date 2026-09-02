@@ -105,7 +105,11 @@ var keyspecAccepted = map[string]string{
 	// menu collapse) app-wide; Python gets these from per-dialog keypresses
 	// and urwid Frame/Pile traversal respectively.
 	"TextUI.py:TextUI|esc": "Go's dispatcher routes Esc to DismissTop app-wide; Python handles Esc in each dialog's keypress",
-	"TextUI.py:TextUI|up":  "Go's dispatcher owns Up-at-list-top → menu collapse; Python gets it from urwid Frame traversal",
+	// Byte 0x0A (C-j) normalizes to Enter in the dispatcher — urwid's input
+	// layer decodes it as Enter, so Python's unhandled_input never sees it as
+	// a separate key.
+	"TextUI.py:TextUI|enter": "Go's dispatcher normalizes byte 0x0A (C-j/LF) to Enter — urwid decodes it as Enter at input time, so Python's unhandled_input never sees it",
+	"TextUI.py:TextUI|up":    "Go's dispatcher owns Up-at-list-top → menu collapse; Python gets it from urwid Frame traversal",
 	// MenuColumns forwards Tab/Down to the body and returns super().keypress;
 	// urwid drops the forwarded key (verified against the live nomadnet pane —
 	// Main.py:171-176 comment). Go consumes it after FocusBody. Left/Right/
@@ -273,6 +277,11 @@ func keyspecGoCanonical(name string) string {
 	switch {
 	case n == "Enter":
 		return "enter"
+	case n == "LF", n == "CtrlJ":
+		// Byte 0x0A (C-j) normalizes to Enter in the dispatcher (urwid decodes
+		// it as Enter too) — canonicalize it so the keyspec diff reads
+		// semantically.
+		return "enter"
 	case n == "Esc", n == "Escape", n == "CtrlLeftSq":
 		return "esc"
 	case n == "Tab":
@@ -390,7 +399,7 @@ func keyspecGoHandlers(t *testing.T) map[string]map[string]bool {
 			t.Fatalf("read %s: %v", name, err)
 		}
 		cur := ""
-		for _, line := range strings.Split(string(data), "\n") {
+		for line := range strings.SplitSeq(string(data), "\n") {
 			if m := keyspecGoFuncRe.FindStringSubmatch(line); m != nil {
 				cur = fmt.Sprintf("%s:%s:%s", name, m[2], m[3])
 				if out[cur] == nil {
@@ -504,7 +513,7 @@ func TestKeyspecGoAdvertisedKeysAreHandled(t *testing.T) {
 	handledAnywhere := map[string]bool{}
 	handledByFile := map[string]map[string]bool{}
 	for id, keys := range handlers {
-		file := strings.SplitN(id, ":", 2)[0]
+		file, _, _ := strings.Cut(id, ":")
 		if handledByFile[file] == nil {
 			handledByFile[file] = map[string]bool{}
 		}

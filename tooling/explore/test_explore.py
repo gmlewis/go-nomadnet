@@ -140,6 +140,36 @@ def test_normalize_keeps_blocked_row_label():
     assert "<HASH>" in norm
 
 
+
+def test_normalize_collapses_padding_on_reltime_rows():
+    """Relative-time rows: the raw time text length differs between captures
+    ("just now" vs "1 minute ago"), which changes the row padding — the
+    normalizer collapses space runs on those rows so timing noise does not
+    read as a parity divergence. Non-RELTIME rows keep their exact padding."""
+    py = "│  <RELTIME>                                          ││"
+    go = "│  <RELTIME>                                        ││"
+    assert explore.normalize_frame(py) == explore.normalize_frame(go)
+    # Non-RELTIME rows are untouched.
+    bar = "│a                                               │"
+    assert explore.normalize_frame(bar) == bar
+
+def test_disk_digest_masks_index_entries():
+    """The .index cache keys entries by the per-target message-file hash; the
+    digest records presence only (the write-after-load parity fix makes both
+    sides structurally identical)."""
+    import tempfile, shutil, os
+    tmp = tempfile.mkdtemp()
+    try:
+        conv = os.path.join(tmp, "storage", "conversations", "c" * 32)
+        os.makedirs(conv)
+        open(os.path.join(conv, ".index"), "wb").write(b"\x80")
+        d = explore.disk_digest(tmp)
+        assert d == ["storage/conversations/<PEER>/.index"], d
+        assert not any("c" * 32 in e for e in d), "peer hash must be masked"
+    finally:
+        shutil.rmtree(tmp)
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     passed = failed = 0

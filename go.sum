@@ -6,8 +6,8 @@ github.com/fxamacker/cbor/v2 v2.9.2 h1:X4Ksno9+x3cz0TZv69ec1hxP/+tymuR8PXQJyDwfh
 github.com/fxamacker/cbor/v2 v2.9.2/go.mod h1:vM4b+DJCtHn+zz7h3FFp/hDAI9WNWCsZj23V5ytsSxQ=
 github.com/gdamore/encoding v1.0.1 h1:YzKZckdBL6jVt2Gc+5p82qhrGiqMdG/eNs6Wy0u3Uhw=
 github.com/gdamore/encoding v1.0.1/go.mod h1:0Z0cMFinngz9kS1QfMjCP8TY7em3bZYeeklsSDPivEo=
-github.com/gmlewis/go-reticulum v0.67.0 h1:xw/Wl9sWxTWM5dgx0Fc9kZdb1Bqfdar6Rgp0eSmQqEI=
-github.com/gmlewis/go-reticulum v0.67.0/go.mod h1:qraNVnM7EHvQvJiXLk3oQrivGgKlMpIPOkU/XYkduvA=
+github.com/gmlewis/go-reticulum v0.68.0 h1:b6QmzpkJH/7rrT28k19UpfspFj+pVseIZ2rwh4w49ls=
+github.com/gmlewis/go-reticulum v0.68.0/go.mod h1:qraNVnM7EHvQvJiXLk3oQrivGgKlMpIPOkU/XYkduvA=
 github.com/gmlewis/tcell/v2 v2.13.11-0.20260824212538-e24b6c4fe8a2 h1:Vz90uuRVrKqYqVJgmaoplaqokNBson1DvDiYbDT9k2Q=
 github.com/gmlewis/tcell/v2 v2.13.11-0.20260824212538-e24b6c4fe8a2/go.mod h1:+Wfe208WDdB7INEtCsNrAN6O2m+wsTPk1RAovjaILlo=
 github.com/gmlewis/tview v0.0.0-20260829232818-68e669800296 h1:jI+cDyP9o766QEdxO/KXvFf/EpCq3vxK2btoUuziZ/M=

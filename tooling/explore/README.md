@@ -73,18 +73,59 @@ counts and flags still compare.
 `--start-keys up,right,enter`), and the state signature is derived from the
 STYLED frame so focus/highlight moves count as real state changes.
 
-**Depth-2 findings queue (open — reproducible via the artifacts):**
-- `enter` (any route) — the opened conversation's message HEADER diverges:
-  Python renders a separate `← Unknown Origin` verification-status line above
-  the timestamp line; Go renders one combined line (and the `.index` cache
-  Go writes is 1 byte vs Python's 345-byte index).
+**Depth-2 findings queue (open — reproducible via the artifacts; root causes
+traced):**
+- `enter` (any route) — **the highest-value bug**: the opened conversation
+  renders the *failed/no-source* header (`⚠ just now | …`) instead of
+  Python's two-line header (`⚠ ← Unknown Origin` then the timestamp line),
+  plus the whole "identity keys are not known" banner is missing, and Go's
+  `.index` cache is 1 byte vs Python's 345-byte index. **Root cause traced:**
+  Python's `LXMessage.unpack_from_file` (LXMessage.py:825) parses the stored
+  container DIRECTLY — `msgpack.unpackb(packed_payload)` with no keys needed
+  (opportunistic payloads are plaintext in the container; signature stays
+  unverified with reason SOURCE_UNKNOWN → "Unknown Origin"). Go's
+  `lxmf.UnpackMessageFromFile(ts, f)` takes a transport and leaves `SourceHash`
+  unset for Python-packed containers, so the header takes the `SourceHash ==
+  nil` failed branch (message-header.go:80-82). Fix target:
+  `go-reticulum/lxmf`'s unpack path must populate SourceHash/State/Method and
+  signature status from Python's container layout without requiring keys.
 - `C-e` — Peer Info dialog body text wraps differently (word-break class, same
   family as workflow C's URL-bar/wrap findings).
 - `C-r` — "No trusted nodes found, cannot sync!" dialog: Python centers and
   pads the text; Go left-aligns, and the wrap of the continuation lines differs.
-- `C-x` — delete-confirm dialog: Python titles it `?` with a two-line body;
-  Go's title/content differ.
+- `C-x` — delete-confirm dialog: Python titles it `?` with a two-line body
+  ("Delete conversation with\n<name>\n"); Go's title/content differ.
 - `esc` — sync-footer row width differs by 2 columns in the esc state.
+
+**Findings queue — status after the P0–P3 fix session (2026-09-02):**
+
+FIXED this session (all verified by re-running the exact paths):
+- ✅ Stored Python-packed LXMF messages now DECODE in gonomadnet — the root
+  cause was go-reticulum's strict `transport_encryption` type check rejecting
+  Python's `packed_container` (which always emits the key, as `None` for a
+  message that never went through a transport). Fixed in `../go-reticulum/lxmf`
+  with a regression test; the no-source/failed header is gone.
+- ✅ The opened conversation's message header, the identity-unknown banner
+  (check_editor_allowed), and the `.index` cache (write-after-load, 345-byte
+  structural parity) all match Python now.
+- ✅ **Ctrl-J opens the selected conversation** like Python: urwid decodes
+  byte 0x0A as Enter; the Go dispatcher normalizes KeyLF/KeyCtrlJ → KeyEnter.
+- ✅ The delete-confirm dialog is now the list-slot overlay with Python's "?"
+  title and centered two-line body (C-x MATCHES).
+- ✅ The ingest dialog wiring (C-u MATCHES) and the sync dialog's centered
+  no-nodes line + urwid-pre-wrapped explainer.
+
+QUEUED (fine-grained fill/offset nuances of the urwid-vs-tview wrap/center
+family — each reproducible via `tooling/explore/explore.py --keys …`):
+- `ctrl+j` / `enter` (style-only): the banner region's blank-row fill and a
+  1-row vertical offset (py's banner region is one row lower).
+- `C-r`: the Close button's horizontal placement differs by 3 columns inside
+  its 45%-weight column, plus the same 1-row offset.
+- `C-e`: the Peer Info dialog body wraps/indents 1 column differently.
+
+Also: the C-e dialog and the banner both reveal that the parity skill's
+documented installed-package copy was the WRONG one of two trees — see the
+corrected user-site note in the skill.
 
 ## What it finds (evidence so far — first full depth-1 sweep)
 The very first full sweep (36 keys × both targets) surfaced **five real

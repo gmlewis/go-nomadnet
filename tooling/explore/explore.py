@@ -86,9 +86,17 @@ NOISE_RULES = [
 
 
 def normalize_frame(text):
-    """Mask non-parity artifacts so frame diffs flag only genuine divergence."""
+    """Mask non-parity artifacts so frame diffs flag only genuine divergence.
+    On relative-time rows the raw time text length differs between captures
+    ("just now" vs "1 minute ago"), which changes the row's padding — so those
+    rows additionally collapse space runs to a single space (border columns
+    survive as single separators)."""
     for rx, repl in NOISE_RULES:
         text = rx.sub(repl, text)
+    if "<RELTIME>" in text:
+        text = "\n".join(
+            re.sub(r" {2,}", " ", line) if "<RELTIME>" in line else line
+            for line in text.split("\n"))
     return text
 
 
@@ -241,6 +249,14 @@ def disk_digest(workdir):
                 d = os.path.dirname(p)
                 counters[d] = counters.get(d, 0) + 1
                 out.append("%s/<LXM#%d>" % (mask_path(d), counters[d]))
+                continue
+            if name == ".index":
+                # The .index cache keys its entries by the per-target
+                # message-file hash and carries per-target timestamps; after
+                # the write-after-load parity fix both sides produce
+                # structurally identical entries, so the digest records
+                # presence only.
+                out.append(mask_path(p))
                 continue
             out.append("%s %d %s" % (mask_path(p), len(data), hashlib.sha1(data).hexdigest()))
     return sorted(out)

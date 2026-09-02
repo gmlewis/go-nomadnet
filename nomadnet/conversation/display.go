@@ -15,7 +15,10 @@
 
 package conversation
 
-import "sort"
+import (
+	"log"
+	"sort"
+)
 
 // MessageDisplayData is the pure-data view of a single conversation message
 // for the UI layer: the LXMF wire fields the LXMessageWidget header needs
@@ -96,6 +99,15 @@ func (c *Conversation) DisplayMessages() []MessageDisplayData {
 			d.AttachmentNames = append(d.AttachmentNames, a.Name)
 		}
 		out = append(out, d)
+	}
+	// Persist the index for the messages this display pass loaded: Python's
+	// post-load scan_storage index update writes every message whose cached
+	// state is populated (Conversation.py:257-267), so the .index cache holds
+	// the decoded fields after the first view. Skipping this left Go's .index
+	// a 1-byte empty map where Python's carried the full entry (found by the
+	// differential explorer's disk diff on the open-conversation path).
+	if err := WriteIndex(c.MessagesPath, msgs); err != nil {
+		log.Printf("Warning: could not write conversation index for %v: %v", c.MessagesPath, err)
 	}
 	return out
 }

@@ -727,6 +727,15 @@ func (md *MainDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 		diagFileMD("/tmp/quit-diag.log", fmt.Sprintf("HANDLE key=%v focusRegion=%q focus=%T menuBarHasFocus=%v", event.Key(), md.focusRegion, p, md.menuBar.HasFocus()))
 	}
 
+	// Byte 0x0A (Ctrl-J / newline) decodes as Enter in urwid's input layer:
+	// the running Python build treats C-j as a plain Enter EVERYWHERE (verified
+	// live: C-j on the seeded conversations list activated the selected row,
+	// the same as Enter). tcell reports it as KeyLF, which no widget
+	// activates on — normalize it here so every Enter handler applies.
+	if event.Key() == tcell.KeyLF || event.Key() == tcell.KeyCtrlJ {
+		event = tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone)
+	}
+
 	// When an embedded terminal (the in-body editor) has focus, it owns ALL
 	// keys — including Ctrl-C/Ctrl-Q, which editors like vim use — so the
 	// global quit/menu logic must not intercept them. This mirrors Python's

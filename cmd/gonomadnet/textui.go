@@ -912,12 +912,16 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	conversationsDisplay.OnDeleteConv = func(conv tui.ConversationInfo) {
 		// Name the peer as Python does: directory.simplest_display_str of the
 		// source hash (Conversations.py:579-581), falling back to the row's
-		// display name for a malformed hash.
+		// display name for a malformed hash. The dialog itself is the LIST-SLOT
+		// overlay with Python's "?" title and two-line centered body
+		// (DeleteConversationConfirm); the former global DialogManager confirm
+		// centered on the whole screen diverged.
 		name := conv.DisplayName
 		if hash, ok := app.SourceHashFromHex(conv.SourceHash); ok {
 			name = a.Dir.SimplestDisplayStr(hash)
 		}
-		tuiApp.Dialogs.ShowConfirmDialog("Delete conversation with "+name+"?",
+		conversationsDisplay.DeleteConversationConfirm(
+			name,
 			func() {
 				a.DeleteConversation(conv.SourceHash)
 				refreshConvs()
@@ -1333,6 +1337,16 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		default:
 			return "unknown"
 		}
+	}
+	// check_editor_allowed (Conversations.py:2198-2215): the composer footer
+	// is replaced by the identity-unknown warning until the peer's identity
+	// keys are known (Python directory.is_known, a recall check).
+	conversationsDisplay.OnEditorAllowed = func(sourceHash string) bool {
+		h, ok := app.SourceHashFromHex(sourceHash)
+		if !ok {
+			return false
+		}
+		return a.Dir.IsKnown(h)
 	}
 	// Receive → open-conversation refresh. Ingest fires OnChanged from the LXMF
 	// delivery goroutine when a message lands on disk (mirrors Python's

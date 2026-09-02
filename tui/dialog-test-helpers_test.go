@@ -34,6 +34,8 @@ func dialogRowTexts(p tview.Primitive) []string {
 			walk(v.content)
 		case *centeredText:
 			out = append(out, v.GetText())
+		case *urwidCenterText:
+			out = append(out, strings.Split(v.text, "\n")...)
 		case *pileFiller:
 			for _, it := range v.items {
 				walk(it.widget)

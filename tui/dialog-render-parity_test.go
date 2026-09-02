@@ -165,8 +165,11 @@ func TestSyncDialogNoTrustedNodesFullHeight(t *testing.T) {
 		t.Fatalf("sync dialog not shown")
 	}
 	rows := contentRows(t, cd, 80, 24)
-	// The explainer's LAST words must render above the dialog's bottom border.
-	if !anyRowContains(rows, "manually selected one.") {
+	// The explainer's LAST line must render above the dialog's bottom border.
+	// (urwid's space wrap splits the final sentence as "…or the manually" /
+	// "selected one." — matching the running Python build's render — so the
+	// assertion targets the last wrapped line, not the full phrase.)
+	if !anyRowContains(rows, "selected one.") {
 		t.Errorf("sync explainer text cut off (rows: %v)", rows)
 	}
 	closeRow, borderRow := -1, -1
