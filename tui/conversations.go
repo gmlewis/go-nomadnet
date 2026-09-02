@@ -298,12 +298,18 @@ func NewConversationsDisplay(app *App, convs []ConversationInfo) *ConversationsD
 		SetChangedFunc(func(checked bool) { cd.SetShowBlocked(checked) })
 
 	// "Last sync: never" footer (Python _sync_status_line, Conversations.py:
-	// 517-545), left-aligned in the shortcutbar style.
+	// 517-545), left-aligned in the shortcutbar style. Python's AttrMap paints
+	// the style across the FULL row; the fork's TextView fills its rect only
+	// when the TEXT style's background differs from the Box background (its
+	// SetBackgroundColor sets both, suppressing the fill), so the text style is
+	// set explicitly with the Box background left at its default.
 	cd.syncStatus = tview.NewTextView()
 	cd.syncStatus.SetTextAlign(tview.AlignLeft)
-	cd.syncStatus.SetTextColor(GetThemeColors(cd.app.Theme)["menubar_fg"])
-	cd.syncStatus.SetBackgroundColor(GetThemeColors(cd.app.Theme)["menubar_bg"])
-	cd.syncStatus.SetText(cd.syncStatusLine())
+	syncColors := GetThemeColors(cd.app.Theme)
+	cd.syncStatus.SetTextStyle(tcell.StyleDefault.
+		Foreground(syncColors["menubar_fg"]).
+		Background(syncColors["menubar_bg"]))
+	cd.setSyncText(cd.syncStatusLine())
 
 	// Detail view (right pane). Empty state matches Python's ConversationWidget
 	// (None): a bordered LineBox with "\n  No conversation selected"
@@ -1793,6 +1799,23 @@ func (cd *ConversationsDisplay) syncStatusLine() string {
 	return line
 }
 
+// setSyncText writes the sync footer line padded to the left pane's inner
+// width: Python renders the footer as a Text inside an AttrMap, whose style
+// paints the FULL row width (Conversations.py:517-545), while tview's
+// TextView paints its background only over the text run — without the pad the
+// row's trailing columns lose the menubar background (attribute-only parity
+// divergence caught by the differential explorer).
+func (cd *ConversationsDisplay) setSyncText(line string) {
+	width := cd.listWidth - 2
+	if width < 1 {
+		width = 1
+	}
+	for len(line) < width {
+		line += " "
+	}
+	cd.syncStatus.SetText(line)
+}
+
 // RefreshSyncStatus re-renders the sync footer from the LastSyncInfo hook,
 // mirroring Python's _refresh_sync_status (Conversations.py:550-557) which the
 // app re-arms every 30 s. Safe to call from any goroutine; it marshals the
@@ -1804,10 +1827,10 @@ func (cd *ConversationsDisplay) RefreshSyncStatus() {
 	line := cd.syncStatusLine()
 	if cd.app != nil {
 		cd.app.QueueUpdateDraw(func() {
-			cd.syncStatus.SetText(line)
+			cd.setSyncText(line)
 		})
 	} else {
-		cd.syncStatus.SetText(line)
+		cd.setSyncText(line)
 	}
 }
 
@@ -2045,6 +2068,9 @@ func (cd *ConversationsDisplay) IngestURIDialog(onSubmit func(uri string)) {
 	cd.dialogOpen = true
 	input := tview.NewInputField()
 	input.SetLabel("URI : ")
+	// Python's ReadlineEdit caption renders in the DEFAULT attribute (no
+	// styling); tview's label color defaults to bright yellow.
+	input.SetLabelColor(tcell.ColorDefault)
 	input.SetFieldBackgroundColor(tcell.ColorDefault)
 	input.SetFieldTextColor(tcell.ColorDefault)
 

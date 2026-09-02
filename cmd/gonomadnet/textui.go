@@ -1114,42 +1114,40 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		})
 	}
 	conversationsDisplay.OnIngestURI = func() {
-		tuiApp.Dialogs.ShowInputDialog("Ingest LXM URI",
-			"URI:", "",
-			func(text string) {
-				if text == "" {
-					return
-				}
-				if a.Router == nil {
-					conversationsDisplay.ShowIngestResult(tui.IngestError)
-					return
-				}
-				outcome, err := a.Router.IngestLXMURIOutcome(text)
-				if err != nil || outcome == lxmf.IngestOutcomeNone {
-					conversationsDisplay.ShowIngestResult(tui.IngestError)
-					return
-				}
-				var result tui.IngestResult
-				switch outcome {
-				case lxmf.IngestOutcomeLocalDelivery:
-					result = tui.IngestSuccess
-				case lxmf.IngestOutcomeDuplicate:
-					result = tui.IngestDuplicate
-				case lxmf.IngestOutcomePropagated:
-					result = tui.IngestPropagated
-				case lxmf.IngestOutcomeDiscarded:
-					result = tui.IngestDiscarded
-				default:
-					result = tui.IngestError
-				}
-				conversationsDisplay.ShowIngestResult(result)
-				if outcome == lxmf.IngestOutcomeLocalDelivery {
-					refreshConvs()
-					conversationsDisplay.ReloadCurrentMessages()
-				}
-			},
-			func() {},
-		)
+		// The ingest dialog is a LIST-SLOT overlay in the left column with
+		// Python's exact strings (title "Ingest message URI", "URI : " caption,
+		// Ingest/Back buttons) — IngestURIDialog (Conversations.py:1118-1268);
+		// the generic DialogManager input dialog centered on the whole screen
+		// with Save/Cancel labels is the old, non-parity form.
+		conversationsDisplay.IngestURIDialog(func(uri string) {
+			if a.Router == nil {
+				conversationsDisplay.ShowIngestResult(tui.IngestError)
+				return
+			}
+			outcome, err := a.Router.IngestLXMURIOutcome(uri)
+			if err != nil || outcome == lxmf.IngestOutcomeNone {
+				conversationsDisplay.ShowIngestResult(tui.IngestError)
+				return
+			}
+			var result tui.IngestResult
+			switch outcome {
+			case lxmf.IngestOutcomeLocalDelivery:
+				result = tui.IngestSuccess
+			case lxmf.IngestOutcomeDuplicate:
+				result = tui.IngestDuplicate
+			case lxmf.IngestOutcomePropagated:
+				result = tui.IngestPropagated
+			case lxmf.IngestOutcomeDiscarded:
+				result = tui.IngestDiscarded
+			default:
+				result = tui.IngestError
+			}
+			conversationsDisplay.ShowIngestResult(result)
+			if outcome == lxmf.IngestOutcomeLocalDelivery {
+				refreshConvs()
+				conversationsDisplay.ReloadCurrentMessages()
+			}
+		})
 	}
 	conversationsDisplay.OnSync = func() {
 		// Propagation node display label: the node hash currently in use, if any.
