@@ -34,6 +34,7 @@ type RRCManager struct {
 	storagePath    string
 	identity       *rns.Identity
 	identityHashFn func() []byte
+	transport      rns.Transport
 
 	// History config, mirroring the Python hub's getattr(self.manager.app, …)
 	// fallbacks: rrc_history_per_room_cap (0 = no cap), rrc_filter_loaded_history
@@ -106,6 +107,26 @@ func (m *RRCManager) EphemeralNotices() int {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	return m.ephemeralNoticesSecs
+}
+
+// SetTransport stamps the RNS transport onto the manager and all existing
+// hubs so their connect workers can request paths, recall the hub identity,
+// and dial the hub link. The manager is created before initRNS completes, so
+// the transport arrives later via this setter. Without it every hub connect
+// failed with "no transport configured" — silently, because the failed status
+// only surfaced in the un-refreshed hub row.
+func (m *RRCManager) SetTransport(ts rns.Transport) {
+	if m == nil {
+		return
+	}
+	m.lock.Lock()
+	m.transport = ts
+	hubs := make([]*RRCHub, len(m.Hubs))
+	copy(hubs, m.Hubs)
+	m.lock.Unlock()
+	for _, h := range hubs {
+		h.SetTransport(ts)
+	}
 }
 
 // SetIdentity sets the local RNS identity, mirroring Python RRCManager, which

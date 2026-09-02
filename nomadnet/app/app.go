@@ -413,6 +413,7 @@ func (a *App) initRNS() {
 	a.Transport = transport
 	a.mu.Unlock()
 	a.Dir.SetTransport(transport)
+	a.RRC.SetTransport(transport)
 	rnsConfigDir := a.RNSConfigDir
 	// When no -rnsconfig is given, pass "" through to go-reticulum, which
 	// resolves it to ~/.reticulum (or /etc/reticulum / ~/.config/reticulum
@@ -580,6 +581,7 @@ func (a *App) InitWithTransport(ts *rns.TransportSystem, identity *rns.Identity)
 	a.Dir.SetPersistPath(a.DirectoryPath)
 	a.RRC = rrc.NewManager(a.StoragePath, nil)
 	a.RRC.SetIdentity(a.Identity)
+	a.RRC.SetTransport(ts)
 	a.RRC.SetHistoryConfig(a.RRCHistoryPerRoomCap, a.RRCFilterLoadedHistory, a.RRCEphemeralNotices)
 	a.loadPeerSettings()
 	a.loadIgnoredList()

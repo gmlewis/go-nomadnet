@@ -136,11 +136,18 @@ func NewHub(manager *RRCManager, hubHash []byte, destName, name string) *RRCHub 
 		name = hexString(hubHash)
 	}
 
+	// The manager may be nil in tests; the transport (when present) is
+	// inherited so a hub created after SetTransport can connect.
+	var inheritedTransport rns.Transport
+	if manager != nil {
+		inheritedTransport = manager.transport
+	}
 	h := &RRCHub{
 		Manager:              manager,
 		HubHash:              hubHash,
 		DestName:             destName,
 		Name:                 name,
+		transport:            inheritedTransport,
 		Status:               StatusDisconnected,
 		StatusText:           "Disconnected",
 		MaxNickBytes:         DefaultMaxNickBytes,

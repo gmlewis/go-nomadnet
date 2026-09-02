@@ -2243,3 +2243,36 @@ func TestHubListViewAccessors(t *testing.T) {
 		t.Errorf("MentionRoomList = %v, want %v", got, want)
 	}
 }
+
+// SetTransport must stamp the manager AND every hub created before the
+// transport arrived: the manager is constructed before initRNS completes, so
+// hubs added via the New Hub dialog carry a nil transport. Without the
+// stamping, Ctrl-R (connect) failed with "no transport configured" — silently
+// (the differential explorer's Bug #2 on the Channels screen).
+func TestRRCManagerSetTransportStampsHubs(t *testing.T) {
+	t.Parallel()
+
+	m := NewManager(tempDir(t), nil)
+	hub := m.AddHub([]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
+		"rrc.hub", "Test Hub")
+	if hub.transport != nil {
+		t.Fatal("precondition: hub transport should be nil before SetTransport")
+	}
+
+	ts := rns.NewTransportSystem(nil)
+	m.SetTransport(ts)
+
+	if m.transport == nil {
+		t.Error("manager transport not stored")
+	}
+	if hub.transport != ts {
+		t.Errorf("hub transport = %v, want the stamped transport", hub.transport != nil)
+	}
+
+	// Hubs added AFTER SetTransport inherit it too (the manager's AddHub path).
+	hub2 := m.AddHub([]byte{16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1},
+		"rrc.hub", "Second Hub")
+	if hub2.transport != ts {
+		t.Error("hub added after SetTransport lost the transport")
+	}
+}

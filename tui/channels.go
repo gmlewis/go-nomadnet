@@ -389,8 +389,18 @@ func (cd *ChannelsDisplay) SetHubs(hubs []HubView) {
 	entries := ComposeHubList(hubs, glyphs)
 	cd.hubEntries = entries
 	cd.rooms.Clear()
-	for _, e := range entries {
-		cd.rooms.AddItem(HubListRowText(e, colors), "", 0, nil)
+	for i, e := range entries {
+		// Render the label WITHOUT an embedded color tag and set the row's
+		// palette color via SetItemStyle instead. The former tagged-text form
+		// overrode the list's selected colors on the HIGHLIGHTED row: a
+		// disconnected hub's list_unknown foreground (#afafaf) on the
+		// list_focus background (#afafaf) rendered the selected row
+		// INVISIBLE (gray on gray). tview's selected style replaces item
+		// styles on selection but cannot override tags embedded in the text.
+		cd.rooms.AddItem(e.Label, "", 0, nil)
+		if c, ok := colors[e.Style]; ok && e.Kind != RowSpacer {
+			cd.rooms.SetItemStyle(i, tcell.StyleDefault.Foreground(c))
+		}
 	}
 }
 

@@ -17,7 +17,10 @@ package tui
 
 import (
 	"reflect"
+	"strings"
 	"testing"
+
+	"github.com/gdamore/tcell/v2"
 )
 
 // fakeHub is a test-only HubView for pinning ComposeHubList against Python
@@ -207,12 +210,19 @@ func TestChannelsDisplaySetHubs(t *testing.T) {
 	if got := cd.rooms.GetItemCount(); got != 5 {
 		t.Fatalf("room count = %v, want 5", got)
 	}
+	// Rows render the label WITHOUT an embedded color tag: the palette color
+	// is applied per-row via SetItemStyle instead, so tview's selected style
+	// (dark text on the list_focus background) wins on the HIGHLIGHTED row.
+	// The former tagged form overrode the selected colors, rendering the
+	// selected row invisible (a disconnected hub's list_unknown #afafaf
+	// foreground on the list_focus #afafaf background — the Pi's empty
+	// highlighted hub line).
 	wantTexts := []string{
-		"[#5faf00]= hub1[-]",
-		"[#5faf00]     #general[-]",
-		"[#5faf00]     #random[-]",
+		"= hub1",
+		"     #general",
+		"     #random",
 		"",
-		"[#afafaf]  hub2[-]",
+		"  hub2",
 	}
 	for i, want := range wantTexts {
 		main, _ := cd.rooms.GetItemText(i)
@@ -241,5 +251,63 @@ func TestChannelsDisplaySetHubs(t *testing.T) {
 	cd.selectEntry(4) // hub2 header
 	if gotHubIdx != 1 {
 		t.Errorf("OnSelectHub hubIdx = %v, want 1", gotHubIdx)
+	}
+}
+
+// The HIGHLIGHTED hub row must render its display name with the selected
+// colors (dark text on the list_focus background) — the Pi's live bug was the
+// selected hub line rendering EMPTY because the row's embedded color tag
+// (a disconnected hub's list_unknown #afafaf foreground) overrode the
+// selected colors, leaving #afafaf text on the #afafaf highlight.
+func TestChannelsDisplaySelectedHubRowRendersName(t *testing.T) {
+	t.Parallel()
+
+	app := NewApp(ThemeDark, GlyphUnicode, ColorModeTrue)
+	cd := NewChannelsDisplay(app, nil)
+
+	cd.SetHubs([]HubView{
+		fakeHub{name: "hub1", status: hubStatusConnected, joined: []string{"general"}},
+		fakeHub{name: "hub2", status: hubStatusDisconnected},
+	})
+
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatalf("screen.Init: %v", err)
+	}
+	defer screen.Fini()
+	screen.SetSize(80, 24)
+	cd.widget.SetRect(0, 0, 80, 24)
+	cd.widget.Draw(screen)
+	screen.Sync()
+
+	cells, width, _ := screen.GetContents()
+	found := false
+	for row := 0; row < 24; row++ {
+		var sb strings.Builder
+		for col := 0; col < width && row*width+col < len(cells); col++ {
+			if len(cells[row*width+col].Runes) > 0 {
+				sb.WriteRune(cells[row*width+col].Runes[0])
+			}
+		}
+		line := sb.String()
+		if !strings.Contains(line, "hub2") {
+			continue
+		}
+		found = true
+		// The name's cells must NOT be #afafaf-on-#afafaf (invisible gray on
+		// the gray highlight): the selected style's dark foreground wins.
+		for col := 0; col < width; col++ {
+			cell := cells[row*width+col]
+			if len(cell.Runes) == 0 {
+				continue
+			}
+			fg, bg, _ := cell.Style.Decompose()
+			if cell.Runes[0] == '2' && uint32(fg) == 0xafafaf && uint32(bg) == 0xafafaf {
+				t.Errorf("selected hub row renders #afafaf text on the #afafaf highlight (invisible): %q", line)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("the selected disconnected hub row did not render its display name")
 	}
 }
