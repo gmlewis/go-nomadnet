@@ -176,9 +176,12 @@ func TestFormatAnnounceSummary(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := FormatAnnounceSummary(tt.ann)
+			// Use the time-injected core: a wall-clock read here can land a
+			// scheduler-slot wait past the 1-minute relative-age boundary and
+			// flip "just now" into "1m ago".
+			got := formatAnnounceSummaryAt(tt.ann, now)
 			if got != tt.want {
-				t.Errorf("FormatAnnounceSummary() = %q, want %q", got, tt.want)
+				t.Errorf("formatAnnounceSummaryAt() = %q, want %q", got, tt.want)
 			}
 		})
 	}

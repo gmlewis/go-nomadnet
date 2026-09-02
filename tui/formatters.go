@@ -235,6 +235,13 @@ func FormatSyncProgress(progress int) string {
 
 // FormatAnnounceSummary formats a single announce for the list view.
 func FormatAnnounceSummary(ann AnnounceEntry) string {
+	return formatAnnounceSummaryAt(ann, time.Now())
+}
+
+// formatAnnounceSummaryAt is the time-injected core of FormatAnnounceSummary,
+// exposed for tests so the relative-age bucket cannot shift while parallel
+// tests wait for a scheduler slot.
+func formatAnnounceSummaryAt(ann AnnounceEntry, now time.Time) string {
 	typeIcon := "○"
 	switch ann.Type {
 	case "node":
@@ -248,7 +255,7 @@ func FormatAnnounceSummary(ann AnnounceEntry) string {
 		typeIcon,
 		ann.DisplayName,
 		ann.Type,
-		RelativeTime(ann.Timestamp))
+		relativeTimeAt(ann.Timestamp, now))
 }
 
 // ExpandShorthands maps short destination type prefixes to their
