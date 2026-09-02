@@ -481,7 +481,18 @@ func (cd *ConversationsDisplay) handleInput(event *tcell.EventKey) *tcell.EventK
 	// it, drawing both at once (they interpenetrated; Esc then had to unwind
 	// two stacked dialogs).
 	if cd.dialogOpen || cd.listSlotOverlay != nil || cd.fullSlotOverlay != nil || cd.detailSlotOverlay != nil {
-		return event
+		if cd.overlayStateOrphaned() {
+			// FLEET BUG #14 (Ctrl-p → Esc → dead arrows): the overlay state
+			// says a dialog is open, but NO dialog primitive owns the
+			// keyboard focus — the dispatch routes keys into a dialog the
+			// user cannot see (or nowhere at all), so the page's shortcuts
+			// and arrows appear dead until the process is restarted. Heal
+			// the orphaned state and fall through: the key is handled by the
+			// page as if no dialog were open.
+			cd.recoverOrphanedOverlays()
+		} else {
+			return event
+		}
 	}
 	if cd.shortcutFocus != "list" {
 		// Editor or body (right column) has focus: pass the key through to the
@@ -1810,6 +1821,90 @@ func (cd *ConversationsDisplay) EditSelectedInDirectory() PeerInfoEntry {
 // DialogOpen reports whether a dialog is currently open.
 func (cd *ConversationsDisplay) DialogOpen() bool {
 	return cd.dialogOpen
+}
+
+// overlayStateOrphaned reports the stuck state behind fleet bug #14: the
+// dialog-open flags say a dialog is up, but the app's keyboard focus is NOT
+// inside any of them and no global modal is open. Keys dispatched in that
+// state fall into a dialog the user cannot see (or nowhere at all), so the
+// page's shortcuts and arrows appear dead until the process is restarted.
+//
+// The check walks the CONTAINMENT of the app's actual focused primitive in
+// each overlay's tree instead of trusting the primitives' HasFocus(): tview
+// blurs only the previously-focused leaf when focus moves, so container
+// ancestors of an old focus chain keep stale hasFocus=true flags — a
+// HasFocus-based check would read a dead dialog as alive and never heal.
+func (cd *ConversationsDisplay) overlayStateOrphaned() bool {
+	// A global modal (DialogManager confirm/input/QR dialog) legitimately
+	// owns the keyboard: its focus walk targets its own overlay, not ours.
+	if cd.app != nil && cd.app.Dialogs != nil && cd.app.Dialogs.Open() {
+		return false
+	}
+	focused := cd.app.GetFocus()
+	if cd.listSlotOverlay != nil && containsFocus(cd.listSlotOverlay, focused) {
+		return false
+	}
+	if cd.fullSlotOverlay != nil && containsFocus(cd.fullSlotOverlay, focused) {
+		return false
+	}
+	if cd.detailSlotOverlay != nil && containsFocus(cd.detailSlotOverlay, focused) {
+		return false
+	}
+	// The conversation widget's own dialogs (paper/attach/save-attachments)
+	// install the display's detail-slot overlay too, so the overlay checks
+	// above cover them; cw.dialogOpen never stands alone.
+	return true
+}
+
+// containsFocus walks the primitive tree rooted at root and reports whether
+// the app's currently-focused primitive lives inside it. Handles the
+// container types the TUI actually builds (Flex, urwidColumns, DialogLineBox,
+// SlotOverlay); everything else is a leaf.
+func containsFocus(root tview.Primitive, focused tview.Primitive) bool {
+	if root == nil || focused == nil {
+		return false
+	}
+	if root == focused {
+		return true
+	}
+	switch v := root.(type) {
+	case *tview.Flex:
+		for i := 0; i < v.GetItemCount(); i++ {
+			if containsFocus(v.GetItem(i), focused) {
+				return true
+			}
+		}
+	case *urwidColumns:
+		for _, child := range v.children {
+			if containsFocus(child, focused) {
+				return true
+			}
+		}
+	case *DialogLineBox:
+		return containsFocus(v.content, focused)
+	case *SlotOverlay:
+		return containsFocus(v.dialog, focused)
+	}
+	return false
+}
+
+// recoverOrphanedOverlays clears the orphaned dialog state: close any slot
+// overlays that are still installed (restoring the covered panes), reset the
+// dialog-open flags, and refresh the shortcut bar so the footer matches the
+// actually-focused pane. Safe on partially-corrupt state: every close is a
+// no-op when its overlay pointer is already nil.
+func (cd *ConversationsDisplay) recoverOrphanedOverlays() {
+	cd.CloseListSlotDialog()
+	cd.CloseFullSlotDialog()
+	cd.CloseDetailSlotDialog()
+	cd.dialogOpen = false
+	if cd.currentWidget != nil {
+		cd.currentWidget.dialogOpen = false
+	}
+	if cd.app != nil && cd.app.Main != nil {
+		// Re-sync the footer with the pane that actually holds focus.
+		cd.app.Main.refreshShortcuts()
+	}
 }
 
 // OpenIngestURIDialog opens the ingest LXMF URI dialog.

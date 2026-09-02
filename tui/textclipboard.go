@@ -17,6 +17,9 @@ package tui
 
 import (
 	"context"
+	"os"
+	"os/exec"
+	"strings"
 	"sync"
 	"time"
 
@@ -31,7 +34,8 @@ import (
 // The implementation wraps golang.design/x/clipboard (pure Go on every
 // platform: AppKit via purego on macOS, X11/Wayland on Linux — no cgo).
 // When no clipboard backend is available (e.g. a headless box without an X
-// server), selection still draws and writes become no-ops.
+// server), selection still draws and the writer falls back to the tmux paste
+// buffer when running inside tmux.
 type textClipboard interface {
 	// WriteText puts text on the system clipboard. Implementations must be
 	// safe to call from any goroutine and must never block the UI loop for
@@ -41,7 +45,8 @@ type textClipboard interface {
 
 // systemClipboard is the real textClipboard backed by
 // golang.design/x/clipboard. Init is attempted once per process; a failure
-// permanently disables writes (ready stays false).
+// permanently disables the direct write (ready stays false) and WriteText
+// falls back to the tmux paste buffer.
 type systemClipboard struct {
 	ready    bool
 	initOnce sync.Once
@@ -66,16 +71,48 @@ func (s *systemClipboard) init() {
 // an unrelated pasteboard access — the data is on the pasteboard as soon as
 // the call returns (verified: a second process reads it back, and osascript
 // sees it), so this never blocks the UI loop on the done channel.
+//
+// When the platform backend is unavailable (a Linux box over SSH has no X11/
+// Wayland connection — the glenn-OMEN-875 fleet case), the write falls back
+// to the tmux paste buffer: `load-buffer -w` both sets the running tmux
+// server's buffer (prefix-] paste) and forwards OSC 52 to its outer terminal,
+// so the copy still reaches the machine the user types on.
 func (s *systemClipboard) WriteText(text string) {
 	s.init()
-	if !s.ready || text == "" {
+	if text == "" {
 		return
 	}
-	ctx, cancel := clipboardContext()
-	go func() {
-		defer cancel()
-		_, _ = clipboard.Write(ctx, clipboard.FmtText, []byte(text))
-	}()
+	if s.ready {
+		ctx, cancel := clipboardContext()
+		go func() {
+			defer cancel()
+			_, _ = clipboard.Write(ctx, clipboard.FmtText, []byte(text))
+		}()
+		return
+	}
+	go s.tmuxFallback(text)
+}
+
+// tmuxFallback stores text in the running tmux server's paste buffer via
+// `tmux load-buffer -w`. The -w flag makes tmux itself emit the OSC 52 escape
+// toward its outer terminal (forwarding through nested tmux layers), so the
+// copy reaches the local clipboard even when the application's own OSC 52 was
+// swallowed by an intermediate tmux with set-clipboard off. Best effort: any
+// failure is silent (the selection highlight already confirms the gesture).
+func (s *systemClipboard) tmuxFallback(text string) {
+	if os.Getenv("TMUX") == "" {
+		return
+	}
+	_ = tmuxLoadBuffer(text)
+}
+
+// tmuxLoadBuffer runs `tmux load-buffer -w` with text on stdin. A package
+// variable so tests can capture the payload without touching the user's
+// running tmux server.
+var tmuxLoadBuffer = func(text string) error {
+	cmd := exec.Command("tmux", "load-buffer", "-w", "-")
+	cmd.Stdin = strings.NewReader(text)
+	return cmd.Run()
 }
 
 // clipboardContext returns a short-lived context for one clipboard write so a

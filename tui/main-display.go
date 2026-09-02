@@ -236,6 +236,17 @@ func (md *MainDisplay) SetShortcutCallback(key string, fn func() string) {
 // refreshes via updateShortcutsLocked before releasing.
 func (md *MainDisplay) refreshShortcuts() {
 	if !md.mu.TryLock() {
+		// Contended from a path that does not refresh before releasing (the
+		// documented SetDisplay holder does): retry off the event loop so the
+		// footer can never stay stale (fleet bug #14 observed a stale editor
+		// footer while the conversation list held focus).
+		if md.app != nil {
+			md.app.GoSafe(func() {
+				md.mu.Lock()
+				defer md.mu.Unlock()
+				md.updateShortcutsLocked()
+			})
+		}
 		return
 	}
 	defer md.mu.Unlock()
