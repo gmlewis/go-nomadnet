@@ -1564,8 +1564,12 @@ func TestConversationsDisplayBlockedRowLabel(t *testing.T) {
 		sourceHash  string
 		wantPrefix  string
 	}{
-		{"named peer", "Eve", "aabb1122", "× [blocked] Eve"},
-		{"unnamed peer", "", "aabb1122", "× [blocked]"},
+		// The "[blocked]" marker is tview-escaped ([blocked[] per this fork's
+		// Escape scheme) so the markup engine renders it literally instead of
+		// eating it as a color tag.
+		{"named peer", "Eve", "aabb1122", "× [blocked[] Eve"},
+		{"unnamed peer", "", "aabb1122", "× [blocked[]"},
+		{"bracketed name", "[Goat]", "aabb1122", "× [blocked[] [Goat[]"},
 	}
 
 	for _, tt := range tests {

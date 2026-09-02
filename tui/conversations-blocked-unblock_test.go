@@ -48,7 +48,10 @@ func TestConversationsDisplayBlockedRowRendersUnblockLabel(t *testing.T) {
 		t.Fatalf("list items = %v, want 2 (blocked + untrusted)", got)
 	}
 	main0, secondary0 := cd.list.GetItemText(0)
-	if want := "× [blocked] Eve  <" + strings.Repeat("e", 32) + ">"; main0 != want {
+	// The stored label carries the tview-escaped "[blocked]" marker
+	// ([blocked[] in this fork's Escape scheme) so the markup engine renders
+	// the marker literally.
+	if want := "× [blocked[] Eve  <" + strings.Repeat("e", 32) + ">"; main0 != want {
 		t.Errorf("blocked row main = %q, want %q", main0, want)
 	}
 	if secondary0 != "" {
@@ -105,5 +108,94 @@ func TestConversationsDisplayBlockedRowActivatesUnblock(t *testing.T) {
 	cd.activateListRow(0, open)
 	if len(opened) != 0 {
 		t.Fatalf("blocked row opened a conversation without an unblock hook: %v", opened)
+	}
+}
+
+// TestConversationsDisplayBlockedRowRequiresShowBlocked pins the filter
+// parity (Python update_listbox, Conversations.py:483-488): blocked rows are
+// appended to the untrusted list ONLY when "Show blocked" is checked — the
+// filter predicate itself (Conversations.py:444-452) never accepts them.
+func TestConversationsDisplayBlockedRowRequiresShowBlocked(t *testing.T) {
+	t.Parallel()
+	app := newTestApp()
+	blockedHash := strings.Repeat("e", 32)
+	blocked := ConversationInfo{SourceHash: blockedHash, DisplayName: "Eve", TrustLevel: "blocked"}
+	normalHash := strings.Repeat("a", 32)
+	normal := ConversationInfo{SourceHash: normalHash, DisplayName: "Friend", TrustLevel: "untrusted"}
+	cd := NewConversationsDisplay(app, []ConversationInfo{blocked, normal})
+	cd.SetShowTrusted(false)
+
+	// Checkbox unchecked (the default): the blocked row is hidden.
+	if got := cd.list.GetItemCount(); got != 1 {
+		t.Fatalf("untrusted tab shows %v rows with Show blocked unchecked; want 1 (only the untrusted row)", got)
+	}
+	main0, _ := cd.list.GetItemText(0)
+	if strings.Contains(main0, "blocked") {
+		t.Errorf("hidden blocked row leaked into the list: %q", main0)
+	}
+
+	// Checking "Show blocked" reveals it.
+	cd.SetShowBlocked(true)
+	if got := cd.list.GetItemCount(); got != 2 {
+		t.Fatalf("untrusted tab shows %v rows with Show blocked checked; want 2 (untrusted + blocked)", got)
+	}
+
+	// The trusted tab never shows blocked rows, checked or not.
+	cd.SetShowBlocked(false)
+	cd.SetShowTrusted(true)
+	cd.SetShowBlocked(true)
+	if got := cd.list.GetItemCount(); got != 0 {
+		t.Fatalf("trusted tab shows %v rows with Show blocked checked; want 0", got)
+	}
+}
+
+// TestConversationsDisplayShowBlockedCountLabel pins the "Show blocked (N)"
+// count (Python update_listbox, Conversations.py:472-477): N is the number of
+// ignored-list entries, refreshed on every list rebuild. It previously stayed
+// at the constructor's hardcoded "(0)" even with ignored entries present.
+func TestConversationsDisplayShowBlockedCountLabel(t *testing.T) {
+	t.Parallel()
+	app := newTestApp()
+	model := []ConversationInfo{
+		{SourceHash: strings.Repeat("e", 32), DisplayName: "Eve", TrustLevel: "blocked"},
+		{SourceHash: strings.Repeat("a", 32), DisplayName: "Friend", TrustLevel: "untrusted"},
+		{SourceHash: strings.Repeat("f", 32), DisplayName: "Malone", TrustLevel: "blocked"},
+		{SourceHash: strings.Repeat("b", 32), DisplayName: "Other", TrustLevel: "untrusted"},
+	}
+	cd := NewConversationsDisplay(app, model)
+	// The live path rebuilds the list through SetConversations (refreshConvs).
+	cd.SetConversations(model)
+
+	if got, want := cd.showBlockedCheckbox.GetLabel(), "Show blocked (2)"; got != want {
+		t.Errorf("checkbox label = %q, want %q", got, want)
+	}
+
+	// An ignored-free model resets the count to zero.
+	cd.SetConversations(model[1:2])
+	if got, want := cd.showBlockedCheckbox.GetLabel(), "Show blocked (0)"; got != want {
+		t.Errorf("checkbox label after clearing ignores = %q, want %q", got, want)
+	}
+}
+
+// TestTabButtonLabelsExcludeBlocked pins the tab-count parity edge Python's
+// harness cannot represent: Python's app.conversations() enumerates on-disk
+// conversations only, so its Untrusted count (UNTRUSTED/WARNING/UNKNOWN,
+// Conversations.py:452-455) never sees an ignored-list row. Go's model does
+// carry "blocked" rows (refreshConvs appends them), and counting them made
+// the Untrusted tab advertise an entry its filtered list never shows.
+func TestTabButtonLabelsExcludeBlocked(t *testing.T) {
+	t.Parallel()
+
+	convs := []ConversationInfo{
+		{SourceHash: strings.Repeat("a", 32), TrustLevel: "trusted", Unread: true},
+		{SourceHash: strings.Repeat("b", 32), TrustLevel: "untrusted"},
+		{SourceHash: strings.Repeat("e", 32), TrustLevel: "blocked", Unread: true},
+	}
+	trusted, untrusted := tabButtonLabels(convs, "✉")
+	if want := "Trusted (1) ✉ 1"; trusted != want {
+		t.Errorf("trusted label = %q, want %q", trusted, want)
+	}
+	if want := "Untrusted (1)"; untrusted != want {
+		t.Errorf("untrusted label = %q, want %q (blocked rows count toward neither tab)", untrusted, want)
 	}
 }

@@ -16,6 +16,7 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/gdamore/tcell/v2"
@@ -121,6 +122,43 @@ func TestConversationsDeleteSelectedWithNoSelection(t *testing.T) {
 
 	if _, fired := pressDelete(cd); fired {
 		t.Error("Ctrl-X with an empty conversation list fired the delete callback")
+	}
+}
+
+func TestConversationsDeleteCtrlXOnBlockedRowRoutesUnblock(t *testing.T) {
+	t.Parallel()
+
+	// A "[blocked]" row renders from the ignored list, not from a conversation
+	// directory: the delete-conversation flow removes the (usually
+	// nonexistent) conversation directory and the row reappears on the next
+	// refresh — the user-reported "Ctrl-X can't delete it". The row's Python
+	// semantic is the unblock flow (blocked-row click → _unblock_dialog,
+	// Conversations.py:332-347; Python's Ctrl-X itself dies on the blocked
+	// widget's missing source_hash attribute), so Ctrl-X must fire
+	// OnUnblockPeer and must NOT offer conversation deletion.
+	blockedHash := strings.Repeat("e", 32)
+	cd := NewConversationsDisplay(newTestApp(), []ConversationInfo{
+		{SourceHash: blockedHash, TrustLevel: "blocked", DisplayName: "Blocked Peer"},
+	})
+	cd.SetShowTrusted(false)
+	// The blocked row is only visible with "Show blocked" checked
+	// (Conversations.py:483-488) — the same gate the list uses.
+	cd.SetShowBlocked(true)
+	cd.list.SetCurrentItem(0)
+
+	var deleted []*ConversationInfo
+	cd.OnDeleteConv = func(conv ConversationInfo) { deleted = append(deleted, &conv) }
+	var unblocked []string
+	cd.OnUnblockPeer = func(sourceHash string) { unblocked = append(unblocked, sourceHash) }
+
+	if got := cd.handleInput(tcell.NewEventKey(tcell.KeyCtrlX, 0, tcell.ModNone)); got != nil {
+		t.Fatal("Ctrl-X on a blocked row was not consumed")
+	}
+	if len(unblocked) != 1 || unblocked[0] != blockedHash {
+		t.Fatalf("Ctrl-X on a blocked row fired unblock with %v; want [%v]", unblocked, blockedHash)
+	}
+	if len(deleted) != 0 {
+		t.Errorf("Ctrl-X on a blocked row offered conversation deletion of %v", deleted[0].SourceHash)
 	}
 }
 

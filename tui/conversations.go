@@ -511,8 +511,24 @@ func (cd *ConversationsDisplay) handleInput(event *tcell.EventKey) *tcell.EventK
 		// active tab (Python get_selected_item, Conversations.py:561-566);
 		// see OnDeleteConv for why a row index must never cross this
 		// boundary. No selection → no dialog ("if item == None: return").
-		if cd.OnDeleteConv != nil {
-			if conv, ok := cd.GetSelectedConversation(); ok {
+		if conv, ok := cd.GetSelectedConversation(); ok {
+			if conv.TrustLevel == "blocked" {
+				// A "[blocked]" row renders from the ignored list, not from a
+				// conversation directory, so the delete-conversation flow can
+				// never remove it — deleting the (usually nonexistent)
+				// conversation directory left the row standing, which looked
+				// like an undeletable conversation. Python's own Ctrl-X on a
+				// blocked row dies on the missing source_hash attribute (the
+				// blocked widget carries only blocked_dest_hash,
+				// Conversations.py:341-343) and does nothing. Route the key to
+				// the row's Python semantic instead — the unblock flow
+				// (blocked-row click → _unblock_dialog, Conversations.py:
+				// 332-347) — whose confirmation removes the ignored entry and
+				// the row with it.
+				if cd.OnUnblockPeer != nil {
+					cd.OnUnblockPeer(conv.SourceHash)
+				}
+			} else if cd.OnDeleteConv != nil {
 				cd.OnDeleteConv(conv)
 			}
 		}
@@ -1073,8 +1089,17 @@ func (cd *ConversationsDisplay) populateList() {
 		if cd.showTrusted && conv.TrustLevel != "trusted" {
 			continue
 		}
-		if !cd.showTrusted && conv.TrustLevel == "trusted" {
-			continue
+		if !cd.showTrusted {
+			// Python's filter predicate (Conversations.py:444-452) accepts
+			// only UNTRUSTED/WARNING/UNKNOWN trust levels on the untrusted
+			// tab; blocked (ignored-list) rows are appended separately and
+			// ONLY when "Show blocked" is checked (Conversations.py:483-488).
+			// Without this gate an ignored peer's row shows unconditionally,
+			// and since the row has no conversation to delete it can never
+			// be removed via Ctrl-X — it looked permanently undeletable.
+			if conv.TrustLevel == "trusted" || (conv.TrustLevel == "blocked" && !cd.showBlocked) {
+				continue
+			}
 		}
 
 		cd.visible = append(cd.visible, conv)
@@ -1095,6 +1120,21 @@ func (cd *ConversationsDisplay) populateList() {
 		}
 		cd.list.AddItem(main, secondary, 0, nil)
 		cd.list.SetItemStyle(len(cd.visible)-1, tcell.StyleDefault.Foreground(conversationEntryFG(conv, cd.currentConversation, cd.app.Theme)))
+	}
+
+	// "Show blocked (N)" count (Python update_listbox, Conversations.py:
+	// 472-477): N is the number of ignored-list entries, refreshed on every
+	// list rebuild and independent of the tab or the checkbox state. The nil
+	// guard covers the constructor's first populateList call, which runs
+	// before the checkbox exists.
+	if cd.showBlockedCheckbox != nil {
+		blockedCount := 0
+		for _, conv := range cd.conversations {
+			if conv.TrustLevel == "blocked" {
+				blockedCount++
+			}
+		}
+		cd.showBlockedCheckbox.SetLabel(fmt.Sprintf("Show blocked (%v)", blockedCount))
 	}
 
 	// Restore the highlight onto the same conversation's (new) row.
@@ -1664,18 +1704,25 @@ func tabBarText(convs []ConversationInfo, unreadGlyph string) string {
 }
 
 // tabButtonLabels returns the per-button labels for the Trusted and Untrusted
-// tab buttons, matching Python's _label (Conversations.py:458-465).
+// tab buttons, matching Python's _label (Conversations.py:458-465) and its
+// count block (Conversations.py:452-455): trusted conversations count toward
+// the Trusted tab, UNTRUSTED/WARNING/UNKNOWN toward the Untrusted tab, and
+// nothing else. Blocked (ignored-list) rows — which only Go's model carries,
+// since Python's app.conversations() enumerates on-disk conversations only —
+// count toward NEITHER tab; counting them made the Untrusted tab advertise an
+// entry its (filtered) list could never show.
 func tabButtonLabels(convs []ConversationInfo, unreadGlyph string) (trusted, untrusted string) {
 	trustedCount, untrustedCount := 0, 0
 	trustedAlert, untrustedAlert := 0, 0
 	for _, c := range convs {
 		alert := c.Unread || c.Failed
-		if c.TrustLevel == "trusted" {
+		switch c.TrustLevel {
+		case "trusted":
 			trustedCount++
 			if alert {
 				trustedAlert++
 			}
-		} else {
+		case "untrusted", "warning", "unknown":
 			untrustedCount++
 			if alert {
 				untrustedAlert++
@@ -1954,7 +2001,11 @@ func BlockedRowLabel(displayName, sourceHash string) string {
 	if displayName == "" {
 		displayName = sourceHash
 	}
-	return fmt.Sprintf("× [blocked] %v  <%v>", displayName, sourceHash)
+	// The "[blocked]" marker and any bracketed display name must be escaped:
+	// tview's markup engine consumes "[...]" runs as color tags when the row
+	// renders, so the raw label "× [blocked] <hash>  <hash>" appeared as
+	// "×  <hash>  <hash>" (Python's urwid renders the label literally).
+	return fmt.Sprintf("× %v %v  <%v>", tview.Escape("[blocked]"), tview.Escape(displayName), sourceHash)
 }
 
 // OpenSyncDialog opens the LXMF sync dialog with propagation
