@@ -99,6 +99,14 @@ func DecodeHistoryEntry(entry map[string]any) *RRCMessage {
 }
 
 // MakeEnvelope constructs a CBOR-encodable envelope for the RRC protocol.
+// MakeEnvelope constructs a CBOR-encodable envelope for the RRC protocol.
+// TEXT fields (room, nick) are converted to Go strings so fxamacker/cbor
+// encodes them as CBOR TEXT strings — Python's RRC client and hubs send room
+// names, nicks, and hello body fields as text, and a byte-string encoding
+// makes the hub silently drop the message (the differential explorer's
+// Channels finding: the link connected but the hub never responded). Binary
+// fields (source hash, message ID) stay []byte (CBOR byte strings), matching
+// Python's bytes source hash and os.urandom message id.
 func MakeEnvelope(msgType int, src, room, nick []byte, body any, mid []byte, ts int64) map[any]any {
 	env := map[any]any{
 		KeyVersion:   RRCVersion,
@@ -112,13 +120,13 @@ func MakeEnvelope(msgType int, src, room, nick []byte, body any, mid []byte, ts 
 		env[KeySource] = src
 	}
 	if len(room) > 0 {
-		env[KeyRoom] = room
+		env[KeyRoom] = string(room)
 	}
 	if body != nil {
 		env[KeyBody] = body
 	}
 	if len(nick) > 0 {
-		env[KeyNick] = nick
+		env[KeyNick] = string(nick)
 	}
 	return env
 }

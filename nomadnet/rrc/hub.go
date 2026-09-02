@@ -230,6 +230,10 @@ func (h *RRCHub) onEstablished(l *rns.Link) {
 	h.Welcomed = false
 	cb := h.onLinkEstablished
 	h.lock.Unlock()
+	// Mirror Python's hello thread (RRC.py:421-441): the hello repeats every
+	// 3 s, up to 5 attempts, until a WELCOME arrives - the hub may not have
+	// registered the fresh link when the first hello lands.
+	go h.helloLoop()
 
 	l.SetPacketCallback(func(data []byte, packet *rns.Packet) {
 		h.HandleData(data)
@@ -568,9 +572,11 @@ func (h *RRCHub) sendHello(_ *rns.Link) {
 		srcHash = h.Manager.identityHash()
 	}
 
+	// Python's _send_hello body values are TEXT strings (RRC.py:447-448);
+	// byte strings here made the hub silently drop the hello.
 	body := map[any]any{
-		BHelloName: []byte("nomadnet"),
-		BHelloVer:  []byte("0.1"),
+		BHelloName: "nomadnet",
+		BHelloVer:  "0.1",
 		BHelloCaps: map[any]any{
 			CapResourceEnvelope: true,
 			CapAction:           true,
@@ -587,6 +593,50 @@ func (h *RRCHub) sendHello(_ *rns.Link) {
 	}
 
 	h.sendEnv(env)
+}
+
+// helloLoop mirrors Python's hello_loop (RRC.py:421-441): the hello repeats
+// every 3 s, up to 5 attempts, until a WELCOME arrives. A hub that never
+// welcomes fails the hub with "WELCOME timeout" and tears the link down - a
+// fresh link's first hello can race the hub-side registration, so a single
+// send is not enough.
+func (h *RRCHub) helloLoop() {
+	const attempts = 5
+	for i := range attempts {
+		h.lock.Lock()
+		link := h.link
+		welcomed := h.Welcomed
+		stopped := h.Manager != nil && h.Manager.IsStopped()
+		status := h.Status
+		h.lock.Unlock()
+
+		if welcomed || stopped || status == StatusFailed {
+			return
+		}
+		if link == nil {
+			return
+		}
+		if i > 0 {
+			h.sendHello(link)
+		}
+		time.Sleep(3 * time.Second)
+
+		h.lock.Lock()
+		welcomed = h.Welcomed
+		h.lock.Unlock()
+		if welcomed {
+			return
+		}
+	}
+	if !h.Welcomed {
+		h.SetStatus(StatusFailed, "WELCOME timeout")
+		h.lock.Lock()
+		link := h.link
+		h.lock.Unlock()
+		if link != nil {
+			link.Teardown()
+		}
+	}
 }
 
 // packetWouldFit reports whether payload, packed as a link data packet, would

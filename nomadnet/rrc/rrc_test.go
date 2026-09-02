@@ -165,11 +165,19 @@ func TestEncodeDecodeEnvelope(t *testing.T) {
 		t.Errorf("decoded envelope has %v keys, want >= 3", len(decoded))
 	}
 
-	// Verify room is present
+	// Verify room is present as a CBOR TEXT string (Python's envelopes carry
+	// room names as str; the encode side converts []byte rooms to text).
 	foundRoom := false
 	for _, v := range decoded {
-		if s, ok := v.([]byte); ok && string(s) == "#test" {
-			foundRoom = true
+		switch s := v.(type) {
+		case string:
+			if s == "#test" {
+				foundRoom = true
+			}
+		case []byte:
+			if string(s) == "#test" {
+				foundRoom = true
+			}
 		}
 	}
 	if !foundRoom {

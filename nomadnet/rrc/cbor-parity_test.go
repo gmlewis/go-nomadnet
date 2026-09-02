@@ -203,12 +203,15 @@ print("OK")
 	if roomVal == nil {
 		t.Fatal("decoded envelope missing room key")
 	}
-	roomBytes, ok := roomVal.([]byte)
+	// MakeEnvelope encodes room as a CBOR text string (Python parity: the hub
+	// drops byte-string room names), so Python's re-encode round-trips it as a
+	// string. The hub-side byteVal/toBytes helpers normalize both forms.
+	roomStr, ok := roomVal.(string)
 	if !ok {
-		t.Fatalf("room is %T, want []byte", roomVal)
+		t.Fatalf("room is %T, want string", roomVal)
 	}
-	if string(roomBytes) != "#test" {
-		t.Errorf("room = %q, want '#test'", string(roomBytes))
+	if roomStr != "#test" {
+		t.Errorf("room = %q, want '#test'", roomStr)
 	}
 }
 
