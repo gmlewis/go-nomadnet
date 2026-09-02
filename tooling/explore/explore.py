@@ -106,10 +106,21 @@ def frame_signature(plain):
     return hashlib.sha1(norm.encode()).hexdigest()[:12]
 
 
+def branch_signature(result):
+    """State signature for worklist expansion, derived from the STYLED frame:
+    focus/highlight moves (list cursor, selected tab, dialog focus) change SGR
+    attributes without changing the plain text, and a cursor move onto another
+    conversation row IS a new state the worklist must expand from."""
+    return frame_signature(result.get("styled") or result["plain"])
+
+
 def tmux_key_arg(key):
     """Map a canonical key to the (args, literal) form for tmux send-keys."""
     if key in TMUX_KEY_NAMES:
         return [TMUX_KEY_NAMES[key]], False
+    # Accept tmux-style aliases (C-x) so --keys can use either spelling.
+    if re.match(r"^[Cc]-[a-zA-Z]$", key):
+        return ["C-" + key.split("-")[1]], False
     if key.startswith("ctrl+") and len(key) > 5:
         return ["C-" + key[5:]], False
     if key.startswith("rune:"):
@@ -157,8 +168,11 @@ def capture_frame(sess, styled):
     return res.stdout if res.returncode == 0 else ""
 
 
-def wait_boot(sess, boot_s):
-    """Poll until the menubar is up and the frame stops changing."""
+def wait_boot(sess, boot_s, post_s=3.0):
+    """Poll until the menubar is up and the frame stops changing, then hold a
+    post-boot window: background tickers (e.g. the 2 s unread-indicator
+    probe) still repaint the UI after the first stable frame, so the extra
+    window lets them settle before the boot state is recorded."""
     marker = "[ Conversations ]"
     last, stable = None, 0
     t0 = time.time()
@@ -168,7 +182,8 @@ def wait_boot(sess, boot_s):
             if frame == last:
                 stable += 1
                 if stable >= 2:
-                    return frame, True
+                    time.sleep(post_s)
+                    return capture_frame(sess, styled=False), True
             else:
                 stable = 0
         last = frame
@@ -185,8 +200,24 @@ def send_key(sess, key):
 
 
 def disk_digest(workdir):
-    """Semantic side-effect fingerprint of the included on-disk state."""
+    """Semantic side-effect fingerprint of the included on-disk state. Message
+    files are named by their 64-hex LXM hash and carry per-target ciphertext
+    (each seed's messages are encrypted to that target's own identity), so
+    their names and content hashes are noise: they are emitted as positional
+    <LXM#i> entries per conversation (preserving per-conversation counts). Flag
+    files (unread/failed) keep full content comparison."""
     out = []
+    lxm_name = re.compile(r"^[0-9a-fA-F]{64}$")
+    peer_dir = re.compile(r"(^[0-9a-fA-F]{32}$)")
+    counters = {}
+
+    def mask_path(path):
+        # Peer conversation dirs are named by the peer's identity hash, which
+        # differs per seed: mask the 32-hex COMPONENTS of the path so entries
+        # still compare structurally (counts preserved via <LXM#i>).
+        return "/".join("<PEER>" if peer_dir.match(part) else part
+                        for part in path.split(os.sep))
+
     for rel in DISK_INCLUDE:
         base = os.path.join(workdir, rel)
         if os.path.isfile(base):
@@ -205,7 +236,13 @@ def disk_digest(workdir):
                     data = fh.read()
             except OSError:
                 continue
-            out.append("%s %d %s" % (p, len(data), hashlib.sha1(data).hexdigest()))
+            name = os.path.basename(p)
+            if lxm_name.match(name):
+                d = os.path.dirname(p)
+                counters[d] = counters.get(d, 0) + 1
+                out.append("%s/<LXM#%d>" % (mask_path(d), counters[d]))
+                continue
+            out.append("%s %d %s" % (mask_path(p), len(data), hashlib.sha1(data).hexdigest()))
     return sorted(out)
 
 
@@ -279,6 +316,43 @@ def raw_boot(target, args, size, workdir, rnsdir, gobin, pybin, tag, hold_s=8.0)
     return os.path.isdir(workdir)
 
 
+def parity_interpreter(args):
+    """The python3 that can import RNS/LXMF (the parity interpreter)."""
+    candidates = [args.py_interp] if args.py_interp else []
+    candidates += ["/opt/homebrew/bin/python3", sys.executable]
+    for cand in candidates:
+        if not cand or not os.path.exists(cand):
+            continue
+        res = subprocess.run([cand, "-c", "import RNS, LXMF"],
+                             capture_output=True, text=True)
+        if res.returncode == 0:
+            return cand
+    return None
+
+
+def seed_conversations(target, seeddir, args, pybin):
+    """Seed LXMF conversations/messages into one target's seed (see
+    seed_messages.py). Uses the parity interpreter; a failure is fatal (the
+    seeded state is the exploration's premise)."""
+    if args.seed_messages <= 0:
+        return
+    interp = parity_interpreter(args)
+    if interp is None:
+        sys.exit("no python3 with RNS/LXMF importable (needed for --seed-messages)")
+    script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "seed_messages.py")
+    if not os.path.exists(script):
+        sys.exit("seed_messages.py not found next to explore.py")
+    res = subprocess.run(
+        [interp, script,
+         "--identity", os.path.join(seeddir, "storage", "identity"),
+         "--conversations", os.path.join(seeddir, "storage", "conversations"),
+         "--directory", os.path.join(seeddir, "storage", "directory"),
+         "--count", str(args.seed_messages)],
+        capture_output=True, text=True)
+    if res.returncode != 0:
+        sys.exit("seed_messages failed for %s: %s" % (target, res.stderr[-400:]))
+
+
 def generate_seed(target, args, size, rnsdir, gobin, pybin):
     """Boot the target once in its seed dir so it writes its default config
     (clearing the first-run flag), then augment with the ignored-peer seed and
@@ -302,6 +376,7 @@ def generate_seed(target, args, size, rnsdir, gobin, pybin):
     with open(os.path.join(seeddir, "ignored"), "w") as f:
         f.write("bbf3172fdf752ce1afc332ff44119a4f\n")
     os.makedirs(os.path.join(seeddir, "storage", "conversations"), exist_ok=True)
+    seed_conversations(target, seeddir, args, pybin)
     # Validate the seeded state actually boots to the standard UI.
     res = run_branch(target, [], args, size, seeddir, rnsdir, gobin, pybin,
                      tag="seedchk-%s" % target)
@@ -349,6 +424,14 @@ def main():
     ap.add_argument("--py-exe", default="", help="path to the nomadnet executable")
     ap.add_argument("--include-quit", action="store_true",
                     help="add ctrl+c/ctrl+q (quit) to the key universe")
+    ap.add_argument("--seed-messages", type=int, default=3,
+                    help="LXMF conversations to seed per target (0 disables)")
+    ap.add_argument("--start-keys", default="",
+                    help="key path applied from boot before exploring (the "
+                         "resulting state becomes the expansion root), e.g. "
+                         "up,right,enter to land on the Untrusted tab")
+    ap.add_argument("--py-interp", default="",
+                    help="python3 able to import RNS/LXMF (default: probe)")
     ap.add_argument("--list-keys", action="store_true", help="print the key universe and exit")
     args = ap.parse_args()
 
@@ -377,6 +460,7 @@ def main():
     universe = default_key_universe(include_quit=args.include_quit)
     if args.keys:
         universe = [k.strip() for k in args.keys.split(",") if k.strip()]
+    start_path = [k.strip() for k in args.start_keys.split(",") if k.strip()]
 
     # Triage ledger: reviewed, accepted divergences (deliberate deviations and
     # Python-side crashes) — new divergences count as findings, these do not.
@@ -404,8 +488,9 @@ def main():
     # branches expand; divergent ones do not (the targets are in different
     # states from there on, so extension would be meaningless). No-op keys
     # (final signature == the signature they were tried from) add no coverage
-    # and are not expanded.
-    queue = [([], None)]
+    # and are not expanded. --start-keys (if given) is applied from boot so
+    # the expansion root sits in the interesting state.
+    queue = [(list(start_path), None)]
     tried = set()
     branches, findings = 0, []
     finding_classes = {}
@@ -445,7 +530,7 @@ def main():
                 ["--- py disk", "+++ go disk"]
                 + ["-" + x for x in sorted(ad - bd)] + ["+" + x for x in sorted(bd - ad)])
 
-        sig = frame_signature(a["plain"])
+        sig = branch_signature(a)
         if text_diff or disk_diff or style_diff:
             kinds = [k for k, v in (("text", text_diff), ("style", style_diff), ("disk", disk_diff)) if v]
             kind = "+".join(kinds)
@@ -471,12 +556,12 @@ def main():
                 (text_diff + "\x00" + style_diff + "\x00" + disk_diff).encode()
             ).hexdigest()[:12]
             if diff_key in finding_classes:
-                f = finding_classes[diff_key]
-                f["paths"].append(label)
-                with open(os.path.join(f["dir"], "paths.txt"), "a") as f:
-                    f.write(label + "\n")
-                report.append("DIFF  %-50s %s  (dup of finding %s)" % (label, kind, f["id"]))
-                print("  [%s] DIFF %s (dup of finding %s)" % (label, kind, f["id"]))
+                fc = finding_classes[diff_key]
+                fc["paths"].append(label)
+                with open(os.path.join(fc["dir"], "paths.txt"), "a") as fh:
+                    fh.write(label + "\n")
+                report.append("DIFF  %-50s %s  (dup of finding %s)" % (label, kind, fc["id"]))
+                print("  [%s] DIFF %s (dup of finding %s)" % (label, kind, fc["id"]))
                 continue
             fid = "%s" % diff_key[:6]
             fdir = save_finding(args.out, len(findings), label, path, results, diffs)

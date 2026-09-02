@@ -57,8 +57,36 @@ dir. On-disk comparison covers `ignored`, `storage/conversations`,
 lxmf caches) and the Go-only boot-time `storage/pages/index.mu` provisioning
 are excluded by design.
 
-## What it finds (evidence so far — first full depth-1 sweep)
+## Phase 3: conversation/message seeding (BUILT)
 
+`--seed-messages N` (default 3) seeds REAL encrypted LXMF conversations into
+each target's seed via `seed_messages.py` (run under the parity interpreter —
+the one that can import RNS/LXMF): an unread message, a read message from a
+**trusted, named peer** (written straight into the msgpack directory file —
+both implementations read Python's layout), and a sent/failed one. Cross-impl
+interop is verified: Go decodes Python-packed LXMF envelopes and the directory
+entry, and the boot frames match after hash/time normalization. The disk
+digest normalizes message-file names (`<LXM#i>`) and peer dirs (`<PEER>`) so
+counts and flags still compare.
+
+`--start-keys` applies a key path before exploring (e.g.
+`--start-keys up,right,enter`), and the state signature is derived from the
+STYLED frame so focus/highlight moves count as real state changes.
+
+**Depth-2 findings queue (open — reproducible via the artifacts):**
+- `enter` (any route) — the opened conversation's message HEADER diverges:
+  Python renders a separate `← Unknown Origin` verification-status line above
+  the timestamp line; Go renders one combined line (and the `.index` cache
+  Go writes is 1 byte vs Python's 345-byte index).
+- `C-e` — Peer Info dialog body text wraps differently (word-break class, same
+  family as workflow C's URL-bar/wrap findings).
+- `C-r` — "No trusted nodes found, cannot sync!" dialog: Python centers and
+  pads the text; Go left-aligns, and the wrap of the continuation lines differs.
+- `C-x` — delete-confirm dialog: Python titles it `?` with a two-line body;
+  Go's title/content differ.
+- `esc` — sync-footer row width differs by 2 columns in the esc state.
+
+## What it finds (evidence so far — first full depth-1 sweep)
 The very first full sweep (36 keys × both targets) surfaced **five real
 divergences**, all triaged and closed the same session:
 

@@ -105,8 +105,9 @@ def test_disk_digest_tracks_included_files_only():
 
         digest = explore.disk_digest(tmp)
         joined = "\n".join(digest)
+        # The peer dir (32-hex) is masked to <PEER>; the flag keeps its content.
+        assert "storage/conversations/<PEER>/unread 1 " in joined
         assert "ignored" in joined
-        assert "storage/conversations/" + "a" * 32 + "/unread 1 " in joined
         assert "logfile" not in joined, "logfile must be excluded (timing noise)"
         assert "storage/identity" not in joined, "identity must be excluded (own-identity dependent)"
         # The digest entry carries the file's content hash.
