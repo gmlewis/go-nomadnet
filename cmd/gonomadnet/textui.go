@@ -1456,7 +1456,28 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	// here. The RRC change callback (fired on the RRC worker goroutine when a
 	// hub is added/removed/connected/status-changed) re-populates via
 	// QueueUpdateDraw, marshaling onto the UI loop.
-	refreshChannels := func() { channelsDisplay.SetHubs(a.HubViews()) }
+	refreshChannels := func() {
+		channelsDisplay.SetHubs(a.HubViews())
+		channelsDisplay.RefreshHubInfoIfVisible()
+		channelsDisplay.RefreshRoomIfVisible(func(hubIdx int, room string) []tui.ChannelMessage {
+			if hub := rrcHubAt(a, hubIdx); hub != nil {
+				return rrcRoomMessages(hub, room)
+			}
+			return nil
+		})
+	}
+	// Python manager._notify_messages → the UI's per-message room update.
+	a.RRC.SetMessageCallback(func(hub *rrc.RRCHub, msg *rrc.RRCMessage) {
+		tuiApp.QueueUpdateDraw(func() {
+			channelsDisplay.SetHubs(a.HubViews())
+			channelsDisplay.RefreshRoomIfVisible(func(hubIdx int, room string) []tui.ChannelMessage {
+				if h := rrcHubAt(a, hubIdx); h != nil {
+					return rrcRoomMessages(h, room)
+				}
+				return nil
+			})
+		})
+	})
 	refreshChannels()
 	if a.RRC != nil {
 		a.RRC.SetChangeCallback(func() {
@@ -1465,6 +1486,81 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	}
 
 	// Wire channel keyboard shortcuts
+	// Hub-row selection (Enter) renders the hub info panel, mirroring
+	// Python's _select_hub → _show_hub_info (Channels.py:1672-1745).
+	channelsDisplay.OnShowHubInfo = func(hubIdx int) {
+		tuiApp.QueueUpdateDraw(func() {
+			// A room chat view is not displaced by selection-change echoes
+			// from the hub-list rebuild; only an explicit hub-row Enter (which
+			// arrives with paneMode "room" cleared by the next SetHubs path)
+			// returns to the info panel.
+			channelsDisplay.ShowHubInfo(hubIdx)
+		})
+	}
+	// Python _select_hub/_select_room (Channels.py:1672-1729): selecting a
+	// hub shows its info panel; selecting a room shows the room chat view
+	// (auto-connecting a disconnected hub and auto-joining an unjoined
+	// selected room on the way).
+	channelsDisplay.OnSelectHub = func(hubIdx int) {
+		hub := rrcHubAt(a, hubIdx)
+		if hub != nil {
+			a.RRC.SetActive(hub, "")
+		}
+	}
+	channelsDisplay.OnSelectRoom = func(hubIdx int, room string) {
+		hub := rrcHubAt(a, hubIdx)
+		if hub == nil {
+			return
+		}
+		a.RRC.SetActive(hub, strings.ToLower(room))
+		if hub.Status == rrc.StatusConnected && !hub.HasRoom(room) {
+			hub.JoinRoom(room, false)
+		}
+		msgs := rrcRoomMessages(hub, room)
+		tuiApp.QueueUpdateDraw(func() {
+			channelsDisplay.ShowRoom(hubIdx, room, msgs)
+		})
+	}
+	// Python join_room_dialog confirmed(): add_room, join_room when
+	// connected, then _select_room.
+	channelsDisplay.OnJoinRoomSubmitted = func(room string) {
+		hub := a.RRC.ActiveHub()
+		if hub == nil {
+			if hubs := a.RRC.HubsSnapshot(); len(hubs) > 0 {
+				hub = hubs[0]
+			}
+		}
+		if hub == nil {
+			return
+		}
+		hub.AddRoom(room)
+		if hub.Status == rrc.StatusConnected {
+			hub.JoinRoom(room, false)
+		}
+		// Python's confirmed() ends with _select_room, which sets the hub
+		// and room active so the composer targets the joined room.
+		a.RRC.SetActive(hub, room)
+		msgs := rrcRoomMessages(hub, room)
+		tuiApp.QueueUpdateDraw(func() {
+			channelsDisplay.SetHubs(a.HubViews())
+			channelsDisplay.ShowRoom(hubIndexFor(a, hub), room, msgs)
+		})
+	}
+	// The room chat composer (Python RoomWidget send → hub.send_message).
+	channelsDisplay.OnSendMessage = func(text string) {
+		if hub := a.RRC.ActiveHub(); hub != nil {
+			hub.SendMessage(strings.ToLower(a.RRC.ActiveRoom()), text)
+		}
+	}
+	// Python RoomWidget leave → hub.part_room (Channels.py leave flow).
+	channelsDisplay.OnLeaveRoom = func(room string) {
+		if hub := a.RRC.ActiveHub(); hub != nil {
+			hub.PartRoom(room)
+			tuiApp.QueueUpdateDraw(func() {
+				channelsDisplay.SetHubs(a.HubViews())
+			})
+		}
+	}
 	channelsDisplay.OnNewHub = func() {
 		channelsDisplay.NewHubDialog()
 	}
@@ -1503,11 +1599,13 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		}
 	}
 	channelsDisplay.OnDisconnect = func() {
-		if entry, ok := channelsDisplay.SelectedEntry(); ok && a.RRC != nil {
-			hubs := a.RRC.HubsSnapshot()
-			if entry.HubIdx >= 0 && entry.HubIdx < len(hubs) {
-				hubs[entry.HubIdx].Disconnect()
-			}
+		entry, ok := channelsDisplay.SelectedEntry()
+		if !ok || a.RRC == nil {
+			return
+		}
+		hubs := a.RRC.HubsSnapshot()
+		if entry.HubIdx >= 0 && entry.HubIdx < len(hubs) {
+			hubs[entry.HubIdx].Disconnect()
 		}
 	}
 	channelsDisplay.OnToggleAutoReconnect = func() {
@@ -2506,4 +2604,49 @@ func peerAnnounceUnix(v any) (int64, bool) {
 		return int64(n), true
 	}
 	return 0, false
+}
+
+// rrcHubAt returns the hub at the given index of the manager's snapshot, or
+// nil when the index is out of range or the manager is unavailable.
+func rrcHubAt(a *app.App, hubIdx int) *rrc.RRCHub {
+	if a == nil || a.RRC == nil || hubIdx < 0 {
+		return nil
+	}
+	hubs := a.RRC.HubsSnapshot()
+	if hubIdx >= len(hubs) {
+		return nil
+	}
+	return hubs[hubIdx]
+}
+
+// hubIndexFor finds the snapshot index of the given hub, or -1.
+func hubIndexFor(a *app.App, hub *rrc.RRCHub) int {
+	for i, h := range a.RRC.HubsSnapshot() {
+		if h == hub {
+			return i
+		}
+	}
+	return -1
+}
+
+// rrcRoomMessages maps the hub's message buffer for the room to the tui
+// ChannelMessage shape the RoomWidget renders.
+func rrcRoomMessages(hub *rrc.RRCHub, room string) []tui.ChannelMessage {
+	if hub == nil {
+		return nil
+	}
+	rrcMsgs := hub.GetMessages(strings.ToLower(room))
+	out := make([]tui.ChannelMessage, 0, len(rrcMsgs))
+	for _, m := range rrcMsgs {
+		out = append(out, tui.ChannelMessage{
+			Room:     m.Room,
+			Nick:     m.Nick,
+			Text:     m.Text,
+			IsNotice: m.Kind == "notice",
+			IsError:  m.Kind == "error",
+			IsSystem: m.Kind == "system",
+			Mention:  m.Mention,
+		})
+	}
+	return out
 }

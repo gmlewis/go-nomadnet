@@ -46,6 +46,16 @@ type HubView interface {
 	MessageRooms() []string
 	UnreadRooms() []string
 	MentionRooms() []string
+
+	// Hub info panel fields (Python _show_hub_info, Channels.py:1745-1816).
+	AddressHex() string
+	StatusText() string
+	ServerName() string
+	MOTD() string
+	AutoReconnect() bool
+	AutoList() bool
+	AutoWho() bool
+	AvailableRoomList() []string
 }
 
 // HubListEntryKind identifies a channels-list row as a hub header, a room under

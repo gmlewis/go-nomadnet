@@ -61,12 +61,25 @@ const channelsListInnerWidth = 34
 
 // ChannelsDisplay shows the RRC chat interface.
 type ChannelsDisplay struct {
-	app                *App
-	widget             tview.Primitive
-	content            *tview.Flex
-	leftPanel          *tview.Flex
-	rightPane          *tview.Flex
-	placeholder        *tview.TextView
+	app          *App
+	widget       tview.Primitive
+	content      *tview.Flex
+	leftPanel    *tview.Flex
+	rightPane    *tview.Flex
+	placeholder  *tview.TextView
+	hubInfo      *HubInfoArea
+	roomWidget   *RoomWidget
+	selectedRoom string
+	// paneMode tracks what the right pane shows ("", "info", "room") so
+	// state-driven refreshes re-render the right widget.
+	paneMode string
+	// selectedHubIdx is the hub row whose info panel is showing; the
+	// zero-value is safe because RefreshHubInfoIfVisible no-ops until the
+	// first ShowHubInfo creates the panel.
+	selectedHubIdx int
+	// HubViewsCache is the last HubView slice passed to SetHubs, kept so the
+	// hub info panel can read the selected hub's live state.
+	HubViewsCache      []HubView
 	ilb                *IndicativeListBox
 	noHubsText         *tview.TextView
 	chanGutter         tview.Primitive
@@ -95,24 +108,32 @@ type ChannelsDisplay struct {
 	// Selection callbacks, mirroring Python's _select_hub / _select_room
 	// (Channels.py:1672-1729): selecting a hub header opens/activates the hub;
 	// selecting a room opens the room.
-	OnSelectHub  func(hubIdx int)
-	OnSelectRoom func(hubIdx int, room string)
+	OnSelectHub func(hubIdx int)
+	// OnShowHubInfo renders the hub info panel for the entry at hubIdx
+	// (Python _select_hub → _show_hub_info). The wiring layer builds the
+	// snapshot from the app's RRC hub state.
+	OnShowHubInfo func(hubIdx int)
+	OnSelectRoom  func(hubIdx int, room string)
 
 	// Keyboard shortcut callbacks (Python: ChannelsListArea.keypress, RoomFrame.keypress)
 	OnNewHub func()
 	// OnAddHub adds the hub to the app's RRC manager and persists it (Python
 	// rrc.add_hub, RRC.py:389-401), then the wiring layer refreshes the hub
 	// list. nil disables the New Hub dialog's add path.
-	OnAddHub              func(hubHash []byte, destName, name string)
-	OnJoinRoom            func()
+	OnAddHub   func(hubHash []byte, destName, name string)
+	OnJoinRoom func()
+	// OnJoinRoomSubmitted runs the add+join+select flow for the room typed in
+	// the Add Room dialog (Python join_room_dialog confirmed(), which calls
+	// hub.add_room + hub.join_room + _select_room).
+	OnJoinRoomSubmitted   func(room string)
 	OnConnect             func()
 	OnDisconnect          func()
 	OnToggleAutoReconnect func()
 	OnEditHub             func()
 	OnRemoveHub           func()
 	OnToggleChannelList   func()
-	OnSendMessage         func()
-	OnLeaveRoom           func()
+	OnSendMessage         func(text string)
+	OnLeaveRoom           func(room string)
 	OnToggleCollapse      func()
 	OnMemberClick         func(nick, hash string)
 }
@@ -388,6 +409,7 @@ func (cd *ChannelsDisplay) SetHubs(hubs []HubView) {
 	glyphs := cd.app.Glyphs
 	entries := ComposeHubList(hubs, glyphs)
 	cd.hubEntries = entries
+	cd.HubViewsCache = hubs
 	cd.rooms.Clear()
 	for i, e := range entries {
 		// Render the label WITHOUT an embedded color tag and set the row's
@@ -404,6 +426,102 @@ func (cd *ChannelsDisplay) SetHubs(hubs []HubView) {
 	}
 }
 
+// ShowHubInfo renders the hub info panel for the hub entry at hubIdx,
+// mirroring Python's _show_hub_info (Channels.py:1745-1816): the right pane
+// swaps from the placeholder to the hub's details (the header block, the
+// status, the auto toggles, the MOTD, the joined and available rooms).
+func (cd *ChannelsDisplay) ShowHubInfo(hubIdx int) {
+	if cd.app == nil || hubIdx < 0 || hubIdx >= len(cd.hubEntries) {
+		return
+	}
+	e := cd.hubEntries[hubIdx]
+	if e.Kind != RowHub || hubIdx >= len(cd.HubViewsCache) {
+		return
+	}
+	hv := cd.HubViewsCache[hubIdx]
+	snap := &HubInfoSnapshot{
+		Name:        hv.Name(),
+		Status:      hv.Status(),
+		StatusText:  hv.StatusText(),
+		ServerName:  hv.ServerName(),
+		MOTD:        hv.MOTD(),
+		AutoReconn:  hv.AutoReconnect(),
+		AutoList:    hv.AutoList(),
+		AutoWho:     hv.AutoWho(),
+		JoinedRooms: hv.JoinedRooms(),
+		AvailRooms:  hv.AvailableRoomList(),
+	}
+	if cd.hubInfo == nil {
+		cd.hubInfo = NewHubInfoArea(cd.app, hv.Name())
+	}
+	cd.hubInfo.SetHubInfo(*snap)
+	cd.paneMode = "info"
+	// Swap the right pane's sole item to the hub info widget.
+	cd.rightPane.Clear()
+	cd.rightPane.AddItem(cd.hubInfo.Widget(), 0, 1, false)
+}
+
+// RoomMessagesFunc returns the current message buffer for a hub's room.
+type RoomMessagesFunc func(hubIdx int, room string) []ChannelMessage
+
+// ShowRoom swaps the right pane to the room chat view (Python
+// _show_room, Channels.py:1841-1851): the RoomWidget for the hub+room with
+// the message buffer loaded; the composer routes through OnSendMessage.
+func (cd *ChannelsDisplay) ShowRoom(hubIdx int, room string, msgs []ChannelMessage) {
+	if cd.app == nil || hubIdx < 0 || hubIdx >= len(cd.HubViewsCache) {
+		return
+	}
+	hv := cd.HubViewsCache[hubIdx]
+	room = strings.ToLower(room)
+	cd.selectedHubIdx = hubIdx
+	cd.selectedRoom = room
+
+	if cd.roomWidget == nil || cd.roomWidget.RoomName() != room {
+		cd.roomWidget = NewRoomWidget(cd.app, hv.Name(), room)
+		rw := cd.roomWidget
+		rw.OnSendMessage = func(text string) {
+			if cd.OnSendMessage != nil {
+				cd.OnSendMessage(text)
+			}
+		}
+		rw.OnLeaveRoom = func() {
+			if cd.OnLeaveRoom != nil {
+				cd.OnLeaveRoom(room)
+			}
+		}
+	}
+	cd.roomWidget.SetMessages(msgs)
+	cd.paneMode = "room"
+	cd.rightPane.Clear()
+	cd.rightPane.AddItem(cd.roomWidget.Widget(), 0, 1, true)
+	if cd.app != nil {
+		cd.app.SetFocus(cd.roomWidget.Widget())
+	}
+}
+
+// RefreshRoomIfVisible reloads the showing room's message buffer so new
+// messages appear live (Python RoomWidget.update_messages via the delegate).
+func (cd *ChannelsDisplay) RefreshRoomIfVisible(refresh RoomMessagesFunc) {
+	if cd.paneMode != "room" || cd.selectedHubIdx < 0 || cd.selectedHubIdx >= len(cd.HubViewsCache) {
+		return
+	}
+	room := cd.selectedRoom
+	if room == "" {
+		return
+	}
+	cd.roomWidget.SetMessages(refresh(cd.selectedHubIdx, room))
+}
+
+// RefreshHubInfoIfVisible re-renders the hub info panel from the current
+// HubViewsCache when it is showing, so the status/server/MOTD lines track
+// live hub state changes (Python's info panel updates via the delegate).
+func (cd *ChannelsDisplay) RefreshHubInfoIfVisible() {
+	if cd.paneMode != "info" || cd.selectedHubIdx < 0 || cd.selectedHubIdx >= len(cd.HubViewsCache) {
+		return
+	}
+	cd.ShowHubInfo(cd.selectedHubIdx)
+}
+
 // selectEntry dispatches a list-row selection to the hub/room selection
 // callback for the entry at the given index, mirroring Python's _select_hub /
 // _select_room (Channels.py:1672-1729). Spacer rows are ignored.
@@ -414,8 +532,12 @@ func (cd *ChannelsDisplay) selectEntry(idx int) {
 	e := cd.hubEntries[idx]
 	switch e.Kind {
 	case RowHub:
+		cd.selectedHubIdx = e.HubIdx
 		if cd.OnSelectHub != nil {
 			cd.OnSelectHub(e.HubIdx)
+		}
+		if cd.OnShowHubInfo != nil {
+			cd.OnShowHubInfo(e.HubIdx)
 		}
 	case RowRoom:
 		if cd.OnSelectRoom != nil {
@@ -471,8 +593,14 @@ func (cd *ChannelsDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 		}
 		return nil
 	case tcell.KeyCtrlD:
-		if cd.OnSendMessage != nil {
-			cd.OnSendMessage()
+		// In the room view C-d belongs to the room composer (Python
+		// RoomMessageEdit "ctrl d" → send); pass it through so the room
+		// widget's own capture handles it.
+		if cd.paneMode == "room" {
+			return event
+		}
+		if cd.OnLeaveRoom != nil {
+			cd.OnLeaveRoom(cd.selectedRoom)
 		}
 		return nil
 	case tcell.KeyF8:
@@ -740,10 +868,15 @@ func (cd *ChannelsDisplay) JoinRoomDialog() {
 	if cd.app == nil {
 		return
 	}
-	cd.showDialogOverlayInput("Join Room", "Room name:", "", "Join", "Cancel", func(roomText string) {
+	// Python join_room_dialog (Channels.py:1928-1969): the room name (+ the
+	// key, unported), then add_room + join_room + _select_room in the wiring.
+	cd.showDialogOverlayInput("Add Room", "Room : #", "", "Join", "Cancel", func(roomText string) {
 		roomText = strings.TrimSpace(strings.TrimPrefix(roomText, "#"))
 		if roomText == "" {
 			return
+		}
+		if cd.OnJoinRoomSubmitted != nil {
+			cd.OnJoinRoomSubmitted(roomText)
 		}
 	}, nil)
 }

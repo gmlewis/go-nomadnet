@@ -42,6 +42,17 @@ func (f fakeHub) MessageRooms() []string { return f.messages }
 func (f fakeHub) UnreadRooms() []string  { return f.unread }
 func (f fakeHub) MentionRooms() []string { return f.mentioned }
 
+// Hub info panel fields (defaults keep the existing tests focused on the
+// hub-list composition).
+func (f fakeHub) AddressHex() string          { return "" }
+func (f fakeHub) StatusText() string          { return "" }
+func (f fakeHub) ServerName() string          { return "" }
+func (f fakeHub) MOTD() string                { return "" }
+func (f fakeHub) AutoReconnect() bool         { return false }
+func (f fakeHub) AutoList() bool              { return false }
+func (f fakeHub) AutoWho() bool               { return false }
+func (f fakeHub) AvailableRoomList() []string { return nil }
+
 // TestComposeHubListGolden pins Python Channels._compose_list_widgets
 // (Channels.py:1599-1662): for each hub a status-glyph + name entry, followed
 // by the sorted union of its joined rooms and message-bearing rooms (empty

@@ -66,5 +66,30 @@ func (a *App) HubViews() []tui.HubView {
 	return views
 }
 
+// AddressHex returns the hub's destination hash as lowercase hex.
+func (v rrcHubView) AddressHex() string { return v.hub.HubAddressHex() }
+
+// StatusText returns the detailed connection status text.
+func (v rrcHubView) StatusText() string { return v.hub.GetStatusText() }
+
+// ServerName returns the hub's advertised server name.
+func (v rrcHubView) ServerName() string { return v.hub.GetHubName() }
+
+// MOTD returns the hub's message of the day.
+func (v rrcHubView) MOTD() string { return v.hub.GetMOTD() }
+
+// AutoReconnect reports the auto-reconnect toggle state.
+func (v rrcHubView) AutoReconnect() bool { return v.hub.GetAutoReconnect() }
+
+// AutoList reports the auto room-list toggle state.
+func (v rrcHubView) AutoList() bool { return v.hub.GetAutoList() }
+
+// AutoWho reports the auto who toggle state.
+func (v rrcHubView) AutoWho() bool { return v.hub.GetAutoWho() }
+
+// AvailableRoomList returns the sorted names of the rooms the hub advertises
+// but the client has not joined.
+func (v rrcHubView) AvailableRoomList() []string { return v.hub.GetAvailableRoomList() }
+
 // compile-time guard: rrcHubView satisfies tui.HubView.
 var _ tui.HubView = rrcHubView{}

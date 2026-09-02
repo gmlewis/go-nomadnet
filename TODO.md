@@ -1,4 +1,15 @@
 # Go NomadNet — Port to 100% Behavioral Parity with the Python Original (TDD)
+## Unwired UI callbacks (stub sweep 2026-09-02 — each must be wired and verified)
+
+- Channels: wire RemoveSelectedDialog confirm (Python remove_selected_dialog: part room or remove hub), EditHubDialog name + auto_reconnect/auto_list/auto_who checkboxes (Python edit_hub_dialog), OnToggleChannelList (Ctrl-Y collapse, Channels.py toggle), OnToggleCollapse (F8), OnMemberClick (member row select)
+- Conversations: wire OnSyncRequested, OnUnblockPeer, OnTimeFormat, OnQueryKeys, OnPing, OnLXMFQR (Python Conversations context actions)
+- ConversationWidget: wire OnPurgeFailed, OnClearHistory, OnAttachFiles (Python Conversations.py)
+- Network: wire OnToggleList, OnUseAsPN (Python Network.py use-as-propagation-node)
+- LocalPeer: wire OnSave, OnNodeInfo (Python Config/local peer display)
+- Config: wire OnOpenEditor (Python Config.py open config in editor)
+- Interfaces: wire SelectableInterface OnSelect/OnActivate (Python Interfaces.py row activation)
+- HubInfo: wire OnToggleChannelList (Python HubInfoArea ctrl y)
+
 
 > **Mission:** Reach 100% behavioral parity between this Go port and the
 > source-of-truth Python `nomadnet` (urwid). Work autonomously, top to

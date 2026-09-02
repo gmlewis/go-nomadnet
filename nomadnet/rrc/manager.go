@@ -230,6 +230,20 @@ func (m *RRCManager) SetActive(hub *RRCHub, room string) {
 	}
 }
 
+// ActiveHub returns the currently active hub, or nil.
+func (m *RRCManager) ActiveHub() *RRCHub {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	return m.activeHub
+}
+
+// ActiveRoom returns the currently active room name (lowercased), or "".
+func (m *RRCManager) ActiveRoom() string {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	return m.activeRoom
+}
+
 // ActiveRoomFor returns the active room for the given hub.
 func (m *RRCManager) ActiveRoomFor(hub *RRCHub) string {
 	m.lock.Lock()

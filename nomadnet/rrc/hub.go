@@ -212,6 +212,9 @@ func (h *RRCHub) Connect(ts rns.Transport, dest *rns.Destination) error {
 	h.Status = StatusConnecting
 	h.StatusText = "Connecting"
 	h.lock.Unlock()
+	if h.Manager != nil {
+		h.Manager.NotifyChange(h)
+	}
 
 	link.SetLinkEstablishedCallback(h.onEstablished)
 	link.SetLinkClosedCallback(func(l *rns.Link) { h.onClosed() })
@@ -230,6 +233,19 @@ func (h *RRCHub) onEstablished(l *rns.Link) {
 	h.Welcomed = false
 	cb := h.onLinkEstablished
 	h.lock.Unlock()
+	// Identify the link to the hub, mirroring Python's _on_established
+	// link.identify(self.manager.identity) (RRC.py:411): the hub needs the
+	// client's signed identity on the link before it will respond to the
+	// hello - without it real hubs silently ignore every packet.
+	if h.Manager != nil {
+		if id := h.Manager.Identity(); id != nil {
+			// Python logs identify failures at ERROR (RRC.py:412-414) and
+			// continues - identification is best-effort.
+			if err := l.Identify(id); err != nil {
+				log.Printf("[RRC %v] identify failed: %v", h.Name, err)
+			}
+		}
+	}
 	// Mirror Python's hello thread (RRC.py:421-441): the hello repeats every
 	// 3 s, up to 5 attempts, until a WELCOME arrives - the hub may not have
 	// registered the fresh link when the first hello lands.
@@ -286,6 +302,9 @@ func (h *RRCHub) onClosed() {
 	h.Status = StatusDisconnected
 	h.StatusText = "Disconnected"
 	h.lock.Unlock()
+	if h.Manager != nil {
+		h.Manager.NotifyChange(h)
+	}
 
 	if cb != nil {
 		cb()
@@ -315,6 +334,9 @@ func (h *RRCHub) scheduleReconnect() {
 	afterFunc := h.afterFunc
 	connectFn := h.connectFn
 	h.lock.Unlock()
+	if h.Manager != nil {
+		h.Manager.NotifyChange(h)
+	}
 
 	fire := func() {
 		h.lock.Lock()
@@ -388,6 +410,9 @@ func (h *RRCHub) ConnectAsync() {
 	h.StatusText = text
 	workerFn := h.connectWorkerFn
 	h.lock.Unlock()
+	if h.Manager != nil {
+		h.Manager.NotifyChange(h)
+	}
 
 	if workerFn != nil {
 		go workerFn()
@@ -666,10 +691,13 @@ func (h *RRCHub) Disconnect() {
 	}
 	link := h.link
 	h.link = nil
-	h.Status = StatusDisconnected
-	h.StatusText = "Disconnected"
 	h.Welcomed = false
 	h.lock.Unlock()
+
+	// SetStatus fires the change notification so the hub row flips to the
+	// disconnected glyph immediately (Python's disconnect updates the UI the
+	// same way via the status setter).
+	h.SetStatus(StatusDisconnected, "Disconnected")
 
 	if link != nil {
 		link.Teardown()
@@ -902,6 +930,13 @@ func (h *RRCHub) JoinRoom(room string, silent bool) {
 	ts := NowMs()
 	env := MakeEnvelope(TypeJoin, nil, []byte(room), nil, nil, mid, ts)
 	h.sendEnv(env)
+}
+
+// HasRoom reports whether the room is joined (Python's `room in hub.rooms`).
+func (h *RRCHub) HasRoom(room string) bool {
+	h.lock.Lock()
+	defer h.lock.Unlock()
+	return h.Rooms[strings.ToLower(room)]
 }
 
 // PartRoom sends a T_PART for a room.
@@ -1146,6 +1181,12 @@ func (h *RRCHub) HandleData(data []byte) {
 		case string:
 			textStr = b
 		}
+		// Python _process_notice_text (RRC.py:843-848): /list replies populate
+		// the hub's advertised room set for the info panel.
+		if rooms := ParseRoomListNotice(textStr); rooms != nil {
+			h.SetAvailableRooms(rooms)
+			return
+		}
 		msg := &RRCMessage{
 			Kind: "notice",
 			Room: roomStr,
@@ -1315,6 +1356,45 @@ func (h *RRCHub) handleWelcome(body any) {
 	if h.Manager != nil {
 		h.Manager.OnWelcome(h)
 	}
+	// Python handle_welcome → auto_list (RRC.py:950-959): fetch the hub's
+	// public room list right after the welcome so the hub info panel can show
+	// which rooms exist. The reply NOTICE is consumed silently.
+	if h.AutoList {
+		go func() {
+			h.SendCommand("/list", "")
+		}()
+	}
+}
+
+// ParseRoomListNotice parses a hub "/list" reply NOTICE into the advertised
+// rooms (Python _parse_room_list_notice, RRC.py:805-820): the body starts
+// with "Registered public rooms" followed by "name - topic" lines, or is the
+// single line "No public rooms registered". Returns nil when the text is not
+// a room list.
+func ParseRoomListNotice(text string) map[string]*string {
+	stripped := strings.TrimSpace(text)
+	if stripped == "No public rooms registered" {
+		return map[string]*string{}
+	}
+	lines := strings.Split(text, "\n")
+	if len(lines) == 0 || !strings.HasPrefix(strings.TrimLeft(lines[0], " \t"), "Registered public rooms") {
+		return nil
+	}
+	rooms := map[string]*string{}
+	for _, line := range lines[1:] {
+		s := strings.TrimSpace(line)
+		if s == "" {
+			continue
+		}
+		if idx := strings.Index(s, " - "); idx >= 0 {
+			name := strings.TrimSpace(s[:idx])
+			topic := strings.TrimSpace(s[idx+3:])
+			rooms[strings.ToLower(name)] = &topic
+		} else {
+			rooms[strings.ToLower(strings.TrimPrefix(s, "#"))] = nil
+		}
+	}
+	return rooms
 }
 
 // handleHello processes a HELLO envelope from a connecting client.
@@ -1448,6 +1528,12 @@ func (h *RRCHub) recordMessage(msg *RRCMessage, local bool) {
 	// block. cleanHistory acquires the lock itself.
 	h.appendHistory(room, msg)
 	h.cleanHistory()
+
+	// Python _add_message ends with manager._notify_messages(self, msg)
+	// (RRC.py:831): the UI updates the room view per message.
+	if h.Manager != nil {
+		h.Manager.NotifyMessage(h, msg)
+	}
 }
 
 // perRoomCap mirrors Python RRCHub._per_room_cap: it returns the configured
@@ -1887,4 +1973,72 @@ func partedRoomKeys(messages map[string][]*RRCMessage, joined map[string]bool) [
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+// HubAddressHex returns the hub's destination hash as lowercase hex
+// (Python hub.hub_hash.hex(), shown in the hub info panel).
+func (h *RRCHub) HubAddressHex() string {
+	h.lock.Lock()
+	defer h.lock.Unlock()
+	return hexString(h.HubHash)
+}
+
+// GetStatusText returns the detailed connection status text (e.g.
+// "Connected", "WELCOME timeout") shown next to the status label.
+func (h *RRCHub) GetStatusText() string {
+	h.lock.Lock()
+	defer h.lock.Unlock()
+	return h.StatusText
+}
+
+// GetMOTD returns the hub's message of the day (empty before the WELCOME).
+func (h *RRCHub) GetMOTD() string {
+	h.lock.Lock()
+	defer h.lock.Unlock()
+	return h.MOTD
+}
+
+// GetAutoReconnect reports the auto-reconnect toggle state.
+func (h *RRCHub) GetAutoReconnect() bool {
+	h.lock.Lock()
+	defer h.lock.Unlock()
+	return h.AutoReconnect
+}
+
+// GetAutoList reports the auto room-list toggle state.
+func (h *RRCHub) GetAutoList() bool {
+	h.lock.Lock()
+	defer h.lock.Unlock()
+	return h.AutoList
+}
+
+// GetAutoWho reports the auto who toggle state.
+func (h *RRCHub) GetAutoWho() bool {
+	h.lock.Lock()
+	defer h.lock.Unlock()
+	return h.AutoWho
+}
+
+// SetAvailableRooms replaces the hub's advertised room set and notifies the
+// UI (Python _process_notice_text assigns available_rooms then notifies).
+func (h *RRCHub) SetAvailableRooms(rooms map[string]*string) {
+	h.lock.Lock()
+	h.AvailableRooms = rooms
+	h.lock.Unlock()
+	if h.Manager != nil {
+		h.Manager.NotifyChange(h)
+	}
+}
+
+// GetAvailableRoomList returns the sorted names of the rooms the hub
+// advertises but the client has not joined.
+func (h *RRCHub) GetAvailableRoomList() []string {
+	h.lock.Lock()
+	defer h.lock.Unlock()
+	names := make([]string, 0, len(h.AvailableRooms))
+	for name := range h.AvailableRooms {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }

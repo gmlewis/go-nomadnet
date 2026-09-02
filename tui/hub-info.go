@@ -34,6 +34,7 @@ type HubInfoArea struct {
 	motd           string
 	rooms          []string
 	availableRooms []string
+	snapshot       *HubInfoSnapshot
 
 	// Keyboard shortcut callbacks
 	OnNewHub              func()
@@ -163,27 +164,115 @@ func (hia *HubInfoArea) handleKey(event *tcell.EventKey) *tcell.EventKey {
 	return event
 }
 
-// refreshView rebuilds the text display from current data.
+// HubInfoSnapshot carries the whole hub-info panel state, built by the
+// wiring layer from a HubView (Python _show_hub_info's hub argument).
+type HubInfoSnapshot struct {
+	Name        string
+	Address     string
+	Status      int
+	StatusText  string
+	ServerName  string
+	MOTD        string
+	AutoReconn  bool
+	AutoList    bool
+	AutoWho     bool
+	JoinedRooms []string
+	AvailRooms  []string
+}
+
+// HubStatusLabels map the HubView status ints to Python's status labels
+// (Channels.py:1747-1752).
+var HubStatusLabels = map[int]string{
+	0: "Disconnected",
+	1: "Connecting",
+	2: "Connected",
+	3: "Failed",
+}
+
+// SetHubInfo repopulates the panel from a snapshot and re-renders.
+func (hia *HubInfoArea) SetHubInfo(snap HubInfoSnapshot) {
+	hia.hubName = snap.Name
+	hia.motd = snap.MOTD
+	hia.rooms = snap.JoinedRooms
+	hia.availableRooms = snap.AvailRooms
+	hia.snapshot = &snap
+	hia.widget.SetTitle(fmt.Sprintf(" %v ", snap.Name))
+	hia.refreshView()
+}
+
+// refreshView rebuilds the text display from current data, mirroring
+// Python's _show_hub_info (Channels.py:1745-1816): the header block, the
+// status line, the server line, the auto toggles, the divider, the status
+// hint, the MOTD, and the joined/available rooms.
 func (hia *HubInfoArea) refreshView() {
+	snap := hia.snapshot
+	if snap == nil {
+		hia.view.SetText("[gray]No hub info available[-]")
+		return
+	}
+	colors := GetThemeColors(hia.app.Theme)
+	glyphs := hia.app.Glyphs
+	check, cross := glyphs["check"], glyphs["cross"]
+
 	var sb strings.Builder
-	if hia.motd != "" {
-		fmt.Fprintf(&sb, "[::b]MOTD:[-] %v\n\n", hia.motd)
+	sb.WriteString("\n")
+	fmt.Fprintf(&sb, "  Hub      : %v\n", snap.Name)
+	fmt.Fprintf(&sb, "  Address  : %v\n", snap.Address)
+	statusLabel := HubStatusLabels[snap.Status]
+	statusColor := colors["list_unknown"]
+	switch snap.Status {
+	case 1:
+		statusColor = colors["list_unresponsive"]
+	case 2:
+		statusColor = colors["connected_status"]
+	case 3:
+		statusColor = colors["list_untrusted"]
 	}
-	if len(hia.rooms) > 0 {
-		sb.WriteString("[::b]Rooms:[-]\n")
-		for _, r := range hia.rooms {
-			fmt.Fprintf(&sb, "  #%v\n", r)
+	fmt.Fprintf(&sb, "  [#%06x]Status   : %v (%v)[-]\n", uint32(statusColor), statusLabel, snap.StatusText)
+	if snap.ServerName != "" {
+		fmt.Fprintf(&sb, "  Server   : %v\n", snap.ServerName)
+	}
+
+	autoLine := func(label string, on bool, key string) {
+		glyph, attr := cross, "list_unknown"
+		state := "Off"
+		if on {
+			glyph, attr, state = check, "list_trusted", "On"
 		}
-		sb.WriteString("\n")
+		fmt.Fprintf(&sb, "  [%v]%v  : %v %v  (%v to toggle)[-]\n", attr, label, glyph, state, key)
 	}
-	if len(hia.availableRooms) > 0 {
-		sb.WriteString("[::b]Available Rooms:[-]\n")
-		for _, r := range hia.availableRooms {
-			fmt.Fprintf(&sb, "  #%v\n", r)
+	autoLine("AutoRcn ", snap.AutoReconn, "Ctrl-T")
+	autoLine("AutoList", snap.AutoList, "Ctrl-E")
+	autoLine("AutoWho ", snap.AutoWho, "Ctrl-E")
+	sb.WriteString(hia.app.Glyphs["divider1"] + "\n")
+
+	switch snap.Status {
+	case 2:
+		sb.WriteString("  Connected. Use Ctrl-A to add a room.\n")
+	case 1:
+		sb.WriteString("[#afafaf]  Connecting...[-]\n")
+	default:
+		sb.WriteString("  Use Ctrl-R to connect.\n")
+	}
+
+	if snap.MOTD != "" {
+		sb.WriteString(hia.app.Glyphs["divider1"] + "\n  MOTD:\n")
+		for _, line := range strings.Split(snap.MOTD, "\n") {
+			fmt.Fprintf(&sb, "  %v\n", line)
 		}
 	}
-	if sb.Len() == 0 {
-		sb.WriteString("[gray]No hub info available[-]")
+
+	if len(snap.JoinedRooms) > 0 {
+		sb.WriteString(hia.app.Glyphs["divider1"] + "\n  Joined rooms:\n")
+		for _, r := range snap.JoinedRooms {
+			fmt.Fprintf(&sb, "    #%v\n", r)
+		}
+	}
+	if len(snap.AvailRooms) > 0 {
+		sb.WriteString(hia.app.Glyphs["divider1"] + "\n  Available rooms:\n")
+		for _, r := range snap.AvailRooms {
+			fmt.Fprintf(&sb, "    #%v\n", r)
+		}
 	}
 	hia.view.SetText(sb.String())
 }

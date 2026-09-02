@@ -16,6 +16,7 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/gdamore/tcell/v2"
@@ -32,6 +33,7 @@ import (
 // `info = HubInfoArea(urwid.AttrMap(body, "scrollbar"), title=hub.name)`.
 func TestHubInfoBaseColor(t *testing.T) {
 	t.Parallel()
+	const dump = false
 
 	for _, tc := range []struct {
 		name  string
@@ -45,7 +47,11 @@ func TestHubInfoBaseColor(t *testing.T) {
 			t.Parallel()
 			app := NewApp(tc.theme, GlyphUnicode, ColorModeTrue)
 			hia := NewHubInfoArea(app, "TestHub")
-			hia.SetMOTD("hello")
+			hia.SetHubInfo(HubInfoSnapshot{
+				Name:   "TestHub",
+				Status: 2,
+				MOTD:   "hello",
+			})
 
 			screen := tcell.NewSimulationScreen("UTF-8")
 			if err := screen.Init(); err != nil {
@@ -56,12 +62,23 @@ func TestHubInfoBaseColor(t *testing.T) {
 			hia.view.SetRect(0, 0, 40, 5)
 			hia.view.Draw(screen)
 
-			// Probe the first text glyph in the view (the "M" of "MOTD:").
-			// The TextView's SetTextColor applies to untagged text; the
-			// "[::b]" tag only toggles bold, not color.
-			r, _, style, _ := cellContent(screen, 0, 0)
-			if r != 'M' {
-				t.Fatalf("cell (0,0) = %q, want 'M'", string(r))
+			// Probe the first text glyph in the view (the "H" of the
+			// "  Hub      :" header line the panel now opens with). The
+			// TextView's SetTextColor applies to untagged text.
+			// The panel's row 1 is "  Hub      : <name>" — 'H' at col 2.
+			if dump {
+				for row := 0; row < 5; row++ {
+					var sb strings.Builder
+					for col := 0; col < 40; col++ {
+						cr, _, _, _ := cellContent(screen, col, row)
+						sb.WriteRune(cr)
+					}
+					t.Logf("row %d: %q", row, sb.String())
+				}
+			}
+			r, _, style, _ := cellContent(screen, 2, 1)
+			if r != 'H' {
+				t.Fatalf("cell (2,1) = %q, want 'H'", string(r))
 			}
 			fg, _, _ := style.Decompose()
 			if got := uint32(fg.Hex()) & 0xffffff; got != tc.want {

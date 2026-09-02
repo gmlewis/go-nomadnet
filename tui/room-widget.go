@@ -149,6 +149,8 @@ func (rw *RoomWidget) Widget() tview.Primitive {
 func (rw *RoomWidget) handleInput(event *tcell.EventKey) *tcell.EventKey {
 	switch event.Key() {
 	case tcell.KeyCtrlD:
+		// Python's RoomMessageEdit sends on ctrl d (Channels.py
+		// RoomMessageEdit.keypress); Enter is NOT a send key.
 		rw.sendMessage()
 		return nil
 	case tcell.KeyCtrlX:
@@ -260,6 +262,9 @@ func (rw *RoomWidget) toggleUsers() {
 	// (the event loop is busy in this call and cannot drain the queue) and also
 	// blocks forever in tests where no event loop is running.
 }
+
+// RoomName returns the room this widget displays.
+func (rw *RoomWidget) RoomName() string { return rw.roomName }
 
 // SetMessages replaces the message list.
 func (rw *RoomWidget) SetMessages(msgs []ChannelMessage) {
