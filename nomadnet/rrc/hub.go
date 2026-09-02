@@ -1052,8 +1052,10 @@ func (h *RRCHub) sendEnv(env map[any]any) {
 // HandleData decodes a CBOR-encoded RRC envelope and dispatches it
 // to the appropriate handler based on the message type.
 func (h *RRCHub) HandleData(data []byte) {
+	log.Printf("DEBUG rrc HandleData: %d bytes: %x", len(data), data[:min(len(data), 40)])
 	env, err := DecodeEnvelope(data)
 	if err != nil {
+		log.Printf("DEBUG rrc HandleData decode failed: %v", err)
 		return
 	}
 
