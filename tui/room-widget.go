@@ -51,6 +51,10 @@ type RoomWidget struct {
 	OnToggleCollapse func()
 	OnTabComplete    func()
 	OnSplitDialog    func(text string, limit int)
+	// OnMemberClick fires when the user activates a member row (Python
+	// connects each ChannelListEntry's click signal to
+	// display.show_user_info with the peer hash, Channels.py:713).
+	OnMemberClick func(nick, hash string)
 
 	// Message data
 	chatMessages []ChannelMessage
@@ -370,7 +374,11 @@ func (rw *RoomWidget) renderMessages() {
 	rw.messages.SetText(sb.String())
 }
 
-// renderMembers renders the users list.
+// renderMembers renders the users list. Each row activates via
+// activateMember, which fires OnMemberClick with the member's nick and
+// identity hash (Python urwid.connect_signal(entry, "click",
+// self.display.show_user_info, (self.hub, peer_hash, full_name)),
+// Channels.py:713).
 func (rw *RoomWidget) renderMembers() {
 	rw.usersList.Clear()
 	for _, m := range rw.members {
@@ -384,6 +392,20 @@ func (rw *RoomWidget) renderMembers() {
 	if len(rw.members) == 0 {
 		rw.usersList.AddItem("[gray]No users[-]", "", 0, nil)
 	}
+	rw.usersList.SetSelectedFunc(func(i int, mainText, secondaryText string, shortcut rune) {
+		rw.ActivateMember(i)
+	})
+}
+
+// ActivateMember fires OnMemberClick for the member at the given users-pane
+// row (Python's entry click signal → show_user_info). Out-of-range indices
+// and the "No users" placeholder row are no-ops.
+func (rw *RoomWidget) ActivateMember(index int) {
+	if rw.OnMemberClick == nil || index < 0 || index >= len(rw.members) {
+		return
+	}
+	m := rw.members[index]
+	rw.OnMemberClick(m.Nick, m.Hash)
 }
 
 // HubConnected reports whether the hub is currently connected.

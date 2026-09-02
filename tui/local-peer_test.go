@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 )
 
 // renderLocalPeer draws the LocalPeerDisplay widget on a 50x12 simulation
@@ -175,5 +176,43 @@ func TestLocalPeerSetData(t *testing.T) {
 	lp.SetName("New Seed")
 	if got := lp.Name(); got != "New Seed" {
 		t.Errorf("Name after SetName = %q, want \"New Seed\"", got)
+	}
+}
+
+// TestLocalPeerButtonsFireCallbacks verifies the Save and Node Info buttons
+// fire OnSave (with the name edit's content) and OnNodeInfo, and that
+// SetLocalPeerHandlers connects the widget's callbacks (the app-layer wiring
+// seam the Network display exposes). Python's LocalPeer buttons run
+// save_query / node_info_query through the delegate (Network.py:1282, 1399).
+func TestLocalPeerButtonsFireCallbacks(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	lp := NewLocalPeerDisplay(app, "<abcd>", "<1234>", "My Name", time.Time{})
+
+	var savedName = "?"
+	var nodeInfo bool
+	lp.OnSave = func(name string) { savedName = name }
+	lp.OnNodeInfo = func() { nodeInfo = true }
+
+	// The buttons are created in the constructor, so firing them directly
+	// exercises the same selected-funcs a click/Enter activates.
+	lp.saveBtn.InputHandler()(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone), func(p tview.Primitive) {})
+	if savedName != "My Name" {
+		t.Errorf("Save fired OnSave with name %q, want the name edit content", savedName)
+	}
+	lp.nodeInfoBtn.InputHandler()(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone), func(p tview.Primitive) {})
+	if !nodeInfo {
+		t.Error("Node Info did not fire OnNodeInfo")
+	}
+
+	// SetLocalPeerHandlers re-points the callbacks (the wiring seam).
+	var wired string
+	nd := &NetworkDisplay{localPeer: lp}
+	nd.SetLocalPeerHandlers(func(name string) { wired = "save:" + name }, nil, nil)
+	savedName = ""
+	lp.saveBtn.InputHandler()(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone), func(p tview.Primitive) {})
+	if wired != "save:My Name" {
+		t.Errorf("wired handler got %q, want %q", wired, "save:My Name")
 	}
 }

@@ -111,6 +111,16 @@ func NewInterfacesDisplay(app *App, interfaces []InterfaceInfo) *InterfacesDispl
 	title := newCenteredText(tcell.ColorDefault, "Interfaces", "")
 
 	id.listBox = newInterfaceListBox(id.app, id.glyphset)
+	// Row activation (Python SelectableInterfaceItem.keypress "enter" →
+	// parent.switch_to_show_interface(name), Interfaces.py:1246-1249): the
+	// layout input capture owns Enter in the tview dispatch, and the listbox's
+	// own InputHandler forwards the same activation to OnShowInterface when it
+	// owns the event.
+	id.listBox.onActivate = func(idx int) {
+		if id.OnShowInterface != nil && idx >= 0 && idx < len(id.items) {
+			id.OnShowInterface(idx)
+		}
+	}
 	id.SetInterfaces(interfaces)
 
 	// No outer border (Python: pile = urwid.Pile([box_adapter]) wrapped in

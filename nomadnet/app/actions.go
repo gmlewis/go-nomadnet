@@ -100,6 +100,63 @@ func (a *App) DeleteConversation(sourceHash string) {
 	}
 }
 
+// conversationFor returns the cached conversation for the hex source hash,
+// creating and scanning it on first access (the get-or-create Python performs
+// on every Conversation construction). It returns nil when no conversation
+// path is configured.
+func (a *App) conversationFor(sourceHash string) *conversation.Conversation {
+	if a.ConversationPath == "" {
+		return nil
+	}
+	conv := a.ConversationCache.Get(sourceHash)
+	if conv == nil {
+		conv = conversation.NewConversation(sourceHash, filepath.Join(a.ConversationPath, sourceHash))
+		a.ConversationCache.Store(conv)
+	}
+	if a.Transport != nil {
+		conv.SetTransport(a.Transport)
+	}
+	// Python Conversation.__init__ recalls the peer on every conversation
+	// build (Conversation.py:204-208); doing the same keeps the peer's
+	// known-destinations entry alive across long-lived sessions.
+	conv.RecallPeer()
+	if a.Router != nil {
+		conv.SetPendingChecker(func(hash []byte) bool {
+			return a.Router.GetOutboundProgress(hash) != nil
+		})
+	}
+	if err := conv.ScanStorage(); err != nil && a.Logger != nil {
+		a.Logger.Error("Could not scan conversation %v: %v", sourceHash, err)
+	}
+	return conv
+}
+
+// PurgeFailedMessages removes every FAILED message from the conversation for
+// the hex source hash, mirroring Python ConversationWidget.keypress
+// "ctrl u" → Conversation.purge_failed (Conversations.py:2227-2228,
+// Conversation.py:274-283): the message files are deleted from disk and the
+// in-memory list drops them. A conversation that does not exist is a no-op.
+func (a *App) PurgeFailedMessages(sourceHash string) {
+	conv := a.conversationFor(sourceHash)
+	if conv == nil {
+		return
+	}
+	conv.PurgeFailed()
+}
+
+// ClearConversationHistory removes every message from the conversation for the
+// hex source hash, mirroring Python clear_history_dialog's confirmed() →
+// Conversation.clear_history (Conversations.py:2129, Conversation.py:284-292):
+// all message files are deleted from disk and the in-memory list empties. A
+// conversation that does not exist is a no-op.
+func (a *App) ClearConversationHistory(sourceHash string) {
+	conv := a.conversationFor(sourceHash)
+	if conv == nil {
+		return
+	}
+	conv.ClearHistory()
+}
+
 // CreateDirectoryEntry creates and remembers a directory entry for a new peer
 // with the given source hash and optional display name, mirroring the Python
 // NomadNet create_directory_entry flow. The new entry defaults to the unknown

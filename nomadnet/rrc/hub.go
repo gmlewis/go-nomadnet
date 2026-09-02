@@ -805,6 +805,42 @@ func (h *RRCHub) GetMembers(room string) []string {
 	return members
 }
 
+// RoomMemberInfo is one room member: the identity-hash hex (empty when the
+// joiner's hash is unknown) and the display nick.
+type RoomMemberInfo struct {
+	HashHex string
+	Nick    string
+}
+
+// GetRoomMembers returns the members of the given room as hash/nick pairs
+// sorted case-insensitively by nick, mirroring the member list Python's
+// RoomWidget._refresh_users_pane builds (Channels.py:663-724: entries sorted
+// by name.lower(), each carrying the peer hash for the user-info dialog).
+// The hash comes from the hub's nick table (keyed by the join envelope's
+// source identity hash); a member with no known hash carries an empty HashHex.
+func (h *RRCHub) GetRoomMembers(room string) []RoomMemberInfo {
+	room = strings.ToLower(room)
+	h.lock.Lock()
+	defer h.lock.Unlock()
+
+	set := h.Members[room]
+	out := make([]RoomMemberInfo, 0, len(set))
+	for nick := range set {
+		hashHex := ""
+		for srcHex, nick2 := range h.Nicks {
+			if nick2 == nick {
+				hashHex = srcHex
+				break
+			}
+		}
+		out = append(out, RoomMemberInfo{HashHex: hashHex, Nick: nick})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return strings.ToLower(out[i].Nick) < strings.ToLower(out[j].Nick)
+	})
+	return out
+}
+
 // DisplayNameFor returns the display name for a peer hash.
 func (h *RRCHub) DisplayNameFor(peer []byte) string {
 	h.lock.Lock()
@@ -836,6 +872,24 @@ func (h *RRCHub) GetHubName() string {
 	h.lock.Lock()
 	defer h.lock.Unlock()
 	return h.Name
+}
+
+// SetHubName sets the hub's display name under the hub lock, mirroring
+// Python edit_hub_dialog's confirmed() `hub.name = nm` assignment
+// (Channels.py:2026).
+func (h *RRCHub) SetHubName(name string) {
+	h.lock.Lock()
+	defer h.lock.Unlock()
+	h.Name = name
+}
+
+// GetServerName returns the hub's ADVERTISED server name (Python hub.hub_name,
+// set from the welcome envelope), for the TUI hub-info and edit-hub dialogs.
+// Empty until the hub connects and sends its welcome.
+func (h *RRCHub) GetServerName() string {
+	h.lock.Lock()
+	defer h.lock.Unlock()
+	return h.HubName
 }
 
 // GetHubStatus returns the hub's connection status under the hub lock, for the
@@ -1361,7 +1415,9 @@ func (h *RRCHub) handleWelcome(body any) {
 	// which rooms exist. The reply NOTICE is consumed silently.
 	if h.AutoList {
 		go func() {
-			h.SendCommand("/list", "")
+			if err := h.SendCommand("/list", ""); err != nil {
+				log.Printf("SendCommand('/list'): %v", err)
+			}
 		}()
 	}
 }
@@ -1386,9 +1442,9 @@ func ParseRoomListNotice(text string) map[string]*string {
 		if s == "" {
 			continue
 		}
-		if idx := strings.Index(s, " - "); idx >= 0 {
-			name := strings.TrimSpace(s[:idx])
-			topic := strings.TrimSpace(s[idx+3:])
+		if name, topic, found := strings.Cut(s, " - "); found {
+			name = strings.TrimSpace(name)
+			topic = strings.TrimSpace(topic)
 			rooms[strings.ToLower(name)] = &topic
 		} else {
 			rooms[strings.ToLower(strings.TrimPrefix(s, "#"))] = nil

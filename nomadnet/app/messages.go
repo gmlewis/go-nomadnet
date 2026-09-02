@@ -16,8 +16,6 @@
 package app
 
 import (
-	"path/filepath"
-
 	"github.com/gmlewis/go-nomadnet/nomadnet/conversation"
 )
 
@@ -33,31 +31,8 @@ import (
 // no messages. The TUI wiring layer (cmd/gonomadnet/textui.go) maps each
 // entry onto its ConversationMessage for the LXMessageWidget header/body.
 func (a *App) ConversationMessages(sourceHash string) []conversation.MessageDisplayData {
-	if a.ConversationPath == "" {
-		return nil
-	}
-	conv := a.ConversationCache.Get(sourceHash)
+	conv := a.conversationFor(sourceHash)
 	if conv == nil {
-		conv = conversation.NewConversation(sourceHash, filepath.Join(a.ConversationPath, sourceHash))
-		a.ConversationCache.Store(conv)
-	}
-	if a.Transport != nil {
-		conv.SetTransport(a.Transport)
-	}
-	// Python Conversation.__init__ recalls the peer on every conversation
-	// build (Conversation.py:204-208); doing the same keeps the peer's
-	// known-destinations entry alive across long-lived sessions.
-	conv.RecallPeer()
-	// Wire the pending-outbound lookup so Load marks interrupted pending
-	// messages FAILED, mirroring Python's ConversationMessage.load
-	// (Conversation.py:451-460). The router reports a hash as pending when
-	// it is still in the pending-outbound or pending-deferred-stamps queue.
-	if a.Router != nil {
-		conv.SetPendingChecker(func(hash []byte) bool {
-			return a.Router.GetOutboundProgress(hash) != nil
-		})
-	}
-	if err := conv.ScanStorage(); err != nil {
 		return nil
 	}
 	return conv.DisplayMessages()

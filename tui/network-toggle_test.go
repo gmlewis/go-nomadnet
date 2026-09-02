@@ -125,3 +125,77 @@ func TestFormatAnnounceEntryTruncate(t *testing.T) {
 		t.Errorf("full hash display: got %q, want %q", got, ann.SourceHash)
 	}
 }
+
+// TestNetworkToggleListFiresOnToggleList pins Python NetworkLeftPile.keypress
+// "ctrl l" → NetworkDisplay.toggle_list (Network.py:1600-1601 + 1668-1678):
+// the display swaps the left-pane widget between the Announce Stream and
+// Saved Nodes (boot state = Saved Nodes, Python list_display=1), then the
+// OnToggleList callback fires so the wiring layer can refresh the
+// newly-shown list's data.
+func TestNetworkToggleListFiresOnToggleList(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	nd := NewNetworkDisplay(app, []AnnounceEntry{
+		{DisplayName: "A", SourceHash: "aa", Timestamp: time.Now()},
+	}, nil)
+
+	if !nd.ShowingNodes() {
+		t.Fatal("the Network page boots on the Saved Nodes list (Python list_display=1)")
+	}
+	var toggles int
+	nd.OnToggleList = func() { toggles++ }
+
+	nd.toggleList()
+	if nd.ShowingNodes() {
+		t.Error("the first toggleList should show the Announce Stream")
+	}
+	if toggles != 1 {
+		t.Errorf("OnToggleList fired %v times, want 1", toggles)
+	}
+
+	nd.toggleList()
+	if !nd.ShowingNodes() {
+		t.Error("second toggleList should restore the Saved Nodes list")
+	}
+	if toggles != 2 {
+		t.Errorf("OnToggleList fired %v times, want 2", toggles)
+	}
+}
+
+// TestNetworkUseAsPNPassesAnnounce pins Python use_pn (Network.py:189-194):
+// the AnnounceInfo "Use as default" action pops back to the announce stream
+// and hands the ANNOUNCE's source hash to the callback so the wiring layer
+// can set it as the user-selected propagation node.
+func TestNetworkUseAsPNPassesAnnounce(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	ann := AnnounceEntry{
+		DisplayName: "PN1",
+		Type:        "pn",
+		SourceHash:  "bbaabbcc",
+		Timestamp:   time.Now(),
+	}
+	nd := NewNetworkDisplay(app, []AnnounceEntry{ann}, nil)
+
+	var got AnnounceEntry
+	var called bool
+	nd.OnUseAsPN = func(a AnnounceEntry) { called = true; got = a }
+
+	nd.showAnnounceDetail(0)
+	if !nd.inInfoView {
+		t.Fatal("showAnnounceDetail did not enter info view")
+	}
+	nd.useAsPN(ann)
+
+	if !called {
+		t.Fatal("OnUseAsPN did not fire")
+	}
+	if got.SourceHash != "bbaabbcc" {
+		t.Errorf("OnUseAsPN announce = %+v, want the announce the button acted on", got)
+	}
+	if nd.inInfoView {
+		t.Error("useAsPN should return to the stream view (Python show_announce_stream)")
+	}
+}

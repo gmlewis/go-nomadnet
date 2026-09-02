@@ -72,8 +72,9 @@ func (v rrcHubView) AddressHex() string { return v.hub.HubAddressHex() }
 // StatusText returns the detailed connection status text.
 func (v rrcHubView) StatusText() string { return v.hub.GetStatusText() }
 
-// ServerName returns the hub's advertised server name.
-func (v rrcHubView) ServerName() string { return v.hub.GetHubName() }
+// ServerName returns the hub's ADVERTISED server name (Python hub.hub_name,
+// set from the welcome envelope), empty until the hub connects.
+func (v rrcHubView) ServerName() string { return v.hub.GetServerName() }
 
 // MOTD returns the hub's message of the day.
 func (v rrcHubView) MOTD() string { return v.hub.GetMOTD() }

@@ -67,9 +67,9 @@ func TestHubInfoBaseColor(t *testing.T) {
 			// TextView's SetTextColor applies to untagged text.
 			// The panel's row 1 is "  Hub      : <name>" — 'H' at col 2.
 			if dump {
-				for row := 0; row < 5; row++ {
+				for row := range 5 {
 					var sb strings.Builder
-					for col := 0; col < 40; col++ {
+					for col := range 40 {
 						cr, _, _, _ := cellContent(screen, col, row)
 						sb.WriteRune(cr)
 					}

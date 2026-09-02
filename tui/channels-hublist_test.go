@@ -33,6 +33,12 @@ type fakeHub struct {
 	messages  []string
 	unread    []string
 	mentioned []string
+	// Hub info panel + edit-hub dialog fields.
+	addressHex    string
+	serverName    string
+	autoReconnect bool
+	autoList      bool
+	autoWho       bool
 }
 
 func (f fakeHub) Name() string           { return f.name }
@@ -44,13 +50,13 @@ func (f fakeHub) MentionRooms() []string { return f.mentioned }
 
 // Hub info panel fields (defaults keep the existing tests focused on the
 // hub-list composition).
-func (f fakeHub) AddressHex() string          { return "" }
+func (f fakeHub) AddressHex() string          { return f.addressHex }
 func (f fakeHub) StatusText() string          { return "" }
-func (f fakeHub) ServerName() string          { return "" }
+func (f fakeHub) ServerName() string          { return f.serverName }
 func (f fakeHub) MOTD() string                { return "" }
-func (f fakeHub) AutoReconnect() bool         { return false }
-func (f fakeHub) AutoList() bool              { return false }
-func (f fakeHub) AutoWho() bool               { return false }
+func (f fakeHub) AutoReconnect() bool         { return f.autoReconnect }
+func (f fakeHub) AutoList() bool              { return f.autoList }
+func (f fakeHub) AutoWho() bool               { return f.autoWho }
 func (f fakeHub) AvailableRoomList() []string { return nil }
 
 // TestComposeHubListGolden pins Python Channels._compose_list_widgets

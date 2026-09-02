@@ -71,6 +71,9 @@ func (cb *UrwidCheckBox) SetChecked(checked bool) {
 // IsChecked reports whether the checkbox is currently checked.
 func (cb *UrwidCheckBox) IsChecked() bool { return cb.checked }
 
+// Label returns the checkbox's label text (urwid's label property).
+func (cb *UrwidCheckBox) Label() string { return cb.label }
+
 // SetChangedFunc installs a callback fired when the checked state changes
 // (urwid's on_state_change / "change" signal; nomadnet's dialogs use the
 // value read back at Save time, so wiring a callback is optional).

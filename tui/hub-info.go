@@ -257,7 +257,7 @@ func (hia *HubInfoArea) refreshView() {
 
 	if snap.MOTD != "" {
 		sb.WriteString(hia.app.Glyphs["divider1"] + "\n  MOTD:\n")
-		for _, line := range strings.Split(snap.MOTD, "\n") {
+		for line := range strings.SplitSeq(snap.MOTD, "\n") {
 			fmt.Fprintf(&sb, "  %v\n", line)
 		}
 	}

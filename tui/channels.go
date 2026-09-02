@@ -136,6 +136,16 @@ type ChannelsDisplay struct {
 	OnLeaveRoom           func(room string)
 	OnToggleCollapse      func()
 	OnMemberClick         func(nick, hash string)
+	// OnRemoveSelected runs the confirmed() branch of Python
+	// remove_selected_dialog (Channels.py:1892-1904): room set → part_room +
+	// remove_room; empty room → rrc.remove_hub. The wiring layer performs the
+	// hub mutation, refreshes the list, and shows the placeholder.
+	OnRemoveSelected func(hubIdx int, room string)
+	// OnEditHubSubmitted runs the confirmed() branch of Python edit_hub_dialog
+	// (Channels.py:2023-2037): apply the edited display name and the three
+	// auto toggles, save the RRC manager, refresh the list, and re-show the
+	// hub info panel when this hub is still selected.
+	OnEditHubSubmitted func(hubIdx int, name string, autoReconnect, autoList, autoWho bool)
 }
 
 // SetShortcutFocus sets which of the three Channels shortcut bars
@@ -355,8 +365,9 @@ func (cd *ChannelsDisplay) showDialogOverlayInput(title, label, defaultValue, co
 }
 
 // showDialogOverlayConfirm shows a Yes/No confirm overlaid on the channels
-// display (Python's _show_dialog_overlay, 60% width, PACK).
-func (cd *ChannelsDisplay) showDialogOverlayConfirm(message string, onYes, onNo func()) {
+// display (Python's _show_dialog_overlay, 60% width, PACK). title carries the
+// dialog's LineBox title (Python's "?" for remove_selected_dialog).
+func (cd *ChannelsDisplay) showDialogOverlayConfirm(title, message string, onYes, onNo func()) {
 	close := cd.closeDialog
 	yes := NewUrwidButton("Yes").SetSelectedFunc(func() {
 		close()
@@ -375,7 +386,7 @@ func (cd *ChannelsDisplay) showDialogOverlayConfirm(message string, onYes, onNo 
 	layout := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(NewUrwidCenterText(message), msgRows, 0, false).
 		AddItem(row, 1, 0, true)
-	dialog := NewDialogLineBox("Confirm", layout, close)
+	dialog := NewDialogLineBox(title, layout, close)
 	cd.showDialogOverlay(dialog, msgRows+1+2)
 	wireDialogNav(cd.app, close, []tview.Primitive{yes, no})
 }
@@ -453,6 +464,21 @@ func (cd *ChannelsDisplay) ShowHubInfo(hubIdx int) {
 	}
 	if cd.hubInfo == nil {
 		cd.hubInfo = NewHubInfoArea(cd.app, hv.Name())
+		// Python's HubInfoArea.keypress delegates EVERY shortcut to
+		// self.delegate (the Channels display), Channels.py:381-409. Wire the
+		// panel's callbacks to the display's own dispatch so Ctrl-Y (and the
+		// other hub-info shortcuts) behave identically when the panel holds
+		// focus — including the Ctrl-Y channel-list toggle, which the panel's
+		// own handler previously swallowed with no action.
+		hia := cd.hubInfo
+		hia.OnNewHub = func() { cd.handleInput(tcell.NewEventKey(tcell.KeyCtrlN, 0, tcell.ModNone)) }
+		hia.OnJoinRoom = func() { cd.handleInput(tcell.NewEventKey(tcell.KeyCtrlA, 0, tcell.ModNone)) }
+		hia.OnConnect = func() { cd.handleInput(tcell.NewEventKey(tcell.KeyCtrlR, 0, tcell.ModNone)) }
+		hia.OnDisconnect = func() { cd.handleInput(tcell.NewEventKey(tcell.KeyCtrlW, 0, tcell.ModNone)) }
+		hia.OnToggleAutoReconnect = func() { cd.handleInput(tcell.NewEventKey(tcell.KeyCtrlT, 0, tcell.ModNone)) }
+		hia.OnEditHub = func() { cd.handleInput(tcell.NewEventKey(tcell.KeyCtrlE, 0, tcell.ModNone)) }
+		hia.OnRemoveHub = func() { cd.handleInput(tcell.NewEventKey(tcell.KeyCtrlX, 0, tcell.ModNone)) }
+		hia.OnToggleChannelList = func() { cd.handleInput(tcell.NewEventKey(tcell.KeyCtrlY, 0, tcell.ModNone)) }
 	}
 	cd.hubInfo.SetHubInfo(*snap)
 	cd.paneMode = "info"
@@ -463,6 +489,23 @@ func (cd *ChannelsDisplay) ShowHubInfo(hubIdx int) {
 
 // RoomMessagesFunc returns the current message buffer for a hub's room.
 type RoomMessagesFunc func(hubIdx int, room string) []ChannelMessage
+
+// RoomMembersFunc returns the member list for a hub's room (Python
+// RoomWidget._refresh_users_pane reading hub.get_members).
+type RoomMembersFunc func(hubIdx int, room string) []ChannelMember
+
+// RefreshRoomMembers reloads the showing room's member list so joins/parts
+// appear live (Python _refresh_users_pane via update_messages).
+func (cd *ChannelsDisplay) RefreshRoomMembers(refresh RoomMembersFunc) {
+	if cd.paneMode != "room" || cd.selectedHubIdx < 0 || cd.selectedHubIdx >= len(cd.HubViewsCache) {
+		return
+	}
+	room := cd.selectedRoom
+	if room == "" {
+		return
+	}
+	cd.roomWidget.SetMembers(refresh(cd.selectedHubIdx, room))
+}
 
 // ShowRoom swaps the right pane to the room chat view (Python
 // _show_room, Channels.py:1841-1851): the RoomWidget for the hub+room with
@@ -487,6 +530,13 @@ func (cd *ChannelsDisplay) ShowRoom(hubIdx int, room string, msgs []ChannelMessa
 		rw.OnLeaveRoom = func() {
 			if cd.OnLeaveRoom != nil {
 				cd.OnLeaveRoom(room)
+			}
+		}
+		// Member-row activation surfaces the user info dialog (Python
+		// show_user_info, Channels.py:2119).
+		rw.OnMemberClick = func(nick, hash string) {
+			if cd.OnMemberClick != nil {
+				cd.OnMemberClick(nick, hash)
 			}
 		}
 	}
@@ -658,9 +708,17 @@ func (cd *ChannelsDisplay) ChannelListVisible() bool {
 
 // ToggleChannelListState toggles the channel list visibility state, rebuilding
 // the content Flex so the pane actually hides. Matches Python's
-// _apply_channel_list_visibility (Channels.py:1545-1568): [left(36), right(1)]
-// when visible; [gutter(1), right(1)] when hidden (show_gutters defaults True).
+// toggle_channel_list + _apply_channel_list_visibility (Channels.py:1531-1568):
+// Python GUARDS the toggle — while the list is visible and the right pane
+// still shows the placeholder (nothing opened yet) Ctrl-Y is a no-op — and
+// once applied the layout is [left(36), right(1)] when visible and
+// [gutter(1), right(1)] when hidden (show_gutters defaults True).
 func (cd *ChannelsDisplay) ToggleChannelListState() {
+	// Python toggle_channel_list guard (Channels.py:1533-1534): the list cannot
+	// collapse while the right pane still shows the placeholder.
+	if cd.channelListVisible && cd.paneMode == "" {
+		return
+	}
 	cd.channelListVisible = !cd.channelListVisible
 	if cd.content == nil {
 		return
@@ -678,15 +736,28 @@ func (cd *ChannelsDisplay) ToggleChannelListState() {
 	// would deadlock both there and in tests with no running event loop.
 }
 
+// ShowPlaceholder restores the right pane to the "Select or add a hub to
+// begin" placeholder (Python show_placeholder, Channels.py:1834-1840).
+func (cd *ChannelsDisplay) ShowPlaceholder() {
+	cd.paneMode = ""
+	cd.rightPane.Clear()
+	cd.rightPane.AddItem(cd.placeholder, 0, 1, false)
+}
+
 // SetMessages replaces the messages view content.
 func (cd *ChannelsDisplay) SetMessages(text string) {
 	cd.messages.SetText(text)
 }
 
 // ToggleCollapse flips the join/leave collapse flag, matching Python's
-// toggle_join_part_collapse (Channels.py:1537), then fires OnToggleCollapse.
+// toggle_join_part_collapse (Channels.py:1537-1543): when a room widget is
+// showing its message buffer re-renders with the new state (Python
+// update_messages(replace=True)); then OnToggleCollapse fires.
 func (cd *ChannelsDisplay) ToggleCollapse() {
 	cd.collapseJoinPart = !cd.collapseJoinPart
+	if cd.paneMode == "room" && cd.roomWidget != nil {
+		cd.roomWidget.SetCollapseJoinPart(cd.collapseJoinPart)
+	}
 	if cd.OnToggleCollapse != nil {
 		cd.OnToggleCollapse()
 	}
@@ -770,26 +841,54 @@ func FormatMessage(msg ChannelMessage, theme int) string {
 	}
 }
 
-// ShowUserInfoDialog displays user information for a channel member.
-// Matches Python's ChannelsDisplay.show_user_info() at
-// Channels.py:2119-2155.
-func (cd *ChannelsDisplay) ShowUserInfoDialog(nick, identityHash string, isSelf bool, onOpenConversation func()) {
-	var sb strings.Builder
-	sb.WriteString("\n")
-	fmt.Fprintf(&sb, " Nick     : %v\n", nick)
-	fmt.Fprintf(&sb, " Identity : %v\n", identityHash)
-
-	if isSelf {
-		sb.WriteString("\n (This is you)\n")
-	}
-	text := sb.String()
-	textRows := strings.Count(text, "\n") + 1
-
+// ShowUserInfoDialog displays user information for a channel member, matching
+// Python's show_user_info (Channels.py:2119-2197): the Nick/Identity lines,
+// the recalled " LXMF : " line when the peer's identity is cached, the
+// "(This is you)" branch for the local user, the "Identity not in local
+// cache" branch when no LXMF address could be derived, and the
+// Open Conversation(0.55)/spacer/Close(0.40) button row (Close alone takes
+// weight 1 in the self and cache-miss branches).
+func (cd *ChannelsDisplay) ShowUserInfoDialog(nick, identityHash, lxmfHash string, isSelf bool, onOpenConversation func()) {
 	close := cd.closeDialog
+
+	// urwid Pile rows: each entry is one row; a Pile item of plain Text is
+	// 1 row, a Columns row is 1 row.
+	var rows []tview.Primitive
+	addLeft := func(text string) {
+		rows = append(rows, NewUrwidLeftText(text))
+	}
+	addCenter := func(text string) {
+		rows = append(rows, NewUrwidCenterText(text))
+	}
+	addLeft("")
+	addLeft(" Nick     : " + nick)
+	addLeft(" Identity : " + identityHash)
+	if lxmfHash != "" {
+		addLeft(" LXMF     : " + lxmfHash)
+	}
+
 	var row *urwidColumns
+	closeFull := func() *urwidColumns {
+		// Python's self / cache-miss branch: Columns([(WEIGHT, 1, Close)]) —
+		// a single full-width column carrying the Close button.
+		r := newURWIDColumns(0, NewUrwidButton("Close").SetSelectedFunc(close))
+		r.SetWeight(0, 1)
+		return r
+	}
 	if isSelf {
-		row = CreateUrwidButtonRow(NewUrwidButton("Close").SetSelectedFunc(close))
+		addLeft("")
+		addCenter(" (This is you)")
+		addLeft("")
+		row = closeFull()
+	} else if lxmfHash == "" {
+		addLeft("")
+		addCenter(" Identity not in local cache;")
+		addCenter(" conversation can't be opened until")
+		addCenter(" the peer announces.")
+		addLeft("")
+		row = closeFull()
 	} else {
+		addLeft("")
 		openBtn := NewUrwidButton("Open Conversation").SetSelectedFunc(func() {
 			close()
 			if onOpenConversation != nil {
@@ -798,18 +897,21 @@ func (cd *ChannelsDisplay) ShowUserInfoDialog(nick, identityHash string, isSelf 
 		})
 		closeBtn := NewUrwidButton("Close").SetSelectedFunc(close)
 		row = CreateUrwidButtonRow(openBtn, closeBtn)
+		// Python weights: Open Conversation 0.55, spacer 0.05, Close 0.40.
+		// CreateUrwidButtonRow uses 0.45/0.10; re-weight to match.
+		row.SetWeight(0, 11) // 0.55
+		row.SetWeight(1, 1)  // 0.05
+		row.SetWeight(2, 8)  // 0.40
+	}
+	rows = append(rows, row)
+
+	layout := tview.NewFlex().SetDirection(tview.FlexRow)
+	for _, r := range rows {
+		layout.AddItem(r, 1, 0, false)
 	}
 
-	info := tview.NewTextView().
-		SetDynamicColors(true).
-		SetTextColor(tcell.ColorDefault).
-		SetText(text)
-	layout := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(info, textRows, 0, false).
-		AddItem(row, 1, 0, true)
-
 	dialog := NewDialogLineBox("User Info", layout, close)
-	cd.showDialogOverlay(dialog, textRows+1+2)
+	cd.showDialogOverlay(dialog, len(rows)+2)
 }
 
 // MaybeAutoconnect connects hub if it is disconnected or in a failed state,
@@ -881,22 +983,109 @@ func (cd *ChannelsDisplay) JoinRoomDialog() {
 	}, nil)
 }
 
-// RemoveSelectedDialog shows confirmation dialog to remove selected hub/room
-// (Python Channels.remove_selected_dialog), overlaid on the channels display.
+// RemoveSelectedDialog shows the confirm dialog for the selected hub/room row
+// (Python Channels.remove_selected_dialog, Channels.py:1882-1925): a room row
+// prompts "Leave and remove room\n#<room>\non hub <name>?"; a hub header row
+// prompts "Remove hub\n<name>\nfrom this client?\n All Message history will be
+// discarded."; the overlay is titled "?" and Yes fires OnRemoveSelected after
+// closing. With no hub-bearing row selected it is a no-op.
 func (cd *ChannelsDisplay) RemoveSelectedDialog() {
 	if cd.app == nil {
 		return
 	}
-	cd.showDialogOverlayConfirm("Remove selected hub/room?", func() {
+	entry, ok := cd.SelectedEntry()
+	if !ok || entry.Kind == RowSpacer {
+		return
+	}
+	hubName := ""
+	if entry.HubIdx >= 0 && entry.HubIdx < len(cd.HubViewsCache) {
+		hubName = cd.HubViewsCache[entry.HubIdx].Name()
+	}
+	room := ""
+	prompt := "Remove hub\n" + hubName + "\nfrom this client?\n All Message history will be discarded."
+	if entry.Kind == RowRoom {
+		room = entry.Room
+		prompt = "Leave and remove room\n#" + room + "\non hub " + hubName + "?"
+	}
+	cd.showDialogOverlayConfirm("?", prompt+"\n", func() {
+		if cd.OnRemoveSelected != nil {
+			cd.OnRemoveSelected(entry.HubIdx, room)
+		}
 	}, nil)
 }
 
-// EditHubDialog shows dialog to edit the display name of selected hub (Python
-// Channels.edit_hub_dialog), overlaid on the channels display (60% width).
+// EditHubDialog shows the edit-hub dialog for the selected hub (Python
+// Channels.edit_hub_dialog, Channels.py:2005-2060): the hub's address and
+// server lines, a divider, a "Display name : " input pre-filled with the hub's
+// display name, the three auto checkboxes seeded from the hub's live states,
+// and Save/Back buttons. Save fires OnEditHubSubmitted with the edited values
+// after closing (Python confirmed(): a blank name falls back to the hub's
+// existing name). With no hub row selected it is a no-op.
 func (cd *ChannelsDisplay) EditHubDialog() {
 	if cd.app == nil {
 		return
 	}
-	cd.showDialogOverlayInput("Edit Hub", "Display name:", "", "Save", "Cancel", func(nameText string) {
-	}, nil)
+	entry, ok := cd.SelectedEntry()
+	if !ok || entry.Kind != RowHub || entry.HubIdx < 0 || entry.HubIdx >= len(cd.HubViewsCache) {
+		return
+	}
+	hv := cd.HubViewsCache[entry.HubIdx]
+
+	server := hv.ServerName()
+	if server == "" {
+		server = "(unknown until connected)"
+	}
+	g := cd.app.Glyphs
+
+	nameInput := tview.NewInputField()
+	nameInput.SetLabel("Display name : ")
+	nameInput.SetText(hv.Name())
+	nameInput.SetFieldBackgroundColor(tcell.ColorDefault)
+	nameInput.SetFieldTextColor(tcell.ColorDefault)
+
+	cbRcn := NewUrwidCheckBox("Auto-reconnect on disconnect", hv.AutoReconnect())
+	cbList := NewUrwidCheckBox("Auto-fetch room list on connect", hv.AutoList())
+	cbWho := NewUrwidCheckBox("Auto-fetch members on room join", hv.AutoWho())
+
+	close := cd.closeDialog
+	submit := func() {
+		// Python confirmed(): nm = e_name.get_edit_text().strip() or hub.name.
+		name := strings.TrimSpace(nameInput.GetText())
+		if name == "" {
+			name = hv.Name()
+		}
+		close()
+		if cd.OnEditHubSubmitted != nil {
+			cd.OnEditHubSubmitted(entry.HubIdx, name, cbRcn.IsChecked(), cbList.IsChecked(), cbWho.IsChecked())
+		}
+	}
+	saveBtn := NewUrwidButton("Save").SetSelectedFunc(submit)
+	backBtn := NewUrwidButton("Back").SetSelectedFunc(close)
+	// Python button order: Save(0.45), spacer(0.10), Back(0.45).
+	row := CreateUrwidButtonRow(saveBtn, backBtn)
+	nameInput.SetDoneFunc(func(key tcell.Key) {
+		if key == tcell.KeyEnter {
+			submit()
+		}
+	})
+
+	address := NewUrwidLeftText(" Address : " + hv.AddressHex())
+	serverLine := NewUrwidLeftText(" Server  : " + server)
+	blank1 := tview.NewBox()
+	blank2 := tview.NewBox()
+	layout := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(address, 1, 0, false).
+		AddItem(serverLine, 1, 0, false).
+		AddItem(newDividerRow(g["divider1"]), 1, 0, false).
+		AddItem(nameInput, 1, 0, true).
+		AddItem(blank1, 1, 0, false).
+		AddItem(cbRcn, 1, 0, false).
+		AddItem(cbList, 1, 0, false).
+		AddItem(cbWho, 1, 0, false).
+		AddItem(blank2, 1, 0, false).
+		AddItem(row, 1, 0, false)
+	dialog := NewDialogLineBox("Edit Hub", layout, close)
+	// PACK height: 9 content rows + button row + 2 border.
+	cd.showDialogOverlay(dialog, 12)
+	wireDialogNav(cd.app, close, []tview.Primitive{nameInput, cbRcn, cbList, cbWho, saveBtn, backBtn})
 }

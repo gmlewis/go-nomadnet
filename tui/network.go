@@ -150,7 +150,10 @@ type NetworkDisplay struct {
 	OnLXMFPeerSync   func(destinationHash []byte)
 
 	// In-detail action callbacks (Python AnnounceInfo buttons).
-	OnUseAsPN  func() // [Use as default] — set default propagation node
+	// [Use as default] — set default propagation node. The callback receives
+	// the announce the button acted on (Python use_pn, Network.py:189-194,
+	// sets the user-selected propagation node to the announce's source hash).
+	OnUseAsPN  func(ann AnnounceEntry)
 	OnConverse func() // [Converse] — open a conversation with the peer
 	// OnMsgOp is fired by [Msg Op] on the node announce/node info views. It
 	// receives the operator's LXMF destination hash (hex) — Python msg_op
@@ -667,11 +670,13 @@ func (nd *NetworkDisplay) saveNode(ann AnnounceEntry) {
 }
 
 // useAsPN sets the announce's source as the default propagation node.
-// Matches Python's use_pn(sender).
-func (nd *NetworkDisplay) useAsPN(_ AnnounceEntry) {
+// Matches Python's use_pn(sender) (Network.py:189-194): pop back to the
+// announce stream, then hand the ANNOUNCE to OnUseAsPN so the wiring layer
+// sets the user-selected propagation node to its source hash.
+func (nd *NetworkDisplay) useAsPN(ann AnnounceEntry) {
 	nd.showAnnounceStream()
 	if nd.OnUseAsPN != nil {
-		nd.OnUseAsPN()
+		nd.OnUseAsPN(ann)
 	}
 }
 
@@ -1188,7 +1193,9 @@ func (nd *NetworkDisplay) ToggleFullscreen() {
 // in-page browser fills the page).
 func (nd *NetworkDisplay) Fullscreen() bool { return nd.fullscreen }
 
-// toggleList switches between announces and nodes views.
+// toggleList switches between announces and nodes views (Python
+// toggle_list, Network.py:1668-1678), then fires OnToggleList so the wiring
+// layer can refresh the newly-shown list's data.
 func (nd *NetworkDisplay) toggleList() {
 	if nd.inInfoView {
 		nd.showAnnounceStream()
@@ -1203,6 +1210,9 @@ func (nd *NetworkDisplay) toggleList() {
 	}
 	nd.showingPeers = false
 	nd.focusLeftList()
+	if nd.OnToggleList != nil {
+		nd.OnToggleList()
+	}
 }
 
 // showPeers swaps the left-pane list slot to the LXMF Propagation Peers list

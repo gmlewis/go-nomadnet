@@ -72,7 +72,7 @@ func TestNetworkDetailActionCallbacks(t *testing.T) {
 	var fired string
 	nd.OnSaveNode = func() { fired = "save" }
 	nd.OnMsgOp = func(string) { fired = "msgop" }
-	nd.OnUseAsPN = func() { fired = "useaspn" }
+	nd.OnUseAsPN = func(AnnounceEntry) { fired = "useaspn" }
 	nd.OnConverse = func() { fired = "converse" }
 
 	cases := []struct {

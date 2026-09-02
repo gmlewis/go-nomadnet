@@ -126,7 +126,19 @@ type ConversationsDisplay struct {
 	OnToggleFullscreen func()
 	OnToggleSort       func()
 	OnShowQR           func()
-	OnSyncRequested    func(limit int)
+	// OnSyncRequested forwards the sync dialog's "Sync Now" action to the app
+	// layer (Python request_lxmf_sync(limit), Conversations.py:1381-1383).
+	OnSyncRequested func(limit int)
+	// OnPurgeFailed purges the FAILED messages of the open conversation
+	// (Python ConversationWidget.keypress "ctrl u" →
+	// conversation.purge_failed + conversation_changed, Conversations.py:
+	// 2226-2228).
+	OnPurgeFailed func(sourceHash string)
+	// OnClearHistory clears the open conversation's history after the "?"
+	// confirm (Python ConversationWidget.keypress "ctrl x" →
+	// clear_history_dialog → Conversation.clear_history, Conversations.py:
+	// 2122-2152).
+	OnClearHistory func(sourceHash string)
 
 	// LastSyncInfo supplies the persisted last-LXMF-sync time and the default
 	// propagation node label for the left-pane "Last sync:" footer, mirroring
@@ -938,6 +950,21 @@ func (cd *ConversationsDisplay) DisplayConversation(sourceHash string) {
 		if cd.OnSend != nil {
 			cd.OnSend(sourceHash, content, title, attachments)
 		}
+	}
+	// Ctrl-U purges the FAILED messages of the open conversation (Python
+	// ConversationWidget.keypress "ctrl u" → conversation.purge_failed +
+	// conversation_changed, Conversations.py:2226-2228): the app layer purges
+	// and the wiring reloads the message list.
+	cw.OnPurgeFailed = func() {
+		if cd.OnPurgeFailed != nil {
+			cd.OnPurgeFailed(sourceHash)
+		}
+	}
+	// Ctrl-X opens the clear-history confirm over the conversation body
+	// (Python clear_history_dialog, Conversations.py:2122-2152); Yes runs the
+	// display-level OnClearHistory, No dismisses.
+	cw.OnClearHistory = func() {
+		cd.showClearHistoryDialog(sourceHash)
 	}
 	// Inject the app's own LXMF hash and time format so the LXMessageWidget
 	// header can tell outbound from inbound and format timestamps like the
@@ -2122,6 +2149,34 @@ func (cd *ConversationsDisplay) IngestURIDialog(onSubmit func(uri string)) {
 	// input 1 + blank 1 + button row 1 + 2 border = 5 PACK height.
 	cd.ShowListSlotDialog(dialog, 100, 0, 5)
 	wireDialogNav(cd.app, close, []tview.Primitive{input, ingestBtn, backBtn})
+}
+
+// showClearHistoryDialog overlays the open conversation's BODY with Python's
+// clear_history_dialog (Conversations.py:2122-2152): a DialogLineBox titled
+// "?" with the centered "Clear conversation history\n" message and flat Yes/No
+// buttons (0.45/0.1/0.45), overlaid on the message list at Python's fixed
+// width 34 and PACK height. Yes runs the display-level OnClearHistory (the
+// app-side purge); No just dismisses (Python's dismiss_dialog also refreshes
+// via conversation_changed, which is a visual no-op here since nothing
+// changed).
+func (cd *ConversationsDisplay) showClearHistoryDialog(sourceHash string) {
+	close := func() { cd.CloseDetailSlotDialog() }
+	yesBtn := NewUrwidButton("Yes").SetSelectedFunc(func() {
+		close()
+		if cd.OnClearHistory != nil {
+			cd.OnClearHistory(sourceHash)
+		}
+	})
+	noBtn := NewUrwidButton("No").SetSelectedFunc(close)
+	row := CreateUrwidButtonRow(yesBtn, noBtn)
+	body := NewUrwidCenterText("Clear conversation history\n")
+	layout := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(body, 2, 0, false).
+		AddItem(row, 1, 0, true)
+	dialog := NewDialogLineBox("?", layout, close)
+	// body 2 + buttons 1 + 2 border = 5 PACK height; Python width=34.
+	cd.ShowDetailSlotDialog(dialog, 0, 34, 5)
+	wireDialogNav(cd.app, close, []tview.Primitive{yesBtn, noBtn})
 }
 
 // DeleteConversationConfirm shows the delete-conversation confirmation as a

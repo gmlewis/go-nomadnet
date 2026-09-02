@@ -31,7 +31,11 @@ const InterfaceItemHeight = 7
 // SelectableInterfaceItem represents a selectable interface entry in
 // the interfaces list. Matches Python's SelectableInterfaceItem at
 // Interfaces.py:1125. The embedded *tview.Box lets it render as a rounded
-// bordered box; focused controls the ●/○ selection glyph.
+// bordered box; focused controls the ●/○ selection glyph. Row activation
+// (Enter → switch_to_show_interface) is owned by the parent list/display,
+// exactly as in Python where the item's keypress delegates to
+// parent.switch_to_show_interface — so the item carries no activation
+// callbacks of its own.
 type SelectableInterfaceItem struct {
 	*tview.Box
 	Name        string
@@ -44,8 +48,6 @@ type SelectableInterfaceItem struct {
 	IfaceOpts   any
 	app         *App
 	focused     bool
-	OnSelect    func(name string)
-	OnActivate  func()
 }
 
 // NewSelectableInterfaceItem builds a selectable interface row box.

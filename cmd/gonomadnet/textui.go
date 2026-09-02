@@ -37,6 +37,7 @@ import (
 	"github.com/gmlewis/go-nomadnet/nomadnet/conversation"
 	"github.com/gmlewis/go-nomadnet/nomadnet/directory"
 	"github.com/gmlewis/go-nomadnet/nomadnet/rrc"
+	"github.com/gmlewis/go-nomadnet/nomadnet/util"
 	"github.com/gmlewis/go-nomadnet/tui"
 
 	"github.com/gdamore/tcell/v2"
@@ -635,6 +636,26 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		a.SaveNode(hash, ann.DisplayName)
 		refreshNodes()
 	}
+	// C-l toggles the left pane between the Announce Stream and Saved Nodes
+	// (Python toggle_list, Network.py:1668-1678 only swaps the widget); the
+	// refresh keeps the newly-shown list's data current.
+	networkDisplay.OnToggleList = func() {
+		if networkDisplay.ShowingNodes() {
+			refreshNodes()
+		} else {
+			refreshAnnounces()
+		}
+	}
+	// Python use_pn (Network.py:189-194): the AnnounceInfo "Use as default"
+	// button sets the user-selected propagation node to the announce's source
+	// hash and pops back to the announce stream (done by the display).
+	networkDisplay.OnUseAsPN = func(ann tui.AnnounceEntry) {
+		hash, ok := app.SourceHashFromHex(ann.SourceHash)
+		if !ok {
+			return
+		}
+		a.SetUserSelectedPropagationNode(hash)
+	}
 	// Resolve directory-backed fields for the AnnounceInfo view (Python
 	// AnnounceInfo __init__: trust_level, simplest_display_str, op_str). The
 	// operator string for a node announce recalls the identity and derives the
@@ -1200,6 +1221,34 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		// Start the live progress refresh (200ms) on the running event loop.
 		conversationsDisplay.StartSyncRefresh(true)
 	}
+	// Python request_lxmf_sync(limit) (Conversations.py:1381-1383): the sync
+	// dialog's "Sync Now" fires the router's propagation sync; the footer's
+	// last-sync line refreshes with it.
+	conversationsDisplay.OnSyncRequested = func(limit int) {
+		a.RequestLXMFSync(limit)
+		conversationsDisplay.RefreshSyncStatus()
+	}
+	// Python app.time_format (NomadNetworkApp.py:25, default
+	// "%Y-%m-%d %H:%M:%S") formats every LXMessageWidget header timestamp.
+	conversationsDisplay.OnTimeFormat = func() string { return "%Y-%m-%d %H:%M:%S" }
+	// C-u in the open conversation purges its FAILED messages (Python
+	// ConversationWidget.keypress "ctrl u" → purge_failed +
+	// conversation_changed, Conversations.py:2226-2228): purge, refresh the
+	// list (the failed badge updates) and reload the open message list.
+	conversationsDisplay.OnPurgeFailed = func(sourceHash string) {
+		a.PurgeFailedMessages(sourceHash)
+		refreshConvs()
+		conversationsDisplay.ReloadCurrentMessages()
+	}
+	// C-x in the open conversation opens the "?" clear-history confirm; Yes
+	// clears every message (Python clear_history_dialog confirmed() →
+	// Conversation.clear_history + conversation_changed, Conversations.py:
+	// 2129-2131).
+	conversationsDisplay.OnClearHistory = func(sourceHash string) {
+		a.ClearConversationHistory(sourceHash)
+		refreshConvs()
+		conversationsDisplay.ReloadCurrentMessages()
+	}
 
 	// Block/Unblock peer callbacks — used in conversation context
 	blockPeer := func(sourceHash string) {
@@ -1229,16 +1278,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 			func() {},
 		)
 	}
-	pingPeer := func(sourceHash string) {
-		tuiApp.Dialogs.ShowDialog("Ping",
-			tview.NewTextView().
-				SetDynamicColors(true).
-				SetText(fmt.Sprintf("[gray]Pinging %v...[-]", sourceHash[:8])),
-			40, 5, nil)
-		// TODO: Actual ping via RNS transport
-	}
 	_ = blockPeer
-	_ = pingPeer
 
 	// A "[blocked]" row in the Untrusted tab runs the unblock flow (Python's
 	// blocked-row click → _unblock_dialog, Conversations.py:332-347).
@@ -1465,6 +1505,14 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 			}
 			return nil
 		})
+		// Python RoomWidget.update_messages → _refresh_users_pane: the room
+		// member list re-reads hub.get_members on every room refresh.
+		channelsDisplay.RefreshRoomMembers(func(hubIdx int, room string) []tui.ChannelMember {
+			if hub := rrcHubAt(a, hubIdx); hub != nil {
+				return rrcRoomMembers(hub, room)
+			}
+			return nil
+		})
 	}
 	// Python manager._notify_messages → the UI's per-message room update.
 	a.RRC.SetMessageCallback(func(hub *rrc.RRCHub, msg *rrc.RRCMessage) {
@@ -1473,6 +1521,12 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 			channelsDisplay.RefreshRoomIfVisible(func(hubIdx int, room string) []tui.ChannelMessage {
 				if h := rrcHubAt(a, hubIdx); h != nil {
 					return rrcRoomMessages(h, room)
+				}
+				return nil
+			})
+			channelsDisplay.RefreshRoomMembers(func(hubIdx int, room string) []tui.ChannelMember {
+				if h := rrcHubAt(a, hubIdx); h != nil {
+					return rrcRoomMembers(h, room)
 				}
 				return nil
 			})
@@ -1616,6 +1670,85 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 				hub.SetAutoReconnect(!hub.AutoReconnect, true)
 			}
 		}
+	}
+	// Python remove_selected_dialog confirmed() (Channels.py:1892-1904): a
+	// room selection parts the room (ignoring send errors) and removes it and
+	// its history; a hub selection removes the hub (disconnect + save). Both
+	// branches end with update_list + show_placeholder.
+	channelsDisplay.OnRemoveSelected = func(hubIdx int, room string) {
+		hub := rrcHubAt(a, hubIdx)
+		if hub == nil {
+			return
+		}
+		if room != "" {
+			hub.PartRoom(room)
+			hub.RemoveRoom(room)
+		} else {
+			hub.Disconnect()
+			a.RRC.RemoveHub(hub)
+			if err := a.RRC.Save(); err != nil {
+				a.Logger.Error("Could not save RRC hubs: %v", err)
+			}
+		}
+		tuiApp.QueueUpdateDraw(func() {
+			refreshChannels()
+			channelsDisplay.ShowPlaceholder()
+		})
+	}
+	// Python edit_hub_dialog confirmed() (Channels.py:2023-2037): apply the
+	// edited display name and the three auto toggles (save=False each), save
+	// the RRC manager once, update the list, and re-show the hub info panel
+	// when this hub is still the selected one.
+	channelsDisplay.OnEditHubSubmitted = func(hubIdx int, name string, autoReconnect, autoList, autoWho bool) {
+		hub := rrcHubAt(a, hubIdx)
+		if hub == nil {
+			return
+		}
+		hub.SetHubName(name)
+		hub.SetAutoReconnect(autoReconnect, false)
+		hub.SetAutoList(autoList, false)
+		hub.SetAutoWho(autoWho, false)
+		if err := a.RRC.Save(); err != nil {
+			a.Logger.Error("Could not save RRC hubs: %v", err)
+		}
+		tuiApp.QueueUpdateDraw(func() {
+			refreshChannels()
+			if entry, ok := channelsDisplay.SelectedEntry(); ok && entry.Kind == tui.RowHub && entry.HubIdx == hubIdx {
+				channelsDisplay.ShowHubInfo(hubIdx)
+			}
+		})
+	}
+	// Python show_user_info (Channels.py:2119-2197): a member-row click opens
+	// the User Info dialog; the peer's identity is recalled from its identity
+	// hash to derive the " LXMF : " line, and the Open Conversation button
+	// creates the directory entry + conversation and switches to the
+	// Conversations page (_ChatLinkDelegate._open_lxmf).
+	channelsDisplay.OnMemberClick = func(nick, hash string) {
+		hashBytes, err := hex.DecodeString(strings.ToLower(hash))
+		if err != nil || len(hashBytes) == 0 {
+			return
+		}
+		safeName := nick
+		if a.Config != nil && a.Config.TextUI.SanitizeNames {
+			if s := util.SanitizeName(&safeName); s != nil {
+				safeName = *s
+			}
+		} else if s := util.StripModifiers(&safeName); s != nil {
+			safeName = *s
+		}
+		isSelf := a.Identity != nil && bytes.Equal(hashBytes, a.Identity.Hash)
+		lxmfHex := ""
+		if a.Transport != nil {
+			if id := a.Transport.Recall(hashBytes); id != nil {
+				lxmfHex = fmt.Sprintf("%x", rns.CalculateHash(id, "lxmf", "delivery"))
+			}
+		}
+		channelsDisplay.ShowUserInfoDialog(safeName, hash, lxmfHex, isSelf, func() {
+			if lxmfHex == "" {
+				return
+			}
+			ensureConversationAndShow(lxmfHex, safeName)
+		})
 	}
 
 	// Config display
@@ -2646,6 +2779,32 @@ func rrcRoomMessages(hub *rrc.RRCHub, room string) []tui.ChannelMessage {
 			IsError:  m.Kind == "error",
 			IsSystem: m.Kind == "system",
 			Mention:  m.Mention,
+		})
+	}
+	return out
+}
+
+// rrcRoomMembers snapshots a hub room's member list into the tui ChannelMember
+// shape, mirroring Python RoomWidget._refresh_users_pane (Channels.py:663-724):
+// entries come from hub.get_members sorted case-insensitively by display name,
+// each carrying the member's identity-hash hex (for the user-info dialog), and
+// the local user's own hash is flagged (Python renders it with the arrow_r
+// glyph).
+func rrcRoomMembers(hub *rrc.RRCHub, room string) []tui.ChannelMember {
+	if hub == nil {
+		return nil
+	}
+	var ownHashHex string
+	if mgr := hub.Manager; mgr != nil && mgr.Identity() != nil {
+		ownHashHex = strings.ToLower(fmt.Sprintf("%x", mgr.Identity().Hash))
+	}
+	rrcMembers := hub.GetRoomMembers(room)
+	out := make([]tui.ChannelMember, 0, len(rrcMembers))
+	for _, m := range rrcMembers {
+		out = append(out, tui.ChannelMember{
+			Nick:   m.Nick,
+			Hash:   m.HashHex,
+			Online: ownHashHex != "" && m.HashHex == ownHashHex,
 		})
 	}
 	return out

@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 )
 
 func TestFormatInterfaceEntry(t *testing.T) {
@@ -403,5 +404,36 @@ func TestInterfacesDisplayListFocusDraw(t *testing.T) {
 	id.handleInput(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone))
 	if shown != 1 {
 		t.Errorf("OnShowInterface fired with %v, want 1", shown)
+	}
+}
+
+// TestInterfacesListBoxEnterActivation pins the listbox-level Enter path:
+// activating the focused item through the listbox's own InputHandler routes to
+// OnShowInterface (Python SelectableInterfaceItem.keypress "enter" →
+// parent.switch_to_show_interface(name), Interfaces.py:1246-1249 — the Go
+// display hoists that to the layout capture, and the listbox forwards the
+// same activation when it owns the event).
+func TestInterfacesListBoxEnterActivation(t *testing.T) {
+	t.Parallel()
+	app := newTestApp()
+	ifaces := []InterfaceInfo{
+		{Name: "RNode1", Type: "RNodeInterface", Connected: true, Enabled: true},
+		{Name: "TCP1", Type: "TCPClientInterface", Connected: false, Enabled: true},
+	}
+	id := NewInterfacesDisplay(app, ifaces)
+
+	var shown int
+	id.OnShowInterface = func(idx int) { shown = idx }
+
+	id.listBox.HandleKey(tcell.KeyDown) // focus item 0
+	id.listBox.InputHandler()(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone), func(p tview.Primitive) { app.SetFocus(p) })
+	if shown != 0 {
+		t.Errorf("listbox Enter activation fired OnShowInterface with idx %v, want 0", shown)
+	}
+
+	id.listBox.HandleKey(tcell.KeyDown) // focus item 1
+	id.listBox.InputHandler()(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone), func(p tview.Primitive) { app.SetFocus(p) })
+	if shown != 1 {
+		t.Errorf("listbox Enter activation fired OnShowInterface with idx %v, want 1", shown)
 	}
 }

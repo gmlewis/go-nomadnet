@@ -168,9 +168,19 @@ func TestChannelsDisplayChannelListVisibility(t *testing.T) {
 		t.Error("ChannelListVisible should default to true")
 	}
 
+	// Python toggle_channel_list guard (Channels.py:1533): the list cannot
+	// collapse while the right pane still shows the placeholder.
+	cd.ToggleChannelListState()
+	if !cd.ChannelListVisible() {
+		t.Error("ToggleChannelListState with the placeholder showing should be a no-op")
+	}
+
+	// With a room open the toggle applies.
+	cd.SetHubs([]HubView{fakeHub{name: "Hub A", status: hubStatusConnected, joined: []string{"general"}}})
+	cd.ShowRoom(0, "general", nil)
 	cd.ToggleChannelListState()
 	if cd.ChannelListVisible() {
-		t.Error("ToggleChannelListState should toggle visibility")
+		t.Error("ToggleChannelListState should toggle visibility once a room is open")
 	}
 
 	cd.ToggleChannelListState()
@@ -185,10 +195,13 @@ func TestShowUserInfoDialog(t *testing.T) {
 	cd := NewChannelsDisplay(app, nil)
 
 	// Verify function exists and can be called without panic
-	cd.ShowUserInfoDialog("Alice", "aabb1122334455667788", false, nil)
+	cd.ShowUserInfoDialog("Alice", "aabb1122334455667788", "ccdd1122334455667788", false, nil)
 
 	// Verify self-user case
-	cd.ShowUserInfoDialog("Bob", "aabb1122334455667788", true, nil)
+	cd.ShowUserInfoDialog("Bob", "aabb1122334455667788", "", true, nil)
+
+	// Verify the identity-not-in-cache branch (no LXMF hash, not self)
+	cd.ShowUserInfoDialog("Carol", "aabb1122334455667788", "", false, nil)
 }
 
 // TestChannelsDisplayBootLayout pins the Channels page boot (no-hubs) layout
@@ -310,8 +323,11 @@ func TestChannelsDisplayF8AndCtrlY(t *testing.T) {
 
 	app := newTestApp()
 	cd := NewChannelsDisplay(app, nil)
+	cd.SetHubs([]HubView{fakeHub{name: "Hub A", status: hubStatusConnected, joined: []string{"general"}}})
+	cd.ShowRoom(0, "general", nil)
 
-	// Ctrl-Y toggles channel list state
+	// Ctrl-Y toggles channel list state (Python toggle_channel_list; the
+	// placeholder guard is pinned separately in channels-dialogs_test.go).
 	if !cd.ChannelListVisible() {
 		t.Error("ChannelListVisible should default to true")
 	}
