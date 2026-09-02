@@ -1499,20 +1499,19 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	refreshChannels := func() {
 		channelsDisplay.SetHubs(a.HubViews())
 		channelsDisplay.RefreshHubInfoIfVisible()
-		channelsDisplay.RefreshRoomIfVisible(func(hubIdx int, room string) []tui.ChannelMessage {
-			if hub := rrcHubAt(a, hubIdx); hub != nil {
-				return rrcRoomMessages(hub, room)
-			}
-			return nil
-		})
-		// Python RoomWidget.update_messages → _refresh_users_pane: the room
-		// member list re-reads hub.get_members on every room refresh.
-		channelsDisplay.RefreshRoomMembers(func(hubIdx int, room string) []tui.ChannelMember {
-			if hub := rrcHubAt(a, hubIdx); hub != nil {
-				return rrcRoomMembers(hub, room)
-			}
-			return nil
-		})
+		channelsDisplay.RefreshRoomIfVisible(
+			func(hubIdx int, room string) []tui.ChannelMessage {
+				if hub := rrcHubAt(a, hubIdx); hub != nil {
+					return rrcRoomMessages(hub, room)
+				}
+				return nil
+			},
+			func(hubIdx int, room string) []tui.ChannelMember {
+				if hub := rrcHubAt(a, hubIdx); hub != nil {
+					return rrcRoomMembers(hub, room)
+				}
+				return nil
+			})
 	}
 	// Python manager._notify_messages → the UI's per-message room update.
 	a.RRC.SetMessageCallback(func(hub *rrc.RRCHub, msg *rrc.RRCMessage) {
@@ -1523,13 +1522,13 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 					return rrcRoomMessages(h, room)
 				}
 				return nil
-			})
-			channelsDisplay.RefreshRoomMembers(func(hubIdx int, room string) []tui.ChannelMember {
-				if h := rrcHubAt(a, hubIdx); h != nil {
-					return rrcRoomMembers(h, room)
-				}
-				return nil
-			})
+			},
+				func(hubIdx int, room string) []tui.ChannelMember {
+					if h := rrcHubAt(a, hubIdx); h != nil {
+						return rrcRoomMembers(h, room)
+					}
+					return nil
+				})
 		})
 	})
 	refreshChannels()

@@ -751,7 +751,7 @@ func TestHandleDataJoinEnvelopeAddsMember(t *testing.T) {
 	hub := mgr.AddHub([]byte("hubhash"), "rrc.chat", "TestHub")
 	hub.AddRoom("general")
 
-	env := MakeEnvelope(TypeJoined, []byte("joinerhash"), []byte("general"), []byte("JoinerNick"), nil, []byte("mid2"), NowMs())
+	env := MakeEnvelope(TypeJoined, []byte("joinerhash"), []byte("general"), []byte("JoinerNick"), []any{[]byte("joinerhash")}, []byte("mid2"), NowMs())
 	data, err := EncodeEnvelope(env)
 	if err != nil {
 		t.Fatal(err)
@@ -759,15 +759,38 @@ func TestHandleDataJoinEnvelopeAddsMember(t *testing.T) {
 
 	hub.HandleData(data)
 
+	// Python's member set is keyed by identity hash (RRC.py:982-984): the
+	// join envelope's source hash becomes the member, and the joiner's nick
+	// is learned in the nick table for display.
 	members := hub.GetMembers("general")
+	wantHash := hexString([]byte("joinerhash"))
 	found := false
 	for _, m := range members {
-		if m == "JoinerNick" {
+		if m == wantHash {
 			found = true
 		}
 	}
 	if !found {
-		t.Errorf("JoinerNick not in members: %v", members)
+		t.Errorf("joiner hash %q not in members: %v", wantHash, members)
+	}
+	infos := hub.GetRoomMembers("general")
+	// Python also adds the client's own identity hash to the member set on
+	// every JOINED (RRC.py:985-986); this manager's identity hash is
+	// "testhash", displayed via the hash-prefix fallback.
+	ownHex := hexString([]byte("testhash"))
+	if len(infos) != 2 {
+		t.Errorf("room members = %+v, want joiner plus own hash %v", infos, ownHex)
+	}
+	for _, info := range infos {
+		switch info.HashHex {
+		case wantHash:
+			if info.Nick != "JoinerNick" {
+				t.Errorf("joiner nick = %q, want %q", info.Nick, "JoinerNick")
+			}
+		case ownHex:
+		default:
+			t.Errorf("unexpected member %+v", info)
+		}
 	}
 }
 

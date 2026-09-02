@@ -17,7 +17,6 @@ package rrc
 
 import (
 	"bytes"
-	"container/ring"
 	"crypto/rand"
 	"crypto/sha256"
 	"errors"
@@ -82,8 +81,16 @@ type RRCHub struct {
 	NickOverride  string
 
 	// Internal state
-	lock                 sync.Mutex
-	sentIDs              *ring.Ring           // dedup ring buffer
+	lock sync.Mutex
+	// sentIDs mirrors Python RRCHub._sent_ids (RRC.py:247): the message ids
+	// this client itself sent, so the hub's fanout echo of our own message is
+	// skipped instead of recorded twice. Capped at 256 like Python's deque.
+	sentIDs      map[string]bool
+	sentIDsOrder []string
+	// recvIDs caps received-message dedup: rrcd's member list can accumulate
+	// duplicate joins from reconnect storms, fanning a message out N times.
+	recvIDs              map[string]bool
+	recvIDsOrder         []string
 	pendingPings         map[string]time.Time // body → send time
 	pendingJoins         map[string]bool
 	pendingParts         map[string]bool
@@ -162,7 +169,8 @@ func NewHub(manager *RRCManager, hubHash []byte, destName, name string) *RRCHub 
 		Members:              make(map[string]map[string]bool),
 		Nicks:                make(map[string]string),
 		AvailableRooms:       make(map[string]*string),
-		sentIDs:              ring.New(256),
+		sentIDs:              make(map[string]bool),
+		recvIDs:              make(map[string]bool),
 		pendingPings:         make(map[string]time.Time),
 		pendingJoins:         make(map[string]bool),
 		pendingParts:         make(map[string]bool),
@@ -762,10 +770,20 @@ func (h *RRCHub) SetAutoWho(enabled, save bool) {
 func (h *RRCHub) AddRoom(room string) {
 	room = strings.ToLower(room)
 	h.lock.Lock()
-	defer h.lock.Unlock()
 	h.Rooms[room] = true
 	if h.Messages[room] == nil {
 		h.Messages[room] = make([]*RRCMessage, 0)
+	}
+	mgr := h.Manager
+	h.lock.Unlock()
+
+	// Python add_room ends with manager.save() + _notify_change
+	// (RRC.py:274-282): the room list persists across restarts.
+	if mgr != nil {
+		if err := mgr.Save(); err != nil {
+			log.Printf("[RRC %v] could not save after add_room: %v", h.Name, err)
+		}
+		mgr.NotifyChange(h)
 	}
 }
 
@@ -825,12 +843,17 @@ func (h *RRCHub) GetRoomMembers(room string) []RoomMemberInfo {
 
 	set := h.Members[room]
 	out := make([]RoomMemberInfo, 0, len(set))
-	for nick := range set {
-		hashHex := ""
-		for srcHex, nick2 := range h.Nicks {
-			if nick2 == nick {
-				hashHex = srcHex
-				break
+	for hashHex := range set {
+		// The member set is hash-keyed (Python members[room] is a set of
+		// identity hashes, RRC.py:982-984); the display nick comes from the
+		// learned nick table with Python display_name_for's hash-prefix
+		// fallback.
+		nick := h.Nicks[hashHex]
+		if nick == "" {
+			if len(hashHex) > 12 {
+				nick = hashHex[:12]
+			} else {
+				nick = hashHex
 			}
 		}
 		out = append(out, RoomMemberInfo{HashHex: hashHex, Nick: nick})
@@ -982,7 +1005,19 @@ func (h *RRCHub) JoinRoom(room string, silent bool) {
 
 	mid := MsgID()
 	ts := NowMs()
-	env := MakeEnvelope(TypeJoin, nil, []byte(room), nil, nil, mid, ts)
+	// Python join_room (RRC.py:566-579): the JOIN carries the sender's
+	// identity hash as the source and the effective nick as K_NICK — the hub
+	// needs both to key the member set and to attach the advisory nick to the
+	// JOINED fanout.
+	var src []byte
+	if h.Manager != nil {
+		src = h.Manager.identityHash()
+	}
+	var nick []byte
+	if n := h.GetEffectiveNick(); n != "" {
+		nick = []byte(n)
+	}
+	env := MakeEnvelope(TypeJoin, src, []byte(room), nick, nil, mid, ts)
 	h.sendEnv(env)
 }
 
@@ -1002,7 +1037,13 @@ func (h *RRCHub) PartRoom(room string) {
 
 	mid := MsgID()
 	ts := NowMs()
-	env := MakeEnvelope(TypePart, nil, []byte(room), nil, nil, mid, ts)
+	// Python part_room (RRC.py:604-610): the PART carries the sender's
+	// identity hash so the hub can drop the hash-keyed member entry.
+	var src []byte
+	if h.Manager != nil {
+		src = h.Manager.identityHash()
+	}
+	env := MakeEnvelope(TypePart, src, []byte(room), nil, nil, mid, ts)
 	h.sendEnv(env)
 }
 
@@ -1018,6 +1059,7 @@ func (h *RRCHub) SendMessage(room, text string) string {
 		srcHash = h.Manager.identityHash()
 	}
 	env := MakeEnvelope(TypeMsg, srcHash, []byte(room), []byte(nick), text, mid, ts)
+	h.rememberSentID(hexString(mid))
 	h.sendEnv(env)
 
 	msg := &RRCMessage{
@@ -1045,6 +1087,7 @@ func (h *RRCHub) SendAction(room, text string) string {
 		srcHash = h.Manager.identityHash()
 	}
 	env := MakeEnvelope(TypeAction, srcHash, []byte(room), []byte(nick), text, mid, ts)
+	h.rememberSentID(hexString(mid))
 	h.sendEnv(env)
 
 	msg := &RRCMessage{
@@ -1158,7 +1201,6 @@ func (h *RRCHub) HandleData(data []byte) {
 
 	roomStr := strings.ToLower(string(room))
 	nickStr := string(nick)
-	srcHex := hexString(src)
 
 	switch msgType {
 	case TypeHello:
@@ -1168,6 +1210,16 @@ func (h *RRCHub) HandleData(data []byte) {
 		h.handleJoin(src, nick, room, body)
 
 	case TypeMsg:
+		// Python RRC.py:1068-1073: skip the hub's echo of our own message
+		// (src == own identity and mid in _sent_ids). The recvIDs guard also
+		// collapses duplicate fanout copies (rrcd's member list can carry the
+		// same identity repeatedly after reconnect storms).
+		if h.Manager != nil && hexString(src) == hexString(h.Manager.identityHash()) && h.sentIDs[hexString(mid)] {
+			return
+		}
+		if hexString(mid) != "" && h.seenReceivedID(hexString(mid)) {
+			return
+		}
 		var textStr string
 		switch b := body.(type) {
 		case []byte:
@@ -1194,20 +1246,10 @@ func (h *RRCHub) HandleData(data []byte) {
 		h.handlePart(src, nick, room, body)
 
 	case TypeJoined:
-		h.lock.Lock()
-		if h.Members[roomStr] == nil {
-			h.Members[roomStr] = make(map[string]bool)
-		}
-		h.Members[roomStr][nickStr] = true
-		h.Nicks[srcHex] = nickStr
-		h.lock.Unlock()
+		h.handleJoinedNotification(roomStr, nickStr, body)
 
 	case TypeParted:
-		h.lock.Lock()
-		if h.Members[roomStr] != nil {
-			delete(h.Members[roomStr], nickStr)
-		}
-		h.lock.Unlock()
+		h.handlePartedNotification(roomStr, nickStr, body)
 
 	case TypeWelcome:
 		h.handleWelcome(body)
@@ -1486,43 +1528,162 @@ func (h *RRCHub) handleHello(src, nick []byte, _ any) {
 	h.sendEnv(env)
 }
 
-// handleJoin processes a JOIN envelope. On the server side, it
-// broadcasts a JOINED notification back to the joining client with
-// the joiner's identity hash and nick. On the client side, JOINED
-// is handled in the main HandleData switch.
+// handleJoin processes a JOIN envelope. On the server side, it adds the
+// joiner's identity hash to the room's member set and fans out a JOINED
+// notification whose body is a single-element list of the joiner's hash, with
+// the joiner's nick as the advisory K_NICK — the shape rrcd 0.3.2 sends and
+// the Python client's T_JOINED branch parses (RRC.py:968-1000). On the client
+// side, JOINED is handled in the main HandleData switch.
 func (h *RRCHub) handleJoin(src, nick, room []byte, _ any) {
 	roomStr := strings.ToLower(string(room))
+	srcHex := hexString(src)
 	nickStr := string(nick)
 
 	h.lock.Lock()
 	if h.Members[roomStr] == nil {
 		h.Members[roomStr] = make(map[string]bool)
 	}
-	h.Members[roomStr][nickStr] = true
-	h.Nicks[hexString(src)] = nickStr
-	h.lock.Unlock()
-
-	mid := MsgID()
-	ts := NowMs()
-	env := MakeEnvelope(TypeJoined, src, []byte(roomStr), nick, src, mid, ts)
-	h.sendEnv(env)
-}
-
-// handlePart processes a PART envelope. On the server side, it
-// broadcasts a PARTED notification back to the parting client.
-func (h *RRCHub) handlePart(src, nick, room []byte, _ any) {
-	roomStr := strings.ToLower(string(room))
-	nickStr := string(nick)
-
-	h.lock.Lock()
-	if h.Members[roomStr] != nil {
-		delete(h.Members[roomStr], nickStr)
+	if srcHex != "" {
+		h.Members[roomStr][srcHex] = true
+	}
+	if srcHex != "" && nickStr != "" {
+		h.Nicks[srcHex] = nickStr
 	}
 	h.lock.Unlock()
 
 	mid := MsgID()
 	ts := NowMs()
-	env := MakeEnvelope(TypeParted, src, []byte(roomStr), nick, src, mid, ts)
+	env := MakeEnvelope(TypeJoined, src, []byte(roomStr), nick, []any{src}, mid, ts)
+	h.sendEnv(env)
+}
+
+// handleJoinedNotification processes a JOINED fanout on the client side,
+// mirroring Python's T_JOINED branch (RRC.py:968-1000): the body is a list of
+// the room's member identity hashes, the member set is hash-keyed, and the
+// client's own identity hash always joins the set. The advisory K_NICK is
+// learned only for a fanout about a single other joiner.
+func (h *RRCHub) handleJoinedNotification(roomStr, nickStr string, body any) {
+	bodyHashes := bodyHashList(body)
+
+	ownHash := ""
+	if h.Manager != nil {
+		ownHash = hexString(h.Manager.identityHash())
+	}
+
+	selfJoin := false
+	h.lock.Lock()
+	selfJoin = h.pendingJoins[roomStr]
+	if selfJoin {
+		delete(h.pendingJoins, roomStr)
+	}
+	if h.silentJoins[roomStr] {
+		delete(h.silentJoins, roomStr)
+	}
+	h.Rooms[roomStr] = true
+	if h.Messages[roomStr] == nil {
+		h.Messages[roomStr] = make([]*RRCMessage, 0)
+	}
+	if h.Members[roomStr] == nil {
+		h.Members[roomStr] = make(map[string]bool)
+	}
+	for _, hb := range bodyHashes {
+		h.Members[roomStr][hb] = true
+	}
+	if ownHash != "" {
+		h.Members[roomStr][ownHash] = true
+	}
+	if !selfJoin && nickStr != "" && len(bodyHashes) == 1 {
+		jh := bodyHashes[0]
+		if ownHash == "" || jh != ownHash {
+			h.Nicks[jh] = nickStr
+		}
+	}
+	h.lock.Unlock()
+
+	if h.Manager != nil {
+		h.Manager.NotifyChange(h)
+	}
+}
+
+// handlePartedNotification processes a PARTED fanout on the client side,
+// mirroring Python's T_PARTED branch (RRC.py:978-1040): the body is a list of
+// the parted member identity hashes, and a self-part drops the room together
+// with its member set.
+func (h *RRCHub) handlePartedNotification(roomStr, nickStr string, body any) {
+	bodyHashes := bodyHashList(body)
+
+	ownHash := ""
+	if h.Manager != nil {
+		ownHash = hexString(h.Manager.identityHash())
+	}
+
+	selfPart := false
+	h.lock.Lock()
+	selfPart = h.pendingParts[roomStr]
+	if selfPart {
+		delete(h.pendingParts, roomStr)
+	}
+	if !selfPart && nickStr != "" && len(bodyHashes) == 1 {
+		ph := bodyHashes[0]
+		if ownHash == "" || ph != ownHash {
+			h.Nicks[ph] = nickStr
+		}
+	}
+	if h.Members[roomStr] != nil {
+		for _, hb := range bodyHashes {
+			delete(h.Members[roomStr], hb)
+		}
+	}
+	if selfPart {
+		delete(h.Rooms, roomStr)
+		delete(h.Members, roomStr)
+	}
+	h.lock.Unlock()
+
+	if h.Manager != nil {
+		h.Manager.NotifyChange(h)
+	}
+}
+
+// bodyHashList extracts identity hashes from a JOINED/PARTED fanout body,
+// which rrcd sends as a CBOR list of byte strings.
+func bodyHashList(body any) []string {
+	list, ok := body.([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(list))
+	for _, e := range list {
+		if hb, ok := e.([]byte); ok && len(hb) > 0 {
+			out = append(out, hexString(hb))
+		}
+	}
+	return out
+}
+
+// handlePart processes a PART envelope. On the server side, it drops the
+// parter's identity hash from the room's member set and fans out a PARTED
+// notification whose body is a single-element list of the parter's hash with
+// the learned nick as the advisory K_NICK (RRC.py:978-1040).
+func (h *RRCHub) handlePart(src, nick, room []byte, _ any) {
+	roomStr := strings.ToLower(string(room))
+	srcHex := hexString(src)
+
+	h.lock.Lock()
+	if h.Members[roomStr] != nil {
+		delete(h.Members[roomStr], srcHex)
+	}
+	nickBytes := nick
+	if len(nickBytes) == 0 && srcHex != "" {
+		if learned, ok := h.Nicks[srcHex]; ok {
+			nickBytes = []byte(learned)
+		}
+	}
+	h.lock.Unlock()
+
+	mid := MsgID()
+	ts := NowMs()
+	env := MakeEnvelope(TypeParted, src, []byte(roomStr), nickBytes, []any{src}, mid, ts)
 	h.sendEnv(env)
 }
 
@@ -1590,6 +1751,41 @@ func (h *RRCHub) recordMessage(msg *RRCMessage, local bool) {
 	if h.Manager != nil {
 		h.Manager.NotifyMessage(h, msg)
 	}
+}
+
+// rememberSentID records one of our own outgoing message ids (Python
+// _sent_ids.append, RRC.py:633,650), capped at 256 like Python's deque.
+func (h *RRCHub) rememberSentID(mid string) {
+	h.lock.Lock()
+	defer h.lock.Unlock()
+	if h.sentIDs[mid] {
+		return
+	}
+	h.sentIDs[mid] = true
+	h.sentIDsOrder = append(h.sentIDsOrder, mid)
+	if len(h.sentIDsOrder) > 256 {
+		oldest := h.sentIDsOrder[0]
+		h.sentIDsOrder = h.sentIDsOrder[1:]
+		delete(h.sentIDs, oldest)
+	}
+}
+
+// seenReceivedID returns true when the message id was already processed
+// (the hub's duplicate fanout), recording it otherwise.
+func (h *RRCHub) seenReceivedID(mid string) bool {
+	h.lock.Lock()
+	defer h.lock.Unlock()
+	if h.recvIDs[mid] {
+		return true
+	}
+	h.recvIDs[mid] = true
+	h.recvIDsOrder = append(h.recvIDsOrder, mid)
+	if len(h.recvIDsOrder) > 256 {
+		oldest := h.recvIDsOrder[0]
+		h.recvIDsOrder = h.recvIDsOrder[1:]
+		delete(h.recvIDs, oldest)
+	}
+	return false
 }
 
 // perRoomCap mirrors Python RRCHub._per_room_cap: it returns the configured

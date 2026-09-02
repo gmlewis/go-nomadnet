@@ -30,7 +30,9 @@ func TestGetRoomMembers(t *testing.T) {
 	hub.AddRoom("general")
 
 	join := func(hash, nick string) {
-		env := MakeEnvelope(TypeJoined, []byte(hash), []byte("general"), []byte(nick), nil, []byte(nick), NowMs())
+		// rrcd fans out JOINED with a single-element list of the joiner's
+		// identity hash as the body (RRC.py:975-978).
+		env := MakeEnvelope(TypeJoined, []byte(hash), []byte("general"), []byte(nick), []any{[]byte(hash)}, []byte(nick), NowMs())
 		data, err := EncodeEnvelope(env)
 		if err != nil {
 			t.Fatal(err)
@@ -41,15 +43,24 @@ func TestGetRoomMembers(t *testing.T) {
 	join("1111", "zeta")
 	join("2222", "Alpha")
 
+	// Python adds the client's own identity hash to the member set on every
+	// JOINED (RRC.py:985-986); the manager's identity hash here is "testhash",
+	// displayed via the hash-prefix fallback since it was never learned as a
+	// nick.
+	ownHex := hexString([]byte("testhash"))
+
 	members := hub.GetRoomMembers("general")
-	if len(members) != 2 {
-		t.Fatalf("members = %v, want 2 entries", members)
+	if len(members) != 3 {
+		t.Fatalf("members = %v, want 3 entries (two joiners plus own hash)", members)
 	}
-	if members[0].Nick != "Alpha" || members[0].HashHex != "32323232" {
-		t.Errorf("members[0] = %+v, want nick Alpha with hash hex 32323232", members[0])
+	if members[0].Nick != ownHex[:12] || members[0].HashHex != ownHex {
+		t.Errorf("members[0] = %+v, want own hash %v with prefix nick", members[0], ownHex)
 	}
-	if members[1].Nick != "zeta" || members[1].HashHex != "31313131" {
-		t.Errorf("members[1] = %+v, want nick zeta with hash hex 31313131", members[1])
+	if members[1].Nick != "Alpha" || members[1].HashHex != "32323232" {
+		t.Errorf("members[1] = %+v, want nick Alpha with hash hex 32323232", members[1])
+	}
+	if members[2].Nick != "zeta" || members[2].HashHex != "31313131" {
+		t.Errorf("members[2] = %+v, want nick zeta with hash hex 31313131", members[2])
 	}
 }
 

@@ -494,19 +494,6 @@ type RoomMessagesFunc func(hubIdx int, room string) []ChannelMessage
 // RoomWidget._refresh_users_pane reading hub.get_members).
 type RoomMembersFunc func(hubIdx int, room string) []ChannelMember
 
-// RefreshRoomMembers reloads the showing room's member list so joins/parts
-// appear live (Python _refresh_users_pane via update_messages).
-func (cd *ChannelsDisplay) RefreshRoomMembers(refresh RoomMembersFunc) {
-	if cd.paneMode != "room" || cd.selectedHubIdx < 0 || cd.selectedHubIdx >= len(cd.HubViewsCache) {
-		return
-	}
-	room := cd.selectedRoom
-	if room == "" {
-		return
-	}
-	cd.roomWidget.SetMembers(refresh(cd.selectedHubIdx, room))
-}
-
 // ShowRoom swaps the right pane to the room chat view (Python
 // _show_room, Channels.py:1841-1851): the RoomWidget for the hub+room with
 // the message buffer loaded; the composer routes through OnSendMessage.
@@ -549,9 +536,10 @@ func (cd *ChannelsDisplay) ShowRoom(hubIdx int, room string, msgs []ChannelMessa
 	}
 }
 
-// RefreshRoomIfVisible reloads the showing room's message buffer so new
-// messages appear live (Python RoomWidget.update_messages via the delegate).
-func (cd *ChannelsDisplay) RefreshRoomIfVisible(refresh RoomMessagesFunc) {
+// RefreshRoomIfVisible reloads the showing room's message buffer and member
+// list so new messages and joins appear live (Python RoomWidget
+// update_messages + _refresh_users_pane via the delegates).
+func (cd *ChannelsDisplay) RefreshRoomIfVisible(refresh RoomMessagesFunc, members RoomMembersFunc) {
 	if cd.paneMode != "room" || cd.selectedHubIdx < 0 || cd.selectedHubIdx >= len(cd.HubViewsCache) {
 		return
 	}
@@ -560,6 +548,9 @@ func (cd *ChannelsDisplay) RefreshRoomIfVisible(refresh RoomMessagesFunc) {
 		return
 	}
 	cd.roomWidget.SetMessages(refresh(cd.selectedHubIdx, room))
+	if members != nil {
+		cd.roomWidget.SetMembers(members(cd.selectedHubIdx, room))
+	}
 }
 
 // RefreshHubInfoIfVisible re-renders the hub info panel from the current
@@ -970,9 +961,17 @@ func (cd *ChannelsDisplay) JoinRoomDialog() {
 	if cd.app == nil {
 		return
 	}
-	// Python join_room_dialog (Channels.py:1928-1969): the room name (+ the
-	// key, unported), then add_room + join_room + _select_room in the wiring.
-	cd.showDialogOverlayInput("Add Room", "Room : #", "", "Join", "Cancel", func(roomText string) {
+	// Python join_room_dialog (Channels.py:1928-1969): the dialog opens with
+	// a " Hub : <name>" line so the user can see WHICH hub the room joins
+	// (the selected row's hub, or the first hub), then add_room + join_room +
+	// _select_room in the wiring.
+	hubName := ""
+	if entry, ok := cd.SelectedEntry(); ok && entry.HubIdx >= 0 && entry.HubIdx < len(cd.HubViewsCache) {
+		hubName = cd.HubViewsCache[entry.HubIdx].Name()
+	} else if len(cd.HubViewsCache) > 0 {
+		hubName = cd.HubViewsCache[0].Name()
+	}
+	cd.showDialogOverlayInput("Add Room on "+hubName, "Room : #", "", "Join", "Cancel", func(roomText string) {
 		roomText = strings.TrimSpace(strings.TrimPrefix(roomText, "#"))
 		if roomText == "" {
 			return

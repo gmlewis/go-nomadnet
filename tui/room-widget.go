@@ -362,7 +362,7 @@ func (rw *RoomWidget) renderMessages() {
 				fmt.Fprintf(&sb, "[#66cc55]<%v>[-] %v\n", msg.Nick, msg.Text)
 			} else {
 				nickCol := nickColor(msg.Nick)
-				fmt.Fprintf(&sb, "%v<%v>[-] %v\n", nickCol, msg.Nick, msg.Text)
+				fmt.Fprintf(&sb, "[%v]<%v>[-] %v\n", nickCol, msg.Nick, msg.Text)
 			}
 		}
 	}
