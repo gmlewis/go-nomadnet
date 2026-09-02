@@ -1032,6 +1032,19 @@ func (cd *ConversationsDisplay) DisplayConversation(sourceHash string) {
 // 30 s cadence (wired next to RefreshSyncStatus) and skips the rebuild (and
 // its OnLoadMessages disk round-trip) when no label changed. Must run on the
 // UI thread.
+// RefreshEditorAllowed re-runs the composer footer's editor-allowed check for
+// the currently displayed conversation. Python's became-known callback calls
+// check_editor_allowed when the peer's identity arrives (Conversations.py:
+// 253-263), restoring the composer the moment the identity keys are known —
+// without requiring the user to close and reopen the conversation. Fired from
+// the UI-change refresh (every announce may carry a newly-known peer).
+func (cd *ConversationsDisplay) RefreshEditorAllowed() {
+	if cd.currentWidget == nil || cd.OnEditorAllowed == nil {
+		return
+	}
+	cd.currentWidget.buildFooter()
+}
+
 func (cd *ConversationsDisplay) RefreshRelativeTimes() {
 	if cd.currentWidget == nil || !cd.currentWidget.relativeTimesChanged() {
 		return

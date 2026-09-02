@@ -347,10 +347,15 @@ func (cw *ConversationWidget) Widget() tview.Primitive {
 	return cw.widget
 }
 
-// SetMessages replaces the message list with the given messages.
+// SetMessages replaces the message list with the given messages. The footer is
+// rebuilt afterward so the editor-allowed check re-runs: Python's became-known
+// callback calls check_editor_allowed when the peer's identity arrives
+// (Conversations.py:253-263), restoring the composer without requiring the
+// user to close and reopen the conversation.
 func (cw *ConversationWidget) SetMessages(msgs []ConversationMessage) {
 	cw.messages = msgs
 	cw.renderMessages()
+	cw.buildFooter()
 }
 
 // ClearEditor clears the compose editor.

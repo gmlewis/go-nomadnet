@@ -878,6 +878,11 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 			})
 		}
 		conversationsDisplay.SetConversations(tuiConvs)
+		// Python's became-known callback (Conversations.py:253-263): re-check
+		// the composer's editor-allowed state on every announce so the
+		// identity-unknown banner clears the moment the peer's identity keys
+		// arrive, without reopening the conversation.
+		conversationsDisplay.RefreshEditorAllowed()
 	}
 
 	// "Last sync:" footer reads the persisted peer_settings["last_lxmf_sync"]
