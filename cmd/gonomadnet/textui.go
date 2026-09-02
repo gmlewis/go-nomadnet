@@ -1468,6 +1468,23 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	channelsDisplay.OnNewHub = func() {
 		channelsDisplay.NewHubDialog()
 	}
+	// Python new_hub_dialog confirmed() (Channels.py:1046-1060): rrc.add_hub
+	// with the display name, then update_list. The hub is persisted via
+	// rrc_manager Save so it survives restarts.
+	channelsDisplay.OnAddHub = func(hubHash []byte, destName, name string) {
+		if a.RRC == nil {
+			return
+		}
+		if a.RRC.FindHub(hubHash, destName) == nil {
+			a.RRC.AddHub(hubHash, destName, name)
+			if err := a.RRC.Save(); err != nil {
+				a.Logger.Error("Could not save RRC hubs: %v", err)
+			}
+		}
+		tuiApp.QueueUpdateDraw(func() {
+			channelsDisplay.SetHubs(a.HubViews())
+		})
+	}
 	channelsDisplay.OnJoinRoom = func() {
 		channelsDisplay.JoinRoomDialog()
 	}

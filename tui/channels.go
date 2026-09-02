@@ -99,7 +99,11 @@ type ChannelsDisplay struct {
 	OnSelectRoom func(hubIdx int, room string)
 
 	// Keyboard shortcut callbacks (Python: ChannelsListArea.keypress, RoomFrame.keypress)
-	OnNewHub              func()
+	OnNewHub func()
+	// OnAddHub adds the hub to the app's RRC manager and persists it (Python
+	// rrc.add_hub, RRC.py:389-401), then the wiring layer refreshes the hub
+	// list. nil disables the New Hub dialog's add path.
+	OnAddHub              func(hubHash []byte, destName, name string)
 	OnJoinRoom            func()
 	OnConnect             func()
 	OnDisconnect          func()
@@ -708,10 +712,14 @@ func (cd *ChannelsDisplay) NewHubDialog() {
 		// Search for hub name or default
 		cd.showDialogOverlayInput("New Hub Name", "Display name:", "", "Add", "Back", func(nameText string) {
 			nameText = strings.TrimSpace(nameText)
-			if cd.app != nil {
-				_ = nameText
-				// If RRC manager is available, add hub
+			// Python new_hub_dialog confirmed(): rrc.add_hub(hh, name=nm) then
+			// update_list (Channels.py:1046-1060 in the installed 1.2.8). The
+			// former stub silently discarded both fields, so New Hub did
+			// nothing at all.
+			if cd.OnAddHub == nil {
+				return
 			}
+			cd.OnAddHub(hashBytes, "rrc.hub", nameText)
 		}, nil)
 	}, nil)
 }
