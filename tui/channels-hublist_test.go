@@ -282,7 +282,7 @@ func TestChannelsDisplaySelectedHubRowRendersName(t *testing.T) {
 
 	cells, width, _ := screen.GetContents()
 	found := false
-	for row := 0; row < 24; row++ {
+	for row := range 24 {
 		var sb strings.Builder
 		for col := 0; col < width && row*width+col < len(cells); col++ {
 			if len(cells[row*width+col].Runes) > 0 {
@@ -296,7 +296,7 @@ func TestChannelsDisplaySelectedHubRowRendersName(t *testing.T) {
 		found = true
 		// The name's cells must NOT be #afafaf-on-#afafaf (invisible gray on
 		// the gray highlight): the selected style's dark foreground wins.
-		for col := 0; col < width; col++ {
+		for col := range width {
 			cell := cells[row*width+col]
 			if len(cell.Runes) == 0 {
 				continue
@@ -309,5 +309,29 @@ func TestChannelsDisplaySelectedHubRowRendersName(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("the selected disconnected hub row did not render its display name")
+	}
+}
+
+// C-n on the Channels page must open the New Hub dialog (the OnAddHub stub
+// regression: the Pi's flow opened it, but the dialog mechanism needs a
+// regression pin).
+func TestChannelsDisplayNewHubDialogOpens(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	cd := NewChannelsDisplay(app, nil)
+	cd.OnNewHub = func() { cd.NewHubDialog() }
+
+	cd.OnNewHub()
+
+	if cd.dialogOverlay == nil {
+		t.Fatal("C-n did not open the New Hub dialog overlay")
+	}
+	dialog := cd.dialogOverlay.Dialog()
+	if title := dialog.GetTitle(); title != "New Hub" {
+		t.Errorf("dialog title = %q, want %q", title, "New Hub")
+	}
+	if cd.pages.GetPageCount() != 2 {
+		t.Errorf("pages = %v, want the dialog page switched in", cd.pages.GetPageCount())
 	}
 }

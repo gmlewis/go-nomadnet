@@ -223,9 +223,10 @@ func (h *RRCHub) Connect(ts rns.Transport, dest *rns.Destination) error {
 // RRCHub._on_established: it registers the packet and resource callbacks,
 // then sends the initial HELLO envelope.
 func (h *RRCHub) onEstablished(l *rns.Link) {
+	// SetStatus (not a direct field write) so the change notification fires
+	// and the channels hub list refreshes to the connected glyph immediately.
+	h.SetStatus(StatusConnected, "Connected")
 	h.lock.Lock()
-	h.Status = StatusConnected
-	h.StatusText = "Connected"
 	h.Welcomed = false
 	cb := h.onLinkEstablished
 	h.lock.Unlock()
@@ -1642,11 +1643,36 @@ func (h *RRCHub) historyPath(room string) string {
 // SetStatus updates the connection status.
 func (h *RRCHub) SetStatus(status int, text string) {
 	h.lock.Lock()
-	defer h.lock.Unlock()
 	h.Status = status
 	if text != "" {
 		h.StatusText = text
 	}
+	mgr := h.Manager
+	h.lock.Unlock()
+
+	// The status transitions (Connecting/Connected/Failed/Disconnected) must
+	// reach the UI: the channels hub list renders the status glyph + label and
+	// only refreshes on this change notification (Python's hub status changes
+	// propagate through the delegate the same way). Fired AFTER the hub lock
+	// is released — the callback path ends in SetHubs/HubsSnapshot, which
+	// takes the hub lock and would deadlock otherwise.
+	if mgr != nil {
+		mgr.NotifyChange(h)
+	}
+}
+
+// Snapshot returns a consistent view of the hub's connection and room state for
+// observers (tests, the TUI) that read fields concurrently with the connect
+// worker and inbound-link callbacks. Rooms is copied because it is mutated in
+// place; callers must not mutate the returned map.
+func (h *RRCHub) Snapshot() (status int, statusText, motd string, rooms map[string]bool) {
+	h.lock.Lock()
+	defer h.lock.Unlock()
+	rooms = make(map[string]bool, len(h.Rooms))
+	for room := range h.Rooms {
+		rooms[room] = h.Rooms[room]
+	}
+	return h.Status, h.StatusText, h.MOTD, rooms
 }
 
 // resourceExpectation records a pending inbound resource transfer announced via

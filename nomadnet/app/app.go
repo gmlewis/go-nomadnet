@@ -385,6 +385,10 @@ func (a *App) Init() error {
 	// non-shutdown exit. See directory.SetPersistPath.
 	a.Dir.SetPersistPath(a.DirectoryPath)
 	a.RRC = rrc.NewManager(a.StoragePath, nil)
+	a.RRC.SetHistoryConfig(a.RRCHistoryPerRoomCap, a.RRCFilterLoadedHistory, a.RRCEphemeralNotices)
+	if err := a.RRC.Load(); err != nil {
+		a.Logger.Error("Could not load RRC hubs: %v", err)
+	}
 	a.loadPeerSettings()
 	a.loadIgnoredList()
 	// Go-only enhancement: block the announce streams for every ignored
@@ -581,8 +585,11 @@ func (a *App) InitWithTransport(ts *rns.TransportSystem, identity *rns.Identity)
 	a.Dir.SetPersistPath(a.DirectoryPath)
 	a.RRC = rrc.NewManager(a.StoragePath, nil)
 	a.RRC.SetIdentity(a.Identity)
-	a.RRC.SetTransport(ts)
 	a.RRC.SetHistoryConfig(a.RRCHistoryPerRoomCap, a.RRCFilterLoadedHistory, a.RRCEphemeralNotices)
+	if err := a.RRC.Load(); err != nil {
+		a.Logger.Error("Could not load RRC hubs: %v", err)
+	}
+	a.RRC.SetTransport(ts)
 	a.loadPeerSettings()
 	a.loadIgnoredList()
 	// Go-only enhancement: block the announce streams for every ignored
