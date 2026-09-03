@@ -193,22 +193,24 @@ func (i *IndicativeListBox) skipUnselectableCapture(event *tcell.EventKey) *tcel
 	switch event.Key() {
 	case tcell.KeyDown:
 		want := i.List.GetCurrentItem() + 1
-		if want <= i.List.GetItemCount()-1 {
-			next := i.nextSelectableFrom(want, true)
-			if next != want {
-				i.List.SetCurrentItem(next)
-				return nil
-			}
+		if want > i.List.GetItemCount()-1 {
+			// urwid ListBox: Down at the bottom bubbles unhandled and the
+			// enclosing containers ignore it, so the highlight STAYS. tview's
+			// List instead WRAPS to the first row, teleporting the selection
+			// to the top — the live fleet bug where navigating to the last
+			// hub row silently reset the cursor to the first hub.
+			return nil
 		}
+		i.List.SetCurrentItem(i.nextSelectableFrom(want, true))
+		return nil
 	case tcell.KeyUp:
 		want := i.List.GetCurrentItem() - 1
-		if want >= 0 {
-			next := i.nextSelectableFrom(want, false)
-			if next != want {
-				i.List.SetCurrentItem(next)
-				return nil
-			}
+		if want < 0 {
+			// urwid parity: no wrap at the top either.
+			return nil
 		}
+		i.List.SetCurrentItem(i.nextSelectableFrom(want, false))
+		return nil
 	}
 	return event
 }
