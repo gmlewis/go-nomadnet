@@ -66,9 +66,13 @@ func SetMouseWheelLines(n int) {
 // focus this primitive exactly as it would a bare *tview.List.
 type IndicativeListBox struct {
 	*tview.Box
-	List        *tview.List
-	emptyText   string          // centered placeholder drawn when the List has no items
-	emptyWidget tview.Primitive // optional widget drawn in the list area when empty
+	List *tview.List
+	// skipUnselectable, when set, marks rows the Up/Down cursor jumps over
+	// (Python's IndicativeListBox walks only selectable widgets; the Channels
+	// spacer is a plain urwid.Text that urwid's ListBox skips).
+	skipUnselectable func(idx int) bool
+	emptyText        string          // centered placeholder drawn when the List has no items
+	emptyWidget      tview.Primitive // optional widget drawn in the list area when empty
 	// emptyFG/emptyBG, when set, style the emptyText placeholder row. Python
 	// paints the Conversations empty-state placeholder with the list_off_focus
 	// palette across the full inner width in EVERY focus state (live captures
@@ -97,7 +101,9 @@ func NewIndicativeListBox(list *tview.List) *IndicativeListBox {
 	if list == nil {
 		list = tview.NewList()
 	}
-	return &IndicativeListBox{Box: tview.NewBox(), List: list}
+	ilb := &IndicativeListBox{Box: tview.NewBox(), List: list}
+	ilb.List.SetInputCapture(ilb.skipUnselectableCapture)
+	return ilb
 }
 
 // SetEmptyText sets the centered placeholder drawn in the list area when the
@@ -141,6 +147,72 @@ func (i *IndicativeListBox) SetRect(x, y, w, h int) {
 
 // listRect returns the rect to assign to the wrapped List (the full rect minus
 // one row top and one row bottom when height >= 3).
+// SetSkipUnselectable installs the row-rejection predicate used by the
+// Up/Down cursor movement (nil disables the skipping).
+func (i *IndicativeListBox) SetSkipUnselectable(fn func(idx int) bool) {
+	i.skipUnselectable = fn
+}
+
+// nextSelectableFrom finds the nearest index to from (searching down for
+// down=true, up otherwise) whose row the skip predicate accepts.
+func (i *IndicativeListBox) nextSelectableFrom(from int, down bool) int {
+	fn := i.skipUnselectable
+	if fn == nil {
+		return from
+	}
+	count := i.List.GetItemCount()
+	if count == 0 {
+		return from
+	}
+	cur := from
+	for range count {
+		if !fn(cur) {
+			return cur
+		}
+		if down {
+			cur++
+			if cur >= count {
+				return from
+			}
+		} else {
+			cur--
+			if cur < 0 {
+				return from
+			}
+		}
+	}
+	return from
+}
+
+// skipUnselectableCapture intercepts Up/Down on the wrapped list and jumps
+// the highlight over rows the skip predicate rejects (the spacer rows).
+func (i *IndicativeListBox) skipUnselectableCapture(event *tcell.EventKey) *tcell.EventKey {
+	if i.skipUnselectable == nil {
+		return event
+	}
+	switch event.Key() {
+	case tcell.KeyDown:
+		want := i.List.GetCurrentItem() + 1
+		if want <= i.List.GetItemCount()-1 {
+			next := i.nextSelectableFrom(want, true)
+			if next != want {
+				i.List.SetCurrentItem(next)
+				return nil
+			}
+		}
+	case tcell.KeyUp:
+		want := i.List.GetCurrentItem() - 1
+		if want >= 0 {
+			next := i.nextSelectableFrom(want, false)
+			if next != want {
+				i.List.SetCurrentItem(next)
+				return nil
+			}
+		}
+	}
+	return event
+}
+
 func (i *IndicativeListBox) listRect() (int, int, int, int) {
 	x, y, w, h := i.GetRect()
 	if h >= 3 {

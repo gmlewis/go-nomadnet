@@ -381,13 +381,20 @@ func (rw *RoomWidget) renderMessages() {
 // Channels.py:713).
 func (rw *RoomWidget) renderMembers() {
 	rw.usersList.Clear()
+	// Python _refresh_users_pane (Channels.py:694): the pane opens with
+	// " N users" then one colored entry per member — the hash-based nick
+	// palette for EVERY user, with the self entry marked by the arrow glyph.
+	rw.usersList.AddItem(fmt.Sprintf(" %v user%v", len(rw.members),
+		map[bool]string{true: "", false: "s"}[len(rw.members) == 1]), "", 0, nil)
 	for _, m := range rw.members {
-		icon := "○"
-		if m.Online {
-			icon = "●"
+		// Python (Channels.py:695-705): the hash-based palette color for
+		// EVERY user; is_self only swaps the peer glyph for the arrow.
+		color := nickColor(m.Nick)
+		label := " " + rw.app.Glyphs["peer"] + " " + m.Nick
+		if m.IsSelf {
+			label = " " + rw.app.Glyphs["arrow_r"] + " " + m.Nick
 		}
-		text := fmt.Sprintf("%v %v", icon, m.Nick)
-		rw.usersList.AddItem(text, "", 0, nil)
+		rw.usersList.AddItem(fmt.Sprintf("[%v]%v[-]", color, label), "", 0, nil)
 	}
 	if len(rw.members) == 0 {
 		rw.usersList.AddItem("[gray]No users[-]", "", 0, nil)

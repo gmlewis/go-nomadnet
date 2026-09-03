@@ -90,6 +90,14 @@ var keyspecDisplayPairs = []keyspecPair{
 // keyspecAccepted records reviewed, deliberate divergences:
 // "pyFile:pyClass|canonicalKey" → one-line reason. Anything not listed fails.
 var keyspecAccepted = map[string]string{
+	// Python's ChannelsListArea.keypress does not bind "left"/"right"; the Go
+	// page capture implements the urwid Columns focus chain instead (Python
+	// moves column focus implicitly via urwid's Frame/columns focus handling,
+	// which tview's Flex does not provide): the Left from the room view
+	// returns to the channels list, the Right from the list returns to the
+	// room/hub info. Verified live (the diag focus flip).
+	"Channels.py:ChannelsListArea|left":  "Go implements the urwid columns focus chain: the Left from the room view returns to the channels list column",
+	"Channels.py:ChannelsListArea|right": "the Right from the list returns into the room/hub info pane (tview's Flex has no built-in column focus nav)",
 	// --- Main / global ---------------------------------------------------
 	// Python's unhandled_input intercepts ctrl-e and does `pass` (a global
 	// swallow); Go deliberately does NOT swallow Ctrl-E globally — the

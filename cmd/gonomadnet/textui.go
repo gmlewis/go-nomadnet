@@ -1576,7 +1576,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	}
 	// Python join_room_dialog confirmed(): add_room, join_room when
 	// connected, then _select_room.
-	channelsDisplay.OnJoinRoomSubmitted = func(room string) {
+	channelsDisplay.OnJoinRoomSubmitted = func(room, key string) {
 		hub := a.RRC.ActiveHub()
 		if hub == nil {
 			if hubs := a.RRC.HubsSnapshot(); len(hubs) > 0 {
@@ -1588,7 +1588,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		}
 		hub.AddRoom(room)
 		if hub.Status == rrc.StatusConnected {
-			hub.JoinRoom(room, false)
+			hub.JoinRoomWithKey(room, false, key)
 		}
 		// Python's confirmed() ends with _select_room, which sets the hub
 		// and room active so the composer targets the joined room.
@@ -2803,7 +2803,8 @@ func rrcRoomMembers(hub *rrc.RRCHub, room string) []tui.ChannelMember {
 		out = append(out, tui.ChannelMember{
 			Nick:   m.Nick,
 			Hash:   m.HashHex,
-			Online: ownHashHex != "" && m.HashHex == ownHashHex,
+			Online: true,
+			IsSelf: ownHashHex != "" && m.HashHex == ownHashHex,
 		})
 	}
 	return out

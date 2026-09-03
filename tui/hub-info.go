@@ -234,12 +234,12 @@ func (hia *HubInfoArea) refreshView() {
 	}
 
 	autoLine := func(label string, on bool, key string) {
-		glyph, attr := cross, "list_unknown"
-		state := "Off"
+		glyph, state := cross, "Off"
+		attrColor := colors["list_unknown"]
 		if on {
-			glyph, attr, state = check, "list_trusted", "On"
+			glyph, state, attrColor = check, "On", colors["list_trusted"]
 		}
-		fmt.Fprintf(&sb, "  [%v]%v  : %v %v  (%v to toggle)[-]\n", attr, label, glyph, state, key)
+		fmt.Fprintf(&sb, "  [#%06x]%v  : %v %v  (%v to toggle)[-]\n", uint32(attrColor), label, glyph, state, key)
 	}
 	autoLine("AutoRcn ", snap.AutoReconn, "Ctrl-T")
 	autoLine("AutoList", snap.AutoList, "Ctrl-E")

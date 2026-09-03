@@ -43,6 +43,7 @@ type ChannelMember struct {
 	Nick   string
 	Hash   string
 	Online bool
+	IsSelf bool // true for the local user (Python is_self, Channels.py:699)
 }
 
 // ChannelInfo holds room information.
@@ -125,7 +126,7 @@ type ChannelsDisplay struct {
 	// OnJoinRoomSubmitted runs the add+join+select flow for the room typed in
 	// the Add Room dialog (Python join_room_dialog confirmed(), which calls
 	// hub.add_room + hub.join_room + _select_room).
-	OnJoinRoomSubmitted   func(room string)
+	OnJoinRoomSubmitted   func(room, key string)
 	OnConnect             func()
 	OnDisconnect          func()
 	OnToggleAutoReconnect func()
@@ -198,7 +199,18 @@ func NewChannelsDisplay(app *App, rooms []ChannelInfo) *ChannelsDisplay {
 	cd.rooms.SetSelectedFunc(func(i int, mainText, secondaryText string, shortcut rune) {
 		cd.selectEntry(i)
 	})
+	// Single-line rows: the fork's List defaults showSecondaryText to true,
+	// which renders each item's (empty) secondary text as a phantom blank row
+	// between the entries — Python's Channels list rows are one line each
+	// (Channels.py:1599-1662 compose one Text per row).
+	cd.rooms.ShowSecondaryText(false)
 	cd.ilb = NewIndicativeListBox(cd.rooms)
+	// Python's ILB skips non-selectable rows (the spacer is a plain
+	// urwid.Text, which urwid's ListBox cursor walks past); mirror that so
+	// the arrows never land on the blank separator.
+	cd.ilb.SetSkipUnselectable(func(idx int) bool {
+		return idx >= 0 && idx < len(cd.hubEntries) && cd.hubEntries[idx].Kind == RowSpacer
+	})
 
 	// No-hubs empty state (Python _compose_list_widgets, Channels.py:1603-1607):
 	// a single left-aligned "No hubs yet. Press Ctrl-N to add one." Text in the
@@ -253,6 +265,8 @@ func NewChannelsDisplay(app *App, rooms []ChannelInfo) *ChannelsDisplay {
 		SetTextColor(tcell.ColorDefault))
 	cd.members = tview.NewList()
 	cd.members.SetHighlightFullLine(true)
+	// The members pane rows are single-line in Python as well.
+	cd.members.ShowSecondaryText(false)
 	ApplyListFocusStyle(cd.members, app.Theme)
 	cd.members.SetSelectedFunc(func(i int, mainText, secondaryText string, shortcut rune) {
 		if cd.OnMemberClick != nil {
@@ -633,6 +647,28 @@ func (cd *ChannelsDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 			cd.OnToggleChannelList()
 		}
 		return nil
+	case tcell.KeyLeft:
+		// Python's urwid Columns: the Left from the room view moves focus
+		// back to the channels list column (Main.py columns focus chain).
+		if cd.paneMode == "room" && cd.roomWidget != nil && cd.app != nil {
+			cd.app.SetFocus(cd.ilb)
+			return nil
+		}
+		return event
+	case tcell.KeyRight:
+		// Symmetric: the Right from the list returns to the room view or the
+		// hub info panel.
+		if cd.app != nil && (cd.paneMode == "room" || cd.paneMode == "info") {
+			if cd.paneMode == "room" && cd.roomWidget != nil {
+				cd.app.SetFocus(cd.roomWidget.Widget())
+				return nil
+			}
+			if cd.paneMode == "info" && cd.hubInfo != nil {
+				cd.app.SetFocus(cd.hubInfo.Widget())
+				return nil
+			}
+		}
+		return event
 	case tcell.KeyCtrlD:
 		// In the room view C-d belongs to the room composer (Python
 		// RoomMessageEdit "ctrl d" → send); pass it through so the room
@@ -971,15 +1007,58 @@ func (cd *ChannelsDisplay) JoinRoomDialog() {
 	} else if len(cd.HubViewsCache) > 0 {
 		hubName = cd.HubViewsCache[0].Name()
 	}
-	cd.showDialogOverlayInput("Add Room on "+hubName, "Room : #", "", "Join", "Cancel", func(roomText string) {
-		roomText = strings.TrimSpace(strings.TrimPrefix(roomText, "#"))
-		if roomText == "" {
-			return
+	// Python join_room_dialog's form (Channels.py:1934-1975): the room field,
+	// the keyed-room checkbox, and the key field (masked) with the error line
+	// and Join/Back buttons — richer than the single-input helper.
+	tc := GetThemeColors(cd.app.Theme)
+	eRoom := tview.NewInputField().SetLabel("Room : #").SetText("")
+	eRoom.SetFieldBackgroundColor(tc["msg_editor_bg"])
+	eRoom.SetFieldTextColor(tc["msg_editor_fg"])
+	eKey := tview.NewInputField().SetLabel("Key  : ").SetMaskCharacter('*').SetText("")
+	eKey.SetFieldBackgroundColor(tc["msg_editor_bg"])
+	eKey.SetFieldTextColor(tc["msg_editor_fg"])
+	cbKey := tview.NewCheckbox().SetLabel("Keyed room (+k)")
+	// Python's update_key_visibility: the key field swaps with a blank
+	// placeholder depending on the checkbox state.
+	keyPlaceholder := tview.NewFlex()
+	cbKey.SetChangedFunc(func(checked bool) {
+		// Python update_key_visibility: the key field appears in place of the
+		// blank placeholder when the checkbox is checked.
+		if checked {
+			keyPlaceholder.RemoveItem(eKey)
+			keyPlaceholder.AddItem(eKey, 1, 0, true)
+		} else {
+			keyPlaceholder.RemoveItem(eKey)
 		}
-		if cd.OnJoinRoomSubmitted != nil {
-			cd.OnJoinRoomSubmitted(roomText)
-		}
-	}, nil)
+	})
+	row := CreateUrwidButtonRow(
+		NewUrwidButton("Join").SetSelectedFunc(func() {
+			room := strings.TrimSpace(eRoom.GetText())
+			if room == "" {
+				return
+			}
+			key := ""
+			if cbKey.IsChecked() {
+				key = strings.TrimSpace(eKey.GetText())
+			}
+			cd.closeDialog()
+			if cd.OnJoinRoomSubmitted != nil {
+				cd.OnJoinRoomSubmitted(room, key)
+			}
+		}),
+		NewUrwidButton("Back").SetSelectedFunc(func() { cd.closeDialog() }))
+	layout := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(tview.NewTextView().SetText(" Hub : "+hubName).SetTextColor(tcell.ColorDefault), 1, 0, false).
+		AddItem(eRoom, 1, 0, true).
+		AddItem(cbKey, 1, 0, false).
+		AddItem(keyPlaceholder, 1, 0, false).
+		AddItem(tview.NewTextView().SetText(""), 1, 0, false).
+		AddItem(row, 1, 0, false)
+	dialog := NewDialogLineBox("Add Room on "+hubName, layout, cd.closeDialog)
+	// 6 layout rows + the 2 border rows: the earlier height 7 clipped the
+	// button row onto the bottom border.
+	cd.showDialogOverlay(dialog, 8)
+	wireDialogNav(cd.app, cd.closeDialog, []tview.Primitive{eRoom, cbKey, eKey, layout.GetItem(5)})
 }
 
 // RemoveSelectedDialog shows the confirm dialog for the selected hub/room row

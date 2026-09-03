@@ -808,6 +808,47 @@ func (h *RRCHub) ClearMessages(room string) {
 	h.Messages[room] = make([]*RRCMessage, 0)
 }
 
+// SetMOTD stores the hub's message of the day and notifies the UI (Python
+// assigns self.motd then manager._notify_change, RRC.py:1136-1141).
+func (h *RRCHub) SetMOTD(text string) {
+	h.lock.Lock()
+	h.MOTD = text
+	h.lock.Unlock()
+	if h.Manager != nil {
+		h.Manager.NotifyChange(h)
+	}
+}
+
+// applyWhoReply replaces the room's member set from a parsed /who reply,
+// learning nicks by matching who-reply 12-hex prefixes against the known
+// member hashes (Python RRC.py:1085-1100: members.setdefault + the prefix
+// walk, then manager._notify_change).
+func (h *RRCHub) applyWhoReply(room string, entries []whoEntry) {
+	room = strings.ToLower(room)
+	h.lock.Lock()
+	if h.Members[room] == nil {
+		h.Members[room] = make(map[string]bool)
+	}
+	for _, e := range entries {
+		if e.Nick == "" {
+			if e.HashHex != "" {
+				h.Members[room][e.HashHex] = true
+			}
+			continue
+		}
+		for ph := range h.Members[room] {
+			if strings.HasPrefix(ph, e.HashHex) {
+				h.Nicks[ph] = e.Nick
+				break
+			}
+		}
+	}
+	h.lock.Unlock()
+	if h.Manager != nil {
+		h.Manager.NotifyChange(h)
+	}
+}
+
 // GetMembers returns the member list for a room.
 func (h *RRCHub) GetMembers(room string) []string {
 	room = strings.ToLower(room)
@@ -991,6 +1032,12 @@ func (h *RRCHub) GetMessages(room string) []*RRCMessage {
 
 // JoinRoom sends a T_JOIN for a room.
 func (h *RRCHub) JoinRoom(room string, silent bool) {
+	h.JoinRoomWithKey(room, silent, "")
+}
+
+// JoinRoomWithKey joins a room, optionally with a room key for keyed (+k)
+// rooms (Python join_room's key parameter, RRC.py:569).
+func (h *RRCHub) JoinRoomWithKey(room string, silent bool, key string) {
 	room = strings.ToLower(room)
 	h.lock.Lock()
 	h.Rooms[room] = true
@@ -1017,7 +1064,13 @@ func (h *RRCHub) JoinRoom(room string, silent bool) {
 	if n := h.GetEffectiveNick(); n != "" {
 		nick = []byte(n)
 	}
-	env := MakeEnvelope(TypeJoin, src, []byte(room), nick, nil, mid, ts)
+	// Python join_room: the room key rides in the JOIN envelope's BODY
+	// (RRC.py:571-572: body = key if key else None).
+	var joinBody any
+	if key != "" {
+		joinBody = []byte(key)
+	}
+	env := MakeEnvelope(TypeJoin, src, []byte(room), nick, joinBody, mid, ts)
 	h.sendEnv(env)
 }
 
@@ -1283,6 +1336,23 @@ func (h *RRCHub) HandleData(data []byte) {
 			h.SetAvailableRooms(rooms)
 			return
 		}
+		// Python _parse_who_notice (RRC.py:1084-1105): /who replies replace
+		// the room's member set and learn the nicks via the 12-hex prefix
+		// match against the existing members. Silent who replies (fetched by
+		// the auto_who toggle) are consumed without hitting the message log.
+		if whoRoom, entries, isWho := ParseWhoNotice(textStr); isWho {
+			h.applyWhoReply(whoRoom, entries)
+			if h.silentWhoRooms[whoRoom] {
+				delete(h.silentWhoRooms, whoRoom)
+				return
+			}
+		}
+		// Python (RRC.py:1132-1141): a roomless (global) notice sets the hub's
+		// MOTD and notifies — the hub's greeting rides as the first global
+		// notice after the welcome.
+		if roomStr == "" {
+			h.SetMOTD(textStr)
+		}
 		msg := &RRCMessage{
 			Kind: "notice",
 			Room: roomStr,
@@ -1464,6 +1534,75 @@ func (h *RRCHub) handleWelcome(body any) {
 	}
 }
 
+// whoEntry is one entry parsed from a "/who" reply NOTICE: the display nick
+// (empty when the entry is a bare hash) and the 12-hex or 32-hex hash text.
+
+// whoEntry is one entry parsed from a "/who" reply NOTICE: the display nick
+// (empty when the entry is a bare hash) and the 12-hex or 32-hex hash text.
+type whoEntry struct {
+	Nick    string // empty for bare-hash entries
+	HashHex string
+}
+
+// isHashText reports whether every byte of s is a hex digit.
+func isHashText(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F') {
+			return false
+		}
+	}
+	return true
+}
+
+// ParseWhoNotice parses a hub "/who" reply NOTICE (Python
+// _parse_who_notice, RRC.py:110-125): the body is
+// "members in <room>: nick (hash12), ...". Returns the room and the parsed
+// entries, or a nil result when the text is not a who reply.
+func ParseWhoNotice(text string) (string, []whoEntry, bool) {
+	const prefix = "members in "
+	if !strings.HasPrefix(text, prefix) {
+		return "", nil, false
+	}
+	sep := strings.Index(text[len(prefix):], ": ")
+	if sep < 0 {
+		return "", nil, false
+	}
+	room := strings.ToLower(strings.TrimSpace(text[len(prefix) : len(prefix)+sep]))
+	if room == "" {
+		return "", nil, false
+	}
+	body := strings.TrimSpace(text[len(prefix)+sep+2:])
+	var entries []whoEntry
+	if body != "" && body != "(none)" {
+		// rrcd's /who reply entries are "nick (hash12prefix)" or a bare
+		// 32-hex identity hash, comma-separated (Python _WHO_ENTRY_RE,
+		// RRC.py:118-120). Go's regexp lacks the lookahead the Python
+		// pattern uses, so the entries are parsed by splitting.
+		for part := range strings.SplitSeq(body, ", ") {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			if len(part) == 32 && isHashText(part) {
+				entries = append(entries, whoEntry{HashHex: strings.ToLower(part)})
+				continue
+			}
+			if open := strings.LastIndex(part, " ("); open > 0 && strings.HasSuffix(part, ")") {
+				hashText := part[open+2 : len(part)-1]
+				nick := strings.TrimSpace(part[:open])
+				if len(hashText) == 12 && isHashText(hashText) && nick != "" {
+					entries = append(entries, whoEntry{Nick: nick, HashHex: strings.ToLower(hashText)})
+				}
+			}
+		}
+	}
+	return room, entries, true
+}
+
 // ParseRoomListNotice parses a hub "/list" reply NOTICE into the advertised
 // rooms (Python _parse_room_list_notice, RRC.py:805-820): the body starts
 // with "Registered public rooms" followed by "name - topic" lines, or is the
@@ -1598,10 +1737,19 @@ func (h *RRCHub) handleJoinedNotification(roomStr, nickStr string, body any) {
 			h.Nicks[jh] = nickStr
 		}
 	}
+	autoWho := h.AutoWho && selfJoin
 	h.lock.Unlock()
 
 	if h.Manager != nil {
 		h.Manager.NotifyChange(h)
+	}
+	// Python handle_joined → auto_who (RRC.py:1006-1012): fetch the room's
+	// member list right after joining; the reply is consumed silently.
+	if autoWho {
+		h.silentWhoRooms[roomStr] = true
+		if err := h.SendCommand("/who "+roomStr, roomStr); err != nil {
+			log.Printf("SendCommand('/who %v'): %v", roomStr, err)
+		}
 	}
 }
 
@@ -1986,6 +2134,15 @@ func (h *RRCHub) loadHistory() {
 			}
 			m := DecodeHistoryEntry(entry)
 			if m == nil {
+				continue
+			}
+			// Skip duplicates: the echo/dedup guards are post-load only, so
+			// history files written before the dedup fix can carry the same
+			// message many times (the differential explorer's Bug #4: one
+			// message rendered ~200 times after the upgrade). The history
+			// entries carry no message id, so the key is the tuple.
+			key := hexString(m.Src) + "\x00" + m.Nick + "\x00" + m.Text + "\x00" + strconv.FormatInt(m.Ts, 10)
+			if h.seenReceivedID(key) {
 				continue
 			}
 			m.Room = room
