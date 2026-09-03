@@ -175,53 +175,112 @@ func TestIntegrationFanoutBurst(t *testing.T) {
 // on the fanout burst: every NICKED copy learns nicks[src] = nick and adds
 // src to the room's member set (Python RRC.py:1031-1035 - the learning runs
 // before the collapse); the empty-nick copies carry no nick to learn.
+// TestIntegrationFanoutNickLearning pins the member/nick learning coverage
+// on the fanout burst: every NICKED copy learns nicks[src] = nick and adds
+// src to the room's member set (Python RRC.py:1031-1035 - the learning runs
+// before the collapse); the empty-nick copies carry no nick to learn.
 func TestIntegrationFanoutNickLearning(t *testing.T) {
-	hub, _, cleanup := startIntegrationHub(t)
+	hub, hubLog, cleanup := startIntegrationHub(t)
 	defer cleanup()
+
+	// The mini hub's per-copy rewritten source hashes are derived from its
+	// identity hash (identity.hash[:28] + byte(i) + identity.hash[29:32]),
+	// which the hub announces in its event log's announce records.
+	idHash := ""
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) && idHash == "" {
+		for _, ev := range readMiniHubEvents(t, hubLog) {
+			if h, ok := ev["id-hash"].(string); ok && h != "" {
+				idHash = h
+			}
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	if idHash == "" {
+		t.Fatal("hub id-hash never announced")
+	}
+	// The mini hub's identity hash is 16 bytes (32 hex chars); its
+	// per-copy rewritten source is the identity hash plus the copy index
+	// byte (identity.hash[:28] + byte(i) + identity.hash[29:32] on the
+	// Python side - 17 bytes, 34 hex chars).
+	srcHex := func(i int) string {
+		return idHash + fmt.Sprintf("%02x", i)
+	}
 
 	stale := NowMs() - 60_000
 	hub.SendMessage("general", fmt.Sprintf("FANOUT:4:%d:learn burst", stale))
 
 	wantNicks := map[string]string{
-		"030405060708090a0b0c0d0e0f100102": "HubNick1",
-		"0405060708090a0b0c0d0e0f10010203": "HubNick2",
-		"05060708090a0b0c0d0e0f1001020304": "HubNick3",
+		srcHex(1): "HubNick1",
+		srcHex(2): "HubNick2",
+		srcHex(3): "HubNick3",
 	}
-	deadline := time.Now().Add(15 * time.Second)
+	emptySrcs := []string{srcHex(0)}
+
+	deadline = time.Now().Add(15 * time.Second)
 	for time.Now().Before(deadline) {
 		hub.lock.Lock()
 		missing := ""
-		for srcHex, nick := range wantNicks {
-			if hub.Nicks[srcHex] != nick {
-				missing = srcHex
+		for s, nick := range wantNicks {
+			if hub.Nicks[s] != nick {
+				missing = s
+				break
+			}
+			if !hub.Members["general"][s] {
+				missing = s
 				break
 			}
 		}
-		memberOK := true
-		for srcHex := range wantNicks {
-			if !hub.Members["general"][srcHex] {
-				missing = srcHex
-				memberOK = false
-			}
-		}
 		hub.lock.Unlock()
-		if missing == "" && memberOK {
-			// All learned; the empty-nick copies (srcs ending 00/01) must
-			// NOT be in the member set (Python's learning gate is the
-			// nick, RRC.py:1031-1035).
-			hub.lock.Lock()
-			for _, srcHex := range []string{"02030405060708090a0b0c0d0e0f100100", "0102030405060708090a0b0c0d0e0f10"} {
-				if hub.Members["general"][srcHex] {
-					hub.lock.Unlock()
-					t.Errorf("member %v present; an empty-nick copy must not learn", srcHex)
-				}
-			}
-			hub.lock.Unlock()
-			return
+		if missing == "" {
+			break
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
-	t.Fatal("timeout waiting for the fanout nick/member learning")
+
+	hub.lock.Lock()
+	for s, nick := range wantNicks {
+		if got := hub.Nicks[s]; got != nick {
+			t.Errorf("nicks[%v] = %q, want %q (Python learns from every nicked copy, RRC.py:1031-1035)", s, got, nick)
+		}
+		if !hub.Members["general"][s] {
+			t.Errorf("members[general] misses %v (Python adds every nicked copy's src)", s)
+		}
+	}
+	// The empty-nick copies learn nothing (the learning block is gated on
+	// the nick, RRC.py:1031-1035).
+	for _, s := range emptySrcs {
+		if got, ok := hub.Nicks[s]; ok {
+			t.Errorf("nicks[%v] = %q, want absent (an empty-nick copy carries no nick)", s, got)
+		}
+		if hub.Members["general"][s] {
+			t.Errorf("members[general] has %v; an empty-nick copy must not learn", s)
+		}
+	}
+	// The burst collapses to ONE recorded message whose nick backfills
+	// from a nicked copy and whose timestamp is the ARRIVAL time, not the
+	// stale envelope ts (RRC.py:1043).
+	msgs := make([]*RRCMessage, len(hub.Messages["general"]))
+	copy(msgs, hub.Messages["general"])
+	hub.lock.Unlock()
+
+	n := 0
+	var kept *RRCMessage
+	for _, m := range msgs {
+		if m.Text == "learn burst" {
+			n++
+			kept = m
+		}
+	}
+	if n != 1 {
+		t.Fatalf("learn-burst copies recorded = %v, want 1 (the collapse)", n)
+	}
+	if kept.Nick != "HubNick1" {
+		t.Errorf("kept copy nick = %q, want HubNick1 (backfilled from a nicked copy)", kept.Nick)
+	}
+	if kept.Ts < time.Now().Add(-15_000*time.Millisecond).UnixMilli() {
+		t.Errorf("kept copy Ts = %v, want the arrival time (not the stale envelope ts %v)", kept.Ts, stale)
+	}
 }
 
 // TestIntegrationRoomlessMOTDNotice pins Python's roomless MOTD notice
@@ -259,5 +318,48 @@ func TestIntegrationRoomlessMOTDNotice(t *testing.T) {
 	hub.lock.Unlock()
 	if motd != welcome {
 		t.Errorf("MOTD = %q, want %q", motd, welcome)
+	}
+}
+
+// TestIntegrationJoinedHeal pins Python's JOINED bookkeeping (RRC.py:944-948)
+// over the wire: a T_JOINED whose body carries the FULL member hash list
+// adds EVERY body hash to the room's member set, healing the whole set
+// client-side.
+func TestIntegrationJoinedHeal(t *testing.T) {
+	hub, _, cleanup := startIntegrationHub(t)
+	defer cleanup()
+
+	const (
+		a = "464360ee59ed0000000000000000000000000000000000000000000000000000"
+		b = "1ab1ed2d6293000000000000000000000000000000000000000000000000000000"
+		c = "d252c38c2e7b000000000000000000000000000000000000000000000000000000"
+	)
+	hub.SendMessage("general", "JOINED-FANOUT:"+a+","+b+","+c)
+
+	// The JOINED fanout heals the member set client-side; it does not
+	// append a chat message (Python RRC.py:944-948 only touches members).
+	deadline := time.Now().Add(15 * time.Second)
+	healed := false
+	for time.Now().Before(deadline) {
+		hub.lock.Lock()
+		healed = true
+		for _, hash := range []string{a, b, c} {
+			if !hub.Members["general"][hash] {
+				healed = false
+			}
+		}
+		hub.lock.Unlock()
+		if healed {
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+
+	hub.lock.Lock()
+	defer hub.lock.Unlock()
+	for _, hash := range []string{a, b, c} {
+		if !hub.Members["general"][hash] {
+			t.Errorf("members[general] misses %v after the full-list JOINED", hash)
+		}
 	}
 }

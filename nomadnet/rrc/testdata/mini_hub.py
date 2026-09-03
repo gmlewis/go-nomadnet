@@ -179,6 +179,16 @@ def _on_packet(data, packet):
             send_env(packet.link, e)
             return
 
+        # JOINED fanout trigger: body "JOINED-FANOUT:<hexhash>,<hexhash>,..."
+        # makes the hub send a T_JOINED envelope whose body is the FULL
+        # member hash list - the wire shape that heals the client's member
+        # set (RRC.py:944-948).
+        if text.startswith("JOINED-FANOUT:"):
+            hashes = [bytes.fromhex(h) for h in text[len("JOINED-FANOUT:"):].split(",") if h]
+            e = make_env(T_JOINED, body=hashes, room=room)
+            send_env(packet.link, e)
+            return
+
         notice = "echo: " + text
         packet_env = make_env(T_NOTICE, body=notice.encode("utf-8"), room=room)
         packet_env[K_NICK] = "MiniHub"
