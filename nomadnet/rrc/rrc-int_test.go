@@ -72,8 +72,11 @@ func TestIntegrationHubConnectEstablishesLink(t *testing.T) {
 
 	select {
 	case <-clientEstablished:
-		if hub.Status != StatusConnected {
-			t.Errorf("hub status = %v, want StatusConnected", hub.Status)
+		// Python _on_established (RRC.py:415): the status stays CONNECTING
+		// "Identified, sending HELLO" at link establishment; only the
+		// WELCOME flips it to CONNECTED.
+		if hub.Status != StatusConnecting {
+			t.Errorf("hub status = %v, want StatusConnecting at link establishment", hub.Status)
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("timeout waiting for client link establishment")
@@ -714,8 +717,10 @@ func TestIntegrationHubDisconnectUpdatesStatus(t *testing.T) {
 	clientHub.lock.Lock()
 	status := clientHub.Status
 	clientHub.lock.Unlock()
-	if status != StatusConnected {
-		t.Fatalf("expected StatusConnected, got %v", status)
+	// Python _on_established (RRC.py:415): CONNECTING until the WELCOME
+	// arrives; the disconnect path only needs the link established.
+	if status != StatusConnecting {
+		t.Fatalf("expected StatusConnecting at link establishment, got %v", status)
 	}
 
 	clientHub.Disconnect()

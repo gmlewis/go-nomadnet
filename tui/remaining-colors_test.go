@@ -125,32 +125,17 @@ func TestRoomWidgetHeaderColor(t *testing.T) {
 	}
 }
 
-// TestRoomWidgetUsersTitleColor pins the room users-panel title to
-// ColorDefault. Python's UsersBox is a bare `urwid.LineBox` (Channels.py:625)
-// with no AttrMap — the title renders with default styling. The Go port
-// previously used 0xdddddd.
-func TestRoomWidgetUsersTitleColor(t *testing.T) {
+// TestRoomWidgetUsersTitle pins the room users-panel title: Python's UsersBox
+// is a `urwid.LineBox(self.users_listbox, title="Users")` (Channels.py:625) —
+// the title lives IN THE BORDER with default styling, not in a title row
+// inside the pane.
+func TestRoomWidgetUsersTitle(t *testing.T) {
 	t.Parallel()
 
 	app := NewApp(ThemeDark, GlyphUnicode, ColorModeTrue)
 	rw := NewRoomWidget(app, "hub", "room")
-	rw.usersTitle.SetTextAlign(tview.AlignLeft)
-	rw.usersTitle.SetText("X")
-	screen := tcell.NewSimulationScreen("UTF-8")
-	if err := screen.Init(); err != nil {
-		t.Fatalf("screen.Init: %v", err)
-	}
-	defer screen.Fini()
-	screen.SetSize(20, 3)
-	rw.usersTitle.SetRect(0, 0, 20, 3)
-	rw.usersTitle.Draw(screen)
-	if c, _, style, _ := cellContent(screen, 0, 0); c != 'X' {
-		t.Fatalf("cell (0,0) = %q, want 'X'", string(c))
-	} else {
-		fg, _, _ := style.Decompose()
-		if fg != tcell.ColorDefault {
-			t.Errorf("users title fg = %v, want ColorDefault (Python bare LineBox)", fg)
-		}
+	if got := rw.usersBox.GetTitle(); got != " Users " {
+		t.Errorf("users box title = %q, want %q (Python UsersBox title in border)", got, " Users ")
 	}
 }
 

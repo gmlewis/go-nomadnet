@@ -16,11 +16,13 @@
 package tui
 
 import (
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 )
 
 // fakeHub is a test-only HubView for pinning ComposeHubList against Python
@@ -53,6 +55,7 @@ func (f fakeHub) MentionRooms() []string { return f.mentioned }
 func (f fakeHub) AddressHex() string          { return f.addressHex }
 func (f fakeHub) StatusText() string          { return "" }
 func (f fakeHub) ServerName() string          { return f.serverName }
+func (f fakeHub) HubVersion() string          { return "" }
 func (f fakeHub) MOTD() string                { return "" }
 func (f fakeHub) AutoReconnect() bool         { return f.autoReconnect }
 func (f fakeHub) AutoList() bool              { return f.autoList }
@@ -350,5 +353,99 @@ func TestChannelsDisplayNewHubDialogOpens(t *testing.T) {
 	}
 	if cd.pages.GetPageCount() != 2 {
 		t.Errorf("pages = %v, want the dialog page switched in", cd.pages.GetPageCount())
+	}
+}
+
+// TestChannelsDisplayNewHubDialogSingleForm pins item 19: ONE dialog with the
+// address field, the display-name field, the error line and an Add/Back row
+// (Python new_hub_dialog, Channels.py:1921-1958) — not two chained
+// single-field dialogs — driven end-to-end by keys: Down/Up traverse fields,
+// Enter activates the focused button, and a valid submit calls OnAddHub.
+func TestChannelsDisplayNewHubDialogSingleForm(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	cd := NewChannelsDisplay(app, nil)
+
+	type addCall struct {
+		hash []byte
+		name string
+	}
+	var added []addCall
+	cd.OnAddHub = func(hubHash []byte, destName, name string) {
+		added = append(added, addCall{hash: append([]byte(nil), hubHash...), name: name})
+	}
+
+	cd.NewHubDialog()
+	overlay := cd.dialogOverlay
+	if overlay == nil {
+		t.Fatal("dialog did not open")
+	}
+	dialog := overlay.Dialog()
+	handler := dialog.InputHandler()
+	send := func(ev *tcell.EventKey) {
+		handler(ev, func(tview.Primitive) {})
+	}
+	typeRune := func(r rune) { send(tcell.NewEventKey(tcell.KeyRune, r, tcell.ModNone)) }
+
+	// Type the hash into the focused address field (0x-prefixed, like a
+	// pasted hash).
+	for _, r := range "0x" + strings.Repeat("ab", 16) {
+		typeRune(r)
+	}
+	// Down traverses to the display-name field (Python's Pile traversal);
+	// type the name, then Down to the button row and press Enter on Add.
+	send(tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone))
+	for _, r := range "My Hub" {
+		typeRune(r)
+	}
+	send(tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone))
+	send(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone))
+
+	if len(added) != 1 {
+		t.Fatalf("OnAddHub fired %v times, want 1 (single-dialog submit)", len(added))
+	}
+	if got := strings.ToLower(fmt.Sprintf("%x", added[0].hash)); got != strings.Repeat("ab", 16) {
+		t.Errorf("added hash = %v, want the 0x-stripped lowercase hash", got)
+	}
+	if added[0].name != "My Hub" {
+		t.Errorf("added name = %q, want %q", added[0].name, "My Hub")
+	}
+	// The dialog closed after a successful add.
+	if cd.dialogOverlay != nil {
+		t.Error("dialog still open after successful add")
+	}
+}
+
+// TestChannelsDisplayNewHubDialogErrorLine pins the error path (Python
+// confirmed()'s except branch, Channels.py:1941-1942): a bad hash renders
+// "Could not add hub: …" on the dialog's error line and does NOT close.
+func TestChannelsDisplayNewHubDialogErrorLine(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	cd := NewChannelsDisplay(app, nil)
+	var fired int
+	cd.OnAddHub = func([]byte, string, string) { fired++ }
+
+	cd.NewHubDialog()
+	dialog := cd.dialogOverlay.Dialog()
+	handler := dialog.InputHandler()
+	send := func(ev *tcell.EventKey) { handler(ev, func(tview.Primitive) {}) }
+	typeRune := func(r rune) { send(tcell.NewEventKey(tcell.KeyRune, r, tcell.ModNone)) }
+
+	// A too-short hash: Add must surface the error, not close the dialog.
+	for _, r := range "abcd" {
+		typeRune(r)
+	}
+	send(tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone))
+	send(tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone))
+	send(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone))
+
+	if fired != 0 {
+		t.Errorf("OnAddHub fired for an invalid hash")
+	}
+	if cd.dialogOverlay == nil {
+		t.Fatal("dialog closed on an invalid hash (Python keeps it open on the error line)")
 	}
 }

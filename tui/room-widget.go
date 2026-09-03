@@ -34,8 +34,8 @@ type RoomWidget struct {
 	chatBox          *tview.Flex
 	header           *tview.TextView
 	usersBox         *tview.Flex
-	usersTitle       *tview.TextView
 	messages         *tview.TextView
+	messagesArea     *IndicativeMessages
 	usersList        *tview.List
 	editor           *ReadlineEdit
 	usersVisible     bool
@@ -69,6 +69,10 @@ type RoomWidget struct {
 	// connects each ChannelListEntry's click signal to
 	// display.show_user_info with the peer hash, Channels.py:713).
 	OnMemberClick func(nick, hash string)
+	// OnFocusRegion fires when the room's editor gains focus so the shortcut
+	// bar switches to the editor region (Python RoomFrame.focus_position
+	// setter → update_active_shortcuts, Channels.py:509-520).
+	OnFocusRegion func(region string)
 
 	// Message data
 	chatMessages []ChannelMessage
@@ -96,35 +100,45 @@ func NewRoomWidget(app *App, hubName, roomName string) *RoomWidget {
 	rw.messages = applyWheelMultiplier(tview.NewTextView())
 	rw.messages.SetDynamicColors(true)
 	rw.messages.SetScrollable(true)
-	// Message bodies are rendered as `[#66cc55]<nick>[-] <text>` (renderMessages),
-	// so the body text carries no color tag and inherits this SetTextColor.
-	// Python colors the body with the body_text palette attr (Channels.py:1333
-	// _body_markup(body, body_attr="body_text")); body_text is 3-hex #ddd dark /
-	// #222 light (ui/TextUI.py:26,80), cube-quantized to #d7d7d7 / #000000.
-	tc := GetThemeColors(app.Theme)
-	rw.messages.SetTextColor(tc["body_text"])
+	// Message bodies are rendered without per-span color tags for plain text,
+	// so they inherit this SetTextColor. Python colors the body with the RRC
+	// render's default fg (Channels.py _render_body fg=t["text"]): 3-hex
+	// "ddd"/"111" nibble-doubled to #dddddd / #111111 — NOT the static UI
+	// palette's cube-quantized body_text (#d7d7d7).
+	rw.messages.SetTextColor(rrcRenderColors(app.Theme)["text"])
 	rw.messages.SetBackgroundColor(tcell.ColorDefault)
 
 	// Editor: Python wraps it in AttrMap(editor, "msg_editor") (Channels.py:609);
 	// msg_editor is #111/#0bb (both themes, ui/TextUI.py:32,85), cube-quantized
 	// to #000000/#00afaf.
+	tc := GetThemeColors(app.Theme)
 	rw.editor = NewReadlineEdit(app.killRing, "", "Type a message...")
 	rw.editor.SetFieldBackgroundColor(tc["msg_editor_bg"])
 	rw.editor.SetFieldTextColor(tc["msg_editor_fg"])
+	rw.editor.SetFocusFunc(func() {
+		if rw.OnFocusRegion != nil {
+			rw.OnFocusRegion("editor")
+		}
+	})
 
-	// Header: room title
+	// Header: room title — Python RoomWidget._update_peer_info
+	// (Channels.py:737-756) renders it left-aligned via the peer_info_widget;
+	// SetRoomHeader fills it from the live hub state.
 	header := tview.NewTextView()
-	header.SetTextAlign(tview.AlignCenter)
+	header.SetTextAlign(tview.AlignLeft)
 	header.SetDynamicColors(true)
 	header.SetTextColor(tc["msg_header_sent_fg"])
 	header.SetBackgroundColor(tc["msg_header_sent_bg"])
-	header.SetText(fmt.Sprintf("[::b]#%v[-] @ %v", roomName, hubName))
 	rw.header = header
 
-	// Chat box: header + messages + editor
+	// Chat box: indicator-wrapped messages + header + editor. The message
+	// area is wrapped in IndicativeMessages (Python wraps the messagelist in
+	// _StickyMessageListBox, an IndicativeListBox) and the tail is followed
+	// sticky-bottom (Channels.py:553-587).
+	rw.messagesArea = NewIndicativeMessages(rw.messages)
 	rw.chatBox = tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(header, 1, 0, false).
-		AddItem(rw.messages, 0, 1, false).
+		AddItem(rw.messagesArea, 0, 1, false).
 		AddItem(rw.editor, 1, 0, true)
 	rw.chatBox.SetBorder(true)
 
@@ -133,16 +147,13 @@ func NewRoomWidget(app *App, hubName, roomName string) *RoomWidget {
 	rw.usersList.SetHighlightFullLine(true)
 	ApplyListFocusStyle(rw.usersList, app.Theme)
 
-	usersBox := tview.NewFlex().SetDirection(tview.FlexRow)
-	usersTitle := tview.NewTextView()
-	usersTitle.SetTextAlign(tview.AlignCenter)
-	usersTitle.SetDynamicColors(true)
-	usersTitle.SetTextColor(tcell.ColorDefault)
-	usersTitle.SetText("[::b]Users[-]")
-	rw.usersTitle = usersTitle
-	usersBox.AddItem(usersTitle, 1, 0, false)
-	usersBox.AddItem(rw.usersList, 0, 1, true)
+	// Users box: Python UsersBox(self.users_listbox, title="Users")
+	// (Channels.py:625) is a LineBox titled "Users" — the title lives in the
+	// BORDER, not in a title row inside.
+	usersBox := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(rw.usersList, 0, 1, true)
 	usersBox.SetBorder(true)
+	SetTitledBorder(usersBox, "Users")
 	rw.usersBox = usersBox
 	rw.usersWidth = 22
 
@@ -190,6 +201,23 @@ func (rw *RoomWidget) handleInput(event *tcell.EventKey) *tcell.EventKey {
 	}
 
 	return event
+}
+
+// SetRoomHeader renders the room's peer-info header exactly like Python
+// RoomWidget._update_peer_info (Channels.py:737-756):
+// " #<room> ┄ <advertised-server>[ v<version>]  (<hub display name>) | <Status> "
+// left-aligned, with the ┄ divider glyph between the room and the advertised
+// server name.
+func (rw *RoomWidget) SetRoomHeader(serverName, hubVersion, statusLabel string) {
+	server := ""
+	if serverName != "" {
+		server = " " + rw.app.Glyphs["divider1"] + " " + serverName
+		if hubVersion != "" {
+			server += " v" + hubVersion
+		}
+	}
+	left := " #" + rw.roomName + server + "  (" + rw.hubName + ")"
+	rw.header.SetText(left + " | " + statusLabel + " ")
 }
 
 // sendMessage sends the current editor content.
@@ -385,36 +413,54 @@ func (rw *RoomWidget) doTabComplete() bool {
 	return true
 }
 
-// renderMessages renders all chat messages.
+// renderOpts builds the RRC message-render options for this widget: the app's
+// config-derived options with the local user's nick merged in.
+func (rw *RoomWidget) renderOpts() RRCRenderOpts {
+	opts := rw.app.RRCRender
+	opts.OwnNick = rw.ownNick
+	if opts.Glyphs == nil {
+		opts.Glyphs = rw.app.Glyphs
+	}
+	if len(opts.Palette) == 0 {
+		opts.Palette = DefaultNickPalette(opts.Theme)
+	}
+	return opts
+}
+
+// renderMessages renders all chat messages through the Python-parity message
+// formatter (grey [HH:MM:SS] prefix, palette-colored <sender> by the sender
+// hash, #dddddd body, linkified hash runs).
 func (rw *RoomWidget) renderMessages() {
 	msgs := rw.chatMessages
 	if rw.collapseJoinPart {
 		msgs = CollapseJoinPartMessages(msgs)
 	}
+	opts := rw.renderOpts()
 	var sb strings.Builder
 	for _, msg := range msgs {
-		switch {
-		case msg.IsSystem:
-			fmt.Fprintf(&sb, "[gray]%v[-]\n", msg.Text)
-		case msg.IsNotice:
-			fmt.Fprintf(&sb, "[yellow]%v[-]\n", msg.Text)
-		case msg.IsError:
-			fmt.Fprintf(&sb, "[red]%v[-]\n", msg.Text)
-		default:
-			if msg.IsSelf {
-				fmt.Fprintf(&sb, "[#66cc55]<%v>[-] %v\n", msg.Nick, msg.Text)
-			} else {
-				nickCol := nickColor(msg.Nick)
-				fmt.Fprintf(&sb, "[%v]<%v>[-] %v\n", nickCol, msg.Nick, msg.Text)
-			}
-		}
+		sb.WriteString(formatRRCMessage(msg, opts))
 	}
 
 	if len(rw.chatMessages) == 0 {
-		sb.WriteString("[gray]No messages yet. Type below to send.[-]\n")
+		// Python update_messages (Channels.py:778-782): the empty placeholder
+		// is an irc_system-styled " ℹ  No messages yet" row.
+		sys := rrcRenderColors(opts.Theme)["system"]
+		sb.WriteString(colorTag(sys, "") + " " + opts.Glyphs["info"] + "  No messages yet" + colorReset + "\n")
 	}
 
+	// Sticky bottom (Python _StickyMessageListBox + append_message,
+	// Channels.py:799-805): keep the tail visible only when the user was
+	// already at the bottom. Before the first draw the inner rect is zero —
+	// treat that as at-bottom so a fresh room view opens at the tail like
+	// Python's initial bottom focus. ScrollToEnd re-arms tview's trackEnd
+	// latch, which the wheel capture clears on user scroll-up.
+	_, _, _, vh := rw.messages.GetInnerRect()
+	row, _ := rw.messages.GetScrollOffset()
+	atBottom := vh <= 0 || row+vh >= rw.messages.GetWrappedLineCount()
 	rw.messages.SetText(sb.String())
+	if atBottom {
+		rw.messages.ScrollToEnd()
+	}
 }
 
 // renderMembers renders the users list. Each row activates via
@@ -429,15 +475,23 @@ func (rw *RoomWidget) renderMembers() {
 	// palette for EVERY user, with the self entry marked by the arrow glyph.
 	rw.usersList.AddItem(fmt.Sprintf(" %v user%v", len(rw.members),
 		map[bool]string{true: "", false: "s"}[len(rw.members) == 1]), "", 0, nil)
+	palette := rw.renderOpts().Palette
 	for _, m := range rw.members {
 		// Python (Channels.py:695-705): the hash-based palette color for
 		// EVERY user; is_self only swaps the peer glyph for the arrow.
-		color := nickColor(m.Nick)
-		label := " " + rw.app.Glyphs["peer"] + " " + m.Nick
-		if m.IsSelf {
-			label = " " + rw.app.Glyphs["arrow_r"] + " " + m.Nick
+		color := NickColorByHashHexColor(m.Hash, palette)
+		// Python truncates the display name to its first 15 chars plus an
+		// ellipsis once it exceeds 16 (Channels.py:681) — a hard-cut 15-char
+		// name is a Go-port artifact.
+		name := m.Nick
+		if runes := []rune(name); len(runes) > 16 {
+			name = string(runes[:15]) + "…"
 		}
-		rw.usersList.AddItem(fmt.Sprintf("[%v]%v[-]", color, label), "", 0, nil)
+		label := " " + rw.app.Glyphs["peer"] + " " + name
+		if m.IsSelf {
+			label = " " + rw.app.Glyphs["arrow_r"] + " " + name
+		}
+		rw.usersList.AddItem(fmt.Sprintf("[%v]%v[-]", colorName(color), label), "", 0, nil)
 	}
 	if len(rw.members) == 0 {
 		rw.usersList.AddItem("[gray]No users[-]", "", 0, nil)

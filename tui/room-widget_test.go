@@ -16,6 +16,7 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/gdamore/tcell/v2"
@@ -254,6 +255,77 @@ func TestRoomWidgetSetMembers(t *testing.T) {
 	rw.SetMembers(members)
 	if len(rw.members) != 2 {
 		t.Errorf("SetMembers: got %v, want 2", len(rw.members))
+	}
+}
+
+// TestRoomWidgetMemberRows pins the users-pane row model (Python
+// _refresh_users_pane, Channels.py:681-716): the " N users" count row, the
+// palette color keyed by the member HASH, the self arrow glyph, and the
+// 15-char ellipsis truncation for long names.
+func TestRoomWidgetMemberRows(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	app.Glyphs = GetGlyphSet(GlyphUnicode)
+	rw := NewRoomWidget(app, "hub1", "general")
+
+	hash := "0102030405060708090a0b0c0d0e0f10" // (bytes+15)%24 = 7 → 81b385
+	rw.SetMembers([]ChannelMember{
+		{Nick: "Go port of NomadNet on Mac M2 Max", Hash: hash, Online: true, IsSelf: true},
+	})
+	rw.renderMembers()
+
+	countRow, _ := rw.usersList.GetItemText(0)
+	if !strings.Contains(countRow, "1 user") {
+		t.Errorf("count row = %q, want \"1 user\"", countRow)
+	}
+	peerRow, _ := rw.usersList.GetItemText(1)
+	if !strings.Contains(peerRow, "→") {
+		t.Errorf("self row = %q, want the arrow glyph", peerRow)
+	}
+	if !strings.Contains(peerRow, "Go port of Noma…") {
+		t.Errorf("long name = %q, want the 15-char ellipsis truncation", peerRow)
+	}
+	if !strings.Contains(peerRow, "[#81b385]") {
+		t.Errorf("member row color = %q, want the hash-based palette color #81b385", peerRow)
+	}
+
+	// Short names render whole, with the peer glyph for non-self rows.
+	rw.SetMembers([]ChannelMember{
+		{Nick: "alice", Hash: "0102030405060708090a0b0c0d0e0f10"},
+	})
+	row, _ := rw.usersList.GetItemText(1)
+	if !strings.Contains(row, "alice") || strings.Contains(row, "…") {
+		t.Errorf("short name row = %q, want the whole name without truncation", row)
+	}
+}
+
+// TestRoomWidgetRoomHeader pins the peer-info header format (Python
+// RoomWidget._update_peer_info, Channels.py:737-756): left-aligned
+// " #<room> ┄ <server>[ v<version>]  (<hub>) | <Status> " with the divider1
+// glyph — the live Python capture renders
+// " #test ┄ RaspPi Local Hub v0.3.2  (RaspPi Local Hub) | Connected ".
+func TestRoomWidgetRoomHeader(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	app.Glyphs = GetGlyphSet(GlyphUnicode)
+	rw := NewRoomWidget(app, "RaspPi Local Hub", "test")
+	rw.SetRoomHeader("RaspPi Local Hub", "0.3.2", "Connected")
+	if got := rw.header.GetText(true); got != " #test ┄ RaspPi Local Hub v0.3.2  (RaspPi Local Hub) | Connected " {
+		t.Errorf("room header = %q", got)
+	}
+
+	// No advertised version → the " v" suffix is omitted.
+	rw.SetRoomHeader("RaspPi Local Hub", "", "Connecting")
+	if got := rw.header.GetText(true); got != " #test ┄ RaspPi Local Hub  (RaspPi Local Hub) | Connecting " {
+		t.Errorf("header without version = %q", got)
+	}
+
+	// No advertised server name → just the room and hub display name.
+	rw.SetRoomHeader("", "", "Disconnected")
+	if got := rw.header.GetText(true); got != " #test  (RaspPi Local Hub) | Disconnected " {
+		t.Errorf("header without server = %q", got)
 	}
 }
 

@@ -89,8 +89,24 @@ type RRCHub struct {
 	sentIDsOrder []string
 	// recvIDs caps received-message dedup: rrcd's member list can accumulate
 	// duplicate joins from reconnect storms, fanning a message out N times.
-	recvIDs              map[string]bool
-	recvIDsOrder         []string
+	recvIDs      map[string]bool
+	recvIDsOrder []string
+	// fanoutGroups is the client-side collapse of rrcd 0.3.2's per-member
+	// message fanout — an intentional, user-ordered deviation from Python
+	// (TODO item 4), which renders every copy. rrcd fans each message out
+	// once per room member with a unique mid, a per-copy rewritten source
+	// hash and a registry-derived (often wrong or missing) nick, so fanout
+	// copies of one message share only kind, room, body and approximately the
+	// timestamp. Each group records the first copy's timestamp; copies of the
+	// same body within fanoutWindowMs of that first arrival collapse into it.
+	fanoutGroups map[string]*fanoutGroup
+	fanoutOrder  []string
+	// recentSentBodies remembers the bodies recently sent by this client so
+	// the hub's fanout echoes of our own message (unique mids, possibly
+	// rewritten source hashes) collapse with the local record instead of
+	// duplicating it. Capped at 256 like Python's deques.
+	recentSentBodies     map[string]int64
+	recentSentOrder      []string
 	pendingPings         map[string]time.Time // body → send time
 	pendingJoins         map[string]bool
 	pendingParts         map[string]bool
@@ -132,6 +148,14 @@ type RRCHub struct {
 	requestPathFn    func(hash []byte) error
 	recallIdentityFn func(hash []byte) *rns.Identity
 	buildDestFn      func(id *rns.Identity) (*rns.Destination, error)
+
+	// serverSide marks hubs that act as the room server (the Go mini-hub used
+	// by the cross-process tests). Such hubs are wired via SetLink after an
+	// inbound link arrives, and their HandleData fans a received message back
+	// out to the room like rrcd's router does. Client hubs never SetLink, so
+	// they must not echo — echoing rrcd's fanout copies back would make the
+	// hub re-forward them (Python's client has no such echo, RRC.py:1021).
+	serverSide bool
 }
 
 // NewHub creates a new RRCHub with default values.
@@ -171,6 +195,8 @@ func NewHub(manager *RRCManager, hubHash []byte, destName, name string) *RRCHub 
 		AvailableRooms:       make(map[string]*string),
 		sentIDs:              make(map[string]bool),
 		recvIDs:              make(map[string]bool),
+		fanoutGroups:         make(map[string]*fanoutGroup),
+		recentSentBodies:     make(map[string]int64),
 		pendingPings:         make(map[string]time.Time),
 		pendingJoins:         make(map[string]bool),
 		pendingParts:         make(map[string]bool),
@@ -198,11 +224,14 @@ func (h *RRCHub) SetOnLinkClosed(fn func()) {
 }
 
 // SetLink sets the RNS link used by this hub for sending data. This is
-// used by server-side hubs that receive incoming links.
+// used by server-side hubs that receive incoming links; marking the hub
+// serverSide here is what enables its router-style fanout of received
+// messages (client hubs, wired by the connect worker instead, never echo).
 func (h *RRCHub) SetLink(link *rns.Link) {
 	h.lock.Lock()
 	defer h.lock.Unlock()
 	h.link = link
+	h.serverSide = true
 }
 
 // Connect establishes an RNS link to the hub's destination. The link
@@ -232,11 +261,13 @@ func (h *RRCHub) Connect(ts rns.Transport, dest *rns.Destination) error {
 
 // onEstablished is the link-established callback, mirroring Python
 // RRCHub._on_established: it registers the packet and resource callbacks,
-// then sends the initial HELLO envelope.
+// then sends the initial HELLO envelope. The status stays CONNECTING
+// ("Identified, sending HELLO", Python RRC.py:415) until the WELCOME arrives
+// — handleWelcome flips it to CONNECTED.
 func (h *RRCHub) onEstablished(l *rns.Link) {
 	// SetStatus (not a direct field write) so the change notification fires
-	// and the channels hub list refreshes to the connected glyph immediately.
-	h.SetStatus(StatusConnected, "Connected")
+	// and the channels hub list refreshes the connecting glyph.
+	h.SetStatus(StatusConnecting, "Identified, sending HELLO")
 	h.lock.Lock()
 	h.Welcomed = false
 	cb := h.onLinkEstablished
@@ -960,6 +991,15 @@ func (h *RRCHub) GetServerName() string {
 	return h.HubName
 }
 
+// GetHubVersion returns the hub's ADVERTISED version (Python hub.hub_version,
+// set from the welcome envelope), for the room header and hub info panel.
+// Empty until the hub connects.
+func (h *RRCHub) GetHubVersion() string {
+	h.lock.Lock()
+	defer h.lock.Unlock()
+	return h.HubVersion
+}
+
 // GetHubStatus returns the hub's connection status under the hub lock, for the
 // TUI HubView adapter (mirrors Python hub.status). The int is the Status*
 // enum (StatusDisconnected … StatusFailed).
@@ -1117,6 +1157,10 @@ func (h *RRCHub) SendMessage(room, text string) string {
 	}
 	env := MakeEnvelope(TypeMsg, srcHash, []byte(room), []byte(nick), text, mid, ts)
 	h.rememberSentID(hexString(mid))
+	// The body is remembered BEFORE the send so a fanout echo that races
+	// back ahead of the local record is still collapsed (see
+	// collapseSelfEcho).
+	h.rememberSentBody("msg", room, text, ts)
 	h.sendEnv(env)
 
 	msg := &RRCMessage{
@@ -1145,6 +1189,7 @@ func (h *RRCHub) SendAction(room, text string) string {
 	}
 	env := MakeEnvelope(TypeAction, srcHash, []byte(room), []byte(nick), text, mid, ts)
 	h.rememberSentID(hexString(mid))
+	h.rememberSentBody("action", room, text, ts)
 	h.sendEnv(env)
 
 	msg := &RRCMessage{
@@ -1284,6 +1329,33 @@ func (h *RRCHub) HandleData(data []byte) {
 		case string:
 			textStr = b
 		}
+		if ts <= 0 {
+			// Python stamps every inbound message with _now_ms() (RRC.py:1043)
+			// regardless of the envelope timestamp; a zero ts falls back to
+			// the arrival time so ordering and dedupe windows stay sane.
+			ts = NowMs()
+		}
+		// Python T_MSG bookkeeping (RRC.py:1031-1035): every copy with a
+		// source hash and a non-empty nick learns nicks[src] and adds src to
+		// the room's member set. This runs BEFORE the fanout collapse skips
+		// rendering, so the member set converges on the per-member fanout
+		// copies exactly like Python's does.
+		if len(src) > 0 && nickStr != "" {
+			h.learnMsgPeer(roomStr, src, nickStr)
+		}
+		// rrcd 0.3.2 fans each message out once per room member with a unique
+		// mid, a per-copy rewritten source hash and a registry-derived nick,
+		// so neither mid- nor src-based dedupe can collapse the copies. The
+		// client-side fanout collapse keys on kind+room+body with a small
+		// timestamp window instead — an intentional, user-ordered deviation
+		// from Python, which renders every copy (TODO item 4). Server-side
+		// hubs skip it: their inbound copies are one per client and must all
+		// be recorded and re-broadcast.
+		if !h.isServerSide() {
+			if h.collapseSelfEcho("msg", roomStr, textStr, ts) || h.collapseFanout("msg", roomStr, textStr, ts) {
+				return
+			}
+		}
 		msg := &RRCMessage{
 			Kind: "msg",
 			Room: roomStr,
@@ -1297,7 +1369,54 @@ func (h *RRCHub) HandleData(data []byte) {
 			h.Manager.messageCallback(h, msg)
 		}
 
-		h.echoMessage(src, room, nick, body, mid, ts)
+		if h.isServerSide() {
+			h.echoMessage(src, room, nick, body, mid, ts)
+		}
+
+	case TypeAction:
+		// Python T_ACTION branch (RRC.py:1054-1085): action messages record
+		// exactly like msgs, with the same self-echo and fanout guards.
+		if h.Manager != nil && hexString(src) == hexString(h.Manager.identityHash()) && h.sentIDs[hexString(mid)] {
+			return
+		}
+		if hexString(mid) != "" && h.seenReceivedID(hexString(mid)) {
+			return
+		}
+		var textStr string
+		switch b := body.(type) {
+		case []byte:
+			textStr = string(b)
+		case string:
+			textStr = b
+		}
+		if ts <= 0 {
+			ts = NowMs()
+		}
+		// Python T_ACTION bookkeeping (RRC.py:1064-1068): same nick/member
+		// learning as msgs.
+		if len(src) > 0 && nickStr != "" {
+			h.learnMsgPeer(roomStr, src, nickStr)
+		}
+		if !h.isServerSide() {
+			if h.collapseSelfEcho("action", roomStr, textStr, ts) || h.collapseFanout("action", roomStr, textStr, ts) {
+				return
+			}
+		}
+		msg := &RRCMessage{
+			Kind: "action",
+			Room: roomStr,
+			Src:  src,
+			Nick: nickStr,
+			Text: textStr,
+			Ts:   ts,
+		}
+		h.recordMessage(msg, false)
+		if h.Manager != nil && h.Manager.messageCallback != nil {
+			h.Manager.messageCallback(h, msg)
+		}
+		if h.isServerSide() {
+			h.echoMessage(src, room, nick, body, mid, ts)
+		}
 
 	case TypePart:
 		h.handlePart(src, nick, room, body)
@@ -1356,6 +1475,15 @@ func (h *RRCHub) HandleData(data []byte) {
 		// notice after the welcome.
 		if roomStr == "" {
 			h.SetMOTD(textStr)
+		}
+		if ts <= 0 {
+			ts = NowMs()
+		}
+		// Fanout collapse for notices too: rrcd's per-member fanout applies
+		// to hub notices ("room test: unregistered…" arrives once per fanout
+		// copy per join, TODO item 5).
+		if !h.isServerSide() && h.collapseFanout("notice", roomStr, textStr, ts) {
+			return
 		}
 		msg := &RRCMessage{
 			Kind: "notice",
@@ -1522,6 +1650,13 @@ func (h *RRCHub) handleWelcome(body any) {
 		h.MaxRoomsPerSession = intVal(limits, LMaxRoomsPerSession)
 		h.RateLimitMsgsPerMin = intVal(limits, LRateLimitMsgsPerMinute)
 	}
+
+	// Python T_WELCOME (RRC.py:906-908): the status flips to CONNECTED only
+	// when the WELCOME arrives, and the reconnect attempt counter resets.
+	h.SetStatus(StatusConnected, "Connected")
+	h.lock.Lock()
+	h.reconnectAttempts = 0
+	h.lock.Unlock()
 
 	if h.Manager != nil {
 		h.Manager.OnWelcome(h)
@@ -1874,12 +2009,16 @@ func (h *RRCHub) recordMessage(msg *RRCMessage, local bool) {
 	}
 
 	h.lock.Lock()
-	// Cap message buffer at 256
-	msgs := h.Messages[room]
-	if len(msgs) >= 256 {
-		msgs = msgs[len(msgs)-255:]
+	// Python _record_message APPENDS to the room buffer (RRC.py:790
+	// buf.append(msg)) and trims the overflow from the FRONT, so the buffer
+	// stays oldest→newest (TODO item 1: the Go port used to prepend, which
+	// rendered the newest message at the top).
+	cap := h.perRoomCap()
+	buf := h.Messages[room]
+	if cap > 0 && len(buf) >= cap {
+		buf = buf[len(buf)-cap+1:]
 	}
-	h.Messages[room] = append([]*RRCMessage{msg}, msgs...)
+	h.Messages[room] = append(buf, msg)
 
 	// Mark unread for non-local messages
 	if !local && h.Manager != nil {
@@ -1938,6 +2077,122 @@ func (h *RRCHub) seenReceivedID(mid string) bool {
 		delete(h.recvIDs, oldest)
 	}
 	return false
+}
+
+// fanoutWindowMs is the collapse window for rrcd fanout copies, which arrive
+// within well under a second of each other (the rrcd Forwarded log shows a
+// full six-member room fanout spanning less than 0.5s). Copies of the same
+// body outside the window are distinct messages.
+const fanoutWindowMs = 3000
+
+// selfEchoWindowMs is how long after a local send the hub's fanout echoes of
+// that send are collapsed with the local record. Echo copies ride the same
+// fanout as everyone else's copies (sub-second on this fleet), but the window
+// leaves headroom for relay-path latency while keeping the false-positive
+// surface (another member sending the identical body just after us) small.
+const selfEchoWindowMs = 5000
+
+// fanoutMaxKeys caps the fanout and sent-body dedupe indexes at 256 entries,
+// mirroring Python's 256-entry deques.
+const fanoutMaxKeys = 256
+
+// fanoutGroup tracks the first-arrival timestamp of one fanout key.
+type fanoutGroup struct {
+	firstTs int64
+}
+
+// isServerSide reports whether this hub acts as the room server (wired via
+// SetLink after an inbound link). Server hubs record and re-broadcast every
+// inbound message; client hubs collapse rrcd's fanout copies instead.
+func (h *RRCHub) isServerSide() bool {
+	h.lock.Lock()
+	defer h.lock.Unlock()
+	return h.serverSide
+}
+
+// fanoutKey builds the collapse key for a received message copy: kind, room
+// and body. The source hash and nick are deliberately excluded — rrcd
+// rewrites both per fanout copy, so they differ across copies of one message.
+func fanoutKey(kind, room, body string) string {
+	return kind + "\x00" + room + "\x00" + body
+}
+
+// learnMsgPeer mirrors Python T_MSG/T_ACTION bookkeeping (RRC.py:1031-1035):
+// the copy's source hash learns the copy's nick and joins the room's member
+// set (guarded by the caller on a non-empty nick).
+func (h *RRCHub) learnMsgPeer(roomStr string, src []byte, nick string) {
+	srcHex := hexString(src)
+	h.lock.Lock()
+	defer h.lock.Unlock()
+	h.Nicks[srcHex] = nick
+	if roomStr == "" {
+		return
+	}
+	if h.Members[roomStr] == nil {
+		h.Members[roomStr] = make(map[string]bool)
+	}
+	h.Members[roomStr][srcHex] = true
+}
+
+// collapseFanout returns true when the copy should be dropped as a duplicate
+// fanout copy of an already-recorded message: same kind, room and body as a
+// copy seen within fanoutWindowMs. A same-body copy arriving outside the
+// window starts a fresh window (legitimate repeats keep rendering).
+func (h *RRCHub) collapseFanout(kind, room, body string, ts int64) bool {
+	key := fanoutKey(kind, room, body)
+	h.lock.Lock()
+	defer h.lock.Unlock()
+	if g, ok := h.fanoutGroups[key]; ok {
+		if ts >= g.firstTs-fanoutWindowMs && ts <= g.firstTs+fanoutWindowMs {
+			return true
+		}
+		g.firstTs = ts
+		return false
+	}
+	h.fanoutGroups[key] = &fanoutGroup{firstTs: ts}
+	h.fanoutOrder = append(h.fanoutOrder, key)
+	if len(h.fanoutOrder) > fanoutMaxKeys {
+		oldest := h.fanoutOrder[0]
+		h.fanoutOrder = h.fanoutOrder[1:]
+		delete(h.fanoutGroups, oldest)
+	}
+	return false
+}
+
+// rememberSentBody records a locally sent message body so the hub's fanout
+// echoes of it (unique mids, possibly rewritten source hashes) collapse with
+// the local record instead of duplicating it.
+func (h *RRCHub) rememberSentBody(kind, room, body string, ts int64) {
+	key := fanoutKey(kind, room, body)
+	h.lock.Lock()
+	defer h.lock.Unlock()
+	if _, ok := h.recentSentBodies[key]; !ok {
+		h.recentSentOrder = append(h.recentSentOrder, key)
+	}
+	h.recentSentBodies[key] = ts
+	if len(h.recentSentOrder) > fanoutMaxKeys {
+		oldest := h.recentSentOrder[0]
+		h.recentSentOrder = h.recentSentOrder[1:]
+		delete(h.recentSentBodies, oldest)
+	}
+}
+
+// collapseSelfEcho returns true when the copy is a fanout echo of a message
+// this client sent within selfEchoWindowMs: matching the room and body is
+// enough because rrcd rewrites the source hash per copy, so the echo copies
+// of our own send can carry a peer's hash. Copies that arrive before the
+// local send cannot match (the body is remembered before sendEnv).
+func (h *RRCHub) collapseSelfEcho(kind, room, body string, ts int64) bool {
+	if h.Manager == nil {
+		return false
+	}
+	h.lock.Lock()
+	sentTs, ok := h.recentSentBodies[fanoutKey(kind, room, body)]
+	h.lock.Unlock()
+	if !ok {
+		return false
+	}
+	return ts >= sentTs-selfEchoWindowMs && ts <= sentTs+selfEchoWindowMs
 }
 
 // perRoomCap mirrors Python RRCHub._per_room_cap: it returns the configured
@@ -2140,13 +2395,14 @@ func (h *RRCHub) loadHistory() {
 			if m == nil {
 				continue
 			}
-			// Skip duplicates: the echo/dedup guards are post-load only, so
-			// history files written before the dedup fix can carry the same
-			// message many times (the differential explorer's Bug #4: one
-			// message rendered ~200 times after the upgrade). The history
-			// entries carry no message id, so the key is the tuple.
-			key := hexString(m.Src) + "\x00" + m.Nick + "\x00" + m.Text + "\x00" + strconv.FormatInt(m.Ts, 10)
-			if h.seenReceivedID(key) {
+			// Collapse duplicates with the same fanout rule the live path
+			// uses (same kind+room+body within fanoutWindowMs): rrcd's
+			// fanout copies share the sender's envelope timestamp, so the
+			// per-member copies written by older builds collapse here, and a
+			// join-time history replay of an already-loaded message does not
+			// duplicate it (rrcd preserves the original ts on replay copies).
+			// History entries carry no message id, so the key is the tuple.
+			if h.collapseFanout(m.Kind, room, m.Text, m.Ts) {
 				continue
 			}
 			m.Room = room

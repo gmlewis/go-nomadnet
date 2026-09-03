@@ -24,13 +24,14 @@ import (
 // TestRoomWidgetPaletteColors pins the chat room widget's message-body base
 // color and editor field colors to the Python palette.
 //
-// Messages: Go renders each message as `[#66cc55]<nick>[-] <text>` (room-
-// widget.go renderMessages), so the message body text carries NO color tag and
-// inherits the TextView's SetTextColor. Python colors the message body with the
-// `body_text` palette attr (Channels.py:1333 `_body_markup(body,
-// body_attr="body_text")`); body_text is 3-hex #ddd (dark) / #222 (light)
-// (ui/TextUI.py:26,80), cube-quantized to #d7d7d7 / #000000. The Go port
-// previously used 0xbbbbbb.
+// Messages: Go renders each message through the RRC message formatter
+// (message-body.go), so plain body text carries NO color tag and inherits the
+// TextView's SetTextColor. Python colors the message body with the RRC
+// render's default fg (Channels.py _render_body fg=t["text"], where t is the
+// Channels theme dict): 3-hex "ddd" (dark) / "111" (light) flows through
+// MicronParser high_color, which NIBBLE-DOUBLES it to "#dddddd"/"#111111" —
+// the live #test capture shows the body at 221;221;221 (#dddddd), NOT the
+// cube-quantized #d7d7d7 the static palette's 3-hex entries get.
 //
 // Editor: Python wraps the room message editor in `AttrMap(editor,
 // "msg_editor")` (Channels.py:609). msg_editor is #111/#0bb (both themes,
@@ -44,8 +45,8 @@ func TestRoomWidgetPaletteColors(t *testing.T) {
 		theme   int
 		msgWant uint32
 	}{
-		{"dark", ThemeDark, 0xd7d7d7},
-		{"light", ThemeLight, 0x000000},
+		{"dark", ThemeDark, 0xdddddd},
+		{"light", ThemeLight, 0x111111},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -68,7 +69,7 @@ func TestRoomWidgetPaletteColors(t *testing.T) {
 			} else {
 				fg, _, _ := style.Decompose()
 				if got := uint32(fg.Hex()) & 0xffffff; got != tc.msgWant {
-					t.Errorf("messages base fg = #%06x, want #%06x (body_text cube-quantized)", got, tc.msgWant)
+					t.Errorf("messages base fg = #%06x, want #%06x (RRC render text nibble-doubled)", got, tc.msgWant)
 				}
 			}
 

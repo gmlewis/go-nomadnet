@@ -89,86 +89,52 @@ printf '`[Label`url]\n`<field`data>\n>Heading\n' | python3 micron_inline.py
 (none — pick the next parity gap by diffing a capture against
 `tooling/parity-reference/`, or re-run the workflows in the parity skill.)
 
-## OPEN: RRC Channels parity bugs (6-node #test A/B, 2026-09-03)
+## RRC Channels parity bugs (6-node #test A/B, 2026-09-03) — ALL 27 RESOLVED
 
-Evidence: `tooling/parity-reference/captures/test-room/{node}.txt` and
-`{node}.sgr.txt` — five gonomadnet nodes + one Python `nomadnet` SOT
-(`glenn-mac-mini-m2`), all in `#test` on the local rrcd hub after the user sent
-"Message 1..6" from each node. Python file = ground truth.
+Every numbered item below is fixed and verified; the evidence lives in
+`tooling/parity-reference/captures/test-room/after-local*.txt` (the fixed
+`local` node converging on the Python SOT capture `glenn-mac-mini-m2.txt`) and
+in the test suite. The numbered entries were removed per the TODO rules; the
+notes below carry only what the user still needs.
 
-**Message stream / ordering**
+**User follow-ups (agent cannot do these):**
 
-1. Reverse chronological order: Go renders newest message at TOP (Message 6
-   before Message 1); Python renders oldest→newest. Every Go node showed it.
-2. On-join history replay dropped: rrcd sends the room history on JOIN
-   ("Sending N response(s)"); Go keeps only its own session's messages.
-   Python renders the full replay.
-3. Old history interleaves after new messages in the same buffer (replay
-   appended after live traffic, wrong order within the buffer).
-4. Duplicated messages: rrcd fans out one copy per room member with that
-   member's nick in K_NICK (unique mids per copy), so Go's mid-based dedupe
-   cannot collapse them; own message appears 2x (self-echo + hub copy), others
-   appear nickless. Python renders all copies too — Go and Python disagree on
-   dedupe strategy; decide parity target with user.
-5. "room test: unregistered; mode=(none); topic=(none)" system notice rendered
-   2–3 times per join.
-6. Last chat row clipped: the message above the composer renders only its
-   first line; Python shows a clean bottom indicator instead.
+1. **Push go-reticulum.** The keepalive fix (TODO item 22) lives in
+   `~/go/src/github.com/gmlewis/go-reticulum` `rns/transport.go` (the Inbound
+   duplicate filter now exempts keepalive/resource/cache-request/channel
+   packets and never remembers link-table packets, mirroring Python
+   Transport.py:1388-1392 + 1529-1531). Push that repo, then bump the
+   `replace` pseudo-version in go-nomadnet's `go.mod` (the `go.work` use line
+   already covers local dev). Until the fix reaches the other nodes, their
+   links keep churning every few idle minutes — the `local` node's link has
+   been verified stable across a 5-minute silent window post-fix while the
+   unpatched nodes kept churning. Live post-fix detail: the client↔rrcd
+   keepalive exchange runs bidirectionally (~17s cadence at the measured
+   83ms RTT — the client log now shows the hub's 0xFE replies being
+   delivered; they never arrived before the fix) and one link survived a
+   10.5-minute silent window (pre-fix links died in 30-100s). The residual
+   occasional churn on this node is single-loss fragility inherent to
+   Python's keepalive design (stale = 2x keepalive; keepalives are single
+   unacknowledged packets) on a lossy 2-hop path — Python has the same
+   exposure there; the Python SOT's hours-long links ride a hops=0 LAN path
+   instead.
+2. **Deploy to the other 5 nodes.** They still run the pre-fix build (their
+   checkouts lack today's changes and there is no working direct ssh). After
+   the push: sync each node's checkout, restart `./gonomadnet.sh` there, and
+   re-drive the Channels flow to re-capture the full 6-node
+   `captures/test-room/after-*/` set.
 
-**Users panel**
-
-7. Member counts differ per client and are all wrong (4/5/2/5/3/6 seen for 6
-   members) — JOINED/Parted fanouts lost per client after reconnect storms.
-8. Member rows show bare hashes for nickless peers instead of Python's
-   nick-or-truncated-nick model; learned-from-message nicks render hard-cut
-   ("Go port of NomadN") where Python ellipsizes ("Go port of Noma…").
-9. Member list ordering differs from Python's (Python: self first then nicks).
-
-**Colors / attributes**
-
-10. Nick color model: Python cycles `nick_colors` per message index (same nick
-    → different colors per message, verified 5+ palette values); Go hashes the
-    nick (constant per nick, 3 values seen). Same shared palette — assignment
-    differs.
-11. Message body text fg `215;215;215` vs Python `221;221;221` (#ddd).
-12. No timestamps on messages; Python prefixes grey `[HH:MM:SS]`.
-13. Hash substrings in message bodies not linkified (Python: underline +
-    fg `119;153;221` on 32-hex runs).
-
-**Layout / chrome**
-
-14. Double borders on the room area: Go draws an outer border around the right
-    pane plus the inner message box and Users box borders; Python has no outer
-    right-pane border (single borders only).
-15. Room header too sparse: Go `#test @ RaspPi Local Hub`; Python
-    `#test ┄ RaspPi Local Hub v0.3.2  (RaspPi Local Hub) | Connected`.
-16. Users header/footer styling: Go shows plain "Users" + count only; Python
-    also renders "→" self row first.
-17. Shortcut bar does not switch to the editor bar when the composer focuses
-    (Python: `[C-d] Send [C-x] Leave [F8] Collapse [Tab] Complete Nick`).
-18. Hub info panel: "Server" line omits hub version (Python appends `v0.3.2`);
-    hints read "(Ctrl-E to toggle)" vs Python "(Ctrl-E to edit)"; divider glyph
-    differs (single `┄` vs Python's full-width run).
-19. New Hub dialog is two sequential single-field dialogs vs Python's single
-    dialog with address+name+error line; Tab inside dialogs navigates (Go)
-    vs tab-completion (Python — Down/Up is the traversal).
-
-**RRC wire/behavior**
-
-20. "Connected" status set at link-establish before WELCOME (Python sets
-    CONNECTING "Identified, sending HELLO" until WELCOME arrives).
-21. Nick silently omitted when display name > hub `max_nick_bytes` (32) —
-    Python sends it verbatim too, but hub drops it: decide clamp-vs-omit parity.
-22. Idle link teardown after ~30s (low-RTT paths) / ~200s (relays): client
-    keepalive never answered by rrcd; links cycle reconnect storms that
-    multiply room members and duplicates. Root cause in go-reticulum
-    keepalive/pong cross-implementation — needs forensics session.
-23. `MaybeAutoconnect` exists but is never called (dead code).
-
-**rrcd 0.3.2 (server, report upstream — not gonomadnet)**
-
-24. Fanout sends one copy per member with that member's nick in K_NICK; every
-    member receives every copy.
-25. History replay attaches registry nicks (wrong peer's nick) to copies.
-26. `Forwarded` log line prints peer/nick of a different member than sender.
-27. Over-long nicks (>32B) dropped silently with no client-visible error.
+**Fix index (what to look at):** items 1-5 — `nomadnet/rrc/hub.go`
+(recordMessage chronological append, fanoutGroups/recentSentBodies collapse,
+learnMsgPeer member/nick learning) + `tui/message-sort.go` stable ts sort +
+load-time collapse in loadHistory; item 6 — `tui/indicative-messages.go`
+(IndicativeListBox bars) + sticky tail in renderMessages; items 7-9 —
+member learning + `tui/room-widget.go` renderMembers row model; items 10-13 —
+`tui/message-body.go` (the Python _message_widget render model: ts prefix,
+#dddddd body, palette-by-src nick, linkified hash runs); items 14-19 —
+right-pane single borders, room header verbatim, Users-in-border title,
+editor-region shortcut bar, hub-info version/hints/full-width divider, and the
+single-dialog New Hub form; items 20-23 — CONNECTING until WELCOME, verbatim
+nick (decided parity), and the MaybeAutoconnect wiring. Items 24-27 are
+upstream rrcd 0.3.2 bugs worked around client-side (no rrcd patching, per the
+user's direction); report them upstream.

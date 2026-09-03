@@ -15,6 +15,12 @@
 
 package tui
 
+import (
+	"strings"
+
+	"github.com/gdamore/tcell/v2"
+)
+
 // DarkThemeNickColors is the 24-color nick palette for the dark theme.
 // Matches Python nomadnet theme_dark["nick_colors"] exactly.
 var DarkThemeNickColors = []string{
@@ -61,14 +67,77 @@ func NickColorByHash(hash []byte, palette []string) string {
 	return "#" + palette[idx]
 }
 
+// NickColorByHashHex returns a hex color string from the given palette based
+// on the sender's identity-hash hex (the wire form RRCMessage carries), the
+// same assignment Python get_nick_color performs on the raw bytes.
+func NickColorByHashHex(srcHex string, palette []string) string {
+	return NickColorByHash(hexDecodeBytes(srcHex), palette)
+}
+
+// NickColorByHashHexColor returns the tcell color for a sender identity-hash
+// hex from the given palette (the render-side form of get_nick_color).
+func NickColorByHashHexColor(srcHex string, palette []string) tcell.Color {
+	return paletteEntryColor(NickColorByHashHex(srcHex, palette))
+}
+
+// paletteEntryColor converts a palette hex entry ("81b385" / "#81b385" /
+// 3-digit "81b") to a tcell color; an invalid entry falls back to
+// ColorDefault (Python's non-bytes branch renders theme["nick_peer"]).
+func paletteEntryColor(entry string) tcell.Color {
+	entry = strings.TrimPrefix(entry, "#")
+	switch len(entry) {
+	case 3:
+		return nibbleHex3("#" + entry)
+	case 6:
+		if v, ok := hexParse6(entry); ok {
+			return tcell.NewHexColor(v)
+		}
+	}
+	return tcell.ColorDefault
+}
+
+// hexDecodeBytes decodes an even-length hex string to bytes; invalid input
+// decodes to nil so the palette fallback (Python's non-bytes branch) applies.
+func hexDecodeBytes(hexStr string) []byte {
+	if len(hexStr)%2 != 0 {
+		return nil
+	}
+	out := make([]byte, len(hexStr)/2)
+	for i := range out {
+		hi, ok1 := hexNibble(hexStr[i*2])
+		lo, ok2 := hexNibble(hexStr[i*2+1])
+		if !ok1 || !ok2 {
+			return nil
+		}
+		out[i] = byte(hi<<4 | lo)
+	}
+	return out
+}
+
+// hexParse6 parses a 6-digit hex spec to a 24-bit value, reporting success.
+func hexParse6(spec string) (int32, bool) {
+	var v int32
+	for i := range 6 {
+		n, ok := hexNibble(spec[i])
+		if !ok {
+			return 0, false
+		}
+		v = v<<4 | int32(n)
+	}
+	return v, true
+}
+
+// DefaultNickPalette returns the theme's default nick palette (the theme
+// dicts' shared nick_colors, Channels.py:32,45).
+func DefaultNickPalette(theme int) []string {
+	if theme == ThemeLight {
+		return LightThemeNickColors
+	}
+	return DarkThemeNickColors
+}
+
 // NickColor returns a tview color tag string for the given nick.
 // Uses NickColorByHash to pick from the palette.
 func NickColor(nick string, theme int) string {
-	var palette []string
-	if theme == ThemeLight {
-		palette = LightThemeNickColors
-	} else {
-		palette = DarkThemeNickColors
-	}
-	return NickColorByHash([]byte(nick), palette)
+	return NickColorByHash([]byte(nick), DefaultNickPalette(theme))
 }

@@ -17,6 +17,8 @@ package tui
 
 import (
 	"testing"
+
+	"github.com/rivo/tview"
 )
 
 // TestChannelsShortcutBar verifies that ChannelsDisplay.GetShortcutText
@@ -59,5 +61,24 @@ func TestChannelsShortcutBar(t *testing.T) {
 				t.Errorf("GetShortcutText() = %q, want %q", got, tc.want)
 			}
 		})
+	}
+}
+
+// TestChannelsRoomEditorFocusSwitchesBar pins item 17: focusing the room
+// composer switches the shortcut bar to the editor region (Python
+// RoomFrame.focus_position setter → update_active_shortcuts,
+// Channels.py:509-520).
+func TestChannelsRoomEditorFocusSwitchesBar(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	cd := NewChannelsDisplay(app, nil)
+	rw := NewRoomWidget(app, "hub", "test")
+	rw.OnFocusRegion = cd.setShortcutRegion
+
+	rw.editor.Focus(func(tview.Primitive) {})
+	want := "[C-d] Send  [C-x] Leave  [F8] Collapse  [Tab] Complete Nick"
+	if got := cd.GetShortcutText(); got != want {
+		t.Errorf("after room editor focus, shortcut bar = %q, want %q", got, want)
 	}
 }

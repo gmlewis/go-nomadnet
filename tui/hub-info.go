@@ -172,6 +172,7 @@ type HubInfoSnapshot struct {
 	Status      int
 	StatusText  string
 	ServerName  string
+	HubVersion  string
 	MOTD        string
 	AutoReconn  bool
 	AutoList    bool
@@ -198,6 +199,19 @@ func (hia *HubInfoArea) SetHubInfo(snap HubInfoSnapshot) {
 	hia.snapshot = &snap
 	hia.widget.SetTitle(fmt.Sprintf(" %v ", snap.Name))
 	hia.refreshView()
+}
+
+// dividerRow renders one full-width divider row: Python's
+// urwid.Divider(g["divider1"]) (Channels.py:1783) repeats the divider glyph
+// across the whole row, where the Go port previously wrote a single glyph.
+// The width comes from the laid-out widget rect (falling back to a sane
+// default before the first draw).
+func (hia *HubInfoArea) dividerRow() string {
+	_, _, w, _ := hia.widget.GetInnerRect()
+	if w <= 0 {
+		w = 60
+	}
+	return strings.Repeat(hia.app.Glyphs["divider1"], w)
 }
 
 // refreshView rebuilds the text display from current data, mirroring
@@ -230,21 +244,29 @@ func (hia *HubInfoArea) refreshView() {
 	}
 	fmt.Fprintf(&sb, "  [#%06x]Status   : %v (%v)[-]\n", uint32(statusColor), statusLabel, snap.StatusText)
 	if snap.ServerName != "" {
-		fmt.Fprintf(&sb, "  Server   : %v\n", snap.ServerName)
+		// Python _show_hub_info (Channels.py:1764-1766): the advertised
+		// server name carries " v<version>" when the welcome provides one.
+		ver := ""
+		if snap.HubVersion != "" {
+			ver = " v" + snap.HubVersion
+		}
+		fmt.Fprintf(&sb, "  Server   : %v%v\n", snap.ServerName, ver)
 	}
 
-	autoLine := func(label string, on bool, key string) {
+	autoLine := func(label string, on bool, key string, verb string) {
 		glyph, state := cross, "Off"
 		attrColor := colors["list_unknown"]
 		if on {
 			glyph, state, attrColor = check, "On", colors["list_trusted"]
 		}
-		fmt.Fprintf(&sb, "  [#%06x]%v  : %v %v  (%v to toggle)[-]\n", uint32(attrColor), label, glyph, state, key)
+		fmt.Fprintf(&sb, "  [#%06x]%v  : %v %v  (%v to %v)[-]\n", uint32(attrColor), label, glyph, state, key, verb)
 	}
-	autoLine("AutoRcn ", snap.AutoReconn, "Ctrl-T")
-	autoLine("AutoList", snap.AutoList, "Ctrl-E")
-	autoLine("AutoWho ", snap.AutoWho, "Ctrl-E")
-	sb.WriteString(hia.app.Glyphs["divider1"] + "\n")
+	autoLine("AutoRcn ", snap.AutoReconn, "Ctrl-T", "toggle")
+	// Python lines 1776/1781: the AutoList/AutoWho hints read "Ctrl-E to
+	// edit" (they open the edit-hub dialog), unlike AutoRcn's "to toggle".
+	autoLine("AutoList", snap.AutoList, "Ctrl-E", "edit")
+	autoLine("AutoWho ", snap.AutoWho, "Ctrl-E", "edit")
+	sb.WriteString(hia.dividerRow() + "\n")
 
 	switch snap.Status {
 	case 2:
@@ -256,20 +278,20 @@ func (hia *HubInfoArea) refreshView() {
 	}
 
 	if snap.MOTD != "" {
-		sb.WriteString(hia.app.Glyphs["divider1"] + "\n  MOTD:\n")
+		sb.WriteString(hia.dividerRow() + "\n  MOTD:\n")
 		for line := range strings.SplitSeq(snap.MOTD, "\n") {
 			fmt.Fprintf(&sb, "  %v\n", line)
 		}
 	}
 
 	if len(snap.JoinedRooms) > 0 {
-		sb.WriteString(hia.app.Glyphs["divider1"] + "\n  Joined rooms:\n")
+		sb.WriteString(hia.dividerRow() + "\n  Joined rooms:\n")
 		for _, r := range snap.JoinedRooms {
 			fmt.Fprintf(&sb, "    #%v\n", r)
 		}
 	}
 	if len(snap.AvailRooms) > 0 {
-		sb.WriteString(hia.app.Glyphs["divider1"] + "\n  Available rooms:\n")
+		sb.WriteString(hia.dividerRow() + "\n  Available rooms:\n")
 		for _, r := range snap.AvailRooms {
 			fmt.Fprintf(&sb, "    #%v\n", r)
 		}

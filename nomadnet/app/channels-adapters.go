@@ -76,6 +76,10 @@ func (v rrcHubView) StatusText() string { return v.hub.GetStatusText() }
 // set from the welcome envelope), empty until the hub connects.
 func (v rrcHubView) ServerName() string { return v.hub.GetServerName() }
 
+// HubVersion returns the hub's ADVERTISED version (Python hub.hub_version),
+// empty until the hub connects.
+func (v rrcHubView) HubVersion() string { return v.hub.GetHubVersion() }
+
 // MOTD returns the hub's message of the day.
 func (v rrcHubView) MOTD() string { return v.hub.GetMOTD() }
 

@@ -42,6 +42,11 @@ type App struct {
 	Styles    *StyleRegistry
 	killRing  *killRing
 
+	// RRCRender carries the RRC message-render options the wiring layer
+	// derives from the app config (Python reads the rrc_* toggles and the
+	// theme inside _message_widget, Channels.py:1281+).
+	RRCRender RRCRenderOpts
+
 	// clipboard writes selected text to the system clipboard (mouse text
 	// selection, a Go-only enhancement); selection tracks the mouse-drag /
 	// double-click / triple-click selection state.

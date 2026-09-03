@@ -107,6 +107,23 @@ func runTextUI(configDir, rnsConfigDir string) {
 	// Create and run the TUI
 	tuiApp := tui.NewApp(theme, glyphSet, colorMode)
 
+	// RRC message-render options (Python reads the rrc_* config toggles and
+	// the theme inside _message_widget, Channels.py:1281+): palette override,
+	// toggle state, the effective nick, and the glyph set.
+	rrcPalette := tui.DefaultNickPalette(theme)
+	if len(a.RRCNickColorsTheme) > 0 {
+		rrcPalette = a.RRCNickColorsTheme
+	}
+	tuiApp.RRCRender = tui.RRCRenderOpts{
+		Theme:                  theme,
+		Palette:                rrcPalette,
+		NickColors:             a.RRCNickColors,
+		MentionColor:           a.RRCMentionColor,
+		ColorMentionTimestamps: a.RRCColorMentionTimestamps,
+		OwnNick:                a.RRC.GetNickname(),
+		Glyphs:                 tuiApp.Glyphs,
+	}
+
 	// Crash recovery. An unrecovered panic in a gonomadnet goroutine restores
 	// the terminal and writes the stack to a crash file instead of letting the
 	// runtime spray a GOTRACEBACK dump at the (raw, alt-screen) terminal — which
@@ -1566,6 +1583,10 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 			return
 		}
 		a.RRC.SetActive(hub, strings.ToLower(room))
+		// Python _select_room → _maybe_autoconnect (Channels.py:1736-1741):
+		// selecting a room auto-connects a disconnected/failed hub. This was
+		// previously unwired (the MaybeAutoconnect helper existed unused).
+		tui.MaybeAutoconnect(hub)
 		if hub.Status == rrc.StatusConnected && !hub.HasRoom(room) {
 			hub.JoinRoom(room, false)
 		}
@@ -2770,24 +2791,35 @@ func hubIndexFor(a *app.App, hub *rrc.RRCHub) int {
 }
 
 // rrcRoomMessages maps the hub's message buffer for the room to the tui
-// ChannelMessage shape the RoomWidget renders.
+// ChannelMessage shape the RoomWidget renders, sorted oldest→newest by
+// timestamp (Python renders the hub buffer chronologically; the stable sort
+// also interleaves a history replay that arrives after live traffic).
 func rrcRoomMessages(hub *rrc.RRCHub, room string) []tui.ChannelMessage {
 	if hub == nil {
 		return nil
 	}
+	var ownHashHex string
+	if mgr := hub.Manager; mgr != nil && mgr.Identity() != nil {
+		ownHashHex = strings.ToLower(fmt.Sprintf("%x", mgr.Identity().Hash))
+	}
 	rrcMsgs := hub.GetMessages(strings.ToLower(room))
 	out := make([]tui.ChannelMessage, 0, len(rrcMsgs))
 	for _, m := range rrcMsgs {
+		srcHex := strings.ToLower(fmt.Sprintf("%x", m.Src))
 		out = append(out, tui.ChannelMessage{
 			Room:     m.Room,
 			Nick:     m.Nick,
+			SrcHash:  srcHex,
 			Text:     m.Text,
+			TsMs:     m.Ts,
 			IsNotice: m.Kind == "notice",
 			IsError:  m.Kind == "error",
 			IsSystem: m.Kind == "system",
 			Mention:  m.Mention,
+			IsSelf:   ownHashHex != "" && srcHex != "" && srcHex == ownHashHex,
 		})
 	}
+	tui.SortChannelMessages(out)
 	return out
 }
 

@@ -16,6 +16,7 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/gdamore/tcell/v2"
@@ -28,6 +29,49 @@ func TestHubInfoAreaCreation(t *testing.T) {
 	hia := NewHubInfoArea(app, "MyHub")
 	if hia == nil {
 		t.Fatal("NewHubInfoArea returned nil")
+	}
+}
+
+// TestHubInfoAreaPanelText pins item 18's panel goldens (Python
+// _show_hub_info, Channels.py:1764-1783): the Server line carries the
+// advertised version (" v0.3.2"), the AutoList/AutoWho hints read
+// "Ctrl-E to edit" (AutoRcn keeps "Ctrl-T to toggle"), and the divider
+// renders as a full-width run of the divider1 glyph.
+func TestHubInfoAreaPanelText(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	app.Glyphs = GetGlyphSet(GlyphUnicode)
+	hia := NewHubInfoArea(app, "RaspPi Local Hub")
+	hia.SetHubInfo(HubInfoSnapshot{
+		Name:       "RaspPi Local Hub",
+		Address:    "bc0a90a0a1799ae7c07fd461ea6b09f0",
+		Status:     hubStatusConnected,
+		StatusText: "Connected",
+		ServerName: "RaspPi Local Hub",
+		HubVersion: "0.3.2",
+		AutoReconn: true,
+		AutoList:   true,
+		AutoWho:    true,
+	})
+	body := hia.view.GetText(true)
+	if !strings.Contains(body, "  Server   : RaspPi Local Hub v0.3.2\n") {
+		t.Errorf("server line missing version:\n%v", body)
+	}
+	if !strings.Contains(body, "(Ctrl-T to toggle)") {
+		t.Errorf("AutoRcn hint missing:\n%v", body)
+	}
+	if strings.Count(body, "(Ctrl-E to edit)") != 2 {
+		t.Errorf("AutoList/AutoWho hints = want two \"(Ctrl-E to edit)\":\n%v", body)
+	}
+	if strings.Contains(body, "to toggle)  :") {
+		t.Errorf("AutoList/AutoWho must not read \"to toggle\":\n%v", body)
+	}
+	// The divider rows repeat the glyph across the row width.
+	for line := range strings.SplitSeq(body, "\n") {
+		if strings.HasPrefix(line, "┄") && !strings.HasPrefix(line, "┄┄┄") {
+			t.Errorf("divider row = %q, want a full-width run of ┄", line)
+		}
 	}
 }
 

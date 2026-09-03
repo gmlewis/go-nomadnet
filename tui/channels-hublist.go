@@ -51,11 +51,28 @@ type HubView interface {
 	AddressHex() string
 	StatusText() string
 	ServerName() string
+	HubVersion() string
 	MOTD() string
 	AutoReconnect() bool
 	AutoList() bool
 	AutoWho() bool
 	AvailableRoomList() []string
+}
+
+// hubStatusLabel maps the hub status to Python's _update_peer_info label
+// (Channels.py:742-747).
+func hubStatusLabel(status int) string {
+	switch status {
+	case hubStatusDisconnected:
+		return "Disconnected"
+	case hubStatusConnecting:
+		return "Connecting"
+	case hubStatusConnected:
+		return "Connected"
+	case hubStatusFailed:
+		return "Failed"
+	}
+	return ""
 }
 
 // HubListEntryKind identifies a channels-list row as a hub header, a room under

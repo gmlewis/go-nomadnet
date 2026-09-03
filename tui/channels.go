@@ -29,8 +29,10 @@ import (
 type ChannelMessage struct {
 	Room      string
 	Nick      string
+	SrcHash   string // sender identity-hash hex (nick color + fallback display)
 	Text      string
 	Timestamp string
+	TsMs      int64 // message timestamp in ms since epoch (millisecond precision)
 	IsSelf    bool
 	IsSystem  bool
 	IsNotice  bool
@@ -518,6 +520,7 @@ func (cd *ChannelsDisplay) ShowHubInfo(hubIdx int) {
 		Status:      hv.Status(),
 		StatusText:  hv.StatusText(),
 		ServerName:  hv.ServerName(),
+		HubVersion:  hv.HubVersion(),
 		MOTD:        hv.MOTD(),
 		AutoReconn:  hv.AutoReconnect(),
 		AutoList:    hv.AutoList(),
@@ -545,6 +548,9 @@ func (cd *ChannelsDisplay) ShowHubInfo(hubIdx int) {
 	}
 	cd.hubInfo.SetHubInfo(*snap)
 	cd.paneMode = "info"
+	// The hub info area carries its own titled border (Python HubInfoArea,
+	// Channels.py:1827); the outer placeholder border goes away (item 14).
+	cd.rightPane.SetBorder(false)
 	// Swap the right pane's sole item to the hub info widget.
 	cd.rightPane.Clear()
 	cd.rightPane.AddItem(cd.hubInfo.Widget(), 0, 1, false)
@@ -572,6 +578,10 @@ func (cd *ChannelsDisplay) ShowRoom(hubIdx int, room string, msgs []ChannelMessa
 	if cd.roomWidget == nil || cd.roomWidget.RoomName() != room {
 		cd.roomWidget = NewRoomWidget(cd.app, hv.Name(), room)
 		rw := cd.roomWidget
+		// The room's editor focus switches the main shortcut bar to the
+		// editor region (Python RoomFrame focus setter →
+		// update_active_shortcuts, Channels.py:509-520).
+		rw.OnFocusRegion = cd.setShortcutRegion
 		rw.OnSendMessage = func(text string) {
 			if cd.OnSendMessage != nil {
 				cd.OnSendMessage(text)
@@ -600,7 +610,14 @@ func (cd *ChannelsDisplay) ShowRoom(hubIdx int, room string, msgs []ChannelMessa
 		}
 	}
 	cd.roomWidget.SetMessages(msgs)
+	// Python _update_peer_info (Channels.py:737-756): the room header reads
+	// the hub's live state (advertised name/version, display name, status).
+	cd.roomWidget.SetRoomHeader(hv.ServerName(), hv.HubVersion(), hubStatusLabel(hv.Status()))
 	cd.paneMode = "room"
+	// Python replaces the right pane's content with the room widget, which
+	// carries its own borders — the outer placeholder border goes away
+	// (item 14: no double border around the room area).
+	cd.rightPane.SetBorder(false)
 	cd.rightPane.Clear()
 	cd.rightPane.AddItem(cd.roomWidget.Widget(), 0, 1, true)
 	// Python _select_room → show_room (Channels.py:1720-1745) swaps the right
@@ -613,7 +630,8 @@ func (cd *ChannelsDisplay) ShowRoom(hubIdx int, room string, msgs []ChannelMessa
 
 // RefreshRoomIfVisible reloads the showing room's message buffer and member
 // list so new messages and joins appear live (Python RoomWidget
-// update_messages + _refresh_users_pane via the delegates).
+// update_messages + _refresh_users_pane via the delegates), and refreshes the
+// room header from the hub's live state (Python _update_peer_info on notify).
 func (cd *ChannelsDisplay) RefreshRoomIfVisible(refresh RoomMessagesFunc, members RoomMembersFunc) {
 	if cd.paneMode != "room" || cd.selectedHubIdx < 0 || cd.selectedHubIdx >= len(cd.HubViewsCache) {
 		return
@@ -621,6 +639,9 @@ func (cd *ChannelsDisplay) RefreshRoomIfVisible(refresh RoomMessagesFunc, member
 	room := cd.selectedRoom
 	if room == "" {
 		return
+	}
+	if hv := cd.HubViewsCache[cd.selectedHubIdx]; hv != nil {
+		cd.roomWidget.SetRoomHeader(hv.ServerName(), hv.HubVersion(), hubStatusLabel(hv.Status()))
 	}
 	cd.roomWidget.SetMessages(refresh(cd.selectedHubIdx, room))
 	if members != nil {
@@ -828,6 +849,9 @@ func (cd *ChannelsDisplay) ToggleChannelListState() {
 // begin" placeholder (Python show_placeholder, Channels.py:1834-1840).
 func (cd *ChannelsDisplay) ShowPlaceholder() {
 	cd.paneMode = ""
+	// Python's placeholder IS the bordered LineBox (Channels.py:1459), so the
+	// right pane border renders only in the placeholder state.
+	cd.rightPane.SetBorder(true)
 	cd.rightPane.Clear()
 	cd.rightPane.AddItem(cd.placeholder, 0, 1, false)
 }
@@ -1031,25 +1055,59 @@ func (cd *ChannelsDisplay) NewHubDialog() {
 	if cd.app == nil {
 		return
 	}
-	cd.showDialogOverlayInput("New Hub", "Hub address (hex hash):", "", "Add", "Back", func(hashText string) {
-		hashText = strings.TrimSpace(strings.TrimPrefix(strings.ToLower(hashText), "0x"))
+	// Python new_hub_dialog (Channels.py:1921-1958): ONE dialog titled
+	// "New Hub" holding the address field, the display-name field, a blank
+	// row, the error line, and an Add/Back button row. The Add handler
+	// validates the hash (0x-stripped, lowercase, 16 bytes) and on failure
+	// renders "Could not add hub: <error>" on the error line instead of
+	// chaining a second dialog.
+	tc := GetThemeColors(cd.app.Theme)
+	eHash := tview.NewInputField().SetLabel("Hub address : ").SetText("")
+	eHash.SetFieldBackgroundColor(tc["msg_editor_bg"])
+	eHash.SetFieldTextColor(tc["msg_editor_fg"])
+	eName := tview.NewInputField().SetLabel("Display name: ").SetText("")
+	eName.SetFieldBackgroundColor(tc["msg_editor_bg"])
+	eName.SetFieldTextColor(tc["msg_editor_fg"])
+	errorText := tview.NewTextView().SetDynamicColors(true)
+	errorText.SetText("")
+
+	confirm := func() {
+		// Python confirmed() (Channels.py:1929-1942): strip 0x, lowercase,
+		// bytes.fromhex, require TRUNCATED_HASHLENGTH//8 bytes; name or None
+		// → rrc.add_hub + update_list. Failures land on the error line.
+		hashText := strings.TrimSpace(strings.TrimPrefix(strings.ToLower(eHash.GetText()), "0x"))
 		hashBytes, err := hex.DecodeString(hashText)
-		if err != nil || len(hashBytes) != 16 {
+		if err != nil {
+			errorText.SetText("[#ff5555]Could not add hub: invalid hexadecimal hash[-]")
 			return
 		}
-		// Search for hub name or default
-		cd.showDialogOverlayInput("New Hub Name", "Display name:", "", "Add", "Back", func(nameText string) {
-			nameText = strings.TrimSpace(nameText)
+		if len(hashBytes) != 16 {
+			errorText.SetText("[#ff5555]Could not add hub: Hash length must be 16 bytes[-]")
+			return
+		}
+		name := strings.TrimSpace(eName.GetText())
+		cd.closeDialog()
+		if cd.OnAddHub != nil {
 			// Python new_hub_dialog confirmed(): rrc.add_hub(hh, name=nm) then
-			// update_list (Channels.py:1046-1060 in the installed 1.2.8). The
-			// former stub silently discarded both fields, so New Hub did
-			// nothing at all.
-			if cd.OnAddHub == nil {
-				return
-			}
-			cd.OnAddHub(hashBytes, "rrc.hub", nameText)
-		}, nil)
-	}, nil)
+			// update_list (Channels.py:1038-1040).
+			cd.OnAddHub(hashBytes, "rrc.hub", name)
+		}
+	}
+
+	addBtn := NewUrwidButton("Add").SetSelectedFunc(confirm)
+	backBtn := NewUrwidButton("Back").SetSelectedFunc(func() { cd.closeDialog() })
+	layout := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(eHash, 1, 0, true).
+		AddItem(eName, 1, 0, false).
+		AddItem(tview.NewTextView().SetText(""), 1, 0, false).
+		AddItem(errorText, 1, 0, false).
+		AddItem(CreateUrwidButtonRow(addBtn, backBtn), 1, 0, false)
+	dialog := NewDialogLineBox("New Hub", layout, cd.closeDialog)
+	// 5 layout rows + the 2 border rows.
+	cd.showDialogOverlay(dialog, 7)
+	// Python's Pile traversal: Down/Up (and Tab) walk address → name →
+	// buttons; Esc dismisses (wireDialogNav, the shared dialog-nav latch).
+	wireDialogNav(cd.app, cd.closeDialog, []tview.Primitive{eHash, eName, addBtn, backBtn})
 }
 
 // JoinRoomDialog shows the dialog to join a room on the selected hub (Python
