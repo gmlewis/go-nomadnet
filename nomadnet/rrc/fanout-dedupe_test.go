@@ -16,6 +16,7 @@
 package rrc
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -381,5 +382,39 @@ func TestHandleWelcomeResetsReconnectAttempts(t *testing.T) {
 	defer hub.lock.Unlock()
 	if hub.reconnectAttempts != 0 {
 		t.Errorf("reconnectAttempts = %v, want 0 after WELCOME", hub.reconnectAttempts)
+	}
+}
+
+// TestFanoutCollapseNickBackfill pins the user-ordered fanout behavior from
+// the 2026-09-03 12:32 full-fleet capture (the A2 symptom): the collapse
+// keeps the FIRST-arrived copy, and rrcd's per-copy rewritten source hashes
+// mean later copies can carry the sender's registry nick even when the kept
+// copy's nick is empty — the kept copy renders ONCE, WITH the sender's nick
+// (Python learns the (src, nick) pair from every fanout copy before its own
+// dedupe, RRC.py:1031-1035). Six fanout copies: first nick="", a later copy
+// nick="Nick N" → the kept message's nick backfills to "Nick N".
+func TestFanoutCollapseNickBackfill(t *testing.T) {
+	t.Parallel()
+
+	mgr, hub := fanoutFixture(t)
+	mgr.SetActive(hub, "test")
+
+	base := NowMs()
+	hub.HandleData(fanoutCopy("aaaa", "", "Message A2 body", "mid1", base))
+	for i := 1; i < 6; i++ {
+		nick := ""
+		if i >= 2 {
+			nick = "Nick N"
+		}
+		hub.HandleData(fanoutCopy(fmt.Sprintf("src%v", i), nick,
+			"Message A2 body", fmt.Sprintf("mid%v", i+1), base+int64(i)*10))
+	}
+
+	msgs := hub.GetMessages("test")
+	if len(msgs) != 1 {
+		t.Fatalf("GetMessages len = %v, want 1 (fanout copies must collapse)", len(msgs))
+	}
+	if msgs[0].Nick != "Nick N" {
+		t.Errorf("kept copy nick = %q, want %q (backfilled from a later copy)", msgs[0].Nick, "Nick N")
 	}
 }

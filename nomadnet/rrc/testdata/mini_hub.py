@@ -131,9 +131,12 @@ def _on_packet(data, packet):
                                L_RATE_LIMIT_MSGS_PER_MINUTE: 30},
         }
         send_env(packet.link, make_env(T_WELCOME, welcome_body))
+
     elif env.get(K_T) == T_MSG:
-        # Echo the message back as a NOTICE so the client can assert the
-        # cross-implementation message delivery.
+        # Message handling for the integration tests: the echo notice (the
+        # cross-impl message delivery check), the rrcd 0.3.2-style
+        # per-member fanout burst trigger, and the roomless MOTD notice
+        # trigger.
         room = env.get(K_ROOM)
         nick = env.get(K_NICK)
         text = env.get(K_BODY) or ""
@@ -144,10 +147,43 @@ def _on_packet(data, packet):
         with open(LOG, "a") as f:
             f.write(json.dumps({"event": "msg", "room": room, "nick": nick,
                                 "text": text}) + "\n")
+
+        # rrcd-style fanout trigger: body "FANOUT:<count>:<staleTs>:<text>"
+        # makes the hub send <count> T_MSG copies to the link - unique mids,
+        # a per-copy rewritten source hash, copy 0 with NO nick and the rest
+        # with registry-style nicks, all sharing the stale timestamp - like
+        # the real rrcd fanout the A2 capture rode on (RRC.py:1031-1035).
+        if text.startswith("FANOUT:"):
+            parts = text.split(":", 3)
+            n = int(parts[1])
+            stale = int(parts[2])
+            fan_body = (parts[3] if len(parts) > 3 else "").encode("utf-8")
+            for i in range(n):
+                e = make_env(T_MSG, body=fan_body, room=room)
+                e[K_ID] = ("fanout-%d-%s" % (i, os.urandom(4).hex())).encode("utf-8")
+                e[K_TS] = stale + i * 10
+                e[K_SRC] = identity.hash[:28] + bytes([i]) + identity.hash[29:32]
+                if i > 0:
+                    e[K_NICK] = ("HubNick%d" % i).encode("utf-8")
+                with open(LOG, "a") as f:
+                    f.write(json.dumps({"event": "fanout", "copy": i,
+                                        "src": RNS.hexrep(e[K_SRC], delimit=False)}) + "\n")
+                send_env(packet.link, e)
+            return
+
+        # Roomless MOTD notice trigger: body "MOTD:<text>" sends a T_NOTICE
+        # with the room ABSENT - the wire shape of rrcd's global MOTD notice
+        # that must land in the client's ACTIVE room (RRC.py:1128-1136).
+        if text.startswith("MOTD:"):
+            e = make_env(T_NOTICE, body=text[len("MOTD:"):].encode("utf-8"))
+            send_env(packet.link, e)
+            return
+
         notice = "echo: " + text
         packet_env = make_env(T_NOTICE, body=notice.encode("utf-8"), room=room)
         packet_env[K_NICK] = "MiniHub"
         send_env(packet.link, packet_env)
+
 
 
 def link_established(link):

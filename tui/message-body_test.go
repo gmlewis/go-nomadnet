@@ -262,7 +262,11 @@ func TestScanChatSpansBoundaries(t *testing.T) {
 }
 
 // TestFormatRRCMessageSystemNoticeError pins the system/notice/error render:
-// leading-space ts prefix, the event icon, and the kind color.
+// the leading space INSIDE the irc_ts-styled run (Python _ts_prefix,
+// Channels.py:1129-1131 — " [HH:MM:SS] ", 12 chars), the event icon, and the
+// STATIC palette's cube-quantized kind colors (ui/TextUI.py:63-68, measured
+// on the 2026-09-03 12:32 full-fleet capture, mac row 24: the " [12:21:08] "
+// run is (135,135,135) and the 󰙎 Welcome run (255,215,95)).
 func TestFormatRRCMessageSystemNoticeError(t *testing.T) {
 	t.Parallel()
 
@@ -270,19 +274,22 @@ func TestFormatRRCMessageSystemNoticeError(t *testing.T) {
 	text := "room test: unregistered; mode=(none); topic=(none)"
 
 	got := formatRRCMessage(ChannelMessage{Text: text, IsNotice: true, TsMs: 0}, opts)
-	want := " [#888888][        ] [-][#ffdd33]ℹ " + text + "[-]\n"
+	want := colorTag(cubeHex3("#888"), "") + " [" + "        " + "] " + colorReset +
+		colorTag(cubeHex3("#fd3"), "") + opts.Glyphs["info"] + " " + text + colorReset + "\n"
 	if got != want {
 		t.Errorf("notice render =\n%q\nwant\n%q", got, want)
 	}
 
 	got = formatRRCMessage(ChannelMessage{Text: "alice left", IsSystem: true, TsMs: 0}, opts)
-	want = " [#888888][        ] [-][#888888]← alice left[-]\n"
+	want = colorTag(cubeHex3("#888"), "") + " [" + "        " + "] " + colorReset +
+		colorTag(cubeHex3("#888"), "") + opts.Glyphs["arrow_l"] + " alice left" + colorReset + "\n"
 	if got != want {
 		t.Errorf("system render =\n%q\nwant\n%q", got, want)
 	}
 
 	got = formatRRCMessage(ChannelMessage{Text: "boom", IsError: true, TsMs: 0}, opts)
-	want = " [#888888][        ] [-][#ff5555]⚠ boom[-]\n"
+	want = colorTag(cubeHex3("#888"), "") + " [" + "        " + "] " + colorReset +
+		colorTag(cubeHex3("#f55"), "") + opts.Glyphs["warning"] + " boom" + colorReset + "\n"
 	if got != want {
 		t.Errorf("error render =\n%q\nwant\n%q", got, want)
 	}

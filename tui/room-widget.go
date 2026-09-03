@@ -37,6 +37,7 @@ type RoomWidget struct {
 	messages         *tview.TextView
 	messagesArea     *IndicativeMessages
 	usersList        *tview.List
+	usersCount       *tview.TextView
 	editor           *ReadlineEdit
 	usersVisible     bool
 	usersWidth       int
@@ -107,12 +108,21 @@ func NewRoomWidget(app *App, hubName, roomName string) *RoomWidget {
 	// palette's cube-quantized body_text (#d7d7d7).
 	rw.messages.SetTextColor(rrcRenderColors(app.Theme)["text"])
 	rw.messages.SetBackgroundColor(tcell.ColorDefault)
+	// Message rows are PRE-WRAPPED at the chat inner width (the justified
+	// two-column layout, Channels.py:1408-1413 — continuation lines indent to
+	// the "<" column), so the TextView must render the wrapped lines
+	// verbatim; letting tview wrap at draw time diverged from Python's break
+	// positions (the conversations.go:3071 precedent). IndicativeMessages
+	// re-renders on width change via OnWidthChange.
+	rw.messages.SetWrap(false)
 
 	// Editor: Python wraps it in AttrMap(editor, "msg_editor") (Channels.py:609);
 	// msg_editor is #111/#0bb (both themes, ui/TextUI.py:32,85), cube-quantized
-	// to #000000/#00afaf.
+	// to #000000/#00afaf. Python builds RoomMessageEdit(caption="", edit_text="",
+	// multiline=True) (Channels.py:605) — NO placeholder, so the idle composer
+	// row renders empty.
 	tc := GetThemeColors(app.Theme)
-	rw.editor = NewReadlineEdit(app.killRing, "", "Type a message...")
+	rw.editor = NewReadlineEdit(app.killRing, "", "")
 	rw.editor.SetFieldBackgroundColor(tc["msg_editor_bg"])
 	rw.editor.SetFieldTextColor(tc["msg_editor_fg"])
 	rw.editor.SetFocusFunc(func() {
@@ -136,21 +146,40 @@ func NewRoomWidget(app *App, hubName, roomName string) *RoomWidget {
 	// _StickyMessageListBox, an IndicativeListBox) and the tail is followed
 	// sticky-bottom (Channels.py:553-587).
 	rw.messagesArea = NewIndicativeMessages(rw.messages)
+	// The justified layout pre-wraps at the message view's inner width; when
+	// the view is resized (users pane toggle, terminal resize) the render
+	// re-wraps at the new width before the TextView draws (the
+	// resizeShortcutBar DrawFunc pattern — the hook runs before the child
+	// draw in the same pass).
+	rw.messagesArea.OnWidthChange = func() { rw.renderMessages() }
 	rw.chatBox = tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(header, 1, 0, false).
 		AddItem(rw.messagesArea, 0, 1, false).
 		AddItem(rw.editor, 1, 0, true)
 	rw.chatBox.SetBorder(true)
 
-	// Users list
+	// Users list: ShowSecondaryText(false) — the fork's List defaults to
+	// rendering each item's (empty) secondary text as a phantom row, which
+	// painted a blank row after EVERY member (the channels hub list already
+	// calls it for this exact reason). Python renders members on consecutive
+	// rows (Channels.py:694-705).
 	rw.usersList = tview.NewList()
+	rw.usersList.ShowSecondaryText(false)
 	rw.usersList.SetHighlightFullLine(true)
 	ApplyListFocusStyle(rw.usersList, app.Theme)
+	// The " N users" count row is a PLAIN urwid.Text row in Python
+	// (Channels.py:694 — default-styled, never the selection highlight), so
+	// it lives OUT of the List in a one-row TextView above it; a tview List
+	// item would paint the selection highlight on it (measured live: the
+	// count row rendered fg 0,0,0 / bg 175,175,175).
+	rw.usersCount = tview.NewTextView()
+	rw.usersCount.SetTextColor(tcell.ColorDefault)
 
 	// Users box: Python UsersBox(self.users_listbox, title="Users")
 	// (Channels.py:625) is a LineBox titled "Users" — the title lives in the
 	// BORDER, not in a title row inside.
 	usersBox := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(rw.usersCount, 1, 0, false).
 		AddItem(rw.usersList, 0, 1, true)
 	usersBox.SetBorder(true)
 	SetTitledBorder(usersBox, "Users")
@@ -429,16 +458,23 @@ func (rw *RoomWidget) renderOpts() RRCRenderOpts {
 
 // renderMessages renders all chat messages through the Python-parity message
 // formatter (grey [HH:MM:SS] prefix, palette-colored <sender> by the sender
-// hash, #dddddd body, linkified hash runs).
+// hash, #dddddd body, linkified hash runs). With rrc_ui_justify_msgs (the
+// Python default) the rows render in the justified two-column layout,
+// pre-wrapped at the message view's inner width so every continuation line
+// indents to the "<" column (Channels.py:1408-1413).
 func (rw *RoomWidget) renderMessages() {
 	msgs := rw.chatMessages
 	if rw.collapseJoinPart {
 		msgs = CollapseJoinPartMessages(msgs)
 	}
 	opts := rw.renderOpts()
+	_, _, width, _ := rw.messages.GetInnerRect()
 	var sb strings.Builder
 	for _, msg := range msgs {
-		sb.WriteString(formatRRCMessage(msg, opts))
+		for _, line := range formatRRCMessageLines(msg, opts, width) {
+			sb.WriteString(line)
+			sb.WriteString("\n")
+		}
 	}
 
 	if len(rw.chatMessages) == 0 {
@@ -472,9 +508,12 @@ func (rw *RoomWidget) renderMembers() {
 	rw.usersList.Clear()
 	// Python _refresh_users_pane (Channels.py:694): the pane opens with
 	// " N users" then one colored entry per member — the hash-based nick
-	// palette for EVERY user, with the self entry marked by the arrow glyph.
-	rw.usersList.AddItem(fmt.Sprintf(" %v user%v", len(rw.members),
-		map[bool]string{true: "", false: "s"}[len(rw.members) == 1]), "", 0, nil)
+	// palette for EVERY user, with the self entry marked by the arrow
+	// glyph. The count row renders in its own TextView above the List (a
+	// List item would take the selection highlight; Python's is a plain
+	// urwid.Text row).
+	rw.usersCount.SetText(fmt.Sprintf(" %v user%v", len(rw.members),
+		map[bool]string{true: "", false: "s"}[len(rw.members) == 1]))
 	palette := rw.renderOpts().Palette
 	for _, m := range rw.members {
 		// Python (Channels.py:695-705): the hash-based palette color for
@@ -491,6 +530,10 @@ func (rw *RoomWidget) renderMembers() {
 		if m.IsSelf {
 			label = " " + rw.app.Glyphs["arrow_r"] + " " + name
 		}
+		// Python wraps the entry in AttrMap(entry, style) (Channels.py:705)
+		// whose fill paints the member's fg across the FULL pane width —
+		// the padded trailing spaces carry the fg in the item text itself.
+		label = padToWidth(label, ' ', rw.usersWidth-2)
 		rw.usersList.AddItem(fmt.Sprintf("[%v]%v[-]", colorName(color), label), "", 0, nil)
 	}
 	if len(rw.members) == 0 {

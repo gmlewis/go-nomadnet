@@ -23,6 +23,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 
 	"github.com/gmlewis/go-nomadnet/nomadnet/util"
 )
@@ -54,16 +55,24 @@ func nibbleHex3(spec string) tcell.Color {
 	return tcell.NewHexColor(int32(r)*0x11<<16 | int32(g)*0x11<<8 | int32(b)*0x11)
 }
 
-// rrcRenderColors returns the RRC render's theme colors (Channels.py theme
-// dicts): all 3-hex specs nibble-doubled like the Python render path.
+// rrcRenderColors returns the RRC render's theme colors. The message-row
+// colors (text/ts/mention/link/self/peer) are the Channels.py theme dicts'
+// 3-hex specs NIBBLE-DOUBLED like the Python micron render path; the
+// system/notice/error rows instead carry the STATIC palette attrs
+// (irc_system/irc_notice/irc_error, ui/TextUI.py:66-68) whose 3-hex specs
+// urwid routes through the 256-color cube first — so they (and the irc_ts
+// prefix of system/notice/error rows, ui/TextUI.py:63) are CUBE-quantized
+// here. Measured on the 2026-09-03 12:32 full-fleet capture (mac row 24):
+// the notice ts run (135,135,135) and the 󰙎 Welcome run (255,215,95).
 func rrcRenderColors(theme int) map[string]tcell.Color {
 	if theme == ThemeLight {
 		return map[string]tcell.Color{
 			"text":    nibbleHex3("#111"),
 			"ts":      nibbleHex3("#888"),
-			"notice":  nibbleHex3("#a70"),
-			"error":   nibbleHex3("#a22"),
-			"system":  nibbleHex3("#888"),
+			"notice":  cubeHex3("#a70"),
+			"error":   cubeHex3("#a22"),
+			"system":  cubeHex3("#888"),
+			"ircTs":   cubeHex3("#888"),
 			"link":    nibbleHex3("#79d"),
 			"mention": nibbleHex3("#c50"),
 			"self":    nibbleHex3("#3a0"),
@@ -73,9 +82,10 @@ func rrcRenderColors(theme int) map[string]tcell.Color {
 	return map[string]tcell.Color{
 		"text":    nibbleHex3("#ddd"),
 		"ts":      nibbleHex3("#888"),
-		"notice":  nibbleHex3("#fd3"),
-		"error":   nibbleHex3("#f55"),
-		"system":  nibbleHex3("#888"),
+		"notice":  cubeHex3("#fd3"),
+		"error":   cubeHex3("#f55"),
+		"system":  cubeHex3("#888"),
+		"ircTs":   cubeHex3("#888"),
 		"link":    nibbleHex3("#79d"),
 		"mention": nibbleHex3("#fb4"),
 		"self":    nibbleHex3("#6c5"),
@@ -92,6 +102,7 @@ type RRCRenderOpts struct {
 	NickColors             bool
 	MentionColor           string
 	ColorMentionTimestamps bool
+	JustifyMsgs            bool
 	OwnNick                string
 	Glyphs                 map[string]string
 }
@@ -327,12 +338,26 @@ func rrcSenderName(msg ChannelMessage) string {
 	return "?"
 }
 
+// ircTsRun renders the system/notice/error ts prefix (" [HH:MM:SS] "): the
+// LEADING space lives INSIDE the irc_ts-styled run (Python _ts_prefix,
+// Channels.py:1129-1131 — ("irc_ts", " ["+t+"] ")), 12 chars at the static
+// palette's cube color; zero timestamps render eight spaces inside the
+// brackets like Python.
+func ircTsRun(tsMs int64, tsColor tcell.Color) string {
+	t := time.UnixMilli(tsMs).Format("15:04:05")
+	if tsMs == 0 {
+		t = "        "
+	}
+	return colorTag(tsColor, "") + " [" + t + "] " + colorReset
+}
+
 // formatRRCMessage renders one chat message to a tview color-tagged string,
-// mirroring Python _message_widget: a grey [HH:MM:SS] prefix, the
-// palette-colored <sender> (get_nick_color of the sender hash), and the body
-// with linkified hash runs (TODO items 10-13). Message rows carry the one-
-// column left indent of Python's urwid.Padding(left=1); system, notice and
-// error rows instead start with the leading space inside _ts_prefix.
+// mirroring Python _message_widget. system/notice/error rows render as a
+// single full-width urwid.Text (Channels.py:1293-1311, _wrap_text — no
+// columns and no left pad): the " [HH:MM:SS] " run in the irc_ts palette
+// color, then the icon + body in the kind's palette color. Message rows
+// carry the one-column left indent of Python's urwid.Padding(left=1); the
+// justified layout (formatRRCMessageLines) renders their two-column form.
 func formatRRCMessage(msg ChannelMessage, opts RRCRenderOpts) string {
 	colors := rrcRenderColors(opts.Theme)
 	var sb strings.Builder
@@ -342,13 +367,13 @@ func formatRRCMessage(msg ChannelMessage, opts RRCRenderOpts) string {
 		if strings.HasSuffix(msg.Text, " left") {
 			icon = opts.Glyphs["arrow_l"]
 		}
-		sb.WriteString(" " + rrcTsPrefix(msg.TsMs, colors["ts"]) +
+		sb.WriteString(ircTsRun(msg.TsMs, colors["ircTs"]) +
 			colorTag(colors["system"], "") + icon + " " + msg.Text + colorReset + "\n")
 	case msg.IsNotice:
-		sb.WriteString(" " + rrcTsPrefix(msg.TsMs, colors["ts"]) +
+		sb.WriteString(ircTsRun(msg.TsMs, colors["ircTs"]) +
 			colorTag(colors["notice"], "") + opts.Glyphs["info"] + " " + msg.Text + colorReset + "\n")
 	case msg.IsError:
-		sb.WriteString(" " + rrcTsPrefix(msg.TsMs, colors["ts"]) +
+		sb.WriteString(ircTsRun(msg.TsMs, colors["ircTs"]) +
 			colorTag(colors["error"], "") + opts.Glyphs["warning"] + " " + msg.Text + colorReset + "\n")
 	default:
 		sb.WriteString(" " + rrcTsPrefix(msg.TsMs, colors["ts"]) +
@@ -436,4 +461,96 @@ func hexColorOr(spec string, fallback tcell.Color) tcell.Color {
 		return nibbleHex3("#" + spec)
 	}
 	return fallback
+}
+
+// Justified-layout render (rrc_ui_justify_msgs=True default, Channels.py
+// 1408-1413): Python renders each message as
+// urwid.Columns([(PACK, ts-prefix), (body)], dividechars=1) padded left=1, so
+// chat col 0 is a DEFAULT-styled pad space, cols 1-11 the "[HH:MM:SS] " run
+// (11 chars, fg #888888), col 12 a DEFAULT-styled gap space (the column
+// divider, carrying no fg), and the body column starts at col 13 with
+// "<nick>". The body column wraps in the remaining width and EVERY wrapped
+// continuation line starts at col 13 — the same column as the "<" — with a
+// default-styled pad (measured on the 2026-09-03 12:32 full-fleet capture,
+// mac rows 22/27/28: pad len 1 default, ts len 11 (136,136,136), gap len 1
+// default, nick palette at col 13, body #dddddd from col 13 to the edge).
+
+const (
+	// rrcJustifyIndent is the chat column the body column starts at: the
+	// one-column pad, the 11-char "[HH:MM:SS] " prefix and the one-column
+	// divider gap.
+	rrcJustifyIndent = 13
+
+	// defaultPadTag pins the pad/gap spaces to the default foreground so
+	// they do not inherit the body color (the urwid Columns divider and the
+	// Padding filler carry no attr), clearing any underline/reverse latch
+	// carried across wrapped lines. [-:-:UR] restores the TextView's base
+	// (body) color with the toggles cleared.
+	defaultPadTag = "[default:-:UR]"
+)
+
+// formatRRCMessageLines renders one chat message into the newline-free tagged
+// lines of the justified two-column layout at the given chat-inner width
+// (Python wraps the body column at the inner width minus the prefix columns).
+// For system/notice/error rows Python renders a single full-width urwid.Text
+// (_wrap_text, no columns and no left pad — the leading space lives inside
+// the irc_ts-styled run), so those return one unwrapped line and the natural
+// full-width wrap applies.
+func formatRRCMessageLines(msg ChannelMessage, opts RRCRenderOpts, width int) []string {
+	colors := rrcRenderColors(opts.Theme)
+	if msg.IsSystem || msg.IsNotice || msg.IsError || width <= rrcJustifyIndent {
+		return []string{strings.TrimSuffix(formatRRCMessage(msg, opts), "\n")}
+	}
+
+	bodyW := width - rrcJustifyIndent
+	sender := rrcSenderName(msg)
+	// The body COLUMN holds "<sender> " plus the body (Channels.py:1411:
+	// body_rendered renders nick_micron + message_body as one flow). A nick
+	// too wide for the column (a pathological narrow chat pane) falls back to
+	// the one-line render.
+	nickLen := len("<" + sender + "> ")
+	if nickLen > bodyW {
+		return []string{strings.TrimSuffix(formatRRCMessage(msg, opts), "\n")}
+	}
+	column := "<" + sender + "> " + msg.Text
+	segments := urwidSpaceWrap(column, bodyW)
+
+	lines := make([]string, 0, len(segments))
+	for i, seg := range segments {
+		var line string
+		if i == 0 {
+			line = formatJustifiedHead(msg, opts, seg, nickLen)
+		} else {
+			line = defaultPadTag + strings.Repeat(" ", rrcJustifyIndent) +
+				spanReset + formatRRCBody(ChannelMessage{Room: msg.Room, Text: seg}, opts)
+		}
+		// Python's urwid AttrMap rows paint the body attr across the FULL
+		// body column (the 2026-09-03 12:32 capture's rows 22/27/28: the
+		// body run + trailing spaces carry #dddddd to the chat box edge,
+		// cols 13..96) — pad the tagged line to the inner width; the pad
+		// is styled with the body color.
+		if pad := width - tview.TaggedStringWidth(line); pad > 0 {
+			line += colorTag(colors["text"], "") + strings.Repeat(" ", pad) + colorReset
+		}
+		lines = append(lines, line)
+	}
+	return lines
+}
+
+// formatJustifiedHead renders the first line of a justified message row: the
+// default pad, the grey ts run, the default gap, the palette-colored
+// "<sender>", and the body up to the first wrap. The styled nick run covers
+// "<sender>" only — the space after it carries the body (base) color like the
+// live capture's row 27 col 49.
+func formatJustifiedHead(msg ChannelMessage, opts RRCRenderOpts, seg string, nickLen int) string {
+	colors := rrcRenderColors(opts.Theme)
+	nick := seg[:nickLen-1]
+	body := seg[nickLen:]
+	var sb strings.Builder
+	sb.WriteString(defaultPadTag + " ")
+	sb.WriteString(rrcTsPrefix(msg.TsMs, colors["ts"]))
+	sb.WriteString("[default] ")
+	sb.WriteString(colorTag(rrcNickColor(msg, opts), "") + nick + colorReset)
+	sb.WriteString(" " + formatRRCBody(ChannelMessage{Room: msg.Room, Text: body}, opts))
+	return sb.String()
 }

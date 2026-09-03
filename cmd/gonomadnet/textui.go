@@ -120,6 +120,7 @@ func runTextUI(configDir, rnsConfigDir string) {
 		NickColors:             a.RRCNickColors,
 		MentionColor:           a.RRCMentionColor,
 		ColorMentionTimestamps: a.RRCColorMentionTimestamps,
+		JustifyMsgs:            a.RRCUIJustifyMsgs,
 		OwnNick:                a.RRC.GetNickname(),
 		Glyphs:                 tuiApp.Glyphs,
 	}

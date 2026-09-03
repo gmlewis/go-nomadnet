@@ -1329,12 +1329,16 @@ func (h *RRCHub) HandleData(data []byte) {
 		case string:
 			textStr = b
 		}
-		if ts <= 0 {
-			// Python stamps every inbound message with _now_ms() (RRC.py:1043)
-			// regardless of the envelope timestamp; a zero ts falls back to
-			// the arrival time so ordering and dedupe windows stay sane.
-			ts = NowMs()
+		// Python stamps every inbound message with its own _now_ms()
+		// arrival time (RRC.py:1043) — the sender's envelope ts is only
+		// kept as the fanout-dedupe window key (rrcd's per-member fanout
+		// copies share it, and the chronological render sort is stable so
+		// replay order is preserved).
+		collapseKey := ts
+		if collapseKey <= 0 {
+			collapseKey = NowMs()
 		}
+		arrival := NowMs()
 		// Python T_MSG bookkeeping (RRC.py:1031-1035): every copy with a
 		// source hash and a non-empty nick learns nicks[src] and adds src to
 		// the room's member set. This runs BEFORE the fanout collapse skips
@@ -1351,18 +1355,18 @@ func (h *RRCHub) HandleData(data []byte) {
 		// from Python, which renders every copy (TODO item 4). Server-side
 		// hubs skip it: their inbound copies are one per client and must all
 		// be recorded and re-broadcast.
-		if !h.isServerSide() {
-			if h.collapseSelfEcho("msg", roomStr, textStr, ts) || h.collapseFanout("msg", roomStr, textStr, ts) {
-				return
-			}
-		}
 		msg := &RRCMessage{
 			Kind: "msg",
 			Room: roomStr,
 			Src:  src,
 			Nick: nickStr,
 			Text: textStr,
-			Ts:   ts,
+			Ts:   arrival,
+		}
+		if !h.isServerSide() {
+			if h.collapseSelfEcho("msg", roomStr, textStr, ts) || h.collapseFanout("msg", roomStr, textStr, collapseKey, nickStr, msg) {
+				return
+			}
 		}
 		h.recordMessage(msg, false)
 		if h.Manager != nil && h.Manager.messageCallback != nil {
@@ -1389,18 +1393,15 @@ func (h *RRCHub) HandleData(data []byte) {
 		case string:
 			textStr = b
 		}
-		if ts <= 0 {
-			ts = NowMs()
-		}
-		// Python T_ACTION bookkeeping (RRC.py:1064-1068): same nick/member
-		// learning as msgs.
+		// Python T_ACTION bookkeeping (RRC.py:1054-1068): same nick/member
+		// learning as msgs, and the same arrival-time stamping (the
+		// envelope ts is only the fanout-dedupe window key, RRC.py:1054).
 		if len(src) > 0 && nickStr != "" {
 			h.learnMsgPeer(roomStr, src, nickStr)
 		}
-		if !h.isServerSide() {
-			if h.collapseSelfEcho("action", roomStr, textStr, ts) || h.collapseFanout("action", roomStr, textStr, ts) {
-				return
-			}
+		collapseKey := ts
+		if collapseKey <= 0 {
+			collapseKey = NowMs()
 		}
 		msg := &RRCMessage{
 			Kind: "action",
@@ -1408,7 +1409,12 @@ func (h *RRCHub) HandleData(data []byte) {
 			Src:  src,
 			Nick: nickStr,
 			Text: textStr,
-			Ts:   ts,
+			Ts:   NowMs(),
+		}
+		if !h.isServerSide() {
+			if h.collapseSelfEcho("action", roomStr, textStr, ts) || h.collapseFanout("action", roomStr, textStr, collapseKey, nickStr, msg) {
+				return
+			}
 		}
 		h.recordMessage(msg, false)
 		if h.Manager != nil && h.Manager.messageCallback != nil {
@@ -1470,30 +1476,39 @@ func (h *RRCHub) HandleData(data []byte) {
 				return
 			}
 		}
-		// Python (RRC.py:1132-1141): a roomless (global) notice sets the hub's
-		// MOTD and notifies — the hub's greeting rides as the first global
-		// notice after the welcome.
-		if roomStr == "" {
+		// Python (RRC.py:1128-1136): a roomless (global) notice sets the
+		// hub's MOTD and notifies — the hub's greeting rides as the first
+		// global notice after the welcome.
+		if roomStr == "" && strings.TrimSpace(textStr) != "" {
 			h.SetMOTD(textStr)
 		}
-		if ts <= 0 {
-			ts = NowMs()
+		// Python stamps notices with the _now_ms() arrival time too
+		// (RRC.py:1043 — every inbound kind); the envelope ts is only the
+		// fanout-dedupe window key.
+		collapseKey := ts
+		if collapseKey <= 0 {
+			collapseKey = NowMs()
 		}
 		// Fanout collapse for notices too: rrcd's per-member fanout applies
 		// to hub notices ("room test: unregistered…" arrives once per fanout
 		// copy per join, TODO item 5).
-		if !h.isServerSide() && h.collapseFanout("notice", roomStr, textStr, ts) {
-			return
-		}
 		msg := &RRCMessage{
 			Kind: "notice",
 			Room: roomStr,
 			Src:  src,
 			Nick: nickStr,
 			Text: textStr,
-			Ts:   ts,
+			Ts:   NowMs(),
 		}
-		h.recordMessage(msg, false)
+		if !h.isServerSide() && h.collapseFanout("notice", roomStr, textStr, collapseKey, nickStr, msg) {
+			return
+		}
+		// Python _record_notice (RRC.py:817-839, reached from the T_NOTICE
+		// branch at RRC.py:1138): a ROOMLESS notice is attributed to the
+		// manager's ACTIVE room and joins that room's buffer — rrcd's global
+		// "󰙎 Welcome to the RaspPi Local Hub!" MOTD notice renders in the
+		// open room on the Python SOT (2026-09-03 12:32 capture, mac row 24).
+		h.recordNotice(msg)
 
 	case TypeResourceEnvelope:
 		h.recordResourceExpectation(env)
@@ -2099,6 +2114,10 @@ const fanoutMaxKeys = 256
 // fanoutGroup tracks the first-arrival timestamp of one fanout key.
 type fanoutGroup struct {
 	firstTs int64
+	// msg is the kept (first-arrived) copy of the burst; a later copy can
+	// backfill its empty nick (rrcd's per-copy rewritten source hashes mean
+	// the nick rides on an arbitrary copy).
+	msg *RRCMessage
 }
 
 // isServerSide reports whether this hub acts as the room server (wired via
@@ -2138,24 +2157,46 @@ func (h *RRCHub) learnMsgPeer(roomStr string, src []byte, nick string) {
 // fanout copy of an already-recorded message: same kind, room and body as a
 // copy seen within fanoutWindowMs. A same-body copy arriving outside the
 // window starts a fresh window (legitimate repeats keep rendering).
-func (h *RRCHub) collapseFanout(kind, room, body string, ts int64) bool {
+func (h *RRCHub) collapseFanout(kind, room, body string, ts int64, nick string, msg *RRCMessage) bool {
 	key := fanoutKey(kind, room, body)
 	h.lock.Lock()
-	defer h.lock.Unlock()
+	var backfill *RRCMessage
 	if g, ok := h.fanoutGroups[key]; ok {
 		if ts >= g.firstTs-fanoutWindowMs && ts <= g.firstTs+fanoutWindowMs {
+			// Python learns the (src, nick) pair from EVERY fanout copy
+			// before its own dedupe (RRC.py:1031-1035), and rrcd's per-copy
+			// rewritten source hashes mean later copies can carry the
+			// sender's registry nick even when the first-arrived copy's was
+			// empty — backfill the kept copy so it renders ONCE, WITH the
+			// sender's nick (the A2 capture symptom: the kept copy rendered
+			// the bare <hash>).
+			if nick != "" && g.msg != nil && g.msg.Nick == "" {
+				g.msg.Nick = nick
+				backfill = g.msg
+			}
+			h.lock.Unlock()
+			if backfill != nil && h.Manager != nil {
+				// Re-notify so the room view re-renders the backfilled
+				// nick (Python re-renders on every copy's _notify_messages).
+				h.Manager.NotifyMessage(h, backfill)
+			}
 			return true
 		}
+		// A same-body copy outside the window is a legitimate repeat: a
+		// fresh burst whose kept copy is this one.
 		g.firstTs = ts
+		g.msg = msg
+		h.lock.Unlock()
 		return false
 	}
-	h.fanoutGroups[key] = &fanoutGroup{firstTs: ts}
+	h.fanoutGroups[key] = &fanoutGroup{firstTs: ts, msg: msg}
 	h.fanoutOrder = append(h.fanoutOrder, key)
 	if len(h.fanoutOrder) > fanoutMaxKeys {
 		oldest := h.fanoutOrder[0]
 		h.fanoutOrder = h.fanoutOrder[1:]
 		delete(h.fanoutGroups, oldest)
 	}
+	h.lock.Unlock()
 	return false
 }
 
@@ -2402,7 +2443,7 @@ func (h *RRCHub) loadHistory() {
 			// join-time history replay of an already-loaded message does not
 			// duplicate it (rrcd preserves the original ts on replay copies).
 			// History entries carry no message id, so the key is the tuple.
-			if h.collapseFanout(m.Kind, room, m.Text, m.Ts) {
+			if h.collapseFanout(m.Kind, room, m.Text, m.Ts, m.Nick, m) {
 				continue
 			}
 			m.Room = room

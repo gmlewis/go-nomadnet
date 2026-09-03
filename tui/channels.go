@@ -448,14 +448,27 @@ func (cd *ChannelsDisplay) SetHubs(hubs []HubView) {
 	cd.HubViewsCache = hubs
 	cd.rooms.Clear()
 	for i, e := range entries {
-		// Render the label WITHOUT an embedded color tag and set the row's
-		// palette color via SetItemStyle instead. The former tagged-text form
-		// overrode the list's selected colors on the HIGHLIGHTED row: a
-		// disconnected hub's list_unknown foreground (#afafaf) on the
-		// list_focus background (#afafaf) rendered the selected row
-		// INVISIBLE (gray on gray). tview's selected style replaces item
-		// styles on selection but cannot override tags embedded in the text.
-		cd.rooms.AddItem(e.Label, "", 0, nil)
+		// Render the label PADDED to the list's inner width (padToWidth
+		// truncates an over-wide one) and set the row's palette color via
+		// SetItemStyle instead. Python's urwid AttrMap rows paint the
+		// row's attr across the FULL pane width (the connected hub row's
+		// fg #5faf00 covers all 34 left-pane columns — the 2026-09-03
+		// 12:32 full-fleet capture), while the fork's List paints item
+		// text only and full-line-fills the SELECTED row (tview list.go:
+		// the fill block fires when selected && highlightFullLine) — the
+		// padded trailing spaces carry the row's fg in the item text
+		// itself, byte-exact with Python's fill. The former un-padded
+		// tagged-text form overrode the list's selected colors on the
+		// HIGHLIGHTED row: a disconnected hub's list_unknown foreground
+		// (#afafaf) on the list_focus background (#afafaf) rendered the
+		// selected row INVISIBLE (gray on gray). tview's selected style
+		// replaces item styles on selection but cannot override tags
+		// embedded in the text.
+		label := e.Label
+		if e.Kind != RowSpacer {
+			label = padToWidth(e.Label, ' ', channelsListInnerWidth)
+		}
+		cd.rooms.AddItem(label, "", 0, nil)
 		if c, ok := colors[e.Style]; ok && e.Kind != RowSpacer {
 			cd.rooms.SetItemStyle(i, tcell.StyleDefault.Foreground(c))
 		}

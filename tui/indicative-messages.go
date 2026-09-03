@@ -31,6 +31,14 @@ import (
 type IndicativeMessages struct {
 	*tview.Box
 	Text *tview.TextView
+
+	// OnWidthChange, when set, re-renders the wrapped message lines when the
+	// view's width changes (users-pane toggle, terminal resize): the
+	// justified layout pre-wraps at the inner width, so a stale wrap must be
+	// recomputed BEFORE the wrapped TextView draws. Fires at most once per
+	// width change (the resizeShortcutBar DrawFunc cache pattern).
+	OnWidthChange func()
+	lastWrapW     int
 }
 
 // NewIndicativeMessages wraps the given message TextView with the indicator
@@ -59,9 +67,20 @@ func (m *IndicativeMessages) SetRect(x, y, w, h int) {
 	m.Text.SetRect(tx, ty, tw, th)
 }
 
-// Draw draws the wrapped TextView then the two indicator bars.
+// Draw draws the wrapped TextView then the two indicator bars. Before the
+// TextView draws, a width change (users-pane toggle, terminal resize)
+// triggers OnWidthChange so the justified message lines re-wrap at the new
+// inner width and draw fresh in THIS pass (the resizeShortcutBar DrawFunc
+// pattern: the hook runs before the child's layout+draw).
 func (m *IndicativeMessages) Draw(screen tcell.Screen) {
 	m.Box.DrawForSubclass(screen, m)
+	if m.OnWidthChange != nil {
+		_, _, w, _ := m.messagesRect()
+		if w != m.lastWrapW {
+			m.lastWrapW = w
+			m.OnWidthChange()
+		}
+	}
 	m.Text.Draw(screen)
 	x, y, w, h := m.GetRect()
 	if w <= 0 || h <= 0 {
@@ -69,8 +88,12 @@ func (m *IndicativeMessages) Draw(screen tcell.Screen) {
 	}
 	top, bottom := m.indicators()
 	// The bars are centered like urwid Text, which pads the LEFT side with
-	// (w-len+1)/2 spaces — a ceil, matching IndicativeListBox.Draw.
-	centerBarX := func(s string) int { return x + max((w-len(s)+1)/2, 0) }
+	// (w-len+1)/2 spaces — a ceil over the RUNE count (Python's
+	// IndicativeListBox; additional_urwid_widgets). len(s) would count the
+	// 3-byte box-drawing runes as 9/3 and land both bars LEFT of Python's
+	// (measured live: "───" at col 44 and "▲" at col 47 of the 96-wide chat
+	// inner, vs Python's 47/48 — mac rows 3/33 of the 2026-09-03 capture).
+	centerBarX := func(s string) int { return x + max((w-len([]rune(s))+1)/2, 0) }
 	if h >= 3 {
 		tview.Print(screen, top, centerBarX(top), y, w, tview.AlignLeft, tcell.ColorDefault)
 		tview.Print(screen, bottom, centerBarX(bottom), y+h-1, w, tview.AlignLeft, tcell.ColorDefault)

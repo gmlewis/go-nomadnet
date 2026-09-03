@@ -246,8 +246,13 @@ func TestChannelsDisplaySetHubs(t *testing.T) {
 	}
 	for i, want := range wantTexts {
 		main, _ := cd.rooms.GetItemText(i)
-		if main != want {
-			t.Errorf("row %v main = %q, want %q", i, main, want)
+		// Hub and room rows are PADDED to the list's inner width so the
+		// row's SetItemStyle foreground fills the full pane width like
+		// Python's urwid AttrMap rows (the connected hub row's fg covers
+		// all 34 left-pane columns — the 2026-09-03 12:32 full-fleet
+		// capture); the content is the unpadded label.
+		if got := strings.TrimRight(main, " "); got != want {
+			t.Errorf("row %v main = %q, want %q", i, got, want)
 		}
 	}
 

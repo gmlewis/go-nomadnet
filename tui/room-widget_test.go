@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 )
 
 func TestNewRoomWidget(t *testing.T) {
@@ -275,11 +276,14 @@ func TestRoomWidgetMemberRows(t *testing.T) {
 	})
 	rw.renderMembers()
 
-	countRow, _ := rw.usersList.GetItemText(0)
+	// The count row renders in its own TextView above the List (Python's
+	// plain urwid.Text count row, Channels.py:694 — a List item would take
+	// the selection highlight), so member rows start at List index 0.
+	countRow := rw.usersCount.GetText(true)
 	if !strings.Contains(countRow, "1 user") {
 		t.Errorf("count row = %q, want \"1 user\"", countRow)
 	}
-	peerRow, _ := rw.usersList.GetItemText(1)
+	peerRow, _ := rw.usersList.GetItemText(0)
 	if !strings.Contains(peerRow, "→") {
 		t.Errorf("self row = %q, want the arrow glyph", peerRow)
 	}
@@ -294,7 +298,7 @@ func TestRoomWidgetMemberRows(t *testing.T) {
 	rw.SetMembers([]ChannelMember{
 		{Nick: "alice", Hash: "0102030405060708090a0b0c0d0e0f10"},
 	})
-	row, _ := rw.usersList.GetItemText(1)
+	row, _ := rw.usersList.GetItemText(0)
 	if !strings.Contains(row, "alice") || strings.Contains(row, "…") {
 		t.Errorf("short name row = %q, want the whole name without truncation", row)
 	}
@@ -377,6 +381,44 @@ func TestRoomWidgetTabComplete(t *testing.T) {
 	rw.tabState = nil
 	if rw.doTabComplete() {
 		t.Error("doTabComplete with no match should return false")
+	}
+}
+
+// TestRoomWidgetEditorNoPlaceholder pins the composer's idle render to the
+// Python SOT: RoomWidget builds RoomMessageEdit(caption="", edit_text="",
+// multiline=True) (Channels.py:605) — no placeholder — so an idle editor row
+// renders EMPTY inside the chat border. Measured live (2026-09-03 12:32
+// full-fleet capture, row 34): mac `| |`; every Go node rendered
+// `|Type a message...|`.
+func TestRoomWidgetEditorNoPlaceholder(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	rw := NewRoomWidget(app, "RaspPi Local Hub", "test")
+
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if screen == nil {
+		t.Fatal("nil simulation screen")
+	}
+	if err := screen.Init(); err != nil {
+		t.Fatalf("screen.Init: %v", err)
+	}
+	defer screen.Fini()
+	screen.SetSize(100, 37)
+
+	widget := rw.Widget().(*tview.Flex)
+	widget.SetRect(0, 0, 100, 37)
+	widget.Draw(screen)
+
+	for y := range 37 {
+		var row []rune
+		for x := range 100 {
+			r, _, _, _ := cellContent(screen, x, y)
+			row = append(row, r)
+		}
+		if strings.Contains(string(row), "Type a message") {
+			t.Errorf("idle editor row %v renders a placeholder: %q, want an empty editor (Channels.py:605)", y, string(row))
+		}
 	}
 }
 
