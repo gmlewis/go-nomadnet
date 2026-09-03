@@ -81,6 +81,20 @@ func (a *App) SetDisplayName(displayName string) {
 	if a.Node != nil {
 		a.Node.SetName(a.nodeName())
 	}
+	// Python RRCManager.get_nickname (RRC.py:1286-1294) reads the peer
+	// settings display_name LIVE on every hello/send; the Go manager caches
+	// the nick, so re-seed it here to keep renames effective immediately.
+	a.seedRRCNickname()
+}
+
+// seedRRCNickname mirrors Python RRCManager.get_nickname (RRC.py:1286-1294):
+// the RRC chat nick is the peer settings display_name. Python reads it live
+// per send; the Go manager caches it, so the app re-seeds at startup and on
+// every display-name change.
+func (a *App) seedRRCNickname() {
+	if a.RRC != nil {
+		a.RRC.SetNickname(a.GetDisplayName())
+	}
 }
 
 // GetDisplayName returns the local peer's configured display name.

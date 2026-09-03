@@ -390,6 +390,9 @@ func (a *App) Init() error {
 		a.Logger.Error("Could not load RRC hubs: %v", err)
 	}
 	a.loadPeerSettings()
+	// Mirror Python RRCManager.get_nickname (RRC.py:1286-1294): the RRC nick
+	// is the peer settings display_name.
+	a.seedRRCNickname()
 	a.loadIgnoredList()
 	// Go-only enhancement: block the announce streams for every ignored
 	// destination ("never see announcements from blocked nodes"). No Python
@@ -591,6 +594,9 @@ func (a *App) InitWithTransport(ts *rns.TransportSystem, identity *rns.Identity)
 	}
 	a.RRC.SetTransport(ts)
 	a.loadPeerSettings()
+	// Mirror Python RRCManager.get_nickname (RRC.py:1286-1294): the RRC nick
+	// is the peer settings display_name.
+	a.seedRRCNickname()
 	a.loadIgnoredList()
 	// Go-only enhancement: block the announce streams for every ignored
 	// destination ("never see announcements from blocked nodes"). No Python

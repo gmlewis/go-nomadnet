@@ -136,3 +136,86 @@ func wireDialogNav(app focuser, dismiss func(), items []tview.Primitive) {
 	}
 	app.SetFocus(items[0])
 }
+
+// wireDialogNavDynamic wires the same urwid-Pile-style traversal as
+// wireDialogNav, but consults active() on every keypress so widgets currently
+// REMOVED from the dialog layout never dead-end the chain. Python's
+// join_room_dialog swaps the key field with a blank placeholder via
+// update_key_visibility (Channels.py:1946-1955): the removed widget is not a
+// Pile child, so Tab from the checkbox lands on the button row. A static item
+// list instead focuses the DETACHED key field, whose capture swallows every
+// further key and leaves the Join button unreachable by keyboard.
+func wireDialogNavDynamic(app focuser, dismiss func(), items []tview.Primitive, active func(tview.Primitive) bool) {
+	if len(items) == 0 {
+		return
+	}
+	installed := map[tview.Primitive]bool{}
+	for _, p := range items {
+		if installed[p] {
+			continue
+		}
+		installed[p] = true
+		orig := getItemCapture(p)
+		setItemCapture(p, func(ev *tcell.EventKey) *tcell.EventKey {
+			switch ev.Key() {
+			case tcell.KeyTab, tcell.KeyDown:
+				if next := nextActiveItem(items, p, 1, active); next != nil {
+					app.SetFocus(next)
+				}
+				return nil
+			case tcell.KeyBacktab, tcell.KeyUp:
+				if next := nextActiveItem(items, p, -1, active); next != nil {
+					app.SetFocus(next)
+				}
+				return nil
+			case tcell.KeyEscape:
+				if dismiss != nil {
+					dismiss()
+				}
+				return nil
+			}
+			if orig != nil {
+				return orig(ev)
+			}
+			return ev
+		})
+	}
+	for _, p := range items {
+		if active == nil || active(p) {
+			app.SetFocus(p)
+			return
+		}
+	}
+}
+
+// nextActiveItem returns the item delta positions away from p among the ACTIVE
+// items, or nil when p is absent or the edge is reached (no wrap — urwid's
+// Pile leaves focus where it is at either end).
+func nextActiveItem(items []tview.Primitive, p tview.Primitive, delta int, active func(tview.Primitive) bool) tview.Primitive {
+	var actives []tview.Primitive
+	for _, it := range items {
+		if active == nil || active(it) {
+			actives = append(actives, it)
+		}
+	}
+	for i, it := range actives {
+		if it == p {
+			j := i + delta
+			if j >= 0 && j < len(actives) {
+				return actives[j]
+			}
+			return nil
+		}
+	}
+	return nil
+}
+
+// flexContains reports whether the Flex currently holds p as an item.
+func flexContains(f *tview.Flex, p tview.Primitive) bool {
+	for i := 0; i < f.GetItemCount(); i++ {
+		if f.GetItem(i) == p {
+			return true
+		}
+	}
+	return false
+}

@@ -137,6 +137,10 @@ type ChannelsDisplay struct {
 	OnLeaveRoom           func(room string)
 	OnToggleCollapse      func()
 	OnMemberClick         func(nick, hash string)
+	// OnConnectHub triggers the ACTIVE hub's connect from the room composer
+	// (Python RoomWidget.send_message's disconnected branch, Channels.py:873,
+	// and the /connect slash command, Channels.py:1094).
+	OnConnectHub func()
 	// OnRemoveSelected runs the confirmed() branch of Python
 	// remove_selected_dialog (Channels.py:1892-1904): room set → part_room +
 	// remove_room; empty room → rrc.remove_hub. The wiring layer performs the
@@ -432,6 +436,11 @@ func (cd *ChannelsDisplay) populateRooms(rooms []ChannelInfo) {
 func (cd *ChannelsDisplay) SetHubs(hubs []HubView) {
 	colors := GetThemeColors(cd.app.Theme)
 	glyphs := cd.app.Glyphs
+	// Python update_list (Channels.py:1664-1685): capture the selected row's
+	// stable key before rebuilding, then re-select the matching row after — a
+	// background status change (connect/disconnect/welcome) must never yank
+	// the selection back to the first row while the user is navigating.
+	prevKey := cd.selectedRowKey()
 	entries := ComposeHubList(hubs, glyphs)
 	cd.hubEntries = entries
 	cd.HubViewsCache = hubs
@@ -447,6 +456,45 @@ func (cd *ChannelsDisplay) SetHubs(hubs []HubView) {
 		cd.rooms.AddItem(e.Label, "", 0, nil)
 		if c, ok := colors[e.Style]; ok && e.Kind != RowSpacer {
 			cd.rooms.SetItemStyle(i, tcell.StyleDefault.Foreground(c))
+		}
+	}
+	cd.restoreRowSelection(prevKey)
+}
+
+// hubRowKey is the stable identity of one channels-list row across rebuilds,
+// mirroring Python's _row_key tuples (Channels.py:1688-1697): a hub row is
+// ("hub", hub_hash, dest_name) and a room row is ("room", hash, dest_name,
+// room). The Go port keys on (kind, hub position, room) instead of the hash —
+// hub positions are append-stable, so a row keeps its identity across the
+// status-driven rebuilds that this restore exists for.
+type hubRowKey struct {
+	kind   HubListEntryKind
+	hubIdx int
+	room   string
+}
+
+// selectedRowKey returns the stable key of the row the list currently selects,
+// or an unknown key when nothing is selected (Python prev_key = None).
+func (cd *ChannelsDisplay) selectedRowKey() hubRowKey {
+	idx := cd.rooms.GetCurrentItem()
+	if idx < 0 || idx >= len(cd.hubEntries) {
+		return hubRowKey{kind: -1}
+	}
+	e := cd.hubEntries[idx]
+	return hubRowKey{kind: e.Kind, hubIdx: e.HubIdx, room: e.Room}
+}
+
+// restoreRowSelection re-selects the row matching prevKey after a rebuild
+// (Python update_list's prev_key loop, Channels.py:1686-1692). An unknown key
+// selects nothing, leaving the list at its default first item.
+func (cd *ChannelsDisplay) restoreRowSelection(prevKey hubRowKey) {
+	if prevKey.kind < 0 {
+		return
+	}
+	for i, e := range cd.hubEntries {
+		if e.Kind == prevKey.kind && e.HubIdx == prevKey.hubIdx && e.Room == prevKey.room {
+			cd.rooms.SetCurrentItem(i)
+			return
 		}
 	}
 }
@@ -466,6 +514,7 @@ func (cd *ChannelsDisplay) ShowHubInfo(hubIdx int) {
 	hv := cd.HubViewsCache[hubIdx]
 	snap := &HubInfoSnapshot{
 		Name:        hv.Name(),
+		Address:     hv.AddressHex(),
 		Status:      hv.Status(),
 		StatusText:  hv.StatusText(),
 		ServerName:  hv.ServerName(),
@@ -528,6 +577,15 @@ func (cd *ChannelsDisplay) ShowRoom(hubIdx int, room string, msgs []ChannelMessa
 				cd.OnSendMessage(text)
 			}
 		}
+		// Python RoomWidget.send_message reads self.hub.status LIVE at send
+		// time (Channels.py:873); the hubConnected snapshot goes stale between
+		// rebuilds, so the composer gets the live status through the HubView.
+		rw.hubStatusFn = hv.Status
+		rw.OnConnectHub = func() {
+			if cd.OnConnectHub != nil {
+				cd.OnConnectHub()
+			}
+		}
 		rw.OnLeaveRoom = func() {
 			if cd.OnLeaveRoom != nil {
 				cd.OnLeaveRoom(room)
@@ -545,9 +603,12 @@ func (cd *ChannelsDisplay) ShowRoom(hubIdx int, room string, msgs []ChannelMessa
 	cd.paneMode = "room"
 	cd.rightPane.Clear()
 	cd.rightPane.AddItem(cd.roomWidget.Widget(), 0, 1, true)
-	if cd.app != nil {
-		cd.app.SetFocus(cd.roomWidget.Widget())
-	}
+	// Python _select_room → show_room (Channels.py:1720-1745) swaps the right
+	// pane WITHOUT moving the urwid focus: the hub/room list keeps focus, and
+	// the user reaches the editor with Right/Down (RoomMessageEdit's "up"
+	// handler mirrors the reverse path). Stealing focus into the room pane
+	// here desynced every subsequent arrow key from the list the user is
+	// navigating — the eaten-cursor bug observed live on the fleet.
 }
 
 // RefreshRoomIfVisible reloads the showing room's message buffer and member
@@ -1058,7 +1119,15 @@ func (cd *ChannelsDisplay) JoinRoomDialog() {
 	// 6 layout rows + the 2 border rows: the earlier height 7 clipped the
 	// button row onto the bottom border.
 	cd.showDialogOverlay(dialog, 8)
-	wireDialogNav(cd.app, cd.closeDialog, []tview.Primitive{eRoom, cbKey, eKey, layout.GetItem(5)})
+	// Python's update_key_visibility placeholder swap (Channels.py:1946-1955)
+	// removes the key field from the Pile while "Keyed room (+k)" is unchecked,
+	// so Tab from the checkbox reaches the button row. The dynamic nav mirrors
+	// that: the DETACHED key field is skipped instead of swallowing every
+	// further key.
+	keyActive := func(p tview.Primitive) bool {
+		return p != eKey || flexContains(keyPlaceholder, eKey)
+	}
+	wireDialogNavDynamic(cd.app, cd.closeDialog, []tview.Primitive{eRoom, cbKey, eKey, layout.GetItem(5)}, keyActive)
 }
 
 // RemoveSelectedDialog shows the confirm dialog for the selected hub/room row

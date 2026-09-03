@@ -44,6 +44,14 @@ type RoomWidget struct {
 	maxMessageBytes  int
 	collapseJoinPart bool
 
+	// hubStatusFn reports the hub's LIVE connection status (the rrc status
+	// enum), mirroring Python's RoomWidget.send_message reading self.hub.status
+	// directly at send time (Channels.py:873). The hubConnected snapshot alone
+	// goes stale between list rebuilds: a hub whose link dropped after the last
+	// refresh would still report connected, so sends vanish into a dead link
+	// while the composer keeps echoing them locally.
+	hubStatusFn func() int
+
 	// Callbacks
 	OnSendMessage    func(text string)
 	OnLeaveRoom      func()
@@ -51,6 +59,12 @@ type RoomWidget struct {
 	OnToggleCollapse func()
 	OnTabComplete    func()
 	OnSplitDialog    func(text string, limit int)
+	// OnConnectHub fires when the user sends while the hub is disconnected or
+	// runs /connect (Python RoomWidget.send_message Channels.py:873-876 and
+	// _handle_slash_command "connect" Channels.py:1094-1100: hub.connect()
+	// plus a "Connecting..." system notice — the literal command text is never
+	// transmitted as chat).
+	OnConnectHub func()
 	// OnMemberClick fires when the user activates a member row (Python
 	// connects each ChannelListEntry's click signal to
 	// display.show_user_info with the peer hash, Channels.py:713).
@@ -189,9 +203,13 @@ func (rw *RoomWidget) sendMessage() {
 		rw.handleSlashCommand(text)
 		return
 	}
-	if !rw.hubConnected {
-		if rw.OnSendMessage != nil {
-			rw.OnSendMessage("/connect")
+	// Python RoomWidget.send_message (Channels.py:873-876) reads the hub's
+	// LIVE status at send time: when disconnected it calls hub.connect() and
+	// KEEPS the draft — no local echo, no literal command transmission. The
+	// hubConnected snapshot alone goes stale between rebuilds.
+	if !rw.hubIsConnected() {
+		if rw.OnConnectHub != nil {
+			rw.OnConnectHub()
 		}
 		return
 	}
@@ -205,6 +223,24 @@ func (rw *RoomWidget) sendMessage() {
 		rw.OnSendMessage(text)
 	}
 	rw.editor.SetText("")
+}
+
+// hubIsConnected reports the hub's live connection status when a live-status
+// hook is wired, falling back to the hubConnected snapshot otherwise.
+func (rw *RoomWidget) hubIsConnected() bool {
+	if rw.hubStatusFn != nil {
+		return rw.hubStatusFn() == hubStatusConnected
+	}
+	return rw.hubConnected
+}
+
+// appendLocalNotice renders a local-only notice in the room view without
+// transmitting anything (Python RoomWidget._local_message, Channels.py:1205).
+func (rw *RoomWidget) appendLocalNotice(text string, isError bool) {
+	rw.chatMessages = append(rw.chatMessages, ChannelMessage{
+		Room: rw.roomName, Text: text, IsSystem: !isError, IsError: isError,
+	})
+	rw.renderMessages()
 }
 
 // handleSlashCommand dispatches slash commands matching Python's
@@ -226,6 +262,13 @@ func (rw *RoomWidget) handleSlashCommand(text string) {
 		if rw.OnLeaveRoom != nil {
 			rw.OnLeaveRoom()
 		}
+	case "/connect":
+		// Python _handle_slash_command "connect" (Channels.py:1094-1100):
+		// hub.connect() plus a "Connecting..." system notice.
+		if rw.OnConnectHub != nil {
+			rw.OnConnectHub()
+		}
+		rw.appendLocalNotice("Connecting...", false)
 	case "/nick", "/who", "/names", "/topic", "/mode", "/me":
 		if rw.OnSendMessage != nil {
 			rw.OnSendMessage(text)

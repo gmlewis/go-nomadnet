@@ -92,13 +92,46 @@ func TestRoomWidgetSendMessageHubDisconnected(t *testing.T) {
 	rw := NewRoomWidget(app, "hub1", "general")
 	rw.hubConnected = false
 
+	// Python RoomWidget.send_message (Channels.py:873-876): a send while the
+	// hub is disconnected triggers hub.connect() — via OnConnectHub, never as
+	// a literal "/connect" chat transmission — and KEEPS the draft.
+	var connected bool
+	rw.OnConnectHub = func() { connected = true }
 	var sent string
 	rw.OnSendMessage = func(text string) { sent = text }
 	rw.editor.SetText("Hello")
 	rw.sendMessage()
 
-	if sent != "/connect" {
-		t.Errorf("disconnected hub should send /connect, got %q", sent)
+	if !connected {
+		t.Error("disconnected hub should trigger OnConnectHub")
+	}
+	if sent != "" {
+		t.Errorf("disconnected hub must not transmit chat text, got %q", sent)
+	}
+	if got := rw.editor.GetText(); got != "Hello" {
+		t.Errorf("draft must be kept when disconnected, got %q", got)
+	}
+}
+
+func TestRoomWidgetSendMessageHubDisconnectedLiveStatus(t *testing.T) {
+	t.Parallel()
+
+	// The hubConnected snapshot goes stale between list rebuilds; the send
+	// path must consult the LIVE status hook (Python reads self.hub.status at
+	// send time), so a hub that dropped its link after the last refresh is
+	// treated as disconnected even though the snapshot says connected.
+	app := newTestApp()
+	rw := NewRoomWidget(app, "hub1", "general")
+	rw.hubConnected = true
+	rw.hubStatusFn = func() int { return hubStatusDisconnected }
+
+	var connected bool
+	rw.OnConnectHub = func() { connected = true }
+	rw.editor.SetText("Hello")
+	rw.sendMessage()
+
+	if !connected {
+		t.Error("stale connected snapshot with live disconnected status should trigger OnConnectHub")
 	}
 }
 

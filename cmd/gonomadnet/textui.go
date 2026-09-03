@@ -1605,6 +1605,14 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 			hub.SendMessage(strings.ToLower(a.RRC.ActiveRoom()), text)
 		}
 	}
+	// Python RoomWidget.send_message's disconnected branch (Channels.py:873)
+	// and the /connect slash command (Channels.py:1094): hub.connect() — the
+	// live status check lives in the room widget; this only triggers connect.
+	channelsDisplay.OnConnectHub = func() {
+		if hub := a.RRC.ActiveHub(); hub != nil {
+			hub.ConnectAsync()
+		}
+	}
 	// Python RoomWidget leave → hub.part_room (Channels.py leave flow).
 	channelsDisplay.OnLeaveRoom = func(room string) {
 		if hub := a.RRC.ActiveHub(); hub != nil {
