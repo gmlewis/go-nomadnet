@@ -622,7 +622,11 @@ func (h *RRCHub) sendHello(_ *rns.Link) {
 
 	nick := h.GetEffectiveNick()
 	if nick != "" {
-		env[KeyNick] = []byte(nick)
+		// Python _send_hello (RRC.py:453-455): env[K_NICK] = nick — a TEXT
+		// string. A byte string makes real rrcd hubs reject the whole hello
+		// ("Bad packet ... err=nickname must be a string") and the welcome
+		// never arrives.
+		env[KeyNick] = nick
 	}
 
 	h.sendEnv(env)
