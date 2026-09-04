@@ -208,14 +208,16 @@ func (m *RRCManager) NotifyMessage(hub *RRCHub, msg *RRCMessage) {
 }
 
 // OnWelcome is called when a hub receives a WELCOME packet.
-// It re-joins all stored rooms.
+// It re-joins all stored rooms. Python _on_welcome (RRC.py:1315-1322) joins
+// with silent=True: the reconnect re-join must not record a "You joined"
+// event per room (the user's rooms are not news on every reconnect).
 func (m *RRCManager) OnWelcome(hub *RRCHub) {
 	hub.lock.Lock()
 	rooms := sortedKeys(hub.Rooms)
 	hub.lock.Unlock()
 
 	for _, room := range rooms {
-		hub.JoinRoom(room, false)
+		hub.JoinRoom(room, true)
 	}
 }
 

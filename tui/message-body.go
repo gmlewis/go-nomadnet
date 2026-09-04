@@ -291,15 +291,21 @@ func nonOverlappingChatSpans(spans []chatSpan) []chatSpan {
 	return filtered
 }
 
+// rrcTsText renders the timestamp's bracket text: "[HH:MM:SS]" for real
+// timestamps, eight spaces inside the brackets for zero timestamps like
+// Python _ts_prefix (Channels.py:1129-1135). Both are 10 columns.
+func rrcTsText(tsMs int64) string {
+	if tsMs == 0 {
+		return "        "
+	}
+	return time.UnixMilli(tsMs).Format("15:04:05")
+}
+
 // rrcTsPrefix renders the "[HH:MM:SS] " timestamp prefix in the ts color;
 // zero timestamps render eight spaces inside the brackets like Python
 // _ts_prefix (Channels.py:1129-1135).
 func rrcTsPrefix(tsMs int64, tsColor tcell.Color) string {
-	t := time.UnixMilli(tsMs).Format("15:04:05")
-	if tsMs == 0 {
-		t = "        "
-	}
-	return colorTag(tsColor, "") + "[" + t + "] " + colorReset
+	return colorTag(tsColor, "") + "[" + rrcTsText(tsMs) + "] " + colorReset
 }
 
 // rrcNickColor picks the palette color for a message's sender hash; without
@@ -344,11 +350,91 @@ func rrcSenderName(msg ChannelMessage) string {
 // palette's cube color; zero timestamps render eight spaces inside the
 // brackets like Python.
 func ircTsRun(tsMs int64, tsColor tcell.Color) string {
-	t := time.UnixMilli(tsMs).Format("15:04:05")
-	if tsMs == 0 {
-		t = "        "
+	return colorTag(tsColor, "") + " [" + rrcTsText(tsMs) + "] " + colorReset
+}
+
+// rrcEventIconBody resolves a system/notice/error row's render shape: the
+// event icon (empty when the text carries its own) and the body color.
+// Join/part events arrive as Kind "system" rows whose text is "<nick>
+// joined" / "<nick> left" (Python _record_system, no arrow in the text):
+// the suffix-derived arrow below reproduces capture 47's `→ Nick joined` /
+// `← Nick left` rows; older arrow-prefixed rows (the arrow already in the
+// text) render the text AS-IS with no extra icon. Regular notices carry the
+// info glyph in the notice color and errors the warning glyph in the error
+// color.
+func rrcEventIconBody(msg ChannelMessage, opts RRCRenderOpts) (icon string, color tcell.Color) {
+	colors := rrcRenderColors(opts.Theme)
+	switch {
+	case msg.IsError:
+		return opts.Glyphs["warning"], colors["error"]
+	case isArrowPrefixedText(msg.Text, opts):
+		return "", colors["system"]
+	case msg.IsSystem:
+		icon := opts.Glyphs["arrow_r"]
+		if strings.HasSuffix(msg.Text, " left") {
+			icon = opts.Glyphs["arrow_l"]
+		}
+		return icon, colors["system"]
+	default:
+		return opts.Glyphs["info"], colors["notice"]
 	}
-	return colorTag(tsColor, "") + " [" + t + "] " + colorReset
+}
+
+// isArrowPrefixedText reports whether text already carries a join/part arrow
+// followed by a space — one of the port's configured arrow glyphs or the
+// plain Unicode arrows — so the render must not add its own event icon.
+func isArrowPrefixedText(text string, opts RRCRenderOpts) bool {
+	candidates := []string{"→", "←", opts.Glyphs["arrow_r"], opts.Glyphs["arrow_l"]}
+	for _, arrow := range candidates {
+		if arrow != "" && strings.HasPrefix(text, arrow+" ") {
+			return true
+		}
+	}
+	return false
+}
+
+// formatRRCEventLines renders a system/notice/error row the way Python's
+// _wrap_text flow does (Channels.py:1281-1311): the " [HH:MM:SS] " ts run,
+// the event icon and the body form ONE text flow wrapped at the message
+// pane's inner width (urwid.Text "space" wrap), and every CONTINUATION line
+// starts at the LEFT EDGE of the pane with no timestamp, no indent and no
+// leader — capture 47's `members in general:` notice whose `(9ebb…)`
+// continuations start at column 0. Chat rows keep their justified layout.
+// A width too small to hold the prefix falls back to the single-line render.
+func formatRRCEventLines(msg ChannelMessage, opts RRCRenderOpts, width int) []string {
+	colors := rrcRenderColors(opts.Theme)
+	icon, color := rrcEventIconBody(msg, opts)
+	iconPart := ""
+	if icon != "" {
+		iconPart = icon + " "
+	}
+	tsRun := ircTsRun(msg.TsMs, colors["ircTs"])
+	flow := " [" + rrcTsText(msg.TsMs) + "] " + iconPart + msg.Text
+	oneLine := func() []string {
+		return []string{tsRun + colorTag(color, "") + iconPart + msg.Text + colorReset}
+	}
+	if width <= 0 {
+		return oneLine()
+	}
+	segments := urwidSpaceWrap(flow, width)
+	// The ts run is always 12 columns (" [HH:MM:SS] " / " [        ] "); the
+	// icon part adds its runes when present.
+	prefixLen := 12 + utf8.RuneCountInString(iconPart)
+	first := []rune(segments[0])
+	if len(first) < prefixLen {
+		// The prefix alone overflowed the width; keep the single-line form.
+		return oneLine()
+	}
+	lines := make([]string, 0, len(segments))
+	// The first line carries the ts run, then the icon + the wrapped body
+	// part (the icon's own color run covers it, like the capture's
+	// `[ts][notice]󰙎 members…`); the body part is segment 0 minus the
+	// prefix runes.
+	lines = append(lines, tsRun+colorTag(color, "")+iconPart+string(first[prefixLen:])+colorReset)
+	for _, seg := range segments[1:] {
+		lines = append(lines, colorTag(color, "")+seg+colorReset)
+	}
+	return lines
 }
 
 // formatRRCMessage renders one chat message to a tview color-tagged string,
@@ -359,27 +445,14 @@ func ircTsRun(tsMs int64, tsColor tcell.Color) string {
 // carry the one-column left indent of Python's urwid.Padding(left=1); the
 // justified layout (formatRRCMessageLines) renders their two-column form.
 func formatRRCMessage(msg ChannelMessage, opts RRCRenderOpts) string {
+	if msg.IsSystem || msg.IsNotice || msg.IsError {
+		return strings.Join(formatRRCEventLines(msg, opts, 0), "\n") + "\n"
+	}
 	colors := rrcRenderColors(opts.Theme)
 	var sb strings.Builder
-	switch {
-	case msg.IsSystem:
-		icon := opts.Glyphs["arrow_r"]
-		if strings.HasSuffix(msg.Text, " left") {
-			icon = opts.Glyphs["arrow_l"]
-		}
-		sb.WriteString(ircTsRun(msg.TsMs, colors["ircTs"]) +
-			colorTag(colors["system"], "") + icon + " " + msg.Text + colorReset + "\n")
-	case msg.IsNotice:
-		sb.WriteString(ircTsRun(msg.TsMs, colors["ircTs"]) +
-			colorTag(colors["notice"], "") + opts.Glyphs["info"] + " " + msg.Text + colorReset + "\n")
-	case msg.IsError:
-		sb.WriteString(ircTsRun(msg.TsMs, colors["ircTs"]) +
-			colorTag(colors["error"], "") + opts.Glyphs["warning"] + " " + msg.Text + colorReset + "\n")
-	default:
-		sb.WriteString(" " + rrcTsPrefix(msg.TsMs, colors["ts"]) +
-			colorTag(rrcNickColor(msg, opts), "") + "<" + rrcSenderName(msg) + ">" + colorReset + " " +
-			formatRRCBody(msg, opts) + colorReset + "\n")
-	}
+	sb.WriteString(" " + rrcTsPrefix(msg.TsMs, colors["ts"]) +
+		colorTag(rrcNickColor(msg, opts), "") + "<" + rrcSenderName(msg) + ">" + colorReset + " " +
+		formatRRCBody(msg, opts) + colorReset + "\n")
 	return sb.String()
 }
 
@@ -494,16 +567,19 @@ const (
 // (Python wraps the body column at the inner width minus the prefix columns).
 // For system/notice/error rows Python renders a single full-width urwid.Text
 // (_wrap_text, no columns and no left pad — the leading space lives inside
-// the irc_ts-styled run), so those return one unwrapped line and the natural
-// full-width wrap applies.
+// the irc_ts-styled run) which WORD-WRAPS at the pane width with continuation
+// lines at column 0; formatRRCEventLines renders that shape.
 func formatRRCMessageLines(msg ChannelMessage, opts RRCRenderOpts, width int) []string {
-	colors := rrcRenderColors(opts.Theme)
-	if msg.IsSystem || msg.IsNotice || msg.IsError || width <= rrcJustifyIndent {
+	if msg.IsSystem || msg.IsNotice || msg.IsError {
+		return formatRRCEventLines(msg, opts, width)
+	}
+	if width <= rrcJustifyIndent {
 		return []string{strings.TrimSuffix(formatRRCMessage(msg, opts), "\n")}
 	}
 
 	bodyW := width - rrcJustifyIndent
 	sender := rrcSenderName(msg)
+	colors := rrcRenderColors(opts.Theme)
 	// The body COLUMN holds "<sender> " plus the body (Channels.py:1411:
 	// body_rendered renders nick_micron + message_body as one flow). A nick
 	// too wide for the column (a pathological narrow chat pane) falls back to

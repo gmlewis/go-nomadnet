@@ -274,7 +274,7 @@ func TestRoomWidgetMemberRows(t *testing.T) {
 	rw.SetMembers([]ChannelMember{
 		{Nick: "Go port of NomadNet on Mac M2 Max", Hash: hash, Online: true, IsSelf: true},
 	})
-	rw.renderMembers()
+	rw.renderMembers("")
 
 	// The count row renders in its own TextView above the List (Python's
 	// plain urwid.Text count row, Channels.py:694 — a List item would take
@@ -459,32 +459,50 @@ func TestRoomWidgetSlashCommands(t *testing.T) {
 
 	app := newTestApp()
 
+	// The dispatch mirrors Python's _handle_slash_command (Channels.py:997-
+	// 1120): local commands never reach OnSendMessage, server-forwarded
+	// commands do, /quit disconnects the hub (not a room part), and unknown
+	// commands get the local "Unknown command" error.
 	tests := []struct {
-		input     string
-		wantSent  string
-		wantLeave bool
+		input          string
+		wantSent       string
+		wantLeave      bool
+		wantAction     string
+		wantJoined     string
+		wantNickSet    string
+		wantNickInfo   bool
+		wantDisconnect bool
 	}{
-		{"/join #test", "/join #test", false},
-		{"/j #test", "/j #test", false},
-		{"/me dances", "/me dances", false},
-		{"/nick alice", "/nick alice", false},
-		{"/who", "/who", false},
-		{"/names", "/names", false},
-		{"/topic new topic", "/topic new topic", false},
-		{"/part", "", true},
-		{"/leave", "", true},
-		{"/quit", "", true},
-		{"/q", "", true},
-		{"/disconnect", "", true},
+		{"/join #test", "", false, "", "test", "", false, false},
+		{"/j #test", "", false, "", "test", "", false, false},
+		{"/me dances", "", false, "dances", "", "", false, false},
+		{"/nick alice", "", false, "", "", "alice", true, false},
+		{"/who", "/who", false, "", "", "", false, false},
+		{"/names", "/names", false, "", "", "", false, false},
+		{"/topic new topic", "/topic new topic", false, "", "", "", false, false},
+		{"/part", "", true, "", "", "", false, false},
+		{"/leave", "", true, "", "", "", false, false},
+		{"/quit", "", false, "", "", "", false, true},
+		{"/q", "", false, "", "", "", false, true},
+		{"/disconnect", "", false, "", "", "", false, true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
 			rw := NewRoomWidget(app, "hub1", "general")
+			rw.hubStatusFn = func() int { return hubStatusConnected }
 			var sentText string
 			left := false
+			var action, joined, nickSet string
+			nickInfo := false
+			disconnected := false
 			rw.OnSendMessage = func(text string) { sentText = text }
 			rw.OnLeaveRoom = func() { left = true }
+			rw.OnSendAction = func(text string) error { action = text; return nil }
+			rw.OnJoinRoomNamed = func(room string) error { joined = room; return nil }
+			rw.OnSetNick = func(name string) error { nickSet = name; return nil }
+			rw.OnNickInfo = func() (string, bool) { nickInfo = true; return "", false }
+			rw.OnDisconnectHub = func() { disconnected = true }
 
 			rw.editor.SetText(tt.input)
 			rw.sendMessage()
@@ -494,6 +512,21 @@ func TestRoomWidgetSlashCommands(t *testing.T) {
 			}
 			if left != tt.wantLeave {
 				t.Errorf("sendMessage(%q) left = %v, want %v", tt.input, left, tt.wantLeave)
+			}
+			if action != tt.wantAction {
+				t.Errorf("sendMessage(%q) action = %q, want %q", tt.input, action, tt.wantAction)
+			}
+			if joined != tt.wantJoined {
+				t.Errorf("sendMessage(%q) joined = %q, want %q", tt.input, joined, tt.wantJoined)
+			}
+			if nickSet != tt.wantNickSet {
+				t.Errorf("sendMessage(%q) nickSet = %q, want %q", tt.input, nickSet, tt.wantNickSet)
+			}
+			if nickInfo != tt.wantNickInfo {
+				t.Errorf("sendMessage(%q) nickInfo = %v, want %v", tt.input, nickInfo, tt.wantNickInfo)
+			}
+			if disconnected != tt.wantDisconnect {
+				t.Errorf("sendMessage(%q) disconnected = %v, want %v", tt.input, disconnected, tt.wantDisconnect)
 			}
 			if rw.editor.GetText() != "" {
 				t.Errorf("sendMessage(%q) editor text = %q, want empty", tt.input, rw.editor.GetText())

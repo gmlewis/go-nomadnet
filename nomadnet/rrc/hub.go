@@ -105,13 +105,26 @@ type RRCHub struct {
 	// the hub's fanout echoes of our own message (unique mids, possibly
 	// rewritten source hashes) collapse with the local record instead of
 	// duplicating it. Capped at 256 like Python's deques.
-	recentSentBodies     map[string]int64
-	recentSentOrder      []string
-	pendingPings         map[string]time.Time // body → send time
-	pendingJoins         map[string]bool
-	pendingParts         map[string]bool
-	silentJoins          map[string]bool
+	recentSentBodies map[string]int64
+	recentSentOrder  []string
+	// pendingPing tracks the pings this client sent and has not had echoed
+	// back (Python _pending_pings, RRC.py:254): keyed by the raw ping body,
+	// each entry carries the send time for the 15 s expiry and the target
+	// room (Python send_ping's room bookkeeping, RRC.py:592-600).
+	pendingPings map[string]pendingPing
+	pendingJoins map[string]bool
+	pendingParts map[string]bool
+	silentJoins  map[string]bool
+	// silentWhoRooms holds the rooms with an outstanding AUTO-requested /who
+	// (the periodic reconciliation sweep and the join-time auto_who). The
+	// marker is consumed by EVERY who-reply copy for the room — rrcd fans the
+	// who-notice out once per member, so a one-shot delete on the first copy
+	// leaks the marker and every duplicate copy renders. It is cleared only
+	// when a user-initiated /who for the room is answered, or by the link
+	// closing. userWhoRooms is the distinct bookkeeping for USER-initiated
+	// /who requests, whose replies must render.
 	silentWhoRooms       map[string]bool
+	userWhoRooms         map[string]bool
 	resourceExpectations map[string]*resourceExpectation // rid → pending transfer
 	savedHistoryPath     string
 	transport            rns.Transport
@@ -202,11 +215,12 @@ func NewHub(manager *RRCManager, hubHash []byte, destName, name string) *RRCHub 
 		recvIDs:              make(map[string]bool),
 		fanoutGroups:         make(map[string]*fanoutGroup),
 		recentSentBodies:     make(map[string]int64),
-		pendingPings:         make(map[string]time.Time),
+		pendingPings:         make(map[string]pendingPing),
 		pendingJoins:         make(map[string]bool),
 		pendingParts:         make(map[string]bool),
 		silentJoins:          make(map[string]bool),
 		silentWhoRooms:       make(map[string]bool),
+		userWhoRooms:         make(map[string]bool),
 		resourceExpectations: make(map[string]*resourceExpectation),
 	}
 
@@ -340,6 +354,9 @@ func (h *RRCHub) onClosed() {
 	}
 	for k := range h.silentWhoRooms {
 		delete(h.silentWhoRooms, k)
+	}
+	for k := range h.userWhoRooms {
+		delete(h.userWhoRooms, k)
 	}
 	if h.whoRefreshTimer != nil {
 		h.whoRefreshTimer.Stop()
@@ -661,7 +678,7 @@ func (h *RRCHub) sendHello(_ *rns.Link) {
 	ts := NowMs()
 	env := MakeEnvelope(TypeHello, srcHash, nil, nil, body, mid, ts)
 
-	nick := h.GetEffectiveNick()
+	nick := h.effectiveNick()
 	if nick != "" {
 		// Python _send_hello (RRC.py:453-455): env[K_NICK] = nick — a TEXT
 		// string. A byte string makes real rrcd hubs reject the whole hello
@@ -747,6 +764,14 @@ func (h *RRCHub) Disconnect() {
 		h.whoRefreshTimer = nil
 	}
 	h.whoRefreshPending = nil
+	// No reply can be answered after a manual disconnect: drop the
+	// outstanding auto- and user-initiated /who markers with the link.
+	for k := range h.silentWhoRooms {
+		delete(h.silentWhoRooms, k)
+	}
+	for k := range h.userWhoRooms {
+		delete(h.userWhoRooms, k)
+	}
 	link := h.link
 	h.link = nil
 	h.Welcomed = false
@@ -980,17 +1005,49 @@ func (h *RRCHub) refreshRoomMembership() {
 	h.lock.Unlock()
 
 	for _, room := range rooms {
-		h.lock.Lock()
-		h.silentWhoRooms[room] = true
-		h.lock.Unlock()
+		h.markAutoWhoRequest(room)
 		if err := h.SendCommand("/who "+room, room); err != nil {
 			// The marker must not linger: a later user-initiated /who reply
 			// for this room would otherwise be consumed silently.
-			h.lock.Lock()
-			delete(h.silentWhoRooms, room)
-			h.lock.Unlock()
+			h.clearAutoWhoRequest(room)
+			log.Printf("[RRC %v] SendCommand('/who %v'): %v", h.Name, room, err)
 		}
 	}
+}
+
+// markAutoWhoRequest marks the room as having an outstanding auto-requested
+// /who: EVERY reply copy for the room is consumed silently (rrcd fans the
+// who-notice out once per member, so a one-shot consume leaks the marker and
+// the duplicates flood the conversation window every sweep). The marker is
+// cleared when a user-initiated /who for the room is answered, or by the
+// link closing.
+func (h *RRCHub) markAutoWhoRequest(room string) {
+	h.lock.Lock()
+	h.silentWhoRooms[strings.ToLower(room)] = true
+	h.lock.Unlock()
+}
+
+// clearAutoWhoRequest drops the room's outstanding auto-request marker.
+func (h *RRCHub) clearAutoWhoRequest(room string) {
+	h.lock.Lock()
+	delete(h.silentWhoRooms, strings.ToLower(room))
+	h.lock.Unlock()
+}
+
+// consumeWhoReply applies the /who reply bookkeeping and reports whether the
+// reply must be consumed silently. A user-initiated reply RENDERS (it also
+// clears the room's auto marker — the user's answer retires the stale
+// auto-request); an outstanding auto-request consumes every copy while its
+// marker stays set; any other who reply renders.
+func (h *RRCHub) consumeWhoReply(room string) bool {
+	h.lock.Lock()
+	defer h.lock.Unlock()
+	if h.userWhoRooms[room] {
+		delete(h.userWhoRooms, room)
+		delete(h.silentWhoRooms, room)
+		return false
+	}
+	return h.silentWhoRooms[room]
 }
 
 // stopWhoRefresh cancels the armed reconciliation timer (link closed or
@@ -1226,7 +1283,7 @@ func (h *RRCHub) JoinRoomWithKey(room string, silent bool, key string) {
 		src = h.Manager.identityHash()
 	}
 	var nick []byte
-	if n := h.GetEffectiveNick(); n != "" {
+	if n := h.effectiveNick(); n != "" {
 		nick = []byte(n)
 	}
 	// Python join_room: the room key rides in the JOIN envelope's BODY
@@ -1265,13 +1322,24 @@ func (h *RRCHub) PartRoom(room string) {
 	h.sendEnv(env)
 }
 
-// SendMessage sends a T_MSG to a room and records it locally.
+// SendMessage sends a T_MSG to a room and records it locally. Slash-prefixed
+// text is a user command, not chat (Python's TUI intercepts it in
+// RoomWidget._handle_slash_command before anything reaches send_message), so
+// it routes through the user-command path: the command is not recorded as a
+// chat message and its reply renders in the conversation window.
 func (h *RRCHub) SendMessage(room, text string) string {
 	room = strings.ToLower(room)
+	if strings.HasPrefix(text, "/") {
+		mid, err := h.sendUserCommand(text, room)
+		if err != nil {
+			log.Printf("[RRC %v] command %q: %v", h.Name, text, err)
+		}
+		return mid
+	}
 	mid := MsgID()
 	ts := NowMs()
 
-	nick := h.GetEffectiveNick()
+	nick := h.effectiveNick()
 	var srcHash []byte
 	if h.Manager != nil {
 		srcHash = h.Manager.identityHash()
@@ -1303,7 +1371,7 @@ func (h *RRCHub) SendAction(room, text string) string {
 	mid := MsgID()
 	ts := NowMs()
 
-	nick := h.GetEffectiveNick()
+	nick := h.effectiveNick()
 	var srcHash []byte
 	if h.Manager != nil {
 		srcHash = h.Manager.identityHash()
@@ -1328,44 +1396,149 @@ func (h *RRCHub) SendAction(room, text string) string {
 
 // SendCommand mirrors Python RRCHub.send_command: it sends a raw command
 // string (which must begin with "/") to the hub as a T_MSG envelope. Unlike
-// SendMessage it does not normalize the room, record the message locally, or
-// track the message ID for dedup — it is a thin send of the command text.
+// SendMessage it does not normalize the room or record the message locally —
+// it is a thin send of the command text used for the silent /who and /list
+// requests. The sent message id AND body are remembered like SendMessage so
+// a hub that relays the command text back as a MSG (observed live: an
+// unregistered session's "/who general" came back as a chat message 550
+// times) is suppressed by the self-echo and fanout-collapse guards instead
+// of being recorded as chat.
 func (h *RRCHub) SendCommand(text, room string) error {
+	_, err := h.sendCommand(text, room)
+	return err
+}
+
+// SendUserCommand sends a user-initiated slash command (e.g. "/who" typed in
+// the composer) to the hub as a T_MSG envelope and returns the sent message
+// id hex. Unlike the silent SendCommand path it marks the target room as
+// having an outstanding user-initiated /who, so the reply RENDERS in the
+// conversation window and can never be swallowed by a stale auto-request
+// marker. It is the entry point for the TUI's server-forwarded commands.
+func (h *RRCHub) SendUserCommand(text, room string) (string, error) {
+	return h.sendUserCommand(text, room)
+}
+
+// sendCommand is the shared command-send tail of SendCommand and
+// SendUserCommand; it returns the sent message id hex.
+func (h *RRCHub) sendCommand(text, room string) (string, error) {
 	if !strings.HasPrefix(text, "/") {
-		return errors.New("command must start with /")
+		return "", errors.New("command must start with /")
 	}
 	mid := MsgID()
 	ts := NowMs()
-	nick := h.GetEffectiveNick()
+	nick := h.effectiveNick()
 	var srcHash []byte
 	if h.Manager != nil {
 		srcHash = h.Manager.identityHash()
 	}
 	env := MakeEnvelope(TypeMsg, srcHash, []byte(room), []byte(nick), text, mid, ts)
+	h.rememberSentID(hexString(mid))
+	// The body is remembered BEFORE the send (like SendMessage) so a fanout
+	// echo that races back is still collapsed by collapseSelfEcho.
+	h.rememberSentBody("msg", strings.ToLower(room), text, ts)
 	h.sendEnv(env)
-	return nil
+	return hexString(mid), nil
 }
 
-// SendPing sends a T_PING to a room.
+// sendUserCommand sends a user-initiated command, marking the target room as
+// having an outstanding user-initiated /who request (cleared when the reply
+// is answered, or on a failed send).
+func (h *RRCHub) sendUserCommand(text, room string) (string, error) {
+	target, isWho := userWhoTarget(text, room)
+	if isWho {
+		h.lock.Lock()
+		if target != "" {
+			h.userWhoRooms[target] = true
+		} else {
+			// A bare "/who" with no active room: the target room is only
+			// known from the reply, so drop every stale auto marker — one
+			// of them would otherwise swallow the user's reply.
+			for r := range h.silentWhoRooms {
+				delete(h.silentWhoRooms, r)
+			}
+		}
+		h.lock.Unlock()
+	}
+	mid, err := h.sendCommand(text, room)
+	if isWho && err != nil && target != "" {
+		h.lock.Lock()
+		delete(h.userWhoRooms, target)
+		h.lock.Unlock()
+	}
+	return mid, err
+}
+
+// userWhoTarget parses the room a user /who-style command targets: "/who
+// <room>" names the room in its argument, a bare "/who" targets the caller's
+// active room. ok is false for any non-/who command.
+func userWhoTarget(text, fallback string) (string, bool) {
+	parts := strings.Fields(text)
+	if len(parts) == 0 {
+		return "", false
+	}
+	cmd := strings.ToLower(strings.TrimPrefix(parts[0], "/"))
+	if cmd != "who" && cmd != "names" {
+		return "", false
+	}
+	if len(parts) > 1 {
+		return strings.ToLower(strings.TrimPrefix(strings.TrimSpace(parts[1]), "#")), true
+	}
+	return strings.ToLower(fallback), true
+}
+
+// pendingPing is one client-sent ping awaiting its PONG echo (Python
+// _pending_pings' (now_ms, room) value, RRC.py:592-600).
+type pendingPing struct {
+	sentMs int64
+	room   string
+}
+
+// pingExpiryMs is how long an un-echoed ping stays pending (Python's 15 s
+// expiry in send_ping, RRC.py:597-599).
+const pingExpiryMs = 15000
+
+// SendPing sends a T_PING to a room (Python send_ping, RRC.py:592-600): the
+// envelope carries the local identity as the source and NO room field, the
+// 8-byte random body keys the pending-pings table, and pings older than 15 s
+// expire at each send. The ping itself renders nothing; its ANSWERED pong
+// records the round trip as a system row (RRC.py:878).
 func (h *RRCHub) SendPing(room string) {
 	room = strings.ToLower(room)
 	mid := MsgID()
 	ts := NowMs()
 
 	body := make([]byte, 8)
-	rand.Read(body)
-	key := hexString(body)
+	_, err := rand.Read(body)
+	if err != nil {
+		log.Printf("[RRC %v] ping body: %v", h.Name, err)
+	}
+	key := string(body)
+	now := ts
+
+	var srcHash []byte
+	if h.Manager != nil {
+		srcHash = h.Manager.identityHash()
+	}
 
 	h.lock.Lock()
-	h.pendingPings[key] = time.Now()
+	for k, p := range h.pendingPings {
+		if now-p.sentMs > pingExpiryMs {
+			delete(h.pendingPings, k)
+		}
+	}
+	h.pendingPings[key] = pendingPing{sentMs: now, room: room}
 	h.lock.Unlock()
 
-	env := MakeEnvelope(TypePing, nil, []byte(room), nil, body, mid, ts)
+	// Python's send_ping omits the room field (RRC.py:594): the envelope
+	// carries only the source, the body, and the id.
+	env := MakeEnvelope(TypePing, srcHash, nil, nil, body, mid, ts)
 	h.sendEnv(env)
 }
 
 // GetEffectiveNick returns the override nick or the manager's nick.
 func (h *RRCHub) GetEffectiveNick() string {
+	h.lock.Lock()
+	defer h.lock.Unlock()
 	if h.NickOverride != "" {
 		return h.NickOverride
 	}
@@ -1375,11 +1548,72 @@ func (h *RRCHub) GetEffectiveNick() string {
 	return ""
 }
 
+// effectiveNick returns the effective nick truncated to the hub's active
+// nick byte limit, so every outgoing envelope carries a nick the hub will
+// accept (real hubs silently drop envelopes whose nick exceeds the limit,
+// which registered over-long-named clients as bare hashes).
+func (h *RRCHub) effectiveNick() string {
+	return truncateUTF8(h.GetEffectiveNick(), h.effectiveNickLimit())
+}
+
+// effectiveNickLimit returns the hub's active nickname byte limit: the
+// WELCOME-provided value when positive, falling back to the 32-byte default
+// before the first WELCOME (and when the hub advertises a non-positive
+// limit, matching Python's `max_nick_bytes or 32` fallback).
+func (h *RRCHub) effectiveNickLimit() int {
+	h.lock.Lock()
+	defer h.lock.Unlock()
+	if h.MaxNickBytes > 0 {
+		return h.MaxNickBytes
+	}
+	return DefaultMaxNickBytes
+}
+
+// truncateUTF8 cuts s to at most maxBytes UTF-8 bytes rune-safely: the cut
+// never splits a multi-byte rune and the result is always valid UTF-8 (a
+// partial trailing rune, or a hostile invalid sequence, is dropped).
+func truncateUTF8(s string, maxBytes int) string {
+	if maxBytes <= 0 {
+		return ""
+	}
+	if len(s) <= maxBytes {
+		return strings.ToValidUTF8(s, "")
+	}
+	return strings.ToValidUTF8(s[:maxBytes], "")
+}
+
 // SetNickOverride sets a per-hub nick override.
 func (h *RRCHub) SetNickOverride(nick string) {
 	h.lock.Lock()
 	defer h.lock.Unlock()
 	h.NickOverride = nick
+}
+
+// HasNickOverride reports whether a per-hub nick override is set (Python's
+// nick_override check in Channels.py:1073).
+func (h *RRCHub) HasNickOverride() bool {
+	h.lock.Lock()
+	defer h.lock.Unlock()
+	return h.NickOverride != ""
+}
+
+// MaxNickLimit returns the hub's active nickname byte limit (the
+// WELCOME-provided value when positive, else 32) for client-side validation
+// (Python Channels.py:1078: `self.hub.max_nick_bytes or 32`).
+func (h *RRCHub) MaxNickLimit() int {
+	return h.effectiveNickLimit()
+}
+
+// MaxMsgBodyLimit returns the hub's active message-body byte limit for
+// client-side validation (Python Channels.py:1058:
+// `self.hub.max_msg_body_bytes or 350`).
+func (h *RRCHub) MaxMsgBodyLimit() int {
+	h.lock.Lock()
+	defer h.lock.Unlock()
+	if h.MaxMsgBodyBytes > 0 {
+		return h.MaxMsgBodyBytes
+	}
+	return DefaultMaxMsgBytes
 }
 
 func (h *RRCHub) sendEnv(env map[any]any) {
@@ -1433,22 +1667,21 @@ func (h *RRCHub) HandleData(data []byte) {
 		h.handleJoin(src, nick, room, body)
 
 	case TypeMsg:
-		// Python RRC.py:1068-1073: skip the hub's echo of our own message
+		// Python RRC.py:1060-1064: skip the hub's echo of our own message
 		// (src == own identity and mid in _sent_ids). The recvIDs guard also
 		// collapses duplicate fanout copies (rrcd's member list can carry the
 		// same identity repeatedly after reconnect storms).
-		if h.Manager != nil && hexString(src) == hexString(h.Manager.identityHash()) && h.sentIDs[hexString(mid)] {
+		if h.isOwnEcho(src, hexString(mid)) {
 			return
 		}
 		if hexString(mid) != "" && h.seenReceivedID(hexString(mid)) {
 			return
 		}
-		var textStr string
-		switch b := body.(type) {
-		case []byte:
-			textStr = string(b)
-		case string:
-			textStr = b
+		textStr, ok := bodyText(body)
+		if !ok {
+			// Python only records string MSG bodies (RRC.py:1060); other
+			// payloads are opaque and ignored.
+			return
 		}
 		// Python stamps every inbound message with its own _now_ms()
 		// arrival time (RRC.py:1043) — the sender's envelope ts is only
@@ -1501,18 +1734,16 @@ func (h *RRCHub) HandleData(data []byte) {
 	case TypeAction:
 		// Python T_ACTION branch (RRC.py:1054-1085): action messages record
 		// exactly like msgs, with the same self-echo and fanout guards.
-		if h.Manager != nil && hexString(src) == hexString(h.Manager.identityHash()) && h.sentIDs[hexString(mid)] {
+		if h.isOwnEcho(src, hexString(mid)) {
 			return
 		}
 		if hexString(mid) != "" && h.seenReceivedID(hexString(mid)) {
 			return
 		}
-		var textStr string
-		switch b := body.(type) {
-		case []byte:
-			textStr = string(b)
-		case string:
-			textStr = b
+		textStr, ok := bodyText(body)
+		if !ok {
+			// Python only records string ACTION bodies (RRC.py:1054).
+			return
 		}
 		// Python T_ACTION bookkeeping (RRC.py:1054-1068): same nick/member
 		// learning as msgs, and the same arrival-time stamping (the
@@ -1558,44 +1789,79 @@ func (h *RRCHub) HandleData(data []byte) {
 		h.handleWelcome(body)
 
 	case TypePong:
-		h.lock.Lock()
-		var bodyStr string
-		switch b := body.(type) {
-		case []byte:
-			bodyStr = string(b)
-		case string:
-			bodyStr = b
+		// Python T_PONG branch (RRC.py:865-880): the echoed body keys the
+		// pending-pings table; a matching entry is cleared and its round trip
+		// is recorded as a system row in the ping's room — "Pong from hub:
+		// <rtt> ms" (RRC.py:878). Hub-initiated pings (nothing pending) stay
+		// silent: only the client's own answered pings render.
+		if bodyStr, ok := bodyText(body); ok {
+			h.lock.Lock()
+			pending, answered := h.pendingPings[bodyStr]
+			delete(h.pendingPings, bodyStr)
+			h.lock.Unlock()
+			if answered {
+				rttMs := max(int64(0), NowMs()-pending.sentMs)
+				h.recordMessage(&RRCMessage{
+					Kind: "system", Room: pending.room,
+					Text: "Pong from hub: " + strconv.FormatInt(rttMs, 10) + " ms",
+					Ts:   NowMs(),
+				}, true)
+			}
 		}
-		delete(h.pendingPings, bodyStr)
-		h.lock.Unlock()
 
 	case TypePing:
-		h.sendEnv(MakeEnvelope(TypePong, src, nil, nil, body, mid, NowMs()))
+		// Python T_PING branch (RRC.py:857-863): the PONG replies with the
+		// RESPONDER's own identity hash (the hub attributes the pong to the
+		// client — answering with the PING's source, the hub's identity,
+		// made every hub treat the client as dead, tear the link down, and
+		// spam every room member with re-join fanouts), echoes the body back
+		// UNCHANGED, omits the room field, and carries a FRESH message id.
+		var srcHash []byte
+		if h.Manager != nil {
+			srcHash = h.Manager.identityHash()
+		}
+		h.sendEnv(MakeEnvelope(TypePong, srcHash, nil, nil, body, MsgID(), NowMs()))
+
+	case TypeError:
+		var textStr string
+		if s, ok := bodyText(body); ok {
+			textStr = s
+		} else {
+			// Python T_ERROR (RRC.py:1148): a non-string body records the
+			// placeholder "(error)".
+			textStr = "(error)"
+		}
+		h.handleError(roomStr, textStr)
 
 	case TypeNotice:
-		var textStr string
-		switch b := body.(type) {
-		case []byte:
-			textStr = string(b)
-		case string:
-			textStr = b
+		textStr, ok := bodyText(body)
+		if !ok {
+			// Python only records string NOTICE bodies (RRC.py:1104).
+			return
 		}
 		// Python _process_notice_text (RRC.py:843-848): /list replies populate
-		// the hub's advertised room set for the info panel.
+		// the hub's advertised room set for the info panel. They are consumed
+		// silently in every case (the room list itself must never render).
 		if rooms := ParseRoomListNotice(textStr); rooms != nil {
 			h.SetAvailableRooms(rooms)
 			return
 		}
 		// Python _parse_who_notice (RRC.py:1084-1105): /who replies replace
 		// the room's member set and learn the nicks via the 12-hex prefix
-		// match against the existing members. Silent who replies (fetched by
-		// the auto_who toggle) are consumed without hitting the message log.
+		// match against the existing members. Auto-requested replies are
+		// consumed without hitting the message log (EVERY copy, see
+		// consumeWhoReply); user-initiated replies render.
 		if whoRoom, entries, isWho := ParseWhoNotice(textStr); isWho {
 			h.applyWhoReply(whoRoom, entries)
-			if h.silentWhoRooms[whoRoom] {
-				delete(h.silentWhoRooms, whoRoom)
+			if h.consumeWhoReply(whoRoom) {
 				return
 			}
+		}
+		// rrcd's server-command acks ("room <name>: registered; mode=+nrt;
+		// topic=(none)" and the /mode and /topic acks) are protocol traffic,
+		// not conversation: consume them without rendering.
+		if isProtocolControlNotice(textStr) {
+			return
 		}
 		// Python (RRC.py:1128-1136): a roomless (global) notice sets the
 		// hub's MOTD and notifies — the hub's greeting rides as the first
@@ -1815,9 +2081,6 @@ func (h *RRCHub) handleWelcome(body any) {
 
 // whoEntry is one entry parsed from a "/who" reply NOTICE: the display nick
 // (empty when the entry is a bare hash) and the 12-hex or 32-hex hash text.
-
-// whoEntry is one entry parsed from a "/who" reply NOTICE: the display nick
-// (empty when the entry is a bare hash) and the 12-hex or 32-hex hash text.
 type whoEntry struct {
 	Nick    string // empty for bare-hash entries
 	HashHex string
@@ -1913,6 +2176,74 @@ func ParseRoomListNotice(text string) map[string]*string {
 	return rooms
 }
 
+// protocolControlNoticeRe matches rrcd's server-command acknowledgement
+// notices — the registration acks ("room <name>: registered; mode=+nrt;
+// topic=(none)" and its unregistration twin, observed in the 2026-09-03
+// captures) and the /mode and /topic acks of the same "room <name>: …" ack
+// family. They are protocol traffic, not conversation: consumed without
+// rendering.
+var protocolControlNoticeRe = regexp.MustCompile(
+	`(?i)^room [^:]+: (unregistered|registered|mode |topic )`)
+
+// isProtocolControlNotice reports whether a NOTICE body is an rrcd
+// server-command acknowledgement that must update no conversation buffer.
+func isProtocolControlNotice(text string) bool {
+	return protocolControlNoticeRe.MatchString(text)
+}
+
+// handleError processes a T_ERROR envelope (Python T_ERROR branch,
+// RRC.py:1145-1170): the text is recorded as an error notice in the affected
+// room (or the active room when roomless, via recordNotice), a pending join
+// for that room is rolled back, and a refusal error fails the hub per doc
+// 4-RRC ("an ERROR that clearly indicates refusal … the client enters the
+// Disconnected state"). It is never treated as chat.
+func (h *RRCHub) handleError(roomStr, text string) {
+	h.lock.Lock()
+	rollback := h.pendingJoins[roomStr]
+	delete(h.pendingJoins, roomStr)
+	delete(h.silentJoins, roomStr)
+	delete(h.pendingParts, roomStr)
+	if rollback {
+		delete(h.Rooms, roomStr)
+	}
+	h.lock.Unlock()
+
+	if rollback {
+		if h.Manager != nil {
+			if err := h.Manager.Save(); err != nil {
+				log.Printf("[RRC %v] could not save after join rollback: %v", h.Name, err)
+			}
+		}
+	}
+
+	h.recordNotice(&RRCMessage{Kind: "error", Room: roomStr, Text: text, Ts: NowMs()})
+
+	if errorIndicatesRefusal(text) {
+		h.SetStatus(StatusFailed, "Refused: "+text)
+	}
+}
+
+// refusalIndicators are the lowercased substrings that mark an ERROR message
+// as a hub refusal (doc 4-RRC: "an ERROR that clearly indicates refusal or
+// fatal failure" ends the session).
+var refusalIndicators = []string{
+	"refus", "reject", "denied", "not allowed", "forbidden",
+	"unauthorized", "banned", "kicked", "rate limit", "too many",
+	"limit exceeded", "declined",
+}
+
+// errorIndicatesRefusal reports whether an ERROR text indicates a hub
+// refusal or fatal failure.
+func errorIndicatesRefusal(text string) bool {
+	lower := strings.ToLower(text)
+	for _, indicator := range refusalIndicators {
+		if strings.Contains(lower, indicator) {
+			return true
+		}
+	}
+	return false
+}
+
 // handleHello processes a HELLO envelope from a connecting client.
 // It stores the client's nick and sends a WELCOME response. Matches
 // Python's RRC server behavior when receiving a HELLO from a client.
@@ -1979,7 +2310,10 @@ func (h *RRCHub) handleJoin(src, nick, room []byte, _ any) {
 // mirroring Python's T_JOINED branch (RRC.py:968-1000): the body is a list of
 // the room's member identity hashes, the member set is hash-keyed, and the
 // client's own identity hash always joins the set. The advisory K_NICK is
-// learned only for a fanout about a single other joiner.
+// learned only for a fanout about a single other joiner. Join/leave events
+// render like the Python capture: a self-join records "You joined #<room>"
+// (unless the join was silent) and a single other joiner records
+// "→ <nick> joined" with the 12-hex hash-prefix fallback for unknown nicks.
 func (h *RRCHub) handleJoinedNotification(roomStr, nickStr string, body any) {
 	bodyHashes := bodyHashList(body)
 
@@ -1989,12 +2323,14 @@ func (h *RRCHub) handleJoinedNotification(roomStr, nickStr string, body any) {
 	}
 
 	selfJoin := false
+	silent := false
 	h.lock.Lock()
 	selfJoin = h.pendingJoins[roomStr]
 	if selfJoin {
 		delete(h.pendingJoins, roomStr)
 	}
 	if h.silentJoins[roomStr] {
+		silent = true
 		delete(h.silentJoins, roomStr)
 	}
 	h.Rooms[roomStr] = true
@@ -2022,12 +2358,36 @@ func (h *RRCHub) handleJoinedNotification(roomStr, nickStr string, body any) {
 	if h.Manager != nil {
 		h.Manager.NotifyChange(h)
 	}
+	// Python T_JOINED (RRC.py:956-958, 972-975): the self-join records
+	// "You joined #<room>" unless the join was silent (the WELCOME re-join
+	// loop), and a fanout about a single other joiner records its arrival.
+	// Both are recorded as Kind "system" (Python _record_system) WITHOUT an
+	// arrow in the text — the renderer derives the arrow_r/arrow_l icon from
+	// the " joined"/" left" suffix (Channels.py:1294), and Python's F8
+	// join/leave collapse only collapses Kind "system" rows
+	// (_is_joinpart_system, Channels.py:1240). The nick resolves through the
+	// just-learned nick table with display_name_for's hash-prefix fallback.
+	joiner := ""
+	if !selfJoin && len(bodyHashes) == 1 && (ownHash == "" || bodyHashes[0] != ownHash) {
+		joiner = h.displayNameForHash(bodyHashes[0])
+	}
+	switch {
+	case selfJoin && !silent:
+		h.recordMessage(&RRCMessage{
+			Kind: "system", Room: roomStr, Text: "You joined #" + roomStr, Ts: NowMs(),
+		}, true)
+	case joiner != "":
+		h.recordMessage(&RRCMessage{
+			Kind: "system", Room: roomStr, Text: joiner + " joined", Ts: NowMs(),
+		}, true)
+	}
 	// Python handle_joined → auto_who (RRC.py:1006-1012): fetch the room's
-	// member list right after joining; the reply is consumed silently.
+	// member list right after joining; every reply copy is consumed silently.
 	if autoWho {
-		h.silentWhoRooms[roomStr] = true
+		h.markAutoWhoRequest(roomStr)
 		if err := h.SendCommand("/who "+roomStr, roomStr); err != nil {
-			log.Printf("SendCommand('/who %v'): %v", roomStr, err)
+			log.Printf("[RRC %v] SendCommand('/who %v'): %v", h.Name, roomStr, err)
+			h.clearAutoWhoRequest(roomStr)
 		}
 	}
 }
@@ -2035,7 +2395,9 @@ func (h *RRCHub) handleJoinedNotification(roomStr, nickStr string, body any) {
 // handlePartedNotification processes a PARTED fanout on the client side,
 // mirroring Python's T_PARTED branch (RRC.py:978-1040): the body is a list of
 // the parted member identity hashes, and a self-part drops the room together
-// with its member set.
+// with its member set. A single other parter records "← <nick> left" (with
+// the 12-hex hash-prefix fallback for unknown nicks); a self-part records
+// nothing (Python parity).
 func (h *RRCHub) handlePartedNotification(roomStr, nickStr string, body any) {
 	bodyHashes := bodyHashList(body)
 
@@ -2070,6 +2432,31 @@ func (h *RRCHub) handlePartedNotification(roomStr, nickStr string, body any) {
 	if h.Manager != nil {
 		h.Manager.NotifyChange(h)
 	}
+	// Python T_PARTED (RRC.py:1015-1018): a fanout about a single other
+	// parter records the departure as Kind "system" (Python _record_system)
+	// without an arrow in the text — the renderer derives the arrow_l icon
+	// from the " left" suffix (Channels.py:1294). The nick resolves through
+	// the just-learned nick table with the hash-prefix fallback.
+	if !selfPart && len(bodyHashes) == 1 && (ownHash == "" || bodyHashes[0] != ownHash) {
+		h.recordMessage(&RRCMessage{
+			Kind: "system", Room: roomStr, Text: h.displayNameForHash(bodyHashes[0]) + " left", Ts: NowMs(),
+		}, true)
+	}
+}
+
+// displayNameForHash resolves a member's display name from the nick table,
+// falling back to the 12-hex prefix of the identity hash (Python
+// display_name_for, RRC.py:307-313). Callers must not hold h.lock.
+func (h *RRCHub) displayNameForHash(hexHash string) string {
+	h.lock.Lock()
+	defer h.lock.Unlock()
+	if nick := h.Nicks[hexHash]; nick != "" {
+		return nick
+	}
+	if len(hexHash) > 12 {
+		return hexHash[:12]
+	}
+	return hexHash
 }
 
 // bodyHashList extracts identity hashes from a JOINED/PARTED fanout body,
@@ -2217,6 +2604,37 @@ func (h *RRCHub) seenReceivedID(mid string) bool {
 		delete(h.recvIDs, oldest)
 	}
 	return false
+}
+
+// isOwnEcho reports whether a received copy is the hub's echo of a message
+// this client sent: the source hash is our own identity AND the message id
+// is one we remembered (Python RRC.py:1060-1064). The sent-ids table is
+// guarded by the hub lock.
+func (h *RRCHub) isOwnEcho(src []byte, mid string) bool {
+	if h.Manager == nil {
+		return false
+	}
+	own := hexString(h.Manager.identityHash())
+	if own == "" || hexString(src) != own {
+		return false
+	}
+	h.lock.Lock()
+	defer h.lock.Unlock()
+	return h.sentIDs[mid]
+}
+
+// bodyText decodes a message body as its text form: CBOR text strings and
+// byte strings both carry the text (hubs relay bodies opaquely), while any
+// other payload kind reports not-ok so the caller can ignore it the way
+// Python's isinstance(body, str) guards do.
+func bodyText(body any) (string, bool) {
+	switch b := body.(type) {
+	case []byte:
+		return string(b), true
+	case string:
+		return b, true
+	}
+	return "", false
 }
 
 // fanoutWindowMs is the collapse window for rrcd fanout copies, which arrive

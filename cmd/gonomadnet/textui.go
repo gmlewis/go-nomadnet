@@ -19,6 +19,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -1625,6 +1626,88 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	channelsDisplay.OnSendMessage = func(text string) {
 		if hub := a.RRC.ActiveHub(); hub != nil {
 			hub.SendMessage(strings.ToLower(a.RRC.ActiveRoom()), text)
+		}
+	}
+	// Python _handle_slash_command "me" (Channels.py:1054-1068): hub.send_action
+	// with the hub's max body limit enforced locally.
+	channelsDisplay.OnSendAction = func(text string) error {
+		hub := a.RRC.ActiveHub()
+		if hub == nil {
+			return errors.New("no hub")
+		}
+		limit := hub.MaxMsgBodyLimit()
+		if len(text) > limit {
+			return fmt.Errorf("Action too long (max %v bytes)", limit)
+		}
+		hub.SendAction(strings.ToLower(a.RRC.ActiveRoom()), text)
+		return nil
+	}
+	// Python "ping" (Channels.py:1009-1018): hub.send_ping.
+	channelsDisplay.OnSendPing = func() error {
+		if hub := a.RRC.ActiveHub(); hub != nil {
+			hub.SendPing(strings.ToLower(a.RRC.ActiveRoom()))
+			return nil
+		}
+		return errors.New("no hub")
+	}
+	// Python "join" (Channels.py:1020-1034): hub.add_room + join_room +
+	// update_list + _select_room — the join-room dialog's confirmed() flow.
+	channelsDisplay.OnJoinRoomNamed = func(room string) error {
+		room = strings.TrimLeft(room, "#")
+		if room == "" {
+			return errors.New("Usage: /join <room>")
+		}
+		channelsDisplay.OnJoinRoomSubmitted(room, "")
+		return nil
+	}
+	// Python "clear" (Channels.py:1086-1092): hub.clear_messages + refresh.
+	channelsDisplay.OnClearMessages = func() {
+		hub := a.RRC.ActiveHub()
+		if hub == nil {
+			return
+		}
+		room := strings.ToLower(a.RRC.ActiveRoom())
+		hub.ClearMessages(room)
+		tuiApp.QueueUpdateDraw(func() {
+			channelsDisplay.ShowRoom(hubIndexFor(a, hub), room, rrcRoomMessages(hub, room))
+		})
+	}
+	// Python "nick" (Channels.py:1070-1085): view the effective nick and any
+	// per-hub override, or set the override after the hub's nick limit check.
+	channelsDisplay.OnNickInfo = func() (string, bool) {
+		if hub := a.RRC.ActiveHub(); hub != nil {
+			return hub.GetEffectiveNick(), hub.HasNickOverride()
+		}
+		return "", false
+	}
+	channelsDisplay.OnSetNick = func(name string) error {
+		hub := a.RRC.ActiveHub()
+		if hub == nil {
+			return errors.New("no hub")
+		}
+		limit := hub.MaxNickLimit()
+		if len(name) > limit {
+			return fmt.Errorf("Nick too long (max %v bytes)", limit)
+		}
+		hub.SetNickOverride(name)
+		if err := a.RRC.Save(); err != nil {
+			a.Logger.Error("Could not save RRC hubs: %v", err)
+		}
+		if mgr := a.RRC; mgr != nil {
+			tuiApp.QueueUpdateDraw(func() {
+				channelsDisplay.SetHubs(a.HubViews())
+			})
+		}
+		return nil
+	}
+	// Python "disconnect"/"quit" (Channels.py:1100-1104): hub.disconnect() —
+	// the whole hub session ends, not just the open room.
+	channelsDisplay.OnDisconnectHub = func() {
+		if hub := a.RRC.ActiveHub(); hub != nil {
+			hub.Disconnect()
+			tuiApp.QueueUpdateDraw(func() {
+				channelsDisplay.SetHubs(a.HubViews())
+			})
 		}
 	}
 	// Python RoomWidget.send_message's disconnected branch (Channels.py:873)

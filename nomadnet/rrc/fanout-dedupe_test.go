@@ -16,6 +16,7 @@
 package rrc
 
 import (
+	"encoding/hex"
 	"fmt"
 	"testing"
 	"time"
@@ -161,16 +162,19 @@ func TestDifferentSendersSameBodySeparateMessages(t *testing.T) {
 	}
 }
 
-// TestNoticeFanoutCollapses pins TODO item 5: rrcd's repeated "room …:
-// unregistered; mode=(none); topic=(none)" notice copies per join fan out and
-// must render once per join, not once per fanout copy.
+// TestNoticeFanoutCollapses pins TODO item 5: rrcd's per-member fanout of a
+// roomed notice copy per join fan out and must render once per join, not once
+// per fanout copy. (The "room …: unregistered" ack notices these copies rode
+// on are now suppressed as protocol control traffic — see
+// TestControlNoticesAreSuppressed — so a non-control roomed notice carries
+// the collapse coverage.)
 func TestNoticeFanoutCollapses(t *testing.T) {
 	t.Parallel()
 	mgr, hub := fanoutFixture(t)
 	_ = mgr
 
 	base := NowMs()
-	notice := "room test: unregistered; mode=(none); topic=(none)"
+	notice := "Server maintenance window opens at midnight"
 	for i := range 3 {
 		env := MakeEnvelope(TypeNotice, nil, []byte("test"), nil, notice, []byte{byte(i)}, base+int64(i)*5)
 		data, err := EncodeEnvelope(env)
@@ -417,4 +421,61 @@ func TestFanoutCollapseNickBackfill(t *testing.T) {
 	if msgs[0].Nick != "Nick N" {
 		t.Errorf("kept copy nick = %q, want %q (backfilled from a later copy)", msgs[0].Nick, "Nick N")
 	}
+}
+
+// TestSendCommandEchoSuppressed pins the relay-echo guard: SendCommand tracks
+// the sent message id AND body like SendMessage, so a hub that relays the
+// command text back as a MSG (observed live: an unregistered session's
+// "/who general" came back as a chat message 550 times) is suppressed by the
+// self-echo and fanout-collapse guards instead of being recorded as chat.
+func TestSendCommandEchoSuppressed(t *testing.T) {
+	t.Parallel()
+
+	mgr, hub := fanoutFixture(t)
+	mgr.SetActive(hub, "test")
+
+	ts := NowMs()
+	midHex, err := hub.SendUserCommand("/who test", "test")
+	if err != nil {
+		t.Fatalf("SendUserCommand: %v", err)
+	}
+	mid, err := hex.DecodeString(midHex)
+	if err != nil {
+		t.Fatalf("decode sent mid: %v", err)
+	}
+
+	// The hub echoes the command text back with the SAME mid (a plain relay):
+	// the sent-ids guard suppresses it.
+	hub.HandleData(mustEncode(t, MakeEnvelope(TypeMsg, []byte("ownhash"), []byte("test"),
+		[]byte("OwnNick"), "/who test", mid, ts)))
+
+	// rrcd's per-member fanout of the relayed command: unique mids, rewritten
+	// srcs, same body, within the echo window.
+	for i := range 3 {
+		hub.HandleData(fanoutCopy(fmt.Sprintf("src%v", i), "WrongNick", "/who test",
+			fmt.Sprintf("echo%v", i), ts+int64(i)*10))
+	}
+
+	if msgs := hub.GetMessages("test"); len(msgs) != 0 {
+		t.Errorf("relayed command copies recorded = %v, want 0 (echo suppression)", textsOf(msgs))
+	}
+}
+
+// textsOf lists the recorded texts of a message buffer, for failure output.
+func textsOf(msgs []*RRCMessage) []string {
+	out := make([]string, 0, len(msgs))
+	for _, m := range msgs {
+		out = append(out, m.Text)
+	}
+	return out
+}
+
+// mustEncode encodes one envelope, failing the test on an encoding error.
+func mustEncode(t *testing.T, env map[any]any) []byte {
+	t.Helper()
+	data, err := EncodeEnvelope(env)
+	if err != nil {
+		t.Fatalf("EncodeEnvelope: %v", err)
+	}
+	return data
 }

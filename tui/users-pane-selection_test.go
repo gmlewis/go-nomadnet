@@ -22,19 +22,18 @@ import (
 	"github.com/gdamore/tcell/v2"
 )
 
-// The 2026-09-03 evening fleet captures: gonomadnet's Users pane painted the
-// tview.List's always-on current-item highlight on the first member row
-// directly under the "N users" count (ApplyListFocusStyle's list_focus
-// background), which reads as a highlighted line under "N users". Python's
-// Users pane is a PLAIN urwid.ListBox (Channels.py:626 —
-// urwid.ListBox(self.users_walker)) with NO selection rendering at all: the
-// member rows are AttrMap-colored plain Texts and urwid paints no focus
-// attributes on them, so no row under the count is ever highlighted.
+// The users pane is an INTERACTIVE list in the Go port: exactly the selected
+// row carries the theme's list_focus highlight (the port's standard selection
+// style — Python's pane is a plain urwid.ListBox with no selection rendering,
+// Channels.py:626, so this interactive selection is a deliberate Go-port UX
+// upgrade). The 2026-09-03 evening fleet captures' complaint — a PHANTOM
+// highlighted row under the "N users" count — stays fixed: the count row lives
+// outside the List and the non-selected rows paint no highlight at all.
 
-// TestRoomWidgetUsersPaneNoSelectionHighlight pins that: no member row under
-// the "N users" count carries the list's selection background — the list
-// paints nothing, exactly like Python's plain ListBox.
-func TestRoomWidgetUsersPaneNoSelectionHighlight(t *testing.T) {
+// TestRoomWidgetUsersPaneSelectionHighlight pins that exactly ONE member row
+// (the list's selection, the first member by default) carries the list_focus
+// background while every other row and the count row stay default-styled.
+func TestRoomWidgetUsersPaneSelectionHighlight(t *testing.T) {
 	t.Parallel()
 
 	members := []ChannelMember{
@@ -55,23 +54,34 @@ func TestRoomWidgetUsersPaneNoSelectionHighlight(t *testing.T) {
 		t.Fatal("count row not found in the users pane")
 	}
 
-	for i, name := range []string{"alice", "bob", "carol"} {
-		y := countY + 1 + i
+	wantFg, wantBg := ListFocusColors(ThemeDark)
+
+	// The selected row (the first member) carries the highlight...
+	selectedY := countY + 1
+	if row := usersRowText(screen, selectedY); !strings.Contains(row, "alice") {
+		t.Fatalf("selected row %v = %q, want the alice row", selectedY, row)
+	}
+	_, _, bg := usersCell(screen, selectedY, 1)
+	if bg != wantBg {
+		t.Errorf("selected row bg = %v, want the list_focus highlight %v (fg %v)", bg, wantBg, wantFg)
+	}
+
+	// ...the non-selected rows do not...
+	for i, name := range []string{"bob", "carol"} {
+		y := countY + 2 + i
 		row := usersRowText(screen, y)
 		if !strings.Contains(row, name) {
 			t.Fatalf("member %q row %v = %q, want the member row", name, y, row)
 		}
 		_, _, bg := usersCell(screen, y, 1)
-		if bg != tcell.ColorDefault {
-			t.Errorf("member %q row %v bg = %v, want the pane's default (Python's plain ListBox paints no selection highlight under the count row)", name, y, bg)
+		if bg == wantBg {
+			t.Errorf("non-selected member %q row %v bg = %v, want the pane's default (only the selected row highlights)", name, y, bg)
 		}
 	}
 
-	// The row under the last member is blank AND unstyled too.
-	if countY+1+len(members) < 36 {
-		_, _, bg := usersCell(screen, countY+1+len(members), 1)
-		if bg != tcell.ColorDefault {
-			t.Errorf("blank row %v bg = %v, want the pane's default", countY+1+len(members), bg)
-		}
+	// ...and neither does the "N users" count row above the list.
+	_, _, bg = usersCell(screen, countY, 1)
+	if bg != tcell.ColorDefault {
+		t.Errorf("count row bg = %v, want the default-styled plain text row", bg)
 	}
 }

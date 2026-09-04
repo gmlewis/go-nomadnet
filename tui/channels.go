@@ -139,6 +139,16 @@ type ChannelsDisplay struct {
 	OnLeaveRoom           func(room string)
 	OnToggleCollapse      func()
 	OnMemberClick         func(nick, hash string)
+	// The room-composer slash commands (Python _handle_slash_command,
+	// Channels.py:997-1120): the callbacks perform the hub mutation and
+	// return errors for local error notices.
+	OnSendAction    func(text string) error
+	OnSendPing      func() error
+	OnJoinRoomNamed func(room string) error
+	OnClearMessages func()
+	OnNickInfo      func() (nick string, isOverride bool)
+	OnSetNick       func(name string) error
+	OnDisconnectHub func()
 	// OnConnectHub triggers the ACTIVE hub's connect from the room composer
 	// (Python RoomWidget.send_message's disconnected branch, Channels.py:873,
 	// and the /connect slash command, Channels.py:1094).
@@ -647,6 +657,48 @@ func (cd *ChannelsDisplay) ShowRoom(hubIdx int, room string, msgs []ChannelMessa
 				cd.OnMemberClick(nick, hash)
 			}
 		}
+		// The composer's slash commands (Python _handle_slash_command,
+		// Channels.py:997-1120) delegate to the display-level callbacks.
+		rw.OnSendAction = func(text string) error {
+			if cd.OnSendAction == nil {
+				return nil
+			}
+			return cd.OnSendAction(text)
+		}
+		rw.OnSendPing = func() error {
+			if cd.OnSendPing == nil {
+				return nil
+			}
+			return cd.OnSendPing()
+		}
+		rw.OnJoinRoomNamed = func(named string) error {
+			if cd.OnJoinRoomNamed == nil {
+				return nil
+			}
+			return cd.OnJoinRoomNamed(named)
+		}
+		rw.OnClearMessages = func() {
+			if cd.OnClearMessages != nil {
+				cd.OnClearMessages()
+			}
+		}
+		rw.OnNickInfo = func() (string, bool) {
+			if cd.OnNickInfo == nil {
+				return "", false
+			}
+			return cd.OnNickInfo()
+		}
+		rw.OnSetNick = func(name string) error {
+			if cd.OnSetNick == nil {
+				return nil
+			}
+			return cd.OnSetNick(name)
+		}
+		rw.OnDisconnectHub = func() {
+			if cd.OnDisconnectHub != nil {
+				cd.OnDisconnectHub()
+			}
+		}
 	}
 	cd.roomWidget.SetMessages(msgs)
 	// Python _update_peer_info (Channels.py:737-756): the room header reads
@@ -777,17 +829,29 @@ func (cd *ChannelsDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 		return nil
 	case tcell.KeyLeft:
 		// Python's urwid Columns: the Left from the room view moves focus
-		// back to the channels list column (Main.py columns focus chain).
+		// back to the channels list column (Main.py columns focus chain) —
+		// except Left from the USERS pane, which steps back into the room's
+		// message body (the room's own Left/Right pane walk, Right being the
+		// way into the users pane below).
 		if cd.paneMode == "room" && cd.roomWidget != nil && cd.app != nil {
+			if cd.roomWidget.usersPaneHasFocus() {
+				cd.app.SetFocus(cd.roomWidget.messagesArea)
+				return nil
+			}
 			cd.app.SetFocus(cd.ilb)
 			return nil
 		}
 		return event
 	case tcell.KeyRight:
 		// Symmetric: the Right from the list returns to the room view or the
-		// hub info panel.
+		// hub info panel. Right from the room's message body steps INTO the
+		// users pane (the room's Left/Right walk: Left above steps back).
 		if cd.app != nil && (cd.paneMode == "room" || cd.paneMode == "info") {
 			if cd.paneMode == "room" && cd.roomWidget != nil {
+				if cd.roomWidget.bodyHasFocus() {
+					cd.app.SetFocus(cd.roomWidget.usersList)
+					return nil
+				}
 				cd.app.SetFocus(cd.roomWidget.Widget())
 				return nil
 			}

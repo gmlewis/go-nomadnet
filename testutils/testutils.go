@@ -57,10 +57,19 @@ var pythonNomadnetCandidates = []string{
 // reference stack is available.
 const nomadnetImportScript = "import nomadnet.ui.textui.Channels"
 
-// pythonNomadnetExe is the path of the first probed interpreter that can
-// import the nomadnet TUI reference, or "" if none could. It is resolved once
-// per test binary so the live parity tests gate on a real, cached answer.
-var pythonNomadnetExe = func() string {
+// pythonNomadnetExeOnce lazily resolves pythonNomadnetExe the first time a
+// test actually needs it. Probing eagerly at package init would exec up to 4
+// python candidates (~180ms) in every test binary that imports testutils —
+// including binaries whose parity tests all skip — so the probe is deferred
+// until PythonNomadnetExe or SkipIfNoPythonNomadnet is called.
+var (
+	pythonNomadnetExeOnce sync.Once
+	pythonNomadnetExe     string
+)
+
+// probePythonNomadnetExe returns the path of the first probed interpreter that
+// can import the nomadnet TUI reference, or "" if none could.
+func probePythonNomadnetExe() string {
 	for _, exe := range pythonNomadnetCandidates {
 		cmd := exec.Command(exe, "-c", nomadnetImportScript)
 		if err := cmd.Run(); err == nil {
@@ -68,21 +77,25 @@ var pythonNomadnetExe = func() string {
 		}
 	}
 	return ""
-}()
+}
 
 // PythonNomadnetExe returns the path of the Python interpreter that can import
-// the nomadnet reference, or "" if none is available. Live cross-implementation
-// parity tests in the tui package use this to exec the reference so they always
-// reach the interpreter that actually has nomadnet installed (which may differ
-// from the bare `python3` on PATH).
-func PythonNomadnetExe() string { return pythonNomadnetExe }
+// the nomadnet reference, or "" if none is available. The probe runs at most
+// once per test binary. Live cross-implementation parity tests in the tui
+// package use this to exec the reference so they always reach the interpreter
+// that actually has nomadnet installed (which may differ from the bare
+// `python3` on PATH).
+func PythonNomadnetExe() string {
+	pythonNomadnetExeOnce.Do(func() { pythonNomadnetExe = probePythonNomadnetExe() })
+	return pythonNomadnetExe
+}
 
 // SkipIfNoPythonNomadnet skips the calling test when no probed Python
 // interpreter can import the nomadnet reference. Call it at the top of any test
 // that execs python3 to diff Go output against fresh nomadnet output.
 func SkipIfNoPythonNomadnet(t *testing.T) {
 	t.Helper()
-	if pythonNomadnetExe == "" {
+	if PythonNomadnetExe() == "" {
 		t.Skip("skipping live parity test: no python3 interpreter with nomadnet found")
 	}
 }

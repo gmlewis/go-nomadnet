@@ -83,6 +83,30 @@ type RoomWidget struct {
 	// RoomFrame.keypress body "up" → main_display.frame.focus_position =
 	// "header", Channels.py:541-544).
 	OnFocusMenu func()
+	// OnSendAction sends a /me action (Python _handle_slash_command "me",
+	// Channels.py:1054-1068: hub.send_action). The callback validates the
+	// body limit and returns the error for a local error notice.
+	OnSendAction func(text string) error
+	// OnSendPing sends a T_PING for this room (Python "ping",
+	// Channels.py:1009-1018: hub.send_ping).
+	OnSendPing func() error
+	// OnJoinRoomNamed adds and joins the named room (Python "join",
+	// Channels.py:1020-1034: hub.add_room + join_room + update_list +
+	// _select_room).
+	OnJoinRoomNamed func(room string) error
+	// OnClearMessages clears this room's history (Python "clear",
+	// Channels.py:1086-1092: hub.clear_messages + refresh).
+	OnClearMessages func()
+	// OnNickInfo returns the effective nick and whether a per-hub nick
+	// override is set (Python "nick" with no argument, Channels.py:1070-1078).
+	OnNickInfo func() (nick string, isOverride bool)
+	// OnSetNick sets the per-hub nick override (Python "nick <name>",
+	// Channels.py:1076-1085: hub.set_nick_override). The callback validates
+	// the hub's max_nick_bytes and returns the error for a local notice.
+	OnSetNick func(name string) error
+	// OnDisconnectHub disconnects the hub (Python "disconnect"/"quit",
+	// Channels.py:1100-1104: hub.disconnect — NOT a room part).
+	OnDisconnectHub func()
 
 	// Message data
 	chatMessages []ChannelMessage
@@ -203,17 +227,26 @@ func NewRoomWidget(app *App, hubName, roomName string) *RoomWidget {
 	// rows (Channels.py:694-705).
 	rw.usersList = tview.NewList()
 	rw.usersList.ShowSecondaryText(false)
-	// Python's Users pane is a PLAIN urwid.ListBox (Channels.py:626 —
-	// urwid.ListBox(self.users_walker)) with NO selection rendering: the
-	// member rows are AttrMap-colored plain Texts and urwid paints no focus
-	// attributes on them, so no row under the "N users" count is ever
-	// highlighted. The 2026-09-03 evening captures showed the tview.List's
-	// always-on current-item highlight painting a highlighted first row
-	// under the count (ApplyListFocusStyle's list_focus background); give
-	// the selected style the pane's own default background instead — the
-	// per-item palette color tags still render, in every focus state.
-	rw.usersList.SetSelectedStyle(tcell.StyleDefault.Background(tcell.ColorDefault))
-	rw.usersList.SetHighlightFullLine(false)
+	// The users pane is an INTERACTIVE list in the Go port (Python's pane is a
+	// plain urwid.ListBox with no selection rendering): the selected row
+	// carries the port's standard list_focus colors and the highlight fills
+	// the row, moving with the selection as the pane scrolls (Up/Down, mouse
+	// wheel and clicks all re-anchor the highlight — the selection tests pin
+	// it).
+	ApplyListFocusStyle(rw.usersList, app.Theme)
+	rw.usersList.SetHighlightFullLine(true)
+	// A wheel notch moves the SELECTION by the wheel step so the highlighted
+	// row follows the scroll like the keyboard's scroll-following; the
+	// capture consumes the notch, skipping the fork's native 1-row
+	// itemOffset shift (which would scroll the viewport away from the
+	// selection).
+	rw.usersList.SetMouseCapture(rw.wheelUsersList)
+	// Enter (and a left click, the fork's own click handler) on the selected
+	// member activates the same user-info dialog path the click signal uses
+	// (Python show_user_info, Channels.py:2119) via ActivateMember.
+	rw.usersList.SetSelectedFunc(func(i int, mainText, secondaryText string, shortcut rune) {
+		rw.ActivateMember(i)
+	})
 	// The " N users" count row is a PLAIN urwid.Text row in Python
 	// (Channels.py:694 — default-styled, never the selection highlight), so
 	// it lives OUT of the List in a one-row TextView above it; a tview List
@@ -224,7 +257,10 @@ func NewRoomWidget(app *App, hubName, roomName string) *RoomWidget {
 
 	// Users box: Python UsersBox(self.users_listbox, title="Users")
 	// (Channels.py:625) is a LineBox titled "Users" — the title lives in the
-	// BORDER, not in a title row inside.
+	// BORDER, not in a title row inside. The pane's list is focusable so the
+	// keyboard can scroll it once the pane holds focus (mouse clicks focus it
+	// natively; Right from the room body moves focus into it — the
+	// channels.go Left/Right pane walk).
 	usersBox := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(rw.usersCount, 1, 0, false).
 		AddItem(rw.usersList, 0, 1, true)
@@ -233,10 +269,11 @@ func NewRoomWidget(app *App, hubName, roomName string) *RoomWidget {
 	rw.usersBox = usersBox
 	rw.usersWidth = 22
 
-	// Columns: chat + users
+	// Columns: chat + users (the users column is a focus step of the room's
+	// Left/Right walk).
 	rw.columns = tview.NewFlex().SetDirection(tview.FlexColumn).
 		AddItem(rw.chatBox, 0, 1, true).
-		AddItem(usersBox, rw.usersWidth, 0, false)
+		AddItem(usersBox, rw.usersWidth, 0, true)
 
 	rw.widget = rw.columns
 	rw.widget.(*tview.Flex).SetInputCapture(rw.handleInput)
@@ -417,23 +454,102 @@ func (rw *RoomWidget) appendLocalNotice(text string, isError bool) {
 }
 
 // handleSlashCommand dispatches slash commands matching Python's
-// _handle_slash_command at Channels.py:997.
+// _handle_slash_command (Channels.py:997-1120): local commands run client-side
+// with a local notice, server-forwarded commands go to the hub through
+// OnSendMessage (the rrc layer records nothing for them), and unknown commands
+// get Python's "Unknown command" error. Every hub-touching command requires a
+// connected hub first (Python _require_connected, Channels.py:991-996).
 func (rw *RoomWidget) handleSlashCommand(text string) {
+	requireConnected := func() bool {
+		if !rw.hubIsConnected() {
+			rw.appendLocalNotice("Not connected to hub", true)
+			return false
+		}
+		return true
+	}
+	localErr := func(err error) {
+		if err != nil {
+			rw.appendLocalNotice(err.Error(), true)
+		}
+	}
+
 	parts := strings.SplitN(text, " ", 2)
 	cmd := strings.ToLower(parts[0])
+	arg := ""
+	if len(parts) > 1 {
+		arg = strings.TrimSpace(parts[1])
+	}
 
 	switch cmd {
-	case "/join", "/j":
+	case "/help":
+		// Python (Channels.py:1003-1007): the help text as local system rows.
+		for line := range strings.SplitSeq(SlashHelpText(), "\n") {
+			rw.appendLocalNotice(line, false)
+		}
+	case "/ping":
+		if !requireConnected() {
+			break
+		}
+		if rw.OnSendPing != nil {
+			if err := rw.OnSendPing(); err != nil {
+				rw.appendLocalNotice("Ping failed: "+err.Error(), true)
+				break
+			}
+		}
+		rw.appendLocalNotice("Ping sent", false)
+	case "/list":
+		if !requireConnected() {
+			break
+		}
 		if rw.OnSendMessage != nil {
-			rw.OnSendMessage(text)
+			rw.OnSendMessage("/list")
+		}
+	case "/join", "/j":
+		if arg == "" {
+			rw.appendLocalNotice("Usage: /join <room>", true)
+			break
+		}
+		target := strings.TrimLeft(arg, "#")
+		if rw.OnJoinRoomNamed != nil {
+			localErr(rw.OnJoinRoomNamed(strings.TrimSpace(target)))
 		}
 	case "/part", "/leave":
 		if rw.OnLeaveRoom != nil {
 			rw.OnLeaveRoom()
 		}
-	case "/quit", "/q", "/disconnect":
-		if rw.OnLeaveRoom != nil {
-			rw.OnLeaveRoom()
+	case "/me":
+		if !requireConnected() {
+			break
+		}
+		if arg == "" {
+			rw.appendLocalNotice("Usage: /me <text>", true)
+			break
+		}
+		if rw.OnSendAction != nil {
+			localErr(rw.OnSendAction(arg))
+		}
+	case "/nick":
+		if arg == "" {
+			if rw.OnNickInfo != nil {
+				nick, isOverride := rw.OnNickInfo()
+				src := "global"
+				if isOverride {
+					src = "nick: "
+				}
+				rw.appendLocalNotice("Nick on this hub: "+nick+" ("+src+")", false)
+			}
+			break
+		}
+		if rw.OnSetNick != nil {
+			localErr(rw.OnSetNick(arg))
+			if rw.OnNickInfo != nil {
+				nick, _ := rw.OnNickInfo()
+				rw.appendLocalNotice("Nick on this hub set to "+nick+" (use /nick with no argument to view)", false)
+			}
+		}
+	case "/clear":
+		if rw.OnClearMessages != nil {
+			rw.OnClearMessages()
 		}
 	case "/connect":
 		// Python _handle_slash_command "connect" (Channels.py:1094-1100):
@@ -442,14 +558,23 @@ func (rw *RoomWidget) handleSlashCommand(text string) {
 			rw.OnConnectHub()
 		}
 		rw.appendLocalNotice("Connecting...", false)
-	case "/nick", "/who", "/names", "/topic", "/mode", "/me":
-		if rw.OnSendMessage != nil {
-			rw.OnSendMessage(text)
+	case "/quit", "/q", "/disconnect":
+		// Python (Channels.py:1100-1104): hub.disconnect() — the whole hub
+		// session ends, not just this room.
+		if rw.OnDisconnectHub != nil {
+			rw.OnDisconnectHub()
 		}
 	default:
-		if rw.OnSendMessage != nil {
-			rw.OnSendMessage(text)
+		if IsServerForwardedCommand(strings.TrimPrefix(cmd, "/")) {
+			if !requireConnected() {
+				break
+			}
+			if rw.OnSendMessage != nil {
+				rw.OnSendMessage(text)
+			}
+			break
 		}
+		rw.appendLocalNotice("Unknown command: "+cmd+"  (try /help)", true)
 	}
 	rw.editor.SetText("")
 }
@@ -469,7 +594,7 @@ func (rw *RoomWidget) toggleUsers() {
 			}
 		}
 		if !present {
-			rw.columns.AddItem(rw.usersBox, rw.usersWidth, 0, false)
+			rw.columns.AddItem(rw.usersBox, rw.usersWidth, 0, true)
 		}
 	} else {
 		rw.columns.RemoveItem(rw.usersBox)
@@ -514,10 +639,14 @@ func (rw *RoomWidget) SetCollapseJoinPart(v bool) {
 	rw.renderMessages()
 }
 
-// SetMembers replaces the member list.
+// SetMembers replaces the member list, preserving the selection across the
+// rebuild by the previously selected member's identity hash (Python's
+// prev_focus_key, Channels.py:708-724). The hash is captured from the OLD
+// member slice BEFORE the replacement.
 func (rw *RoomWidget) SetMembers(members []ChannelMember) {
+	prevHash := rw.selectedMemberHash()
 	rw.members = members
-	rw.renderMembers()
+	rw.renderMembers(prevHash)
 }
 
 // SetOwnNick sets the local user's nick, which is excluded from tab-completion
@@ -615,12 +744,65 @@ func (rw *RoomWidget) renderMessages() {
 	}
 }
 
+// usersPaneHasFocus reports whether the users list currently holds focus
+// (the room's Left walks back to the message body from here).
+func (rw *RoomWidget) usersPaneHasFocus() bool {
+	if rw.app == nil {
+		return false
+	}
+	return rw.app.GetFocus() == tview.Primitive(rw.usersList)
+}
+
+// wheelUsersList is the users pane's wheel capture: one notch moves the
+// SELECTION by mouseWheelLines rows, clamped to the member range, so the
+// highlighted row follows the scroll exactly like the keyboard's
+// scroll-following (the fork's Draw keeps the current item visible). The
+// notch is consumed in every case so the native 1-row itemOffset shift never
+// scrolls the viewport away from the selection.
+func (rw *RoomWidget) wheelUsersList(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
+	if action != tview.MouseScrollUp && action != tview.MouseScrollDown {
+		return action, event
+	}
+	n := rw.usersList.GetItemCount()
+	if n == 0 {
+		return tview.MouseConsumed, nil
+	}
+	delta := max(1, mouseWheelLines)
+	cur := rw.usersList.GetCurrentItem()
+	if cur < 0 || cur >= n {
+		cur = 0
+	}
+	next := cur - delta
+	if action == tview.MouseScrollDown {
+		next = cur + delta
+	}
+	next = max(0, min(n-1, next))
+	if next == cur {
+		// Boundary (or the only row): consume the no-op notch so the native
+		// handler cannot drift the viewport off the selection.
+		return tview.MouseConsumed, nil
+	}
+	rw.usersList.SetCurrentItem(next)
+	return tview.MouseConsumed, nil
+}
+
+// selectedMemberHash returns the identity hash of the member the users pane
+// currently selects ("" when the selection is out of range).
+func (rw *RoomWidget) selectedMemberHash() string {
+	if idx := rw.usersList.GetCurrentItem(); idx >= 0 && idx < len(rw.members) {
+		return rw.members[idx].Hash
+	}
+	return ""
+}
+
 // renderMembers renders the users list. Each row activates via
 // activateMember, which fires OnMemberClick with the member's nick and
 // identity hash (Python urwid.connect_signal(entry, "click",
 // self.display.show_user_info, (self.hub, peer_hash, full_name)),
-// Channels.py:713).
-func (rw *RoomWidget) renderMembers() {
+// Channels.py:713). prevHash is the identity hash the pane selected before
+// the rebuild (Python's prev_focus_key): the rebuild re-selects that member,
+// falling back to the first row when they departed (Channels.py:708-724).
+func (rw *RoomWidget) renderMembers(prevHash string) {
 	rw.usersList.Clear()
 	// Python _refresh_users_pane (Channels.py:694): the pane opens with
 	// " N users" then one colored entry per member — the hash-based nick
@@ -655,9 +837,19 @@ func (rw *RoomWidget) renderMembers() {
 	if len(rw.members) == 0 {
 		rw.usersList.AddItem("[gray]No users[-]", "", 0, nil)
 	}
-	rw.usersList.SetSelectedFunc(func(i int, mainText, secondaryText string, shortcut rune) {
-		rw.ActivateMember(i)
-	})
+	// Restore the selection to the same member after a rebuild (Python's
+	// prev_focus_key → set_focus); an unmatched hash lands on the first row,
+	// Python's first user_hash row fallback.
+	restoreIdx := 0
+	if prevHash != "" {
+		for i, m := range rw.members {
+			if m.Hash == prevHash {
+				restoreIdx = i
+				break
+			}
+		}
+	}
+	rw.usersList.SetCurrentItem(restoreIdx)
 }
 
 // ActivateMember fires OnMemberClick for the member at the given users-pane

@@ -49,6 +49,11 @@ const (
 
 	TypeError = 40
 
+	// TypeResourceEnvelope is the resource-transfer extension message.
+	// Doc 3-RRC reserves message types 0-63 for core protocol use and
+	// assigns extensions 64+, but the Python nomadnet SOT (RRC.py
+	// T_RESOURCE_ENVELOPE) and the rrcd hub it interoperates with both use
+	// 50 — the value is kept for wire parity with the SOT.
 	TypeResourceEnvelope = 50
 )
 

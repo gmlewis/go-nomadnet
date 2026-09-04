@@ -16,6 +16,7 @@
 package rrc
 
 import (
+	"fmt"
 	"testing"
 	"time"
 )
@@ -189,5 +190,169 @@ func TestWhoReplyEmptyListEmptiesRoom(t *testing.T) {
 	hub.HandleData(noticeEnvelope(t, "", "members in test: (none)", "who2"))
 	if got := hub.GetMembers("test"); len(got) != 0 {
 		t.Fatalf("members after (none) reply = %v, want empty", got)
+	}
+}
+
+// TestAutoWhoMarkerConsumesEveryReplyCopy pins the rrcd 0.3.2 fanout fix: the
+// hub fans the who-notice out once per room member, so the auto-request
+// marker must consume EVERY reply copy (a one-shot delete on the first copy
+// leaked the marker and the duplicates flooded the conversation window every
+// 60 s sweep — observed live). The marker stays set after the burst.
+func TestAutoWhoMarkerConsumesEveryReplyCopy(t *testing.T) {
+	t.Parallel()
+
+	_, hub, _ := reconcileFixture(t)
+	hub.markAutoWhoRequest("test")
+
+	for i := range 5 {
+		hub.HandleData(noticeEnvelope(t, "", "members in test: qbit (b253938bf730)", fmt.Sprintf("whomid%v", i)))
+	}
+
+	if got := len(hub.GetMessages("test")); got != 0 {
+		t.Errorf("who replies recorded = %v entries, want 0 (every copy consumed silently)", got)
+	}
+	hub.lock.Lock()
+	sticky := hub.silentWhoRooms["test"]
+	hub.lock.Unlock()
+	if !sticky {
+		t.Error("auto-request marker was deleted by a reply copy, want sticky until cleared")
+	}
+}
+
+// TestUserWhoReplyRendersAndClearsMarkers pins the user-initiated /who path:
+// the reply renders through the normal notice pipeline and answering it
+// clears both the user marker and the room's auto marker.
+func TestUserWhoReplyRendersAndClearsMarkers(t *testing.T) {
+	t.Parallel()
+
+	_, hub, sent := reconcileFixture(t)
+	hub.AddRoom("general")
+
+	if _, err := hub.SendUserCommand("/who", "general"); err != nil {
+		t.Fatalf("SendUserCommand: %v", err)
+	}
+	// The command went out as a T_MSG with the command text.
+	if len(*sent) != 1 || (*sent)[0] != "/who" {
+		t.Fatalf("sent command bodies = %v, want [\"/who\"]", *sent)
+	}
+	hub.lock.Lock()
+	pending := hub.userWhoRooms["general"]
+	hub.lock.Unlock()
+	if !pending {
+		t.Fatal("user /who did not mark the room as user-requested")
+	}
+
+	hub.HandleData(noticeEnvelope(t, "", "members in general: qbit (b253938bf730)", "whomid-u"))
+
+	msgs := hub.GetMessages("general")
+	if len(msgs) != 1 {
+		t.Fatalf("user who reply recorded = %v entries, want 1 (rendered)", len(msgs))
+	}
+	if msgs[0].Kind != "notice" || msgs[0].Text != "members in general: qbit (b253938bf730)" {
+		t.Errorf("recorded who reply = (%v, %q)", msgs[0].Kind, msgs[0].Text)
+	}
+	hub.lock.Lock()
+	defer hub.lock.Unlock()
+	if hub.userWhoRooms["general"] {
+		t.Error("user marker not cleared when the reply was answered")
+	}
+	if hub.silentWhoRooms["general"] {
+		t.Error("auto marker not cleared when the user's who was answered")
+	}
+}
+
+// TestUserWhoBeatsStaleAutoMarker pins the distinct bookkeeping: a user
+// -initiated /who for a room whose auto marker was left stale still renders
+// its reply (the auto marker can never swallow a user request).
+func TestUserWhoBeatsStaleAutoMarker(t *testing.T) {
+	t.Parallel()
+
+	_, hub, _ := reconcileFixture(t)
+	hub.AddRoom("general")
+	// A stale auto marker left behind by an earlier sweep.
+	hub.markAutoWhoRequest("general")
+
+	if _, err := hub.SendUserCommand("/who general", ""); err != nil {
+		t.Fatalf("SendUserCommand: %v", err)
+	}
+
+	hub.HandleData(noticeEnvelope(t, "", "members in general: qbit (b253938bf730)", "whomid-s"))
+
+	if got := len(hub.GetMessages("general")); got != 1 {
+		t.Fatalf("user who reply recorded = %v entries, want 1 (a stale auto marker must not swallow it)", got)
+	}
+}
+
+// TestBareUserWhoWithoutActiveRoomClearsAutoMarkers pins the no-target case:
+// a bare "/who" with no active room cannot know its target room ahead of the
+// reply, so every stale auto marker is dropped at request time.
+func TestBareUserWhoWithoutActiveRoomClearsAutoMarkers(t *testing.T) {
+	t.Parallel()
+
+	_, hub, _ := reconcileFixture(t)
+	hub.markAutoWhoRequest("test")
+	hub.markAutoWhoRequest("test3")
+
+	if _, err := hub.SendUserCommand("/who", ""); err != nil {
+		t.Fatalf("SendUserCommand: %v", err)
+	}
+
+	hub.lock.Lock()
+	got := len(hub.silentWhoRooms)
+	hub.lock.Unlock()
+	if got != 0 {
+		t.Errorf("auto markers after a targetless user /who = %v, want 0", got)
+	}
+}
+
+// TestSendMessageRoutesSlashCommand pins the composer path: slash-prefixed
+// text typed in the room composer routes through the user-command path (the
+// reply renders, the command text itself is not recorded as chat).
+func TestSendMessageRoutesSlashCommand(t *testing.T) {
+	t.Parallel()
+
+	_, hub, _ := reconcileFixture(t)
+	hub.AddRoom("general")
+
+	mid := hub.SendMessage("general", "/who")
+
+	if mid == "" {
+		t.Fatal("SendMessage returned an empty mid for a slash command")
+	}
+	if texts := roomTexts(hub, "general"); len(texts) != 0 {
+		t.Errorf("slash command recorded as chat: %v, want none", texts)
+	}
+	hub.lock.Lock()
+	pending := hub.userWhoRooms["general"]
+	hub.lock.Unlock()
+	if !pending {
+		t.Error("SendMessage(\"/who\") did not mark the user-request marker")
+	}
+
+	// The reply renders (the user's request must not be swallowed).
+	hub.HandleData(noticeEnvelope(t, "", "members in general: qbit (b253938bf730)", "whomid-c"))
+	if got := len(hub.GetMessages("general")); got != 1 {
+		t.Fatalf("user who reply via SendMessage path = %v entries, want 1 (rendered)", got)
+	}
+}
+
+// TestLinkCloseClearsWhoMarkers pins the marker cleanup on link close: both
+// the auto markers and the user-request markers drop with the link.
+func TestLinkCloseClearsWhoMarkers(t *testing.T) {
+	t.Parallel()
+
+	_, hub, _ := reconcileFixture(t)
+	hub.markAutoWhoRequest("test")
+	hub.lock.Lock()
+	hub.userWhoRooms["test"] = true
+	hub.lock.Unlock()
+
+	hub.onClosed()
+
+	hub.lock.Lock()
+	defer hub.lock.Unlock()
+	if len(hub.silentWhoRooms) != 0 || len(hub.userWhoRooms) != 0 {
+		t.Errorf("who markers after link close: silent=%v user=%v, want both empty",
+			hub.silentWhoRooms, hub.userWhoRooms)
 	}
 }
