@@ -67,14 +67,17 @@ transport between a Go process and a Python subprocess.
 
 ## Outstanding items
 
-- **Deploy the 2026-09-03 evening Channels fixes to the fleet.** The three
+- **Deploy the 2026-09-03 evening Channels fixes to the fleet.** The four
   fixes (the channels-list selection follows the shown room + the multi-hub
   info-panel lookup, the /who-reply member-set replacement + the 60 s silent
-  membership reconciliation, and the pinned all-rooms greeting MOTD) are in
+  membership reconciliation, the pinned all-rooms greeting MOTD, and the
+  Users-pane no-selection-highlight under the "N users" count —
+  `tui/room-widget.go`, pinned by `tui/users-pane-selection_test.go`) are in
   this working tree, uncommitted — the agent never commits or pushes. Commit
   + push go-nomadnet, then rebuild and restart `./gonomadnet.sh` on the five
   Go nodes (`local`, `glenn-OMEN-875`, `glenn-nano2gb`, `penguin`,
   `raspberrypi`); `glenn-mac-mini-m2` runs the Python SOT and is untouched.
   Expect after reconnect: every node shows the same live member count
-  (reconciles within ~60 s), the opened room's row carries the selection
-  highlight, and every room shows the hub's greeting MOTD.
+  (reconciles within ~60 s) with NO highlighted row under "N users", the
+  opened room's row carries the selection highlight, and every room shows
+  the hub's greeting MOTD.

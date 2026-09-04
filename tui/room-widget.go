@@ -203,8 +203,17 @@ func NewRoomWidget(app *App, hubName, roomName string) *RoomWidget {
 	// rows (Channels.py:694-705).
 	rw.usersList = tview.NewList()
 	rw.usersList.ShowSecondaryText(false)
-	rw.usersList.SetHighlightFullLine(true)
-	ApplyListFocusStyle(rw.usersList, app.Theme)
+	// Python's Users pane is a PLAIN urwid.ListBox (Channels.py:626 —
+	// urwid.ListBox(self.users_walker)) with NO selection rendering: the
+	// member rows are AttrMap-colored plain Texts and urwid paints no focus
+	// attributes on them, so no row under the "N users" count is ever
+	// highlighted. The 2026-09-03 evening captures showed the tview.List's
+	// always-on current-item highlight painting a highlighted first row
+	// under the count (ApplyListFocusStyle's list_focus background); give
+	// the selected style the pane's own default background instead — the
+	// per-item palette color tags still render, in every focus state.
+	rw.usersList.SetSelectedStyle(tcell.StyleDefault.Background(tcell.ColorDefault))
+	rw.usersList.SetHighlightFullLine(false)
 	// The " N users" count row is a PLAIN urwid.Text row in Python
 	// (Channels.py:694 — default-styled, never the selection highlight), so
 	// it lives OUT of the List in a one-row TextView above it; a tview List
