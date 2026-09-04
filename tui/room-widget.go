@@ -44,6 +44,10 @@ type RoomWidget struct {
 	hubConnected     bool
 	maxMessageBytes  int
 	collapseJoinPart bool
+	// editorRows caches the composer's current wrapped row height so the
+	// draw-func only calls ResizeItem when it changes (initially 1 row, the
+	// layout's AddItem height).
+	editorRows int
 
 	// hubStatusFn reports the hub's LIVE connection status (the rrc status
 	// enum), mirroring Python's RoomWidget.send_message reading self.hub.status
@@ -74,6 +78,11 @@ type RoomWidget struct {
 	// bar switches to the editor region (Python RoomFrame.focus_position
 	// setter → update_active_shortcuts, Channels.py:509-520).
 	OnFocusRegion func(region string)
+	// OnFocusMenu fires when the room body's Up reaches the visible top of
+	// the message list, moving focus to the main display's menu bar (Python
+	// RoomFrame.keypress body "up" → main_display.frame.focus_position =
+	// "header", Channels.py:541-544).
+	OnFocusMenu func()
 
 	// Message data
 	chatMessages []ChannelMessage
@@ -95,6 +104,7 @@ func NewRoomWidget(app *App, hubName, roomName string) *RoomWidget {
 		usersVisible:    true,
 		hubConnected:    true,
 		maxMessageBytes: 350,
+		editorRows:      1,
 	}
 
 	// Messages view
@@ -120,9 +130,12 @@ func NewRoomWidget(app *App, hubName, roomName string) *RoomWidget {
 	// msg_editor is #111/#0bb (both themes, ui/TextUI.py:32,85), cube-quantized
 	// to #000000/#00afaf. Python builds RoomMessageEdit(caption="", edit_text="",
 	// multiline=True) (Channels.py:605) — NO placeholder, so the idle composer
-	// row renders empty.
+	// row renders empty, and the multiline Edit WRAPS the draft: the urwid
+	// Frame footer grows by one row per wrapped line, shrinking the message
+	// list (the parity behavior pinned by TestRoomEditorGrowsPanelParity).
 	tc := GetThemeColors(app.Theme)
 	rw.editor = NewReadlineEdit(app.killRing, "", "")
+	rw.editor.SetMultiline(true)
 	rw.editor.SetFieldBackgroundColor(tc["msg_editor_bg"])
 	rw.editor.SetFieldTextColor(tc["msg_editor_fg"])
 	rw.editor.SetFocusFunc(func() {
@@ -130,6 +143,12 @@ func NewRoomWidget(app *App, hubName, roomName string) *RoomWidget {
 			rw.OnFocusRegion("editor")
 		}
 	})
+	// Up on the composer's top wrapped row hands focus to the message body
+	// (Python RoomMessageEdit.keypress "up" y==0 → frame.focus_position =
+	// "body", Channels.py:429-434).
+	rw.editor.OnFocusTopRow = func() {
+		rw.app.SetFocus(rw.messagesArea)
+	}
 
 	// Header: room title — Python RoomWidget._update_peer_info
 	// (Channels.py:737-756) renders it left-aligned via the peer_info_widget;
@@ -152,10 +171,29 @@ func NewRoomWidget(app *App, hubName, roomName string) *RoomWidget {
 	// resizeShortcutBar DrawFunc pattern — the hook runs before the child
 	// draw in the same pass).
 	rw.messagesArea.OnWidthChange = func() { rw.renderMessages() }
+	// The body's focus switches the shortcut bar to the body region (Python
+	// RoomFrame focus setter → update_active_shortcuts).
+	rw.messagesArea.SetFocusFunc(func() {
+		if rw.OnFocusRegion != nil {
+			rw.OnFocusRegion("body")
+		}
+	})
 	rw.chatBox = tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(header, 1, 0, false).
 		AddItem(rw.messagesArea, 0, 1, false).
 		AddItem(rw.editor, 1, 0, true)
+	// Composer growth: urwid's Frame packs the multiline footer (the Edit is
+	// a flow widget sized to its wrapped rows), so the message list shrinks
+	// by one row per editor line — the whole panel content moves up as the
+	// user keeps typing. The DrawFunc runs before the Flex lays out its
+	// children, so the resized composer height takes effect in the same draw
+	// (the resizeShortcutBar precedent, main-display.go). The returned rect
+	// becomes the Flex's inner rect, so the bordered box returns its inner
+	// area for the children.
+	rw.chatBox.SetDrawFunc(func(screen tcell.Screen, x, y, w, h int) (int, int, int, int) {
+		rw.resizeEditor(w-2, h-2)
+		return x + 1, y + 1, w - 2, h - 2
+	})
 	rw.chatBox.SetBorder(true)
 
 	// Users list: ShowSecondaryText(false) — the fork's List defaults to
@@ -202,9 +240,78 @@ func (rw *RoomWidget) Widget() tview.Primitive {
 	return rw.widget
 }
 
+// resizeEditor grows the composer footer to its wrapped row count at the
+// chat inner width (the urwid Frame flow footer), shrinking the message
+// list. The height is capped so the header and at least one message row
+// stay visible when a draft grows taller than the panel — urwid's Frame
+// squeezes the body the same way for an over-tall footer.
+func (rw *RoomWidget) resizeEditor(w, h int) {
+	if w <= 0 || h <= 0 {
+		return
+	}
+	rows := rw.editor.MultilineRows(w)
+	rows = min(rows, max(h-2, 1)) // header (1) + at least one message row
+	if rows == rw.editorRows {
+		return
+	}
+	rw.editorRows = rows
+	rw.chatBox.ResizeItem(rw.editor, rows, 0)
+}
+
+// bodyHasFocus reports whether the room's message body currently holds focus
+// (Python RoomFrame.focus_position == "body").
+func (rw *RoomWidget) bodyHasFocus() bool {
+	if rw.app == nil {
+		return false
+	}
+	return rw.app.GetFocus() == tview.Primitive(rw.messagesArea)
+}
+
+// messagesAtBottom reports whether the message body's tail is visible —
+// Python RoomFrame body "down" gate: messagelist.bottom_is_visible.
+func (rw *RoomWidget) messagesAtBottom() bool {
+	_, _, _, vh := rw.messages.GetInnerRect()
+	row, _ := rw.messages.GetScrollOffset()
+	total := rw.messages.GetWrappedLineCount()
+	return vh <= 0 || row+vh >= total
+}
+
+// messagesAtTop reports whether the message body's head is visible — Python:
+// messagelist.top_is_visible.
+func (rw *RoomWidget) messagesAtTop() bool {
+	row, _ := rw.messages.GetScrollOffset()
+	return row <= 0
+}
+
 // handleInput processes keyboard shortcuts for the room.
 // Matches Python's RoomFrame.keypress() at Channels.py:522.
 func (rw *RoomWidget) handleInput(event *tcell.EventKey) *tcell.EventKey {
+	// Body-focused keys (Python RoomFrame.keypress body branch,
+	// Channels.py:536-548): Down at the visible bottom returns to the
+	// composer footer, Up at the visible top moves to the main display
+	// header, and Tab always lands in the footer. Otherwise the key falls
+	// through to the message list (scrolling).
+	if rw.bodyHasFocus() {
+		switch event.Key() {
+		case tcell.KeyDown:
+			if rw.messagesAtBottom() {
+				rw.app.SetFocus(rw.editor)
+				return nil
+			}
+		case tcell.KeyUp:
+			if rw.messagesAtTop() {
+				if rw.OnFocusMenu != nil {
+					rw.OnFocusMenu()
+				}
+				return nil
+			}
+		case tcell.KeyTab:
+			// Python RoomFrame.keypress tab: focus_position = "footer".
+			rw.app.SetFocus(rw.editor)
+			return nil
+		}
+		return event
+	}
 	switch event.Key() {
 	case tcell.KeyCtrlD:
 		// Python's RoomMessageEdit sends on ctrl d (Channels.py

@@ -595,6 +595,13 @@ func (cd *ChannelsDisplay) ShowRoom(hubIdx int, room string, msgs []ChannelMessa
 		// editor region (Python RoomFrame focus setter →
 		// update_active_shortcuts, Channels.py:509-520).
 		rw.OnFocusRegion = cd.setShortcutRegion
+		// The room body's Up at the visible top moves focus to the menu bar
+		// (Python: main_display.frame.focus_position = "header").
+		rw.OnFocusMenu = func() {
+			if cd.app != nil && cd.app.Main != nil {
+				cd.app.Main.FocusMenu()
+			}
+		}
 		rw.OnSendMessage = func(text string) {
 			if cd.OnSendMessage != nil {
 				cd.OnSendMessage(text)

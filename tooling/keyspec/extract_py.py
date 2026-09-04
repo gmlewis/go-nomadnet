@@ -141,15 +141,26 @@ def extract_file(path, rel):
                 args = [a.arg for a in fn.args.args]
                 key_name = args[KEY_METHODS[fn.name] - 1] if len(args) >= KEY_METHODS[fn.name] else "key"
                 records = []
+
+                def scan_if(stmt):
+                    # Recurse into nested ifs: key comparisons inside branch
+                    # bodies (e.g. RoomFrame.keypress's body-focus branch
+                    # handling "down"/"up", Channels.py:536-548) are real
+                    # handled keys, not invisible to the spec.
+                    if not isinstance(stmt, ast.If):
+                        return
+                    for test, body in branch_actions(stmt):
+                        keys = []
+                        collect_keys(test, key_name, keys)
+                        if keys:
+                            action = first_action(body) or ""
+                            for k in keys:
+                                records.append({"key": k, "action": action})
+                        for inner in body:
+                            scan_if(inner)
+
                 for stmt in fn.body:
-                    if isinstance(stmt, ast.If):
-                        for test, body in branch_actions(stmt):
-                            keys = []
-                            collect_keys(test, key_name, keys)
-                            if keys:
-                                action = first_action(body) or ""
-                                for k in keys:
-                                    records.append({"key": k, "action": action})
+                    scan_if(stmt)
                 if records:
                     handlers.append({
                         "file": rel, "class": cls.name, "method": fn.name,

@@ -86,6 +86,23 @@ type ReadlineEdit struct {
 	*tview.InputField
 	killRing  *killRing
 	cursorPos int // rune offset, mirrors Python edit_pos
+	// multiline switches on the urwid Edit(multiline=True) parity editor:
+	// wrapping rows, Enter inserting a newline, wrapped-row cursor
+	// navigation, and the custom drawMultiline renderer. Only the editors
+	// Python declares multiline=True use it (SetMultiline,
+	// tui/readline-multiline.go).
+	multiline bool
+	// prefCol/prefColW mirror urwid's pref_col_maxcol: the column targeted
+	// by the last vertical navigation (or the 'left'/'right' literals stored
+	// by Home/End), plus the width it was set at. A width change makes it
+	// stale, falling back to the current cursor column (urwid get_pref_col).
+	prefCol  int
+	prefColW int
+	// OnFocusTopRow, when set, fires when Up is pressed on the TOP wrapped
+	// row of a multiline editor — Python RoomMessageEdit.keypress "up"
+	// (Channels.py:429-434) moves the frame focus to the message body. nil
+	// for editors without a body to jump to.
+	OnFocusTopRow func()
 	// onExit, when set, is invoked for Down/Up/Tab while editing so an embedded
 	// field editor (the browser's in-place field overlay) can hand focus back to
 	// the surrounding nav model — mirroring Python's urwid.Edit returning these
@@ -103,6 +120,7 @@ func NewReadlineEdit(kr *killRing, label, placeholder string) *ReadlineEdit {
 		InputField: tview.NewInputField(),
 		killRing:   kr,
 		cursorPos:  0,
+		prefColW:   -1, // no preferred column yet (urwid pref_col_maxcol None)
 	}
 	re.SetLabel(label)
 	re.SetPlaceholder(placeholder)
@@ -146,17 +164,28 @@ func (re *ReadlineEdit) SetCursorPos(pos int) {
 // display width of the text before the cursor. For text that fits the field
 // width (the common case for nomadnet's short single-line inputs) this matches
 // the rendered glyph exactly; when the field horizontally scrolls the position
-// is best-effort (tview's scroll offset is internal and not exposed).
+// is clamped to the inner right edge (tview's scroll offset is internal and
+// not exposed) — the unclamped caret previously walked past the panel edge,
+// the fleet-reported symptom on glenn-OMEN-875.
 func (re *ReadlineEdit) Draw(screen tcell.Screen) {
+	if re.multiline {
+		// urwid Edit(multiline=True) renderer: wrapped rows + wrapped caret
+		// (readline-multiline.go).
+		re.drawMultiline(screen)
+		return
+	}
 	re.InputField.Draw(screen)
 	if !re.InputField.HasFocus() {
 		return
 	}
-	x, y, _, _ := re.GetInnerRect()
+	x, y, w, _ := re.GetInnerRect()
 	labelW := tview.TaggedStringWidth(re.GetLabel())
 	runes := []rune(re.GetText())
 	pos := min(max(re.cursorPos, 0), len(runes))
 	col := runewidth.StringWidth(string(runes[:pos]))
+	if w > 0 && x+labelW+col > x+w-1 {
+		col = w - 1 - labelW
+	}
 	screen.ShowCursor(x+labelW+col, y)
 }
 
@@ -164,6 +193,32 @@ func (re *ReadlineEdit) Draw(screen tcell.Screen) {
 // returns nil when it consumes the event (readline keys and regular rune
 // insertion) or the event itself to let tview handle non-readline keys.
 func (re *ReadlineEdit) handleKey(event *tcell.EventKey) *tcell.EventKey {
+	// Multiline (urwid Edit multiline=True) keys: Enter inserts a newline
+	// (urwid/widget/edit.py:436), Up/Down move between wrapped rows
+	// (edit.py:449-464), Home/End bound the wrapped row (MAX_LEFT/MAX_RIGHT).
+	// Everything else falls through to the shared readline handling, whose
+	// buffer-level keys work identically on the multiline buffer.
+	if re.multiline {
+		switch event.Key() {
+		case tcell.KeyEnter:
+			runes := []rune(re.GetText())
+			pos := min(re.cursorPos, len(runes))
+			newRunes := make([]rune, 0, len(runes)+1)
+			newRunes = append(newRunes, runes[:pos]...)
+			newRunes = append(newRunes, '\n')
+			newRunes = append(newRunes, runes[pos:]...)
+			re.cursorPos = pos + 1
+			re.killRing.resetChain()
+			re.InputField.SetText(string(newRunes))
+			return nil
+		case tcell.KeyUp, tcell.KeyDown:
+			return re.multilineVertical(event)
+		case tcell.KeyHome, tcell.KeyEnd:
+			if re.multilineRowKeys(event) {
+				return nil
+			}
+		}
+	}
 	// Embedded field-overlay nav keys: hand Down/Up/Tab back to the browser nav
 	// model (Python Edit returns these to the Pile/Scrollable). Enter/Esc stay
 	// editing (a field row does not submit on Enter — only links do). Only

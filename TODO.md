@@ -149,3 +149,20 @@ single-dialog New Hub form; items 20-23 — CONNECTING until WELCOME, verbatim
 nick (decided parity), and the MaybeAutoconnect wiring. Items 24-27 are
 upstream rrcd 0.3.2 bugs worked around client-side (no rrcd patching, per the
 user's direction); report them upstream.
+
+## Room composer multiline wrap (fleet bug, 2026-09-03) — FIXED locally, awaiting deploy
+
+`gonomadnet`'s Channels room composer was a fixed one-row single-line field:
+long drafts clipped at the panel's right border and the hardware caret walked
+past the panel edge (live on glenn-OMEN-875), while Python's
+`RoomMessageEdit(caption="", edit_text="", multiline=True)` urwid-Frame footer
+(Channels.py:605) wraps the draft and grows the panel. Fixed in
+`tui/readline-multiline.go` + `tui/room-widget.go` (urwid-parity wrap rows,
+wrapped caret, footer growth via the chatBox DrawFunc, body focus
+Up/Down/Tab), pinned by `tui/editor-multiline-parity_test.go` +
+`tui/room-editor-grow-parity_test.go` (goldens captured live from urwid
+4.0.3) and verified visually in a local tmux replica at the fleet geometry.
+
+**User follow-up (agent cannot do this):** commit/push the go-nomadnet tree,
+then rebuild and restart `./gonomadnet.sh` on glenn-OMEN-875 (and the other Go
+nodes when convenient); the mac-mini runs the Python SOT and is untouched.

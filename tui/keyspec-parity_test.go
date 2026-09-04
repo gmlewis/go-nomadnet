@@ -98,6 +98,14 @@ var keyspecAccepted = map[string]string{
 	// room/hub info. Verified live (the diag focus flip).
 	"Channels.py:ChannelsListArea|left":  "Go implements the urwid columns focus chain: the Left from the room view returns to the channels list column",
 	"Channels.py:ChannelsListArea|right": "the Right from the list returns into the room/hub info pane (tview's Flex has no built-in column focus nav)",
+	// Browser body Down/Up (BrowserFrame.keypress body branch, surfaced by the
+	// nested-if extractor pass): Python forwards the key to the page pile and
+	// schedules a 0.25s key_timeout callback on the focused part cursor (the
+	// urwid focus-pile blink-timeout model, Browser.py:60-77). The Go browser
+	// drives its part cursor from browser-nav.go without the pile-timeout
+	// model; body scroll differs until the browser body-focus work lands.
+	"Browser.py:BrowserFrame|down": "Python forwards to the page pile + part-cursor key_timeout (urwid pile model); Go's browser body is not pile-focused — queued browser-parity divergence",
+	"Browser.py:BrowserFrame|up":   "same as Down: part-cursor key_timeout scheduling has no Go pile-timeout counterpart; queued browser-parity divergence",
 	// --- Main / global ---------------------------------------------------
 	// Python's unhandled_input intercepts ctrl-e and does `pass` (a global
 	// swallow); Go deliberately does NOT swallow Ctrl-E globally — the
@@ -180,6 +188,12 @@ var keyspecAccepted = map[string]string{
 	// Room composer Up-at-cursor-0 escape: Go's room composer hands the key to
 	// the tview editor + room focus routing; behavioral suites cover it.
 	"Channels.py:RoomMessageEdit|up": "Go room composer Up is handled by the underlying editor/focus routing; covered by behavioral suites",
+	// Room body Down/Tab (Python RoomFrame.keypress body branch, which the
+	// extractor's nested-if pass now sees) live in the shared RoomWidget
+	// dispatch, so the other mapped Python classes "see" them too.
+	"Channels.py:RoomMessageEdit|down": "shared RoomWidget dispatch: body Down→composer belongs to Python RoomFrame's body branch (Channels.py:536-541); the switch serves the room's three mapped classes",
+	"Channels.py:UsersBox|down":        "shared RoomWidget dispatch: body Down→composer belongs to Python RoomFrame's body branch; the switch serves the room's three mapped classes",
+	"Channels.py:UsersBox|up":          "shared RoomWidget dispatch: body Up→menubar belongs to Python RoomFrame's body branch; the switch serves the room's three mapped classes",
 	// ChannelsListArea: Up-at-top → menubar is owned by the dispatcher.
 	"Channels.py:ChannelsListArea|up": "Go's dispatcher owns Up-at-top → menu collapse; Python does it in ChannelsListArea.keypress",
 	// The channels-level ancestor capture owns C-d send for the whole page
