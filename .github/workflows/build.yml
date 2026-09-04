@@ -167,14 +167,18 @@ jobs:
             **/go.sum
 
       # The Python-parity tests drive the real Python nomadnet/RNS/LXMF stacks
-      # (installed via pip — no repo clones needed).
+      # (installed via pip — no repo clones needed). The pip pins mirror the
+      # local user-site stack the suite was validated against: unpinned
+      # installs resolve older versions whose nomadnet lacks attributes the
+      # parity tests exercise (e.g. Dir.preferred_delivery) and whose RNS
+      # breaks the cross-process rrc round-trip.
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: '3.14'
 
       - name: Install Python dependencies
-        run: python3 -m pip install --quiet rns lxmf nomadnet
+        run: python3 -m pip install --quiet rns==1.5.0 lxmf==1.1.1 nomadnet==1.2.8
 
       - name: Run full integration suite
         env:

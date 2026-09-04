@@ -49,7 +49,9 @@ func hasTTYFromFile(f *os.File) bool {
 }
 
 func main() {
-	log.SetFlags(0)
+	// Timestamp every standard-log line so the daemon/client logs are
+	// attributable (the TUI's file redirection keeps these flags).
+	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds)
 
 	var (
 		configDir string

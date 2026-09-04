@@ -8,7 +8,9 @@
 # Prerequisites:
 #   - gh (GitHub CLI) must be installed and authenticated
 #   - Local clones of gmlewis/tcell and gmlewis/tview must have NO
-#     uncommitted changes (this script aborts immediately if they do)
+#     uncommitted changes (this script aborts immediately if they do).
+#     Clone paths default to $HOME/src/github.com/gmlewis/{tcell,tview}
+#     and can be overridden with the TCELL_LOCAL/TVIEW_LOCAL env vars.
 #   - The working directory must be the go-nomadnet repo root
 #
 # Usage:
@@ -27,12 +29,12 @@ set -euo pipefail
 TCELL_REPO="gmlewis/tcell"
 TCELL_MODULE="github.com/gmlewis/tcell/v2"
 TCELL_REPLACE="github.com/gdamore/tcell/v2"
-TCELL_LOCAL="/Users/glenn/src/github.com/gmlewis/tcell"
+TCELL_LOCAL="${TCELL_LOCAL:-$HOME/src/github.com/gmlewis/tcell}"
 
 TVIEW_REPO="gmlewis/tview"
 TVIEW_MODULE="github.com/gmlewis/tview"
 TVIEW_REPLACE="github.com/rivo/tview"
-TVIEW_LOCAL="/Users/glenn/src/github.com/gmlewis/tview"
+TVIEW_LOCAL="${TVIEW_LOCAL:-$HOME/src/github.com/gmlewis/tview}"
 
 DRY_RUN=0
 

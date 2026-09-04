@@ -2,6 +2,7 @@ AGENTS.md
 PARITY-REPORT.md
 SKILLS.md
 TODO.md
+*.log
 *.txt
 captures/
 /.claude

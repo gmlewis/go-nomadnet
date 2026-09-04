@@ -80,7 +80,7 @@ echo "gornsd pid $GORN_PID, log $LOGDIR/gornsd-$EPOCH.log"
 echo "== waiting for the shared-instance socket and the fleet port =="
 SOCKET_UP=no
 for _ in $(seq 1 30); do
-    if ss -x 2>/dev/null | grep -q "rns/default"; then
+    if ss -xa 2>/dev/null | grep -q "rns/default"; then
         SOCKET_UP=yes
         break
     fi
