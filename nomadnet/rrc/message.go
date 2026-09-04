@@ -32,6 +32,12 @@ type RRCMessage struct {
 	Text    string // message content
 	Ts      int64  // timestamp in milliseconds since epoch
 	Mention bool   // true if message mentions the local user
+	// Pinned marks the hub's greeting MOTD notice: exempt from the
+	// ephemeral-notice purge. The greeting is standing hub info that rrcd
+	// re-sends on every WELCOME; the purge previously erased it minutes
+	// after a connect, which made some fleet nodes appear MOTD-less
+	// (2026-09-03 captures).
+	Pinned bool
 }
 
 // NowMs returns the current time in milliseconds since epoch.

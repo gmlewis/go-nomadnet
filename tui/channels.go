@@ -519,11 +519,22 @@ func (cd *ChannelsDisplay) restoreRowSelection(prevKey hubRowKey) {
 // swaps from the placeholder to the hub's details (the header block, the
 // status, the auto toggles, the MOTD, the joined and available rooms).
 func (cd *ChannelsDisplay) ShowHubInfo(hubIdx int) {
-	if cd.app == nil || hubIdx < 0 || hubIdx >= len(cd.hubEntries) {
+	if cd.app == nil || hubIdx < 0 || hubIdx >= len(cd.HubViewsCache) {
 		return
 	}
-	e := cd.hubEntries[hubIdx]
-	if e.Kind != RowHub || hubIdx >= len(cd.HubViewsCache) {
+	// Locate the hub's LIST row: the hub index is NOT the row index — a
+	// spacer row separates consecutive hubs (ComposeHubList), so hub 1's row
+	// is entry 2+. The previous hubEntries[hubIdx] lookup hit the spacer and
+	// silently returned, which meant the info panel never opened for the
+	// second and later hubs.
+	rowIdx := -1
+	for i, e := range cd.hubEntries {
+		if e.Kind == RowHub && e.HubIdx == hubIdx {
+			rowIdx = i
+			break
+		}
+	}
+	if rowIdx < 0 {
 		return
 	}
 	hv := cd.HubViewsCache[hubIdx]
@@ -567,6 +578,14 @@ func (cd *ChannelsDisplay) ShowHubInfo(hubIdx int) {
 	// Swap the right pane's sole item to the hub info widget.
 	cd.rightPane.Clear()
 	cd.rightPane.AddItem(cd.hubInfo.Widget(), 0, 1, false)
+	// Python's _select_hub sets selected_key to the hub row (Channels.py:
+	// 1710-1717) — the info panel's hub row carries the list highlight.
+	for i, e := range cd.hubEntries {
+		if e.Kind == RowHub && e.HubIdx == hubIdx {
+			cd.rooms.SetCurrentItem(i)
+			break
+		}
+	}
 }
 
 // RoomMessagesFunc returns the current message buffer for a hub's room.
@@ -640,12 +659,19 @@ func (cd *ChannelsDisplay) ShowRoom(hubIdx int, room string, msgs []ChannelMessa
 	cd.rightPane.SetBorder(false)
 	cd.rightPane.Clear()
 	cd.rightPane.AddItem(cd.roomWidget.Widget(), 0, 1, true)
-	// Python _select_room → show_room (Channels.py:1720-1745) swaps the right
-	// pane WITHOUT moving the urwid focus: the hub/room list keeps focus, and
-	// the user reaches the editor with Right/Down (RoomMessageEdit's "up"
-	// handler mirrors the reverse path). Stealing focus into the room pane
-	// here desynced every subsequent arrow key from the list the user is
-	// navigating — the eaten-cursor bug observed live on the fleet.
+	// Python's selected_key invariant (Channels.py:1722-1724): the shown
+	// room's row IS the channels-list selection — the opened room's row
+	// carries the list's highlight (the joined-room highlight the user
+	// reads). The 2026-09-03 fleet captures showed the Go selection stuck on
+	// the hub row while a room was open. Moving the highlight does NOT move
+	// the tview focus, so the keyboard stays with the room pane (the
+	// eaten-cursor note below still holds).
+	for i, e := range cd.hubEntries {
+		if e.Kind == RowRoom && e.HubIdx == hubIdx && e.Room == room {
+			cd.rooms.SetCurrentItem(i)
+			break
+		}
+	}
 }
 
 // RefreshRoomIfVisible reloads the showing room's message buffer and member

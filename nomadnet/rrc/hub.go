@@ -119,9 +119,14 @@ type RRCHub struct {
 	manualDisconnect     bool
 	reconnectAttempts    int
 	reconnectTimer       *time.Timer
-	connectTimeout       time.Duration // override the connect-worker recall deadline (tests)
-	onLinkEstablished    func()
-	onLinkClosed         func()
+	// whoRefreshTimer/whoRefreshPending carry the armed periodic membership
+	// reconciliation (scheduleWhoRefresh): the timer is stopped and both
+	// fields cleared whenever the link closes or disconnects.
+	whoRefreshTimer   *time.Timer
+	whoRefreshPending func()
+	connectTimeout    time.Duration // override the connect-worker recall deadline (tests)
+	onLinkEstablished func()
+	onLinkClosed      func()
 
 	// onSend, when set, is invoked by sendEnv with each outbound envelope
 	// before it is encoded and transmitted. It is an observability seam used by
@@ -336,6 +341,11 @@ func (h *RRCHub) onClosed() {
 	for k := range h.silentWhoRooms {
 		delete(h.silentWhoRooms, k)
 	}
+	if h.whoRefreshTimer != nil {
+		h.whoRefreshTimer.Stop()
+		h.whoRefreshTimer = nil
+	}
+	h.whoRefreshPending = nil
 	shouldReconnect := h.AutoReconnect && !h.manualDisconnect
 	cb := h.onLinkClosed
 	h.Status = StatusDisconnected
@@ -732,6 +742,11 @@ func (h *RRCHub) Disconnect() {
 		h.reconnectTimer.Stop()
 		h.reconnectTimer = nil
 	}
+	if h.whoRefreshTimer != nil {
+		h.whoRefreshTimer.Stop()
+		h.whoRefreshTimer = nil
+	}
+	h.whoRefreshPending = nil
 	link := h.link
 	h.link = nil
 	h.Welcomed = false
@@ -854,34 +869,140 @@ func (h *RRCHub) SetMOTD(text string) {
 	}
 }
 
-// applyWhoReply replaces the room's member set from a parsed /who reply,
+// applyWhoReply REPLACES the room's member set from a parsed /who reply,
 // learning nicks by matching who-reply 12-hex prefixes against the known
-// member hashes (Python RRC.py:1085-1100: members.setdefault + the prefix
-// walk, then manager._notify_change).
+// member hashes (Python RRC.py:1085-1100's nick walk).
+//
+// The replacement (not Python's merge) is deliberate and user-ordered: with
+// rrcd's include_joined_member_list defaulting to OFF, JOINED/PARTED fanouts
+// carry no member data, so the /who reply is the ONLY authoritative member
+// source. Merging could never add members whose nick was known or remove
+// departed ones, which froze every client's member count at its own
+// join-time snapshot — the fleet's diverging "N users" counts (6/6/6/5/3/4
+// on ONE hub, 2026-09-03). Each entry resolves to a full-hash member key
+// when a known member carries that hash prefix (so conversations and the
+// self-arrow keep working); unknown nicked members enter under their reply
+// prefix so the COUNT is correct.
 func (h *RRCHub) applyWhoReply(room string, entries []whoEntry) {
 	room = strings.ToLower(room)
 	h.lock.Lock()
-	if h.Members[room] == nil {
-		h.Members[room] = make(map[string]bool)
-	}
+	// Resolve each entry BEFORE replacing, so the prefix match can see the
+	// outgoing set (the new set may carry reply-prefix keys that would
+	// shadow real matches).
+	resolved := make(map[string]bool, len(entries))
 	for _, e := range entries {
-		if e.Nick == "" {
-			if e.HashHex != "" {
-				h.Members[room][e.HashHex] = true
-			}
+		if e.HashHex == "" {
 			continue
 		}
-		for ph := range h.Members[room] {
-			if strings.HasPrefix(ph, e.HashHex) {
-				h.Nicks[ph] = e.Nick
-				break
+		key := e.HashHex
+		if e.Nick != "" {
+			full := ""
+			for ph := range h.Members[room] {
+				if strings.HasPrefix(ph, e.HashHex) {
+					full = ph
+					break
+				}
 			}
+			if full == "" {
+				full = e.HashHex
+			}
+			key = full
+			h.Nicks[full] = e.Nick
+		}
+		if key != "" {
+			resolved[key] = true
 		}
 	}
+	h.Members[room] = resolved
 	h.lock.Unlock()
 	if h.Manager != nil {
 		h.Manager.NotifyChange(h)
 	}
+}
+
+// whoRefreshInterval is the cadence of the periodic silent membership
+// reconciliation. rrcd's rate bucket allows 30 messages/minute per client;
+// one /who per joined room per minute stays far below it.
+const whoRefreshInterval = 60 * time.Second
+
+// scheduleWhoRefresh arms the periodic membership reconciliation after a
+// WELCOME. Python's auto_who fires /who only at self-join; nothing ever
+// re-synced membership afterwards, so a client missed the later join/part
+// fanouts (which carry no member data on this hub) and kept its stale count
+// forever. The reconciliation re-requests the member list for every joined
+// room so the Users count converges on the hub's live membership.
+func (h *RRCHub) scheduleWhoRefresh() {
+	h.lock.Lock()
+	if h.whoRefreshTimer != nil {
+		h.lock.Unlock()
+		return
+	}
+	after := h.afterFunc
+	if after == nil {
+		after = time.AfterFunc
+	}
+	fire := h.whoRefreshFire()
+	h.whoRefreshTimer = after(whoRefreshInterval, fire)
+	h.whoRefreshPending = fire
+	h.lock.Unlock()
+}
+
+// whoRefreshFire builds the reconciliation callback: one silent /who sweep,
+// then re-arm — stopping (without rescheduling) when the welcome is lost
+// (link closed or manual disconnect both clear Welcomed) or the manager has
+// been shut down.
+func (h *RRCHub) whoRefreshFire() func() {
+	return func() {
+		h.lock.Lock()
+		h.whoRefreshTimer = nil
+		h.whoRefreshPending = nil
+		welcomed := h.Welcomed
+		stopped := h.Manager != nil && h.Manager.IsStopped()
+		h.lock.Unlock()
+		if !welcomed || stopped {
+			return
+		}
+		h.refreshRoomMembership()
+		h.scheduleWhoRefresh()
+	}
+}
+
+// refreshRoomMembership sends one silent /who per joined room (the reply is
+// consumed without hitting the message log via silentWhoRooms, but its
+// member set still heals through applyWhoReply).
+func (h *RRCHub) refreshRoomMembership() {
+	h.lock.Lock()
+	if !h.Welcomed {
+		h.lock.Unlock()
+		return
+	}
+	rooms := sortedKeys(h.Rooms)
+	h.lock.Unlock()
+
+	for _, room := range rooms {
+		h.lock.Lock()
+		h.silentWhoRooms[room] = true
+		h.lock.Unlock()
+		if err := h.SendCommand("/who "+room, room); err != nil {
+			// The marker must not linger: a later user-initiated /who reply
+			// for this room would otherwise be consumed silently.
+			h.lock.Lock()
+			delete(h.silentWhoRooms, room)
+			h.lock.Unlock()
+		}
+	}
+}
+
+// stopWhoRefresh cancels the armed reconciliation timer (link closed or
+// manual disconnect).
+func (h *RRCHub) stopWhoRefresh() {
+	h.lock.Lock()
+	if h.whoRefreshTimer != nil {
+		h.whoRefreshTimer.Stop()
+		h.whoRefreshTimer = nil
+	}
+	h.whoRefreshPending = nil
+	h.lock.Unlock()
 }
 
 // GetMembers returns the member list for a room.
@@ -1676,6 +1797,10 @@ func (h *RRCHub) handleWelcome(body any) {
 	if h.Manager != nil {
 		h.Manager.OnWelcome(h)
 	}
+	// Arm the periodic membership reconciliation (the auto_who sweep fires
+	// once here; the timer keeps the member list converging on the hub's
+	// live membership afterwards).
+	h.scheduleWhoRefresh()
 	// Python handle_welcome → auto_list (RRC.py:950-959): fetch the hub's
 	// public room list right after the welcome so the hub info panel can show
 	// which rooms exist. The reply NOTICE is consumed silently.
@@ -2279,7 +2404,12 @@ func (h *RRCHub) cleanHistory() {
 			kept := h.Messages[r][:0]
 			removed := false
 			for _, m := range h.Messages[r] {
-				shouldFilter := m.Kind == "system" || m.Kind == "notice"
+				// The hub's greeting MOTD notice is pinned: standing hub
+				// info that rrcd re-sends on every WELCOME, exempt from the
+				// ephemeral-notice purge (the purge previously erased it
+				// minutes after a connect, which made some fleet nodes
+				// appear MOTD-less).
+				shouldFilter := (m.Kind == "system" || m.Kind == "notice") && !m.Pinned
 				if shouldFilter {
 					age := now - m.Ts/1000
 					if age > removeAfter {
@@ -2306,7 +2436,20 @@ func (h *RRCHub) cleanHistory() {
 // the global notices list (capped at 200) and, when it has a target room, to
 // that room's message buffer (capped at perRoomCap), marked unread when the
 // room is not active, persisted to history, and followed by a history cleanup.
+//
+// Roomless notices are the hub's greeting MOTD (rrcd sends them with no room
+// right after the WELCOME). Python attributes them to the manager's ACTIVE
+// room; on a fresh boot no room is active, so the greeting landed in NO
+// buffer and each fleet node's MOTD visibility depended on which room was
+// active at arrival (2026-09-03 captures). When no room is active the
+// greeting is now recorded into EVERY joined room's buffer — pinned, and
+// without unread flags, so it is visible in whichever room the user opens.
 func (h *RRCHub) recordNotice(msg *RRCMessage) {
+	// Roomless notices ARE the hub's greeting: pin them against the
+	// ephemeral purge regardless of which room they land in.
+	if strings.ToLower(msg.Room) == "" {
+		msg.Pinned = true
+	}
 	targetRoom := strings.ToLower(msg.Room)
 
 	// Snapshot the active room BEFORE acquiring h.lock so the lock order stays
@@ -2326,35 +2469,55 @@ func (h *RRCHub) recordNotice(msg *RRCMessage) {
 	}
 
 	cap := h.perRoomCap()
+	notify := h.Manager != nil
+	// Rooms to record the notice into. A roomless greeting with no active
+	// room fans out to every joined room; a roomed notice (or an active-room
+	// attribution) stays single-room with Python's unread marking.
+	rooms := []string{targetRoom}
+	markUnread := true
+	if targetRoom == "" {
+		h.lock.Lock()
+		rooms = sortedKeys(h.Rooms)
+		h.lock.Unlock()
+		markUnread = false
+	}
+
 	h.lock.Lock()
 	h.Notices = append(h.Notices, msg)
 	if len(h.Notices) > 200 {
 		h.Notices = h.Notices[len(h.Notices)-200:]
 	}
-	if targetRoom != "" {
-		buf := h.Messages[targetRoom]
+	for _, room := range rooms {
+		if room == "" {
+			continue
+		}
+		m := *msg
+		m.Room = room
+		buf := h.Messages[room]
 		if buf == nil {
 			buf = make([]*RRCMessage, 0)
 		}
-		buf = append(buf, msg)
+		buf = append(buf, &m)
 		if cap > 0 && len(buf) > cap {
 			buf = buf[len(buf)-cap:]
 		}
-		h.Messages[targetRoom] = buf
-		if h.Manager != nil && targetRoom != activeRoom {
-			h.UnreadRooms[targetRoom] = true
+		h.Messages[room] = buf
+		if markUnread && notify && room != activeRoom {
+			h.UnreadRooms[room] = true
 		}
 	}
-	notify := h.Manager != nil
 	h.lock.Unlock()
 
 	if notify {
 		h.Manager.NotifyMessage(h, msg)
 	}
-	if targetRoom != "" {
-		h.appendHistory(targetRoom, msg)
-		h.cleanHistory()
+	for _, room := range rooms {
+		if room == "" {
+			continue
+		}
+		h.appendHistory(room, msg)
 	}
+	h.cleanHistory()
 }
 
 func (h *RRCHub) appendHistory(room string, msg *RRCMessage) {
@@ -2615,7 +2778,16 @@ func (h *RRCHub) handleConcludedResource(data []byte) {
 			h.Manager.NotifyChange(h)
 		}
 	}
-	h.recordNotice(&RRCMessage{Kind: "notice", Room: room, Text: text, Ts: NowMs()})
+	// The greeting rides as a roomless MOTD-kind resource; both notice kinds
+	// route through recordNotice, with the MOTD pinned against the ephemeral
+	// purge (the greeting is standing hub info re-sent on every WELCOME).
+	h.recordNotice(&RRCMessage{
+		Kind:   "notice",
+		Room:   room,
+		Text:   text,
+		Ts:     NowMs(),
+		Pinned: kind == ResKindMOTD,
+	})
 }
 
 // decodeText decodes data using the given charset name with U+FFFD replacement
