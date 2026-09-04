@@ -34,6 +34,57 @@ func renderTestOpts(theme int) RRCRenderOpts {
 	}
 }
 
+// TestFormatJustifiedHeadPrefixWrap pins the wrapped first line when the wrap
+// point lands INSIDE the "<sender> " prefix: urwid's space wrap breaks at the
+// nick's trailing space and drops it, leaving the segment exactly "<sender>"
+// (len == nickLen-1). Python renders the nick as a styled run inside one
+// wrapping flow (Channels.py:1405-1413), so the whole nick run stays on line
+// one and the body continues on line two — the slice must not panic (the
+// [17:16] crash of the JOINED-FANOUT live run, crash-20260904-143649.log:
+// "<Anonymous Peer> JOINED-FANOUT:…" at a 47-column body).
+func TestFormatJustifiedHeadPrefixWrap(t *testing.T) {
+	t.Parallel()
+
+	srcHex := "0102030405060708090a0b0c0d0e0f10"
+	msg := ChannelMessage{
+		Room: "general", Nick: "Anonymous Peer", SrcHash: srcHex,
+		Text: "JOINED-FANOUT:0102030405060708090a0b0c0d0e0f10",
+	}
+	// bodyW 47 mirrors the live 120-column run: the first body word does not
+	// fit after the 17-column prefix, so the walk-back break lands on the
+	// nick's trailing space.
+	lines := formatRRCMessageLines(msg, renderTestOpts(ThemeDark), 13+47)
+	if len(lines) < 2 {
+		t.Fatalf("lines = %v, want at least the prefix line plus the wrapped body", lines)
+	}
+	if !strings.Contains(lines[0], "<Anonymous Peer>") {
+		t.Errorf("line 0 = %q, want the full nick run (Python's wrapped styled run)", lines[0])
+	}
+	if strings.Contains(lines[0], "JOINED-FANOUT") {
+		t.Errorf("line 0 = %q, want no body on the prefix-only first line", lines[0])
+	}
+	if !strings.Contains(lines[1], "JOINED-FANOUT") {
+		t.Errorf("line 1 = %q, want the wrapped body", lines[1])
+	}
+
+	// A narrower body (20 cols) hits the same break with a different wrap
+	// position; the render must stay panic-free with the same shape.
+	lines = formatRRCMessageLines(msg, renderTestOpts(ThemeDark), 13+20)
+	if len(lines) < 2 {
+		t.Fatalf("narrow lines = %v, want at least two rows", lines)
+	}
+	if !strings.Contains(lines[0], "<Anonymous Peer>") || strings.Contains(lines[0], "JOINED-FANOUT") {
+		t.Errorf("narrow line 0 = %q, want the nick run only", lines[0])
+	}
+
+	// An even narrower body (the guard's edge): nickLen == bodyW is allowed
+	// past the >bodyW fallback, and the whole prefix is still line one.
+	lines = formatRRCMessageLines(msg, renderTestOpts(ThemeDark), 13+17)
+	if len(lines) < 2 {
+		t.Fatalf("edge lines = %v, want at least two rows", lines)
+	}
+}
+
 // TestFormatRRCMessageGolden pins the full msg-row render against the model
 // Python _message_widget produces (Channels.py:1281-1427), cross-checked with
 // the live #test SGR capture: one-space indent, grey [#888888][HH:MM:SS]

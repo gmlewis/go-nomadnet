@@ -34,6 +34,11 @@ func renderUsersPane(t *testing.T, members []ChannelMember) (tcell.Screen, *Room
 	app.RRCRender.NickColors = true
 	rw := NewRoomWidget(app, "RaspPi Local Hub", "test")
 	rw.SetMembers(members)
+	// The users pane is FOCUSED in this harness (the selection/highlight
+	// tests describe keyboard navigation on the focused pane): Python only
+	// paints the focused row's list_focus highlight while the users list box
+	// has focus (AttrMap(entry, style, "list_focus"), Channels.py:714).
+	app.SetFocus(rw.usersList)
 
 	screen := tcell.NewSimulationScreen("UTF-8")
 	if screen == nil {
@@ -159,32 +164,36 @@ func TestRoomWidgetUsersPaneCountRowText(t *testing.T) {
 // AttrMap(entry, style) whose fill paints the member's fg across the FULL
 // pane width): the row's trailing spaces carry the member's palette fg to
 // the pane edge. Measured live on the 2026-09-03 12:32 full-fleet capture.
+// The SELECTED (focused) row instead carries the list_focus style across the
+// whole width (the focus map replaces the row's own style) — that state is
+// pinned by TestRoomWidgetUsersPaneSelectionHighlight.
 func TestRoomWidgetUsersRowFill(t *testing.T) {
 	t.Parallel()
 
 	members := []ChannelMember{
 		{Nick: "alice", Hash: "0102030405060708090a0b0c0d0e0f10", Online: true},
+		{Nick: "bob", Hash: "02030405060708090a0b0c0d0e0f1001", Online: true},
 	}
 	screen, _ := renderUsersPane(t, members)
 
 	rowY := -1
 	for y := 1; y < 36; y++ {
-		if strings.Contains(usersRowText(screen, y), "alice") {
+		if strings.Contains(usersRowText(screen, y), "bob") {
 			rowY = y
 			break
 		}
 	}
 	if rowY < 0 {
-		t.Fatal("alice row not found")
+		t.Fatal("bob row not found")
 	}
 
-	want := NickColorByHashHexColor("0102030405060708090a0b0c0d0e0f10", DefaultNickPalette(ThemeDark))
-	// The pane is 20 cols wide; the label " → alice" ends well before the
+	want := NickColorByHashHexColor("02030405060708090a0b0c0d0e0f1001", DefaultNickPalette(ThemeDark))
+	// The pane is 20 cols wide; the label " → bob" ends well before the
 	// edge — the trailing cells carry the member's fg like Python's fill.
 	for _, col := range []int{15, 18, 19} {
 		_, fg, _ := usersCell(screen, rowY, col)
 		if fg != want {
-			t.Errorf("alice row col %v fg = %v, want %v (the AttrMap fill covers the full pane width)", col, fg, want)
+			t.Errorf("bob row col %v fg = %v, want %v (the AttrMap fill covers the full pane width)", col, fg, want)
 		}
 	}
 }

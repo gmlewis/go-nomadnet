@@ -290,9 +290,31 @@ func TestRoomWidgetMemberRows(t *testing.T) {
 	if !strings.Contains(peerRow, "Go port of Noma…") {
 		t.Errorf("long name = %q, want the 15-char ellipsis truncation", peerRow)
 	}
-	if !strings.Contains(peerRow, "[#81b385]") {
-		t.Errorf("member row color = %q, want the hash-based palette color #81b385", peerRow)
+
+	// The hash-based palette color rides the item's ENTRY STYLE (not an
+	// embedded color tag): the selected style must be able to replace it on
+	// the focused row (Bug#3), and the tag form would defeat it. Render the
+	// pane with a second member so the self row is NOT the selected row and
+	// pins its entry-style foreground.
+	screen, rendered := renderUsersPane(t, []ChannelMember{
+		{Nick: "alice", Hash: "02030405060708090a0b0c0d0e0f1001", Online: true},
+		{Nick: "Go port of NomadNet on Mac M2 Max", Hash: hash, Online: true, IsSelf: true},
+	})
+	selfY := -1
+	for y := 1; y < 36; y++ {
+		if strings.Contains(usersRowText(screen, y), "Go port of Noma…") {
+			selfY = y
+			break
+		}
 	}
+	if selfY < 0 {
+		t.Fatal("self row not found in the rendered users pane")
+	}
+	_, fg, _ := usersCell(screen, selfY, 1)
+	if want := NickColorByHashHexColor(hash, DefaultNickPalette(ThemeDark)); fg != want {
+		t.Errorf("self row fg = %v, want the hash-based palette color %v", fg, want)
+	}
+	_ = rendered
 
 	// Short names render whole, with the peer glyph for non-self rows.
 	rw.SetMembers([]ChannelMember{

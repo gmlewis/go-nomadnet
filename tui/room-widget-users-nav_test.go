@@ -341,7 +341,8 @@ func TestRoomWidgetUsersSelectionSurvivesRebuild(t *testing.T) {
 
 // TestChannelsRoomFocusUsersPane pins the room's keyboard pane walk: Right
 // from the message body focuses the users pane (where the selection keys
-// scroll it) and Left from the users pane steps back into the body — while
+// scroll it) and Left from the users pane steps back to the room's
+// PRESERVED part (the body, when that is where the walk left it) — while
 // Left from elsewhere in the room still leaves for the channels list.
 func TestChannelsRoomFocusUsersPane(t *testing.T) {
 	t.Parallel()
@@ -359,7 +360,7 @@ func TestChannelsRoomFocusUsersPane(t *testing.T) {
 		t.Fatalf("Right from the body focus = %T, want the users pane", app.GetFocus())
 	}
 
-	// Left from the users pane: back into the message body.
+	// Left from the users pane: back to the preserved body part.
 	cd.handleInput(tcell.NewEventKey(tcell.KeyLeft, 0, tcell.ModNone))
 	if app.GetFocus() != tview.Primitive(cd.roomWidget.messagesArea) {
 		t.Fatalf("Left from the users pane focus = %T, want the message body", app.GetFocus())

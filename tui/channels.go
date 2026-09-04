@@ -724,6 +724,14 @@ func (cd *ChannelsDisplay) ShowRoom(hubIdx int, room string, msgs []ChannelMessa
 			break
 		}
 	}
+	// Python _show_room (Channels.py:1841-1851) ends by moving focus into
+	// the room column (columns_widget.focus_position = last), so the opened
+	// room's frame takes focus on its preserved part — a fresh RoomWidget
+	// starts on its footer composer. Without this the walk starts with the
+	// cursor still in the channels list.
+	if cd.app != nil && cd.roomWidget != nil {
+		cd.roomWidget.restoreRoomPart()
+	}
 }
 
 // RefreshRoomIfVisible reloads the showing room's message buffer and member
@@ -828,37 +836,85 @@ func (cd *ChannelsDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 		}
 		return nil
 	case tcell.KeyLeft:
-		// Python's urwid Columns: the Left from the room view moves focus
-		// back to the channels list column (Main.py columns focus chain) —
-		// except Left from the USERS pane, which steps back into the room's
-		// message body (the room's own Left/Right pane walk, Right being the
-		// way into the users pane below).
-		if cd.paneMode == "room" && cd.roomWidget != nil && cd.app != nil {
-			if cd.roomWidget.usersPaneHasFocus() {
-				cd.app.SetFocus(cd.roomWidget.messagesArea)
+		// The Left/Right pane walk mirrors Python's urwid Columns focus
+		// movement (urwid widget/columns.py keypress: an unhandled left/right
+		// moves focus to the previous/next selectable column, and the key is
+		// dropped at the walk boundaries) combined with urwid Edit's boundary
+		// propagation (urwid widget/edit.py: a plain Left only leaves the
+		// composer at cursor position 0) and RoomFrame's persistent
+		// focus_part (Channels.py:511-546).
+		if cd.app == nil {
+			return event
+		}
+		if cd.paneMode == "room" && cd.roomWidget != nil {
+			switch {
+			case cd.roomWidget.usersPaneHasFocus():
+				// Left from the users column re-enters the chat column on the
+				// frame's preserved focus part (body or footer).
+				cd.roomWidget.restoreRoomPart()
 				return nil
+			case cd.roomWidget.bodyHasFocus():
+				cd.app.SetFocus(cd.ilb)
+				return nil
+			case cd.roomWidget.editorHasFocus():
+				if cd.roomWidget.editorAtTextStart() {
+					cd.app.SetFocus(cd.ilb)
+					return nil
+				}
+				// Mid-text: the composer consumes the key (cursor movement).
+				return event
 			}
+		} else if cd.paneMode == "info" && cd.hubInfo != nil {
+			// Left from the hub info panel walks back to the channels list.
 			cd.app.SetFocus(cd.ilb)
+			return nil
+		}
+		// The channels list is the walk's left boundary (Python: the key
+		// bubbles out of Columns unhandled and is ignored); consume it so the
+		// fork's List cannot horizontal-scroll instead.
+		if cd.ilb != nil && cd.ilb.HasFocus() {
 			return nil
 		}
 		return event
 	case tcell.KeyRight:
-		// Symmetric: the Right from the list returns to the room view or the
-		// hub info panel. Right from the room's message body steps INTO the
-		// users pane (the room's Left/Right walk: Left above steps back).
-		if cd.app != nil && (cd.paneMode == "room" || cd.paneMode == "info") {
-			if cd.paneMode == "room" && cd.roomWidget != nil {
-				if cd.roomWidget.bodyHasFocus() {
+		if cd.app == nil {
+			return event
+		}
+		if cd.paneMode == "room" && cd.roomWidget != nil {
+			switch {
+			case cd.roomWidget.usersPaneHasFocus():
+				// The users column is the walk's right boundary: Python's
+				// Columns has no next column, and its List never scrolls
+				// horizontally, so the key is a no-op.
+				return nil
+			case cd.roomWidget.bodyHasFocus():
+				cd.app.SetFocus(cd.roomWidget.usersList)
+				return nil
+			case cd.roomWidget.editorHasFocus():
+				if cd.roomWidget.editorAtTextEnd() {
 					cd.app.SetFocus(cd.roomWidget.usersList)
 					return nil
 				}
-				cd.app.SetFocus(cd.roomWidget.Widget())
-				return nil
+				// Mid-text: the composer consumes the key (cursor movement).
+				return event
 			}
-			if cd.paneMode == "info" && cd.hubInfo != nil {
+			// From the channels list: walk into the room on the frame's
+			// preserved focus part (Python: the RoomFrame keeps its
+			// focus_part across focus leaves, Channels.py:1841-1851).
+			cd.roomWidget.restoreRoomPart()
+			return nil
+		}
+		if cd.paneMode == "info" {
+			if cd.hubInfo != nil {
 				cd.app.SetFocus(cd.hubInfo.Widget())
-				return nil
 			}
+			return nil
+		}
+		// The placeholder pane has nothing focusable to walk into (Python's
+		// placeholder column is not selectable) and the list is the leftmost
+		// column, so Right from it is a no-op.
+		if cd.ilb != nil && cd.ilb.HasFocus() {
+			return nil
 		}
 		return event
 	case tcell.KeyCtrlD:

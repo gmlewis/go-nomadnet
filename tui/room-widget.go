@@ -112,6 +112,13 @@ type RoomWidget struct {
 	chatMessages []ChannelMessage
 	members      []ChannelMember
 
+	// roomPart is the room's focused region for the Left/Right pane walk —
+	// Python's RoomFrame.focus_part (Channels.py:511-546), which persists
+	// across focus leaves into the users pane and the channels list. It is
+	// "footer" (the composer) unless the message body was last focused;
+	// Python constructs RoomFrame with focus_part="footer" (Channels.py:602).
+	roomPart string
+
 	// Tab-completion cycling state (mirrors Python RoomMessageEdit._tab_state,
 	// Channels.py:458) and the local user's nick (excluded from candidates).
 	tabState *TabState
@@ -129,6 +136,9 @@ func NewRoomWidget(app *App, hubName, roomName string) *RoomWidget {
 		hubConnected:    true,
 		maxMessageBytes: 350,
 		editorRows:      1,
+		// Python RoomFrame(focus_part="footer", Channels.py:602): a fresh
+		// room view starts on its composer.
+		roomPart: "footer",
 	}
 
 	// Messages view
@@ -163,6 +173,10 @@ func NewRoomWidget(app *App, hubName, roomName string) *RoomWidget {
 	rw.editor.SetFieldBackgroundColor(tc["msg_editor_bg"])
 	rw.editor.SetFieldTextColor(tc["msg_editor_fg"])
 	rw.editor.SetFocusFunc(func() {
+		// Track the frame's focus part for the Left/Right pane walk (Python's
+		// RoomFrame.focus_part, Channels.py:511-546, which persists across
+		// focus leaves into the users pane and back).
+		rw.roomPart = "footer"
 		if rw.OnFocusRegion != nil {
 			rw.OnFocusRegion("editor")
 		}
@@ -196,8 +210,10 @@ func NewRoomWidget(app *App, hubName, roomName string) *RoomWidget {
 	// draw in the same pass).
 	rw.messagesArea.OnWidthChange = func() { rw.renderMessages() }
 	// The body's focus switches the shortcut bar to the body region (Python
-	// RoomFrame focus setter → update_active_shortcuts).
+	// RoomFrame focus setter → update_active_shortcuts) and tracks the frame
+	// part for the pane walk.
 	rw.messagesArea.SetFocusFunc(func() {
+		rw.roomPart = "body"
 		if rw.OnFocusRegion != nil {
 			rw.OnFocusRegion("body")
 		}
@@ -228,11 +244,19 @@ func NewRoomWidget(app *App, hubName, roomName string) *RoomWidget {
 	rw.usersList = tview.NewList()
 	rw.usersList.ShowSecondaryText(false)
 	// The users pane is an INTERACTIVE list in the Go port (Python's pane is a
-	// plain urwid.ListBox with no selection rendering): the selected row
-	// carries the port's standard list_focus colors and the highlight fills
-	// the row, moving with the selection as the pane scrolls (Up/Down, mouse
-	// wheel and clicks all re-anchor the highlight — the selection tests pin
-	// it).
+	// plain urwid.ListBox): the selected row carries the port's standard
+	// list_focus colors and the highlight fills the row, moving with the
+	// selection as the pane scrolls (Up/Down, mouse wheel and clicks all
+	// re-anchor the highlight — the selection tests pin it).
+	//
+	// Python only highlights the focused row while the LIST BOX HAS FOCUS
+	// (each member row is AttrMap(entry, style, "list_focus"),
+	// Channels.py:714 — the focus map applies on focus, the row's own style
+	// otherwise), so an unfocused pane renders the selected member like any
+	// other row. The fork's SetSelectedFocusOnly mirrors that AttrMap pair:
+	// without it the highlight stays painted while the cursor sits in the
+	// message body (the "Users panel always keeps a highlighted line" bug).
+	rw.usersList.SetSelectedFocusOnly(true)
 	ApplyListFocusStyle(rw.usersList, app.Theme)
 	rw.usersList.SetHighlightFullLine(true)
 	// A wheel notch moves the SELECTION by the wheel step so the highlighted
@@ -246,6 +270,19 @@ func NewRoomWidget(app *App, hubName, roomName string) *RoomWidget {
 	// (Python show_user_info, Channels.py:2119) via ActivateMember.
 	rw.usersList.SetSelectedFunc(func(i int, mainText, secondaryText string, shortcut rune) {
 		rw.ActivateMember(i)
+	})
+	// The users pane's shortcut bar mirrors Python's Channels.shortcuts()
+	// (Channels.py:1573-1586): the room column's bar shows the BODY bar when
+	// the frame part is body and the ROOM (editor) bar otherwise — the frame
+	// part does not change while the users pane holds focus.
+	rw.usersList.SetFocusFunc(func() {
+		if rw.OnFocusRegion != nil {
+			region := "editor"
+			if rw.roomPart == "body" {
+				region = "body"
+			}
+			rw.OnFocusRegion(region)
+		}
 	})
 	// The " N users" count row is a PLAIN urwid.Text row in Python
 	// (Channels.py:694 — default-styled, never the selection highlight), so
@@ -376,6 +413,14 @@ func (rw *RoomWidget) handleInput(event *tcell.EventKey) *tcell.EventKey {
 		rw.toggleCollapse()
 		return nil
 	case tcell.KeyTab:
+		// Python UsersBox.keypress tab (Channels.py:313-321): Tab from the
+		// users pane jumps to the room's footer composer; nick completion
+		// only applies while the composer itself holds focus.
+		if rw.usersPaneHasFocus() {
+			rw.roomPart = "footer"
+			rw.app.SetFocus(rw.editor)
+			return nil
+		}
 		if rw.doTabComplete() {
 			return nil
 		}
@@ -745,12 +790,48 @@ func (rw *RoomWidget) renderMessages() {
 }
 
 // usersPaneHasFocus reports whether the users list currently holds focus
-// (the room's Left walks back to the message body from here).
+// (the room's Left walks back to the room from here).
 func (rw *RoomWidget) usersPaneHasFocus() bool {
 	if rw.app == nil {
 		return false
 	}
 	return rw.app.GetFocus() == tview.Primitive(rw.usersList)
+}
+
+// editorHasFocus reports whether the room's composer holds focus (Python's
+// RoomFrame.focus_position == "footer").
+func (rw *RoomWidget) editorHasFocus() bool {
+	if rw.app == nil {
+		return false
+	}
+	return rw.app.GetFocus() == tview.Primitive(rw.editor)
+}
+
+// editorAtTextStart reports whether the composer's cursor sits at position 0
+// — the only point where urwid's Edit lets a plain Left propagate out of the
+// editor (urwid widget/edit.py keypress: `if pos == 0: return key`).
+func (rw *RoomWidget) editorAtTextStart() bool {
+	return rw.editor.CursorPos() == 0
+}
+
+// editorAtTextEnd reports whether the composer's cursor sits at the end of
+// the whole buffer — the only point where urwid's Edit lets a plain Right
+// propagate (urwid widget/edit.py keypress: `if pos >= len(edit_text):
+// return key`).
+func (rw *RoomWidget) editorAtTextEnd() bool {
+	return rw.editor.CursorPos() >= len([]rune(rw.editor.GetText()))
+}
+
+// restoreRoomPart re-focuses the room's remembered region: the message body
+// when Python's RoomFrame.focus_part is body, otherwise the composer footer
+// (which also shows the hardware cursor when the walk re-enters the room).
+func (rw *RoomWidget) restoreRoomPart() {
+	if rw.roomPart == "body" {
+		rw.app.SetFocus(rw.messagesArea)
+		return
+	}
+	rw.roomPart = "footer"
+	rw.app.SetFocus(rw.editor)
 }
 
 // wheelUsersList is the users pane's wheel capture: one notch moves the
@@ -832,10 +913,23 @@ func (rw *RoomWidget) renderMembers(prevHash string) {
 		// whose fill paints the member's fg across the FULL pane width —
 		// the padded trailing spaces carry the fg in the item text itself.
 		label = padToWidth(label, ' ', rw.usersWidth-2)
-		rw.usersList.AddItem(fmt.Sprintf("[%v]%v[-]", colorName(color), label), "", 0, nil)
+		rw.usersList.AddItem(label, "", 0, nil)
+		// The member's palette color rides the ITEM style, not an embedded
+		// color tag: the fork's selected style replaces the item style on
+		// selection (the AttrMap(attr, focus_attr) pair) but cannot override
+		// a tag inside the text — a tagged row kept its palette fg over the
+		// list_focus background and rendered unreadable (amber on light
+		// gray, the live 2026-09-04 capture's self row). The same fix the
+		// channels hub list already uses (channels.go SetHubs).
+		rw.usersList.SetItemStyle(rw.usersList.GetItemCount()-1,
+			tcell.StyleDefault.Foreground(color))
 	}
 	if len(rw.members) == 0 {
-		rw.usersList.AddItem("[gray]No users[-]", "", 0, nil)
+		// Python (Channels.py:717): the empty pane appends a PLAIN
+		// urwid.Text(" (no members)") row — default-styled, no attribute, so
+		// no embedded color tag may fight the focused row's list_focus style
+		// (the same tagged-fg-over-highlight bug the member rows had).
+		rw.usersList.AddItem(" (no members)", "", 0, nil)
 	}
 	// Restore the selection to the same member after a rebuild (Python's
 	// prev_focus_key → set_focus); an unmatched hash lands on the first row,
@@ -854,7 +948,7 @@ func (rw *RoomWidget) renderMembers(prevHash string) {
 
 // ActivateMember fires OnMemberClick for the member at the given users-pane
 // row (Python's entry click signal → show_user_info). Out-of-range indices
-// and the "No users" placeholder row are no-ops.
+// and the "(no members)" placeholder row are no-ops.
 func (rw *RoomWidget) ActivateMember(index int) {
 	if rw.OnMemberClick == nil || index < 0 || index >= len(rw.members) {
 		return

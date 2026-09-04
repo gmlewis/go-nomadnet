@@ -23,12 +23,13 @@ import (
 )
 
 // The users pane is an INTERACTIVE list in the Go port: exactly the selected
-// row carries the theme's list_focus highlight (the port's standard selection
-// style — Python's pane is a plain urwid.ListBox with no selection rendering,
-// Channels.py:626, so this interactive selection is a deliberate Go-port UX
-// upgrade). The 2026-09-03 evening fleet captures' complaint — a PHANTOM
-// highlighted row under the "N users" count — stays fixed: the count row lives
-// outside the List and the non-selected rows paint no highlight at all.
+// row carries the theme's list_focus highlight WHILE THE PANE HOLDS FOCUS
+// (Python's pane is a plain urwid.ListBox whose member rows are
+// AttrMap(entry, style, "list_focus") — the focus map applies on focus and
+// the row's own palette style otherwise, Channels.py:714). An unfocused pane
+// renders the selected member like any other row (Bug#2), and the focused
+// highlight replaces the member's palette fg with the list_focus foreground
+// so the row stays readable (Bug#3).
 
 // TestRoomWidgetUsersPaneSelectionHighlight pins that exactly ONE member row
 // (the list's selection, the first member by default) carries the list_focus
@@ -83,5 +84,58 @@ func TestRoomWidgetUsersPaneSelectionHighlight(t *testing.T) {
 	_, _, bg = usersCell(screen, countY, 1)
 	if bg != tcell.ColorDefault {
 		t.Errorf("count row bg = %v, want the default-styled plain text row", bg)
+	}
+
+	// Bug#3: the highlighted row's foreground is the list_focus foreground
+	// (the AttrMap focus map REPLACES the member's palette color, urwid
+	// Channels.py:714), so the row reads as black-on-light-gray instead of
+	// keeping the palette fg over the highlight background.
+	_, fg, _ := usersCell(screen, selectedY, 1)
+	if fg != wantFg {
+		t.Errorf("selected row fg = %v, want the list_focus foreground %v", fg, wantFg)
+	}
+}
+
+// TestRoomWidgetUsersPaneUnfocusedNoHighlight pins Bug#2: with the cursor
+// elsewhere (the users pane NOT focused), the selected member row renders
+// like any other row — the member's palette foreground on the default
+// background, no highlight — mirroring Python's AttrMap(entry, style,
+// "list_focus") whose focus map only applies on focus (Channels.py:714).
+func TestRoomWidgetUsersPaneUnfocusedNoHighlight(t *testing.T) {
+	t.Parallel()
+
+	members := []ChannelMember{
+		{Nick: "alice", Hash: "0102030405060708090a0b0c0d0e0f10", Online: true},
+		{Nick: "bob", Hash: "02030405060708090a0b0c0d0e0f1001", Online: true},
+	}
+	screen, rw := renderUsersPane(t, members)
+	// Blur the pane: focus moves into the room's message body, the way the
+	// Left/Right walk leaves the users pane.
+	rw.app.SetFocus(rw.messagesArea)
+	redrawRoomWidget(t, rw, screen)
+
+	_, wantBg := ListFocusColors(ThemeDark)
+
+	// No member row carries the highlight background...
+	for _, m := range members {
+		y := -1
+		for yy := 1; yy < 36; yy++ {
+			if strings.Contains(usersRowText(screen, yy), m.Nick) {
+				y = yy
+				break
+			}
+		}
+		if y < 0 {
+			t.Fatalf("member %q row not found", m.Nick)
+		}
+		_, _, bg := usersCell(screen, y, 1)
+		if bg == wantBg {
+			t.Errorf("unfocused pane member %q row bg = %v, want no highlight (Python renders the row with its own style)", m.Nick, bg)
+		}
+		// ...and every row keeps its OWN member's palette foreground.
+		_, fg, _ := usersCell(screen, y, 1)
+		if fg != NickColorByHashHexColor(m.Hash, DefaultNickPalette(ThemeDark)) {
+			t.Errorf("unfocused pane member %q row fg = %v, want the member's palette color", m.Nick, fg)
+		}
 	}
 }

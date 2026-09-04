@@ -620,8 +620,20 @@ func formatRRCMessageLines(msg ChannelMessage, opts RRCRenderOpts, width int) []
 // live capture's row 27 col 49.
 func formatJustifiedHead(msg ChannelMessage, opts RRCRenderOpts, seg string, nickLen int) string {
 	colors := rrcRenderColors(opts.Theme)
-	nick := seg[:nickLen-1]
-	body := seg[nickLen:]
+	// The wrapped first line may END inside the "<sender> " prefix: urwid's
+	// space wrap breaks AT the nick's trailing space and drops it, leaving a
+	// segment as short as "<sender>" (a narrow chat pane, or a wrap point
+	// that walks back into the prefix). Python renders the nick as a styled
+	// run inside one wrapping flow (Channels.py:1405-1413), so a partial
+	// nick run on line one is normal — slice defensively instead of
+	// panicking (the [17:16] crash of the JOINED-FANOUT live run,
+	// logs/crash-20260904-143649.log).
+	nick := seg
+	body := ""
+	if len(seg) >= nickLen {
+		nick = seg[:nickLen-1]
+		body = seg[nickLen:]
+	}
 	var sb strings.Builder
 	sb.WriteString(defaultPadTag + " ")
 	sb.WriteString(rrcTsPrefix(msg.TsMs, colors["ts"]))

@@ -88,7 +88,9 @@ func TestComposerFocusedReadlineKeysEditNotAttach(t *testing.T) {
 		t.Errorf("Backspace did not reach the composer editor (text=%q)", got)
 	}
 
-	// ctrl w → kill previous word, NOT close.
+	// ctrl w → kill previous word, NOT close (Python parity: the ReadlineMixin
+	// consumes ctrl-w inside the composer, ReadlineEdit.py:40,59 — verified
+	// live against the installed Python).
 	cw.editor.SetText("hello world")
 	cw.editor.SetCursorPos(len("hello world"))
 	cw.pressComposerKey(t, tcell.KeyCtrlW)
