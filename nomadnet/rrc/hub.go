@@ -273,7 +273,7 @@ func (h *RRCHub) Connect(ts rns.Transport, dest *rns.Destination) error {
 	}
 
 	link.SetLinkEstablishedCallback(h.onEstablished)
-	link.SetLinkClosedCallback(func(l *rns.Link) { h.onClosed() })
+	link.SetLinkClosedCallback(func(l *rns.Link) { h.onClosedWithReason(rns.TeardownReasonName(l.TeardownReason())) })
 
 	return link.Establish()
 }
@@ -332,7 +332,19 @@ func (h *RRCHub) onEstablished(l *rns.Link) {
 // reconnect when auto-reconnect is enabled and the close was not the result of
 // a manual disconnect. The optional onLinkClosed seam is fired before the
 // reconnect decision.
+// onClosed is the no-argument form kept for callers without a link reference.
 func (h *RRCHub) onClosed() {
+	h.onClosedWithReason("")
+}
+
+// onClosedWithReason is onClosed with the RNS teardown reason for lifecycle
+// logging: every hub-link close is attributed (timeout, remote teardown,
+// initiator teardown, transport loss, staleness) so reconnect storms are
+// diagnosable from nomadnet.log alone.
+func (h *RRCHub) onClosedWithReason(reason string) {
+	if reason != "" {
+		log.Printf("[RRC %v] link closed: %v", h.Name, reason)
+	}
 	h.lock.Lock()
 	h.link = nil
 	h.Welcomed = false
@@ -650,7 +662,7 @@ func (h *RRCHub) establishLink(ts rns.Transport, dest *rns.Destination) error {
 	h.lock.Unlock()
 
 	link.SetLinkEstablishedCallback(h.onEstablished)
-	link.SetLinkClosedCallback(func(l *rns.Link) { h.onClosed() })
+	link.SetLinkClosedCallback(func(l *rns.Link) { h.onClosedWithReason(rns.TeardownReasonName(l.TeardownReason())) })
 
 	return link.Establish()
 }
