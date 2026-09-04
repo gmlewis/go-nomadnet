@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/gdamore/tcell/v2"
+	"github.com/gmlewis/go-reticulum/testutils"
 	"github.com/rivo/tview"
 )
 
@@ -215,6 +216,7 @@ func TestNodeInfoHostingRefresh(t *testing.T) {
 
 // TestNodeInfoHostingRefreshTicker verifies Start begins the periodic refresh
 // and Stop halts it (the ticker must not keep calling providers after Stop).
+// It runs in a synctest bubble so the 1 s refresh ticker fires in virtual time.
 func TestNodeInfoHostingRefreshTicker(t *testing.T) {
 	t.Parallel()
 	app := newTestApp()
@@ -227,17 +229,24 @@ func TestNodeInfoHostingRefreshTicker(t *testing.T) {
 	ni := NewNodeInfoDisplay(app, d)
 	afterConstruction := calls
 
-	ni.start(false) // synchronous (no event loop in tests; QueueUpdateDraw would block)
-	time.Sleep(1200 * time.Millisecond)
-	ni.Stop()
-	afterRun := calls
-	if afterRun <= afterConstruction {
-		t.Fatalf("ticker did not fire: calls=%v after construction=%v", afterRun, afterConstruction)
-	}
+	testutils.RunInBubble(t, func(t *testing.T) {
+		ni.start(false) // synchronous (no event loop in tests; QueueUpdateDraw would block)
+		// Durably block so the bubble's virtual clock advances through the
+		// 1 s refresh ticker (synctest.Wait alone never advances the clock).
+		time.Sleep(2 * animationInterval())
+		ni.Stop()
+		afterRun := calls
+		if afterRun <= afterConstruction {
+			t.Fatalf("ticker did not fire: calls=%v after construction=%v", afterRun, afterConstruction)
+		}
 
-	// After Stop, the ticker must not keep calling the provider.
-	time.Sleep(400 * time.Millisecond)
-	if calls > afterRun+1 {
-		t.Errorf("ticker kept firing after Stop: calls=%v afterRun=%v", calls, afterRun)
-	}
+		// After Stop, the ticker must not keep calling the provider. The
+		// virtual clock can overshoot, but with the worker stopped (Stop
+		// waits for it) no further ticks are possible.
+		time.Sleep(2 * animationInterval())
+		testutils.Wait()
+		if calls > afterRun {
+			t.Errorf("ticker kept firing after Stop: calls=%v afterRun=%v", calls, afterRun)
+		}
+	})
 }

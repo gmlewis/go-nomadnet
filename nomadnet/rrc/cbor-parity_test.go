@@ -60,6 +60,7 @@ if __name__ == "__main__":
 
 func TestIntegrationCBORGoToPython(t *testing.T) {
 	t.Parallel()
+	testutils.SkipShortIntegration(t)
 
 	// Check if Python cbor2 is available
 	cmd := exec.Command("python3", "-c", "import cbor2")
@@ -115,6 +116,7 @@ func TestIntegrationCBORGoToPython(t *testing.T) {
 
 func TestIntegrationRRCGoToPythonCBORRoundTrip(t *testing.T) {
 	t.Parallel()
+	testutils.SkipShortIntegration(t)
 
 	// Check if Python cbor2 is available
 	cmd := exec.Command("python3", "-c", "import cbor2")
@@ -216,6 +218,8 @@ print("OK")
 }
 
 func TestIntegrationProtocolConstantsMatch(t *testing.T) {
+	t.Parallel()
+	testutils.SkipShortIntegration(t)
 	// Verify Go protocol constants match the FRESH Python values by execing the
 	// real nomadnet.RRC reference. This ensures the Go and Python implementations
 	// use the same wire format, with the expected values derived live on every

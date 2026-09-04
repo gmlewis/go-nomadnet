@@ -29,6 +29,7 @@ import (
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/gmlewis/go-reticulum/rns"
+	"github.com/gmlewis/go-reticulum/testutils"
 )
 
 func TestProtocolConstants(t *testing.T) {
@@ -1062,12 +1063,7 @@ func TestDecodeText(t *testing.T) {
 
 func tempDir(t *testing.T) string {
 	t.Helper()
-	dir, err := os.MkdirTemp("/tmp", "nomadnet-rrc-test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.RemoveAll(dir) })
-	return dir
+	return testutils.TempDir(t, "nomadnet-rrc-test")
 }
 
 // silentLogger returns an RNS logger that emits nothing, keeping transport and

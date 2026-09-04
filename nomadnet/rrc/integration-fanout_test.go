@@ -33,6 +33,7 @@ import (
 	"time"
 
 	"github.com/gmlewis/go-reticulum/rns"
+	"github.com/gmlewis/go-reticulum/testutils"
 )
 
 // startIntegrationHub spawns the Python mini hub, connects a Go client
@@ -93,7 +94,19 @@ func startIntegrationHub(t *testing.T) (*RRCHub, string, func()) {
 	// notices attribute to it (Python _record_notice, RRC.py:817-824).
 	hub.JoinRoom("general", false)
 	mgr.SetActive(hub, "general")
-	time.Sleep(500 * time.Millisecond)
+	// The 500ms settle this poll replaces existed so the hub had processed
+	// the JOIN before tests send messages; poll the hub's event log for the
+	// received T_JOIN packet instead.
+	if !testutils.PollUntil(10*time.Second, func() bool {
+		for _, ev := range readMiniHubEvents(t, hubLog) {
+			if ev["event"] == "packet" && ev["type"] == float64(TypeJoin) {
+				return true
+			}
+		}
+		return false
+	}) {
+		t.Fatalf("hub never received the T_JOIN for 'general'; events: %v", readMiniHubEvents(t, hubLog))
+	}
 
 	return hub, hubLog, func() {
 		hubCleanup()
@@ -104,21 +117,21 @@ func startIntegrationHub(t *testing.T) (*RRCHub, string, func()) {
 // waitMsgs polls the room's buffer until want returns true or times out.
 func waitMsgs(t *testing.T, hub *RRCHub, room string, want func([]*RRCMessage) bool, timeout time.Duration) []*RRCMessage {
 	t.Helper()
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
+	snapshot := func() []*RRCMessage {
 		hub.lock.Lock()
+		defer hub.lock.Unlock()
 		msgs := make([]*RRCMessage, len(hub.Messages[room]))
 		copy(msgs, hub.Messages[room])
-		hub.lock.Unlock()
-		if want(msgs) {
-			return msgs
-		}
-		time.Sleep(100 * time.Millisecond)
+		return msgs
 	}
-	hub.lock.Lock()
-	defer hub.lock.Unlock()
-	t.Fatalf("timeout waiting on %v messages; have %v", room, len(hub.Messages[room]))
-	return nil
+	var msgs []*RRCMessage
+	if !testutils.PollUntil(timeout, func() bool {
+		msgs = snapshot()
+		return want(msgs)
+	}) {
+		t.Fatalf("timeout waiting on %v messages; have %v", room, len(snapshot()))
+	}
+	return msgs
 }
 
 // TestIntegrationFanoutBurst replays the rrcd 0.3.2 per-member fanout burst
@@ -132,6 +145,7 @@ func waitMsgs(t *testing.T, hub *RRCHub, room string, want func([]*RRCMessage) b
 // timestamp is the ARRIVAL time (not the stale envelope ts), and the
 // nicked copies are all learned in the room's member set.
 func TestIntegrationFanoutBurst(t *testing.T) {
+	t.Parallel()
 	hub, _, cleanup := startIntegrationHub(t)
 	defer cleanup()
 
@@ -180,6 +194,7 @@ func TestIntegrationFanoutBurst(t *testing.T) {
 // src to the room's member set (Python RRC.py:1031-1035 - the learning runs
 // before the collapse); the empty-nick copies carry no nick to learn.
 func TestIntegrationFanoutNickLearning(t *testing.T) {
+	t.Parallel()
 	hub, hubLog, cleanup := startIntegrationHub(t)
 	defer cleanup()
 
@@ -288,6 +303,7 @@ func TestIntegrationFanoutNickLearning(t *testing.T) {
 // hub's MOTD AND joins the ACTIVE room's buffer as a notice - the hub's
 // global welcome must render IN the open room.
 func TestIntegrationRoomlessMOTDNotice(t *testing.T) {
+	t.Parallel()
 	hub, _, cleanup := startIntegrationHub(t)
 	defer cleanup()
 
@@ -326,6 +342,7 @@ func TestIntegrationRoomlessMOTDNotice(t *testing.T) {
 // adds EVERY body hash to the room's member set, healing the whole set
 // client-side.
 func TestIntegrationJoinedHeal(t *testing.T) {
+	t.Parallel()
 	hub, _, cleanup := startIntegrationHub(t)
 	defer cleanup()
 

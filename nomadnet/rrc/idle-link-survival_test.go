@@ -35,9 +35,15 @@ import (
 	"time"
 
 	"github.com/gmlewis/go-reticulum/rns"
+	"github.com/gmlewis/go-reticulum/testutils"
 )
 
 func TestIntegrationIdleLinkSurvivesPythonWatchdog(t *testing.T) {
+	t.Parallel()
+	// The wait IS the assertion: the test holds the link silent for a real
+	// window to prove the Python watchdog does not tear it down, so it cannot
+	// meet the -short budget.
+	testutils.SkipShortIntegration(t)
 	port := freePortRRC(t)
 	hubHash, _, hubCleanup := startPythonMiniHub(t, port)
 	defer hubCleanup()

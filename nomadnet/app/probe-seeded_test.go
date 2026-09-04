@@ -14,6 +14,7 @@ import (
 )
 
 func TestProbeIsKnown(t *testing.T) {
+	t.Parallel()
 	seed := os.Getenv("PROBE_SEED")
 	if seed == "" {
 		t.Skip("PROBE_SEED not set")

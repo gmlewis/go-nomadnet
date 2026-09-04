@@ -33,6 +33,7 @@ import (
 // to the FormatPongResult golden table: it exercises the real RNS link
 // establishment flow over the interconnected test transports.
 func TestAppPingPeer(t *testing.T) {
+	t.Parallel()
 	appA, appB, cleanup := setupTwoNodeApps(t)
 	defer cleanup()
 

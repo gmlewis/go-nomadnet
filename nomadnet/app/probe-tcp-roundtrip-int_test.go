@@ -84,6 +84,7 @@ func writeProbeRNSClientConfig(t *testing.T, dir string, port int) {
 // cmd/test-conversations harness. A failure here means the harness's
 // cross-instance delivery gap is in the RNS/app layer, not the TUI.
 func TestIntegrationTwoAppTCPRoundTrip(t *testing.T) {
+	t.Parallel()
 	testutils.SkipShortIntegration(t)
 
 	port := reservePort(t)

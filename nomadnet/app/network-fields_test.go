@@ -32,6 +32,7 @@ import (
 // while NodePropagationHash derives the lxmf.propagation hash. An unannounced
 // hash yields "Unknown" / nil.
 func TestNodeOperatorDisplayAndPropagationHash(t *testing.T) {
+	t.Parallel()
 	appA, appB, cleanup := setupTwoNodeApps(t)
 	defer cleanup()
 

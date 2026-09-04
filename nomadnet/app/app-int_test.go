@@ -86,16 +86,16 @@ func setupTwoNodeApps(t *testing.T) (*App, *App, func()) {
 func waitForAnnounce(t *testing.T, app *App, announceType string, timeout time.Duration) {
 	t.Helper()
 
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
+	if !testutils.PollUntil(timeout, func() bool {
 		for _, ev := range app.DirAnnounceEvents() {
 			if ev.AnnounceType == announceType {
-				return
+				return true
 			}
 		}
-		time.Sleep(50 * time.Millisecond)
+		return false
+	}) {
+		t.Fatalf("timeout waiting for %v announce", announceType)
 	}
-	t.Fatalf("timeout waiting for %v announce", announceType)
 }
 
 // waitForLXMFMessage waits for a message on the given channel or times out.
@@ -118,22 +118,6 @@ func newStartedTSApp(t *testing.T, storageDir string) (*rns.TransportSystem, fun
 		t.Fatalf("TransportSystem.Start error: %v", err)
 	}
 	return ts, func() { ts.Stop() }
-}
-
-func writeAppRNSConfig(t *testing.T, configDir string) {
-	t.Helper()
-	if err := os.MkdirAll(configDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	content := `[reticulum]
-share_instance = No
-
-[logging]
-loglevel = 4
-`
-	if err := os.WriteFile(filepath.Join(configDir, "config"), []byte(content), 0o600); err != nil {
-		t.Fatal(err)
-	}
 }
 
 func newAppPipes(t *testing.T, tsA, tsB *rns.TransportSystem) (*interfaces.PipeInterface, *interfaces.PipeInterface, func()) {
@@ -164,6 +148,7 @@ func init() {
 // composed content/title byte-faithful through the LXMF stack. It also
 // verifies the outbound message is ingested into the sender's conversation.
 func TestIntegrationSendConversationWiring(t *testing.T) {
+	t.Parallel()
 	appA, appB, cleanup := setupTwoNodeApps(t)
 	defer cleanup()
 
@@ -222,6 +207,7 @@ func TestIntegrationSendConversationWiring(t *testing.T) {
 // from A; B's ConversationMessages(peerHex) returns one inbound entry whose
 // source hash is A's LXMF destination hash.
 func TestIntegrationConversationMessages(t *testing.T) {
+	t.Parallel()
 	appA, appB, cleanup := setupTwoNodeApps(t)
 	defer cleanup()
 
@@ -324,6 +310,7 @@ func fieldLookupInt(fields map[any]any, key int) (any, bool) {
 // This pins the send side of the "attachFile" TODO. The receive-side
 // extraction (ExtractAttachmentsFromLXM) is a separate, still-unwired gap.
 func TestIntegrationSendConversationWithAttachment(t *testing.T) {
+	t.Parallel()
 	appA, appB, cleanup := setupTwoNodeApps(t)
 	defer cleanup()
 
@@ -399,6 +386,7 @@ func TestIntegrationSendConversationWithAttachment(t *testing.T) {
 // be written. This pins the receive side of the attachment TODO; the
 // C-s save-focattachments path then copies these extracted files to downloads.
 func TestIntegrationAttachmentExtractionOnReceive(t *testing.T) {
+	t.Parallel()
 	appA, appB, cleanup := setupTwoNodeApps(t)
 	defer cleanup()
 
@@ -457,6 +445,7 @@ func TestIntegrationAttachmentExtractionOnReceive(t *testing.T) {
 // (Conversations.py:2368-2391). The selection is built from B's loaded
 // ConversationMessages (message hash + field index 0).
 func TestIntegrationSaveConversationAttachments(t *testing.T) {
+	t.Parallel()
 	appA, appB, cleanup := setupTwoNodeApps(t)
 	defer cleanup()
 
@@ -543,6 +532,7 @@ func TestIntegrationSaveConversationAttachments(t *testing.T) {
 // the QR modes share the same paper_output path (unit-tested in
 // conversation/paper_test.go).
 func TestIntegrationPaperMessageSaveURI(t *testing.T) {
+	t.Parallel()
 	appA, appB, cleanup := setupTwoNodeApps(t)
 	defer cleanup()
 
@@ -594,6 +584,7 @@ func TestIntegrationPaperMessageSaveURI(t *testing.T) {
 // the URI is parsed, the message is created, and parity with
 // Python's ingest_lxm_uri local-delivery branch holds.
 func TestIntegrationIngestLXMURI(t *testing.T) {
+	t.Parallel()
 	appA, appB, cleanup := setupTwoNodeApps(t)
 	defer cleanup()
 

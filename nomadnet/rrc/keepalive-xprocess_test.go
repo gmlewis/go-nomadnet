@@ -89,6 +89,7 @@ while True:
 // window with the Python side still ACTIVE (age < 12s) demonstrates the
 // cross-implementation keepalive works at the link layer.
 func TestIntegrationKeepalivePythonResponder(t *testing.T) {
+	t.Parallel()
 	testutils.SkipShortIntegration(t)
 	pyPath := findRNSPython(t)
 
@@ -232,13 +233,12 @@ func (lb *lineBuffer) hasLinePrefix(prefix string) bool {
 func waitForIdentity(t *testing.T, ts *rns.TransportSystem, hash []byte, timeout time.Duration) *rns.Identity {
 	t.Helper()
 	_ = ts.RequestPath(hash)
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		if id := ts.Recall(hash); id != nil {
-			return id
-		}
-		time.Sleep(200 * time.Millisecond)
+	var id *rns.Identity
+	if !testutils.PollUntil(timeout, func() bool {
+		id = ts.Recall(hash)
+		return id != nil
+	}) {
+		t.Fatal("timeout waiting for the announced identity")
 	}
-	t.Fatal("timeout waiting for the announced identity")
-	return nil
+	return id
 }

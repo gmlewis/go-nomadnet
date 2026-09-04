@@ -38,6 +38,7 @@ import (
 // fetchBytes + SaveDownload path. Mirrors Python Browser.download_file +
 // file_received.
 func TestIntegrationDownloadFile(t *testing.T) {
+	t.Parallel()
 	testutils.SkipShortIntegration(t)
 
 	tsServer, cleanupServer := newStartedTS(t)

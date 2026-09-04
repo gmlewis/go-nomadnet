@@ -22,14 +22,15 @@ import (
 	"bytes"
 	"encoding/json"
 	"os/exec"
+	"sync"
 	"testing"
 )
 
 // SkipShortIntegration skips a test when -short is in effect. The -short
 // integration run (scripts/test-integration.sh -short) is a fast feedback loop
 // where every test should run in well under 5 seconds by definition; any test
-// that cannot meet that budget (a full-package type check, a live network
-// round-trip, a cross-process tmux harness, ...) calls this at its top so the
+// that cannot meet that budget (a cross-process Python interop, a daemon
+// build + boot, a full-package type check, ...) calls this at its top so the
 // short run stays quick while the full unit and full integration runs still
 // execute the test.
 func SkipShortIntegration(t *testing.T) {

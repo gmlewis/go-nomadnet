@@ -35,6 +35,7 @@ import (
 	"time"
 
 	"github.com/gmlewis/go-reticulum/rns"
+	"github.com/gmlewis/go-reticulum/testutils"
 )
 
 func writeRNSConfigDir(t *testing.T, dir string, enableTransport bool, extra string) string {
@@ -63,6 +64,11 @@ loglevel = 4
 }
 
 func TestIntegrationMultiHopIdleLinkSurvives(t *testing.T) {
+	t.Parallel()
+	// The wait IS the assertion: the test holds a 2-hop link chain silent for
+	// a real window to prove both hops survive, so it cannot meet the -short
+	// budget.
+	testutils.SkipShortIntegration(t)
 	// A: Python mini-hub on port P1.
 	p1 := freePortRRC(t)
 	hubHash, _, hubCleanup := startPythonMiniHub(t, p1)

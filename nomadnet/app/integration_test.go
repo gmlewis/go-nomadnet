@@ -28,6 +28,7 @@ import (
 )
 
 func TestIntegrationSetupTwoNodeApps(t *testing.T) {
+	t.Parallel()
 	appA, appB, cleanup := setupTwoNodeApps(t)
 	defer cleanup()
 
@@ -46,6 +47,7 @@ func TestIntegrationSetupTwoNodeApps(t *testing.T) {
 }
 
 func TestIntegrationLXMFMessageSendReceive(t *testing.T) {
+	t.Parallel()
 	appA, appB, cleanup := setupTwoNodeApps(t)
 	defer cleanup()
 
@@ -94,6 +96,7 @@ func TestIntegrationLXMFMessageSendReceive(t *testing.T) {
 }
 
 func TestIntegrationLXMFMessageCreatesConversation(t *testing.T) {
+	t.Parallel()
 	appA, appB, cleanup := setupTwoNodeApps(t)
 	defer cleanup()
 
@@ -129,6 +132,7 @@ func TestIntegrationLXMFMessageCreatesConversation(t *testing.T) {
 }
 
 func TestIntegrationNodeAnnounceReceivedByPeer(t *testing.T) {
+	t.Parallel()
 	appA, appB, cleanup := setupTwoNodeApps(t)
 	defer cleanup()
 
@@ -145,6 +149,7 @@ func TestIntegrationNodeAnnounceReceivedByPeer(t *testing.T) {
 }
 
 func TestIntegrationLXMFAnnouncePopulatesDirectory(t *testing.T) {
+	t.Parallel()
 	appA, appB, cleanup := setupTwoNodeApps(t)
 	defer cleanup()
 
@@ -172,6 +177,7 @@ func TestIntegrationLXMFAnnouncePopulatesDirectory(t *testing.T) {
 }
 
 func TestIntegrationNodeAnnouncePopulatesDirectory(t *testing.T) {
+	t.Parallel()
 	appA, appB, cleanup := setupTwoNodeApps(t)
 	defer cleanup()
 
@@ -204,6 +210,7 @@ func TestIntegrationNodeAnnouncePopulatesDirectory(t *testing.T) {
 }
 
 func TestIntegrationLXMFAnnouncePopulatesDirectoryName(t *testing.T) {
+	t.Parallel()
 	appA, appB, cleanup := setupTwoNodeApps(t)
 	defer cleanup()
 
@@ -225,6 +232,7 @@ func TestIntegrationLXMFAnnouncePopulatesDirectoryName(t *testing.T) {
 }
 
 func TestIntegrationAnnounceStreamOrder(t *testing.T) {
+	t.Parallel()
 	appA, appB, cleanup := setupTwoNodeApps(t)
 	defer cleanup()
 
@@ -265,6 +273,7 @@ func TestIntegrationAnnounceStreamOrder(t *testing.T) {
 }
 
 func TestIntegrationNodeAnnounceCreatesKnownNodeForTrustedPeer(t *testing.T) {
+	t.Parallel()
 	appA, appB, cleanup := setupTwoNodeApps(t)
 	defer cleanup()
 
@@ -310,6 +319,7 @@ func TestIntegrationNodeAnnounceCreatesKnownNodeForTrustedPeer(t *testing.T) {
 }
 
 func TestIntegrationPNAnnounceReceivedByPeer(t *testing.T) {
+	t.Parallel()
 	appA, appB, cleanup := setupTwoNodeApps(t)
 	defer cleanup()
 

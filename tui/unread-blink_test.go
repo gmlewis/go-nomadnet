@@ -19,6 +19,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/gmlewis/go-reticulum/testutils"
 )
 
 // TestUnreadIndicatorGlyph asserts updateUnreadIndicator swaps the leading
@@ -112,12 +114,7 @@ func menuText(md *MainDisplay) string {
 
 // waitForPrefix polls the menu text (under md.mu) for up to timeout for prefix.
 func waitForPrefix(md *MainDisplay, prefix string, timeout time.Duration) bool {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		if strings.HasPrefix(menuText(md), prefix) {
-			return true
-		}
-		time.Sleep(2 * time.Millisecond)
-	}
-	return false
+	return testutils.PollUntil(timeout, func() bool {
+		return strings.HasPrefix(menuText(md), prefix)
+	})
 }

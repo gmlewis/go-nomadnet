@@ -119,6 +119,11 @@ func newStartedTSWithTCPClient(t *testing.T, host string, port int) (*rns.Transp
 		t.Fatalf("NewTCPClientInterface: %v", err)
 	}
 	ts.RegisterInterface(goIface)
+	// Wait for the TCP client to connect before returning (poll the interface
+	// status; callers previously paid a fixed 500ms sleep for this).
+	if !testutils.PollUntil(5*time.Second, func() bool { return goIface.Status() }) {
+		t.Fatalf("TCP client to %v:%v never connected", host, port)
+	}
 	cleanup := func() {
 		_ = goIface.Detach()
 	}
@@ -154,18 +159,18 @@ func (lb *lineBuffer) findLine(prefix string) (string, bool) {
 // waitForLine polls for a line with prefix within timeout, returning its value.
 func (lb *lineBuffer) waitForLine(t *testing.T, prefix string, timeout time.Duration) string {
 	t.Helper()
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		if v, ok := lb.findLine(prefix); ok {
-			return v
-		}
-		time.Sleep(50 * time.Millisecond)
+	var v string
+	if !testutils.PollUntil(timeout, func() bool {
+		var ok bool
+		v, ok = lb.findLine(prefix)
+		return ok
+	}) {
+		lb.mu.Lock()
+		got := strings.Join(lb.lines, "\n")
+		lb.mu.Unlock()
+		t.Fatalf("timed out waiting for %q; python stdout so far:\n%v", prefix, got)
 	}
-	lb.mu.Lock()
-	got := strings.Join(lb.lines, "\n")
-	lb.mu.Unlock()
-	t.Fatalf("timed out waiting for %q; python stdout so far:\n%v", prefix, got)
-	return ""
+	return v
 }
 
 // pythonRRCServerScript is a minimal RRC *server* (the Python nomadnet package
@@ -379,6 +384,7 @@ print("CLIENT_DONE=1", flush=True)
 // "Hello from Go!"; the Python client's message callback prints RECV_MSG= and
 // the test asserts the text matches.
 func TestIntegrationXProcessMSGRoundTrip(t *testing.T) {
+	t.Parallel()
 	testutils.SkipShortIntegration(t)
 	pyPath := findRNSPython(t)
 
@@ -423,8 +429,6 @@ func TestIntegrationXProcessMSGRoundTrip(t *testing.T) {
 
 	ts, tsCleanup := newStartedTSWithTCPClient(t, "127.0.0.1", pyPort)
 	defer tsCleanup()
-	// Give the TCP client a moment to connect before announcing.
-	time.Sleep(500 * time.Millisecond)
 
 	serverDest, err := rns.NewDestination(ts, ts.Identity(), rns.DestinationIn, rns.DestinationSingle, "rrc", "chat")
 	if err != nil {
@@ -522,6 +526,7 @@ func TestIntegrationXProcessMSGRoundTrip(t *testing.T) {
 // HELLO body name="nomadnet", ver="0.1", caps {0,1}; WELCOME body hub="PyHub",
 // ver="0.1", caps={}, limits {0:32, 1:64, 2:350, 3:32, 4:240}.
 func TestIntegrationXProcessHelloWelcome(t *testing.T) {
+	t.Parallel()
 	testutils.SkipShortIntegration(t)
 	pyPath := findRNSPython(t)
 
@@ -567,9 +572,6 @@ func TestIntegrationXProcessHelloWelcome(t *testing.T) {
 	// Bring up the Go RNS stack + TCP client and dial the Python server.
 	ts, tsCleanup := newStartedTSWithTCPClient(t, "127.0.0.1", pyPort)
 	defer tsCleanup()
-
-	// Give the TCP client a moment to connect before relying on announces.
-	time.Sleep(500 * time.Millisecond)
 
 	mgr := NewManager(tempDirRRC(t), func() []byte { return ts.Identity().Hash })
 	mgr.SetNickname("TestClient")

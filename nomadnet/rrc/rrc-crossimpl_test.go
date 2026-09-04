@@ -38,8 +38,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gmlewis/go-nomadnet/testutils"
+	nnutils "github.com/gmlewis/go-nomadnet/testutils"
 	"github.com/gmlewis/go-reticulum/rns"
+	"github.com/gmlewis/go-reticulum/testutils"
 )
 
 type miniHubEvent map[string]any
@@ -49,11 +50,11 @@ type miniHubEvent map[string]any
 // and a cleanup func.
 func startPythonMiniHub(t *testing.T, port int) (string, string, func()) {
 	t.Helper()
-	if testutils.PythonNomadnetExe() == "" {
+	if nnutils.PythonNomadnetExe() == "" {
 		t.Skip("no python nomadnet")
 	}
 
-	dir, _ := os.MkdirTemp("/tmp", "nomadnet-rrc-cross")
+	dir := testutils.TempDir(t, "nomadnet-rrc-cross")
 	logPath := filepath.Join(dir, "events.jsonl")
 
 	script := filepath.Join("testdata", "mini_hub.py")
@@ -63,7 +64,7 @@ func startPythonMiniHub(t *testing.T, port int) (string, string, func()) {
 			t.Skipf("mini_hub.py not accessible: %v", err2)
 		}
 	}
-	interp := testutils.PythonNomadnetExe()
+	interp := nnutils.PythonNomadnetExe()
 	cmd := exec.Command(interp, script, "--port", fmt.Sprint(port),
 		"--log", logPath, "--name", "MiniHub")
 	cmd.Stderr = os.Stderr
@@ -93,15 +94,21 @@ func startPythonMiniHub(t *testing.T, port int) (string, string, func()) {
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
+	// killAndWait terminates the mini hub AND reaps it (the detached Wait
+	// goroutine closes done); Kill alone leaked a zombie under parallel load.
+	killAndWait := func() {
+		_ = cmd.Process.Kill()
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+		}
+	}
 	if hubHash == "" {
-		cmd.Process.Kill()
+		killAndWait()
 		t.Fatal("python mini-hub never announced its address")
 	}
 
-	cleanup := func() {
-		cmd.Process.Kill()
-	}
-	return hubHash, logPath, cleanup
+	return hubHash, logPath, killAndWait
 }
 
 func freePortRRC(t *testing.T) int {
@@ -138,6 +145,8 @@ func readMiniHubEvents(t *testing.T, logPath string) []miniHubEvent {
 // a PYTHON-hosted hub: connect, the hello/welcome handshake with a
 // Python-encoded WELCOME, and a message echo round-trip.
 func TestIntegrationCrossImplPythonHub(t *testing.T) {
+	t.Parallel()
+	testutils.SkipShortIntegration(t)
 	port := freePortRRC(t)
 	hubHash, hubLog, hubCleanup := startPythonMiniHub(t, port)
 	defer hubCleanup()

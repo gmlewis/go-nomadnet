@@ -23,6 +23,7 @@ import (
 // link. This test reproduces it over a real interface (vs the in-process local
 // interface, which did not reproduce).
 func TestPipeRepeatRequestOnSameLink(t *testing.T) {
+	t.Parallel()
 	testutils.SkipShortIntegration(t)
 
 	logger := rns.NewLogger()

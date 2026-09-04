@@ -30,6 +30,7 @@ import (
 )
 
 func TestIntegrationNodeAnnounceReceivedByPeer(t *testing.T) {
+	t.Parallel()
 	tsA, cleanupA := newStartedTS(t)
 	defer cleanupA()
 	tsB, cleanupB := newStartedTS(t)
@@ -129,6 +130,7 @@ func tempDirInt(t *testing.T) string {
 }
 
 func TestIntegrationNodeServesDefaultIndexPage(t *testing.T) {
+	t.Parallel()
 	tsA, cleanupA := newStartedTS(t)
 	defer cleanupA()
 	tsB, cleanupB := newStartedTS(t)
@@ -228,6 +230,7 @@ func TestIntegrationNodeServesDefaultIndexPage(t *testing.T) {
 }
 
 func TestIntegrationNodeServesCustomPage(t *testing.T) {
+	t.Parallel()
 	tsA, cleanupA := newStartedTS(t)
 	defer cleanupA()
 	tsB, cleanupB := newStartedTS(t)
@@ -330,6 +333,7 @@ func TestIntegrationNodeServesCustomPage(t *testing.T) {
 }
 
 func TestIntegrationNodeAllowedFileRestrictsAccess(t *testing.T) {
+	t.Parallel()
 	tsA, cleanupA := newStartedTS(t)
 	defer cleanupA()
 	tsB, cleanupB := newStartedTS(t)
@@ -447,6 +451,7 @@ func TestIntegrationNodeAllowedFileRestrictsAccess(t *testing.T) {
 }
 
 func TestIntegrationNodeServesBinaryFile(t *testing.T) {
+	t.Parallel()
 	tsA, cleanupA := newStartedTS(t)
 	defer cleanupA()
 	tsB, cleanupB := newStartedTS(t)

@@ -27,6 +27,7 @@ import (
 )
 
 func TestIntegrationBrowserRequestsPageReceivesMicron(t *testing.T) {
+	t.Parallel()
 	tsA, cleanupA := newStartedTS(t)
 	defer cleanupA()
 	tsB, cleanupB := newStartedTS(t)
@@ -122,6 +123,7 @@ func TestIntegrationBrowserRequestsPageReceivesMicron(t *testing.T) {
 }
 
 func TestIntegrationBrowserRendersMicronPage(t *testing.T) {
+	t.Parallel()
 	tsA, cleanupA := newStartedTS(t)
 	defer cleanupA()
 	tsB, cleanupB := newStartedTS(t)
@@ -221,6 +223,7 @@ func TestIntegrationBrowserRendersMicronPage(t *testing.T) {
 }
 
 func TestIntegrationBrowserServesFromCache(t *testing.T) {
+	t.Parallel()
 	tsA, cleanupA := newStartedTS(t)
 	defer cleanupA()
 	tsB, cleanupB := newStartedTS(t)
@@ -351,6 +354,7 @@ func TestIntegrationBrowserServesFromCache(t *testing.T) {
 }
 
 func TestIntegrationPartialsTriggerSubRequests(t *testing.T) {
+	t.Parallel()
 	// Test that pages with partial references can be detected
 	partials := detectPartialsInMarkup("Main Page\n\n>>partial_header\n\nContent here.\n\n>>partial_footer")
 	if len(partials) != 2 {

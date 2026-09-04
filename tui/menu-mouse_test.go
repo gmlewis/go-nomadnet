@@ -77,6 +77,11 @@ func TestMenuClickRedrawsPage(t *testing.T) {
 	app.Main.SetQuitCallback(func() { app.Stop() })
 	runErr := make(chan error, 1)
 	go func() { runErr <- app.runWithSimScreen() }()
+
+	// Fixed sleeps (not polls) are deliberate here: the sim screen's cell
+	// buffer is written by the event-loop goroutine without synchronization
+	// the test may poll on, so polling races (under -race) while a quiescent
+	// sleep does not.
 	time.Sleep(150 * time.Millisecond)
 
 	// Before the click the screen must show the Network page (e.g. its "Saved

@@ -22,16 +22,12 @@ import (
 	"testing"
 
 	"github.com/gdamore/tcell/v2"
+	"github.com/gmlewis/go-reticulum/testutils"
 )
 
 func tempDir(t *testing.T) string {
 	t.Helper()
-	dir, err := os.MkdirTemp("/tmp", "gonomadnet-test-")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.RemoveAll(dir) })
-	return dir
+	return testutils.TempDir(t, "gonomadnet-test-")
 }
 
 func TestFileBrowserDialogCreation(t *testing.T) {

@@ -30,6 +30,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/gmlewis/go-reticulum/testutils"
 )
 
 // lineBuffer accumulates a subprocess's stdout lines so the test goroutine can
@@ -51,23 +53,24 @@ func (lb *lineBuffer) push(line string) {
 // the full matching line.
 func (lb *lineBuffer) waitForLine(t *testing.T, substr string, timeout time.Duration) string {
 	t.Helper()
-	deadline := time.Now().Add(timeout)
-	for {
+	var out string
+	if !testutils.PollUntil(timeout, func() bool {
 		lb.mu.Lock()
+		defer lb.mu.Unlock()
 		for i := len(lb.lines) - 1; i >= 0; i-- {
 			if strings.Contains(lb.lines[i], substr) {
-				out := lb.lines[i]
-				lb.mu.Unlock()
-				return out
+				out = lb.lines[i]
+				return true
 			}
 		}
+		return false
+	}) {
+		lb.mu.Lock()
 		all := append([]string(nil), lb.lines...)
 		lb.mu.Unlock()
-		if time.Now().After(deadline) {
-			t.Fatalf("timeout waiting for %q; output so far:\n%v", substr, strings.Join(all, "\n"))
-		}
-		time.Sleep(50 * time.Millisecond)
+		t.Fatalf("timeout waiting for %q; output so far:\n%v", substr, strings.Join(all, "\n"))
 	}
+	return out
 }
 
 // dump returns all captured lines joined by newlines (for failure diagnostics).
@@ -93,7 +96,7 @@ func streamLines(r io.Reader, lb *lineBuffer) {
 // shares the warm cache with the rest of the suite.
 func buildDaemonBinary(t *testing.T) string {
 	t.Helper()
-	binPath := filepath.Join(t.TempDir(), "gonomadnet")
+	binPath := filepath.Join(tempDir(t), "gonomadnet")
 	if runtime.GOOS == "windows" {
 		binPath += ".exe"
 	}
@@ -138,13 +141,12 @@ func repoRoot(t *testing.T) string {
 // observed by the process still running after that line, and "graceful
 // shutdown" by the "Daemon stopped" line + a zero exit code.
 func TestDaemonSmokeEndToEnd(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping daemon smoke in -short mode")
-	}
+	t.Parallel()
+	testutils.SkipShortIntegration(t)
 	bin := buildDaemonBinary(t)
 
-	cfgDir := t.TempDir()
-	rnsDir := t.TempDir()
+	cfgDir := tempDir(t)
+	rnsDir := tempDir(t)
 
 	cmd := exec.Command(bin,
 		"-daemon", "-console",

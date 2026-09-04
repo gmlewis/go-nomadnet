@@ -24,6 +24,7 @@ import (
 	"github.com/gmlewis/go-nomadnet/nomadnet/config"
 	"github.com/gmlewis/go-nomadnet/nomadnet/version"
 	"github.com/gmlewis/go-reticulum/rns"
+	"github.com/gmlewis/go-reticulum/testutils"
 )
 
 func TestNewAppDefaults(t *testing.T) {
@@ -667,17 +668,8 @@ func TestDirAnnounceEventsCrossRunRetention(t *testing.T) {
 
 func tempDir(t *testing.T) string {
 	t.Helper()
-	dir, err := os.MkdirTemp("/tmp", "nomadnet-app-test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Use removeAllWithRetry so cleanup survives the brief window where RNS
-	// background goroutines recreate files mid-removal (ENOTEMPTY/EBUSY)
-	// after Shutdown — instead of silently leaking the dir.
-	t.Cleanup(func() {
-		if err := removeAllWithRetry(dir); err != nil {
-			t.Errorf("tempDir cleanup: %v", err)
-		}
-	})
-	return dir
+	// testutils.TempDir uses removeAllWithRetry so cleanup survives the brief
+	// window where RNS background goroutines recreate files mid-removal
+	// (ENOTEMPTY/EBUSY) after Shutdown — instead of silently leaking the dir.
+	return testutils.TempDir(t, "nomadnet-app-test")
 }

@@ -20,6 +20,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/gmlewis/go-reticulum/testutils"
 )
 
 // TestNetworkStatsWidgetContent asserts the NetworkStats panel renders the two
@@ -82,6 +84,8 @@ func TestNetworkStatsWidgetRefresh(t *testing.T) {
 // TestNetworkStatsWidgetStartStop asserts Start launches a refresh goroutine
 // that picks up provider changes, and Stop halts it (no further updates),
 // matching NetworkStats.start (Network.py:1605-1607) + UpdatingText.start/stop.
+// It runs in a synctest bubble so the 20ms refresh ticker fires in virtual
+// time and the post-Stop absence assertion is exact.
 func TestNetworkStatsWidgetStartStop(t *testing.T) {
 	t.Parallel()
 
@@ -93,31 +97,27 @@ func TestNetworkStatsWidgetStartStop(t *testing.T) {
 		20*time.Millisecond,
 	)
 
-	// Synchronous path (marshal=false): tests have no running event loop, so
-	// QueueUpdateDraw would block. Production Start() marshals via
-	// QueueUpdateDraw.
-	ns.start(false)
-	defer ns.Stop()
+	testutils.RunInBubble(t, func(t *testing.T) {
+		// Synchronous path (marshal=false): tests have no running event loop,
+		// so QueueUpdateDraw would block. Production Start() marshals via
+		// QueueUpdateDraw.
+		ns.start(false)
 
-	peers.Store(99)
-	// Wait long enough for at least one refresh tick.
-	deadline := time.After(2 * time.Second)
-	for {
-		if strings.Contains(ns.ViewText(), "Heard Peers: 99 (30m)") {
-			break
-		}
-		select {
-		case <-deadline:
+		peers.Store(99)
+		if !testutils.PollUntil(time.Second, func() bool {
+			return strings.Contains(ns.ViewText(), "Heard Peers: 99 (30m)")
+		}) {
 			t.Fatalf("start did not refresh within timeout; text=%q", ns.ViewText())
-		default:
 		}
-		time.Sleep(10 * time.Millisecond)
-	}
 
-	ns.Stop()
-	peers.Store(1000)
-	time.Sleep(80 * time.Millisecond)
-	if strings.Contains(ns.ViewText(), "Heard Peers: 1000 (30m)") {
-		t.Error("Stop did not halt the refresh goroutine")
-	}
+		ns.Stop()
+		peers.Store(1000)
+		// Advance the virtual clock well past a refresh tick; with the worker
+		// stopped (Stop waits for it) no update is possible.
+		time.Sleep(200 * time.Millisecond)
+		testutils.Wait()
+		if strings.Contains(ns.ViewText(), "Heard Peers: 1000 (30m)") {
+			t.Error("Stop did not halt the refresh goroutine")
+		}
+	})
 }

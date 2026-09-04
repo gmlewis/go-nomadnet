@@ -26,6 +26,7 @@ import (
 // failure or timeout after the first request reproduces the go-reticulum
 // link-dies-after-N-requests bug.
 func TestLoopbackRepeatRequestOnSameLink(t *testing.T) {
+	t.Parallel()
 	testutils.SkipShortIntegration(t)
 
 	logger := rns.NewLogger()

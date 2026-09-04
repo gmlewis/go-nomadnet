@@ -34,6 +34,7 @@ import (
 // Shutdown stops the node job loop (ShouldRunJobs false), mirroring the
 // Python exit_handler.
 func TestAppNodeHostingStartsAndAnnounces(t *testing.T) {
+	t.Parallel()
 	appA, appB, cleanup := setupTwoNodeApps(t)
 	defer cleanup()
 
@@ -98,6 +99,7 @@ func TestAppNodeHostingStartsAndAnnounces(t *testing.T) {
 // false (the default), leaving App.Node nil — mirroring Python's
 // NomadNetworkApp.py:401 self.node = None branch.
 func TestAppNodeHostingDisabled(t *testing.T) {
+	t.Parallel()
 	appA, _, cleanup := setupTwoNodeApps(t)
 	defer cleanup()
 
@@ -118,6 +120,7 @@ func TestAppNodeHostingDisabled(t *testing.T) {
 // panel shows this same name (Network.py:1381-1386), so the announce
 // app_data and the panel always agree.
 func TestAppNodeHostingNameFallback(t *testing.T) {
+	t.Parallel()
 	appA, _, cleanup := setupTwoNodeApps(t)
 	defer cleanup()
 
@@ -146,6 +149,7 @@ func TestAppNodeHostingNameFallback(t *testing.T) {
 // fleet case where `node_name = "Go port of NomadNet"` must announce as
 // `Go port of NomadNet`, matching Python Node.py:28.
 func TestAppNodeHostingConfigNamePinsPanelAndAnnounce(t *testing.T) {
+	t.Parallel()
 	appA, _, cleanup := setupTwoNodeApps(t)
 	defer cleanup()
 

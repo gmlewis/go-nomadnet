@@ -24,14 +24,12 @@ package app
 
 import (
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/gmlewis/go-nomadnet/nomadnet/config"
@@ -1043,33 +1041,6 @@ func expandUser(path string) string {
 		return path
 	}
 	return filepath.Join(home, path[1:])
-}
-
-// removeAllWithRetry removes path with os.RemoveAll, retrying on transient
-// ENOTEMPTY/EBUSY errors for up to ~100ms. After RNS.Close() a handful of
-// background goroutines may still be flushing ratchet/destination storage and
-// briefly recreate files mid-removal; the retry lets them quiesce. Mirrors the
-// helper of the same name in go-reticulum's testutils package.
-func removeAllWithRetry(path string) error {
-	const maxAttempts = 10
-	const retryDelay = 10 * time.Millisecond
-
-	for range maxAttempts {
-		err := os.RemoveAll(path)
-		if err == nil || os.IsNotExist(err) {
-			return nil
-		}
-		if !isRetriableRemoveAllError(err) {
-			return err
-		}
-		time.Sleep(retryDelay)
-	}
-
-	return os.RemoveAll(path)
-}
-
-func isRetriableRemoveAllError(err error) bool {
-	return errors.Is(err, syscall.ENOTEMPTY) || errors.Is(err, syscall.EBUSY)
 }
 
 // loadOrCreateIdentity loads an existing identity or creates a new one.

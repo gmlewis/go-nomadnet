@@ -150,6 +150,7 @@ time.sleep(1)
 // (node.DefaultIndex == Python DEFAULT_INDEX) is pinned separately by
 // nomadnet/node.TestServeDefaultIndexPythonParity.
 func TestIntegrationNodeServesMicronToPython(t *testing.T) {
+	t.Parallel()
 	testutils.SkipShortIntegration(t)
 	pyPath := findLXMFPython(t)
 	if pyPath == "" {
@@ -209,7 +210,11 @@ func TestIntegrationNodeServesMicronToPython(t *testing.T) {
 	}
 	ts.RegisterInterface(goIface)
 	defer func() { _ = goIface.Detach() }()
-	time.Sleep(500 * time.Millisecond)
+	// Wait for the TCP client to connect before announcing (poll the interface
+	// status; the fixed sleep it replaces always paid 500ms).
+	if !testutils.PollUntil(5*time.Second, func() bool { return goIface.Status() }) {
+		t.Fatalf("Go TCP client interface never connected")
+	}
 
 	appGo := NewAppWithTransport(goDir, WithTransport(ts), WithIdentity(ts.Identity()))
 	if err := appGo.InitWithTransport(ts, ts.Identity()); err != nil {

@@ -29,6 +29,7 @@ import (
 )
 
 func TestIntegrationHubConnectEstablishesLink(t *testing.T) {
+	t.Parallel()
 	tsClient, clientCleanup := newStartedTS(t)
 	defer clientCleanup()
 	tsServer, serverCleanup := newStartedTS(t)
@@ -138,6 +139,7 @@ func newRRCPipes(t *testing.T, tsA, tsB *rns.TransportSystem) (*interfaces.PipeI
 }
 
 func TestIntegrationHubExchangeMessages(t *testing.T) {
+	t.Parallel()
 	tsClient, clientCleanup := newStartedTS(t)
 	defer clientCleanup()
 	tsServer, serverCleanup := newStartedTS(t)
@@ -213,6 +215,7 @@ func TestIntegrationHubExchangeMessages(t *testing.T) {
 }
 
 func TestIntegrationHubAnnounce(t *testing.T) {
+	t.Parallel()
 	tsA, cleanupA := newStartedTS(t)
 	defer cleanupA()
 	tsB, cleanupB := newStartedTS(t)
@@ -265,6 +268,7 @@ func tempDirRRC(t *testing.T) string {
 }
 
 func TestIntegrationHelloWelcomeHandshake(t *testing.T) {
+	t.Parallel()
 	tsClient, clientCleanup := newStartedTS(t)
 	defer clientCleanup()
 	tsServer, serverCleanup := newStartedTS(t)
@@ -344,6 +348,7 @@ func TestIntegrationHelloWelcomeHandshake(t *testing.T) {
 }
 
 func TestIntegrationJoinRoomSeesJoinedNotification(t *testing.T) {
+	t.Parallel()
 	tsClient, clientCleanup := newStartedTS(t)
 	defer clientCleanup()
 	tsServer, serverCleanup := newStartedTS(t)
@@ -443,6 +448,7 @@ func TestIntegrationJoinRoomSeesJoinedNotification(t *testing.T) {
 }
 
 func TestIntegrationSendMessageReceivedByServer(t *testing.T) {
+	t.Parallel()
 	tsClient, clientCleanup := newStartedTS(t)
 	defer clientCleanup()
 	tsServer, serverCleanup := newStartedTS(t)
@@ -542,6 +548,7 @@ func TestIntegrationSendMessageReceivedByServer(t *testing.T) {
 }
 
 func TestIntegrationPartRoomUpdatesMembers(t *testing.T) {
+	t.Parallel()
 	tsClient, clientCleanup := newStartedTS(t)
 	defer clientCleanup()
 	tsServer, serverCleanup := newStartedTS(t)
@@ -661,6 +668,7 @@ func TestIntegrationPartRoomUpdatesMembers(t *testing.T) {
 }
 
 func TestIntegrationHubDisconnectUpdatesStatus(t *testing.T) {
+	t.Parallel()
 	tsClient, clientCleanup := newStartedTS(t)
 	defer clientCleanup()
 	tsServer, serverCleanup := newStartedTS(t)
@@ -740,6 +748,7 @@ func TestIntegrationHubDisconnectUpdatesStatus(t *testing.T) {
 }
 
 func TestIntegrationMultipleRoomsIsolated(t *testing.T) {
+	t.Parallel()
 	tsClient, clientCleanup := newStartedTS(t)
 	defer clientCleanup()
 	tsServer, serverCleanup := newStartedTS(t)

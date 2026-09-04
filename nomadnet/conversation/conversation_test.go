@@ -24,6 +24,7 @@ import (
 	"github.com/gmlewis/go-reticulum/lxmf"
 	"github.com/gmlewis/go-reticulum/rns"
 	rnsmsgpack "github.com/gmlewis/go-reticulum/rns/msgpack"
+	"github.com/gmlewis/go-reticulum/testutils"
 )
 
 func TestMessageStates(t *testing.T) {
@@ -745,12 +746,7 @@ func TestIngestTwoMessagesSameSourceSingleConversation(t *testing.T) {
 
 func tempDir(t *testing.T) string {
 	t.Helper()
-	dir, err := os.MkdirTemp("/tmp", "nomadnet-conversation-test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.RemoveAll(dir) })
-	return dir
+	return testutils.TempDir(t, "nomadnet-conversation-test")
 }
 
 func hexHash(hash []byte) string {

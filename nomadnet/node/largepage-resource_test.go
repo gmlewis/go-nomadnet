@@ -18,6 +18,7 @@ import (
 // of TestLoopbackBrowseViaSharedInstance which guards it over the
 // shared-instance local interface.
 func TestIntegrationLargePageResourceTransfer(t *testing.T) {
+	t.Parallel()
 	tsA, cleanupA := newStartedTS(t)
 	defer cleanupA()
 	tsB, cleanupB := newStartedTS(t)

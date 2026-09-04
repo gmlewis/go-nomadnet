@@ -37,6 +37,7 @@ import (
 // resolution (":/page/part.mu" → <nodehash>:/page/part.mu) and the var_* request
 // data path of the partial fetch, mirroring Python Browser.__load_partial.
 func TestIntegrationPartialPipeline(t *testing.T) {
+	t.Parallel()
 	testutils.SkipShortIntegration(t)
 
 	tsServer, cleanupServer := newStartedTS(t)

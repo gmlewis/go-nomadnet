@@ -14,7 +14,7 @@
 set -euo pipefail
 set -x
 
-RUN_ALL_TESTS_TIMEOUT_SECONDS="${RUN_ALL_TESTS_TIMEOUT_SECONDS:-60}"
+RUN_ALL_TESTS_TIMEOUT_SECONDS="${RUN_ALL_TESTS_TIMEOUT_SECONDS:-500}"
 
 run_with_timeout() {
 	if command -v timeout >/dev/null 2>&1; then
@@ -128,7 +128,8 @@ echo "staticcheck: clean (all checks, with integration tags)"
 
 # test-all.sh is redundant when the short integration tests are running next, so skip it:
 # time run_with_timeout ./scripts/test-all.sh 2>&1 | tee test-failures.log
-# There is not much time difference between `-short` and without, so just run the full suite:
+# The -short subset (SkipShortIntegration-gated) runs in ~10s vs ~70s for the
+# full suite; uncomment to use it as a fast feedback loop:
 # time run_with_timeout ./scripts/test-integration.sh -short 2>&1 | tee short-test-failures.log
 time run_with_timeout ./scripts/test-integration.sh 2>&1 | tee full-test-failures.log
 

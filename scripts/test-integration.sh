@@ -10,6 +10,17 @@
 
 # test-integration.sh runs integration tests with the 'integration' build tag.
 # These tests verify Go/Python parity and NomadNet/LXMF integration.
+#
+# Fast subset: pass -short as the first extra go test arg to skip the
+# cross-process / Python-interop tests that call testutils.SkipShortIntegration
+# (xprocess, cbor parity, daemon smoke, ...):
+#
+#   scripts/test-integration.sh -short
+#
+# Other knobs:
+#   GO_TEST_PARALLEL=N   intra-package -parallel (tests bind private loopback);
+#                        default 4 on Darwin, see the note below
+#   GO_TEST_TIMEOUT=4m   per-package go test -timeout
 
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 REPO_ROOT="${SCRIPT_DIR}/.."
@@ -35,7 +46,11 @@ if [[ -z "${GO_TEST_P:-}" && "$(uname -a)" == *"Darwin"* ]]; then
 	GO_TEST_P=8
 fi
 if [[ -z "${GO_TEST_PARALLEL:-}" && "$(uname -a)" == *"Darwin"* ]]; then
-	GO_TEST_PARALLEL=1
+	# All integration tests call t.Parallel() as their first statement and bind
+	# 127.0.0.1 on kernel-assigned (:0) or probe-verified ports, and the
+	# dominant transport is in-memory PipeInterface pairs, so intra-package
+	# parallelism causes no cross-talk. Set GO_TEST_PARALLEL=1 to opt back out.
+	GO_TEST_PARALLEL=4
 fi
 
 GO_TEST_ARGS=()

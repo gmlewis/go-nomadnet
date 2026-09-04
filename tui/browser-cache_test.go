@@ -22,6 +22,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/gmlewis/go-reticulum/testutils"
 )
 
 func bcTempDir(t *testing.T) string {
@@ -143,21 +145,25 @@ func TestGetCachedExpired(t *testing.T) {
 
 // TestGetCachedExpiredFractional pins the float (not int-truncated) expiry
 // comparison: an entry expiring at now+0.2s must be gone after a 0.5s sleep,
-// which int-second truncation (the original bug) would have left stale.
+// which int-second truncation (the original bug) would have left stale. The
+// bubble virtualizes the clock so the 0.5s wait is free while preserving the
+// exact fractional-expiry semantics (expiresAfter reads the bubble's clock).
 func TestGetCachedExpiredFractional(t *testing.T) {
 	cacheDir := bcTempDir(t)
-	bc := NewBrowserCache(cacheDir)
+	testutils.RunInBubble(t, func(t *testing.T) {
+		bc := NewBrowserCache(cacheDir)
 
-	url := "aabb1122aabb1122aabb1122aabb1122:/frac"
-	bc.CachePage(url, []byte("frac"), expiresAfter(200*time.Millisecond))
+		url := "aabb1122aabb1122aabb1122aabb1122:/frac"
+		bc.CachePage(url, []byte("frac"), expiresAfter(200*time.Millisecond))
 
-	if got := bc.GetCached(url); got == nil {
-		t.Fatal("entry should be fresh immediately")
-	}
-	time.Sleep(500 * time.Millisecond)
-	if got := bc.GetCached(url); got != nil {
-		t.Errorf("GetCached after fractional expiry = %q, want nil", got)
-	}
+		if got := bc.GetCached(url); got == nil {
+			t.Fatal("entry should be fresh immediately")
+		}
+		time.Sleep(500 * time.Millisecond)
+		if got := bc.GetCached(url); got != nil {
+			t.Errorf("GetCached after fractional expiry = %q, want nil", got)
+		}
+	})
 }
 
 func TestUncachePage(t *testing.T) {

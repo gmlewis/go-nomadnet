@@ -38,6 +38,7 @@ import (
 // known peers); without load-at-boot a saved file is ignored. This test pins
 // the round-trip end-to-end through the App lifecycle.
 func TestDirectoryPersistsAcrossShutdown(t *testing.T) {
+	t.Parallel()
 	dir := testutils.TempDir(t, "nomadnet-dir-persist")
 	// Private config with enable_node = no so neither boot auto-starts a node
 	// from the EnableNode=true default (see writeTestNomadNetConfig).

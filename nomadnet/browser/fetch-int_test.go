@@ -40,6 +40,7 @@ import (
 // /page/index.mu when no index.mu exists), exercising ParseURL's path defaulting
 // and FetchPage's link-establish + request + response path.
 func TestIntegrationFetchPageFromNode(t *testing.T) {
+	t.Parallel()
 	testutils.SkipShortIntegration(t)
 
 	tsServer, cleanupServer := newStartedTS(t)
@@ -79,6 +80,7 @@ func TestIntegrationFetchPageFromNode(t *testing.T) {
 // served page (not DefaultIndex) when index.mu exists — pinning that the request
 // path bytes select the right server-side handler.
 func TestIntegrationFetchPageCustomPath(t *testing.T) {
+	t.Parallel()
 	testutils.SkipShortIntegration(t)
 
 	tsServer, cleanupServer := newStartedTS(t)
@@ -129,6 +131,7 @@ func TestIntegrationFetchPageCustomPath(t *testing.T) {
 // (parse the RNS address → establish a link → request the page → handle the
 // response).
 func TestIntegrationFetchPageViaParseURL(t *testing.T) {
+	t.Parallel()
 	testutils.SkipShortIntegration(t)
 
 	tsServer, cleanupServer := newStartedTS(t)
@@ -183,6 +186,7 @@ func TestIntegrationFetchPageViaParseURL(t *testing.T) {
 // point at which Python identifies to the remote node. The hook must observe an
 // ACTIVE link, and the fetch must still complete with the page bytes.
 func TestIntegrationFetchPageOnLinkEstablished(t *testing.T) {
+	t.Parallel()
 	testutils.SkipShortIntegration(t)
 
 	tsServer, cleanupServer := newStartedTS(t)
@@ -239,6 +243,7 @@ func TestIntegrationFetchPageOnLinkEstablished(t *testing.T) {
 // select with random ordering). The render-gate half is unit-tested in
 // tui/browser_request_test.go.
 func TestIntegrationFetchPagePreCancelledCtx(t *testing.T) {
+	t.Parallel()
 	testutils.SkipShortIntegration(t)
 
 	tsServer, cleanupServer := newStartedTS(t)
@@ -305,14 +310,9 @@ func newBrowserPipes(t *testing.T, tsA, tsB *rns.TransportSystem) (*interfaces.P
 }
 
 func waitForPath(ts *rns.TransportSystem, destHash []byte, timeout time.Duration) bool {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		if ts.HasPath(destHash) {
-			return true
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	return ts.HasPath(destHash)
+	return testutils.PollUntil(timeout, func() bool {
+		return ts.HasPath(destHash)
+	})
 }
 
 func truncStr(b []byte, n int) string {

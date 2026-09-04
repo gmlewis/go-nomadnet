@@ -123,6 +123,7 @@ time.sleep(3)
 // LXMF message (no link establishment). The on-disk message-hash filename must
 // equal Python's msg.hash — pinning LXMF message-hash parity across the wire.
 func TestIntegrationLXMFReceiveFromPython(t *testing.T) {
+	t.Parallel()
 	testutils.SkipShortIntegration(t)
 	pyPath := findLXMFPython(t)
 	if pyPath == "" {
@@ -200,8 +201,11 @@ func TestIntegrationLXMFReceiveFromPython(t *testing.T) {
 	}
 	ts.RegisterInterface(goIface)
 	defer func() { _ = goIface.Detach() }()
-	// Give the TCP client a moment to connect before announcing.
-	time.Sleep(500 * time.Millisecond)
+	// Wait for the TCP client to connect before announcing (poll the interface
+	// status; the fixed sleep it replaces always paid 500ms).
+	if !testutils.PollUntil(5*time.Second, func() bool { return goIface.Status() }) {
+		t.Fatalf("Go TCP client interface never connected")
+	}
 
 	appGo := NewAppWithTransport(goDir, WithTransport(ts), WithIdentity(ts.Identity()))
 	if err := appGo.InitWithTransport(ts, ts.Identity()); err != nil {
@@ -373,23 +377,24 @@ func (lb *xlineBuffer) push(line string) {
 
 func (lb *xlineBuffer) waitFor(t *testing.T, prefix string, timeout time.Duration) string {
 	t.Helper()
-	deadline := time.Now().Add(timeout)
-	for {
+	var v string
+	if !testutils.PollUntil(timeout, func() bool {
 		lb.mu.Lock()
+		defer lb.mu.Unlock()
 		for _, l := range lb.lines {
 			if strings.HasPrefix(l, prefix) {
-				v := strings.TrimPrefix(l, prefix)
-				lb.mu.Unlock()
-				return strings.TrimSpace(v)
+				v = strings.TrimSpace(strings.TrimPrefix(l, prefix))
+				return true
 			}
 		}
+		return false
+	}) {
+		lb.mu.Lock()
 		all := strings.Join(lb.lines, "\n")
 		lb.mu.Unlock()
-		if time.Now().After(deadline) {
-			t.Fatalf("timeout waiting for %q; python stdout:\n%v", prefix, all)
-		}
-		time.Sleep(50 * time.Millisecond)
+		t.Fatalf("timeout waiting for %q; python stdout:\n%v", prefix, all)
 	}
+	return v
 }
 
 func isHex(s string) bool {

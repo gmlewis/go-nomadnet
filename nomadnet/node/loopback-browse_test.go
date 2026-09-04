@@ -30,6 +30,7 @@ import (
 // route directly via it, mirroring Python where Link.send stamps
 // packet.attached_interface.
 func TestLoopbackBrowseViaSharedInstance(t *testing.T) {
+	t.Parallel()
 	testutils.SkipShortIntegration(t)
 
 	logger := rns.NewLogger()
