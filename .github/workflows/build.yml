@@ -147,3 +147,36 @@ jobs:
 
       - name: Run Go tests
         run: go test ./... -race -count=1
+
+  integration:
+    name: Go Tests (full integration suite)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: |
+            go.mod
+            **/go.sum
+
+      # The Python-parity tests drive the real Python nomadnet/RNS/LXMF stacks
+      # (installed via pip — no repo clones needed).
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python dependencies
+        run: python3 -m pip install --quiet rns lxmf nomadnet
+
+      - name: Run full integration suite
+        env:
+          GO_TEST_TIMEOUT: 8m
+        run: ./scripts/test-integration.sh
