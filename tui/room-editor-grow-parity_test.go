@@ -65,7 +65,7 @@ func TestRoomEditorGrowsPanelParity(t *testing.T) {
 	// The wrapped composer rows render at the bottom of the panel.
 	wantRow0 := "Message C4 from glenn-mac-mini-m2 again, but this time typing way beyond the length of the input"
 	var got strings.Builder
-	for x := 0; x < 96; x++ {
+	for x := range 96 {
 		ch, _, _ := screen.Get(x+1, 16)
 		got.WriteString(ch)
 	}

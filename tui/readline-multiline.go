@@ -367,8 +367,8 @@ func (re *ReadlineEdit) drawMultiline(screen tcell.Screen) {
 	}
 	fg, bg, _ := re.GetFieldStyle().Decompose()
 	style := tcell.StyleDefault.Background(bg).Foreground(fg)
-	for row := 0; row < h; row++ {
-		for col := 0; col < w; col++ {
+	for row := range h {
+		for col := range w {
 			screen.SetContent(x+col, y+row, ' ', nil, style)
 		}
 	}

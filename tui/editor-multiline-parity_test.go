@@ -438,7 +438,7 @@ func TestReadlineEditMultilineDrawWraps(t *testing.T) {
 	}
 	for row, want := range wantLines {
 		var got strings.Builder
-		for x := 0; x < width; x++ {
+		for x := range width {
 			ch, _, _ := screen.Get(x, row)
 			got.WriteString(ch)
 		}
@@ -472,7 +472,7 @@ func TestReadlineEditMultilineDrawWraps(t *testing.T) {
 		t.Errorf("shifted caret = (%v,%v), want (6,0)", cx, cy)
 	}
 	var got strings.Builder
-	for x := 0; x < 7; x++ {
+	for x := range 7 {
 		ch, _, _ := screen.Get(x, 0)
 		got.WriteString(ch)
 	}
