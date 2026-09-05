@@ -659,6 +659,19 @@ func TestIntegrationPartRoomUpdatesMembers(t *testing.T) {
 		t.Errorf("server should have removed member after part, got %v members", serverMembersAfter)
 	}
 
+	// The PARTED fanout travels back over the link after the server side
+	// observes the part, so give it the same polling grace period.
+	deadline = time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		clientHub.lock.Lock()
+		clientEmpty := len(clientHub.Members["general"]) == 0
+		clientHub.lock.Unlock()
+		if clientEmpty {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
 	clientHub.lock.Lock()
 	clientMembersAfter := len(clientHub.Members["general"])
 	clientHub.lock.Unlock()

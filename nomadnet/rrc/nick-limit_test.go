@@ -223,3 +223,39 @@ func isWellFormedUTF8(s string) bool {
 	}
 	return true
 }
+
+// TestSetNickOverrideNotifiesUI pins Python set_nick_override's UI contract
+// (RRC.py:539-546): the override is stored, the manager saves, and
+// _notify_change fires so the TUI re-renders immediately (the Users pane
+// refresh rides the manager's change callback — the same notify class as
+// SetStatus).
+func TestSetNickOverrideNotifiesUI(t *testing.T) {
+	t.Parallel()
+
+	dir := tempDir(t)
+	mgr := NewManager(dir, func() []byte { return []byte("ownhash") })
+	hub := mgr.AddHub([]byte{0x09}, "rrc.hub", "NickHub")
+	changes := make(chan struct{}, 4)
+	mgr.SetChangeCallback(func() {
+		select {
+		case changes <- struct{}{}:
+		default:
+		}
+	})
+
+	hub.SetNickOverride("NewNick")
+
+	if hub.NickOverride != "NewNick" {
+		t.Errorf("NickOverride = %q, want %q", hub.NickOverride, "NewNick")
+	}
+	select {
+	case <-changes:
+	default:
+		t.Error("SetNickOverride fired no change notification (Python _notify_change, RRC.py:546)")
+	}
+	// The override must be visible through the accessor (HasNickOverride is
+	// the check the /nick info path uses, Channels.py:1074).
+	if !hub.HasNickOverride() {
+		t.Error("HasNickOverride = false after SetNickOverride")
+	}
+}

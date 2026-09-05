@@ -123,8 +123,13 @@ type RRCHub struct {
 	// when a user-initiated /who for the room is answered, or by the link
 	// closing. userWhoRooms is the distinct bookkeeping for USER-initiated
 	// /who requests, whose replies must render.
-	silentWhoRooms       map[string]bool
-	userWhoRooms         map[string]bool
+	silentWhoRooms map[string]bool
+	userWhoRooms   map[string]bool
+	// silentListPending counts the outstanding AUTO-requested /list replies
+	// (Python _silent_list_pending, RRC.py:256): the auto_list sweep arms the
+	// counter before its send and its reply is consumed without rendering,
+	// while a USER-typed /list reply renders (RRC.py:1092-1101).
+	silentListPending    int
 	resourceExpectations map[string]*resourceExpectation // rid → pending transfer
 	savedHistoryPath     string
 	transport            rns.Transport
@@ -1062,6 +1067,37 @@ func (h *RRCHub) consumeWhoReply(room string) bool {
 	return h.silentWhoRooms[room]
 }
 
+// requestRoomList mirrors Python's T_WELCOME auto_list tail (RRC.py:910-919):
+// the silent-list counter is armed BEFORE the send so the reply can never
+// race ahead of it, then the roomless "/list" command goes out; a failed send
+// unwinds the counter so a later user-initiated /list reply still renders.
+func (h *RRCHub) requestRoomList() {
+	h.lock.Lock()
+	h.silentListPending++
+	h.lock.Unlock()
+	if err := h.SendCommand("/list", ""); err != nil {
+		h.lock.Lock()
+		if h.silentListPending > 0 {
+			h.silentListPending--
+		}
+		h.lock.Unlock()
+		log.Printf("[RRC %v] SendCommand('/list'): %v", h.Name, err)
+	}
+}
+
+// consumeSilentListReply reports whether a parsed /list reply is an
+// outstanding AUTO-request's reply (consumed silently, counter unwound) or a
+// user-initiated reply (rendered; Python RRC.py:1096-1101).
+func (h *RRCHub) consumeSilentListReply() bool {
+	h.lock.Lock()
+	defer h.lock.Unlock()
+	if h.silentListPending > 0 {
+		h.silentListPending--
+		return true
+	}
+	return false
+}
+
 // stopWhoRefresh cancels the armed reconciliation timer (link closed or
 // manual disconnect).
 func (h *RRCHub) stopWhoRefresh() {
@@ -1315,7 +1351,11 @@ func (h *RRCHub) HasRoom(room string) bool {
 	return h.Rooms[strings.ToLower(room)]
 }
 
-// PartRoom sends a T_PART for a room.
+// PartRoom sends a T_PART for a room and applies Python part_room's local
+// state contract (RRC.py:604-616): the room leaves hub.rooms IMMEDIATELY
+// (before the PARTED round trip), the manager saves, and _notify_change
+// fires — so the list row disappears at once and an offline part still
+// persists (a send failure is swallowed, RRC.py:609-612).
 func (h *RRCHub) PartRoom(room string) {
 	room = strings.ToLower(room)
 	h.lock.Lock()
@@ -1332,6 +1372,18 @@ func (h *RRCHub) PartRoom(room string) {
 	}
 	env := MakeEnvelope(TypePart, src, []byte(room), nil, nil, mid, ts)
 	h.sendEnv(env)
+
+	// Python part_room (RRC.py:613-616): rooms.discard + manager.save +
+	// _notify_change, regardless of the send's outcome.
+	h.lock.Lock()
+	delete(h.Rooms, room)
+	h.lock.Unlock()
+	if h.Manager != nil {
+		if err := h.Manager.Save(); err != nil {
+			log.Printf("[RRC %v] could not save after parting %v: %v", h.Name, room, err)
+		}
+		h.Manager.NotifyChange(h)
+	}
 }
 
 // SendMessage sends a T_MSG to a room and records it locally. Slash-prefixed
@@ -1594,11 +1646,17 @@ func truncateUTF8(s string, maxBytes int) string {
 	return strings.ToValidUTF8(s[:maxBytes], "")
 }
 
-// SetNickOverride sets a per-hub nick override.
+// SetNickOverride sets a per-hub nick override and notifies the UI (Python
+// set_nick_override, RRC.py:539-546: the store plus manager._notify_change —
+// the manager's change callback re-renders the room's Users pane and the hub
+// list immediately, mirroring the SetStatus notify class).
 func (h *RRCHub) SetNickOverride(nick string) {
 	h.lock.Lock()
-	defer h.lock.Unlock()
 	h.NickOverride = nick
+	h.lock.Unlock()
+	if h.Manager != nil {
+		h.Manager.NotifyChange(h)
+	}
 }
 
 // HasNickOverride reports whether a per-hub nick override is set (Python's
@@ -1851,12 +1909,18 @@ func (h *RRCHub) HandleData(data []byte) {
 			// Python only records string NOTICE bodies (RRC.py:1104).
 			return
 		}
-		// Python _process_notice_text (RRC.py:843-848): /list replies populate
-		// the hub's advertised room set for the info panel. They are consumed
-		// silently in every case (the room list itself must never render).
+		// Python T_NOTICE (RRC.py:1092-1101): /list replies populate the hub's
+		// advertised room set for the info panel. ONLY an AUTO-requested
+		// reply (the auto_list sweep, RRC.py:910-919) is consumed silently;
+		// a user-typed /list reply falls through and renders like any other
+		// notice (verified live against the Python SOT). rrcd fans the reply
+		// out once per member, but the notice fanout-collapse below keeps
+		// duplicate copies from flooding the window.
 		if rooms := ParseRoomListNotice(textStr); rooms != nil {
 			h.SetAvailableRooms(rooms)
-			return
+			if h.consumeSilentListReply() {
+				return
+			}
 		}
 		// Python _parse_who_notice (RRC.py:1084-1105): /who replies replace
 		// the room's member set and learn the nicks via the 12-hex prefix
@@ -2079,15 +2143,12 @@ func (h *RRCHub) handleWelcome(body any) {
 	// once here; the timer keeps the member list converging on the hub's
 	// live membership afterwards).
 	h.scheduleWhoRefresh()
-	// Python handle_welcome → auto_list (RRC.py:950-959): fetch the hub's
+	// Python handle_welcome → auto_list (RRC.py:910-919): fetch the hub's
 	// public room list right after the welcome so the hub info panel can show
-	// which rooms exist. The reply NOTICE is consumed silently.
+	// which rooms exist. The reply NOTICE is consumed silently (the armed
+	// silent-list counter); a user-typed /list reply renders.
 	if h.AutoList {
-		go func() {
-			if err := h.SendCommand("/list", ""); err != nil {
-				log.Printf("SendCommand('/list'): %v", err)
-			}
-		}()
+		go h.requestRoomList()
 	}
 }
 

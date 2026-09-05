@@ -118,22 +118,38 @@ func IsServerForwardedCommand(cmd string) bool {
 	return serverForwardedCommands[cmd]
 }
 
-// SlashHelpText returns the formatted help text listing all
-// available slash commands. Matches Python's SLASH_HELP constant.
+// SlashHelpText returns the /help output: the Python RoomWidget.SLASH_HELP
+// constant verbatim (Channels.py:948-979), including the column-aligned
+// descriptions and the server-side command group.
 func SlashHelpText() string {
-	return `/help — Show this help
-/ping — Ping the hub
-/list — List rooms
-/join #room — Join a room (alias: /j)
-/part [#room] — Leave a room (alias: /leave)
-/me action — Send an action
-/nick [name] — Show or set your nick
-/who — List room members (server)
-/names — List room members (server)
-/topic [text] — Show or set topic (server)
-/clear — Clear message history
-/connect — Connect to hub
-/disconnect — Disconnect from hub (alias: /quit)
-/op, /deop, /voice, /devoice — Moderation (server)
-/kick, /ban, /kline — Moderation (server)`
+	return `/help                                - show this list
+/ping                                - measure round-trip to hub
+/list                                - list public rooms on this hub
+/join <room>                         - join a room on this hub
+/part [room]                         - leave a room (default: current)
+/leave [room]                        - alias for /part
+/me <text>                           - send an action (e.g. /me waves)
+/nick <name>                         - set your nick on this hub only
+/who [room]                          - list users (current room if omitted)
+/names [room]                        - alias for /who
+/clear                               - clear local messages in this room
+/connect                             - connect this hub
+/disconnect                          - disconnect this hub
+/quit                                - alias for /disconnect
+
+Server-side commands (auth enforced by hub):
+/topic <room> [text]                 - view or set room topic
+/mode <room> [+-flags] [arg]         - view or set room modes
+/register <room>                     - register the current room
+/unregister <room>                   - unregister the current room
+/kick <room> <target>                - remove user from room
+/ban <room> add|del|list [target]    - room ban list
+/invite <room> add|del|list [target] - room invite list
+/op <room> <target>                  - grant op
+/deop <room> <target>                - revoke op
+/voice <room> <target>               - grant voice
+/devoice <room> <target>             - revoke voice
+/kline add|del|list [target]         - global ban
+/stats                               - server statistics
+/reload                              - reload server config`
 }

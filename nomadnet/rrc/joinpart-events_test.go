@@ -235,3 +235,60 @@ func TestMultiHashJoinedRecordsNothing(t *testing.T) {
 		t.Errorf("multi-member JOINED recorded %v, want nothing", texts)
 	}
 }
+
+// TestPartRoomDiscardsRoomLocally pins Python part_room's local state contract
+// (RRC.py:604-616): the room leaves hub.rooms IMMEDIATELY (before the PARTED
+// round trip), the manager saves, and _notify_change fires — even when the
+// link is down (the send error is swallowed, RRC.py:609-612). Without the
+// local discard an offline part never leaves the hub's room set and the room
+// re-joins on the next boot.
+func TestPartRoomDiscardsRoomLocally(t *testing.T) {
+	t.Parallel()
+
+	dir := tempDir(t)
+	mgr := NewManager(dir, func() []byte { return []byte("ownhash") })
+	hub := mgr.AddHub([]byte{0x0a}, "rrc.hub", "PartHub")
+	hub.AddRoom("general")
+	hub.AddRoom("quiet")
+	changes := make(chan struct{}, 4)
+	mgr.SetChangeCallback(func() {
+		select {
+		case changes <- struct{}{}:
+		default:
+		}
+	})
+	hub.onSend = func(map[any]any) {} // no link: the send must be swallowed
+
+	hub.PartRoom("general")
+
+	if hub.HasRoom("general") {
+		t.Error("PartRoom left the room in hub.Rooms (Python rooms.discard, RRC.py:613-614)")
+	}
+	if !hub.HasRoom("quiet") {
+		t.Error("PartRoom dropped an unrelated room")
+	}
+	select {
+	case <-changes:
+	default:
+		t.Error("PartRoom fired no change notification (Python _notify_change, RRC.py:616)")
+	}
+
+	// The part persists (Python manager.save(), RRC.py:615): a fresh manager
+	// loading the same store must not see the parted room.
+	if err := mgr.Save(); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	fresh := NewManager(dir, func() []byte { return []byte("ownhash") })
+	if err := fresh.Load(); err != nil {
+		t.Fatalf("fresh Load: %v", err)
+	}
+	hubs := fresh.HubsSnapshot()
+	if len(hubs) != 1 {
+		t.Fatalf("fresh load = %v hubs, want 1", len(hubs))
+	}
+	for room := range hubs[0].Rooms {
+		if room == "general" {
+			t.Errorf("persisted rooms still contain the parted room: %v", hubs[0].Rooms)
+		}
+	}
+}

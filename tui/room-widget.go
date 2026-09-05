@@ -58,8 +58,11 @@ type RoomWidget struct {
 	hubStatusFn func() int
 
 	// Callbacks
-	OnSendMessage    func(text string)
-	OnLeaveRoom      func()
+	OnSendMessage func(text string)
+	// OnLeaveRoom parts the named room (Python /part's target,
+	// Channels.py:1044-1053: the argument when given, the current room
+	// otherwise). The wiring decides the placeholder switch.
+	OnLeaveRoom      func(target string)
 	OnToggleUsers    func()
 	OnToggleCollapse func()
 	OnTabComplete    func()
@@ -402,8 +405,10 @@ func (rw *RoomWidget) handleInput(event *tcell.EventKey) *tcell.EventKey {
 		rw.sendMessage()
 		return nil
 	case tcell.KeyCtrlX:
+		// Python RoomMessageEdit ctrl-x → leave_room (Channels.py:1120-1126):
+		// the current room is parted; the wiring shows the placeholder.
 		if rw.OnLeaveRoom != nil {
-			rw.OnLeaveRoom()
+			rw.OnLeaveRoom(rw.roomName)
 		}
 		return nil
 	case tcell.KeyCtrlU:
@@ -526,6 +531,11 @@ func (rw *RoomWidget) handleSlashCommand(text string) {
 	}
 
 	switch cmd {
+	case "/":
+		// Python (Channels.py:998-1001): a bare "/" — an empty command word —
+		// gets the local "Empty command" error, not the unknown-command
+		// fallback.
+		rw.appendLocalNotice("Empty command", true)
 	case "/help":
 		// Python (Channels.py:1003-1007): the help text as local system rows.
 		for line := range strings.SplitSeq(SlashHelpText(), "\n") {
@@ -559,8 +569,15 @@ func (rw *RoomWidget) handleSlashCommand(text string) {
 			localErr(rw.OnJoinRoomNamed(strings.TrimSpace(target)))
 		}
 	case "/part", "/leave":
+		// Python (Channels.py:1044-1053): target = arg stripped of a leading
+		// "#", trimmed and lowercased, else self.room. No connected
+		// requirement (Python has none — part_room swallows send errors).
+		target := strings.ToLower(strings.TrimSpace(strings.TrimLeft(arg, "#")))
+		if target == "" {
+			target = rw.roomName
+		}
 		if rw.OnLeaveRoom != nil {
-			rw.OnLeaveRoom()
+			rw.OnLeaveRoom(target)
 		}
 	case "/me":
 		if !requireConnected() {
@@ -655,6 +672,14 @@ func (rw *RoomWidget) toggleUsers() {
 
 // RoomName returns the room this widget displays.
 func (rw *RoomWidget) RoomName() string { return rw.roomName }
+
+// ChatMessages returns the room's current message list (the same records
+// renderMessages draws), for local-notice assertions and diagnostics.
+func (rw *RoomWidget) ChatMessages() []ChannelMessage {
+	out := make([]ChannelMessage, len(rw.chatMessages))
+	copy(out, rw.chatMessages)
+	return out
+}
 
 // SetMessages replaces the message list.
 func (rw *RoomWidget) SetMessages(msgs []ChannelMessage) {

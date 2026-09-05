@@ -196,7 +196,7 @@ func TestRoomWidgetKeyboardShortcuts(t *testing.T) {
 
 	var fired []string
 	rw.OnSendMessage = func(text string) { fired = append(fired, "send:"+text) }
-	rw.OnLeaveRoom = func() { fired = append(fired, "leave") }
+	rw.OnLeaveRoom = func(target string) { fired = append(fired, "leave:"+target) }
 
 	tests := []struct {
 		name  string
@@ -204,7 +204,7 @@ func TestRoomWidgetKeyboardShortcuts(t *testing.T) {
 		want  string
 	}{
 		{"ctrl-d-sends", tcell.NewEventKey(tcell.KeyCtrlD, 0, tcell.ModNone), ""},
-		{"ctrl-x-leaves", tcell.NewEventKey(tcell.KeyCtrlX, 0, tcell.ModNone), "leave"},
+		{"ctrl-x-leaves", tcell.NewEventKey(tcell.KeyCtrlX, 0, tcell.ModNone), "leave:general"},
 		{"ctrl-u-toggles", tcell.NewEventKey(tcell.KeyCtrlU, 0, tcell.ModNone), ""},
 	}
 
@@ -484,29 +484,34 @@ func TestRoomWidgetSlashCommands(t *testing.T) {
 	// The dispatch mirrors Python's _handle_slash_command (Channels.py:997-
 	// 1120): local commands never reach OnSendMessage, server-forwarded
 	// commands do, /quit disconnects the hub (not a room part), and unknown
-	// commands get the local "Unknown command" error.
+	// commands get the local "Unknown command" error. /part carries an
+	// optional target room (Channels.py:1044-1053): the named room when an
+	// argument is given (stripped of a leading "#", trimmed, lowercased), the
+	// current room otherwise.
 	tests := []struct {
 		input          string
 		wantSent       string
-		wantLeave      bool
+		wantLeave      string
 		wantAction     string
 		wantJoined     string
 		wantNickSet    string
 		wantNickInfo   bool
 		wantDisconnect bool
 	}{
-		{"/join #test", "", false, "", "test", "", false, false},
-		{"/j #test", "", false, "", "test", "", false, false},
-		{"/me dances", "", false, "dances", "", "", false, false},
-		{"/nick alice", "", false, "", "", "alice", true, false},
-		{"/who", "/who", false, "", "", "", false, false},
-		{"/names", "/names", false, "", "", "", false, false},
-		{"/topic new topic", "/topic new topic", false, "", "", "", false, false},
-		{"/part", "", true, "", "", "", false, false},
-		{"/leave", "", true, "", "", "", false, false},
-		{"/quit", "", false, "", "", "", false, true},
-		{"/q", "", false, "", "", "", false, true},
-		{"/disconnect", "", false, "", "", "", false, true},
+		{"/join #test", "", "", "", "test", "", false, false},
+		{"/j #test", "", "", "", "test", "", false, false},
+		{"/me dances", "", "", "dances", "", "", false, false},
+		{"/nick alice", "", "", "", "", "alice", true, false},
+		{"/who", "/who", "", "", "", "", false, false},
+		{"/names", "/names", "", "", "", "", false, false},
+		{"/topic new topic", "/topic new topic", "", "", "", "", false, false},
+		{"/part", "", "general", "", "", "", false, false},
+		{"/leave", "", "general", "", "", "", false, false},
+		{"/part #Other", "", "other", "", "", "", false, false},
+		{"/leave   spaced  ", "", "spaced", "", "", "", false, false},
+		{"/quit", "", "", "", "", "", false, true},
+		{"/q", "", "", "", "", "", false, true},
+		{"/disconnect", "", "", "", "", "", false, true},
 	}
 
 	for _, tt := range tests {
@@ -514,12 +519,12 @@ func TestRoomWidgetSlashCommands(t *testing.T) {
 			rw := NewRoomWidget(app, "hub1", "general")
 			rw.hubStatusFn = func() int { return hubStatusConnected }
 			var sentText string
-			left := false
+			var leftRoom string
 			var action, joined, nickSet string
 			nickInfo := false
 			disconnected := false
 			rw.OnSendMessage = func(text string) { sentText = text }
-			rw.OnLeaveRoom = func() { left = true }
+			rw.OnLeaveRoom = func(target string) { leftRoom = target }
 			rw.OnSendAction = func(text string) error { action = text; return nil }
 			rw.OnJoinRoomNamed = func(room string) error { joined = room; return nil }
 			rw.OnSetNick = func(name string) error { nickSet = name; return nil }
@@ -532,8 +537,8 @@ func TestRoomWidgetSlashCommands(t *testing.T) {
 			if sentText != tt.wantSent {
 				t.Errorf("sendMessage(%q) sent = %q, want %q", tt.input, sentText, tt.wantSent)
 			}
-			if left != tt.wantLeave {
-				t.Errorf("sendMessage(%q) left = %v, want %v", tt.input, left, tt.wantLeave)
+			if leftRoom != tt.wantLeave {
+				t.Errorf("sendMessage(%q) left room = %q, want %q", tt.input, leftRoom, tt.wantLeave)
 			}
 			if action != tt.wantAction {
 				t.Errorf("sendMessage(%q) action = %q, want %q", tt.input, action, tt.wantAction)

@@ -113,7 +113,7 @@ else
 fi
 
 echo "== [4/4] starting gorrcd (attached; serves the RRC chat hub) =="
-nohup "$GORRCD" -pprof-addr 127.0.0.1:6061 \
+nohup "$GORRCD" -pprof-addr 127.0.0.1:6061 -log-level DEBUG \
     >"$LOGDIR/gorrcd-$EPOCH.log" 2>&1 </dev/null &
 GORRCD_PID=$!
 disown "$GORRCD_PID" 2>/dev/null || true

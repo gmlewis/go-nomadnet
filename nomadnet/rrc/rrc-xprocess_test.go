@@ -339,16 +339,33 @@ if hub_hash is None:
     sys.exit(1)
 
 hub = mgr.add_hub(hub_hash, dest_name="rrc.chat", name="GoHub")
-hub.connect()
 
-deadline = time.monotonic() + 30.0
-while time.monotonic() < deadline:
+# Retry the connect handshake once. RRCHub._connect_worker is single-shot: if
+# the Go hub's announce has not arrived within its ~25 s pass (path request
+# window + identity recall), it sets STATUS_FAILED and never retries. Under
+# CI load that first pass can starve (2026-09-05 run: the Go hub announced
+# every 2 s for 30 s over an alive TCP link, but the client never recalled
+# the identity and no link request was ever sent), while the real RRC client
+# reconnects on failure. So a failed pass is retried once, and each failure
+# prints diagnostics that distinguish "announce never received" from
+# "HELLO/WELCOME lost on an established link".
+welcomed = False
+for attempt in range(2):
+    hub.connect()
+    deadline = time.monotonic() + 35.0
+    while time.monotonic() < deadline:
+        if hub.welcomed:
+            break
+        time.sleep(0.1)
     if hub.welcomed:
+        welcomed = True
         break
-    time.sleep(0.1)
+    print("WELCOME_TIMEOUT=" + str(attempt + 1), flush=True)
+    print("HUB_STATUS=" + hub.status_text, flush=True)
+    print("HAS_PATH=" + str(RNS.Transport.has_path(hub_hash)), flush=True)
+    print("IDENT_KNOWN=" + str(RNS.Identity.recall(hub_hash) is not None), flush=True)
 
-if not hub.welcomed:
-    print("WELCOME_TIMEOUT=1", flush=True)
+if not welcomed:
     sys.exit(1)
 print("WELCOMED=1", flush=True)
 print("HUB_NAME=" + str(hub.hub_name), flush=True)
@@ -449,13 +466,10 @@ func TestIntegrationXProcessMSGRoundTrip(t *testing.T) {
 		}
 	})
 
-	// Publish the Go server destination hash so the Python client can dial it.
-	if err := os.WriteFile(hashFile, []byte(hex.EncodeToString(serverDest.Hash)), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
 	// Announce the Go RRC destination in a loop so the Python client can recall
-	// the Go identity and establish an RNS Link to it.
+	// the Go identity and establish an RNS Link to it. The first announce goes
+	// out before the hash file is published, so the Python client never starts
+	// its connect handshake into an announce-free window.
 	stopAnn := make(chan struct{})
 	go func() {
 		for {
@@ -470,8 +484,15 @@ func TestIntegrationXProcessMSGRoundTrip(t *testing.T) {
 	}()
 	defer close(stopAnn)
 
-	// Wait for the Python client to complete the HELLO/WELCOME handshake.
-	lb.waitForLine(t, "WELCOMED=", 40*time.Second)
+	// Publish the Go server destination hash so the Python client can dial it.
+	if err := os.WriteFile(hashFile, []byte(hex.EncodeToString(serverDest.Hash)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait for the Python client to complete the HELLO/WELCOME handshake. The
+	// client retries the handshake once after a failed pass, so this must cover
+	// two full connect windows (35s each) plus reconnect overhead.
+	lb.waitForLine(t, "WELCOMED=", 90*time.Second)
 
 	// Wait for the link to be established on the Go side too.
 	select {

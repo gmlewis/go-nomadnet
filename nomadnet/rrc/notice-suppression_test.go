@@ -20,9 +20,11 @@ import (
 )
 
 // rrcd's server-command acknowledgements ("room <name>: registered;
-// mode=+nrt; topic=(none)" and the /list room-list lines) are protocol
-// traffic, not conversation: they must update no room buffer. The hub's
-// roomless greeting MOTD still renders in the open room (Python parity).
+// mode=+nrt; topic=(none)") are protocol traffic, not conversation: they must
+// update no room buffer. The hub's roomless greeting MOTD still renders in
+// the open room (Python parity), and a user-typed /list reply renders too —
+// only the auto_list sweep's reply is silently consumed (see
+// list-reply-parity_test.go).
 
 // TestControlNoticesAreSuppressed pins the suppression list: the registration
 // ack family and the /mode and /topic acks are consumed without rendering.
@@ -97,8 +99,9 @@ func TestConversationNoticesStillRender(t *testing.T) {
 }
 
 // TestRoomListNoticePopulatesAdvertisedRooms pins that the /list reply still
-// populates the hub's advertised-room set — while never rendering (the
-// catfacts/chat-hispano room-list lines flooded the conversation window).
+// populates the hub's advertised-room set. A USER-typed /list reply also
+// renders (Python RRC.py:1092-1101 — only the auto_list sweep's reply is
+// silently consumed; see list-reply-parity_test.go for the full contract).
 func TestRoomListNoticePopulatesAdvertisedRooms(t *testing.T) {
 	t.Parallel()
 
@@ -111,26 +114,23 @@ func TestRoomListNoticePopulatesAdvertisedRooms(t *testing.T) {
 	if len(rooms) != 2 || rooms[0] != "catfacts" || rooms[1] != "chat-hispano" {
 		t.Errorf("advertised rooms = %v, want [catfacts chat-hispano]", rooms)
 	}
-	// The room list must not land in any conversation buffer.
-	for _, room := range []string{"test"} {
-		if msgs := hub.GetMessages(room); len(msgs) != 0 {
-			t.Errorf("room %q buffer = %v entries, want 0 (room-list notices never render)", room, len(msgs))
-		}
+	if got := len(hub.GetMessages("test")); got != 1 {
+		t.Errorf("room %q buffer = %v entries, want the rendered user-initiated /list reply", "test", got)
 	}
 }
 
-// TestInternalListCommandDoesNotRender pins that the internal /list (the
-// auto_list sweep) stays silent end to end: the command is sent, the reply is
-// consumed, and nothing renders.
+// TestInternalListCommandDoesNotRender pins that the auto_list sweep's /list
+// (Python T_WELCOME tail, RRC.py:910-919) stays silent end to end: the armed
+// request is sent, the reply is consumed without rendering, and the counter
+// unwinds so a later user-typed /list reply renders.
 func TestInternalListCommandDoesNotRender(t *testing.T) {
 	t.Parallel()
 
 	_, hub, sent := reconcileFixture(t)
 	hub.AddRoom("general")
 
-	if err := hub.SendCommand("/list", ""); err != nil {
-		t.Fatalf("SendCommand: %v", err)
-	}
+	hub.requestRoomList()
+
 	if len(*sent) != 1 || (*sent)[0] != "/list" {
 		t.Fatalf("sent command bodies = %v, want [\"/list\"]", *sent)
 	}
@@ -141,6 +141,9 @@ func TestInternalListCommandDoesNotRender(t *testing.T) {
 		t.Errorf("advertised rooms = %v, want [catfacts]", hub.GetAvailableRoomList())
 	}
 	if got := len(hub.GetMessages("general")); got != 0 {
-		t.Errorf("room buffer after /list reply = %v entries, want 0 (never rendered)", got)
+		t.Errorf("room buffer after auto /list reply = %v entries, want 0 (consumed silently)", got)
+	}
+	if got := hub.silentListPending; got != 0 {
+		t.Errorf("silentListPending after reply = %v, want 0", got)
 	}
 }

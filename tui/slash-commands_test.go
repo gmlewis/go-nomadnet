@@ -126,6 +126,8 @@ func TestCommandAlias(t *testing.T) {
 	}
 }
 
+// TestParseSlashCommandExtraSpaces pins the parse's whitespace handling
+// (Python str.split(None, 1)).
 func TestParseSlashCommandExtraSpaces(t *testing.T) {
 	t.Parallel()
 
@@ -141,6 +143,33 @@ func TestParseSlashCommandExtraSpaces(t *testing.T) {
 	}
 }
 
+// TestBareSlashEmptyCommand pins Python's empty-command error (Channels.py:
+// 998-1001): a bare "/" in the composer gets the local "Empty command"
+// notice, not the unknown-command fallback.
+func TestBareSlashEmptyCommand(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	rw := NewRoomWidget(app, "hub1", "general")
+	rw.hubStatusFn = func() int { return hubStatusConnected }
+	var sent int
+	rw.OnSendMessage = func(string) { sent++ }
+
+	rw.editor.SetText("/")
+	rw.sendMessage()
+
+	if sent != 0 {
+		t.Errorf("bare / sent %v messages, want 0", sent)
+	}
+	msgs := rw.ChatMessages()
+	if len(msgs) != 1 || msgs[0].Text != "Empty command" {
+		t.Fatalf("notices = %+v, want one local \"Empty command\" notice", msgs)
+	}
+	if rw.editor.GetText() != "" {
+		t.Errorf("editor text = %q, want empty", rw.editor.GetText())
+	}
+}
+
 func TestSlashHelpText(t *testing.T) {
 	t.Parallel()
 
@@ -152,6 +181,60 @@ func TestSlashHelpText(t *testing.T) {
 	for _, cmd := range []string{"/help", "/ping", "/join", "/nick", "/me"} {
 		if !cmdContainsStr(help, cmd) {
 			t.Errorf("SlashHelpText() missing %q", cmd)
+		}
+	}
+}
+
+// wantSlashHelp carries the Python RoomWidget.SLASH_HELP constant verbatim
+// (Channels.py:948-979, byte-identical in the SOT checkout and the installed
+// user-site 1.2.8 copy) — the /help output is a literal constant, so the port
+// renders the exact lines including the column-aligned descriptions.
+var wantSlashHelp = []string{
+	"/help                                - show this list",
+	"/ping                                - measure round-trip to hub",
+	"/list                                - list public rooms on this hub",
+	"/join <room>                         - join a room on this hub",
+	"/part [room]                         - leave a room (default: current)",
+	"/leave [room]                        - alias for /part",
+	"/me <text>                           - send an action (e.g. /me waves)",
+	"/nick <name>                         - set your nick on this hub only",
+	"/who [room]                          - list users (current room if omitted)",
+	"/names [room]                        - alias for /who",
+	"/clear                               - clear local messages in this room",
+	"/connect                             - connect this hub",
+	"/disconnect                          - disconnect this hub",
+	"/quit                                - alias for /disconnect",
+	"",
+	"Server-side commands (auth enforced by hub):",
+	"/topic <room> [text]                 - view or set room topic",
+	"/mode <room> [+-flags] [arg]         - view or set room modes",
+	"/register <room>                     - register the current room",
+	"/unregister <room>                   - unregister the current room",
+	"/kick <room> <target>                - remove user from room",
+	"/ban <room> add|del|list [target]    - room ban list",
+	"/invite <room> add|del|list [target] - room invite list",
+	"/op <room> <target>                  - grant op",
+	"/deop <room> <target>                - revoke op",
+	"/voice <room> <target>               - grant voice",
+	"/devoice <room> <target>             - revoke voice",
+	"/kline add|del|list [target]         - global ban",
+	"/stats                               - server statistics",
+	"/reload                              - reload server config",
+}
+
+// TestSlashHelpTextPythonParity pins the /help output line-for-line against
+// the Python SLASH_HELP constant (captured live from the SOT — see the
+// wantSlashHelp comment).
+func TestSlashHelpTextPythonParity(t *testing.T) {
+	t.Parallel()
+
+	got := strings.Split(SlashHelpText(), "\n")
+	if len(got) != len(wantSlashHelp) {
+		t.Fatalf("SlashHelpText() = %v lines, want %v", len(got), len(wantSlashHelp))
+	}
+	for i, want := range wantSlashHelp {
+		if got[i] != want {
+			t.Errorf("SlashHelpText() line %v = %q, want %q", i+1, got[i], want)
 		}
 	}
 }

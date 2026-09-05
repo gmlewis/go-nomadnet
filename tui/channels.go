@@ -645,10 +645,13 @@ func (cd *ChannelsDisplay) ShowRoom(hubIdx int, room string, msgs []ChannelMessa
 				cd.OnConnectHub()
 			}
 		}
-		rw.OnLeaveRoom = func() {
-			if cd.OnLeaveRoom != nil {
-				cd.OnLeaveRoom(room)
+		rw.OnLeaveRoom = func(target string) {
+			// The widget resolves an empty target to its own room; keep the
+			// guard for direct callers.
+			if target == "" {
+				target = room
 			}
+			cd.LeaveRoom(target)
 		}
 		// Member-row activation surfaces the user info dialog (Python
 		// show_user_info, Channels.py:2119).
@@ -924,9 +927,7 @@ func (cd *ChannelsDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 		if cd.paneMode == "room" {
 			return event
 		}
-		if cd.OnLeaveRoom != nil {
-			cd.OnLeaveRoom(cd.selectedRoom)
-		}
+		cd.LeaveRoom(cd.selectedRoom)
 		return nil
 	case tcell.KeyF8:
 		cd.ToggleCollapse()
@@ -1020,6 +1021,22 @@ func (cd *ChannelsDisplay) ShowPlaceholder() {
 	cd.rightPane.SetBorder(true)
 	cd.rightPane.Clear()
 	cd.rightPane.AddItem(cd.placeholder, 0, 1, false)
+}
+
+// LeaveRoom parts the named room through the wiring callback and, when the
+// parted room is the one currently shown, returns the right pane to the
+// placeholder (Python _handle_slash_command "part"/"leave",
+// Channels.py:1044-1053 — placeholder only when target == self.room — and
+// leave_room, Channels.py:1120-1126, which always parts the shown room).
+// Runs on the event loop's goroutine, so ShowPlaceholder applies directly.
+func (cd *ChannelsDisplay) LeaveRoom(target string) {
+	shown := cd.selectedRoom
+	if cd.OnLeaveRoom != nil {
+		cd.OnLeaveRoom(target)
+	}
+	if target == shown {
+		cd.ShowPlaceholder()
+	}
 }
 
 // SetMessages replaces the messages view content.
