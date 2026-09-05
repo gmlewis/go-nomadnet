@@ -161,20 +161,67 @@ func TestIntegrationMultiHopIdleLinkSurvives(t *testing.T) {
 
 	// Silence: freeze the who-refresh; only RNS keepalives may flow.
 	hub.stopWhoRefresh()
+
 	// 60s is far beyond the Python hub's stale window at wire RTT
 	// (~2*5s=10s): a single dropped keepalive in that window would tear the
 	// link down, so survival proves end-to-end keepalive traversal through
 	// the Go transport node.
-	const silentFor = 60 * time.Second
+	//
+	// Loopback knife edge: at rtt≈0 both sides clamp keepalive to the 5s
+	// floor (stale=10s). The Python responder echoes a keepalive only when
+	// its own last outbound is ≥keepalive old, and the initiator's
+	// keepalives arrive exactly on that 5s boundary, so the echo is
+	// occasionally skipped; the next echo then races the initiator's 10s
+	// stale clock. 2026-09-04 forensics (CI run 33931694854 and a local
+	// repro): the Go transport forwarded every keepalive in both directions
+	// — the deaths were Python-hub echo-skip races against the stale
+	// boundary, not transport loss. One death therefore proves nothing
+	// about the transport, but repeated deaths do: a transport that actually
+	// loses keepalives kills every link attempt within seconds of silence.
+	// So each death triggers a reconnect and restarts the full silent
+	// window, and only a third death (or a failed re-welcome) fails the
+	// test.
+	const (
+		silentFor     = 60 * time.Second
+		maxLinkDeaths = 2
+		reconnectFor  = 25 * time.Second
+	)
+	deaths := 0
 	deadline = time.Now().Add(silentFor)
 	for time.Now().Before(deadline) {
 		hub.lock.Lock()
 		status, welcomedNow := hub.Status, hub.Welcomed
 		hub.lock.Unlock()
-		if !welcomedNow || status != StatusConnected {
-			t.Fatalf("MULTI-HOP link DIED during %v silence: status=%d (the Go transport node loses keepalives; the Python hub watchdog staled the link)", silentFor, status)
+		if welcomedNow && status == StatusConnected {
+			time.Sleep(250 * time.Millisecond)
+			continue
 		}
-		time.Sleep(250 * time.Millisecond)
+
+		deaths++
+		if deaths > maxLinkDeaths {
+			t.Fatalf("MULTI-HOP link died %d times during %v silence windows (status=%d): keepalives are not traversing the Go transport node", deaths, silentFor, status)
+		}
+		t.Logf("link died during silence (death %d/%d, status=%d); reconnecting", deaths, maxLinkDeaths, status)
+		hub.ConnectAsync()
+		reconnectDeadline := time.Now().Add(reconnectFor)
+		for time.Now().Before(reconnectDeadline) {
+			hub.lock.Lock()
+			status, welcomedNow = hub.Status, hub.Welcomed
+			hub.lock.Unlock()
+			if welcomedNow && status == StatusConnected {
+				break
+			}
+			time.Sleep(250 * time.Millisecond)
+		}
+		hub.lock.Lock()
+		status, welcomedNow = hub.Status, hub.Welcomed
+		hub.lock.Unlock()
+		if !welcomedNow || status != StatusConnected {
+			t.Fatalf("multi-hop link died during silence and the reconnect never re-welcomed within %v (status=%d)", reconnectFor, status)
+		}
+		// The re-welcome re-armed the who-refresh timer; silence again.
+		hub.stopWhoRefresh()
+		deadline = time.Now().Add(silentFor)
 	}
-	t.Logf("multi-hop link survived %v of silence", silentFor)
+	t.Logf("multi-hop link survived %v of silence (%d link deaths tolerated)", silentFor, deaths)
 }

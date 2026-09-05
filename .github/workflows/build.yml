@@ -173,7 +173,7 @@ jobs:
       # parity tests exercise (e.g. Dir.preferred_delivery) and whose RNS
       # breaks the cross-process rrc round-trip.
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.14'
 
