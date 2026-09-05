@@ -179,6 +179,23 @@ type RRCHub struct {
 	// they must not echo — echoing rrcd's fanout copies back would make the
 	// hub re-forward them (Python's client has no such echo, RRC.py:1021).
 	serverSide bool
+
+	// Hub-liveness watchdog (startHubLivenessLoop): the hub pings every ~30 s,
+	// so total inbound silence for HubLivenessTimeout means the hub instance
+	// is gone even though this process's link object still looks active. The
+	// RNS link watchdog cannot be relied on for this: its stale window is
+	// 2*clamp(rtt*(KEEPALIVE_MAX/KEEPALIVE_MAX_RTT), 5s, 360s) with the rtt
+	// measured once at establishment, so a link established during a load
+	// spike (rtt ~15 s observed live) stays "active" for up to 12 minutes
+	// after the hub died — the client shows Connected while its joins and
+	// messages vanish. On expiry the watchdog tears the link down, which
+	// fires the closed callback and the normal reconnect machinery.
+	lastHubTraffic atomic.Int64
+	hubLiveness    time.Duration
+	livenessStop   chan struct{}
+	livenessWG     sync.WaitGroup
+	// livenessTeardownFn, when set, replaces link.Teardown on expiry (tests).
+	livenessTeardownFn func()
 }
 
 // NewHub creates a new RRCHub with default values.
@@ -318,6 +335,14 @@ func (h *RRCHub) onEstablished(l *rns.Link) {
 		h.HandleData(data)
 	})
 
+	// Arm the hub-liveness watchdog: hub silence beyond HubLivenessTimeout
+	// tears the link down into the normal reconnect path.
+	h.lastHubTraffic.Store(time.Now().UnixNano())
+	if h.hubLiveness <= 0 {
+		h.hubLiveness = HubLivenessTimeout
+	}
+	h.startHubLivenessLoop()
+
 	// Accept resource transfers via the app callback, mirroring Python's
 	// _on_established registration of the resource callbacks.
 	_ = l.SetResourceStrategy(rns.AcceptApp)
@@ -330,6 +355,80 @@ func (h *RRCHub) onEstablished(l *rns.Link) {
 	if cb != nil {
 		cb()
 	}
+}
+
+// HubLivenessTimeout is how long the client tolerates total inbound silence
+// from the hub before declaring the link dead: three missed hub pings (the
+// hub pings every ~30 s). This bounds reconnect latency independently of the
+// RNS link watchdog, whose stale window is derived from the
+// once-at-establishment rtt and can reach 12 minutes for links established
+// during a load spike.
+const HubLivenessTimeout = 90 * time.Second
+
+// startHubLivenessLoop arms the per-establishment watchdog goroutine.
+func (h *RRCHub) startHubLivenessLoop() {
+	h.lock.Lock()
+	if h.livenessStop != nil {
+		h.lock.Unlock()
+		return
+	}
+	h.livenessStop = make(chan struct{})
+	stop := h.livenessStop
+	liveness := h.hubLiveness
+	if liveness <= 0 {
+		liveness = HubLivenessTimeout
+	}
+	h.lock.Unlock()
+	h.livenessWG.Add(1)
+	go h.hubLivenessLoop(stop, liveness)
+}
+
+func (h *RRCHub) hubLivenessLoop(stop <-chan struct{}, liveness time.Duration) {
+	defer h.livenessWG.Done()
+	interval := liveness / 4
+	if interval < 100*time.Millisecond {
+		interval = 100 * time.Millisecond
+	}
+	for {
+		select {
+		case <-stop:
+			return
+		case <-time.After(interval):
+		}
+		h.lock.Lock()
+		link := h.link
+		h.lock.Unlock()
+		if link == nil {
+			return
+		}
+		last := h.lastHubTraffic.Load()
+		if last == 0 {
+			continue
+		}
+		silent := time.Since(time.Unix(0, last))
+		if silent <= liveness {
+			continue
+		}
+		log.Printf("[RRC %v] hub silent for %v (liveness timeout %v), tearing down for reconnect",
+			h.Name, silent.Round(time.Second), liveness)
+		if fn := h.livenessTeardownFn; fn != nil {
+			fn()
+			return
+		}
+		link.Teardown()
+		return
+	}
+}
+
+func (h *RRCHub) stopHubLivenessLoop() {
+	h.lock.Lock()
+	stop := h.livenessStop
+	h.livenessStop = nil
+	h.lock.Unlock()
+	if stop != nil {
+		close(stop)
+	}
+	h.livenessWG.Wait()
 }
 
 // onClosed is the link-closed handler, mirroring Python RRCHub._on_closed: it
@@ -350,6 +449,7 @@ func (h *RRCHub) onClosedWithReason(reason string) {
 	if reason != "" {
 		log.Printf("[RRC %v] link closed: %v", h.Name, reason)
 	}
+	h.stopHubLivenessLoop()
 	h.lock.Lock()
 	h.link = nil
 	h.Welcomed = false
@@ -1712,6 +1812,9 @@ func (h *RRCHub) sendEnv(env map[any]any) {
 // to the appropriate handler based on the message type.
 func (h *RRCHub) HandleData(data []byte) {
 	log.Printf("DEBUG rrc HandleData: %d bytes: %x", len(data), data[:min(len(data), 40)])
+	// Any inbound envelope is proof the hub link is alive; the hub-liveness
+	// watchdog (startHubLivenessLoop) reads this clock.
+	h.lastHubTraffic.Store(time.Now().UnixNano())
 	env, err := DecodeEnvelope(data)
 	if err != nil {
 		log.Printf("DEBUG rrc HandleData decode failed: %v", err)
