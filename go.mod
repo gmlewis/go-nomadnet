@@ -6,7 +6,7 @@ require (
 	github.com/creack/pty/v2 v2.0.1
 	github.com/fxamacker/cbor/v2 v2.9.2
 	github.com/gdamore/tcell/v2 v2.13.10
-	github.com/gmlewis/go-reticulum v0.77.0
+	github.com/gmlewis/go-reticulum v0.78.0
 	github.com/mattn/go-runewidth v0.0.16
 	github.com/mdp/qrterminal/v3 v3.2.1
 	github.com/rivo/tview v0.42.0
