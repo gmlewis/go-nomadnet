@@ -79,7 +79,7 @@ git -C "$NOMAD_DIR" pull --ff-only 2>/dev/null || echo "WARN: go-nomadnet pull f
 ( cd "$NOMAD_DIR" && go install ./cmd/gonomadnet ) || { echo "FATAL: go-nomadnet build failed"; exit 1; }
 
 echo "== [3/4] starting gornsd -s (the shared instance; owns all interfaces) =="
-nohup "$GORN" -s -pprof-addr 127.0.0.1:6062 \
+nohup "$GORN" -s -v -v -pprof-addr 127.0.0.1:6062 \
     >"$LOGDIR/gornsd-$EPOCH.log" 2>&1 </dev/null &
 GORN_PID=$!
 disown "$GORN_PID" 2>/dev/null || true
