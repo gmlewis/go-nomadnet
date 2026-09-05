@@ -864,6 +864,12 @@ func (a *App) Shutdown() {
 			a.Logger.Warning("Could not close Reticulum: %v", err)
 		}
 	}
+
+	// The rns logger writes asynchronously (the TUI and daemon modes log to a
+	// file sink); flush it before returning so the shutdown diagnostics above
+	// and any still-queued transport lines reach the logfile before the
+	// process exits.
+	a.Logger.Close()
 }
 
 // AnnounceNow sends an LXMF delivery announce using the configured display

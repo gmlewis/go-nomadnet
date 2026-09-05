@@ -32,6 +32,9 @@ func runDaemon(configDir, rnsConfigDir string, console bool) {
 
 	a := app.NewApp(configDir, rnsConfigDir, true, console)
 	if err := a.Init(); err != nil {
+		// The rns logger writes asynchronously; flush the queue so the init
+		// diagnostics explaining the failure are not silently lost.
+		a.Logger.Flush()
 		log.Fatalf("Failed to initialize: %v", err)
 	}
 

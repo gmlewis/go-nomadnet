@@ -79,6 +79,9 @@ func runTextUI(configDir, rnsConfigDir string) {
 	// Initialize the app
 	a := app.NewApp(configDir, rnsConfigDir, false, false)
 	if err := a.Init(); err != nil {
+		// The rns logger writes asynchronously; flush the queue so the init
+		// diagnostics explaining the failure are not silently lost.
+		a.Logger.Flush()
 		log.Fatalf("Failed to initialize: %v", err)
 	}
 
@@ -147,6 +150,9 @@ func runTextUI(configDir, rnsConfigDir string) {
 			_, _ = f.Write(debug.Stack())
 			_ = f.Close()
 		}
+		// The rns logger writes asynchronously; flush the queue so any
+		// pre-crash transport diagnostics reach the logfile.
+		a.Logger.Close()
 		os.Exit(1)
 	}
 	tuiApp.SetOnPanic(handleCrash)
@@ -209,6 +215,9 @@ func runTextUI(configDir, rnsConfigDir string) {
 	tuiApp.ShowIntro(intro.Widget(), introTime)
 
 	if err := tuiApp.Run(); err != nil {
+		// The rns logger writes asynchronously; flush the queue so queued
+		// diagnostics are not silently lost.
+		a.Logger.Flush()
 		log.Fatalf("TUI error: %v", err)
 	}
 }

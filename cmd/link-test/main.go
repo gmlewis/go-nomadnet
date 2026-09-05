@@ -89,12 +89,18 @@ func main() {
 
 	logger := rns.NewLogger()
 	if *verbose {
+		// SetLogCallback alone does nothing: the destination must also switch
+		// to the synchronous LogCallback sink for the callback to fire.
+		logger.SetLogDest(rns.LogCallback)
 		logger.SetLogCallback(func(msg string) { log.Print(msg) })
 	}
 
 	ts := rns.NewTransportSystem(logger)
 	ret, err := rns.NewReticulumWithLogger(ts, dir, logger)
 	if err != nil {
+		// Flush the async queue so the init diagnostics explaining the
+		// failure are not silently lost.
+		logger.Flush()
 		fmt.Fprintf(os.Stderr, "link-test: failed to start Reticulum: %v\n", err)
 		os.Exit(1)
 	}
@@ -128,7 +134,7 @@ func main() {
 	parts := strings.Split(*fullName, ".")
 	if len(parts) < 1 {
 		fmt.Fprintf(os.Stderr, "link-test: invalid full-name %q\n", *fullName)
-		os.Exit(2)
+		exit(logger, 2)
 	}
 	appName := parts[0]
 	aspects := parts[1:]
@@ -140,19 +146,19 @@ func main() {
 	remoteID := rns.RecallIdentity(ts, destHash)
 	if remoteID == nil {
 		fmt.Println("No known identity for destination; cannot create matching destination")
-		os.Exit(1)
+		exit(logger, 1)
 	}
 	dest, err := rns.NewDestination(ts, remoteID, rns.DestinationOut, rns.DestinationSingle, appName, aspects...)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "link-test: destination error: %v\n", err)
-		os.Exit(1)
+		exit(logger, 1)
 	}
 
 	// Create and establish the link.
 	link, err := rns.NewLink(ts, dest)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "link-test: NewLink error: %v\n", err)
-		os.Exit(1)
+		exit(logger, 1)
 	}
 
 	established := make(chan struct{})
@@ -164,18 +170,27 @@ func main() {
 	fmt.Printf("Establishing link to %s (timeout %.0fs)…\n", destHashStr, *timeoutSec)
 	if err := link.Establish(); err != nil {
 		fmt.Printf("Establish error: %v\n", err)
-		os.Exit(1)
+		exit(logger, 1)
 	}
 
 	select {
 	case <-established:
 		elapsed := time.Since(start)
 		fmt.Printf("LINK ESTABLISHED in %v\n", elapsed.Round(time.Millisecond))
-		os.Exit(0)
+		exit(logger, 0)
 	case <-time.After(time.Duration(*timeoutSec * float64(time.Second))):
 		fmt.Println("LINK TIMED OUT")
-		os.Exit(1)
+		exit(logger, 1)
 	}
+}
+
+// exit flushes the async rns log queue so queued transport diagnostics reach
+// the sink, then exits the process.
+func exit(logger *rns.Logger, code int) {
+	if logger != nil {
+		logger.Close()
+	}
+	os.Exit(code)
 }
 
 func instanceRole(r *rns.Reticulum) string {

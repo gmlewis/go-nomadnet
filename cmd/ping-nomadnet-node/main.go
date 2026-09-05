@@ -165,6 +165,9 @@ func run(args []string) int {
 	}
 
 	logger := rns.NewLogger()
+	// The rns logger writes asynchronously; flush it before the process exits
+	// so the final log lines are not silently lost.
+	defer logger.Close()
 	level := rns.LogError
 	if opts.verbose {
 		level = rns.LogInfo
@@ -174,6 +177,8 @@ func run(args []string) int {
 	ts := rns.NewTransportSystem(logger)
 	ret, err := rns.NewReticulumWithLogger(ts, opts.rnsConfigDir, logger)
 	if err != nil {
+		// Flush the async queue first (log.Fatalf skips deferred closes).
+		logger.Flush()
 		log.Fatalf("Could not initialize Reticulum: %v", err)
 	}
 	defer func() {
