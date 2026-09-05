@@ -385,10 +385,7 @@ func (h *RRCHub) startHubLivenessLoop() {
 
 func (h *RRCHub) hubLivenessLoop(stop <-chan struct{}, liveness time.Duration) {
 	defer h.livenessWG.Done()
-	interval := liveness / 4
-	if interval < 100*time.Millisecond {
-		interval = 100 * time.Millisecond
-	}
+	interval := max(100*time.Millisecond, liveness/4)
 	for {
 		select {
 		case <-stop:
