@@ -356,3 +356,109 @@ func TestLinkCloseClearsWhoMarkers(t *testing.T) {
 			hub.silentWhoRooms, hub.userWhoRooms)
 	}
 }
+
+// TestWhoReplyViaResourceConsumedSilently verifies that large /who replies
+// delivered via Reticulum Resource transfer (common for rooms with many
+// members like #general on public hubs) are processed through ParseWhoNotice
+// and consumed silently when an auto-who / silent-who request is outstanding.
+func TestWhoReplyViaResourceConsumedSilently(t *testing.T) {
+	t.Parallel()
+
+	_, hub, _ := reconcileFixture(t)
+	hub.AddRoom("general")
+	hub.markAutoWhoRequest("general")
+
+	payload := []byte("members in general: Alice (112233445566), Bob (aabbccddeeff)")
+	hub.lock.Lock()
+	hub.resourceExpectations["rid-who-silent"] = &resourceExpectation{
+		kind:     ResKindNotice,
+		size:     len(payload),
+		room:     "general",
+		encoding: "utf-8",
+		expires:  time.Now().Add(30 * time.Second),
+	}
+	hub.lock.Unlock()
+
+	hub.handleConcludedResource(payload)
+
+	// The reply must NOT hit the message log.
+	if msgs := hub.GetMessages("general"); len(msgs) != 0 {
+		t.Fatalf("who reply via resource was recorded as %v messages, want 0 (silently consumed)", len(msgs))
+	}
+
+	// The membership must have been updated.
+	members := hub.GetMembers("general")
+	if len(members) != 2 {
+		t.Fatalf("members after resource who reply = %v, want 2", members)
+	}
+}
+
+// TestWhoReplyViaResourceUserInitiatedRenders verifies that user-initiated
+// /who replies delivered via Resource transfer are rendered in the room.
+func TestWhoReplyViaResourceUserInitiatedRenders(t *testing.T) {
+	t.Parallel()
+
+	_, hub, _ := reconcileFixture(t)
+	hub.AddRoom("general")
+	hub.lock.Lock()
+	hub.userWhoRooms["general"] = true
+	hub.lock.Unlock()
+
+	payload := []byte("members in general: Alice (112233445566), Bob (aabbccddeeff)")
+	hub.lock.Lock()
+	hub.resourceExpectations["rid-who-user"] = &resourceExpectation{
+		kind:     ResKindNotice,
+		size:     len(payload),
+		room:     "general",
+		encoding: "utf-8",
+		expires:  time.Now().Add(30 * time.Second),
+	}
+	hub.lock.Unlock()
+
+	hub.handleConcludedResource(payload)
+
+	// The user-initiated reply must render in the message log.
+	msgs := hub.GetMessages("general")
+	if len(msgs) != 1 {
+		t.Fatalf("user who reply via resource recorded %v messages, want 1", len(msgs))
+	}
+	if msgs[0].Text != string(payload) {
+		t.Errorf("rendered message text = %q, want %q", msgs[0].Text, string(payload))
+	}
+}
+
+// TestRoomListReplyViaResourceConsumedSilently verifies that room list
+// replies delivered via Resource transfer are parsed and consumed silently
+// when an auto-list request is pending.
+func TestRoomListReplyViaResourceConsumedSilently(t *testing.T) {
+	t.Parallel()
+
+	_, hub, _ := reconcileFixture(t)
+	hub.lock.Lock()
+	hub.silentListPending = 1
+	hub.lock.Unlock()
+
+	payload := []byte("Registered public rooms:\n  #general - General discussion\n  #test")
+	hub.lock.Lock()
+	hub.resourceExpectations["rid-list-silent"] = &resourceExpectation{
+		kind:     ResKindNotice,
+		size:     len(payload),
+		room:     "",
+		encoding: "utf-8",
+		expires:  time.Now().Add(30 * time.Second),
+	}
+	hub.lock.Unlock()
+
+	hub.handleConcludedResource(payload)
+
+	if msgs := hub.GetMessages(""); len(msgs) != 0 {
+		t.Fatalf("list reply via resource was recorded as %v messages, want 0", len(msgs))
+	}
+
+	hub.lock.Lock()
+	rooms := len(hub.AvailableRooms)
+	hub.lock.Unlock()
+	if rooms != 2 {
+		t.Fatalf("available rooms after resource list reply = %v, want 2", rooms)
+	}
+}

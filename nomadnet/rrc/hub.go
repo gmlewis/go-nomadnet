@@ -3369,6 +3369,26 @@ func (h *RRCHub) handleConcludedResource(data []byte) {
 			h.Manager.NotifyChange(h)
 		}
 	}
+	if kind == ResKindNotice {
+		if rooms := ParseRoomListNotice(text); rooms != nil {
+			h.SetAvailableRooms(rooms)
+			if h.consumeSilentListReply() {
+				return
+			}
+		}
+		if whoRoom, entries, isWho := ParseWhoNotice(text); isWho {
+			h.applyWhoReply(whoRoom, entries)
+			if h.consumeWhoReply(whoRoom) {
+				return
+			}
+			if room == "" {
+				room = whoRoom
+			}
+		}
+		if isProtocolControlNotice(text) {
+			return
+		}
+	}
 	// The greeting rides as a roomless MOTD-kind resource; both notice kinds
 	// route through recordNotice, with the MOTD pinned against the ephemeral
 	// purge (the greeting is standing hub info re-sent on every WELCOME).
