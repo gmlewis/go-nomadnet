@@ -37,13 +37,13 @@ import (
 	"github.com/gmlewis/go-nomadnet/nomadnet/browser"
 	"github.com/gmlewis/go-nomadnet/nomadnet/conversation"
 	"github.com/gmlewis/go-nomadnet/nomadnet/directory"
-	"github.com/gmlewis/go-nomadnet/nomadnet/rrc"
 	"github.com/gmlewis/go-nomadnet/nomadnet/util"
 	"github.com/gmlewis/go-nomadnet/tui"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/gmlewis/go-reticulum/lxmf"
 	"github.com/gmlewis/go-reticulum/rns"
+	"github.com/gmlewis/go-reticulum/rrc"
 	"github.com/rivo/tview"
 )
 

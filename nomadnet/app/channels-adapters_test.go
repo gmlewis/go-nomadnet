@@ -18,8 +18,8 @@ package app
 import (
 	"testing"
 
-	"github.com/gmlewis/go-nomadnet/nomadnet/rrc"
 	"github.com/gmlewis/go-nomadnet/tui"
+	"github.com/gmlewis/go-reticulum/rrc"
 )
 
 // TestHubViews pins App.HubViews: the RRC manager's hubs are adapted to the

@@ -24,8 +24,8 @@ import (
 	"github.com/gmlewis/go-nomadnet/nomadnet/config"
 	"github.com/gmlewis/go-nomadnet/nomadnet/directory"
 	"github.com/gmlewis/go-nomadnet/nomadnet/peersettings"
-	"github.com/gmlewis/go-nomadnet/nomadnet/rrc"
 	"github.com/gmlewis/go-reticulum/rns"
+	"github.com/gmlewis/go-reticulum/rrc"
 )
 
 // peerNameApp builds an App wired the way Init bootstraps it (config applied,

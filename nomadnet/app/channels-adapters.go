@@ -20,8 +20,8 @@
 package app
 
 import (
-	"github.com/gmlewis/go-nomadnet/nomadnet/rrc"
 	"github.com/gmlewis/go-nomadnet/tui"
+	"github.com/gmlewis/go-reticulum/rrc"
 )
 
 // rrcHubView adapts a *rrc.RRCHub to the tui.HubView interface, reading live

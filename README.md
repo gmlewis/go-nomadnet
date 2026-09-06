@@ -31,7 +31,7 @@ If you already have [Go](https://go.dev/) installed, you can
 install `gonomadnet` directly from GitHub without cloning the repo:
 
 ```bash
-go install github.com/gmlewis/go-nomadnet/cmd/gonomadnet@v0.97.0
+go install github.com/gmlewis/go-nomadnet/cmd/gonomadnet@v0.98.0
 ```
 
 This puts the `gonomadnet` binary in your `$GOPATH/bin` (or `$GOBIN`)
@@ -141,7 +141,6 @@ See the Python NomadNet documentation for all available options.
 | `nomadnet/micron` | Micron markup parser (headings, formatting, colors, links) |
 | `nomadnet/node` | NomadNet node: serves pages and files over RNS |
 | `nomadnet/peersettings` | Peer settings management |
-| `nomadnet/rrc` | Reticulum Relay Chat: hubs, rooms, CBOR persistence |
 | `nomadnet/storage` | Storage directory management |
 | `nomadnet/util` | Text sanitization utilities |
 | `nomadnet/version` | Version constant |
@@ -219,7 +218,6 @@ go-nomadnet/
 - [`github.com/gmlewis/go-reticulum`](https://github.com/gmlewis/go-reticulum) — Reticulum Network Stack
 - [`github.com/rivo/tview`](https://github.com/rivo/tview) — Terminal UI framework
 - [`github.com/gdamore/tcell/v2`](https://github.com/gdamore/tcell/v2) — Terminal cell library
-- [`github.com/fxamacker/cbor/v2`](https://github.com/fxamacker/cbor/v2) — CBOR codec
 
 ## Status
 

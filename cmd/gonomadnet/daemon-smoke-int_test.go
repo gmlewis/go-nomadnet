@@ -36,7 +36,7 @@ import (
 
 // lineBuffer accumulates a subprocess's stdout lines so the test goroutine can
 // poll for expected markers (Daemon mode active, LXMF Router ready to receive,
-// Daemon stopped). Mirrors the harness in nomadnet/rrc/rrc-xprocess_test.go.
+// Daemon stopped). Mirrors the harness in rrc/rrc-xprocess_test.go.
 type lineBuffer struct {
 	mu    sync.Mutex
 	lines []string
