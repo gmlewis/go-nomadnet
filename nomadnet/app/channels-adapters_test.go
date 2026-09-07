@@ -18,14 +18,13 @@ package app
 import (
 	"testing"
 
-	"github.com/gmlewis/go-nomadnet/tui"
 	"github.com/gmlewis/go-reticulum/rrc"
 )
 
 // TestHubViews pins App.HubViews: the RRC manager's hubs are adapted to the
-// tui.HubView interface the channels list renders, reading the live hub state
+// HubView interface the channels list renders, reading the live hub state
 // (name/status/rooms/messages/unread/mentions) through locked accessors. The
-// Status() int matches the rrc.Status* enum (the tui HubView contract).
+// Status() int matches the rrc.Status* enum (the HubView contract).
 func TestHubViews(t *testing.T) {
 	t.Parallel()
 
@@ -75,8 +74,8 @@ func TestHubViews(t *testing.T) {
 		t.Errorf("views[1].Status = %v, want %v", got, rrc.StatusDisconnected)
 	}
 
-	// Confirm the returned values satisfy the tui.HubView interface.
-	var _ tui.HubView = views[0]
+	// Confirm the returned values satisfy the HubView interface.
+	var _ HubView = views[0]
 }
 
 func sliceEqual(a, b []string) bool {

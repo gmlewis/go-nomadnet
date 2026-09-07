@@ -20,6 +20,7 @@ import (
 	"sort"
 
 	"github.com/gdamore/tcell/v2"
+	"github.com/gmlewis/go-nomadnet/nomadnet/app"
 )
 
 // Hub status constants, mirroring the RRC protocol enum (rrc.StatusDisconnected
@@ -34,30 +35,9 @@ const (
 	hubStatusFailed       = 3
 )
 
-// HubView is the read-only view of an RRC hub the channels list renders. The
-// app layer adapts *rrc.RRCHub to this interface so the tui package does not
-// import rrc (mirrors the SendDeps injection pattern). Room slices carry the
-// hub's joined rooms, rooms that have received messages, and the unread /
-// mention room sets.
-type HubView interface {
-	Name() string
-	Status() int
-	JoinedRooms() []string
-	MessageRooms() []string
-	UnreadRooms() []string
-	MentionRooms() []string
-
-	// Hub info panel fields (Python _show_hub_info, Channels.py:1745-1816).
-	AddressHex() string
-	StatusText() string
-	ServerName() string
-	HubVersion() string
-	MOTD() string
-	AutoReconnect() bool
-	AutoList() bool
-	AutoWho() bool
-	AvailableRoomList() []string
-}
+// HubView is an alias to app.HubView, which provides the read-only view of an
+// RRC hub that channels list renders.
+type HubView = app.HubView
 
 // hubStatusLabel maps the hub status to Python's _update_peer_info label
 // (Channels.py:742-747).

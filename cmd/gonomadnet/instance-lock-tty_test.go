@@ -3,6 +3,8 @@
 // Use of this source code is governed by the Reticulum License
 // that can be found in the LICENSE file.
 
+//go:build !embedded && !pocket_communicator && !pocket_hub
+
 package main
 
 import (

@@ -13,14 +13,13 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-// Package app adapts the core RRC manager/hubs to the tui-defined HubView
-// interface the channels list renders. The tui package does not import rrc;
-// this file is the seam (mirrors the SendDeps injection pattern).
+// Package app adapts the core RRC manager/hubs to the HubView
+// interface that channels render. This file is the adapter seam
+// (mirrors the SendDeps injection pattern).
 
 package app
 
 import (
-	"github.com/gmlewis/go-nomadnet/tui"
 	"github.com/gmlewis/go-reticulum/rrc"
 )
 
@@ -50,16 +49,16 @@ func (v rrcHubView) UnreadRooms() []string { return v.hub.UnreadRoomList() }
 // MentionRooms returns the sorted list of rooms with unread mentions.
 func (v rrcHubView) MentionRooms() []string { return v.hub.MentionRoomList() }
 
-// HubViews adapts the RRC manager's hubs to the tui.HubView interface the
+// HubViews adapts the RRC manager's hubs to the HubView interface the
 // channels list renders. The returned slice is built from a locked snapshot
 // of the hub list, so AddHub/RemoveHub mutations on the RRC worker don't race
 // the UI read. Returns a non-nil empty slice when there are no hubs.
-func (a *App) HubViews() []tui.HubView {
+func (a *App) HubViews() []HubView {
 	if a.RRC == nil {
-		return []tui.HubView{}
+		return []HubView{}
 	}
 	hubs := a.RRC.HubsSnapshot()
-	views := make([]tui.HubView, len(hubs))
+	views := make([]HubView, len(hubs))
 	for i, h := range hubs {
 		views[i] = rrcHubView{hub: h}
 	}
@@ -96,5 +95,5 @@ func (v rrcHubView) AutoWho() bool { return v.hub.GetAutoWho() }
 // but the client has not joined.
 func (v rrcHubView) AvailableRoomList() []string { return v.hub.GetAvailableRoomList() }
 
-// compile-time guard: rrcHubView satisfies tui.HubView.
-var _ tui.HubView = rrcHubView{}
+// compile-time guard: rrcHubView satisfies HubView.
+var _ HubView = rrcHubView{}
