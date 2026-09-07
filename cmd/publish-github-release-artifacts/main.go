@@ -79,6 +79,28 @@ var majorTargets = []target{
 	{"freebsd", "arm64"},
 }
 
+// hwTarget describes a build target tailored for a specific hardware form factor,
+// including its target architecture, Go build tags, and descriptive identifier.
+type hwTarget struct {
+	goos, goarch string
+	formFactor   string // "pocket_terminal", "pocket_communicator"
+	buildTags    string // "pocket_terminal", "pocket_communicator"
+	armVersion   string // "7" for GOARM=7
+}
+
+// hardwareTargets lists pre-built firmware/binaries for DIY handheld targets.
+var hardwareTargets = []hwTarget{
+	// Form Factor A (Pocket Linux Terminal): RPi Zero 2W / SBC with SPI LCD & CardKB
+	{"linux", "arm64", "pocket_terminal", "pocket_terminal", ""},
+	{"linux", "arm", "pocket_terminal", "pocket_terminal", "7"},
+	{"linux", "riscv64", "pocket_terminal", "pocket_terminal", ""},
+
+	// Form Factor B (Pocket Communicator): Standalone Communicator / Daemon
+	{"linux", "arm64", "pocket_communicator", "pocket_communicator", ""},
+	{"linux", "arm", "pocket_communicator", "pocket_communicator", "7"},
+	{"linux", "riscv64", "pocket_communicator", "pocket_communicator", ""},
+}
+
 // binaryName is the published artifact's base name.
 const binaryName = "gonomadnet"
 
@@ -364,11 +386,36 @@ func buildAll(outDir, version string, progress *os.File) ([]string, error) {
 		}
 		assets = append(assets, outPath)
 	}
+
+	for _, hw := range hardwareTargets {
+		name := fmt.Sprintf("%v-%v-%v-%v-%v", binaryName, version, hw.formFactor, hw.goos, hw.goarch)
+		outPath := filepath.Join(outDir, name)
+
+		mustFprintf(progress, "Building hardware target [%v] %v/%v -> %v\n", hw.formFactor, hw.goos, hw.goarch, name)
+		args := []string{"build", "-trimpath", "-tags=" + hw.buildTags, "-o", outPath, "./cmd/gonomadnet"}
+		cmd := exec.Command("go", args...)
+		env := append(os.Environ(),
+			"GOOS="+hw.goos,
+			"GOARCH="+hw.goarch,
+			"CGO_ENABLED=0",
+		)
+		if hw.armVersion != "" {
+			env = append(env, "GOARM="+hw.armVersion)
+		}
+		cmd.Env = env
+		cmd.Stdout = progress
+		cmd.Stderr = progress
+		if err := cmd.Run(); err != nil {
+			return nil, fmt.Errorf("build hardware target %v (%v/%v): %w", hw.formFactor, hw.goos, hw.goarch, err)
+		}
+		assets = append(assets, outPath)
+	}
+
 	return assets, nil
 }
 
 // buildReleaseNotes assembles the Markdown body for the release, including a
-// sha256 checksum table for every artifact.
+// sha256 checksum table for every artifact and DIY hardware targets.
 func buildReleaseNotes(version, repo string, assets []string) string {
 	var b strings.Builder
 	mustFprintf(&b, "# Go NomadNet v%v\n\n", version)
@@ -393,7 +440,20 @@ func buildReleaseNotes(version, repo string, assets []string) string {
 		}
 		mustFprintf(&b, "| %v | `%v` |\n", filepath.Base(a), sum)
 	}
-	mustFprintf(&b, "\nVerify a download with `shasum -a 256 <file>`.\n")
+	mustFprintf(&b, "\nVerify a download with `shasum -a 256 <file>`.\n\n")
+
+	mustFprintf(&b, "## Hardware Projects & Pre-built Artifacts\n\n")
+	mustFprintf(&b, "These binaries are pre-compiled for standalone DIY hardware targets:\n\n")
+	mustFprintf(&b, "- **Form Factor A (Pocket Linux Terminal)**: Full interactive TUI on Raspberry Pi Zero 2W / SBC with 2.8\" SPI LCD and CardKB I2C keyboard.\n")
+	mustFprintf(&b, "  - `gonomadnet-%v-pocket_terminal-linux-arm64` (Raspberry Pi Zero 2W, Pi 3/4/5 64-bit)\n", version)
+	mustFprintf(&b, "  - `gonomadnet-%v-pocket_terminal-linux-arm` (Raspberry Pi Zero / Pi 1/2 32-bit)\n", version)
+	mustFprintf(&b, "  - `gonomadnet-%v-pocket_terminal-linux-riscv64` (Milk-V Duo S / RISC-V SBCs)\n", version)
+	mustFprintf(&b, "- **Form Factor B (Pocket Communicator)**: Embedded daemon/client mode with zero terminal dependencies for handheld communicators.\n")
+	mustFprintf(&b, "  - `gonomadnet-%v-pocket_communicator-linux-arm64`\n", version)
+	mustFprintf(&b, "  - `gonomadnet-%v-pocket_communicator-linux-arm`\n", version)
+	mustFprintf(&b, "  - `gonomadnet-%v-pocket_communicator-linux-riscv64`\n", version)
+	mustFprintf(&b, "\nSee [`Hardware-Projects-Guide.md`](https://github.com/gmlewis/asic-reticulum/blob/master/Hardware-Projects-Guide.md) for the complete bill of materials, assembly, and setup instructions.\n")
+
 	mustFprintf(&b, "\n## Post-download setup\n\n")
 	mustFprintf(&b, "Make the downloaded executable runnable:\n\n")
 	mustFprintf(&b, "```\nchmod a+x gonomadnet-<version>-<os>-<arch>\n```\n\n")

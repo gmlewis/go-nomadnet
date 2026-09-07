@@ -18,6 +18,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -38,6 +39,8 @@ func TestRenderReleaseNotes(t *testing.T) {
 		"gonomadnet-0.2.0-linux-amd64",
 		"gonomadnet-0.2.0-darwin-arm64",
 		"gonomadnet-0.2.0-linux-arm64",
+		"gonomadnet-0.2.0-pocket_terminal-linux-arm64",
+		"gonomadnet-0.2.0-pocket_communicator-linux-arm64",
 	}
 	var assets []string
 	for _, n := range names {
@@ -50,4 +53,14 @@ func TestRenderReleaseNotes(t *testing.T) {
 
 	notes := buildReleaseNotes("0.2.0", "gmlewis/go-nomadnet", assets)
 	t.Log("\n" + notes)
+
+	if !strings.Contains(notes, "Hardware Projects & Pre-built Artifacts") {
+		t.Error("release notes missing Hardware Projects section")
+	}
+	if !strings.Contains(notes, "pocket_terminal") {
+		t.Error("release notes missing pocket_terminal reference")
+	}
+	if !strings.Contains(notes, "pocket_communicator") {
+		t.Error("release notes missing pocket_communicator reference")
+	}
 }
