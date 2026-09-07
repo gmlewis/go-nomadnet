@@ -16,7 +16,7 @@ the internet.
 >
 > Learn how to build and flash:
 > - **Project 1: Pocket Linux Terminal**: Full interactive `gonomadnet` TUI on Raspberry Pi Zero 2W with a 2.8" SPI display and CardKB keyboard.
-> - **Project 2: Pocket Communicator**: Ultra-low-power handheld communicator running on ESP32-C5 / Heltec V4.
+> - **Project 2: Pocket Communicator**: Ultra-low-power handheld communicator running on ESP32-C5 RISC-V SoC.
 > - **Project 3: Pocket Hub & Repeater**: Autonomous standalone relay node with LoRa and Wi-Fi 6 SoftAP.
 
 ## Features
