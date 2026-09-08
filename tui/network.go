@@ -817,6 +817,7 @@ func (nd *NetworkDisplay) setLeftList(item tview.Primitive, title string) {
 	nd.listBox.Clear()
 	nd.listBox.AddItem(item, 0, 1, true)
 	SetTitledBorder(nd.listBox, title)
+	nd.repairDetachedFocus()
 }
 
 // setInfoView records whether a detail view (AnnounceInfo / KnownNodeInfo) is
@@ -882,6 +883,52 @@ func (nd *NetworkDisplay) focusLeftList() {
 		return
 	}
 	nd.app.SetFocus(nd.listBox)
+}
+
+// isFocusBroken reports whether app focus was broken (detached zombie or inert)
+// within the active network display.
+func (nd *NetworkDisplay) isFocusBroken() bool {
+	if nd.app == nil {
+		return false
+	}
+	focus := nd.app.GetFocus()
+	if focus == nil {
+		return false
+	}
+	root := nd.app.GetRoot()
+	if root == nil {
+		return false
+	}
+	// If Network is hosted in MainDisplay but is not the active page,
+	// mutations in Network must not steal or modify focus.
+	if nd.app.Main != nil && nd.app.Main.activePage != "network" {
+		return false
+	}
+	if !root.HasFocus() {
+		// App focus is pointing to a widget (focus != nil) that is no longer
+		// connected to the root tree. This is a detached zombie widget!
+		return true
+	}
+	// If root has focus, check if focus is resting on an inert container.
+	return focusIsInert(focus)
+}
+
+// repairDetachedFocus checks whether app focus was detached from the
+// primitive tree during a left-panel or list-slot mutation. If so, it
+// re-establishes focus on the left list (or escalates to MainDisplay).
+func (nd *NetworkDisplay) repairDetachedFocus() {
+	if !nd.isFocusBroken() {
+		return
+	}
+	// Focus is detached/zombie, nil, or inert. Re-focus the left list slot first.
+	nd.focusLeftList()
+	if !nd.isFocusBroken() {
+		return
+	}
+	// If still broken, escalate to MainDisplay's general body/menu recovery.
+	if nd.app != nil && nd.app.Main != nil {
+		nd.app.Main.repairDetachedFocus()
+	}
 }
 
 // FocusLists moves keyboard focus to the left node/announce list, mirroring
@@ -975,6 +1022,7 @@ func (nd *NetworkDisplay) rebuildLeftPanel() {
 	nd.leftPanel.Clear()
 	nd.leftPanel.AddItem(listSlot, 0, 1, true)
 	nd.leftPanel.AddItem(pack, packHeight, 0, false)
+	nd.repairDetachedFocus()
 }
 
 // user changes their display name or propagation setting mid-session (the
@@ -1120,6 +1168,7 @@ func (nd *NetworkDisplay) CloseLocalPeerStatus() {
 	}
 	nd.statusInPeerSlot = nil
 	nd.rebuildLeftPanel()
+	nd.focusLeftList()
 }
 
 // ShowBrowserSlotDialog overlays a DialogLineBox on the right-hand browser pane

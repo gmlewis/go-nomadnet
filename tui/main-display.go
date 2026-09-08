@@ -191,9 +191,9 @@ func NewMainDisplay(app *App, theme int, glyphSetName string) *MainDisplay {
 // If key is the currently displayed page it is brought to the front.
 func (md *MainDisplay) SetDisplay(key string, widget tview.Primitive) {
 	md.mu.Lock()
-	defer md.mu.Unlock()
 	md.contentArea.AddPage(key, widget, true, false)
-	if key == md.activePage {
+	isActive := key == md.activePage
+	if isActive {
 		md.contentArea.SwitchToPage(key)
 		// SwitchToPage drives the focus chain, which fires SetFocusFunc
 		// callbacks (e.g. ConversationsDisplay.setShortcutRegion). Those
@@ -201,6 +201,11 @@ func (md *MainDisplay) SetDisplay(key string, widget tview.Primitive) {
 		// the mu we hold here, so they skip — refresh the cached shortcut
 		// text ourselves now that the focus callbacks have run.
 		md.updateShortcutsLocked()
+	}
+	md.mu.Unlock()
+
+	if isActive {
+		md.repairDetachedFocus()
 	}
 }
 
@@ -609,6 +614,9 @@ func (md *MainDisplay) FocusMenu() {
 				// every keypress (live: FocusMenu during a recovery from a
 				// bare-Flex focus). Treat it as no body focus.
 				md.lastBodyFocus = nil
+			} else if root := md.app.GetRoot(); root != nil && !root.HasFocus() {
+				// Detached/zombie focus: do not remember an unlinked widget.
+				md.lastBodyFocus = nil
 			} else {
 				md.lastBodyFocus = prev
 			}
@@ -644,6 +652,15 @@ func (md *MainDisplay) FocusBody() {
 		// recovery that cleared it, so fall back to the content area.
 		if p != nil && !focusIsInert(p) {
 			md.app.SetFocus(p)
+			root := md.app.GetRoot()
+			if root != nil && !root.HasFocus() {
+				// p was detached from the live tree (e.g. child widget removed
+				// during panel swap). Clear it and fall back to contentArea.
+				md.mu.Lock()
+				md.lastBodyFocus = nil
+				md.mu.Unlock()
+				md.app.SetFocus(md.contentArea)
+			}
 		} else {
 			md.app.SetFocus(md.contentArea)
 		}
@@ -658,6 +675,23 @@ func (md *MainDisplay) FocusBody() {
 	md.mu.Lock()
 	md.redrawMenuBar()
 	md.mu.Unlock()
+}
+
+// repairDetachedFocus re-establishes a valid focus if app focus is broken
+// (nil, zombie/detached from tree, or inert container), which can occur
+// when a mutation helper detaches the focused widget without re-focusing.
+func (md *MainDisplay) repairDetachedFocus() {
+	if md == nil || md.app == nil {
+		return
+	}
+	root := md.app.GetRoot()
+	if !md.focusInvariantBroken(md.app.GetFocus(), root) {
+		return
+	}
+	md.FocusBody()
+	if md.focusInvariantBroken(md.app.GetFocus(), md.app.GetRoot()) {
+		md.FocusMenu()
+	}
 }
 
 // handleClick determines which menu item was clicked based on x position.
