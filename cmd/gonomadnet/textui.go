@@ -470,23 +470,15 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		}
 		networkDisplay.UpdateNodes(nodes)
 	}
-	// refreshAll is the full Network/Conversations/LocalPeer refresh, run on
-	// the event loop. It is invoked through the debouncer below so a burst of
-	// announces/messages collapses into a single refresh instead of one refresh
-	// per event. Each refresh does an os.ReadDir for the conversation list plus
-	// a full screen redraw, so N simultaneous announces would otherwise queue N
-	// redundant refreshes (each spawning its own goroutine via the non-blocking
-	// QueueUpdateDraw wrapper) and keep the event loop busy long enough to make
-	// the UI appear hung — key events sit in the tcell queue while the loop
-	// drains the pile. Python's directory_change_callback (Network.py:1744)
-	// avoids this by doing only cheap in-memory widget rebuilds per announce;
-	// the Go refresh is heavier, so coalescing is necessary for parity under a
-	// burst (e.g. the path-response storm that follows announce-at-start).
-	refreshAll := func() {
+	// refreshDirectory updates the announce stream, known nodes, and local
+	// peer status on the network display. It is invoked through the debouncer
+	// below so a burst of incoming announces collapses into a single update.
+	// Matching Python's directory_change_callback (Network.py:1744), it only
+	// updates in-memory widgets and never reads conversations from disk.
+	refreshDirectory := func() {
 		tuiApp.QueueUpdateDraw(func() {
 			refreshAnnounces()
 			refreshNodes()
-			refreshConvs()
 			// RNS init runs asynchronously in a goroutine, so the identity/LXMF
 			// destination are nil when wireDisplays first runs. Re-filling the
 			// Local Peer Info panel on each UI change picks them up once initRNS
@@ -497,17 +489,24 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 			networkDisplay.UpdateLocalPeer(lxmfAddr, idhash, lann)
 		})
 	}
+	// refreshAll updates both the network directory widgets and the conversation list.
+	refreshAll := func() {
+		refreshDirectory()
+		tuiApp.QueueUpdateDraw(func() {
+			refreshConvs()
+		})
+	}
 
 	// Debounce UIChangeCallback (fired from transport goroutines: one call per
 	// incoming announce/message, plus the end of async initRNS). Resetting a
-	// short timer on each fire coalesces a burst into one refreshAll, bounding
+	// short timer on each fire coalesces a burst into one refreshDirectory, bounding
 	// the refresh rate to ~1 per refreshCoalesceWindow regardless of how fast
 	// announces arrive. An 80 ms window is imperceptible for a single event but
 	// collapses a tight path-response storm (hundreds of announces within a
 	// second or two) to a handful of refreshes.
 	// maxWait bounds the SUSTAINED-storm case the plain debounce cannot: with
 	// announces arriving faster than the window elapses, retriggering would
-	// postpone refreshAll indefinitely (the UI freezes on stale data). The
+	// postpone refreshDirectory indefinitely (the UI freezes on stale data). The
 	// 500 ms cap keeps the eventual refresh rate at ~2 Hz under a firehose
 	// while leaving quiet and burst-y traffic at the plain 80 ms trailing-edge
 	// behavior.
@@ -515,7 +514,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		refreshCoalesceWindow = 80 * time.Millisecond
 		refreshMaxWait        = 500 * time.Millisecond
 	)
-	refreshTrigger := tui.NewDebouncedCallWithMaxWait(refreshCoalesceWindow, refreshMaxWait, refreshAll)
+	refreshTrigger := tui.NewDebouncedCallWithMaxWait(refreshCoalesceWindow, refreshMaxWait, refreshDirectory)
 	a.SetUIChangeCallback(refreshTrigger.Trigger)
 	main.SetDisplay("network", networkDisplay.Widget())
 	main.SetShortcut("network", "[C-l] Nodes/Announces  [C-x] Remove  [C-w] Disconnect  [C-d] Back  [C-f] Forward  [C-r] Reload  [C-u] URL  [C-g] Fullscreen  [C-s / C-b] Save Node")
