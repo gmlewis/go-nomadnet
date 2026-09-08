@@ -71,6 +71,13 @@ func enforceSingleInstance(configDir string) (func(), error) {
 // calling release closes the file too). It returns release==nil plus the
 // holder's PID when another gonomadnet already holds the lock.
 func acquireInstanceLock(lockPath string) (func(), int, error) {
+	// The lock is opened O_CREATE, but on a brand-new install the config
+	// directory itself does not exist yet (main runs this guard before RNS or
+	// the UI create it) — without this, the very first gonomadnet run dies
+	// with "no such file or directory".
+	if err := os.MkdirAll(filepath.Dir(lockPath), 0o700); err != nil {
+		return nil, 0, err
+	}
 	f, err := os.OpenFile(lockPath, os.O_RDWR|os.O_CREATE, 0o600)
 	if err != nil {
 		return nil, 0, err

@@ -617,8 +617,17 @@ func (cd *ChannelsDisplay) ShowRoom(hubIdx int, room string, msgs []ChannelMessa
 	cd.selectedHubIdx = hubIdx
 	cd.selectedRoom = room
 
-	if cd.roomWidget == nil || cd.roomWidget.RoomName() != room {
+	// The widget must also rebuild when the HUB changes: two hubs can expose
+	// the same room name, and reusing the old widget would keep its
+	// hubStatusFn bound to the previous hub — a dead hub there silently
+	// swallows every plain-message send at the composer's connected-gate,
+	// while slash commands (which bypass the gate) keep working. The hub's
+	// destination hash (AddressHex) is the identity, not its name: a hub
+	// re-created under the same name with a new destination must still
+	// rebuild.
+	if cd.roomWidget == nil || cd.roomWidget.RoomName() != room || cd.roomWidget.hubAddress != hv.AddressHex() {
 		cd.roomWidget = NewRoomWidget(cd.app, hv.Name(), room)
+		cd.roomWidget.hubAddress = hv.AddressHex()
 		rw := cd.roomWidget
 		// The room's editor focus switches the main shortcut bar to the
 		// editor region (Python RoomFrame focus setter →

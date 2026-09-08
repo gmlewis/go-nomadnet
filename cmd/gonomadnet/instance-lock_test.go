@@ -64,6 +64,31 @@ func TestAcquireInstanceLockSingleton(t *testing.T) {
 	}
 }
 
+// TestAcquireInstanceLockCreatesMissingDir verifies the first run on a
+// brand-new install succeeds: the lock's parent directory does not exist yet,
+// and the acquire must create it rather than fail with "no such file or
+// directory".
+func TestAcquireInstanceLockCreatesMissingDir(t *testing.T) {
+	missing := filepath.Join(tempDir(t), "brand-new-install", ".nomadnetwork")
+	lockPath := filepath.Join(missing, "gonomadnet.lock")
+
+	release, holderPID, err := acquireInstanceLock(lockPath)
+	if err != nil {
+		t.Fatalf("acquire into missing config dir: %v", err)
+	}
+	if release == nil {
+		t.Fatal("acquire should succeed (release != nil)")
+	}
+	if holderPID != 0 {
+		t.Fatalf("holderPID = %v, want 0", holderPID)
+	}
+	t.Cleanup(release)
+
+	if fi, err := os.Stat(missing); err != nil || !fi.IsDir() {
+		t.Fatalf("config dir %v not created: %v", missing, err)
+	}
+}
+
 // TestNomadnetPIDsFromProcs verifies the nomadnet-detection filter matches real
 // nomadnet invocations while excluding gonomadnet, its launcher, editors, and
 // the calling process itself.

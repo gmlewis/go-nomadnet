@@ -28,6 +28,7 @@ import (
 type RoomWidget struct {
 	app              *App
 	hubName          string
+	hubAddress       string
 	roomName         string
 	widget           tview.Primitive
 	columns          *tview.Flex
@@ -468,6 +469,9 @@ func (rw *RoomWidget) sendMessage() {
 	// KEEPS the draft — no local echo, no literal command transmission. The
 	// hubConnected snapshot alone goes stale between rebuilds.
 	if !rw.hubIsConnected() {
+		// Keep the draft (Python Channels.py:873-876) but say why nothing was
+		// transmitted: a silent keep reads as a dead send key.
+		rw.appendLocalNotice(fmt.Sprintf("Not connected to hub %q — draft kept; attempting reconnect", rw.hubName), true)
 		if rw.OnConnectHub != nil {
 			rw.OnConnectHub()
 		}
