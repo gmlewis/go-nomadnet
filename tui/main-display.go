@@ -601,6 +601,14 @@ func (md *MainDisplay) FocusMenu() {
 				// so the next FocusBody falls back to the content-area focus
 				// chain (⇒ the saved-nodes list) instead of restoring it.
 				md.lastBodyFocus = nil
+			} else if focusIsInert(prev) {
+				// An inert container (a Flex whose cascade stopped on itself,
+				// a plain Box spacer) dispatches keys nowhere — remembering it
+				// here would make the next FocusBody restore the very focus
+				// state the invariant recovery just escaped, re-stranding
+				// every keypress (live: FocusMenu during a recovery from a
+				// bare-Flex focus). Treat it as no body focus.
+				md.lastBodyFocus = nil
 			} else {
 				md.lastBodyFocus = prev
 			}
@@ -631,10 +639,20 @@ func (md *MainDisplay) FocusBody() {
 	p := md.lastBodyFocus
 	md.mu.Unlock()
 	if md.app != nil {
-		if p != nil {
+		// An inert lastBodyFocus (a bare Flex or plain Box that a cascade
+		// rested on) dispatches keys nowhere — restoring it would undo the
+		// recovery that cleared it, so fall back to the content area.
+		if p != nil && !focusIsInert(p) {
 			md.app.SetFocus(p)
 		} else {
 			md.app.SetFocus(md.contentArea)
+		}
+		// The cascade itself can stop on an inert container: an active page
+		// with no focusable child leaves focus on its Flex, where every key
+		// is dropped. Escalate to the menu bar, which always handles keys.
+		if md.focusInvariantBroken(md.app.GetFocus(), md.app.GetRoot()) {
+			md.FocusMenu()
+			return
 		}
 	}
 	md.mu.Lock()
@@ -701,23 +719,32 @@ func (md *MainDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 	//     root.HasFocus() is false, so the UI appears frozen (arrow keys
 	//     do nothing, cursor disappears) with no stack trace because
 	//     a.focus is non-nil.
+	//  3. inert focus: a.focus is a container that dispatches keys
+	//     nowhere — e.g. a *tview.Flex whose items all have focus=false
+	//     (tview's Flex.Focus keeps focus on the Flex itself instead of
+	//     delegating) or a plain Box spacer. root.HasFocus() is TRUE and
+	//     no violation is dumped, but every key event routed to the
+	//     focus is silently dropped, so the UI also appears frozen.
+	//     Observed live: a keypress recovery (FocusBody → SetFocus
+	//     (contentArea)) whose cascade stopped on a bare Flex; the next
+	//     keypress repeated the recovery instead of reaching a widget.
 	//
 	// Recover BEFORE any dispatch so no key is ever lost, and dump a stack
 	// so the violation surfaces immediately instead of festering for hours.
 	// FocusBody cascades contentArea→page→…→a real primitive; if that still
-	// fails, FocusMenu targets menuBar, which is always a valid non-nil
-	// primitive.
+	// fails (or lands on another inert container), FocusMenu targets menuBar,
+	// which is always a valid, key-handling primitive.
 	if md.app != nil {
 		focus := md.app.GetFocus()
 		root := md.app.GetRoot()
-		if focus == nil || (root != nil && !root.HasFocus()) {
+		if md.focusInvariantBroken(focus, root) {
 			dumpFocusInvariantViolation(fmt.Sprintf(
-				"nil/zombie focus on key=%v focusRegion=%q focus=%T rootHasFocus=%v",
+				"nil/zombie/inert focus on key=%v focusRegion=%q focus=%T rootHasFocus=%v",
 				event.Key(), md.focusRegion, focus, root != nil && root.HasFocus()))
 			md.FocusBody()
 			focus = md.app.GetFocus()
 			root = md.app.GetRoot()
-			if focus == nil || (root != nil && !root.HasFocus()) {
+			if md.focusInvariantBroken(focus, root) {
 				md.FocusMenu()
 			}
 		}
@@ -849,6 +876,17 @@ func (md *MainDisplay) bodyListAtTop() bool {
 		// Conversations.py:1854-1862) and to the menu bar otherwise. The
 		// banner transition is owned by the conversation frame capture.
 		return v.TopIsVisible() && (v.bannerVisible == nil || !v.bannerVisible())
+	case *ScrollBar:
+		// The Guide reader's scrollbar wraps the reader TextView and carries
+		// the guide's line-cursor focus model (B2) via its atTop hook
+		// (guide.go): true only when the document is scrolled to the top AND
+		// the cursor is at the first selectable line. Before this case the
+		// default branch returned false, so once Right moved focus into the
+		// reader (FocusReader) every Up was forwarded to the reader's own
+		// clamp — a silent no-op at the first line — and focus could never
+		// leave the reader pane: keys worked inside the reader but the menu
+		// was unreachable without knowing the undocumented Left escape.
+		return v.TopIsVisible()
 	case *centeredText:
 		// The network left pane swaps the saved-nodes IndicativeListBox for a
 		// centeredText empty-state placeholder when no nodes are saved (Python
@@ -872,6 +910,38 @@ func (md *MainDisplay) bodyListAtTop() bool {
 	cur := list.GetCurrentItem()
 	diagFileMD("/tmp/quit-diag.log", fmt.Sprintf("bodyListAtTop list cur=%d", cur))
 	return cur == 0
+}
+
+// focusInvariantBroken reports whether app focus is in a state where key
+// dispatch drops the event: nil focus, non-nil focus that the root tree no
+// longer owns (zombie), or an inert container that holds focus without
+// routing keys to any widget. It is the single predicate used by the
+// handleInput recovery both before and after FocusBody.
+func (md *MainDisplay) focusInvariantBroken(focus, root tview.Primitive) bool {
+	if focus == nil {
+		return true
+	}
+	if root != nil && !root.HasFocus() {
+		return true
+	}
+	return focusIsInert(focus)
+}
+
+// focusIsInert reports whether p is a container that can hold app focus while
+// dispatching key events nowhere. app focus must never REST on these: a
+// focused container is a transient cascade state whose Focus() should have
+// delegated to a child, so a.focus being the container itself means the
+// cascade stopped (tview Flex.Focus keeps focus on the Flex when no item has
+// focus=true; a plain Box spacer has no handler at all) and every key event
+// routed to it is silently dropped — the frozen-UI symptom with a healthy
+// root.HasFocus(). urwidColumns is deliberately absent: its own Focus() and
+// InputHandler() already recover to the first focusable child.
+func focusIsInert(p tview.Primitive) bool {
+	switch p.(type) {
+	case *tview.Flex, *tview.Box:
+		return true
+	}
+	return false
 }
 
 // handleMenuInput dispatches keys while the menu bar is focused.

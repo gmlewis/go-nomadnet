@@ -67,6 +67,15 @@ type ScrollBar struct {
 	// it via SetThumbColor.
 	thumbColor tcell.Color
 
+	// atTop is an optional hook overriding TopIsVisible for wrappers whose
+	// content carries extra focus state the scroll offset alone cannot see.
+	// The GuideDisplay reader installs one so Up-at-top only escapes to the
+	// menu bar when the reader's line cursor (focusSel, guide.go B2 model) is
+	// ALSO at the first selectable line — otherwise Up must move the cursor
+	// within the document instead of escaping, and the escape would fire on
+	// the very first Up of a mid-document cursor walk.
+	atTop func() bool
+
 	// row-count cache for Draw. rowsMax (the total wrapped row count) only
 	// changes when the Text content or content width changes — NOT on scroll,
 	// where only the offset moves. Recomputing it every Draw via GetText(true)
@@ -105,6 +114,26 @@ func NewScrollBar(text scrollableText) *ScrollBar {
 func (s *ScrollBar) SetThumbColor(c tcell.Color) *ScrollBar {
 	s.thumbColor = c
 	return s
+}
+
+// SetAtTopFunc installs an atTop hook overriding TopIsVisible. The hook is
+// consulted from the main dispatcher's Up-at-top→menu transition and must be
+// safe to call on the event-loop goroutine. Passing nil restores the default
+// scroll-offset check.
+func (s *ScrollBar) SetAtTopFunc(fn func() bool) {
+	s.atTop = fn
+}
+
+// TopIsVisible reports whether the wrapped content is scrolled to its top
+// (scroll offset 0), the condition under which Up in the main dispatcher's
+// body region collapses focus to the menu bar. When an atTop hook is installed
+// (see SetAtTopFunc) it takes precedence over the raw scroll-offset check.
+func (s *ScrollBar) TopIsVisible() bool {
+	if s.atTop != nil {
+		return s.atTop()
+	}
+	row, _ := s.Text.GetScrollOffset()
+	return row <= 0
 }
 
 // SetRect lays out the wrapped TextView. The TextView initially gets width-1

@@ -231,6 +231,17 @@ func NewGuideDisplay(app *App) *GuideDisplay {
 
 	gd.scroll = NewScrollBar(gd.reader)
 	gd.scroll.SetThumbColor(GetThemeColors(app.Theme)["scrollbar"])
+	// Up-at-top escape (main dispatcher bodyListAtTop): the reader is scrolled
+	// to its top AND the line cursor sits at the first selectable line. Without
+	// the focusSel term, Up would escape to the menu on the first press even
+	// with the cursor mid-document (focusSel > 0 at scroll top), breaking the
+	// B2 cursor walk; with it, Up moves the cursor up the document first and
+	// only collapses to the menu once the walk reaches the first line —
+	// replacing focusUp's silent clamp there (guide-focus.go:149-167).
+	gd.scroll.SetAtTopFunc(func() bool {
+		row, _ := gd.reader.GetScrollOffset()
+		return row <= 0 && gd.focusSel <= 0
+	})
 	gd.readerBox = tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(gd.scroll, 0, 1, true)
 	gd.readerBox.SetBorder(true)
