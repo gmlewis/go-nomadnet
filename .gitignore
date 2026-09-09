@@ -6,6 +6,7 @@ TODO.md
 *.log
 *.txt
 captures/
+/.agents
 /.claude
 /.dsh
 /original*
