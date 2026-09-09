@@ -32,6 +32,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -60,21 +61,56 @@ func diagFile(path, line string) {
 	_, _ = f.WriteString(line + "\n")
 }
 
+// stdLogLineWriter splits Go std-log output into lines and routes each line
+// into the app's rns.Logger once it exists. Python parity: nomadnet sends all
+// logs through RNS.log into ~/.nomadnetwork/logfile with RNS's 5 MiB rotation
+// (RNS/__init__.py LOG_MAXSIZE), so there is no separate std-log file —
+// redirecting std log to its own unrotated file (the previous behavior) grew
+// without bound. Before the app logger exists, lines go to stderr (the TUI
+// has not taken over the terminal yet, so that is safe).
+type stdLogLineWriter struct {
+	logger atomic.Pointer[rns.Logger]
+	buf    []byte
+}
+
+func (w *stdLogLineWriter) Write(p []byte) (int, error) {
+	w.buf = append(w.buf, p...)
+	for {
+		idx := bytes.IndexByte(w.buf, '\n')
+		if idx < 0 {
+			break
+		}
+		line := string(w.buf[:idx])
+		w.buf = w.buf[idx+1:]
+		w.route(line)
+	}
+	// Discard an oversized unterminated line instead of growing the buffer
+	// without bound.
+	if len(w.buf) > 4096 {
+		w.route(string(w.buf))
+		w.buf = w.buf[:0]
+	}
+	return len(p), nil
+}
+
+func (w *stdLogLineWriter) route(line string) {
+	if l := w.logger.Load(); l != nil && !l.GetAlwaysOverride() {
+		l.Info("%v", line)
+		return
+	}
+	fmt.Fprintln(os.Stderr, line)
+}
+
 // runTextUI starts NomadNet with the terminal UI.
 func runTextUI(configDir, rnsConfigDir string) {
-	// Ensure the log directory exists
-	logDir := filepath.Join(configDir, "logs")
-	_ = os.MkdirAll(logDir, 0o755)
-
-	// Redirect standard log to file BEFORE any logging happens
-	// (matches gornphone pattern to prevent log output destroying TUI)
-	logPath := filepath.Join(logDir, "nomadnet.log")
-	logFile, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
-	if err == nil {
-		defer func() { _ = logFile.Close() }()
-		log.SetOutput(logFile)
-		log.SetFlags(0)
-	}
+	// Route the Go std log (library warnings, tcell notices) through the
+	// app's rotating rns.Logger once it exists, so no unrotated log file is
+	// created (Python parity: all logs land in ~/.nomadnetwork/logfile).
+	// Before any logging happens the lines go to stderr; the TUI has not
+	// started yet, so that is safe.
+	stdLog := &stdLogLineWriter{}
+	log.SetOutput(stdLog)
+	log.SetFlags(0)
 
 	log.Printf("Nomad Network text UI starting...")
 
@@ -85,6 +121,11 @@ func runTextUI(configDir, rnsConfigDir string) {
 		// diagnostics explaining the failure are not silently lost.
 		a.Logger.Flush()
 		log.Fatalf("Failed to initialize: %v", err)
+	}
+	if a.Logger != nil {
+		// From here on std-log lines join the RNS logs in the rotating
+		// ~/.nomadnetwork/logfile instead of stderr.
+		stdLog.logger.Store(a.Logger)
 	}
 
 	// Determine theme from config

@@ -682,6 +682,11 @@ func (a *App) applyConfig(cfg *config.Config) {
 	a.ComposeMarkdown = cfg.Client.ComposeInMarkdown
 	a.DownloadsPath = expandUser(cfg.Client.DownloadsPath)
 	a.AttachmentSavePath = expandUser(cfg.Client.AttachmentSavePath)
+	// Python NomadNetworkApp.py:813-815: a [logging] logfile entry overrides
+	// the default <configdir>/logfile (no path expansion in Python either).
+	if cfg.Logging.LogFile != "" {
+		a.LogFilePath = cfg.Logging.LogFile
+	}
 	a.PeerAnnounceAtStart = cfg.Client.AnnounceAtStart
 	a.applyUIMode(cfg.Client.UserInterface)
 	// Python stores these as floats (as_float); the App fields are *int KB

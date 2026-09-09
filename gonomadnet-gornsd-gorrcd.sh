@@ -1,6 +1,6 @@
 #!/bin/bash -eu
 #
-# gonomadnet-raspberrypi.sh — the one-stop launcher for the raspberrypi:
+# gonomadnet-gornsd-gorrcd.sh — the one-stop launcher for a node running all 3 tools
 # rebuilds the latest tools, runs ONE shared go-reticulum transport
 # (gornsd -s) for the whole stack, then serves the RRC chat hub (gorrcd) and
 # finally runs the gonomadnet TUI in the FOREGROUND of this terminal.
@@ -24,7 +24,7 @@
 # permanent shared instance, the roles never flip and every path to the hub
 # rides the stable fleet link.
 #
-# Usage:  gonomadnet-raspberrypi.sh   (no tmux is created or attached by this
+# Usage:  gonomadnet-gornsd-gorrcd.sh   (no tmux is created or attached by this
 #         script — run it inside your own tmux session for persistence)
 # Logs:   /tmp/<service>-<epoch-seconds>.log
 # pprof:  gornsd 127.0.0.1:6062 · gorrcd 127.0.0.1:6061 · gonomadnet 127.0.0.1:6060
