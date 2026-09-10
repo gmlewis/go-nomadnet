@@ -19,14 +19,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rivo/tview"
+	"github.com/gdamore/tcell/v2"
 )
 
 // The composer footer must be REPLACED by the centered identity-unknown
 // warning when the peer's identity keys are not known (Python
-// check_editor_allowed, Conversations.py:2198-2215 in the installed 1.2.8):
-// without the keys the editor is unusable, so Python swaps the whole footer
-// for the banner and restores it when the identity arrives.
+// check_editor_allowed, Conversations.py:2195-2215): without the keys the
+// editor is unusable, so Python swaps the whole footer for the banner and
+// restores it when the identity arrives. The banner is AttrMap+Padding+
+// Text(align=CENTER) — NOT a modal dialog.
 func TestConversationEditorAllowedBanner(t *testing.T) {
 	t.Parallel()
 
@@ -44,43 +45,109 @@ func TestConversationEditorAllowedBanner(t *testing.T) {
 		t.Fatal("footer area is empty with an unknown peer identity")
 	}
 	banner := cw.footerArea.GetItem(0)
-	tv, ok := banner.(*tview.TextView)
-	_ = ok
-	if tv == nil {
-		t.Fatalf("footer item = %T, want the banner TextView", banner)
+	cb, ok := banner.(*cautionBannerView)
+	if !ok {
+		t.Fatalf("footer item = %T, want *cautionBannerView (full-width footer swap)", banner)
 	}
-	// The banner is PRE-WRAPPED with urwid's space wrap and ceil-left
-	// centered line by line — compare against the parity definition itself.
-	text := tv.GetText(true)
-	got := strings.Split(text, "\n")
-	want := urwidSpaceWrap(cw.editorAllowedBannerText(), 46)
-	if len(got) != len(want) {
-		t.Fatalf("banner rows = %v, want %v (urwidSpaceWrap of the banner text)", len(got), len(want))
+	if cw.cautionBanner == nil || cw.cautionBanner != cb {
+		t.Error("cautionBanner field not wired to the footer item")
 	}
-	for i := range want {
-		if strings.TrimSpace(got[i]) != strings.TrimSpace(want[i]) {
-			t.Errorf("banner row %v = %q, want the urwid-wrapped %q", i, got[i], want[i])
-		}
-	}
-	joined := strings.Join(want, "\n")
+
+	// Body must match the Python SOT string (not a dialog title/body pair).
+	joined := cw.editorAllowedBannerText()
 	for _, frag := range []string{
 		"You cannot currently message this peer",
 		"identity keys are not known",
+		"should arrive shortly, if available",
+		"Close this conversation and reopen it",
 		"Ctrl-E, and use the query button",
 	} {
 		if !strings.Contains(joined, frag) {
 			t.Errorf("banner text missing %q in %q", frag, joined)
 		}
 	}
-	if strings.Contains(joined, "Send a message") {
-		t.Error("banner replaced the editor but editor text leaked in")
+	// Must not look like a modal confirm dialog.
+	for _, banned := range []string{"Confirm", "Yes", "No", "OK"} {
+		if strings.Contains(joined, " "+banned+" ") {
+			t.Errorf("banner should not contain dialog button %q", banned)
+		}
 	}
 
-	// Known identity: the editor returns.
+	// Known identity: the editor returns and the caution view is dropped.
 	cw.OnEditorAllowed = func(string) bool { return true }
 	cw.buildFooter()
+	if cw.cautionBanner != nil {
+		t.Error("cautionBanner still set with a known peer identity")
+	}
 	if cw.footerArea.GetItem(0) == banner {
 		t.Error("footer still shows the banner with a known peer identity")
+	}
+}
+
+// TestCautionBannerFullWidthCenterDraw pins the live layout bug seen on
+// raspberrypi: Python paints msg_header_caution across the ENTIRE footer
+// width and centers each line in that width. The old TextView path only
+// colored ~46 columns (hardcoded pre-wrap) and left the rest of the pane
+// unpainted, with mis-centered ragged lines. Draw must fill every cell and
+// place the line with urwid ceil-left centering at the real width.
+func TestCautionBannerFullWidthCenterDraw(t *testing.T) {
+	t.Parallel()
+
+	const width = 80
+	const height = 12
+	// Short standalone line so centering is unambiguous (urwid ceil-left).
+	raw := "\n\nHello\n"
+
+	view := newCautionBannerView(raw, tcell.ColorBlack, tcell.ColorYellow)
+	view.SetRect(0, 0, width, height)
+
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatalf("screen.Init: %v", err)
+	}
+	defer screen.Fini()
+	screen.SetSize(width, height)
+	view.Draw(screen)
+	screen.Show()
+
+	// Every cell must carry a non-default background (AttrMap full-width fill).
+	textRow := -1
+	for row := range height {
+		painted := 0
+		for col := range width {
+			main, style, _ := screen.Get(col, row)
+			_, bg, _ := style.Decompose()
+			if bg == tcell.ColorDefault {
+				t.Fatalf("cell (%d,%d) left default bg — banner must fill full footer width", col, row)
+			}
+			if strings.TrimSpace(main) != "" {
+				painted++
+			}
+		}
+		if painted > 0 {
+			textRow = row
+		}
+	}
+	if textRow < 0 {
+		t.Fatal("no text glyphs drawn on any row")
+	}
+
+	// The text row must be centered: leading pad roughly (width-len)/2.
+	var b strings.Builder
+	for col := range width {
+		main, _, _ := screen.Get(col, textRow)
+		b.WriteString(main)
+	}
+	got := strings.TrimRight(b.String(), " ")
+	trimmed := strings.TrimSpace(got)
+	if trimmed == "" {
+		t.Fatal("text row is blank after trim")
+	}
+	leftPad := len(got) - len(strings.TrimLeft(got, " "))
+	// urwid ceil-left: pad = (width - textWidth + 1) / 2.
+	wantPad := (width - len("Hello") + 1) / 2
+	if leftPad != wantPad {
+		t.Errorf("left pad = %d, want urwid ceil-left %d (text centered in width %d)", leftPad, wantPad, width)
 	}
 }
 

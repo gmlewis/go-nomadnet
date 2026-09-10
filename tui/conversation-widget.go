@@ -93,6 +93,68 @@ func (m *messageListView) Draw(screen tcell.Screen) {
 	}
 }
 
+// cautionBannerView paints the identity-unknown footer warning the way
+// Python's urwid.AttrMap(Padding(Text(align=CENTER)), "msg_header_caution")
+// does (Conversations.py check_editor_allowed): the caution palette covers the
+// FULL footer width (every cell, not only the glyphs), and each text line is
+// centered across that width using urwid's ceil-left rule. tview's TextView
+// only paints bg onto actual text cells, so a plain TextView left a short
+// yellow strip on a wide pane (the raspberrypi capture). Draw lays out from
+// the raw unwrapped string at the live inner width.
+type cautionBannerView struct {
+	*tview.TextView
+
+	raw string
+	fg  tcell.Color
+	bg  tcell.Color
+}
+
+func newCautionBannerView(raw string, fg, bg tcell.Color) *cautionBannerView {
+	c := &cautionBannerView{
+		TextView: tview.NewTextView().SetDynamicColors(false).SetWrap(false).SetWordWrap(false),
+		raw:      raw,
+		fg:       fg,
+		bg:       bg,
+	}
+	c.SetTextColor(c.fg)
+	c.SetBackgroundColor(c.bg)
+	return c
+}
+
+// Draw fills every cell of the inner rect with the caution background, then
+// paints each urwid-wrapped line centered (ceil-left) across the full width.
+func (c *cautionBannerView) Draw(screen tcell.Screen) {
+	x, y, w, h := c.GetInnerRect()
+	if w <= 0 || h <= 0 {
+		return
+	}
+	style := tcell.StyleDefault.Foreground(c.fg).Background(c.bg)
+	lines := urwidSpaceWrap(c.raw, w)
+	for row := range h {
+		for col := range w {
+			screen.SetContent(x+col, y+row, ' ', nil, style)
+		}
+		if row >= len(lines) {
+			continue
+		}
+		line := lines[row]
+		rw := 0
+		for _, r := range line {
+			rw += cellWidth(r)
+		}
+		left := max((w-rw+1)/2, 0)
+		col := left
+		for _, r := range line {
+			cw := cellWidth(r)
+			if col+cw > w {
+				break
+			}
+			screen.SetContent(x+col, y+row, r, nil, style)
+			col += cw
+		}
+	}
+}
+
 // ConversationWidget displays a single conversation's messages,
 // peer info header, trust banner, and compose editor.
 // Matches Python's ConversationWidget at Conversations.py:1874.
@@ -137,6 +199,9 @@ type ConversationWidget struct {
 	titleEditor    *ReadlineEdit
 	fullEditorArea *tview.Flex
 	footerArea     *tview.Flex
+	// cautionBanner is the full-width identity-unknown footer (Python
+	// AttrMap+Padding+Text, not a modal). Reused across buildFooter calls.
+	cautionBanner *cautionBannerView
 	// attachmentIndicator is the pending-attachments footer line (Python
 	// _build_footer, Conversations.py:2167-2175). Lazily created by buildFooter.
 	attachmentIndicator *tview.TextView
@@ -321,9 +386,11 @@ func NewConversationWidget(app *App, sourceHash string) *ConversationWidget {
 
 	// Footer area switches between minimal and full editor, optionally
 	// prepending the pending-attachments indicator (Python _build_footer,
-	// Conversations.py:2160-2177). Populated by buildFooter after the frame
+	// Conversations.py:2160-2177), or the identity-unknown caution banner
+	// (check_editor_allowed). Populated by buildFooter after the frame
 	// exists (it resizes the frame's footer slot).
 	cw.footerArea = tview.NewFlex().SetDirection(tview.FlexRow)
+	cw.cautionBanner = nil
 
 	// Main frame: header | messages | editor. The header slot takes the
 	// header pile's rendered row count (1 + banner when visible) instead of a
@@ -708,40 +775,44 @@ func (cw *ConversationWidget) buildFooter() {
 	// Python check_editor_allowed (Conversations.py:2198-2215): without the
 	// peer's identity keys the footer shows ONLY the centered warning — the
 	// editor cannot be used, and Python swaps it back when the identity
-	// arrives (the editor_allowed state guard).
+	// arrives (the editor_allowed state guard). The warning is a FOOTER
+	// replacement (not a dialog overlay): urwid.AttrMap(Padding(Text(CENTER)),
+	// "msg_header_caution") fills the full footer width.
 	if cw.OnEditorAllowed != nil && !cw.OnEditorAllowed(cw.source) {
 		cw.footerArea.Clear()
 		if cw.attachmentIndicator != nil {
 			cw.attachmentIndicator.Clear()
 		}
-		// The msg_header_caution palette colors the banner rows (Python's
-		// AttrMap(..., "msg_header_caution"), Conversations.py:2211). The
-		// banner is PRE-WRAPPED with urwid's space-wrap and ceil-left centered
-		// line by line (matching urwid.Text(align=CENTER) under PACK), then
-		// rendered verbatim — letting tview wrap at draw time diverged from
-		// Python's break positions and centering (the differential explorer's
-		// wrap/center family).
-		lines := urwidSpaceWrap(cw.editorAllowedBannerText(), 46)
 		theme := ThemeDark
 		if cw.app != nil {
 			theme = cw.app.Theme
 		}
 		colors := GetThemeColors(theme)
-		tag := buildColorTag(colors["msg_header_caution_fg"], colors["msg_header_caution_bg"])
-		styled := make([]string, len(lines))
-		for i, line := range lines {
-			rw := tview.TaggedStringWidth(line)
-			left := max((46-rw+1)/2, 0) // urwid ceil-left centering
-			styled[i] = tag + strings.Repeat(" ", left) + line + "[-]"
+		if cw.cautionBanner == nil {
+			cw.cautionBanner = newCautionBannerView(
+				cw.editorAllowedBannerText(),
+				colors["msg_header_caution_fg"],
+				colors["msg_header_caution_bg"],
+			)
 		}
-		banner := tview.NewTextView().SetDynamicColors(true).SetWrap(false)
-		banner.SetText(strings.Join(styled, "\n"))
-		rows := len(lines)
-		cw.footerArea.AddItem(banner, rows, 0, false)
+		// Height is the wrap count at the live footer width (fallback 46 for
+		// a not-yet-laid-out frame). Draw re-wraps at the true width so a
+		// later resize still centers correctly; extra rows stay caution-bg.
+		width := 46
+		if cw.frame != nil {
+			if _, _, fw, _ := cw.frame.GetInnerRect(); fw > 0 {
+				width = fw
+			}
+		}
+		rows := len(urwidSpaceWrap(cw.editorAllowedBannerText(), width))
+		cw.footerArea.AddItem(cw.cautionBanner, rows, 0, false)
 		if cw.frame != nil {
 			cw.frame.ResizeItem(cw.footerArea, rows, 0)
 		}
 		return
+	}
+	if cw.cautionBanner != nil {
+		cw.cautionBanner = nil
 	}
 	cw.footerArea.Clear()
 	if cw.attachmentIndicator != nil {
@@ -774,17 +845,17 @@ func (cw *ConversationWidget) buildFooter() {
 	}
 }
 
-// editorAllowedBannerText builds the centered identity-unknown warning,
-// mirroring Python's check_editor_allowed text (Conversations.py:2209-2214 in
-// the installed 1.2.8): the info glyph, the "cannot message this peer"
-// paragraph, and the manual-query instructions, wrapped in the blank lines
-// urwid's "\n"+glyph+"\n\n…\n\n…\n" layout produces.
+// editorAllowedBannerText builds the identity-unknown warning body, matching
+// Python check_editor_allowed's urwid.Text string in the source-of-truth
+// nomadnet tree (Conversations.py:2195-2214): info glyph, blank line, the
+// cannot-message paragraph, blank line, manual-query instructions. The live
+// layout is AttrMap+Padding+Text(align=CENTER) — a FOOTER swap, not a dialog.
 func (cw *ConversationWidget) editorAllowedBannerText() string {
 	g := cw.glyphs()
 	return "\n" + g["info"] + "\n\n" +
 		"You cannot currently message this peer, since its identity keys are not known. " +
-		"The keys have been requested from the network, and you will be able to send messages " +
-		"as soon as they arrive.\n\n" +
+		"The keys have been requested from the network and should arrive shortly, if available. " +
+		"Close this conversation and reopen it to try again.\n\n" +
 		"To query the network manually, select this conversation in the conversation list, " +
 		"press Ctrl-E, and use the query button.\n"
 }

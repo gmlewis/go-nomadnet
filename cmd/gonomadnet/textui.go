@@ -1723,6 +1723,25 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 			channelsDisplay.ShowRoom(hubIndexFor(a, hub), room, rrcRoomMessages(hub, room))
 		})
 	}
+	// Python RoomWidget._local_message (Channels.py:938-946): store the
+	// client-only row on the hub so /help and slash feedback survive
+	// RefreshRoomIfVisible. The hub notifies; we also rebuild the visible
+	// room so the new lines appear immediately.
+	channelsDisplay.OnLocalMessage = func(kind, room, text string) error {
+		hub := a.RRC.ActiveHub()
+		if hub == nil {
+			return errors.New("no hub")
+		}
+		hub.AddLocalMessage(kind, room, text)
+		tuiApp.QueueUpdateDraw(func() {
+			room = strings.ToLower(room)
+			if room == "" {
+				room = strings.ToLower(a.RRC.ActiveRoom())
+			}
+			channelsDisplay.ShowRoom(hubIndexFor(a, hub), room, rrcRoomMessages(hub, room))
+		})
+		return nil
+	}
 	// Python "nick" (Channels.py:1070-1085): view the effective nick and any
 	// per-hub override, or set the override after the hub's nick limit check.
 	channelsDisplay.OnNickInfo = func() (string, bool) {

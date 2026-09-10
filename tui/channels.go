@@ -149,6 +149,10 @@ type ChannelsDisplay struct {
 	OnNickInfo      func() (nick string, isOverride bool)
 	OnSetNick       func(name string) error
 	OnDisconnectHub func()
+	// OnLocalMessage records a client-only system/error/notice row on the
+	// hub for the given room (Python _local_message). Wired from textui to
+	// hub.AddLocalMessage so /help survives message-buffer refreshes.
+	OnLocalMessage func(kind, room, text string) error
 	// OnConnectHub triggers the ACTIVE hub's connect from the room composer
 	// (Python RoomWidget.send_message's disconnected branch, Channels.py:873,
 	// and the /connect slash command, Channels.py:1094).
@@ -709,6 +713,12 @@ func (cd *ChannelsDisplay) ShowRoom(hubIdx int, room string, msgs []ChannelMessa
 		rw.OnDisconnectHub = func() {
 			if cd.OnDisconnectHub != nil {
 				cd.OnDisconnectHub()
+			}
+		}
+		if cd.OnLocalMessage != nil {
+			room := room
+			rw.OnLocalMessage = func(kind, text string) error {
+				return cd.OnLocalMessage(kind, room, text)
 			}
 		}
 	}

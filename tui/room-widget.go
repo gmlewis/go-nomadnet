@@ -18,6 +18,7 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -111,6 +112,12 @@ type RoomWidget struct {
 	// OnDisconnectHub disconnects the hub (Python "disconnect"/"quit",
 	// Channels.py:1100-1104: hub.disconnect — NOT a room part).
 	OnDisconnectHub func()
+	// OnLocalMessage records a client-only row (system/error/notice) in the
+	// hub's room buffer so it survives RefreshRoomIfVisible — Python
+	// _local_message (Channels.py:938-946). /help emits one system row per
+	// SLASH_HELP line; without this the next hub refresh wiped the list
+	// ("help goes away quickly").
+	OnLocalMessage func(kind, text string) error
 
 	// Message data
 	chatMessages []ChannelMessage
@@ -499,10 +506,21 @@ func (rw *RoomWidget) hubIsConnected() bool {
 }
 
 // appendLocalNotice renders a local-only notice in the room view without
-// transmitting anything (Python RoomWidget._local_message, Channels.py:1205).
+// transmitting anything (Python RoomWidget._local_message, Channels.py:938-946).
+// It also records the row on the hub (when wired) so a later SetMessages from
+// the hub buffer keeps /help and slash feedback visible, and stamps TsMs so
+// the IRC-style "[HH:MM:SS] →" row matches Python.
 func (rw *RoomWidget) appendLocalNotice(text string, isError bool) {
+	kind := "system"
+	if isError {
+		kind = "error"
+	}
+	if rw.OnLocalMessage != nil {
+		_ = rw.OnLocalMessage(kind, text)
+	}
 	rw.chatMessages = append(rw.chatMessages, ChannelMessage{
 		Room: rw.roomName, Text: text, IsSystem: !isError, IsError: isError,
+		TsMs: time.Now().UnixMilli(),
 	})
 	rw.renderMessages()
 }
