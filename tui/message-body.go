@@ -393,12 +393,13 @@ func isArrowPrefixedText(text string, opts RRCRenderOpts) bool {
 	return false
 }
 
-// escapeTviewTags doubles "[" so tview's dynamic-color parser leaves the
-// glyph alone. Python's urwid.Text does not treat "[room]" as a style tag;
-// tview does — /help lines like "/part [room] - leave a room" lost the
-// bracketed tokens (and the columns after them) on screen.
+// escapeTviewTags hides style-tag-looking runs so they print literally.
+// tview.Escape turns "[room]" into "[room[]" (see tview strings.go Escape /
+// escapePattern); Python urwid has no such tags, so /help must not lose
+// "[room]"/"[target]". Manual "[[" doubling is wrong for this parser — it
+// left "room]" in a half-open tag and dropped it on screen.
 func escapeTviewTags(s string) string {
-	return strings.ReplaceAll(s, "[", "[[")
+	return tview.Escape(s)
 }
 
 // formatRRCEventLines renders a system/notice/error row the way Python's
