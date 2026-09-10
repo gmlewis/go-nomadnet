@@ -2364,21 +2364,39 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 					func() {}, func() {})
 				return
 			}
-			if a.RRC != nil {
-				hub := a.RRC.FindHub(hashBytes, "rrc.hub")
-				if hub == nil {
-					hub = a.RRC.AddHub(hashBytes, "rrc.hub", "")
-				}
-				if room != "" {
-					hub.AddRoom(room)
-					if hub.Status == rrc.StatusConnected {
-						hub.JoinRoom(room, false)
-					}
-				}
-				tuiApp.QueueUpdateDraw(func() {
-					channelsDisplay.SetHubs(a.HubViews())
-				})
+			if a.RRC == nil {
+				return
 			}
+			// Python Browser.handle_rrc_link (Browser.py:426-463): show
+			// Channels, then select the hub/room. For a new hub it opens a
+			// confirm dialog; Go adds the hub directly (same net effect once
+			// confirmed) and follows _select_room: SetActive + auto-connect.
+			// A disconnected hub's stored rooms are re-joined on WELCOME
+			// (RRCManager.OnWelcome / Python _on_welcome), so JoinRoom only
+			// needs to fire when already connected.
+			hub := a.RRC.FindHub(hashBytes, "rrc.hub")
+			if hub == nil {
+				hub = a.RRC.AddHub(hashBytes, "rrc.hub", "")
+				if err := a.RRC.Save(); err != nil && a.Logger != nil {
+					a.Logger.Error("Could not save RRC hubs: %v", err)
+				}
+			}
+			roomNorm := strings.ToLower(strings.TrimSpace(room))
+			a.RRC.SetActive(hub, roomNorm)
+			tui.MaybeAutoconnect(hub)
+			if roomNorm != "" {
+				wasJoined := hub.HasRoom(roomNorm)
+				hub.AddRoom(roomNorm)
+				if hub.Status == rrc.StatusConnected && !wasJoined {
+					hub.JoinRoom(roomNorm, false)
+				}
+			}
+			tuiApp.QueueUpdateDraw(func() {
+				channelsDisplay.SetHubs(a.HubViews())
+				if roomNorm != "" {
+					channelsDisplay.ShowRoom(hubIndexFor(a, hub), roomNorm, rrcRoomMessages(hub, roomNorm))
+				}
+			})
 			main.SelectPage("channels")
 		}
 		bd.OnPartialUpdate = func(ids []string) {
