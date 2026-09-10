@@ -61,6 +61,33 @@ To run gonomadnet yourself:
 
 4. `!Create pages`! by placing `*.mu`* files in `*~/.nomadnet/storage/pages/`*
 
+>> Fleet Hubs & Propagation Nodes
+
+This node is part of a small always-on fleet running the `*Go`* port of Reticulum and
+NomadNet. Two of its nodes run `!24/7 public hubs`! and `!LXMF propagation nodes`! — they are
+the best entry points to the fleet and are happy to carry your traffic:
+
+  • `!go-nomadnet on MiniPC`! — RRC chat hub + LXMF propagation node
+    (transport node + LoRa/TCP gateway)
+  • `!go-nomadnet on RaspPi`! — RRC chat hub + LXMF propagation node
+    (transport node, strongest LoRa radio)
+
+Point your LXMF client's propagation node at whichever of the two you hear
+announcing; both are equivalent store-and-forward nodes.
+
+Every node in the fleet re-announces every `*6 hours`*, so the hubs and propagation nodes
+appear in your announces list shortly after you connect. To find them: open the announce
+list and look for the `!rrc.hub`! and `!lxmf.propagation`! destinations from these nodes.
+
+>> Found a Bug?
+
+These nodes are public so that you can try the Go port end-to-end and `!tell us what breaks`!:
+
+  • `*Go RNS (go-reticulum):`* `_`*`[https://github.com/gmlewis/go-reticulum/issues`https://github.com/gmlewis/go-reticulum/issues]`*`_
+  • `*Go NomadNet (go-nomadnet):`* `_`*`[https://github.com/gmlewis/go-nomadnet/issues`https://github.com/gmlewis/go-nomadnet/issues]`*`_
+
+Bug reports with reproduction steps are especially welcome — that is how the port gets fixed.
+
 >> Learn More
 
 Reticulum Network Stack: `_`*`[https://markqvist.github.io/Reticulum/`https://markqvist.github.io/Reticulum/]`*`_
