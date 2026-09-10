@@ -77,7 +77,11 @@ Add to your Reticulum client config (`*~/.reticulum/config`*):
 
   • `!#general`! — go-nomadnet, go-reticulum, asic-reticulum (bugs, ports, ideas)
 
-Find the hub's `!rrc.hub`! destination in your announce stream, then `!JOIN #general`!.
+`!Join now`! (click / press Enter — adds the hub and room in Channels):
+
+  `F79d`_`[Join #general`rrc://a012129c10205c0b9441fcd2b755b2a7/#general]`_`f
+
+Hub destination (for manual add in Channels): `!a012129c10205c0b9441fcd2b755b2a7`!
 
 >> Source (GitHub or over RNS)
 
