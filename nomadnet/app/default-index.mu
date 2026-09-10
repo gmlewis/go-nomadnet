@@ -50,10 +50,8 @@ To run gonomadnet yourself:
 
 1. Make sure `*Go`* is installed from: `_`*`[https://go.dev`https://go.dev]`*`_
 
-2. `!Install`! from source or pre-built binary:
+2. `!Install`! from source (see `!Source`! below) or a pre-built release:
    `*go install github.com/gmlewis/go-nomadnet/cmd/gonomadnet@latest`*
-   or alternatively, you can download the latest binary release for your platform from:
-   `_`*`[https://github.com/gmlewis/go-nomadnet/releases`https://github.com/gmlewis/go-nomadnet/releases]`*`_
 
 3. `!Configure`! by editing `*~/.nomadnet/config`*:
    - Set `!enable_node = yes`! to host pages
@@ -61,35 +59,43 @@ To run gonomadnet yourself:
 
 4. `!Create pages`! by placing `*.mu`* files in `*~/.nomadnet/storage/pages/`*
 
->> Fleet Hubs & Propagation Nodes
+>> Public RNS Hub — go-nomadnet.duckdns.org
 
-This node is part of a small always-on fleet running the `*Go`* port of Reticulum and
-NomadNet. Two of its nodes run `!24/7 public hubs`! and `!LXMF propagation nodes`! — they are
-the best entry points to the fleet and are happy to carry your traffic:
+go-nomadnet.duckdns.org is a public RNS TCP gateway.
 
-  • `!go-nomadnet on MiniPC`! — RRC chat hub + LXMF propagation node
-    (transport node + LoRa/TCP gateway)
-  • `!go-nomadnet on RaspPi`! — RRC chat hub + LXMF propagation node
-    (transport node, strongest LoRa radio)
+  • `!Endpoint:`! `*go-nomadnet.duckdns.org:4242`*
 
-Point your LXMF client's propagation node at whichever of the two you hear
-announcing; both are equivalent store-and-forward nodes.
+Add to your Reticulum client config (`*~/.reticulum/config`*):
 
-Every node in the fleet re-announces every `*6 hours`*, so the hubs and propagation nodes
-appear in your announces list shortly after you connect. To find them: open the announce
-list and look for the `!rrc.hub`! and `!lxmf.propagation`! destinations from these nodes.
+  [[Community Go Hub]]
+    type = TCPClientInterface
+    interface_enabled = yes
+    target_host = go-nomadnet.duckdns.org
+    target_port = 4242
 
->> Found a Bug?
+`!Public RRC room`! for talking about the Go port:
 
-These nodes are public so that you can try the Go port end-to-end and `!tell us what breaks`!:
+  • `!#general`! — go-nomadnet, go-reticulum, asic-reticulum (bugs, ports, ideas)
 
-  • `*Go RNS (go-reticulum):`* `_`*`[https://github.com/gmlewis/go-reticulum/issues`https://github.com/gmlewis/go-reticulum/issues]`*`_
-  • `*Go NomadNet (go-nomadnet):`* `_`*`[https://github.com/gmlewis/go-nomadnet/issues`https://github.com/gmlewis/go-nomadnet/issues]`*`_
+Find the hub's `!rrc.hub`! destination in your announce stream, then `!JOIN #general`!.
 
-Bug reports with reproduction steps are especially welcome — that is how the port gets fixed.
+>> Source (GitHub or over RNS)
+
+This is the `*Go rewrite`* of Reticulum and NomadNet. Clone from GitHub, or from
+the `!gorngit`! hub on this node (`!rns://`! URLs; add `!git-remote-rns`!):
+
+  • `*Go RNS (go-reticulum)`* — `_`*`[https://github.com/gmlewis/go-reticulum`https://github.com/gmlewis/go-reticulum]`*`_ — `*rns://58a0406047ec2e7ce23e9e9a83b744df/main/go-reticulum.git`*
+  • `*Go NomadNet (go-nomadnet)`* — `_`*`[https://github.com/gmlewis/go-nomadnet`https://github.com/gmlewis/go-nomadnet]`*`_ — `*rns://58a0406047ec2e7ce23e9e9a83b744df/main/go-nomadnet.git`*
+  • `*ASIC Reticulum`* — `_`*`[https://github.com/gmlewis/asic-reticulum`https://github.com/gmlewis/asic-reticulum]`*`_ — `*rns://58a0406047ec2e7ce23e9e9a83b744df/main/asic-reticulum.git`*
+
+Example:
+
+  `*git clone rns://58a0406047ec2e7ce23e9e9a83b744df/main/go-nomadnet.git`*
+
+`!All issue tracking is on GitHub`! only (the three repos above) — not on RNS
+mirrors. Bug reports with reproduction steps are especially welcome.
 
 >> Learn More
 
 Reticulum Network Stack: `_`*`[https://markqvist.github.io/Reticulum/`https://markqvist.github.io/Reticulum/]`*`_
 Nomad Network: `_`*`[https://github.com/markqvist/NomadNet`https://github.com/markqvist/NomadNet]`*`_
-gonomadnet GitHub: `_`*`[https://github.com/gmlewis/go-nomadnet`https://github.com/gmlewis/go-nomadnet]`*`_
