@@ -393,6 +393,14 @@ func isArrowPrefixedText(text string, opts RRCRenderOpts) bool {
 	return false
 }
 
+// escapeTviewTags doubles "[" so tview's dynamic-color parser leaves the
+// glyph alone. Python's urwid.Text does not treat "[room]" as a style tag;
+// tview does — /help lines like "/part [room] - leave a room" lost the
+// bracketed tokens (and the columns after them) on screen.
+func escapeTviewTags(s string) string {
+	return strings.ReplaceAll(s, "[", "[[")
+}
+
 // formatRRCEventLines renders a system/notice/error row the way Python's
 // _wrap_text flow does (Channels.py:1281-1311): the " [HH:MM:SS] " ts run,
 // the event icon and the body form ONE text flow wrapped at the message
@@ -401,6 +409,9 @@ func isArrowPrefixedText(text string, opts RRCRenderOpts) bool {
 // leader — capture 47's `members in general:` notice whose `(9ebb…)`
 // continuations start at column 0. Chat rows keep their justified layout.
 // A width too small to hold the prefix falls back to the single-line render.
+// Body text is wrap-measured UNESCAPED, then "[" is doubled on the way out
+// so tview does not swallow "[room]"/"[target]" from /help (Python does not
+// parse those as tags).
 func formatRRCEventLines(msg ChannelMessage, opts RRCRenderOpts, width int) []string {
 	colors := rrcRenderColors(opts.Theme)
 	icon, color := rrcEventIconBody(msg, opts)
@@ -411,7 +422,7 @@ func formatRRCEventLines(msg ChannelMessage, opts RRCRenderOpts, width int) []st
 	tsRun := ircTsRun(msg.TsMs, colors["ircTs"])
 	flow := " [" + rrcTsText(msg.TsMs) + "] " + iconPart + msg.Text
 	oneLine := func() []string {
-		return []string{tsRun + colorTag(color, "") + iconPart + msg.Text + colorReset}
+		return []string{tsRun + colorTag(color, "") + iconPart + escapeTviewTags(msg.Text) + colorReset}
 	}
 	if width <= 0 {
 		return oneLine()
@@ -430,9 +441,9 @@ func formatRRCEventLines(msg ChannelMessage, opts RRCRenderOpts, width int) []st
 	// part (the icon's own color run covers it, like the capture's
 	// `[ts][notice]󰙎 members…`); the body part is segment 0 minus the
 	// prefix runes.
-	lines = append(lines, tsRun+colorTag(color, "")+iconPart+string(first[prefixLen:])+colorReset)
+	lines = append(lines, tsRun+colorTag(color, "")+iconPart+escapeTviewTags(string(first[prefixLen:]))+colorReset)
 	for _, seg := range segments[1:] {
-		lines = append(lines, colorTag(color, "")+seg+colorReset)
+		lines = append(lines, colorTag(color, "")+escapeTviewTags(seg)+colorReset)
 	}
 	return lines
 }
