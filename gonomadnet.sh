@@ -7,7 +7,12 @@
 # `kill -QUIT <pid>` writes the GOTRACEBACK=all goroutine dump into (stderr is
 # redirected here); the script itself never sends the signal.
 cd "$(dirname "$0")"
-go install ./cmd/gonomadnet
+# -tags=wago links the in-process wasm page sandbox: .wasm files in
+# ~/.nomadnetwork/storage/pages/ render as executable pages (dynamic Micron
+# markup) instead of being served statically. On platforms the wago runtime
+# does not support, the tag is harmlessly ignored and gonomadnet falls back
+# to the zero-overhead static-serving stub.
+go install -tags=wago ./cmd/gonomadnet
 
 # Always restore the terminal when gonomadnet exits — including an abrupt crash
 # in a non-event-loop goroutine (transport callback, ticker, the draw drainer).

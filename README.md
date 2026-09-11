@@ -40,7 +40,7 @@ If you already have [Go](https://go.dev/) installed, you can
 install `gonomadnet` directly from GitHub without cloning the repo:
 
 ```bash
-go install github.com/gmlewis/go-nomadnet/cmd/gonomadnet@v0.119.0
+go install github.com/gmlewis/go-nomadnet/cmd/gonomadnet@v0.120.0
 ```
 
 This puts the `gonomadnet` binary in your `$GOPATH/bin` (or `$GOBIN`)
@@ -137,6 +137,81 @@ format is INI-style, identical to the Python version:
 ```
 
 See the Python NomadNet documentation for all available options.
+
+## Wasm Executable Pages
+
+Any `.wasm` file placed in the node's pages directory is an **executable
+page**: requests for it render through a sandboxed in-process WebAssembly
+runtime (the [wago](https://github.com/wago-org/wago) engine, compiled in with
+`-tags wago`) instead of being served statically. This mirrors Python
+NomadNet's executable pages, which ran a page as a subprocess with the request
+data as environment variables — the Go sandbox replaces that subprocess with a
+deny-by-default wasm ABI.
+
+- **Install**: copy a page's `.wasm` file into `<config-dir>/storage/pages/`
+  (default `~/.nomadnetwork/storage/pages/`) and request it — no restart
+  needed, since every request runs a fresh instance.
+- **ABI**: the plugin exports `render_page(req_ptr, req_len) -> (ptr, len)`.
+  The request payload is a JSON object (`path`, `request_data`, `link_id`,
+  `remote_identity`, `requested_at`) and the response bytes are Micron markup.
+- **Limits**: 16 MiB linear memory, 1024 table entries, and a 2-second
+  execution budget per request; a failing or runaway plugin renders as
+  not-found instead of leaking its binary source.
+- **Build tag**: binaries built without `-tags wago` serve `.wasm` files
+  statically (the release builder adds the tag on supported platforms).
+
+A ready-to-run example with install instructions ships in
+[`assets/wasm-pages/`](assets/wasm-pages/): `dynamic-page.wat` (WebAssembly
+text source) and `dynamic-page.wasm` (assembled binary) render a Micron page
+whose content includes the request payload — proving pages are dynamic. Build
+and install it with:
+
+```bash
+wat2wasm dynamic-page.wat -o dynamic-page.wasm
+cp dynamic-page.wasm ~/.nomadnetwork/storage/pages/
+```
+
+Then browse the node (loopback or remote) and request `/page/dynamic.wasm`.
+Validate and inspect plugins with the `wago` CLI (`wago validate`,
+`wago module imports`).
+
+### Page plugin ideas
+
+Some things executable pages are designed to make safe and easy:
+
+- Hit counters and "last browsed" markers (using the node's own storage)
+- Guestbooks and form processors that append submissions to local files
+- Live status dashboards rendering Micron tables from local state
+- Random-tip or quote-of-the-day generators
+- Interactive calculators and converters driven by `request_data` fields
+
+### Security considerations for public nodes
+
+Read this before enabling the node on an internet-facing interface (for
+example a public TCP server):
+
+- **Only the operator can install pages.** There is no remote upload path:
+  peers fetch pages and files, they cannot write to the pages directory or
+  plant a `.wasm` file. The realistic threat is supply-chain — only serve
+  `.wasm` pages you built or reviewed, since they run on your node and their
+  responses carry your node's identity.
+- **Anyone who can reach the node can execute a page.** Pages are served with
+  the broadest access policy; a `.allowed` file placed next to a `.wasm` page
+  restricts who may execute it (the check runs *before* the sandbox), and the
+  sandbox itself caps every request at 16 MiB of memory and 2 seconds of
+  execution. Public-node page plugins should stay trivial — each request
+  compiles a fresh instance, so heavy pages are a CPU-exhaustion vector.
+- **Page plugins get no capabilities.** They receive no host imports at all:
+  no network, no filesystem, no KV store. A page can only compute markup from
+  its own logic and the request metadata (which is the requester's own link
+  ID and identity hash).
+- **A page's markup is rendered by visitors' clients.** Micron/terminal
+  formatting in the response is interpreted by the browsing TUI, so a page
+  that reflects user-controlled data (today only the requester's own metadata;
+  `request_data` form fields are not wired yet) could inject links or markup
+  into another user's view if you build it that way. Escape or strip
+  user-controlled data before returning it, and treat every page's output as
+  untrusted markup when reviewing third-party pages.
 
 ## Package Overview
 

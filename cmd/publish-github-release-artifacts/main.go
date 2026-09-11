@@ -361,6 +361,37 @@ func gh(args ...string) error {
 	return cmd.Run()
 }
 
+// wagoSupportedTarget reports whether the target platform links the wago
+// in-process wasm runtime (-tags wago): Linux, Darwin, or Windows on amd64
+// or arm64; every other target keeps the zero-overhead stub.
+func wagoSupportedTarget(goos, goarch string) bool {
+	switch goos {
+	case "linux", "darwin", "windows":
+	default:
+		return false
+	}
+	switch goarch {
+	case "amd64", "arm64":
+	default:
+		return false
+	}
+	return true
+}
+
+// buildTagsWithWago appends the wago tag to a build-tag list unless it is
+// already present.
+func buildTagsWithWago(tags string) string {
+	for tag := range strings.SplitSeq(tags, ",") {
+		if tag == "wago" {
+			return tags
+		}
+	}
+	if tags == "" {
+		return "wago"
+	}
+	return tags + ",wago"
+}
+
 // buildAll builds one executable per target into outDir and returns the
 // absolute paths of the produced artifacts. progress receives build chatter.
 func buildAll(outDir, version string, progress *os.File) ([]string, error) {
@@ -373,7 +404,14 @@ func buildAll(outDir, version string, progress *os.File) ([]string, error) {
 		outPath := filepath.Join(outDir, name)
 
 		mustFprintf(progress, "Building %v/%v -> %v\n", t.goos, t.goarch, name)
-		cmd := exec.Command("go", "build", "-trimpath", "-o", outPath, "./cmd/gonomadnet")
+		buildArgs := []string{"build", "-trimpath"}
+		if wagoSupportedTarget(t.goos, t.goarch) {
+			// Release binaries on supported platforms link the wasm page
+			// sandbox; other platforms keep the static-serving stub.
+			buildArgs = append(buildArgs, "-tags=wago")
+		}
+		buildArgs = append(buildArgs, "-o", outPath, "./cmd/gonomadnet")
+		cmd := exec.Command("go", buildArgs...)
 		cmd.Env = append(os.Environ(),
 			"GOOS="+t.goos,
 			"GOARCH="+t.goarch,
@@ -392,7 +430,11 @@ func buildAll(outDir, version string, progress *os.File) ([]string, error) {
 		outPath := filepath.Join(outDir, name)
 
 		mustFprintf(progress, "Building hardware target [%v] %v/%v -> %v\n", hw.formFactor, hw.goos, hw.goarch, name)
-		args := []string{"build", "-trimpath", "-tags=" + hw.buildTags, "-o", outPath, "./cmd/gonomadnet"}
+		buildTags := hw.buildTags
+		if wagoSupportedTarget(hw.goos, hw.goarch) {
+			buildTags = buildTagsWithWago(buildTags)
+		}
+		args := []string{"build", "-trimpath", "-tags=" + buildTags, "-o", outPath, "./cmd/gonomadnet"}
 		cmd := exec.Command("go", args...)
 		env := append(os.Environ(),
 			"GOOS="+hw.goos,

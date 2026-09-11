@@ -22,6 +22,49 @@ import (
 	"testing"
 )
 
+// TestWagoSupportedTarget pins the platform matrix that links the wago
+// in-process wasm runtime into released gonomadnet binaries: Linux, Darwin,
+// or Windows on amd64 or arm64.
+func TestWagoSupportedTarget(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		goos, goarch string
+		want         bool
+	}{
+		{"linux", "amd64", true},
+		{"linux", "arm64", true},
+		{"darwin", "arm64", true},
+		{"windows", "amd64", true},
+		{"linux", "arm", false},
+		{"linux", "riscv64", false},
+		{"freebsd", "amd64", false},
+	}
+	for _, c := range cases {
+		if got := wagoSupportedTarget(c.goos, c.goarch); got != c.want {
+			t.Errorf("wagoSupportedTarget(%q, %q) = %v, want %v", c.goos, c.goarch, got, c.want)
+		}
+	}
+}
+
+// TestBuildTagsWithWago verifies the tag merge: wago is appended only when
+// missing, and the pocket tags stay intact.
+func TestBuildTagsWithWago(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct{ tags, want string }{
+		{"", "wago"},
+		{"pocket_terminal", "pocket_terminal,wago"},
+		{"pocket_terminal,wago", "pocket_terminal,wago"},
+		{"wago", "wago"},
+	}
+	for _, c := range cases {
+		if got := buildTagsWithWago(c.tags); got != c.want {
+			t.Errorf("buildTagsWithWago(%q) = %q, want %q", c.tags, got, c.want)
+		}
+	}
+}
+
 // TestRenderReleaseNotes renders the release notes for a handful of fake,
 // deliberately-unsorted artifacts and logs them so you can eyeball the sorted
 // table and the post-download setup section. Run with:

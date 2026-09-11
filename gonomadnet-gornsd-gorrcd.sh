@@ -73,10 +73,16 @@ if pgrep -x "gornsd|gorrcd|gonomadnet|nomadnet" >/dev/null 2>&1; then
 fi
 
 echo "== [2/4] building + installing the latest tools =="
+# -tags=wago links each tool's in-process wasm plugin sandbox (wago-analysis.md):
+#   gornsd      -> announce observer plugins from ~/.reticulum/plugins/*.wasm
+#   gorrcd      -> chat slash-command plugins from ~/.rrcd/plugins/*.wasm
+#   gonomadnet  -> .wasm executable pages from ~/.nomadnetwork/storage/pages/
+# On platforms the wago runtime does not support, the tag is harmlessly
+# ignored and each tool falls back to its zero-overhead stub.
 git -C "$RETIC_DIR" pull --ff-only 2>/dev/null || echo "WARN: go-reticulum pull failed; building the local checkout"
-( cd "$RETIC_DIR" && go install ./cmd/gornsd ./cmd/gorrcd ) || { echo "FATAL: go-reticulum build failed"; exit 1; }
+( cd "$RETIC_DIR" && go install -tags=wago ./cmd/gornsd ./cmd/gorrcd ) || { echo "FATAL: go-reticulum build failed"; exit 1; }
 git -C "$NOMAD_DIR" pull --ff-only 2>/dev/null || echo "WARN: go-nomadnet pull failed; building the local checkout"
-( cd "$NOMAD_DIR" && go install ./cmd/gonomadnet ) || { echo "FATAL: go-nomadnet build failed"; exit 1; }
+( cd "$NOMAD_DIR" && go install -tags=wago ./cmd/gonomadnet ) || { echo "FATAL: go-nomadnet build failed"; exit 1; }
 
 echo "== [3/4] starting gornsd -s (the shared instance; owns all interfaces) =="
 nohup "$GORN" -s -v -v -pprof-addr 127.0.0.1:6062 \
