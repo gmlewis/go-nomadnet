@@ -19,6 +19,8 @@ github.com/mdp/qrterminal/v3 v3.2.1/go.mod h1:jOTmXvnBsMy5xqLniO0R++Jmjs2sTm9dFS
 github.com/rivo/uniseg v0.2.0/go.mod h1:J6wj4VEh+S6ZtnVlnTBMWIodfgj8LQOQFoIToxlJtxc=
 github.com/rivo/uniseg v0.4.7 h1:WUdvkW8uEhrYfLC4ZzdpI2ztxP1I582+49Oc5Mq64VQ=
 github.com/rivo/uniseg v0.4.7/go.mod h1:FN3SvrM+Zdj16jyLfmOkMNblXMcoc8DfTHruCPUcx88=
+github.com/wago-org/wago v0.1.0-beta.8 h1:uRAbUjBZDBLWi9yAx75VEa1KHMBm9FXn38reFQxUa+U=
+github.com/wago-org/wago v0.1.0-beta.8/go.mod h1:wXu41pwjOTxUuWcyg4ykmNnwikGQKRNw0qySjWuhOEM=
 github.com/yuin/goldmark v1.4.13/go.mod h1:6yULJ656Px+3vBD8DxQVa3kxgyrAnzto9xy5taEt/CY=
 golang.design/x/clipboard v0.9.0 h1:DIN7Fur+vO3WM22WlSx7aXmYmqdvjE2OAkoPuMZ9OTA=
 golang.design/x/clipboard v0.9.0/go.mod h1:s0pwrtA3Q9fgnVtGDmP5ZK/pp55cQKB23esKsjwWhWM=

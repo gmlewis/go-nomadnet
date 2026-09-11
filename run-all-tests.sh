@@ -96,6 +96,17 @@ if ! errcheck ./... >"${ERRCHECK_LOG}" 2>&1; then
     cat "${ERRCHECK_LOG}" >&2
     exit 1
 fi
+# The wago-tagged sandbox files are invisible to the default ./... build;
+# run the same check over the wago build on supported host platforms.
+GOOS_CHECK="$(go env GOOS)"
+GOARCH_CHECK="$(go env GOARCH)"
+if [[ "${GOOS_CHECK}" =~ ^(linux|darwin|windows)$ && "${GOARCH_CHECK}" =~ ^(amd64|arm64)$ ]]; then
+    if ! errcheck -tags=wago ./... >>"${ERRCHECK_LOG}" 2>&1; then
+        echo "FAIL: errcheck reported unchecked errors with -tags=wago (see ${ERRCHECK_LOG}):" >&2
+        cat "${ERRCHECK_LOG}" >&2
+        exit 1
+    fi
+fi
 echo "errcheck: clean (all errors checked)"
 
 # echo "Running gopls check (workspace diagnostics)..."
@@ -117,11 +128,21 @@ if ! go run golang.org/x/tools/go/analysis/passes/modernize/cmd/modernize@latest
     cat "${MODERNIZE_LOG}" >&2
     exit 1
 fi
+if [[ "${GOOS_CHECK}" =~ ^(linux|darwin|windows)$ && "${GOARCH_CHECK}" =~ ^(amd64|arm64)$ ]]; then
+    if ! go run golang.org/x/tools/go/analysis/passes/modernize/cmd/modernize@latest -tags=wago ./... >>"${MODERNIZE_LOG}" 2>&1; then
+        echo "FAIL: modernize reported suggestions with -tags=wago (see ${MODERNIZE_LOG}):" >&2
+        cat "${MODERNIZE_LOG}" >&2
+        exit 1
+    fi
+fi
 echo "modernize: clean (no suggestions)"
 
 echo "Running full staticcheck (all checks, with integration tags)..."
 STATICCHECK_LOG="staticcheck.log"
 staticcheck -checks=SA* -tags=integration ./... >"${STATICCHECK_LOG}" 2>&1 || true
+if [[ "${GOOS_CHECK}" =~ ^(linux|darwin|windows)$ && "${GOARCH_CHECK}" =~ ^(amd64|arm64)$ ]]; then
+    staticcheck -checks=SA* -tags=integration,wago ./... >>"${STATICCHECK_LOG}" 2>&1 || true
+fi
 if [[ -s "${STATICCHECK_LOG}" ]]; then
     echo "FAIL: staticcheck reported issues (see ${STATICCHECK_LOG}):" >&2
     cat "${STATICCHECK_LOG}" >&2
@@ -143,6 +164,13 @@ fi
 # The -short subset (SkipShortIntegration-gated) runs in ~10s vs ~70s for the
 # full suite.
 time run_with_timeout ./scripts/test-integration.sh -short 2>&1 | tee short-test-failures.log
+
+# The wago-tagged build (sandboxed .wasm pages) is invisible to the default
+# ./... runs, so the sandboxed packages are tested explicitly with the tag on
+# supported host platforms; other platforms keep the stub (covered above).
+if [[ "${GOOS_CHECK}" =~ ^(linux|darwin|windows)$ && "${GOARCH_CHECK}" =~ ^(amd64|arm64)$ ]]; then
+    time run_with_timeout go test -tags=wago -race -count=1 -short --timeout 2m ./nomadnet/wasmpages ./nomadnet/node ./nomadnet/browser 2>&1 | tee wago-test-failures.log
+fi
 
 if [[ "${RUN_ALL_TESTS_FULL:-0}" == "1" ]]; then
 	time run_with_timeout ./scripts/test-integration.sh 2>&1 | tee full-test-failures.log

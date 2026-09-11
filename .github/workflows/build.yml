@@ -148,6 +148,13 @@ jobs:
       - name: Run Go tests
         run: go test ./... -race -count=1
 
+      # The wago-tagged sandbox files (nomadnet/wasmpages) are invisible to
+      # the default ./... run, so the sandboxed packages are tested explicitly
+      # with the tag on the supported linux/amd64 CI runner (wago-analysis.md
+      # §6: prevent silent skips of build-tag-gated code).
+      - name: Run sandboxed-page tests (-tags=wago)
+        run: go test -tags=wago -race -count=1 ./nomadnet/wasmpages ./nomadnet/node ./nomadnet/browser
+
   integration:
     name: Go Tests (full integration suite)
     runs-on: ubuntu-latest

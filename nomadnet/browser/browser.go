@@ -37,6 +37,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gmlewis/go-nomadnet/nomadnet/wasmpages"
 	"github.com/gmlewis/go-reticulum/rns"
 )
 
@@ -716,11 +717,14 @@ var LocalPageNotFound = []byte("The requested local page did not exist in the fi
 // so the guard is a defensive addition, not a behavior change for well-formed
 // paths.
 //
-// Executable pages (Python runs an executable page as a subprocess with the
-// request_data map as env, Browser.py:1306-1316) are NOT executed here: the Go
-// node serve side (node.ServePage) also reads pages statically, so the Go port
-// does not support executable pages at all — a local executable page renders
-// its source, consistently with a remote fetch from a Go-served node.
+// A .wasm page is an executable page: with the wago runtime linked it renders
+// through the sandboxed wasmpages renderer (mirroring Python's executable-page
+// subprocess branch, Browser.py:1306-1316, which runs the page with the
+// request_data map as environment variables), and a plugin failure returns the
+// not-found body rather than leaking the plugin's binary source into the page.
+// Without the wago build tag the renderer is unavailable and .wasm files keep
+// being served statically (their source bytes), consistently with a remote
+// fetch from a Go-served node built the same way.
 func ServeLocalPage(pagesPath, path string) []byte {
 	rel := strings.TrimPrefix(path, "/page")
 	full := filepath.Join(pagesPath, rel)
@@ -732,6 +736,17 @@ func ServeLocalPage(pagesPath, path string) []byte {
 	info, err := os.Stat(full)
 	if err != nil || info.IsDir() {
 		return LocalPageNotFound
+	}
+	if strings.HasSuffix(full, ".wasm") && wasmpages.Enabled() {
+		req := wasmpages.PageRequest{
+			Path:        path,
+			RequestedAt: time.Now().Unix(),
+		}
+		markup, err := wasmpages.Render(full, req)
+		if err != nil {
+			return LocalPageNotFound
+		}
+		return markup
 	}
 	data, err := os.ReadFile(full)
 	if err != nil {

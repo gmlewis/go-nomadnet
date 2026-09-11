@@ -28,6 +28,16 @@ gofmt -s -w .
 echo "Running unit tests with race detector (-short, <5s per test)..."
 go test -race -count=1 -short --timeout "${GO_TEST_TIMEOUT}" "$@" ./...
 
+# The wago-tagged build (sandboxed .wasm pages) is invisible to the default
+# ./... run, so the sandboxed packages are tested explicitly with the tag on
+# supported host platforms; other platforms keep the stub.
+GOOS_CHECK="$(go env GOOS)"
+GOARCH_CHECK="$(go env GOARCH)"
+if [[ "${GOOS_CHECK}" =~ ^(linux|darwin|windows)$ && "${GOARCH_CHECK}" =~ ^(amd64|arm64)$ ]]; then
+	echo "Running unit tests with -tags=wago (-short, sandboxed .wasm pages)..."
+	go test -tags=wago -race -count=1 -short --timeout "${GO_TEST_TIMEOUT}" ./nomadnet/wasmpages ./nomadnet/node ./nomadnet/browser
+fi
+
 echo "Running go vet..."
 go vet ./...
 

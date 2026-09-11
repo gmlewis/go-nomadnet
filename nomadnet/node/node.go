@@ -23,6 +23,7 @@
 package node
 
 import (
+	"encoding/hex"
 	"errors"
 	"log"
 	"os"
@@ -32,6 +33,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gmlewis/go-nomadnet/nomadnet/wasmpages"
 	"github.com/gmlewis/go-reticulum/rns"
 )
 
@@ -249,10 +251,17 @@ func (n *Node) registerRequestHandlers() {
 }
 
 // makePageHandler returns a request handler function for a specific page file.
+// A .wasm page is an executable page: with the wago runtime linked it renders
+// through the sandboxed wasmpages renderer (mirroring Python's executable-page
+// subprocess branch, Node.py:161-175); without it the file is served
+// statically, as before.
 func (n *Node) makePageHandler(filePath string) func(string, []byte, []byte, []byte, *rns.Identity, time.Time) any {
 	return func(path string, data []byte, requestID []byte, linkID []byte, remoteIdentity *rns.Identity, requestedAt time.Time) any {
 		if !isRequestAllowed(filePath, remoteIdentity) {
 			return ServeNotAllowed()
+		}
+		if strings.HasSuffix(filePath, ".wasm") && wasmpages.Enabled() {
+			return n.serveWasmPage(filePath, path, linkID, remoteIdentity, requestedAt)
 		}
 		content := ServePage(filePath)
 		if content == nil {
@@ -266,6 +275,33 @@ func (n *Node) makePageHandler(filePath string) func(string, []byte, []byte, []b
 		}
 		return content
 	}
+}
+
+// serveWasmPage renders a .wasm executable page through the sandboxed wasm
+// renderer and returns its Micron markup, or nil when the plugin fails
+// (mirroring Python's exception → None response).
+func (n *Node) serveWasmPage(filePath, path string, linkID []byte, remoteIdentity *rns.Identity, requestedAt time.Time) any {
+	req := wasmpages.PageRequest{
+		Path:        path,
+		RequestedAt: requestedAt.Unix(),
+	}
+	if len(linkID) > 0 {
+		req.LinkID = hex.EncodeToString(linkID)
+	}
+	if remoteIdentity != nil && len(remoteIdentity.Hash) > 0 {
+		req.RemoteIdentity = hex.EncodeToString(remoteIdentity.Hash)
+	}
+	markup, err := wasmpages.Render(filePath, req)
+	if err != nil {
+		return nil
+	}
+	n.mu.Lock()
+	n.ServedPageRequests++
+	n.mu.Unlock()
+	if n.OnPageServed != nil {
+		n.OnPageServed()
+	}
+	return markup
 }
 
 // makeFileHandler returns a request handler function for a specific file.
