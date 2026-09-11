@@ -53,7 +53,7 @@ func TestFormatRRCEventLinesEscapesBrackets(t *testing.T) {
 	}
 
 	// Every Python SLASH_HELP line must survive render + tview unescape.
-	for _, line := range strings.Split(SlashHelpText(), "\n") {
+	for line := range strings.SplitSeq(SlashHelpText(), "\n") {
 		if line == "" {
 			continue
 		}
@@ -81,7 +81,7 @@ func TestSlashHelpRendersThroughTviewEngine(t *testing.T) {
 	const height = 40
 
 	var tagged strings.Builder
-	for _, line := range strings.Split(SlashHelpText(), "\n") {
+	for line := range strings.SplitSeq(SlashHelpText(), "\n") {
 		if line == "" {
 			continue
 		}

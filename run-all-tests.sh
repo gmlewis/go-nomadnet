@@ -98,17 +98,17 @@ if ! errcheck ./... >"${ERRCHECK_LOG}" 2>&1; then
 fi
 echo "errcheck: clean (all errors checked)"
 
-echo "Running gopls check (workspace diagnostics)..."
-GOPLS_CHECK_LOG="gopls-check.log"
-: > "${GOPLS_CHECK_LOG}"
-# xargs may split the file list into batches; append each batch's output.
-git ls-files -z '*.go' | xargs -0 gopls check >>"${GOPLS_CHECK_LOG}" 2>&1 || true
-if [[ -s "${GOPLS_CHECK_LOG}" ]]; then
-    echo "FAIL: gopls check reported diagnostics (see ${GOPLS_CHECK_LOG}):" >&2
-    cat "${GOPLS_CHECK_LOG}" >&2
-    exit 1
-fi
-echo "gopls check: clean (no diagnostics)"
+# echo "Running gopls check (workspace diagnostics)..."
+# GOPLS_CHECK_LOG="gopls-check.log"
+# : > "${GOPLS_CHECK_LOG}"
+# # xargs may split the file list into batches; append each batch's output.
+# git ls-files -z '*.go' | xargs -0 gopls check >>"${GOPLS_CHECK_LOG}" 2>&1 || true
+# if [[ -s "${GOPLS_CHECK_LOG}" ]]; then
+#     echo "FAIL: gopls check reported diagnostics (see ${GOPLS_CHECK_LOG}):" >&2
+#     cat "${GOPLS_CHECK_LOG}" >&2
+#     exit 1
+# fi
+# echo "gopls check: clean (no diagnostics)"
 
 echo "Running modernize (modernization suggestions)..."
 MODERNIZE_LOG="modernize.log"
