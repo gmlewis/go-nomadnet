@@ -136,7 +136,7 @@ func TestPipeRepeatRequestOnSameLink(t *testing.T) {
 				return
 			case <-time.After(linkDeadline):
 				lr.results = append(lr.results, "establish timeout")
-				go func() { defer func() { _ = recover() }(); link.Teardown() }()
+				func() { defer func() { _ = recover() }(); link.Teardown() }()
 				results[li] = lr
 				return
 			}
@@ -202,7 +202,9 @@ func TestPipeRepeatRequestOnSameLink(t *testing.T) {
 			}
 		done:
 			results[li] = lr
-			go func() { defer func() { _ = recover() }(); link.Teardown() }()
+			// Synchronous teardown: a fire-and-forget goroutine raced with
+			// the transport stop (and other links) under -race in CI.
+			func() { defer func() { _ = recover() }(); link.Teardown() }()
 		}(li)
 	}
 	wg.Wait()
