@@ -542,6 +542,15 @@ func (cw *ConversationWidget) composerHasFocus() bool {
 	return focused == cw.editor || focused == cw.titleEditor
 }
 
+// bodyHasFocus reports whether the conversation message list holds focus
+// (Python Conversations frame focus_position == "body").
+func (cw *ConversationWidget) bodyHasFocus() bool {
+	if cw.app == nil {
+		return false
+	}
+	return cw.app.GetFocus() == tview.Primitive(cw.messageList)
+}
+
 // handleComposerKey routes one key while the composer is focused, mirroring
 // Python's MessageEdit.keypress (Conversations.py:1807-1825) which consumes
 // only ctrl d/p/f/s (send/paper/attach/save) and its special "up" before

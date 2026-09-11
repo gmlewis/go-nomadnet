@@ -428,12 +428,23 @@ func (cd *ConversationsDisplay) setShortcutRegion(region string) {
 }
 
 // GetShortcutText returns the appropriate shortcut bar text for the current
-// focus context. Matches Python's shortcuts() method at Conversations.py:1765
-// which returns list/editor/body shortcut sets based on which pane has focus.
-// The bar is NEVER blanked — Python's shortcuts() always returns one of the
-// three bars (with list/editor fallbacks) and has no dialog suppression, so
-// the Ctrl-key menu stays visible whenever the display is shown.
+// focus context. Matches Python's shortcuts() at Conversations.py:1765-1779,
+// which reads the LIVE focus path every time the bar is drawn rather than a
+// cached region — a stale shortcutFocus must not suppress [C-d] Send while
+// the composer actually has focus. The bar is NEVER blanked — Python always
+// returns one of the three bars (with list/editor fallbacks) and has no
+// dialog suppression.
 func (cd *ConversationsDisplay) GetShortcutText() string {
+	if cd.currentWidget != nil {
+		if cd.currentWidget.composerHasFocus() {
+			return "[C-d] Send  [C-p] Paper Msg  [C-t] Title  [C-f] Attach  [C-s] Save  [Tab] ↑ Messages"
+		}
+		if cd.currentWidget.bodyHasFocus() {
+			return "[C-s] Save  [C-u] Purge  [C-o] Sort  [C-x] Clear History  [C-g] Fullscreen  [C-w] Close  [Tab] ↓ Editor"
+		}
+	}
+	// Fallback to the cached region for the list / placeholder / overlay
+	// cases where there is no live conversation widget to query.
 	switch cd.shortcutFocus {
 	case "editor":
 		return "[C-d] Send  [C-p] Paper Msg  [C-t] Title  [C-f] Attach  [C-s] Save  [Tab] ↑ Messages"

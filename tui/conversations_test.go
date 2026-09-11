@@ -1265,30 +1265,32 @@ func TestShortcutFocusByRegion(t *testing.T) {
 	}
 
 	// Open a conversation and focus the editor → editor bar.
+	// Use app.SetFocus so GetFocus() matches production (Primitive.Focus
+	// only fires SetFocusFunc; it does not move the application focus).
 	cd.DisplayConversation("aabbccddeeff0011")
 	cw := cd.currentWidget
 	if cw == nil {
 		t.Fatal("currentWidget not set")
 	}
-	cw.editor.Focus(func(tview.Primitive) {})
+	app.SetFocus(cw.editor)
 	if got := cd.GetShortcutText(); got != editorBar {
 		t.Errorf("after editor focus, shortcut bar = %q, want editor bar", got)
 	}
 
 	// Focus the message body → body bar.
-	cw.messageList.Focus(func(tview.Primitive) {})
+	app.SetFocus(cw.messageList)
 	if got := cd.GetShortcutText(); got != bodyBar {
 		t.Errorf("after body focus, shortcut bar = %q, want body bar", got)
 	}
 
 	// Title editor (full-editor mode) → editor bar.
-	cw.titleEditor.Focus(func(tview.Primitive) {})
+	app.SetFocus(cw.titleEditor)
 	if got := cd.GetShortcutText(); got != editorBar {
 		t.Errorf("after title editor focus, shortcut bar = %q, want editor bar", got)
 	}
 
 	// Focus returns to the list → list bar.
-	cd.list.Focus(func(tview.Primitive) {})
+	app.SetFocus(cd.list)
 	if got := cd.GetShortcutText(); got != listBar {
 		t.Errorf("after returning to list, shortcut bar = %q, want list bar", got)
 	}

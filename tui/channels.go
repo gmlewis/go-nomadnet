@@ -187,11 +187,22 @@ func (cd *ChannelsDisplay) setShortcutRegion(region string) {
 }
 
 // GetShortcutText returns the appropriate shortcut bar text for the current
-// focus context. Matches Python's Channels.py:217-229, whose shortcuts() always
-// returns one of the three bars — an open overlay does NOT blank the footer
-// (Python's shortcuts() reads the focus path with no dialog suppression), so
-// the Ctrl-key menu stays visible whenever the display is shown.
+// focus context. Matches Python's Channels.py:1573-1586 shortcuts(), which
+// reads the LIVE focus path every time the bar is drawn (focus_path[0]==1
+// → room frame body/footer, else the list bar) rather than a cached
+// region — a stale shortcutFocus must not suppress [C-d] Send while the
+// composer actually has focus.
 func (cd *ChannelsDisplay) GetShortcutText() string {
+	if cd.roomWidget != nil {
+		if cd.roomWidget.editorHasFocus() {
+			return "[C-d] Send  [C-x] Leave  [F8] Collapse  [Tab] Complete Nick"
+		}
+		if cd.roomWidget.bodyHasFocus() {
+			return "[C-x] Leave  [C-u] Users  [C-y] Channels  [F8] Collapse Joins  [Tab] ↓ Editor"
+		}
+	}
+	// Fallback to the cached region for the list / placeholder / overlay
+	// cases where there is no live room widget to query.
 	switch cd.shortcutFocus {
 	case "editor":
 		return "[C-d] Send  [C-x] Leave  [F8] Collapse  [Tab] Complete Nick"
