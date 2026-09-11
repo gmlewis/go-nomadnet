@@ -1558,6 +1558,12 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	channelsDisplay := tui.NewChannelsDisplay(tuiApp, nil)
 	main.SetDisplay("channels", channelsDisplay.Widget())
 	main.SetShortcut("channels", "[C-n] New Hub  [C-a] Add Room  [C-r] Connect  [C-w] Disconnect  [C-t] Auto-reconnect  [C-e] Edit Hub  [C-x] Remove")
+	// Channels switches its bar by focus region (list / editor / body) the
+	// same way Conversations does (Python Channels.py:1573-1586 shortcuts()).
+	// Without this callback the footer stays on the static list bar even
+	// while the user is typing in the room composer — the fleet bug that
+	// hid "[C-d] Send".
+	main.SetShortcutCallback("channels", channelsDisplay.GetShortcutText)
 
 	// Populate the hub/room list from the RRC manager (mirrors Python
 	// _compose_list_widgets, Channels.py:1599-1662). The initial populate runs
