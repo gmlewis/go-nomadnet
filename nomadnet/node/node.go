@@ -255,13 +255,13 @@ func (n *Node) registerRequestHandlers() {
 // through the sandboxed wasmpages renderer (mirroring Python's executable-page
 // subprocess branch, Node.py:161-175); without it the file is served
 // statically, as before.
-func (n *Node) makePageHandler(filePath string) func(string, []byte, []byte, []byte, *rns.Identity, time.Time) any {
-	return func(path string, data []byte, requestID []byte, linkID []byte, remoteIdentity *rns.Identity, requestedAt time.Time) any {
+func (n *Node) makePageHandler(filePath string) func(string, any, []byte, []byte, *rns.Identity, time.Time) any {
+	return func(path string, data any, requestID []byte, linkID []byte, remoteIdentity *rns.Identity, requestedAt time.Time) any {
 		if !isRequestAllowed(filePath, remoteIdentity) {
 			return ServeNotAllowed()
 		}
 		if strings.HasSuffix(filePath, ".wasm") && wasmpages.Enabled() {
-			return n.serveWasmPage(filePath, path, linkID, remoteIdentity, requestedAt)
+			return n.serveWasmPage(filePath, path, data, linkID, remoteIdentity, requestedAt)
 		}
 		content := ServePage(filePath)
 		if content == nil {
@@ -280,9 +280,10 @@ func (n *Node) makePageHandler(filePath string) func(string, []byte, []byte, []b
 // serveWasmPage renders a .wasm executable page through the sandboxed wasm
 // renderer and returns its Micron markup, or nil when the plugin fails
 // (mirroring Python's exception → None response).
-func (n *Node) serveWasmPage(filePath, path string, linkID []byte, remoteIdentity *rns.Identity, requestedAt time.Time) any {
+func (n *Node) serveWasmPage(filePath, path string, data any, linkID []byte, remoteIdentity *rns.Identity, requestedAt time.Time) any {
 	req := wasmpages.PageRequest{
 		Path:        path,
+		RequestData: pageRequestFields(data),
 		RequestedAt: requestedAt.Unix(),
 	}
 	if len(linkID) > 0 {
@@ -304,9 +305,55 @@ func (n *Node) serveWasmPage(filePath, path string, linkID []byte, remoteIdentit
 	return markup
 }
 
+// pageRequestFields extracts an executable page's request data from a
+// request's data element: every entry whose key is a string starting with
+// "field_" or "var_" and whose value is a string, mirroring Python's
+// executable-page branch, which copies those entries into the page's
+// environment map (Node.py:168-172).
+//
+// A browser submits its Micron form fields as a MessagePack map, so an
+// already-decoded map is read directly; anything else is decoded from its
+// packed byte form. A request carrying no matching entries yields nil, so the
+// page's request payload omits request_data entirely. The result is
+// attacker-controlled data, which the host does not sanitize.
+func pageRequestFields(data any) map[string]string {
+	decoded := data
+	if _, ok := decoded.(map[any]any); !ok {
+		raw := rns.RequestDataBytes(data)
+		if len(raw) == 0 {
+			return nil
+		}
+		unpacked, err := rns.Unpack(raw)
+		if err != nil {
+			return nil
+		}
+		decoded = unpacked
+	}
+	entryMap, ok := decoded.(map[any]any)
+	if !ok {
+		return nil
+	}
+	fields := make(map[string]string, len(entryMap))
+	for key, value := range entryMap {
+		keyStr, ok := key.(string)
+		if !ok || (!strings.HasPrefix(keyStr, "field_") && !strings.HasPrefix(keyStr, "var_")) {
+			continue
+		}
+		valueStr, ok := value.(string)
+		if !ok {
+			continue
+		}
+		fields[keyStr] = valueStr
+	}
+	if len(fields) == 0 {
+		return nil
+	}
+	return fields
+}
+
 // makeFileHandler returns a request handler function for a specific file.
-func (n *Node) makeFileHandler(filePath string) func(string, []byte, []byte, []byte, *rns.Identity, time.Time) any {
-	return func(path string, data []byte, requestID []byte, linkID []byte, remoteIdentity *rns.Identity, requestedAt time.Time) any {
+func (n *Node) makeFileHandler(filePath string) func(string, any, []byte, []byte, *rns.Identity, time.Time) any {
+	return func(path string, data any, requestID []byte, linkID []byte, remoteIdentity *rns.Identity, requestedAt time.Time) any {
 		if !isRequestAllowed(filePath, remoteIdentity) {
 			return ServeNotAllowed()
 		}
@@ -325,7 +372,7 @@ func (n *Node) makeFileHandler(filePath string) func(string, []byte, []byte, []b
 }
 
 // defaultIndexHandler serves the default index page.
-func (n *Node) defaultIndexHandler(path string, data []byte, requestID []byte, linkID []byte, remoteIdentity *rns.Identity, requestedAt time.Time) any {
+func (n *Node) defaultIndexHandler(path string, data any, requestID []byte, linkID []byte, remoteIdentity *rns.Identity, requestedAt time.Time) any {
 	return ServeDefaultIndex()
 }
 

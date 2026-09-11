@@ -113,6 +113,27 @@ link ID, and identity hash) appended under the `*WASM PAGE`* heading.
 Hub node destination (for manual add in Browser): `!c7d0e7bbd883e595f53e14fa6986188c`!
 The page source lives in the repo: `*assets/wasm-pages/dynamic-page.wat`*.
 
+>> Sign the Guestbook
+
+This one is interactive: the `.wasm` page renders a Micron form, and the hub's
+sandbox hands your submitted field values to the module as `*request_data`*.
+Every entry is appended to the hub's on-disk store, so the guestbook you sign
+is the guestbook the next visitor reads.
+
+  `F79d`_`[Sign the guestbook`c7d0e7bbd883e595f53e14fa6986188c:/page/guestbook.wasm]`_`f
+
+The page source lives in the repo: `*assets/wasm-pages/guestbook.wat`*.
+
+>> Count Your Visit
+
+A minimal stateful page: every render increments a counter that survives the
+request, because the module keeps it in its own key/value store rather than in
+memory. Reload it a few times and watch the number climb.
+
+  `F79d`_`[View the hit counter`c7d0e7bbd883e595f53e14fa6986188c:/page/hit-counter.wasm]`_`f
+
+The page source lives in the repo: `*assets/wasm-pages/hit-counter.wat`*.
+
 >> Learn More
 
 Reticulum Network Stack: `_`*`[https://markqvist.github.io/Reticulum/`https://markqvist.github.io/Reticulum/]`*`_

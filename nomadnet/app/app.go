@@ -39,6 +39,7 @@ import (
 	"github.com/gmlewis/go-nomadnet/nomadnet/peersettings"
 	"github.com/gmlewis/go-nomadnet/nomadnet/storage"
 	"github.com/gmlewis/go-nomadnet/nomadnet/version"
+	"github.com/gmlewis/go-nomadnet/nomadnet/wasmpages"
 	"github.com/gmlewis/go-reticulum/lxmf"
 	"github.com/gmlewis/go-reticulum/rns"
 	"github.com/gmlewis/go-reticulum/rrc"
@@ -369,6 +370,7 @@ func (a *App) Init() error {
 	}
 
 	a.Logger.Info("Nomad Network Client %v starting...", a.Version)
+	a.installPageLogger()
 
 	// Initialize non-blocking subsystems
 	a.Dir = directory.New()
@@ -568,6 +570,7 @@ func (a *App) InitWithTransport(ts *rns.TransportSystem, identity *rns.Identity)
 		a.Logger.SetLogLevel(a.Config.Logging.LogLevel)
 		a.Logger.SetLogDest(rns.LogStdout)
 	}
+	a.installPageLogger()
 
 	a.Transport = ts
 	a.Identity = identity
@@ -668,6 +671,17 @@ func (a *App) setupPaths() {
 }
 
 // applyConfig applies a loaded config to the App fields.
+// installPageLogger routes the messages a .wasm executable page emits through
+// the rns.log host import into this app's logger. The closure resolves the
+// logger at call time so a replaced logger is honored.
+func (a *App) installPageLogger() {
+	wasmpages.SetLogFunc(func(format string, args ...any) {
+		if a.Logger != nil {
+			a.Logger.Info(format, args...)
+		}
+	})
+}
+
 func (a *App) applyConfig(cfg *config.Config) {
 	a.EnableClient = cfg.Client.EnableClient
 	a.AnnounceInterval = cfg.Client.AnnounceInterval

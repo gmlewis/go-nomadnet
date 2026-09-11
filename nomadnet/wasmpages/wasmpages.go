@@ -20,9 +20,15 @@
 // replaces that subprocess with the deny-by-default wasm ABI
 // render_page(req_ptr, req_len) -> (resp_ptr, resp_len)).
 //
-// The request payload is a JSON object (PageRequest) and the response is Micron
-// markup bytes. Each render compiles, runs, and releases its own plugin
-// instance, so on-disk page edits take effect on the next request and no state
+// The request payload is a JSON object (PageRequest), carrying the request
+// metadata plus the field_*/var_* values a form submission collected, and the
+// response is Micron markup bytes. A page may import rns.log to log through
+// the node, and rns.kv_get/rns.kv_set to keep state in a store scoped to its
+// own <pages-path>/data/<page>/ directory; every other import is refused at
+// instantiation.
+//
+// Each render compiles, runs, and releases its own plugin instance, so
+// on-disk page edits take effect on the next request and only stored state
 // survives between requests. Built without -tags wago the package compiles as
 // a stub (Enabled reports false, every Render fails with ErrWagoNotLinked) and
 // callers keep serving .wasm files statically.
@@ -31,7 +37,10 @@
 // every other platform keeps the stub.
 package wasmpages
 
-import "encoding/json"
+import (
+	"bytes"
+	"encoding/json"
+)
 
 // PageRequest is the JSON payload passed to a .wasm page plugin's
 // render_page export. It carries only owned leaf data: the request path, the
@@ -53,10 +62,15 @@ type PageRequest struct {
 }
 
 // payload encodes the request the way the plugin host passes it to the guest.
+// HTML escaping is disabled so the guest receives the request data verbatim: a
+// message containing "<", ">" or "&" must not arrive as a \u003c escape that a
+// hand-written guest would have to decode.
 func (req PageRequest) payload() []byte {
-	data, err := json.Marshal(req)
-	if err != nil {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(req); err != nil {
 		return []byte("{}")
 	}
-	return data
+	return bytes.TrimSuffix(buf.Bytes(), []byte("\n"))
 }

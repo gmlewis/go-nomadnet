@@ -154,26 +154,75 @@ deny-by-default wasm ABI.
 - **ABI**: the plugin exports `render_page(req_ptr, req_len) -> (ptr, len)`.
   The request payload is a JSON object (`path`, `request_data`, `link_id`,
   `remote_identity`, `requested_at`) and the response bytes are Micron markup.
+- **Host capabilities**: a page may import `rns.kv_get` and `rns.kv_set` to
+  keep state in its own key/value store, and `rns.log` to log a message to the
+  node. Every other import is still refused at instantiation, so the
+  deny-by-default policy holds as capabilities are added.
 - **Limits**: 16 MiB linear memory, 1024 table entries, and a 2-second
   execution budget per request; a failing or runaway plugin renders as
   not-found instead of leaking its binary source.
 - **Build tag**: binaries built without `-tags wago` serve `.wasm` files
   statically (the release builder adds the tag on supported platforms).
 
-A ready-to-run example with install instructions ships in
-[`assets/wasm-pages/`](assets/wasm-pages/): `dynamic-page.wat` (WebAssembly
-text source) and `dynamic-page.wasm` (assembled binary) render a Micron page
-whose content includes the request payload — proving pages are dynamic. Build
-and install it with:
+### Host capabilities and page state
 
-```bash
-wat2wasm dynamic-page.wat -o dynamic-page.wasm
-cp dynamic-page.wasm ~/.nomadnetwork/storage/pages/
+`rns.kv_set(key_ptr, key_len, val_ptr, val_len) -> status` stores a value
+(0 = ok, 1 = error) and `rns.kv_get(key_ptr, key_len, out_ptr, out_cap) ->
+n` reads one (n = bytes written, 0 = no such key, -1 = buffer too small, in
+which case nothing is written). Keys live under the page's own directory,
+`<pages-path>/data/<page>/`, so two pages on one node never share state. The
+store is capped at 10 MiB per page by the same rules the RRC plugin store
+uses.
+
+Each render still compiles, runs, and releases a fresh instance, so on-disk
+state is the only thing that survives a request: a page that wants a counter
+must read it, increment it, and write it back.
+
+### Request data and forms
+
+Requests carry `request_data` (the `field_*`/`var_*` values a form
+submission collected) exactly as Python NomadNet passes an executable page's
+environment map. A page can therefore declare a Micron form and read what the
+visitor submitted:
+
+```
+`<name`Your name>
+`<message`Your message>
+`[Sign the guestbook`:/page/guestbook.wasm`name|message]
 ```
 
-Then browse the node (loopback or remote) and request `/page/dynamic.wasm`.
-Validate and inspect plugins with the `wago` CLI (`wago validate`,
-`wago module imports`).
+Micron spells a field `` `<NAME`VALUE> ``, and the submit link's third segment
+names the fields to collect. On submit, the collected fields arrive in the
+request payload as `field_name` and `field_message`, so a page scans its
+request JSON for those keys. (The leading-colon URL above is relative to the
+node being browsed, so the page works on any node that serves it.)
+
+**`request_data` is attacker-controlled and the node does not sanitize it.**
+A page that re-emits it can inject Micron markup — links, formatting modes,
+headings — into another visitor's view. Validate it in the page before
+storing or rendering it, and treat every page's output as untrusted markup
+when reviewing third-party pages.
+
+Ready-to-run examples with install instructions ship in
+[`assets/wasm-pages/`](assets/wasm-pages/). Each is a `.wat` (WebAssembly text
+source) with its assembled `.wasm` beside it:
+
+| Page | What it demonstrates |
+|------|----------------------|
+| `dynamic-page.wat` | Echoes the request payload — proves pages are dynamic |
+| `hit-counter.wat` | Reads, increments, and stores a visit counter (`rns.kv_*`) |
+| `guestbook.wat` | Reads a submitted Micron form, stores entries, lists them newest-first |
+
+Build and install one with:
+
+```bash
+wat2wasm guestbook.wat -o guestbook.wasm
+cp guestbook.wasm ~/.nomadnetwork/storage/pages/
+```
+
+Then browse the node (loopback or remote) and request
+`/page/guestbook.wasm`. Validate and inspect plugins with the `wago` CLI
+(`wago validate`, `wago module imports`).
 
 ### Page plugin ideas
 
@@ -201,17 +250,24 @@ example a public TCP server):
   sandbox itself caps every request at 16 MiB of memory and 2 seconds of
   execution. Public-node page plugins should stay trivial — each request
   compiles a fresh instance, so heavy pages are a CPU-exhaustion vector.
-- **Page plugins get no capabilities.** They receive no host imports at all:
-  no network, no filesystem, no KV store. A page can only compute markup from
-  its own logic and the request metadata (which is the requester's own link
-  ID and identity hash).
+- **Page plugins get no network and no filesystem.** The only imports they
+  can use are `rns.log` and `rns.kv_get`/`rns.kv_set`, whose keys are scoped
+  to the page's own `data/<page>/` directory; everything else is refused at
+  instantiation. A page can compute markup from its own logic, the request
+  metadata (the requester's own link ID and identity hash), and whatever it
+  has stored for itself.
+- **Page state is node-local and unauthenticated.** Anyone who can reach the
+  page can call its store through the page's own logic, so a public page that
+  appends entries can have its store filled from the outside; the shipped
+  examples cap each value and reject Micron markup, but a page that does not
+  is a spamming target rather than a code-execution risk.
 - **A page's markup is rendered by visitors' clients.** Micron/terminal
   formatting in the response is interpreted by the browsing TUI, so a page
-  that reflects user-controlled data (today only the requester's own metadata;
-  `request_data` form fields are not wired yet) could inject links or markup
-  into another user's view if you build it that way. Escape or strip
-  user-controlled data before returning it, and treat every page's output as
-  untrusted markup when reviewing third-party pages.
+  that reflects user-controlled data (its own metadata, or `request_data`
+  form fields, which now reach pages) can inject links or markup into another
+  user's view. Escape or strip user-controlled data before returning it, and
+  treat every page's output as untrusted markup when reviewing third-party
+  pages.
 
 ## Package Overview
 

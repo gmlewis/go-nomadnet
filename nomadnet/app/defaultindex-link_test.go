@@ -16,6 +16,7 @@
 package app
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/gmlewis/go-nomadnet/nomadnet/micron"
@@ -36,4 +37,40 @@ func TestDefaultIndexWasmDemoLink(t *testing.T) {
 		}
 	}
 	t.Fatal("defaultIndexContent does not contain the wasm-demo link node")
+}
+
+// TestDefaultIndexWasmDemoLinks verifies that every executable-page demo the
+// hub serves is reachable from the default index page by its absolute hub URL.
+func TestDefaultIndexWasmDemoLinks(t *testing.T) {
+	t.Parallel()
+
+	const hub = "c7d0e7bbd883e595f53e14fa6986188c"
+	for _, tc := range []struct {
+		name   string
+		page   string
+		label  string
+		source string
+	}{
+		{name: "dynamic page", page: "dynamic-page.wasm", label: "View the live wasm demo", source: "assets/wasm-pages/dynamic-page.wat"},
+		{name: "guestbook", page: "guestbook.wasm", label: "Sign the guestbook", source: "assets/wasm-pages/guestbook.wat"},
+		{name: "hit counter", page: "hit-counter.wasm", label: "View the hit counter", source: "assets/wasm-pages/hit-counter.wat"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			wantURL := hub + ":/page/" + tc.page
+			if !strings.Contains(defaultIndexContent, tc.label) {
+				t.Errorf("defaultIndexContent does not carry the %q link label", tc.label)
+			}
+			if !strings.Contains(defaultIndexContent, tc.source) {
+				t.Errorf("defaultIndexContent does not name the page source %v", tc.source)
+			}
+			for _, n := range micron.Parse(defaultIndexContent) {
+				if n.Type == micron.NodeLink && n.LinkURL == wantURL {
+					return
+				}
+			}
+			t.Errorf("defaultIndexContent does not contain a link node with URL %v", wantURL)
+		})
+	}
 }

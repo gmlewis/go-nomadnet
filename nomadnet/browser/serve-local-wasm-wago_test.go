@@ -109,7 +109,7 @@ func TestServeLocalWasmPageCaller(t *testing.T) {
 	for i := range identityHash {
 		identityHash[i] = byte(0x42)
 	}
-	got := ServeLocalPageWithCaller(pages, "/page/dynamic-page.wasm", identityHash)
+	got := ServeLocalPageWithCaller(pages, "/page/dynamic-page.wasm", identityHash, nil)
 	if !strings.HasPrefix(string(got), ">WASM PAGE\n----\n") {
 		t.Fatalf("markup = %q, want the canned prefix", got)
 	}
@@ -122,5 +122,44 @@ func TestServeLocalWasmPageCaller(t *testing.T) {
 	}
 	if req.RemoteIdentity != "4242424242424242424242424242424242424242424242424242424242424242" {
 		t.Errorf("remote_identity = %q, want the caller's hex hash", req.RemoteIdentity)
+	}
+}
+
+// TestServeLocalWasmPageRequestData pins that the loopback path hands a form's
+// request data to the .wasm page: a navigation carrying var_* fields (the
+// fields suffix a Micron form submit produces) renders them as the page's
+// request_data map alongside the loopback caller metadata.
+func TestServeLocalWasmPageRequestData(t *testing.T) {
+	t.Parallel()
+
+	pages := testutils.TempDir(t, "nomadnet-browser-wasm-fields")
+	wasmPath := filepath.Join(pages, "dynamic-page.wasm")
+	if err := os.WriteFile(wasmPath, browserPageWasm, 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	identityHash := make([]byte, 32)
+	for i := range identityHash {
+		identityHash[i] = byte(0x42)
+	}
+	requestData := map[string]string{"var_name": "glenn", "field_message": "hello"}
+	got := ServeLocalPageWithCaller(pages, "/page/dynamic-page.wasm", identityHash, requestData)
+	if !strings.HasPrefix(string(got), ">WASM PAGE\n----\n") {
+		t.Fatalf("markup = %q, want the canned prefix", got)
+	}
+	var req wasmpages.PageRequest
+	if err := json.Unmarshal([]byte(string(got[len(">WASM PAGE\n----\n"):])), &req); err != nil {
+		t.Fatalf("markup suffix does not decode as the request JSON: %v (%q)", err, got)
+	}
+	if len(req.RequestData) != len(requestData) {
+		t.Fatalf("request_data = %v, want %v", req.RequestData, requestData)
+	}
+	for key, want := range requestData {
+		if req.RequestData[key] != want {
+			t.Errorf("request_data[%v] = %v, want %v", key, req.RequestData[key], want)
+		}
+	}
+	if req.LinkID != "loopback" {
+		t.Errorf("link_id = %q, want loopback", req.LinkID)
 	}
 }

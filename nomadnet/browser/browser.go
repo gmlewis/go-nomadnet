@@ -726,16 +726,21 @@ var LocalPageNotFound = []byte("The requested local page did not exist in the fi
 // being served statically (their source bytes), consistently with a remote
 // fetch from a Go-served node built the same way.
 func ServeLocalPage(pagesPath, path string) []byte {
-	return ServeLocalPageWithCaller(pagesPath, path, nil)
+	return ServeLocalPageWithCaller(pagesPath, path, nil, nil)
 }
 
-// ServeLocalPageWithCaller serves a loopback page with the caller's identity:
-// when the loopback browser knows the local node's identity hash, the request
-// payload passed to .wasm executable pages carries link_id=loopback and
-// remote_identity=<hex identity hash>, so sandboxed pages can show who is
-// asking (in the loopback case, the browser's own user). A nil identityHash
-// keeps the payload minimal, matching the pre-caller-metadata behavior.
-func ServeLocalPageWithCaller(pagesPath, path string, identityHash []byte) []byte {
+// ServeLocalPageWithCaller serves a loopback page with the caller's identity
+// and the request's form data: when the loopback browser knows the local
+// node's identity hash, the request payload passed to .wasm executable pages
+// carries link_id=loopback and remote_identity=<hex identity hash>, so
+// sandboxed pages can show who is asking (in the loopback case, the browser's
+// own user). A nil identityHash keeps the payload minimal, matching the
+// pre-caller-metadata behavior.
+//
+// requestData carries the field_*/var_* entries a Micron form submission
+// produced; it reaches the page as its request_data map, the same data a
+// remote fetch sends over the link. A nil requestData omits the entry.
+func ServeLocalPageWithCaller(pagesPath, path string, identityHash []byte, requestData map[string]string) []byte {
 	rel := strings.TrimPrefix(path, "/page")
 	full := filepath.Join(pagesPath, rel)
 	// Guard against traversal ("../../etc/passwd"): the resolved path must
@@ -750,6 +755,7 @@ func ServeLocalPageWithCaller(pagesPath, path string, identityHash []byte) []byt
 	if strings.HasSuffix(full, ".wasm") && wasmpages.Enabled() {
 		req := wasmpages.PageRequest{
 			Path:        path,
+			RequestData: requestData,
 			RequestedAt: time.Now().Unix(),
 		}
 		if identityHash != nil {
