@@ -2555,7 +2555,14 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 							})
 							return
 						}
-						data = browser.ServeLocalPage(a.PagesPath, path)
+						// The loopback caller IS the local user: pass the node's
+						// identity hash so .wasm executable pages can render
+						// who is asking (link_id=loopback).
+						var loopbackIdentity []byte
+						if a.Identity != nil {
+							loopbackIdentity = a.Identity.Hash
+						}
+						data = browser.ServeLocalPageWithCaller(a.PagesPath, path, loopbackIdentity)
 						elapsed := time.Since(start).Seconds()
 						tuiApp.QueueUpdateDraw(func() {
 							if seq != bd.CurrentRequestSeq() || ctx.Err() != nil {
