@@ -88,13 +88,13 @@ Hub destination (for manual add in Channels): `!a012129c10205c0b9441fcd2b755b2a7
 This is the `*Go rewrite`* of Reticulum and NomadNet. Clone from GitHub, or from
 the `!gorngit`! hub on this node (`!rns://`! URLs; add `!git-remote-rns`!):
 
-  • `*Go RNS (go-reticulum)`* — `_`*`[https://github.com/gmlewis/go-reticulum`https://github.com/gmlewis/go-reticulum]`*`_ — `*rns://58a0406047ec2e7ce23e9e9a83b744df/main/go-reticulum.git`*
-  • `*Go NomadNet (go-nomadnet)`* — `_`*`[https://github.com/gmlewis/go-nomadnet`https://github.com/gmlewis/go-nomadnet]`*`_ — `*rns://58a0406047ec2e7ce23e9e9a83b744df/main/go-nomadnet.git`*
-  • `*ASIC Reticulum`* — `_`*`[https://github.com/gmlewis/asic-reticulum`https://github.com/gmlewis/asic-reticulum]`*`_ — `*rns://58a0406047ec2e7ce23e9e9a83b744df/main/asic-reticulum.git`*
+  • `*Go RNS (go-reticulum)`* — `_`*`[https://github.com/gmlewis/go-reticulum`https://github.com/gmlewis/go-reticulum]`*`_ — `*rns://58a0406047ec2e7ce23e9e9a83b744df/public/go-reticulum.git`*
+  • `*Go NomadNet (go-nomadnet)`* — `_`*`[https://github.com/gmlewis/go-nomadnet`https://github.com/gmlewis/go-nomadnet]`*`_ — `*rns://58a0406047ec2e7ce23e9e9a83b744df/public/go-nomadnet.git`*
+  • `*ASIC Reticulum`* — `_`*`[https://github.com/gmlewis/asic-reticulum`https://github.com/gmlewis/asic-reticulum]`*`_ — `*rns://58a0406047ec2e7ce23e9e9a83b744df/public/asic-reticulum.git`*
 
 Example:
 
-  `*git clone rns://58a0406047ec2e7ce23e9e9a83b744df/main/go-nomadnet.git`*
+  `*git clone rns://58a0406047ec2e7ce23e9e9a83b744df/public/go-nomadnet.git`*
 
 `!All issue tracking is on GitHub`! only (the three repos above) — not on RNS
 mirrors. Bug reports with reproduction steps are especially welcome.
