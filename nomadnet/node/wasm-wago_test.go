@@ -16,8 +16,8 @@
 //go:build wago && (linux || darwin || windows) && (amd64 || arm64)
 
 // This file verifies that the node serves .wasm executable pages through the
-// sandboxed wasm renderer (wago-analysis.md §7.2), mirroring Python's
-// executable-page subprocess branch (Node.py:161-175).
+// sandboxed wasm renderer, mirroring Python's executable-page subprocess
+// branch (Node.py:161-175).
 
 package node
 

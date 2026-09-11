@@ -18,8 +18,7 @@
 // behavior (Node.py:161-175 and Browser.py:1306-1316 run an executable page as
 // a subprocess with request metadata as environment variables; the Go sandbox
 // replaces that subprocess with the deny-by-default wasm ABI
-// render_page(req_ptr, req_len) -> (resp_ptr, resp_len) from wago-analysis.md
-// §8.1).
+// render_page(req_ptr, req_len) -> (resp_ptr, resp_len)).
 //
 // The request payload is a JSON object (PageRequest) and the response is Micron
 // markup bytes. Each render compiles, runs, and releases its own plugin
