@@ -99,6 +99,20 @@ Example:
 `!All issue tracking is on GitHub`! only (the three repos above) — not on RNS
 mirrors. Bug reports with reproduction steps are especially welcome.
 
+>> Try the Live Wasm Plugin Demo
+
+This link jumps to the `!gonomadnet Public Hub`! (go-nomadnet.duckdns.org)
+and renders one of its `.wasm` executable pages: a sandboxed WebAssembly
+module that the hub runs in-process for every request. You do NOT need to
+install anything locally — the page is computed on the hub and its Micron
+markup is streamed back to your browser, with the request payload (your path,
+link ID, and identity hash) appended under the `*WASM PAGE`* heading.
+
+  `F79d`_`[View the live wasm demo`c7d0e7bbd883e595f53e14fa6986188c:/page/dynamic-page.wasm]`_`f
+
+Hub node destination (for manual add in Browser): `!c7d0e7bbd883e595f53e14fa6986188c`!
+The page source lives in the repo: `*assets/wasm-pages/dynamic-page.wat`*.
+
 >> Learn More
 
 Reticulum Network Stack: `_`*`[https://markqvist.github.io/Reticulum/`https://markqvist.github.io/Reticulum/]`*`_

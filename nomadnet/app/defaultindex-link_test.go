@@ -13,8 +13,27 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-// Package version provides the Go NomadNet version string.
-package version
+package app
 
-// VERSION is the current version of Go NomadNet.
-const VERSION = "0.121.0"
+import (
+	"testing"
+
+	"github.com/gmlewis/go-nomadnet/nomadnet/micron"
+)
+
+// TestDefaultIndexWasmDemoLink verifies the default index page carries a
+// clickable Micron link to the gonomadnet Public Hub's dynamic-page.wasm
+// demo (the link is entered from formatting mode, so the full line is
+// parsed).
+func TestDefaultIndexWasmDemoLink(t *testing.T) {
+	t.Parallel()
+
+	const wantURL = "c7d0e7bbd883e595f53e14fa6986188c:/page/dynamic-page.wasm"
+	nodes := micron.Parse(defaultIndexContent)
+	for _, n := range nodes {
+		if n.Type == micron.NodeLink && n.LinkURL == wantURL {
+			return
+		}
+	}
+	t.Fatal("defaultIndexContent does not contain the wasm-demo link node")
+}
