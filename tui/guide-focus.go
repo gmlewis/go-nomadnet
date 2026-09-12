@@ -18,6 +18,7 @@ package tui
 import (
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/gmlewis/go-nomadnet/nomadnet/micron"
@@ -230,13 +231,16 @@ func (gd *GuideDisplay) focusActivate() {
 	}
 	total := 0
 	for _, s := range line.Spans {
-		if total <= gd.focusCol && gd.focusCol < total+len(s.Text) {
+		// The cursor offset counts runes of the RENDERED line (spanText), the same
+		// measure focusedPartPositions uses to place it.
+		rlen := utf8.RuneCountInString(spanText(s))
+		if total <= gd.focusCol && gd.focusCol < total+rlen {
 			if s.Link != nil {
 				gd.handleLink(s.Link.URL, s.Link.Fields)
 			}
 			return
 		}
-		total += len(s.Text)
+		total += rlen
 	}
 }
 
@@ -264,7 +268,10 @@ func (gd *GuideDisplay) focusedPartPositions() []int {
 	pos := []int{0}
 	total := 0
 	for _, s := range line.Spans {
-		total += len(s.Text)
+		// Part boundaries are rune offsets into the RENDERED line, so each part
+		// advances by its drawn footprint (spanText): a field's padded box or a
+		// checkbox's icon column must not shift the parts that follow it.
+		total += utf8.RuneCountInString(spanText(s))
 		pos = append(pos, total)
 	}
 	return pos
@@ -339,16 +346,20 @@ func (gd *GuideDisplay) cursorScreenXY() (x, y int, ok bool) {
 	if relY < 0 || relY >= h {
 		return 0, 0, false
 	}
-	// Display width of the span text preceding the cursor (the indent is the
-	// Padding the line sits in, added separately to match Python's model).
+	// Display width of the rendered span text preceding the cursor (the indent is
+	// the Padding the line sits in, added separately to match Python's model).
+	// Each span is as wide as it is DRAWN (spanText): a field renders its padded
+	// box and a checkbox its icon column, so measuring the raw span text would
+	// drop the cursor left of the glyph it marks.
 	col := 0
 	total := 0
 	for _, s := range line.Spans {
 		if total >= gd.focusCol {
 			break
 		}
-		col += runewidth.StringWidth(s.Text)
-		total += len(s.Text)
+		text := spanText(s)
+		col += runewidth.StringWidth(text)
+		total += utf8.RuneCountInString(text)
 	}
 	return ix + line.Indent + col, iy + relY, true
 }

@@ -288,15 +288,20 @@ func clearUnderline(b *strings.Builder, underlineOn bool) bool {
 // line starts past it. A field holding no pre-defined text still occupies its
 // width — without the padding an empty field renders as nothing at all, and the
 // browser's editor overlay (field_width cells wide) paints over whatever follows
-// it. Python pads the box with blanks; checkboxes and radios are PACK children
-// with no declared width, so they contribute only their label.
+// it. Python pads the box with blanks.
+//
+// A checkbox or radio field renders its state glyph first: Python builds it as
+// urwid's CheckBox/RadioButton, whose icon column reserves four cells before the
+// label (checkboxIconWidth), so the label starts four columns in and those
+// reserved cells carry the markup's own state until the browser draws the live
+// one (drawFieldIcon).
 func spanText(span micron.StyledSpan) string {
 	if span.Field == nil {
 		return span.Text
 	}
 	switch span.Field.Type {
 	case "checkbox", "radio":
-		return span.Text
+		return fieldIconPrefix(span.Field) + span.Text
 	}
 	if pad := fieldFootprint(span.Field) - runewidth.StringWidth(span.Text); pad > 0 {
 		return span.Text + strings.Repeat(" ", pad)

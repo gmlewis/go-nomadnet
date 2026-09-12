@@ -120,7 +120,7 @@ func (bd *BrowserDisplay) linePosAtScreenX(line, wrappedRow, x int) int {
 // the field line's first wrapped row, clipped to the content pane.
 func (bd *BrowserDisplay) fieldAtScreen(x, y int) *renderedField {
 	line, wrappedRow, ok := bd.lineAtScreenY(y)
-	if !ok || wrappedRow != 0 || line >= len(bd.lineFields) {
+	if !ok || line >= len(bd.lineFields) {
 		return nil
 	}
 	x0, _, innerW, _ := bd.content.GetInnerRect()
@@ -132,6 +132,11 @@ func (bd *BrowserDisplay) fieldAtScreen(x, y int) *renderedField {
 		if rf.editor == nil {
 			// Checkbox/radio fields hold no text caret: they toggle with
 			// Enter/Space on their line (toggleFieldAtCursor).
+			continue
+		}
+		// A field's box lives on its own wrapped row, so a click only lands in it
+		// when that is the row under the mouse.
+		if rf.rowOffset != wrappedRow {
 			continue
 		}
 		if col >= rf.startCol && col < rf.startCol+rf.width {

@@ -294,8 +294,13 @@ func (bd *BrowserDisplay) linePartPositions(idx int) []int {
 	if idx < 0 || idx >= len(bd.currentLines) {
 		return pos
 	}
+	// Offsets are positions in the RENDERED line (linePlainText), so each part
+	// advances by its display footprint (spanText), not by the raw span text: a
+	// text field occupies its whole box and a checkbox/radio its icon column, so
+	// measuring the raw text would place every following part too far left and
+	// step the cursor onto the wrong cells.
 	for _, s := range bd.currentLines[idx].Spans {
-		total += utf8.RuneCountInString(s.Text)
+		total += utf8.RuneCountInString(spanText(s))
 		pos = append(pos, total)
 	}
 	return pos
@@ -311,7 +316,11 @@ func (bd *BrowserDisplay) lineLinkAtCursor(idx int) *micron.LinkSpec {
 	cursor := bd.lineCursors[idx]
 	total := 0
 	for _, s := range bd.currentLines[idx].Spans {
-		rlen := utf8.RuneCountInString(s.Text)
+		// Spans are matched against the cursor's position in the RENDERED line,
+		// so a part is as wide as it is drawn (spanText): a field that renders
+		// wider than its raw text (its padded box, or a checkbox's icon column)
+		// must not shift the parts that follow it.
+		rlen := utf8.RuneCountInString(spanText(s))
 		if total <= cursor && cursor < total+rlen {
 			return s.Link
 		}
@@ -370,7 +379,6 @@ func (bd *BrowserDisplay) scheduleCursorHide() {
 // on a plain part), mirroring LinkableText.peek_link (MicronParser.py:910-918).
 func (bd *BrowserDisplay) peekLink() {
 	link := bd.lineLinkAtCursor(bd.focusLine)
-	debugPeekLog(bd, link)
 	if link != nil {
 		bd.MarkedLink(link.URL, link.Fields)
 	} else {

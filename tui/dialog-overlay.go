@@ -17,27 +17,11 @@ package tui
 
 import (
 	"fmt"
-	"os"
 	"sync"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
-
-// debugFocusLog is a TEMPORARY diagnostic appended to /tmp/peek-debug.log
-// tracing dialog open/close focus. Remove after diagnosing.
-func debugFocusLog(tag string, p tview.Primitive) {
-	f, err := os.OpenFile("/tmp/peek-debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return
-	}
-	defer func() { _ = f.Close() }()
-	name := "<nil>"
-	if p != nil {
-		name = fmt.Sprintf("%T", p)
-	}
-	_, _ = f.WriteString("DIALOG " + tag + " focus=" + name + "\n")
-}
 
 // dialogEntry is one frame on the modal dialog stack.
 type dialogEntry struct {
@@ -120,7 +104,6 @@ func (dm *DialogManager) showOverlay(app *tview.Application, title string, conte
 	}
 
 	prevFocus := app.GetFocus()
-	debugFocusLog("open prevFocus", prevFocus)
 	dialog := NewDialogLineBox(title, content, func() { dm.dismissTop() })
 	entry := &dialogEntry{
 		pageName:  fmt.Sprintf("dialog-%v", dm.seq),
@@ -168,7 +151,6 @@ func (dm *DialogManager) dismissTop() {
 	// concurrency-safety reasons as showOverlay (shared tview.Pages and app
 	// focus are not safe for concurrent access).
 	pages.RemovePage(top.pageName)
-	debugFocusLog("close restore", focus)
 	if app != nil {
 		// Never leave a.focus nil: a nil prevFocus (the dialog was opened while
 		// focus was already lost) must not propagate — dismissing would then
@@ -178,7 +160,6 @@ func (dm *DialogManager) dismissTop() {
 		// Focus cascades down to a real primitive.
 		if focus == nil {
 			focus = dm.main
-			debugFocusLog("close nil prevFocus -> main", focus)
 		}
 		app.SetFocus(focus)
 		// Guard against zombie focus: if a background QueueUpdateDraw
@@ -189,7 +170,6 @@ func (dm *DialogManager) dismissTop() {
 		// tview's event loop gate silently drops all subsequent key
 		// events. Detect this immediately and fall back to main.
 		if pages != nil && !pages.HasFocus() {
-			debugFocusLog("close zombie prevFocus -> main", dm.main)
 			app.SetFocus(dm.main)
 		}
 	}

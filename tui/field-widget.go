@@ -16,7 +16,10 @@
 package tui
 
 import (
+	"strings"
+
 	"github.com/gmlewis/go-nomadnet/nomadnet/micron"
+	"github.com/mattn/go-runewidth"
 	"github.com/rivo/tview"
 )
 
@@ -27,6 +30,38 @@ const defaultFieldWidth = 24
 // maskCharacter is the masking rune for `!` masked text fields, matching
 // Python's mask="*" (MicronParser.py:363).
 const maskCharacter = '*'
+
+// checkboxIconWidth is urwid's CheckBox/RadioButton reserve_columns: the state
+// glyph occupies a four-cell column — the three-cell glyph plus one filler
+// blank — and the label follows it (urwid/widget/wimp.py:151, 470 build the
+// widget as `Columns([(4, states[state]), label], focus_column=0)`).
+const checkboxIconWidth = 4
+
+// checkboxIcon returns the state glyph urwid draws for a Micron checkbox or
+// radio field (CheckBox.states / RadioButton.states, wimp.py:146-150 and
+// 465-469). A Micron checkbox field's span text stays the bare label — that is
+// what the Python parser stores as the field's data (MicronParser.py:740-745) —
+// so the glyph is added where the page text is laid out for display
+// (spanText), and refreshed from the live widget state on every draw.
+func checkboxIcon(kind string, checked bool) string {
+	switch {
+	case kind == "radio" && checked:
+		return "(X)"
+	case kind == "radio":
+		return "( )"
+	case checked:
+		return "[X]"
+	default:
+		return "[ ]"
+	}
+}
+
+// fieldIconPrefix is the glyph plus its filler blank: the checkboxIconWidth
+// cells a checkbox/radio field reserves before its label.
+func fieldIconPrefix(spec *micron.FieldSpec) string {
+	icon := checkboxIcon(spec.Type, spec.Prechecked)
+	return icon + strings.Repeat(" ", max(checkboxIconWidth-runewidth.StringWidth(icon), 0))
+}
 
 // RadioGroup is a mutual-exclusion group of radio-button checkboxes sharing one
 // Micron field name, mirroring urwid.RadioButton's shared group list

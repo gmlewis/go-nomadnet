@@ -133,9 +133,11 @@ type GuideDisplay struct {
 	// StyledLine indices that are focusable; lineRows[i] is the display-row
 	// offset where line i begins (so the focused line can be scrolled to and
 	// the hardware cursor positioned on it); focusSel is the index into
-	// selectable of the currently focused line (-1 = none); focusCol is a byte
-	// offset into the focused line's concatenated span text (the within-line
-	// cursor, mirroring LinkableText's part cursor); lastKey drives the 2s
+	// selectable of the currently focused line (-1 = none); focusCol is a rune
+	// offset into the focused line's RENDERED span text, i.e. counting each
+	// span's drawn footprint (spanText: a field's padded box, a checkbox's icon
+	// column) — the within-line cursor, mirroring LinkableText's part cursor;
+	// lastKey drives the 2s
 	// key-timeout that gates hardware-cursor visibility (B5).
 	selectable []int
 	lineRows   []int

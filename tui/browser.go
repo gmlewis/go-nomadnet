@@ -19,7 +19,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -259,10 +258,6 @@ type BrowserDisplay struct {
 // "Browser" box. There is no top nav bar; controls live in the footer.
 func NewBrowserDisplay(app *App) *BrowserDisplay {
 	bd := &BrowserDisplay{app: app}
-	if f, err := os.OpenFile("/tmp/peek-debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
-		_, _ = f.WriteString("=== NewBrowserDisplay created ===\n")
-		_ = f.Close()
-	}
 	g := app.Glyphs
 	divGlyph := glyph(g, "divider1")
 	if divGlyph == "" {
@@ -333,7 +328,6 @@ func (bd *BrowserDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 	if event == nil {
 		return event
 	}
-	debugInputLog(bd, event)
 	// A mounted text-field overlay (ReadlineEdit) is drawn over the page body by
 	// drawFieldOverlay but is NOT a child of bd.layout, so tview's dispatch
 	// cascades to bd.content (the tree leaf) and would never reach the editor —

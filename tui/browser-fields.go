@@ -16,74 +16,13 @@
 package tui
 
 import (
-	"fmt"
-	"os"
-	"strconv"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/gmlewis/go-nomadnet/nomadnet/micron"
-	"github.com/mattn/go-runewidth"
 	"github.com/rivo/tview"
 )
-
-// debugPeekLog is a TEMPORARY diagnostic appended to /tmp/peek-debug.log to
-// trace whether peekLink fires on the ICP Board landing-page link. Remove after
-// diagnosing the test-gonomadnet-input-box link-follow failure.
-func debugPeekLog(bd *BrowserDisplay, link *micron.LinkSpec) {
-	f, err := os.OpenFile("/tmp/peek-debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return
-	}
-	defer func() { _ = f.Close() }()
-	cur := 0
-	if bd.focusLine >= 0 && bd.focusLine < len(bd.lineCursors) {
-		cur = bd.lineCursors[bd.focusLine]
-	}
-	plain := ""
-	if bd.focusLine >= 0 && bd.focusLine < len(bd.currentLines) {
-		plain = bd.linePlainText(bd.focusLine)
-	}
-	linkURL := ""
-	if link != nil {
-		linkURL = link.URL
-	}
-	_, _ = f.WriteString("focusLine=" + strconv.Itoa(bd.focusLine) + " cursor=" + strconv.Itoa(cur) + " plain=" + plain + " link=" + linkURL + "\n")
-}
-
-// debugInputLog is a TEMPORARY diagnostic appended to /tmp/peek-debug.log
-// tracing every key the browser handleInput sees + whether bd.content has
-// focus. Remove after diagnosing the link-follow failure.
-func debugInputLog(bd *BrowserDisplay, event *tcell.EventKey) {
-	f, err := os.OpenFile("/tmp/peek-debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return
-	}
-	defer func() { _ = f.Close() }()
-	name := event.Name()
-	hasFocus := "no"
-	if bd.content != nil && bd.content.HasFocus() {
-		hasFocus = "yes"
-	}
-	_, _ = f.WriteString("INPUT key=" + name + " contentHasFocus=" + hasFocus + "\n")
-}
-
-// DebugAppKey is a TEMPORARY diagnostic appended to /tmp/peek-debug.log tracing
-// every app-level key + the focused primitive type. Remove after diagnosing.
-func DebugAppKey(app *tview.Application, event *tcell.EventKey) {
-	f, err := os.OpenFile("/tmp/peek-debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return
-	}
-	defer func() { _ = f.Close() }()
-	name := event.Name()
-	focus := "<nil>"
-	if p := app.GetFocus(); p != nil {
-		focus = fmt.Sprintf("%T", p)
-	}
-	_, _ = f.WriteString("APPKEY key=" + name + " focus=" + focus + "\n")
-}
 
 // renderedField is one rendered micron <field> span on a page line. The browser
 // body is a single tview.TextView that cannot host child primitives, so a text
@@ -100,6 +39,8 @@ type renderedField struct {
 	width     int             // field width in columns (defaultFieldWidth default)
 	runeStart int             // rune offset of this field's span within its line
 	runeEnd   int             // rune offset just past this field's span
+	rowOffset int             // wrapped row of the field's line that the span starts on
+	fg, bg    tcell.Color     // the field's Micron style at its position on the line
 }
 
 // buildLineFields populates bd.lineFields from the rendered styled lines,
@@ -116,61 +57,33 @@ func (bd *BrowserDisplay) buildLineFields(lines []*micron.StyledLine) {
 	if width <= 0 {
 		width = 80
 	}
-	// TEMPORARY: log field-span count + specs per render to diagnose whether
-	// the ICP Board search page's `query` field becomes a Field span. Remove.
-	totalFields := 0
-	var fieldSpecs []string
-	var allLines []string
 	for i, line := range lines {
 		if line == nil || line.Divider {
 			continue
 		}
-		allLines = append(allLines, fmt.Sprintf("L%d=%q", i, bd.linePlainText(i)))
-		// Display-width cursor mirroring the leading spaces StyledLinesToTviewText
-		// emits: indent, then alignment pad for `c`/`r` lines.
-		col := line.Indent
-		if line.Align == micron.AlignCenter || line.Align == micron.AlignRight {
-			textWidth := 0
-			for _, s := range line.Spans {
-				textWidth += runewidth.StringWidth(s.Text)
-			}
-			avail := width - line.Indent
-			avail = max(avail, textWidth)
-			pad := 0
-			switch line.Align {
-			case micron.AlignCenter:
-				pad = (avail - textWidth) / 2
-			case micron.AlignRight:
-				pad = avail - textWidth
-			}
-			col += max(pad, 0)
-		}
+		// Every field's start column is derived the same way the cursor model
+		// derives a position's column for the rendered line: wrap the display
+		// text (spanText footprints) at the width StyledLinesToTviewParts wrapped
+		// it to, then add the line's indent and the alignment pad for the row the
+		// offset landed on. Measuring the raw span texts instead would misplace a
+		// field on any `c`/`r` line (the pad is computed from the row's rendered
+		// width) and on a wrapped line.
+		plain := bd.linePlainText(i)
+		wrapW := max(width-2*line.Indent, 1)
 		runeOff := 0
 		for _, span := range line.Spans {
-			// A text field contributes its whole footprint (spanText), so the
-			// column and rune offsets of everything after it match the rendered
-			// line: the editor overlay covers exactly the field's box, and text
-			// following the field starts past it.
 			text := spanText(span)
 			rlen := utf8.RuneCountInString(text)
 			if span.Field != nil {
-				rf := bd.newRenderedField(span, col)
+				col, row, rowW, _ := wrapCursorRow(plain, wrapW, runeOff)
+				rf := bd.newRenderedField(span, line.Indent+alignPad(line.Align, wrapW, rowW)+col)
+				rf.rowOffset = row
 				rf.runeStart = runeOff
 				rf.runeEnd = runeOff + rlen
 				bd.lineFields[i] = append(bd.lineFields[i], rf)
-				totalFields++
-				fieldSpecs = append(fieldSpecs, fmt.Sprintf("L%d:%s/%q/%q", i, span.Field.Type, span.Field.Name, span.Field.Data))
 			}
-			col += runewidth.StringWidth(text)
 			runeOff += rlen
 		}
-	}
-	if f, err := os.OpenFile("/tmp/peek-debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
-		_, _ = fmt.Fprintf(f, "BUILDFIELDS total=%d specs=%v\n", totalFields, fieldSpecs)
-		if totalFields > 0 {
-			_, _ = fmt.Fprintf(f, "LINES %v\n", allLines)
-		}
-		_ = f.Close()
 	}
 }
 
@@ -191,7 +104,13 @@ func (bd *BrowserDisplay) newRenderedField(span micron.StyledSpan, startCol int)
 	if width == 0 {
 		width = defaultFieldWidth
 	}
-	rf := &renderedField{spec: spec, startCol: startCol, width: width}
+	rf := &renderedField{
+		spec:     spec,
+		startCol: startCol,
+		width:    width,
+		fg:       parseColor(span.FG),
+		bg:       parseColor(span.BG),
+	}
 	switch spec.Type {
 	case "checkbox", "radio":
 		fw := NewFieldWidget(spec, bd.radioGroups)
@@ -202,8 +121,8 @@ func (bd *BrowserDisplay) newRenderedField(span micron.StyledSpan, startCol int)
 		re := NewReadlineEdit(bd.app.killRing, "", "")
 		re.SetText(spec.Data)
 		re.SetFieldWidth(width)
-		re.SetFieldTextColor(parseColor(span.FG))
-		re.SetFieldBackgroundColor(parseColor(span.BG))
+		re.SetFieldTextColor(rf.fg)
+		re.SetFieldBackgroundColor(rf.bg)
 		if spec.Masked {
 			re.SetMaskCharacter(maskCharacter)
 		}
@@ -449,11 +368,45 @@ func (bd *BrowserDisplay) moveFieldFocus(key tcell.Key) {
 func (bd *BrowserDisplay) drawFieldOverlays(screen tcell.Screen) {
 	for line, row := range bd.lineFields {
 		for _, rf := range row {
-			if rf.editor == nil {
-				continue // checkbox/radio fields draw themselves in the tree
+			switch {
+			case rf.editor != nil:
+				bd.drawFieldEditor(screen, line, rf)
+			case rf.checkbox != nil:
+				bd.drawFieldIcon(screen, line, rf)
 			}
-			bd.drawFieldEditor(screen, line, rf)
 		}
+	}
+}
+
+// drawFieldIcon draws the state glyph of one checkbox/radio field over the
+// cells the page text reserved for it (checkboxIconWidth of them, see spanText).
+// The page text is built once per render from the markup's own state, so without
+// this a toggle — Space/Enter on the field's line, toggleFieldAtCursor — would
+// change what the form submits but not what the visitor sees. urwid redraws the
+// CheckBox widget itself on a state change (wimp.py:385 rebuilds its Columns
+// with the new state icon).
+func (bd *BrowserDisplay) drawFieldIcon(screen tcell.Screen, line int, rf *renderedField) {
+	if rf.checkbox == nil {
+		return
+	}
+	x0, y0, innerW, innerH := bd.content.GetInnerRect()
+	if innerW <= 0 {
+		return
+	}
+	scrollRow, _ := bd.content.GetScrollOffset()
+	screenY := y0 + (bd.rowsAbove(line) + rf.rowOffset - scrollRow)
+	if screenY < y0 || screenY >= y0+innerH {
+		return // field's row is scrolled out of view
+	}
+	// urwid wraps the icon in the same AttrMap as the label, so the glyph
+	// carries the field's Micron style rather than tview's checkbox colors.
+	style := tcell.StyleDefault.Foreground(rf.fg).Background(rf.bg)
+	for i, r := range checkboxIcon(rf.spec.Type, rf.checkbox.IsChecked()) {
+		x := x0 + rf.startCol + i
+		if x < x0 || x >= x0+innerW {
+			continue
+		}
+		screen.SetContent(x, screenY, r, nil, style)
 	}
 }
 
@@ -463,7 +416,7 @@ func (bd *BrowserDisplay) drawFieldEditor(screen tcell.Screen, line int, tf *ren
 	x0, y0, innerW, innerH := bd.content.GetInnerRect()
 	scrollRow, _ := bd.content.GetScrollOffset()
 	screenX := x0 + tf.startCol
-	screenY := y0 + (bd.rowsAbove(line) - scrollRow)
+	screenY := y0 + (bd.rowsAbove(line) + tf.rowOffset - scrollRow)
 	if screenY < y0 || screenY >= y0+innerH || innerW <= 0 {
 		return // field's row is scrolled out of view
 	}
