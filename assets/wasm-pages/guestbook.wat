@@ -64,6 +64,27 @@
 ;;   line and a `----` divider close the block, separating the form from the
 ;;   history below it.
 ;;
+;; VISITS
+;;   Every render counts one visit to the page in its own store under key "v",
+;;   and the line it prints after the usage tip reports that count:
+;;
+;;     Guestbook has been visited 7 times.
+;;
+;;   The count is the page's own, because a page's KV store is private to it: a
+;;   page cannot read or write another module's store. The node's site-wide
+;;   counter therefore lives in hit-counter.wasm, reached the only way a page can
+;;   reach another page — a Micron partial, embedded at the end of that same
+;;   line with the quiet flag:
+;;
+;;     `{:/page/hit-counter.wasm`0`quiet=1}
+;;
+;;   An empty destination means the node serving this page, so the partial needs
+;;   no node hash baked in. It names no counted page, so it adds this visit to
+;;   the site-wide total, and "quiet=1" makes the counter render nothing, so the
+;;   guestbook triggers that counter without displaying it. Install
+;;   hit-counter.wasm beside this module; a node without it shows its client's
+;;   partial-load error in place of the (invisible) partial.
+;;
 ;; TIMESTAMPS
 ;;   An entry is stored as "<unix-seconds>\t<name>: <message>\n", taken from the
 ;;   request's own "requested_at" field, so the store keeps the instant and
@@ -165,6 +186,17 @@
   ;; value as a JSON number, so the page copies its digits verbatim instead of
   ;; parsing an integer and formatting it again.                    len=15
   (data (i32.const 2208) "\"requested_at\":")
+
+  ;; The visit line: a count of this page's own visits, then the quiet partial
+  ;; that adds this visit to the node's site-wide counter without printing it.
+  ;;                                       "Guestbook has been visited " len=27
+  (data (i32.const 2240) "Guestbook has been visited ")
+  (data (i32.const 2304) " times.")                                     ;; len=7
+  (data (i32.const 2336) " time.")                                      ;; len=6
+  ;;                                       "`{:/page/hit-counter.wasm`0`quiet=1}"
+  (data (i32.const 2368) "`{:/page/hit-counter.wasm`0`quiet=1}")        ;; len=36
+  ;; The visit counter's own store key.                             len=1
+  (data (i32.const 2440) "v")
 
   ;; --- Buffer layout ---
   ;;   96    : the 4-byte little-endian entry count (kv_get/kv_set buffer)
@@ -575,6 +607,39 @@
     end
     local.get $res)
 
+  ;; $write_digits(value, out) -> digit count, writing value's decimal digits at
+  ;; out least-significant digit first. The caller reads them back in reverse,
+  ;; which avoids dividing by a power of ten just to find the leading digit.
+  (func $write_digits (param $value i32) (param $out i32) (result i32)
+    (local $v i32)  ;; remaining value
+    (local $i i32)  ;; write cursor
+    local.get $value
+    local.set $v
+    local.get $out
+    local.set $i
+    loop $digits
+      local.get $i
+      local.get $v
+      i32.const 10
+      i32.rem_u
+      i32.const 48
+      i32.add
+      i32.store8
+      local.get $i
+      i32.const 1
+      i32.add
+      local.set $i
+      local.get $v
+      i32.const 10
+      i32.div_u
+      local.set $v
+      local.get $v
+      br_if $digits
+    end
+    local.get $i
+    local.get $out
+    i32.sub)
+
   (func $entry_key (param $index i32) (result i32)
     (local $digits i32)
     i32.const 112
@@ -604,6 +669,8 @@
     (local $stamp_len i32) ;; digits of the request's unix seconds
     (local $off i32)       ;; where the name starts inside the entry buffer
     (local $stamp i32)     ;; digits prefixing a stored entry when rendering
+    (local $visits i32)    ;; visits to this page, including this one
+    (local $digits i32)    ;; decimal digits of the visit count
 
     ;; count = le32(store["n"]); a missing key leaves the zeroed slot as-is.
     i32.const 64
@@ -778,15 +845,136 @@
     i32.add
     local.set $out
 
-    ;; response += form block, tip and divider. The form opens the page so no
-    ;; visitor has to scroll past the whole history to sign it; whatever is
+    ;; response += the form block and its usage tip. The form opens the page so
+    ;; no visitor has to scroll past the whole history to sign it; whatever is
     ;; below the divider is history, newest first.
     local.get $out
     i32.const 1152
-    i32.const 571
+    i32.const 565
     memory.copy
     local.get $out
-    i32.const 571
+    i32.const 565
+    i32.add
+    local.set $out
+
+    ;; Count this visit. The counter is the page's own 4-byte little-endian slot
+    ;; under key "v"; a missing key leaves the zeroed slot as-is, so the first
+    ;; visit reads 1. The store is per page, which is exactly why the site-wide
+    ;; count below is reached through a partial instead.
+    i32.const 2440
+    i32.const 1
+    i32.const 128
+    i32.const 4
+    call $kv_get
+    drop
+    i32.const 128
+    i32.load
+    i32.const 1
+    i32.add
+    local.set $visits
+    i32.const 128
+    local.get $visits
+    i32.store
+    i32.const 2440
+    i32.const 1
+    i32.const 128
+    i32.const 4
+    call $kv_set
+    drop
+
+    ;; response += the visit line: "Guestbook has been visited <n> times." and
+    ;; the quiet site-counter partial, which renders nothing at all.
+    local.get $out
+    i32.const 2240
+    i32.const 27
+    memory.copy
+    local.get $out
+    i32.const 27
+    i32.add
+    local.set $out
+
+    local.get $visits
+    i32.const 144
+    call $write_digits
+    local.set $digits
+    i32.const 0
+    local.set $i
+    block $digits_done
+      loop $copy_digits
+        local.get $i
+        local.get $digits
+        i32.ge_u
+        br_if $digits_done
+        local.get $out
+        local.get $i
+        i32.add
+        i32.const 144
+        local.get $digits
+        i32.const 1
+        i32.sub
+        local.get $i
+        i32.sub
+        i32.add
+        i32.load8_u
+        i32.store8
+        local.get $i
+        i32.const 1
+        i32.add
+        local.set $i
+        br $copy_digits
+      end
+    end
+    local.get $out
+    local.get $digits
+    i32.add
+    local.set $out
+
+    ;; The first visit is phrased in the singular, like any counter a visitor
+    ;; reads.
+    local.get $visits
+    i32.const 1
+    i32.eq
+    if
+      local.get $out
+      i32.const 2336
+      i32.const 6
+      memory.copy
+      local.get $out
+      i32.const 6
+      i32.add
+      local.set $out
+    else
+      local.get $out
+      i32.const 2304
+      i32.const 7
+      memory.copy
+      local.get $out
+      i32.const 7
+      i32.add
+      local.set $out
+    end
+
+    local.get $out
+    i32.const 2368
+    i32.const 36
+    memory.copy
+    local.get $out
+    i32.const 36
+    i32.add
+    i32.const 10
+    i32.store8
+    local.get $out
+    i32.const 37
+    i32.add
+    local.set $out
+
+    ;; response += the divider that separates the form from the history.
+    local.get $out
+    i32.const 1717
+    i32.const 6
+    memory.copy
+    local.get $out
+    i32.const 6
     i32.add
     local.set $out
 

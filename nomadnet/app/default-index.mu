@@ -67,7 +67,7 @@ go-nomadnet.duckdns.org is a public RNS TCP gateway.
 
 Add to your Reticulum client config (`*~/.reticulum/config`*):
 
-  [[Community Go Hub]]
+  [[gonomadnet Public Hub]]
     type = TCPClientInterface
     interface_enabled = yes
     target_host = go-nomadnet.duckdns.org

@@ -419,34 +419,40 @@ func (bd *BrowserDisplay) moveFieldFocus(key tcell.Key) {
 	bd.syncFieldFocus()
 }
 
-// drawFieldOverlay draws the mounted text-field ReadlineEdit over the field's
+// drawFieldOverlays draws every text field's ReadlineEdit over the field's
 // screen cells. Called from browserPageView.Draw after the TextView is drawn,
-// so the editor (with the typed text + caret) covers the placeholder text the
-// TextView rendered underneath. The rect is recomputed each frame from the
-// field's line + column and the content's scroll offset, so it tracks scrolling
-// and resize. Fields are single-line (Python's urwid.Edit in a Columns does not
-// wrap), so the overlay is one row tall at the field's first wrapped row.
-func (bd *BrowserDisplay) drawFieldOverlay(screen tcell.Screen) {
-	if bd.fieldOverlay == nil || bd.fieldOverlayLine < 0 {
-		return
-	}
-	if bd.fieldOverlayLine >= len(bd.lineFields) {
-		return
-	}
-	var tf *renderedField
-	for _, rf := range bd.lineFields[bd.fieldOverlayLine] {
-		if rf.editor == bd.fieldOverlay {
-			tf = rf
-			break
+// so each editor (its text, and the caret on the one in edit mode) covers the
+// placeholder text the TextView rendered underneath. Each rect is recomputed
+// every frame from the field's line + column and the content's scroll offset,
+// so they track scrolling and resize. Fields are single-line (Python's
+// urwid.Edit in a Columns does not wrap), so each overlay is one row tall at
+// the field's first wrapped row.
+//
+// Every field is drawn, not just the one in edit mode: an editor is the only
+// thing that holds what the visitor typed, and the page text underneath still
+// carries the markup's own value. Drawing only the mounted field would make a
+// value vanish the moment focus moved on — the visitor types their name, presses
+// Down to reach the message field, and watches what they typed disappear.
+// urwid draws each Edit's content whether or not it holds focus, so an
+// unfocused field keeps showing its value here too.
+func (bd *BrowserDisplay) drawFieldOverlays(screen tcell.Screen) {
+	for line, row := range bd.lineFields {
+		for _, rf := range row {
+			if rf.editor == nil {
+				continue // checkbox/radio fields draw themselves in the tree
+			}
+			bd.drawFieldEditor(screen, line, rf)
 		}
 	}
-	if tf == nil {
-		return
-	}
+}
+
+// drawFieldEditor draws one text field's editor at its screen cells, clipped to
+// the content area and skipped when its row is scrolled out of view.
+func (bd *BrowserDisplay) drawFieldEditor(screen tcell.Screen, line int, tf *renderedField) {
 	x0, y0, innerW, innerH := bd.content.GetInnerRect()
 	scrollRow, _ := bd.content.GetScrollOffset()
 	screenX := x0 + tf.startCol
-	screenY := y0 + (bd.rowsAbove(bd.fieldOverlayLine) - scrollRow)
+	screenY := y0 + (bd.rowsAbove(line) - scrollRow)
 	if screenY < y0 || screenY >= y0+innerH || innerW <= 0 {
 		return // field's row is scrolled out of view
 	}
@@ -460,8 +466,8 @@ func (bd *BrowserDisplay) drawFieldOverlay(screen tcell.Screen) {
 	if w < 1 {
 		w = 1
 	}
-	bd.fieldOverlay.SetRect(screenX, screenY, w, 1)
-	bd.fieldOverlay.Draw(screen)
+	tf.editor.SetRect(screenX, screenY, w, 1)
+	tf.editor.Draw(screen)
 }
 
 // lineFieldAtCursor returns the rendered field whose span contains the line's

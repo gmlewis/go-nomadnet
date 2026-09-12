@@ -40,7 +40,7 @@ If you already have [Go](https://go.dev/) installed, you can
 install `gonomadnet` directly from GitHub without cloning the repo:
 
 ```bash
-go install github.com/gmlewis/go-nomadnet/cmd/gonomadnet@v0.124.0
+go install github.com/gmlewis/go-nomadnet/cmd/gonomadnet@v0.125.0
 ```
 
 This puts the `gonomadnet` binary in your `$GOPATH/bin` (or `$GOBIN`)
@@ -101,6 +101,35 @@ claim the same LXMF destination and contend for the same files and RNS
 interfaces. Quit one before starting the other. (If you genuinely need both
 running at once, give each its own `--config` and `--rnsconfig` so they use
 separate identities, storage, and Reticulum interfaces.)
+
+## The gonomadnet Public Hub
+
+A public node runs the client, the node, and the demos from this repository, so
+you can browse real `.wasm` executable pages without installing anything on your
+own machine first:
+
+- **Hub**: `go-nomadnet.duckdns.org` — a public RNS TCP gateway
+- **Endpoint**: `go-nomadnet.duckdns.org:4242`
+
+Add it to your Reticulum client config (`~/.reticulum/config`):
+
+```
+[[gonomadnet Public Hub]]
+  type = TCPClientInterface
+  interface_enabled = yes
+  target_host = go-nomadnet.duckdns.org
+  target_port = 4242
+```
+
+Then start `gonomadnet`, wait for the hub to announce, and open it from the
+Nodes list — or type its destination hash into the URL bar (`Ctrl-U`):
+`c7d0e7bbd883e595f53e14fa6986188c`. Its index page links to the executable
+pages: the guestbook, the hit counter, and the other demos described under
+[Wasm Executable Pages](#wasm-executable-pages).
+
+The hub also hosts a public RRC room, `#general`, for the Go ports —
+`rrc://a012129c10205c0b9441fcd2b755b2a7/#general` — and `rns://` mirrors of the
+source, so the repositories can be cloned over Reticulum as well as from GitHub.
 
 ## Configuration
 
@@ -221,8 +250,8 @@ These keys reach the field because a field in edit mode is offered each key
 before any page shortcut is — the priority Python's urwid gives the focused
 widget. The shipped guestbook demo (`assets/wasm-pages/guestbook.wat`) opens
 the page with its form, so a visitor never has to scroll past the whole history
-to sign it, prints these keys as a tip under the fields, and puts the entries
-below a divider, newest first.
+to sign it, prints these keys as a tip under the fields, counts its own visits
+on a line below that tip, and puts the entries below a divider, newest first.
 
 **`request_data` is attacker-controlled and the node does not sanitize it.**
 A page that re-emits it can inject Micron markup — links, formatting modes,
@@ -284,8 +313,8 @@ source) with its assembled `.wasm` beside it:
 | Page | What it demonstrates |
 |------|----------------------|
 | `dynamic-page.wat` | Echoes the request payload — proves pages are dynamic |
-| `hit-counter.wat` | Reads, increments, and stores a per-page visit counter (`rns.kv_*`) |
-| `guestbook.wat` | Reads a submitted Micron form, stores entries, lists them newest-first |
+| `hit-counter.wat` | Reads, increments, and stores a visit counter, per page or site-wide, visibly or quietly (`rns.kv_*`) |
+| `guestbook.wat` | Reads a submitted Micron form, stores and lists entries newest-first, and counts its own visits |
 
 Build and install one with:
 
@@ -303,6 +332,21 @@ This page has been viewed:
 
 `{<your-node-hash>:/page/hit-counter.wasm`0`page=<that-page-name>}
 ```
+
+A counter can also be triggered **without being displayed**. Add a `quiet`
+field with any value and the module counts the visit and renders nothing at
+all, so the partial substitutes to no text at the place you embedded it:
+
+```
+`{<your-node-hash>:/page/hit-counter.wasm`0`quiet=1}
+```
+
+With no `page` field that bumps the node's site-wide total, which is how the
+guestbook demo adds its visitors to the same counter the index page prints
+while showing only its own count: a page's KV store is private to it, so a
+partial is the only way one page can reach another's counter. Install
+`hit-counter.wasm` beside any page that does this — a node missing it shows the
+client's partial-load error where the invisible partial was.
 
 Validate and inspect plugins with the `wago` CLI (`wago validate`,
 `wago module imports`).

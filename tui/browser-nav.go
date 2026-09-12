@@ -70,9 +70,9 @@ func newBrowserPageView(bd *BrowserDisplay) *browserPageView {
 func (v *browserPageView) Draw(screen tcell.Screen) {
 	v.TextView.Draw(screen)
 	v.bd.drawCursor(screen)
-	// Draw the mounted text-field ReadlineEdit overlay over the field's screen
-	// cells (after the TextView, so typed text + caret cover the placeholder).
-	v.bd.drawFieldOverlay(screen)
+	// Draw the text fields' ReadlineEdit overlays over their screen cells
+	// (after the TextView, so typed text + the caret cover the placeholder).
+	v.bd.drawFieldOverlays(screen)
 	v.bd.reflowIfWidthChanged()
 }
 

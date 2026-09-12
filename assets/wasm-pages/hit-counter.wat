@@ -46,6 +46,18 @@
 ;;
 ;;     You are visitor 7 to this site.
 ;;
+;; QUIET MODE
+;;   A partial carrying a "quiet" field with any value counts its visit and
+;;   renders nothing, so a page can trigger a counter that it does not show:
+;;
+;;     `{<node-hash>:/page/hit-counter.wasm`0`quiet=1}
+;;
+;;   With no "page" field a quiet partial still counts the whole site, which is
+;;   how a page bumps the node's visitor total without printing it among its own
+;;   text. A quiet partial that names a page counts only that page, still
+;;   silently. An empty "quiet" value is not a quiet partial: like "page", the
+;;   field only counts when it carries a value.
+;;
 ;; BUILD
 ;;   wat2wasm hit-counter.wat -o hit-counter.wasm
 ;;
@@ -80,6 +92,9 @@
   ;; The request-data key the browser sends for a partial's "page=" entry:
   ;; "var_page":" is 12 bytes.
   (data (i32.const 80) "\22var_page\22:\22")
+  ;; The request-data key a partial sends for a "quiet=" entry, which counts the
+  ;; visit without rendering the count: "var_quiet":" is 13 bytes.
+  (data (i32.const 208) "\22var_quiet\22:\22")
   ;; Response prefix "You are visitor " at 96 (16 bytes).
   (data (i32.const 96) "You are visitor ")
   ;; Response suffix " to this page.\n" at 128 (15 bytes) for a page counter,
@@ -93,6 +108,7 @@
   (func $scan_addr (result i32) i32.const 320)
   (func $default_key (result i32) i32.const 64)
   (func $var_page_key (result i32) i32.const 80)
+  (func $var_quiet_key (result i32) i32.const 208)
   (func $response_addr (result i32) i32.const 1024)
   (func $page_suffix (result i32) i32.const 128)
   (func $site_suffix (result i32) i32.const 192)
@@ -357,6 +373,26 @@
     i32.const 4
     call $kv_set
     drop
+
+    ;; A quiet caller counts its visit but renders nothing, which is how a page
+    ;; triggers a counter it does not display: the partial substitutes to no
+    ;; text at the place the page embedded it. The flag is read after the count
+    ;; is persisted, so a quiet visit counts exactly like a visible one, and the
+    ;; value is capped at one byte because only "some value" matters here.
+    local.get $req_ptr
+    local.get $req_len
+    call $var_quiet_key
+    i32.const 13
+    call $scan_addr
+    i32.const 1
+    call $scan
+    i32.const 0
+    i32.gt_s
+    if
+      call $response_addr
+      i32.const 0
+      return
+    end
 
     ;; Extract the decimal digits least-significant first into the scratch
     ;; buffer, then reverse them into the response.
