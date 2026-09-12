@@ -18,6 +18,7 @@ package micron
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -152,13 +153,15 @@ func runPythonRender(t *testing.T, scriptPath string, markup []byte, source stri
 	return doc
 }
 
-// compareParityDocs returns a sorted list of human-readable diff signatures
-// between the Go and Python parity documents.
+// compareParityDocs returns the list of human-readable diff signatures
+// between the Go and Python parity documents. Every signature carries the
+// rendered values, so a failure names the line, the span, and both texts — the
+// acceptedParityDiffs ledger keys quote those exact values.
 func compareParityDocs(goDoc, pyDoc parityDoc) []string {
 	var diffs []string
 	gl, pl := goDoc.Lines, pyDoc.Lines
 	if len(gl) != len(pl) {
-		diffs = append(diffs, "line_count: go=%d py=%d")
+		diffs = append(diffs, fmt.Sprintf("line_count: go=%d py=%d", len(gl), len(pl)))
 	}
 	n := max(len(gl), len(pl))
 	for i := range n {
@@ -170,57 +173,58 @@ func compareParityDocs(goDoc, pyDoc parityDoc) []string {
 			p = &pl[i]
 		}
 		if g == nil {
-			diffs = append(diffs, "line %d: missing_in_go")
+			diffs = append(diffs, fmt.Sprintf("line %d: missing_in_go", i))
 			continue
 		}
 		if p == nil {
-			diffs = append(diffs, "line %d: missing_in_py")
+			diffs = append(diffs, fmt.Sprintf("line %d: missing_in_py", i))
 			continue
 		}
 		if g.Align != p.Align {
-			diffs = append(diffs, "line %d: align go=%s py=%s")
+			diffs = append(diffs, fmt.Sprintf("line %d: align go=%s py=%s", i, g.Align, p.Align))
 		}
 		if g.Indent != p.Indent {
-			diffs = append(diffs, "line %d: indent go=%d py=%d")
+			diffs = append(diffs, fmt.Sprintf("line %d: indent go=%d py=%d", i, g.Indent, p.Indent))
 		}
 		if g.HeadingLevel != p.HeadingLevel {
-			diffs = append(diffs, "line %d: heading_level go=%d py=%d")
+			diffs = append(diffs, fmt.Sprintf("line %d: heading_level go=%d py=%d", i, g.HeadingLevel, p.HeadingLevel))
 		}
 		if g.Divider != p.Divider {
-			diffs = append(diffs, "line %d: divider go=%v py=%v")
+			diffs = append(diffs, fmt.Sprintf("line %d: divider go=%v py=%v", i, g.Divider, p.Divider))
 		}
 		if g.Anchor != p.Anchor {
-			diffs = append(diffs, "line %d: anchor go=%q py=%q")
+			diffs = append(diffs, fmt.Sprintf("line %d: anchor go=%q py=%q", i, g.Anchor, p.Anchor))
 		}
 		if g.DividerChar != p.DividerChar {
-			diffs = append(diffs, "line %d: divider_char go=%q py=%q")
+			diffs = append(diffs, fmt.Sprintf("line %d: divider_char go=%q py=%q", i, g.DividerChar, p.DividerChar))
 		}
 		if len(g.Spans) != len(p.Spans) {
-			diffs = append(diffs, "line %d: span_count go=%d py=%d")
+			diffs = append(diffs, fmt.Sprintf("line %d: span_count go=%d py=%d", i, len(g.Spans), len(p.Spans)))
 		}
 		for j := range min(len(g.Spans), len(p.Spans)) {
 			gs, ps := g.Spans[j], p.Spans[j]
 			if gs.Text != ps.Text {
-				diffs = append(diffs, "line %d span %d: text go=%q py=%q")
+				diffs = append(diffs, fmt.Sprintf("line %d span %d: text go=%q py=%q", i, j, gs.Text, ps.Text))
 			}
 			if gs.FG != ps.FG {
-				diffs = append(diffs, "line %d span %d: fg go=%q py=%q")
+				diffs = append(diffs, fmt.Sprintf("line %d span %d: fg go=%q py=%q", i, j, gs.FG, ps.FG))
 			}
 			if gs.BG != ps.BG {
-				diffs = append(diffs, "line %d span %d: bg go=%q py=%q")
+				diffs = append(diffs, fmt.Sprintf("line %d span %d: bg go=%q py=%q", i, j, gs.BG, ps.BG))
 			}
 			if gs.Bold != ps.Bold || gs.Underline != ps.Underline || gs.Italic != ps.Italic {
-				diffs = append(diffs, "line %d span %d: attrs go=%v/%v/%v py=%v/%v/%v")
+				diffs = append(diffs, fmt.Sprintf("line %d span %d: attrs go=%v/%v/%v py=%v/%v/%v", i, j,
+					gs.Bold, gs.Underline, gs.Italic, ps.Bold, ps.Underline, ps.Italic))
 			}
 			if (gs.Link == nil) != (ps.Link == nil) {
-				diffs = append(diffs, "line %d span %d: link presence go=%v py=%v")
+				diffs = append(diffs, fmt.Sprintf("line %d span %d: link presence go=%v py=%v", i, j, gs.Link != nil, ps.Link != nil))
 			} else if gs.Link != nil {
 				if gs.Link.URL != ps.Link.URL {
-					diffs = append(diffs, "line %d span %d: link.url go=%q py=%q")
+					diffs = append(diffs, fmt.Sprintf("line %d span %d: link.url go=%q py=%q", i, j, gs.Link.URL, ps.Link.URL))
 				}
 			}
 			if (gs.Field == nil) != (ps.Field == nil) {
-				diffs = append(diffs, "line %d span %d: field presence go=%v py=%v")
+				diffs = append(diffs, fmt.Sprintf("line %d span %d: field presence go=%v py=%v", i, j, gs.Field != nil, ps.Field != nil))
 			}
 		}
 	}
@@ -236,7 +240,16 @@ var renderMuScriptPath = filepath.Join("..", "..", "tooling", "render-mu.py")
 // carry a one-line reason so a future reader knows whether to fix it or leave
 // it. A diff that is NOT listed here fails the test, so new regressions are
 // caught immediately.
-var acceptedParityDiffs = map[string]map[string]string{}
+var acceptedParityDiffs = map[string]map[string]string{
+	// form-submit.mu is the form page fixture; its one accepted divergence is
+	// the deliberate button chrome on the submit control (see micron
+	// FormSubmitLeft/FormSubmitRight). The fixture also carries a plain
+	// navigation link and two text fields, whose rendering must stay
+	// byte-identical to Python — a diff on any other line or span fails.
+	"form-submit.mu": {
+		`line 5 span 0: text go="< Sign the guestbook >" py="Sign the guestbook"`: "Go renders a form-submit link as a flat button so a form page shows where to submit; Python renders the bare label",
+	},
+}
 
 // TestRenderParityFixtures diffs the Go micron renderer against the Python
 // MicronParser for every checked-in .mu fixture under testdata/parity. Expected

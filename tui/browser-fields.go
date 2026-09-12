@@ -390,7 +390,18 @@ func (bd *BrowserDisplay) unmountFieldOverlay() {
 // to the next/previous selectable line — mirroring Python's Pile taking the
 // "down"/"up" returned by the Edit — then hands focus back to bd.content so
 // syncFieldFocus either re-mounts the new line's field or restores nav mode.
+//
+// It stamps the keypress first, exactly as every handleNavKey branch does. A
+// key pressed while a field is in edit mode is consumed by the overlay and
+// never reaches handleNavKey, so without the stamp the page's hardware cursor
+// is not drawn on the newly focused line: the terminal cursor stays where the
+// overlay last put it — visibly still inside the text box the visitor pressed
+// Down in — until some later nav key refreshes the visibility window. Python
+// refreshes that window on every keypress that moves page focus (LinkableText
+// .keypress sets delegate.last_keypress before returning "down"/"up" to the
+// Pile, MicronParser.py:932-935), so the cursor follows the focus there.
 func (bd *BrowserDisplay) moveFieldFocus(key tcell.Key) {
+	bd.stampKeypress()
 	bd.unmountFieldOverlay()
 	if bd.focusLine >= 0 && bd.focusLine < len(bd.lineCursors) {
 		bd.lineCursors[bd.focusLine] = 0

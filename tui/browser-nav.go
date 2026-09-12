@@ -137,6 +137,13 @@ func (v *browserPageView) MouseHandler() func(action tview.MouseAction, event *t
 			// so HasFocus is identical either way, but keeping the focused
 			// primitive the page view keeps input dispatch consistent.
 			setFocus(v.bd.content)
+			// Move the page focus (and, inside a form field, the caret) to the
+			// clicked cell, mirroring urwid's Pile/Columns/LinkableText/Edit
+			// mouse handling (browser-click.go). Without this a click on a form
+			// field did nothing at all: the field editor is an off-tree overlay,
+			// so no widget sat under the mouse.
+			mx, my := event.Position()
+			v.bd.clickFocus(mx, my)
 		case tview.MouseLeftClick:
 			ids := v.bd.content.GetHighlights()
 			if len(ids) == 0 {

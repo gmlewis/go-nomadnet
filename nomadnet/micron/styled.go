@@ -73,6 +73,36 @@ type LinkSpec struct {
 	Fields string
 }
 
+// FormSubmitLeft and FormSubmitRight bracket the label of a form-submit link,
+// so the control renders as a flat button — "< Sign the guestbook >" — the same
+// shape urwid's Button gives the rest of the UI (urwidButtonLeft/Right plus the
+// label spacing in tui/urwid-button.go; urwid renders "< label >", not a
+// bordered box).
+//
+// A Micron link whose third backtick component is non-empty (link_fields)
+// submits the enclosing page's form (MicronParser.py:780-819), so it is a
+// CONTROL, not a navigation link. Python renders it as ordinary label text —
+// the label is wrapped in a LinkableText and nothing marks it as a control —
+// which leaves the only way to submit a form looking exactly like the prose
+// around it. The brackets are therefore a deliberate, reviewed divergence from
+// Python for form-submit links ONLY: a plain link (no link_fields) keeps the
+// exact Python rendering. The span Text carries the brackets, so every consumer
+// that derives from it (line plain text, part positions, the hardware cursor,
+// link hit-testing, region tags) agrees on the rendered geometry.
+const (
+	FormSubmitLeft  = "< "
+	FormSubmitRight = " >"
+)
+
+// linkSpanText returns the text a link span renders: the label, bracketed when
+// the link submits a form (see FormSubmitLeft/FormSubmitRight).
+func linkSpanText(label, linkFields string) string {
+	if linkFields == "" {
+		return label
+	}
+	return FormSubmitLeft + label + FormSubmitRight
+}
+
 // FieldSpec describes an input-field span, mirroring Python's ReadlineEdit /
 // CheckBox / RadioButton field dicts (MicronParser.py:740-757).
 type FieldSpec struct {
@@ -303,7 +333,7 @@ func renderInlineNode(sl *StyledLine, node *Node, rs *renderState) {
 
 	case NodeLink:
 		sl.Spans = append(sl.Spans, StyledSpan{
-			Text:      node.LinkLabel,
+			Text:      linkSpanText(node.LinkLabel, node.LinkFields),
 			FG:        highColor(rs.fg),
 			BG:        highColor(rs.bg),
 			Bold:      rs.bold,
