@@ -346,7 +346,7 @@ func (bd *BrowserDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 	// bd.content never sees the key. A non-consumed key falls through to the
 	// browser shortcuts / nav model below.
 	if bd.fieldOverlay != nil {
-		if bd.fieldOverlay.handleKey(event) == nil {
+		if bd.fieldOverlay.offerKey(event) == nil {
 			if bd.app != nil {
 				bd.app.QueueUpdateDraw(func() {})
 			}
@@ -727,6 +727,17 @@ func (bd *BrowserDisplay) renderPage() {
 	// LinkableText on every load (Browser.py:469-486).
 	bd.initNavState()
 
+	// Python's freshly built Pile focuses its first selectable widget, so when a
+	// page's first selectable part is a Micron text field, that row's Edit holds
+	// the focus from the moment the page loads and a visitor's first keystroke
+	// lands in it (MicronParser.parse_line builds the Columns with the Edit as
+	// its only selectable child). Mount the focused row's editor overlay here
+	// too: without it the overlay stays unmounted until a line-changing key, and
+	// typing on a freshly loaded form — the guestbook's name field — is dropped.
+	if bd.content.HasFocus() {
+		bd.syncFieldFocus()
+	}
+
 	// A completed render ⇒ DONE: refresh the footer so the transfer-status line
 	// (or "Link to" peek) reflects the current page (Python update_display DONE
 	// branch sets browser_footer = make_status_widget(), Browser.py:529-531).
@@ -809,11 +820,18 @@ func (bd *BrowserDisplay) effectiveMarkup() string {
 	return out
 }
 
-// startPartials starts a refresh goroutine for each partial in markup that
-// declares a refresh interval (Python start_partial_updater). Each goroutine
-// fetches its partial immediately and then on every Refresh-second tick via
-// OnFetchPartial, marshaling the substituted re-render to the UI loop. No-op
-// when OnFetchPartial is nil (partials stay as ⧖ placeholders).
+// startPartials fetches every partial the page declares and then keeps the
+// ones with a refresh interval up to date (Python start_partial_updater →
+// update_partials, Browser.py:820-848). Python's sweep fetches a partial when
+// it has never been updated (`not partial["updated"]`) OR when its refresh
+// interval has elapsed, so a partial with NO refresh interval is still fetched
+// once as soon as the page renders — the ⧖ placeholder only shows while that
+// first fetch is in flight. Partials with a refresh interval of at least one
+// second keep re-fetching; that is the only difference between the two arms.
+//
+// Each fetch runs on its own goroutine and substitutes its result through
+// OnFetchPartial, marshaling the re-render to the UI loop. No-op when
+// OnFetchPartial is nil (partials then stay as ⧖ placeholders).
 func (bd *BrowserDisplay) startPartials(markup string) {
 	bd.partials = browser.ExtractPartials(markup)
 	if bd.OnFetchPartial == nil || len(bd.partials) == 0 {
@@ -823,9 +841,9 @@ func (bd *BrowserDisplay) startPartials(markup string) {
 	bd.partialCancel = cancel
 	for _, p := range bd.partials {
 		if p.Refresh <= 0 {
+			go bd.fetchAndSubstitute(p, cancel)
 			continue
 		}
-		p := p
 		interval := time.Duration(p.Refresh * float64(time.Second))
 		if interval <= 0 {
 			interval = time.Second

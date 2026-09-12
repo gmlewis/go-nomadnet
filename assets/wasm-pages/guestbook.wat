@@ -16,33 +16,86 @@
 ;; guestbook.wat -- a gonomadnet executable page with a working Micron form.
 ;;
 ;; WHAT IT DOES
-;;   Renders the guestbook entries newest-first, followed by a Micron form
-;;   (a name field, a message field, and a submit link that posts the form
-;;   back to this page). A submission is appended to the on-disk store and
-;;   then the page re-renders with the new entry at the top:
+;;   Renders a Micron form (a name field, a message field, and a submit link
+;;   that posts the form back to this page) first, so that a visitor never has
+;;   to scroll past the whole history to sign it, and then the guestbook
+;;   entries newest-first below a divider. A submission is appended to the
+;;   on-disk store and then the page re-renders with the new entry at the top
+;;   of that history:
 ;;
 ;;     >Guestbook
 ;;
-;;     Glenn: hello from the wasm sandbox
-;;     Ada: second entry
+;;     Name:    [24-cell box]
+;;     Message: [32-cell box]
+;;     `[Sign the guestbook`:/page/guestbook.wasm`name|message]
+;;
+;;     [usage tip: the editing keys and how to submit]
+;;
 ;;     ----
 ;;
-;;     `<name`Your name>
-;;     `<message`Your message>
-;;     `[Sign the guestbook`:/page/guestbook.wasm`name|message]
+;;     Ada: second entry
+;;     Glenn: hello from the wasm sandbox
 ;;
 ;;   gonomadnet compiles, runs, and releases a fresh sandbox instance for every
 ;;   request, so only the KV store survives between visits.
 ;;
+;; FORM MARKUP
+;;   Micron spells a field `<NAME`VALUE>, where VALUE is the field's pre-defined
+;;   content — not a hint or a label. Typing appends to that content (the
+;;   markup guide's own example shows it as "Pre-defined data", and a
+;;   pre-filled field is how a page offers a default value to keep or edit).
+;;   The form therefore carries its labels as ordinary page text and leaves the
+;;   fields empty:
+;;
+;;     Name: `B444`<name`>`b
+;;     Message: `B444`<32|message`>`b
+;;
+;;   The `B444` background tag is what makes an empty field visible: a text
+;;   field occupies its declared width (24 columns by default, 32 for the
+;;   message field set by the width flag before the name), so its background
+;;   paints the whole box whether or not it holds text.
+;;
+;;   The block carries a short usage tip for first-time visitors: which keys
+;;   edit a field, and how to submit. That tip is ordinary page text — a form's
+;;   instructions for its visitors belong in the page, not in its fields. Those
+;;   readline keys do reach a field because the browser gives a field in edit
+;;   mode the first refusal of every key, matching the priority Python's urwid
+;;   gives the focused widget over the surrounding shortcut layers. A blank
+;;   line and a `----` divider close the block, separating the form from the
+;;   history below it.
+;;
+;; TIMESTAMPS
+;;   An entry is stored as "<unix-seconds>\t<name>: <message>\n", taken from the
+;;   request's own "requested_at" field, so the store keeps the instant and
+;;   nothing about how it should be spelled. The render wraps those seconds in
+;;   the timestamp construct
+;;
+;;     `T1789178907`T
+;;
+;;   which a client that understands it renders in the reader's own timezone:
+;;   gonomadnet formats the seconds with the local zone and the default format
+;;   "Fri Sep 11, 2026 9:08:27PM EST". A page names its own strftime format when
+;;   it wants a different spelling:
+;;
+;;     `T1789178907|%Y-%m-%d %H:%M`T
+;;
+;;   Unix seconds mean UTC, and only the client that parses the page knows the
+;;   reader's timezone, so localizing anywhere else would show every visitor the
+;;   sender's clock instead of their own. Python's NomadNet has no such
+;;   construct: it drops the marker character and renders the payload as text,
+;;   so a reader on the original client sees the raw seconds. Entries stored
+;;   before this page stamped them carry no "<seconds>\t" prefix, and entries
+;;   whose prefix is not a run of digits are rendered exactly as stored.
+;;
 ;; SUBMISSION MECHANICS
-;;   Micron spells a field `<NAME`VALUE>, so the fields above are named "name"
-;;   and "message", and the submit link's third backtick segment
-;;   ("name|message") names those fields to collect. On submit the browser
-;;   reads the live widget values and sends them as request_data: field_name
-;;   and field_message (gonomadnet's Micron field machinery prefixes each
-;;   collected field with "field_"). This module scans the request JSON for
-;;   those two keys, and also accepts var_name / var_message so a hand-written
-;;   link that carries the values directly in its fields suffix still works.
+;;   The fields above are named "name" and "message", and the submit link's
+;;   third backtick segment ("name|message") names those fields to collect. On
+;;   submit the browser reads the live widget values and sends them as
+;;   request_data: field_name and field_message (gonomadnet's Micron field
+;;   machinery prefixes each collected field with "field_"). This module scans
+;;   the request JSON for those two keys, and also accepts var_name /
+;;   var_message so a hand-written link that carries the values directly in its
+;;   fields suffix still works.
 ;;
 ;; BUILD
 ;;   wat2wasm guestbook.wat -o guestbook.wasm
@@ -98,14 +151,20 @@
   (data (i32.const 1024) ">Guestbook\0a\0a")
   ;; shown when the guestbook is empty                             len=16
   (data (i32.const 1088) "No entries yet.\0a")
-  ;; the form block that closes every render                       len=106
-  (data (i32.const 1152) "\0a----\0a\0a`<name`Your name>\0a`<message`Your message>\0a`[Sign the guestbook`:/page/guestbook.wasm`name|message]\0a")
+  ;; the block every render opens with: the form, its usage tip, and the
+  ;; divider before the entries                                          len=571
+  (data (i32.const 1152) "Name: `B444`<name`>`b\0aMessage: `B444`<32|message`>`b\0a`[Sign the guestbook`:/page/guestbook.wasm`name|message]\0a\0a`!Using the form`!: the selected field has the keyboard, so just type. `!Down`! / `!Up`! (or `!Tab`!) move between fields, and `!Enter`! on the `!Sign the guestbook`! line submits what you typed. Every field is a readline-style editor: `!Ctrl-A`! / `!Ctrl-E`! start / end of the line, `!Ctrl-U`! clears back to the start, `!Ctrl-K`! clears to the end, `!Ctrl-W`! deletes a word, `!Ctrl-L`! clears the field, and `!Ctrl-Y`! pastes back what you cleared.\0a\0a----\0a\0a")
   ;; request-JSON scan keys for the collected Micron form fields
   (data (i32.const 2048) "\"field_name\":\"")                     ;; len=14
   (data (i32.const 2080) "\"field_message\":\"")                  ;; len=17
   ;; request-JSON scan keys for a fields suffix that carries values directly
   (data (i32.const 2112) "\"var_name\":\"")                       ;; len=12
   (data (i32.const 2144) "\"var_message\":\"")                    ;; len=15
+
+  ;; request-JSON key for the request's own unix seconds. The host writes the
+  ;; value as a JSON number, so the page copies its digits verbatim instead of
+  ;; parsing an integer and formatting it again.                    len=15
+  (data (i32.const 2208) "\"requested_at\":")
 
   ;; --- Buffer layout ---
   ;;   96    : the 4-byte little-endian entry count (kv_get/kv_set buffer)
@@ -381,6 +440,141 @@
     end)
 
   ;; $entry_key(index) -> key length, with the key at 112: "e" + decimal.
+  ;; $scan_digits copies a JSON number field's decimal digits. The caller names
+  ;; the key (quotes and colon included, as the host writes it) and the
+  ;; destination, and gets back how many digits were copied: 0 when the key is
+  ;; absent or carries no digits, never more than cap. The digits are stored
+  ;; verbatim, which is what keeps unix seconds lossless in both directions.
+  (func $scan_digits (param $start i32) (param $len i32) (param $key i32) (param $key_len i32)
+                     (param $out i32) (param $cap i32) (result i32)
+    (local $i i32)      ;; candidate start offset
+    (local $limit i32)  ;; last offset at which the key can still fit
+    (local $p i32)      ;; read cursor inside the digits
+    (local $n i32)      ;; digits copied so far
+    (local $c i32)      ;; current byte
+    (local $res i32)
+    i32.const 0
+    local.set $res
+    local.get $len
+    local.get $key_len
+    i32.sub
+    local.set $limit
+    i32.const 0
+    local.set $i
+    block $done
+      loop $next
+        local.get $i
+        local.get $limit
+        i32.gt_s
+        br_if $done
+        local.get $start
+        local.get $i
+        i32.add
+        local.get $key
+        local.get $key_len
+        call $key_at
+        if
+          local.get $start
+          local.get $i
+          i32.add
+          local.get $key_len
+          i32.add
+          local.set $p
+          i32.const 0
+          local.set $n
+          block $digits_done
+            loop $digits
+              local.get $n
+              local.get $cap
+              i32.ge_s
+              br_if $digits_done
+              local.get $p
+              local.get $n
+              i32.add
+              i32.load8_u
+              local.set $c
+              ;; Anything outside 0-9 ends the number.
+              local.get $c
+              i32.const 0x30
+              i32.lt_u
+              br_if $digits_done
+              local.get $c
+              i32.const 0x39
+              i32.gt_u
+              br_if $digits_done
+              local.get $out
+              local.get $n
+              i32.add
+              local.get $c
+              i32.store8
+              local.get $n
+              i32.const 1
+              i32.add
+              local.set $n
+              br $digits
+            end
+          end
+          local.get $n
+          local.set $res
+          br $done
+        end
+        local.get $i
+        i32.const 1
+        i32.add
+        local.set $i
+        br $next
+      end
+    end
+    local.get $res)
+
+  ;; $stamp_prefix_len reports how many decimal digits prefix a stored entry of
+  ;; the form "<seconds>\t<text>": the digit count when a tab follows a
+  ;; non-empty run of digits, and 0 otherwise — an entry stored before
+  ;; timestamps, or a message that happens to contain a tab. The renderer emits
+  ;; the timestamp construct around those digits and drops the tab; everything
+  ;; else is copied exactly as stored.
+  (func $stamp_prefix_len (param $ptr i32) (param $len i32) (result i32)
+    (local $i i32)
+    (local $c i32)
+    (local $res i32)
+    i32.const 0
+    local.set $res
+    block $done
+      loop $next
+        local.get $i
+        local.get $len
+        i32.ge_s
+        br_if $done
+        local.get $ptr
+        local.get $i
+        i32.add
+        i32.load8_u
+        local.set $c
+        local.get $c
+        i32.const 9
+        i32.eq
+        if
+          local.get $i
+          local.set $res
+          br $done
+        end
+        local.get $c
+        i32.const 0x30
+        i32.lt_u
+        br_if $done
+        local.get $c
+        i32.const 0x39
+        i32.gt_u
+        br_if $done
+        local.get $i
+        i32.const 1
+        i32.add
+        local.set $i
+        br $next
+      end
+    end
+    local.get $res)
+
   (func $entry_key (param $index i32) (result i32)
     (local $digits i32)
     i32.const 112
@@ -407,7 +601,9 @@
     (local $i i32)
     (local $n i32)
     (local $out i32)       ;; response write cursor
-    (local $head_end i32)  ;; where the form block starts
+    (local $stamp_len i32) ;; digits of the request's unix seconds
+    (local $off i32)       ;; where the name starts inside the entry buffer
+    (local $stamp i32)     ;; digits prefixing a stored entry when rendering
 
     ;; count = le32(store["n"]); a missing key leaves the zeroed slot as-is.
     i32.const 64
@@ -476,18 +672,48 @@
     i32.gt_s
     i32.and
     if
+      ;; Stamp the entry with the request's unix seconds: the host writes the
+      ;; value as a JSON number, so its digits are copied verbatim and prefixed
+      ;; to the line with a tab. Unix seconds mean UTC, and only the client that
+      ;; reads the page knows the reader's timezone, so the store keeps the
+      ;; seconds and each reader's client renders them locally.
+      local.get $req_ptr
+      local.get $req_len
+      i32.const 2208
+      i32.const 15
       i32.const 9216
+      i32.const 20
+      call $scan_digits
+      local.set $stamp_len
+      i32.const 9216
+      local.get $stamp_len
+      i32.add
+      local.set $off
+      local.get $stamp_len
+      i32.const 0
+      i32.gt_s
+      if
+        local.get $off
+        i32.const 9
+        i32.store8
+        local.get $off
+        i32.const 1
+        i32.add
+        local.set $off
+      end
+
+      local.get $off
       i32.const 8192
       local.get $name_len
       memory.copy
       ;; ": " after the name
-      i32.const 9216
+      local.get $off
       local.get $name_len
       i32.add
       i32.const 0x203a
       i32.store16
       ;; the message, then a newline
-      i32.const 9216
+      local.get $off
       local.get $name_len
       i32.add
       i32.const 2
@@ -495,7 +721,7 @@
       i32.const 8448
       local.get $msg_len
       memory.copy
-      i32.const 9216
+      local.get $off
       local.get $name_len
       i32.add
       i32.const 2
@@ -504,7 +730,11 @@
       i32.add
       i32.const 10
       i32.store8
+      local.get $off
+      i32.const 9216
+      i32.sub
       local.get $name_len
+      i32.add
       local.get $msg_len
       i32.add
       i32.const 3
@@ -548,6 +778,18 @@
     i32.add
     local.set $out
 
+    ;; response += form block, tip and divider. The form opens the page so no
+    ;; visitor has to scroll past the whole history to sign it; whatever is
+    ;; below the divider is history, newest first.
+    local.get $out
+    i32.const 1152
+    i32.const 571
+    memory.copy
+    local.get $out
+    i32.const 571
+    i32.add
+    local.set $out
+
     local.get $count
     i32.eqz
     if
@@ -584,14 +826,92 @@
           i32.const 0
           i32.gt_s
           if
-            local.get $out
+            ;; An entry stored as "<seconds>\t<text>" renders as the timestamp
+            ;; construct followed by the text, so each reader's client shows
+            ;; those seconds in that reader's own timezone. Any other entry is
+            ;; copied verbatim, which is how entries stored before timestamps
+            ;; keep rendering exactly as they were written.
             i32.const 10240
             local.get $n
-            memory.copy
-            local.get $out
-            local.get $n
-            i32.add
-            local.set $out
+            call $stamp_prefix_len
+            local.set $stamp
+            local.get $stamp
+            i32.const 0
+            i32.gt_s
+            if
+              local.get $out
+              i32.const 0x60
+              i32.store8
+              local.get $out
+              i32.const 1
+              i32.add
+              i32.const 0x54
+              i32.store8
+              local.get $out
+              i32.const 2
+              i32.add
+              i32.const 10240
+              local.get $stamp
+              memory.copy
+              local.get $out
+              i32.const 2
+              i32.add
+              local.get $stamp
+              i32.add
+              i32.const 0x60
+              i32.store8
+              local.get $out
+              i32.const 3
+              i32.add
+              local.get $stamp
+              i32.add
+              i32.const 0x54
+              i32.store8
+              local.get $out
+              i32.const 4
+              i32.add
+              local.get $stamp
+              i32.add
+              i32.const 0x20
+              i32.store8
+              local.get $out
+              i32.const 5
+              i32.add
+              local.get $stamp
+              i32.add
+              i32.const 10240
+              local.get $stamp
+              i32.const 1
+              i32.add
+              i32.add
+              local.get $n
+              local.get $stamp
+              i32.const 1
+              i32.add
+              i32.sub
+              memory.copy
+              local.get $out
+              i32.const 5
+              i32.add
+              local.get $stamp
+              i32.add
+              local.get $n
+              local.get $stamp
+              i32.const 1
+              i32.add
+              i32.sub
+              i32.add
+              local.set $out
+            else
+              local.get $out
+              i32.const 10240
+              local.get $n
+              memory.copy
+              local.get $out
+              local.get $n
+              i32.add
+              local.set $out
+            end
           end
           local.get $i
           i32.const 1
@@ -602,18 +922,8 @@
       end
     end
 
-    ;; response += form block
-    local.get $out
-    i32.const 1152
-    i32.const 106
-    memory.copy
-    local.get $out
-    i32.const 106
-    i32.add
-    local.set $head_end
-
     i32.const 12288
-    local.get $head_end
+    local.get $out
     i32.const 12288
     i32.sub)
   (export "render_page" (func $render)))

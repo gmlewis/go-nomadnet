@@ -23,10 +23,15 @@
 package tui
 
 import (
+	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gmlewis/go-nomadnet/nomadnet/browser"
 	"github.com/gmlewis/go-nomadnet/nomadnet/micron"
@@ -62,18 +67,88 @@ func loopbackHash() []byte {
 
 // TestBrowserShippedHitCounterLoopback pins the shipped hit counter through
 // the loopback page path the TUI uses: each render advances the on-disk count,
-// so the same page served twice reports two different visits.
+// and the var_page a partial sends keeps one page's count independent of every
+// other page's.
 func TestBrowserShippedHitCounterLoopback(t *testing.T) {
 	t.Parallel()
 
 	pages := demoPagesDir(t, "hit-counter.wasm")
-	first := string(browser.ServeLocalPageWithCaller(pages, "/page/hit-counter.wasm", loopbackHash(), nil))
-	if first != ">Hit Counter\nVisits: 1\n----\n" {
-		t.Fatalf("first render = %q, want one visit", first)
+	visit := func(page string) string {
+		var requestData map[string]string
+		if page != "" {
+			requestData = map[string]string{"var_page": page}
+		}
+		return string(browser.ServeLocalPageWithCaller(pages, "/page/hit-counter.wasm", loopbackHash(), requestData))
 	}
-	second := string(browser.ServeLocalPageWithCaller(pages, "/page/hit-counter.wasm", loopbackHash(), nil))
-	if second != ">Hit Counter\nVisits: 2\n----\n" {
-		t.Errorf("second render = %q, want two visits", second)
+
+	for _, tc := range []struct {
+		page string
+		want uint32
+	}{
+		{page: "index.mu", want: 1},
+		{page: "index.mu", want: 2},
+		{page: "about.mu", want: 1},
+		{page: "index.mu", want: 3},
+		{page: "", want: 1},
+	} {
+		want := fmt.Sprintf("You are visitor %v to this site.\n", tc.want)
+		if tc.page != "" {
+			want = fmt.Sprintf("You are visitor %v to this page.\n", tc.want)
+		}
+		if got := visit(tc.page); got != want {
+			t.Errorf("visit to page %q = %q, want %q", tc.page, got, want)
+		}
+	}
+}
+
+// TestBrowserIndexInlineCounterPartial pins the inline counter end to end,
+// exactly as a browsing client experiences it: an index page declares a
+// one-shot partial that names the page being counted, the browser extracts the
+// directive and fetches it (from the local pages directory, since the partial
+// belongs to this node), and the rendered count is substituted into the page at
+// the directive's position. Two loads of the same page report two visits.
+func TestBrowserIndexInlineCounterPartial(t *testing.T) {
+	t.Parallel()
+
+	pages := demoPagesDir(t, "hit-counter.wasm")
+	markup := ">Index\n\nThis page has been viewed:\n\n`{:/page/hit-counter.wasm`0`page=index.mu}\n\nThanks for stopping by.\n"
+
+	partials := browser.ExtractPartials(markup)
+	if len(partials) != 1 {
+		t.Fatalf("ExtractPartials = %v partials, want 1", len(partials))
+	}
+	localHash := loopbackHash()
+
+	// load serves the index page and resolves its partial the way the browser
+	// does. A nil transport is passed so the test proves the partial came from
+	// the local node rather than a link.
+	load := func(want uint32) string {
+		t.Helper()
+		rendered, err := browser.FetchPartial(context.Background(), nil, partials[0], browser.PartialFetch{
+			CurrentDest:  localHash,
+			LoopbackDest: localHash,
+			PagesPath:    pages,
+		})
+		if err != nil {
+			t.Fatalf("FetchPartial: %v", err)
+		}
+		return strings.Replace(markup, partials[0].Raw, strings.TrimRight(string(rendered), "\n"), 1)
+	}
+
+	for _, want := range []uint32{1, 2, 3} {
+		page := load(want)
+		line := fmt.Sprintf("You are visitor %v to this page.", want)
+		if !strings.Contains(page, line) {
+			t.Fatalf("render %v = %q, want it to contain %q", want, page, line)
+		}
+		// The counter replaces the directive in place, so the surrounding page
+		// text still frames it.
+		if strings.Contains(page, partials[0].Raw) {
+			t.Errorf("render %v still carries the raw directive: %q", want, page)
+		}
+		if !strings.Contains(page, "Thanks for stopping by.") {
+			t.Errorf("render %v lost the page text after the counter: %q", want, page)
+		}
 	}
 }
 
@@ -104,8 +179,8 @@ func TestBrowserShippedGuestbookFormRoundTrip(t *testing.T) {
 
 	_, bd := newFieldTestBrowser(t, rendered)
 	for _, tc := range []struct{ label, value string }{
-		{label: "Your name", value: "Glenn"},
-		{label: "Your message", value: "signed from the loopback browser"},
+		{label: "Name:", value: "Glenn"},
+		{label: "Message:", value: "signed from the loopback browser"},
 	} {
 		line := findLine(bd, tc.label)
 		if line < 0 {
@@ -126,11 +201,42 @@ func TestBrowserShippedGuestbookFormRoundTrip(t *testing.T) {
 	}
 
 	signed := string(browser.ServeLocalPageWithCaller(pages, path, loopbackHash(), merged))
-	want := ">Guestbook\n\nGlenn: signed from the loopback browser\n"
-	if !strings.HasPrefix(signed, want) {
-		t.Errorf("signed render =\n%q\nwant the new entry first:\n%q", signed, want)
+	if !strings.HasPrefix(signed, ">Guestbook\n\nName: ") {
+		t.Errorf("signed render =\n%q\nwant the form first, then the new entry", signed)
 	}
 	if strings.Contains(signed, "No entries yet.") {
 		t.Errorf("signed render = %q, want the entry instead of the empty notice", signed)
+	}
+
+	// The entry is stamped with the request's unix seconds, written as the
+	// timestamp construct so that the client rendering the page can show each
+	// reader the instant in that reader's own timezone.
+	entryLine := regexp.MustCompile("`T([0-9]+)`T Glenn: signed from the loopback browser\n")
+	match := entryLine.FindStringSubmatch(signed)
+	if match == nil {
+		t.Fatalf("signed render =\n%q\nwant a timestamped entry line", signed)
+	}
+	secs, err := strconv.ParseInt(match[1], 10, 64)
+	if err != nil {
+		t.Fatalf("ParseInt(%q): %v", match[1], err)
+	}
+
+	// Parsing the served markup is what a browser does with it: the construct is
+	// gone and the reader's own localized timestamp stands in its place.
+	var text []string
+	for _, n := range micron.Parse(signed) {
+		if n.Type == micron.NodeText {
+			text = append(text, n.Text)
+		}
+	}
+	renderedPage := strings.Join(text, "")
+	if strings.Contains(renderedPage, "`T") {
+		t.Errorf("rendered page still carries the construct: %q", renderedPage)
+	}
+	if want := micron.FormatUnix(secs, "", time.Local); !strings.Contains(renderedPage, want) {
+		t.Errorf("rendered page =\n%q\nwant the entry timestamped %q", renderedPage, want)
+	}
+	if !strings.Contains(renderedPage, "Glenn: signed from the loopback browser") {
+		t.Errorf("rendered page = %q, want the stored entry", renderedPage)
 	}
 }

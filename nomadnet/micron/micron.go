@@ -603,6 +603,14 @@ func parseFormatting(line string, start int) ([]*Node, int) {
 		if name != "" {
 			return []*Node{{Type: NodeAnchor, AnchorName: name}}, nameEnd - start
 		}
+	case 'T': // timestamp: `T<seconds>|<format>`T, rendered in the viewer's zone
+		if ts, tc := parseTimestamp(line, start); ts != nil {
+			return []*Node{ts}, tc
+		}
+		// A recognized marker whose payload is unusable consumes the marker
+		// and leaves the rest as text, so a malformed construct is visible
+		// rather than silently swallowed.
+		return nil, 2
 	case '<': // input field: `<...`...>
 		field, fc := parseField(line, start+1)
 		if field != nil {

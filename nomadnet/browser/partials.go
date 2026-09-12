@@ -16,9 +16,11 @@
 package browser
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"strings"
 	"time"
 
@@ -115,42 +117,76 @@ func PartialRequestData(fields []string) (requestData map[string]string, linkFie
 	return requestData, linkFields
 }
 
-// FetchPartial fetches a single partial's Micron markup over RNS, mirroring
-// Python Browser.__load_partial (Browser.py:707-761). It resolves the partial's
-// URL (relative ":<path>" URLs resolve against currentDest, the page's
-// destination hash), builds the request data via PartialRequestData, and reuses
-// the shared fetchBytes link-establish + request core. The returned bytes are
-// the partial's raw Micron markup (Python partial_received stores
-// request_receipt.response.decode("utf-8").rstrip()).
+// PartialFetch carries the context of one partial fetch: which page is being
+// viewed (for relative URLs), whether the partial belongs to this node, and how
+// the remote path should behave.
+type PartialFetch struct {
+	// CurrentDest is the viewed page's destination hash. A relative ":<path>"
+	// partial URL resolves against it (Python parse_url with the current
+	// page's destination).
+	CurrentDest []byte
+	// LoopbackDest is this node's own destination hash, or nil when the caller
+	// has no local node. A partial resolving to it is served from PagesPath
+	// instead of over a link — RNS has no self-loopback, so a node's own
+	// browser could otherwise never render a partial of its own page.
+	LoopbackDest []byte
+	// PagesPath is the local pages directory used for the loopback case.
+	PagesPath string
+	// IdentityHash is the browsing user's identity hash, passed to a loopback
+	// executable page as its remote_identity so the page can tell who is
+	// asking (ServeLocalPageWithCaller).
+	IdentityHash []byte
+	// Timeout bounds a remote fetch; DefaultTimeout applies when <= 0.
+	Timeout time.Duration
+	// OnProgress, when non-nil, reports remote transfer progress.
+	OnProgress func(float64)
+	// OnLinkEstablished, when non-nil, lets the caller identify to the remote
+	// node when the directory requests it (see fetchBytes).
+	OnLinkEstablished func(*rns.Link)
+}
+
+// FetchPartial fetches a single partial's Micron markup, mirroring Python
+// Browser.__load_partial (Browser.py:707-761). It resolves the partial's URL
+// (relative ":<path>" URLs resolve against opts.CurrentDest, the page's
+// destination hash), builds the request data via PartialRequestData, and either
+// serves the partial from the local pages directory when it belongs to this
+// node or fetches it over RNS by reusing the shared link-establish + request
+// core. The returned bytes are the partial's raw Micron markup (Python
+// partial_received stores request_receipt.response.decode("utf-8").rstrip()).
+//
+// The loopback branch mirrors the one Python Browser.load_page applies to pages
+// (Browser.py:1300-1320) and is what lets a node's own browser display the
+// partials on its own pages: establishing an RNS link to ourselves cannot work,
+// so the partial is rendered from PagesPath with the same request data a remote
+// link would carry. A partial that resolves to this node but is absent (or
+// whose executable page fails) yields an error, so the browser renders
+// "Could not load partial <url>" rather than the not-found body as markup.
 //
 // The form-widget field_* collection (linkFields → live form values) is TUI
 // glue and is NOT applied here — only the var_* entries from PartialRequestData
 // are sent. For static node pages (which ignore request_data) this is a no-op
 // difference; for dynamic pages it matches Python's var_* behavior.
-//
-// onProgress (may be nil) reports transfer progress; timeout bounds the fetch
-// (DefaultTimeout when <= 0). onLinkEstablished (may be nil) lets the caller
-// identify to the remote node when the directory requests it (see fetchBytes).
-// The link is torn down after the fetch (one-shot).
-func FetchPartial(ctx context.Context, ts *rns.TransportSystem, partial Partial, currentDest []byte, timeout time.Duration, onProgress func(float64), onLinkEstablished func(*rns.Link)) ([]byte, error) {
+func FetchPartial(ctx context.Context, ts *rns.TransportSystem, partial Partial, opts PartialFetch) ([]byte, error) {
 	rd, _ := PartialRequestData(partial.Fields)
 	// PartialRequestData always returns a non-nil map (matching Python, which
-	// sets request_data = {} whenever fields is non-None). go-reticulum's
-	// server-side handleRequest decodes the request-data element as []byte only,
-	// so a non-nil map — even an empty {} — is dropped and the request yields no
-	// response (see memory: go-reticulum-transport-encrypted-wire-gap /
-	// browser-fetch-backend). An empty map carries no data, so pass nil for it
-	// (works against Go and Python static pages, which ignore request_data). A
-	// populated map is sent verbatim (correct wire parity with Python); the
-	// receiving node's handling of map data is go-reticulum's concern.
+	// sets request_data = {} whenever fields is non-None). An empty map carries
+	// no data, so pass nil for it: the wire payload then stays minimal, and a
+	// static node page (which ignores request_data) answers either way.
 	if len(rd) == 0 {
 		rd = nil
 	}
-	dest, path, _, err := ParseURL(partial.URL, currentDest, rd)
+	dest, path, _, err := ParseURL(partial.URL, opts.CurrentDest, rd)
 	if err != nil {
 		return nil, err
 	}
-	data, link, err := fetchBytes(ctx, ts, dest, path, rd, timeout, onProgress, onLinkEstablished, nil)
+	if len(opts.LoopbackDest) > 0 && bytes.Equal(dest, opts.LoopbackDest) {
+		data := ServeLocalPageWithCaller(opts.PagesPath, path, opts.IdentityHash, rd)
+		if bytes.Equal(data, LocalPageNotFound) {
+			return nil, fmt.Errorf("local page %v does not exist in the file system", path)
+		}
+		return data, nil
+	}
+	data, link, err := fetchBytes(ctx, ts, dest, path, rd, opts.Timeout, opts.OnProgress, opts.OnLinkEstablished, nil)
 	if err != nil {
 		return nil, err
 	}

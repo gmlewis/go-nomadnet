@@ -58,6 +58,13 @@ type App struct {
 	// recovery in MainDisplay.handleInput, which needs to check root.HasFocus().
 	root tview.Primitive
 
+	// fieldEditor is the ReadlineEdit currently in edit mode whose owner is
+	// fieldOwner, for the fields that are drawn off the primitive tree (the
+	// browser's form-field overlay). In-tree fields are reached through tview's
+	// own focus and need no registration.
+	fieldEditor *ReadlineEdit
+	fieldOwner  tview.Primitive
+
 	// updates is a bounded queue of functions to run on the event loop, drained
 	// by a single long-lived goroutine (drainUpdates) that calls tview's
 	// blocking Application.QueueUpdateDraw serially. See QueueUpdateDraw.
@@ -188,6 +195,34 @@ func (a *App) SetRoot() {
 // root.HasFocus().
 func (a *App) GetRoot() tview.Primitive {
 	return a.root
+}
+
+// SetFieldEditor records the ReadlineEdit in edit mode together with the
+// primitive that owns it (the pane whose focus the editor acts for). Pass nil
+// when edit mode ends. Only fields drawn OFF the primitive tree need this: the
+// browser's form-field overlay is drawn by the browser's own Draw rather than
+// being a focused child, so tview's focus cannot find it.
+func (a *App) SetFieldEditor(re *ReadlineEdit, owner tview.Primitive) {
+	a.fieldEditor = re
+	a.fieldOwner = owner
+	if re == nil {
+		a.fieldOwner = nil
+	}
+}
+
+// FieldEditor returns the registered edit-mode field, or nil when none is
+// registered or its owner no longer holds the focus. Requiring the owner to
+// still hold the focus keeps urwid's rule that only the focused widget claims a
+// key: an overlay left mounted after the focus moved to another pane (a mouse
+// click into the node list) must not keep taking keys from the page.
+func (a *App) FieldEditor() *ReadlineEdit {
+	if a.fieldEditor == nil {
+		return nil
+	}
+	if a.fieldOwner == nil || !a.fieldOwner.HasFocus() {
+		return nil
+	}
+	return a.fieldEditor
 }
 
 // Run starts the tview application event loop.

@@ -256,8 +256,8 @@ func (bd *BrowserDisplay) nextSelectableLine(idx int) int {
 }
 
 // linePlainText returns the concatenated visible text of line idx (the span
-// texts), the plain-text component of urwid Text.get_text
-// (MicronParser.py:921-929).
+// texts, with a text field expanded to its full footprint by spanText), the
+// plain-text component of urwid Text.get_text (MicronParser.py:921-929).
 func (bd *BrowserDisplay) linePlainText(idx int) string {
 	if idx < 0 || idx >= len(bd.currentLines) {
 		return ""
@@ -268,11 +268,11 @@ func (bd *BrowserDisplay) linePlainText(idx int) string {
 	}
 	n := 0
 	for _, s := range sl.Spans {
-		n += len(s.Text)
+		n += len(spanText(s))
 	}
 	b := make([]byte, 0, n)
 	for _, s := range sl.Spans {
-		b = append(b, s.Text...)
+		b = append(b, spanText(s)...)
 	}
 	return string(b)
 }

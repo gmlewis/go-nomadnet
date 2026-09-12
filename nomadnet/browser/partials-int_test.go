@@ -103,7 +103,8 @@ func TestIntegrationPartialPipeline(t *testing.T) {
 	}
 
 	// Fetch the partial (relative URL resolved against nodeHash).
-	partialData, err := FetchPartial(context.Background(), tsClient, p, nodeHash, 15*time.Second, nil, nil)
+	partialData, err := FetchPartial(context.Background(), tsClient, p,
+		PartialFetch{CurrentDest: nodeHash, Timeout: 15 * time.Second})
 	if err != nil {
 		t.Fatalf("FetchPartial: %v", err)
 	}

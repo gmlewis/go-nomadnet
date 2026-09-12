@@ -825,6 +825,36 @@ func (md *MainDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 		return nil
 	}
 
+	// urwid delivers a key to the FOCUSED widget first and lets the surrounding
+	// shortcut layers see only what that widget passes on: BrowserFrame.keypress
+	// (Browser.py:21-40) and NetworkLeftPile.keypress (Network.py:1598-1618) are
+	// widget keypress handlers, so a form field — a ReadlineEdit with the
+	// readline editing keys (ReadlineEdit.py:30-70) — receives ctrl u, ctrl k,
+	// ctrl w, ctrl l, ctrl e and ctrl y before any page shortcut runs.
+	//
+	// tview runs every container InputCapture BEFORE the focused widget, so a
+	// page capture that spans more than the widget owning its shortcuts (the
+	// Network page's mainCols covers both columns, network.go:317) steals those
+	// keys from the field the visitor is typing in: ctrl u opened the URL dialog
+	// instead of clearing to the beginning of the line, ctrl e opened Edit Node
+	// instead of jumping to the end of the line, ctrl w disconnected instead of
+	// deleting a word, and ctrl l toggled the list instead of clearing the field
+	// — the live report that a form's text could not be cleared.
+	//
+	// Restore urwid's ordering: the field in focus takes the key here, at the
+	// outermost capture. ReadlineEdit.offerKey makes the field's own, later
+	// offer of the same event a no-op, so it is never dispatched twice. Esc is
+	// never consumed by a field (ReadlineEdit handles no escape), so dialog
+	// dismissal below still works.
+	if fe := md.fieldEditor(); fe != nil {
+		if fe.offerKey(event) == nil {
+			if md.app != nil {
+				md.app.QueueUpdateDraw(func() {})
+			}
+			return nil
+		}
+	}
+
 	// When a modal dialog is open, route Esc straight to DismissTop and pass
 	// every other key through unchanged. The DialogLineBox already dismisses
 	// on Esc (dialog.go), but tview dispatches a key only to the single
@@ -866,6 +896,24 @@ func (md *MainDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 		}
 	}
 	return event
+}
+
+// fieldEditor returns the ReadlineEdit that owns the keyboard, or nil when no
+// field is in edit mode: the field registered by a pane that draws its editor
+// off the primitive tree (the browser's form-field overlay), or the focused
+// primitive itself when that is a ReadlineEdit (an in-tree field such as the
+// announce-stream search box).
+func (md *MainDisplay) fieldEditor() *ReadlineEdit {
+	if md.app == nil {
+		return nil
+	}
+	if fe := md.app.FieldEditor(); fe != nil {
+		return fe
+	}
+	if re, ok := md.app.GetFocus().(*ReadlineEdit); ok {
+		return re
+	}
+	return nil
 }
 
 // bodyListAtTop reports whether the currently-focused primitive is a list

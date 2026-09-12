@@ -2462,9 +2462,30 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 			// the tview event loop, so it must NOT read bd.reqCtx (it would race the
 			// event loop). Pass context.Background(); partials already have their
 			// own partialCancel staleness gate (browser.go fetchAndSubstitute).
-			return browser.FetchPartial(context.Background(), a.Transport, p, bd.CurrentDest(),
-				time.Duration(browser.DefaultTimeout)*time.Second, nil,
-				identifyOnConnect(bd.CurrentDest()))
+			//
+			// A partial may belong to THIS node (the loopback case, e.g. the hit
+			// counter embedded in our own index page): FetchPartial then serves it
+			// from the local pages directory, because an RNS link to ourselves
+			// cannot be established. The caller's identity is passed through so a
+			// loopback executable page sees remote_identity exactly as a remote
+			// visitor's would.
+			var loopbackDest, identityHash []byte
+			if a.Node != nil {
+				if nd := a.Node.Destination(); nd != nil {
+					loopbackDest = nd.Hash
+				}
+			}
+			if a.Identity != nil {
+				identityHash = a.Identity.Hash
+			}
+			return browser.FetchPartial(context.Background(), a.Transport, p, browser.PartialFetch{
+				CurrentDest:       bd.CurrentDest(),
+				LoopbackDest:      loopbackDest,
+				PagesPath:         a.PagesPath,
+				IdentityHash:      identityHash,
+				Timeout:           time.Duration(browser.DefaultTimeout) * time.Second,
+				OnLinkEstablished: identifyOnConnect(bd.CurrentDest()),
+			})
 		}
 		bd.OnRetrieveURL = func(url string, requestData map[string]string) {
 			diagFile("/tmp/fetch-diag.log", fmt.Sprintf("[%s] OnRetrieveURL bd=%p url=%q rdNil=%v", time.Now().Format("15:04:05.000"), bd, url, requestData == nil))

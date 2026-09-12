@@ -23,6 +23,7 @@
 package node
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -54,7 +55,8 @@ func demoPagesDir(t *testing.T, names ...string) string {
 // TestNodeHitCounterPageCountsAcrossRequests pins the shipped hit counter
 // through the node's page handler: each request renders a fresh sandbox
 // instance, and the visit count survives because it lives in the page's
-// on-disk store.
+// on-disk store. A request naming a page (what the index page's embedded
+// partial sends) counts that page separately from an unnamed request.
 func TestNodeHitCounterPageCountsAcrossRequests(t *testing.T) {
 	t.Parallel()
 
@@ -62,15 +64,41 @@ func TestNodeHitCounterPageCountsAcrossRequests(t *testing.T) {
 	n := NewNode("test-node", dir, dir, 10, 10, 10, false)
 	handler := n.makePageHandler(filepath.Join(dir, "hit-counter.wasm"))
 
-	for visit := 1; visit <= 3; visit++ {
-		out := handler("/page/hit-counter.wasm", nil, []byte("req"), []byte("link"), nil, time.Unix(1730000000, 0))
+	// request builds the msgpack request data a Micron partial produces for a
+	// page that names itself: var_page=<page>.
+	request := func(t *testing.T, page string) any {
+		t.Helper()
+		if page == "" {
+			return nil
+		}
+		packed, err := rns.Pack(map[string]any{"var_page": page})
+		mustTestErr(t, err)
+		return packed
+	}
+
+	for _, tc := range []struct {
+		page string
+		want uint32
+	}{
+		{page: "index.mu", want: 1},
+		{page: "index.mu", want: 2},
+		{page: "about.mu", want: 1},
+		{page: "index.mu", want: 3},
+		{page: "", want: 1},
+	} {
+		out := handler("/page/hit-counter.wasm", request(t, tc.page), []byte("req"), []byte("link"), nil, time.Unix(1730000000, 0))
 		markup, ok := out.([]byte)
 		if !ok {
-			t.Fatalf("visit %v: handler returned %T, want []byte", visit, out)
+			t.Fatalf("page %q: handler returned %T, want []byte", tc.page, out)
 		}
-		want := ">Hit Counter\nVisits: " + string(rune('0'+visit)) + "\n----\n"
+		// A request naming no page falls back to the module's default key and
+		// counts the whole site.
+		want := fmt.Sprintf("You are visitor %v to this site.\n", tc.want)
+		if tc.page != "" {
+			want = fmt.Sprintf("You are visitor %v to this page.\n", tc.want)
+		}
 		if string(markup) != want {
-			t.Fatalf("visit %v rendered %q, want %q", visit, markup, want)
+			t.Fatalf("page %q rendered %q, want %q", tc.page, markup, want)
 		}
 	}
 }

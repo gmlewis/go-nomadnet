@@ -40,7 +40,7 @@ If you already have [Go](https://go.dev/) installed, you can
 install `gonomadnet` directly from GitHub without cloning the repo:
 
 ```bash
-go install github.com/gmlewis/go-nomadnet/cmd/gonomadnet@v0.123.0
+go install github.com/gmlewis/go-nomadnet/cmd/gonomadnet@v0.124.0
 ```
 
 This puts the `gonomadnet` binary in your `$GOPATH/bin` (or `$GOBIN`)
@@ -186,8 +186,8 @@ environment map. A page can therefore declare a Micron form and read what the
 visitor submitted:
 
 ```
-`<name`Your name>
-`<message`Your message>
+Name: `B444`<name`>`b
+Message: `B444`<32|message`>`b
 `[Sign the guestbook`:/page/guestbook.wasm`name|message]
 ```
 
@@ -197,11 +197,85 @@ request payload as `field_name` and `field_message`, so a page scans its
 request JSON for those keys. (The leading-colon URL above is relative to the
 node being browsed, so the page works on any node that serves it.)
 
+**`VALUE` is the field's pre-defined content, not a hint or a label.** Typing
+appends to it, so a field written `` `<name`Your name> `` shows
+`Your nameGlenn` once a visitor types their name — in Python NomadNet and
+gonomadnet alike. The markup guide calls it "Pre-defined data", and a
+pre-filled field is how a page offers a default value to keep or edit. Put
+labels in the surrounding text and leave the field empty, as the example above
+does.
+
+An empty field is still **visible** because a text field occupies its whole
+declared width (24 columns by default, or the number in the flags slot) and
+paints its background across it — which is what the `B444` tag in the example
+is for. The same rule means text following a field on the same line starts
+past the field's width, exactly as Python's `urwid.Columns` lays it out.
+
+**Editing a field.** A field is a readline-style editor, so the familiar keys
+work while it is selected: `Ctrl-A` / `Ctrl-E` go to the start / end of the
+line, `Ctrl-U` clears from the cursor back to the start, `Ctrl-K` clears from
+the cursor to the end, `Ctrl-W` deletes the previous word, `Ctrl-L` clears the
+whole field, and `Ctrl-Y` pastes back what you last cleared. `Down` / `Up`
+(and `Tab`) move between fields, and `Enter` on the submit link posts them.
+These keys reach the field because a field in edit mode is offered each key
+before any page shortcut is — the priority Python's urwid gives the focused
+widget. The shipped guestbook demo (`assets/wasm-pages/guestbook.wat`) opens
+the page with its form, so a visitor never has to scroll past the whole history
+to sign it, prints these keys as a tip under the fields, and puts the entries
+below a divider, newest first.
+
 **`request_data` is attacker-controlled and the node does not sanitize it.**
 A page that re-emits it can inject Micron markup — links, formatting modes,
 headings — into another visitor's view. Validate it in the page before
 storing or rendering it, and treat every page's output as untrusted markup
 when reviewing third-party pages.
+
+### Inline hit counters with partials
+
+A page can also render a `.wasm` module *inside itself* rather than linking to
+it, by declaring a Micron **partial**:
+
+```
+`{<node-hash>:/page/hit-counter.wasm`0`page=index.mu}
+```
+
+A partial is `` `{URL`REFRESH`FIELDS} ``. It is fetched when the page loads and
+its reply is spliced in where the directive sits, so the counter above appears
+in the middle of the page it belongs to. Two details make it a per-page
+counter rather than one global number:
+
+- **`FIELDS` may carry literal values.** A `k=v` entry is sent as
+  `request_data`'s `var_k=v`, so `` `page=index.mu `` tells the module which
+  page is counting itself. (An entry without `=` names a form field to collect
+  instead, which is how a partial can re-submit a page's inputs.)
+- **`REFRESH` below one second means "load once".** The count then advances
+  when a visitor arrives, not on a timer. One second or more re-fetches on that
+  interval; `p:<id>` links in the page force a refresh on demand, matching
+  Python NomadNet's partials.
+
+Any page that embeds the partial under its own name gets its own independent
+count, so copying the section into another page never disturbs the first. Drop
+the `page=` field entirely and the module falls back to its own default `hits`
+key, which counts every visit to the node instead — one number for the whole
+site, the same value you get by opening the module directly.
+
+The default index page ships both, so a node's home page shows its own count and
+the site total side by side — see `nomadnet/app/default-index.mu`.
+
+A partial is fetched over a normal Reticulum link, so a node that copies the
+section needs no `.wasm` support of its own: the count is computed wherever the
+partial's URL points. That cuts both ways — the default index page addresses the
+hub by its absolute URL, so a node that copies that section shares the hub's
+count. To keep a counter that is yours alone, point the partial at your own
+node's hash and install `hit-counter.wasm` there:
+
+```
+`{<your-node-hash>:/page/hit-counter.wasm`0`page=index.mu}
+```
+
+When the URL points back at the node doing the browsing, the partial is served
+straight from that node's pages directory, because a node cannot open an RNS
+link to itself.
 
 Ready-to-run examples with install instructions ship in
 [`assets/wasm-pages/`](assets/wasm-pages/). Each is a `.wat` (WebAssembly text
@@ -210,7 +284,7 @@ source) with its assembled `.wasm` beside it:
 | Page | What it demonstrates |
 |------|----------------------|
 | `dynamic-page.wat` | Echoes the request payload — proves pages are dynamic |
-| `hit-counter.wat` | Reads, increments, and stores a visit counter (`rns.kv_*`) |
+| `hit-counter.wat` | Reads, increments, and stores a per-page visit counter (`rns.kv_*`) |
 | `guestbook.wat` | Reads a submitted Micron form, stores entries, lists them newest-first |
 
 Build and install one with:
@@ -221,14 +295,23 @@ cp guestbook.wasm ~/.nomadnetwork/storage/pages/
 ```
 
 Then browse the node (loopback or remote) and request
-`/page/guestbook.wasm`. Validate and inspect plugins with the `wago` CLI
-(`wago validate`, `wago module imports`).
+`/page/guestbook.wasm`. To put a counter on a page of your own, install
+`hit-counter.wasm` and add one line to that page's markup:
+
+```
+This page has been viewed:
+
+`{<your-node-hash>:/page/hit-counter.wasm`0`page=<that-page-name>}
+```
+
+Validate and inspect plugins with the `wago` CLI (`wago validate`,
+`wago module imports`).
 
 ### Page plugin ideas
 
 Some things executable pages are designed to make safe and easy:
 
-- Hit counters and "last browsed" markers (using the node's own storage)
+- Hit counters and "last browsed" markers, inline in the page via a partial
 - Guestbooks and form processors that append submissions to local files
 - Live status dashboards rendering Micron tables from local state
 - Random-tip or quote-of-the-day generators
@@ -268,6 +351,38 @@ example a public TCP server):
   user's view. Escape or strip user-controlled data before returning it, and
   treat every page's output as untrusted markup when reviewing third-party
   pages.
+
+### Timestamps in pages
+
+A page that shows a clock time should store the instant, not the spelling.
+Unix seconds carry no timezone, and only the client that parses the page knows
+which timezone the person reading it is in — and pages *are* parsed by the
+client. So a `.wasm` page emits
+
+```
+`T1789178907|%a %b %d, %Y %-I:%M:%S%p %Z`T
+```
+
+and each reader's own client renders those seconds in that reader's own
+timezone. The format language is
+[strftime](https://docs.python.org/3/library/time.html#time.strftime), the
+POSIX/C spelling shared by Python's `time.strftime`, the shell's `date` and
+most other tooling, so `%Y-%m-%d %H:%M` needs no lookup. Leaving the format out
+uses the default `%a %b %d, %Y %-I:%M:%S%p %Z` — `Fri Sep 11, 2026 9:08:27PM
+EST` — and `%-` drops the padding of a numeric conversion. The `%q`-style
+escape hatch is deliberate: an unsupported conversion passes through with its
+`%`, so a typo in a page's format stays visible instead of vanishing.
+
+This is a gonomadnet extension. Python's NomadNet has no timestamp construct:
+its parser consumes the marker character and renders the payload as plain text,
+so a reader on the original client sees the raw seconds where gonomadnet shows
+a local time. Because pages are parsed client-side, a page cannot localize a
+time for its reader by any other means; a page that must show every client the
+same readable stamp should render that stamp itself.
+
+The shipped guestbook (`assets/wasm-pages/guestbook.wat`) stamps each entry
+with the request's own `requested_at` seconds, stores them alongside the
+entry, and renders the construct — see that file's `TIMESTAMPS` section.
 
 ## Package Overview
 

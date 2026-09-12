@@ -147,16 +147,21 @@ func (bd *BrowserDisplay) buildLineFields(lines []*micron.StyledLine) {
 		}
 		runeOff := 0
 		for _, span := range line.Spans {
-			rlen := utf8.RuneCountInString(span.Text)
+			// A text field contributes its whole footprint (spanText), so the
+			// column and rune offsets of everything after it match the rendered
+			// line: the editor overlay covers exactly the field's box, and text
+			// following the field starts past it.
+			text := spanText(span)
+			rlen := utf8.RuneCountInString(text)
 			if span.Field != nil {
-				rf := bd.newRenderedField(span.Field, col)
+				rf := bd.newRenderedField(span, col)
 				rf.runeStart = runeOff
 				rf.runeEnd = runeOff + rlen
 				bd.lineFields[i] = append(bd.lineFields[i], rf)
 				totalFields++
 				fieldSpecs = append(fieldSpecs, fmt.Sprintf("L%d:%s/%q/%q", i, span.Field.Type, span.Field.Name, span.Field.Data))
 			}
-			col += runewidth.StringWidth(span.Text)
+			col += runewidth.StringWidth(text)
 			runeOff += rlen
 		}
 	}
@@ -169,11 +174,19 @@ func (bd *BrowserDisplay) buildLineFields(lines []*micron.StyledLine) {
 	}
 }
 
-// newRenderedField builds the interactive widget for one field spec. Text
+// newRenderedField builds the interactive widget for one field span. Text
 // fields use a ReadlineEdit (emacs keys + hardware caret, shared kill ring) so
 // the overlay behaves like Python's ReadlineEdit; checkbox/radio fields reuse
 // NewFieldWidget's *tview.Checkbox (with RadioGroup mutual-exclusion wiring).
-func (bd *BrowserDisplay) newRenderedField(spec *micron.FieldSpec, startCol int) *renderedField {
+//
+// The span's Micron colors are applied to the text field's editor: Python wraps
+// every field in `urwid.AttrMap(f, make_style(state))`, so a field inherits the
+// formatting state at its position — the page foreground on the terminal
+// background unless an inline color run covers it (MicronParser.py:363, 371).
+// Without this the editor would keep tview.NewInputField's hardcoded
+// white-on-blue ContrastBackgroundColor style, the only garish field in the UI.
+func (bd *BrowserDisplay) newRenderedField(span micron.StyledSpan, startCol int) *renderedField {
+	spec := span.Field
 	width := spec.Width
 	if width == 0 {
 		width = defaultFieldWidth
@@ -189,6 +202,8 @@ func (bd *BrowserDisplay) newRenderedField(spec *micron.FieldSpec, startCol int)
 		re := NewReadlineEdit(bd.app.killRing, "", "")
 		re.SetText(spec.Data)
 		re.SetFieldWidth(width)
+		re.SetFieldTextColor(parseColor(span.FG))
+		re.SetFieldBackgroundColor(parseColor(span.BG))
 		if spec.Masked {
 			re.SetMaskCharacter(maskCharacter)
 		}
@@ -329,6 +344,11 @@ func (bd *BrowserDisplay) syncFieldFocus() {
 	}
 	bd.fieldOverlay = tf.editor
 	bd.fieldOverlayLine = bd.focusLine
+	// The editor is off-tree and never the tview-focused primitive, so it must
+	// be told to show its own hardware caret; otherwise the caret would be left
+	// wherever the page body drew it — at the field's first column, frozen
+	// there while typing (urwid moves the terminal cursor with edit_pos).
+	tf.editor.SetCaretShown(true)
 	// NOTE: focus is intentionally LEFT on bd.content (not moved to the editor).
 	// The ReadlineEdit overlay is drawn off the primitive tree by drawFieldOverlay,
 	// so tview's input cascade (root → ... → bd.layout) can never reach an
@@ -338,11 +358,29 @@ func (bd *BrowserDisplay) syncFieldFocus() {
 	// in-tree cascade always reaches while bd.content has focus) forwards keys
 	// to the overlay's handleKey. The overlay is "logically" focused
 	// (bd.fieldOverlay != nil); tview focus stays on bd.content.
+	//
+	// Registering the overlay with the App lets the app-level dispatch
+	// (MainDisplay.handleInput) offer it the key before any page shortcut
+	// capture does, which is the ordering urwid gives the focused widget. The
+	// registered owner is bd.content, so the registration lapses if the focus
+	// leaves this pane.
+	if bd.app != nil {
+		bd.app.SetFieldEditor(tf.editor, bd.content)
+	}
 }
 
 // unmountFieldOverlay clears the mounted text-field overlay without moving
 // focus (focus restoration is the caller's job).
 func (bd *BrowserDisplay) unmountFieldOverlay() {
+	if bd.fieldOverlay != nil {
+		bd.fieldOverlay.SetCaretShown(false)
+		// Edit mode ends: stop claiming the editing keys, but only if this
+		// overlay is still the registered one (another pane may have mounted
+		// its own field in the meantime).
+		if bd.app != nil && bd.app.FieldEditor() == bd.fieldOverlay {
+			bd.app.SetFieldEditor(nil, nil)
+		}
+	}
 	bd.fieldOverlay = nil
 	bd.fieldOverlayLine = -1
 }

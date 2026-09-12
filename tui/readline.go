@@ -110,6 +110,20 @@ type ReadlineEdit struct {
 	// Python's Edit not submitting from a field row. nil for standalone editors
 	// (compose, dialogs, conversations) preserves the existing behavior.
 	onExit func(key tcell.Key)
+	// caretShown marks the editor as logically focused when it is not the
+	// tview-focused primitive. The browser's in-place field overlay is drawn
+	// off the primitive tree while tview focus deliberately stays on the page
+	// body (bd.handleInput forwards keys to it), so InputField.HasFocus() is
+	// false there and the hardware caret would never be shown. Set by the
+	// browser while the overlay is mounted; false for in-tree editors, which
+	// rely on HasFocus().
+	caretShown bool
+
+	// offeredKey is the last event offered to offerKey and offeredResult the
+	// answer it gave, so a second offer of the same event (the app-level
+	// dispatch, then this widget's own InputCapture) is not dispatched twice.
+	offeredKey    *tcell.EventKey
+	offeredResult *tcell.EventKey
 }
 
 // NewReadLineEdit creates a new ReadlineEdit with the given shared kill ring,
@@ -124,8 +138,29 @@ func NewReadlineEdit(kr *killRing, label, placeholder string) *ReadlineEdit {
 	}
 	re.SetLabel(label)
 	re.SetPlaceholder(placeholder)
-	re.SetInputCapture(re.handleKey)
+	re.SetInputCapture(re.offerKey)
 	return re
+}
+
+// offerKey gives this field first refusal of one key event and returns nil when
+// the field consumed it, or the event to let tview continue.
+//
+// It exists because a ReadlineEdit is offered the same event twice: once from
+// the app-level dispatch in MainDisplay.handleInput, which restores urwid's
+// "the focused widget sees the key first" ordering against the page and menu
+// shortcut captures, and again from this widget's own InputCapture when the
+// event reaches it. ReadlineEdit.handleKey is idempotent for the keys it
+// consumes but deliberately re-syncs its model cursor for a plain Left/Right it
+// passes on (handleKey's unconsumed tail), so dispatching the same event twice
+// would move the cursor two columns. The remembered event pointer makes the
+// second offer a no-op that repeats the first answer.
+func (re *ReadlineEdit) offerKey(event *tcell.EventKey) *tcell.EventKey {
+	if re.offeredKey == event {
+		return re.offeredResult
+	}
+	re.offeredKey = event
+	re.offeredResult = re.handleKey(event)
+	return re.offeredResult
 }
 
 // SetText sets the edit buffer and positions the model cursor at the end,
@@ -149,6 +184,13 @@ func (re *ReadlineEdit) SetCursorPos(pos int) {
 		pos = n
 	}
 	re.cursorPos = pos
+}
+
+// SetCaretShown marks the editor as logically focused, so Draw positions the
+// hardware cursor at the model cursor even when the editor is not the
+// tview-focused primitive. Used by the browser for its off-tree field overlay.
+func (re *ReadlineEdit) SetCaretShown(shown bool) {
+	re.caretShown = shown
 }
 
 // Draw overrides tview.InputField.Draw to reposition the terminal hardware
@@ -175,7 +217,7 @@ func (re *ReadlineEdit) Draw(screen tcell.Screen) {
 		return
 	}
 	re.InputField.Draw(screen)
-	if !re.InputField.HasFocus() {
+	if !re.InputField.HasFocus() && !re.caretShown {
 		return
 	}
 	x, y, w, _ := re.GetInnerRect()

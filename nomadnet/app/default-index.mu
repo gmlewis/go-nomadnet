@@ -126,11 +126,40 @@ The page source lives in the repo: `*assets/wasm-pages/guestbook.wat`*.
 
 >> Count Your Visit
 
-A minimal stateful page: every render increments a counter that survives the
-request, because the module keeps it in its own key/value store rather than in
-memory. Reload it a few times and watch the number climb.
+This page keeps hit counters the way 1990s web pages did, and there is no
+separate counter page to visit: both numbers below are rendered inside this page
+by a `.wasm` module the hub runs on every load, and they live in that module's
+own key/value store so they survive between visits. Reload this page and watch
+them climb.
 
-  `F79d`_`[View the hit counter`c7d0e7bbd883e595f53e14fa6986188c:/page/hit-counter.wasm]`_`f
+`_`*This page's own counter:`*`_
+
+`{c7d0e7bbd883e595f53e14fa6986188c:/page/hit-counter.wasm`0`page=index.mu}
+
+`_`*Every visit to this node, counted under the module's default key:`*`_
+
+`{c7d0e7bbd883e595f53e14fa6986188c:/page/hit-counter.wasm`0}
+
+Each line is a Micron partial: your browser asks the hub for the module's markup
+and splices the reply in where the directive sits. The two directives differ by
+one field, and that is the whole difference between a per-page counter and a
+site-wide one.
+
+`` `page=index.mu `` names the page being counted, so the module keeps this
+count under that key. A page that embeds the same partial under its own name
+gets its own independent count, so copying this section into another page never
+disturbs this one.
+
+The second partial names no page at all. The module then falls back to its own
+default key, `*hits`*, and counts every visit to the node — the same keyless
+mode you get by opening `/page/hit-counter.wasm` directly. Use that form when
+you want one number for the whole site instead of one per page.
+
+The `*0`* in each directive is the refresh interval, and "less than one second"
+means "load once", so the numbers climb when a visitor arrives, not on a timer.
+A partial is fetched over the same Reticulum links as any other page, so it
+works on any node that copies this section, whether or not that node can run
+`.wasm` itself.
 
 The page source lives in the repo: `*assets/wasm-pages/hit-counter.wat`*.
 

@@ -21,6 +21,7 @@ import (
 	"strings"
 
 	"github.com/gmlewis/go-nomadnet/nomadnet/micron"
+	"github.com/mattn/go-runewidth"
 	"github.com/rivo/tview"
 )
 
@@ -279,6 +280,40 @@ func clearUnderline(b *strings.Builder, underlineOn bool) bool {
 	return underlineOn
 }
 
+// spanText returns the characters a span contributes to its rendered line, which
+// is also the text the page's cursor model walks. For a Micron text field that is
+// the field's whole footprint: Python builds every field as an urwid.Columns
+// child of `field_width` cells (MicronParser.py:358-376), so the Edit's AttrMap
+// background paints the entire box and anything following the field on the same
+// line starts past it. A field holding no pre-defined text still occupies its
+// width — without the padding an empty field renders as nothing at all, and the
+// browser's editor overlay (field_width cells wide) paints over whatever follows
+// it. Python pads the box with blanks; checkboxes and radios are PACK children
+// with no declared width, so they contribute only their label.
+func spanText(span micron.StyledSpan) string {
+	if span.Field == nil {
+		return span.Text
+	}
+	switch span.Field.Type {
+	case "checkbox", "radio":
+		return span.Text
+	}
+	if pad := fieldFootprint(span.Field) - runewidth.StringWidth(span.Text); pad > 0 {
+		return span.Text + strings.Repeat(" ", pad)
+	}
+	return span.Text
+}
+
+// fieldFootprint is the number of display columns a Micron text field occupies,
+// applying the same default as the editor widget for a field that declares no
+// width.
+func fieldFootprint(spec *micron.FieldSpec) int {
+	if spec.Width > 0 {
+		return spec.Width
+	}
+	return defaultFieldWidth
+}
+
 // writeSpanTag emits one styled run: a color tag, the (tag-escaped) text, and
 // a full reset. Fully-default spans (no fg/bg/flags and no link) are emitted
 // as plain escaped text with no tag. It returns the updated latched-underline
@@ -288,14 +323,15 @@ func writeSpanTag(b *strings.Builder, span micron.StyledSpan, underlineOn bool) 
 	fg := tviewColor(span.FG)
 	bg := tviewColor(span.BG)
 	flags := tviewFlags(span.Bold, span.Underline, span.Italic, underlineOn)
+	text := tview.Escape(spanText(span))
 	if fg == "-" && bg == "-" && flags == "" {
-		b.WriteString(tview.Escape(span.Text))
+		b.WriteString(text)
 		return underlineOn
 	}
 	if flags == "" {
-		fmt.Fprintf(b, "[%v:%v]%v[-:-:-]", fg, bg, tview.Escape(span.Text))
+		fmt.Fprintf(b, "[%v:%v]%v[-:-:-]", fg, bg, text)
 	} else {
-		fmt.Fprintf(b, "[%v:%v:%v]%v[-:-:-]", fg, bg, flags, tview.Escape(span.Text))
+		fmt.Fprintf(b, "[%v:%v:%v]%v[-:-:-]", fg, bg, flags, text)
 	}
 	return span.Underline
 }
