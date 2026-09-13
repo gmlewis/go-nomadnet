@@ -96,6 +96,14 @@ Example:
 
   `*git clone rns://58a0406047ec2e7ce23e9e9a83b744df/public/go-nomadnet.git`*
 
+To browse those repositories as pages instead of cloning them, open the
+`!rngit`! page node the `!gonomadnet Public Hub`! serves. It renders the same
+mirrors as Micron pages, so there is nothing to install:
+
+  `F79d`_`[Browse the rngit repositories`cb3677a1bb8e37f334096566ed8ff895:/page/index.mu]`_`f
+
+rngit page node destination (for manual add in Browser): `!cb3677a1bb8e37f334096566ed8ff895`!
+
 `!All issue tracking is on GitHub`! only (the three repos above) — not on RNS
 mirrors. Bug reports with reproduction steps are especially welcome.
 
