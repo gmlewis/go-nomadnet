@@ -26,6 +26,7 @@ import (
 	"github.com/gmlewis/go-nomadnet/nomadnet/conversation"
 	"github.com/gmlewis/go-reticulum/lxmf"
 	"github.com/gmlewis/go-reticulum/rns"
+	"github.com/gmlewis/go-reticulum/testutils"
 )
 
 // This file pins the sent/received header classification end to end,
@@ -331,12 +332,7 @@ func TestSentMessageDeliveredIndexRestoreParity(t *testing.T) {
 // Unix domain sockets working on macOS in tests (see AGENTS.md).
 func sentParityTempDir(t *testing.T) string {
 	t.Helper()
-	dir, err := os.MkdirTemp("/tmp", "nomadnet-sent-test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.RemoveAll(dir) })
-	return dir
+	return testutils.TempDir(t, "nomadnet-sent-test")
 }
 
 // unixSecondsToTime converts a Unix-seconds float message timestamp into a

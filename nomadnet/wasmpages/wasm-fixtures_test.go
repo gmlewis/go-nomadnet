@@ -23,8 +23,9 @@ package wasmpages
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
+
+	"github.com/gmlewis/go-reticulum/testutils"
 )
 
 // tempDir returns a fresh temp directory cleaned up at test end. On macOS
@@ -32,16 +33,7 @@ import (
 // long for Unix domain sockets.
 func tempDir(t *testing.T) string {
 	t.Helper()
-	base := ""
-	if runtime.GOOS == "darwin" {
-		base = "/tmp"
-	}
-	dir, err := os.MkdirTemp(base, "nomadnet-wasmpages-test-*")
-	if err != nil {
-		t.Fatalf("MkdirTemp: %v", err)
-	}
-	t.Cleanup(func() { _ = os.RemoveAll(dir) })
-	return dir
+	return testutils.TempDir(t, "nomadnet-wasmpages-test-*")
 }
 
 // writeFixture writes fixture bytes into a fresh temp file and returns the

@@ -121,12 +121,7 @@ func newTestPipes(t *testing.T, tsA, tsB *rns.TransportSystem) (*interfaces.Pipe
 
 func tempDirInt(t *testing.T) string {
 	t.Helper()
-	dir, err := os.MkdirTemp("/tmp", "nomadnet-node-int-test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.RemoveAll(dir) })
-	return dir
+	return testutils.TempDir(t, "nomadnet-node-int-test")
 }
 
 func TestIntegrationNodeServesDefaultIndexPage(t *testing.T) {

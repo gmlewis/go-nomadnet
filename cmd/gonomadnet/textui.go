@@ -1627,14 +1627,12 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		})
 	}
 	// Python _select_hub/_select_room (Channels.py:1672-1729): selecting a
-	// hub shows its info panel; selecting a room shows the room chat view
-	// (auto-connecting a disconnected hub and auto-joining an unjoined
-	// selected room on the way).
+	// hub shows its info panel; selecting a room shows the room chat view.
+	// Both auto-connect a disconnected/failed hub on the way
+	// (_maybe_autoconnect, Channels.py:1736-1741), and selecting an unjoined
+	// room joins it on the way.
 	channelsDisplay.OnSelectHub = func(hubIdx int) {
-		hub := rrcHubAt(a, hubIdx)
-		if hub != nil {
-			a.RRC.SetActive(hub, "")
-		}
+		selectHubRow(a, hubIdx)
 	}
 	channelsDisplay.OnSelectRoom = func(hubIdx int, room string) {
 		hub := rrcHubAt(a, hubIdx)
@@ -2986,6 +2984,22 @@ func rrcHubAt(a *app.App, hubIdx int) *rrc.RRCHub {
 		return nil
 	}
 	return hubs[hubIdx]
+}
+
+// selectHubRow is the hub-row half of Python's ChannelsDisplay._select_hub
+// (Channels.py:1716-1720): make the hub active, auto-connect it when it is
+// disconnected or failed (_maybe_autoconnect, Channels.py:1736-1741), and let
+// the display show its info panel straight after (Python _show_hub_info).
+// Without the auto-connect the only ways to revive a hub whose link dropped
+// were typing in one of its rooms or /connect: selecting the hub row — the
+// obvious recovery gesture — did nothing at all.
+func selectHubRow(a *app.App, hubIdx int) {
+	hub := rrcHubAt(a, hubIdx)
+	if hub == nil {
+		return
+	}
+	a.RRC.SetActive(hub, "")
+	tui.MaybeAutoconnect(hub)
 }
 
 // hubIndexFor finds the snapshot index of the given hub, or -1.

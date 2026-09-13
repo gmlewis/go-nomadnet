@@ -28,12 +28,7 @@ import (
 
 func bcTempDir(t *testing.T) string {
 	t.Helper()
-	dir, err := os.MkdirTemp("/tmp", "browser-cache-test-")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.RemoveAll(dir) })
-	return dir
+	return testutils.TempDir(t, "browser-cache-test-")
 }
 
 // expiresAfter is the epoch-seconds float for now+d, matching Python's

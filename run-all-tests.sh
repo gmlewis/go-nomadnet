@@ -21,7 +21,47 @@
 set -euo pipefail
 set -x
 
+# Absolute repo root: the nested-module loops cd into subdirectories, so the
+# sweep below needs a path that survives the cd.
+REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
+
 RUN_ALL_TESTS_TIMEOUT_SECONDS="${RUN_ALL_TESTS_TIMEOUT_SECONDS:-500}"
+
+# ---------------------------------------------------------------------------
+# Temp-dir hygiene. A test run that ends normally removes every temp dir it
+# created (testutils.TempDir registers t.Cleanup, and testutils/cleanup.go
+# removes them on SIGINT/SIGTERM). What that cannot cover is SIGKILL, a
+# `go test -timeout` panic, or os.Exit from an unrelated goroutine — so sweep
+# before and after: the entry sweep with an age guard that spares anything a
+# live run owns, the exit sweep with none, because by then this run's own dirs
+# are supposed to be gone. scripts/clean-test-tmp.sh only ever matches its
+# allow-list of test prefixes, so unrelated /tmp content is never touched. That
+# unguarded exit sweep also passes -L (see sweep_test_tmp below), so it stands
+# down entirely while another test binary is alive.
+#
+# The -c check keeps that allow-list honest: it fails when a temp prefix in the
+# sources is missing from the list, the same way the lint gates below fail.
+# The list is shared with go-reticulum's copy of this script, so a run here
+# also reclaims that suite's residue.
+# ---------------------------------------------------------------------------
+sweep_test_tmp() {
+	# -L belongs to the exit sweep only. It runs unguarded (-m 0), so without
+	# this it would delete the live temp dirs of a concurrent run — a bare
+	# `go test` in another terminal, or another agent's run in this repo — and
+	# fail that run for reasons that look nothing like a cleanup problem. The
+	# entry sweep keeps its 30-minute age guard instead, so it still reclaims
+	# stale residue no matter what else is running.
+	if [ "${1:-0}" -eq 0 ]; then
+		bash "$REPO_ROOT/scripts/clean-test-tmp.sh" -m 0 -L
+		return
+	fi
+
+	bash "$REPO_ROOT/scripts/clean-test-tmp.sh" -m "${1:-0}"
+}
+
+bash "$REPO_ROOT/scripts/clean-test-tmp.sh" -c
+sweep_test_tmp 30
+trap 'sweep_test_tmp 0 || true' EXIT
 
 run_with_timeout() {
 	if command -v timeout >/dev/null 2>&1; then
