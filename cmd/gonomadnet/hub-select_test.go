@@ -16,11 +16,39 @@
 package main
 
 import (
+	"sync"
 	"testing"
 
 	"github.com/gmlewis/go-nomadnet/nomadnet/app"
 	"github.com/gmlewis/go-reticulum/rrc"
 )
+
+// statusCapture collects the hub statuses reported by the manager's change
+// callback.
+//
+// The callback is not a single-goroutine observable: ConnectAsync fires it on
+// the selecting goroutine before it spawns the connect worker, and the worker
+// then fires it again (and again via scheduleReconnect) from its own
+// goroutine. The collector is therefore locked rather than assuming the two
+// never overlap.
+type statusCapture struct {
+	mu       sync.Mutex
+	statuses []int
+}
+
+func (c *statusCapture) append(status int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.statuses = append(c.statuses, status)
+}
+
+// snapshot returns a copy of the statuses seen so far, so an assertion never
+// reads the slice the callback is appending to.
+func (c *statusCapture) snapshot() []int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]int(nil), c.statuses...)
+}
 
 // Selecting a hub row in the channels list must make the hub active, show its
 // info panel, and auto-connect it when it is disconnected or failed — Python's
@@ -56,27 +84,37 @@ func TestSelectHubRowAutoConnects(t *testing.T) {
 			hub := mgr.AddHub([]byte{0x01, 0x02, 0x03, 0x04}, "rrc.hub", "RNS Community")
 			hub.Status = tt.status
 
-			var statuses []int
+			var statuses statusCapture
 			mgr.SetChangeCallback(func() {
-				statuses = append(statuses, hub.Status)
+				// Snapshot, never hub.Status: this callback also runs on the
+				// connect worker goroutine, which writes the status under the
+				// hub lock.
+				status, _, _, _ := hub.Snapshot()
+				statuses.append(status)
 			})
+			// Stop the connect worker before the test returns: with no
+			// transport configured it fails, and a failed hub schedules
+			// reconnects, which would keep notifying (and appending) for the
+			// life of the test binary.
+			t.Cleanup(mgr.Shutdown)
 
 			selectHubRow(a, 0)
 
 			if got := mgr.ActiveHub(); got != hub {
 				t.Errorf("active hub after selecting hub row 0 = %v, want the selected hub", got)
 			}
+			seen := statuses.snapshot()
 			if tt.wantNotify {
-				if len(statuses) == 0 {
+				if len(seen) == 0 {
 					t.Fatal("selecting a disconnected/failed hub row did not start a connect (Python _select_hub → _maybe_autoconnect)")
 				}
-				if statuses[0] != tt.wantStatus {
-					t.Errorf("status at the connect notification = %v, want %v", statuses[0], tt.wantStatus)
+				if seen[0] != tt.wantStatus {
+					t.Errorf("status at the connect notification = %v, want %v", seen[0], tt.wantStatus)
 				}
 				return
 			}
-			if len(statuses) != 0 {
-				t.Errorf("selecting a connected hub row fired %v change notification(s) with statuses %v, want none", len(statuses), statuses)
+			if len(seen) != 0 {
+				t.Errorf("selecting a connected hub row fired %v change notification(s) with statuses %v, want none", len(seen), seen)
 			}
 		})
 	}
