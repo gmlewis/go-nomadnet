@@ -13,7 +13,7 @@
 #                 its announces propagate via gornsd to the whole fleet and
 #                 the mesh, so clients reach the hub over the STABLE fleet
 #                 link instead of multi-hop relay paths)
-#   gorrbot      (attached to the shared instance; an always-on RRC bot in
+#   gorrcbot     (attached to the shared instance; an always-on RRC bot in
 #                 #general that answers only when it is addressed by name.
 #                 It is a CLIENT — it needs no hub-side support and adds no
 #                 plugin sandbox; see go-reticulum's README. Its first run
@@ -34,16 +34,16 @@
 # Usage:  gonomadnet-gornsd-gorrcd.sh   (no tmux is created or attached by this
 #         script — run it inside your own tmux session for persistence)
 # Logs:   /tmp/<service>-<epoch-seconds>.log
-# pprof:  gornsd 127.0.0.1:6062 · gorrcd 127.0.0.1:6061 · gorrbot 127.0.0.1:6063
+# pprof:  gornsd 127.0.0.1:6062 · gorrcd 127.0.0.1:6061 · gorrcbot 127.0.0.1:6063
 #         · gonomadnet 127.0.0.1:6060
-# Stop:   pkill -x gornsd gorrcd gorrbot gonomadnet   (Ctrl-C stops the
+# Stop:   pkill -x gornsd gorrcd gorrcbot gonomadnet   (Ctrl-C stops the
 #         foreground TUI)
 
 EPOCH="$(date +%s)"
 LOGDIR=/tmp
 GORN="$HOME/go/bin/gornsd"
 GORRCD="$HOME/go/bin/gorrcd"
-GORRBOT="$HOME/go/bin/gorrcbot"
+GORRCBOT="$HOME/go/bin/gorrcbot"
 GONOMADNET="$HOME/go/bin/gonomadnet"
 RETIC_DIR="$HOME/go/src/github.com/gmlewis/go-reticulum"
 NOMAD_DIR="$HOME/go/src/github.com/gmlewis/go-nomadnet"
@@ -51,7 +51,7 @@ NOMAD_DIR="$HOME/go/src/github.com/gmlewis/go-nomadnet"
 export PATH="$PATH:/usr/local/go/bin:$HOME/go/bin"
 export GOTRACEBACK=all
 
-echo "== [1/5] killing existing gonomadnet / nomadnet / gorrcd / gorrbot / gornsd =="
+echo "== [1/5] killing existing gonomadnet / nomadnet / gorrcd / gorrcbot / gornsd =="
 # gonomadnet first (its name is a substring of nothing else), then the
 # Python nomadnet, then the hub, then the shared instance. The gonomadnet.sh
 # wrapper (bash -ex ./gonomadnet.sh) dies with its child.
@@ -60,7 +60,7 @@ pkill -f "gonomadnet.sh" 2>/dev/null || true
 pkill -x nomadnet 2>/dev/null || true
 pkill -f "python.*nomadnet" 2>/dev/null || true
 pkill -x gorrcd 2>/dev/null || true
-pkill -x gorrbot 2>/dev/null || true
+pkill -x gorrcbot 2>/dev/null || true
 pkill -x gornsd 2>/dev/null || true
 
 # Wait until every target process is REALLY gone. Starting gornsd while the
@@ -68,7 +68,7 @@ pkill -x gornsd 2>/dev/null || true
 # socket) makes the new gornsd exit with "already running" and leaves the
 # stack half-up.
 for _ in $(seq 1 30); do
-    if ! pgrep -x "gornsd|gorrcd|gorrbot|gonomadnet|nomadnet" >/dev/null 2>&1; then
+    if ! pgrep -x "gornsd|gorrcd|gorrcbot|gonomadnet|nomadnet" >/dev/null 2>&1; then
         break
     fi
     sleep 0.5
@@ -77,10 +77,10 @@ done
 pkill -9 -x gonomadnet 2>/dev/null || true
 pkill -9 -x nomadnet 2>/dev/null || true
 pkill -9 -x gorrcd 2>/dev/null || true
-pkill -9 -x gorrbot 2>/dev/null || true
+pkill -9 -x gorrcbot 2>/dev/null || true
 pkill -9 -x gornsd 2>/dev/null || true
-if pgrep -x "gornsd|gorrcd|gorrbot|gonomadnet|nomadnet" >/dev/null 2>&1; then
-    echo "FATAL: some processes survived SIGKILL; resolve manually with pgrep -af 'gornsd|gorrcd|gorrbot|gonomadnet'"
+if pgrep -x "gornsd|gorrcd|gorrcbot|gonomadnet|nomadnet" >/dev/null 2>&1; then
+    echo "FATAL: some processes survived SIGKILL; resolve manually with pgrep -af 'gornsd|gorrcd|gorrcbot|gonomadnet'"
     exit 1
 fi
 
@@ -93,9 +93,9 @@ echo "== [2/5] building + installing the latest tools =="
 # ignored and each tool falls back to its zero-overhead stub.
 git -C "$RETIC_DIR" pull --ff-only 2>/dev/null || echo "WARN: go-reticulum pull failed; building the local checkout"
 ( cd "$RETIC_DIR" && go install -tags=wago ./cmd/gornsd ./cmd/gorrcd ) || { echo "FATAL: go-reticulum build failed"; exit 1; }
-# gorrbot takes no tag: it is a plain RRC client with no wasm plugin surface,
+# gorrcbot takes no tag: it is a plain RRC client with no wasm plugin surface,
 # so the wago tag would only add a dependency it never uses.
-( cd "$RETIC_DIR" && go install ./cmd/gorrcbot ) || { echo "FATAL: gorrbot build failed"; exit 1; }
+( cd "$RETIC_DIR" && go install ./cmd/gorrcbot ) || { echo "FATAL: gorrcbot build failed"; exit 1; }
 git -C "$NOMAD_DIR" pull --ff-only 2>/dev/null || echo "WARN: go-nomadnet pull failed; building the local checkout"
 ( cd "$NOMAD_DIR" && go install -tags=wago ./cmd/gonomadnet ) || { echo "FATAL: go-nomadnet build failed"; exit 1; }
 
@@ -140,22 +140,22 @@ GORRCD_PID=$!
 disown "$GORRCD_PID" 2>/dev/null || true
 echo "gorrcd pid $GORRCD_PID, log $LOGDIR/gorrcd-$EPOCH.log"
 
-echo "== [5/5] starting gorrbot (attached; the RRC bot in #general) =="
+echo "== [5/5] starting gorrcbot (attached; the RRC bot in #general) =="
 if [ -f "$HOME/.gorrcbot/config.toml" ]; then
-    # Its own log level is NOTICE: gorrbot logs its joins, announcements, and
+    # Its own log level is NOTICE: gorrcbot logs its joins, announcements, and
     # command failures itself, so only the underlying stack chatter is
     # filtered out and the file stays readable.
-    nohup "$GORRBOT" -pprof-addr 127.0.0.1:6063 -log-level NOTICE \
+    nohup "$GORRCBOT" -pprof-addr 127.0.0.1:6063 -log-level NOTICE \
         >"$LOGDIR/gorrcbot-$EPOCH.log" 2>&1 </dev/null &
-    GORRBOT_PID=$!
-    disown "$GORRBOT_PID" 2>/dev/null || true
-    echo "gorrbot pid $GORRBOT_PID, log $LOGDIR/gorrbot-$EPOCH.log"
+    GORRCBOT_PID=$!
+    disown "$GORRCBOT_PID" 2>/dev/null || true
+    echo "gorrcbot pid $GORRCBOT_PID, log $LOGDIR/gorrcbot-$EPOCH.log"
 else
     # A first run creates ~/.gorrcbot/config.toml and ~/.gorrcbot/bot_identity
     # and exits without connecting, so nothing joins a room before the hubs
     # and rooms have been reviewed.
-    "$GORRBOT" || true
-    echo "gorrbot NOT started: review ~/.gorrcbot/config.toml, then re-run this"
+    "$GORRCBOT" || true
+    echo "gorrcbot NOT started: review ~/.gorrcbot/config.toml, then re-run this"
     echo "                    launcher (or 'gorrcbot' on its own)"
 fi
 
@@ -165,13 +165,13 @@ echo "logs : /tmp/gornsd-$EPOCH.log"
 echo "       /tmp/gorrcd-$EPOCH.log"
 echo "       /tmp/gorrcbot-$EPOCH.log"
 echo "       ~/.reticulum/logfile (gornsd's RNS-level log)"
-echo "pprof: gornsd 127.0.0.1:6062 · gorrcd 127.0.0.1:6061 · gorrbot 127.0.0.1:6063"
+echo "pprof: gornsd 127.0.0.1:6062 · gorrcd 127.0.0.1:6061 · gorrcbot 127.0.0.1:6063"
 echo
 echo "watch the hub log : tail -f /tmp/gorrcd-$EPOCH.log"
 echo "watch the bot log : tail -f /tmp/gorrcbot-$EPOCH.log"
 echo "hub destination   : bc0a90a0a1799ae7c07fd461ea6b09f0 (rrc.hub)"
 echo "stop gornsd+gorrcd: pkill -x gornsd gorrcd"
-echo "stop gorrbot      : pkill -x gorrbot"
+echo "stop gorrcbot      : pkill -x gorrcbot"
 echo
 echo "== starting gonomadnet in the foreground (exit: Ctrl-Q; this"
 echo "   terminal is yours to wrap in tmux first) =="
