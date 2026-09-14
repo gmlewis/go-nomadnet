@@ -61,6 +61,10 @@ repo_root="$(dirname "$script_dir")"
 # reclaim the other's residue too. `-c` verifies that this list covers the
 # prefixes of whichever repo the copy lives in.
 #
+# NOTE: "gorrcbot-test-" is spelled out rather than shortened to "gorrcbot-",
+# because an operator running the bot logs it to /tmp/gorrcbot-<epoch>.log and a
+# bare prefix would delete a live service's log.
+#
 # NOTE: bare "gogit-" is intentionally NOT listed — the user's long-running
 # manual node lives at /tmp/gogit-manual and must never be touched. Only the
 # specific gogit-remote-rns test-suite prefixes are listed (none of them match
@@ -72,7 +76,7 @@ prefixes=(
   gorngit- rngit- gornx- gornsh- gornstatus- gorncp- gornodeconf-
   gornid- gornir- gornpath- gornpkg- gornprobe- gornsd- gorns-
   gornsh_py_wrapper_ missing-gornpath-binary
-  gorrcd- rrcd- rrc- gorngcs-
+  gorrcd- rrcd- rrc- gorngcs- gorrcbot-test-
   gogit-clone- gogit-remote-rns- gogit-seed- gogit-reclone-
   golxmd-test- golxmd-filter
   pluginstore- prettysize-parity- prettyspeed-parity- testutils-signal-cleanup-
