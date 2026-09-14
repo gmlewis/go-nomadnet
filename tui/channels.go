@@ -157,9 +157,11 @@ type ChannelsDisplay struct {
 	OnNickInfo       func() (nick string, isOverride bool)
 	OnSetNick        func(name string) error
 	OnDisconnectHub  func()
-	// OnLocalMessage records a client-only system/error/notice row on the
-	// hub for the given room (Python _local_message). Wired from textui to
-	// hub.AddLocalMessage so /help survives message-buffer refreshes.
+	// OnLocalMessage records a client-only row on the hub for the given room
+	// (Python _local_message). Wired from textui to hub.AddLocalMessage so
+	// /help survives message-buffer refreshes; kind "msg" is the client's own
+	// copy of a line it just sent (/msg), recorded as one of the local user's
+	// messages.
 	OnLocalMessage func(kind, room, text string) error
 	// OnConnectHub triggers the ACTIVE hub's connect from the room composer
 	// (Python RoomWidget.send_message's disconnected branch, Channels.py:873,

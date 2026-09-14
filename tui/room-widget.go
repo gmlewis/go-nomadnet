@@ -537,15 +537,21 @@ func (rw *RoomWidget) appendLocalNotice(text string, isError bool) {
 // OnSendMessage (the rrc layer records nothing for them), and unknown commands
 // get Python's "Unknown command" error. Every hub-touching command requires a
 // connected hub first (Python _require_connected, Channels.py:991-996).
-// appendPrivateEcho renders the sender's own copy of a private message, so a
-// conversation reads the same way it does in a query window.
-func (rw *RoomWidget) appendPrivateEcho(target, body string) {
+// appendSelfEcho renders the command line the user typed, exactly as typed —
+// the way an IRC client echoes its own input — instead of a rewritten
+// paraphrase of it, so a private conversation stays readable from the input
+// side. The line is recorded in the room buffer when the client is wired for
+// it, because every hub refresh rebuilds the room view from that buffer and a
+// widget-only echo would vanish as soon as the private reply arrived.
+func (rw *RoomWidget) appendSelfEcho(line string) {
+	if rw.OnLocalMessage != nil && rw.OnLocalMessage("msg", line) == nil {
+		return
+	}
 	rw.chatMessages = append(rw.chatMessages, ChannelMessage{
-		Nick:      target,
-		Text:      body,
-		TsMs:      time.Now().UnixMilli(),
-		IsPrivate: true,
-		IsSelf:    true,
+		Nick:   rw.ownNick,
+		Text:   line,
+		TsMs:   time.Now().UnixMilli(),
+		IsSelf: true,
 	})
 	rw.renderMessages()
 }
@@ -612,8 +618,7 @@ func (rw *RoomWidget) handleSlashCommand(text string) {
 		if !requireConnected() {
 			break
 		}
-		target, body, ok := SplitMsgArgument(arg)
-		if !ok {
+		if _, _, ok := SplitMsgArgument(arg); !ok {
 			rw.appendLocalNotice("Usage: /msg <nick|hash> <text>", true)
 			break
 		}
@@ -625,7 +630,7 @@ func (rw *RoomWidget) handleSlashCommand(text string) {
 			rw.appendLocalNotice("Private message failed: "+err.Error(), true)
 			break
 		}
-		rw.appendPrivateEcho(target, body)
+		rw.appendSelfEcho(text)
 	case "/join", "/j":
 		if arg == "" {
 			rw.appendLocalNotice("Usage: /join <room>", true)

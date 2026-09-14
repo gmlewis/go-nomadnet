@@ -28,12 +28,24 @@ func newMsgWidget(t *testing.T) (*RoomWidget, *[]string) {
 	app := newTestApp()
 	rw := NewRoomWidget(app, "hub", "test")
 	rw.hubConnected = true
+	rw.SetOwnNick("glenn")
 	forwarded := &[]string{}
 	rw.OnPrivateCommand = func(arg string) error {
 		*forwarded = append(*forwarded, arg)
 		return nil
 	}
 	return rw, forwarded
+}
+
+// renderedRow returns the rendered text of one chat row, so an assertion can
+// check what the user actually sees.
+func renderedRow(t *testing.T, rw *RoomWidget, idx int) string {
+	t.Helper()
+	msgs := rw.ChatMessages()
+	if idx < 0 || idx >= len(msgs) {
+		t.Fatalf("row %v does not exist (%v rows)", idx, len(msgs))
+	}
+	return formatRRCMessage(msgs[idx], rw.renderOpts())
 }
 
 // rowTexts flattens the widget's rows for assertions.
@@ -45,13 +57,15 @@ func rowTexts(rw *RoomWidget) []string {
 	return out
 }
 
-// TestMsgCommandForwardsTheLineAndEchoesIt asserts /msg forwards the argument
-// verbatim and shows the sender its own copy as a private row.
-func TestMsgCommandForwardsTheLineAndEchoesIt(t *testing.T) {
+// TestMsgCommandEchoesTheTypedLine asserts /msg forwards the argument verbatim
+// and echoes the line the user typed, exactly as typed — the way an IRC client
+// echoes its own input — rather than a rewritten paraphrase of it.
+func TestMsgCommandEchoesTheTypedLine(t *testing.T) {
 	t.Parallel()
 
+	const line = "/msg minipc yo dude, whazzup?"
 	rw, forwarded := newMsgWidget(t)
-	rw.handleSlashCommand("/msg minipc yo dude, whazzup?")
+	rw.handleSlashCommand(line)
 
 	if len(*forwarded) != 1 || (*forwarded)[0] != "minipc yo dude, whazzup?" {
 		t.Fatalf("forwarded = %v, want one line with the target and text", *forwarded)
@@ -60,14 +74,43 @@ func TestMsgCommandForwardsTheLineAndEchoesIt(t *testing.T) {
 	if len(msgs) != 1 {
 		t.Fatalf("rows = %v, want one echo", rowTexts(rw))
 	}
-	if !msgs[0].IsPrivate || !msgs[0].IsSelf {
-		t.Errorf("echo row = %+v, want a private self row", msgs[0])
+	if !msgs[0].IsSelf {
+		t.Errorf("echo row = %+v, want a self row", msgs[0])
 	}
-	if msgs[0].Nick != "minipc" || msgs[0].Text != "yo dude, whazzup?" {
-		t.Errorf("echo row nick/text = %q/%q, want %q/%q", msgs[0].Nick, msgs[0].Text, "minipc", "yo dude, whazzup?")
+	if msgs[0].IsPrivate {
+		t.Error("the echo is marked private; the typed line already carries the command")
+	}
+	if msgs[0].Text != line {
+		t.Errorf("echo text = %q, want the unaltered typed line %q", msgs[0].Text, line)
+	}
+	if msgs[0].Nick != "glenn" {
+		t.Errorf("echo nick = %q, want the local nick", msgs[0].Nick)
 	}
 	if rw.editor.GetText() != "" {
 		t.Errorf("composer still holds %q, want it cleared", rw.editor.GetText())
+	}
+	if got := renderedRow(t, rw, 0); !strings.Contains(got, line) {
+		t.Errorf("rendered echo = %q, want the typed line", got)
+	}
+}
+
+// TestMsgCommandEchoIsRecordedOnTheHub asserts the echo is also recorded in the
+// room buffer: the room view is rebuilt from that buffer on every hub refresh,
+// so an echo kept only in the widget would vanish as soon as the private reply
+// arrived.
+func TestMsgCommandEchoIsRecordedOnTheHub(t *testing.T) {
+	t.Parallel()
+
+	rw, _ := newMsgWidget(t)
+	recorded := &[]string{}
+	rw.OnLocalMessage = func(kind, text string) error {
+		*recorded = append(*recorded, kind+"|"+text)
+		return nil
+	}
+	rw.handleSlashCommand("/msg gorrcbot help")
+
+	if len(*recorded) != 1 || (*recorded)[0] != "msg|/msg gorrcbot help" {
+		t.Errorf("recorded = %v, want one msg row holding the typed line", *recorded)
 	}
 }
 
@@ -85,8 +128,9 @@ func TestMsgCommandAcceptsTheHubAliases(t *testing.T) {
 			if len(*forwarded) != 1 || (*forwarded)[0] != "minipc hello" {
 				t.Fatalf("%q forwarded %v, want the target and text", line, *forwarded)
 			}
-			if msgs := rw.ChatMessages(); len(msgs) != 1 || !msgs[0].IsPrivate {
-				t.Errorf("%q rows = %v, want one private echo", line, rowTexts(rw))
+			msgs := rw.ChatMessages()
+			if len(msgs) != 1 || msgs[0].Text != line {
+				t.Errorf("%q rows = %v, want the typed line echoed unchanged", line, rowTexts(rw))
 			}
 		})
 	}
@@ -104,8 +148,9 @@ func TestMsgCommandQuotedTargetKeepsItsSpaces(t *testing.T) {
 		t.Fatalf("forwarded = %v, want the quoted target unchanged", *forwarded)
 	}
 	msgs := rw.ChatMessages()
-	if len(msgs) != 1 || msgs[0].Nick != "gonomadnet on MiniPC" {
-		t.Fatalf("echo rows = %v, want the quoted nick in the echo", rowTexts(rw))
+	const line = `/msg 'gonomadnet on MiniPC' yo dude`
+	if len(msgs) != 1 || msgs[0].Text != line {
+		t.Fatalf("echo rows = %v, want the typed line echoed unchanged", rowTexts(rw))
 	}
 }
 

@@ -107,3 +107,30 @@ func feedEnvelope(t *testing.T, hub *rrc.RRCHub, env map[any]any) {
 	t.Helper()
 	hub.HandleData(cbor.Encode(env))
 }
+
+// TestRRCoomMessagesRenderTheTypedEchoAsSelf asserts the client's own copy of a
+// /msg line is rendered like any other message the local user sent: the room
+// view is rebuilt from the hub buffer, so the echo must live there and resolve
+// to the local user's own identity.
+func TestRRCoomMessagesRenderTheTypedEchoAsSelf(t *testing.T) {
+	t.Parallel()
+
+	hub, _ := newPrivateRenderHub(t)
+	hub.SetNickOverride("glenn")
+	const line = "/msg gorrcbot help"
+	hub.AddLocalSelfMessage("general", hub.GetEffectiveNick(), line)
+
+	msgs := rrcRoomMessages(hub, "general")
+	if len(msgs) != 1 {
+		t.Fatalf("room view = %+v, want the typed echo", msgs)
+	}
+	if msgs[0].Text != line {
+		t.Errorf("row text = %q, want the unaltered typed line", msgs[0].Text)
+	}
+	if !msgs[0].IsSelf {
+		t.Errorf("row = %+v, want it credited to the local user", msgs[0])
+	}
+	if msgs[0].Nick != "glenn" || msgs[0].IsPrivate {
+		t.Errorf("row nick/private = %q/%v, want the local nick and no private marker", msgs[0].Nick, msgs[0].IsPrivate)
+	}
+}
