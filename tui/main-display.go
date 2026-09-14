@@ -553,6 +553,32 @@ func (md *MainDisplay) SelectPage(key string) {
 	}
 }
 
+// ActivePage returns the key of the body page currently on display.
+//
+// activePage is written by the event loop — selectMenuLocked, reached from a
+// menu click, from Enter/Space, or from SelectPage — while holding md.mu, so it
+// must be read through this accessor from anywhere but the event loop's own
+// goroutine. Reading the field itself is a data race against that write, and a
+// sleep does not make it safe: sleeping establishes no happens-before edge, so
+// the race detector (correctly) still reports the pair even when the loop
+// happens to be idle at that instant. Tests that drive the real event loop
+// assert through this and FocusRegion.
+func (md *MainDisplay) ActivePage() string {
+	md.mu.Lock()
+	defer md.mu.Unlock()
+	return md.activePage
+}
+
+// FocusRegion returns the region that currently holds focus, "body" or "menu"
+// (Python's MainFrame.focus_position). It is locked for the same reason as
+// ActivePage: the event loop's FocusMenu and FocusBody write focusRegion under
+// md.mu.
+func (md *MainDisplay) FocusRegion() string {
+	md.mu.Lock()
+	defer md.mu.Unlock()
+	return md.focusRegion
+}
+
 // selectMenuLocked is the lock-free inner of selectMenu; the caller must hold
 // md.mu (used by SetHideGuide, which already holds the lock, to avoid a
 // self-deadlock re-acquiring it). It does NOT drop focus to the body.

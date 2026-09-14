@@ -18,9 +18,75 @@ package tui
 import (
 	"os"
 	"testing"
+	"time"
 
 	"github.com/rivo/tview"
 )
+
+// onEventLoop runs f on the application event loop's own goroutine and returns
+// only after the loop has executed it.
+//
+// This calls tview's Application.QueueUpdate directly rather than the App-level
+// QueueUpdateDraw override: that override is deliberately fire-and-forget (it
+// hands f to a drainer goroutine and drops it when the queue is full), so it
+// orders nothing and is useless as a barrier. tview's QueueUpdate, by contrast,
+// hands f to the loop and blocks until the loop has run it, which makes the
+// hand-off a real happens-before edge.
+//
+// The event loop must be running, so callers pair this with a bound on the wait
+// rather than calling it blind.
+func onEventLoop(app *App, f func()) {
+	app.Application.QueueUpdate(f)
+}
+
+// awaitLoop waits until cond holds, re-evaluating cond on the event loop's own
+// goroutine, and fails the test if the loop exits first or the deadline passes.
+//
+// cond runs ON the event loop goroutine rather than on the test goroutine, and
+// that is the whole point. The loop goroutine is the only writer of UI state, so
+// cond may read any of it — widget fields such as pileFiller.focusIndex, the
+// screen's live cell buffer — with no locking at all, and it can never observe a
+// half-applied event.
+//
+// Running cond on the test goroutine instead would not be enough, even after a
+// barrier: a barrier only orders that goroutine against writes the loop has
+// ALREADY made, so the read still races with whatever write the loop is making
+// at that very instant. That is precisely how the two tests below used to race.
+//
+// cond must not itself queue work (no onEventLoop, no QueueUpdateDraw): the loop
+// cannot service an update while it is running one. Anything cond leaves behind
+// for the test goroutine is published by the barrier's channel hand-off, so it
+// is safe to read once awaitLoop returns.
+//
+// The loop services its update queue and its screen-event queue from a single
+// select, so one barrier may be served ahead of an event injected just before
+// it; re-evaluating settles that within a couple of iterations. The deadline
+// exists to fail a genuine regression with a useful message — it is not a
+// timeout to tune, and nothing sleeps through it. On the failure paths the
+// helper's goroutine may be left parked on a loop that has gone away; that only
+// happens to a test that is already failing.
+func awaitLoop(t *testing.T, app *App, runErr <-chan error, what string, cond func() bool) {
+	t.Helper()
+	const deadline = 5 * time.Second
+	settled := make(chan struct{})
+	go func() {
+		defer close(settled)
+		for {
+			var ok bool
+			onEventLoop(app, func() { ok = cond() })
+			if ok {
+				return
+			}
+		}
+	}()
+	select {
+	case <-settled:
+	case err := <-runErr:
+		t.Fatalf("event loop exited before %v (err=%v)", what, err)
+	case <-time.After(deadline):
+		t.Fatalf("timed out after %v waiting for %v", deadline, what)
+	}
+}
 
 // newTestApp returns an *App wired up with an isolated DialogManager,
 // StyleRegistry, and kill ring, so parallel tests never share mutable state.

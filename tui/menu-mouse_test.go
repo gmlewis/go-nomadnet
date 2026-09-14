@@ -53,6 +53,11 @@ func dispatchAndDraw(t *testing.T, app *App, ev *tcell.EventKey) {
 // so tview did not redraw after the click — the page switched internally but the
 // screen kept showing the old page until an unrelated async redraw fired, making
 // the app appear frozen/unresponsive after a menu click.
+//
+// Every wait is a loop barrier (awaitLoop), never a sleep. A sleep orders
+// nothing, so the read of activePage it preceded was a data race against the
+// loop's own write no matter how long the sleep was, and it also left the
+// assertion racing the click it was meant to wait for.
 func TestMenuClickRedrawsPage(t *testing.T) {
 	app := NewApp(ThemeDark, GlyphUnicode, ColorModeTrue)
 	app.EnableMouse(true)
@@ -78,19 +83,18 @@ func TestMenuClickRedrawsPage(t *testing.T) {
 	runErr := make(chan error, 1)
 	go func() { runErr <- app.runWithSimScreen() }()
 
-	// Fixed sleeps (not polls) are deliberate here: the sim screen's cell
-	// buffer is written by the event-loop goroutine without synchronization
-	// the test may poll on, so polling races (under -race) while a quiescent
-	// sleep does not.
-	time.Sleep(150 * time.Millisecond)
-
 	// Before the click the screen must show the Network page (e.g. its "Saved
 	// Nodes" list title), proving the harness actually paints the active page.
-	if before := screenText(screen); !containsSubstr(before, "Saved Nodes") {
-		t.Errorf("before click: screen does not show the Network page (no 'Saved Nodes'); got:\n%s", before)
-	}
+	// screenText walks the simulation screen's live cell buffer, so it is called
+	// from inside awaitLoop's predicate — on the loop goroutine, the only
+	// goroutine that draws — rather than from here.
+	awaitLoop(t, app, runErr, "the Network page to be painted", func() bool {
+		return containsSubstr(screenText(screen), "Saved Nodes")
+	})
 
-	// Compute the Guide button's x within the full-width menu bar.
+	// Compute the Guide button's x within the full-width menu bar. menuItems and
+	// menuWidths are written by redrawMenuBar under md.mu, so they are read under
+	// the same lock here.
 	app.Main.mu.Lock()
 	guideIdx := -1
 	for i, it := range app.Main.menuItems {
@@ -105,21 +109,30 @@ func TestMenuClickRedrawsPage(t *testing.T) {
 	x += 3
 	app.Main.mu.Unlock()
 
-	// Click Guide (down + up → a completed click) and let the loop process it.
+	// Click Guide (down + up → a completed click) and wait for the loop to act
+	// on it. The loop runs a whole mouse case — handleClick, and the redraw that
+	// case triggers — before it can service the barrier, so a predicate that
+	// sees activePage == "guide" is looking at a screen the click has already
+	// repainted. The screen text is copied there, on the loop goroutine, and
+	// published to this goroutine by the barrier.
+	var afterClick string
 	screen.InjectMouse(x, 0, tcell.ButtonPrimary, tcell.ModNone)
 	screen.InjectMouse(x, 0, tcell.ButtonNone, tcell.ModNone)
-	time.Sleep(150 * time.Millisecond)
-
-	if app.Main.activePage != "guide" {
-		t.Fatalf("after click: activePage=%q, want guide", app.Main.activePage)
-	}
+	awaitLoop(t, app, runErr, "the Guide click to switch the page", func() bool {
+		if app.Main.ActivePage() != "guide" {
+			return false
+		}
+		afterClick = screenText(screen)
+		return true
+	})
 
 	// The fix: the click must have REDRAWN, so the screen now shows the Guide
 	// page (its "Topics" pane title / "Introduction" topic), not the Network
-	// page. Before the fix no redraw fired and "Topics" was absent.
-	after := screenText(screen)
-	if !containsSubstr(after, "Topics") {
-		t.Errorf("after click: screen was not redrawn to the Guide page (no 'Topics'); the menu click did not trigger a redraw:\n%s", after)
+	// page. Before the fix no redraw fired and "Topics" was absent. The wait
+	// above deliberately does not force a repaint — forcing one would make this
+	// assertion vacuously true.
+	if !containsSubstr(afterClick, "Topics") {
+		t.Errorf("after click: screen was not redrawn to the Guide page (no 'Topics'); the menu click did not trigger a redraw:\n%s", afterClick)
 	}
 
 	// The event loop must still be responsive: Ctrl-Q quits cleanly.
