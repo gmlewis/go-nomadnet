@@ -120,6 +120,26 @@ func TestChannelsCtrlDOverLimitOpensSplitDialog(t *testing.T) {
 	if cd.app.GetFocus() != tview.Primitive(sendBtn) {
 		t.Error("Send Split must be the dialog's initial focus (Python's Pile default)")
 	}
+
+	// The dialog must be visible, not just constructed: the user's report was
+	// that C-d produced nothing on screen at all. Rendered at a standard
+	// 80-column terminal — the width of the reported session — the dialog is
+	// wide enough for the full byte-count and limit lines, and the buttons carry
+	// urwid's "< label >" style.
+	screen := strings.Join(renderPrimitive(t, cd.dialogOverlay, 80, 24), "\n")
+	for _, want := range []string{
+		"Message Too Long",
+		"Message is 362 bytes.",
+		"Hub limit  : 350 bytes per message.",
+		"Split into 2 messages.",
+		"Preview of part 1:",
+		"< Send Split",
+		"< Cancel",
+	} {
+		if !strings.Contains(screen, want) {
+			t.Errorf("rendered dialog is missing %q:\n%v", want, screen)
+		}
+	}
 }
 
 // TestChannelsSplitDialogSendSplitSendsPartsAndClearsDraft pins Python's
