@@ -46,16 +46,26 @@ func NewUrwidCenterText(text string) *urwidCenterText {
 // the rect.
 type urwidLeftText struct {
 	*tview.Box
-	text string
+	text  string
+	color tcell.Color
 }
 
 // NewUrwidLeftText builds a default-style left-aligned text widget.
 func NewUrwidLeftText(text string) *urwidLeftText {
-	return &urwidLeftText{Box: tview.NewBox(), text: text}
+	return &urwidLeftText{Box: tview.NewBox(), text: text, color: tcell.ColorDefault}
 }
 
 // SetText updates the displayed text.
 func (c *urwidLeftText) SetText(text string) { c.text = text }
+
+// SetTextColor sets the row's foreground color — the equivalent of wrapping an
+// urwid Text in an AttrMap (e.g. the split dialog's preview row, Python's
+// AttrMap(..., "irc_system") at Channels.py:924). The default leaves the row in
+// the surrounding dialog's style.
+func (c *urwidLeftText) SetTextColor(color tcell.Color) *urwidLeftText {
+	c.color = color
+	return c
+}
 
 // Draw renders the text left-aligned, WRAPPING each source line at the widget
 // width with urwid's "space" algorithm (urwid.Text wraps to maxcol; see the
@@ -66,7 +76,7 @@ func (c *urwidLeftText) Draw(screen tcell.Screen) {
 	if w <= 0 || h <= 0 {
 		return
 	}
-	style := tcell.StyleDefault
+	style := tcell.StyleDefault.Foreground(c.color)
 	lines := urwidSpaceWrap(c.text, w)
 	for i, line := range lines {
 		if i >= h {

@@ -19,6 +19,8 @@ import (
 	"fmt"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/rivo/tview"
 )
 
 // SplitDialogInfo holds the computed content for the message-too-long split
@@ -84,4 +86,80 @@ func SplitDialogLines(info SplitDialogInfo) []string {
 		"  Preview of part 1:",
 		"    " + info.Preview,
 	}
+}
+
+// ShowSplitDialog shows Python's "Message Too Long" dialog over the channels
+// display when the composer's draft exceeds the hub's per-message limit
+// (Python _open_split_dialog, Channels.py:889-935). The layout is Python's Pile:
+// a blank row, the byte counts, a blank row, the split plan, the part-1 preview
+// (styled irc_system), a blank row, the error row, and the Send Split / Cancel
+// button row. Send Split transmits every part and clears the composer; Cancel
+// keeps the draft.
+//
+// When the limit is too small to split at all, Python records a local error row
+// on the room instead of opening the dialog and keeps the draft — that branch is
+// handled here too, so an unsplittable message is never silently dropped.
+func (cd *ChannelsDisplay) ShowSplitDialog(text string, limit int) {
+	if cd.app == nil {
+		return
+	}
+	info := ComputeSplitDialog(text, limit)
+	if info.Error != "" {
+		// Python _open_split_dialog's `if not parts:` branch
+		// (Channels.py:893-896): a local error row on the open room, no dialog.
+		if cd.OnLocalMessage != nil {
+			_ = cd.OnLocalMessage("error", cd.selectedRoom, info.Error)
+		}
+		return
+	}
+
+	closeDialog := cd.closeDialog
+	sendSplit := func() {
+		// Python send_split (Channels.py:907-916): every part goes out through
+		// the hub, then the composer is cleared and the dialog closes.
+		if rw := cd.roomWidget; rw != nil {
+			rw.SendSplitParts(info.Parts)
+		} else if cd.OnSendMessage != nil {
+			for _, part := range info.Parts {
+				cd.OnSendMessage(part)
+			}
+		}
+		closeDialog()
+	}
+
+	// Python's Pile rows in order: Text(""), Text("  Message is …"),
+	// Text("  Hub limit  : …"), Text(""), Text("  Split into …"),
+	// Text("  Preview of part 1:"), AttrMap(Text("    <preview>"),
+	// "irc_system"), Text(""), error_text, Columns([Send Split, Cancel]).
+	lines := SplitDialogLines(info)
+	previewColor := GetThemeColors(cd.app.Theme)["irc_system"]
+	var rows []tview.Primitive
+	add := func(row tview.Primitive) { rows = append(rows, row) }
+	add(NewUrwidLeftText(""))
+	add(NewUrwidLeftText(lines[0]))
+	add(NewUrwidLeftText(lines[1]))
+	add(NewUrwidLeftText(""))
+	add(NewUrwidLeftText(lines[2]))
+	add(NewUrwidLeftText(lines[3]))
+	add(NewUrwidLeftText(lines[4]).SetTextColor(previewColor))
+	add(NewUrwidLeftText(""))
+	// Python's error_text row. The Go send path reports failures through the
+	// RRC log rather than an exception, so the row stays empty and the dialog
+	// keeps Python's row count.
+	add(NewUrwidLeftText(""))
+
+	sendBtn := NewUrwidButton("Send Split").SetSelectedFunc(sendSplit)
+	cancelBtn := NewUrwidButton("Cancel").SetSelectedFunc(closeDialog)
+	// Python's button Columns weights (0.45 / 0.10 / 0.45) are
+	// CreateUrwidButtonRow's defaults.
+	add(CreateUrwidButtonRow(sendBtn, cancelBtn))
+
+	layout := tview.NewFlex().SetDirection(tview.FlexRow)
+	for _, row := range rows {
+		layout.AddItem(row, 1, 0, false)
+	}
+	dialog := NewDialogLineBox("Message Too Long", layout, closeDialog)
+	cd.showDialogOverlay(dialog, len(rows)+2)
+	// Python's Pile focuses its first focusable widget — the Send Split button.
+	wireDialogNav(cd.app, closeDialog, []tview.Primitive{sendBtn, cancelBtn})
 }

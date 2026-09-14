@@ -674,6 +674,15 @@ func (cd *ChannelsDisplay) ShowRoom(hubIdx int, room string, msgs []ChannelMessa
 		// time (Channels.py:873); the hubConnected snapshot goes stale between
 		// rebuilds, so the composer gets the live status through the HubView.
 		rw.hubStatusFn = hv.Status
+		// The per-message limit is read live for the same reason (Python
+		// Channels.py:879): the WELCOME carrying max_msg_body_bytes lands after
+		// this room view is built, so the composer must follow the hub instead
+		// of a value snapshotted here.
+		rw.hubMaxMsgBytesFn = hv.MaxMsgBodyLimit
+		// Python RoomWidget.send_message → self._open_split_dialog
+		// (Channels.py:881, 889): a draft over the hub's limit raises the
+		// "Message Too Long" dialog rather than being dropped silently.
+		rw.OnSplitDialog = cd.ShowSplitDialog
 		rw.OnConnectHub = func() {
 			if cd.OnConnectHub != nil {
 				cd.OnConnectHub()
@@ -1261,7 +1270,10 @@ func MaybeAutoconnect(hub *rrc.RRCHub) {
 	if hub == nil {
 		return
 	}
-	if hub.Status == rrc.StatusDisconnected || hub.Status == rrc.StatusFailed {
+	// Read the status through the hub's locked accessor: connect workers write
+	// it from their own goroutine (RRCHub.SetStatus), so a raw field read here
+	// races with the very connection attempts this function starts.
+	if status := hub.GetHubStatus(); status == rrc.StatusDisconnected || status == rrc.StatusFailed {
 		hub.ConnectAsync()
 	}
 }

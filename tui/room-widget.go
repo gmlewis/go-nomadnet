@@ -24,6 +24,12 @@ import (
 	"github.com/rivo/tview"
 )
 
+// defaultMaxMsgBytes is the per-message body byte limit the composer falls back
+// to when the hub has not advertised one — Python's `self.hub.max_msg_body_bytes
+// or 350` (Channels.py:879), matching the hub-side default that keeps a message
+// inside one default-MTU link envelope.
+const defaultMaxMsgBytes = 350
+
 // RoomWidget displays a single RRC chat room with messages, users, and editor.
 // Matches Python's RoomWidget at Channels.py:590.
 type RoomWidget struct {
@@ -58,6 +64,14 @@ type RoomWidget struct {
 	// refresh would still report connected, so sends vanish into a dead link
 	// while the composer keeps echoing them locally.
 	hubStatusFn func() int
+
+	// hubMaxMsgBytesFn reports the hub's LIVE per-message body byte limit,
+	// mirroring Python's RoomWidget.send_message reading
+	// self.hub.max_msg_body_bytes at send time (Channels.py:879). The WELCOME
+	// carrying the limit routinely lands AFTER the room view was built, so a
+	// value snapshotted then would pin the over-limit gate — and the split
+	// dialog's "Hub limit" line — to the 350-byte default forever.
+	hubMaxMsgBytesFn func() int
 
 	// Callbacks
 	OnSendMessage func(text string)
@@ -151,7 +165,7 @@ func NewRoomWidget(app *App, hubName, roomName string) *RoomWidget {
 		roomName:        roomName,
 		usersVisible:    true,
 		hubConnected:    true,
-		maxMessageBytes: 350,
+		maxMessageBytes: defaultMaxMsgBytes,
 		editorRows:      1,
 		// Python RoomFrame(focus_part="footer", Channels.py:602): a fresh
 		// room view starts on its composer.
@@ -490,10 +504,22 @@ func (rw *RoomWidget) sendMessage() {
 		}
 		return
 	}
-	if NeedsSplit(text, rw.maxMessageBytes) {
+	// Python RoomWidget.send_message (Channels.py:879-882): the per-message
+	// limit is the hub's advertised max_msg_body_bytes, read at send time; a
+	// draft over it is NOT transmitted — the display opens the "Message Too
+	// Long" split dialog instead, and the draft stays in the composer.
+	limit := rw.effectiveMaxMessageBytes()
+	if NeedsSplit(text, limit) {
 		if rw.OnSplitDialog != nil {
-			rw.OnSplitDialog(text, rw.maxMessageBytes)
+			rw.OnSplitDialog(text, limit)
+			return
 		}
+		// No dialog wired (a widget built outside the channels display): the
+		// draft is kept, but say why nothing was transmitted — a silent keep
+		// reads as a dead send key.
+		rw.appendLocalNotice(fmt.Sprintf(
+			"Message is %v bytes but the per-message limit is %v bytes; draft kept",
+			len([]byte(text)), limit), true)
 		return
 	}
 	if rw.OnSendMessage != nil {
@@ -1064,12 +1090,43 @@ func (rw *RoomWidget) SetHubConnected(connected bool) {
 	rw.hubConnected = connected
 }
 
-// MaxMessageBytes returns the per-message byte limit.
+// MaxMessageBytes returns the composer's effective per-message byte limit: the
+// hub's live advertised limit when one is wired, else the configured fallback.
 func (rw *RoomWidget) MaxMessageBytes() int {
+	return rw.effectiveMaxMessageBytes()
+}
+
+// SetMaxMessageBytes sets the fallback per-message byte limit used when the hub
+// has not advertised one.
+func (rw *RoomWidget) SetMaxMessageBytes(limit int) {
+	rw.maxMessageBytes = limit
+}
+
+// effectiveMaxMessageBytes returns the live per-message body limit: the hub's
+// advertised max_msg_body_bytes when the live hook is wired and positive, else
+// the configured fallback — Python's `self.hub.max_msg_body_bytes or 350`
+// (Channels.py:879).
+func (rw *RoomWidget) effectiveMaxMessageBytes() int {
+	if rw.hubMaxMsgBytesFn != nil {
+		if limit := rw.hubMaxMsgBytesFn(); limit > 0 {
+			return limit
+		}
+	}
 	return rw.maxMessageBytes
 }
 
-// SetMaxMessageBytes sets the per-message byte limit.
-func (rw *RoomWidget) SetMaxMessageBytes(limit int) {
-	rw.maxMessageBytes = limit
+// SendSplitParts transmits each pre-split part as its own room message and
+// clears the composer, matching Python _open_split_dialog's send_split
+// (Channels.py:907-916): every part goes out through the hub, then the draft is
+// cleared. The parts were sized against the per-message limit by SplitMessage,
+// so the composer's over-limit gate is deliberately bypassed here — re-gating
+// each part would drop the tail of a message the user already agreed to split.
+func (rw *RoomWidget) SendSplitParts(parts []string) {
+	if len(parts) == 0 || rw.OnSendMessage == nil {
+		return
+	}
+	for _, part := range parts {
+		rw.OnSendMessage(part)
+	}
+	rw.editor.SetText("")
 }

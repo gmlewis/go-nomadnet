@@ -280,16 +280,20 @@ func TestMaybeAutoconnect(t *testing.T) {
 	// Nil hub is a no-op
 	MaybeAutoconnect(nil)
 
+	// The status transitions go through the hub's locked setter: each
+	// MaybeAutoconnect call above/below starts a connect worker that writes the
+	// status from its own goroutine, so a raw field write here would race with
+	// the very attempts this test provokes.
 	// StatusDisconnected -> attempts connect
-	hub.Status = rrc.StatusDisconnected
+	hub.SetStatus(rrc.StatusDisconnected, "")
 	MaybeAutoconnect(hub)
 
 	// StatusFailed -> attempts connect
-	hub.Status = rrc.StatusFailed
+	hub.SetStatus(rrc.StatusFailed, "")
 	MaybeAutoconnect(hub)
 
 	// StatusConnected -> no-op
-	hub.Status = rrc.StatusConnected
+	hub.SetStatus(rrc.StatusConnected, "")
 	MaybeAutoconnect(hub)
 }
 

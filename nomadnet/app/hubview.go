@@ -37,4 +37,10 @@ type HubView interface {
 	AutoList() bool
 	AutoWho() bool
 	AvailableRoomList() []string
+
+	// Hub instance limits, read LIVE from the WELCOME envelope: the chat
+	// composer consults MaxMsgBodyLimit on every send (Python reads
+	// self.hub.max_msg_body_bytes at send time, Channels.py:879), so the value
+	// must be read through the hub rather than snapshotted.
+	MaxMsgBodyLimit() int
 }

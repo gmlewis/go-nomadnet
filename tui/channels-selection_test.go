@@ -32,6 +32,9 @@ type fakeHubView struct {
 	name   string
 	status int
 	rooms  []string
+	// maxMsgBodyBytes is the hub's advertised per-message body limit; zero
+	// means the hub never advertised one.
+	maxMsgBodyBytes int
 }
 
 func (f *fakeHubView) Name() string                { return f.name }
@@ -49,6 +52,10 @@ func (f *fakeHubView) AutoReconnect() bool         { return true }
 func (f *fakeHubView) AutoList() bool              { return true }
 func (f *fakeHubView) AutoWho() bool               { return true }
 func (f *fakeHubView) AvailableRoomList() []string { return nil }
+
+// MaxMsgBodyLimit returns the WELCOME-advertised per-message limit this fake
+// hub carries; zero means "never advertised".
+func (f *fakeHubView) MaxMsgBodyLimit() int { return f.maxMsgBodyBytes }
 
 func newSelectionCD(t *testing.T) *ChannelsDisplay {
 	t.Helper()

@@ -95,5 +95,13 @@ func (v rrcHubView) AutoWho() bool { return v.hub.GetAutoWho() }
 // but the client has not joined.
 func (v rrcHubView) AvailableRoomList() []string { return v.hub.GetAvailableRoomList() }
 
+// MaxMsgBodyLimit returns the hub's live per-message body byte limit — the
+// WELCOME-advertised max_msg_body_bytes, or the 350-byte default until the hub
+// advertises one (Python's `self.hub.max_msg_body_bytes or 350`,
+// Channels.py:879). Read through the hub's locked accessor on every call: the
+// WELCOME can arrive after the room view was built, and a snapshot taken then
+// would pin the composer's over-limit gate to the wrong value.
+func (v rrcHubView) MaxMsgBodyLimit() int { return v.hub.MaxMsgBodyLimit() }
+
 // compile-time guard: rrcHubView satisfies HubView.
 var _ HubView = rrcHubView{}

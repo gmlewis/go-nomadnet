@@ -41,6 +41,9 @@ type fakeHub struct {
 	autoReconnect bool
 	autoList      bool
 	autoWho       bool
+	// maxMsgBodyBytes is the hub's advertised per-message body limit; zero
+	// means the hub never advertised one.
+	maxMsgBodyBytes int
 }
 
 func (f fakeHub) Name() string           { return f.name }
@@ -61,6 +64,11 @@ func (f fakeHub) AutoReconnect() bool         { return f.autoReconnect }
 func (f fakeHub) AutoList() bool              { return f.autoList }
 func (f fakeHub) AutoWho() bool               { return f.autoWho }
 func (f fakeHub) AvailableRoomList() []string { return nil }
+
+// MaxMsgBodyLimit returns the WELCOME-advertised per-message limit this fake
+// hub carries; zero means "never advertised", which the composer resolves to
+// its 350-byte default exactly as the real hub view does.
+func (f fakeHub) MaxMsgBodyLimit() int { return f.maxMsgBodyBytes }
 
 // TestComposeHubListGolden pins Python Channels._compose_list_widgets
 // (Channels.py:1599-1662): for each hub a status-glyph + name entry, followed

@@ -1644,7 +1644,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		// selecting a room auto-connects a disconnected/failed hub. This was
 		// previously unwired (the MaybeAutoconnect helper existed unused).
 		tui.MaybeAutoconnect(hub)
-		if hub.Status == rrc.StatusConnected && !hub.HasRoom(room) {
+		if hub.GetHubStatus() == rrc.StatusConnected && !hub.HasRoom(room) {
 			hub.JoinRoom(room, false)
 		}
 		msgs := rrcRoomMessages(hub, room)
@@ -1665,7 +1665,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 			return
 		}
 		hub.AddRoom(room)
-		if hub.Status == rrc.StatusConnected {
+		if hub.GetHubStatus() == rrc.StatusConnected {
 			hub.JoinRoomWithKey(room, false, key)
 		}
 		// Python's confirmed() ends with _select_room, which sets the hub
@@ -2427,7 +2427,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 			if roomNorm != "" {
 				wasJoined := hub.HasRoom(roomNorm)
 				hub.AddRoom(roomNorm)
-				if hub.Status == rrc.StatusConnected && !wasJoined {
+				if hub.GetHubStatus() == rrc.StatusConnected && !wasJoined {
 					hub.JoinRoom(roomNorm, false)
 				}
 			}
