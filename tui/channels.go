@@ -38,6 +38,11 @@ type ChannelMessage struct {
 	IsNotice  bool
 	IsError   bool
 	Mention   bool
+	// IsPrivate marks a private NOTICE: one the hub delivered to this client
+	// alone (K_DST), or the local echo of one this client sent. It never
+	// belongs to a room, so it renders with a private marker instead of as
+	// room traffic.
+	IsPrivate bool
 }
 
 // ChannelMember holds a room member.
@@ -142,13 +147,16 @@ type ChannelsDisplay struct {
 	// The room-composer slash commands (Python _handle_slash_command,
 	// Channels.py:997-1120): the callbacks perform the hub mutation and
 	// return errors for local error notices.
-	OnSendAction    func(text string) error
-	OnSendPing      func() error
-	OnJoinRoomNamed func(room string) error
-	OnClearMessages func()
-	OnNickInfo      func() (nick string, isOverride bool)
-	OnSetNick       func(name string) error
-	OnDisconnectHub func()
+	OnSendAction func(text string) error
+	OnSendPing   func() error
+	// OnPrivateCommand delivers a /msg line to the hub's private command
+	// channel, which resolves the target itself (a gorrcd extension).
+	OnPrivateCommand func(arg string) error
+	OnJoinRoomNamed  func(room string) error
+	OnClearMessages  func()
+	OnNickInfo       func() (nick string, isOverride bool)
+	OnSetNick        func(name string) error
+	OnDisconnectHub  func()
 	// OnLocalMessage records a client-only system/error/notice row on the
 	// hub for the given room (Python _local_message). Wired from textui to
 	// hub.AddLocalMessage so /help survives message-buffer refreshes.
@@ -697,6 +705,12 @@ func (cd *ChannelsDisplay) ShowRoom(hubIdx int, room string, msgs []ChannelMessa
 				return nil
 			}
 			return cd.OnSendPing()
+		}
+		rw.OnPrivateCommand = func(arg string) error {
+			if cd.OnPrivateCommand == nil {
+				return nil
+			}
+			return cd.OnPrivateCommand(arg)
 		}
 		rw.OnJoinRoomNamed = func(named string) error {
 			if cd.OnJoinRoomNamed == nil {

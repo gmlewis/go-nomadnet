@@ -178,7 +178,7 @@ func TestSlashHelpText(t *testing.T) {
 		t.Error("SlashHelpText() returned empty")
 	}
 	// Help text should mention the main commands
-	for _, cmd := range []string{"/help", "/ping", "/join", "/nick", "/me"} {
+	for _, cmd := range []string{"/help", "/ping", "/join", "/nick", "/me", "/msg"} {
 		if !cmdContainsStr(help, cmd) {
 			t.Errorf("SlashHelpText() missing %q", cmd)
 		}
@@ -188,7 +188,9 @@ func TestSlashHelpText(t *testing.T) {
 // wantSlashHelp carries the Python RoomWidget.SLASH_HELP constant verbatim
 // (Channels.py:948-979, byte-identical in the SOT checkout and the installed
 // user-site 1.2.8 copy) — the /help output is a literal constant, so the port
-// renders the exact lines including the column-aligned descriptions.
+// renders the exact lines including the column-aligned descriptions. One
+// deliberate addition: /msg, the private-message command this client adds on
+// top of Python's set, which Python does not have at all.
 var wantSlashHelp = []string{
 	"/help                                - show this list",
 	"/ping                                - measure round-trip to hub",
@@ -197,6 +199,7 @@ var wantSlashHelp = []string{
 	"/part [room]                         - leave a room (default: current)",
 	"/leave [room]                        - alias for /part",
 	"/me <text>                           - send an action (e.g. /me waves)",
+	"/msg <nick|hash> <text>              - send a private message to a user",
 	"/nick <name>                         - set your nick on this hub only",
 	"/who [room]                          - list users (current room if omitted)",
 	"/names [room]                        - alias for /who",
@@ -236,6 +239,53 @@ func TestSlashHelpTextPythonParity(t *testing.T) {
 		if got[i] != want {
 			t.Errorf("SlashHelpText() line %v = %q, want %q", i+1, got[i], want)
 		}
+	}
+}
+
+// TestSplitMsgArgument pins the /msg split the local echo and the usage
+// notice rely on: an unquoted target is one whitespace-delimited word, a
+// quoted target keeps its spaces, and a line without both parts is refused
+// rather than sent to the hub with a guessed target.
+func TestSplitMsgArgument(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		arg        string
+		wantTarget string
+		wantBody   string
+		wantOK     bool
+	}{
+		{name: "nick and text", arg: "minipc hello there", wantTarget: "minipc", wantBody: "hello there", wantOK: true},
+		{name: "extra whitespace collapses", arg: "  minipc   hello  ", wantTarget: "minipc", wantBody: "hello", wantOK: true},
+		{name: "tab separates", arg: "minipc\thello", wantTarget: "minipc", wantBody: "hello", wantOK: true},
+		{name: "single-quoted target", arg: "'gonomadnet on MiniPC' yo dude",
+			wantTarget: "gonomadnet on MiniPC", wantBody: "yo dude", wantOK: true},
+		{name: "double-quoted target", arg: `"gonomadnet on MiniPC" yo dude`,
+			wantTarget: "gonomadnet on MiniPC", wantBody: "yo dude", wantOK: true},
+		{name: "quoted target with padded text", arg: "  'a b'   hi  ", wantTarget: "a b", wantBody: "hi", wantOK: true},
+		{name: "hash target", arg: "0102030405060708 hello", wantTarget: "0102030405060708", wantBody: "hello", wantOK: true},
+		{name: "empty", arg: "", wantOK: false},
+		{name: "whitespace only", arg: "   ", wantOK: false},
+		{name: "target without text", arg: "minipc", wantOK: false},
+		{name: "quoted target without text", arg: "'a b'", wantOK: false},
+		{name: "unterminated quote", arg: "'minipc hello", wantOK: false},
+		{name: "empty quoted target", arg: "'' hello", wantOK: false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			target, body, ok := SplitMsgArgument(tc.arg)
+			if ok != tc.wantOK {
+				t.Fatalf("SplitMsgArgument(%q) ok = %v, want %v", tc.arg, ok, tc.wantOK)
+			}
+			if !ok {
+				return
+			}
+			if target != tc.wantTarget || body != tc.wantBody {
+				t.Errorf("SplitMsgArgument(%q) = %q/%q, want %q/%q", tc.arg, target, body, tc.wantTarget, tc.wantBody)
+			}
+		})
 	}
 }
 

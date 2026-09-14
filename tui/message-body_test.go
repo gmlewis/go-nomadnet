@@ -178,6 +178,40 @@ func TestFormatRRCMessageSelfUsesPalette(t *testing.T) {
 	}
 }
 
+// TestPrivateRowsCarryAPrivateMarker pins the private NOTICE rendering: a
+// message the hub delivered to this client alone reads "private from <nick>",
+// the local echo of one this client sent reads "private to <nick>", and room
+// traffic carries no marker at all. Both layouts (one-line and justified) must
+// agree, so the marker counts toward the nick column.
+func TestPrivateRowsCarryAPrivateMarker(t *testing.T) {
+	t.Parallel()
+
+	opts := renderTestOpts(ThemeDark)
+	private := ChannelMessage{Nick: "minipc", Text: "yo dude", IsPrivate: true}
+
+	got := formatRRCMessage(private, opts)
+	if !strings.Contains(got, "private from <minipc>") {
+		t.Errorf("private render = %q, want the private-from marker", got)
+	}
+	lines := formatRRCMessageLines(private, opts, 80)
+	if len(lines) == 0 || !strings.Contains(lines[0], "private from <minipc>") {
+		t.Errorf("justified private rows = %v, want the marker on line one", lines)
+	}
+
+	echo := private
+	echo.IsSelf = true
+	got = formatRRCMessage(echo, opts)
+	if !strings.Contains(got, "private to <minipc>") {
+		t.Errorf("echo render = %q, want the private-to marker", got)
+	}
+
+	room := ChannelMessage{Nick: "minipc", Text: "yo dude"}
+	got = formatRRCMessage(room, opts)
+	if strings.Contains(got, "private") {
+		t.Errorf("room render = %q, want no private marker", got)
+	}
+}
+
 // TestRRCNickColorFallback pins the non-palette mode: irc_nick_self for self
 // messages, irc_nick_peer for others (Channels.py:1399).
 func TestRRCNickColorFallback(t *testing.T) {

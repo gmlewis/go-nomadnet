@@ -95,6 +95,12 @@ type RoomWidget struct {
 	// OnSendPing sends a T_PING for this room (Python "ping",
 	// Channels.py:1009-1018: hub.send_ping).
 	OnSendPing func() error
+	// OnPrivateCommand sends a private message: the argument is the target
+	// and the text the user typed after /msg, forwarded to the hub, which
+	// resolves the target and delivers the notice to that one participant.
+	// The hub must advertise CAPPrivateCommand, so the callback reports the
+	// error for a local notice when it does not.
+	OnPrivateCommand func(arg string) error
 	// OnJoinRoomNamed adds and joins the named room (Python "join",
 	// Channels.py:1020-1034: hub.add_room + join_room + update_list +
 	// _select_room).
@@ -531,6 +537,19 @@ func (rw *RoomWidget) appendLocalNotice(text string, isError bool) {
 // OnSendMessage (the rrc layer records nothing for them), and unknown commands
 // get Python's "Unknown command" error. Every hub-touching command requires a
 // connected hub first (Python _require_connected, Channels.py:991-996).
+// appendPrivateEcho renders the sender's own copy of a private message, so a
+// conversation reads the same way it does in a query window.
+func (rw *RoomWidget) appendPrivateEcho(target, body string) {
+	rw.chatMessages = append(rw.chatMessages, ChannelMessage{
+		Nick:      target,
+		Text:      body,
+		TsMs:      time.Now().UnixMilli(),
+		IsPrivate: true,
+		IsSelf:    true,
+	})
+	rw.renderMessages()
+}
+
 func (rw *RoomWidget) handleSlashCommand(text string) {
 	requireConnected := func() bool {
 		if !rw.hubIsConnected() {
@@ -581,6 +600,32 @@ func (rw *RoomWidget) handleSlashCommand(text string) {
 		if rw.OnSendMessage != nil {
 			rw.OnSendMessage("/list")
 		}
+	case "/msg", "/dn", "/dnotice":
+		// Python has no private-message command: /msg is this client's
+		// addition, with the hub's own /dn and /dnotice names accepted as
+		// aliases. The line goes to the hub's private command channel
+		// (CAPPrivateCommand), which resolves the target — by nick, hash, or
+		// prefix — and delivers one NOTICE to that participant alone, so
+		// nothing about the conversation reaches the room. The target may be
+		// quoted when its nick contains spaces, because the argument is
+		// forwarded exactly as typed.
+		if !requireConnected() {
+			break
+		}
+		target, body, ok := SplitMsgArgument(arg)
+		if !ok {
+			rw.appendLocalNotice("Usage: /msg <nick|hash> <text>", true)
+			break
+		}
+		if rw.OnPrivateCommand == nil {
+			rw.appendLocalNotice("Private messages are not available on this build", true)
+			break
+		}
+		if err := rw.OnPrivateCommand(arg); err != nil {
+			rw.appendLocalNotice("Private message failed: "+err.Error(), true)
+			break
+		}
+		rw.appendPrivateEcho(target, body)
 	case "/join", "/j":
 		if arg == "" {
 			rw.appendLocalNotice("Usage: /join <room>", true)

@@ -463,9 +463,23 @@ func formatRRCMessage(msg ChannelMessage, opts RRCRenderOpts) string {
 	colors := rrcRenderColors(opts.Theme)
 	var sb strings.Builder
 	sb.WriteString(" " + rrcTsPrefix(msg.TsMs, colors["ts"]) +
-		colorTag(rrcNickColor(msg, opts), "") + "<" + rrcSenderName(msg) + ">" + colorReset + " " +
+		colorTag(rrcNickColor(msg, opts), "") + rrcPrivateTag(msg) + "<" + rrcSenderName(msg) + ">" + colorReset + " " +
 		formatRRCBody(msg, opts) + colorReset + "\n")
 	return sb.String()
+}
+
+// rrcPrivateTag marks a private NOTICE row: "private from " for one the hub
+// delivered to this client alone, "private to " for the local echo of one this
+// client sent. Room traffic renders without a tag, so a private message can
+// never be mistaken for something the room saw.
+func rrcPrivateTag(msg ChannelMessage) string {
+	if !msg.IsPrivate {
+		return ""
+	}
+	if msg.IsSelf {
+		return "private to "
+	}
+	return "private from "
 }
 
 // formatRRCBody renders the message body with linkified hash runs, room
@@ -596,11 +610,12 @@ func formatRRCMessageLines(msg ChannelMessage, opts RRCRenderOpts, width int) []
 	// body_rendered renders nick_micron + message_body as one flow). A nick
 	// too wide for the column (a pathological narrow chat pane) falls back to
 	// the one-line render.
-	nickLen := len("<" + sender + "> ")
+	tag := rrcPrivateTag(msg)
+	nickLen := len(tag) + len("<"+sender+"> ")
 	if nickLen > bodyW {
 		return []string{strings.TrimSuffix(formatRRCMessage(msg, opts), "\n")}
 	}
-	column := "<" + sender + "> " + msg.Text
+	column := tag + "<" + sender + "> " + msg.Text
 	segments := urwidSpaceWrap(column, bodyW)
 
 	lines := make([]string, 0, len(segments))

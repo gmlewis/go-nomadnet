@@ -40,7 +40,7 @@ If you already have [Go](https://go.dev/) installed, you can
 install `gonomadnet` directly from GitHub without cloning the repo:
 
 ```bash
-go install github.com/gmlewis/go-nomadnet/cmd/gonomadnet@v0.136.0
+go install github.com/gmlewis/go-nomadnet/cmd/gonomadnet@v0.137.0
 ```
 
 This puts the `gonomadnet` binary in your `$GOPATH/bin` (or `$GOBIN`)
@@ -454,7 +454,11 @@ sub-displays reached from within those pages, not top-level menu buttons.)
 
 - **Conversations** — Message list, compose, read/reply
 - **Network** — Announce stream, known nodes/peers, propagation nodes
-- **Channels** — RRC chat rooms, member list, message history
+- **Channels** — RRC chat rooms, member list, message history, and private
+  messages (`/msg <nick|hash> <text>`, quoting a nick that contains spaces;
+  both directions render marked `private from`/`private to` on a hub that
+  advertises `CAP_PRIVATE_COMMAND` — see the `gorrcd` private-message notes in
+  the [go-reticulum README](https://github.com/gmlewis/go-reticulum#private-messages-between-rrc-users))
 - **Log** — Log file viewer
 - **Interfaces** — RNS interface status and bandwidth charts
 - **Config** — View/edit configuration

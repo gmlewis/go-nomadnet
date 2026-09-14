@@ -106,6 +106,42 @@ func isMicronSpace(b byte) bool {
 	return false
 }
 
+// SplitMsgArgument splits a /msg argument into its target and body. A target
+// that contains spaces must be quoted, and the quoting is forwarded to the hub
+// unchanged: "'gonomadnet on MiniPC' yo dude" yields the target "gonomadnet on
+// MiniPC" and the body "yo dude". An unquoted target ends at the first
+// whitespace run, so a nick is never guessed at. The hub re-parses the line it
+// receives and has the final say; this split drives the local echo, the usage
+// notice, and nothing on the wire.
+func SplitMsgArgument(arg string) (target, body string, ok bool) {
+	s := strings.TrimSpace(arg)
+	if s == "" {
+		return "", "", false
+	}
+	if quote := s[0]; quote == '\'' || quote == '"' {
+		end := strings.IndexByte(s[1:], quote)
+		if end < 0 {
+			return "", "", false
+		}
+		target = s[1 : 1+end]
+		body = strings.TrimSpace(s[1+end+1:])
+		if target == "" || body == "" {
+			return "", "", false
+		}
+		return target, body, true
+	}
+	idx := strings.IndexAny(s, " \t\n\r\f\v")
+	if idx < 0 {
+		return "", "", false
+	}
+	target = s[:idx]
+	body = strings.TrimSpace(s[idx:])
+	if target == "" || body == "" {
+		return "", "", false
+	}
+	return target, body, true
+}
+
 // IsLocalCommand returns true if the command is handled locally
 // (no message sent to the server).
 func IsLocalCommand(cmd string) bool {
@@ -129,6 +165,7 @@ func SlashHelpText() string {
 /part [room]                         - leave a room (default: current)
 /leave [room]                        - alias for /part
 /me <text>                           - send an action (e.g. /me waves)
+/msg <nick|hash> <text>              - send a private message to a user
 /nick <name>                         - set your nick on this hub only
 /who [room]                          - list users (current room if omitted)
 /names [room]                        - alias for /who

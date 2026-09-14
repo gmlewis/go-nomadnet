@@ -1697,6 +1697,17 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		hub.SendAction(strings.ToLower(a.RRC.ActiveRoom()), text)
 		return nil
 	}
+	// The /msg command has no Python counterpart: the client sends the line to
+	// the hub's private command channel (CAPPrivateCommand), and the hub
+	// resolves the target and delivers one NOTICE to that participant alone.
+	// The target travels exactly as typed, so a nick with spaces is quoted.
+	channelsDisplay.OnPrivateCommand = func(arg string) error {
+		hub := a.RRC.ActiveHub()
+		if hub == nil {
+			return errors.New("no hub")
+		}
+		return hub.SendPrivateCommand("/dnotice " + arg)
+	}
 	// Python "ping" (Channels.py:1009-1018): hub.send_ping.
 	channelsDisplay.OnSendPing = func() error {
 		if hub := a.RRC.ActiveHub(); hub != nil {
@@ -3039,6 +3050,26 @@ func rrcRoomMessages(hub *rrc.RRCHub, room string) []tui.ChannelMessage {
 			IsSystem: m.Kind == "system",
 			Mention:  m.Mention,
 			IsSelf:   ownHashHex != "" && srcHex != "" && srcHex == ownHashHex,
+		})
+	}
+	// Private notices belong to no room: the hub delivered them to this client
+	// alone, so they ride into every room view of this hub rather than
+	// disappearing the way Python's unrendered RRC.notices do. The renderer
+	// marks them "private from"/"private to" so they can never read as room
+	// traffic.
+	for _, n := range hub.DirectNotices() {
+		srcHex := strings.ToLower(fmt.Sprintf("%x", n.Src))
+		nick := n.Nick
+		if nick == "" {
+			nick = srcHex
+		}
+		out = append(out, tui.ChannelMessage{
+			Nick:      nick,
+			SrcHash:   srcHex,
+			Text:      n.Text,
+			TsMs:      n.Ts,
+			IsPrivate: true,
+			IsSelf:    ownHashHex != "" && srcHex != "" && srcHex == ownHashHex,
 		})
 	}
 	tui.SortChannelMessages(out)
