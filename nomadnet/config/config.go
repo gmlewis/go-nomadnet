@@ -25,6 +25,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/gmlewis/go-reticulum/rns"
 )
 
 // Config holds all NomadNet configuration settings parsed from the
@@ -217,11 +219,13 @@ func ConfigDir() string {
 	return filepath.Join(home, ".nomadnetwork")
 }
 
-// asBool converts a string value to a boolean, matching Python's
-// truthy conventions (yes/true/1 → true, no/false/0 → false).
+// asBool converts a config string to a boolean the way ConfigObj's as_bool
+// does, via the shared rns.ParseConfigBool helper: yes/true/on/1 → true and
+// no/false/off/0 → false, case-insensitively and ignoring surrounding
+// whitespace. Any other value is false.
 func asBool(s string) bool {
-	s = strings.ToLower(strings.TrimSpace(s))
-	return s == "yes" || s == "true" || s == "1"
+	b, _ := rns.ParseConfigBool(s)
+	return b
 }
 
 // asInt converts a string value to an integer.

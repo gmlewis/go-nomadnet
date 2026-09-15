@@ -21,6 +21,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/gmlewis/go-reticulum/rns"
 )
 
 // InterfaceStat is a transport-agnostic snapshot of one configured RNS interface
@@ -159,13 +161,12 @@ func parseInterfaceConfig(path string) []interfaceConfigEntry {
 }
 
 // isFalseyConfigBool reports whether a config bool value means "false", matching
-// Python's ('false','off','no','0') set (Interfaces.py:2871).
+// Python's ('false','off','no','0') set (Interfaces.py:2871). It reads the value
+// through the shared rns.ParseConfigBool helper so the accepted spellings stay
+// identical to every other INI boolean in the port.
 func isFalseyConfigBool(v string) bool {
-	switch strings.ToLower(strings.TrimSpace(v)) {
-	case "false", "off", "no", "0":
-		return true
-	}
-	return false
+	b, ok := rns.ParseConfigBool(v)
+	return ok && !b
 }
 
 // InterfaceStats returns a snapshot of every interface configured in the RNS
