@@ -88,3 +88,15 @@ if [[ -f "${README_FILE}" ]]; then
 	rm -f "${README_FILE}.bak"
 	echo "Updated install pin: -> v${NEW_VERSION} in ${README_FILE}"
 fi
+
+# Keep go.sum in sync with go.mod. A dependency version bumped without a
+# following "go mod tidy" leaves go.sum without the new module's hashes, and CI
+# (which never has go.work) then fails with a wall of "missing go.sum entry"
+# errors. Run it here so the bump workflow cannot forget. -C targets the repo
+# root regardless of the caller's working directory.
+echo "Running go mod tidy..."
+if ! go -C "${REPO_ROOT}" mod tidy; then
+	echo "error: 'go mod tidy' failed; version files were updated but go.sum may be stale." >&2
+	exit 1
+fi
+echo "go.mod/go.sum are tidy."

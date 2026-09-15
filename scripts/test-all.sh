@@ -22,6 +22,16 @@ GO_TEST_TIMEOUT="${GO_TEST_TIMEOUT:-2m}"
 
 cd "${REPO_ROOT}"
 
+# A dependency version bumped in go.mod without a following "go mod tidy"
+# leaves go.sum without the new module's hashes. CI has no go.work, so it
+# fails there with a wall of "missing go.sum entry" errors that bury the real
+# cause; catch it here instead.
+echo "Checking go.mod and go.sum are tidy..."
+if ! go mod tidy -diff; then
+	echo "error: go.mod/go.sum are out of date — run 'go mod tidy' and commit the result." >&2
+	exit 1
+fi
+
 echo "Running gofmt..."
 gofmt -s -w .
 

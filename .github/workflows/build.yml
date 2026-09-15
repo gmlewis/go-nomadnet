@@ -22,6 +22,33 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # A dependency version bumped in go.mod without a following "go mod tidy"
+  # leaves go.sum without the new module's hashes. CI resolves strictly from
+  # go.mod/go.sum (go.work is gitignored and never checked out there), so every
+  # other job then fails with a wall of "missing go.sum entry" errors that bury
+  # the real cause — the v0.119.0 bump produced 96 error lines across 6 jobs
+  # from one omitted tidy. Fail fast here with an actionable message instead.
+  modtidy:
+    name: Go Modules
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Check go.mod and go.sum are tidy
+        run: |
+          if ! go mod tidy -diff; then
+            echo "::error::go.mod/go.sum are out of date — run 'go mod tidy' and commit the result."
+            exit 1
+          fi
+
   fmt:
     name: Go Format
     runs-on: ubuntu-latest
