@@ -118,7 +118,7 @@ func TestCautionBannerFullWidthCenterDraw(t *testing.T) {
 			main, style, _ := screen.Get(col, row)
 			_, bg, _ := style.Decompose()
 			if bg == tcell.ColorDefault {
-				t.Fatalf("cell (%d,%d) left default bg — banner must fill full footer width", col, row)
+				t.Fatalf("cell (%v,%v) left default bg — banner must fill full footer width", col, row)
 			}
 			if strings.TrimSpace(main) != "" {
 				painted++
@@ -147,7 +147,7 @@ func TestCautionBannerFullWidthCenterDraw(t *testing.T) {
 	// urwid ceil-left: pad = (width - textWidth + 1) / 2.
 	wantPad := (width - len("Hello") + 1) / 2
 	if leftPad != wantPad {
-		t.Errorf("left pad = %d, want urwid ceil-left %d (text centered in width %d)", leftPad, wantPad, width)
+		t.Errorf("left pad = %v, want urwid ceil-left %v (text centered in width %v)", leftPad, wantPad, width)
 	}
 }
 

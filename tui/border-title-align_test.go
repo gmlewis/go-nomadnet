@@ -81,14 +81,14 @@ func TestBorderTitleAlignmentUrwidParity(t *testing.T) {
 		tIdx := strings.Index(s, "T")
 		sIdx := strings.Index(s, "s")
 		if tIdx < 0 || sIdx < 0 {
-			t.Errorf("width=%d: title not found in %q", c.width, s)
+			t.Errorf("width=%v: title not found in %q", c.width, s)
 			continue
 		}
 		gotLeft := strings.Count(s[:tIdx], "─")
 		gotRight := strings.Count(s[sIdx+1:], "─")
 
 		if gotLeft != c.wantLeft || gotRight != c.wantRight {
-			t.Errorf("width=%d: left=%d right=%d, want left=%d right=%d (urwid parity)\n  %q",
+			t.Errorf("width=%v: left=%v right=%v, want left=%v right=%v (urwid parity)\n  %q",
 				c.width, gotLeft, gotRight, c.wantLeft, c.wantRight, s)
 		}
 	}

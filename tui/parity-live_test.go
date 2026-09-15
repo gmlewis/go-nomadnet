@@ -54,10 +54,10 @@ func runPythonNomadnet(t *testing.T, stdin any, script string, out any) {
 	cmd.Stderr = &stderr
 	stdout, err := cmd.Output()
 	if err != nil {
-		t.Fatalf("python3 nomadnet reference failed: %v\nstderr:\n%s", err, stderr.String())
+		t.Fatalf("python3 nomadnet reference failed: %v\nstderr:\n%v", err, stderr.String())
 	}
 	if err := json.Unmarshal(stdout, out); err != nil {
-		t.Fatalf("decode python output: %v\nstderr:\n%s\nraw stdout:\n%s", err, stderr.String(), stdout)
+		t.Fatalf("decode python output: %v\nstderr:\n%v\nraw stdout:\n%s", err, stderr.String(), stdout)
 	}
 }
 
@@ -74,7 +74,7 @@ func runPythonNomadnetScript(t *testing.T, scriptPath string, out any) {
 	testutils.SkipIfNoPythonNomadnet(t)
 
 	if _, err := os.Stat(scriptPath); err != nil {
-		t.Skipf("script %s not accessible from package cwd: %v", scriptPath, err)
+		t.Skipf("script %v not accessible from package cwd: %v", scriptPath, err)
 	}
 
 	cmd := exec.Command(testutils.PythonNomadnetExe(), scriptPath)
@@ -82,9 +82,9 @@ func runPythonNomadnetScript(t *testing.T, scriptPath string, out any) {
 	cmd.Stderr = &stderr
 	stdout, err := cmd.Output()
 	if err != nil {
-		t.Fatalf("python3 nomadnet script %s failed: %v\nstderr:\n%s", scriptPath, err, stderr.String())
+		t.Fatalf("python3 nomadnet script %v failed: %v\nstderr:\n%v", scriptPath, err, stderr.String())
 	}
 	if err := json.Unmarshal(stdout, out); err != nil {
-		t.Fatalf("decode python output: %v\nstderr:\n%s\nraw stdout:\n%s", err, stderr.String(), stdout)
+		t.Fatalf("decode python output: %v\nstderr:\n%v\nraw stdout:\n%s", err, stderr.String(), stdout)
 	}
 }

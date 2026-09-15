@@ -136,7 +136,7 @@ func TestBrowserMouseReclickSameLinkDispatches(t *testing.T) {
 	clickAt(bd, 0, y)
 	clickAt(bd, 0, y)
 	if count != 2 {
-		t.Errorf("OnRetrieveURL fired %d times after two clicks on the same link, want 2", count)
+		t.Errorf("OnRetrieveURL fired %v times after two clicks on the same link, want 2", count)
 	}
 }
 

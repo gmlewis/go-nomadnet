@@ -51,7 +51,7 @@ func TestFullscreenHidesLeftPane(t *testing.T) {
 	// Before fullscreen: left pane should be visible (width > 0).
 	leftX, _, leftW, _ := nd.leftPanel.GetRect()
 	if leftW <= 0 {
-		t.Fatalf("before fullscreen: left pane width=%d, want > 0", leftW)
+		t.Fatalf("before fullscreen: left pane width=%v, want > 0", leftW)
 	}
 
 	// Toggle fullscreen — should hide the left pane.
@@ -61,13 +61,13 @@ func TestFullscreenHidesLeftPane(t *testing.T) {
 
 	_, _, leftW2, _ := nd.leftPanel.GetRect()
 	if leftW2 != 0 {
-		t.Errorf("after fullscreen: left pane width=%d, want 0 (hidden)", leftW2)
+		t.Errorf("after fullscreen: left pane width=%v, want 0 (hidden)", leftW2)
 	}
 
 	// The browser pane should fill the full width.
 	browserX, _, browserW, _ := nd.browser.Widget().GetRect()
 	if browserW < 130 {
-		t.Errorf("after fullscreen: browser width=%d, want >= 130 (full width)", browserW)
+		t.Errorf("after fullscreen: browser width=%v, want >= 130 (full width)", browserW)
 	}
 	_ = leftX
 	_ = browserX

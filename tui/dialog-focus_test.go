@@ -33,18 +33,18 @@ func TestB5WireDialogNavHandlesTabAndDown(t *testing.T) {
 	for i, item := range items {
 		capture := getItemCapture(item)
 		if capture == nil {
-			t.Errorf("item %d: InputCapture is nil", i)
+			t.Errorf("item %v: InputCapture is nil", i)
 			continue
 		}
 
 		// Tab should be consumed (return nil) so focus advances.
 		if got := capture(tcell.NewEventKey(tcell.KeyTab, 0, tcell.ModNone)); got != nil {
-			t.Errorf("B5: item %d Tab was not consumed (returned non-nil) — Tab should advance fields", i)
+			t.Errorf("B5: item %v Tab was not consumed (returned non-nil) — Tab should advance fields", i)
 		}
 
 		// Down should be consumed (return nil) so focus advances.
 		if got := capture(tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone)); got != nil {
-			t.Errorf("B5: item %d Down was not consumed (returned non-nil) — Down should advance fields", i)
+			t.Errorf("B5: item %v Down was not consumed (returned non-nil) — Down should advance fields", i)
 		}
 	}
 }

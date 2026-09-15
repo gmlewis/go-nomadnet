@@ -155,7 +155,7 @@ json.dump(out, sys.stdout)
 			}
 			got := strings.TrimPrefix(NickColorByHash(hb, palette), "#")
 			if got != want[i] {
-				t.Errorf("NickColorByHash(%x, %s) = #%s, want #%s (Python)", hb, inp.Theme, got, want[i])
+				t.Errorf("NickColorByHash(%x, %v) = #%v, want #%v (Python)", hb, inp.Theme, got, want[i])
 			}
 		})
 	}

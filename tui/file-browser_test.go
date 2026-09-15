@@ -278,7 +278,7 @@ func TestAttachFileDialogSlotPlacedOnBody(t *testing.T) {
 		t.Fatal("Attach File title not found")
 	}
 	if titleX < 52 {
-		t.Errorf("title at x=%d, must be in the right pane (x>=52), not the list column", titleX)
+		t.Errorf("title at x=%v, must be in the right pane (x>=52), not the list column", titleX)
 	}
 	// Border is default-style.
 	_, st, _ := screen.Get(titleX, titleY)

@@ -64,7 +64,7 @@ func TestBrowserFieldRender(t *testing.T) {
 		t.Fatal("field line not found")
 	}
 	if len(bd.lineFields[fieldLine]) != 1 {
-		t.Fatalf("lineFields[%d] = %d fields, want 1", fieldLine, len(bd.lineFields[fieldLine]))
+		t.Fatalf("lineFields[%v] = %v fields, want 1", fieldLine, len(bd.lineFields[fieldLine]))
 	}
 	rf := bd.lineFields[fieldLine][0]
 	if rf.editor == nil {
@@ -83,7 +83,7 @@ func TestBrowserFieldRender(t *testing.T) {
 		t.Error("Down not consumed")
 	}
 	if bd.focusLine != fieldLine {
-		t.Fatalf("focusLine = %d, want %d", bd.focusLine, fieldLine)
+		t.Fatalf("focusLine = %v, want %v", bd.focusLine, fieldLine)
 	}
 	if bd.fieldOverlay == nil || bd.fieldOverlayLine != fieldLine {
 		t.Error("text-field overlay not mounted on the field line")
@@ -160,7 +160,7 @@ func TestBrowserFieldOverlayExit(t *testing.T) {
 		t.Error("overlay still mounted after Down")
 	}
 	if bd.focusLine != linkLine {
-		t.Errorf("focusLine after Down = %d, want %d", bd.focusLine, linkLine)
+		t.Errorf("focusLine after Down = %v, want %v", bd.focusLine, linkLine)
 	}
 }
 

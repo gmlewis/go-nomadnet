@@ -156,7 +156,7 @@ func run(args []string) error {
 	sessionName := sessionPrefix + nnn
 	logFile := cfg.logFile
 	if logFile == "" {
-		logFile = fmt.Sprintf("/tmp/%s-%s.log", logPrefix, nnn)
+		logFile = fmt.Sprintf("/tmp/%v-%v.log", logPrefix, nnn)
 	}
 	logf, closeLog, err := openLog(logFile)
 	if err != nil {
@@ -200,17 +200,17 @@ func run(args []string) error {
 	rnsFlag := ""
 	if cfg.rnsconfigDir != "" {
 		if cfg.nomadnet {
-			rnsFlag = fmt.Sprintf(" --rnsconfig '%s'", cfg.rnsconfigDir)
+			rnsFlag = fmt.Sprintf(" --rnsconfig '%v'", cfg.rnsconfigDir)
 		} else {
-			rnsFlag = fmt.Sprintf(" -rnsconfig '%s'", cfg.rnsconfigDir)
+			rnsFlag = fmt.Sprintf(" -rnsconfig '%v'", cfg.rnsconfigDir)
 		}
 	}
 	var launchCmd string
 	if cfg.nomadnet {
 		// Python nomadnet is a global binary; no `go run` / repo cwd needed.
-		launchCmd = fmt.Sprintf("exec nomadnet -t --config '%s'%s", configDir, rnsFlag)
+		launchCmd = fmt.Sprintf("exec nomadnet -t --config '%v'%v", configDir, rnsFlag)
 	} else {
-		launchCmd = fmt.Sprintf("cd '%s' && exec go run ./cmd/gonomadnet -t -config '%s'%s", repo, configDir, rnsFlag)
+		launchCmd = fmt.Sprintf("cd '%v' && exec go run ./cmd/gonomadnet -t -config '%v'%v", repo, configDir, rnsFlag)
 	}
 
 	both := func(format string, args ...any) {
@@ -218,17 +218,17 @@ func run(args []string) error {
 		logf(format, args...)
 	}
 
-	both("nomadnet tmux test suite (%s)", target)
-	both("  log     : %s", logFile)
-	both("  session : %s  (watch live: tmux attach -t %s)", sessionName, sessionName)
-	both("  config  : %s", configSummary(cfg, configDir))
-	both("  repo    : %s", repo)
-	both("  target  : %s  (launch: %s)", target, launchCmd)
-	both("  size    : %dx%d", w, h)
-	both("  flags   : announce-wait=%s connect-wait=%s node-iters=%d step-delay=%s headed=%t",
+	both("nomadnet tmux test suite (%v)", target)
+	both("  log     : %v", logFile)
+	both("  session : %v  (watch live: tmux attach -t %v)", sessionName, sessionName)
+	both("  config  : %v", configSummary(cfg, configDir))
+	both("  repo    : %v", repo)
+	both("  target  : %v  (launch: %v)", target, launchCmd)
+	both("  size    : %vx%v", w, h)
+	both("  flags   : announce-wait=%v connect-wait=%v node-iters=%v step-delay=%v headed=%t",
 		cfg.announceWait, cfg.connectWait, cfg.nodeIters, cfg.stepDelay, cfg.headed)
 	if out, err := exec.Command("tmux", "-V").Output(); err == nil {
-		both("  tmux    : %s", strings.TrimSpace(string(out)))
+		both("  tmux    : %v", strings.TrimSpace(string(out)))
 	}
 	both("")
 
@@ -241,7 +241,7 @@ func run(args []string) error {
 	}
 	defer func() {
 		if sess.HasSession() {
-			logf("cleanup: killing tmux session %s", sessionName)
+			logf("cleanup: killing tmux session %v", sessionName)
 			_ = sess.KillSession()
 		}
 	}()
@@ -265,7 +265,7 @@ func run(args []string) error {
 			close(done)
 		}()
 		both("attaching tmux session so you can watch (detach with Ctrl-b d to leave it running)...")
-		both("progress is being logged to: %s", logFile)
+		both("progress is being logged to: %v", logFile)
 		both("")
 		// NOTE: exec.Command connects unset Stdin/Stdout/Stderr to /dev/null
 		// (os/exec exec.go: "If Stdin is nil, the process reads from the null
@@ -277,13 +277,13 @@ func run(args []string) error {
 		attach.Stderr = os.Stderr
 		if err := attach.Run(); err != nil {
 			both("WARN: tmux attach exited (%v). The test is still running in the", err)
-			both("      background; re-attach to watch: tmux attach -t %s", sessionName)
+			both("      background; re-attach to watch: tmux attach -t %v", sessionName)
 		}
 		<-done
 	} else {
 		both("running detached. Watch live in another terminal with:")
-		both("  tmux attach -t %s", sessionName)
-		both("progress is being logged to: %s", logFile)
+		both("  tmux attach -t %v", sessionName)
+		both("progress is being logged to: %v", logFile)
 		both("")
 		runAllPhases(d, func(format string, args ...any) {
 			fmt.Fprintf(os.Stderr, format+"\n", args...)
@@ -293,8 +293,8 @@ func run(args []string) error {
 
 	both("")
 	both("================ DONE ================")
-	both("log    : %s", logFile)
-	both("summary: asserts=%d pass=%d fail=%d guide-scroll-bug=%d",
+	both("log    : %v", logFile)
+	both("summary: asserts=%v pass=%v fail=%v guide-scroll-bug=%v",
 		d.asserts, d.assertOK, d.failures, d.scrollBug)
 	if sess.HasSession() {
 		both("(tmux session still alive; it will be killed on exit.)")
@@ -318,13 +318,13 @@ func runAllPhases(d *driver, logf func(string, ...any)) {
 func openLog(path string) (func(string, ...any), func(), error) {
 	f, err := os.Create(path)
 	if err != nil {
-		return nil, nil, fmt.Errorf("create log %s: %w", path, err)
+		return nil, nil, fmt.Errorf("create log %v: %w", path, err)
 	}
 	start := time.Now()
 	logf := func(format string, args ...any) {
 		ts := time.Since(start).Truncate(time.Millisecond)
 		msg := fmt.Sprintf(format, args...)
-		_, _ = fmt.Fprintf(f, "[%s] %s\n", ts, msg)
+		_, _ = fmt.Fprintf(f, "[%v] %v\n", ts, msg)
 	}
 	return logf, func() { _ = f.Close() }, nil
 }
@@ -364,11 +364,11 @@ func resolveConfig(cfg *config) (dir, temp string, err error) {
 func configSummary(cfg *config, dir string) string {
 	switch {
 	case cfg.fresh:
-		return fmt.Sprintf("fresh config (first-run Guide); no live nodes — %s", dir)
+		return fmt.Sprintf("fresh config (first-run Guide); no live nodes — %v", dir)
 	case cfg.copyConfig:
-		return fmt.Sprintf("copied %s to an isolated temp dir — %s", cfg.configDir, dir)
+		return fmt.Sprintf("copied %v to an isolated temp dir — %v", cfg.configDir, dir)
 	default:
-		return fmt.Sprintf("REAL config %s (may be modified by the test)", dir)
+		return fmt.Sprintf("REAL config %v (may be modified by the test)", dir)
 	}
 }
 
@@ -409,7 +409,7 @@ func requireTools(cfg *config) error {
 	}
 	for _, tool := range tools {
 		if _, err := exec.LookPath(tool); err != nil {
-			return fmt.Errorf("%s not found on PATH", tool)
+			return fmt.Errorf("%v not found on PATH", tool)
 		}
 	}
 	return nil

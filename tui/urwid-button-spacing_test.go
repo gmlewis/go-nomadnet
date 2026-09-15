@@ -69,7 +69,7 @@ func TestUrwidButtonRenderingMatchesPython(t *testing.T) {
 		screen.Fini()
 
 		if got != c.want {
-			t.Errorf("UrwidButton(%q) at width %d = %q, want %q",
+			t.Errorf("UrwidButton(%q) at width %v = %q, want %q",
 				c.label, c.width, got, c.want)
 		}
 	}
@@ -113,7 +113,7 @@ func TestUrwidButtonMultiByteLabelFillsCells(t *testing.T) {
 	got := row.String()
 	const want = "[ Untrusted (1) ✉ 1    ]"
 	if got != want {
-		t.Errorf("tab button with multi-byte glyph at width %d = %q, want %q", width, got, want)
+		t.Errorf("tab button with multi-byte glyph at width %v = %q, want %q", width, got, want)
 	}
 	// The right bracket must sit at the LAST cell (brackets are not floating).
 	if last := rune(cells[width-1].Runes[0]); last != ']' {

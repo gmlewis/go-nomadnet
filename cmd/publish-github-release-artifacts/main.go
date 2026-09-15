@@ -309,7 +309,7 @@ func tagExists(tag string) (bool, error) {
 		if strings.Contains(s, "not found") || strings.Contains(s, "404") {
 			return false, nil
 		}
-		return false, fmt.Errorf("check existing tag %v: %w (stderr: %s)", tag, err, stderr.String())
+		return false, fmt.Errorf("check existing tag %v: %w (stderr: %v)", tag, err, stderr.String())
 	}
 	return true, nil
 }

@@ -24,12 +24,12 @@ const (
 
 func fgRGB(hex int32) string {
 	r, g, b := (hex>>16)&0xff, (hex>>8)&0xff, hex&0xff
-	return fmt.Sprintf("\x1b[38;2;%d;%d;%dm", r, g, b)
+	return fmt.Sprintf("\x1b[38;2;%v;%v;%vm", r, g, b)
 }
 
 func bgRGB(hex int32) string {
 	r, g, b := (hex>>16)&0xff, (hex>>8)&0xff, hex&0xff
-	return fmt.Sprintf("\x1b[48;2;%d;%d;%dm", r, g, b)
+	return fmt.Sprintf("\x1b[48;2;%v;%v;%vm", r, g, b)
 }
 
 // styled emits text with the given fg/bg (colorDefault skips that channel).
@@ -78,7 +78,7 @@ func TestParseScreenColors(t *testing.T) {
 	raw := styled(cFocusFG, cFocusBG, "Introduction") + "\n"
 	s := parseScreen([]byte(raw))
 	if s.H < 1 || len(s.Rows[0]) < len("Introduction") {
-		t.Fatalf("screen too small: H=%d row0=%d", s.H, len(s.Rows[0]))
+		t.Fatalf("screen too small: H=%v row0=%v", s.H, len(s.Rows[0]))
 	}
 	// First content cell must carry the #aaaaaa bg (list focus).
 	c := s.Rows[0][0]
@@ -121,10 +121,10 @@ func TestMenuFocusedButton(t *testing.T) {
 	v := &View{Screen: s, CursorX: cx, CursorY: 0, CursorOK: true}
 	idx, ok := v.MenuFocusedButton()
 	if !ok {
-		t.Errorf("MenuFocusedButton not ok at cursor x=%d (row0=%q)", cx, row0)
+		t.Errorf("MenuFocusedButton not ok at cursor x=%v (row0=%q)", cx, row0)
 	}
 	if idx != 1 {
-		t.Errorf("MenuFocusedButton = %d, want 1 (Network); row0=%q", idx, row0)
+		t.Errorf("MenuFocusedButton = %v, want 1 (Network); row0=%q", idx, row0)
 	}
 
 	// Cursor off row 0 => not focused.
@@ -147,7 +147,7 @@ func TestMenuFocusedButtonAllIndices(t *testing.T) {
 		v := &View{Screen: s, CursorX: col + 2, CursorY: 0, CursorOK: true}
 		idx, ok := v.MenuFocusedButton()
 		if !ok || idx != i {
-			t.Errorf("label %q (index %d): got (%d,%t), want (%d,true)", label, i, idx, ok, i)
+			t.Errorf("label %q (index %v): got (%v,%t), want (%v,true)", label, i, idx, ok, i)
 		}
 	}
 }
@@ -182,7 +182,7 @@ func TestListSelectedRow(t *testing.T) {
 	v := viewOf(raw, 0, 1)
 	rows := v.ListSelectedRows()
 	if len(rows) != 1 {
-		t.Fatalf("ListSelectedRows = %d rows, want 1", len(rows))
+		t.Fatalf("ListSelectedRows = %v rows, want 1", len(rows))
 	}
 	if rows[0].Text != "Introduction" {
 		t.Errorf("selected text = %q, want Introduction", rows[0].Text)
@@ -289,7 +289,7 @@ func TestFocusedActionButton(t *testing.T) {
 		v := &View{Screen: s, CursorX: cx, CursorY: 1, CursorOK: true}
 		got, ok := v.FocusedActionButton()
 		if !ok || got != want {
-			t.Errorf("cursor on %q: FocusedActionButton = (%q,%t), want (%q,true) [row=%q cx=%d]",
+			t.Errorf("cursor on %q: FocusedActionButton = (%q,%t), want (%q,true) [row=%q cx=%v]",
 				want, got, ok, want, rowText, cx)
 		}
 	}
@@ -475,7 +475,7 @@ func TestParseSize(t *testing.T) {
 		t.Run(tt.in, func(t *testing.T) {
 			w, h, ok := ParseSize(tt.in)
 			if ok != tt.ok || (ok && (w != tt.w || h != tt.h)) {
-				t.Errorf("ParseSize(%q) = (%d,%d,%t), want (%d,%d,%t)", tt.in, w, h, ok, tt.w, tt.h, tt.ok)
+				t.Errorf("ParseSize(%q) = (%v,%v,%t), want (%v,%v,%t)", tt.in, w, h, ok, tt.w, tt.h, tt.ok)
 			}
 		})
 	}

@@ -69,7 +69,7 @@ func TestVtermPrintAndCursor(t *testing.T) {
 	}
 	cx, cy, vis := s.Cursor()
 	if cx != 2 || cy != 0 || !vis {
-		t.Errorf("cursor = (%d,%d,vis=%v), want (2,0,true)", cx, cy, vis)
+		t.Errorf("cursor = (%v,%v,vis=%v), want (2,0,true)", cx, cy, vis)
 	}
 }
 
@@ -115,7 +115,7 @@ func TestVtermEraseLine(t *testing.T) {
 	s.Write([]byte{0x1b, '[', '2', 'K'})
 	for x := range 6 {
 		if s.grid[0][x].char != ' ' {
-			t.Errorf("after 2K, cell(0,%d) = %q, want space", x, s.grid[0][x].char)
+			t.Errorf("after 2K, cell(0,%v) = %q, want space", x, s.grid[0][x].char)
 		}
 	}
 }
@@ -128,7 +128,7 @@ func TestVtermEraseDisplay(t *testing.T) {
 	for y := range 3 {
 		for x := range 4 {
 			if s.grid[y][x].char != ' ' {
-				t.Errorf("after 2J, cell(%d,%d) = %q, want space", y, x, s.grid[y][x].char)
+				t.Errorf("after 2J, cell(%v,%v) = %q, want space", y, x, s.grid[y][x].char)
 			}
 		}
 	}
@@ -180,7 +180,7 @@ func TestVtermResize(t *testing.T) {
 	s.Write([]byte{'H', 'E', 'L', 'L', 'O'})
 	s.Resize(8, 3)
 	if s.cols != 8 || s.rows != 3 {
-		t.Fatalf("size = %dx%d, want 8x3", s.cols, s.rows)
+		t.Fatalf("size = %vx%v, want 8x3", s.cols, s.rows)
 	}
 	if string(cellRow(s, 0))[:5] != "HELLO" {
 		t.Errorf("after resize, row0 = %q, want HELLO...", string(cellRow(s, 0)))
@@ -245,7 +245,7 @@ func TestMouseToSGR(t *testing.T) {
 			t.Parallel()
 			got := mouseToSGR(tt.button, tt.col, tt.row, tt.press)
 			if !bytes.Equal(got, tt.want) {
-				t.Errorf("mouseToSGR(%d,%d,%d,%v) = %x, want %x", tt.button, tt.col, tt.row, tt.press, got, tt.want)
+				t.Errorf("mouseToSGR(%v,%v,%v,%v) = %x, want %x", tt.button, tt.col, tt.row, tt.press, got, tt.want)
 			}
 		})
 	}

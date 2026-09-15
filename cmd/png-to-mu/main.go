@@ -80,7 +80,7 @@ func main() {
 	flag.StringVar(&cfg.inputFile, "input", "", "Original input filename (for comment header)")
 
 	flag.Usage = func() {
-		log.Printf("Usage: %s [options] input.png [output.mu]", os.Args[0])
+		log.Printf("Usage: %v [options] input.png [output.mu]", os.Args[0])
 		log.Printf("Converts PNG images to 24-bit color micron markdown (.mu) files.")
 		log.Printf("Options:")
 		flag.PrintDefaults()
@@ -148,7 +148,7 @@ func main() {
 		}
 		defer func() { _ = f.Close() }()
 		out = f
-		log.Printf("Written to: %s", outputPath)
+		log.Printf("Written to: %v", outputPath)
 	}
 
 	_, err = io.WriteString(out, micron)
@@ -169,7 +169,7 @@ func preprocessWithImageMagick(inputPath string, targetWidth int) (image.Image, 
 
 	img, format, err := image.Decode(imgFile)
 	if err != nil {
-		return nil, 0, 0, fmt.Errorf("decoding image (%s): %w", format, err)
+		return nil, 0, 0, fmt.Errorf("decoding image (%v): %w", format, err)
 	}
 
 	bounds := img.Bounds()
@@ -198,7 +198,7 @@ func preprocessWithImageMagick(inputPath string, targetWidth int) (image.Image, 
 	cmd := exec.Command("magick",
 		inputPath,
 		"-filter", "Lanczos",
-		"-resize", fmt.Sprintf("%dx%d!", targetWidth, resizeH),
+		"-resize", fmt.Sprintf("%vx%v!", targetWidth, resizeH),
 		"-depth", "16",
 		tmpPath,
 	)
@@ -207,7 +207,7 @@ func preprocessWithImageMagick(inputPath string, targetWidth int) (image.Image, 
 		cmd = exec.Command("convert",
 			inputPath,
 			"-filter", "Lanczos",
-			"-resize", fmt.Sprintf("%dx%d!", targetWidth, resizeH),
+			"-resize", fmt.Sprintf("%vx%v!", targetWidth, resizeH),
 			"-depth", "16",
 			tmpPath,
 		)
@@ -242,7 +242,7 @@ func loadImageAndResize(inputPath string, targetWidth int) (image.Image, int, in
 
 	img, format, err := image.Decode(imgFile)
 	if err != nil {
-		return nil, 0, 0, fmt.Errorf("decoding image (%s): %w", format, err)
+		return nil, 0, 0, fmt.Errorf("decoding image (%v): %w", format, err)
 	}
 
 	bounds := img.Bounds()
@@ -291,7 +291,7 @@ func renderHalfBlockToMicron(img image.Image, outW, outH int, originalFile strin
 	var sb strings.Builder
 
 	if !noComments {
-		fmt.Fprintf(&sb, "# ASCII art generated from PNG image (half-block mode)\n# Original: %s\n# Dimensions: %dx%d characters (using ▀ with FG/BG colors)\n#\n\n", filepath.Base(originalFile), outW, outH)
+		fmt.Fprintf(&sb, "# ASCII art generated from PNG image (half-block mode)\n# Original: %v\n# Dimensions: %vx%v characters (using ▀ with FG/BG colors)\n#\n\n", filepath.Base(originalFile), outW, outH)
 	}
 
 	// Check if image is pre-scaled (from ImageMagick, imgH should be outH*2)

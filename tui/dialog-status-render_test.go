@@ -18,7 +18,7 @@ func TestShowStatusDialogRendersOKButton(t *testing.T) {
 
 	dm.ShowStatusDialog("Saved", "\n\n\nSaved\n\n", 40, 9)
 	if dm.Count() != 1 {
-		t.Fatalf("count=%d want 1", dm.Count())
+		t.Fatalf("count=%v want 1", dm.Count())
 	}
 
 	screen := tcell.NewSimulationScreen("UTF-8")
@@ -40,7 +40,7 @@ func TestShowStatusDialogRendersOKButton(t *testing.T) {
 		b.WriteByte('\n')
 	}
 	out := b.String()
-	t.Logf("rendered dialog:\n%s", out)
+	t.Logf("rendered dialog:\n%v", out)
 
 	if !strings.Contains(out, "Saved") {
 		t.Errorf("render does not contain 'Saved'")

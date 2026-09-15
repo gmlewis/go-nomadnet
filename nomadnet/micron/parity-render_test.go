@@ -144,11 +144,11 @@ func runPythonRender(t *testing.T, scriptPath string, markup []byte, source stri
 	cmd.Stderr = &stderr
 	stdout, err := cmd.Output()
 	if err != nil {
-		t.Fatalf("render-mu.py failed: %v\nstderr:\n%s", err, stderr.String())
+		t.Fatalf("render-mu.py failed: %v\nstderr:\n%v", err, stderr.String())
 	}
 	var doc parityDoc
 	if err := json.Unmarshal(stdout, &doc); err != nil {
-		t.Fatalf("decode render-mu.py output: %v\nstderr:\n%s\nraw:\n%s", err, stderr.String(), stdout)
+		t.Fatalf("decode render-mu.py output: %v\nstderr:\n%v\nraw:\n%s", err, stderr.String(), stdout)
 	}
 	return doc
 }
@@ -161,7 +161,7 @@ func compareParityDocs(goDoc, pyDoc parityDoc) []string {
 	var diffs []string
 	gl, pl := goDoc.Lines, pyDoc.Lines
 	if len(gl) != len(pl) {
-		diffs = append(diffs, fmt.Sprintf("line_count: go=%d py=%d", len(gl), len(pl)))
+		diffs = append(diffs, fmt.Sprintf("line_count: go=%v py=%v", len(gl), len(pl)))
 	}
 	n := max(len(gl), len(pl))
 	for i := range n {
@@ -173,58 +173,58 @@ func compareParityDocs(goDoc, pyDoc parityDoc) []string {
 			p = &pl[i]
 		}
 		if g == nil {
-			diffs = append(diffs, fmt.Sprintf("line %d: missing_in_go", i))
+			diffs = append(diffs, fmt.Sprintf("line %v: missing_in_go", i))
 			continue
 		}
 		if p == nil {
-			diffs = append(diffs, fmt.Sprintf("line %d: missing_in_py", i))
+			diffs = append(diffs, fmt.Sprintf("line %v: missing_in_py", i))
 			continue
 		}
 		if g.Align != p.Align {
-			diffs = append(diffs, fmt.Sprintf("line %d: align go=%s py=%s", i, g.Align, p.Align))
+			diffs = append(diffs, fmt.Sprintf("line %v: align go=%v py=%v", i, g.Align, p.Align))
 		}
 		if g.Indent != p.Indent {
-			diffs = append(diffs, fmt.Sprintf("line %d: indent go=%d py=%d", i, g.Indent, p.Indent))
+			diffs = append(diffs, fmt.Sprintf("line %v: indent go=%v py=%v", i, g.Indent, p.Indent))
 		}
 		if g.HeadingLevel != p.HeadingLevel {
-			diffs = append(diffs, fmt.Sprintf("line %d: heading_level go=%d py=%d", i, g.HeadingLevel, p.HeadingLevel))
+			diffs = append(diffs, fmt.Sprintf("line %v: heading_level go=%v py=%v", i, g.HeadingLevel, p.HeadingLevel))
 		}
 		if g.Divider != p.Divider {
-			diffs = append(diffs, fmt.Sprintf("line %d: divider go=%v py=%v", i, g.Divider, p.Divider))
+			diffs = append(diffs, fmt.Sprintf("line %v: divider go=%v py=%v", i, g.Divider, p.Divider))
 		}
 		if g.Anchor != p.Anchor {
-			diffs = append(diffs, fmt.Sprintf("line %d: anchor go=%q py=%q", i, g.Anchor, p.Anchor))
+			diffs = append(diffs, fmt.Sprintf("line %v: anchor go=%q py=%q", i, g.Anchor, p.Anchor))
 		}
 		if g.DividerChar != p.DividerChar {
-			diffs = append(diffs, fmt.Sprintf("line %d: divider_char go=%q py=%q", i, g.DividerChar, p.DividerChar))
+			diffs = append(diffs, fmt.Sprintf("line %v: divider_char go=%q py=%q", i, g.DividerChar, p.DividerChar))
 		}
 		if len(g.Spans) != len(p.Spans) {
-			diffs = append(diffs, fmt.Sprintf("line %d: span_count go=%d py=%d", i, len(g.Spans), len(p.Spans)))
+			diffs = append(diffs, fmt.Sprintf("line %v: span_count go=%v py=%v", i, len(g.Spans), len(p.Spans)))
 		}
 		for j := range min(len(g.Spans), len(p.Spans)) {
 			gs, ps := g.Spans[j], p.Spans[j]
 			if gs.Text != ps.Text {
-				diffs = append(diffs, fmt.Sprintf("line %d span %d: text go=%q py=%q", i, j, gs.Text, ps.Text))
+				diffs = append(diffs, fmt.Sprintf("line %v span %v: text go=%q py=%q", i, j, gs.Text, ps.Text))
 			}
 			if gs.FG != ps.FG {
-				diffs = append(diffs, fmt.Sprintf("line %d span %d: fg go=%q py=%q", i, j, gs.FG, ps.FG))
+				diffs = append(diffs, fmt.Sprintf("line %v span %v: fg go=%q py=%q", i, j, gs.FG, ps.FG))
 			}
 			if gs.BG != ps.BG {
-				diffs = append(diffs, fmt.Sprintf("line %d span %d: bg go=%q py=%q", i, j, gs.BG, ps.BG))
+				diffs = append(diffs, fmt.Sprintf("line %v span %v: bg go=%q py=%q", i, j, gs.BG, ps.BG))
 			}
 			if gs.Bold != ps.Bold || gs.Underline != ps.Underline || gs.Italic != ps.Italic {
-				diffs = append(diffs, fmt.Sprintf("line %d span %d: attrs go=%v/%v/%v py=%v/%v/%v", i, j,
+				diffs = append(diffs, fmt.Sprintf("line %v span %v: attrs go=%v/%v/%v py=%v/%v/%v", i, j,
 					gs.Bold, gs.Underline, gs.Italic, ps.Bold, ps.Underline, ps.Italic))
 			}
 			if (gs.Link == nil) != (ps.Link == nil) {
-				diffs = append(diffs, fmt.Sprintf("line %d span %d: link presence go=%v py=%v", i, j, gs.Link != nil, ps.Link != nil))
+				diffs = append(diffs, fmt.Sprintf("line %v span %v: link presence go=%v py=%v", i, j, gs.Link != nil, ps.Link != nil))
 			} else if gs.Link != nil {
 				if gs.Link.URL != ps.Link.URL {
-					diffs = append(diffs, fmt.Sprintf("line %d span %d: link.url go=%q py=%q", i, j, gs.Link.URL, ps.Link.URL))
+					diffs = append(diffs, fmt.Sprintf("line %v span %v: link.url go=%q py=%q", i, j, gs.Link.URL, ps.Link.URL))
 				}
 			}
 			if (gs.Field == nil) != (ps.Field == nil) {
-				diffs = append(diffs, fmt.Sprintf("line %d span %d: field presence go=%v py=%v", i, j, gs.Field != nil, ps.Field != nil))
+				diffs = append(diffs, fmt.Sprintf("line %v span %v: field presence go=%v py=%v", i, j, gs.Field != nil, ps.Field != nil))
 			}
 		}
 	}
@@ -260,7 +260,7 @@ func TestRenderParityFixtures(t *testing.T) {
 	// renderer script is not present (e.g. a stripped export without tooling).
 	scriptAbs, err := filepath.Abs(renderMuScriptPath)
 	if err != nil || !fileExists(scriptAbs) {
-		t.Skipf("skipping parity fixtures: render-mu.py not found at %s", renderMuScriptPath)
+		t.Skipf("skipping parity fixtures: render-mu.py not found at %v", renderMuScriptPath)
 	}
 	fixtures, err := filepath.Glob(filepath.Join("testdata", "parity", "*.mu"))
 	if err != nil || len(fixtures) == 0 {
@@ -283,13 +283,13 @@ func TestRenderParityFixtures(t *testing.T) {
 			var unaccepted []string
 			for _, d := range diffs {
 				if _, ok := accepted[d]; ok {
-					t.Logf("accepted diff: %s — %s", d, accepted[d])
+					t.Logf("accepted diff: %v — %v", d, accepted[d])
 					continue
 				}
 				unaccepted = append(unaccepted, d)
 			}
 			if len(unaccepted) > 0 {
-				t.Errorf("parity divergences vs Python MicronParser:\n  %s", strings.Join(unaccepted, "\n  "))
+				t.Errorf("parity divergences vs Python MicronParser:\n  %v", strings.Join(unaccepted, "\n  "))
 			}
 		})
 	}

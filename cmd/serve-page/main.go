@@ -153,7 +153,7 @@ func main() {
 	}
 
 	fmt.Printf("NODE_HASH=%x\n", n.Destination().Hash)
-	fmt.Printf("PORT=%d\n", server.BindPort())
+	fmt.Printf("PORT=%v\n", server.BindPort())
 	_ = os.Stdout.Sync()
 
 	// Keep serving until interrupted.

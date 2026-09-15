@@ -121,7 +121,7 @@ func TestRenderHalfBlockToMicronPreScaled(t *testing.T) {
 	// Verify we have content lines (2 rows + reset)
 	lines := strings.Split(strings.TrimSpace(result), "\n")
 	if len(lines) < 3 {
-		t.Errorf("renderHalfBlockToMicron() produced %d lines, want at least 3", len(lines))
+		t.Errorf("renderHalfBlockToMicron() produced %v lines, want at least 3", len(lines))
 	}
 
 	// Verify half-block character is used
@@ -158,7 +158,7 @@ func TestRenderHalfBlockToMicronGoNative(t *testing.T) {
 	// Verify we have content lines
 	lines := strings.Split(strings.TrimSpace(result), "\n")
 	if len(lines) < 3 {
-		t.Errorf("renderHalfBlockToMicron() produced %d lines, want at least 3", len(lines))
+		t.Errorf("renderHalfBlockToMicron() produced %v lines, want at least 3", len(lines))
 	}
 }
 

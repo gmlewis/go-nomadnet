@@ -49,7 +49,7 @@ func TestListSlotDialogPreservesPanelOrder(t *testing.T) {
 
 	// Initial layout: [listBox, localPeer] — list at top, LocalPeer at bottom.
 	if nd.leftPanel.GetItemCount() != 2 {
-		t.Fatalf("initial item count = %d, want 2", nd.leftPanel.GetItemCount())
+		t.Fatalf("initial item count = %v, want 2", nd.leftPanel.GetItemCount())
 	}
 	if nd.leftPanel.GetItem(0) != tview.Primitive(nd.listBox) {
 		t.Errorf("initial index 0 = %T, want listBox", nd.leftPanel.GetItem(0))
@@ -64,7 +64,7 @@ func TestListSlotDialogPreservesPanelOrder(t *testing.T) {
 	nd.ShowListSlotDialog(dialog, 6)
 
 	if nd.leftPanel.GetItemCount() != 2 {
-		t.Fatalf("after ShowListSlotDialog item count = %d, want 2", nd.leftPanel.GetItemCount())
+		t.Fatalf("after ShowListSlotDialog item count = %v, want 2", nd.leftPanel.GetItemCount())
 	}
 	if nd.leftPanel.GetItem(0) == tview.Primitive(nd.listBox) {
 		t.Errorf("after ShowListSlotDialog index 0 is still listBox; want overlay")
@@ -77,7 +77,7 @@ func TestListSlotDialogPreservesPanelOrder(t *testing.T) {
 	nd.CloseListSlotDialog()
 
 	if nd.leftPanel.GetItemCount() != 2 {
-		t.Fatalf("after CloseListSlotDialog item count = %d, want 2", nd.leftPanel.GetItemCount())
+		t.Fatalf("after CloseListSlotDialog item count = %v, want 2", nd.leftPanel.GetItemCount())
 	}
 	if nd.leftPanel.GetItem(0) != tview.Primitive(nd.listBox) {
 		t.Errorf("after CloseListSlotDialog index 0 = %T, want listBox (list must return to top)", nd.leftPanel.GetItem(0))
@@ -104,10 +104,10 @@ func TestListSlotDialogRepeatPreservesOrder(t *testing.T) {
 		nd.CloseListSlotDialog()
 
 		if nd.leftPanel.GetItem(0) != tview.Primitive(nd.listBox) {
-			t.Errorf("cycle %d: index 0 = %T, want listBox", i, nd.leftPanel.GetItem(0))
+			t.Errorf("cycle %v: index 0 = %T, want listBox", i, nd.leftPanel.GetItem(0))
 		}
 		if nd.leftPanel.GetItem(1) != nd.localPeer.Widget() {
-			t.Errorf("cycle %d: index 1 = %T, want localPeer.Widget", i, nd.leftPanel.GetItem(1))
+			t.Errorf("cycle %v: index 1 = %T, want localPeer.Widget", i, nd.leftPanel.GetItem(1))
 		}
 	}
 }

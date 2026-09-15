@@ -51,9 +51,9 @@ func TestDiscoveryTokenKnownVector(t *testing.T) {
 	const src = "fe80::ecb7:f7fa:f27b:44bc" // raspberrypi wlan0, 2026-08-26 fleet test
 	want := "54635a79cd9385118f57a730057c5bbe3481cb56094d71b155c1b801bed5072b"
 	if got := discoveryToken(defaultGroupID, src); len(got) != 32 {
-		t.Fatalf("token length = %d, want 32", len(got))
+		t.Fatalf("token length = %v, want 32", len(got))
 	} else if hexStr := hex.EncodeToString(got); hexStr != want {
-		t.Errorf("discoveryToken(%q,%q) = %s, want %s", defaultGroupID, src, hexStr, want)
+		t.Errorf("discoveryToken(%q,%q) = %v, want %v", defaultGroupID, src, hexStr, want)
 	}
 	// A different source address must produce a different token.
 	other := discoveryToken(defaultGroupID, "fe80::1")

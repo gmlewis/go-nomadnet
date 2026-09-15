@@ -33,7 +33,7 @@ func NewSession(name, dir, launchCmd string, w, h int) (*Session, error) {
 		"--", "bash", "-lc", launchCmd)
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return nil, fmt.Errorf("tmux new-session: %w (%s)", err, strings.TrimSpace(string(out)))
+		return nil, fmt.Errorf("tmux new-session: %w (%v)", err, strings.TrimSpace(string(out)))
 	}
 	// Pin the window size so attaching (or the client) cannot resize it away
 	// from the fixed size we drive against.

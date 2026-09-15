@@ -63,7 +63,7 @@ func writeRNSConfigServer(dir string, port int) error {
     type = TCPServerInterface
     enabled = yes
     listen_ip = 127.0.0.1
-    listen_port = %d
+    listen_port = %v
 `, port)
 	return os.WriteFile(filepath.Join(dir, "config"), []byte(content), 0o600)
 }
@@ -86,7 +86,7 @@ func writeRNSConfigClient(dir string, port int) error {
     type = TCPClientInterface
     enabled = yes
     target_host = 127.0.0.1
-    target_port = %d
+    target_port = %v
 `, port)
 	return os.WriteFile(filepath.Join(dir, "config"), []byte(content), 0o600)
 }

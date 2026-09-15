@@ -233,13 +233,13 @@ func run(args []string) int {
 
 	fmt.Printf("stress-test-nomadnet — go-reticulum %v\n", rns.VERSION)
 	if dir := ret.ConfigDir(); dir != "" {
-		fmt.Printf("RNS config: %s\n", dir)
+		fmt.Printf("RNS config: %v\n", dir)
 	}
 	printInterfaces(ret)
 
 	app, aspects := destAppAspects(opts)
 	mode := app + "." + strings.Join(aspects, ".")
-	fmt.Printf("Mode: stress %s — concurrency %d, requests/link %d, duration %.0fs, malformed=%v, churn=%v, announce-storm=%v\n",
+	fmt.Printf("Mode: stress %v — concurrency %v, requests/link %v, duration %.0fs, malformed=%v, churn=%v, announce-storm=%v\n",
 		mode, opts.concurrency, opts.requestsPerLink, opts.duration, opts.malformed, opts.churn, opts.announceStorm)
 
 	// Resolve the target list. --discover listens for an announce and yields one
@@ -249,7 +249,7 @@ func run(args []string) int {
 	if opts.discover {
 		t, ok := discoverTarget(ts, opts)
 		if !ok {
-			fmt.Printf("\nNO ANNOUNCE: no %s announce received within %.0fs\n", mode, opts.pathTimeout)
+			fmt.Printf("\nNO ANNOUNCE: no %v announce received within %.0fs\n", mode, opts.pathTimeout)
 			return 1
 		}
 		rawTargets = []target{t}
@@ -277,7 +277,7 @@ func run(args []string) int {
 		opts.pathTimeout = batchPathTimeout
 	}
 
-	fmt.Printf("Stressing %d node(s) — path timeout %.0fs, link timeout %.0fs\n",
+	fmt.Printf("Stressing %v node(s) — path timeout %.0fs, link timeout %.0fs\n",
 		len(rawTargets), opts.pathTimeout, opts.linkTimeout)
 
 	// Give AutoInterface discovery a moment to bring interfaces up.
@@ -306,7 +306,7 @@ func run(args []string) int {
 	if len(resolvedTargets) == 0 {
 		fmt.Println("\nNo reachable targets to stress:")
 		for _, u := range unreachable {
-			fmt.Printf("  %s  %s  (%s)\n", u.hashHex, u.status, u.detail)
+			fmt.Printf("  %v  %v  (%v)\n", u.hashHex, u.status, u.detail)
 		}
 		return 1
 	}
@@ -370,7 +370,7 @@ func resolveTarget(ts *rns.TransportSystem, t target, opts *options) (resolved, 
 	if err != nil || len(sourceHash) != rns.TruncatedHashLength/8 {
 		rb.ok = false
 		rb.status = "INVALID"
-		rb.detail = fmt.Sprintf("not a %d-char hex hash: %q", rns.TruncatedHashLength/4, t.hashHex)
+		rb.detail = fmt.Sprintf("not a %v-char hex hash: %q", rns.TruncatedHashLength/4, t.hashHex)
 		return resolved{target: t}, rb
 	}
 
@@ -507,7 +507,7 @@ func announceLabel(appData []byte) string {
 	if s := strings.TrimSpace(string(appData)); s != "" {
 		return fmt.Sprintf("announced as %q", s)
 	}
-	return fmt.Sprintf("app_data %d bytes", len(appData))
+	return fmt.Sprintf("app_data %v bytes", len(appData))
 }
 
 // stressTarget runs concurrency workers against one resolved target.
@@ -1051,7 +1051,7 @@ func runAnnounceStorm(ctx context.Context, ts *rns.TransportSystem, logger *rns.
 	for {
 		select {
 		case <-ctx.Done():
-			log.Printf("announce storm: sent %d announces", count)
+			log.Printf("announce storm: sent %v announces", count)
 			return
 		default:
 		}
@@ -1061,7 +1061,7 @@ func runAnnounceStorm(ctx context.Context, ts *rns.TransportSystem, logger *rns.
 		count++
 		select {
 		case <-ctx.Done():
-			log.Printf("announce storm: sent %d announces", count)
+			log.Printf("announce storm: sent %v announces", count)
 			return
 		case <-time.After(announceStormInterval):
 		}
@@ -1095,7 +1095,7 @@ func runMalformedAnnounceStorm(ctx context.Context, ts *rns.TransportSystem, log
 	for {
 		select {
 		case <-ctx.Done():
-			log.Printf("malformed announce: sent %d corrupted packets", count)
+			log.Printf("malformed announce: sent %v corrupted packets", count)
 			return
 		default:
 		}
@@ -1111,7 +1111,7 @@ func runMalformedAnnounceStorm(ctx context.Context, ts *rns.TransportSystem, log
 		}
 		select {
 		case <-ctx.Done():
-			log.Printf("malformed announce: sent %d corrupted packets", count)
+			log.Printf("malformed announce: sent %v corrupted packets", count)
 			return
 		case <-time.After(malformedAnnounceInterval):
 		}
@@ -1171,7 +1171,7 @@ func printInterfaces(ret *rns.Reticulum) {
 		if ifc.Status {
 			state = "UP"
 		}
-		fmt.Printf("  %-16s %-14s %s  %d bps\n", ifc.Name, ifc.Type, state, ifc.Bitrate)
+		fmt.Printf("  %-16s %-14s %v  %v bps\n", ifc.Name, ifc.Type, state, ifc.Bitrate)
 	}
 }
 
@@ -1182,10 +1182,10 @@ func printReport(resolvedTargets []resolved, unreachable []reachable, stats []*t
 	fmt.Println(strings.Repeat("=", 78))
 
 	for _, u := range unreachable {
-		fmt.Printf("\n%s  %s\n", u.hashHex, nonEmpty(u.label, "(no label)"))
-		fmt.Printf("  status : %s\n", u.status)
+		fmt.Printf("\n%v  %v\n", u.hashHex, nonEmpty(u.label, "(no label)"))
+		fmt.Printf("  status : %v\n", u.status)
 		if u.detail != "" {
-			fmt.Printf("  note   : %s\n", u.detail)
+			fmt.Printf("  note   : %v\n", u.detail)
 		}
 	}
 
@@ -1193,18 +1193,18 @@ func printReport(resolvedTargets []resolved, unreachable []reachable, stats []*t
 		s := stats[i].snapshot()
 		label := nonEmpty(res.label, "(no label)")
 		status := targetStatus(s)
-		fmt.Printf("\n%s  %s\n", res.hashHex, label)
-		fmt.Printf("  status   : %s\n", status)
+		fmt.Printf("\n%v  %v\n", res.hashHex, label)
+		fmt.Printf("  status   : %v\n", status)
 		if res.hops >= 0 && res.hops < rns.PathfinderM {
-			fmt.Printf("  hops     : %d\n", res.hops)
+			fmt.Printf("  hops     : %v\n", res.hops)
 		}
-		fmt.Printf("  requests : %d sent, %d ok, %d failed (%d timeouts, %d send-errors)\n",
+		fmt.Printf("  requests : %v sent, %v ok, %v failed (%v timeouts, %v send-errors)\n",
 			s.requestsSent, s.responsesOK, s.failures, s.timeouts, s.sendErrors)
-		fmt.Printf("  links    : %d established, %d failed, %d dropped\n",
+		fmt.Printf("  links    : %v established, %v failed, %v dropped\n",
 			s.establishes, s.establishFails, s.linkDrops)
 		if s.rttN > 0 {
 			avg := s.rttSum / time.Duration(s.rttN)
-			fmt.Printf("  rtt      : min %d ms, avg %d ms, max %d ms (n=%d)\n",
+			fmt.Printf("  rtt      : min %v ms, avg %v ms, max %v ms (n=%v)\n",
 				s.rttMin.Milliseconds(), avg.Milliseconds(), s.rttMax.Milliseconds(), s.rttN)
 		}
 		if s.unresponsive {
@@ -1214,10 +1214,10 @@ func printReport(resolvedTargets []resolved, unreachable []reachable, stats []*t
 
 	fmt.Println()
 	fmt.Println(strings.Repeat("-", 78))
-	fmt.Printf("%-34s  %-16s  %s\n", "ADDRESS", "STATUS", "SENT/OK/FAIL")
+	fmt.Printf("%-34s  %-16s  %v\n", "ADDRESS", "STATUS", "SENT/OK/FAIL")
 	for i, res := range resolvedTargets {
 		s := stats[i].snapshot()
-		fmt.Printf("%-34s  %-16s  %d/%d/%d\n", res.hashHex, targetStatus(s), s.requestsSent, s.responsesOK, s.failures)
+		fmt.Printf("%-34s  %-16s  %v/%v/%v\n", res.hashHex, targetStatus(s), s.requestsSent, s.responsesOK, s.failures)
 	}
 }
 
@@ -1277,13 +1277,13 @@ func collectTargets(opts *options) ([]target, error) {
 	if opts.identityFile != "" {
 		id, err := rns.FromFile(opts.identityFile, nil)
 		if err != nil {
-			return nil, fmt.Errorf("--identity %s: %w", opts.identityFile, err)
+			return nil, fmt.Errorf("--identity %v: %w", opts.identityFile, err)
 		}
 		app, aspects := destAppAspects(opts)
 		hash := rns.CalculateHash(id, app, aspects...)
 		out = append(out, target{
 			hashHex:  hex.EncodeToString(hash),
-			label:    fmt.Sprintf("(identity %s)", opts.identityFile),
+			label:    fmt.Sprintf("(identity %v)", opts.identityFile),
 			src:      opts.identityFile,
 			identity: id,
 		})
@@ -1296,7 +1296,7 @@ func collectTargets(opts *options) ([]target, error) {
 		// Treat as a filename.
 		fileTargets, err := targetsFromFile(arg)
 		if err != nil {
-			return nil, fmt.Errorf("%s: %w", arg, err)
+			return nil, fmt.Errorf("%v: %w", arg, err)
 		}
 		out = append(out, fileTargets...)
 	}
@@ -1320,7 +1320,7 @@ func targetsFromFile(path string) ([]target, error) {
 		out = append(out, target{
 			hashHex: hashHex,
 			label:   label,
-			src:     fmt.Sprintf("%s:%d", path, lineNo+1),
+			src:     fmt.Sprintf("%v:%v", path, lineNo+1),
 		})
 	}
 	return out, nil
@@ -1516,7 +1516,7 @@ func parseFlags(args []string) (*options, error) {
 			opts.churn = true
 		default:
 			if strings.HasPrefix(arg, "-") && arg != "-" {
-				return nil, fmt.Errorf("flag provided but not defined: %s", arg)
+				return nil, fmt.Errorf("flag provided but not defined: %v", arg)
 			}
 			opts.args = append(opts.args, arg)
 		}
@@ -1526,7 +1526,7 @@ func parseFlags(args []string) (*options, error) {
 
 func flagValue(args []string, i int, name string) (string, int, error) {
 	if i+1 >= len(args) {
-		return "", 0, fmt.Errorf("flag needs an argument: %s", name)
+		return "", 0, fmt.Errorf("flag needs an argument: %v", name)
 	}
 	return args[i+1], i + 1, nil
 }

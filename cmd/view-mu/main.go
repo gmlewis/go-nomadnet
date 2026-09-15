@@ -116,7 +116,7 @@ func main() {
 	flag.BoolVar(&cfg.jsonOut, "json", false, "Emit per-line styled JSON (logical-line parity schema) instead of ANSI")
 
 	flag.Usage = func() {
-		log.Printf("Usage: %s [options] <file.mu | node-address>\n", os.Args[0])
+		log.Printf("Usage: %v [options] <file.mu | node-address>\n", os.Args[0])
 		log.Printf("Renders micron markdown (.mu) to stdout with ANSI colors.")
 		log.Printf("The argument is a local .mu file, or a nomadnet node address")
 		log.Printf("(32-hex destination hash, bare or prefixed, with an optional path).")
@@ -353,9 +353,9 @@ func fetchRemote(cfg config, destHash []byte, path string, requestData map[strin
 
 	log.Printf("view-mu — go-reticulum %v", rns.VERSION)
 	if dir := ret.ConfigDir(); dir != "" {
-		log.Printf("RNS config: %s", dir)
+		log.Printf("RNS config: %v", dir)
 	}
-	log.Printf("Fetching %s from %s (timeout %.0fs)", path, display, cfg.timeout)
+	log.Printf("Fetching %v from %v (timeout %.0fs)", path, display, cfg.timeout)
 
 	// Give AutoInterface discovery a moment to bring interfaces up before the
 	// fetch starts issuing path requests.
@@ -368,7 +368,7 @@ func fetchRemote(cfg config, destHash []byte, path string, requestData map[strin
 		log.Printf("Fetch failed: %v", err)
 		os.Exit(1)
 	}
-	log.Printf("Received %d bytes.", len(data))
+	log.Printf("Received %v bytes.", len(data))
 	return data
 }
 
@@ -652,5 +652,5 @@ func parseHexColor(color string) string {
 		return ""
 	}
 
-	return fmt.Sprintf("%d;%d;%d", r, g, b)
+	return fmt.Sprintf("%v;%v;%v", r, g, b)
 }

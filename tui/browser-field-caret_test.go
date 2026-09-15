@@ -77,7 +77,7 @@ func TestBrowserFieldOverlayUsesPageColors(t *testing.T) {
 		t.Error("Down not consumed")
 	}
 	if bd.fieldOverlay == nil || bd.fieldOverlayLine != fieldLine {
-		t.Fatalf("field overlay not mounted on line %d", fieldLine)
+		t.Fatalf("field overlay not mounted on line %v", fieldLine)
 	}
 
 	screen, row := drawFieldScreen(t, bd, fieldLine)
@@ -87,7 +87,7 @@ func TestBrowserFieldOverlayUsesPageColors(t *testing.T) {
 	// ("initial"), so the overlay really is what painted it.
 	got, _, style, _ := cellContent(screen, rf.startCol, row)
 	if got != 'i' {
-		t.Fatalf("cell (%d,%d) = %q, want 'i' (the field's initial text)", rf.startCol, row, string(got))
+		t.Fatalf("cell (%v,%v) = %q, want 'i' (the field's initial text)", rf.startCol, row, string(got))
 	}
 
 	fg, bg, _ := style.Decompose()

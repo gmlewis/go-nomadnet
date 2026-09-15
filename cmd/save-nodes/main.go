@@ -63,5 +63,5 @@ func main() {
 		fmt.Fprintf(os.Stderr, "save error: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Printf("Done: saved %d nodes to %v\n", saved, dirPath)
+	fmt.Printf("Done: saved %v nodes to %v\n", saved, dirPath)
 }

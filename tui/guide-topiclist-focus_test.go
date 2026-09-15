@@ -84,6 +84,6 @@ func TestGuideTopicListFocusAfterRender(t *testing.T) {
 
 	newItem := gd.topics.GetCurrentItem()
 	if newItem <= prevItem {
-		t.Errorf("after Down: topic item=%d, want > %d (Down must navigate the topic list)", newItem, prevItem)
+		t.Errorf("after Down: topic item=%v, want > %v (Down must navigate the topic list)", newItem, prevItem)
 	}
 }

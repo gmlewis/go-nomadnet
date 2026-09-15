@@ -118,10 +118,10 @@ func TestModalRenderingMatchesPython(t *testing.T) {
 	for _, y := range []int{1, 2, 3, 4} {
 		rr := []rune(rows[y])
 		if string(rr[0]) != "│" {
-			t.Errorf("row %d left border = %q, want │", y, string(rr[0]))
+			t.Errorf("row %v left border = %q, want │", y, string(rr[0]))
 		}
 		if string(rr[len(rr)-1]) != "│" {
-			t.Errorf("row %d right border = %q, want │", y, string(rr[len(rr)-1]))
+			t.Errorf("row %v right border = %q, want │", y, string(rr[len(rr)-1]))
 		}
 	}
 
@@ -148,15 +148,15 @@ func TestModalRenderingMatchesPython(t *testing.T) {
 		for x := range 60 {
 			fg, bg, attrs := styleAt(x, y).Decompose()
 			if fg != tcell.ColorDefault {
-				t.Errorf("cell (%d,%d) fg = %v, want ColorDefault (Python dialog is default-style)", x, y, fg)
+				t.Errorf("cell (%v,%v) fg = %v, want ColorDefault (Python dialog is default-style)", x, y, fg)
 				return
 			}
 			if bg != tcell.ColorDefault {
-				t.Errorf("cell (%d,%d) bg = %v, want ColorDefault", x, y, bg)
+				t.Errorf("cell (%v,%v) bg = %v, want ColorDefault", x, y, bg)
 				return
 			}
 			if attrs&tcell.AttrBold != 0 || attrs&tcell.AttrReverse != 0 {
-				t.Errorf("cell (%d,%d) has attr %v, want none", x, y, attrs)
+				t.Errorf("cell (%v,%v) has attr %v, want none", x, y, attrs)
 				return
 			}
 		}

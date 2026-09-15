@@ -773,7 +773,7 @@ func (bd *BrowserDisplay) handleNavKey(event *tcell.EventKey) bool {
 
 	case tcell.KeyLeft:
 		bd.stampKeypress()
-		diagFileMD("/tmp/quit-diag.log", fmt.Sprintf("BROWDER-Left focusLine=%d cursor=%d focus=%T", bd.focusLine, bd.lineCursors[bd.focusLine], bd.app.GetFocus()))
+		diagFileMD("/tmp/quit-diag.log", fmt.Sprintf("BROWDER-Left focusLine=%v cursor=%v focus=%T", bd.focusLine, bd.lineCursors[bd.focusLine], bd.app.GetFocus()))
 		if bd.lineCursors[bd.focusLine] > 0 {
 			bd.lineCursors[bd.focusLine] = findPrevPartPos(bd.lineCursors[bd.focusLine], bd.linePartPositions(bd.focusLine))
 			bd.ensureVisible()

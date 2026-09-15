@@ -59,13 +59,13 @@ func sizeStr(num float64, suffix string) string {
 	for _, unit := range units {
 		if absFloat(num) < 1000.0 {
 			if unit == "" {
-				return fmt.Sprintf("%.0f%s%s", num, unit, suffix)
+				return fmt.Sprintf("%.0f%v%v", num, unit, suffix)
 			}
-			return fmt.Sprintf("%.2f%s%s", num, unit, suffix)
+			return fmt.Sprintf("%.2f%v%v", num, unit, suffix)
 		}
 		num /= 1000.0
 	}
-	return fmt.Sprintf("%.2f%s%s", num, lastUnit, suffix)
+	return fmt.Sprintf("%.2f%v%v", num, lastUnit, suffix)
 }
 
 // browserStatusText renders the footer status line for a given lifecycle state,

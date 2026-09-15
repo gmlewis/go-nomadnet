@@ -59,7 +59,7 @@ func TestTruncateEllipsis(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			if got := truncateEllipsis(c.s, c.max); got != c.want {
-				t.Errorf("truncateEllipsis(%q, %d) = %q, want %q", c.s, c.max, got, c.want)
+				t.Errorf("truncateEllipsis(%q, %v) = %q, want %q", c.s, c.max, got, c.want)
 			}
 		})
 	}

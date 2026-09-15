@@ -30,7 +30,7 @@ func TestBlankLineCarriesFormattingState(t *testing.T) {
 	markup := "`Ffd0\ncolored line\n\nplain after blank"
 	lines := RenderToStyledLines(markup, ThemeDark)
 	if len(lines) != 3 {
-		t.Fatalf("RenderToStyledLines produced %d lines, want 3", len(lines))
+		t.Fatalf("RenderToStyledLines produced %v lines, want 3", len(lines))
 	}
 	if got := lines[0].Spans[0].FG; got != "#ffdd00" {
 		t.Errorf("`Ffd0 line fg = %q, want #ffdd00", got)

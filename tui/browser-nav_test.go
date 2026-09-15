@@ -69,7 +69,7 @@ func wantFocus(t *testing.T, bd *BrowserDisplay, sub string) {
 	t.Helper()
 	got := bd.linePlainText(bd.focusLine)
 	if !strings.Contains(got, sub) {
-		t.Errorf("focusLine=%d text=%q, want a line containing %q", bd.focusLine, got, sub)
+		t.Errorf("focusLine=%v text=%q, want a line containing %q", bd.focusLine, got, sub)
 	}
 }
 
@@ -94,7 +94,7 @@ func TestNavDownUpMovesFocus(t *testing.T) {
 	bd.handleInput(key(tcell.KeyDown, 0))
 	wantFocus(t, bd, "Go")
 	if bd.lineCursors[bd.focusLine] != 0 {
-		t.Errorf("cursor after Down = %d, want 0 (Down resets cursor)", bd.lineCursors[bd.focusLine])
+		t.Errorf("cursor after Down = %v, want 0 (Down resets cursor)", bd.lineCursors[bd.focusLine])
 	}
 
 	bd.handleInput(key(tcell.KeyUp, 0))
@@ -114,7 +114,7 @@ func TestNavRightStepsPartsThenWraps(t *testing.T) {
 		bd.handleInput(key(tcell.KeyDown, 0))
 	}
 	if bd.lineCursors[linkLine] != 0 {
-		t.Fatalf("cursor start = %d, want 0", bd.lineCursors[linkLine])
+		t.Fatalf("cursor start = %v, want 0", bd.lineCursors[linkLine])
 	}
 	// Cursor at 0 is on the "Go" link part (parts are [0,2,11]; offset 0..1 = link).
 	if link := bd.lineLinkAtCursor(linkLine); link == nil || link.URL != "/page/a.mu" {
@@ -124,7 +124,7 @@ func TestNavRightStepsPartsThenWraps(t *testing.T) {
 	// Right 0 -> 2 (the boundary = start of the " trailing" plain part).
 	bd.handleInput(key(tcell.KeyRight, 0))
 	if bd.lineCursors[linkLine] != 2 {
-		t.Errorf("after 1st Right cursor=%d, want 2", bd.lineCursors[linkLine])
+		t.Errorf("after 1st Right cursor=%v, want 2", bd.lineCursors[linkLine])
 	}
 	if link := bd.lineLinkAtCursor(linkLine); link != nil {
 		t.Errorf("cursor at part 2: got link %v, want nil (plain part)", link.URL)
@@ -133,7 +133,7 @@ func TestNavRightStepsPartsThenWraps(t *testing.T) {
 	// Right 2 -> 11 (the trailing plain part, last part).
 	bd.handleInput(key(tcell.KeyRight, 0))
 	if bd.lineCursors[linkLine] != 11 {
-		t.Errorf("after 2nd Right cursor=%d, want 11", bd.lineCursors[linkLine])
+		t.Errorf("after 2nd Right cursor=%v, want 11", bd.lineCursors[linkLine])
 	}
 	if link := bd.lineLinkAtCursor(linkLine); link != nil {
 		t.Errorf("cursor at plain part: got link %v, want nil", link.URL)
@@ -143,7 +143,7 @@ func TestNavRightStepsPartsThenWraps(t *testing.T) {
 	bd.handleInput(key(tcell.KeyRight, 0))
 	wantFocus(t, bd, "Link2")
 	if bd.lineCursors[bd.focusLine] != 0 {
-		t.Errorf("after wrap-to-Down cursor=%d, want 0", bd.lineCursors[bd.focusLine])
+		t.Errorf("after wrap-to-Down cursor=%v, want 0", bd.lineCursors[bd.focusLine])
 	}
 }
 
@@ -163,11 +163,11 @@ func TestNavLeftStepsBackThenReleases(t *testing.T) {
 	bd.handleInput(key(tcell.KeyRight, 0)) // -> 11
 	bd.handleInput(key(tcell.KeyLeft, 0))
 	if bd.lineCursors[linkLine] != 2 {
-		t.Errorf("after Left cursor=%d, want 2", bd.lineCursors[linkLine])
+		t.Errorf("after Left cursor=%v, want 2", bd.lineCursors[linkLine])
 	}
 	bd.handleInput(key(tcell.KeyLeft, 0))
 	if bd.lineCursors[linkLine] != 0 {
-		t.Errorf("after Left cursor=%d, want 0", bd.lineCursors[linkLine])
+		t.Errorf("after Left cursor=%v, want 0", bd.lineCursors[linkLine])
 	}
 
 	// Left at the start releases focus to the owning view.
@@ -230,7 +230,7 @@ func TestNavHomeEndScroll(t *testing.T) {
 	bd.handleInput(key(tcell.KeyEnd, 0))
 	row, _ := bd.content.GetScrollOffset()
 	if row != 2 {
-		t.Errorf("End scroll row=%d, want 2", row)
+		t.Errorf("End scroll row=%v, want 2", row)
 	}
 	wantFocus(t, bd, "intro line two")
 
@@ -238,7 +238,7 @@ func TestNavHomeEndScroll(t *testing.T) {
 	bd.handleInput(key(tcell.KeyHome, 0))
 	row, _ = bd.content.GetScrollOffset()
 	if row != 0 {
-		t.Errorf("Home scroll row=%d, want 0", row)
+		t.Errorf("Home scroll row=%v, want 0", row)
 	}
 	wantFocus(t, bd, "Heading")
 }
@@ -252,14 +252,14 @@ func TestNavPageUpDown(t *testing.T) {
 	bd.handleInput(key(tcell.KeyPgDn, 0))
 	row, _ := bd.content.GetScrollOffset()
 	if row != 3 {
-		t.Errorf("PgDn scroll row=%d, want 3", row)
+		t.Errorf("PgDn scroll row=%v, want 3", row)
 	}
 
 	// PgUp from row 3 → 3 - 3 = 0.
 	bd.handleInput(key(tcell.KeyPgUp, 0))
 	row, _ = bd.content.GetScrollOffset()
 	if row != 0 {
-		t.Errorf("PgUp scroll row=%d, want 0", row)
+		t.Errorf("PgUp scroll row=%v, want 0", row)
 	}
 }
 
@@ -280,10 +280,10 @@ func TestNavVimLettersSuppressed(t *testing.T) {
 	}
 	row, _ := bd.content.GetScrollOffset()
 	if row != startRow {
-		t.Errorf("vim letters scrolled page: row %d -> %d", startRow, row)
+		t.Errorf("vim letters scrolled page: row %v -> %v", startRow, row)
 	}
 	if bd.focusLine != startFocus {
-		t.Errorf("vim letters moved focus: %d -> %d", startFocus, bd.focusLine)
+		t.Errorf("vim letters moved focus: %v -> %v", startFocus, bd.focusLine)
 	}
 }
 
@@ -338,7 +338,7 @@ func TestNavCursorPlacement(t *testing.T) {
 	}
 	// rowsAbove(intro)=1, cursor at column 0, scroll 0 → screen (0, 1).
 	if cx != 0 || cy != 1 {
-		t.Errorf("cursor at (%d,%d), want (0,1)", cx, cy)
+		t.Errorf("cursor at (%v,%v), want (0,1)", cx, cy)
 	}
 }
 

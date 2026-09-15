@@ -67,12 +67,12 @@ func TestBrowserFieldStartColMatchesDrawnRow(t *testing.T) {
 		drawn := drawnRowText(t, screen, 0, row, 80)
 		at := strings.Index(drawn, want)
 		if at < 0 {
-			t.Fatalf("row %d does not show %q: %q", row, want, drawn)
+			t.Fatalf("row %v does not show %q: %q", row, want, drawn)
 		}
 		// The label sits before the field, so the box starts right after it.
 		wantCol := at + len(want) + 1
 		if rf.startCol != wantCol {
-			t.Errorf("line %q: field startCol = %d, but the box is drawn at column %d (row %q)",
+			t.Errorf("line %q: field startCol = %v, but the box is drawn at column %v (row %q)",
 				want, rf.startCol, wantCol, strings.TrimRight(drawn, " "))
 		}
 		// The cursor model must agree with the same geometry: the field's first
@@ -80,7 +80,7 @@ func TestBrowserFieldStartColMatchesDrawnRow(t *testing.T) {
 		bd.focusLine = line
 		bd.lineCursors[line] = rf.runeStart
 		if x, _, ok := bd.cursorScreenXY(); !ok || x != rf.startCol {
-			t.Errorf("line %q: cursor at the field start = %d (ok=%v), want %d", want, x, ok, rf.startCol)
+			t.Errorf("line %q: cursor at the field start = %v (ok=%v), want %v", want, x, ok, rf.startCol)
 		}
 	}
 }
@@ -102,7 +102,7 @@ func TestBrowserFieldLinePartOffsetsUseRenderedWidth(t *testing.T) {
 	}
 	plain := bd.linePlainText(line)
 	if got, want := len([]rune(plain)), 48; got != want {
-		t.Fatalf("rendered line width = %d runes, want %d (%q)", got, want, plain)
+		t.Fatalf("rendered line width = %v runes, want %v (%q)", got, want, plain)
 	}
 
 	// "Plain: " + 32-column field + " tail " + "Go2".
@@ -129,7 +129,7 @@ func TestBrowserFieldLinePartOffsetsUseRenderedWidth(t *testing.T) {
 			got = link.URL
 		}
 		if got != tt.want {
-			t.Errorf("lineLinkAtCursor(%d) = %q, want %q", tt.pos, got, tt.want)
+			t.Errorf("lineLinkAtCursor(%v) = %q, want %q", tt.pos, got, tt.want)
 		}
 	}
 
@@ -171,21 +171,21 @@ func TestBrowserFieldOnWrappedRow(t *testing.T) {
 	_, bd := newLoadedFieldTestBrowser(t, strings.Repeat("word ", 20)+"`B444`<name`>`b tail")
 	line := 0
 	if len(bd.lineFields[line]) != 1 {
-		t.Fatalf("line %d has %v fields, want 1", line, len(bd.lineFields[line]))
+		t.Fatalf("line %v has %v fields, want 1", line, len(bd.lineFields[line]))
 	}
 	rf := bd.lineFields[line][0]
 	if rf.rowOffset == 0 {
-		t.Fatalf("fixture field did not land on a wrapped row (startCol=%d)", rf.startCol)
+		t.Fatalf("fixture field did not land on a wrapped row (startCol=%v)", rf.startCol)
 	}
 	if rows := bd.lineRowCount(line); rows <= rf.rowOffset {
-		t.Fatalf("line has %d rows, want more than the field's row %d", rows, rf.rowOffset)
+		t.Fatalf("line has %v rows, want more than the field's row %v", rows, rf.rowOffset)
 	}
 
 	screen, firstRow := drawFieldScreen(t, bd, line)
 	boxRow := firstRow + rf.rowOffset
 	drawn := drawnRowText(t, screen, 0, boxRow, 80)
 	if box := drawn[rf.startCol : rf.startCol+rf.width]; strings.TrimSpace(box) != "" {
-		t.Errorf("field row %d box cells = %q, want blanks", boxRow, box)
+		t.Errorf("field row %v box cells = %q, want blanks", boxRow, box)
 	}
 	if tail := strings.TrimSpace(drawn[rf.startCol+rf.width:]); tail != "tail" {
 		t.Errorf("text after the field's box = %q, want %q", tail, "tail")
@@ -200,7 +200,7 @@ func TestBrowserFieldOnWrappedRow(t *testing.T) {
 		t.Fatal("click on the field did not mount its editor overlay")
 	}
 	if got, want := bd.lineCursors[line], rf.runeStart; got != want {
-		t.Errorf("line cursor after the click = %d, want %d (the field's start)", got, want)
+		t.Errorf("line cursor after the click = %v, want %v (the field's start)", got, want)
 	}
 
 	// The hardware cursor must land in the box on the field's own row.
@@ -210,6 +210,6 @@ func TestBrowserFieldOnWrappedRow(t *testing.T) {
 		t.Fatal("hardware cursor not visible after a click (stampKeypress must arm it)")
 	}
 	if x != rf.startCol || y != boxRow {
-		t.Errorf("hardware cursor = (%d,%d), want (%d,%d) in the field's box", x, y, rf.startCol, boxRow)
+		t.Errorf("hardware cursor = (%v,%v), want (%v,%v) in the field's box", x, y, rf.startCol, boxRow)
 	}
 }

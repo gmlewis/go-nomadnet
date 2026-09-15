@@ -46,11 +46,11 @@ import (
 func assertLeftPanelInvariants(t *testing.T, nd *NetworkDisplay, step string) {
 	t.Helper()
 	if got := nd.leftPanel.GetItemCount(); got != 2 {
-		t.Fatalf("%s: left panel item count = %d, want exactly 2", step, got)
+		t.Fatalf("%v: left panel item count = %v, want exactly 2", step, got)
 	}
 	item0 := nd.leftPanel.GetItem(0)
 	if item0 != tview.Primitive(nd.listBox) && item0 != tview.Primitive(nd.listSlotOverlay) {
-		t.Fatalf("%s: index 0 = %T, want listBox or listSlotOverlay", step, item0)
+		t.Fatalf("%v: index 0 = %T, want listBox or listSlotOverlay", step, item0)
 	}
 	idx1 := nd.leftPanel.GetItem(1)
 	var want1 tview.Primitive
@@ -63,7 +63,7 @@ func assertLeftPanelInvariants(t *testing.T, nd *NetworkDisplay, step string) {
 		want1 = nd.localPeer.Widget()
 	}
 	if idx1 != want1 {
-		t.Fatalf("%s: index 1 = %T, want %T (pack state: nodeInfo=%v status=%v)",
+		t.Fatalf("%v: index 1 = %T, want %T (pack state: nodeInfo=%v status=%v)",
 			step, idx1, want1, nd.packPanelIsNodeInfo, nd.statusInPeerSlot != nil)
 	}
 }
@@ -107,11 +107,11 @@ func TestLeftPanelInvariantsUnderMutatorSequence(t *testing.T) {
 		case "ShowListSlotDialog":
 			nd.ShowListSlotDialog(NewDialogLineBox("?", tview.NewFlex(), nil), 6)
 		case "ShowLocalPeerStatus":
-			nd.ShowLocalPeerStatus(fmt.Sprintf("\n\n\nStatus %d\n\n", i), 6)
+			nd.ShowLocalPeerStatus(fmt.Sprintf("\n\n\nStatus %v\n\n", i), 6)
 		case "CloseListSlotDialog":
 			nd.CloseListSlotDialog()
 		}
-		assertLeftPanelInvariants(t, nd, fmt.Sprintf("step %d (%v)", i, step))
+		assertLeftPanelInvariants(t, nd, fmt.Sprintf("step %v (%v)", i, step))
 	}
 	_ = tview.NewFlex
 	_ = fmt.Sprintf

@@ -121,21 +121,21 @@ func TestMicronHeadingDepthAndDividerFormatting(t *testing.T) {
 	// visible leading indent.
 	// Heading 1 at depth 1: 0 indent
 	if got := leadingSpaces(stripTviewTags(renderedLines[0])); got != 0 {
-		t.Errorf("heading 1 leading indent = %d, want 0 (line=%q)", got, renderedLines[0])
+		t.Errorf("heading 1 leading indent = %v, want 0 (line=%q)", got, renderedLines[0])
 	}
 	// Heading 2 at depth 2: 2 spaces indent
 	if got := leadingSpaces(stripTviewTags(renderedLines[1])); got != 2 {
-		t.Errorf("heading 2 leading indent = %d, want 2 (line=%q)", got, renderedLines[1])
+		t.Errorf("heading 2 leading indent = %v, want 2 (line=%q)", got, renderedLines[1])
 	}
 	// Heading 3 at depth 3: 4 spaces indent
 	if got := leadingSpaces(stripTviewTags(renderedLines[2])); got != 4 {
-		t.Errorf("heading 3 leading indent = %d, want 4 (line=%q)", got, renderedLines[2])
+		t.Errorf("heading 3 leading indent = %v, want 4 (line=%q)", got, renderedLines[2])
 	}
 	// Each heading row must fill the full 50-col width with the heading
 	// background (the parity fix): the visible width equals the pane width.
 	for i, l := 0, renderedLines; i < 3 && i < len(l); i++ {
 		if got := visibleWidth(l[i]); got != 50 {
-			t.Errorf("heading %d visible width = %d, want 50 (line=%q)", i+1, got, l[i])
+			t.Errorf("heading %v visible width = %v, want 50 (line=%q)", i+1, got, l[i])
 		}
 	}
 	// Divider line follows the depth-3 heading, so Python renders it as
@@ -195,7 +195,7 @@ func TestStyledLinesToTviewTextAlignment(t *testing.T) {
 			}
 			gotPad := len(content) - len(strings.TrimLeft(content, " "))
 			if gotPad != tc.wantPad {
-				t.Errorf("%s: leading pad = %d, want %d (line=%q)", tc.name, gotPad, tc.wantPad, content)
+				t.Errorf("%v: leading pad = %v, want %v (line=%q)", tc.name, gotPad, tc.wantPad, content)
 			}
 		})
 	}

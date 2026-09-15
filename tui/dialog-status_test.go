@@ -53,7 +53,7 @@ func TestShowStatusDialogDismisses(t *testing.T) {
 	// (1) Esc dismisses even when focus is stuck on the main page.
 	app.Dialogs.ShowStatusDialog("Saved", "\n\n\nSaved\n\n", 40, 9)
 	if app.Dialogs.Count() != 1 {
-		t.Fatalf("after ShowStatusDialog: count=%d want 1", app.Dialogs.Count())
+		t.Fatalf("after ShowStatusDialog: count=%v want 1", app.Dialogs.Count())
 	}
 	// Simulate the mouse-click focus race: focus stays on the main page, not
 	// the dialog.
@@ -62,25 +62,25 @@ func TestShowStatusDialogDismisses(t *testing.T) {
 	esc := tcell.NewEventKey(tcell.KeyEscape, 0, tcell.ModNone)
 	dispatchKey(app, pages, esc)
 	if app.Dialogs.Count() != 0 {
-		t.Errorf("Esc with focus on main: dialog NOT dismissed (count=%d) — the global Esc guard is missing", app.Dialogs.Count())
+		t.Errorf("Esc with focus on main: dialog NOT dismissed (count=%v) — the global Esc guard is missing", app.Dialogs.Count())
 	}
 
 	// (2) The OK button dismisses via Enter when the dialog has focus.
 	app.Dialogs.ShowStatusDialog("Saved", "\n\n\nSaved\n\n", 40, 9)
 	if app.Dialogs.Count() != 1 {
-		t.Fatalf("second ShowStatusDialog: count=%d want 1", app.Dialogs.Count())
+		t.Fatalf("second ShowStatusDialog: count=%v want 1", app.Dialogs.Count())
 	}
 	enter := tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone)
 	dispatchKey(app, pages, enter)
 	if app.Dialogs.Count() != 0 {
-		t.Errorf("Enter on OK button: dialog NOT dismissed (count=%d)", app.Dialogs.Count())
+		t.Errorf("Enter on OK button: dialog NOT dismissed (count=%v)", app.Dialogs.Count())
 	}
 
 	// (3) Esc dismisses in the normal (focus on dialog) case too.
 	app.Dialogs.ShowStatusDialog("Saved", "\n\n\nSaved\n\n", 40, 9)
 	dispatchKey(app, pages, tcell.NewEventKey(tcell.KeyEscape, 0, tcell.ModNone))
 	if app.Dialogs.Count() != 0 {
-		t.Errorf("Esc with focus on dialog: dialog NOT dismissed (count=%d)", app.Dialogs.Count())
+		t.Errorf("Esc with focus on dialog: dialog NOT dismissed (count=%v)", app.Dialogs.Count())
 	}
 }
 
@@ -93,7 +93,7 @@ func TestShowStatusDialogHasOKButton(t *testing.T) {
 
 	dm.ShowStatusDialog("Saved", "\n\n\nSaved\n\n", 40, 9)
 	if dm.Count() != 1 {
-		t.Fatalf("count=%d want 1", dm.Count())
+		t.Fatalf("count=%v want 1", dm.Count())
 	}
 	// Pressing Enter dismisses via the OK button (the focused content).
 	enter := tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone)
@@ -101,7 +101,7 @@ func TestShowStatusDialogHasOKButton(t *testing.T) {
 		h(enter, func(p tview.Primitive) { app.Application.SetFocus(p) })
 	}
 	if dm.Count() != 0 {
-		t.Errorf("Enter did not dismiss the status dialog (count=%d) — OK button missing or not focused", dm.Count())
+		t.Errorf("Enter did not dismiss the status dialog (count=%v) — OK button missing or not focused", dm.Count())
 	}
 }
 
@@ -124,6 +124,6 @@ func TestEscDismissesDialogWhenMainFocused(t *testing.T) {
 
 	dispatchKey(app, pages, tcell.NewEventKey(tcell.KeyEscape, 0, tcell.ModNone))
 	if app.Dialogs.Count() != 0 {
-		t.Errorf("bare-text dialog with focus on main: Esc did NOT dismiss (count=%d)", app.Dialogs.Count())
+		t.Errorf("bare-text dialog with focus on main: Esc did NOT dismiss (count=%v)", app.Dialogs.Count())
 	}
 }

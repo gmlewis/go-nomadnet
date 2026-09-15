@@ -386,18 +386,18 @@ func keyspecLoadSpec(t *testing.T) *keyspecPySpec {
 
 	script := filepath.Join("..", "tooling", "keyspec", "extract_py.py")
 	if _, err := os.Stat(script); err != nil {
-		t.Skipf("extractor %s not accessible from package cwd: %v", script, err)
+		t.Skipf("extractor %v not accessible from package cwd: %v", script, err)
 	}
 	cmd := exec.Command(testutils.PythonNomadnetExe(), script, sot)
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
 	stdout, err := cmd.Output()
 	if err != nil {
-		t.Fatalf("keyspec extractor failed: %v\nstderr:\n%s", err, stderr.String())
+		t.Fatalf("keyspec extractor failed: %v\nstderr:\n%v", err, stderr.String())
 	}
 	var spec keyspecPySpec
 	if err := json.Unmarshal(stdout, &spec); err != nil {
-		t.Fatalf("decode keyspec extractor output: %v\nstderr:\n%s", err, stderr.String())
+		t.Fatalf("decode keyspec extractor output: %v\nstderr:\n%v", err, stderr.String())
 	}
 	return &spec
 }
@@ -418,12 +418,12 @@ func keyspecGoHandlers(t *testing.T) map[string]map[string]bool {
 		}
 		data, err := os.ReadFile(name)
 		if err != nil {
-			t.Fatalf("read %s: %v", name, err)
+			t.Fatalf("read %v: %v", name, err)
 		}
 		cur := ""
 		for line := range strings.SplitSeq(string(data), "\n") {
 			if m := keyspecGoFuncRe.FindStringSubmatch(line); m != nil {
-				cur = fmt.Sprintf("%s:%s:%s", name, m[2], m[3])
+				cur = fmt.Sprintf("%v:%v:%v", name, m[2], m[3])
 				if out[cur] == nil {
 					out[cur] = map[string]bool{}
 				}
@@ -554,11 +554,11 @@ func TestKeyspecGoAdvertisedKeysAreHandled(t *testing.T) {
 	for _, f := range files {
 		for _, k := range keyspecSorted(advertised[f]) {
 			if !handledAnywhere[k] {
-				t.Errorf("Go file %s advertises [%v] in a shortcut bar but no handler in the app consumes it (advertised-but-dead key)", f, strings.TrimPrefix(k, "ctrl+"))
+				t.Errorf("Go file %v advertises [%v] in a shortcut bar but no handler in the app consumes it (advertised-but-dead key)", f, strings.TrimPrefix(k, "ctrl+"))
 				continue
 			}
 			if !handledByFile[f][k] {
-				t.Logf("note: %s advertises [%v], handled in a sibling page file — fine", f, strings.TrimPrefix(k, "ctrl+"))
+				t.Logf("note: %v advertises [%v], handled in a sibling page file — fine", f, strings.TrimPrefix(k, "ctrl+"))
 			}
 		}
 	}
@@ -573,24 +573,24 @@ func TestKeyspecDisplayHandlersMatchPython(t *testing.T) {
 	spec := keyspecLoadSpec(t)
 	py := map[string]keyspecPyHandler{}
 	for _, h := range spec.Handlers {
-		py[fmt.Sprintf("%s:%s:%s", filepath.Base(h.File), h.Class, h.Method)] = h
+		py[fmt.Sprintf("%v:%v:%v", filepath.Base(h.File), h.Class, h.Method)] = h
 	}
 	goHandlers := keyspecGoHandlers(t)
 
 	for _, pair := range keyspecDisplayPairs {
-		pyID := fmt.Sprintf("%s:%s:%s", pair.pyFile, pair.pyClass, pair.pyMeth)
-		goID := fmt.Sprintf("%s:%s:%v", pair.goFile, pair.goRecv, pair.goFuncs)
+		pyID := fmt.Sprintf("%v:%v:%v", pair.pyFile, pair.pyClass, pair.pyMeth)
+		goID := fmt.Sprintf("%v:%v:%v", pair.goFile, pair.goRecv, pair.goFuncs)
 
 		pyh, ok := py[pyID]
 		if !ok {
-			t.Errorf("Python spec lost %s (extractor drift?)", pyID)
+			t.Errorf("Python spec lost %v (extractor drift?)", pyID)
 			continue
 		}
 		goKeys := map[string]bool{}
 		for _, fn := range pair.goFuncs {
-			gk, ok := goHandlers[fmt.Sprintf("%s:%s:%s", pair.goFile, pair.goRecv, fn)]
+			gk, ok := goHandlers[fmt.Sprintf("%v:%v:%v", pair.goFile, pair.goRecv, fn)]
 			if !ok {
-				t.Errorf("Go handler %s:%s:%s not found (renamed? update keyspecDisplayPairs)", pair.goFile, pair.goRecv, fn)
+				t.Errorf("Go handler %v:%v:%v not found (renamed? update keyspecDisplayPairs)", pair.goFile, pair.goRecv, fn)
 				continue
 			}
 			for k := range gk {
@@ -605,7 +605,7 @@ func TestKeyspecDisplayHandlersMatchPython(t *testing.T) {
 				if _, acc := keyspecAccepted[pairName+"|"+k]; acc {
 					continue
 				}
-				t.Errorf("%s: Python handles %q (%v) but Go %s does not — missing port behavior",
+				t.Errorf("%v: Python handles %q (%v) but Go %v does not — missing port behavior",
 					pairName, k, keyspecPyActionOf(pyh, k), goID)
 			}
 		}
@@ -614,7 +614,7 @@ func TestKeyspecDisplayHandlersMatchPython(t *testing.T) {
 				if _, acc := keyspecAccepted[pairName+"|"+k]; acc {
 					continue
 				}
-				t.Errorf("%s: Go %s handles %q but Python %s does not — port invention (accept with a reason or remove)",
+				t.Errorf("%v: Go %v handles %q but Python %v does not — port invention (accept with a reason or remove)",
 					pairName, goID, k, pyID)
 			}
 		}
@@ -647,7 +647,7 @@ func TestKeyspecPythonAdvertisedKeysReported(t *testing.T) {
 		for _, tok := range adv.Keys {
 			k := "ctrl+" + strings.ToLower(tok)
 			if !handledByFile[file][k] {
-				t.Logf("Python spec note: %s:%d advertises [%v] but no keypress in %s handles it (Python's own dead advertisement)",
+				t.Logf("Python spec note: %v:%v advertises [%v] but no keypress in %v handles it (Python's own dead advertisement)",
 					file, adv.Line, tok, file)
 			}
 		}

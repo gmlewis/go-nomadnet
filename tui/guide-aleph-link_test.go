@@ -60,7 +60,7 @@ func TestGuideAlephGitLinkReachable(t *testing.T) {
 		}
 	}
 	if idx < 0 {
-		t.Fatalf("Aleph git link %q not registered in gd.links; got %d links", wantURL, len(gd.links))
+		t.Fatalf("Aleph git link %q not registered in gd.links; got %v links", wantURL, len(gd.links))
 	}
 	if !strings.Contains(gd.links[idx].Label, "Aleph git") {
 		t.Errorf("link label = %q, want it to contain \"Aleph git\"", gd.links[idx].Label)
@@ -135,7 +135,7 @@ func TestGuideAlephGitLinkMouseRegion(t *testing.T) {
 		}
 	}
 	if wantIdx < 0 {
-		t.Fatalf("Aleph git link not registered; got %d links", len(gd.links))
+		t.Fatalf("Aleph git link not registered; got %v links", len(gd.links))
 	}
 
 	gotTarget := ""
@@ -145,7 +145,7 @@ func TestGuideAlephGitLinkMouseRegion(t *testing.T) {
 	// decimal link index (StyledLinesToTviewText emits ["<idx>"] region tags).
 	gd.activateLink(strconv.Itoa(wantIdx))
 	if gotTarget != wantURL {
-		t.Errorf("activateLink(%d) fired OnHandleLink with %q, want %q (mouse click contract)",
+		t.Errorf("activateLink(%v) fired OnHandleLink with %q, want %q (mouse click contract)",
 			wantIdx, gotTarget, wantURL)
 	}
 }

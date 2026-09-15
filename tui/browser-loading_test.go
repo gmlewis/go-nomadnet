@@ -69,13 +69,13 @@ func TestBrowserLoadingShowsCenteredRetrieving(t *testing.T) {
 		}
 	}
 	if retRow < 0 {
-		t.Fatalf("Retrieving line not found in render:\n%s", strings.Join(rows, "\n"))
+		t.Fatalf("Retrieving line not found in render:\n%v", strings.Join(rows, "\n"))
 	}
 	if urlRow < 0 {
-		t.Fatalf("[url] line not found in render:\n%s", strings.Join(rows, "\n"))
+		t.Fatalf("[url] line not found in render:\n%v", strings.Join(rows, "\n"))
 	}
 	if urlRow != retRow+1 {
-		t.Errorf("Retrieving at row %d, [url] at row %d; want [url] immediately below", retRow, urlRow)
+		t.Errorf("Retrieving at row %v, [url] at row %v; want [url] immediately below", retRow, urlRow)
 	}
 
 	// Vertically centered: the "Retrieving" row sits within one row of the
@@ -84,7 +84,7 @@ func TestBrowserLoadingShowsCenteredRetrieving(t *testing.T) {
 	// 16-4 = 12; two lines centered ⇒ top at ceil((12-2)/2) = 5 rows into the
 	// body ⇒ screen row 2+5 = 7.
 	if retRow < 5 || retRow > 9 {
-		t.Errorf("Retrieving at row %d, want roughly vertically centered (5..9) in a 16-row pane with 2 header + 2 footer rows", retRow)
+		t.Errorf("Retrieving at row %v, want roughly vertically centered (5..9) in a 16-row pane with 2 header + 2 footer rows", retRow)
 	}
 
 	// Horizontally centered: the URL line's left padding inside the body area
@@ -99,13 +99,13 @@ func TestBrowserLoadingShowsCenteredRetrieving(t *testing.T) {
 		}
 	}
 	if firstCol < 0 {
-		t.Fatalf("[url] line not found in cells at row %d", urlRow)
+		t.Fatalf("[url] line not found in cells at row %v", urlRow)
 	}
 	leftPad := firstCol // inner content begins at column 0 (no border)
 	const innerWidth = 60
 	wantPad := (innerWidth - tview.TaggedStringWidth("[a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6/page/index.mu]")) / 2
 	if abs(leftPad-wantPad) > 1 {
-		t.Errorf("[url] left padding = %d, want ~%d (centered)", leftPad, wantPad)
+		t.Errorf("[url] left padding = %v, want ~%v (centered)", leftPad, wantPad)
 	}
 
 	// The URL header above still shows the URL (Python keeps the control-widget

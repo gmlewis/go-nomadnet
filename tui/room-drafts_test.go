@@ -183,7 +183,7 @@ json.dump(results, sys.stdout)
 	}
 	for i := range got {
 		if got[i] != want[i] {
-			t.Errorf("restore[%d] = %q, want %q (Python)", i, got[i], want[i])
+			t.Errorf("restore[%v] = %q, want %q (Python)", i, got[i], want[i])
 		}
 	}
 }

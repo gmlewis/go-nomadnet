@@ -74,7 +74,7 @@ func TestBrowserBodyWrapRightIndent(t *testing.T) {
 		}
 	}
 	if idx < 0 {
-		t.Fatalf("body paragraph row not found in:\n%s", strings.Join(rows, "\n"))
+		t.Fatalf("body paragraph row not found in:\n%v", strings.Join(rows, "\n"))
 	}
 	first := rows[idx]
 	if strings.Contains(first, "served") {
@@ -120,6 +120,6 @@ func TestBrowserBodyWrapDepth0NoIndent(t *testing.T) {
 	// "column boundary here." should be on its own (wrapped) row, proving the
 	// paragraph wrapped rather than overflowing one row.
 	if !wrapped {
-		t.Fatalf("depth-0 paragraph did not wrap:\n%s", strings.Join(rows, "\n"))
+		t.Fatalf("depth-0 paragraph did not wrap:\n%v", strings.Join(rows, "\n"))
 	}
 }

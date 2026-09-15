@@ -139,7 +139,7 @@ func TestUrwidColumnsWithInputField(t *testing.T) {
 		t.Errorf("expected input to retain focus on RightArrow with cursor in the middle of the buffer")
 	}
 	if got := input.CursorPos(); got != 2 {
-		t.Errorf("after RightArrow in middle of buffer, cursorPos = %d, want 2", got)
+		t.Errorf("after RightArrow in middle of buffer, cursorPos = %v, want 2", got)
 	}
 
 	// Tab on input field should switch column focus to btn

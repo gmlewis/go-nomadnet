@@ -212,7 +212,7 @@ func sortedPairs(m map[string]int) []string {
 	sort.Slice(keys, func(i, j int) bool { return m[keys[i]] > m[keys[j]] || (m[keys[i]] == m[keys[j]] && keys[i] < keys[j]) })
 	out := make([]string, 0, len(keys))
 	for _, k := range keys {
-		out = append(out, fmt.Sprintf("%5d  %s", m[k], k))
+		out = append(out, fmt.Sprintf("%5d  %v", m[k], k))
 	}
 	return out
 }
@@ -258,7 +258,7 @@ func main() {
 		return
 	}
 
-	fmt.Printf("goroutines: %d   max id: %d\n", s.Total, s.MaxID)
+	fmt.Printf("goroutines: %v   max id: %v\n", s.Total, s.MaxID)
 	fmt.Println("\nstates:")
 	for _, l := range sortedPairs(s.States) {
 		fmt.Println(l)
@@ -277,9 +277,9 @@ func main() {
 		if len(group) == 0 {
 			continue
 		}
-		fmt.Printf("\n%s (%d):\n", name, len(group))
+		fmt.Printf("\n%v (%v):\n", name, len(group))
 		for _, g := range group {
-			fmt.Printf("  #%d %s -> %s\n", g.id, g.state, g.role())
+			fmt.Printf("  #%v %v -> %v\n", g.id, g.state, g.role())
 		}
 	}
 	if *verbose || *states != "" || *created != "" {
@@ -292,12 +292,12 @@ func main() {
 		fmt.Println("\ndetail:")
 		for _, g := range gs {
 			if *verbose || matchState(g.state, want) || (*created != "" && strings.Contains(g.created, *created)) {
-				fmt.Printf("#%d %s\n", g.id, g.header[strings.Index(g.header, "["):])
+				fmt.Printf("#%v %v\n", g.id, g.header[strings.Index(g.header, "["):])
 				for _, fn := range g.topFuncs {
-					fmt.Printf("    %s\n", fn)
+					fmt.Printf("    %v\n", fn)
 				}
 				if g.created != "" {
-					fmt.Printf("    %s\n", g.created)
+					fmt.Printf("    %v\n", g.created)
 				}
 			}
 		}

@@ -190,7 +190,7 @@ func run(args []string) error {
 	sessionName := sessionPrefix + nnn
 	logFile := cfg.logFile
 	if logFile == "" {
-		logFile = fmt.Sprintf("/tmp/%s-%s.log", logPrefix, nnn)
+		logFile = fmt.Sprintf("/tmp/%v-%v.log", logPrefix, nnn)
 	}
 	logf, closeLog, err := openLog(logFile)
 	if err != nil {
@@ -213,16 +213,16 @@ func run(args []string) error {
 	}
 	if rnsDir != "" {
 		if cfg.nomadnet {
-			rnsFlag = fmt.Sprintf(" --rnsconfig '%s'", rnsDir)
+			rnsFlag = fmt.Sprintf(" --rnsconfig '%v'", rnsDir)
 		} else {
-			rnsFlag = fmt.Sprintf(" -rnsconfig '%s'", rnsDir)
+			rnsFlag = fmt.Sprintf(" -rnsconfig '%v'", rnsDir)
 		}
 	}
 	var launchCmd string
 	if cfg.nomadnet {
-		launchCmd = fmt.Sprintf("exec nomadnet -t --config '%s'%s", cfg.configDir, rnsFlag)
+		launchCmd = fmt.Sprintf("exec nomadnet -t --config '%v'%v", cfg.configDir, rnsFlag)
 	} else {
-		launchCmd = fmt.Sprintf("cd '%s' && exec go run ./cmd/gonomadnet -t -config '%s'%s", repo, cfg.configDir, rnsFlag)
+		launchCmd = fmt.Sprintf("cd '%v' && exec go run ./cmd/gonomadnet -t -config '%v'%v", repo, cfg.configDir, rnsFlag)
 	}
 
 	both := func(format string, args ...any) {
@@ -230,18 +230,18 @@ func run(args []string) error {
 		logf(format, args...)
 	}
 
-	both("gonomadnet input-box test (%s)", target)
-	both("  log     : %s", logFile)
-	both("  session : %s  (watch live: tmux attach -t %s)", sessionName, sessionName)
-	both("  config  : %s", cfg.configDir)
-	both("  rns     : %s", rnsDir)
-	both("  repo    : %s", repo)
-	both("  target  : %s  (launch: %s)", target, launchCmd)
-	both("  dest    : %s", cfg.dest)
+	both("gonomadnet input-box test (%v)", target)
+	both("  log     : %v", logFile)
+	both("  session : %v  (watch live: tmux attach -t %v)", sessionName, sessionName)
+	both("  config  : %v", cfg.configDir)
+	both("  rns     : %v", rnsDir)
+	both("  repo    : %v", repo)
+	both("  target  : %v  (launch: %v)", target, launchCmd)
+	both("  dest    : %v", cfg.dest)
 	both("  text    : %q", cfg.text)
-	both("  size    : %dx%d", w, h)
+	both("  size    : %vx%v", w, h)
 	if out, err := exec.Command("tmux", "-V").Output(); err == nil {
-		both("  tmux    : %s", strings.TrimSpace(string(out)))
+		both("  tmux    : %v", strings.TrimSpace(string(out)))
 	}
 	both("")
 
@@ -254,7 +254,7 @@ func run(args []string) error {
 	}
 	defer func() {
 		if sess.HasSession() {
-			logf("cleanup: killing tmux session %s", sessionName)
+			logf("cleanup: killing tmux session %v", sessionName)
 			_ = sess.KillSession()
 		}
 	}()
@@ -275,7 +275,7 @@ func run(args []string) error {
 			close(done)
 		}()
 		both("attaching tmux session so you can watch (detach with Ctrl-b d)...")
-		both("progress is being logged to: %s", logFile)
+		both("progress is being logged to: %v", logFile)
 		both("")
 		attach := exec.Command("tmux", "attach", "-t", sessionName)
 		attach.Stdin = os.Stdin
@@ -287,8 +287,8 @@ func run(args []string) error {
 		<-done
 	} else {
 		both("running detached. Watch live in another terminal with:")
-		both("  tmux attach -t %s", sessionName)
-		both("progress is being logged to: %s", logFile)
+		both("  tmux attach -t %v", sessionName)
+		both("progress is being logged to: %v", logFile)
 		both("")
 		d.runSequence(cfg)
 	}
@@ -304,8 +304,8 @@ func run(args []string) error {
 
 	both("")
 	both("================ DONE ================")
-	both("log    : %s", logFile)
-	both("summary: asserts=%d pass=%d fail=%d  field-found=%t text-accepted=%t search-submitted=%t",
+	both("log    : %v", logFile)
+	both("summary: asserts=%v pass=%v fail=%v  field-found=%t text-accepted=%t search-submitted=%t",
 		d.asserts, d.assertOK, d.failures, d.fieldFound, d.textAccepted, d.searchSubmitted)
 	return nil
 }
@@ -325,7 +325,7 @@ func printResults(d *driver) {
 	if !strings.HasSuffix(d.results, "\n") {
 		fmt.Println()
 	}
-	d.logf("printed %d bytes of search results to stdout", len(d.results))
+	d.logf("printed %v bytes of search results to stdout", len(d.results))
 }
 
 // ---------- driver ----------
@@ -365,7 +365,7 @@ type driver struct {
 
 // send sends tmux key names then pauses stepDelay for the app to redraw.
 func (d *driver) send(keys ...string) {
-	d.logf("send: %s", strings.Join(keys, " "))
+	d.logf("send: %v", strings.Join(keys, " "))
 	if err := d.sess.SendKeys(keys...); err != nil {
 		d.logf("  ERROR send-keys: %v", err)
 	}
@@ -385,10 +385,10 @@ func (d *driver) sendLiteral(text string) {
 func (d *driver) snapshot(label string) {
 	out, err := d.sess.Capture()
 	if err != nil {
-		d.logf("===== SNAPSHOT: %s (capture error: %v) =====", label, err)
+		d.logf("===== SNAPSHOT: %v (capture error: %v) =====", label, err)
 		return
 	}
-	d.logf("===== SNAPSHOT: %s =====\n%s===== END SNAPSHOT =====", label, out)
+	d.logf("===== SNAPSHOT: %v =====\n%v===== END SNAPSHOT =====", label, out)
 }
 
 // view captures the current View, logging on error.
@@ -414,11 +414,11 @@ func (d *driver) assert(cond func(*utils.View) bool, timeout time.Duration, form
 	msg := fmt.Sprintf(format, args...)
 	if ok {
 		d.assertOK++
-		d.logf("  ASSERT PASS: %s", msg)
+		d.logf("  ASSERT PASS: %v", msg)
 		return true
 	}
 	d.failures++
-	d.logf("  ASSERT FAIL: %s | observed: %s", msg, observedState(v))
+	d.logf("  ASSERT FAIL: %v | observed: %v", msg, observedState(v))
 	return false
 }
 
@@ -431,7 +431,7 @@ func observedState(v *utils.View) string {
 	midx, mok := v.MenuFocusedButton()
 	cur := "cursor=?"
 	if v.CursorOK {
-		cur = fmt.Sprintf("cursor=(%d,%d)", v.CursorX, v.CursorY)
+		cur = fmt.Sprintf("cursor=(%v,%v)", v.CursorX, v.CursorY)
 	}
 	btn := ""
 	if b, ok := v.FocusedActionButton(); ok {
@@ -439,12 +439,12 @@ func observedState(v *utils.View) string {
 	}
 	st, url := v.BrowserState()
 	footer := v.BrowserFooterLink()
-	return fmt.Sprintf("page=%q menu=%v(%t) %s browser=%s/%q%s footer-link=%q", page, midx, mok, cur, st, url, btn, footer)
+	return fmt.Sprintf("page=%q menu=%v(%t) %v browser=%v/%q%v footer-link=%q", page, midx, mok, cur, st, url, btn, footer)
 }
 
 // step logs a section header.
 func (d *driver) step(msg string) {
-	d.logf("\n########## %s ##########", msg)
+	d.logf("\n########## %v ##########", msg)
 }
 
 // ---------- the input-box sequence ----------
@@ -467,7 +467,7 @@ func (d *driver) runSequence(cfg *config) {
 		return
 	}
 
-	d.step(fmt.Sprintf("Phase 3: connect to %s via URL dialog (Ctrl-u)", cfg.dest))
+	d.step(fmt.Sprintf("Phase 3: connect to %v via URL dialog (Ctrl-u)", cfg.dest))
 	connected := d.connectToTarget(cfg.dest)
 	if !connected {
 		d.snapshot("final state (connect failed)")
@@ -570,7 +570,7 @@ func (d *driver) connectToTarget(dest string) bool {
 			d.logf("session died during connect; aborting")
 			return false
 		}
-		d.logf("connect attempt %d/%d: opening URL dialog for %s", attempt, maxAttempts, want)
+		d.logf("connect attempt %v/%v: opening URL dialog for %v", attempt, maxAttempts, want)
 
 		// Ensure the browser pane is focused (Right is idempotent on the right
 		// column), then open the URL dialog. Ctrl-u is handled by both the
@@ -580,7 +580,7 @@ func (d *driver) connectToTarget(dest string) bool {
 		// dialog titled "Enter URL" with caption "URL : ", so either path works.
 		d.send("Right")
 		d.send("C-u")
-		if !d.assert(urlDialogOpen, 5*time.Second, "URL dialog open (attempt %d)", attempt) {
+		if !d.assert(urlDialogOpen, 5*time.Second, "URL dialog open (attempt %v)", attempt) {
 			d.logf("  URL dialog did not open (browser not focused?); retrying")
 			d.send("Escape")
 			if attempt < maxAttempts {
@@ -614,9 +614,9 @@ func (d *driver) connectToTarget(dest string) bool {
 		}
 		switch {
 		case strings.HasPrefix(st, "error:"):
-			d.logf("  connect FAILED (attempt %d): %s", attempt, st)
+			d.logf("  connect FAILED (attempt %v): %v", attempt, st)
 		default:
-			d.logf("  connect TIMEOUT (attempt %d) (state=%q url=%q)", attempt, st, url)
+			d.logf("  connect TIMEOUT (attempt %v) (state=%q url=%q)", attempt, st, url)
 		}
 		d.snapshot("connect: failed")
 		// Disconnect to reset the browser pane (and clear the dialog's pre-fill)
@@ -627,7 +627,7 @@ func (d *driver) connectToTarget(dest string) bool {
 			time.Sleep(5 * time.Second)
 		}
 	}
-	d.logf("  could not connect to %s after %d attempts", want, maxAttempts)
+	d.logf("  could not connect to %v after %v attempts", want, maxAttempts)
 	return false
 }
 
@@ -726,7 +726,7 @@ func (d *driver) driveSearchForm(cfg *config) {
 	// has quit and the terminal has reset, so the output is not interleaved with
 	// the TUI.
 	d.results = d.captureResultsScrolled()
-	d.logf("  captured %d bytes of browser output (scrolled)", len(d.results))
+	d.logf("  captured %v bytes of browser output (scrolled)", len(d.results))
 }
 
 // captureResultsScrolled pages the browser top-to-bottom and collects every
@@ -753,7 +753,7 @@ func (d *driver) captureResultsScrolled() string {
 	const maxScrolls = 80
 	for i := range maxScrolls {
 		if !d.sess.HasSession() {
-			d.logf("  scroll capture: session died at frame %d", i)
+			d.logf("  scroll capture: session died at frame %v", i)
 			break
 		}
 		lines := d.view().BrowserContentLines()
@@ -779,7 +779,7 @@ func (d *driver) captureResultsScrolled() string {
 		// A frame that added no new normalized line means the page-down brought
 		// nothing new into view — we have reached the bottom.
 		if i > 0 && added == 0 {
-			d.logf("  scroll capture: reached bottom after %d frame(s), %d distinct line(s)", i, len(out))
+			d.logf("  scroll capture: reached bottom after %v frame(s), %v distinct line(s)", i, len(out))
 			break
 		}
 		d.send("PageDown")
@@ -835,7 +835,7 @@ func (d *driver) findAndTypeField(cfg *config) {
 			// navigated (and not yet found the field), follow it to the search
 			// page and keep scanning there.
 			if !d.fieldFound && !navigated && strings.Contains(strings.ToLower(footer), "search") {
-				d.logf("  field scan at %d Down(s): following search link to search page (footer=%q)", i, footer)
+				d.logf("  field scan at %v Down(s): following search link to search page (footer=%q)", i, footer)
 				d.snapshot("search form: navigating to search page")
 				landedSig := v.BrowserPaneSig()
 				d.send("Enter")
@@ -859,7 +859,7 @@ func (d *driver) findAndTypeField(cfg *config) {
 				st, _ := d.view().BrowserState()
 				d.snapshot("search form: search page rendered")
 				if strings.HasPrefix(st, "error:") {
-					d.logf("  navigation to search page FAILED: %s", st)
+					d.logf("  navigation to search page FAILED: %v", st)
 					return
 				}
 				d.logf("  search page rendered (state=%q); resuming field scan", st)
@@ -877,14 +877,14 @@ func (d *driver) findAndTypeField(cfg *config) {
 		if !strings.Contains(before, cfg.text) && strings.Contains(after, cfg.text) {
 			d.fieldFound = true
 			d.textAccepted = true
-			d.logf("  input field FOUND after %d Down(s): query %q accepted into the field", i, cfg.text)
+			d.logf("  input field FOUND after %v Down(s): query %q accepted into the field", i, cfg.text)
 			d.snapshot("search form: text accepted into input field")
 			return
 		}
 		// Text was not accepted by this line; move to the next selectable.
 		d.send("Down")
 	}
-	d.logf("  no input field accepting text found after %d Down(s)", cfg.maxFieldDowns)
+	d.logf("  no input field accepting text found after %v Down(s)", cfg.maxFieldDowns)
 }
 
 // findAndPressSubmit walks Down to the "Search" submit link (a micron link whose
@@ -909,7 +909,7 @@ func (d *driver) findAndPressSubmit(cfg *config) {
 			}
 			if strings.Contains(footer, "search") {
 				d.searchSubmitted = true
-				d.logf("  search button FOUND after %d Down(s) (footer=%q); pressing Enter to submit", i, footer)
+				d.logf("  search button FOUND after %v Down(s) (footer=%q); pressing Enter to submit", i, footer)
 				d.snapshot("search form: Search button focused (footer link)")
 				// Capture the pre-submit signature NOW: the cursor is resting on
 				// the Search link so its footer indicator is already part of the
@@ -924,7 +924,7 @@ func (d *driver) findAndPressSubmit(cfg *config) {
 		d.send("Down")
 	}
 	d.failures++
-	d.logf("  ASSERT FAIL: Search button %q not found after %d Down(s); pressing Enter at the cursor as a best effort", cfg.searchLabel, cfg.maxButtonDowns)
+	d.logf("  ASSERT FAIL: Search button %q not found after %v Down(s); pressing Enter at the cursor as a best effort", cfg.searchLabel, cfg.maxButtonDowns)
 	d.snapshot("search form: Search button NOT found")
 	d.preSubmitSig = d.view().BrowserPaneSig()
 	d.send("Enter")
@@ -1073,7 +1073,7 @@ func requireTools(cfg *config) error {
 	}
 	for _, tool := range tools {
 		if _, err := exec.LookPath(tool); err != nil {
-			return fmt.Errorf("%s not found on PATH", tool)
+			return fmt.Errorf("%v not found on PATH", tool)
 		}
 	}
 	return nil
@@ -1098,13 +1098,13 @@ func validateDest(dest string) error {
 func openLog(path string) (func(string, ...any), func(), error) {
 	f, err := os.Create(path)
 	if err != nil {
-		return nil, nil, fmt.Errorf("create log %s: %w", path, err)
+		return nil, nil, fmt.Errorf("create log %v: %w", path, err)
 	}
 	start := time.Now()
 	logf := func(format string, args ...any) {
 		ts := time.Since(start).Truncate(time.Millisecond)
 		msg := fmt.Sprintf(format, args...)
-		_, _ = fmt.Fprintf(f, "[%s] %s\n", ts, msg)
+		_, _ = fmt.Fprintf(f, "[%v] %v\n", ts, msg)
 	}
 	return logf, func() { _ = f.Close() }, nil
 }

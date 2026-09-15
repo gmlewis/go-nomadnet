@@ -135,8 +135,8 @@ func TestIntegrationTwoAppTCPRoundTrip(t *testing.T) {
 	}
 	hashA := hex.EncodeToString(appA.LXMFDest.Hash)
 	hashB := hex.EncodeToString(appB.LXMFDest.Hash)
-	t.Logf("A LXMF hash=%s", hashA)
-	t.Logf("B LXMF hash=%s", hashB)
+	t.Logf("A LXMF hash=%v", hashA)
+	t.Logf("B LXMF hash=%v", hashB)
 
 	// Capture B's delivered messages on a channel.
 	receivedCh := make(chan *lxmf.Message, 4)

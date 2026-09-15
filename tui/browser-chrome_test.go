@@ -117,11 +117,11 @@ func TestBrowserDisplayNoInnerBorder(t *testing.T) {
 	rows := renderPrimitive(t, bd.layout, 60, 16)
 	for i, r := range rows {
 		if strings.Contains(r, "Browser") {
-			t.Errorf("row %d contains a \"Browser\" title; the BrowserPane owns the title — drop the inner box (R-NET-BROWSER-STRUCTURE): %q", i, r)
+			t.Errorf("row %v contains a \"Browser\" title; the BrowserPane owns the title — drop the inner box (R-NET-BROWSER-STRUCTURE): %q", i, r)
 		}
 		// A bordered box draws corner/frame glyphs at the edges.
 		if strings.Contains(r, "┌") || strings.Contains(r, "┐") || strings.Contains(r, "└") || strings.Contains(r, "┘") {
-			t.Errorf("row %d has a border frame glyph; the BrowserPane owns the border (R-NET-BROWSER-STRUCTURE): %q", i, r)
+			t.Errorf("row %v has a border frame glyph; the BrowserPane owns the border (R-NET-BROWSER-STRUCTURE): %q", i, r)
 		}
 	}
 }
@@ -140,7 +140,7 @@ func TestBrowserDisplayNoNavBar(t *testing.T) {
 	rows := renderPrimitive(t, bd.layout, 60, 16)
 	for i, r := range rows {
 		if strings.Contains(r, "Enter Load") || strings.Contains(r, "Ctrl-L Back") || strings.Contains(r, "URL bar") {
-			t.Errorf("row %d contains nav-bar text %q; Python has no top nav bar (R-NET-BROWSER-NAVBAR)", i, r)
+			t.Errorf("row %v contains nav-bar text %q; Python has no top nav bar (R-NET-BROWSER-NAVBAR)", i, r)
 		}
 	}
 }
@@ -203,7 +203,7 @@ func TestBrowserDisplayChromeDividers(t *testing.T) {
 		}
 	}
 	if !foundFooterDiv {
-		t.Errorf("no footer divider row found (R-NET-BROWSER-DIVIDER):\n%s", strings.Join(rows, "\n"))
+		t.Errorf("no footer divider row found (R-NET-BROWSER-DIVIDER):\n%v", strings.Join(rows, "\n"))
 	}
 }
 

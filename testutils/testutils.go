@@ -129,10 +129,10 @@ func RunPythonNomadnet(t *testing.T, stdin any, script string, out any) {
 	cmd.Stderr = &stderr
 	stdout, err := cmd.Output()
 	if err != nil {
-		t.Fatalf("python3 nomadnet reference failed: %v\nstderr:\n%s", err, stderr.String())
+		t.Fatalf("python3 nomadnet reference failed: %v\nstderr:\n%v", err, stderr.String())
 	}
 	if err := json.Unmarshal(stdout, out); err != nil {
-		t.Fatalf("decode python output: %v\nstderr:\n%s\nraw stdout:\n%s", err, stderr.String(), stdout)
+		t.Fatalf("decode python output: %v\nstderr:\n%v\nraw stdout:\n%s", err, stderr.String(), stdout)
 	}
 }
 
@@ -157,7 +157,7 @@ func RunPythonNomadnetRaw(t *testing.T, stdin any, script string) []byte {
 	cmd.Stderr = &stderr
 	stdout, err := cmd.Output()
 	if err != nil {
-		t.Fatalf("python3 nomadnet reference failed: %v\nstderr:\n%s", err, stderr.String())
+		t.Fatalf("python3 nomadnet reference failed: %v\nstderr:\n%v", err, stderr.String())
 	}
 	return stdout
 }

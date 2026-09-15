@@ -134,7 +134,7 @@ func TestNetworkRightEntersBrowserPane(t *testing.T) {
 	dispatchApp(t, app, tcell.NewEventKey(tcell.KeyRight, 0, tcell.ModNone))
 
 	if got := nd.mainCols.FocusIndex(); got != 1 {
-		t.Errorf("after Right, mainCols focus = %d, want 1 (browser pane); focus=%T", got, app.GetFocus())
+		t.Errorf("after Right, mainCols focus = %v, want 1 (browser pane); focus=%T", got, app.GetFocus())
 	}
 	if !nd.browser.Widget().HasFocus() {
 		t.Errorf("after Right, browser pane should have focus, got %T (leftPanel hasFocus=%v)", app.GetFocus(), nd.leftPanel.HasFocus())
@@ -163,6 +163,6 @@ func TestNetworkRightEntersBrowserPane(t *testing.T) {
 	listBefore := nd.announcesList.List.GetCurrentItem()
 	dispatchApp(t, app, tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone))
 	if got := nd.announcesList.List.GetCurrentItem(); got != listBefore {
-		t.Errorf("after Right, Down advanced the left list selection %d->%d (should have gone to the browser)", listBefore, got)
+		t.Errorf("after Right, Down advanced the left list selection %v->%v (should have gone to the browser)", listBefore, got)
 	}
 }

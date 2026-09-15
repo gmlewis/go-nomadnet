@@ -47,13 +47,13 @@ func startPProf(addr string) {
 	}
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
-		log.Printf("pprof: listen %s: %v", addr, err)
+		log.Printf("pprof: listen %v: %v", addr, err)
 		return
 	}
 	go func() {
 		log.Printf("pprof: serving on http://%s/debug/pprof/", ln.Addr())
 		if err := http.Serve(ln, nil); err != nil {
-			log.Printf("pprof: serve %s: %v", addr, err)
+			log.Printf("pprof: serve %v: %v", addr, err)
 		}
 	}()
 }

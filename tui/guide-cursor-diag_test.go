@@ -70,13 +70,13 @@ func TestGuideReaderHardwareCursor(t *testing.T) {
 		app.Main.Root().Draw(screen)
 		x, y, vis := screen.GetCursor()
 		if !vis {
-			t.Fatalf("Down#%d: cursor not visible; want visible (hasKey set by noteKey)", i+1)
+			t.Fatalf("Down#%v: cursor not visible; want visible (hasKey set by noteKey)", i+1)
 		}
 		if x < 46 {
-			t.Fatalf("Down#%d: cursor x=%d, want >= 46 (in the reader pane, not the topics list)", i+1, x)
+			t.Fatalf("Down#%v: cursor x=%v, want >= 46 (in the reader pane, not the topics list)", i+1, x)
 		}
 		if y <= prevY {
-			t.Errorf("Down#%d: cursor y=%d not greater than previous %d (cursor must advance per Down)", i+1, y, prevY)
+			t.Errorf("Down#%v: cursor y=%v not greater than previous %v (cursor must advance per Down)", i+1, y, prevY)
 		}
 		prevY = y
 	}

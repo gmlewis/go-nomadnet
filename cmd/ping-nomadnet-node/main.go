@@ -189,7 +189,7 @@ func run(args []string) int {
 
 	fmt.Printf("ping-nomadnet-node — go-reticulum %v\n", rns.VERSION)
 	if dir := ret.ConfigDir(); dir != "" {
-		fmt.Printf("RNS config: %s\n", dir)
+		fmt.Printf("RNS config: %v\n", dir)
 	}
 	printInterfaces(ret)
 
@@ -205,9 +205,9 @@ func run(args []string) int {
 		aspectFilter := app + "." + strings.Join(aspects, ".")
 		action := "pinging " + aspectFilter
 		if opts.browse {
-			action = fmt.Sprintf("browsing %s", opts.requestPath)
+			action = fmt.Sprintf("browsing %v", opts.requestPath)
 		}
-		fmt.Printf("Mode: discover — listening for %s announces, then %s (path timeout %.0fs)\n",
+		fmt.Printf("Mode: discover — listening for %v announces, then %v (path timeout %.0fs)\n",
 			aspectFilter, action, opts.pathTimeout)
 		r := discover(ts, opts)
 		printReport([]result{r})
@@ -225,7 +225,7 @@ func run(args []string) int {
 		return 2
 	}
 
-	fmt.Printf("Pinging %d node(s) — path timeout %.0fs, link timeout %.0fs\n",
+	fmt.Printf("Pinging %v node(s) — path timeout %.0fs, link timeout %.0fs\n",
 		len(targets), opts.pathTimeout, opts.linkTimeout)
 
 	// Give AutoInterface discovery a moment to bring interfaces up before we
@@ -271,7 +271,7 @@ func pingOne(ts *rns.TransportSystem, t target, opts *options) result {
 	sourceHash, err := hex.DecodeString(t.hashHex)
 	if err != nil || len(sourceHash) != rns.TruncatedHashLength/8 {
 		r.status = "INVALID"
-		r.detail = fmt.Sprintf("not a %d-char hex hash: %q", rns.TruncatedHashLength/4, t.hashHex)
+		r.detail = fmt.Sprintf("not a %v-char hex hash: %q", rns.TruncatedHashLength/4, t.hashHex)
 		return r
 	}
 
@@ -321,7 +321,7 @@ func pingOne(ts *rns.TransportSystem, t target, opts *options) result {
 	targetHash := rns.CalculateHash(identity, app, aspects...)
 	r.hash = targetHash
 	if hex.EncodeToString(targetHash) != t.hashHex {
-		r.detail = fmt.Sprintf("targeting %s.%s %s (from %s)", app, strings.Join(aspects, "."), hex.EncodeToString(targetHash), t.hashHex)
+		r.detail = fmt.Sprintf("targeting %v.%v %v (from %v)", app, strings.Join(aspects, "."), hex.EncodeToString(targetHash), t.hashHex)
 	}
 
 	// Stage 2: path. A path is needed to establish a link, and a path request
@@ -359,7 +359,7 @@ func pingOne(ts *rns.TransportSystem, t target, opts *options) result {
 	dest, err := rns.NewDestination(ts, identity, rns.DestinationOut, rns.DestinationSingle, app, aspects...)
 	if err != nil {
 		r.status = "LINK FAILED"
-		r.detail = fmt.Sprintf("could not build %s.%s destination: %v", app, strings.Join(aspects, "."), err)
+		r.detail = fmt.Sprintf("could not build %v.%v destination: %v", app, strings.Join(aspects, "."), err)
 		return r
 	}
 	link, err := rns.NewLink(ts, dest)
@@ -409,7 +409,7 @@ func pingOne(ts *rns.TransportSystem, t target, opts *options) result {
 		if !opts.browse {
 			r.status = "ONLINE"
 			if r.detail == "" {
-				r.detail = fmt.Sprintf("path %s", pathSource(r))
+				r.detail = fmt.Sprintf("path %v", pathSource(r))
 			}
 			teardown()
 			return r
@@ -420,11 +420,11 @@ func pingOne(ts *rns.TransportSystem, t target, opts *options) result {
 		teardown()
 		if rerr != nil {
 			r.status = "BROWSE FAILED"
-			r.detail = fmt.Sprintf("request %s: %v", opts.requestPath, rerr)
+			r.detail = fmt.Sprintf("request %v: %v", opts.requestPath, rerr)
 			return r
 		}
 		r.status = "BROWSE OK"
-		r.detail = fmt.Sprintf("got %d bytes from %s (%s)", len(data), opts.requestPath, pathSource(r))
+		r.detail = fmt.Sprintf("got %v bytes from %v (%v)", len(data), opts.requestPath, pathSource(r))
 		return r
 	case <-closed:
 		r.status = "LINK FAILED"
@@ -538,7 +538,7 @@ func discover(ts *rns.TransportSystem, opts *options) result {
 			target: target{hashHex: "(none)", label: "(discover)", src: "discover:" + aspectFilter},
 			hops:   -1,
 			status: "NO ANNOUNCE",
-			detail: fmt.Sprintf("no %s announce received within %.0fs (node not announcing or not reachable)", aspectFilter, opts.pathTimeout),
+			detail: fmt.Sprintf("no %v announce received within %.0fs (node not announcing or not reachable)", aspectFilter, opts.pathTimeout),
 		}
 	}
 }
@@ -554,7 +554,7 @@ func announceLabel(appData []byte) string {
 	if s := strings.TrimSpace(string(appData)); s != "" {
 		return fmt.Sprintf("announced as %q", s)
 	}
-	return fmt.Sprintf("app_data %d bytes", len(appData))
+	return fmt.Sprintf("app_data %v bytes", len(appData))
 }
 
 // pathSource describes how the path was obtained for the detail line.
@@ -585,7 +585,7 @@ func printInterfaces(ret *rns.Reticulum) {
 		if ifc.Status {
 			state = "UP"
 		}
-		fmt.Printf("  %-16s %-14s %s  %d bps\n", ifc.Name, ifc.Type, state, ifc.Bitrate)
+		fmt.Printf("  %-16s %-14s %v  %v bps\n", ifc.Name, ifc.Type, state, ifc.Bitrate)
 	}
 }
 
@@ -599,27 +599,27 @@ func printReport(results []result) {
 		if label == "" {
 			label = "(no label)"
 		}
-		fmt.Printf("\n%s  %s\n", r.hashHex, label)
-		fmt.Printf("  status : %s\n", r.status)
+		fmt.Printf("\n%v  %v\n", r.hashHex, label)
+		fmt.Printf("  status : %v\n", r.status)
 		if r.hops >= 0 && r.hops < rns.PathfinderM {
-			fmt.Printf("  hops   : %d\n", r.hops)
+			fmt.Printf("  hops   : %v\n", r.hops)
 		} else if r.hops >= 0 {
 			fmt.Printf("  hops   : ?\n")
 		}
 		if r.linkUp {
-			fmt.Printf("  rtt    : %d ms\n", r.rtt.Milliseconds())
+			fmt.Printf("  rtt    : %v ms\n", r.rtt.Milliseconds())
 		}
 		if r.detail != "" {
-			fmt.Printf("  note   : %s\n", r.detail)
+			fmt.Printf("  note   : %v\n", r.detail)
 		}
 	}
 
 	// Compact summary line per node.
 	fmt.Println()
 	fmt.Println(strings.Repeat("-", 78))
-	fmt.Printf("%-34s  %-12s  %s\n", "ADDRESS", "STATUS", "LABEL")
+	fmt.Printf("%-34s  %-12s  %v\n", "ADDRESS", "STATUS", "LABEL")
 	for _, r := range results {
-		fmt.Printf("%-34s  %-12s  %s\n", r.hashHex, r.status, r.label)
+		fmt.Printf("%-34s  %-12s  %v\n", r.hashHex, r.status, r.label)
 	}
 }
 
@@ -643,13 +643,13 @@ func collectTargets(opts *options) ([]target, error) {
 	if opts.identityFile != "" {
 		id, err := rns.FromFile(opts.identityFile, nil)
 		if err != nil {
-			return nil, fmt.Errorf("--identity %s: %w", opts.identityFile, err)
+			return nil, fmt.Errorf("--identity %v: %w", opts.identityFile, err)
 		}
 		app, aspects := destAppAspects(opts)
 		hash := rns.CalculateHash(id, app, aspects...)
 		out = append(out, target{
 			hashHex:  hex.EncodeToString(hash),
-			label:    fmt.Sprintf("(identity %s)", opts.identityFile),
+			label:    fmt.Sprintf("(identity %v)", opts.identityFile),
 			src:      opts.identityFile,
 			identity: id,
 		})
@@ -662,7 +662,7 @@ func collectTargets(opts *options) ([]target, error) {
 		// Treat as a filename.
 		fileTargets, err := targetsFromFile(arg)
 		if err != nil {
-			return nil, fmt.Errorf("%s: %w", arg, err)
+			return nil, fmt.Errorf("%v: %w", arg, err)
 		}
 		out = append(out, fileTargets...)
 	}
@@ -686,7 +686,7 @@ func targetsFromFile(path string) ([]target, error) {
 		out = append(out, target{
 			hashHex: hashHex,
 			label:   label,
-			src:     fmt.Sprintf("%s:%d", path, lineNo+1),
+			src:     fmt.Sprintf("%v:%v", path, lineNo+1),
 		})
 	}
 	return out, nil
@@ -803,7 +803,7 @@ func parseFlags(args []string) (*options, error) {
 			i = next
 		default:
 			if strings.HasPrefix(arg, "-") && arg != "-" {
-				return nil, fmt.Errorf("flag provided but not defined: %s", arg)
+				return nil, fmt.Errorf("flag provided but not defined: %v", arg)
 			}
 			opts.args = append(opts.args, arg)
 		}
@@ -813,7 +813,7 @@ func parseFlags(args []string) (*options, error) {
 
 func flagValue(args []string, i int, name string) (string, int, error) {
 	if i+1 >= len(args) {
-		return "", 0, fmt.Errorf("flag needs an argument: %s", name)
+		return "", 0, fmt.Errorf("flag needs an argument: %v", name)
 	}
 	return args[i+1], i + 1, nil
 }

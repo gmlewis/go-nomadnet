@@ -55,7 +55,7 @@ func TestGoBackNoopWhileLinkFetchPending(t *testing.T) {
 		t.Fatal("after HandleLink: pendingLinkHist=false, want true (fetch in flight)")
 	}
 	if bd.histIdx != 1 {
-		t.Fatalf("after HandleLink: histIdx=%d, want 1", bd.histIdx)
+		t.Fatalf("after HandleLink: histIdx=%v, want 1", bd.histIdx)
 	}
 
 	// Press Back while the link fetch is still pending — must be a no-op.
@@ -64,10 +64,10 @@ func TestGoBackNoopWhileLinkFetchPending(t *testing.T) {
 	// History and histIdx must be unchanged (the pending push is NOT
 	// rolled back by GoBack; the user must wait for the fetch to complete).
 	if bd.histIdx != 1 {
-		t.Errorf("after GoBack while pending: histIdx=%d, want 1 (no-op)", bd.histIdx)
+		t.Errorf("after GoBack while pending: histIdx=%v, want 1 (no-op)", bd.histIdx)
 	}
 	if len(bd.history) != 2 {
-		t.Errorf("after GoBack while pending: history len=%d, want 2 (no-op)", len(bd.history))
+		t.Errorf("after GoBack while pending: history len=%v, want 2 (no-op)", len(bd.history))
 	}
 	if bd.CurrentURL() != targetURL {
 		t.Errorf("after GoBack while pending: CurrentURL=%q, want %q (no-op)", bd.CurrentURL(), targetURL)

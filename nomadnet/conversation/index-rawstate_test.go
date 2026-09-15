@@ -75,7 +75,7 @@ func TestToIndexEntryStoresRawLXMFState(t *testing.T) {
 				t.Fatalf("index state type = %T, want int", v)
 			}
 			if got != c.rawState {
-				t.Errorf("index state = %d, want raw LXMF %d (got mapped value instead)", got, c.rawState)
+				t.Errorf("index state = %v, want raw LXMF %v (got mapped value instead)", got, c.rawState)
 			}
 		})
 	}

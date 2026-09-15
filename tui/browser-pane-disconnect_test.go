@@ -71,10 +71,10 @@ func TestBrowserPaneDisconnectClearsLoading(t *testing.T) {
 	// widget that LoadURL swapped in is gone).
 	rows := renderPrimitive(t, bp.Widget(), 28, 22)
 	if !rowContains(rows, "Disconnected") {
-		t.Errorf("disconnected body not shown after Disconnect; rows:\n%s", joinRows(rows))
+		t.Errorf("disconnected body not shown after Disconnect; rows:\n%v", joinRows(rows))
 	}
 	if rowContains(rows, "Retrieving") {
-		t.Errorf("\"Retrieving\" still visible after Disconnect; rows:\n%s", joinRows(rows))
+		t.Errorf("\"Retrieving\" still visible after Disconnect; rows:\n%v", joinRows(rows))
 	}
 }
 

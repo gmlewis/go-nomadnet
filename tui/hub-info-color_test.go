@@ -73,7 +73,7 @@ func TestHubInfoBaseColor(t *testing.T) {
 						cr, _, _, _ := cellContent(screen, col, row)
 						sb.WriteRune(cr)
 					}
-					t.Logf("row %d: %q", row, sb.String())
+					t.Logf("row %v: %q", row, sb.String())
 				}
 			}
 			r, _, style, _ := cellContent(screen, 2, 1)

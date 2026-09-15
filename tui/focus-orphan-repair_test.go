@@ -257,6 +257,6 @@ func TestKeyDispatchSurvivesMutationWithoutViolation(t *testing.T) {
 	app.Main.handleInput(tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone))
 
 	if len(*dumps) > 0 {
-		t.Fatalf("captured %d focus invariant violations during key dispatch: %v", len(*dumps), (*dumps)[0])
+		t.Fatalf("captured %v focus invariant violations during key dispatch: %v", len(*dumps), (*dumps)[0])
 	}
 }

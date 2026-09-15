@@ -44,7 +44,7 @@ func TestHasTTYConsistency(t *testing.T) {
 	// Both should agree that it's not a terminal.
 	f, err := os.Open(os.DevNull)
 	if err != nil {
-		t.Skipf("cannot open %s: %v", os.DevNull, err)
+		t.Skipf("cannot open %v: %v", os.DevNull, err)
 	}
 	defer func() { _ = f.Close() }()
 	if hasTTYFromFile(f) {

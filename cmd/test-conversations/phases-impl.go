@@ -110,11 +110,11 @@ func (d *driver) focusActionButton(label string, cap int) bool {
 func (d *driver) toPage(idx int, page string) bool {
 	d.escapeToMenu(40)
 	if !d.moveMenuTo(idx, 10) {
-		d.logf("  could not reach menu index %d", idx)
+		d.logf("  could not reach menu index %v", idx)
 		return false
 	}
 	d.send("Enter")
-	ok := d.assert(func(v *utils.View) bool { return v.ActivePage() == page }, 5*time.Second, "%s page active", page)
+	ok := d.assert(func(v *utils.View) bool { return v.ActivePage() == page }, 5*time.Second, "%v page active", page)
 	if ok {
 		d.send("Down") // menu -> body (so page shortcuts are reachable)
 	}
@@ -169,10 +169,10 @@ func (h *harness) announceAndAddresses() {
 		d.step("read own LXMF address (C-p); auto-announce-at-start handles announce")
 		d.readOwnLXMFHash()
 	}
-	h.logf("addresses: A=%s B=%s", h.dA.lxmfHash, h.dB.lxmfHash)
+	h.logf("addresses: A=%v B=%v", h.dA.lxmfHash, h.dB.lxmfHash)
 	// Wait for the announce-at-start packets to propagate across the TCP link
 	// so each side has a path to the other before messaging begins.
-	h.logf("waiting %s for announce-at-start + path propagation...", h.announceWait.String())
+	h.logf("waiting %v for announce-at-start + path propagation...", h.announceWait.String())
 	time.Sleep(h.announceWait)
 }
 
@@ -181,7 +181,7 @@ func (h *harness) announceAndAddresses() {
 // auto-dismisses and the conversation opens in the editor region. Returns
 // whether the conversation editor is showing.
 func (d *driver) createConversation(peerHash, name string) bool {
-	d.stepf("new conversation with %s (%s)", peerHash, name)
+	d.stepf("new conversation with %v (%v)", peerHash, name)
 	d.send("C-n")
 	if !d.assert(func(v *utils.View) bool { return dialogOpen(v, "New Conversation") }, 5*time.Second, "New Conversation dialog open") {
 		return false

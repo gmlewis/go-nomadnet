@@ -78,7 +78,7 @@ func main() {
 	destHashStr := strings.TrimSpace(flag.Arg(0))
 	destHash, err := hex.DecodeString(destHashStr)
 	if err != nil || len(destHash) != rns.TruncatedHashLength/8 {
-		fmt.Fprintf(os.Stderr, "link-test: invalid destination hash %q (want %d hex chars)\n", destHashStr, rns.TruncatedHashLength/4)
+		fmt.Fprintf(os.Stderr, "link-test: invalid destination hash %q (want %v hex chars)\n", destHashStr, rns.TruncatedHashLength/4)
 		os.Exit(2)
 	}
 
@@ -111,13 +111,13 @@ func main() {
 
 	connected := ret.IsConnectedToSharedInstance()
 	_ = connected
-	fmt.Printf("RNS instance: %s\n", instanceRole(ret))
+	fmt.Printf("RNS instance: %v\n", instanceRole(ret))
 
 	// Request a path to the destination, but don't block on it — the link
 	// establishment itself will broadcast the link request to all interfaces
 	// if no path is known, and a direct TCP connection (e.g. the local hub)
 	// can deliver it instantly without needing a path table entry.
-	fmt.Printf("Requesting path to %s…\n", destHashStr)
+	fmt.Printf("Requesting path to %v…\n", destHashStr)
 	if err := ts.RequestPath(destHash); err != nil {
 		fmt.Printf("Path request error: %v\n", err)
 	}
@@ -125,7 +125,7 @@ func main() {
 	// proceed to link establishment anyway (broadcast fallback).
 	time.Sleep(3 * time.Second)
 	if ts.HasPath(destHash) {
-		fmt.Printf("Path found: %d hops\n", ts.HopsTo(destHash))
+		fmt.Printf("Path found: %v hops\n", ts.HopsTo(destHash))
 	} else {
 		fmt.Println("No cached path; trying link establishment via broadcast…")
 	}
@@ -167,7 +167,7 @@ func main() {
 	})
 
 	start := time.Now()
-	fmt.Printf("Establishing link to %s (timeout %.0fs)…\n", destHashStr, *timeoutSec)
+	fmt.Printf("Establishing link to %v (timeout %.0fs)…\n", destHashStr, *timeoutSec)
 	if err := link.Establish(); err != nil {
 		fmt.Printf("Establish error: %v\n", err)
 		exit(logger, 1)

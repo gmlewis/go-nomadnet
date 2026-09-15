@@ -42,7 +42,7 @@ func TestExtractSubInterfaces(t *testing.T) {
 
 		subs := extractSubInterfaces(config)
 		if len(subs) != 2 {
-			t.Fatalf("got %d sub-interfaces, want 2", len(subs))
+			t.Fatalf("got %v sub-interfaces, want 2", len(subs))
 		}
 		names := []string{subs[0].Name, subs[1].Name}
 		sort.Strings(names)
@@ -59,7 +59,7 @@ func TestExtractSubInterfaces(t *testing.T) {
 		}
 		subs := extractSubInterfaces(config)
 		if subs != nil {
-			t.Errorf("non-RNodeMultiInterface returned %d sub-interfaces, want nil", len(subs))
+			t.Errorf("non-RNodeMultiInterface returned %v sub-interfaces, want nil", len(subs))
 		}
 	})
 
@@ -74,7 +74,7 @@ func TestExtractSubInterfaces(t *testing.T) {
 		}
 		subs := extractSubInterfaces(config)
 		if len(subs) != 0 {
-			t.Errorf("got %d sub-interfaces, want 0", len(subs))
+			t.Errorf("got %v sub-interfaces, want 0", len(subs))
 		}
 	})
 
@@ -87,7 +87,7 @@ func TestExtractSubInterfaces(t *testing.T) {
 		}
 		subs := extractSubInterfaces(config)
 		if len(subs) != 1 {
-			t.Fatalf("got %d sub-interfaces, want 1", len(subs))
+			t.Fatalf("got %v sub-interfaces, want 1", len(subs))
 		}
 		if subs[0].Name != "MySub" {
 			t.Errorf("sub-interface name = %q, want %q", subs[0].Name, "MySub")

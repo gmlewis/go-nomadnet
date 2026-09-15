@@ -55,7 +55,7 @@ func TestBrowserRowModelCountsWrappedLines(t *testing.T) {
 	bd.renderPage()
 
 	if len(bd.currentLines) != len(bd.lineTexts) {
-		t.Fatalf("lineTexts entries=%d, want one per rendered line (%d): %v",
+		t.Fatalf("lineTexts entries=%v, want one per rendered line (%v): %v",
 			len(bd.lineTexts), len(bd.currentLines), bd.lineTexts)
 	}
 	wrapped := findLine(bd, "bbbb")
@@ -65,23 +65,23 @@ func TestBrowserRowModelCountsWrappedLines(t *testing.T) {
 	link := findLine(bd, "Link")
 	final := findLine(bd, "final")
 	if link < 0 || final < 0 {
-		t.Fatalf("missing lines: link=%d final=%d", link, final)
+		t.Fatalf("missing lines: link=%v final=%v", link, final)
 	}
 
 	// "aaaa bbbb cccc dddd eeee ffff gggg" (33 runes) wraps at width 20 into
 	// "aaaa bbbb cccc dddd" (19) + "eeee ffff gggg" (14) = 2 rows.
 	if got := bd.lineRowCount(wrapped); got != 2 {
-		t.Errorf("lineRowCount(wrapped)=%d, want 2", got)
+		t.Errorf("lineRowCount(wrapped)=%v, want 2", got)
 	}
 	if got := bd.rowsAbove(link); got != 2 {
-		t.Errorf("rowsAbove(link idx %d)=%d, want 2 (the wrapped line's two rows)",
+		t.Errorf("rowsAbove(link idx %v)=%v, want 2 (the wrapped line's two rows)",
 			link, got)
 	}
 	if got := bd.rowsAbove(final); got != 3 {
-		t.Errorf("rowsAbove(final idx %d)=%d, want 3", final, got)
+		t.Errorf("rowsAbove(final idx %v)=%v, want 3", final, got)
 	}
 	if got := bd.totalWrappedRows(); got != 4 {
-		t.Errorf("totalWrappedRows=%d, want 4 (2+1+1)", got)
+		t.Errorf("totalWrappedRows=%v, want 4 (2+1+1)", got)
 	}
 }
 
@@ -167,11 +167,11 @@ func TestBrowserCursorBottomOnFinalLine(t *testing.T) {
 		}
 	}
 	if homeRow < 0 {
-		t.Fatalf("Home menu row not rendered in the %dx%d viewport after ensureVisible", W, H)
+		t.Fatalf("Home menu row not rendered in the %vx%v viewport after ensureVisible", W, H)
 	}
 	if gotX, gotY := screen.shownX, screen.shownY; gotY != homeRow {
 		wantX, _, _ := bd.cursorScreenXY()
-		t.Errorf("hardware cursor at (%d,%d), but Home menu renders at row %d (model (%d,%d)); cursor must sit on the focused line",
+		t.Errorf("hardware cursor at (%v,%v), but Home menu renders at row %v (model (%v,%v)); cursor must sit on the focused line",
 			gotX, gotY, homeRow, wantX, homeRow)
 	}
 }

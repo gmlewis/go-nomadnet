@@ -21,7 +21,7 @@ func TestStatusDialogOKButtonMouseClick(t *testing.T) {
 
 	dm.ShowStatusDialog("Saved", "\n\n\nSaved\n\n", 40, 9)
 	if dm.Count() != 1 {
-		t.Fatalf("count=%d want 1", dm.Count())
+		t.Fatalf("count=%v want 1", dm.Count())
 	}
 
 	// Render so every primitive's rect is laid out (Draw sets the dialog
@@ -53,7 +53,7 @@ func TestStatusDialogOKButtonMouseClick(t *testing.T) {
 		t.Fatal("OK button not found on screen")
 	}
 	clickX := 30
-	t.Logf("clicking OK at (%d,%d)", clickX, okY)
+	t.Logf("clicking OK at (%v,%v)", clickX, okY)
 
 	clickAt := func(action tview.MouseAction, buttons tcell.ButtonMask) {
 		ev := tcell.NewEventMouse(clickX, okY, buttons, tcell.ModNone)
@@ -66,6 +66,6 @@ func TestStatusDialogOKButtonMouseClick(t *testing.T) {
 	clickAt(tview.MouseLeftClick, tcell.Button1)
 
 	if dm.Count() != 0 {
-		t.Errorf("clicking OK did NOT dismiss the dialog (count=%d) — DialogLineBox is not forwarding mouse events to its content", dm.Count())
+		t.Errorf("clicking OK did NOT dismiss the dialog (count=%v) — DialogLineBox is not forwarding mouse events to its content", dm.Count())
 	}
 }

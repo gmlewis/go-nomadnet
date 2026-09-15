@@ -48,7 +48,7 @@ func TestInterfacesListMouseClickFocusesItem(t *testing.T) {
 	id.listBox.Draw(screen)
 
 	if got := id.SelectedIndex(); got != -1 {
-		t.Fatalf("SelectedIndex before click = %d, want -1", got)
+		t.Fatalf("SelectedIndex before click = %v, want -1", got)
 	}
 
 	mh := id.listBox.MouseHandler()
@@ -63,7 +63,7 @@ func TestInterfacesListMouseClickFocusesItem(t *testing.T) {
 		t.Fatal("MouseHandler(MouseLeftClick) did not consume the click")
 	}
 	if got := id.SelectedIndex(); got != 1 {
-		t.Errorf("after clicking item 1, SelectedIndex = %d, want 1 (Python focuses the clicked item)", got)
+		t.Errorf("after clicking item 1, SelectedIndex = %v, want 1 (Python focuses the clicked item)", got)
 	}
 	if focused != id.listBox {
 		t.Errorf("after click, focused = %T, want *interfaceListBox (list must gain focus for arrow keys)", focused)
@@ -73,6 +73,6 @@ func TestInterfacesListMouseClickFocusesItem(t *testing.T) {
 	ev0 := tcell.NewEventMouse(5, 2, tcell.Button1, tcell.ModNone)
 	mh(tview.MouseLeftClick, ev0, setFocus)
 	if got := id.SelectedIndex(); got != 0 {
-		t.Errorf("after clicking item 0, SelectedIndex = %d, want 0", got)
+		t.Errorf("after clicking item 0, SelectedIndex = %v, want 0", got)
 	}
 }

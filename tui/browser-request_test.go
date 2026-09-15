@@ -42,12 +42,12 @@ func TestBeginRequestCancelsPriorAndBumpsSeq(t *testing.T) {
 		t.Fatal("ctx1 is nil")
 	}
 	if seq1 != 1 {
-		t.Fatalf("seq1 = %d, want 1", seq1)
+		t.Fatalf("seq1 = %v, want 1", seq1)
 	}
 
 	ctx2, seq2 := bd.BeginRequest()
 	if seq2 != 2 {
-		t.Fatalf("seq2 = %d, want 2", seq2)
+		t.Fatalf("seq2 = %v, want 2", seq2)
 	}
 	// ctx1 must be cancelled by the second beginRequest.
 	<-ctx1.Done()
@@ -61,13 +61,13 @@ func TestBeginRequestCancelsPriorAndBumpsSeq(t *testing.T) {
 
 	curCtx, curSeq := bd.CurrentRequest()
 	if curSeq != 2 {
-		t.Fatalf("CurrentRequest seq = %d, want 2", curSeq)
+		t.Fatalf("CurrentRequest seq = %v, want 2", curSeq)
 	}
 	if curCtx != ctx2 {
 		t.Fatal("CurrentRequest ctx is not ctx2")
 	}
 	if bd.CurrentRequestSeq() != 2 {
-		t.Fatalf("CurrentRequestSeq = %d, want 2", bd.CurrentRequestSeq())
+		t.Fatalf("CurrentRequestSeq = %v, want 2", bd.CurrentRequestSeq())
 	}
 }
 
@@ -86,10 +86,10 @@ func TestCancelRequestInvalidatesPendingSeq(t *testing.T) {
 		t.Fatal("ctx1 not cancelled by CancelRequest")
 	}
 	if bd.CurrentRequestSeq() == seq1 {
-		t.Fatalf("seq unchanged after CancelRequest: %d", seq1)
+		t.Fatalf("seq unchanged after CancelRequest: %v", seq1)
 	}
 	if bd.CurrentRequestSeq() != seq1+1 {
-		t.Fatalf("CurrentRequestSeq = %d, want %d", bd.CurrentRequestSeq(), seq1+1)
+		t.Fatalf("CurrentRequestSeq = %v, want %v", bd.CurrentRequestSeq(), seq1+1)
 	}
 }
 

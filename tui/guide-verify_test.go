@@ -11,7 +11,7 @@ func TestGuideShowTopicSetsReaderText(t *testing.T) {
 	gd := NewGuideDisplay(app)
 	gd.showTopic(0)
 	got := gd.reader.GetText(true)
-	t.Logf("reader text after showTopic(0):\n%s", got)
+	t.Logf("reader text after showTopic(0):\n%v", got)
 	if strings.TrimSpace(got) == "No topic selected" {
 		t.Fatalf("reader still at placeholder after showTopic(0)")
 	}

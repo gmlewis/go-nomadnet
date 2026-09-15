@@ -441,7 +441,7 @@ func isHexByte(c rune) bool {
 // ---- output ---------------------------------------------------------------
 
 func emitText(matches []*entry, query string) {
-	fmt.Printf("Found %d %s for %q:\n\n", len(matches), plural(len(matches), "match", "matches"), query)
+	fmt.Printf("Found %v %v for %q:\n\n", len(matches), plural(len(matches), "match", "matches"), query)
 	for i, e := range matches {
 		if i > 0 {
 			fmt.Println()
@@ -462,14 +462,14 @@ func printEntry(e *entry) {
 	if label == "" {
 		label = fmt.Sprintf("%x", e.DestHash)
 	}
-	fmt.Printf("── %s ──\n", label)
+	fmt.Printf("── %v ──\n", label)
 
-	fmt.Printf("  Name             %s\n", orUnknown(e.Name))
-	fmt.Printf("  Inferred kind    %s\n", e.Kind)
+	fmt.Printf("  Name             %v\n", orUnknown(e.Name))
+	fmt.Printf("  Inferred kind    %v\n", e.Kind)
 	fmt.Printf("  Destination      %x\n", e.DestHash)
-	fmt.Printf("  Identity hash    %s\n", hexOrUnknown(e.IdentityHash))
+	fmt.Printf("  Identity hash    %v\n", hexOrUnknown(e.IdentityHash))
 	if !e.LastSeen.IsZero() {
-		fmt.Printf("  Last seen        %s (%s)\n", e.LastSeen.Format("2006-01-02 15:04:05"), ago(e.LastSeen))
+		fmt.Printf("  Last seen        %v (%v)\n", e.LastSeen.Format("2006-01-02 15:04:05"), ago(e.LastSeen))
 	} else {
 		fmt.Println("  Last seen        unknown")
 	}
@@ -480,17 +480,17 @@ func printEntry(e *entry) {
 		fmt.Printf("  Public key       %x\n", e.PublicKey)
 	}
 	if len(e.AppData) > 0 {
-		fmt.Printf("  App data (text)  %s\n", quoteOrUnknown(e.Name))
+		fmt.Printf("  App data (text)  %v\n", quoteOrUnknown(e.Name))
 		fmt.Printf("  App data (hex)   %x\n", e.AppData)
 	}
 
 	if e.Path != nil {
-		fmt.Printf("  Path             %d %s away via %x\n", e.Path.Hops, plural(e.Path.Hops, "hop", "hops"), e.Path.NextHop)
+		fmt.Printf("  Path             %v %v away via %x\n", e.Path.Hops, plural(e.Path.Hops, "hop", "hops"), e.Path.NextHop)
 		if len(e.Path.Interface) > 0 {
 			fmt.Printf("  Interface hash   %x\n", e.Path.Interface)
 		}
 		if !e.Path.Expires.IsZero() {
-			fmt.Printf("  Path expires     %s (%s)\n", e.Path.Expires.Format("2006-01-02 15:04:05"), remaining(e.Path.Expires))
+			fmt.Printf("  Path expires     %v (%v)\n", e.Path.Expires.Format("2006-01-02 15:04:05"), remaining(e.Path.Expires))
 		}
 	} else {
 		fmt.Println("  Path             no destination_table entry (not currently routed)")
@@ -503,7 +503,7 @@ func printEntry(e *entry) {
 			if name == "" {
 				name = "<no name>"
 			}
-			fmt.Printf("    %-18s %x  (%s)\n", s.Kind, s.DestHash, name)
+			fmt.Printf("    %-18s %x  (%v)\n", s.Kind, s.DestHash, name)
 		}
 	}
 }
@@ -600,16 +600,16 @@ func ago(t time.Time) string {
 	}
 	switch {
 	case d < time.Minute:
-		return fmt.Sprintf("%d %s ago", int(d.Seconds()), plural(int(d.Seconds()), "second", "seconds"))
+		return fmt.Sprintf("%v %v ago", int(d.Seconds()), plural(int(d.Seconds()), "second", "seconds"))
 	case d < time.Hour:
 		m := int(d.Minutes())
-		return fmt.Sprintf("%d %s ago", m, plural(m, "minute", "minutes"))
+		return fmt.Sprintf("%v %v ago", m, plural(m, "minute", "minutes"))
 	case d < 24*time.Hour:
 		h := int(d.Hours())
-		return fmt.Sprintf("%d %s ago", h, plural(h, "hour", "hours"))
+		return fmt.Sprintf("%v %v ago", h, plural(h, "hour", "hours"))
 	default:
 		days := int(d.Hours() / 24)
-		return fmt.Sprintf("%d %s ago", days, plural(days, "day", "days"))
+		return fmt.Sprintf("%v %v ago", days, plural(days, "day", "days"))
 	}
 }
 
@@ -621,16 +621,16 @@ func remaining(t time.Time) string {
 	switch {
 	case d < time.Minute:
 		s := int(d.Seconds())
-		return fmt.Sprintf("in %d %s", s, plural(s, "second", "seconds"))
+		return fmt.Sprintf("in %v %v", s, plural(s, "second", "seconds"))
 	case d < time.Hour:
 		m := int(d.Minutes())
-		return fmt.Sprintf("in %d %s", m, plural(m, "minute", "minutes"))
+		return fmt.Sprintf("in %v %v", m, plural(m, "minute", "minutes"))
 	case d < 24*time.Hour:
 		h := int(d.Hours())
-		return fmt.Sprintf("in %d %s", h, plural(h, "hour", "hours"))
+		return fmt.Sprintf("in %v %v", h, plural(h, "hour", "hours"))
 	default:
 		days := int(d.Hours() / 24)
-		return fmt.Sprintf("in %d %s", days, plural(days, "day", "days"))
+		return fmt.Sprintf("in %v %v", days, plural(days, "day", "days"))
 	}
 }
 

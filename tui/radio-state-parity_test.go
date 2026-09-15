@@ -142,7 +142,7 @@ func TestPeerInfoSavePreservesTrust(t *testing.T) {
 	}
 	fireDialogKey(t, app, tcell.KeyEnter) // Save
 	if savedCount != 1 {
-		t.Fatalf("Save fired %d times, want 1", savedCount)
+		t.Fatalf("Save fired %v times, want 1", savedCount)
 	}
 	if saved.TrustLevel != TrustTrusted {
 		t.Errorf("saved trust = %v, want Trusted — an untouched save must not change the trust level", saved.TrustLevel)

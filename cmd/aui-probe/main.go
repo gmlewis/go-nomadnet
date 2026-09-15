@@ -102,7 +102,7 @@ func main() {
 		if err := fs.Parse(os.Args[2:]); err != nil {
 			log.Fatal(err)
 		}
-		fmt.Printf("%s (group %q)\n", deriveMulticastAddress(*group), *group)
+		fmt.Printf("%v (group %q)\n", deriveMulticastAddress(*group), *group)
 
 	case "send":
 		count := fs.Int("count", 3, "datagrams to send")
@@ -198,10 +198,10 @@ func sendTokens(groupID, ifaceName string, port, count int, src, addr string) {
 
 	for i := range count {
 		if _, err := conn.WriteToUDP(token, dst); err != nil {
-			log.Fatalf("aui-probe: send %d/%d to %v: %v", i+1, count, dst, err)
+			log.Fatalf("aui-probe: send %v/%v to %v: %v", i+1, count, dst, err)
 		}
 	}
-	fmt.Printf("sent %d token(s) claiming src %v to %v:%d on %v\n", count, src, dst.IP, port, iface.Name)
+	fmt.Printf("sent %v token(s) claiming src %v to %v:%v on %v\n", count, src, dst.IP, port, iface.Name)
 }
 
 func listenTokens(groupID, ifaceName string, port int, timeout time.Duration) error {
@@ -238,7 +238,7 @@ func listenTokens(groupID, ifaceName string, port int, timeout time.Duration) er
 			return fmt.Errorf("read: %w", err)
 		}
 		if n < sha256.Size {
-			fmt.Printf("<- %d byte(s) from %v (short)\n", n, from)
+			fmt.Printf("<- %v byte(s) from %v (short)\n", n, from)
 			continue
 		}
 		want := hex.EncodeToString(discoveryToken(groupID, from.IP.String()))
@@ -247,7 +247,7 @@ func listenTokens(groupID, ifaceName string, port int, timeout time.Duration) er
 		if want == got {
 			verdict = "verified"
 		}
-		fmt.Printf("<- token from %-42v %s\n", from, verdict)
+		fmt.Printf("<- token from %-42v %v\n", from, verdict)
 	}
 	return nil
 }

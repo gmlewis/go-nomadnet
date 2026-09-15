@@ -194,7 +194,7 @@ json.dump(out, sys.stdout)
 			t.Parallel()
 			got := goStatLabel(c, now)
 			if got != want[i] {
-				t.Errorf("%s = %q, want %q (Python)", c.Name, got, want[i])
+				t.Errorf("%v = %q, want %q (Python)", c.Name, got, want[i])
 			}
 		})
 	}

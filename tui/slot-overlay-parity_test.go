@@ -87,7 +87,7 @@ func TestStatusDialogMatchesPython(t *testing.T) {
 	}
 	for i := range want {
 		if rows[i] != want[i] {
-			t.Errorf("row %d:\n  got  %q\n  want %q", i, rows[i], want[i])
+			t.Errorf("row %v:\n  got  %q\n  want %q", i, rows[i], want[i])
 		}
 	}
 }
@@ -212,7 +212,7 @@ func TestSlotOverlayURLDialog65Percent(t *testing.T) {
 		}
 	}
 	if topY < 0 {
-		t.Fatalf("no dialog top border found in:\n%s", strings.Join(func() []string {
+		t.Fatalf("no dialog top border found in:\n%v", strings.Join(func() []string {
 			out := []string{}
 			for y := range sh {
 				var b strings.Builder
@@ -237,14 +237,14 @@ func TestSlotOverlayURLDialog65Percent(t *testing.T) {
 	}
 	width := right - left + 1
 	if width != 16 {
-		t.Errorf("URL dialog width = %d (x=%d..%d), want 16 (urwid: int(24*65/100+0.5))", width, left, right)
+		t.Errorf("URL dialog width = %v (x=%v..%v), want 16 (urwid: int(24*65/100+0.5))", width, left, right)
 	}
 	if !strings.Contains(top, " Enter URL ") {
 		t.Errorf("URL dialog top border missing title \" Enter URL \":\n  %q", top)
 	}
 	// Centered: left margin ≈ right margin.
 	if left < 5 || left > 7 {
-		t.Errorf("URL dialog left margin = %d, want ~6 (centered in 28)", left)
+		t.Errorf("URL dialog left margin = %v, want ~6 (centered in 28)", left)
 	}
 }
 
@@ -270,7 +270,7 @@ func TestDeleteNodeDialogMatchesPython(t *testing.T) {
 	}
 	for i := range want {
 		if rows[i] != want[i] {
-			t.Errorf("row %d:\n  got  %q\n  want %q", i, rows[i], want[i])
+			t.Errorf("row %v:\n  got  %q\n  want %q", i, rows[i], want[i])
 		}
 	}
 }
@@ -326,7 +326,7 @@ func TestIngestResultSlotPlacedInListColumn(t *testing.T) {
 		t.Fatal("Ingest message URI title not found")
 	}
 	if titleX >= 52 {
-		t.Errorf("title starts at x=%d, must be within the 52-wide list column (slot-placed), not screen-centered", titleX)
+		t.Errorf("title starts at x=%v, must be within the 52-wide list column (slot-placed), not screen-centered", titleX)
 	}
 	// The dialog border must be default-style (no forced color).
 	_, st, _ := screen.Get(titleX, titleY)

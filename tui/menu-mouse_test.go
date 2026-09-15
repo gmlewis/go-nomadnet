@@ -132,7 +132,7 @@ func TestMenuClickRedrawsPage(t *testing.T) {
 	// above deliberately does not force a repaint — forcing one would make this
 	// assertion vacuously true.
 	if !containsSubstr(afterClick, "Topics") {
-		t.Errorf("after click: screen was not redrawn to the Guide page (no 'Topics'); the menu click did not trigger a redraw:\n%s", afterClick)
+		t.Errorf("after click: screen was not redrawn to the Guide page (no 'Topics'); the menu click did not trigger a redraw:\n%v", afterClick)
 	}
 
 	// The event loop must still be responsive: Ctrl-Q quits cleanly.

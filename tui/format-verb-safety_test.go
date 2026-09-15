@@ -71,17 +71,17 @@ func TestNoFormatVOnByteSlice(t *testing.T) {
 	fset := token.NewFileSet()
 	names, err := filepath.Glob(filepath.Join(dir, "*.go"))
 	if err != nil {
-		t.Fatalf("glob %s: %v", filepath.Join(dir, "*.go"), err)
+		t.Fatalf("glob %v: %v", filepath.Join(dir, "*.go"), err)
 	}
 	if len(names) == 0 {
-		t.Fatalf("no .go files found in %s", dir)
+		t.Fatalf("no .go files found in %v", dir)
 	}
 
 	var files []*ast.File
 	for _, n := range names {
 		f, perr := parser.ParseFile(fset, n, nil, parser.ParseComments)
 		if perr != nil {
-			t.Fatalf("parse %s: %v", n, perr)
+			t.Fatalf("parse %v: %v", n, perr)
 		}
 		files = append(files, f)
 	}
@@ -141,8 +141,8 @@ func TestNoFormatVOnByteSlice(t *testing.T) {
 	}
 
 	if len(bad) != 0 {
-		t.Errorf("found %d format call(s) applying %%v to a []byte / []uint8 argument\n"+
-			"(%%v renders \"[102 114 ...]\" instead of the UTF-8 text; use %%s, or %%x for a hash):\n  %s",
+		t.Errorf("found %v format call(s) applying %%v to a []byte / []uint8 argument\n"+
+			"(%%v renders \"[102 114 ...]\" instead of the UTF-8 text; use %%s, or %%x for a hash):\n  %v",
 			len(bad), strings.Join(bad, "\n  "))
 	}
 }

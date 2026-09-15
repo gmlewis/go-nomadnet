@@ -101,7 +101,7 @@ func TestUrwidCheckBoxRenderPinsCheckedUnchecked(t *testing.T) {
 		cb := NewUrwidCheckBox(label, tc.checked)
 		got := strings.TrimRight(drawUrwidPrimitiveRow(t, cb, 20), " ")
 		if !strings.HasPrefix(got, tc.glyph) || !strings.HasSuffix(got, wantSuffix) {
-			t.Errorf("checked=%v render row = %q, want %q%s", tc.checked, got, tc.glyph, wantSuffix)
+			t.Errorf("checked=%v render row = %q, want %q%v", tc.checked, got, tc.glyph, wantSuffix)
 		}
 	}
 }
@@ -118,7 +118,7 @@ func TestUrwidCheckBoxFocusedCursorAtMiddleCell(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !rec.shown || rec.curX != 1 || rec.curY != 0 {
-		t.Errorf("focused ShowCursor = (%d,%d) shown=%v, want (1,0)", rec.curX, rec.curY, rec.shown)
+		t.Errorf("focused ShowCursor = (%v,%v) shown=%v, want (1,0)", rec.curX, rec.curY, rec.shown)
 	}
 
 	// A fresh, never-focused checkbox must not show a cursor.
@@ -128,7 +128,7 @@ func TestUrwidCheckBoxFocusedCursorAtMiddleCell(t *testing.T) {
 		t.Fatal(err)
 	}
 	if rec2.shown {
-		t.Errorf("unfocused checkbox must not show a cursor (got (%d,%d))", rec2.curX, rec2.curY)
+		t.Errorf("unfocused checkbox must not show a cursor (got (%v,%v))", rec2.curX, rec2.curY)
 	}
 }
 
@@ -189,7 +189,7 @@ func TestRadioButtonFocusedCursorAtMiddleCell(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !rec.shown || rec.curX != 1 || rec.curY != 0 {
-		t.Errorf("focused ShowCursor = (%d,%d) shown=%v, want (1,0)", rec.curX, rec.curY, rec.shown)
+		t.Errorf("focused ShowCursor = (%v,%v) shown=%v, want (1,0)", rec.curX, rec.curY, rec.shown)
 	}
 
 	rec, err = drawFocusedAt(t, cb, false, 20, 1)
@@ -197,7 +197,7 @@ func TestRadioButtonFocusedCursorAtMiddleCell(t *testing.T) {
 		t.Fatal(err)
 	}
 	if rec.shown {
-		t.Errorf("unfocused radio must not show a cursor (got (%d,%d))", rec.curX, rec.curY)
+		t.Errorf("unfocused radio must not show a cursor (got (%v,%v))", rec.curX, rec.curY)
 	}
 }
 
@@ -278,7 +278,7 @@ func TestPeerInfoDialogNavWalkAndEdges(t *testing.T) {
 	for i, ws := range wantSteps {
 		got := pressKeyThroughFocus(app, tcell.KeyDown)
 		if !assertStep(t, got, ws) {
-			t.Errorf("Down#%d focus = %T desc=%q, want %s", i+1, got, describePrimitive(got), ws.desc)
+			t.Errorf("Down#%v focus = %T desc=%q, want %v", i+1, got, describePrimitive(got), ws.desc)
 		}
 	}
 	if got := pressKeyThroughFocus(app, tcell.KeyDown); !isButton(got, "Back") {
@@ -410,7 +410,7 @@ func TestPeerInfoDialogSaveDismissesAndPersists(t *testing.T) {
 			t.Error("Enter on Save must dismiss the modal (still open)")
 		}
 		if saves != 1 {
-			t.Errorf("onSave fired %d times, want 1", saves)
+			t.Errorf("onSave fired %v times, want 1", saves)
 		}
 	})
 
@@ -427,7 +427,7 @@ func TestPeerInfoDialogSaveDismissesAndPersists(t *testing.T) {
 			t.Error("Enter on Back must dismiss the modal (still open)")
 		}
 		if saves != 1 {
-			t.Errorf("onSave fired %d times after Back, want still 1", saves)
+			t.Errorf("onSave fired %v times after Back, want still 1", saves)
 		}
 	})
 }
@@ -484,7 +484,7 @@ func TestPeerInfoDialogUnknownPeerSection(t *testing.T) {
 	cd.listSlotOverlay.Draw(screen)
 	want := 17 + 9 + 2
 	if got := cdHeight(cd); got != want {
-		t.Errorf("unknown-peer dialog height = %d, want %d (17+9+2)", got, want)
+		t.Errorf("unknown-peer dialog height = %v, want %v (17+9+2)", got, want)
 	}
 }
 

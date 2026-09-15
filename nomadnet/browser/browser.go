@@ -390,7 +390,7 @@ func fetchBytes(ctx context.Context, ts *rns.TransportSystem, destHash []byte, p
 	if existing != nil {
 		existingStatus = existing.GetStatus()
 	}
-	diagFile("/tmp/fetch-diag.log", fmt.Sprintf("[%s] fetchBytes ENTER path=%q existing=%v status=%d", time.Now().Format("15:04:05.000"), path, existing != nil, existingStatus))
+	diagFile("/tmp/fetch-diag.log", fmt.Sprintf("[%v] fetchBytes ENTER path=%q existing=%v status=%v", time.Now().Format("15:04:05.000"), path, existing != nil, existingStatus))
 	if existing != nil && existing.GetStatus() == rns.LinkActive {
 		link = existing
 		reusedLink = true
@@ -537,14 +537,14 @@ func fetchBytes(ctx context.Context, ts *rns.TransportSystem, destHash []byte, p
 	if requestData != nil {
 		dataArg = requestData
 	}
-	diagFile("/tmp/fetch-diag.log", fmt.Sprintf("[%s] fetchBytes path=%q rdNil=%v rd=%v timeout=%v hops=%d", time.Now().Format("15:04:05.000"), path, requestData == nil, requestData, timeout, ts.HopsTo(destHash)))
+	diagFile("/tmp/fetch-diag.log", fmt.Sprintf("[%v] fetchBytes path=%q rdNil=%v rd=%v timeout=%v hops=%v", time.Now().Format("15:04:05.000"), path, requestData == nil, requestData, timeout, ts.HopsTo(destHash)))
 	type result struct {
 		data []byte
 		err  error
 	}
 	resCh := make(chan result, 1)
 	_, err := link.Request(path, dataArg, func(rr *rns.RequestReceipt) {
-		diagFile("/tmp/fetch-diag.log", fmt.Sprintf("response cb status=%v dataLen=%d", rr.Status, len(rr.GetResponse())))
+		diagFile("/tmp/fetch-diag.log", fmt.Sprintf("response cb status=%v dataLen=%v", rr.Status, len(rr.GetResponse())))
 		if rr.Status != rns.RequestReady {
 			resCh <- result{err: ErrRequestFailed}
 			return
@@ -571,7 +571,7 @@ func fetchBytes(ctx context.Context, ts *rns.TransportSystem, destHash []byte, p
 	}
 	select {
 	case r := <-resCh:
-		diagFile("/tmp/fetch-diag.log", fmt.Sprintf("resCh err=%v dataLen=%d", r.err, len(r.data)))
+		diagFile("/tmp/fetch-diag.log", fmt.Sprintf("resCh err=%v dataLen=%v", r.err, len(r.data)))
 		if r.err != nil {
 			link.Teardown()
 			return nil, nil, r.err

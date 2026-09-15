@@ -27,7 +27,7 @@ func TestEscProbeRealMainDisplay(t *testing.T) {
 		SetText("\n\n\nSaved\n\n")
 	app.Dialogs.ShowDialog("Saved", body, 40, 9, nil)
 	if app.Dialogs.Count() != 1 {
-		t.Fatalf("count=%d want 1", app.Dialogs.Count())
+		t.Fatalf("count=%v want 1", app.Dialogs.Count())
 	}
 
 	mainHas := main.HasFocus()
@@ -41,7 +41,7 @@ func TestEscProbeRealMainDisplay(t *testing.T) {
 	}
 
 	if app.Dialogs.Count() != 0 {
-		t.Errorf("REAL MainDisplay: Esc did NOT dismiss the dialog (count=%d) — main page steals the key", app.Dialogs.Count())
+		t.Errorf("REAL MainDisplay: Esc did NOT dismiss the dialog (count=%v) — main page steals the key", app.Dialogs.Count())
 	} else {
 		t.Logf("REAL MainDisplay: Esc dismissed OK")
 	}

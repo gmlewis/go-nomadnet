@@ -46,7 +46,7 @@ func TestDividerReflowsToContentWidth(t *testing.T) {
 	// condition). The divider is whatever contentWidth returns now.
 	bd.RenderPage(">Title\n-\nServed by rngit 1.4.2")
 	staleWidth := bd.contentWidth()
-	t.Logf("pre-draw contentWidth=%d", staleWidth)
+	t.Logf("pre-draw contentWidth=%v", staleWidth)
 
 	// Draw the layout at a known full width. This is what the event loop does
 	// on the first refresh after the fetch callback, establishing the content's
@@ -57,9 +57,9 @@ func TestDividerReflowsToContentWidth(t *testing.T) {
 	bd.layout.Draw(screen)
 
 	realWidth := bd.contentWidth()
-	t.Logf("post-draw contentWidth=%d", realWidth)
+	t.Logf("post-draw contentWidth=%v", realWidth)
 	if realWidth <= staleWidth {
-		t.Fatalf("draw did not establish a wider content rect: stale=%d real=%d", staleWidth, realWidth)
+		t.Fatalf("draw did not establish a wider content rect: stale=%v real=%v", staleWidth, realWidth)
 	}
 
 	// The production glue (browserPageView.Draw → reflowIfWidthChanged) queues
@@ -76,11 +76,11 @@ func TestDividerReflowsToContentWidth(t *testing.T) {
 		}
 	}
 	if divider == "" {
-		t.Fatalf("no divider line in rendered page:\n%s", text)
+		t.Fatalf("no divider line in rendered page:\n%v", text)
 	}
 	got := len([]rune(divider))
 	if got != realWidth {
-		t.Fatalf("divider width = %d, want %d (content width); divider=%q", got, realWidth, divider)
+		t.Fatalf("divider width = %v, want %v (content width); divider=%q", got, realWidth, divider)
 	}
 }
 

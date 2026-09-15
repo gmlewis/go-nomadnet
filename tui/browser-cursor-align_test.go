@@ -70,7 +70,7 @@ func runCursorAlignCases(t *testing.T, markup string, cases []cursorAlignCase) {
 		bd.renderPage()
 		menu := findLine(bd, "Home")
 		if menu < 0 {
-			t.Fatalf("no menu line containing Home: lines=%d", len(bd.currentLines))
+			t.Fatalf("no menu line containing Home: lines=%v", len(bd.currentLines))
 		}
 		if got := bd.currentLines[menu].Align; got != c.align {
 			t.Fatalf("align=%v want %v", got, c.align)
@@ -80,11 +80,11 @@ func runCursorAlignCases(t *testing.T, markup string, cases []cursorAlignCase) {
 		bd.lineCursors[menu] = c.pos
 		gotX, gotY, ok := bd.cursorScreenXY()
 		if !ok {
-			t.Errorf("align=%v w=%d pos=%d: cursorScreenXY ok=false", c.align, c.width, c.pos)
+			t.Errorf("align=%v w=%v pos=%v: cursorScreenXY ok=false", c.align, c.width, c.pos)
 			continue
 		}
 		if gotX != c.wantX || gotY != c.wantY {
-			t.Errorf("align=%v w=%d pos=%d: cursor (%d,%d), want (%d,%d)",
+			t.Errorf("align=%v w=%v pos=%v: cursor (%v,%v), want (%v,%v)",
 				c.align, c.width, c.pos, gotX, gotY, c.wantX, c.wantY)
 		}
 	}

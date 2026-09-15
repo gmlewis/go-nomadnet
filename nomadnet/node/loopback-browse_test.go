@@ -168,9 +168,9 @@ func TestLoopbackBrowseViaSharedInstance(t *testing.T) {
 
 	select {
 	case data := <-respCh:
-		t.Logf("got %d bytes", len(data))
+		t.Logf("got %v bytes", len(data))
 	case msg := <-failCh:
-		t.Fatalf("request failed: %s", msg)
+		t.Fatalf("request failed: %v", msg)
 	case <-time.After(30 * time.Second):
 		t.Fatal("timeout waiting for loopback page response")
 	}

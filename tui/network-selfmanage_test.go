@@ -89,32 +89,32 @@ func TestNetworkAnnounceInfoRightMovesButtonsNotPane(t *testing.T) {
 		t.Fatalf("pile focused item is %T, want *urwidColumns (button row)", ai.pile.focusedItem())
 	}
 	if buttonRow.FocusIndex() != 0 {
-		t.Errorf("button row initial focus = %d, want 0 (Back)", buttonRow.FocusIndex())
+		t.Errorf("button row initial focus = %v, want 0 (Back)", buttonRow.FocusIndex())
 	}
 
 	// Right must move Back→Connect, not jump to the browser pane.
 	sendViaNetwork(nd, app, tcell.NewEventKey(tcell.KeyRight, 0, tcell.ModNone))
 
 	if got := buttonRow.FocusIndex(); got != 2 {
-		t.Errorf("after Right, button row focus = %d, want 2 (Connect)", got)
+		t.Errorf("after Right, button row focus = %v, want 2 (Connect)", got)
 	}
 	if got := nd.mainCols.FocusIndex(); got != 0 {
-		t.Errorf("after Right, outer Columns focus = %d, want 0 (left pane, not browser)", got)
+		t.Errorf("after Right, outer Columns focus = %v, want 0 (left pane, not browser)", got)
 	}
 
 	// Right again moves Connect→Msg Op (focusable index 4).
 	sendViaNetwork(nd, app, tcell.NewEventKey(tcell.KeyRight, 0, tcell.ModNone))
 	if got := buttonRow.FocusIndex(); got != 4 {
-		t.Errorf("after 2nd Right, button row focus = %d, want 4 (Msg Op)", got)
+		t.Errorf("after 2nd Right, button row focus = %v, want 4 (Msg Op)", got)
 	}
 
 	// Left moves back to Connect (index 2).
 	sendViaNetwork(nd, app, tcell.NewEventKey(tcell.KeyLeft, 0, tcell.ModNone))
 	if got := buttonRow.FocusIndex(); got != 2 {
-		t.Errorf("after Left, button row focus = %d, want 2 (Connect)", got)
+		t.Errorf("after Left, button row focus = %v, want 2 (Connect)", got)
 	}
 	if got := nd.mainCols.FocusIndex(); got != 0 {
-		t.Errorf("after Left, outer Columns focus = %d, want 0 (still left pane)", got)
+		t.Errorf("after Left, outer Columns focus = %v, want 0 (still left pane)", got)
 	}
 }
 
@@ -141,7 +141,7 @@ func TestNetworkListRightMovesToBrowser(t *testing.T) {
 	sendViaNetwork(nd, app, tcell.NewEventKey(tcell.KeyRight, 0, tcell.ModNone))
 
 	if got := nd.mainCols.FocusIndex(); got != 1 {
-		t.Errorf("after Right on list, outer Columns focus = %d, want 1 (browser pane)", got)
+		t.Errorf("after Right on list, outer Columns focus = %v, want 1 (browser pane)", got)
 	}
 }
 
@@ -162,7 +162,7 @@ func TestNetworkBrowserRightStaysInBrowser(t *testing.T) {
 	nd.focusLeftList()
 	sendViaNetwork(nd, app, tcell.NewEventKey(tcell.KeyRight, 0, tcell.ModNone))
 	if got := nd.mainCols.FocusIndex(); got != 1 {
-		t.Fatalf("setup: Right did not move to browser, focus=%d", got)
+		t.Fatalf("setup: Right did not move to browser, focus=%v", got)
 	}
 
 	// The browser column is self-managing: Right must stay in the browser, not
@@ -172,13 +172,13 @@ func TestNetworkBrowserRightStaysInBrowser(t *testing.T) {
 	}
 	sendViaNetwork(nd, app, tcell.NewEventKey(tcell.KeyRight, 0, tcell.ModNone))
 	if got := nd.mainCols.FocusIndex(); got != 1 {
-		t.Errorf("after Right in browser, outer Columns focus = %d, want 1 (stay in browser)", got)
+		t.Errorf("after Right in browser, outer Columns focus = %v, want 1 (stay in browser)", got)
 	}
 	// Left also stays in the browser (the browser owns Left for its part cursor
 	// + Left-at-start release), rather than the Columns moving to the left list.
 	sendViaNetwork(nd, app, tcell.NewEventKey(tcell.KeyLeft, 0, tcell.ModNone))
 	if got := nd.mainCols.FocusIndex(); got != 1 {
-		t.Errorf("after Left in browser, outer Columns focus = %d, want 1 (browser owns Left)", got)
+		t.Errorf("after Left in browser, outer Columns focus = %v, want 1 (browser owns Left)", got)
 	}
 }
 

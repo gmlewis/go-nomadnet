@@ -45,7 +45,7 @@ type driver struct {
 
 // send sends tmux key names then pauses stepDelay for the app to redraw.
 func (d *driver) send(keys ...string) {
-	d.logf("send: %s", strings.Join(keys, " "))
+	d.logf("send: %v", strings.Join(keys, " "))
 	if err := d.sess.SendKeys(keys...); err != nil {
 		d.logf("  ERROR send-keys: %v", err)
 	}
@@ -56,10 +56,10 @@ func (d *driver) send(keys ...string) {
 func (d *driver) snapshot(label string) {
 	out, err := d.sess.Capture()
 	if err != nil {
-		d.logf("===== SNAPSHOT: %s (capture error: %v) =====", label, err)
+		d.logf("===== SNAPSHOT: %v (capture error: %v) =====", label, err)
 		return
 	}
-	d.logf("===== SNAPSHOT: %s =====\n%s===== END SNAPSHOT =====", label, out)
+	d.logf("===== SNAPSHOT: %v =====\n%v===== END SNAPSHOT =====", label, out)
 }
 
 // view captures the current View, logging on error.
@@ -85,13 +85,13 @@ func (d *driver) assert(cond func(*utils.View) bool, timeout time.Duration, form
 	msg := fmt.Sprintf(format, args...)
 	if ok {
 		d.assertOK++
-		d.logf("  ASSERT PASS: %s", msg)
+		d.logf("  ASSERT PASS: %v", msg)
 		return true
 	}
 	d.failures++
 	// Log the observed state to aid reproduction.
 	observed := observedState(v)
-	d.logf("  ASSERT FAIL: %s | observed: %s", msg, observed)
+	d.logf("  ASSERT FAIL: %v | observed: %v", msg, observed)
 	return false
 }
 
@@ -104,7 +104,7 @@ func observedState(v *utils.View) string {
 	midx, mok := v.MenuFocusedButton()
 	cur := ""
 	if v.CursorOK {
-		cur = fmt.Sprintf("cursor=(%d,%d)", v.CursorX, v.CursorY)
+		cur = fmt.Sprintf("cursor=(%v,%v)", v.CursorX, v.CursorY)
 	} else {
 		cur = "cursor=?"
 	}
@@ -117,12 +117,12 @@ func observedState(v *utils.View) string {
 		addr = " addr=" + a
 	}
 	st, url := v.BrowserState()
-	return fmt.Sprintf("page=%q menu=%v(%t) %s browser=%s/%q%s%s", page, midx, mok, cur, st, url, btn, addr)
+	return fmt.Sprintf("page=%q menu=%v(%t) %v browser=%v/%q%v%v", page, midx, mok, cur, st, url, btn, addr)
 }
 
 // step logs a phase/section header.
 func (d *driver) step(msg string) {
-	d.logf("\n########## %s ##########", msg)
+	d.logf("\n########## %v ##########", msg)
 }
 
 // expectsTitle is a Wait condition for an Announce Stream / Saved Nodes /
@@ -330,12 +330,12 @@ func (d *driver) phase1() {
 	for idx := 0; idx <= 6; idx++ {
 		if idx > 0 {
 			d.send("Right")
-			d.assert(menuAt(idx), 3*time.Second, "menu focused on index %d (%s)", idx, utils.MenuLabels[idx])
+			d.assert(menuAt(idx), 3*time.Second, "menu focused on index %v (%v)", idx, utils.MenuLabels[idx])
 		}
 		d.send("Enter")
 		// Focus stays in the menu (cursor on row 0) after Enter.
-		d.assert(menuAt(idx), 2*time.Second, "focus stayed in menu on index %d after Enter", idx)
-		d.snapshot(fmt.Sprintf("page: %s (menu %d)", utils.MenuLabels[idx], idx))
+		d.assert(menuAt(idx), 2*time.Second, "focus stayed in menu on index %v after Enter", idx)
+		d.snapshot(fmt.Sprintf("page: %v (menu %v)", utils.MenuLabels[idx], idx))
 		// Soft cross-check the rendered page where a reliable title exists.
 		if key, has := pageByKey[idx]; has && key != "log" {
 			v := d.view()
@@ -385,7 +385,7 @@ func (d *driver) phase2() {
 	d.logf("waiting up to %v for announcing nodes to populate...", d.announceWait)
 	if d.assert(func(v *utils.View) bool { return v.HasAnnounceNode() }, d.announceWait, "announcing nodes present in the stream") {
 		if r := d.view().SelectedAnnounceRow(); r != nil {
-			d.logf("  announcing node selected: %q at row %d", r.Text, r.Y)
+			d.logf("  announcing node selected: %q at row %v", r.Text, r.Y)
 		}
 	} else {
 		d.logf("  no announcing nodes detected within %v; Phase 3 will record zero connects", d.announceWait)
@@ -396,7 +396,7 @@ func (d *driver) phase2() {
 // ---------- Phase 3: connect to up to N nodes (verified) ----------
 
 func (d *driver) phase3() {
-	d.step(fmt.Sprintf("Phase 3: connect to nodes, render index.mu, follow links (x%d)", d.nodeIters))
+	d.step(fmt.Sprintf("Phase 3: connect to nodes, render index.mu, follow links (x%v)", d.nodeIters))
 
 	// tried is keyed by the node's Announce Info ADDRESS HASH — the only
 	// robust identifier. The Python announce stream re-sorts as new announces
@@ -415,7 +415,7 @@ func (d *driver) phase3() {
 	// (cursor may flicker, but Down/Enter activate the focused node regardless).
 	for success < d.nodeIters && attempts < maxAttempts {
 		attempts++
-		d.logf("iteration: success=%d/%d attempts=%d/%d", success, d.nodeIters, attempts, maxAttempts)
+		d.logf("iteration: success=%v/%v attempts=%v/%v", success, d.nodeIters, attempts, maxAttempts)
 		if !d.sess.HasSession() {
 			d.logf("session died mid-Phase-3; aborting Phase 3")
 			break
@@ -434,7 +434,7 @@ func (d *driver) phase3() {
 		opened := d.assert(func(v *utils.View) bool {
 			_, ok := v.AnnounceInfoAddr()
 			return ok && utils.HasBorderTitle(v.Screen.FullText(), "Announce Info")
-		}, 6*time.Second, "Announce Info opened (attempt %d)", attempts)
+		}, 6*time.Second, "Announce Info opened (attempt %v)", attempts)
 		if !opened {
 			d.logf("  no Announce Info (focus not on a node, or peer/pn entry); skipping")
 			d.snapshot("phase3: no announce info")
@@ -457,12 +457,12 @@ func (d *driver) phase3() {
 		if hv := d.view(); hv != nil {
 			targetHash, _ = hv.AnnounceInfoAddr()
 		}
-		d.snapshot(fmt.Sprintf("phase3: announce info opened (addr=%s)", targetHash))
+		d.snapshot(fmt.Sprintf("phase3: announce info opened (addr=%v)", targetHash))
 
 		// Skip nodes we already tried this session — the list re-sorts, so a
 		// Down can land on a previously-connected node.
 		if targetHash != "" && tried[targetHash] {
-			d.logf("  node %s already tried this session; skipping", targetHash)
+			d.logf("  node %v already tried this session; skipping", targetHash)
 			d.send("Escape")
 			continue
 		}
@@ -484,7 +484,7 @@ func (d *driver) phase3() {
 		connectFocused := d.assert(func(v *utils.View) bool {
 			b, ok := v.FocusedActionButton()
 			return ok && b == "Connect"
-		}, 3*time.Second, "Connect button focused (addr=%s)", targetHash)
+		}, 3*time.Second, "Connect button focused (addr=%v)", targetHash)
 		if !connectFocused {
 			d.logf("  could not focus Connect; skipping")
 			d.send("Escape")
@@ -511,7 +511,7 @@ func (d *driver) phase3() {
 		if !(st == utils.BSRendered && targetHash != "" && url == targetHash) {
 			switch {
 			case strings.HasPrefix(st, "error:"):
-				d.logf("  connect FAILED: %s; skipping node", st)
+				d.logf("  connect FAILED: %v; skipping node", st)
 			case st == utils.BSRendered:
 				d.logf("  connect FAILED: rendered page url=%q != target %q (stale page?); skipping", url, targetHash)
 			default:
@@ -590,7 +590,7 @@ func (d *driver) phase3() {
 		d.send("C-w")  // disconnect -> releases focus to the left list (cursor-position independent)
 		d.send("Home") // list selection -> top so the next Down can't overshoot into Local Peer
 	}
-	d.logf("Phase 3 complete: %d/%d successful connects in %d attempts (%d distinct nodes tried)",
+	d.logf("Phase 3 complete: %v/%v successful connects in %v attempts (%v distinct nodes tried)",
 		success, d.nodeIters, attempts, len(tried))
 }
 
@@ -653,7 +653,7 @@ func (d *driver) walkToBottom(sig func(v *utils.View) string, maxSteps int, step
 			// 5-row stride still captures every line in some snapshot (with
 			// overlap) — full regression coverage without flooding the log.
 			if screenfuls == 1 || screenfuls%5 == 0 {
-				d.snapshot(fmt.Sprintf("%s: screenful %d scrolled into view", label, screenfuls))
+				d.snapshot(fmt.Sprintf("%v: screenful %v scrolled into view", label, screenfuls))
 			}
 		} else {
 			sigStuck++
@@ -669,16 +669,16 @@ func (d *driver) walkToBottom(sig func(v *utils.View) string, maxSteps int, step
 			prevCY = v.CursorY
 		}
 		if sigStuck >= K && (cursorStuck >= K || !cursorEverSeen) {
-			d.logf("  %s: bottom reached after %d downs (%d screenfuls)", label, i+1, screenfuls)
+			d.logf("  %v: bottom reached after %v downs (%v screenfuls)", label, i+1, screenfuls)
 			return i + 1
 		}
 		if sigStuck >= hardStuck {
-			d.logf("  %s: bottom reached after %d downs (%d screenfuls, sig-stuck fallback)",
+			d.logf("  %v: bottom reached after %v downs (%v screenfuls, sig-stuck fallback)",
 				label, i+1, screenfuls)
 			return i + 1
 		}
 	}
-	d.logf("  %s: max %d downs without a clean bottom signal (%d screenfuls)",
+	d.logf("  %v: max %v downs without a clean bottom signal (%v screenfuls)",
 		label, maxSteps, screenfuls)
 	return maxSteps
 }
@@ -734,7 +734,7 @@ func (d *driver) examineMainPage(mainHash string, maxSteps int) {
 			sigStuck = 0
 			screenfuls++
 			if screenfuls == 1 || screenfuls%5 == 0 {
-				d.snapshot(fmt.Sprintf("main page: screenful %d scrolled into view", screenfuls))
+				d.snapshot(fmt.Sprintf("main page: screenful %v scrolled into view", screenfuls))
 			}
 		} else {
 			sigStuck++
@@ -750,11 +750,11 @@ func (d *driver) examineMainPage(mainHash string, maxSteps int) {
 			prevCY = v.CursorY
 		}
 		if sigStuck >= K && (cursorStuck >= K || !cursorEverSeen) {
-			d.logf("  main page: bottom reached after %d downs (%d screenfuls)", i+1, screenfuls)
+			d.logf("  main page: bottom reached after %v downs (%v screenfuls)", i+1, screenfuls)
 			break
 		}
 		if sigStuck >= hardStuck {
-			d.logf("  main page: bottom reached after %d downs (%d screenfuls, sig-stuck fallback)", i+1, screenfuls)
+			d.logf("  main page: bottom reached after %v downs (%v screenfuls, sig-stuck fallback)", i+1, screenfuls)
 			break
 		}
 
@@ -771,7 +771,7 @@ func (d *driver) examineMainPage(mainHash string, maxSteps int) {
 			// re-visit; recorded on attempt so a link that errored is not retried.
 			// (The per-call `followed` map below still dedupes within one page.)
 			if d.visitedLinks[lt] {
-				d.logf("  link line %d (%q): already visited this session; skipping", curLine, lt)
+				d.logf("  link line %v (%q): already visited this session; skipping", curLine, lt)
 				continue
 			}
 			d.visitedLinks[lt] = true
@@ -782,7 +782,7 @@ func (d *driver) examineMainPage(mainHash string, maxSteps int) {
 				return st == utils.BSRendered || strings.HasPrefix(st, "error:")
 			}, d.connectWait)
 			if !ok {
-				d.logf("  link line %d (%q): no render/error within %v; back to main", curLine, lt, d.connectWait)
+				d.logf("  link line %v (%q): no render/error within %v; back to main", curLine, lt, d.connectWait)
 				// Only navigate back if Enter actually left the main page (sig
 				// changed). A no-op Enter on a non-link line leaves sig unchanged,
 				// so C-d would needlessly navigate AWAY from the main page.
@@ -797,8 +797,8 @@ func (d *driver) examineMainPage(mainHash string, maxSteps int) {
 			lv := d.view()
 			st, url := lv.BrowserState()
 			if strings.HasPrefix(st, "error:") {
-				d.logf("  link line %d (%q): error %q; back to main", curLine, lt, st)
-				d.snapshot(fmt.Sprintf("phase3: link line %d error", curLine))
+				d.logf("  link line %v (%q): error %q; back to main", curLine, lt, st)
+				d.snapshot(fmt.Sprintf("phase3: link line %v error", curLine))
 				if lv.BrowserPaneSig() != sigBefore {
 					d.send("C-d")
 					d.settleMain(mainHash)
@@ -817,8 +817,8 @@ func (d *driver) examineMainPage(mainHash string, maxSteps int) {
 				if !followed[sigAfter] {
 					followed[sigAfter] = true
 					linksFollowed++
-					d.logf("  link line %d: followed link -> %q", curLine, url)
-					d.snapshot(fmt.Sprintf("phase3: link -> %s", url))
+					d.logf("  link line %v: followed link -> %q", curLine, url)
+					d.snapshot(fmt.Sprintf("phase3: link -> %v", url))
 				}
 				// Return to the main page and jog Down curLine to resume the walk.
 				// (C-d re-fetches at offset 0, so we must jog back from the top.)
@@ -829,7 +829,7 @@ func (d *driver) examineMainPage(mainHash string, maxSteps int) {
 			prevSig = d.view().BrowserPaneSig()
 		}
 	}
-	d.logf("  examined main page: %d downs, %d screenfuls, %d distinct links followed (%d links in session cache)",
+	d.logf("  examined main page: %v downs, %v screenfuls, %v distinct links followed (%v links in session cache)",
 		curLine, screenfuls, linksFollowed, len(d.visitedLinks))
 }
 
@@ -862,7 +862,7 @@ func (d *driver) jogKeys(n int, key string) {
 	if n <= 0 {
 		return
 	}
-	d.logf("jog: %d x %s", n, key)
+	d.logf("jog: %v x %v", n, key)
 	keys := make([]string, n)
 	for i := range keys {
 		keys[i] = key
@@ -950,20 +950,20 @@ func (d *driver) phase4() {
 		time.Sleep(300 * time.Millisecond)
 		v := d.view()
 		rendered := v.GuideTopicRendered()
-		d.snapshot(fmt.Sprintf("Guide topic %d reader right after selection (BUG CHECK: top should be %q)", topic, expected))
+		d.snapshot(fmt.Sprintf("Guide topic %v reader right after selection (BUG CHECK: top should be %q)", topic, expected))
 		// Only count a scroll-reset bug when we are ACTUALLY on the Guide page.
 		// The blind script counted bogus hits because it never verified it was
 		// on the Guide (it read the browser border title as the Guide reader
 		// while stranded on the Network page). If focus never reached the
 		// Guide, log a NOTE instead of incrementing the bug counter.
 		if v.ActivePage() != "guide" {
-			d.logf("  topic %d: NOT on Guide page (active=%q) — not counting a scroll-reset bug; top is %q",
+			d.logf("  topic %v: NOT on Guide page (active=%q) — not counting a scroll-reset bug; top is %q",
 				topic, v.ActivePage(), rendered)
 		} else if strings.TrimSpace(rendered) == expected {
-			d.logf("  topic %d: scroll at row 0 (title %q at top) — no leak", topic, expected)
+			d.logf("  topic %v: scroll at row 0 (title %q at top) — no leak", topic, expected)
 		} else {
 			d.scrollBug++
-			d.logf("  topic %d: SCROLL-RESET BUG — top is %q, expected %q (offset leaked from previous topic)", topic, rendered, expected)
+			d.logf("  topic %v: SCROLL-RESET BUG — top is %q, expected %q (offset leaked from previous topic)", topic, rendered, expected)
 		}
 
 		// Home resets to the top (correct behavior); re-verify the title.
@@ -971,9 +971,9 @@ func (d *driver) phase4() {
 		time.Sleep(300 * time.Millisecond)
 		v = d.view()
 		if home := v.GuideTopicRendered(); strings.TrimSpace(home) == expected {
-			d.logf("  topic %d: after Home, title %q at top (correct)", topic, expected)
+			d.logf("  topic %v: after Home, title %q at top (correct)", topic, expected)
 		} else {
-			d.logf("  topic %d: after Home, top is %q (expected %q)", topic, home, expected)
+			d.logf("  topic %v: after Home, top is %q (expected %q)", topic, home, expected)
 		}
 		// Walk Down through the FULL topic content, snapshotting every screenful
 		// as it scrolls into view, until the bottom — so every screenful of every
@@ -986,7 +986,7 @@ func (d *driver) phase4() {
 		// worst case (the sig-stuck fallback fires H downs after the last
 		// scroll), so the cap must clear ~490 + H with margin.
 		d.walkToBottom(func(v *utils.View) string { return v.ReaderPaneSig() },
-			700, 120*time.Millisecond, fmt.Sprintf("guide topic %d reader", topic))
+			700, 120*time.Millisecond, fmt.Sprintf("guide topic %v reader", topic))
 		// Release focus back to the Topics list: Left moves reader->topics in
 		// the urwid Columns (the vertical Scrollable does not consume Left).
 		d.send("Left")
@@ -1003,10 +1003,10 @@ func (d *driver) phase4() {
 			// so an assert here would noise up the Python run. The real
 			// verification is the next iteration's BUG CHECK (the reader shows
 			// the expected title).
-			d.logf("  advanced to topic %d", topic+1)
+			d.logf("  advanced to topic %v", topic+1)
 		}
 	}
-	d.logf("Phase 4 complete (12 topics walked, scroll-reset bug observed on %d)", d.scrollBug)
+	d.logf("Phase 4 complete (12 topics walked, scroll-reset bug observed on %v)", d.scrollBug)
 }
 
 // ---------- Phase 5: Quit ----------

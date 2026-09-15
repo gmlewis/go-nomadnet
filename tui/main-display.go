@@ -619,7 +619,7 @@ func (md *MainDisplay) focusMenuIndex(index int) {
 // so Down from the menu returns to wherever the body was (e.g. the open
 // conversation's message list mid-scroll), NOT the body's default widget.
 func (md *MainDisplay) FocusMenu() {
-	diagFileMD("/tmp/quit-diag.log", fmt.Sprintf("FocusMenu activeMenu=%d", md.activeMenu))
+	diagFileMD("/tmp/quit-diag.log", fmt.Sprintf("FocusMenu activeMenu=%v", md.activeMenu))
 	md.mu.Lock()
 	md.focusRegion = "menu"
 	if md.app != nil {
@@ -1016,7 +1016,7 @@ func (md *MainDisplay) bodyListAtTop() bool {
 		return false
 	}
 	cur := list.GetCurrentItem()
-	diagFileMD("/tmp/quit-diag.log", fmt.Sprintf("bodyListAtTop list cur=%d", cur))
+	diagFileMD("/tmp/quit-diag.log", fmt.Sprintf("bodyListAtTop list cur=%v", cur))
 	return cur == 0
 }
 

@@ -104,7 +104,7 @@ func TestIntegrationLargePageResourceTransfer(t *testing.T) {
 
 	select {
 	case content := <-responseCh:
-		t.Logf("got %d bytes", len(content))
+		t.Logf("got %v bytes", len(content))
 	case <-failCh:
 		t.Fatal("request failed callback fired")
 	case <-time.After(30 * time.Second):

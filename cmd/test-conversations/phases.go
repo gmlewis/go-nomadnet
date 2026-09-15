@@ -64,7 +64,7 @@ func (d *driver) summary() (asserts, pass, fail int) {
 
 // send sends tmux key names then pauses stepDelay for the app to redraw.
 func (d *driver) send(keys ...string) {
-	d.logf("send: %s", strings.Join(keys, " "))
+	d.logf("send: %v", strings.Join(keys, " "))
 	if err := d.sess.SendKeys(keys...); err != nil {
 		d.logf("  ERROR send-keys: %v", err)
 	}
@@ -84,10 +84,10 @@ func (d *driver) sendLiteral(text string) {
 func (d *driver) snapshot(label string) {
 	out, err := d.sess.Capture()
 	if err != nil {
-		d.logf("===== SNAPSHOT: %s (capture error: %v) =====", label, err)
+		d.logf("===== SNAPSHOT: %v (capture error: %v) =====", label, err)
 		return
 	}
-	d.logf("===== SNAPSHOT: %s =====\n%s===== END SNAPSHOT =====", label, out)
+	d.logf("===== SNAPSHOT: %v =====\n%v===== END SNAPSHOT =====", label, out)
 }
 
 // view captures the current View, logging on error.
@@ -113,18 +113,18 @@ func (d *driver) assert(cond func(*utils.View) bool, timeout time.Duration, form
 	msg := fmt.Sprintf(format, args...)
 	if ok {
 		d.assertOK++
-		d.logf("  ASSERT PASS: %s", msg)
+		d.logf("  ASSERT PASS: %v", msg)
 		return true
 	}
 	d.failures++
 	observed := observedState(v)
-	d.logf("  ASSERT FAIL: %s | observed: %s", msg, observed)
+	d.logf("  ASSERT FAIL: %v | observed: %v", msg, observed)
 	return false
 }
 
 // step logs a phase step header.
 func (d *driver) step(msg string) {
-	d.logf("--- %s ---", msg)
+	d.logf("--- %v ---", msg)
 }
 
 // observedState summarizes the view for failure logs.
@@ -133,18 +133,18 @@ func observedState(v *utils.View) string {
 		return "<no view>"
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "page=%q cursor=(%d,%d,ok=%t)", v.ActivePage(), v.CursorX, v.CursorY, v.CursorOK)
+	fmt.Fprintf(&b, "page=%q cursor=(%v,%v,ok=%t)", v.ActivePage(), v.CursorX, v.CursorY, v.CursorOK)
 	if st, url := v.BrowserState(); st != "" || url != "" {
 		fmt.Fprintf(&b, " browser=%q url=%q", st, url)
 	}
 	if mb, ok := v.MenuFocusedButton(); ok {
-		fmt.Fprintf(&b, " menu=%d", mb)
+		fmt.Fprintf(&b, " menu=%v", mb)
 	}
 	if region := shortcutRegion(v); region != "" {
 		fmt.Fprintf(&b, " region=%q", region)
 	}
 	if onConversationsPage(v) {
-		fmt.Fprintf(&b, " convTabUnread=%d convUnreadRows=%d convFailedRows=%d menuUnread=%t",
+		fmt.Fprintf(&b, " convTabUnread=%v convUnreadRows=%v convFailedRows=%v menuUnread=%t",
 			tabUnreadCount(v), unreadRowCount(v), failedRowCount(v), menuUnreadShown(v))
 	}
 	if onNetworkPage(v) {

@@ -68,7 +68,7 @@ func TestAnnounceStreamTabReachesList(t *testing.T) {
 	app.SetFocus(as.pile)
 	app.Main.Root().Draw(screen)
 	if as.pile.focusIndex != 0 {
-		t.Fatalf("initial pileFocusIndex=%d, want 0 (tab bar)", as.pile.focusIndex)
+		t.Fatalf("initial pileFocusIndex=%v, want 0 (tab bar)", as.pile.focusIndex)
 	}
 
 	// Dispatch Tab through the mainCols InputHandler (the real event
@@ -83,14 +83,14 @@ func TestAnnounceStreamTabReachesList(t *testing.T) {
 	handler(tcell.NewEventKey(tcell.KeyTab, 0, tcell.ModNone), setFocus)
 	app.Main.Root().Draw(screen)
 	if as.pile.focusIndex != 1 {
-		t.Errorf("after Tab#1: pileFocusIndex=%d, want 1 (filter bar)", as.pile.focusIndex)
+		t.Errorf("after Tab#1: pileFocusIndex=%v, want 1 (filter bar)", as.pile.focusIndex)
 	}
 
 	// Tab #2: filter bar → IndicativeListBox (pileFocusIndex 1 → 2).
 	handler(tcell.NewEventKey(tcell.KeyTab, 0, tcell.ModNone), setFocus)
 	app.Main.Root().Draw(screen)
 	if as.pile.focusIndex != 2 {
-		t.Errorf("after Tab#2: pileFocusIndex=%d, want 2 (IndicativeListBox)", as.pile.focusIndex)
+		t.Errorf("after Tab#2: pileFocusIndex=%v, want 2 (IndicativeListBox)", as.pile.focusIndex)
 	}
 
 	// Verify the IndicativeListBox is the pile's focused item (so

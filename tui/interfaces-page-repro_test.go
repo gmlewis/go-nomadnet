@@ -73,7 +73,7 @@ func TestInterfacesPageDownFromMenuFocusesFirstItem(t *testing.T) {
 		t.Errorf("focus after Down from menu = %T, want the Interfaces list", got)
 	}
 	if got := id.SelectedIndex(); got != -1 {
-		t.Errorf("after one Down from menu, SelectedIndex = %d, want -1 (Python's list focus starts on the non-selectable header; the dropped key must not advance the list)", got)
+		t.Errorf("after one Down from menu, SelectedIndex = %v, want -1 (Python's list focus starts on the non-selectable header; the dropped key must not advance the list)", got)
 	}
 
 	// The SECOND Down now navigates the focused list (Python: focus moves from
@@ -82,6 +82,6 @@ func TestInterfacesPageDownFromMenuFocusesFirstItem(t *testing.T) {
 		h(tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone), func(p tview.Primitive) { app.SetFocus(p) })
 	}
 	if got := id.SelectedIndex(); got != 0 {
-		t.Errorf("after two Downs, SelectedIndex = %d, want 0 (the second Down advances the list)", got)
+		t.Errorf("after two Downs, SelectedIndex = %v, want 0 (the second Down advances the list)", got)
 	}
 }

@@ -196,7 +196,7 @@ func readCounter(t *testing.T, pages, key string) uint32 {
 		t.Fatalf("ReadFile(%v): %v", key, err)
 	}
 	if len(stored) != 4 {
-		t.Fatalf("stored counter %v = %d bytes (%v), want 4", key, len(stored), stored)
+		t.Fatalf("stored counter %v = %v bytes (%v), want 4", key, len(stored), stored)
 	}
 	return binary.LittleEndian.Uint32(stored)
 }

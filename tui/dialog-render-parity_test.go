@@ -80,18 +80,18 @@ func TestInterfacesListWheelMovesFocus(t *testing.T) {
 		t.Fatalf("click not consumed")
 	}
 	if got := id.SelectedIndex(); got != 0 {
-		t.Fatalf("after click SelectedIndex = %d, want 0", got)
+		t.Fatalf("after click SelectedIndex = %v, want 0", got)
 	}
 
 	// Wheel down ×5: the focus advances one item per notch.
 	for i := range 5 {
 		dn := tcell.NewEventMouse(5, 10, tcell.WheelDown, tcell.ModNone)
 		if consumed, _ := mh(tview.MouseScrollDown, dn, setFocus); !consumed {
-			t.Fatalf("wheel down %d not consumed", i)
+			t.Fatalf("wheel down %v not consumed", i)
 		}
 	}
 	if got := id.SelectedIndex(); got != 5 {
-		t.Errorf("after 5 wheel-downs SelectedIndex = %d, want 5 (urwid wheel = down keypress)", got)
+		t.Errorf("after 5 wheel-downs SelectedIndex = %v, want 5 (urwid wheel = down keypress)", got)
 	}
 
 	// Wheel up returns toward the top.
@@ -100,7 +100,7 @@ func TestInterfacesListWheelMovesFocus(t *testing.T) {
 		mh(tview.MouseScrollUp, up, setFocus)
 	}
 	if got := id.SelectedIndex(); got != 3 {
-		t.Errorf("after 5 down + 2 up, SelectedIndex = %d, want 3", got)
+		t.Errorf("after 5 down + 2 up, SelectedIndex = %v, want 3", got)
 	}
 
 	// The wheel at the top boundary does not wrap or panic.
@@ -109,7 +109,7 @@ func TestInterfacesListWheelMovesFocus(t *testing.T) {
 		mh(tview.MouseScrollUp, up, setFocus)
 	}
 	if got := id.SelectedIndex(); got != 0 {
-		t.Errorf("SelectedIndex after wheel-up at top = %d, want 0", got)
+		t.Errorf("SelectedIndex after wheel-up at top = %v, want 0", got)
 	}
 }
 
@@ -149,7 +149,7 @@ func TestIngestResultMessageNotChopped(t *testing.T) {
 		t.Fatalf("OK button not rendered: %v", rows)
 	}
 	if borderRow < 0 || borderRow <= okRow {
-		t.Errorf("OK row %d not above the dialog border row %d (chopped bottom)", okRow, borderRow)
+		t.Errorf("OK row %v not above the dialog border row %v (chopped bottom)", okRow, borderRow)
 	}
 }
 
@@ -188,7 +188,7 @@ func TestSyncDialogNoTrustedNodesFullHeight(t *testing.T) {
 		t.Fatalf("sync dialog bottom border not drawn — dialog chopped")
 	}
 	if borderRow <= closeRow {
-		t.Errorf("Close row %d renders on/after the dialog bottom border row %d — dialog too short", closeRow, borderRow)
+		t.Errorf("Close row %v renders on/after the dialog bottom border row %v — dialog too short", closeRow, borderRow)
 	}
 }
 
@@ -211,7 +211,7 @@ func TestConfirmDialogSizesToWrappedMessage(t *testing.T) {
 		t.Fatalf("confirm dialog not rendered: %v", rows)
 	}
 	if got := strings.Count(joined, "word"); got < 30 {
-		t.Errorf("long confirm message truncated: %d of 30 words visible", got)
+		t.Errorf("long confirm message truncated: %v of 30 words visible", got)
 	}
 }
 
@@ -260,7 +260,7 @@ func TestQRDialogBottomInsideBorder(t *testing.T) {
 		t.Fatalf("QR dialog bottom border not rendered — dialog chopped")
 	}
 	if borderRow <= closeRow {
-		t.Errorf("Close row %d sits on/after the dialog bottom border row %d — PACK height is 2 rows short", closeRow, borderRow)
+		t.Errorf("Close row %v sits on/after the dialog bottom border row %v — PACK height is 2 rows short", closeRow, borderRow)
 	}
 
 	// A mouse click on the rendered Close button must dismiss the dialog

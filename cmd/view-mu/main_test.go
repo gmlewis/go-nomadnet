@@ -110,18 +110,18 @@ func TestRenderToJSON(t *testing.T) {
 	}
 	var doc jsonDoc
 	if err := json.Unmarshal(buf.Bytes(), &doc); err != nil {
-		t.Fatalf("unmarshal: %v\nraw:\n%s", err, buf.String())
+		t.Fatalf("unmarshal: %v\nraw:\n%v", err, buf.String())
 	}
 	if doc.Source != "test.mu" || doc.Theme != "dark" {
 		t.Errorf("source/theme = %q/%q, want test.mu/dark", doc.Source, doc.Theme)
 	}
 	if len(doc.Lines) < 5 {
-		t.Fatalf("expected at least 5 lines, got %d", len(doc.Lines))
+		t.Fatalf("expected at least 5 lines, got %v", len(doc.Lines))
 	}
 	// Line 0 is the ">> Title" heading at level 2 with a slug anchor.
 	h0 := doc.Lines[0]
 	if h0.HeadingLevel != 2 {
-		t.Errorf("line 0 heading_level = %d, want 2", h0.HeadingLevel)
+		t.Errorf("line 0 heading_level = %v, want 2", h0.HeadingLevel)
 	}
 	if h0.Anchor == "" {
 		t.Error("line 0 anchor is empty, want a slug")
@@ -176,7 +176,7 @@ func TestAlignName(t *testing.T) {
 	}
 	for in, want := range cases {
 		if got := alignName(in); got != want {
-			t.Errorf("alignName(%d) = %q, want %q", in, got, want)
+			t.Errorf("alignName(%v) = %q, want %q", in, got, want)
 		}
 	}
 }

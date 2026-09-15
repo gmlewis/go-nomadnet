@@ -90,12 +90,12 @@ func TestParseDumpCountAndIDs(t *testing.T) {
 	t.Parallel()
 	gs := parseString(t, miniDump)
 	if len(gs) != 6 {
-		t.Fatalf("parsed %d goroutines, want 6", len(gs))
+		t.Fatalf("parsed %v goroutines, want 6", len(gs))
 	}
 	wantIDs := map[int]bool{0: true, 1: true, 25: true, 31: true, 615571: true, 32: true}
 	for _, g := range gs {
 		if !wantIDs[g.id] {
-			t.Errorf("unexpected goroutine id %d (header %q)", g.id, g.header)
+			t.Errorf("unexpected goroutine id %v (header %q)", g.id, g.header)
 		}
 		delete(wantIDs, g.id)
 	}
@@ -108,15 +108,15 @@ func TestSummarizeStatesAndMaxID(t *testing.T) {
 	t.Parallel()
 	s := summarize(parseString(t, miniDump))
 	if s.Total != 6 {
-		t.Errorf("Total = %d, want 6", s.Total)
+		t.Errorf("Total = %v, want 6", s.Total)
 	}
 	if s.MaxID != 615571 {
-		t.Errorf("MaxID = %d, want 615571", s.MaxID)
+		t.Errorf("MaxID = %v, want 615571", s.MaxID)
 	}
 	want := map[string]int{"idle": 1, "select": 2, "IO wait": 1, "sleep": 1, "syscall": 1}
 	for state, n := range want {
 		if got := s.States[state]; got != n {
-			t.Errorf("States[%q] = %d, want %d", state, got, n)
+			t.Errorf("States[%q] = %v, want %v", state, got, n)
 		}
 	}
 }
@@ -126,7 +126,7 @@ func TestSummarizeCalloutGroups(t *testing.T) {
 	s := summarize(parseString(t, miniDump))
 	// The fixture has no running or runnable goroutines: the quiet-freeze case.
 	if len(s.Running) != 0 || len(s.Runnable) != 0 {
-		t.Errorf("expected no running/runnable goroutines, got %d/%d", len(s.Running), len(s.Runnable))
+		t.Errorf("expected no running/runnable goroutines, got %v/%v", len(s.Running), len(s.Runnable))
 	}
 	if len(s.Syscalls) != 1 || s.Syscalls[0].id != 32 {
 		t.Errorf("Syscalls = %+v, want exactly goroutine 32", s.Syscalls)
@@ -140,7 +140,7 @@ func TestCreatedByHistogram(t *testing.T) {
 	t.Parallel()
 	s := summarize(parseString(t, miniDump))
 	if got := s.CreatedBy["created by github.com/gmlewis/go-reticulum/rns/interfaces.(*TCPClientInterface).failConn in goroutine 615570"]; got != 1 {
-		t.Errorf("failConn creation site count = %d, want 1 (got %v)", got, s.CreatedBy)
+		t.Errorf("failConn creation site count = %v, want 1 (got %v)", got, s.CreatedBy)
 	}
 }
 

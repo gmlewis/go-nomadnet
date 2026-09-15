@@ -187,7 +187,7 @@ func TestRelativeTimeAtParity(t *testing.T) {
 			t.Parallel()
 			ts := now.Add(-time.Duration(tc.delta) * time.Second)
 			if got := relativeTimeAt(ts, now); got != tc.want {
-				t.Errorf("relativeTimeAt(-%ds) = %q, want %q", tc.delta, got, tc.want)
+				t.Errorf("relativeTimeAt(-%vs) = %q, want %q", tc.delta, got, tc.want)
 			}
 		})
 	}

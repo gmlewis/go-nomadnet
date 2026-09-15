@@ -47,7 +47,7 @@ func TestSavedNodesEnterFiresOnConnectNode(t *testing.T) {
 		t.Fatalf("setup: Saved Nodes should be the initial left-pane view")
 	}
 	if got := nd.nodes.GetItemCount(); got != 1 {
-		t.Fatalf("setup: saved nodes list should have 1 row, got %d", got)
+		t.Fatalf("setup: saved nodes list should have 1 row, got %v", got)
 	}
 
 	// Focus the saved-nodes list (the constructor swaps it in but does not focus

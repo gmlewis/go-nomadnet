@@ -81,7 +81,7 @@ func assertNavKeysNoPanic(t *testing.T, bd *BrowserDisplay, where string) {
 	// also accepts). If neither holds, the very first arrow key would index an
 	// empty slice and panic.
 	if bd.focusLine >= 0 && len(bd.lineCursors) == 0 {
-		t.Fatalf("%s: inconsistent nav state focusLine=%d len(lineCursors)=0 — "+
+		t.Fatalf("%v: inconsistent nav state focusLine=%v len(lineCursors)=0 — "+
 			"an arrow key would index out of range", where, bd.focusLine)
 	}
 	for _, kk := range []tcell.Key{
@@ -91,7 +91,7 @@ func assertNavKeysNoPanic(t *testing.T, bd *BrowserDisplay, where string) {
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
-					t.Errorf("%s: handleInput(%v) panicked: %v", where, kk, r)
+					t.Errorf("%v: handleInput(%v) panicked: %v", where, kk, r)
 				}
 			}()
 			bd.handleInput(key(kk, 0))

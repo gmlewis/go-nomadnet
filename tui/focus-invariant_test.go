@@ -91,7 +91,7 @@ func TestDismissTopRestoresFocusOnNilPrevFocus(t *testing.T) {
 	}
 	app.Dialogs.ShowDialog("test", tview.NewTextView(), 30, 5, nil)
 	if app.Dialogs.Count() != 1 {
-		t.Fatalf("dialog count=%d, want 1", app.Dialogs.Count())
+		t.Fatalf("dialog count=%v, want 1", app.Dialogs.Count())
 	}
 	app.Dialogs.DismissTop()
 	if got := app.Application.GetFocus(); got == nil {

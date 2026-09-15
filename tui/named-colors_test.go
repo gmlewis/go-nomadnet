@@ -63,7 +63,7 @@ func TestNamedColorEntries(t *testing.T) {
 			colors := GetThemeColors(tc.theme)
 			got := colors[tc.key]
 			if got != tc.want {
-				t.Errorf("GetThemeColors(%d)[%q] = #%06x, want %v (#%06x)",
+				t.Errorf("GetThemeColors(%v)[%q] = #%06x, want %v (#%06x)",
 					tc.theme, tc.key,
 					uint32(got.Hex())&0xffffff, tc.want,
 					uint32(tc.want.Hex())&0xffffff)

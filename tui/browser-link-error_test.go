@@ -47,7 +47,7 @@ func TestNotifyLinkErrorKeepsPage(t *testing.T) {
 	beforeText := bd.content.GetText(true)
 	beforeFocus := bd.focusLine
 	if beforeFocus < 0 {
-		t.Fatalf("prerequisite: page should have a selectable line, focusLine=%d", beforeFocus)
+		t.Fatalf("prerequisite: page should have a selectable line, focusLine=%v", beforeFocus)
 	}
 
 	// A malformed link (https://) fails URL parsing. The error must go to the
@@ -59,7 +59,7 @@ func TestNotifyLinkErrorKeepsPage(t *testing.T) {
 			got)
 	}
 	if bd.focusLine != beforeFocus {
-		t.Errorf("nav state disturbed: focusLine went %d -> %d (page should still be navigable)",
+		t.Errorf("nav state disturbed: focusLine went %v -> %v (page should still be navigable)",
 			beforeFocus, bd.focusLine)
 	}
 	// The footer surfaces the error.

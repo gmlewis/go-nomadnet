@@ -88,7 +88,7 @@ func envDur(key string, def time.Duration) time.Duration {
 func requireTools() error {
 	for _, tool := range []string{"tmux", "go"} {
 		if _, err := exec.LookPath(tool); err != nil {
-			return fmt.Errorf("%s not found on PATH", tool)
+			return fmt.Errorf("%v not found on PATH", tool)
 		}
 	}
 	return nil
@@ -106,7 +106,7 @@ func run(args []string) error {
 	nnn := strconv.FormatInt(time.Now().Unix(), 10)
 	logFile := cfg.logFile
 	if logFile == "" {
-		logFile = fmt.Sprintf("/tmp/gonomadnet-test-conversations-%s.log", nnn)
+		logFile = fmt.Sprintf("/tmp/gonomadnet-test-conversations-%v.log", nnn)
 	}
 	logf, closeLog, err := openLog(logFile)
 	if err != nil {
@@ -127,13 +127,13 @@ func run(args []string) error {
 	}
 
 	both("gonomadnet conversations test harness")
-	both("  log     : %s", logFile)
-	both("  repo    : %s", repo)
-	both("  size    : %dx%d", w, hh)
-	both("  waits   : announce=%s msg=%s step=%s", cfg.announceWait, cfg.msgWait, cfg.stepDelay)
+	both("  log     : %v", logFile)
+	both("  repo    : %v", repo)
+	both("  size    : %vx%v", w, hh)
+	both("  waits   : announce=%v msg=%v step=%v", cfg.announceWait, cfg.msgWait, cfg.stepDelay)
 	both("  keep    : %t", cfg.keepConfig)
 	if out, err := exec.Command("tmux", "-V").Output(); err == nil {
-		both("  tmux    : %s", strings.TrimSpace(string(out)))
+		both("  tmux    : %v", strings.TrimSpace(string(out)))
 	}
 	both("")
 
@@ -161,7 +161,7 @@ func run(args []string) error {
 	build.Dir = repo
 	build.Env = append(os.Environ(), "GOCACHE=/tmp/go-cache")
 	if out, err := build.CombinedOutput(); err != nil {
-		return fmt.Errorf("go build gonomadnet: %w (%s)", err, strings.TrimSpace(string(out)))
+		return fmt.Errorf("go build gonomadnet: %w (%v)", err, strings.TrimSpace(string(out)))
 	}
 
 	// Connectivity: A hosts a TCP server on a free localhost port; B connects.
@@ -181,14 +181,14 @@ func run(args []string) error {
 	if err := writeRNSConfigClient(rnsB, port); err != nil {
 		return err
 	}
-	both("network  : A=TCP server 127.0.0.1:%d   B=TCP client -> 127.0.0.1:%d", port, port)
+	both("network  : A=TCP server 127.0.0.1:%v   B=TCP client -> 127.0.0.1:%v", port, port)
 
 	// tcell truecolor is robust regardless of $TERM; the tmux sessions inherit
 	// the parent env so this reaches both TUIs.
 	_ = os.Setenv("COLORTERM", "truecolor")
 
 	launch := func(cfgDir, rnsDir string) string {
-		return fmt.Sprintf("exec '%s' -t -config '%s' -rnsconfig '%s'", binPath, cfgDir, rnsDir)
+		return fmt.Sprintf("exec '%v' -t -config '%v' -rnsconfig '%v'", binPath, cfgDir, rnsDir)
 	}
 	nameA := "gtc-A-" + nnn
 	nameB := "gtc-B-" + nnn
@@ -205,13 +205,13 @@ func run(args []string) error {
 	defer func() {
 		for _, s := range []*utils.Session{sessA, sessB} {
 			if s.HasSession() {
-				logf("cleanup: killing tmux session %s", s.Name)
+				logf("cleanup: killing tmux session %v", s.Name)
 				_ = s.KillSession()
 			}
 		}
 	}()
 
-	both("sessions : %s  %s  (watch live: tmux attach -t %s | %s)", nameA, nameB, nameA, nameB)
+	both("sessions : %v  %v  (watch live: tmux attach -t %v | %v)", nameA, nameB, nameA, nameB)
 	both("")
 
 	h := &harness{
@@ -231,10 +231,10 @@ func run(args []string) error {
 
 	both("")
 	both("================ DONE ================")
-	both("log    : %s", logFile)
+	both("log    : %v", logFile)
 	ta, pa, fa := h.dA.summary()
 	tb, pb, fb := h.dB.summary()
-	both("summary : A asserts=%d pass=%d fail=%d | B asserts=%d pass=%d fail=%d | total asserts=%d pass=%d fail=%d",
+	both("summary : A asserts=%v pass=%v fail=%v | B asserts=%v pass=%v fail=%v | total asserts=%v pass=%v fail=%v",
 		ta, pa, fa, tb, pb, fb, ta+tb, pa+pb, fa+fb)
 	return nil
 }
@@ -244,13 +244,13 @@ func run(args []string) error {
 func openLog(path string) (func(string, ...any), func(), error) {
 	f, err := os.Create(path)
 	if err != nil {
-		return nil, nil, fmt.Errorf("create log %s: %w", path, err)
+		return nil, nil, fmt.Errorf("create log %v: %w", path, err)
 	}
 	start := time.Now()
 	logf := func(format string, args ...any) {
 		ts := time.Since(start).Truncate(time.Millisecond)
 		msg := fmt.Sprintf(format, args...)
-		_, _ = fmt.Fprintf(f, "[%s] %s\n", ts, msg)
+		_, _ = fmt.Fprintf(f, "[%v] %v\n", ts, msg)
 	}
 	return logf, func() { _ = f.Close() }, nil
 }

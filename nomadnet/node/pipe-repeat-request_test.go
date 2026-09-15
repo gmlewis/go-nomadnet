@@ -54,7 +54,7 @@ func TestPipeRepeatRequestOnSameLink(t *testing.T) {
 	if s := os.Getenv("RNS_TEST_REQUESTS"); s != "" {
 		fmt.Sscanf(s, "%d", &requestsPerLink)
 	}
-	t.Logf("pageBytes=%d concurrency=%d requests/link=%d", pageSize, concurrency, requestsPerLink)
+	t.Logf("pageBytes=%v concurrency=%v requests/link=%v", pageSize, concurrency, requestsPerLink)
 
 	dir := tempDirInt(t)
 	writeFile(t, dir+"/index.mu", ">> Pipe\n\n"+strings.Repeat("x", pageSize)+"\nEND\n")
@@ -175,27 +175,27 @@ func TestPipeRepeatRequestOnSameLink(t *testing.T) {
 					}
 				}, nil, reqTimeout, 0)
 				if err != nil {
-					lr.results = append(lr.results, fmt.Sprintf("req%d: send err %v", i, err))
+					lr.results = append(lr.results, fmt.Sprintf("req%v: send err %v", i, err))
 					lr.fail++
 					break
 				}
 				select {
 				case r := <-got:
 					if r.fail != "" {
-						lr.results = append(lr.results, fmt.Sprintf("req%d: %s (%v)", i, r.fail, time.Since(start)))
+						lr.results = append(lr.results, fmt.Sprintf("req%v: %v (%v)", i, r.fail, time.Since(start)))
 						lr.fail++
 						// A failure likely means the link is dead; stop.
 						goto done
 					}
 					lr.ok++
 					lr.lastRTT = time.Since(start)
-					lr.results = append(lr.results, fmt.Sprintf("req%d: ok %dB %v", i, r.bytes, time.Since(start)))
+					lr.results = append(lr.results, fmt.Sprintf("req%v: ok %vB %v", i, r.bytes, time.Since(start)))
 				case <-closed:
 					lr.closedAt = i
-					lr.results = append(lr.results, fmt.Sprintf("req%d: LINK CLOSED (%v)", i, time.Since(start)))
+					lr.results = append(lr.results, fmt.Sprintf("req%v: LINK CLOSED (%v)", i, time.Since(start)))
 					goto done
 				case <-time.After(reqTimeout + 2*time.Second):
-					lr.results = append(lr.results, fmt.Sprintf("req%d: TIMEOUT (%v)", i, time.Since(start)))
+					lr.results = append(lr.results, fmt.Sprintf("req%v: TIMEOUT (%v)", i, time.Since(start)))
 					lr.fail++
 					goto done
 				}
@@ -213,17 +213,17 @@ func TestPipeRepeatRequestOnSameLink(t *testing.T) {
 	for _, lr := range results {
 		totalOK += lr.ok
 		totalFail += lr.fail
-		t.Logf("link %d: ok=%d fail=%d closedAt=%v lastRTT=%v", lr.linkID, lr.ok, lr.fail, lr.closedAt, lr.lastRTT)
+		t.Logf("link %v: ok=%v fail=%v closedAt=%v lastRTT=%v", lr.linkID, lr.ok, lr.fail, lr.closedAt, lr.lastRTT)
 		for _, r := range lr.results {
-			t.Logf("  link %d: %s", lr.linkID, r)
+			t.Logf("  link %v: %v", lr.linkID, r)
 		}
 	}
-	t.Logf("TOTAL ok=%d fail=%d", totalOK, totalFail)
+	t.Logf("TOTAL ok=%v fail=%v", totalOK, totalFail)
 
 	// Every request on every link should succeed (server never closes; client
 	// doesn't teardown between requests). Any failure reproduces the bug.
 	if totalFail != 0 {
-		t.Fatalf("reproduced link-dies-after-N: %d ok, %d fail (see logs)", totalOK, totalFail)
+		t.Fatalf("reproduced link-dies-after-N: %v ok, %v fail (see logs)", totalOK, totalFail)
 	}
 }
 

@@ -51,6 +51,6 @@ func TestProbeIsKnown(t *testing.T) {
 		if len(hb) != 16 {
 			continue
 		}
-		t.Logf("peer %s: IsKnown=%v recalled=%v", e.Name(), a.Dir.IsKnown(hb), ts.Recall(hb) != nil)
+		t.Logf("peer %v: IsKnown=%v recalled=%v", e.Name(), a.Dir.IsKnown(hb), ts.Recall(hb) != nil)
 	}
 }

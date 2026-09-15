@@ -182,19 +182,19 @@ func TestLoopbackRepeatRequestOnSameLink(t *testing.T) {
 			}
 		}, nil, reqTimeout, 0)
 		if err != nil {
-			t.Fatalf("req %d: Request error: %v", i, err)
+			t.Fatalf("req %v: Request error: %v", i, err)
 		}
 		select {
 		case r := <-got:
 			if r.fail != "" {
-				t.Fatalf("req %d: %s (after %v)", i, r.fail, time.Since(start))
+				t.Fatalf("req %v: %v (after %v)", i, r.fail, time.Since(start))
 			}
-			t.Logf("req %d: OK %d bytes in %v", i, r.bytes, time.Since(start))
+			t.Logf("req %v: OK %v bytes in %v", i, r.bytes, time.Since(start))
 		case <-closed:
-			t.Fatalf("req %d: link CLOSED after %v", i, time.Since(start))
+			t.Fatalf("req %v: link CLOSED after %v", i, time.Since(start))
 		case <-time.After(reqTimeout + 2*time.Second):
-			t.Fatalf("req %d: TIMEOUT after %v", i, time.Since(start))
+			t.Fatalf("req %v: TIMEOUT after %v", i, time.Since(start))
 		}
 	}
-	t.Logf("all %d requests succeeded on one link", nreq)
+	t.Logf("all %v requests succeeded on one link", nreq)
 }

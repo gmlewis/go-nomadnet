@@ -1982,7 +1982,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	logger := a.Logger
 	tui.SetFocusInvariantSink(func(msg string, stack []byte) {
 		if logger != nil {
-			logger.Error("FOCUS INVARIANT VIOLATION: %s\n%s", msg, stack)
+			logger.Error("FOCUS INVARIANT VIOLATION: %v\n%s", msg, stack)
 		}
 	})
 
@@ -2503,7 +2503,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 			})
 		}
 		bd.OnRetrieveURL = func(url string, requestData map[string]string) {
-			diagFile("/tmp/fetch-diag.log", fmt.Sprintf("[%s] OnRetrieveURL bd=%p url=%q rdNil=%v", time.Now().Format("15:04:05.000"), bd, url, requestData == nil))
+			diagFile("/tmp/fetch-diag.log", fmt.Sprintf("[%v] OnRetrieveURL bd=%p url=%q rdNil=%v", time.Now().Format("15:04:05.000"), bd, url, requestData == nil))
 			ctx, seq := bd.BeginRequest()
 			// requestData carries the live form-field values collected by
 			// HandleLink's collectFields (Python recurse_down), or nil for a
@@ -2584,7 +2584,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 								}
 								if savedName != "" {
 									bd.SetTransferStats(0, 0, elapsed, false)
-									bd.SetContent(fmt.Sprintf("Saved file: %s", tview.Escape(savedName)))
+									bd.SetContent(fmt.Sprintf("Saved file: %v", tview.Escape(savedName)))
 								} else {
 									bd.SetContent("[red]The requested local download file does not exist[-]")
 								}

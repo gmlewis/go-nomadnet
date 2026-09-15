@@ -52,7 +52,7 @@ func TestGuideFieldCursorFollowsRenderedRow(t *testing.T) {
 	idx := gd.selectable[0]
 	row := gd.lineRows[idx]
 	if row != 0 {
-		t.Fatalf("focused line row = %d, want 0", row)
+		t.Fatalf("focused line row = %v, want 0", row)
 	}
 	drawn := drawnRowText(t, screen, 0, row, w)
 	at := strings.LastIndex(drawn, "Go")
@@ -68,7 +68,7 @@ func TestGuideFieldCursorFollowsRenderedRow(t *testing.T) {
 		t.Fatal("cursorScreenXY reported no cursor position")
 	}
 	if x != at {
-		t.Errorf("cursor x on the link = %d, but the link is drawn at column %d (row %q)",
+		t.Errorf("cursor x on the link = %v, but the link is drawn at column %v (row %q)",
 			x, at, strings.TrimRight(drawn, " "))
 	}
 
