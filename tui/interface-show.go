@@ -343,8 +343,9 @@ func (s *interfaceShow) buildBodyText(g GlyphSet) string {
 		connWord = "Connected"
 	}
 
-	// Info rows (Interfaces.py:2278-2300).
-	b.WriteString("Type:    " + s.info.Type + "\n")
+	// Info rows (Interfaces.py:2278-2300). Type is a raw RNS-config value and
+	// this body is a dynamic-colors TextView.
+	b.WriteString("Type:    " + escapeTviewTags(s.info.Type) + "\n")
 	b.WriteString("Status:  " + connTag + marker + reset + "  " + connTag + statusWord(s.info.Enabled) + reset + "  |  " + connTag + connWord + reset + "\n")
 	b.WriteString("---\n")
 
@@ -392,7 +393,7 @@ func (s *interfaceShow) paramBlocks() string {
 		}
 		b.WriteString(title + "\n")
 		for _, k := range SortedKeys(m) {
-			b.WriteString(FormatParamKey(k) + ": " + FormatParamValue(k, m[k]) + "\n")
+			b.WriteString(escapeTviewTags(FormatParamKey(k)) + ": " + escapeTviewTags(FormatParamValue(k, m[k])) + "\n")
 		}
 		b.WriteString("---\n")
 	}

@@ -459,7 +459,9 @@ func (cd *ChannelsDisplay) populateRooms(rooms []ChannelInfo) {
 		}
 		text := fmt.Sprintf("%v#%v", prefix, room.Name)
 		secondary := fmt.Sprintf("%v members — %v", room.Members, room.Topic)
-		cd.rooms.AddItem(text, secondary, 0, nil)
+		// The room topic is external text and tview.List parses tags in BOTH
+		// the main and secondary lines.
+		cd.rooms.AddItem(escapeTviewTags(text), escapeTviewTags(secondary), 0, nil)
 	}
 }
 
@@ -503,7 +505,9 @@ func (cd *ChannelsDisplay) SetHubs(hubs []HubView) {
 		if e.Kind != RowSpacer {
 			label = padToWidth(e.Label, ' ', channelsListInnerWidth)
 		}
-		cd.rooms.AddItem(label, "", 0, nil)
+		// Escape AFTER padding: the hub display name is external text and
+		// tview.List always parses tags.
+		cd.rooms.AddItem(escapeTviewTags(label), "", 0, nil)
 		if c, ok := colors[e.Style]; ok && e.Kind != RowSpacer {
 			cd.rooms.SetItemStyle(i, tcell.StyleDefault.Foreground(c))
 		}
@@ -1020,7 +1024,7 @@ func (cd *ChannelsDisplay) UpdateRooms(rooms []ChannelInfo) {
 		}
 		text := fmt.Sprintf("%v#%v", prefix, room.Name)
 		secondary := fmt.Sprintf("%v members — %v", room.Members, room.Topic)
-		cd.rooms.AddItem(text, secondary, 0, nil)
+		cd.rooms.AddItem(escapeTviewTags(text), escapeTviewTags(secondary), 0, nil)
 	}
 }
 
@@ -1121,7 +1125,8 @@ func (cd *ChannelsDisplay) CollapseJoinPart() bool {
 // ShowUserInfo displays a user info dialog for the selected member.
 // Matches Python's ChannelsDisplay.show_user_info() at Channels.py:2119.
 func (cd *ChannelsDisplay) ShowUserInfo(nick, hash string) {
-	info := fmt.Sprintf("[::b]Nick[-]  : %v\n[::b]Hash[-] : %v", nick, hash)
+	// Keep the bold markup; escape the external nick/hash data.
+	info := fmt.Sprintf("[::b]Nick[-]  : %v\n[::b]Hash[-] : %v", escapeTviewTags(nick), escapeTviewTags(hash))
 	cd.messages.SetText(info)
 }
 
@@ -1134,16 +1139,16 @@ func (cd *ChannelsDisplay) ShowMessages(msgs []ChannelMessage) {
 	for _, msg := range msgs {
 		switch {
 		case msg.IsSystem:
-			fmt.Fprintf(&sb, "[gray]%v[-]\n", msg.Text)
+			fmt.Fprintf(&sb, "[gray]%v[-]\n", escapeTviewTags(msg.Text))
 		case msg.IsNotice:
-			fmt.Fprintf(&sb, "[yellow]%v[-]\n", msg.Text)
+			fmt.Fprintf(&sb, "[yellow]%v[-]\n", escapeTviewTags(msg.Text))
 		case msg.IsError:
-			fmt.Fprintf(&sb, "[red]%v[-]\n", msg.Text)
+			fmt.Fprintf(&sb, "[red]%v[-]\n", escapeTviewTags(msg.Text))
 		case msg.IsSelf:
-			fmt.Fprintf(&sb, "[green]%v[-] %v\n", msg.Nick, msg.Text)
+			fmt.Fprintf(&sb, "[green]%v[-] %v\n", escapeTviewTags(msg.Nick), escapeTviewTags(msg.Text))
 		default:
 			color := nickColor(msg.Nick)
-			fmt.Fprintf(&sb, "[%v]%v[-] %v\n", color, msg.Nick, msg.Text)
+			fmt.Fprintf(&sb, "[%v]%v[-] %v\n", color, escapeTviewTags(msg.Nick), escapeTviewTags(msg.Text))
 		}
 	}
 	cd.messages.SetText(sb.String())
@@ -1157,7 +1162,7 @@ func (cd *ChannelsDisplay) ShowMembers(members []ChannelMember) {
 		if m.Online {
 			status = "●"
 		}
-		cd.members.AddItem(fmt.Sprintf("%v %v", status, m.Nick), m.Hash[:12], 0, nil)
+		cd.members.AddItem(fmt.Sprintf("%v %v", status, escapeTviewTags(m.Nick)), m.Hash[:12], 0, nil)
 	}
 }
 

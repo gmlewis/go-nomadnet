@@ -121,7 +121,8 @@ func (p *LXMFPeersDisplay) SetPeers(entries []LXMFPeerEntry) {
 				label = e.Hash
 			}
 		}
-		list.AddItem(label, "", 0, nil)
+		// The peer row embeds a remote-alleged display name; List parses tags.
+		list.AddItem(escapeTviewTags(label), "", 0, nil)
 	}
 	list.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		return p.handlePeerKey(list, event)

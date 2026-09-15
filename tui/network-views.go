@@ -34,7 +34,7 @@ func NewNodeInfo(hash, name string) *NodeInfo {
 	ni := &NodeInfo{}
 
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "[::b]Name[-]  : %v\n", name)
+	fmt.Fprintf(&sb, "[::b]Name[-]  : %v\n", escapeTviewTags(name))
 	fmt.Fprintf(&sb, "[::b]Addr[-]  : <[lightblue]%v[-]>\n", hash)
 	sb.WriteString("[::b]Type[-]  : Nomad Network Node Ⓝ\n")
 	sb.WriteString("[gray]No additional stats available[-]\n")
@@ -69,8 +69,8 @@ func NewLocalPeer(addr, name, lastAnnounce string) *LocalPeer {
 	var sb strings.Builder
 	sb.WriteString("[::b]Local Peer[-]\n\n")
 	fmt.Fprintf(&sb, "[::b]LXMF Addr[-] : [lightblue]%v[-]\n", addr)
-	fmt.Fprintf(&sb, "[::b]Name[-]      : %v\n", name)
-	fmt.Fprintf(&sb, "[::b]Last Announce[-]: %v\n", lastAnnounce)
+	fmt.Fprintf(&sb, "[::b]Name[-]      : %v\n", escapeTviewTags(name))
+	fmt.Fprintf(&sb, "[::b]Last Announce[-]: %v\n", escapeTviewTags(lastAnnounce))
 
 	text := tview.NewTextView()
 	text.SetDynamicColors(true)
@@ -136,7 +136,7 @@ func NewLXMFPeersView(peers []LXMFPeerEntry) *LXMFPeersView {
 		if !p.Alive {
 			status = "[red]dead[-]"
 		}
-		text := fmt.Sprintf("%v %v %v", p.Name, status, ShortHash(p.Hash, 8))
+		text := fmt.Sprintf("%v %v %v", escapeTviewTags(p.Name), status, ShortHash(p.Hash, 8))
 		secondary := fmt.Sprintf("Pending: %v", p.Pending)
 		lv.list.AddItem(text, secondary, 0, nil)
 	}

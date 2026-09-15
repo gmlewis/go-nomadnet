@@ -79,7 +79,10 @@ func SetTitledBorder(b interface{ SetTitle(string) *tview.Box }, title string) {
 		b.SetTitle("")
 		return
 	}
-	b.SetTitle(" " + title + " ")
+	// tview.Box draws its border title with tview.Print, which parses style
+	// tags; titles here are urwid LineBox labels and can carry remote text (a
+	// node title or URL), so escape them.
+	b.SetTitle(" " + escapeTviewTags(title) + " ")
 }
 
 // BorderedBox wraps a tview.Primitive with a manually drawn border and

@@ -463,7 +463,7 @@ func formatRRCMessage(msg ChannelMessage, opts RRCRenderOpts) string {
 	colors := rrcRenderColors(opts.Theme)
 	var sb strings.Builder
 	sb.WriteString(" " + rrcTsPrefix(msg.TsMs, colors["ts"]) +
-		colorTag(rrcNickColor(msg, opts), "") + rrcPrivateTag(msg) + "<" + rrcSenderName(msg) + ">" + colorReset + " " +
+		colorTag(rrcNickColor(msg, opts), "") + rrcPrivateTag(msg) + "<" + escapeTviewTags(rrcSenderName(msg)) + ">" + colorReset + " " +
 		formatRRCBody(msg, opts) + colorReset + "\n")
 	return sb.String()
 }
@@ -484,21 +484,24 @@ func rrcPrivateTag(msg ChannelMessage) string {
 
 // formatRRCBody renders the message body with linkified hash runs, room
 // links and code-block protection (Python _body_markup + the link_ branch
-// of _message_widget: underline + the link palette color).
+// of _message_widget: underline + the link palette color). Literal body text
+// is escaped for tview ([x] → [x[]) so a user-typed bracket run is never
+// swallowed as a color tag; Python urwid has no tag grammar and prints it
+// as-is.
 func formatRRCBody(msg ChannelMessage, opts RRCRenderOpts) string {
 	body := msg.Text
 	spans := scanChatSpans(body, opts.OwnNick)
 	if len(spans) == 0 {
-		return body
+		return escapeTviewTags(body)
 	}
 	colors := rrcRenderColors(opts.Theme)
 	var sb strings.Builder
 	pos := 0
 	for _, s := range spans {
 		if s.start > pos {
-			sb.WriteString(body[pos:s.start])
+			sb.WriteString(escapeTviewTags(body[pos:s.start]))
 		}
-		seg := body[s.start:s.end]
+		seg := escapeTviewTags(body[s.start:s.end])
 		switch s.kind {
 		case "mention":
 			color := colors["mention"]
@@ -518,7 +521,7 @@ func formatRRCBody(msg ChannelMessage, opts RRCRenderOpts) string {
 		pos = s.end
 	}
 	if pos < len(body) {
-		sb.WriteString(body[pos:])
+		sb.WriteString(escapeTviewTags(body[pos:]))
 	}
 	return sb.String()
 }
@@ -665,7 +668,7 @@ func formatJustifiedHead(msg ChannelMessage, opts RRCRenderOpts, seg string, nic
 	sb.WriteString(defaultPadTag + " ")
 	sb.WriteString(rrcTsPrefix(msg.TsMs, colors["ts"]))
 	sb.WriteString("[default] ")
-	sb.WriteString(colorTag(rrcNickColor(msg, opts), "") + nick + colorReset)
+	sb.WriteString(colorTag(rrcNickColor(msg, opts), "") + escapeTviewTags(nick) + colorReset)
 	sb.WriteString(" " + formatRRCBody(ChannelMessage{Room: msg.Room, Text: body}, opts))
 	return sb.String()
 }

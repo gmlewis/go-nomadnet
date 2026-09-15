@@ -142,7 +142,9 @@ func TestFormatAnnounceSummary(t *testing.T) {
 				DisplayName: "MyNode",
 				Timestamp:   now.Add(-5 * time.Minute),
 			},
-			want: "Ⓝ MyNode [node] 5m ago",
+			// "[node]" and the display name are escaped for the tag-parsing
+			// list; tview renders the doubled bracket as a literal "[".
+			want: "Ⓝ MyNode [node[] 5m ago",
 		},
 		{
 			name: "pn type",
@@ -151,7 +153,7 @@ func TestFormatAnnounceSummary(t *testing.T) {
 				DisplayName: "PN-Relay",
 				Timestamp:   now.Add(-1 * time.Hour),
 			},
-			want: "↑ PN-Relay [pn] 1h ago",
+			want: "↑ PN-Relay [pn[] 1h ago",
 		},
 		{
 			name: "peer type",
@@ -160,7 +162,7 @@ func TestFormatAnnounceSummary(t *testing.T) {
 				DisplayName: "Alice",
 				Timestamp:   now.Add(-2 * time.Hour),
 			},
-			want: "Ⓟ Alice [peer] 2h ago",
+			want: "Ⓟ Alice [peer[] 2h ago",
 		},
 		{
 			name: "unknown type",
@@ -169,7 +171,7 @@ func TestFormatAnnounceSummary(t *testing.T) {
 				DisplayName: "Unknown",
 				Timestamp:   now.Add(-30 * time.Second),
 			},
-			want: "○ Unknown [other] just now",
+			want: "○ Unknown [other[] just now",
 		},
 	}
 

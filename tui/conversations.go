@@ -1278,7 +1278,8 @@ func conversationRowMain(conv ConversationInfo, glyphs GlyphSet, currentConversa
 		head = pin + " " + head
 	}
 	if conv.DisplayName != "" {
-		head += " " + conv.DisplayName
+		// Remote peer display name; the row text goes into a tag-parsing List.
+		head += " " + escapeTviewTags(conv.DisplayName)
 	}
 	if conv.TrustLevel != "trusted" {
 		head += " <" + conv.SourceHash + ">"
@@ -2449,14 +2450,15 @@ func (cd *ConversationsDisplay) SaveAttachmentsDialog(sourceHash string, refs []
 	list.SetHighlightFullLine(true)
 	ApplyListFocusStyle(list, cd.app.Theme)
 	for _, r := range refs {
-		list.AddItem(r.Name, "", 0, nil)
+		// Attachment names come from the remote LXMF message; List parses tags.
+		list.AddItem(escapeTviewTags(r.Name), "", 0, nil)
 	}
 
 	selected := make(map[int]bool)
 	list.SetSelectedFunc(func(i int, mainText, secondaryText string, shortcut rune) {
 		selected[i] = !selected[i]
 		if selected[i] {
-			list.SetItemText(i, "[x] "+mainText, secondaryText)
+			list.SetItemText(i, escapeTviewTags("[x] ")+mainText, secondaryText)
 		} else {
 			list.SetItemText(i, mainText, secondaryText)
 		}
@@ -2482,9 +2484,9 @@ func (cd *ConversationsDisplay) SaveAttachmentsDialog(sourceHash string, refs []
 			g := cd.app.Glyphs
 			var lines []string
 			if len(saved) > 0 {
-				lines = append(lines, fmt.Sprintf("%v Copied %v file(s) to %v:", g["check"], len(saved), saveDirOf(saved)))
+				lines = append(lines, fmt.Sprintf("%v Copied %v file(s) to %v:", g["check"], len(saved), escapeTviewTags(saveDirOf(saved))))
 				for _, p := range saved {
-					lines = append(lines, "  "+filepath.Base(p))
+					lines = append(lines, "  "+escapeTviewTags(filepath.Base(p)))
 				}
 				if failed > 0 {
 					lines = append(lines, fmt.Sprintf("%v %v failed", g["cross"], failed))

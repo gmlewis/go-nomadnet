@@ -119,12 +119,12 @@ func (dd *DirectoryDisplay) showDetail(entry DirectoryEntry) {
 
 	dd.detail.SetText(fmt.Sprintf(
 		"[::b]%v[-]\n\nTrust: %v%v[-]\nHash: %v\nDelivery: %v\nLast seen: %v",
-		entry.DisplayName,
+		escapeTviewTags(entry.DisplayName),
 		trustColor,
 		entry.TrustLevel,
-		entry.SourceHash,
-		entry.Delivery,
-		entry.LastSeen,
+		escapeTviewTags(entry.SourceHash),
+		escapeTviewTags(entry.Delivery),
+		escapeTviewTags(entry.LastSeen),
 	))
 }
 

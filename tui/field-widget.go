@@ -111,13 +111,14 @@ func NewFieldWidget(spec *micron.FieldSpec, groups map[string]*RadioGroup) *Fiel
 	switch spec.Type {
 	case "checkbox":
 		cb := tview.NewCheckbox()
-		cb.SetLabel(spec.Data)
+		// spec.Data is page-supplied; Checkbox labels are tag-parsed.
+		cb.SetLabel(escapeTviewTags(spec.Data))
 		cb.SetChecked(spec.Prechecked)
 		fw.Primitive = cb
 
 	case "radio":
 		cb := tview.NewCheckbox()
-		cb.SetLabel(spec.Data)
+		cb.SetLabel(escapeTviewTags(spec.Data))
 		if groups != nil {
 			g, ok := groups[spec.Name]
 			if !ok {

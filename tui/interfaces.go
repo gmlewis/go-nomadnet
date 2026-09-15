@@ -578,8 +578,8 @@ func formatInterfaces(interfaces []InterfaceInfo) string {
 			statusColor = "[red]"
 		}
 
-		fmt.Fprintf(&sb, "[::b]%v[-] %v(%v)[-]\n", iface.Name, statusColor, iface.Status)
-		fmt.Fprintf(&sb, "  Type: %v  Target: %v\n", iface.Type, iface.Target)
+		fmt.Fprintf(&sb, "[::b]%v[-] %v(%v)[-]\n", escapeTviewTags(iface.Name), statusColor, iface.Status)
+		fmt.Fprintf(&sb, "  Type: %v  Target: %v\n", escapeTviewTags(iface.Type), escapeTviewTags(iface.Target))
 		fmt.Fprintf(&sb, "  Bandwidth: %v\n", formatBandwidth(iface.Bandwidth))
 
 		if len(iface.Traffic) > 0 {
@@ -623,7 +623,7 @@ func FormatInterfaceEntry(iface InterfaceInfo) string {
 	if iface.Status != "connected" {
 		statusColor = "[red]"
 	}
-	return fmt.Sprintf("%v %v %v(%v)[-]", icon, iface.Name, statusColor, iface.Status)
+	return fmt.Sprintf("%v %v %v(%v)[-]", icon, escapeTviewTags(iface.Name), statusColor, iface.Status)
 }
 
 // FormatInterfaceDetail produces a multi-line detail view for the
@@ -634,8 +634,8 @@ func FormatInterfaceDetail(iface InterfaceInfo) string {
 	var sb strings.Builder
 
 	sb.WriteString("[::b]Interface Details[-]\n\n")
-	fmt.Fprintf(&sb, "  Name: %v\n", iface.Name)
-	fmt.Fprintf(&sb, "  Type: %v\n", iface.Type)
+	fmt.Fprintf(&sb, "  Name: %v\n", escapeTviewTags(iface.Name))
+	fmt.Fprintf(&sb, "  Type: %v\n", escapeTviewTags(iface.Type))
 
 	statusIcon := "○"
 	if iface.Status == "connected" {
@@ -644,7 +644,7 @@ func FormatInterfaceDetail(iface InterfaceInfo) string {
 	fmt.Fprintf(&sb, "  Status: %v %v\n", statusIcon, iface.Status)
 
 	if iface.Target != "" {
-		fmt.Fprintf(&sb, "  Target: %v\n", iface.Target)
+		fmt.Fprintf(&sb, "  Target: %v\n", escapeTviewTags(iface.Target))
 	}
 
 	fmt.Fprintf(&sb, "  Bandwidth: %v\n", formatBandwidth(iface.Bandwidth))

@@ -251,10 +251,12 @@ func formatAnnounceSummaryAt(ann AnnounceEntry, now time.Time) string {
 	case "peer":
 		typeIcon = "Ⓟ"
 	}
-	return fmt.Sprintf("%v %v [%v] %v",
+	// The display name is remote, and the "[type]" run is meant as literal
+	// text; escape both for the tag-parsing list this feeds.
+	return fmt.Sprintf("%v %v %v %v",
 		typeIcon,
-		ann.DisplayName,
-		ann.Type,
+		escapeTviewTags(ann.DisplayName),
+		escapeTviewTags("["+ann.Type+"]"),
 		relativeTimeAt(ann.Timestamp, now))
 }
 

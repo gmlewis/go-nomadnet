@@ -570,7 +570,9 @@ func (bd *BrowserDisplay) refreshURLHeader() {
 	g := bd.app.Glyphs
 	lstr := glyph(g, "node") + " " + disp
 	lmax := bd.contentWidth() - 1
-	bd.urlHeader.SetText(truncateEllipsis(lstr, lmax))
+	// Escape AFTER truncation so an escape sequence cannot be cut in half by
+	// the rune-count truncation.
+	bd.urlHeader.SetText(escapeTviewTags(truncateEllipsis(lstr, lmax)))
 }
 
 // canonicalURL returns the "<hex>:<path>" form of url when it parses as a
@@ -1206,7 +1208,7 @@ func (bd *BrowserDisplay) MarkedLink(target, fields string) {
 	// to spaces by the footer TextView.
 	lstr := "Link to " + t
 	lmax := bd.contentWidth()
-	bd.footerStatus.SetText(truncateEllipsis(lstr, lmax))
+	bd.footerStatus.SetText(escapeTviewTags(truncateEllipsis(lstr, lmax)))
 }
 
 // SetTransferStats records the response size, transfer size, and elapsed time

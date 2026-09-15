@@ -78,11 +78,11 @@ func renderNodes(nodes []*micron.Node) string {
 				sb.WriteString("[::b]")
 			}
 			for _, child := range node.Children {
-				sb.WriteString(child.Text)
+				sb.WriteString(escapeTviewTags(child.Text))
 			}
 			sb.WriteString("[-]\n")
 		case micron.NodeText:
-			sb.WriteString(node.Text)
+			sb.WriteString(escapeTviewTags(node.Text))
 		case micron.NodeBold:
 			sb.WriteString("[::b]")
 		case micron.NodeItalic:
@@ -97,27 +97,27 @@ func renderNodes(nodes []*micron.Node) string {
 		case micron.NodeLink:
 			sb.WriteString("[yellow]")
 			if node.LinkLabel != "" {
-				sb.WriteString(node.LinkLabel)
+				sb.WriteString(escapeTviewTags(node.LinkLabel))
 			} else {
-				sb.WriteString(node.LinkURL)
+				sb.WriteString(escapeTviewTags(node.LinkURL))
 			}
 			sb.WriteString("[-]")
 		case micron.NodeField:
 			if node.FieldName != "" {
-				fmt.Fprintf(&sb, "[cyan]%v[-]: ", node.FieldName)
+				fmt.Fprintf(&sb, "[cyan]%v[-]: ", escapeTviewTags(node.FieldName))
 			}
 			if node.FieldData != "" {
-				fmt.Fprintf(&sb, "[gray][%v][-]", node.FieldData)
+				fmt.Fprintf(&sb, "[gray]%v[-]", escapeTviewTags("["+node.FieldData+"]"))
 			} else {
 				sb.WriteString("[gray][...] [-]")
 			}
 		case micron.NodeCheckbox:
-			cb := "[ ]"
+			cb := escapeTviewTags("[ ]")
 			if node.FieldData == "true" || node.FieldData == "1" {
-				cb = "[x]"
+				cb = escapeTviewTags("[x]")
 			}
 			if node.FieldName != "" {
-				fmt.Fprintf(&sb, "[cyan]%v[-] %v", node.FieldName, cb)
+				fmt.Fprintf(&sb, "[cyan]%v[-] %v", escapeTviewTags(node.FieldName), cb)
 			} else {
 				sb.WriteString(cb)
 			}
@@ -127,7 +127,7 @@ func renderNodes(nodes []*micron.Node) string {
 				rb = "(*)"
 			}
 			if node.FieldName != "" {
-				fmt.Fprintf(&sb, "[cyan]%v[-] %v", node.FieldName, rb)
+				fmt.Fprintf(&sb, "[cyan]%v[-] %v", escapeTviewTags(node.FieldName), rb)
 			} else {
 				sb.WriteString(rb)
 			}
@@ -138,12 +138,12 @@ func renderNodes(nodes []*micron.Node) string {
 				sb.WriteString("]")
 			}
 		case micron.NodePartial:
-			fmt.Fprintf(&sb, "[gray][partial:%v][-]", node.PartialID)
+			fmt.Fprintf(&sb, "[gray]%v[-]", escapeTviewTags("[partial:"+node.PartialID+"]"))
 		case micron.NodeAnchor:
-			fmt.Fprintf(&sb, "[gray][#%v][-]", node.AnchorName)
+			fmt.Fprintf(&sb, "[gray]%v[-]", escapeTviewTags("[#"+node.AnchorName+"]"))
 		default:
 			if node.Text != "" {
-				sb.WriteString(node.Text)
+				sb.WriteString(escapeTviewTags(node.Text))
 			}
 		}
 	}

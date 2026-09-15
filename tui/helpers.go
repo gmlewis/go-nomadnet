@@ -156,21 +156,21 @@ func BuildTrustBanner(onTrust, onBlock, onIgnore func()) *tview.Flex {
 		SetTextColor(cubeHex3("#111")).
 		SetText(" ⚠ This peer isn't trusted yet.")
 
-	trustBtn := tview.NewButton("[Trust]")
+	trustBtn := tview.NewButton(escapeTviewTags("[Trust]"))
 	trustBtn.SetBackgroundColor(tcell.ColorMaroon)
 	trustBtn.SetLabelColor(cubeHex3("#111"))
 	if onTrust != nil {
 		trustBtn.SetSelectedFunc(func() { onTrust() })
 	}
 
-	blockBtn := tview.NewButton("[Block]")
+	blockBtn := tview.NewButton(escapeTviewTags("[Block]"))
 	blockBtn.SetBackgroundColor(tcell.ColorMaroon)
 	blockBtn.SetLabelColor(cubeHex3("#111"))
 	if onBlock != nil {
 		blockBtn.SetSelectedFunc(func() { onBlock() })
 	}
 
-	ignoreBtn := tview.NewButton("[Do nothing]")
+	ignoreBtn := tview.NewButton(escapeTviewTags("[Do nothing]"))
 	ignoreBtn.SetBackgroundColor(tcell.ColorMaroon)
 	ignoreBtn.SetLabelColor(cubeHex3("#111"))
 	if onIgnore != nil {

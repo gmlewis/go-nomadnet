@@ -71,6 +71,10 @@ func (c *centeredText) Draw(screen tcell.Screen) {
 		if i >= h {
 			break
 		}
+		// tview.Print parses style tags; this primitive emulates urwid.Text,
+		// which prints text literally. Escape so a bracket run in a dialog or
+		// loading label ("[12:34]", "[url]") is not swallowed as a tag.
+		line = escapeTviewTags(line)
 		rw := tview.TaggedStringWidth(line)
 		// urwid ceil-left centering: leftPad = ceil((w - rw) / 2).
 		leftPad := max((w-rw+1)/2, 0)

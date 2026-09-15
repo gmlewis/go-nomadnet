@@ -507,7 +507,9 @@ func (dm *DialogManager) ShowInputDialog(title, label, defaultValue string, onSu
 // the Python UX where the user never has to tab to a button.
 func (dm *DialogManager) ShowInputDialogBtns(title, label, defaultValue, confirmLabel, cancelLabel string, onSubmit func(string), onCancel func()) {
 	input := tview.NewInputField()
-	input.SetLabel(label)
+	// InputField labels are tag-parsed; callers pass plain prompts today, but
+	// escape defensively so a dynamic label can never swallow brackets.
+	input.SetLabel(escapeTviewTags(label))
 	input.SetText(defaultValue)
 	// Python's UrlEdit is a bare ReadlineEdit (default style, no background),
 	// so the input field uses the terminal-default background + default text,
@@ -563,7 +565,7 @@ func (dm *DialogManager) ShowRadioDialog(title, message string, options []string
 
 	for i, opt := range options {
 		idx := i
-		list.AddItem(opt, "", 0, func() {
+		list.AddItem(escapeTviewTags(opt), "", 0, func() {
 			if onSelect != nil {
 				onSelect(idx)
 			}

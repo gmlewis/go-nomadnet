@@ -40,7 +40,9 @@ func FormatNodeEntryRow(node NodeEntry, g GlyphSet) string {
 	if g == nil {
 		g = glyphsUnicode
 	}
-	return g["node"] + " " + nodeDisplayStr(node)
+	// The display name comes from a remote announce; escape it for the
+	// tag-parsing List it is rendered into.
+	return g["node"] + " " + escapeTviewTags(nodeDisplayStr(node))
 }
 
 // nodeDisplayStr mirrors Directory.simplest_display_str(source_hash, san=False)

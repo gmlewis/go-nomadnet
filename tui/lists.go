@@ -71,7 +71,8 @@ type TrustListItem struct {
 	TrustLevel string // "trusted", "untrusted", "unknown", "warning"
 }
 
-// NewTrustListItem creates a trust-styled list item text.
+// NewTrustListItem creates a trust-styled list item text. The name is external
+// (a peer display name) and tview.List parses tags, so escape it.
 func NewTrustListItem(name, trustLevel string) string {
 	icon := "○"
 	switch trustLevel {
@@ -82,7 +83,7 @@ func NewTrustListItem(name, trustLevel string) string {
 	case "warning":
 		icon = "⚠"
 	}
-	return icon + " " + name
+	return icon + " " + escapeTviewTags(name)
 }
 
 // EmptyStateMessage creates a centered empty state message.
@@ -91,7 +92,7 @@ func EmptyStateMessage(text string) tview.Primitive {
 	tv.SetTextAlign(tview.AlignCenter)
 	tv.SetDynamicColors(true)
 	tv.SetTextColor(tcell.ColorDefault)
-	tv.SetText("\n\n" + text)
+	tv.SetText("\n\n" + escapeTviewTags(text))
 	return tv
 }
 
@@ -100,7 +101,7 @@ func RefreshList(list *tview.List, items []TrustListItem) {
 	list.Clear()
 	for _, item := range items {
 		text := NewTrustListItem(item.Text, item.TrustLevel)
-		list.AddItem(text, item.Secondary, 0, nil)
+		list.AddItem(text, escapeTviewTags(item.Secondary), 0, nil)
 	}
 	if len(items) == 0 {
 		list.AddItem("[gray]No items[-]", "", 0, nil)

@@ -125,7 +125,7 @@ func TestFormatConversationItem(t *testing.T) {
 		{
 			name:     "failed",
 			conv:     ConversationInfo{DisplayName: "Mallory", TrustLevel: "trusted", Failed: true},
-			wantText: "[x] ● Mallory",
+			wantText: "[x[] ● Mallory", // "[x]" escaped for the tag-parsing list
 		},
 	}
 

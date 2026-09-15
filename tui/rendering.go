@@ -48,7 +48,7 @@ func FormatConversationItem(conv ConversationInfo, theme int) (text, secondary s
 	case conv.Unread:
 		prefix = "[!] "
 	case conv.Failed:
-		prefix = "[x] "
+		prefix = escapeTviewTags("[x] ")
 	}
 
 	trustIcon := "○"

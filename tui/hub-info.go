@@ -62,7 +62,9 @@ func NewHubInfoArea(app *App, hubName string) *HubInfoArea {
 	hia.widget = tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(hia.view, 0, 1, false)
 	hia.widget.SetBorder(true)
-	hia.widget.SetTitle(fmt.Sprintf(" %v ", hubName))
+	// Border titles are drawn with tview.Print (tag-parsed); the hub display
+	// name is external text.
+	hia.widget.SetTitle(fmt.Sprintf(" %v ", escapeTviewTags(hubName)))
 	hia.widget.SetInputCapture(hia.handleKey)
 	hia.refreshView()
 
@@ -197,7 +199,7 @@ func (hia *HubInfoArea) SetHubInfo(snap HubInfoSnapshot) {
 	hia.rooms = snap.JoinedRooms
 	hia.availableRooms = snap.AvailRooms
 	hia.snapshot = &snap
-	hia.widget.SetTitle(fmt.Sprintf(" %v ", snap.Name))
+	hia.widget.SetTitle(fmt.Sprintf(" %v ", escapeTviewTags(snap.Name)))
 	hia.refreshView()
 }
 
@@ -230,8 +232,11 @@ func (hia *HubInfoArea) refreshView() {
 
 	var sb strings.Builder
 	sb.WriteString("\n")
-	fmt.Fprintf(&sb, "  Hub      : %v\n", snap.Name)
-	fmt.Fprintf(&sb, "  Address  : %v\n", snap.Address)
+	// Hub name, advertised server name, status text and MOTD are external text
+	// rendered into a dynamic-colors TextView; escape each so a bracket run
+	// survives tview's tag parser.
+	fmt.Fprintf(&sb, "  Hub      : %v\n", escapeTviewTags(snap.Name))
+	fmt.Fprintf(&sb, "  Address  : %v\n", escapeTviewTags(snap.Address))
 	statusLabel := HubStatusLabels[snap.Status]
 	statusColor := colors["list_unknown"]
 	switch snap.Status {
@@ -242,7 +247,7 @@ func (hia *HubInfoArea) refreshView() {
 	case 3:
 		statusColor = colors["list_untrusted"]
 	}
-	fmt.Fprintf(&sb, "  [#%06x]Status   : %v (%v)[-]\n", uint32(statusColor), statusLabel, snap.StatusText)
+	fmt.Fprintf(&sb, "  [#%06x]Status   : %v (%v)[-]\n", uint32(statusColor), statusLabel, escapeTviewTags(snap.StatusText))
 	if snap.ServerName != "" {
 		// Python _show_hub_info (Channels.py:1764-1766): the advertised
 		// server name carries " v<version>" when the welcome provides one.
@@ -250,7 +255,7 @@ func (hia *HubInfoArea) refreshView() {
 		if snap.HubVersion != "" {
 			ver = " v" + snap.HubVersion
 		}
-		fmt.Fprintf(&sb, "  Server   : %v%v\n", snap.ServerName, ver)
+		fmt.Fprintf(&sb, "  Server   : %v%v\n", escapeTviewTags(snap.ServerName), ver)
 	}
 
 	autoLine := func(label string, on bool, key string, verb string) {
@@ -280,7 +285,7 @@ func (hia *HubInfoArea) refreshView() {
 	if snap.MOTD != "" {
 		sb.WriteString(hia.dividerRow() + "\n  MOTD:\n")
 		for line := range strings.SplitSeq(snap.MOTD, "\n") {
-			fmt.Fprintf(&sb, "  %v\n", line)
+			fmt.Fprintf(&sb, "  %v\n", escapeTviewTags(line))
 		}
 	}
 

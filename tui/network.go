@@ -1333,7 +1333,8 @@ func FormatAnnounceEntry(ann AnnounceEntry, showHash bool) string {
 		return ann.SourceHash
 	}
 	if ann.DisplayName != "" {
-		return ann.DisplayName
+		// Remote announce display name; rendered into a tag-parsing List.
+		return escapeTviewTags(ann.DisplayName)
 	}
 	return ann.SourceHash
 }
@@ -1356,12 +1357,12 @@ func FormatAnnounceFull(ann AnnounceEntry, showHash bool) string {
 // formatAnnounce formats an announce for the detail panel.
 func formatAnnounce(ann AnnounceEntry) string {
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "[::b]%v[-]\n", ann.DisplayName)
+	fmt.Fprintf(&sb, "[::b]%v[-]\n", escapeTviewTags(ann.DisplayName))
 	fmt.Fprintf(&sb, "Type: %v\n", ann.Type)
 	fmt.Fprintf(&sb, "Trust: %v\n", ann.TrustLevel)
 	fmt.Fprintf(&sb, "Hash: %v\n", ann.SourceHash)
 	fmt.Fprintf(&sb, "Time: %v\n", ann.Timestamp.Format("2006-01-02 15:04:05"))
-	fmt.Fprintf(&sb, "Data: %v\n", ann.AppData)
+	fmt.Fprintf(&sb, "Data: %v\n", escapeTviewTags(ann.AppData))
 	return sb.String()
 }
 
@@ -1371,9 +1372,9 @@ func (nd *NetworkDisplay) ShowLocalPeerDialog(lxmfAddr, identityHash, name strin
 	var sb strings.Builder
 	fmt.Fprintf(&sb, " LXMF Addr : %v\n", lxmfAddr)
 	fmt.Fprintf(&sb, " Identity  : %v\n", identityHash)
-	fmt.Fprintf(&sb, " Name      : %v\n", name)
+	fmt.Fprintf(&sb, " Name      : %v\n", escapeTviewTags(name))
 	if lastAnnounce != "" {
-		fmt.Fprintf(&sb, " Last Announce: %v\n", lastAnnounce)
+		fmt.Fprintf(&sb, " Last Announce: %v\n", escapeTviewTags(lastAnnounce))
 	}
 
 	buttons := tview.NewFlex().SetDirection(tview.FlexColumn).
@@ -1406,7 +1407,7 @@ func (nd *NetworkDisplay) ShowLXMFPeersDialog(peers []LXMFPeerEntry) {
 		if !peer.Alive {
 			status = "[red]dead[-]"
 		}
-		text := fmt.Sprintf("%v %v %v", peer.Name, status, truncateStr(peer.Hash, 8))
+		text := fmt.Sprintf("%v %v %v", escapeTviewTags(peer.Name), status, truncateStr(peer.Hash, 8))
 		secondary := fmt.Sprintf("Pending: %v", peer.Pending)
 		list.AddItem(text, secondary, 0, nil)
 	}

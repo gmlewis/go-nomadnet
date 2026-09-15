@@ -2584,7 +2584,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 								}
 								if savedName != "" {
 									bd.SetTransferStats(0, 0, elapsed, false)
-									bd.SetContent(fmt.Sprintf("Saved file: %s", savedName))
+									bd.SetContent(fmt.Sprintf("Saved file: %s", tview.Escape(savedName)))
 								} else {
 									bd.SetContent("[red]The requested local download file does not exist[-]")
 								}

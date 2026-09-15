@@ -940,7 +940,9 @@ func (cw *ConversationWidget) updatePeerInfo() {
 	}
 	rightParts = append(rightParts, speed+hopsStr)
 
-	cw.peerInfoBar.SetText(" " + name + " | " + strings.Join(rightParts, "  ") + " ")
+	// The peer display name is remote text; this bar is a dynamic-colors
+	// TextView.
+	cw.peerInfoBar.SetText(" " + escapeTviewTags(name) + " | " + strings.Join(rightParts, "  ") + " ")
 }
 
 // hasVisibleTrustBanner reports whether the trust banner should show,
@@ -1149,13 +1151,15 @@ func (cw *ConversationWidget) renderMessageEntry(msg ConversationMessage) *messa
 	// rows follow IMMEDIATELY (Python's LXMessageWidget Pile is
 	// [title, content, ""] — no blank between title and content,
 	// Conversations.py:2757-2762).
-	sb.WriteString(cw.styleHeader(title, style))
+	// The header embeds remote fields (title, signature description, attachment
+	// names); styleHeader's own [fg:bg]…[-:-] markup stays intact.
+	sb.WriteString(cw.styleHeader(escapeTviewTags(title), style))
 
 	// Body: indent every content line two columns (Python LXMessageWidget
-	// "  "+line for non-markdown content).
+	// "  "+line for non-markdown content). Content is the remote LXMF body.
 	for line := range strings.SplitSeq(msg.Content, "\n") {
 		sb.WriteString("  ")
-		sb.WriteString(line)
+		sb.WriteString(escapeTviewTags(line))
 		sb.WriteString("\n")
 	}
 	if msg.HasAttach && len(msg.AttachmentNames) == 0 {

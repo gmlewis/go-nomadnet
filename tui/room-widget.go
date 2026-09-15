@@ -477,7 +477,10 @@ func (rw *RoomWidget) SetRoomHeader(serverName, hubVersion, statusLabel string) 
 		}
 	}
 	left := " #" + rw.roomName + server + "  (" + rw.hubName + ")"
-	rw.header.SetText(left + " | " + statusLabel + " ")
+	// The room, server and hub display names are external text; escape them so
+	// a bracket run is not swallowed by tview's tag parser (the header TextView
+	// has dynamic colors on).
+	rw.header.SetText(escapeTviewTags(left + " | " + statusLabel + " "))
 }
 
 // sendMessage sends the current editor content.
@@ -1035,8 +1038,10 @@ func (rw *RoomWidget) renderMembers(prevHash string) {
 		// Python wraps the entry in AttrMap(entry, style) (Channels.py:705)
 		// whose fill paints the member's fg across the FULL pane width —
 		// the padded trailing spaces carry the fg in the item text itself.
+		// Escape AFTER padding: tview.List always parses tags, and the padding
+		// must measure the visible text, not the escape markup.
 		label = padToWidth(label, ' ', rw.usersWidth-2)
-		rw.usersList.AddItem(label, "", 0, nil)
+		rw.usersList.AddItem(escapeTviewTags(label), "", 0, nil)
 		// The member's palette color rides the ITEM style, not an embedded
 		// color tag: the fork's selected style replaces the item style on
 		// selection (the AttrMap(attr, focus_attr) pair) but cannot override

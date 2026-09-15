@@ -85,22 +85,25 @@ func (mvd *MessageViewDisplay) ShowMessage(msg MessageInfo) {
 		trustColor = "[yellow]"
 	}
 
-	fmt.Fprintf(&sb, "%v[%v][-] ", trustColor, strings.ToUpper(msg.TrustLevel))
-	fmt.Fprintf(&sb, "[::b]%v[-]", msg.Sender)
-	fmt.Fprintf(&sb, "  [gray]%v[-]\n", msg.Timestamp)
+	fmt.Fprintf(&sb, "%v%v[-] ", trustColor, escapeTviewTags("["+strings.ToUpper(msg.TrustLevel)+"]"))
+	fmt.Fprintf(&sb, "[::b]%v[-]", escapeTviewTags(msg.Sender))
+	fmt.Fprintf(&sb, "  [gray]%v[-]\n", escapeTviewTags(msg.Timestamp))
 	sb.WriteString(strings.Repeat("─", 40))
 	sb.WriteString("\n\n")
 
-	// Render content with Micron if it looks like Micron markup
+	// Render content with Micron if it looks like Micron markup; otherwise
+	// escape the remote body directly.
 	content := msg.Content
 	if looksLikeMicron(content) {
 		content = renderMicronAsText(content)
+	} else {
+		content = escapeTviewTags(content)
 	}
 
 	sb.WriteString(content)
 
 	if msg.HasAttached {
-		sb.WriteString("\n\n[gray][has attachments][-]")
+		sb.WriteString("\n\n[gray]" + escapeTviewTags("[has attachments]") + "[-]")
 	}
 
 	mvd.view.SetText(sb.String())
@@ -127,11 +130,11 @@ func renderMicronAsText(text string) string {
 		case micron.NodeHeading:
 			sb.WriteString("[::b]")
 			for _, child := range node.Children {
-				sb.WriteString(child.Text)
+				sb.WriteString(escapeTviewTags(child.Text))
 			}
 			sb.WriteString("[-]\n")
 		case micron.NodeText:
-			sb.WriteString(node.Text)
+			sb.WriteString(escapeTviewTags(node.Text))
 		case micron.NodeBold:
 			sb.WriteString("[::b]")
 		case micron.NodeItalic:
@@ -144,7 +147,7 @@ func renderMicronAsText(text string) string {
 			sb.WriteString(strings.Repeat("─", 30))
 			sb.WriteString("\n")
 		default:
-			sb.WriteString(node.Text)
+			sb.WriteString(escapeTviewTags(node.Text))
 		}
 	}
 	return sb.String()

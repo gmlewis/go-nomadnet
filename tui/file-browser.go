@@ -215,7 +215,9 @@ func fileBrowserContent(app *App, startPath string, onDone func(selected []strin
 			default:
 				disp = "  " + e.Name
 			}
-			list.AddItem(disp, "", 0, nil)
+			// File/dir names are external (downloaded names are remote-derived);
+			// List parses tags. No intentional markup is added to this list.
+			list.AddItem(escapeTviewTags(disp), "", 0, nil)
 		}
 		if keepFocus >= 0 && keepFocus < list.GetItemCount() {
 			list.SetCurrentItem(keepFocus)

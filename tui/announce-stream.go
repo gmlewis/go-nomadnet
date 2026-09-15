@@ -202,7 +202,8 @@ func (as *announceStreamDisplay) update() {
 	as.ilb.List.Clear()
 	for _, e := range as.entries {
 		text := FormatAnnounceStreamRow(e, now, showHash, as.nd.SanitizeNames, g)
-		as.ilb.List.AddItem(text, "", 0, nil)
+		// The row embeds a remote announce display name; List parses tags.
+		as.ilb.List.AddItem(escapeTviewTags(text), "", 0, nil)
 	}
 
 	// Empty state: a centered "No <tab> announces" (Network.py:521).

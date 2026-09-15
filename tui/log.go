@@ -186,7 +186,9 @@ func (ld *LogDisplay) StopTailing() {
 func tailFile(path string, n int) string {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return "[red]Error reading log file: " + err.Error() + "[-]"
+		// Plain text: the caller escapes the whole tail before rendering, so
+		// any markup here would be shown literally.
+		return "Error reading log file: " + err.Error()
 	}
 
 	lines := strings.Split(string(data), "\n")
