@@ -631,10 +631,6 @@ func (a *App) InitWithTransport(ts *rns.TransportSystem, identity *rns.Identity)
 		AspectFilter:                "lxmf.propagation",
 		ReceivedAnnounceWithContext: a.handlePNAnnounce,
 	})
-	a.Transport.RegisterAnnounceHandler(&rns.AnnounceHandler{
-		AspectFilter:                "rrc.chat",
-		ReceivedAnnounceWithContext: a.handleRRCAnnounce,
-	})
 
 	// Mirror the production initRNS path (which calls startNode so a node is
 	// hosted when the config enables it). Tests that need a specific node state
@@ -1196,19 +1192,6 @@ func (a *App) handlePNAnnounce(destHash []byte, identity *rns.Identity, appData 
 		AppData:      appData,
 		AnnounceType: "pn",
 	}, true)
-
-	if a.UIChangeCallback != nil {
-		a.UIChangeCallback()
-	}
-}
-
-// handleRRCAnnounce processes RRC chat announces.
-func (a *App) handleRRCAnnounce(destHash []byte, identity *rns.Identity, appData []byte, isPathResponse bool) {
-	a.Logger.Info("RRC announce received: hash=%x", destHash)
-
-	if a.RRC != nil {
-		a.RRC.AddHub(destHash, "rrc.chat", "")
-	}
 
 	if a.UIChangeCallback != nil {
 		a.UIChangeCallback()
