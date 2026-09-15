@@ -1325,47 +1325,6 @@ func ToggleDisplayMode(mode DisplayMode) DisplayMode {
 	return DisplayName
 }
 
-// FormatAnnounceEntry returns the display text for an announce entry
-// based on the given display mode. When showHash is true, the raw
-// source hash is shown instead of the display name.
-func FormatAnnounceEntry(ann AnnounceEntry, showHash bool) string {
-	if showHash {
-		return ann.SourceHash
-	}
-	if ann.DisplayName != "" {
-		// Remote announce display name; rendered into a tag-parsing List.
-		return escapeTviewTags(ann.DisplayName)
-	}
-	return ann.SourceHash
-}
-
-// FormatAnnounceFull returns the full announce line with type icon and
-// display text. Used for the announce stream list items.
-func FormatAnnounceFull(ann AnnounceEntry, showHash bool) string {
-	typeIcon := "○"
-	switch ann.Type {
-	case "node":
-		typeIcon = "Ⓝ"
-	case "pn":
-		typeIcon = "↑"
-	case "peer":
-		typeIcon = "Ⓟ"
-	}
-	return typeIcon + " " + FormatAnnounceEntry(ann, showHash)
-}
-
-// formatAnnounce formats an announce for the detail panel.
-func formatAnnounce(ann AnnounceEntry) string {
-	var sb strings.Builder
-	fmt.Fprintf(&sb, "[::b]%v[-]\n", escapeTviewTags(ann.DisplayName))
-	fmt.Fprintf(&sb, "Type: %v\n", ann.Type)
-	fmt.Fprintf(&sb, "Trust: %v\n", ann.TrustLevel)
-	fmt.Fprintf(&sb, "Hash: %v\n", ann.SourceHash)
-	fmt.Fprintf(&sb, "Time: %v\n", ann.Timestamp.Format("2006-01-02 15:04:05"))
-	fmt.Fprintf(&sb, "Data: %v\n", escapeTviewTags(ann.AppData))
-	return sb.String()
-}
-
 // ShowLocalPeerDialog shows the local peer information panel.
 // Matches Python's LocalPeer at Network.py:1259-1350.
 func (nd *NetworkDisplay) ShowLocalPeerDialog(lxmfAddr, identityHash, name string, lastAnnounce string) {

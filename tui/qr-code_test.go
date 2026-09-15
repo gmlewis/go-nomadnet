@@ -33,6 +33,14 @@ func TestGenerateQRASCII(t *testing.T) {
 	if strings.TrimSpace(got) == "" {
 		t.Error("GenerateQRASCII returned only whitespace")
 	}
+	// Half-block rendering must emit block glyphs, not the package's full-cell
+	// ANSI escape constants (which rendered as garbage in the QR dialog).
+	if !strings.ContainsAny(got, "█▀▄") {
+		t.Errorf("GenerateQRASCII has no half-block glyphs: %q", got)
+	}
+	if strings.ContainsRune(got, '\x1b') {
+		t.Errorf("GenerateQRASCII contains ANSI escape bytes: %q", got)
+	}
 }
 
 func TestGenerateQRASCIIEmptyInput(t *testing.T) {

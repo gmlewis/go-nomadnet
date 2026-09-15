@@ -27,6 +27,8 @@ var logMu sync.Mutex
 
 // logFunc receives the messages a page plugin emits through rns.log. It is nil
 // until SetLogFunc installs one, in which case guest log messages are dropped.
+//
+//lint:ignore U1000 referenced only with -tags=wago; this file compiles in every build
 var logFunc func(format string, args ...any)
 
 // SetLogFunc installs the logger that page plugins reach through the rns.log
@@ -38,6 +40,8 @@ func SetLogFunc(fn func(format string, args ...any)) {
 }
 
 // guestLogger returns the currently installed logger.
+//
+//lint:ignore U1000 referenced only with -tags=wago; this file compiles in every build
 func guestLogger() func(format string, args ...any) {
 	logMu.Lock()
 	defer logMu.Unlock()

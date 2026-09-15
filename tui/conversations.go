@@ -686,11 +686,6 @@ func (cd *ConversationsDisplay) handleInput(event *tcell.EventKey) *tcell.EventK
 	return event
 }
 
-// tabButtons returns the tab-bar buttons in row order.
-func (cd *ConversationsDisplay) tabButtons() []*UrwidButton {
-	return []*UrwidButton{cd.tabTrusted, cd.tabUntrusted}
-}
-
 // focusCurrentTab focuses the tab-bar button for the page's CURRENT filter tab
 // (showTrusted) and syncs the tab-bar focus index to it. Python's tab bar
 // behaves the same way after activating a tab: the tab bar's internal focus

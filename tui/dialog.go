@@ -324,39 +324,6 @@ func (dm *DialogManager) ShowDialog(title string, content tview.Primitive, width
 	dm.showOverlay(dm.app, title, content, width, height, onDismiss)
 }
 
-// CreateButtonRow creates a horizontal row of buttons with Left/Right arrow key
-// focus navigation and solid green active styling when focused.
-func CreateButtonRow(buttons ...*tview.Button) *tview.Flex {
-	flex := tview.NewFlex().SetDirection(tview.FlexColumn)
-	for i, btn := range buttons {
-		idx := i
-		btn.SetBackgroundColor(tcell.ColorBlack)
-		btn.SetLabelColor(tcell.ColorWhite)
-		btn.SetBackgroundColorActivated(tcell.ColorGreen)
-		btn.SetLabelColorActivated(tcell.ColorBlack)
-
-		btn.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-			switch event.Key() {
-			case tcell.KeyLeft, tcell.KeyBacktab:
-				if idx > 0 {
-					buttons[idx-1].Focus(func(p tview.Primitive) {})
-					return nil
-				}
-			case tcell.KeyRight, tcell.KeyTab:
-				if idx < len(buttons)-1 {
-					buttons[idx+1].Focus(func(p tview.Primitive) {})
-					return nil
-				}
-			}
-			return event
-		})
-
-		flex.AddItem(btn, 0, 1, i == 0)
-	}
-
-	return flex
-}
-
 // CreateUrwidButtonRow builds a flat urwid-style button row matching Python's
 // dialog button Columns (Conversations.py:801-805, Network.py:905-910,
 // Browser.py:1157-1161): a sequence of urwid.Button columns separated by blank
@@ -553,30 +520,6 @@ func (dm *DialogManager) ShowInputDialogBtns(title, label, defaultValue, confirm
 	// Tab/Down/Up/Esc traversal across input → confirm → cancel (urwid Pile
 	// focus model). wireDialogNav re-focuses the first item (the input).
 	wireDialogNav(dm.app, triggerCancel, []tview.Primitive{input, confirmBtn, cancelBtn})
-}
-
-// ShowRadioDialog shows a radio button selection dialog.
-func (dm *DialogManager) ShowRadioDialog(title, message string, options []string, onSelect func(int)) {
-	list := tview.NewList()
-	list.SetHighlightFullLine(true)
-	// list_focus is #111/#aaa in both dark and light themes; DialogManager has
-	// no theme reference, so ThemeDark yields the correct focus colors.
-	ApplyListFocusStyle(list, ThemeDark)
-
-	for i, opt := range options {
-		idx := i
-		list.AddItem(escapeTviewTags(opt), "", 0, func() {
-			if onSelect != nil {
-				onSelect(idx)
-			}
-		})
-	}
-
-	layout := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(NewUrwidCenterText(message), 1, 0, false).
-		AddItem(list, 0, 1, true)
-
-	dm.ShowDialog(title, layout, 0, 10, nil)
 }
 
 // ShowStatusDialog shows a centered status/notice message with an OK button

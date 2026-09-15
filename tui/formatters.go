@@ -233,33 +233,6 @@ func FormatSyncProgress(progress int) string {
 	return fmt.Sprintf("%v %v%%", bar, progress)
 }
 
-// FormatAnnounceSummary formats a single announce for the list view.
-func FormatAnnounceSummary(ann AnnounceEntry) string {
-	return formatAnnounceSummaryAt(ann, time.Now())
-}
-
-// formatAnnounceSummaryAt is the time-injected core of FormatAnnounceSummary,
-// exposed for tests so the relative-age bucket cannot shift while parallel
-// tests wait for a scheduler slot.
-func formatAnnounceSummaryAt(ann AnnounceEntry, now time.Time) string {
-	typeIcon := "○"
-	switch ann.Type {
-	case "node":
-		typeIcon = "Ⓝ"
-	case "pn":
-		typeIcon = "↑"
-	case "peer":
-		typeIcon = "Ⓟ"
-	}
-	// The display name is remote, and the "[type]" run is meant as literal
-	// text; escape both for the tag-parsing list this feeds.
-	return fmt.Sprintf("%v %v %v %v",
-		typeIcon,
-		escapeTviewTags(ann.DisplayName),
-		escapeTviewTags("["+ann.Type+"]"),
-		relativeTimeAt(ann.Timestamp, now))
-}
-
 // ExpandShorthands maps short destination type prefixes to their
 // full names. Matches Python's Browser.expand_shorthands().
 func ExpandShorthands(destType string) string {

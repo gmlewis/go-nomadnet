@@ -126,69 +126,6 @@ func TestRelativeTimeSubDay(t *testing.T) {
 	}
 }
 
-func TestFormatAnnounceSummary(t *testing.T) {
-	t.Parallel()
-
-	now := time.Now()
-	tests := []struct {
-		name string
-		ann  AnnounceEntry
-		want string
-	}{
-		{
-			name: "node type",
-			ann: AnnounceEntry{
-				Type:        "node",
-				DisplayName: "MyNode",
-				Timestamp:   now.Add(-5 * time.Minute),
-			},
-			// "[node]" and the display name are escaped for the tag-parsing
-			// list; tview renders the doubled bracket as a literal "[".
-			want: "Ⓝ MyNode [node[] 5m ago",
-		},
-		{
-			name: "pn type",
-			ann: AnnounceEntry{
-				Type:        "pn",
-				DisplayName: "PN-Relay",
-				Timestamp:   now.Add(-1 * time.Hour),
-			},
-			want: "↑ PN-Relay [pn[] 1h ago",
-		},
-		{
-			name: "peer type",
-			ann: AnnounceEntry{
-				Type:        "peer",
-				DisplayName: "Alice",
-				Timestamp:   now.Add(-2 * time.Hour),
-			},
-			want: "Ⓟ Alice [peer[] 2h ago",
-		},
-		{
-			name: "unknown type",
-			ann: AnnounceEntry{
-				Type:        "other",
-				DisplayName: "Unknown",
-				Timestamp:   now.Add(-30 * time.Second),
-			},
-			want: "○ Unknown [other[] just now",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			// Use the time-injected core: a wall-clock read here can land a
-			// scheduler-slot wait past the 1-minute relative-age boundary and
-			// flip "just now" into "1m ago".
-			got := formatAnnounceSummaryAt(tt.ann, now)
-			if got != tt.want {
-				t.Errorf("formatAnnounceSummaryAt() = %q, want %q", got, tt.want)
-			}
-		})
-	}
-}
-
 func TestFormatSize(t *testing.T) {
 	t.Parallel()
 

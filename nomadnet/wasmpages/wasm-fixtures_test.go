@@ -96,4 +96,6 @@ var MinWasmSpin = []byte{
 
 // prefixMarkup is the canned 16-byte Micron prefix MinWasmPagePlugin prepends
 // to every rendered response; the page-fixture tests assert on it.
+//
+//lint:ignore U1000 referenced only with -tags=wago
 const prefixMarkup = ">WASM PAGE\n----\n"

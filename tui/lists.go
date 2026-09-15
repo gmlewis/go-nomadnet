@@ -64,13 +64,6 @@ func (sl *SelectableList) SetOnSelect(fn func(index int)) {
 	})
 }
 
-// TrustListItem is a list item with trust-level styling.
-type TrustListItem struct {
-	Text       string
-	Secondary  string
-	TrustLevel string // "trusted", "untrusted", "unknown", "warning"
-}
-
 // NewTrustListItem creates a trust-styled list item text. The name is external
 // (a peer display name) and tview.List parses tags, so escape it.
 func NewTrustListItem(name, trustLevel string) string {
@@ -84,28 +77,6 @@ func NewTrustListItem(name, trustLevel string) string {
 		icon = "⚠"
 	}
 	return icon + " " + escapeTviewTags(name)
-}
-
-// EmptyStateMessage creates a centered empty state message.
-func EmptyStateMessage(text string) tview.Primitive {
-	tv := tview.NewTextView()
-	tv.SetTextAlign(tview.AlignCenter)
-	tv.SetDynamicColors(true)
-	tv.SetTextColor(tcell.ColorDefault)
-	tv.SetText("\n\n" + escapeTviewTags(text))
-	return tv
-}
-
-// RefreshList clears and repopulates a list with new items.
-func RefreshList(list *tview.List, items []TrustListItem) {
-	list.Clear()
-	for _, item := range items {
-		text := NewTrustListItem(item.Text, item.TrustLevel)
-		list.AddItem(text, escapeTviewTags(item.Secondary), 0, nil)
-	}
-	if len(items) == 0 {
-		list.AddItem("[gray]No items[-]", "", 0, nil)
-	}
 }
 
 // FocusFirstChild moves focus to the first focusable child of a Flex.

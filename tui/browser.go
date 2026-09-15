@@ -932,7 +932,11 @@ func (bd *BrowserDisplay) fetchAndSubstitute(p browser.Partial, cancel chan stru
 			bd.partialContents = map[string]string{}
 		}
 		if err != nil {
-			bd.partialContents[p.Raw] = fmt.Sprintf("[red]Could not load partial %v: %v[-]", p.URL, err)
+			// Plain text, matching Python's urwid.Text (Browser.py:715): the
+			// partial content is substituted into the page markup and
+			// re-parsed, so tview tags here would be escaped and shown
+			// literally.
+			bd.partialContents[p.Raw] = fmt.Sprintf("Could not load partial %v: %v", p.URL, err)
 		} else {
 			bd.partialContents[p.Raw] = strings.TrimRight(string(data), "\n")
 		}

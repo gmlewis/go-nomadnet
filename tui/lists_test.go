@@ -53,41 +53,6 @@ func TestNewTrustListItem(t *testing.T) {
 	}
 }
 
-func TestEmptyStateMessage(t *testing.T) {
-	t.Parallel()
-
-	msg := EmptyStateMessage("No items found")
-	if msg == nil {
-		t.Error("EmptyStateMessage returned nil")
-	}
-}
-
-func TestRefreshList(t *testing.T) {
-	t.Parallel()
-
-	sl := NewSelectableList()
-	items := []TrustListItem{
-		{Text: "Alice", TrustLevel: "trusted"},
-		{Text: "Bob", TrustLevel: "untrusted"},
-	}
-
-	RefreshList(sl.List, items)
-	if sl.GetItemCount() != 2 {
-		t.Errorf("item count = %v, want 2", sl.GetItemCount())
-	}
-}
-
-func TestRefreshListEmpty(t *testing.T) {
-	t.Parallel()
-
-	sl := NewSelectableList()
-	RefreshList(sl.List, nil)
-
-	if sl.GetItemCount() != 1 {
-		t.Errorf("item count = %v, want 1 (empty state)", sl.GetItemCount())
-	}
-}
-
 func TestFocusFirstChild(t *testing.T) {
 	t.Parallel()
 

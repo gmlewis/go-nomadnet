@@ -986,49 +986,6 @@ func TestComposeDisplayClear(t *testing.T) {
 	}
 }
 
-func TestNewMessageViewDisplay(t *testing.T) {
-	t.Parallel()
-
-	app := newTestApp()
-	mvd := NewMessageViewDisplay(app)
-
-	if mvd == nil {
-		t.Fatal("NewMessageViewDisplay returned nil")
-	}
-	if mvd.Widget() == nil {
-		t.Error("Widget() returned nil")
-	}
-}
-
-func TestMessageViewShowMessage(t *testing.T) {
-	t.Parallel()
-
-	app := newTestApp()
-	mvd := NewMessageViewDisplay(app)
-
-	msg := MessageInfo{
-		Title:      "Test",
-		Content:    "Hello World",
-		Sender:     "Alice",
-		Timestamp:  "2024-01-01",
-		TrustLevel: "trusted",
-	}
-
-	// Should not panic
-	mvd.ShowMessage(msg)
-}
-
-func TestMessageViewClear(t *testing.T) {
-	t.Parallel()
-
-	app := newTestApp()
-	mvd := NewMessageViewDisplay(app)
-
-	mvd.ShowMessage(MessageInfo{Content: "test"})
-	mvd.Clear()
-	// Should not panic
-}
-
 // TestRelativeTime checks the relativeTime helper against a fixed "now" so the
 // multi-day buckets are deterministic: past 24h the age uses a calendar-day
 // difference, so a time.Now()-25h age reads "2d ago" (not "yesterday") when the
@@ -1054,37 +1011,6 @@ func TestRelativeTime(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("relativeTime(%v) = %q, want %q", tt.input, got, tt.want)
 		}
-	}
-}
-
-func TestLooksLikeMicron(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		input string
-		want  bool
-	}{
-		{"plain text", false},
-		{">>Heading", true},
-		{"```code```", true},
-		{"`!bold`", true},
-		{"Hello World", false},
-	}
-
-	for _, tt := range tests {
-		got := looksLikeMicron(tt.input)
-		if got != tt.want {
-			t.Errorf("looksLikeMicron(%q) = %v, want %v", tt.input, got, tt.want)
-		}
-	}
-}
-
-func TestRenderMicronAsText(t *testing.T) {
-	t.Parallel()
-
-	result := renderMicronAsText("plain text")
-	if result != "plain text" {
-		t.Errorf("renderMicronAsText plain = %q, want %q", result, "plain text")
 	}
 }
 

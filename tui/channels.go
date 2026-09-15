@@ -381,44 +381,6 @@ func (cd *ChannelsDisplay) closeDialog() {
 	}
 }
 
-// showDialogOverlayInput shows an input dialog overlaid on the channels display
-// (Python's _show_dialog_overlay, 60% width, PACK). Enter on the field or the
-// confirm button submits; Esc/Cancel dismisses.
-func (cd *ChannelsDisplay) showDialogOverlayInput(title, label, defaultValue, confirmLabel, cancelLabel string, onSubmit func(string), onCancel func()) {
-	input := tview.NewInputField()
-	input.SetLabel(label)
-	input.SetText(defaultValue)
-	input.SetFieldBackgroundColor(tcell.ColorDefault)
-	input.SetFieldTextColor(tcell.ColorDefault)
-	close := cd.closeDialog
-	submit := func() {
-		v := strings.TrimSpace(input.GetText())
-		close()
-		if onSubmit != nil {
-			onSubmit(v)
-		}
-	}
-	confirmBtn := NewUrwidButton(confirmLabel).SetSelectedFunc(submit)
-	cancelBtn := NewUrwidButton(cancelLabel).SetSelectedFunc(func() {
-		close()
-		if onCancel != nil {
-			onCancel()
-		}
-	})
-	row := CreateUrwidButtonRow(confirmBtn, cancelBtn)
-	input.SetDoneFunc(func(key tcell.Key) {
-		if key == tcell.KeyEnter {
-			submit()
-		}
-	})
-	layout := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(input, 1, 0, true).
-		AddItem(row, 1, 0, false)
-	dialog := NewDialogLineBox(title, layout, close)
-	cd.showDialogOverlay(dialog, 4) // input 1 + button row 1 + 2 border
-	wireDialogNav(cd.app, close, []tview.Primitive{input, confirmBtn, cancelBtn})
-}
-
 // showDialogOverlayConfirm shows a Yes/No confirm overlaid on the channels
 // display (Python's _show_dialog_overlay, 60% width, PACK). title carries the
 // dialog's LineBox title (Python's "?" for remove_selected_dialog).

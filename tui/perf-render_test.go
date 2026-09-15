@@ -69,34 +69,6 @@ func BenchmarkBodyMarkup(b *testing.B) {
 	}
 }
 
-// BenchmarkFormatChannelMessage measures the per-message channel formatter
-// (tui/rendering.go:26), called once per rendered message row.
-func BenchmarkFormatChannelMessage(b *testing.B) {
-	msg := ChannelMessage{
-		Nick: "alice",
-		Text: "a normal channel message with enough words to be representative",
-	}
-	b.ReportAllocs()
-	for b.Loop() {
-		_ = FormatChannelMessage(msg, ThemeDark)
-	}
-}
-
-// BenchmarkFormatConversationItem measures the conversation-list row formatter
-// (tui/rendering.go:45), called once per conversation list entry.
-func BenchmarkFormatConversationItem(b *testing.B) {
-	conv := ConversationInfo{
-		DisplayName: "Alice Q. Example",
-		LastMessage: "the last received message preview text",
-		TrustLevel:  "trusted",
-		Unread:      true,
-	}
-	b.ReportAllocs()
-	for b.Loop() {
-		_, _ = FormatConversationItem(conv, ThemeDark)
-	}
-}
-
 // =============================================================================
 // Layer 3 — widget-level Draw (the per-frame cost the event loop pays)
 // =============================================================================

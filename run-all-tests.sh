@@ -177,18 +177,21 @@ if [[ "${GOOS_CHECK}" =~ ^(linux|darwin|windows)$ && "${GOARCH_CHECK}" =~ ^(amd6
 fi
 echo "modernize: clean (no suggestions)"
 
-echo "Running full staticcheck (all checks, with integration tags)..."
+echo "Running staticcheck (SA* + U1000, with integration tags)..."
 STATICCHECK_LOG="staticcheck.log"
-staticcheck -checks=SA* -tags=integration ./... >"${STATICCHECK_LOG}" 2>&1 || true
+staticcheck -checks=SA*,U1000 -tags=integration ./... >"${STATICCHECK_LOG}" 2>&1 || true
 if [[ "${GOOS_CHECK}" =~ ^(linux|darwin|windows)$ && "${GOARCH_CHECK}" =~ ^(amd64|arm64)$ ]]; then
-    staticcheck -checks=SA* -tags=integration,wago ./... >>"${STATICCHECK_LOG}" 2>&1 || true
+    staticcheck -checks=SA*,U1000 -tags=integration,wago ./... >>"${STATICCHECK_LOG}" 2>&1 || true
 fi
 if [[ -s "${STATICCHECK_LOG}" ]]; then
     echo "FAIL: staticcheck reported issues (see ${STATICCHECK_LOG}):" >&2
     cat "${STATICCHECK_LOG}" >&2
     exit 1
 fi
-echo "staticcheck: clean (all checks, with integration tags)"
+echo "staticcheck: clean (SA* + U1000, with integration tags)"
+
+echo "Running deadcode (advisory, whole-program reachability)..."
+bash "${REPO_ROOT}/scripts/deadcode-check.sh"
 
 # ---------------------------------------------------------------------------
 # Integration tests: the -short suite always (fast); the full suite only in
@@ -226,4 +229,4 @@ echo "All tests completed."
 sweep_test_tmp 0 || true
 trap - EXIT
 
-echo "Repo is squeaky-clean (errcheck + gopls check + modernize + staticcheck + all tests)."
+echo "Repo is squeaky-clean (errcheck + gopls check + modernize + staticcheck SA*/U1000 + deadcode advisory + all tests)."

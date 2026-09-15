@@ -23,21 +23,6 @@ import (
 	"github.com/rivo/tview"
 )
 
-// dispatchToDialog feeds a key event through the open channels dialog overlay
-// (SlotOverlay → DialogLineBox → focused content), the same path the running
-// event loop uses once the overlay page is on top.
-func dispatchToDialog(t *testing.T, cd *ChannelsDisplay, ev *tcell.EventKey) {
-	t.Helper()
-	if cd.dialogOverlay == nil {
-		t.Fatal("no dialog overlay open")
-	}
-	h := cd.dialogOverlay.InputHandler()
-	if h == nil {
-		t.Fatal("dialog overlay has no input handler")
-	}
-	h(ev, func(p tview.Primitive) { cd.app.SetFocus(p) })
-}
-
 // dialogItems walks the open dialog's content Flex and returns its items.
 func dialogItems(t *testing.T, cd *ChannelsDisplay) []tview.Primitive {
 	t.Helper()

@@ -35,13 +35,16 @@ func GenerateQRASCII(data string) (string, error) {
 
 	var buf bytes.Buffer
 	config := qrterminal.Config{
-		Level:          qrterminal.L,
-		Writer:         &buf,
-		HalfBlocks:     true,
-		BlackChar:      qrterminal.BLACK,
-		WhiteChar:      qrterminal.WHITE,
-		BlackWhiteChar: qrterminal.BLACK,
-		WhiteBlackChar: qrterminal.WHITE,
+		Level:      qrterminal.L,
+		Writer:     &buf,
+		HalfBlocks: true,
+		// Half-block glyphs. The package's BLACK/WHITE constants are full-cell
+		// ANSI escape sequences; using them with HalfBlocks emitted escape
+		// bytes instead of "█▀▄", so the QR dialog rendered garbage.
+		BlackChar:      qrterminal.BLACK_BLACK,
+		WhiteChar:      qrterminal.WHITE_WHITE,
+		BlackWhiteChar: qrterminal.BLACK_WHITE,
+		WhiteBlackChar: qrterminal.WHITE_BLACK,
 		QuietZone:      1,
 	}
 	qrterminal.GenerateWithConfig(data, config)

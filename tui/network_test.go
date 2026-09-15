@@ -20,7 +20,6 @@ import (
 	"time"
 
 	"github.com/gdamore/tcell/v2"
-	"github.com/gmlewis/go-nomadnet/nomadnet/micron"
 )
 
 func TestNewNetworkDisplay(t *testing.T) {
@@ -126,24 +125,6 @@ func TestTruncateStr(t *testing.T) {
 	}
 }
 
-func TestFormatAnnounce(t *testing.T) {
-	t.Parallel()
-
-	ann := AnnounceEntry{
-		DisplayName: "TestNode",
-		Type:        "node",
-		TrustLevel:  "trusted",
-		SourceHash:  "abc123",
-		Timestamp:   time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC),
-		AppData:     "Test data",
-	}
-
-	result := formatAnnounce(ann)
-	if result == "" {
-		t.Error("formatAnnounce returned empty")
-	}
-}
-
 func TestNewBrowserDisplay(t *testing.T) {
 	t.Parallel()
 
@@ -188,75 +169,6 @@ func TestBrowserHistory(t *testing.T) {
 	bd.GoForward()
 	if bd.URLDisplayText() != "url3" {
 		t.Errorf("After GoForward, URL = %q, want %q", bd.URLDisplayText(), "url3")
-	}
-}
-
-func TestNewMicronViewDisplay(t *testing.T) {
-	t.Parallel()
-
-	app := newTestApp()
-	mvd := NewMicronViewDisplay(app)
-
-	if mvd == nil {
-		t.Fatal("NewMicronViewDisplay returned nil")
-	}
-	if mvd.Widget() == nil {
-		t.Error("Widget() returned nil")
-	}
-}
-
-func TestMicronViewRenderPage(t *testing.T) {
-	t.Parallel()
-
-	app := newTestApp()
-	mvd := NewMicronViewDisplay(app)
-
-	mvd.RenderPage("Hello World")
-	// Should not panic
-}
-
-func TestMicronViewClear(t *testing.T) {
-	t.Parallel()
-
-	app := newTestApp()
-	mvd := NewMicronViewDisplay(app)
-
-	mvd.RenderPage("test")
-	mvd.Clear()
-	// Should not panic
-}
-
-func TestRenderNodes(t *testing.T) {
-	t.Parallel()
-
-	nodes := micron.Parse("Hello World")
-	result := renderNodes(nodes)
-	if result == "" {
-		t.Error("renderNodes returned empty")
-	}
-}
-
-func TestMapColor(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		input, want string
-	}{
-		{"red", "red"},
-		{"f00", "red"},
-		{"green", "green"},
-		{"0f0", "green"},
-		{"blue", "blue"},
-		{"00f", "blue"},
-		{"unknown", "#unknown"},
-		{"#ff8080", "#ff8080"},
-	}
-
-	for _, tt := range tests {
-		got := mapColor(tt.input)
-		if got != tt.want {
-			t.Errorf("mapColor(%q) = %q, want %q", tt.input, got, tt.want)
-		}
 	}
 }
 

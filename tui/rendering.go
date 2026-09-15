@@ -16,53 +16,8 @@
 package tui
 
 import (
-	"fmt"
 	"strings"
 )
-
-// FormatChannelMessage returns a tview-compatible formatted string
-// for a single channel message. Matches Python's ShowMessages() logic
-// but as a pure formatter (no widget dependency).
-func FormatChannelMessage(msg ChannelMessage, theme int) string {
-	nickStyle := nickColor(msg.Nick)
-
-	switch {
-	case msg.IsSystem:
-		return fmt.Sprintf("[gray]%v[-]", msg.Text)
-	case msg.IsNotice:
-		return fmt.Sprintf("[yellow]%v[-]", msg.Text)
-	case msg.IsError:
-		return fmt.Sprintf("[red]%v[-]", msg.Text)
-	case msg.IsSelf:
-		return fmt.Sprintf("[green]%v[-] %v", msg.Nick, msg.Text)
-	default:
-		return fmt.Sprintf("[%v]%v[-] %v", nickStyle, msg.Nick, msg.Text)
-	}
-}
-
-// FormatConversationItem formats a conversation list entry into
-// display text and secondary text. Matches Python's populateList() logic.
-func FormatConversationItem(conv ConversationInfo, theme int) (text, secondary string) {
-	prefix := "  "
-	switch {
-	case conv.Unread:
-		prefix = "[!] "
-	case conv.Failed:
-		prefix = escapeTviewTags("[x] ")
-	}
-
-	trustIcon := "○"
-	switch conv.TrustLevel {
-	case "trusted":
-		trustIcon = "●"
-	case "untrusted":
-		trustIcon = "×"
-	}
-
-	text = fmt.Sprintf("%v%v %v", prefix, trustIcon, conv.DisplayName)
-	secondary = fmt.Sprintf("%v — %v", RelativeTime(conv.LastTime), conv.LastMessage)
-	return text, secondary
-}
 
 // StyledSpan represents a styled text segment for rendering.
 type StyledSpan struct {
@@ -301,32 +256,4 @@ func sortSpans(spans []spanInfo) {
 		}
 		spans[j+1] = key
 	}
-}
-
-// FormatHubEntry formats a hub entry for display in the channel list.
-func FormatHubEntry(hub *HubEntry) string {
-	return fmt.Sprintf("%v %v", StatusIcon(hub.Status), hub.Name)
-}
-
-// FormatHubRoom formats a room entry for display under a hub.
-func FormatHubRoom(room HubRoom) string {
-	prefix := "  "
-	switch {
-	case room.Unread:
-		prefix = "  [!] "
-	case room.Joined:
-		prefix = "  [*] "
-	}
-	return fmt.Sprintf("%v#%v", prefix, room.Name)
-}
-
-// FormatMemberStatus formats a member entry for the member list.
-func FormatMemberStatus(member ChannelMember) (text, secondary string) {
-	status := "○"
-	if member.Online {
-		status = "●"
-	}
-	text = fmt.Sprintf("%v %v", status, member.Nick)
-	secondary = member.Hash
-	return text, secondary
 }

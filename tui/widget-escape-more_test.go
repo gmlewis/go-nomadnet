@@ -18,7 +18,6 @@ package tui
 import (
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/rivo/tview"
 )
@@ -44,33 +43,12 @@ func TestFormatNodeEntryRowEscapesBrackets(t *testing.T) {
 	}
 }
 
-func TestFormatAnnounceEntryEscapesBrackets(t *testing.T) {
-	t.Parallel()
-
-	got := FormatAnnounceEntry(AnnounceEntry{DisplayName: "[ann]"}, false)
-	if !strings.Contains(got, "[ann[]") {
-		t.Errorf("FormatAnnounceEntry not escaped: %q", got)
-	}
-}
-
 func TestNewTrustListItemEscapesBrackets(t *testing.T) {
 	t.Parallel()
 
 	got := NewTrustListItem("[peer]", "trusted")
 	if !strings.Contains(got, "[peer[]") {
 		t.Errorf("NewTrustListItem not escaped: %q", got)
-	}
-}
-
-func TestEmptyStateMessageEscapesBrackets(t *testing.T) {
-	t.Parallel()
-
-	tv, ok := EmptyStateMessage("[nothing]").(*tview.TextView)
-	if !ok {
-		t.Fatal("EmptyStateMessage did not return a *tview.TextView")
-	}
-	if got := tv.GetText(true); !strings.Contains(got, "[nothing]") {
-		t.Errorf("EmptyStateMessage lost brackets: %q", got)
 	}
 }
 
@@ -114,23 +92,5 @@ func TestNewLXMFPeersViewEscapesBrackets(t *testing.T) {
 	main, _ := lv.list.GetItemText(0)
 	if !strings.Contains(main, "[peer[]") {
 		t.Errorf("peer row not escaped: %q", main)
-	}
-}
-
-func TestFormatAnnounceEscapesBrackets(t *testing.T) {
-	t.Parallel()
-
-	got := formatAnnounce(AnnounceEntry{
-		DisplayName: "[name]",
-		AppData:     "[data]",
-		Timestamp:   time.Unix(0, 0),
-	})
-	tv := tview.NewTextView().SetDynamicColors(true)
-	tv.SetText(got)
-	plain := tv.GetText(true)
-	for _, want := range []string{"[name]", "[data]"} {
-		if !strings.Contains(plain, want) {
-			t.Errorf("announce detail lost %q: %q", want, plain)
-		}
 	}
 }
