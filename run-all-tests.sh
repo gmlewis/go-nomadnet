@@ -218,4 +218,12 @@ fi
 
 echo "All tests completed."
 
+# Sweep here instead of leaving it to the EXIT trap: the trap fires after the
+# last write to stdout, so its output — and the shell's xtrace of it — would
+# land below the verdict. Clearing the trap once the sweep has run keeps the
+# failure paths covered (the trap still fires on any early exit above) while
+# making the squeaky-clean line below genuinely the last thing printed.
+sweep_test_tmp 0 || true
+trap - EXIT
+
 echo "Repo is squeaky-clean (errcheck + gopls check + modernize + staticcheck + all tests)."
