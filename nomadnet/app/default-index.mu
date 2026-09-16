@@ -172,8 +172,8 @@ Reload this page and watch them climb.
 Each line is a Micron partial: your browser asks the hub for the module's markup
 and splices the reply in where the directive sits. The two directives differ by
 one field, and that is the whole difference between a per-page counter and a
-fleet-wide one. The same two partials sit in the footer of every page on every
-node, so the numbers you see here are the fleet's, not this node's alone.
+site-wide one. The same two partials sit in the footer of every page, so the
+numbers you see here reflect the entire site, not this page alone.
 
 `` `page=index.mu `` names the page being counted, so the module keeps this
 count under that key. A page that embeds the same partial under its own name
@@ -181,9 +181,9 @@ gets its own independent count, so copying this section into another page never
 disturbs this one.
 
 The second partial names no page at all. The module then falls back to its own
-default key, `*hits`*, and counts every page view anywhere in the fleet — the
+default key, `*hits`*, and counts every page view across the entire site — the
 same keyless mode you get by opening `/page/hit-counter.wasm` directly. Use
-that form when you want one number for the whole fleet instead of one per page.
+that form when you want one number for the whole site instead of one per page.
 
 The `*0`* in each directive is the refresh interval, and "less than one second"
 means "load once", so the numbers climb when a visitor arrives, not on a timer.
@@ -209,6 +209,6 @@ Last updated: `T1789570799`T
 
 `!This page's visits`!
 `{c7d0e7bbd883e595f53e14fa6986188c:/page/hit-counter.wasm`0`page=index.mu}
-`!Fleet-wide page views`!
+`!Total page views`!
 `{c7d0e7bbd883e595f53e14fa6986188c:/page/hit-counter.wasm`0}
 # footer:end
