@@ -28,7 +28,7 @@ import (
 func longPage(n int) string {
 	var b strings.Builder
 	b.WriteString(">> Long Page\n\n")
-	for i := 0; i < n; i++ {
+	for range n {
 		b.WriteString("line of text\n")
 	}
 	return b.String()

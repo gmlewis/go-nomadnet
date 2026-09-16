@@ -76,7 +76,7 @@ prefixes=(
   gorngit- rngit- gornx- gornsh- gornstatus- gorncp- gornodeconf-
   gornid- gornir- gornpath- gornpkg- gornprobe- gornsd- gorns-
   gornsh_py_wrapper_ missing-gornpath-binary
-  gorrcd- rrcd- rrc- gorngcs- gorrcbot-test-
+  gorrcd- rrcd- rrc- gorngcs- gorrcbot-test- gobot-test-
   gogit-clone- gogit-remote-rns- gogit-seed- gogit-reclone-
   golxmd-test- golxmd-filter
   pluginstore- prettysize-parity- prettyspeed-parity- testutils-signal-cleanup-
@@ -120,8 +120,12 @@ prefixes=(
 #
 #   - Belonging to a long-running server rather than a test, so the sweep must
 #     leave it alone even though -c sees the call site.
+#
+# "gobot-" is the gobot CLI's own scratch history directory. It is created with
+# os.MkdirTemp("", ...), so it lives under $TMPDIR rather than /tmp, and a bare
+# prefix is exactly the kind that could otherwise match a user's own /tmp file.
 not_swept_prefixes=(
-  .gorngit-clone- ratchet-encrypt-
+  .gorngit-clone- ratchet-encrypt- gobot-
   initiator- listener- src-
   serve-page-rns-
 )
