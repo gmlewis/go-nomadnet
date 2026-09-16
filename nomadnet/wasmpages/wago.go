@@ -111,7 +111,7 @@ func pageImports(filePath string) wago.Imports {
 			if length == 0 || int(ptr)+int(length) > len(mem) {
 				return
 			}
-			logf("wasm page %v: %s", filepath.Base(filePath), string(mem[ptr:ptr+length]))
+			logf("wasm page %v: %v", filepath.Base(filePath), string(mem[ptr:ptr+length]))
 		}),
 	}
 	addStoreImports(imports, pageStore(filePath))
