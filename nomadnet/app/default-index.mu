@@ -40,6 +40,27 @@ This node is running `!gonomadnet`! — a Go implementation of the Nomad Network
       `BT000000`FT000000▀`FT000000▀`BT000000`FT000000▀`BT000000`FT030303▀`FT040505▀`FT050506▀`FT070809▀`FT08090a▀`FT171719▀`FT1f1f21▀`FT212225▀`FT27292c▀`BT000000`FT2e2f33▀`BT030303`FT35373b▀`BT060707`FT3b3d41▀`BT0b0b0c`FT43464a▀`BT0f0f10`FT494b50▀`BT121314`FT4f5156▀`BT171819`FT52555a▀`BT1b1c1e`FT585a5f▀`BT1a1b1d`FT43464a▀`BT151619`FT2a2c30▀`BT16181b`FT2a2d31▀`BT17191c`FT26292d▀`BT282b2f`FT484b4e▀`BT4a4c50`FT6f7073▀`BT5d6064`FT6f7173▀`BT85888c`FT737577▀`BT86888d`FT626465▀`BT797c81`FT5c5d5e▀`BTb8babc`FT5e5f5f▀`BT77787d`FT636467▀`BT7c7d81`FT898a8e▀`BT8c8d91`FT535457▀`BT6a6c6f`FT1b1c1e▀`BT28292b`FT323335▀`BT000000`FT121315▀`BT1d1e21`FT393a3e▀`BT191a1d`FT626264▀`BT1f2022`FT373738▀`BT35363a`FT555658▀`BT1b1c1e`FT5e5f60▀`BT39393b`FT111112▀`BT48494b`FT000000▀`BT2f2f31▀`BT212122▀`BT1e1e1f▀`BT1e1e1f▀`BT252526▀`BT2f3031▀`BT363638▀`BT38393b`FT050505▀`BT333435`FT1c1d1d▀`BT1f1f20`FT373739▀`BT060607`FT444446▀`BT000000`FT2d2d2f▀`FT0c0c0d▀`FT030405▀`FT040506▀`BT000000`FT000000▀`BT000000▀`BT000000`FT000000▀`BT000000`FT000000▀`BT000000`FT000000▀`BT000000`FT000000▀`BT000000`FT000000▀`BT000000`FT000000▀`BT000000`FT111113▀`FT191b1c▀`FT1a1b1d▀`FT1c1d1f▀`FT1b1c1e▀`FT060607▀`BT000000`FT000000▀`BT000000`FT000000▀`BT000000`FT000000▀`BT000000`FT000000▀`BT000000`FT000000▀`BT000000`FT000000▀`BT000000`FT000000▀`BT000000`FT020202▀`BT000000`FT000000▀`BT010101▀`BT000000▀`BT000000▀`BT000000`FT000000▀`BT000000`FT000000▀`BT000000▀`BT000000`FT000000▀`BT000000`FT000000▀`BT000000`FT000000▀`BT000000`FT000000▀`BT000000`FT000000▀`BT000000`FT1b1c1e▀`BT030304`FT2d2f32▀`BT020303`FT1b1d20▀`BT030304`FT282a2c▀`BT060607`FT303235▀`BT020202`FT090a0b▀`BT000000`FT000000▀`BT000000`FT000000▀`BT000000`FT000000▀`BT000000`FT000000▀`BT000000`FT000000▀`FT000000▀`f`b
                     `BT000000`FT000000▀▀▀▀▀▀▀▀`FT000000▀`BT000000`FT010101▀`BT000000`FT040505▀`FT0d0e0f▀`FT151617▀`FT1c1d1e▀`FT2c2c2e▀`FT353638▀`FT525355▀`FT505153▀`FT4a4b4d▀`FT303032▀`FT050505▀`FT000000▀`FT000101▀`BT000000`FT000000▀`BT000000`FT040405▀`FT050506▀`FT111214▀`BT000000`FT070809▀`BT000000`FT000000▀`BT000000`FT161717▀`FT262728▀`FT2a2b2b▀`FT29292b▀`FT28292a▀`FT262627▀`FT1c1d1e▀`FT0e0e0f▀`FT000101▀`FT000000▀▀`f`b
 
+# hub-notice:begin
+# hub-notice:end
+
+# docs:begin
+>> Documentation
+
+Complete documentation for the Go Reticulum stack, its daemons and its
+tools is served from this node:
+
+  `F79d`_`*`[Complete Documentation Index`:/page/docs/index.mu]`*`_`f
+
+ • `_`!`[Getting Started`:/page/docs/getting-started/index.mu]`!`_ — Installation, initial configuration, and joining the mesh.
+ • `_`!`[Tools & Daemons`:/page/docs/tools/index.mu]`!`_ — Overview of all included executables:
+     • `_`!`[gorrcbot`:/page/docs/tools/gorrcbot.mu]`!`_ — The autonomous RRC chat bot and off-grid field assistant.
+     • `_`!`[gorrcd`:/page/docs/tools/gorrcd.mu]`!`_ — Standalone high-performance RRC hub daemon.
+     • `_`!`[gornodeconf`:/page/docs/tools/gornodeconf.mu]`!`_ — Hardware provisioning and firmware flasher for LoRa RNodes.
+     • `_`!`[CLI Utilities`:/page/docs/tools/cli-utilities.mu]`!`_ — Diagnostic and operational commands (`BT383838`Fdddgornstatus`f`b, `BT383838`Fdddgornpath`f`b, `BT383838`Fdddgornprobe`f`b, etc.).
+ • `_`!`[Guides`:/page/docs/guides/hardware.mu]`!`_ — Hardware projects, Wasm plugin sandboxing, and radio diagnostics.
+ • `_`!`[Reference`:/page/docs/reference/support-matrix.mu]`!`_ — Certified platform support matrix and cryptographic specifications.
+# docs:end
+
 >> About This Node
 
 This node automatically announces itself on the Nomad Network so others can discover and connect to it. The node serves Micron pages and files to remote peers over RNS links.
@@ -75,7 +96,7 @@ Add to your Reticulum client config (`*~/.reticulum/config`*):
 
 `!Public RRC room`! for talking about the Go port:
 
-  • `!#general`! — go-nomadnet, go-reticulum, asic-reticulum (bugs, ports, ideas)
+  • `!#general`! — gonomadnet, go-reticulum, asic-reticulum (bugs, ports, ideas)
 
 `!Join now`! (click / press Enter — adds the hub and room in Channels):
 
@@ -123,10 +144,10 @@ The page source lives in the repo: `*assets/wasm-pages/dynamic-page.wat`*.
 
 >> Sign the Guestbook
 
-This one is interactive: the `.wasm` page renders a Micron form, and the hub's
-sandbox hands your submitted field values to the module as `*request_data`*.
-Every entry is appended to the hub's on-disk store, so the guestbook you sign
-is the guestbook the next visitor reads.
+This one is interactive: the `.wasm` page renders a Micron form, and the
+`!gonomadnet Public Hub`!'s sandbox hands your submitted field values to the
+module as `*request_data`*. Every entry is appended to the hub's on-disk store,
+so the guestbook you sign is the guestbook the next visitor reads.
 
   `F79d`_`[Sign the guestbook`c7d0e7bbd883e595f53e14fa6986188c:/page/guestbook.wasm]`_`f
 
@@ -136,22 +157,23 @@ The page source lives in the repo: `*assets/wasm-pages/guestbook.wat`*.
 
 This page keeps hit counters the way 1990s web pages did, and there is no
 separate counter page to visit: both numbers below are rendered inside this page
-by a `.wasm` module the hub runs on every load, and they live in that module's
-own key/value store so they survive between visits. Reload this page and watch
-them climb.
+by a `.wasm` module the `!gonomadnet Public Hub`! runs on every load, and they
+live in that module's own key/value store so they survive between visits.
+Reload this page and watch them climb.
 
 `_`*This page's own counter:`*`_
 
 `{c7d0e7bbd883e595f53e14fa6986188c:/page/hit-counter.wasm`0`page=index.mu}
 
-`_`*Every visit to this node, counted under the module's default key:`*`_
+`_`*Every visit, counted under the module's default key:`*`_
 
 `{c7d0e7bbd883e595f53e14fa6986188c:/page/hit-counter.wasm`0}
 
 Each line is a Micron partial: your browser asks the hub for the module's markup
 and splices the reply in where the directive sits. The two directives differ by
 one field, and that is the whole difference between a per-page counter and a
-site-wide one.
+fleet-wide one. The same two partials sit in the footer of every page on every
+node, so the numbers you see here are the fleet's, not this node's alone.
 
 `` `page=index.mu `` names the page being counted, so the module keeps this
 count under that key. A page that embeds the same partial under its own name
@@ -159,15 +181,15 @@ gets its own independent count, so copying this section into another page never
 disturbs this one.
 
 The second partial names no page at all. The module then falls back to its own
-default key, `*hits`*, and counts every visit to the node — the same keyless
-mode you get by opening `/page/hit-counter.wasm` directly. Use that form when
-you want one number for the whole site instead of one per page.
+default key, `*hits`*, and counts every page view anywhere in the fleet — the
+same keyless mode you get by opening `/page/hit-counter.wasm` directly. Use
+that form when you want one number for the whole fleet instead of one per page.
 
 The `*0`* in each directive is the refresh interval, and "less than one second"
 means "load once", so the numbers climb when a visitor arrives, not on a timer.
 A partial is fetched over the same Reticulum links as any other page, so it
 works on any node that copies this section, whether or not that node can run
-`.wasm` itself.
+`.wasm` itself. Only the `!gonomadnet Public Hub`! runs the module.
 
 The page source lives in the repo: `*assets/wasm-pages/hit-counter.wat`*.
 
@@ -178,3 +200,15 @@ The page source lives in the repo: `*assets/wasm-pages/hit-counter.wat`*.
   • `*Go RNS (go-reticulum):`* `_`*`[https://github.com/gmlewis/go-reticulum`https://github.com/gmlewis/go-reticulum]`*`_ — `*rns://58a0406047ec2e7ce23e9e9a83b744df/public/go-reticulum.git`*
   • `*Go NomadNet (go-nomadnet):`* `_`*`[https://github.com/gmlewis/go-nomadnet`https://github.com/gmlewis/go-nomadnet]`*`_ — `*rns://58a0406047ec2e7ce23e9e9a83b744df/public/go-nomadnet.git`*
   • `*ASIC Reticulum:`* `_`*`[https://github.com/gmlewis/asic-reticulum`https://github.com/gmlewis/asic-reticulum]`*`_ — `*rns://58a0406047ec2e7ce23e9e9a83b744df/public/asic-reticulum.git`*
+
+# footer:begin
+
+<
+-
+Last updated: `T1789570799`T
+
+`!This page's visits`!
+`{c7d0e7bbd883e595f53e14fa6986188c:/page/hit-counter.wasm`0`page=index.mu}
+`!Fleet-wide page views`!
+`{c7d0e7bbd883e595f53e14fa6986188c:/page/hit-counter.wasm`0}
+# footer:end
