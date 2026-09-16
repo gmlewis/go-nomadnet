@@ -65,6 +65,18 @@ type BrowserDisplay struct {
 	contentFG tcell.Color
 	history   []string
 	histIdx   int
+	// histStates is parallel to history and holds the reading position saved
+	// with each entry: the focused line, the per-line part cursors, and the
+	// content pane's scroll row. Python keeps URLs only (Browser.py:131-132) and
+	// so returns to the top of a page on Back; this port deliberately remembers
+	// where the reader was, so Back/Forward land exactly where they left. The
+	// restore is applied by the renderPage of the re-fetched page, which may be
+	// a page that has since changed — every restored index is clamped.
+	histStates []navSnapshot
+	// pendingRestore, when non-nil, is the position the next renderPage must
+	// restore instead of starting the page at the top. GoBack/GoForward set it;
+	// every new navigation (pushHistory) and Reload clears it.
+	pendingRestore *navSnapshot
 	// pendingLinkHist marks that a nomadnetwork.node link click (HandleLink)
 	// eagerly pushed its target onto history and the fetch is still in flight.
 	// Python's retrieve_url appends to history only on SUCCESS (Browser.py:131-145,
@@ -464,11 +476,40 @@ func (bd *BrowserDisplay) interceptBlockedConnect(url string, proceed func()) bo
 // first so a superseded click does not leave a stale row below the new entry.
 func (bd *BrowserDisplay) pushHistory(url string) {
 	bd.rollbackPendingLink()
+	// Leaving the current page for a new one: remember where the reader was so
+	// Back can return there, and drop any Back/Forward restore — a fresh
+	// navigation always starts at the top.
+	bd.snapshotCurrent()
+	bd.pendingRestore = nil
 	if bd.histIdx < len(bd.history)-1 {
 		bd.history = bd.history[:bd.histIdx+1]
+		bd.histStates = bd.histStates[:bd.histIdx+1]
 	}
 	bd.history = append(bd.history, url)
+	bd.histStates = append(bd.histStates, navSnapshot{})
 	bd.histIdx = len(bd.history) - 1
+}
+
+// snapshotCurrent stores the reading position of the page being left on the
+// history entry it belongs to, so a later Back/Forward can restore it.
+func (bd *BrowserDisplay) snapshotCurrent() {
+	if bd.histIdx >= 0 && bd.histIdx < len(bd.histStates) {
+		bd.histStates[bd.histIdx] = bd.captureNavState()
+	}
+}
+
+// savedState returns the position recorded for history entry idx, or nil when
+// there is nothing to restore (a never-visited entry, or one whose page was
+// rendered before any state was captured).
+func (bd *BrowserDisplay) savedState(idx int) *navSnapshot {
+	if idx < 0 || idx >= len(bd.histStates) {
+		return nil
+	}
+	s := bd.histStates[idx]
+	if s.focusLine < 0 && s.scrollRow == 0 {
+		return nil
+	}
+	return &s
 }
 
 // popHistory drops the last history entry, restoring histIdx to the previous
@@ -482,6 +523,9 @@ func (bd *BrowserDisplay) popHistory() {
 		return
 	}
 	bd.history = bd.history[:len(bd.history)-1]
+	if len(bd.histStates) > 0 {
+		bd.histStates = bd.histStates[:len(bd.histStates)-1]
+	}
 	bd.histIdx = max(len(bd.history)-1, 0)
 }
 
@@ -506,7 +550,9 @@ func (bd *BrowserDisplay) GoBack() {
 		return
 	}
 	if bd.histIdx > 0 {
+		bd.snapshotCurrent()
 		bd.histIdx--
+		bd.pendingRestore = bd.savedState(bd.histIdx)
 		bd.displayURL(bd.history[bd.histIdx])
 	}
 }
@@ -518,7 +564,9 @@ func (bd *BrowserDisplay) GoForward() {
 		return
 	}
 	if bd.histIdx < len(bd.history)-1 {
+		bd.snapshotCurrent()
 		bd.histIdx++
+		bd.pendingRestore = bd.savedState(bd.histIdx)
 		bd.displayURL(bd.history[bd.histIdx])
 	}
 }
@@ -721,7 +769,18 @@ func (bd *BrowserDisplay) renderPage() {
 	// line's cursor starts at part 0, and the hardware-cursor visibility window
 	// is cleared. Mirrors Python update_page_display building a fresh Pile of
 	// LinkableText on every load (Browser.py:469-486).
-	bd.initNavState()
+	//
+	// A Back/Forward navigation instead restores the position recorded with that
+	// history entry, so returning to a page lands exactly where the reader left
+	// it — this port's deliberate extension of Python, whose history is URLs
+	// only and therefore always returns to the top.
+	if bd.pendingRestore != nil {
+		saved := *bd.pendingRestore
+		bd.pendingRestore = nil
+		bd.restoreNavState(saved)
+	} else {
+		bd.initNavState()
+	}
 
 	// Python's freshly built Pile focuses its first selectable widget, so when a
 	// page's first selectable part is a Micron text field, that row's Edit holds
@@ -985,6 +1044,9 @@ func (bd *BrowserDisplay) contentWidth() int {
 // Reload refreshes the current page.
 func (bd *BrowserDisplay) Reload() {
 	if bd.histIdx >= 0 && bd.histIdx < len(bd.history) {
+		// A reload starts the page at the top (Python re-retrieves and rebuilds
+		// the Pile), so it must not inherit a Back/Forward restore.
+		bd.pendingRestore = nil
 		bd.displayURL(bd.history[bd.histIdx])
 	}
 }
@@ -997,6 +1059,8 @@ func (bd *BrowserDisplay) Reload() {
 func (bd *BrowserDisplay) Disconnect() {
 	bd.CancelRequest()
 	bd.history = nil
+	bd.histStates = nil
+	bd.pendingRestore = nil
 	bd.histIdx = 0
 	bd.SetCurrentDest(nil)
 	bd.stopPartials()

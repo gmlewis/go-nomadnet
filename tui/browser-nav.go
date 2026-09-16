@@ -180,6 +180,51 @@ func (bd *BrowserDisplay) initNavState() {
 	bd.content.ScrollToBeginning()
 }
 
+// navSnapshot is one page's reading position: the focused line, that line's
+// part cursor for every line of the page, and the content pane's scroll row.
+// Browser history keeps one of these per entry so Back/Forward can put a page
+// back exactly where the reader left it.
+type navSnapshot struct {
+	focusLine   int
+	lineCursors []int
+	scrollRow   int
+}
+
+// captureNavState snapshots the current page's reading position for history.
+func (bd *BrowserDisplay) captureNavState() navSnapshot {
+	cursors := make([]int, len(bd.lineCursors))
+	copy(cursors, bd.lineCursors)
+	scroll, _ := bd.content.GetScrollOffset()
+	return navSnapshot{focusLine: bd.focusLine, lineCursors: cursors, scrollRow: scroll}
+}
+
+// restoreNavState puts a re-rendered page back at a saved reading position.
+//
+// Every index is clamped, because Back/Forward re-fetches the page: a page
+// whose content changed (a partial refreshed, a counter climbed, a node edited
+// its markup) can be shorter than it was when the position was recorded. A
+// saved focus line that no longer names a selectable line falls back to the
+// page's first selectable line, and the scroll row is clamped into range by the
+// TextView itself.
+//
+// The cursor-visibility window is cleared, exactly as initNavState does: the
+// restore is a page load, not a keypress, so the hardware cursor stays hidden
+// until the reader presses a key — and then appears at the restored line.
+func (bd *BrowserDisplay) restoreNavState(s navSnapshot) {
+	n := len(bd.currentLines)
+	bd.lineCursors = make([]int, n)
+	for i := 0; i < n && i < len(s.lineCursors); i++ {
+		bd.lineCursors[i] = s.lineCursors[i]
+	}
+	bd.focusLine = s.focusLine
+	if !bd.selectableLine(bd.focusLine) {
+		bd.focusLine = bd.firstSelectableLine()
+	}
+	bd.cursorHasKeypress = false
+	bd.stopCursorHideTimer()
+	bd.content.ScrollTo(s.scrollRow, 0)
+}
+
 // resetNavState clears the per-line focus + cursor model for a NON-rendered
 // content body — a fetch failure (SetContent, the OnBrowserError callback) or a
 // disconnect (Disconnect) that sets text on bd.content via showContent but does
@@ -662,7 +707,17 @@ func (bd *BrowserDisplay) automoveFocus() {
 }
 
 // drawCursor repositions the terminal hardware cursor at the focused line's
-// part cursor when the page body is focused and the cursor is visible.
+// part cursor when the page body is focused and the cursor is visible, and
+// explicitly HIDES it when it is not.
+//
+// The hide is load-bearing. Python builds a canvas with `cursor = None` for a
+// LinkableText whose key-timeout window has closed (MicronParser.py:986), and
+// urwid then leaves the terminal cursor hidden. tview, by contrast, only calls
+// HideCursor from SetFocus — never per frame — so merely skipping ShowCursor
+// leaves the cursor VISIBLE at whatever cell the previous page put it. That was
+// the reported bug: after following a link, the cursor stayed on the old page's
+// link row (or on a blank row of a short page) instead of the new page, whose
+// focus is already the top, starting clean.
 func (bd *BrowserDisplay) drawCursor(screen tcell.Screen) {
 	if screen == nil {
 		return
@@ -671,10 +726,14 @@ func (bd *BrowserDisplay) drawCursor(screen tcell.Screen) {
 		return
 	}
 	if !bd.cursorVisibleAt(time.Now(), true) {
+		screen.HideCursor()
 		return
 	}
 	cx, cy, ok := bd.cursorScreenXY()
 	if !ok {
+		// No selectable line to sit on (an empty or all-blank page): hide the
+		// cursor rather than leave it stranded where the last page left it.
+		screen.HideCursor()
 		return
 	}
 	x0, y0, _, _ := bd.content.GetInnerRect()

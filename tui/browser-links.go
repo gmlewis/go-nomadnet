@@ -210,6 +210,20 @@ func (bd *BrowserDisplay) loadLinkDirect(target, linkFields string) {
 	bd.rollbackPendingLink()
 	bd.pushHistory(target)
 	bd.pendingLinkHist = true
+	// Move the URL bar to the clicked target, exactly as the typed-URL / Back /
+	// Forward path does in displayURL. Without this the header kept the
+	// PREVIOUS page's URL: a click on the wasm demo (or any link) rendered the
+	// new page under a URL bar still naming the page the link was on, because
+	// refreshURLHeader only re-truncates bd.currentURLDisp rather than deriving
+	// it from the page. Python updates the control widget on every
+	// retrieve_url, clicked or typed (Browser.py:216-268 → 505-524).
+	//
+	// The centered "Retrieving" body that displayURL also shows is deliberately
+	// NOT swapped in here: HandleLink already leaves the old page's content up
+	// until the fetch lands, and swapping it changes the focused widget under a
+	// mouse click (it blurred the content pane and hid the cursor, breaking the
+	// click-focus contract that the mouse tests pin).
+	bd.setURLHeader(target)
 	if bd.OnRetrieveURL != nil {
 		// A submit link names the form fields to send (linkFields). Collect
 		// their live values from the rendered page (recurse_down analog) and

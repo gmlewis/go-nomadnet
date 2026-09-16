@@ -468,6 +468,16 @@ func (rw *RoomWidget) handleInput(event *tcell.EventKey) *tcell.EventKey {
 // " #<room> ┄ <advertised-server>[ v<version>]  (<hub display name>) | <Status> "
 // left-aligned, with the ┄ divider glyph between the room and the advertised
 // server name.
+//
+// The two names are different fields and are both rendered on purpose: the
+// advertised server name is what the hub calls itself in the RRC handshake
+// (hub.hub_name, from the hub's rrcd.toml), while the parenthesized hub display
+// name is this client's own label for that hub. They read as a duplicate only
+// when the hub advertises a name that already contains the client's label —
+// e.g. hub_name "gonomadnet Public RRC Hub" against the label "gonomadnet
+// Public Hub" — which is a naming choice on the hub, not a rendering bug. The
+// official RNS Community hub shows the intended shape: " ┄ rnscommunity
+// v0.3.2  (RNS Community)".
 func (rw *RoomWidget) SetRoomHeader(serverName, hubVersion, statusLabel string) {
 	server := ""
 	if serverName != "" {
