@@ -33,9 +33,17 @@
 // still be refreshed. The release notes embed a sha256 checksum table for
 // every uploaded artifact.
 //
+// Pruning happens LAST, after a successful publish: the assets of every release
+// older than the newest --keep-releases (default 10) releases that still have
+// assets are deleted. Releases, release notes, and git tags are never touched —
+// only the uploaded binaries — so module checksums and changelog links are
+// unaffected while release-asset storage stops growing without bound. Use
+// --prune-only to run just that step, e.g. --prune-only --dry-run to preview
+// exactly what an unattended publish would delete.
+//
 // Usage:
 //
-//	publish-github-release-artifacts [--force] [-n]
+//	publish-github-release-artifacts [--force] [-n|--dry-run] [--prune-only] [--keep-releases N]
 //
 // This program is normally driven by scripts/publish-github-release-artifacts.sh.
 package main
@@ -104,43 +112,71 @@ var hardwareTargets = []hwTarget{
 // binaryName is the published artifact's base name.
 const binaryName = "gonomadnet"
 
+// options gathers the command's knobs so run's signature stays readable.
+type options struct {
+	force        bool // replace an existing release for this version
+	dryRun       bool // make no remote changes: no tag, no publish, no deletes
+	pruneOnly    bool // prune old release assets and do nothing else
+	keepReleases int  // release-asset retention window (see prune.go)
+}
+
 func main() {
 	force := flag.Bool("force", false,
 		"replace an existing release for this version (deletes previous assets)")
 	dryRun := flag.Bool("n", false,
 		"print the full Markdown release description that would be written to "+
-			"stdout and exit, without publishing (artifacts are still built so "+
-			"the sha256 checksums are real)")
+			"stdout and exit, without publishing or deleting anything (artifacts "+
+			"are still built so the sha256 checksums are real)")
+	flag.BoolVar(dryRun, "dry-run", false, "alias for -n")
+	pruneOnly := flag.Bool("prune-only", false,
+		"prune old release assets only: skip the build, the tag, and the publish")
+	keepReleases := flag.Int("keep-releases", defaultKeepReleases,
+		"keep the assets of this many of the newest releases; every older release's "+
+			"assets are pruned (releases and tags are never deleted)")
 	flag.Usage = func() {
-		log.Printf("Usage: %v [--force] [-n]\n", os.Args[0])
+		log.Printf("Usage: %v [--force] [-n|--dry-run] [--prune-only] [--keep-releases N]\n", os.Args[0])
 		flag.PrintDefaults()
 	}
 	flag.Parse()
 
-	if err := run(*force, *dryRun); err != nil {
+	opts := options{
+		force:        *force,
+		dryRun:       *dryRun,
+		pruneOnly:    *pruneOnly,
+		keepReleases: *keepReleases,
+	}
+	if err := run(opts); err != nil {
 		log.Printf("publish-github-release-artifacts: %v\n", err)
 		os.Exit(1)
 	}
 }
 
 // run builds the release artifacts and either publishes them as a new GitHub
-// release (when dryRun is false) or prints the Markdown release description
-// that would be written to stdout and returns (when dryRun is true). In dry-run
-// mode all progress output is routed to stderr so stdout contains only the
-// Markdown description.
-func run(force, dryRun bool) error {
+// release (when opts.dryRun is false) or prints the Markdown release description
+// that would be written to stdout and returns (when opts.dryRun is true). In
+// dry-run mode all progress output is routed to stderr so stdout contains only
+// the Markdown description. Either way, the last step is pruning the assets of
+// releases that have fallen out of the retention window (see prune.go).
+func run(opts options) error {
 	if _, err := exec.LookPath("gh"); err != nil {
 		return fmt.Errorf("gh CLI not found in PATH: %w", err)
-	}
-	if _, err := exec.LookPath("go"); err != nil {
-		return fmt.Errorf("go toolchain not found in PATH: %w", err)
 	}
 
 	// progress writes build/publish chatter; in dry-run mode it goes to stderr
 	// so stdout stays a clean Markdown document.
 	progress := os.Stdout
-	if dryRun {
+	if opts.dryRun {
 		progress = os.Stderr
+	}
+
+	// --prune-only touches neither the working tree nor the artifacts, so it
+	// skips the toolchain check, the build, the tag, and the publish entirely.
+	if opts.pruneOnly {
+		return pruneReleaseAssets(opts.keepReleases, opts.dryRun, progress)
+	}
+
+	if _, err := exec.LookPath("go"); err != nil {
+		return fmt.Errorf("go toolchain not found in PATH: %w", err)
 	}
 
 	version, err := readVersion()
@@ -158,12 +194,12 @@ func run(force, dryRun bool) error {
 
 	exists := false
 	hasTag := false
-	if !dryRun {
+	if !opts.dryRun {
 		exists, err = releaseExists(tag)
 		if err != nil {
 			return err
 		}
-		if exists && !force {
+		if exists && !opts.force {
 			return fmt.Errorf(
 				"release %v already exists; run scripts/bump-minor-version.sh to "+
 					"bump the minor version in %v, then retry "+
@@ -182,7 +218,7 @@ func run(force, dryRun bool) error {
 	// keeps the proxy.golang.org / pkg.go.dev module checksum stable so
 	// consumers never hit a "verifying ... checksum mismatch" error. Dry-run
 	// skips all remote mutation.
-	if !dryRun {
+	if !opts.dryRun {
 		if hasTag {
 			mustFprintf(progress,
 				"Tag %v already exists; not modifying it (--force never touches tags). "+
@@ -222,16 +258,19 @@ func run(force, dryRun bool) error {
 
 	notes := buildReleaseNotes(version, repo, assets)
 
-	if dryRun {
+	if opts.dryRun {
 		fmt.Print(notes)
-		return nil
+		// Preview the retention step too, so a dry run shows everything a real
+		// run would do. The plan goes to progress (stderr), keeping stdout a
+		// clean Markdown document.
+		return pruneReleaseAssets(opts.keepReleases, true, progress)
 	}
 
 	// Recreate the GitHub Release (release page + uploaded binaries) WITHOUT
 	// touching the git tag. With --force the existing release is deleted first
 	// (no --cleanup-tag, so the tag stays); `gh release create` then reuses the
 	// existing (immutable) tag.
-	if force && exists {
+	if opts.force && exists {
 		mustFprintf(progress,
 			"--force: deleting existing release %v and its assets (tag is left untouched)\n", tag)
 		if err := gh("release", "delete", tag, "--yes"); err != nil {
@@ -248,6 +287,18 @@ func run(force, dryRun bool) error {
 	mustFprintf(progress, "\nPublished release %v with %v asset(s):\n", tag, len(assets))
 	for _, a := range assets {
 		mustFprintf(progress, "  %v\n", filepath.Base(a))
+	}
+
+	// LAST: retire the assets of the release that just fell out of the
+	// retention window. This only runs after the publish has succeeded, so a
+	// failed or aborted publish never deletes anything. The failure message
+	// spells out that the release itself is already published, because the
+	// prune is resumable and can be finished on its own.
+	if err := pruneReleaseAssets(opts.keepReleases, false, progress); err != nil {
+		return fmt.Errorf(
+			"release %v was published successfully, but pruning old release assets "+
+				"failed (re-run ./scripts/publish-github-release-artifacts.sh "+
+				"--prune-only to finish the cleanup): %w", tag, err)
 	}
 	return nil
 }
