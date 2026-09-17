@@ -10,6 +10,11 @@ peer-to-peer messaging and information sharing system built on
 communication over any network transport — including LoRa, packet radio, and
 the internet.
 
+> [!WARNING]
+> ### ⚠️ Emergency, Medical, and Safety Disclaimer
+> **NOT A CERTIFIED LIFE-SAFETY OR MEDICAL DEVICE.**
+> Communications over unlicensed LoRa/ISM frequencies and ad-hoc networks are best-effort and **never guaranteed**. This software is **NOT** connected to official 911/112 emergency dispatch, government rescue agencies, or COSPAS-SARSAT search-and-rescue satellites, and is **NOT** a substitute for certified EPIRBs, PLBs, or commercial satellite messengers. Any first-aid protocols, navigation coordinates, or survival guides accessed or relayed are informational references only. Users assume all risks of wilderness travel and off-grid communications. Read [**DISCLAIMER.md**](DISCLAIMER.md) for the full legal terms and release of liability.
+
 > [!TIP]
 > ### Building a Dedicated Handheld NomadNet Device?
 > Jump straight to the [**Reticulum Hardware Projects Guide**](https://github.com/gmlewis/asic-reticulum/tree/master/Hardware-Projects-Guide.md) for full step-by-step assembly instructions, hardware bills of materials, pre-compiled release binaries, and zero-install in-browser web flashing.
