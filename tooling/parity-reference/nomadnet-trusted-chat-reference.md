@@ -2,7 +2,7 @@
 
 Source-of-truth behavior captured live on 2026-08-23 by running the identical
 trusted-chat experiment on **nomadnet 1.2.8 (Python, urwid)** on two machines
-(Mac `gonomadnet` tmux session; Linux box `glenn-OMEN-875` `gnomad-linux` tmux
+(Mac `gonomadnet` tmux session; Linux box `gnomad-linux` tmux
 session), both in 24-bit color (`[textui] colormode = 24bit`), sharing the same
 `~/.nomadnetwork` identities as the gonomadnet runs. Use this to diff gonomadnet
 (Go) behavior and file parity bugs (see `TODO.md` § "Parity bugs found").
@@ -256,7 +256,7 @@ Two-column layout:
 (captures `40`–`46`)
 
 A clean control (two nodes that had never conversed) to verify the
-trust-contamination-sensitive bugs. Mac Mini M2 (`glenn-mac-mini-m2`, nomadnet
+trust-contamination-sensitive bugs. Mac Mini M2 (nomadnet
 1.2.8 via `pip3 install nomadnet`, `colormode = 24bit`, on the same public RNS
 transports) is the previously-unknown node; its LXMF is
 `712ffbfdb82c7fe60d0c5fa163ad2955`. The Mac's LXMF is `2a6105…` and its

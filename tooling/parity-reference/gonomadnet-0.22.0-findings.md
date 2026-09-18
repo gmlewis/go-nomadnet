@@ -1,7 +1,7 @@
 # gonomadnet 0.22.0 exploration findings (live run vs nomadnet 1.2.8 reference)
 
 Run gonomadnet 0.22.0 on both the Mac (`gonomadnet` tmux session) and the Mac
-Mini M2 (`gnomad-linux` tmux session, ssh'd to `glenn-mac-mini-m2`) — same
+Mini M2 (`gnomad-linux` tmux session) — same
 public RNS transports, shared `~/.nomadnetwork` identities (Mac LXMF
 `2a6105f57145860441a62fe3b2a1352c`, Mac Mini `712ffbfdb82c7fe60d0c5fa163ad2955`)
 — in 24-bit via `env -u NO_COLOR COLORTERM=truecolor ./gonomadnet.sh`, and

@@ -461,7 +461,7 @@ max goroutine ID (combine with uptime to estimate spawn churn), and callouts
 for `[running]`/`[runnable]`/`[syscall]` goroutines.
 
 ```sh
-go run ./cmd/dumpsum gonomadnet-glenn-OMEN-875-kill-QUIT-1787710981.log
+go run ./cmd/dumpsum gonomadnet-node-kill-QUIT-1787710981.log
 kill -QUIT <pid> && sleep 1 && go run ./cmd/dumpsum -state running,runnable <stderr-log>
 curl -s localhost:6060/debug/pprof/goroutine?debug=2 | go run ./cmd/dumpsum -
 ```
@@ -502,7 +502,7 @@ no node-side change can help. Verify group membership on a receiver with
 Golden values are pinned by tests: group `ff12:0:d70b:fb1c:16e4:5e39:485e:31e1`
 for `"reticulum"` was confirmed against a live `/proc/net/igmp6` on 2026-08-26.
 
-### `~/bin/cpu-watch.sh` on glenn-OMEN-875
+### `~/bin/cpu-watch.sh` for CPU Monitoring
 
 A rootless cron (`* * * * *`) appends top-5 CPU processes plus gonomadnet's
 hottest threads to `~/cpu-watch.log` every minute, rotating at ~8 MB. When the
