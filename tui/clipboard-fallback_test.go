@@ -16,6 +16,7 @@
 package tui
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -27,6 +28,13 @@ import (
 // The tmux `load-buffer -w` fallback both fills the running tmux server's
 // paste buffer and forwards OSC 52 toward the outer terminal, so the Peer
 // Info address copy reaches the machine the user types on.
+//
+// Fleet bug #14 (the glenn-mac-mini-m2 SSH session) is the same symptom with a
+// WORKING native backend: AppKit is present, so the golang.design write
+// succeeds — and fills the REMOTE Mac's pasteboard, which the user never sees.
+// The tmux buffer write must therefore run inside tmux even when ready is
+// true; tmux drops an application's own OSC 52 under its default
+// `set-clipboard external` but always forwards its own `load-buffer -w`.
 
 func TestClipboardTmuxFallbackWhenNoBackend(t *testing.T) {
 	t.Setenv("TMUX", "/tmp/tmux-0/default,123,0")
@@ -89,5 +97,52 @@ func TestClipboardWriteTextFallsBackWhenInitFailed(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("the tmux fallback did not run — the copy would be a silent no-op without a system clipboard")
+	}
+}
+
+// TestClipboardWriteTextFillsTmuxBufferWithNativeBackend pins fleet bug #14:
+// inside tmux the buffer write must happen even when the native clipboard
+// backend works (the AppKit-backed remote mac), because the native write only
+// reaches the pasteboard of the machine gonomadnet runs on.
+func TestClipboardWriteTextFillsTmuxBufferWithNativeBackend(t *testing.T) {
+	t.Setenv("TMUX", "/tmp/tmux-501/default,123,0")
+	sc := &systemClipboard{}
+	// Freeze init so the probe never runs (and never succeeds on) the test
+	// machine's own pasteboard, then model a node whose backend works.
+	sc.initOnce.Do(func() {})
+	sc.ready = true
+
+	buffered := make(chan string, 1)
+	origLoad := tmuxLoadBuffer
+	tmuxLoadBuffer = func(text string) error {
+		buffered <- text
+		return nil
+	}
+	t.Cleanup(func() { tmuxLoadBuffer = origLoad })
+
+	native := make(chan string, 1)
+	origNative := nativeClipboardWrite
+	nativeClipboardWrite = func(_ context.Context, text string) { native <- text }
+	t.Cleanup(func() { nativeClipboardWrite = origNative })
+
+	const addr = "da3cc92fff58eb70266d5d6190525bfb"
+	sc.WriteText(addr)
+
+	select {
+	case got := <-buffered:
+		if got != addr {
+			t.Errorf("tmux buffer payload = %q, want %q", got, addr)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("the tmux buffer write did not run with a working native backend — the copy would land only on the remote pasteboard")
+	}
+
+	select {
+	case got := <-native:
+		if got != addr {
+			t.Errorf("native payload = %q, want %q", got, addr)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("the native clipboard write did not run")
 	}
 }

@@ -34,8 +34,11 @@ import (
 // The implementation wraps golang.design/x/clipboard (pure Go on every
 // platform: AppKit via purego on macOS, X11/Wayland on Linux — no cgo).
 // When no clipboard backend is available (e.g. a headless box without an X
-// server), selection still draws and the writer falls back to the tmux paste
-// buffer when running inside tmux.
+// server), selection still draws and the writer uses the tmux paste buffer
+// when running inside tmux. Inside tmux the tmux path ALWAYS runs, even when
+// the native backend works: tmux's own `load-buffer -w` reaches the outer
+// terminal under the default `set-clipboard external`, while an application's
+// own OSC 52 is dropped by it.
 type textClipboard interface {
 	// WriteText puts text on the system clipboard. Implementations must be
 	// safe to call from any goroutine and must never block the UI loop for
@@ -72,33 +75,47 @@ func (s *systemClipboard) init() {
 // the call returns (verified: a second process reads it back, and osascript
 // sees it), so this never blocks the UI loop on the done channel.
 //
-// When the platform backend is unavailable (a Linux box over SSH has no X11/
-// Wayland connection — the glenn-OMEN-875 fleet case), the write falls back
-// to the tmux paste buffer: `load-buffer -w` both sets the running tmux
-// server's buffer (prefix-] paste) and forwards OSC 52 to its outer terminal,
-// so the copy still reaches the machine the user types on.
+// Inside tmux the text is ALSO loaded into the running tmux server's paste
+// buffer (`load-buffer -w`), which is what makes the copy reach the machine
+// the user is typing on. tmux's own clipboard write is forwarded to the outer
+// terminal under the default `set-clipboard external`, but an application's
+// own OSC 52 escape is NOT (verified against tmux 3.7c: with `external` the
+// app's OSC 52 never leaves tmux, while `load-buffer -w` does). That matters
+// for a remote node with a WORKING native backend — the AppKit-backed
+// glenn-mac-mini-m2 over SSH — where ready is true and the native write only
+// fills the remote pasteboard; without the tmux write nothing would reach the
+// local clipboard. On a headless Linux node over SSH (glenn-OMEN-875) there
+// is no native backend at all, so the tmux write is the only path.
 func (s *systemClipboard) WriteText(text string) {
 	s.init()
 	if text == "" {
 		return
 	}
-	if s.ready {
-		ctx, cancel := clipboardContext()
-		go func() {
-			defer cancel()
-			_, _ = clipboard.Write(ctx, clipboard.FmtText, []byte(text))
-		}()
+	go s.tmuxFallback(text)
+	if !s.ready {
 		return
 	}
-	go s.tmuxFallback(text)
+	ctx, cancel := clipboardContext()
+	go func() {
+		defer cancel()
+		nativeClipboardWrite(ctx, text)
+	}()
+}
+
+// nativeClipboardWrite posts text to the platform clipboard of the machine
+// gonomadnet runs on. A package variable so tests can observe the native path
+// without touching the real pasteboard.
+var nativeClipboardWrite = func(ctx context.Context, text string) {
+	_, _ = clipboard.Write(ctx, clipboard.FmtText, []byte(text))
 }
 
 // tmuxFallback stores text in the running tmux server's paste buffer via
 // `tmux load-buffer -w`. The -w flag makes tmux itself emit the OSC 52 escape
 // toward its outer terminal (forwarding through nested tmux layers), so the
-// copy reaches the local clipboard even when the application's own OSC 52 was
-// swallowed by an intermediate tmux with set-clipboard off. Best effort: any
-// failure is silent (the selection highlight already confirms the gesture).
+// copy reaches the local clipboard even though the intermediate tmux drops the
+// application's own OSC 52 under its default `set-clipboard external`. Best
+// effort: any failure is silent (the selection highlight already confirms the
+// gesture).
 func (s *systemClipboard) tmuxFallback(text string) {
 	if os.Getenv("TMUX") == "" {
 		return

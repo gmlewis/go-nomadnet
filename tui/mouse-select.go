@@ -195,11 +195,18 @@ func (s *selectionTracker) copySelection() {
 	// The system-clipboard write below lands on the machine gonomadnet RUNS
 	// on. Over SSH (the glenn-mac-mini-m2 and every other fleet session) that
 	// is the remote box's pasteboard — Cmd-V on the machine the user is
-	// typing on never sees it (fleet bug #11). Also post OSC 52 THROUGH the
-	// terminal: the escape travels app → tmux (set-clipboard external
-	// forwards it) → outer terminal, which sets the clipboard of the machine
-	// the user actually types on. Running locally both paths write the same
-	// clipboard; over SSH OSC 52 is the only one that works.
+	// typing on never sees it (fleet bug #11). The paths that DO cross the
+	// SSH boundary:
+	//
+	//   - `tmux load-buffer -w`, run by WriteText whenever $TMUX is set: tmux
+	//     emits the OSC 52 itself, and tmux's own clipboard write is forwarded
+	//     to the outer terminal under the default `set-clipboard external`.
+	//   - The OSC 52 posted below through tcell: only forwarded where tmux's
+	//     set-clipboard is `on` (the local Mac, glenn-kamrui) — with
+	//     `external` tmux DROPS an application's OSC 52 (verified on 3.7c).
+	//
+	// Running locally all paths write the same clipboard; over SSH the tmux
+	// buffer write is the one that reaches the user's machine.
 	s.app.clipboard.WriteText(normalized)
 	s.postOSCClipboard(normalized)
 }
