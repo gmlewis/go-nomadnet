@@ -287,6 +287,51 @@ func TestCacheFilenameMatchesPython(t *testing.T) {
 	}
 }
 
+// TestCanonicalURLIsTheCacheKey pins that CanonicalURL() -- what the reload path
+// must uncache -- is the canonical "<hex>:<path>" form the page cache is keyed
+// by (cache_page/get_cached both hash self.current_url(), Browser.py:1615 and
+// 1564), NOT the raw relative link target CurrentURL() returns. Python's
+// reload() uncaches self.current_url() (Browser.py:1097-1101), so its key always
+// matches; uncaching the raw target instead leaves the entry in place, and the
+// reload's get_cached then re-serves the stale page without fetching it.
+func TestCanonicalURLIsTheCacheKey(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	bd := NewBrowserDisplay(app)
+
+	dest, err := hex.DecodeString("c7d0e7bbd883e595f53e14fa6986188c")
+	if err != nil {
+		t.Fatalf("hex.DecodeString: %v", err)
+	}
+	bd.SetCurrentDest(dest)
+
+	// A link click inside a served page carries a relative target, which is
+	// exactly what history -- and therefore CurrentURL() -- holds.
+	bd.LoadURL(":/page/docs/index.mu")
+	if got := bd.CurrentURL(); got != ":/page/docs/index.mu" {
+		t.Fatalf("CurrentURL() = %q, want the raw relative target", got)
+	}
+
+	canonical := "c7d0e7bbd883e595f53e14fa6986188c:/page/docs/index.mu"
+	if got := bd.CanonicalURL(); got != canonical {
+		t.Fatalf("CanonicalURL() = %q, want %q", got, canonical)
+	}
+
+	// The regression: the entry survives an uncache keyed on the raw target,
+	// so the reload's cache lookup hits again and the stale page is served.
+	bc := NewBrowserCache(bcTempDir(t))
+	bc.CachePage(canonical, []byte("stale page"), expiresAfter(5*time.Minute))
+	bc.UncachePage(bd.CurrentURL())
+	if bc.GetCached(canonical) == nil {
+		t.Fatal("uncaching the raw target removed the entry; the test no longer reproduces the bug")
+	}
+	bc.UncachePage(bd.CanonicalURL())
+	if got := bc.GetCached(canonical); got != nil {
+		t.Errorf("GetCached after CanonicalURL uncache = %q, want nil", got)
+	}
+}
+
 // TestServeFromCache pins the page-cache consultation policy (Python
 // Browser.load_page, Browser.py:1237-1244): the cache is consulted whenever no
 // request_data is attached, REGARDLESS of retained-link state. A form submit

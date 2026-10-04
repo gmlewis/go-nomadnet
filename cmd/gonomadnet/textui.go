@@ -2310,7 +2310,14 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		bd.OnReload = func() {
 			// Python reload() uncaches the current URL then re-loads, so a reload
 			// always re-fetches instead of returning a stale cache hit.
-			pageCache.UncachePage(bd.CurrentURL())
+			// The entry is keyed by the canonical "<hex>:<path>" form that
+			// cache_page/get_cached hash (Python's current_url(), Browser.py:1615
+			// and 1564), so the uncache must use CanonicalURL() — not
+			// CurrentURL(), which is the raw string the user navigated with (a
+			// relative in-page link target such as ":/page/docs/x.mu"). Uncaching
+			// the raw target hashed a different key, leaving the entry in place:
+			// the reload re-read the stale page from disk without fetching it.
+			pageCache.UncachePage(bd.CanonicalURL())
 			bd.Reload()
 		}
 		bd.OnCopyURL = func() {

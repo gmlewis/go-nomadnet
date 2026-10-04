@@ -366,6 +366,20 @@ func TestBrowserDisplayEffectiveMarkup(t *testing.T) {
 	if got != want {
 		t.Errorf("effectiveMarkup (two partials) = %q, want %q", got, want)
 	}
+
+	// The SAME directive may appear more than once in one page: the node pages
+	// embed the two hit-counter partials in the body AND repeat them in the
+	// footer. Every occurrence must receive the fetched content. Python's
+	// page_partials dict is keyed by partial_hash (Browser.py:668), so it
+	// patches only the last pile and leaves earlier duplicates showing ⧖; the
+	// Go port deliberately patches all of them.
+	bd.currentMarkup = ">A\n`{p1}\nmid\n`{p1}\nend"
+	bd.partialContents = map[string]string{"`{p1}": "COUNT"}
+	got = bd.effectiveMarkup()
+	want = ">A\nCOUNT\nmid\nCOUNT\nend"
+	if got != want {
+		t.Errorf("effectiveMarkup (repeated directive) = %q, want %q", got, want)
+	}
 }
 
 // TestBrowserDisplayPartialsInertWithoutCallback verifies that RenderPage with

@@ -639,6 +639,19 @@ func (bd *BrowserDisplay) canonicalURL(url string) string {
 // node glyph), for test accessors and the copy-URL action.
 func (bd *BrowserDisplay) URLDisplayText() string { return bd.currentURLDisp }
 
+// CanonicalURL returns the canonical "<hex>:<path>" form of the currently
+// loaded URL -- Python's current_url() (Browser.py:146-163) -- which is the key
+// the on-disk page cache is stored under, since cache_page/get_cached both hash
+// current_url() (Browser.py:1615 and 1564). CurrentURL() returns the raw string
+// the user navigated with, which for an in-page link is a relative target such
+// as ":/page/docs/x.mu" and therefore NOT the cache key; the reload path must
+// uncache this form, exactly as Python's reload() uncaches current_url()
+// (Browser.py:1097-1101). Falls back to the raw URL when it does not parse as a
+// nomadnet address, mirroring canonicalURL.
+func (bd *BrowserDisplay) CanonicalURL() string {
+	return bd.canonicalURL(bd.CurrentURL())
+}
+
 // showLoading swaps the MIDDLE-centered "Retrieving\n[<url>]" body into the
 // layout in place of the page content, mirroring Python Browser.update_display
 // while a request is in flight (status <= REQUEST_SENT, no attr_maps yet:
@@ -864,13 +877,21 @@ func (bd *BrowserDisplay) rowsAbove(idx int) int {
 // content substituted for its directive (browser.Partial.Raw). Unfetched
 // partials keep their directive (the micron renderer shows the ⧖ placeholder),
 // matching Python's pre-fetch state.
+//
+// Every occurrence of a directive is substituted, not just the first. A page
+// may legally repeat a directive — the node's own index.mu embeds the two
+// hit-counter partials in the body and again in the footer — and both copies
+// must show the fetched count. This is a deliberate divergence from Python,
+// whose page_partials dict is keyed by partial_hash (Browser.py:668) and so
+// retains only the last pile per directive, leaving every earlier duplicate
+// stuck on the ⧖ placeholder forever.
 func (bd *BrowserDisplay) effectiveMarkup() string {
 	if len(bd.partialContents) == 0 {
 		return bd.currentMarkup
 	}
 	out := bd.currentMarkup
 	for raw, content := range bd.partialContents {
-		out = strings.Replace(out, raw, content, 1)
+		out = strings.ReplaceAll(out, raw, content)
 	}
 	return out
 }
