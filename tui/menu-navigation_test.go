@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gdamore/tcell/v2"
+	"github.com/gmlewis/tcell/v2"
 )
 
 // TestSavedNodesUpToMenu verifies the dispatcher's up-at-top→menu transition

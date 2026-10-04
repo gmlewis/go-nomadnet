@@ -19,8 +19,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
+	"github.com/gmlewis/tcell/v2"
+	"github.com/gmlewis/tview"
 )
 
 // Regression tests for the 2026-09-01 fleet usability batch (bugs #2–#5):

@@ -19,8 +19,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gdamore/tcell/v2"
 	"github.com/gmlewis/go-reticulum/rrc"
+	"github.com/gmlewis/tcell/v2"
 )
 
 func TestNewChannelsDisplay(t *testing.T) {

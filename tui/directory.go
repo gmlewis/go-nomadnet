@@ -19,7 +19,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/rivo/tview"
+	"github.com/gmlewis/tview"
 )
 
 // DirectoryEntry holds peer information for the directory display.

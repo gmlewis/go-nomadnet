@@ -21,10 +21,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gdamore/tcell/v2"
 	"github.com/gmlewis/go-reticulum/lxmf"
 	"github.com/gmlewis/go-reticulum/rns"
-	"github.com/rivo/tview"
+	"github.com/gmlewis/tcell/v2"
+	"github.com/gmlewis/tview"
 )
 
 // LXMFPeersDisplay is the left-pane "LXMF Propagation Peers" list. Matches

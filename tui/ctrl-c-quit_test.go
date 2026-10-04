@@ -18,7 +18,7 @@ package tui
 import (
 	"testing"
 
-	"github.com/gdamore/tcell/v2"
+	"github.com/gmlewis/tcell/v2"
 )
 
 // TestCtrlCQuitsLikeCtrlQ pins the parity fix that routes Ctrl-C through the

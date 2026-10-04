@@ -19,7 +19,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gdamore/tcell/v2"
+	"github.com/gmlewis/tcell/v2"
 )
 
 // pageScreenRows draws a browser page the way browserPageView.Draw does — the

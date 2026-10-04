@@ -19,7 +19,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gdamore/tcell/v2"
+	"github.com/gmlewis/tcell/v2"
 )
 
 func TestNewNetworkDisplay(t *testing.T) {

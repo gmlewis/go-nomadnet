@@ -19,8 +19,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
+	"github.com/gmlewis/tcell/v2"
+	"github.com/gmlewis/tview"
 )
 
 // drawRadioButtonAt renders rb on a fresh simulation screen of width w and

@@ -18,9 +18,9 @@ package tui
 import (
 	"testing"
 
-	"github.com/gdamore/tcell/v2"
+	"github.com/gmlewis/tcell/v2"
+	"github.com/gmlewis/tview"
 	"github.com/mattn/go-runewidth"
-	"github.com/rivo/tview"
 )
 
 // drawReadlineEditFocused renders re focused on a fresh 1-row simulation

@@ -19,7 +19,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rivo/tview"
+	"github.com/gmlewis/tview"
 )
 
 // TestIntroDisplayBigText asserts the splash renders the title as urwid BigText

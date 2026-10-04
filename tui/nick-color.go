@@ -18,7 +18,7 @@ package tui
 import (
 	"strings"
 
-	"github.com/gdamore/tcell/v2"
+	"github.com/gmlewis/tcell/v2"
 )
 
 // DarkThemeNickColors is the 24-color nick palette for the dark theme.

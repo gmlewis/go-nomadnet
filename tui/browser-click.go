@@ -19,7 +19,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/gmlewis/go-nomadnet/nomadnet/micron"
-	"github.com/rivo/tview"
+	"github.com/gmlewis/tview"
 )
 
 // Click focus model: a left click inside the page body moves the page focus to

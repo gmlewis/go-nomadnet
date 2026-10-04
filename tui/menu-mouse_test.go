@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
+	"github.com/gmlewis/tcell/v2"
+	"github.com/gmlewis/tview"
 )
 
 // screenText flattens a SimulationScreen's current cell content into a string,

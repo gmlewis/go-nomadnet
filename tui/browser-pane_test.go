@@ -19,7 +19,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rivo/tview"
+	"github.com/gmlewis/tview"
 )
 
 // TestBrowserPaneDisconnectedLayout pins the Network right-pane browser's

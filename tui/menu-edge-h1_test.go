@@ -18,7 +18,7 @@ package tui
 import (
 	"testing"
 
-	"github.com/gdamore/tcell/v2"
+	"github.com/gmlewis/tcell/v2"
 )
 
 // TestH1MenuEdgesDoNotWrap pins H1: Python's MenuColumns (urwid Columns 4.0.3,

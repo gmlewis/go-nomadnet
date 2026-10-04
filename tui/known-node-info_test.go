@@ -19,8 +19,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
+	"github.com/gmlewis/tcell/v2"
+	"github.com/gmlewis/tview"
 )
 
 // kndRow builds a KnownNodeInfo display for the given data and renders it at

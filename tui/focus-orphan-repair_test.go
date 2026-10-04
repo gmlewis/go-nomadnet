@@ -18,7 +18,7 @@ package tui
 import (
 	"testing"
 
-	"github.com/gdamore/tcell/v2"
+	"github.com/gmlewis/tcell/v2"
 )
 
 // setupNetworkTestApp initializes an App with MainDisplay, NetworkDisplay mounted,

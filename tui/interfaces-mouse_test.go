@@ -18,8 +18,8 @@ package tui
 import (
 	"testing"
 
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
+	"github.com/gmlewis/tcell/v2"
+	"github.com/gmlewis/tview"
 )
 
 // TestInterfacesListMouseClickFocusesItem is the regression test for the mouse

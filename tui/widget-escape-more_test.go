@@ -19,7 +19,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rivo/tview"
+	"github.com/gmlewis/tview"
 )
 
 // Regression tests for the remote-data bracket escapes outside the RRC room

@@ -19,7 +19,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/rivo/tview"
+	"github.com/gmlewis/tview"
 )
 
 // The left-panel invariants every mutation sequence must preserve (python

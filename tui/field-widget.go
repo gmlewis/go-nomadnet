@@ -19,8 +19,8 @@ import (
 	"strings"
 
 	"github.com/gmlewis/go-nomadnet/nomadnet/micron"
+	"github.com/gmlewis/tview"
 	"github.com/mattn/go-runewidth"
-	"github.com/rivo/tview"
 )
 
 // defaultFieldWidth is the Micron default text-field width, matching Python's

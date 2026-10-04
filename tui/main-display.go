@@ -23,9 +23,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gdamore/tcell/v2"
+	"github.com/gmlewis/tcell/v2"
+	"github.com/gmlewis/tview"
 	"github.com/mattn/go-runewidth"
-	"github.com/rivo/tview"
 )
 
 // MainDisplay is the top-level layout matching Python's MainFrame:

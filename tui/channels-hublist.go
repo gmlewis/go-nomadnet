@@ -19,8 +19,8 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/gdamore/tcell/v2"
 	"github.com/gmlewis/go-nomadnet/nomadnet/app"
+	"github.com/gmlewis/tcell/v2"
 )
 
 // Hub status constants, mirroring the RRC protocol enum (rrc.StatusDisconnected

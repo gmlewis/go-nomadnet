@@ -19,9 +19,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/gdamore/tcell/v2"
+	"github.com/gmlewis/tcell/v2"
+	"github.com/gmlewis/tview"
 	"github.com/mattn/go-runewidth"
-	"github.com/rivo/tview"
 )
 
 // InterfaceItemHeight is the fixed height of one SelectableInterfaceItem box:

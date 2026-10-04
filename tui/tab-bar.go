@@ -16,8 +16,8 @@
 package tui
 
 import (
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
+	"github.com/gmlewis/tcell/v2"
+	"github.com/gmlewis/tview"
 )
 
 // tabBarWidget lays out two TabButtons side by side with a one-column divider,

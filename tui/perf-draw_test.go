@@ -21,7 +21,7 @@ import (
 	"testing"
 
 	"github.com/gmlewis/go-nomadnet/nomadnet/micron"
-	"github.com/rivo/tview"
+	"github.com/gmlewis/tview"
 )
 
 // =============================================================================

@@ -18,8 +18,8 @@ package tui
 import (
 	"testing"
 
-	"github.com/gdamore/tcell/v2"
 	"github.com/gmlewis/go-nomadnet/nomadnet/micron"
+	"github.com/gmlewis/tcell/v2"
 )
 
 // clickScreenX is the screen column of a field's first cell: the content

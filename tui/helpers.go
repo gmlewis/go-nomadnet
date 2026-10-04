@@ -22,8 +22,8 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
+	"github.com/gmlewis/tcell/v2"
+	"github.com/gmlewis/tview"
 )
 
 // CopyToClipboard copies text to the system clipboard using

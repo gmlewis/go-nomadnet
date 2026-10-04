@@ -18,7 +18,7 @@ package tui
 import (
 	"testing"
 
-	"github.com/gdamore/tcell/v2"
+	"github.com/gmlewis/tcell/v2"
 )
 
 // TestInterfaceListBufferRow verifies the interface list leaves 1 blank

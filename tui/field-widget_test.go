@@ -19,7 +19,7 @@ import (
 	"testing"
 
 	"github.com/gmlewis/go-nomadnet/nomadnet/micron"
-	"github.com/rivo/tview"
+	"github.com/gmlewis/tview"
 )
 
 // TestFieldWidgetTextField asserts a "field" spec renders as a tview.InputField

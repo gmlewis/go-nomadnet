@@ -19,7 +19,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gdamore/tcell/v2"
+	"github.com/gmlewis/tcell/v2"
 )
 
 // drawMessages renders the wrapper into a simulation screen and returns the

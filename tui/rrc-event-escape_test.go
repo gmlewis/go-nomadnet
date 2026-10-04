@@ -20,8 +20,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
+	"github.com/gmlewis/tcell/v2"
+	"github.com/gmlewis/tview"
 )
 
 // TestFormatRRCEventLinesEscapesBrackets pins the /help alignment bug: tview

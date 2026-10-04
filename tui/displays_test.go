@@ -20,7 +20,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/rivo/tview"
+	"github.com/gmlewis/tview"
 )
 
 func TestNewConfigDisplay(t *testing.T) {

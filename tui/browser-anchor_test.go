@@ -18,7 +18,7 @@ package tui
 import (
 	"testing"
 
-	"github.com/rivo/tview"
+	"github.com/gmlewis/tview"
 )
 
 // TestBrowserJumpToAnchorScrollOffset asserts JumpToAnchor scrolls the browser

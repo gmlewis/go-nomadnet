@@ -18,9 +18,9 @@ package tui
 import (
 	"unicode"
 
-	"github.com/gdamore/tcell/v2"
+	"github.com/gmlewis/tcell/v2"
+	"github.com/gmlewis/tview"
 	"github.com/mattn/go-runewidth"
-	"github.com/rivo/tview"
 )
 
 // killRing is an emacs-style kill buffer shared across the ReadlineEdit

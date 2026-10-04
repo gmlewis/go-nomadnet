@@ -20,7 +20,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gdamore/tcell/v2"
+	"github.com/gmlewis/tcell/v2"
 )
 
 // TestConfigDisplayExplainerText asserts the Config page shows Python's

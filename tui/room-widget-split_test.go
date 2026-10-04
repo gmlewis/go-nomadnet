@@ -19,7 +19,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gdamore/tcell/v2"
+	"github.com/gmlewis/tcell/v2"
 )
 
 // rrcCommunityDraft is the 362-byte draft captured live from the glenn-kamrui

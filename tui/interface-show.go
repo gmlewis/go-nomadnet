@@ -21,8 +21,8 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
+	"github.com/gmlewis/tcell/v2"
+	"github.com/gmlewis/tview"
 )
 
 // ParamCategories holds interface parameters grouped by category for

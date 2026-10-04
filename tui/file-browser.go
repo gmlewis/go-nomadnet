@@ -22,8 +22,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
+	"github.com/gmlewis/tcell/v2"
+	"github.com/gmlewis/tview"
 )
 
 // FileBrowserEntry represents a single entry in the file browser.

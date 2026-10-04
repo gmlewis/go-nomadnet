@@ -18,7 +18,7 @@ package tui
 import (
 	"testing"
 
-	"github.com/rivo/tview"
+	"github.com/gmlewis/tview"
 )
 
 func TestNewSelectableList(t *testing.T) {

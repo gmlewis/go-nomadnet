@@ -21,8 +21,8 @@ import (
 	"strings"
 
 	"github.com/gmlewis/go-nomadnet/nomadnet/micron"
+	"github.com/gmlewis/tview"
 	"github.com/mattn/go-runewidth"
-	"github.com/rivo/tview"
 )
 
 // StyledLinesToTviewText converts rendered Micron styled lines (the output of

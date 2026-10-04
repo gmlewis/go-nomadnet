@@ -18,7 +18,7 @@ package tui
 import (
 	"testing"
 
-	"github.com/rivo/tview"
+	"github.com/gmlewis/tview"
 )
 
 // TestJumpToAnchorScrollOffset asserts jumpToAnchor scrolls the reader so the

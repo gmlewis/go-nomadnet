@@ -20,7 +20,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rivo/tview"
+	"github.com/gmlewis/tview"
 )
 
 // onEventLoop runs f on the application event loop's own goroutine and returns

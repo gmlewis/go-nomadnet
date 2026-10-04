@@ -16,8 +16,8 @@
 package tui
 
 import (
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
+	"github.com/gmlewis/tcell/v2"
+	"github.com/gmlewis/tview"
 )
 
 // urwidButtonLeft and urwidButtonRight are urwid's default button brackets

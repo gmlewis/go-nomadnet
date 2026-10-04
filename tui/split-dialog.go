@@ -20,7 +20,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/rivo/tview"
+	"github.com/gmlewis/tview"
 )
 
 // SplitDialogInfo holds the computed content for the message-too-long split

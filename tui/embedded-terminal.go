@@ -23,8 +23,8 @@ import (
 	"time"
 
 	"github.com/creack/pty/v2"
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
+	"github.com/gmlewis/tcell/v2"
+	"github.com/gmlewis/tview"
 )
 
 // EmbeddedTerminal is a tview primitive that runs a child process (e.g. an

@@ -29,8 +29,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
+	"github.com/gmlewis/tcell/v2"
+	"github.com/gmlewis/tview"
 )
 
 // LogDisplay shows the tail of the log file with optional live tailing.

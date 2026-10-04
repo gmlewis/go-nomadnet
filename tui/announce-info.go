@@ -16,7 +16,7 @@
 package tui
 
 import (
-	"github.com/rivo/tview"
+	"github.com/gmlewis/tview"
 )
 
 // AnnounceInfoData holds the directory-resolved fields Python's AnnounceInfo

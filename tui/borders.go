@@ -18,8 +18,8 @@ package tui
 import (
 	"sync"
 
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
+	"github.com/gmlewis/tcell/v2"
+	"github.com/gmlewis/tview"
 )
 
 // Single-line (urwid BOX_SYMBOLS.LIGHT) border runes, captured verbatim from

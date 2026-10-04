@@ -19,8 +19,8 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
+	"github.com/gmlewis/tcell/v2"
+	"github.com/gmlewis/tview"
 )
 
 // dialogEntry is one frame on the modal dialog stack.

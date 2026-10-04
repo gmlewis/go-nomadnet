@@ -19,8 +19,8 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
+	"github.com/gmlewis/tcell/v2"
+	"github.com/gmlewis/tview"
 )
 
 // TestLXMFPeersKeybindings pins the C-x (unpeer) and C-r (delivery sync)

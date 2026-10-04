@@ -18,7 +18,7 @@ package tui
 import (
 	"unicode/utf8"
 
-	"github.com/gdamore/tcell/v2"
+	"github.com/gmlewis/tcell/v2"
 )
 
 // vterm is a minimal VT100/xterm ANSI terminal emulator that maintains a cell

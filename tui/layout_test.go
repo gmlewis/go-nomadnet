@@ -19,7 +19,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rivo/tview"
+	"github.com/gmlewis/tview"
 )
 
 const (

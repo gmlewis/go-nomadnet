@@ -18,8 +18,8 @@ package tui
 import (
 	"strings"
 
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
+	"github.com/gmlewis/tcell/v2"
+	"github.com/gmlewis/tview"
 )
 
 // benchScreenW/benchScreenH is the terminal size used across the Draw/input

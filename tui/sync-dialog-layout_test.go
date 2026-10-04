@@ -19,7 +19,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gdamore/tcell/v2"
+	"github.com/gmlewis/tcell/v2"
 )
 
 // TestC6SyncDialogLayout pins C6: the Message Sync dialog matches Python's

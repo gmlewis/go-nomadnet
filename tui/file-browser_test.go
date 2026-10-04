@@ -21,8 +21,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gdamore/tcell/v2"
 	"github.com/gmlewis/go-reticulum/testutils"
+	"github.com/gmlewis/tcell/v2"
 )
 
 func tempDir(t *testing.T) string {

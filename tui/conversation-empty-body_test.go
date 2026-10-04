@@ -19,7 +19,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gdamore/tcell/v2"
+	"github.com/gmlewis/tcell/v2"
 )
 
 // renderConversationRows draws cd.content on a 100x30 simulation screen and

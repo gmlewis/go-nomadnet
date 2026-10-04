@@ -16,8 +16,8 @@
 package tui
 
 import (
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
+	"github.com/gmlewis/tcell/v2"
+	"github.com/gmlewis/tview"
 )
 
 // SlotOverlay replicates Python's urwid.Overlay(dialog, bottom, align=CENTER,

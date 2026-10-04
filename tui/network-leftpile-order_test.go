@@ -18,7 +18,7 @@ package tui
 import (
 	"testing"
 
-	"github.com/rivo/tview"
+	"github.com/gmlewis/tview"
 )
 
 // TestListSlotDialogPreservesPanelOrder pins the reported bug "when a Saved

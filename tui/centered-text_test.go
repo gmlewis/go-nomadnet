@@ -7,7 +7,7 @@ package tui
 import (
 	"testing"
 
-	"github.com/gdamore/tcell/v2"
+	"github.com/gmlewis/tcell/v2"
 )
 
 func TestCenteredTextLeftPad(t *testing.T) {

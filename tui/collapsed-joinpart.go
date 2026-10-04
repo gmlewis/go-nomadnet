@@ -19,8 +19,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
+	"github.com/gmlewis/tcell/v2"
+	"github.com/gmlewis/tview"
 )
 
 // IsJoinPartSystem reports whether m is a join/leave system message that is

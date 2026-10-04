@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-// Package tui implements the NomadNet terminal UI using rivo/tview.
+// Package tui implements the NomadNet terminal UI using gmlewis/tview.
 //
 // It provides dark and light themes, configurable glyph sets
 // (plain, unicode, nerdfont), and a top menu bar with content

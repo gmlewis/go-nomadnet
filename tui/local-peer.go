@@ -19,8 +19,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
+	"github.com/gmlewis/tcell/v2"
+	"github.com/gmlewis/tview"
 )
 
 // LocalPeerDisplay is the "Local Peer Info" panel shown PACKed below the saved

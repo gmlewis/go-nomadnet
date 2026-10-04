@@ -18,7 +18,7 @@ package tui
 import (
 	"strings"
 
-	"github.com/rivo/tview"
+	"github.com/gmlewis/tview"
 )
 
 // dialogRowTexts walks a dialog's content tree in visual order (Flex rows,

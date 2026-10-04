@@ -21,7 +21,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/rivo/tview"
+	"github.com/gmlewis/tview"
 )
 
 // AnnounceTimeLabel builds the "Announced : <when>" status line for the local

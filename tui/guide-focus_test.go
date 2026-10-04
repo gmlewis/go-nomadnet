@@ -18,7 +18,7 @@ package tui
 import (
 	"testing"
 
-	"github.com/rivo/tview"
+	"github.com/gmlewis/tview"
 )
 
 // TestGuideFocusModelTopic7DownsToBottom is the B2 golden test. The root cause:

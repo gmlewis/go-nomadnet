@@ -3,8 +3,8 @@ package tui
 import (
 	"testing"
 
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
+	"github.com/gmlewis/tcell/v2"
+	"github.com/gmlewis/tview"
 )
 
 // TestEscProbeRealMainDisplay reproduces the reported bug: with the REAL

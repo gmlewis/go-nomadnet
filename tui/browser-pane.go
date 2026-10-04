@@ -16,9 +16,9 @@
 package tui
 
 import (
-	"github.com/gdamore/tcell/v2"
+	"github.com/gmlewis/tcell/v2"
 
-	"github.com/rivo/tview"
+	"github.com/gmlewis/tview"
 )
 
 // BrowserPane is the Network page's right pane: the "Remote Node" browser

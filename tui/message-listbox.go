@@ -18,8 +18,8 @@ package tui
 import (
 	"unicode/utf8"
 
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
+	"github.com/gmlewis/tcell/v2"
+	"github.com/gmlewis/tview"
 )
 
 // messageListBox is the conversation message list: a vertical list of

@@ -19,7 +19,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gdamore/tcell/v2"
+	"github.com/gmlewis/tcell/v2"
 )
 
 // TestDividerReflowsToContentWidth verifies the R-MICRON-DIVIDER-WIDTH fix: a

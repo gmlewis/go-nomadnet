@@ -16,7 +16,7 @@
 package tui
 
 import (
-	"github.com/rivo/tview"
+	"github.com/gmlewis/tview"
 )
 
 // ComposeDisplay provides a message compose area.

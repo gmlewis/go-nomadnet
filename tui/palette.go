@@ -20,7 +20,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/gdamore/tcell/v2"
+	"github.com/gmlewis/tcell/v2"
 )
 
 // Color-depth constants matching Python TextUI.py:12-16 (COLORMODE_*). The

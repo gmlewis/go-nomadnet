@@ -20,8 +20,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
+	"github.com/gmlewis/tcell/v2"
+	"github.com/gmlewis/tview"
 )
 
 // renderLocalPeer draws the LocalPeerDisplay widget on a 50x12 simulation

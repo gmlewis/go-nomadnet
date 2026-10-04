@@ -4,11 +4,11 @@ go 1.26.4
 
 require (
 	github.com/creack/pty/v2 v2.0.1
-	github.com/gdamore/tcell/v2 v2.13.10
 	github.com/gmlewis/go-reticulum v0.133.0
+	github.com/gmlewis/tcell/v2 v2.13.12
+	github.com/gmlewis/tview v0.42.2
 	github.com/mattn/go-runewidth v0.0.16
 	github.com/mdp/qrterminal/v3 v3.2.1
-	github.com/rivo/tview v0.42.0
 	github.com/wago-org/wago v0.1.0-beta.8
 	golang.design/x/clipboard v0.9.0
 	golang.org/x/sys v0.47.0
@@ -34,7 +34,8 @@ require (
 // tracking), always-on mode 2026 (synchronized output), and per-cell
 // incremental rendering (forcedDirty flag — Put no longer clobbers
 // lastStr, so unchanged cells are skipped by drawCell).
-replace github.com/gdamore/tcell/v2 => github.com/gmlewis/tcell/v2 v2.13.11-0.20260824212538-e24b6c4fe8a2
+//	github.com/gdamore/tcell/v2 v2.13.10
+// replace github.com/gdamore/tcell/v2 => github.com/gmlewis/tcell/v2 v2.13.11-0.20260824212538-e24b6c4fe8a2
 
 // tview fork (gmlewis/tview): carries the fullRedraw flag (draw skips
 // screen.Clear on normal redraws, relying on tcell per-cell dirty
@@ -43,4 +44,5 @@ replace github.com/gdamore/tcell/v2 => github.com/gmlewis/tcell/v2 v2.13.11-0.20
 // SetFocus/GetFocus (direct a.focus field), v0.42.0-style HasFocus
 // methods on all containers, Box.Focus/Blur callback restoration,
 // List.Draw adjustOffset call, and WordWrap/stripTags region-tag fix.
-replace github.com/rivo/tview => github.com/gmlewis/tview v0.0.0-20260829232818-68e669800296
+//	github.com/rivo/tview v0.42.0
+// replace github.com/rivo/tview => github.com/gmlewis/tview v0.0.0-20260829232818-68e669800296

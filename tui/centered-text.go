@@ -18,8 +18,8 @@ package tui
 import (
 	"strings"
 
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
+	"github.com/gmlewis/tcell/v2"
+	"github.com/gmlewis/tview"
 )
 
 // centeredText is a top-filled, multi-line text primitive that centers each

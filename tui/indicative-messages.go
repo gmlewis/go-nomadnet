@@ -16,8 +16,8 @@
 package tui
 
 import (
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
+	"github.com/gmlewis/tcell/v2"
+	"github.com/gmlewis/tview"
 )
 
 // IndicativeMessages wraps the room's message TextView with the centered

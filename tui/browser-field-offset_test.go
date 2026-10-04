@@ -20,7 +20,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gdamore/tcell/v2"
+	"github.com/gmlewis/tcell/v2"
 )
 
 // alignedFieldPage puts a field on a centered line before an inline link, and a

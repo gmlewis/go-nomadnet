@@ -16,7 +16,7 @@
 package tui
 
 import (
-	"github.com/gdamore/tcell/v2"
+	"github.com/gmlewis/tcell/v2"
 )
 
 // Theme constants matching Python NomadNet.

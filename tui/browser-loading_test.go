@@ -19,7 +19,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rivo/tview"
+	"github.com/gmlewis/tview"
 )
 
 // loadingRows renders the BrowserDisplay layout while a fetch is in flight and

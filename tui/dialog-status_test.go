@@ -5,8 +5,8 @@ package tui
 import (
 	"testing"
 
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
+	"github.com/gmlewis/tcell/v2"
+	"github.com/gmlewis/tview"
 )
 
 // dispatchKey mirrors tview.Application's real key dispatch (application.go

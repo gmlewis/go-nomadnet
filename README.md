@@ -28,7 +28,7 @@ the internet.
 
 - **Pure Go** — no CGO required; builds with `go build ./...`
 - **Cross-platform** — works on Linux, macOS, and Windows
-- **Terminal UI** — full-featured TUI built with [rivo/tview](https://github.com/rivo/tview)
+- **Terminal UI** — full-featured TUI built with [gmlewis/tview](https://github.com/gmlewis/tview)
 - **LXMF messaging** — send/receive encrypted messages via Reticulum
 - **RRC chat** — join relay chat rooms on Reticulum hubs
 - **Node serving** — host Micron pages and files for browsing
@@ -45,7 +45,7 @@ If you already have [Go](https://go.dev/) installed, you can
 install `gonomadnet` directly from GitHub without cloning the repo:
 
 ```bash
-go install github.com/gmlewis/go-nomadnet/cmd/gonomadnet@v0.157.0
+go install github.com/gmlewis/go-nomadnet/cmd/gonomadnet@v0.158.0
 ```
 
 This puts the `gonomadnet` binary in your `$GOPATH/bin` (or `$GOBIN`)
@@ -525,8 +525,8 @@ go-nomadnet/
 ### Dependencies
 
 - [`github.com/gmlewis/go-reticulum`](https://github.com/gmlewis/go-reticulum) — Reticulum Network Stack
-- [`github.com/rivo/tview`](https://github.com/rivo/tview) — Terminal UI framework
-- [`github.com/gdamore/tcell/v2`](https://github.com/gdamore/tcell/v2) — Terminal cell library
+- [`github.com/gmlewis/tview`](https://github.com/gmlewis/tview) — Terminal UI framework
+- [`github.com/gmlewis/tcell/v2`](https://github.com/gmlewis/tcell/v2) — Terminal cell library
 
 ## Status
 

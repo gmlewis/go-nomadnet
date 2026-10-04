@@ -18,8 +18,8 @@ package tui
 import (
 	"testing"
 
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
+	"github.com/gmlewis/tcell/v2"
+	"github.com/gmlewis/tview"
 )
 
 // Regression tests for the 2026-09-01 fleet radio-group bugs (#6, #7): the

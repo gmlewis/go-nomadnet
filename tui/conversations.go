@@ -24,8 +24,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
+	"github.com/gmlewis/tcell/v2"
+	"github.com/gmlewis/tview"
 )
 
 // ConversationInfo holds summary info for a conversation list entry.

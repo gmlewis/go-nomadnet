@@ -35,7 +35,7 @@ runtime.netpoll(0x0)
 goroutine 1 gp=0x1 m=nil [select]:
 runtime.gopark(0x0?, 0x0?, 0x0?, 0x0?, 0x0?)
 	/usr/local/go/src/runtime/proc.go:474 +0xca
-github.com/rivo/tview.(*Application).Run(0x12776203ca50)
+github.com/gmlewis/tview.(*Application).Run(0x12776203ca50)
 	/home/glenn/go/pkg/mod/tview/application.go:408 +0x365
 main.runTextUI({0x127761fe85e0, 0x19}, {0x0, 0x0})
 	/home/glenn/go/src/github.com/gmlewis/go-nomadnet/cmd/gonomadnet/textui.go:165 +0x594

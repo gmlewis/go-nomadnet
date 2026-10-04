@@ -20,7 +20,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gdamore/tcell/v2"
+	"github.com/gmlewis/tcell/v2"
 )
 
 // buttonsInRow collects the UrwidButtons in a columns row in order, for

@@ -19,8 +19,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
+	"github.com/gmlewis/tcell/v2"
+	"github.com/gmlewis/tview"
 )
 
 // applyDefaultStylesOnce guards the write to tview's library-global tview.Styles
