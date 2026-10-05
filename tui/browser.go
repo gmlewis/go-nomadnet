@@ -732,7 +732,7 @@ func (bd *BrowserDisplay) renderPage() {
 	// (LoadURL → displayURL already cleared it).
 	bd.pendingLinkHist = false
 	markup := bd.effectiveMarkup()
-	lines := micron.RenderToStyledLines(markup, micronTheme(bd.app.Theme))
+	lines := micron.RenderToStyledLinesFor(markup, micronTheme(bd.app.Theme), bd.app.Viewer)
 	width := bd.contentWidth()
 	// lineTexts must stay 1:1 with currentLines (one tagged text per StyledLine,
 	// wrapped rows embedded via '\n') so the nav row model (rowsAbove,
@@ -1288,6 +1288,11 @@ func (bd *BrowserDisplay) MarkedLink(target, fields string) {
 	var f []string
 	if fields != "" {
 		f = strings.Split(fields, "|")
+	}
+	// A location link carries a scheme the reader has no reason to see: the peek
+	// names the Plus Code the link acts on, not "location:<code>".
+	if code, ok := micron.ParseLocationLink(target); ok {
+		target = code
 	}
 	t := browser.MarkedLinkTarget(target, f)
 	bd.linkStatusShowing = true

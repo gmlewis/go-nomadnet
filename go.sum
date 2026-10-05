@@ -4,8 +4,8 @@ github.com/ebitengine/purego v0.10.1 h1:dewVBCBT2GaMu1SrNTYxQhgQBethzfhiwvZiLGP/
 github.com/ebitengine/purego v0.10.1/go.mod h1:iIjxzd6CiRiOG0UyXP+V1+jWqUXVjPKLAI0mRfJZTmQ=
 github.com/gdamore/encoding v1.0.1 h1:YzKZckdBL6jVt2Gc+5p82qhrGiqMdG/eNs6Wy0u3Uhw=
 github.com/gdamore/encoding v1.0.1/go.mod h1:0Z0cMFinngz9kS1QfMjCP8TY7em3bZYeeklsSDPivEo=
-github.com/gmlewis/go-reticulum v0.133.0 h1:u9KpjsbuRHV4D0J6Uuq05tz86yqpnumNzvyXJOnb5bE=
-github.com/gmlewis/go-reticulum v0.133.0/go.mod h1:qraNVnM7EHvQvJiXLk3oQrivGgKlMpIPOkU/XYkduvA=
+github.com/gmlewis/go-reticulum v0.134.0 h1:GjdW0ZExvzQCR6k7KMf7AzSXaaFQ71BQYIKSGGSACCU=
+github.com/gmlewis/go-reticulum v0.134.0/go.mod h1:qraNVnM7EHvQvJiXLk3oQrivGgKlMpIPOkU/XYkduvA=
 github.com/gmlewis/tcell/v2 v2.13.12 h1:foXunDdhVjkFG6KXb0nLk+PyXn5DHR3fxBjLrB8O5Zs=
 github.com/gmlewis/tcell/v2 v2.13.12/go.mod h1:hUEgHBzF+DG0I0btJPEQq5wsT9wxVBeg0Qz++Jl5Ou4=
 github.com/gmlewis/tview v0.42.2 h1:SygiIF3IPveoSMa13onUTUR5dH+3zFhldR/M0IeL0Qg=

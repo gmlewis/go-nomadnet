@@ -1,8 +1,10 @@
 # Micron `` `L `` — the Location (Plus Code) extension
 
-**Status:** specification. This document defines the extension; it does not
-change the Micron parser, and a page that does not use `` `L `` renders exactly
-as it does today.
+**Status:** implemented. The extension is live in this package (`location.go`),
+backed by the Open Location Code decoder and geodesy engine in
+`github.com/gmlewis/go-reticulum/geo`. A page that does not use `` `L `` renders
+exactly as it did before, and a client that does not know the extension sees the
+bare code (see §7).
 
 **Scope:** `go-nomadnet/nomadnet/micron`.
 
@@ -39,7 +41,7 @@ client already has. Nothing leaves the node.
   significant characters, with the `+` separator in its standard position
   (`` `+` `` after the eighth character, or after the fourth for a shortened
   code, in which case see §6).
-- `<format>` is one of the four format tokens in §4. With no `|`, the default
+- `<format>` is one of the five format tokens in §4. With no `|`, the default
   format is `%default`.
 - Neither side may contain a backtick. A `|` is only a separator when it appears
   before the first backtick; anything after the format token is ignored.
@@ -83,7 +85,7 @@ compass name (`048° NE`).
 | `%c` | the code alone | `849VCWC8+R9` |
 | `%d` | the distance alone, when known | `3.2 km` |
 | `%b` | the bearing alone, when known | `048° NE` |
-| `%ll` | the centre as signed decimal degrees | `37.421937, -122.084062` |
+| `%ll` | the centre as signed decimal degrees | `37.422062, -122.084063` |
 
 With no known position, `%d` and `%b` render nothing at all (not a placeholder):
 a page laid out in columns should collapse, not print `unknown distance`. The
@@ -92,13 +94,20 @@ coordinate needs no reference point.
 
 ## 5. Interaction
 
-- **TUI:** the rendered text is a clickable link. Activating it opens the
-  client's location actions: copy the code, copy the coordinate, or show compass
-  guidance when a position is known.
-- **GUI:** the same actions, plus opening the code in whatever map application
-  the host provides, when there is one.
-- **Copying** always copies the **code**, never the rendered sentence, so a code
-  copied from a page stays a code.
+The rendered text is a clickable link. Activating it opens the client's location
+actions.
+
+- **TUI:** the actions are a card showing the code, the coordinate, and — when a
+  position is known — the distance and bearing, with `Copy code` and
+  `Copy coordinate` buttons. `Close`, Escape, and the usual dialog dismissal
+  leave the page untouched. When no position is set the card says so rather than
+  leaving the distance blank.
+- The link target carries the **code** (`location:<code>`), never the rendered
+  sentence. Copying the code therefore always yields a code that another client
+  can use, and copying the coordinate is a separate, explicit action.
+- **GUI (not implemented):** opening the code in whatever map application the
+  host provides, when there is one. `gonomadnet` has no graphical client, so
+  there is nothing to wire this to yet.
 
 ## 6. Shortened codes
 
@@ -115,21 +124,24 @@ construction.
 
 ## 7. Backward compatibility
 
-- A client that does not know the extension displays the raw text
-  `` `L849VCWC8+R9`L `` … which is not graceful. To make degradation graceful,
-  a producer writes the code as ordinary text and wraps it:
+- A client that does not know the extension consumes the backtick and the
+  marker character and renders the payload as ordinary text — the behaviour
+  Python's `MicronParser.make_output` already has for every backtick escape it
+  does not recognise. So `` `L849VCWC8+R9`L `` reaches an unmodified client as
+  the bare code `849VCWC8+R9`, which is the part that carries the information.
+  Degradation is therefore graceful, and a producer does not need to write the
+  code twice:
 
   ```text
-  Repeater: 849VCWC8+R9 `L849VCWC8+R9`L
+  Repeater: `L849VCWC8+R9`L
   ```
 
-  An old client renders `Repeater: 849VCWC8+R9 `L849VCWC8+R9`L`; a client that
-  knows the extension renders the second half as the live location. Producers
-  that do not care about old clients may write the directive alone.
-- An **invalid or unparseable** code makes the whole directive unrecognized, and
-  the parser leaves the raw text in place. This is the rule every Micron
-  extension follows: an extension that cannot be understood is text, never an
-  error.
+  An old client renders `Repeater: 849VCWC8+R9`; a client that knows the
+  extension renders the code together with the distance and bearing.
+- An **invalid or unparseable** code, or a format token outside §4, makes the
+  whole directive unrecognized: the markers are consumed and the payload is
+  rendered as ordinary text. This is the rule every Micron extension follows: an
+  extension that cannot be understood is text, never an error.
 - `%c`, `%d`, `%b`, and `%ll` are the whole format vocabulary. An unknown token
   makes the directive unrecognized rather than silently rendering the default,
   so a typo in a page is visible during development.
@@ -182,6 +194,29 @@ The code `8FW4V75V+8R` decodes to the area whose centre is 48.858312 N,
 
 | Reader | Target centre | Distance | Bearing | Rendered |
 |--------|---------------|----------|---------|----------|
-| 37.4220 N, 122.0841 W | 48.858312 N, 2.294563 E | 8 967 033 m | 33.39° | `8FW4V75V+8R (8967 km, bearing 033° NE)` |
+| 37.4220 N, 122.0841 W | 48.858312 N, 2.294563 E | 8 967 033 m | 33.39° | `8FW4V75V+8R (8967 km, bearing 033° NNE)` |
 | 51.5000 N, 0.1200 W | 48.858312 N, 2.294563 E | 340 318 m | 148.72° | `8FW4V75V+8R (340.3 km, bearing 149° SSE)` |
 | -33.8568 S, 151.2153 E | 37.4220625 N, 122.0840625 W | 11 952 709 m | 56.23° | `849VCWC8+R9 (11953 km, bearing 056° NE)` |
+
+Note the first row's compass name: 33.39° falls in the `NNE` sector (11.25° to
+33.75°), one third of a degree short of the `NNE`/`NE` boundary, so the formula
+in §3 gives index 1, `NNE`.
+
+## 11. Client position
+
+The distance and bearing need the **reader's** position, which is a client-side
+setting and never travels in the page. In `gonomadnet` it comes from an optional
+`[location]` section in the client's config file:
+
+```ini
+[location]
+fix = 37.4220, -122.0841
+```
+
+`fix` accepts any notation the geodesy engine understands: decimal degrees with
+or without hemisphere letters, degrees/minutes/seconds, a full Plus Code, or a
+Maidenhead grid locator. The section is deliberately absent from the default
+config file, which stays byte-identical to the one Python ships, and a `fix` the
+engine cannot place leaves the client without a position rather than guessing
+one. With no usable `fix`, the default, `%d`, and `%b` forms degrade exactly as
+§4 describes, while `%ll` still computes.

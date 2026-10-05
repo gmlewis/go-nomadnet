@@ -40,6 +40,7 @@ import (
 	"github.com/gmlewis/go-nomadnet/nomadnet/browser"
 	"github.com/gmlewis/go-nomadnet/nomadnet/conversation"
 	"github.com/gmlewis/go-nomadnet/nomadnet/directory"
+	"github.com/gmlewis/go-nomadnet/nomadnet/micron"
 	"github.com/gmlewis/go-nomadnet/nomadnet/util"
 	"github.com/gmlewis/go-nomadnet/tui"
 
@@ -170,6 +171,19 @@ func runTextUI(configDir, rnsConfigDir string) {
 		JustifyMsgs:            a.RRCUIJustifyMsgs,
 		OwnNick:                a.RRC.GetNickname(),
 		Glyphs:                 tuiApp.Glyphs,
+	}
+
+	// Reader position for `L Micron location constructs. The optional
+	// [location] section is a gonomadnet extension; without it the client has
+	// no position and those constructs degrade to the bare Plus Code.
+	if a.Config != nil {
+		if a.Config.Location.Err != nil {
+			log.Printf("[location] fix %q is not a position the client can place; private distance and bearing will be unavailable: %v",
+				a.Config.Location.Fix, a.Config.Location.Err)
+		}
+		if a.Config.Location.Known {
+			tuiApp.Viewer = micron.Viewer{Pos: a.Config.Location.Pos, Known: true}
+		}
 	}
 
 	// Crash recovery. An unrecovered panic in a gonomadnet goroutine restores
@@ -2009,6 +2023,13 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	// to HandleLink so a Guide submit link can collect form fields like a page
 	// link (Python recurse_down).
 	guideDisplay.OnHandleLink = func(target, fields string) {
+		// A `L location link opens the client's location actions in place. It
+		// must not navigate away from the Guide, which the browser path below
+		// does before dispatching.
+		if code, ok := micron.ParseLocationLink(target); ok {
+			tuiApp.ShowLocationActions(code)
+			return
+		}
 		main.SelectPage("network")
 		if ndBd := networkDisplay.BrowserDisplay(); ndBd != nil {
 			ndBd.HandleLink(target, fields)

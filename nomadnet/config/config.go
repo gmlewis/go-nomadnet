@@ -26,6 +26,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/gmlewis/go-reticulum/geo"
 	"github.com/gmlewis/go-reticulum/rns"
 )
 
@@ -38,6 +39,7 @@ type Config struct {
 	RRC      RRCConfig
 	Node     NodeConfig
 	Printing PrintingConfig
+	Location LocationConfig
 
 	// Raw stores the parsed key-value pairs from the config file.
 	Raw map[string]map[string]string
@@ -126,6 +128,32 @@ type PrintingConfig struct {
 	PrintCommand    string
 	PrintFrom       string
 	MessageTemplate string
+}
+
+// LocationConfig holds the reader position that a `L Micron location construct
+// resolves its distance and bearing against.
+//
+// Python NomadNet has no such section, so this is a gonomadnet extension and it
+// is deliberately absent from the default configuration file — which stays
+// byte-identical to the one Python ships. Add a [location] section by hand:
+//
+//	[location]
+//	# Any notation geo.ParseLocation understands: decimal degrees with or
+//	# without hemisphere letters, degrees/minutes/seconds, a full Plus Code,
+//	# or a Maidenhead grid locator.
+//	fix = 37.4220, -122.0841
+//
+// A blank or absent fix means the client has no position, and every
+// position-dependent form then degrades to the bare Plus Code.
+type LocationConfig struct {
+	// Fix is the position exactly as written in the config file.
+	Fix string
+	// Pos is the parsed position, meaningful only when Known is true.
+	Pos geo.LatLng
+	// Known reports whether Fix parsed to a usable coordinate.
+	Known bool
+	// Err reports why Fix did not parse, or nil when it did or was absent.
+	Err error
 }
 
 // DefaultConfig returns a Config with all default values set,
@@ -311,6 +339,7 @@ func (c *Config) Apply() {
 	c.applyRRC()
 	c.applyNode()
 	c.applyPrinting()
+	c.applyLocation()
 }
 
 func (c *Config) applyLogging() {
@@ -666,4 +695,30 @@ func expandUser(path string) string {
 		return path
 	}
 	return filepath.Join(home, path[1:])
+}
+
+// applyLocation parses the optional [location] section. The section is a
+// gonomadnet extension and is absent from the default config, so it is
+// consulted only when the user has added it.
+func (c *Config) applyLocation() {
+	sec, ok := c.Raw["location"]
+	if !ok {
+		return
+	}
+
+	fix := strings.TrimSpace(sec["fix"])
+	if fix == "" {
+		return
+	}
+	c.Location.Fix = fix
+
+	pos, err := geo.ParseLocation(fix)
+	if err != nil {
+		// A position that cannot be placed is worse than no position, so a
+		// typo leaves the client without one rather than guessing.
+		c.Location.Err = err
+		return
+	}
+	c.Location.Pos = pos
+	c.Location.Known = true
 }

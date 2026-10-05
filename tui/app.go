@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gmlewis/go-nomadnet/nomadnet/micron"
 	"github.com/gmlewis/tcell/v2"
 	"github.com/gmlewis/tview"
 )
@@ -46,6 +47,13 @@ type App struct {
 	// derives from the app config (Python reads the rrc_* toggles and the
 	// theme inside _message_widget, Channels.py:1281+).
 	RRCRender RRCRenderOpts
+
+	// Viewer is the reader's own position, which a `L Micron location construct
+	// resolves its distance and bearing against. It comes from the optional
+	// [location] config section; the zero value means the client has no
+	// position, and every position-dependent form then degrades to the bare
+	// Plus Code.
+	Viewer micron.Viewer
 
 	// clipboard writes selected text to the system clipboard (mouse text
 	// selection, a Go-only enhancement); selection tracks the mouse-drag /

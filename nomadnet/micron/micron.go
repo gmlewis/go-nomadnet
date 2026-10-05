@@ -68,6 +68,9 @@ const (
 	NodeLiteral
 	// NodeTable is a formatted table with rows and columns.
 	NodeTable
+	// NodeLocation is a `L location (Plus Code) construct, rendered against the
+	// reader's own position at render time.
+	NodeLocation
 )
 
 // Alignment represents text alignment.
@@ -130,6 +133,10 @@ type Node struct {
 
 	// For NodeAnchor
 	AnchorName string
+
+	// For NodeLocation
+	LocationCode   string // the Open Location Code (Plus Code) as written
+	LocationFormat string // one of %default, %c, %d, %b, %ll
 
 	// Children for composite nodes
 	Children []*Node
@@ -610,6 +617,14 @@ func parseFormatting(line string, start int) ([]*Node, int) {
 		// A recognized marker whose payload is unusable consumes the marker
 		// and leaves the rest as text, so a malformed construct is visible
 		// rather than silently swallowed.
+		return nil, 2
+	case 'L': // location: `L<code>|<format>`L, resolved against the reader's position
+		if loc, lc := parseLocation(line, start); loc != nil {
+			return []*Node{loc}, lc
+		}
+		// As with 'T', a recognized marker whose payload is unusable consumes
+		// only the marker: the payload falls through as text, which is exactly
+		// how a client without the construct renders it.
 		return nil, 2
 	case '<': // input field: `<...`...>
 		field, fc := parseField(line, start+1)

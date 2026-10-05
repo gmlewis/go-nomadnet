@@ -45,7 +45,7 @@ If you already have [Go](https://go.dev/) installed, you can
 install `gonomadnet` directly from GitHub without cloning the repo:
 
 ```bash
-go install github.com/gmlewis/go-nomadnet/cmd/gonomadnet@v0.158.0
+go install github.com/gmlewis/go-nomadnet/cmd/gonomadnet@v0.159.0
 ```
 
 This puts the `gonomadnet` binary in your `$GOPATH/bin` (or `$GOBIN`)
@@ -432,6 +432,60 @@ same readable stamp should render that stamp itself.
 The shipped guestbook (`assets/wasm-pages/guestbook.wat`) stamps each entry
 with the request's own `requested_at` seconds, stores them alongside the
 entry, and renders the construct — see that file's `TIMESTAMPS` section.
+
+### Locations in pages
+
+A page that has to say *where* something is — a repeater, a trailhead, a supply
+cache, a shelter — stores an Open Location Code (Plus Code) and names how it
+wants it shown:
+
+```
+`L8FW4V75V+8R`L
+`L8FW4V75V+8R|%d`L
+```
+
+A full code is self-contained and decodes offline. The client renders the code,
+and when it knows its own position the great-circle distance and 16-point
+compass bearing to it as well:
+
+```
+8FW4V75V+8R (8967 km, bearing 033° NNE)
+```
+
+The format tokens are `%default`, `%c` (the code alone), `%d` (distance alone),
+`%b` (bearing alone), and `%ll` (the centre as signed decimal degrees). With no
+known position the position-dependent forms degrade to the bare code and `%ll`
+still computes, because a coordinate needs no reference point. A shortened code
+is rendered exactly as written rather than resolved against a guessed reference
+point.
+
+A rendered location is a clickable link: activating it opens a card with the
+code, the coordinate, and — when a position is set — the distance and bearing,
+with buttons that copy the code or the coordinate. Copying the code always
+yields the code itself, never the rendered sentence, so what you paste stays
+something another client can use.
+
+The reader's position comes from an optional `[location]` section in the
+client's config file, which is deliberately absent from the default file so that
+file stays byte-identical to the one Python ships:
+
+```ini
+[location]
+fix = 37.4220, -122.0841
+```
+
+`fix` accepts any notation the geodesy engine understands: decimal degrees with
+or without hemisphere letters, degrees/minutes/seconds, a full Plus Code, or a
+Maidenhead grid locator. A `fix` the engine cannot place leaves the client
+without a position rather than guessing one, and gonomadnet then shows the code
+alone.
+
+This is a gonomadnet extension. Python's NomadNet has no location construct: its
+parser consumes the marker characters and renders the payload as ordinary text,
+so a reader on the original client sees the bare code — the part that carries
+the information — while gonomadnet adds the distance and bearing. See the
+[Protocol & Markup Extensions guide](https://gmlewis.github.io/go-reticulum/reference/protocol-extensions/)
+for the wire format, the geodetic formulas, and certified reference vectors.
 
 ## Package Overview
 

@@ -20,6 +20,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/gmlewis/go-nomadnet/nomadnet/micron"
 )
 
 // truncatedHashHexLen is the number of hex characters for a truncated
@@ -141,6 +143,15 @@ func (bd *BrowserDisplay) HandleLink(linkTarget, linkFields string) {
 
 	if strings.HasPrefix(linkTarget, "rrc://") {
 		bd.HandleRRCLink(linkTarget[6:])
+		return
+	}
+
+	// Location links (the rendered `L construct's clickable text) are handled
+	// locally: activating one opens the client's location actions — the code,
+	// the coordinate, and the distance and bearing when a position is set —
+	// rather than loading a page. The target carries the Plus Code.
+	if code, ok := micron.ParseLocationLink(linkTarget); ok {
+		bd.app.ShowLocationActions(code)
 		return
 	}
 

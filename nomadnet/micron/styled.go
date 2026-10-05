@@ -153,6 +153,7 @@ type renderState struct {
 	align                   Alignment
 	defaultFG               string // plain fg (for `f reset)
 	defaultBG               string // plain bg (for `b reset)
+	viewer                  Viewer // reader position, for `L constructs
 }
 
 func newRenderState(theme Theme) *renderState {
@@ -175,7 +176,18 @@ func (rs *renderState) restore(s renderState) { *rs = s }
 // color depth. Body text uses the plain style (NOT bold); headings use the
 // headingN fg/bg from the theme table. Inline formatting toggles and section
 // depth persist across lines, matching Python's shared state.
+//
+// It renders with no reader position, so a `L location construct degrades to
+// the bare code. Use RenderToStyledLinesFor when the client knows where it is.
 func RenderToStyledLines(markup string, theme Theme) []*StyledLine {
+	return RenderToStyledLinesFor(markup, theme, Viewer{})
+}
+
+// RenderToStyledLinesFor is RenderToStyledLines with the reader's position,
+// which is what a `L location construct resolves its distance and bearing
+// against. A zero Viewer renders the position-dependent forms exactly the way
+// RenderToStyledLines does.
+func RenderToStyledLinesFor(markup string, theme Theme, viewer Viewer) []*StyledLine {
 	// Python strip_modifiers ends with .strip() (util.py:88), which trims
 	// whitespace from the whole markup before parsing. Mirror that here so a
 	// markup that starts or ends with blank lines does not emit blank
@@ -187,6 +199,7 @@ func RenderToStyledLines(markup string, theme Theme) []*StyledLine {
 	lines := splitLines(strings.TrimSpace(markup))
 	ps := &parseState{}
 	rs := newRenderState(theme)
+	rs.viewer = viewer
 
 	var out []*StyledLine
 	for _, line := range lines {
@@ -288,6 +301,23 @@ func renderInlineNode(sl *StyledLine, node *Node, rs *renderState) {
 			Bold:      rs.bold,
 			Underline: rs.underline,
 			Italic:    rs.italic,
+		})
+
+	case NodeLocation:
+		// Resolved here, not at parse time: the reader's position is client
+		// state, and the same parsed page may be re-rendered when the fix
+		// moves. The span is a link so activating it opens the client's
+		// location actions; the target carries the code, never this rendered
+		// sentence, so a copy always yields a code.
+		rendered := renderLocation(node.LocationCode, node.LocationFormat, rs.viewer)
+		sl.Spans = append(sl.Spans, StyledSpan{
+			Text:      rendered,
+			FG:        highColor(rs.fg),
+			BG:        highColor(rs.bg),
+			Bold:      rs.bold,
+			Underline: rs.underline,
+			Italic:    rs.italic,
+			Link:      &LinkSpec{Label: rendered, URL: LocationURL(node.LocationCode)},
 		})
 
 	case NodeBold:

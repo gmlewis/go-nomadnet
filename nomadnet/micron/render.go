@@ -86,6 +86,9 @@ func RenderToPlainText(nodes []*Node) string {
 			sb.WriteString("\n")
 		case NodeLink:
 			sb.WriteString(node.LinkLabel)
+		case NodeLocation:
+			sb.WriteString(sectionIndent(node.Depth))
+			sb.WriteString(renderLocation(node.LocationCode, node.LocationFormat, Viewer{}))
 		case NodeField:
 			sb.WriteString(node.FieldName)
 		case NodeBold, NodeUnderline, NodeItalic,
@@ -171,6 +174,11 @@ func renderNode(sb *strings.Builder, node *Node, state *RenderState) {
 		fmt.Fprintf(sb, `["%v"]`, node.LinkURL)
 		sb.WriteString(node.LinkLabel)
 		sb.WriteString(`[""]`)
+
+	case NodeLocation:
+		// No reader position on this path, so a position-dependent format
+		// degrades to the bare code.
+		sb.WriteString(renderLocation(node.LocationCode, node.LocationFormat, Viewer{}))
 
 	case NodeField:
 		fmt.Fprintf(sb, "[%v]", node.FieldName)
