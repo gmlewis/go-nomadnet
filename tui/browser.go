@@ -91,6 +91,33 @@ type BrowserDisplay struct {
 	// Python's "raise before touching history" for a failed link so the user is not
 	// stranded on an error page with Ctrl-d a no-op.
 	pendingLinkHist bool
+	// pendingAnchor is the anchor a followed link asked the target page to open
+	// at, named by the link's "anchor=<name>" request field. Micron links carry
+	// no URL fragment, so the documentation generator
+	// (tools/bin/sync-go-reticulum-docs) rewrites every Markdown
+	// "page.md#section" link into a `:/page/page.mu target carrying the fragment
+	// as this field. Python's handle_link folds every k=v link field into
+	// request_data["var_k"], so it delivers var_anchor to the page and the jump
+	// is lost; honouring the field is a deliberate Go extension (like the
+	// repeated-directive substitution in effectiveMarkup), so the section links
+	// the generated documentation ships actually land on their section.
+	// renderPage consumes it on the next successful render; a failed, superseded
+	// or superseding navigation drops it in rollbackPendingLink, so an unrelated
+	// page load can never inherit the jump.
+	pendingAnchor string
+	// keepScroll tells the next renderPage to leave the reader where they are
+	// instead of starting the page at the top. Only the in-place repaints set it
+	// (repaint): a partial's content arriving mid-read, and a reflow at a newly
+	// known pane width. Neither is a navigation -- the page is the one the reader
+	// is already reading, and Python, which swaps only a partial's own pile and
+	// never rebuilds the page (Browser.partial_received, Browser.py:692-705),
+	// never moves them; this port rebuilds the page, so it carries the offset
+	// across, and a pane resize gets the same treatment for the same reason.
+	// A fresh load (RenderPage) leaves the flag unset, so a new page still starts
+	// at the top, and a restored Back/Forward position or an anchor a link asked
+	// for outranks it. renderPage consumes it, so a request never outlives the
+	// render that made it.
+	keepScroll bool
 	// loading is the MIDDLE-centered "Retrieving\n[<url>]" body shown while a
 	// page fetch is in flight (Python Browser.update_display REQUEST_SENT branch,
 	// Browser.py:593-598: Filler(Text("Retrieving\n["+url+"]", CENTER), MIDDLE)).
@@ -531,12 +558,16 @@ func (bd *BrowserDisplay) popHistory() {
 
 // rollbackPendingLink pops a link-click history push whose fetch never reached
 // a success/failure callback (it was superseded by this new navigation) and
-// clears the pending flag. No-op when no link click is in flight.
+// clears the pending flag. It also drops any anchor that click asked for: the
+// anchor belongs to the fetch being abandoned, so it must never jump inside
+// whichever page the new navigation lands on. No-op when no link click is in
+// flight.
 func (bd *BrowserDisplay) rollbackPendingLink() {
 	if bd.pendingLinkHist {
 		bd.popHistory()
 		bd.pendingLinkHist = false
 	}
+	bd.pendingAnchor = ""
 }
 
 // GoBack navigates to the previous URL in history. It is a no-op while a
@@ -722,6 +753,18 @@ func (bd *BrowserDisplay) RenderPage(markup string) {
 	bd.renderPage()
 }
 
+// repaint re-renders the page that is already on screen, keeping the reader
+// where they are. It is the render for a change that is not a navigation: a
+// partial's content arriving (fetchAndSubstitute), or a reflow once the pane's
+// width is known (BrowserDisplay.reflow). Neither has any business scrolling the
+// page, and to a reader a counter updating or a window resizing is not a reason
+// to lose one's place. Loading a page uses RenderPage instead, which starts at
+// the top.
+func (bd *BrowserDisplay) repaint() {
+	bd.keepScroll = true
+	bd.renderPage()
+}
+
 // renderPage renders the current markup (with any fetched partial content
 // substituted in) into the content area. It does NOT touch the partial loop,
 // so it is safe to call from a partial-fetch callback to refresh the page
@@ -731,6 +774,16 @@ func (bd *BrowserDisplay) renderPage() {
 	// fetch succeeded), clearing the rollback flag. No-op for a typed-URL load
 	// (LoadURL → displayURL already cleared it).
 	bd.pendingLinkHist = false
+	// Where the reader is, when this render is not a navigation: an in-place
+	// repaint must leave them there (see keepScroll). The offset has to be read
+	// before SetText rebuilds the content, and a render that also carries a
+	// Back/Forward position to restore or an anchor a link asked for is not a
+	// keep — those two outrank it.
+	keepRow, keep := 0, bd.keepScroll && bd.pendingRestore == nil && bd.pendingAnchor == ""
+	if keep {
+		keepRow, _ = bd.content.GetScrollOffset()
+	}
+	bd.keepScroll = false
 	markup := bd.effectiveMarkup()
 	lines := micron.RenderToStyledLinesFor(markup, micronTheme(bd.app.Theme), bd.app.Viewer)
 	width := bd.contentWidth()
@@ -804,6 +857,24 @@ func (bd *BrowserDisplay) renderPage() {
 	// typing on a freshly loaded form — the guestbook's name field — is dropped.
 	if bd.content.HasFocus() {
 		bd.syncFieldFocus()
+	}
+
+	// Where the reader ends up. A link that named an anchor ("anchor=<name>", see
+	// splitLinkAnchor) wants the page it just fetched to open at that section, so
+	// jump once the page's own scroll and focus state have settled, exactly as
+	// following a "#anchor" link does (HandleLink → OnJumpAnchor → JumpToAnchor).
+	// The request is consumed either way, so it can never fire on a later page; an
+	// anchor the page does not declare is a no-op, as it is for a "#anchor" link.
+	//
+	// Failing that, an in-place repaint puts the reader back where the rebuild
+	// found them. A navigation needs neither: SetText already left it at the top,
+	// which is what loading a new page means.
+	switch name := bd.pendingAnchor; {
+	case name != "":
+		bd.pendingAnchor = ""
+		bd.JumpToAnchor(name)
+	case keep:
+		bd.content.ScrollTo(keepRow, 0)
 	}
 
 	// A completed render ⇒ DONE: refresh the footer so the transfer-status line
@@ -1020,7 +1091,9 @@ func (bd *BrowserDisplay) fetchAndSubstitute(p browser.Partial, cancel chan stru
 		} else {
 			bd.partialContents[p.Raw] = strings.TrimRight(string(data), "\n")
 		}
-		bd.renderPage()
+		// A partial's content landing is not a navigation: repaint in place so
+		// the reader keeps their place (see repaint).
+		bd.repaint()
 	})
 }
 

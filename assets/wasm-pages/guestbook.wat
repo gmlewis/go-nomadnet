@@ -73,10 +73,17 @@
 ;;   The count is the page's own, because a page's KV store is private to it: a
 ;;   page cannot read or write another module's store. The node's site-wide
 ;;   counter therefore lives in hit-counter.wasm, reached the only way a page can
-;;   reach another page — a Micron partial, embedded at the end of that same
-;;   line with the quiet flag:
+;;   reach another page — a Micron partial with the quiet flag:
 ;;
 ;;     `{:/page/hit-counter.wasm`0`quiet=1}
+;;
+;;   A partial directive must START its line, so it cannot share the visit line:
+;;   Micron only tests for a partial at the beginning of a line, and a directive
+;;   further along the line is parsed as ordinary text (its backticks are eaten
+;;   as unknown formatting commands). This page therefore puts the directive on
+;;   the blank line that already separates the usage tip from the visit line, so
+;;   the quiet counter costs no visible room: it renders nothing, that line stays
+;;   blank, and the layout below is unchanged.
 ;;
 ;;   An empty destination means the node serving this page, so the partial needs
 ;;   no node hash baked in. It names no counted page, so it adds this visit to
@@ -845,15 +852,41 @@
     i32.add
     local.set $out
 
-    ;; response += the form block and its usage tip. The form opens the page so
-    ;; no visitor has to scroll past the whole history to sign it; whatever is
-    ;; below the divider is history, newest first.
+    ;; response += the form block and its usage tip, stopping one byte short of
+    ;; the blank line the block ends with, so that blank line is left free for
+    ;; the site-counter partial below. The form opens the page so no visitor has
+    ;; to scroll past the whole history to sign it; whatever is below the
+    ;; divider is history, newest first.
     local.get $out
     i32.const 1152
-    i32.const 565
+    i32.const 564
     memory.copy
     local.get $out
-    i32.const 565
+    i32.const 564
+    i32.add
+    local.set $out
+
+    ;; response += the quiet site counter, occupying the blank line between the
+    ;; usage tip and the visit line. A Micron partial is recognized only when
+    ;; the directive STARTS a line — Python MicronParser.parse_line tests
+    ;; line.startswith("`{") — so a directive tacked onto the end of a text line
+    ;; is never extracted as a partial: its backticks are eaten as unrecognized
+    ;; formatting commands and the rest is printed literally, which is how the
+    ;; raw directive came to show up in the rendered page (and why the site
+    ;; counter stopped advancing, since no partial was ever fetched). Sitting on
+    ;; the line that is already blank costs no room in the layout: the counter
+    ;; renders nothing, so the line stays blank.
+    local.get $out
+    i32.const 2368
+    i32.const 36
+    memory.copy
+    local.get $out
+    i32.const 36
+    i32.add
+    i32.const 10
+    i32.store8
+    local.get $out
+    i32.const 37
     i32.add
     local.set $out
 
@@ -882,8 +915,9 @@
     call $kv_set
     drop
 
-    ;; response += the visit line: "Guestbook has been visited <n> times." and
-    ;; the quiet site-counter partial, which renders nothing at all.
+    ;; response += the visit line: "Guestbook has been visited <n> times." The
+    ;; site counter was already bumped by the partial above; this line reports
+    ;; the page's own count only.
     local.get $out
     i32.const 2240
     i32.const 27
@@ -954,17 +988,12 @@
       local.set $out
     end
 
+    ;; End the visit line.
     local.get $out
-    i32.const 2368
-    i32.const 36
-    memory.copy
-    local.get $out
-    i32.const 36
-    i32.add
     i32.const 10
     i32.store8
     local.get $out
-    i32.const 37
+    i32.const 1
     i32.add
     local.set $out
 

@@ -17,6 +17,8 @@ package tui
 
 import (
 	"testing"
+
+	"github.com/gmlewis/tview"
 )
 
 func TestValidateLXMFLinkValid(t *testing.T) {
@@ -322,5 +324,143 @@ func TestBrowserHandleLink(t *testing.T) {
 				t.Errorf("unexpected error: %q", gotError)
 			}
 		})
+	}
+}
+
+// TestSplitLinkAnchor pins how a link's "anchor=<name>" field is peeled out of
+// the pipe-separated field list the docs generator emits. Micron links carry no
+// URL fragment, so sync-go-reticulum-docs rewrites a Markdown
+// "page.md#section" link into a `:/page/page.mu target plus this field; the
+// name has to reach the post-load jump instead of being collected as a form
+// field and sent to the page as request data.
+func TestSplitLinkAnchor(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		linkFields string
+		wantAnchor string
+		wantRest   string
+	}{
+		{"no fields", "", "", ""},
+		{"plain form fields", "name|message", "", "name|message"},
+		{"anchor only", "anchor=the-section", "the-section", ""},
+		{"anchor among form fields", "name|anchor=the-section|message", "the-section", "name|message"},
+		{"var field kept", "page=index.mu|anchor=sec", "sec", "page=index.mu"},
+		{"empty anchor ignored", "anchor=", "", ""},
+		{"last non-empty wins", "anchor=one|anchor=two", "two", ""},
+		{"similar key is not an anchor", "myanchor=x", "", "myanchor=x"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			anchor, rest := splitLinkAnchor(tt.linkFields)
+			if anchor != tt.wantAnchor {
+				t.Errorf("splitLinkAnchor(%q) anchor = %q, want %q", tt.linkFields, anchor, tt.wantAnchor)
+			}
+			if rest != tt.wantRest {
+				t.Errorf("splitLinkAnchor(%q) rest = %q, want %q", tt.linkFields, rest, tt.wantRest)
+			}
+		})
+	}
+}
+
+// TestBrowserLinkAnchorFieldJumpsAfterLoad pins the whole point of the
+// "anchor=" field: the generated documentation's cross-page section links name
+// a section of the target page, and clicking one must land on that section
+// rather than at the top of the page. The field must NOT be collected as a form
+// field (no var_anchor request data — Python's handling, which sends it to the
+// page and loses the jump), and the jump must happen exactly once, on the render
+// that lands the page, never again on a later partial refresh.
+func TestBrowserLinkAnchorFieldJumpsAfterLoad(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	bd := NewBrowserDisplay(app)
+	bd.content.SetRect(0, 0, 40, 12)
+
+	var gotURL string
+	var gotRequestData map[string]string
+	bd.OnRetrieveURL = func(url string, requestData map[string]string) {
+		gotURL, gotRequestData = url, requestData
+	}
+
+	// The docs page carries a link whose field names the section to open, next
+	// to an ordinary var field that must still reach the target page.
+	bd.RenderPage(">Docs\n`[The Section`:/page/docs/tool.mu`page=other.mu|anchor=the-section]\n")
+	bd.HandleLink(":/page/docs/tool.mu", "page=other.mu|anchor=the-section")
+
+	if gotURL != ":/page/docs/tool.mu" {
+		t.Errorf("fetched URL = %q, want %q", gotURL, ":/page/docs/tool.mu")
+	}
+	if len(gotRequestData) != 1 || gotRequestData["var_page"] != "other.mu" {
+		t.Errorf("request data = %v, want only var_page=other.mu (the anchor field is navigation, not page data)", gotRequestData)
+	}
+
+	// The fetch lands: a page whose second heading slugifies to the requested
+	// anchor, behind a line long enough to wrap at width 40.
+	target := ">Target\nthe quick brown fox jumps over the lazy dog and keeps on running for a while\n>>The Section\nbody text"
+	bd.RenderPage(target)
+
+	targetIdx, ok := bd.anchors.JumpTarget("the-section")
+	if !ok {
+		t.Fatal("anchor \"the-section\" not found in the loaded page's anchor map")
+	}
+
+	// Expected scroll row = wrapped rows of every line before the anchor, the
+	// same sum JumpToAnchor computes (browser-anchor_test.go).
+	const innerW = 40
+	expected := 0
+	for i, lt := range bd.lineTexts {
+		if i >= targetIdx {
+			break
+		}
+		expected += max(len(tview.WordWrap(lt, innerW)), 1)
+	}
+	if expected <= 1 {
+		t.Fatalf("expected wrapped rows preceding the anchor = %v, want >1 (test must exercise wrapping)", expected)
+	}
+	row, _ := bd.content.GetScrollOffset()
+	if row != expected {
+		t.Errorf("scroll row after the anchored load = %v, want %v (the page opened at the section)", row, expected)
+	}
+
+	// The request is consumed by the render that landed the page: loading that
+	// same page again opens at the top like any other fresh load, rather than
+	// jumping a second time. (renderPage rebuilds the content from scratch, so
+	// the scroll offset starts each render at the top.) Had the anchor survived
+	// the first render, this second load would have jumped to the section again.
+	bd.RenderPage(target)
+	if again, _ := bd.content.GetScrollOffset(); again != 0 {
+		t.Errorf("scroll row after loading the page again = %v, want 0 (the anchor request must not outlive the load it was made for)", again)
+	}
+}
+
+// TestBrowserLinkAnchorDroppedWhenFetchFails pins that a requested anchor
+// cannot outlive the fetch that asked for it: when the navigation fails and the
+// browser shows the error body instead of a page, the anchor is dropped, so the
+// next page the browser happens to render (a retry of a different page, a
+// back-navigation) does not mysteriously open at a section.
+func TestBrowserLinkAnchorDroppedWhenFetchFails(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	bd := NewBrowserDisplay(app)
+	bd.content.SetRect(0, 0, 40, 12)
+	bd.OnRetrieveURL = func(url string, requestData map[string]string) {}
+
+	bd.RenderPage(">Docs\n`[The Section`:/page/docs/tool.mu`anchor=the-section]\n")
+	bd.HandleLink(":/page/docs/tool.mu", "anchor=the-section")
+
+	// The fetch-fatal path (timeout / no path) paints the error body.
+	bd.SetContent("The request timed out")
+
+	target := ">Target\nthe quick brown fox jumps over the lazy dog and keeps on running for a while\n>>The Section\nbody text"
+	bd.RenderPage(target)
+
+	if row, _ := bd.content.GetScrollOffset(); row != 0 {
+		t.Errorf("scroll row = %v, want 0: a failed fetch's anchor must not survive into the next page", row)
 	}
 }

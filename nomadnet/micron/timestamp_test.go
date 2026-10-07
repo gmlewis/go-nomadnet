@@ -60,6 +60,23 @@ func TestFormatUnixStrftime(t *testing.T) {
 		{"trailing percent is literal", fridayEvening, "50%", "50%"},
 		{"unknown specifier passes through so a typo is visible", fridayEvening, "%q", "%q"},
 		{"text around the conversions is preserved", fridayEvening, "at %H:%M on %F", "at 21:08 on 2026-09-11"},
+		{"century", tuesdayMorning, "%C", "20"},
+		{"locale date and time, in the C locale", tuesdayMorning, "%c", "Tue Sep  1 09:05:07 2026"},
+		{"iso week-based year", fridayEvening, "%G|%g", "2026|26"},
+		{"hour, space padded", tuesdayMorning, "%k", " 9"},
+		{"12-hour clock, space padded", tuesdayMorning, "%l", " 9"},
+		{"locale date, in the C locale", fridayEvening, "%x", "09/11/26"},
+		{"locale time, in the C locale", fridayEvening, "%X", "21:08:27"},
+		{"locale 12-hour time, in the C locale", tuesdayMorning, "%r", "09:05:07 AM"},
+		{"newline and tab", fridayEvening, "%n%t", "\n\t"},
+		{"iso weekday and week number", fridayEvening, "%u|%w", "5|5"},
+		{"week number, Sunday first", fridayEvening, "%U", "36"},
+		{"week number, Monday first", fridayEvening, "%W", "36"},
+		{"iso week number", fridayEvening, "%V", "37"},
+		{"bsd date form", tuesdayMorning, "%v", " 1-Sep-2026"},
+		{"date(1) form", tuesdayMorning, "%+", "Tue Sep  1 09:05:07 EST 2026"},
+		{"space and zero padding flags", tuesdayMorning, "%-d|%_d|%0d|%-H|%_H|%0H", "1| 1|01|9| 9|09"},
+		{"E and O modifiers change nothing in the C locale", tuesdayMorning, "%Ec|%Od|%OX|%OY", "Tue Sep  1 09:05:07 2026|01|09:05:07|2026"},
 	}
 
 	for _, tc := range tests {

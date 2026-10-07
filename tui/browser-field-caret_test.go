@@ -222,8 +222,9 @@ func TestBrowserFieldOverlayArrowKeysMoveCaret(t *testing.T) {
 // guestbookTestPage mirrors what guestbook.wasm renders above its entries: the
 // form block (assets/wasm-pages/guestbook.wat data segment at offset 1152) with
 // two labelled, empty, background-highlighted fields on their own lines and a
-// submit link collecting both, then the page's visit line — which ends in the
-// quiet site-counter partial the shipped page embeds there.
+// submit link collecting both, then the visit line, preceded by the quiet
+// site-counter partial the shipped page embeds on its own line there (a partial
+// is recognized only where its directive starts a line).
 const guestbookTestPage = "Name: `B444`<name`>`b\n" +
 	"Message: `B444`<32|message`>`b\n" +
 	"`[Sign the guestbook`:/page/guestbook.wasm`name|message]\n" +
@@ -234,7 +235,8 @@ const guestbookTestPage = "Name: `B444`<name`>`b\n" +
 	"`!Ctrl-U`! clears back to the start, `!Ctrl-K`! clears to the end, " +
 	"`!Ctrl-W`! deletes a word, `!Ctrl-L`! clears the field, and `!Ctrl-Y`! " +
 	"pastes back what you cleared.\n" +
-	"\nGuestbook has been visited 3 times.`{:/page/hit-counter.wasm`0`quiet=1}\n" +
+	"`{:/page/hit-counter.wasm`0`quiet=1}\n" +
+	"Guestbook has been visited 3 times.\n" +
 	"----\n\n"
 
 // newLoadedFieldTestBrowser renders a page with the page body already focused,

@@ -180,14 +180,20 @@ func (bd *BrowserDisplay) HandleLink(linkTarget, linkFields string) {
 
 	switch destType {
 	case "nomadnetwork.node":
+		// A link may ask the target page to open at one of its anchors: the
+		// documentation generator emits "page.md#section" links as an
+		// "anchor=<section>" field, because a Micron link has nowhere to carry a
+		// fragment. Peel it out here so it drives the post-load jump instead of
+		// being collected as a form field (see splitLinkAnchor).
+		anchor, rest := splitLinkAnchor(linkFields)
 		// Go-only enhancement (see BrowserDisplay.OnBlockedConnectCheck): a
 		// link click targeting a blocked destination defers the fetch behind
 		// the "Blocked node" warning modal; the unguarded link flow below runs
 		// only via the modal's explicit Connect.
-		if bd.interceptBlockedConnect(target, func() { bd.loadLinkDirect(target, linkFields) }) {
+		if bd.interceptBlockedConnect(target, func() { bd.loadLinkDirect(target, rest, anchor) }) {
 			return
 		}
-		bd.loadLinkDirect(target, linkFields)
+		bd.loadLinkDirect(target, rest, anchor)
 	case "lxmf.delivery":
 		bd.HandleLXMFLink(target)
 	case "rrc.hub.session":
@@ -203,10 +209,49 @@ func (bd *BrowserDisplay) HandleLink(linkTarget, linkFields string) {
 	}
 }
 
+// splitLinkAnchor peels an "anchor=<name>" entry out of a pipe-separated link
+// field list, returning that anchor name and the remaining field list.
+//
+// Micron gives a link no place to carry a URL fragment, so a Markdown
+// "page.md#section" link has to become a request field, which is what
+// tools/bin/sync-go-reticulum-docs emits: `:/page/page.mu plus
+// "anchor=<section>". Python's handle_link folds every k=v field into
+// request_data["var_k"], so it sends var_anchor to the page and the reader lands
+// at the top of the target instead of the section — the generated
+// documentation's cross-page section links do not work there. The Go port keeps
+// the k=v convention for every other key and reads this one as the navigation
+// request it was meant to be: the entry is removed from the collected request
+// data and handed to the caller, which records it for the post-load jump.
+//
+// Only an exact "anchor=" prefix matches, so an unrelated key such as
+// "myanchor=x" is left alone. The last non-empty anchor wins, matching the way a
+// repeated k=v entry overwrites the earlier one in request_data.
+func splitLinkAnchor(linkFields string) (anchor, rest string) {
+	if linkFields == "" || !strings.Contains(linkFields, "anchor=") {
+		return "", linkFields
+	}
+	var kept []string
+	for e := range strings.SplitSeq(linkFields, "|") {
+		name, ok := strings.CutPrefix(e, "anchor=")
+		if !ok {
+			kept = append(kept, e)
+			continue
+		}
+		if name != "" {
+			anchor = name
+		}
+	}
+	return anchor, strings.Join(kept, "|")
+}
+
 // loadLinkDirect performs the unguarded nomadnetwork.node link-click flow:
 // eager history push (marking pendingLinkHist so a failure rolls it back)
 // followed by the OnRetrieveURL fetch.
-func (bd *BrowserDisplay) loadLinkDirect(target, linkFields string) {
+//
+// anchor is the section this link asked the target page to open at ("" for a
+// link that named none), recorded after the history push has dropped whatever a
+// superseded click may have left behind.
+func (bd *BrowserDisplay) loadLinkDirect(target, linkFields, anchor string) {
 	// Push the target onto history eagerly (mirroring LoadURL) so Ctrl-d
 	// (GoBack) returns to the page the link was on. Python's retrieve_url
 	// appends to history only on success (Browser.py:131-145, 216-268); the
@@ -220,6 +265,10 @@ func (bd *BrowserDisplay) loadLinkDirect(target, linkFields string) {
 	// clears) is rolled back — see the pendingLinkHist field doc.
 	bd.rollbackPendingLink()
 	bd.pushHistory(target)
+	// Record the requested anchor only now: pushHistory rolls a superseded
+	// click back itself (that is what clears a stale pendingAnchor), so setting
+	// it before this call would have the same click wipe it again.
+	bd.pendingAnchor = anchor
 	bd.pendingLinkHist = true
 	// Move the URL bar to the clicked target, exactly as the typed-URL / Back /
 	// Forward path does in displayURL. Without this the header kept the

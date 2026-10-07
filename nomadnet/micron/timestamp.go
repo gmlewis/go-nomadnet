@@ -39,7 +39,12 @@ import (
 // The format language is strftime, the POSIX/C spelling that Python's
 // time.strftime, the shell's date and most other tooling share, rather than
 // Go's reference-time layout: "%a %b %d, %Y %-I:%M:%S%p %Z" is legible to
-// anyone who has written a date format before.
+// anyone who has written a date format before. Every conversion C strftime
+// defines is implemented, along with the glibc and BSD extensions, and the
+// -/_/0 padding flags and the E/O modifiers. The conversions that strftime
+// resolves through the locale are pinned to their C locale forms, so a page
+// renders the same text on every client rather than following the reader's
+// region or language.
 
 // DefaultTimeFormat is the format a timestamp construct uses when the page does
 // not name one: "Fri Sep 11, 2026 9:08:27PM EST".
@@ -76,8 +81,15 @@ func formatTime(t time.Time, format string) string {
 
 		start := i
 		i++
-		noPad := i < len(format) && format[i] == '-'
-		if noPad {
+		// An optional padding flag and E/O modifier, as in %-d and %Ec. POSIX
+		// defines %E and %O to change nothing in the C locale, which is the
+		// locale this renders in.
+		var flag byte
+		if i < len(format) && (format[i] == '-' || format[i] == '_' || format[i] == '0') {
+			flag = format[i]
+			i++
+		}
+		if i+1 < len(format) && (format[i] == 'E' || format[i] == 'O') {
 			i++
 		}
 		if i >= len(format) {
@@ -86,7 +98,7 @@ func formatTime(t time.Time, format string) string {
 			break
 		}
 
-		if expanded, ok := expandConversion(t, format[i], noPad); ok {
+		if expanded, ok := expandConversion(t, format[i], flag); ok {
 			sb.WriteString(expanded)
 			continue
 		}
@@ -97,11 +109,14 @@ func formatTime(t time.Time, format string) string {
 }
 
 // expandConversion expands a single strftime conversion. Conversions that
-// compose others (D, F, R, T) recurse so they inherit the same handling.
-func expandConversion(t time.Time, conv byte, noPad bool) (string, bool) {
+// compose others (c, D, F, r, R, T, v, x, X, +) recurse so they inherit the same
+// handling. The flag is the padding flag that preceded the conversion, if any.
+func expandConversion(t time.Time, conv, flag byte) (string, bool) {
 	switch conv {
 	case '%':
 		return "%", true
+	case '+': // the date(1) default format
+		return formatTime(t, "%a %b %e %H:%M:%S %Z %Y"), true
 	case 'a':
 		return t.Format("Mon"), true
 	case 'A':
@@ -110,36 +125,75 @@ func expandConversion(t time.Time, conv byte, noPad bool) (string, bool) {
 		return t.Format("Jan"), true
 	case 'B':
 		return t.Format("January"), true
+	case 'c':
+		return formatTime(t, "%a %b %e %H:%M:%S %Y"), true
+	case 'C':
+		return pad(t.Year()/100, 2, flag, false), true
 	case 'd':
-		return padded(t.Day(), 2, false, noPad), true
+		return pad(t.Day(), 2, flag, false), true
 	case 'D':
 		return formatTime(t, "%m/%d/%y"), true
 	case 'e':
-		return padded(t.Day(), 2, true, noPad), true
+		return pad(t.Day(), 2, flag, true), true
 	case 'F':
 		return formatTime(t, "%Y-%m-%d"), true
+	case 'g':
+		isoYear, _ := t.ISOWeek()
+		return pad(isoYear%100, 2, flag, false), true
+	case 'G':
+		isoYear, _ := t.ISOWeek()
+		return strconv.Itoa(isoYear), true
 	case 'H':
-		return padded(t.Hour(), 2, false, noPad), true
+		return pad(t.Hour(), 2, flag, false), true
 	case 'I':
-		return padded(hour12(t), 2, false, noPad), true
+		return pad(hour12(t), 2, flag, false), true
 	case 'j':
-		return padded(t.YearDay(), 3, false, noPad), true
+		return pad(t.YearDay(), 3, flag, false), true
+	case 'k':
+		return pad(t.Hour(), 2, flag, true), true
+	case 'l':
+		return pad(hour12(t), 2, flag, true), true
 	case 'm':
-		return padded(int(t.Month()), 2, false, noPad), true
+		return pad(int(t.Month()), 2, flag, false), true
 	case 'M':
-		return padded(t.Minute(), 2, false, noPad), true
+		return pad(t.Minute(), 2, flag, false), true
+	case 'n':
+		return "\n", true
 	case 'p':
 		return t.Format("PM"), true
+	case 'P':
+		return strings.ToLower(t.Format("PM")), true
+	case 'r':
+		return formatTime(t, "%I:%M:%S %p"), true
 	case 'R':
 		return formatTime(t, "%H:%M"), true
 	case 's':
 		return strconv.FormatInt(t.Unix(), 10), true
 	case 'S':
-		return padded(t.Second(), 2, false, noPad), true
+		return pad(t.Second(), 2, flag, false), true
+	case 't':
+		return "\t", true
 	case 'T':
 		return formatTime(t, "%H:%M:%S"), true
+	case 'u':
+		return strconv.Itoa(int(t.Weekday()+6)%7 + 1), true
+	case 'U':
+		return pad((t.YearDay()+7-int(t.Weekday()))/7, 2, flag, false), true
+	case 'v':
+		return formatTime(t, "%e-%b-%Y"), true
+	case 'V':
+		_, isoWeek := t.ISOWeek()
+		return pad(isoWeek, 2, flag, false), true
+	case 'w':
+		return strconv.Itoa(int(t.Weekday())), true
+	case 'W':
+		return pad((t.YearDay()+7-int((t.Weekday()+6)%7))/7, 2, flag, false), true
+	case 'x':
+		return formatTime(t, "%m/%d/%y"), true
+	case 'X':
+		return formatTime(t, "%H:%M:%S"), true
 	case 'y':
-		return padded(t.Year()%100, 2, false, noPad), true
+		return pad(t.Year()%100, 2, flag, false), true
 	case 'Y':
 		return strconv.Itoa(t.Year()), true
 	case 'z':
@@ -158,11 +212,17 @@ func hour12(t time.Time) int {
 	return 12
 }
 
-// padded renders value at width, zero-filled unless spaceFill requests the
-// space padding of %e, and bare when the format used the no-pad flag.
-func padded(value, width int, spaceFill, noPad bool) string {
-	if noPad {
+// pad renders value at width. The flag is the padding flag that preceded the
+// conversion: - leaves it bare, _ pads with spaces, 0 pads with zeros. With no
+// flag, spaceFill selects the space padding that %e, %k and %l have by default.
+func pad(value, width int, flag byte, spaceFill bool) string {
+	switch flag {
+	case '-':
 		return strconv.Itoa(value)
+	case '_':
+		return fmt.Sprintf("%*d", width, value)
+	case '0':
+		return fmt.Sprintf("%0*d", width, value)
 	}
 	if spaceFill {
 		return fmt.Sprintf("%*d", width, value)

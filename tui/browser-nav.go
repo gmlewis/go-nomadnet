@@ -93,8 +93,9 @@ func (bd *BrowserDisplay) reflowIfWidthChanged() {
 	}
 	bd.app.QueueUpdateDraw(func() {
 		// re-render at the now-known width; renderPage updates renderedWidth so
-		// the next Draw does not re-trigger.
-		bd.renderPage()
+		// the next Draw does not re-trigger. A reflow is not a navigation, so it
+		// repaints in place rather than throwing the reader back to the top.
+		bd.repaint()
 	})
 }
 

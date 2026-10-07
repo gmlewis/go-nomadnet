@@ -10,20 +10,6 @@ peer-to-peer messaging and information sharing system built on
 communication over any network transport — including LoRa, packet radio, and
 the internet.
 
-> [!WARNING]
-> ### ⚠️ Emergency, Medical, and Safety Disclaimer
-> **NOT A CERTIFIED LIFE-SAFETY OR MEDICAL DEVICE.**
-> Communications over unlicensed LoRa/ISM frequencies and ad-hoc networks are best-effort and **never guaranteed**. This software is **NOT** connected to official 911/112 emergency dispatch, government rescue agencies, or COSPAS-SARSAT search-and-rescue satellites, and is **NOT** a substitute for certified EPIRBs, PLBs, or commercial satellite messengers. Any first-aid protocols, navigation coordinates, or survival guides accessed or relayed are informational references only. Users assume all risks of wilderness travel and off-grid communications. Read [**DISCLAIMER.md**](DISCLAIMER.md) for the full legal terms and release of liability.
-
-> [!TIP]
-> ### Building a Dedicated Handheld NomadNet Device?
-> Jump straight to the [**Reticulum Hardware Projects Guide**](https://github.com/gmlewis/asic-reticulum/tree/master/Hardware-Projects-Guide.md) for full step-by-step assembly instructions, hardware bills of materials, pre-compiled release binaries, and zero-install in-browser web flashing.
->
-> Learn how to build and flash:
-> - **Project 1: Pocket Linux Terminal**: Full interactive `gonomadnet` TUI on Raspberry Pi Zero 2W with a 2.8" SPI display and CardKB keyboard.
-> - **Project 2: Pocket Communicator**: Ultra-low-power handheld communicator running on ESP32-C5 RISC-V SoC.
-> - **Project 3: Pocket Hub & Repeater**: Autonomous standalone relay node with LoRa and Wi-Fi 6 SoftAP.
-
 ## Features
 
 - **Pure Go** — no CGO required; builds with `go build ./...`
@@ -45,7 +31,7 @@ If you already have [Go](https://go.dev/) installed, you can
 install `gonomadnet` directly from GitHub without cloning the repo:
 
 ```bash
-go install github.com/gmlewis/go-nomadnet/cmd/gonomadnet@v0.159.0
+go install github.com/gmlewis/go-nomadnet/cmd/gonomadnet@v0.160.0
 ```
 
 This puts the `gonomadnet` binary in your `$GOPATH/bin` (or `$GOBIN`)
@@ -275,8 +261,16 @@ it, by declaring a Micron **partial**:
 
 A partial is `` `{URL`REFRESH`FIELDS} ``. It is fetched when the page loads and
 its reply is spliced in where the directive sits, so the counter above appears
-in the middle of the page it belongs to. Two details make it a per-page
-counter rather than one global number:
+in the middle of the page it belongs to. **The directive must be the only thing
+on its line.** Micron recognizes a partial only where the directive *starts* a
+line; a directive appended to the end of a line of text is ordinary text, so the
+visitor reads the raw directive, and because no partial is detected it is never
+fetched and the counter does not even advance. To trigger a counter without
+leaving a blank line behind, put the directive on a line that is already blank.
+`cmd/gomicronlint` checks a whole page tree for this trap and the other
+constructs Micron degrades silently; run it before publishing, or as a
+pre-commit hook.
+Two details make it a per-page counter rather than one global number:
 
 - **`FIELDS` may carry literal values.** A `k=v` entry is sent as
   `request_data`'s `var_k=v`, so `` `page=index.mu `` tells the module which
@@ -416,11 +410,16 @@ and each reader's own client renders those seconds in that reader's own
 timezone. The format language is
 [strftime](https://docs.python.org/3/library/time.html#time.strftime), the
 POSIX/C spelling shared by Python's `time.strftime`, the shell's `date` and
-most other tooling, so `%Y-%m-%d %H:%M` needs no lookup. Leaving the format out
-uses the default `%a %b %d, %Y %-I:%M:%S%p %Z` — `Fri Sep 11, 2026 9:08:27PM
-EST` — and `%-` drops the padding of a numeric conversion. The `%q`-style
-escape hatch is deliberate: an unsupported conversion passes through with its
-`%`, so a typo in a page's format stays visible instead of vanishing.
+most other tooling, so `%Y-%m-%d %H:%M` needs no lookup. Every conversion C
+strftime defines is implemented, along with the glibc and BSD extensions, and
+the `-`, `_` and `0` padding flags and the `E`/`O` modifiers. The conversions
+that strftime resolves through the locale — `%c`, `%x`, `%X`, `%r`, `%p` and the
+month and weekday names — are pinned to their C locale forms, so a page renders
+the same text on every client rather than following the reader's region or
+language. Leaving the format out uses the default `%a %b %d, %Y %-I:%M:%S%p %Z`
+— `Fri Sep 11, 2026 9:08:27PM EST`. The `%q`-style escape hatch is deliberate:
+an unsupported conversion passes through with its `%`, so a typo in a page's
+format stays visible instead of vanishing.
 
 This is a gonomadnet extension. Python's NomadNet has no timestamp construct:
 its parser consumes the marker character and renders the payload as plain text,
@@ -559,6 +558,7 @@ go test -race ./...    # with the race detector
 ```
 go-nomadnet/
 ├── cmd/gonomadnet/        # CLI entry point (text-UI + daemon modes)
+├── cmd/gomicronlint/      # Lints a page tree for Micron constructs that fail silently
 ├── nomadnet/              # Core library packages
 │   ├── app/               # App singleton, LXMF router, directory
 │   ├── browser/           # Browser backend (URL parsing, page fetch, cache)
@@ -587,6 +587,20 @@ go-nomadnet/
 Although this port seems to be fully functional, there may still be bugs.
 If you find bugs, please report them as new
 [GitHub Issues](https://github.com/gmlewis/go-nomadnet/issues).
+
+> [!WARNING]
+> ### ⚠️ Emergency, Medical, and Safety Disclaimer
+> **NOT A CERTIFIED LIFE-SAFETY OR MEDICAL DEVICE.**
+> Communications over unlicensed LoRa/ISM frequencies and ad-hoc networks are best-effort and **never guaranteed**. This software is **NOT** connected to official 911/112 emergency dispatch, government rescue agencies, or COSPAS-SARSAT search-and-rescue satellites, and is **NOT** a substitute for certified EPIRBs, PLBs, or commercial satellite messengers. Any first-aid protocols, navigation coordinates, or survival guides accessed or relayed are informational references only. Users assume all risks of wilderness travel and off-grid communications. Read [**DISCLAIMER.md**](DISCLAIMER.md) for the full legal terms and release of liability.
+
+> [!TIP]
+> ### Building a Dedicated Handheld NomadNet Device?
+> Jump straight to the [**Reticulum Hardware Projects Guide**](https://github.com/gmlewis/asic-reticulum/tree/master/Hardware-Projects-Guide.md) for full step-by-step assembly instructions, hardware bills of materials, pre-compiled release binaries, and zero-install in-browser web flashing.
+>
+> Learn how to build and flash:
+> - **Project 1: Pocket Linux Terminal**: Full interactive `gonomadnet` TUI on Raspberry Pi Zero 2W with a 2.8" SPI display and CardKB keyboard.
+> - **Project 2: Pocket Communicator**: Ultra-low-power handheld communicator running on ESP32-C5 RISC-V SoC.
+> - **Project 3: Pocket Hub & Repeater**: Autonomous standalone relay node with LoRa and Wi-Fi 6 SoftAP.
 
 ## License
 
