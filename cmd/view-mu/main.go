@@ -36,9 +36,19 @@
 //	view-mu c388d720f56483a8dc8668ee5bea3577:/page/conversations.mu
 //	view-mu nomadnetwork://c388d720f56483a8dc8668ee5bea3577/page/conversations.mu
 //
-// When the argument names an existing file it is rendered directly; otherwise it
-// is parsed as a node address. Status and diagnostics go to stderr so the
-// rendered page on stdout can be piped (e.g. `view-mu <hash> | less -R`).
+// When the argument names an existing .wasm file it is run as an executable
+// page through the sandboxed wasm runtime (the same wasmpages path the node
+// serves it with) and the Micron markup it renders is displayed; this requires
+// a view-mu built with -tags wago, since binaries without that tag serve .wasm
+// pages statically. Request data can be supplied with repeated -data flags to
+// drive a page that varies on a form submission.
+//
+//	view-mu -raw assets/wasm-pages/guestbook.wasm
+//	view-mu -data name=Glenn -data message=hello assets/wasm-pages/guestbook.wasm
+//
+// When the argument names any other existing file it is rendered directly;
+// otherwise it is parsed as a node address. Status and diagnostics go to stderr
+// so the rendered page on stdout can be piped (e.g. `view-mu <hash> | less -R`).
 //
 // Options:
 //
@@ -47,6 +57,8 @@
 //	-no-color        Disable ANSI color output
 //	-raw             Write the raw micron markup bytes to stdout (no rendering)
 //	-json            Emit per-line styled JSON (logical-line parity schema)
+//	-data KEY=VAL    Request data for an executable page (repeatable)
+//	-at UNIX         Unix seconds to stamp an executable page request (0 = now)
 //	-rnsconfig DIR   Reticulum config dir (default: ~/.reticulum)
 //	-timeout SECS    Seconds to wait for path/link/request (default 25)
 //	-v               Verbose RNS logging
@@ -56,17 +68,20 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"log"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gmlewis/go-nomadnet/nomadnet/browser"
 	"github.com/gmlewis/go-nomadnet/nomadnet/micron"
+	"github.com/gmlewis/go-nomadnet/nomadnet/wasmpages"
 	"github.com/gmlewis/go-reticulum/rns"
 	"golang.org/x/term"
 )
@@ -80,6 +95,49 @@ type config struct {
 	verbose   bool
 	raw       bool
 	jsonOut   bool
+	data      requestDataFlag
+	at        int64
+}
+
+// requestDataFlag collects the repeated -data KEY=VAL flags, in the order they
+// were given. Each entry is validated as KEY=VAL as it is parsed, so a typo
+// fails the command line rather than silently reaching the page.
+type requestDataFlag []string
+
+// String renders the flag's current value for flag.PrintDefaults.
+func (f *requestDataFlag) String() string { return strings.Join(*f, ",") }
+
+// Set appends one KEY=VAL pair, rejecting a flag argument with no "=".
+func (f *requestDataFlag) Set(s string) error {
+	if !strings.Contains(s, "=") {
+		return fmt.Errorf("expected KEY=VAL, got %q", s)
+	}
+	*f = append(*f, s)
+	return nil
+}
+
+// wasmRequestData converts -data KEY=VAL pairs into the request-data map an
+// executable page receives. A key that already carries the browser's "field_"
+// (form submission) or "var_" (link variable) prefix is kept verbatim; a bare
+// key is treated as a form field, which is how the browser submits one
+// (tui/browser-fields.go). No pairs means no request data at all, not an empty
+// map, matching a request that carried none.
+func wasmRequestData(pairs []string) map[string]string {
+	if len(pairs) == 0 {
+		return nil
+	}
+	data := make(map[string]string, len(pairs))
+	for _, p := range pairs {
+		key, value, ok := strings.Cut(p, "=")
+		if !ok {
+			continue
+		}
+		if !strings.HasPrefix(key, "field_") && !strings.HasPrefix(key, "var_") {
+			key = "field_" + key
+		}
+		data[key] = value
+	}
+	return data
 }
 
 // remotePrefixes are stripped (case-insensitively) from the start of an
@@ -114,11 +172,14 @@ func main() {
 	flag.BoolVar(&cfg.verbose, "v", false, "Verbose RNS logging")
 	flag.BoolVar(&cfg.raw, "raw", false, "Write the raw micron markup bytes to stdout (no rendering)")
 	flag.BoolVar(&cfg.jsonOut, "json", false, "Emit per-line styled JSON (logical-line parity schema) instead of ANSI")
+	flag.Var(&cfg.data, "data", "Request data for an executable .wasm page, KEY=VAL (repeatable)")
+	flag.Int64Var(&cfg.at, "at", 0, "Unix seconds to stamp an executable page request with (0 = now)")
 
 	flag.Usage = func() {
-		log.Printf("Usage: %v [options] <file.mu | node-address>\n", os.Args[0])
+		log.Printf("Usage: %v [options] <file.mu | page.wasm | node-address>\n", os.Args[0])
 		log.Printf("Renders micron markdown (.mu) to stdout with ANSI colors.")
-		log.Printf("The argument is a local .mu file, or a nomadnet node address")
+		log.Printf("The argument is a local .mu file, a local .wasm executable page")
+		log.Printf("(needs a binary built with -tags wago), or a nomadnet node address")
 		log.Printf("(32-hex destination hash, bare or prefixed, with an optional path).")
 		log.Printf("Options:")
 		flag.PrintDefaults()
@@ -155,12 +216,21 @@ func main() {
 	var markup []byte
 	var source string
 	if info, err := os.Stat(arg); err == nil && !info.IsDir() {
-		content, err := os.ReadFile(arg)
-		if err != nil {
-			log.Printf("Error reading file: %v", err)
-			os.Exit(1)
+		if isWasmPage(arg) {
+			rendered, err := renderLocalWasmPage(arg, cfg)
+			if err != nil {
+				log.Printf("Error: %v: %v", arg, err)
+				os.Exit(1)
+			}
+			markup = rendered
+		} else {
+			content, err := os.ReadFile(arg)
+			if err != nil {
+				log.Printf("Error reading file: %v", err)
+				os.Exit(1)
+			}
+			markup = content
 		}
-		markup = content
 		source = arg
 	} else {
 		destHash, path, requestData, display, err := parseRemoteAddress(arg)
@@ -199,6 +269,40 @@ func render(markup string, theme micron.Theme, width int, noColor bool) {
 		os.Exit(1)
 	}
 	fmt.Print(output)
+}
+
+// isWasmPage reports whether path names a .wasm executable page.
+func isWasmPage(path string) bool {
+	return strings.EqualFold(filepath.Ext(path), ".wasm")
+}
+
+// errWasmNotLinked explains what to do when a .wasm argument meets a view-mu
+// binary with no sandbox compiled in.
+var errWasmNotLinked = errors.New(`this view-mu was built without the wasm sandbox, so it cannot run an executable page
+rebuild it with the runtime linked in:  go build -tags=wago ./cmd/view-mu`)
+
+// renderLocalWasmPage runs the executable page at path through the wasmpages
+// sandbox and returns the Micron markup it rendered. The page sees the request
+// data the -data flags collected and the -at timestamp (or the current time
+// when -at is 0), so a caller can pin both and diff two renders exactly.
+func renderLocalWasmPage(path string, cfg config) ([]byte, error) {
+	if !wasmpages.Enabled() {
+		return nil, errWasmNotLinked
+	}
+	at := cfg.at
+	if at == 0 {
+		at = time.Now().Unix()
+	}
+	req := wasmpages.PageRequest{
+		Path:        "/page/" + filepath.Base(path),
+		RequestData: wasmRequestData(cfg.data),
+		RequestedAt: at,
+	}
+	markup, err := wasmpages.Render(path, req)
+	if err != nil {
+		return nil, fmt.Errorf("render executable page: %w", err)
+	}
+	return markup, nil
 }
 
 // renderToJSON emits the logical-line parity schema: one entry per micron source

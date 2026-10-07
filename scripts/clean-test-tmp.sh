@@ -112,6 +112,7 @@ prefixes=(
   nomadnet-storage-test nomadnet-cbor- nomadnet-wasmpages-
   nomadnet-sent-test nomadnet-app-page-log nomadnet-browser-wasm
   nomadnet-tui-demo nomadnet-tui-form-wasm instance-lock-test-
+  nomadnet-view-mu-
   loopback-C loopback-S repeat-C repeat-S probe-cfg- probe-rns-
   browser-cache-test- browser-download browser-fetch- browser-partial
   pipe-repeat-ts rns-local-parity- go-reticulum-large-py-to-go-

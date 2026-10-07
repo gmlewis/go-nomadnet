@@ -19,10 +19,16 @@ import (
 	"bytes"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/gmlewis/go-nomadnet/nomadnet/browser"
 	"github.com/gmlewis/go-nomadnet/nomadnet/micron"
+	"github.com/gmlewis/go-nomadnet/nomadnet/wasmpages"
+	"github.com/gmlewis/go-reticulum/testutils"
 )
 
 const testHash = "c388d720f56483a8dc8668ee5bea3577"
@@ -165,6 +171,126 @@ func TestRenderToJSONRawBytes(t *testing.T) {
 	var doc jsonDoc
 	if err := json.Unmarshal(buf.Bytes(), &doc); err != nil {
 		t.Fatalf("unmarshal: %v", err)
+	}
+}
+
+func TestIsWasmPage(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]bool{
+		"guestbook.wasm":        true,
+		"GUESTBOOK.WASM":        true,
+		"/a/b/page.wasm":        true,
+		"page.wat":              false,
+		"page.mu":               false,
+		"wasm":                  false,
+		"/a/b/wasm-page.mu":     false,
+		"page.wasm.bak":         false,
+		"/a/b/archive.wasm.zip": false,
+	}
+	for in, want := range cases {
+		if got := isWasmPage(in); got != want {
+			t.Errorf("isWasmPage(%q) = %v, want %v", in, got, want)
+		}
+	}
+}
+
+func TestWasmRequestData(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name  string
+		pairs []string
+		want  map[string]string
+	}{
+		{"none is nil, not empty", nil, nil},
+		{"bare key becomes a form field", []string{"name=Glenn"}, map[string]string{"field_name": "Glenn"}},
+		{"field_ prefix kept", []string{"field_name=Glenn"}, map[string]string{"field_name": "Glenn"}},
+		{"var_ prefix kept", []string{"var_q=robots"}, map[string]string{"var_q": "robots"}},
+		{
+			"several pairs",
+			[]string{"name=Glenn", "var_q=x", "field_message=hi there"},
+			map[string]string{"field_name": "Glenn", "var_q": "x", "field_message": "hi there"},
+		},
+		{"value with = and spaces survives", []string{"message=a=b c"}, map[string]string{"field_message": "a=b c"}},
+		{"empty value", []string{"name="}, map[string]string{"field_name": ""}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := wasmRequestData(tc.pairs)
+			if len(got) != len(tc.want) {
+				t.Fatalf("wasmRequestData(%v) = %v, want %v", tc.pairs, got, tc.want)
+			}
+			for k, v := range tc.want {
+				if got[k] != v {
+					t.Errorf("wasmRequestData(%v)[%q] = %q, want %q", tc.pairs, k, got[k], v)
+				}
+			}
+		})
+	}
+}
+
+func TestRequestDataFlagSet(t *testing.T) {
+	t.Parallel()
+
+	var f requestDataFlag
+	for _, s := range []string{"name=Glenn", "var_q=robots"} {
+		if err := f.Set(s); err != nil {
+			t.Fatalf("Set(%q): %v", s, err)
+		}
+	}
+	if len(f) != 2 || f[0] != "name=Glenn" || f[1] != "var_q=robots" {
+		t.Errorf("after two Sets, flag = %v", f)
+	}
+	if err := f.Set("no-equals-sign"); err == nil {
+		t.Error("Set with no '=' should fail")
+	}
+	if f.String() != "name=Glenn,var_q=robots" {
+		t.Errorf("String() = %q", f.String())
+	}
+	empty := new(requestDataFlag)
+	if empty.String() != "" {
+		t.Errorf("empty String() = %q, want empty", empty.String())
+	}
+}
+
+// TestRenderLocalWasmPageGuestbook drives the shipped guestbook executable page
+// through the same path the -data / -at flags use, and pins the markup a
+// submission renders. It needs the wasm sandbox (go test -tags=wago) and skips
+// on a stub build, where renderLocalWasmPage must instead report that clearly.
+func TestRenderLocalWasmPageGuestbook(t *testing.T) {
+	src, err := os.ReadFile(filepath.Join("..", "..", "assets", "wasm-pages", "guestbook.wasm"))
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	// The page's KV store lands beside the page file, so render the copy rather
+	// than writing into the checked-in assets directory.
+	path := filepath.Join(testutils.TempDir(t, "nomadnet-view-mu-"), "guestbook.wasm")
+	if err := os.WriteFile(path, src, 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	cfg := config{data: requestDataFlag{"name=Glenn", "message=hello from view-mu"}, at: 1789178907}
+	markup, err := renderLocalWasmPage(path, cfg)
+	if !wasmpages.Enabled() {
+		if !errors.Is(err, errWasmNotLinked) {
+			t.Fatalf("stub build error = %v, want errWasmNotLinked", err)
+		}
+		t.Skip("wasm sandbox not compiled in; rerun with -tags=wago")
+	}
+	if err != nil {
+		t.Fatalf("renderLocalWasmPage: %v", err)
+	}
+	got := string(markup)
+	for _, want := range []string{
+		">Guestbook\n",
+		"`T1789178907`T Glenn: hello from view-mu\n",
+		"`[Sign the guestbook`:/page/guestbook.wasm`name|message]\n",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("rendered guestbook missing %q; got:\n%v", want, got)
+		}
 	}
 }
 

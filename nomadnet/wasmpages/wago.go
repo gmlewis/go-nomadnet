@@ -59,7 +59,7 @@ type wasmPageRuntime struct {
 
 // loadPlugin compiles and instantiates the wasm module bytes with the given
 // host import surface.
-func loadPlugin(wasmBytes []byte, imports wago.Imports) (*wasmPageRuntime, error) {
+func loadPlugin(wasmBytes []byte, imports *wago.Imports) (*wasmPageRuntime, error) {
 	w := &wasmPageRuntime{rt: wago.NewRuntime()}
 	mod, err := w.rt.Compile(wasmBytes)
 	if err != nil {
@@ -79,7 +79,7 @@ func loadPlugin(wasmBytes []byte, imports wago.Imports) (*wasmPageRuntime, error
 // host import surface. Anything the module imports but the host does not wire
 // is refused here, so the deny-by-default policy holds even as capabilities
 // are added.
-func (w *wasmPageRuntime) start(imports wago.Imports) error {
+func (w *wasmPageRuntime) start(imports *wago.Imports) error {
 	policy := wago.Policy{
 		MaxMemoryBytes:  pluginMaxMemoryBytes,
 		MaxTableEntries: pluginMaxTableEntries,
@@ -99,21 +99,25 @@ func (w *wasmPageRuntime) start(imports wago.Imports) error {
 // rns.kv_set / rns.kv_get reach a KV scratch store scoped to this page's own
 // directory, <pages-path>/data/<page>/ (the page file's base name). Anything
 // else the module imports stays unwired and refuses instantiation.
-func pageImports(filePath string) wago.Imports {
-	imports := wago.Imports{
-		"rns.log": wago.HostFunc(func(m wago.HostModule, params, _ []uint64) {
-			logf := guestLogger()
-			if logf == nil {
-				return
-			}
-			mem := m.Memory()
-			ptr, length := uint32(params[0]), uint32(params[1])
-			if length == 0 || int(ptr)+int(length) > len(mem) {
-				return
-			}
-			logf("wasm page %v: %v", filepath.Base(filePath), string(mem[ptr:ptr+length]))
-		}),
-	}
+//
+// Every callback takes the wago.Caller capability as well as the call's slots,
+// because reading or writing the guest's message needs the caller's linear
+// memory view; the Params/Results declarations pin the exact signature the
+// module's import must have.
+func pageImports(filePath string) *wago.Imports {
+	imports := wago.NewImports()
+	imports.HostFunc("rns", "log", func(caller wago.Caller, call wago.HostCall) {
+		logf := guestLogger()
+		if logf == nil {
+			return
+		}
+		mem := caller.Memory()
+		ptr, length := uint32(call.I32(0)), uint32(call.I32(1))
+		if length == 0 || uint64(ptr)+uint64(length) > uint64(len(mem)) {
+			return
+		}
+		logf("wasm page %v: %v", filepath.Base(filePath), string(mem[ptr:ptr+length]))
+	}).Params(wago.ValI32, wago.ValI32)
 	addStoreImports(imports, pageStore(filePath))
 	return imports
 }
@@ -136,49 +140,57 @@ func pageStore(filePath string) *pluginstore.Store {
 	return store
 }
 
+// inGuest reports whether the range [ptr, ptr+length) lies inside mem, using
+// 64-bit arithmetic so a pointer near the top of the address space cannot wrap
+// into a range that looks in bounds.
+func inGuest(mem []byte, ptr, length uint32) bool {
+	return uint64(ptr)+uint64(length) <= uint64(len(mem))
+}
+
 // addStoreImports wires a plugin's KV scratch store into the import surface:
 // rns.kv_set stores a value (status 0 = ok, 1 = error) and rns.kv_get reads
 // one (n = bytes written, 0 = missing key, -1 = output buffer too small;
 // nothing is written partially). Keys and pointers are bounds-checked against
 // guest memory.
-func addStoreImports(imports wago.Imports, store *pluginstore.Store) {
-	imports["rns.kv_set"] = wago.HostFunc(func(m wago.HostModule, params, results []uint64) {
-		results[0] = 1
+func addStoreImports(imports *wago.Imports, store *pluginstore.Store) {
+	imports.HostFunc("rns", "kv_set", func(caller wago.Caller, call wago.HostCall) {
+		call.SetI32(0, 1)
 		if store == nil {
 			return
 		}
-		mem := m.Memory()
-		kPtr, kLen, vPtr, vLen := uint32(params[0]), uint32(params[1]), uint32(params[2]), uint32(params[3])
-		if int(kPtr)+int(kLen) > len(mem) || int(vPtr)+int(vLen) > len(mem) {
+		mem := caller.Memory()
+		kPtr, kLen, vPtr, vLen := uint32(call.I32(0)), uint32(call.I32(1)), uint32(call.I32(2)), uint32(call.I32(3))
+		if !inGuest(mem, kPtr, kLen) || !inGuest(mem, vPtr, vLen) {
 			return
 		}
 		if err := store.Set(string(mem[kPtr:kPtr+kLen]), mem[vPtr:vPtr+vLen]); err != nil {
 			return
 		}
-		results[0] = 0
-	})
-	imports["rns.kv_get"] = wago.HostFunc(func(m wago.HostModule, params, results []uint64) {
-		results[0] = 0
+		call.SetI32(0, 0)
+	}).Params(wago.ValI32, wago.ValI32, wago.ValI32, wago.ValI32).Results(wago.ValI32)
+
+	imports.HostFunc("rns", "kv_get", func(caller wago.Caller, call wago.HostCall) {
+		call.SetI32(0, 0)
 		if store == nil {
 			return
 		}
-		mem := m.Memory()
-		kPtr, kLen, outPtr, outCap := uint32(params[0]), uint32(params[1]), uint32(params[2]), uint32(params[3])
-		if int(kPtr)+int(kLen) > len(mem) {
-			results[0] = 0xFFFFFFFF // -1 as i32
+		mem := caller.Memory()
+		kPtr, kLen, outPtr, outCap := uint32(call.I32(0)), uint32(call.I32(1)), uint32(call.I32(2)), uint32(call.I32(3))
+		if !inGuest(mem, kPtr, kLen) {
+			call.SetI32(0, -1)
 			return
 		}
 		value, ok, err := store.Get(string(mem[kPtr : kPtr+kLen]))
 		if err != nil || !ok {
 			return
 		}
-		if int(outCap) < len(value) || int(outPtr)+int(outCap) > len(mem) {
-			results[0] = 0xFFFFFFFF // -1 as i32: caller retries with a bigger buffer
+		if uint64(outCap) < uint64(len(value)) || !inGuest(mem, outPtr, outCap) {
+			call.SetI32(0, -1) // caller retries with a bigger buffer
 			return
 		}
 		copy(mem[outPtr:outPtr+uint32(len(value))], value)
-		results[0] = uint64(uint32(len(value)))
-	})
+		call.SetI32(0, int32(len(value)))
+	}).Params(wago.ValI32, wago.ValI32, wago.ValI32, wago.ValI32).Results(wago.ValI32)
 }
 
 // close releases the instance, module, and runtime.
@@ -197,14 +209,16 @@ func (w *wasmPageRuntime) close() {
 	}
 }
 
-// call invokes a named export under the given execution budget.
-func (w *wasmPageRuntime) call(export string, timeout time.Duration, args ...wago.Value) ([]wago.Value, error) {
+// call invokes a named export under the given execution budget. Arguments and
+// results are raw ABI slots (a 32-bit value occupies the low bits); use the
+// wago.I32/AsI32 pair to convert.
+func (w *wasmPageRuntime) call(export string, timeout time.Duration, args ...uint64) ([]uint64, error) {
 	if w.inst == nil {
 		return nil, errors.New("wasm page has no loaded plugin")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	return w.inst.Call(ctx, export, args...)
+	return w.inst.InvokeContext(ctx, export, args...)
 }
 
 // Enabled reports whether .wasm pages render through the sandbox.
@@ -226,26 +240,26 @@ func Render(filePath string, req PageRequest) ([]byte, error) {
 	defer w.close()
 
 	payload := req.payload()
-	allocRes, err := w.call("wagoplugin_alloc", DefaultTimeout, wago.ValueI32(int32(len(payload))))
+	allocRes, err := w.call("wagoplugin_alloc", DefaultTimeout, wago.I32(int32(len(payload))))
 	if err != nil {
 		return nil, fmt.Errorf("wasm page alloc: %w", err)
 	}
 	if len(allocRes) < 1 {
 		return nil, errors.New("wasm page plugin wagoplugin_alloc must return a pointer")
 	}
-	inPtr := uint32(allocRes[0].I32())
+	inPtr := uint32(wago.AsI32(allocRes[0]))
 	if !w.inst.Write(inPtr, payload) {
 		return nil, fmt.Errorf("wasm page memory write at %v (%v bytes) failed", inPtr, len(payload))
 	}
 
-	res, err := w.call("render_page", DefaultTimeout, allocRes[0], wago.ValueI32(int32(len(payload))))
+	res, err := w.call("render_page", DefaultTimeout, allocRes[0], wago.I32(int32(len(payload))))
 	if err != nil {
 		return nil, fmt.Errorf("wasm page render_page: %w", err)
 	}
 	if len(res) < 2 {
 		return nil, errors.New("wasm page plugin render_page must return (ptr, len)")
 	}
-	outPtr, outLen := uint32(res[0].I32()), uint32(res[1].I32())
+	outPtr, outLen := uint32(wago.AsI32(res[0])), uint32(wago.AsI32(res[1]))
 	markup, ok := w.inst.Read(outPtr, outLen)
 	if !ok {
 		return nil, fmt.Errorf("wasm page memory read at %v (%v bytes) failed", outPtr, outLen)
@@ -256,7 +270,7 @@ func Render(filePath string, req PageRequest) ([]byte, error) {
 // invokeExport loads the plugin at filePath, calls a named export with the
 // given execution budget, and releases the plugin. It is the direct path the
 // timeout tests exercise.
-func invokeExport(filePath, export string, timeout time.Duration, args ...wago.Value) ([]wago.Value, error) {
+func invokeExport(filePath, export string, timeout time.Duration, args ...uint64) ([]uint64, error) {
 	wasmBytes, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("wasm page read %v: %w", filePath, err)

@@ -9,7 +9,7 @@ require (
 	github.com/gmlewis/tview v0.42.2
 	github.com/mattn/go-runewidth v0.0.16
 	github.com/mdp/qrterminal/v3 v3.2.1
-	github.com/wago-org/wago v0.1.0-beta.8
+	github.com/wago-org/wago v0.1.0-beta.12
 	golang.design/x/clipboard v0.9.0
 	golang.org/x/sys v0.47.0
 	golang.org/x/term v0.45.0
