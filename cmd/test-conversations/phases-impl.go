@@ -129,13 +129,15 @@ func (d *driver) toConversations() {
 	d.snapshot("Conversations page")
 }
 
-// readOwnLXMFHash opens the C-p "LXMF Address" dialog, extracts the 32-hex hash
-// from it, closes the dialog, and stores it on the driver. Returns the hash.
+// readOwnLXMFHash opens the C-p "My LXMF" dialog (titled "QR Code" when the QR
+// renders, else "LXMF Address" — Python Conversations.py:679), extracts the
+// 32-hex hash from it, closes the dialog, and stores it on the driver. Returns
+// the hash.
 func (d *driver) readOwnLXMFHash() string {
 	d.step("read own LXMF address (C-p)")
 	d.send("C-p")
 	hash := ""
-	if d.assert(func(v *utils.View) bool { return dialogOpen(v, "LXMF Address") }, 5*time.Second, "LXMF Address dialog open") {
+	if d.assert(myLxmfDialogOpen, 5*time.Second, "My LXMF dialog open (QR Code / LXMF Address)") {
 		hash = extractLXMFHash(d.view())
 		d.assert(func(v *utils.View) bool { return len(hash) == 32 }, 1*time.Second, "own LXMF hash is 32 hex (got %q)", hash)
 	}
@@ -177,9 +179,15 @@ func (h *harness) announceAndAddresses() {
 }
 
 // createConversation opens the C-n "New Conversation" dialog, fills the peer's
-// LXMF hash + a display name, and submits Create. After Create the dialog
-// auto-dismisses and the conversation opens in the editor region. Returns
-// whether the conversation editor is showing.
+// LXMF hash + a display name, and submits Create. Create does NOT open the
+// conversation — Python's confirmed() calls display_conversation(source_hash_text)
+// POSITIONALLY, so the hash binds to the `sender` parameter and source_hash
+// stays None, which replaces the detail pane with the "No conversation
+// selected" placeholder and returns focus to the list (Conversations.py:1076 →
+// 1649-1650; verified live against nomadnet 1.2.8). The harness therefore
+// asserts the post-Create list region and then opens the newly-created
+// conversation from the list, leaving the editor region focused for typing.
+// Returns whether the created conversation ended up open in the editor region.
 func (d *driver) createConversation(peerHash, name string) bool {
 	d.stepf("new conversation with %v (%v)", peerHash, name)
 	d.send("C-n")
@@ -218,22 +226,82 @@ func (d *driver) createConversation(peerHash, name string) bool {
 	}
 	d.send("Enter")
 	// Create either dismisses the dialog (success) or re-opens it with an error
-	// row (invalid hash). Success = the dialog is gone + the editor bar shows.
-	ok := d.assert(func(v *utils.View) bool { return !dialogOpen(v, "New Conversation") }, 5*time.Second, "New Conversation dialog dismissed (Create accepted)")
-	if ok {
-		d.assert(func(v *utils.View) bool { return shortcutRegion(v) == "editor" }, 3*time.Second, "conversation editor region showing")
+	// row (invalid hash).
+	if !d.assert(func(v *utils.View) bool { return !dialogOpen(v, "New Conversation") }, 5*time.Second, "New Conversation dialog dismissed (Create accepted)") {
+		return false
 	}
+	// Create returns to the list with the empty detail pane — it does not open
+	// the new conversation (see the doc comment). This also holds when another
+	// conversation was open before the dialog: Python clears it too.
+	d.assert(func(v *utils.View) bool { return shortcutRegion(v) == "list" }, 3*time.Second, "list region focused after Create (no auto-open)")
+	// Open the created conversation from the list and verify it is really the
+	// one that was created: the conversation's peer-info header shows the
+	// display name, or the bracketed hash when no name is known. Row 0 is the
+	// expected row (the created peer has the most recent activity, and the
+	// dialog switched the tab to its trust class), but the check makes a
+	// wrong-row selection loud instead of silently sending the later messages
+	// to a different peer.
+	d.send("Home")
+	d.send("Enter")
+	label := name
+	if label == "" {
+		label = "<" + peerHash + ">"
+	}
+	opened := d.assert(func(v *utils.View) bool {
+		return shortcutRegion(v) == "editor" && messageBodyContains(v, label)
+	}, 4*time.Second, "created conversation %v opened in the editor region", label)
 	d.snapshot("after create conversation")
-	return ok
+	return opened
 }
 
-// typeAndSend types the message body in the composer editor and sends it with
-// C-d, asserting the message body text appears in the conversation (the sent
-// message row renders with its content).
+// typeChunk is the literal-send chunk size used by typeIntoComposer.
+const typeChunk = 16
+
+// typeIntoComposer types text into the focused composer and verifies it echoed
+// on screen, retrying at most three times, and returns whether the draft is
+// visible. The retry covers the observed harness flake where the first literal
+// sent right after a focus/region change is swallowed: tmux delivers the
+// keystrokes while the app is still settling the new focus and they land
+// nowhere. Each retry clears whatever partial text landed with C-l (readline
+// kill-whole-buffer — the binding both implementations share, Go ReadlineEdit
+// and Python ReadlineEdit) before retyping. Text is sent in small chunks so a
+// long single burst cannot outrun the input path either; a 251-character
+// one-shot burst was once observed to lose its leading 8 characters.
+func (d *driver) typeIntoComposer(text string) bool {
+	for attempt := 1; attempt <= 3; attempt++ {
+		d.logf("  type into composer (attempt %v)", attempt)
+		d.sendChunked(text)
+		if d.assert(func(v *utils.View) bool { return messageBodyContains(v, text) }, 2*time.Second, "composer echoes %q (attempt %v)", text, attempt) {
+			return true
+		}
+		d.send("C-l") // readline kill-whole-buffer
+		d.toEditorRegion()
+	}
+	return false
+}
+
+// sendChunked types literal text in typeChunk-rune chunks, pausing stepDelay
+// between chunks.
+func (d *driver) sendChunked(text string) {
+	runes := []rune(text)
+	for len(runes) > typeChunk {
+		d.sendLiteral(string(runes[:typeChunk]))
+		runes = runes[typeChunk:]
+	}
+	d.sendLiteral(string(runes))
+}
+
+// typeAndSend types the message body in the composer editor (verified echoed by
+// typeIntoComposer) and sends it with C-d, asserting the message body text
+// appears in the conversation (the sent message row renders with its content).
 func (d *driver) typeAndSend(text string) {
 	d.stepf("send message %q", text)
-	d.assert(func(v *utils.View) bool { return shortcutRegion(v) == "editor" }, 3*time.Second, "editor region focused before typing")
-	d.sendLiteral(text)
+	if !d.assert(func(v *utils.View) bool { return shortcutRegion(v) == "editor" }, 3*time.Second, "editor region focused before typing") {
+		return
+	}
+	if !d.typeIntoComposer(text) {
+		return
+	}
 	d.send("C-d")
 	d.assert(func(v *utils.View) bool { return messageBodyContains(v, text) }, d.msgWait, "sent message %q visible in body", text)
 	d.snapshot("after send")
@@ -252,14 +320,25 @@ func (d *driver) waitForMessage(text string, timeout time.Duration) {
 // firstMessageBtoA proves connectivity: both sides create a conversation with
 // the OTHER's hash (so each has a directory entry + an open conversation), then
 // B sends a message to A and A receives it in the already-open conversation.
+// Create does not open the conversation (see createConversation), so the send
+// and the receive wait are skipped when a side failed to open its new
+// conversation — the create assertion already recorded why.
 func (h *harness) firstMessageBtoA() {
 	h.logf("=== phase: first message B -> A ===")
-	// Each creates a conversation with the other's hash. After Create, each is
-	// viewing that conversation in the editor region.
-	h.dA.createConversation(h.dB.lxmfHash, "Bob")
-	h.dB.createConversation(h.dA.lxmfHash, "Alice")
+	// Each creates a conversation with the other's hash, then opens it from the
+	// list, leaving each viewing that conversation in the editor region.
+	aOpen := h.dA.createConversation(h.dB.lxmfHash, "Bob")
+	bOpen := h.dB.createConversation(h.dA.lxmfHash, "Alice")
+	if !bOpen {
+		h.logf("B's conversation with A is not open — skipping the send and the receive wait")
+		return
+	}
 	// B sends; A is already viewing the "Bob" conversation and receives it.
 	h.dB.typeAndSend("hello-from-B")
+	if !aOpen {
+		h.logf("A's conversation with B is not open — skipping the receive wait")
+		return
+	}
 	h.dA.waitForMessage("hello-from-B", h.msgWait)
 }
 
@@ -292,9 +371,13 @@ func (h *harness) headerStates() {
 	// Close any open conversation so focus is on the LIST, from which C-n (New
 	// Conversation) fires. cd.handleInput gates C-n on shortcutFocus=="list"
 	// (matching Python's ConversationsArea being the list column), so C-n from
-	// the editor would pass through and never open the dialog. C-w returns focus
-	// to the list via OnClose (Conversations.py:1677+1638-1639).
-	d.send("C-w")
+	// the editor would pass through and never open the dialog. C-w closes the
+	// conversation only with the BODY focused (Conversations.py:2238-2239);
+	// from the composer it is a readline kill-word, so focus the body first.
+	if shortcutRegion(d.view()) != "list" {
+		d.toBodyRegion()
+		d.send("C-w")
+	}
 	d.toListRegion()
 	d.step("send to bogus hash to observe failed header")
 	// A 32-hex hash that is not either real peer: all 0s is valid format but has
@@ -348,9 +431,16 @@ func (h *harness) listShortcuts() {
 	// being the list column), and the dual-meaning keys (C-p/C-u/C-x/C-o) only
 	// deliver their list meaning when the list — not the editor/body — is focused.
 	// Driving them from the editor would instead fire the editor/body meaning
-	// (C-p Paper Msg, C-u Purge, C-x Clear History, C-o sort-by-timestamp). C-w
-	// is a no-op when no conversation is open.
-	d.send("C-w")
+	// (C-p Paper Msg, C-u Purge, C-x Clear History, C-o sort-by-timestamp).
+	//
+	// C-w is the BODY-region shortcut for close() (Conversations.py:2238-2239);
+	// with the composer focused it is a readline kill-word instead
+	// (ReadlineMixin), so the body has to be focused before the close. When no
+	// conversation is open the region is already "list" and C-w is unnecessary.
+	if shortcutRegion(d.view()) != "list" {
+		d.toBodyRegion()
+		d.send("C-w")
+	}
 	d.toListRegion()
 
 	d.step("C-e Peer Info")
@@ -365,7 +455,7 @@ func (h *harness) listShortcuts() {
 
 	d.step("C-p My LXMF")
 	d.send("C-p")
-	d.assert(func(v *utils.View) bool { return dialogOpen(v, "LXMF Address") }, 5*time.Second, "LXMF Address dialog open")
+	d.assert(myLxmfDialogOpen, 5*time.Second, "My LXMF dialog open (QR Code / LXMF Address)")
 	d.snapshot("my-lxmf")
 	d.dismissDialog()
 
@@ -409,11 +499,9 @@ func (h *harness) inConversationShortcuts() {
 	// Ingest URI dialog from headerStates' C-u landing in the wrong region) so
 	// it does not intercept the list navigation below.
 	d.dismissDialog()
-	// Re-open a conversation (it may have been closed/replaced by the headerStates
-	// bogus conversation). openFirstConversation sends C-w to close any open
-	// conversation → focus returns to the list → Home+Enter opens the first row,
-	// so there is no need to toListRegion first (Tab from the editor only cycles
-	// editor↔body and never reaches the list).
+	// Re-open a conversation (it may have been closed/replaced by a prior phase).
+	// openFirstConversation navigates to the list and opens the first row via
+	// Home+Enter, which lands focus on the composer.
 	d.openFirstConversation()
 
 	d.step("C-t Title toggle")
@@ -430,15 +518,15 @@ func (h *harness) inConversationShortcuts() {
 	d.toEditorRegion()
 	d.send("C-p")
 	// Assert the Paper Message dialog opened, NOT the list-level "My LXMF"
-	// (LXMF Address) dialog. C-p is region-aware in Python: list-focused →
-	// show_my_qr (My LXMF, Conversations.py:103-104), editor-focused →
-	// paper_message (Conversations.py:1811-1812). The Go display-level capture
-	// must pass C-p through to the conversation widget when the editor is focused
+	// dialog. C-p is region-aware in Python: list-focused → show_my_qr (My LXMF,
+	// Conversations.py:103-104), editor-focused → paper_message
+	// (Conversations.py:1811-1812). The Go display-level capture must pass C-p
+	// through to the conversation widget when the editor is focused
 	// (tui/conversations.go handleInput gates on shortcutFocus=="list"); without
-	// that gate C-p from the editor wrongly opens "LXMF Address". Assert BOTH the
-	// right dialog present and the wrong one absent so a regression is caught.
+	// that gate C-p from the editor wrongly opens My LXMF. Assert BOTH the right
+	// dialog present and the wrong one absent so a regression is caught.
 	d.assert(func(v *utils.View) bool { return dialogOpen(v, "Create Paper Message") }, 3*time.Second, "C-p from editor opened Paper Message dialog (not My LXMF)")
-	d.assert(func(v *utils.View) bool { return !dialogOpen(v, "LXMF Address") }, 3*time.Second, "C-p from editor did not open My LXMF (LXMF Address) dialog")
+	d.assert(func(v *utils.View) bool { return !myLxmfDialogOpen(v) }, 3*time.Second, "C-p from editor did not open the My LXMF dialog")
 	d.snapshot("paper-msg-dialog")
 	d.dismissDialog()
 
@@ -466,22 +554,21 @@ func (h *harness) inConversationShortcuts() {
 // cleanup deletes the test conversations on both instances (best-effort). It is
 // purely cosmetic: main.go's defers remove the temp config dirs (and every
 // conversation stored in them) regardless, so leftover rows do not outlive the
-// run. The editor→list navigation gap (Tab cycles editor↔body within the
-// conversation frame and never escapes to the left list pane; Escape+Up from
-// the editor does not reach the menu bar in tview the way urwid's Up-at-top
-// does in Python) means we often cannot reach the list to C-x a conversation
-// from here. So this makes ONE short, bounded probe for the list and, if it is
-// not reached, gives up immediately rather than flailing Escape+Up for minutes
-// — and crucially does NOT send C-x from the editor/body, where it would
-// misfire as Clear History (the conversation-widget frame capture) instead of
-// Delete Conversation.
+// run.
+//
+// Every region reaches the list through the urwid Columns focus moves —
+// body --Left--> list, list --Right--> editor, Tab toggling editor<->body
+// (toRegion, matching Conversations.py:221-229 + 2233-2236) — so the delete
+// shortcut can be driven from the list pane. C-x must NOT be sent from the
+// editor/body, where the conversation widget's frame capture would misfire it
+// as Clear History instead of Delete Conversation.
 func (h *harness) cleanup() {
 	h.logf("=== phase: cleanup ===")
 	for _, d := range []*driver{h.dA, h.dB} {
 		d.step("cleanup: delete test conversations")
-		d.toListRegion() // short Tab/Left probe; no-op if stuck in editor/body
+		d.toListRegion()
 		if shortcutRegion(d.view()) != "list" {
-			d.logf("  could not reach list for cleanup (editor->list nav gap); temp dirs removed by defer")
+			d.logf("  could not reach the list region for cleanup; the temp config dirs are removed by defer")
 			continue
 		}
 		for range 3 {

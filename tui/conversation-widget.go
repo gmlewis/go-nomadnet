@@ -206,6 +206,10 @@ type ConversationWidget struct {
 	// _build_footer, Conversations.py:2167-2175). Lazily created by buildFooter.
 	attachmentIndicator *tview.TextView
 	widget              tview.Primitive
+	// footerRows caches the footer slot's current height so the per-draw
+	// resize only touches the layout when the composer's wrapped row count
+	// changes (the room composer precedent, RoomWidget.editorRows).
+	footerRows int
 
 	fullEditorActive     bool
 	sortByTimestamp      bool
@@ -367,12 +371,26 @@ func NewConversationWidget(app *App, sourceHash string) *ConversationWidget {
 
 	// Minimal editor (content only) — Python builds MessageEdit(caption="",
 	// edit_text="", multiline=True) wrapped in AttrMap(..., "msg_editor")
-	// (Conversations.py:1916): an INVISIBLE empty one-line footer with no
-	// caption and no placeholder (B2). msg_editor is 3-hex #111 / #0bb
-	// (ui/TextUI.py:32/85), cube-quantized to #000000 / #00afaf.
+	// (Conversations.py:1904/1936): an INVISIBLE empty footer with no caption
+	// and no placeholder (B2) that WRAPS the draft onto as many rows as it
+	// needs, growing the urwid Frame's flow footer. msg_editor is 3-hex #111 /
+	// #0bb (ui/TextUI.py:32/85), cube-quantized to #000000 / #00afaf.
 	cw.editor = NewReadlineEdit(app.killRing, "", "")
+	cw.editor.SetMultiline(true)
 	cw.editor.SetFieldBackgroundColor(tc["msg_editor_bg"])
 	cw.editor.SetFieldTextColor(tc["msg_editor_fg"])
+	// Up on the composer's top wrapped row leaves the draft (Python
+	// MessageEdit.keypress "up" at y==0, Conversations.py:1816-1825): to the
+	// frame body in the minimal editor, and to the title editor when the full
+	// editor is active — urwid's Pile moves to its previous selectable, the
+	// same destination. Deeper rows just move the cursor (multilineVertical).
+	cw.editor.OnFocusTopRow = func() {
+		if cw.fullEditorActive {
+			cw.app.SetFocus(cw.titleEditor)
+			return
+		}
+		cw.app.SetFocus(cw.messageList)
+	}
 
 	// Title editor (hidden by default) — same msg_editor style.
 	cw.titleEditor = NewReadlineEdit(app.killRing, "Title: ", "")
@@ -400,6 +418,16 @@ func NewConversationWidget(app *App, sourceHash string) *ConversationWidget {
 		AddItem(cw.messageList, 0, 1, false).
 		AddItem(cw.footerArea, 1, 0, true)
 	cw.frame.SetBorder(true)
+	// Composer growth: urwid's Frame packs the multiline footer (the Edit is
+	// a flow widget sized to its wrapped rows), so the message list shrinks by
+	// one row per wrapped line as the draft grows — the whole panel content
+	// moves up as the user keeps typing. The DrawFunc runs before the Flex
+	// lays out its children, so the resized footer height takes effect in the
+	// same draw (the room composer precedent, RoomWidget).
+	cw.frame.SetDrawFunc(func(_ tcell.Screen, x, y, w, h int) (int, int, int, int) {
+		cw.resizeFooter(w-2, h-2)
+		return x + 1, y + 1, w - 2, h - 2
+	})
 	cw.buildFooter()
 
 	// Wire up keyboard shortcuts matching Python's ConversationWidget.keypress()
@@ -438,7 +466,22 @@ func (cw *ConversationWidget) ClearEditor() {
 // handleComposerKey first (Python's bottom-up dispatch: the focused composer
 // consumes its keys before the widget shortcuts run); otherwise this behaves
 // exactly like Python's ConversationWidget.keypress() at Conversations.py:2222.
+//
+// Tab is decided HERE, before that split, because Python's widget keypress
+// consumes it unconditionally — ahead of super().keypress() — whatever the
+// focused part is: `if key == "tab": self.toggle_focus_area(); return None`
+// (Conversations.py:2233-2236). Python reaches that branch from the composer
+// too, since MessageEdit.keypress (Conversations.py:1819-1831) consumes only
+// ctrl d/p/f/s and its special "up" and returns every other key — "tab"
+// included — to the widget above it. Deciding it in handleComposerKey instead
+// would leave Tab dead while the composer had focus, so focus could never come
+// back out of the editor and the "[Tab] ↓ Editor" shortcut-bar hint would be a
+// lie.
 func (cw *ConversationWidget) handleInput(event *tcell.EventKey) *tcell.EventKey {
+	if event.Key() == tcell.KeyTab {
+		cw.toggleFocusArea()
+		return nil
+	}
 	if cw.composerHasFocus() {
 		return cw.handleComposerKey(event)
 	}
@@ -513,16 +556,6 @@ func (cw *ConversationWidget) handleWidgetKey(event *tcell.EventKey) *tcell.Even
 			cw.OnToggleFullscreen()
 		}
 		return nil
-	case tcell.KeyTab:
-		// Tab toggles focus between the editor (footer) and the message list
-		// (body), matching Python ConversationWidget.keypress "tab" →
-		// toggle_focus_area (Conversations.py:2219-2221 + 2206-2216). Tab is
-		// CONSUMED (returns nil) so tview's default Flex focus traversal does NOT
-		// run — otherwise Tab would cycle through the header (peer-info bar /
-		// trust banner) too, never cleanly landing on the body, and the
-		// "[Tab] ↑ Messages" / "[Tab] ↓ Editor" shortcut-bar claim would be a lie.
-		cw.toggleFocusArea()
-		return nil
 	}
 
 	return event
@@ -578,12 +611,22 @@ func (cw *ConversationWidget) handleComposerKey(event *tcell.EventKey) *tcell.Ev
 		cw.saveFocusedAttachments()
 		return nil
 	case tcell.KeyUp:
-		// MessageEdit's special "up": a single-line composer always escapes at
-		// cursor line 0 (Conversations.py:1816-1825).
+		// MessageEdit's special "up": inside a wrapped draft the cursor moves
+		// up a wrapped row; only the draft's TOP row escapes the composer
+		// (Conversations.py:1816-1825). The app-level field dispatch already
+		// gives the focused editor first refusal, so this branch carries the
+		// walk when the frame capture sees the key first.
+		if cw.composerMovesWithinRows(event.Key()) {
+			return cw.editor.handleKey(event)
+		}
 		return cw.handleFrameUp(event)
 	case tcell.KeyDown:
 		// The full-editor title editor hands Down to the content editor (the
-		// full_editor Pile focus moves to the next selectable element).
+		// full_editor Pile focus moves to the next selectable element), and a
+		// wrapped draft takes Down internally until its last row.
+		if cw.composerMovesWithinRows(event.Key()) {
+			return cw.editor.handleKey(event)
+		}
 		return cw.handleFrameDown(event)
 	case tcell.KeyCtrlT, tcell.KeyCtrlX, tcell.KeyCtrlG, tcell.KeyCtrlO:
 		// Neither MessageEdit nor ReadlineMixin consumes these, so in Python
@@ -593,6 +636,22 @@ func (cw *ConversationWidget) handleComposerKey(event *tcell.EventKey) *tcell.Ev
 		return cw.handleWidgetKey(event)
 	}
 	return event
+}
+
+// composerMovesWithinRows reports whether the composer itself should consume a
+// vertical key: a multiline draft whose caret still has wrapped rows in that
+// direction. Up on the draft's top row and Down on its last row fall through
+// to the frame's focus walk, mirroring urwid Edit returning the key at the
+// draft's edges (Conversations.py:1816-1825).
+func (cw *ConversationWidget) composerMovesWithinRows(key tcell.Key) bool {
+	if !cw.editor.multiline {
+		return false
+	}
+	row := cw.editor.CursorRow()
+	if key == tcell.KeyUp {
+		return row > 0
+	}
+	return row < cw.editor.MultilineRows(cw.footerInnerWidth())-1
 }
 
 // handleFrameUp implements the Python "up" focus path of an open conversation:
@@ -807,13 +866,8 @@ func (cw *ConversationWidget) buildFooter() {
 		// Height is the wrap count at the live footer width (fallback 46 for
 		// a not-yet-laid-out frame). Draw re-wraps at the true width so a
 		// later resize still centers correctly; extra rows stay caution-bg.
-		width := 46
-		if cw.frame != nil {
-			if _, _, fw, _ := cw.frame.GetInnerRect(); fw > 0 {
-				width = fw
-			}
-		}
-		rows := len(urwidSpaceWrap(cw.editorAllowedBannerText(), width))
+		rows := cw.footerRowsAt(cw.footerInnerWidth())
+		cw.footerRows = rows
 		cw.footerArea.AddItem(cw.cautionBanner, rows, 0, false)
 		if cw.frame != nil {
 			cw.frame.ResizeItem(cw.footerArea, rows, 0)
@@ -827,7 +881,6 @@ func (cw *ConversationWidget) buildFooter() {
 	if cw.attachmentIndicator != nil {
 		cw.attachmentIndicator.Clear()
 	}
-	rows := 0
 	if len(cw.pendingAttachments) > 0 {
 		if cw.attachmentIndicator == nil {
 			cw.attachmentIndicator = tview.NewTextView()
@@ -840,18 +893,71 @@ func (cw *ConversationWidget) buildFooter() {
 		}
 		_, _ = fmt.Fprintf(cw.attachmentIndicator, "%v %v file(s): %v", g["file"], len(cw.pendingAttachments), strings.Join(names, ", "))
 		cw.footerArea.AddItem(cw.attachmentIndicator, 1, 0, false)
-		rows++
 	}
+	// The editor (or the full editor holding it) FILLS the footer slot; the
+	// slot's height is the composer's wrapped row count (footerRowsAt), so the
+	// draft's extra lines come out of the message list.
 	if cw.fullEditorActive {
-		cw.footerArea.AddItem(cw.fullEditorArea, 2, 0, true)
-		rows += 2
+		cw.footerArea.AddItem(cw.fullEditorArea, 0, 1, true)
 	} else {
-		cw.footerArea.AddItem(cw.editor, 1, 0, true)
-		rows++
+		cw.footerArea.AddItem(cw.editor, 0, 1, true)
 	}
+	rows := cw.footerRowsAt(cw.footerInnerWidth())
+	cw.footerRows = rows
 	if cw.frame != nil {
 		cw.frame.ResizeItem(cw.footerArea, rows, 0)
 	}
+}
+
+// footerInnerWidth returns the width the footer (and so the composer) is laid
+// out at: the frame's inner width, or a fallback for a frame that has not
+// been laid out yet (the constructor builds the footer before the first
+// draw, and the first draw re-sizes it at the true width).
+func (cw *ConversationWidget) footerInnerWidth() int {
+	if cw.frame != nil {
+		if _, _, w, _ := cw.frame.GetInnerRect(); w > 0 {
+			return w
+		}
+	}
+	return 46
+}
+
+// footerRowsAt returns the row count the footer occupies at the given content
+// width, mirroring the rows urwid's Frame packs for the flow footer
+// (_build_footer, Conversations.py:2160-2177): the pending-attachments
+// indicator line, the full editor's title row, and the multiline composer's
+// wrapped rows.
+func (cw *ConversationWidget) footerRowsAt(width int) int {
+	if cw.cautionBanner != nil {
+		return len(urwidSpaceWrap(cw.editorAllowedBannerText(), width))
+	}
+	rows := cw.editor.MultilineRows(width)
+	if cw.fullEditorActive {
+		rows++ // the title editor's own row above the content editor
+	}
+	if len(cw.pendingAttachments) > 0 {
+		rows++
+	}
+	return rows
+}
+
+// resizeFooter sizes the footer slot to the composer's wrapped row count at
+// the frame's content width, so a long draft pushes the message list up
+// instead of running off the right border (the urwid Frame flow footer).
+// Called from the frame's DrawFunc, before the Flex positions its children.
+// The height is capped so the header and at least one message row stay
+// visible when the draft grows taller than the panel — urwid's Frame squeezes
+// the body the same way for an over-tall footer.
+func (cw *ConversationWidget) resizeFooter(width, height int) {
+	if cw.frame == nil || width <= 0 || height <= 0 {
+		return
+	}
+	rows := min(cw.footerRowsAt(width), max(height-cw.headerPileRows()-1, 1))
+	if rows == cw.footerRows {
+		return
+	}
+	cw.footerRows = rows
+	cw.frame.ResizeItem(cw.footerArea, rows, 0)
 }
 
 // editorAllowedBannerText builds the identity-unknown warning body, matching

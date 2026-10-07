@@ -16,6 +16,10 @@
 package tui
 
 import (
+	"errors"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/gmlewis/tcell/v2"
@@ -218,5 +222,41 @@ func TestMenuBarMouseCaptureConsumesAllActions(t *testing.T) {
 		if action != tt.wantAction {
 			t.Errorf("action %v inside menuBar returned action %v, want %v", tt.action, action, tt.wantAction)
 		}
+	}
+}
+
+// TestTraceFocusIsOptIn pins the focus/quit forensic tracing gate. The traces
+// run in the per-key dispatch, so they must be off unless the environment names
+// a destination file: an always-on append opened, wrote and closed a file on
+// every keystroke (the trace file had reached 750 KB during the quit
+// investigation).
+func TestTraceFocusIsOptIn(t *testing.T) {
+	// Not parallel: t.Setenv forbids it.
+	// The tempDir helper (not t.TempDir) keeps the path short on macOS.
+	dir := tempDir(t)
+	path := filepath.Join(dir, "focus-trace.log")
+
+	t.Setenv(traceFocusEnv, "")
+	traceFocus("line that must not be written anywhere")
+	if traceFocusOn() {
+		t.Error("traceFocusOn() = true with no destination set, want false")
+	}
+	if _, err := os.Stat(path); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("a file appeared at %v with tracing disabled", path)
+	}
+
+	t.Setenv(traceFocusEnv, path)
+	if !traceFocusOn() {
+		t.Fatalf("traceFocusOn() = false with %v set, want true", traceFocusEnv)
+	}
+	traceFocus("first")
+	traceFocus("second")
+
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading the trace file: %v", err)
+	}
+	if want := "first\nsecond\n"; string(got) != want {
+		t.Errorf("trace file = %q, want %q", got, want)
 	}
 }

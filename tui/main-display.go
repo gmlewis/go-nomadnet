@@ -619,7 +619,9 @@ func (md *MainDisplay) focusMenuIndex(index int) {
 // so Down from the menu returns to wherever the body was (e.g. the open
 // conversation's message list mid-scroll), NOT the body's default widget.
 func (md *MainDisplay) FocusMenu() {
-	diagFileMD("/tmp/quit-diag.log", fmt.Sprintf("FocusMenu activeMenu=%v", md.activeMenu))
+	if traceFocusOn() {
+		traceFocus(fmt.Sprintf("FocusMenu activeMenu=%v", md.activeMenu))
+	}
 	md.mu.Lock()
 	md.focusRegion = "menu"
 	if md.app != nil {
@@ -667,7 +669,9 @@ func (md *MainDisplay) FocusMenu() {
 // the menu after Down/Tab even though tview focus has moved to the body
 // (mirrors FocusMenu, which redraws to install it).
 func (md *MainDisplay) FocusBody() {
-	diagFileMD("/tmp/quit-diag.log", fmt.Sprintf("FocusBody focusRegion=%q focus=%T", md.focusRegion, md.app.GetFocus()))
+	if traceFocusOn() {
+		traceFocus(fmt.Sprintf("FocusBody focusRegion=%q focus=%T", md.focusRegion, md.app.GetFocus()))
+	}
 	md.mu.Lock()
 	md.focusRegion = "body"
 	p := md.lastBodyFocus
@@ -811,7 +815,9 @@ func (md *MainDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 	}
 
 	if p := md.app.GetFocus(); p != nil {
-		diagFileMD("/tmp/quit-diag.log", fmt.Sprintf("HANDLE key=%v focusRegion=%q focus=%T menuBarHasFocus=%v", event.Key(), md.focusRegion, p, md.menuBar.HasFocus()))
+		if traceFocusOn() {
+			traceFocus(fmt.Sprintf("HANDLE key=%v focusRegion=%q focus=%T menuBarHasFocus=%v", event.Key(), md.focusRegion, p, md.menuBar.HasFocus()))
+		}
 	}
 
 	// Byte 0x0A (Ctrl-J / newline) decodes as Enter in urwid's input layer:
@@ -915,7 +921,9 @@ func (md *MainDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 	// else is forwarded to the page (pane focus, Esc→dialog, per-page keys).
 	if event.Key() == tcell.KeyUp {
 		top := md.bodyListAtTop()
-		diagFileMD("/tmp/quit-diag.log", fmt.Sprintf("Up focusRegion=%q bodyListAtTop=%v focus=%T", md.focusRegion, top, md.app.GetFocus()))
+		if traceFocusOn() {
+			traceFocus(fmt.Sprintf("Up focusRegion=%q bodyListAtTop=%v focus=%T", md.focusRegion, top, md.app.GetFocus()))
+		}
 		if top {
 			md.FocusMenu()
 			return nil
@@ -1009,14 +1017,18 @@ func (md *MainDisplay) bodyListAtTop() bool {
 		// peers) get the same correct body-top→header parity.
 		return true
 	default:
-		diagFileMD("/tmp/quit-diag.log", fmt.Sprintf("bodyListAtTop default focus=%T", v))
+		if traceFocusOn() {
+			traceFocus(fmt.Sprintf("bodyListAtTop default focus=%T", v))
+		}
 		return false
 	}
 	if list == nil {
 		return false
 	}
 	cur := list.GetCurrentItem()
-	diagFileMD("/tmp/quit-diag.log", fmt.Sprintf("bodyListAtTop list cur=%v", cur))
+	if traceFocusOn() {
+		traceFocus(fmt.Sprintf("bodyListAtTop list cur=%v", cur))
+	}
 	return cur == 0
 }
 
@@ -1268,9 +1280,10 @@ func (md *MainDisplay) RequestRedraw() {
 	}()
 }
 
-// diagFileMD appends a diagnostic line to a file (temporary debug).
+// diagFileMD appends a diagnostic line to a file. It is the raw appender for
+// the rare focus-invariant dump; the per-key forensics use traceFocus.
 func diagFileMD(path, line string) {
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		return
 	}
@@ -1278,10 +1291,37 @@ func diagFileMD(path, line string) {
 	_, _ = f.WriteString(line + "\n")
 }
 
+// traceFocusEnv names the environment variable that enables the focus/quit
+// forensic traces.
+const traceFocusEnv = "GONOMADNET_DIAG_FOCUS_LOG"
+
+// traceFocusOn reports whether the forensic traces are enabled. The trace sites
+// sit in the per-key dispatch (handleInput, bodyListAtTop, FocusMenu/FocusBody),
+// so each guards its own formatting with this: with tracing off a keystroke
+// costs one boolean test and allocates nothing.
+func traceFocusOn() bool { return os.Getenv(traceFocusEnv) != "" }
+
+// traceFocus appends one forensic line about the focus/quit state machine to
+// the file named by traceFocusEnv.
+//
+// Tracing is opt-in because the call sites sit in the per-key dispatch: an
+// always-on append opened, wrote and closed a file on every keystroke, and the
+// trace file grew into the megabytes during normal use. Set the variable to a
+// writable path to re-enable the traces for a live investigation.
+func traceFocus(line string) {
+	path := os.Getenv(traceFocusEnv)
+	if path == "" {
+		return
+	}
+	diagFileMD(path, line)
+}
+
 // focusInvariantDump is the sink for focus-invariant violations (a nil
 // a.focus). It defaults to appending the offending stack to the diagnostic log
 // so the culprit surfaces immediately; tests swap it to capture the dump. The
 // program keeps running regardless — the caller recovers focus after dumping.
+// This one write is NOT env-gated: it only fires on a broken focus state, and
+// losing it silently would hide the very bug it exists to report.
 var focusInvariantDump = func(msg string, stack []byte) {
 	diagFileMD("/tmp/quit-diag.log", fmt.Sprintf("FOCUS INVARIANT VIOLATION: %v\n%s", msg, stack))
 }

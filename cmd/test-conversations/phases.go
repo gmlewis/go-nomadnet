@@ -176,10 +176,11 @@ func runAllPhases(h *harness, logf func(string, ...any)) {
 	// titled-send + body-scroll steps. headerStates would replace it with the
 	// bogus "Nobody" conversation (no recalled identity → send is a no-op,
 	// empty body), so running it after would leave those steps snapshot-only on
-	// an empty conversation. openFirstConversation uses the already-open
-	// conversation, so no re-open (and its focus gap) is needed here.
+	// an empty conversation. Both phases open their own conversation
+	// (openFirstConversation), so neither depends on the other's focus state.
 	h.listShortcuts()
 	h.inConversationShortcuts()
+	h.composerWrap()
 	h.headerStates()
 	h.cleanup()
 }

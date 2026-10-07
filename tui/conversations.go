@@ -866,32 +866,7 @@ func (cd *ConversationsDisplay) DisplayConversation(sourceHash string) {
 		// panel, which got removed and left the page in a full-width
 		// "No conversation selected" state that never recovered from C-w,
 		// page-away/back, or C-g.
-		if cd.detailSlotOverlay != nil {
-			// An open right-pane dialog dies with the conversation that owned
-			// it; dropping the tracked state also stale-proofs its dismiss.
-			cd.detailSlotOverlay = nil
-			cd.detailSlotBottom = nil
-		}
-		cd.currentWidget = nil
-		cd.rebuildContent(cd.listPaneItem(), cd.detail, false)
-		// Return focus to the conversation LIST (left column), matching Python's
-		// close_conversation → display_conversation(source_hash=None) →
-		// columns_widget.focus_position = 0 (Conversations.py:1677 + 1638-1639).
-		// Without this, tview leaves focus on the now-empty detail placeholder
-		// (right column) after the conversation widget is removed, so the user is
-		// stranded — list-region shortcuts (C-e/C-n/C-r/C-p My-LXMF/C-u Ingest-URI)
-		// no longer fire and there is no keyboard path back to the list (tview Flex
-		// does not do urwid Columns' Left/Right column traversal). Setting focus to
-		// the list restores the region the user expects after closing a conversation
-		// and keeps cd.handleInput's list-region gate (shortcutFocus=="list")
-		// accurate so list shortcuts work again.
-		if cd.app != nil {
-			// Focus the list wrapper (not the bare List) so the main
-			// dispatcher's Up-at-top logic sees the conversationsListBox
-			// marker (A6: Up at the top lands on the tab bar, not the menu).
-			cd.app.SetFocus(cd.ilb)
-		}
-		cd.setShortcutRegion("list")
+		cd.clearDisplayedConversation()
 	}
 	// Python ConversationWidget.keypress "ctrl g" →
 	// conversations_display.toggle_fullscreen() (Conversations.py:2234-2235):
@@ -1083,6 +1058,44 @@ func (cd *ConversationsDisplay) RefreshRelativeTimes() {
 		return
 	}
 	cd.ReloadCurrentMessages()
+}
+
+// clearDisplayedConversation returns the detail pane to the empty
+// "No conversation selected" placeholder and hands focus back to the
+// conversation LIST (left column). Python reaches this state from two places:
+// C-w (ConversationWidget keypress → close_conversation →
+// display_conversation(source_hash=None), Conversations.py:1677 + 1638-1639)
+// and the New Conversation dialog's Create — confirmed() calls
+// display_conversation(source_hash_text) POSITIONALLY (Conversations.py:1076),
+// so the hash binds to the `sender` parameter, source_hash stays None, and
+// display_conversation swaps contents[1] for the placeholder
+// (Conversations.py:1892) and sets columns_widget.focus_position = 0
+// (Conversations.py:1649-1650). Verified live against nomadnet 1.2.8: after
+// Create the right pane reads "No conversation selected" and the list holds
+// focus, even when a conversation was open before the dialog opened.
+//
+// The rebuild (rather than a plain RemoveItem) matters: see the original C-w
+// defect it fixes below. Focus must land on the list wrapper (not the bare
+// List) so the main dispatcher's Up-at-top logic sees the
+// conversationsListBox marker (A6: Up at the top lands on the tab bar, not
+// the menu). Without the focus move, tview leaves focus on the now-empty
+// detail placeholder (right column) and the user is stranded — list-region
+// shortcuts (C-e/C-n/C-r/C-p My-LXMF/C-u Ingest-URI) no longer fire and there
+// is no keyboard path back to the list (tview Flex does not do urwid Columns'
+// Left/Right column traversal). No-op-safe when no conversation is open.
+func (cd *ConversationsDisplay) clearDisplayedConversation() {
+	if cd.detailSlotOverlay != nil {
+		// An open right-pane dialog dies with the conversation that owned it;
+		// dropping the tracked state also stale-proofs its dismiss.
+		cd.detailSlotOverlay = nil
+		cd.detailSlotBottom = nil
+	}
+	cd.currentWidget = nil
+	cd.rebuildContent(cd.listPaneItem(), cd.detail, false)
+	if cd.app != nil {
+		cd.app.SetFocus(cd.ilb)
+	}
+	cd.setShortcutRegion("list")
 }
 
 // focusEditor moves focus to the currently-open conversation's composer (the
@@ -2861,11 +2874,18 @@ func (cd *ConversationsDisplay) showNewConversationDialog(addr, name string, sho
 		if onCreate(addrHex, displayName, trust) {
 			dismiss()
 			// B1: nomadnet 1.2.8 does NOT auto-open the conversation after
-			// Create. After dismiss, focus returns to the list (the dialog's
-			// prevFocus), matching Python where the dialog closes back to the
-			// list, not the conversation editor. focusEditor is a no-op when
-			// no conversation is open.
-			cd.focusEditor()
+			// Create — it returns to the list with the right pane showing
+			// "No conversation selected". The user must select the peer and
+			// press Enter to open it. Python's confirmed() does call
+			// display_conversation(source_hash_text), but POSITIONALLY, so the
+			// hash binds to the `sender` parameter and source_hash stays None:
+			// display_conversation replaces the detail pane with the empty
+			// placeholder and moves focus to the list column
+			// (Conversations.py:1076 → 1649-1650). A conversation that was
+			// already open before the dialog is therefore ALSO cleared — do not
+			// leave it displayed with its composer focused, or the next
+			// keystrokes would be sent to the previous peer.
+			cd.clearDisplayedConversation()
 			return
 		}
 		// Re-show with the preserved inputs and the error row. The dialog is

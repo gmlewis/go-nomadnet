@@ -21,23 +21,42 @@ func (d *driver) stepf(format string, args ...any) {
 	d.step(fmt.Sprintf(format, args...))
 }
 
-// toRegion sends Tab (and Left/Right as nudge) until the conversations shortcut
-// bar reports the target region ("list"/"editor"/"body"), capped. Best-effort:
-// if the region is not reached, the caller's downstream assertion will fail and
-// log the observed state.
+// toRegion drives the conversations shortcut bar to the target region
+// ("list"/"editor"/"body") with the keys the app actually binds, capped.
+//
+// The three regions form one directed cycle, so from any region the target is
+// at most two steps away:
+//
+//	list --Right--> editor --Tab--> body --Left--> list
+//
+// Right/Left are urwid's Columns focus moves (Conversations.py:221-229); Tab is
+// ConversationWidget.keypress "tab" → toggle_focus_area (:2233-2236). Sending
+// an unconditional Tab/Left/Tab… sequence cannot work: Left inside the editor
+// is a text-cursor move (ReadlineMixin), not a focus move. Best-effort — if the
+// region is not reached, the caller's downstream assertion fails and logs the
+// observed state.
 func (d *driver) toRegion(region string, cap int) {
-	for i := range cap {
-		if shortcutRegion(d.view()) == region {
+	for range cap {
+		cur := shortcutRegion(d.view())
+		if cur == region {
 			return
 		}
-		switch i % 3 {
-		case 0, 1:
+		switch cur {
+		case "editor":
+			// Tab leaves the composer for the message body.
 			d.send("Tab")
-		case 2:
-			// Nudge focus between the left list and right detail pane. Left is
-			// harmless in the editor (moves the text cursor) but the Tab cycle
-			// is the primary mechanism; Left is a fallback for body->list.
-			d.send("Left")
+		case "body":
+			if region == "editor" {
+				// Tab returns to the composer.
+				d.send("Tab")
+			} else {
+				// Left is urwid's move to the list column.
+				d.send("Left")
+			}
+		default: // "list"
+			// Right moves into the conversation column (a no-op when no
+			// conversation is open — the caller's next assert reports it).
+			d.send("Right")
 		}
 	}
 }
@@ -59,18 +78,11 @@ func (d *driver) dismissDialog() {
 // as-is — the in-conversation editor/body shortcut tests (C-p Paper Msg, Tab
 // editor↔body, C-w Close, C-t Title) work on ANY open conversation and do not
 // require a specific peer or a non-empty message list (body scrolling is
-// snapshot-only). Re-opening from the list via Home+Enter is avoided when a
-// conversation is already open: closing it first with C-w (whose OnClose
-// returns focus to the list) and re-opening via list-Enter renders the
-// conversation but the editor focus does not reliably stick
-// (DisplayConversation.focusEditor's SetFocus(editor) does not take hold when
-// the list just relinquished focus via C-w), leaving the shortcut bar on "list"
-// and the editor/body assertions failing. Using the already-open conversation
-// matches the proven path (the editor is already focused from the prior phase)
-// and avoids that focus-timing gap.
+// snapshot-only).
 //
 // When no conversation is open (region is "list"), it opens the first row:
-// C-w (no-op when none open) → list → Home → Enter.
+// navigate to the list → Home → Enter, which runs the list's open handler and
+// lands focus on the composer (DisplayConversation's focusEditor).
 func (d *driver) openFirstConversation() bool {
 	d.step("open first conversation in list")
 	if r := shortcutRegion(d.view()); r == "editor" || r == "body" {
@@ -78,7 +90,6 @@ func (d *driver) openFirstConversation() bool {
 		d.snapshot("opened-first-conversation")
 		return true
 	}
-	d.send("C-w") // no-op when no conversation is open
 	d.toListRegion()
 	d.send("Home")
 	d.send("Enter")

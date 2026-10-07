@@ -287,6 +287,21 @@ func (re *ReadlineEdit) multilineCoords(runes []rune, width int) (int, int) {
 	return x, y
 }
 
+// CursorRow reports the wrapped display row the caret currently sits on
+// (always 0 for a single-line editor, an empty draft, or a not-yet-laid-out
+// editor whose width is unknown). The conversation composer uses it to tell
+// an Up/Down inside the draft from the escape at its boundary rows, the way
+// urwid's Edit reports get_cursor_coords y to MessageEdit.keypress.
+func (re *ReadlineEdit) CursorRow() int {
+	if !re.multiline {
+		return 0
+	}
+	_, _, w, _ := re.GetInnerRect()
+	runes := []rune(re.GetText())
+	_, y := re.multilineCoords(runes, w)
+	return y
+}
+
 // multilineVertical moves the cursor one wrapped row up or down, mirroring
 // urwid Edit.keypress UP/DOWN: the preferred column targets the new row, the
 // achieved column is stored for the next vertical move, and an out-of-range

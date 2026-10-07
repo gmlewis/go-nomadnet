@@ -26,6 +26,16 @@ func dialogOpen(v *utils.View, title string) bool {
 	return utils.HasBorderTitle(v.Screen.FullText(), title)
 }
 
+// myLxmfDialogOpen reports whether the C-p "My LXMF" dialog is on screen. Its
+// border title is not fixed: Python picks it from whether the QR code rendered
+// (Conversations.py:679, `dialog_title = "LXMF Address" if qr_text is None else
+// "QR Code"`), and the running Python build has the qrcode module, so a normal
+// run shows "QR Code". Accept either title so the assertion does not depend on
+// whether the QR renderer is available on the platform under test.
+func myLxmfDialogOpen(v *utils.View) bool {
+	return dialogOpen(v, "QR Code") || dialogOpen(v, "LXMF Address")
+}
+
 // extractLXMFHash returns the first 32-hex hash found anywhere on screen. Used
 // to read an instance's own LXMF address off the C-p "My LXMF" dialog. Returns
 // "" if no 32-hex run is present.
@@ -44,6 +54,22 @@ func messageBodyContains(v *utils.View, text string) bool {
 		return false
 	}
 	return strings.Contains(v.Screen.FullText(), text)
+}
+
+// rowOf returns the index of the first screen row whose text contains sub, or
+// -1 when sub is not on screen. Used by the composer-wrap phase to compare the
+// ROWS of two markers: two markers on different rows is what distinguishes a
+// word-wrapped draft from a horizontally-scrolled single-line field.
+func rowOf(v *utils.View, sub string) int {
+	if v == nil || v.Screen == nil || sub == "" {
+		return -1
+	}
+	for y := 0; y < v.Screen.H; y++ {
+		if strings.Contains(v.Screen.RowText(y), sub) {
+			return y
+		}
+	}
+	return -1
 }
 
 // onConversationsPage reports whether the active page is the Conversations page.
