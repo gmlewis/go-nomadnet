@@ -20,6 +20,10 @@
 #     prefixes below. It never touches unrelated /tmp content.
 #   - Long-running user nodes (e.g. /tmp/gogit-manual, gonomadnet daemons) do
 #     NOT match any of these prefixes and are never touched.
+#   - A directory holding a .do-not-sweep file naming a LIVE PID is left alone
+#     whatever its name. Tools that build under /tmp drop that marker in their
+#     scratch dir, so a sweep cannot delete work in progress; a marker whose PID
+#     is gone protects nothing, so a killed run's dir is still reclaimed.
 #   - -n  dry run: list what would be removed, remove nothing.
 #   - -m MINUTES  only remove entries older than MINUTES mtime (default: 0,
 #     i.e. all). Use this to spare dirs from a currently-running test suite.
@@ -72,9 +76,17 @@ repo_root="$(dirname "$script_dir")"
 # user process: list the specific test prefix, not the whole family. That is
 # also why the loopback-/repeat-/probe- pairs below are listed by their full
 # names rather than shortened to their common stem.
+#
+# NOTE: bare "gonomadnet-" and bare "gorns-" were both listed here once, and
+# both deleted a live release build: they matched /tmp/gonomadnet-release-* and
+# /tmp/gorns-release-*, the scratch dirs the release publishers build into. A
+# concurrent test run's sweep removed those artifacts mid-publish, and because
+# `go build -o` silently recreates a missing output directory, nothing failed
+# until gh reported a missing asset. The families are now spelled out, and the
+# dirs a tool owns are listed in not_swept_prefixes below, which -c enforces.
 prefixes=(
   gorngit- rngit- gornx- gornsh- gornstatus- gorncp- gornodeconf-
-  gornid- gornir- gornpath- gornpkg- gornprobe- gornsd- gorns-
+  gornid- gornir- gornpath- gornpkg- gornprobe- gornsd-
   gornsh_py_wrapper_ missing-gornpath-binary
   gorrcd- rrcd- rrc- gorngcs- gorrcbot-test- gobot-test- grl-test-
   test-update-offline-data-
@@ -88,8 +100,12 @@ prefixes=(
   rns-udp-parity- rns-serial-parity- rns-hashlist- rns-cache-clean-
   rns-clean-ratchet- rns-retain-clean- rns-void-queues- rns-persist-reentrant-
   rns-pathtable-midpersist- rns-preset-log- rns-pubtofile- rns-location-cmd-
+  rns-entropy-test-
   lxmf-int- lxmf-peer- lxmf-tcp- py-interop-
-  nomadnet-rrc- gonet- gonomadnet-
+  nomadnet-rrc- gonet-
+  gonomadnet-test- gonomadnet-tc- gonomadnet-bench-config
+  gonomadnet-tmux-test-suite- nomadnet-tmux-test-suite-
+  gonomadnet-test-conversations- gonomadnet-input-box nomadnet-input-box
   nomadnet-app-test nomadnet-config-test nomadnet-node-
   nomadnet-conversation-test nomadnet-directory-test nomadnet-dir-persist
   nomadnet-int- nomadnet-lxmf-xproc- nomadnet-peersettings-test
@@ -122,6 +138,16 @@ prefixes=(
 #   - Belonging to a long-running server rather than a test, so the sweep must
 #     leave it alone even though -c sees the call site.
 #
+#   - A tool's own /tmp scratch or output path. These are a live run's working
+#     state, not test residue: the release publishers build into
+#     publish-release-<repo>-*, tooling/heap-dump.sh captures profiles into
+#     gonomadnet-pprof-<ts>/, scripts/run-bench.sh tees results into
+#     gonomadnet-bench-latest-<ts>.txt, tooling/sweep.sh builds
+#     gonomadnet-sweep-bin, and a bench test writes gonomadnet-bench-config.
+#     Listing them here is what keeps -c honest: a swept prefix that matched any
+#     of them would make this script delete live state, and -c fails on exactly
+#     that contradiction.
+#
 # "gobot-" is the gobot CLI's own scratch history directory. It is created with
 # os.MkdirTemp("", ...), so it lives under $TMPDIR rather than /tmp, and a bare
 # prefix is exactly the kind that could otherwise match a user's own /tmp file.
@@ -129,6 +155,8 @@ not_swept_prefixes=(
   .gorngit-clone- ratchet-encrypt- gobot-
   initiator- listener- src-
   serve-page-rns-
+  publish-release- go-cache gogit-manual gorrcbot-
+  gonomadnet-pprof- gonomadnet-bench-latest- gonomadnet-sweep-bin
 )
 
 # temp_prefixes_in_sources prints every temp-dir prefix the Go sources in this
@@ -198,11 +226,32 @@ if [ "$check_only" -eq 1 ]; then
     fi
   done < <(temp_prefixes_in_sources)
 
-  if [ "$uncovered" -gt 0 ]; then
-    echo "check-test-tmp: $uncovered temp prefix(es) missing from the list" >&2
+  # A not_swept_prefixes entry that a swept prefix also matches is a
+  # contradiction the sweep resolves the wrong way: the name is documented as
+  # "the sweep deliberately never touches this", and yet a live sweep would
+  # delete it. Two bare family prefixes once did exactly that to the release
+  # publishers' build dirs, so the check now fails on it instead of trusting the
+  # two lists to stay apart by hand.
+  contradictions=0
+  for n in "${not_swept_prefixes[@]}"; do
+    for p in "${prefixes[@]}"; do
+      case "$n" in
+        "$p"*)
+          echo "CONTRADICTION: not_swept_prefixes entry '$n' is matched by swept" >&2
+          echo "              prefix '$p', so a sweep would delete it. Narrow '$p'" >&2
+          echo "              or drop the entry." >&2
+          contradictions=$((contradictions + 1))
+          ;;
+      esac
+    done
+  done
+
+  if [ "$uncovered" -gt 0 ] || [ "$contradictions" -gt 0 ]; then
+    echo "check-test-tmp: $uncovered temp prefix(es) missing from the list," \
+      "$contradictions not-swept entry/entries a swept prefix would delete" >&2
     exit 1
   fi
-  echo "check-test-tmp: every temp prefix is covered"
+  echo "check-test-tmp: every temp prefix is covered and no swept prefix reaches a not-swept name"
   exit 0
 fi
 
@@ -238,10 +287,31 @@ mtime_in_seconds() {
   stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null || date -r "$1" +%s 2>/dev/null || echo 0
 }
 
+# in_use_marker is the file a tool writing a /tmp scratch dir drops inside it.
+# The file names the tool's PID, and in_use decides on that PID being alive, so
+# a marker left behind by a killed run protects nothing.
+in_use_marker=".do-not-sweep"
+
+# in_use reports whether a live process claims a temp entry, which is the one
+# signal that outranks the name: a name is only ever a guess at what a directory
+# belongs to, and the guess is what deleted a running release build. A tool that
+# wants a guarantee it will not be swept mid-run leaves the marker.
+in_use() { # $1 = path
+  local marker="$1/${in_use_marker}" pid
+  [ -f "$marker" ] || return 1
+  pid=$(tr -dc '0-9' <"$marker")
+  [ -n "$pid" ] || return 1
+  kill -0 "$pid" 2>/dev/null
+}
+
 removed=0
 for p in "${prefixes[@]}"; do
   for f in /tmp/${p}*; do
     [ -e "$f" ] || [ -L "$f" ] || continue
+    if in_use "$f"; then
+      [ "$dry_run" -eq 1 ] && echo "DRY-RUN keep (in use) $f"
+      continue
+    fi
     if [ "$min_minutes" -gt 0 ]; then
       # Skip entries modified within the last min_minutes minutes.
       mtime=$(mtime_in_seconds "$f")

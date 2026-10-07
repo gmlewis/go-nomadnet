@@ -112,6 +112,23 @@ var hardwareTargets = []hwTarget{
 // binaryName is the published artifact's base name.
 const binaryName = "gonomadnet"
 
+// scratchDirPrefix names the build scratch dir os.MkdirTemp creates under /tmp.
+// It deliberately begins with no prefix scripts/clean-test-tmp.sh sweeps: a
+// "gonomadnet-release-" prefix sat inside that script's swept "gonomadnet-"
+// family, so a concurrent test run's sweep deleted the artifacts out from under
+// a publish mid-flight, and because go build quietly recreates a missing output
+// directory nothing failed until gh reported a missing file. scratch_test.go
+// enforces the guarantee against the script's live prefix lists, and
+// not_swept_prefixes there names this prefix so -c keeps it that way.
+const scratchDirPrefix = "publish-release-gonomadnet-*"
+
+// inUseMarker is the file markScratchInUse drops inside the scratch dir. It
+// names this process's PID, and scripts/clean-test-tmp.sh leaves a directory
+// carrying it alone while that PID lives — the second line of defence behind the
+// prefix above, and the only one that helps a scratch dir whose name a future
+// sweeper prefix happens to match.
+const inUseMarker = ".do-not-sweep"
+
 // options gathers the command's knobs so run's signature stays readable.
 type options struct {
 	force        bool // replace an existing release for this version
@@ -245,11 +262,14 @@ func run(opts options) error {
 
 	// Build into a scratch dir under the system temp location so we never
 	// pollute the working tree and can clean up wholesale.
-	outDir, err := os.MkdirTemp("/tmp", "gonomadnet-release-*")
+	outDir, err := os.MkdirTemp("/tmp", scratchDirPrefix)
 	if err != nil {
 		return fmt.Errorf("create temp dir: %w", err)
 	}
 	defer func() { _ = os.RemoveAll(outDir) }()
+	if err := markScratchInUse(outDir); err != nil {
+		return err
+	}
 
 	assets, err := buildAll(outDir, version, progress)
 	if err != nil {
@@ -264,6 +284,12 @@ func run(opts options) error {
 		// run would do. The plan goes to progress (stderr), keeping stdout a
 		// clean Markdown document.
 		return pruneReleaseAssets(opts.keepReleases, true, progress)
+	}
+
+	// Everything is built and hashed; make sure it is still on disk before gh is
+	// asked to upload it.
+	if err := verifyArtifacts(assets); err != nil {
+		return err
 	}
 
 	// Recreate the GitHub Release (release page + uploaded binaries) WITHOUT
@@ -410,6 +436,37 @@ func gh(args ...string) error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
+}
+
+// markScratchInUse records this process's PID in dir, so
+// scripts/clean-test-tmp.sh skips the directory: the sweeper reads the marker
+// and leaves the dir alone for as long as that PID is alive. Without it, only
+// the dir's name stands between a long build/upload and a concurrent test run's
+// /tmp sweep.
+func markScratchInUse(dir string) error {
+	marker := filepath.Join(dir, inUseMarker)
+	if err := os.WriteFile(marker, fmt.Appendf(nil, "%v\n", os.Getpid()), 0o644); err != nil {
+		return fmt.Errorf("mark scratch dir %v in use: %w", dir, err)
+	}
+	return nil
+}
+
+// verifyArtifacts fails when a built artifact is no longer on disk. gh treats
+// every asset argument as a glob and reports a missing file as the opaque
+// "no matches found for <path>", so checking here instead names the file and
+// says what happened: the scratch dir is removed when this process exits, so a
+// file that has already vanished means something deleted it meanwhile.
+func verifyArtifacts(assets []string) error {
+	for _, path := range assets {
+		if _, err := os.Stat(path); err != nil {
+			return fmt.Errorf(
+				"artifact %v vanished after it was built (%w); the build scratch dir "+
+					"is only deleted when this process exits, so a concurrent cleaner "+
+					"(scripts/clean-test-tmp.sh, which once swept this dir mid-publish) "+
+					"removed it. Re-run the script to rebuild and publish", path, err)
+		}
+	}
+	return nil
 }
 
 // wagoSupportedTarget reports whether the target platform links the wago

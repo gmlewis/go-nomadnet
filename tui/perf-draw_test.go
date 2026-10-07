@@ -60,9 +60,12 @@ func benchPageDraw(b *testing.B, key string, build func(app *App) tview.Primitiv
 // benchLogPath writes a throwaway log file to /tmp and returns its path. The
 // Log display tails it at construction; a real (small) file exercises the
 // text-load path without depending on the user's environment. (On macOS we
-// use /tmp explicitly, never os.MkdirTemp("").)
+// use /tmp explicitly, never os.MkdirTemp("").) The dir name is
+// "gonomadnet-bench-config" rather than "gonomadnet-bench-" so that the sweep
+// prefix scripts/clean-test-tmp.sh lists for it cannot also match
+// run-bench.sh's result files, /tmp/gonomadnet-bench-latest-<ts>.txt.
 func benchLogPath(b *testing.B) string {
-	dir := "/tmp/gonomadnet-bench"
+	dir := "/tmp/gonomadnet-bench-config"
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		b.Fatalf("mkdir: %v", err)
 	}
@@ -154,7 +157,7 @@ func BenchmarkMainDisplayDrawInterfaces(b *testing.B) {
 
 func BenchmarkMainDisplayDrawConfig(b *testing.B) {
 	benchPageDraw(b, "config", func(app *App) tview.Primitive {
-		cd := NewConfigDisplay(app, "/tmp/gonomadnet-bench/reticulum.conf")
+		cd := NewConfigDisplay(app, "/tmp/gonomadnet-bench-config/reticulum.conf")
 		return cd.Widget()
 	})
 }
