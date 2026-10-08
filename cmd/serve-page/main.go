@@ -180,8 +180,11 @@ func writeRNSConfig(cfgDir string, verbose bool) error {
 // freeLoopbackPort returns a free TCP port on the given bind address by opening
 // a throwaway listener and closing it. There is a small race window before the
 // real interface binds, which is acceptable for a local loopback test harness.
+// net.JoinHostPort brackets an IPv6 literal: concatenating "host:port" here
+// turned "::1" into "::1:0", which net.Listen rejects with "too many colons in
+// address".
 func freeLoopbackPort(bind string) (int, error) {
-	l, err := net.Listen("tcp", bind+":0")
+	l, err := net.Listen("tcp", net.JoinHostPort(bind, "0"))
 	if err != nil {
 		return 0, err
 	}

@@ -13,8 +13,22 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-// Package version provides the Go NomadNet version string.
-package version
+package main
 
-// VERSION is the current version of Go NomadNet.
-const VERSION = "0.164.0"
+import "testing"
+
+// TestFreeLoopbackPortIPv6 verifies a bare IPv6 literal bind address is accepted.
+// The helper joins the address and port itself, so an unbracketed literal such
+// as "::1" became "::1:0" and net.Listen rejected it with
+// "too many colons in address", making -bind unusable with IPv6.
+func TestFreeLoopbackPortIPv6(t *testing.T) {
+	t.Parallel()
+
+	port, err := freeLoopbackPort("::1")
+	if err != nil {
+		t.Fatalf("freeLoopbackPort(%q) = %v, want a usable port", "::1", err)
+	}
+	if port <= 0 {
+		t.Fatalf("freeLoopbackPort(%q) = %v, want a positive port", "::1", port)
+	}
+}

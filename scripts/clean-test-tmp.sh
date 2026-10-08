@@ -88,7 +88,7 @@ prefixes=(
   gorngit- rngit- gornx- gornsh- gornstatus- gorncp- gornodeconf-
   gornid- gornir- gornpath- gornpkg- gornprobe- gornsd-
   gornsh_py_wrapper_ missing-gornpath-binary
-  gorrcd- rrcd- rrc- gorngcs- gorrcbot-test- gobot-test- grl-test-
+  gorrcd- rrcd- rrc- gorngcs- gorrcbot-test- gobot-test- grb-test-
   test-update-offline-data-
   gogit-clone- gogit-remote-rns- gogit-seed- gogit-reclone-
   golxmd-test- golxmd-filter

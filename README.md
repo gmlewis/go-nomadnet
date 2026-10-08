@@ -31,7 +31,7 @@ If you already have [Go](https://go.dev/) installed, you can
 install `gonomadnet` directly from GitHub without cloning the repo:
 
 ```bash
-go install github.com/gmlewis/go-nomadnet/cmd/gonomadnet@v0.163.0
+go install github.com/gmlewis/go-nomadnet/cmd/gonomadnet@v0.164.0
 ```
 
 This puts the `gonomadnet` binary in your `$GOPATH/bin` (or `$GOBIN`)
@@ -47,6 +47,27 @@ git clone https://github.com/gmlewis/go-nomadnet
 cd go-nomadnet
 go build -o gonomadnet ./cmd/gonomadnet/
 ```
+
+### Android (Termux)
+
+`gonomadnet` runs on Android inside [Termux](https://termux.dev) — the same
+text UI and the same Reticulum stack, unmodified. It needs no Android GUI port,
+but it does need the **F-Droid** build of Termux (not the Play Store one), and it
+cannot use `AutoInterface`.
+
+```bash
+GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o gonomadnet ./cmd/gonomadnet
+adb push gonomadnet /sdcard/Download/gonomadnet
+# then, inside Termux:
+termux-setup-storage && cp /sdcard/Download/gonomadnet ~/ && chmod 755 ~/gonomadnet
+```
+
+See **[docs/ANDROID.md](docs/ANDROID.md)** for the complete procedure: the
+Termux `targetSdk` requirement, configuring a `TCPClientInterface` (and why
+`AutoInterface` is blocked by SELinux), working around Android's missing
+`/etc/resolv.conf` when `target_host` is a hostname, adding a home-screen icon
+with Termux:Widget, and a troubleshooting table of every error you are likely to
+hit.
 
 ## Quick Start
 
