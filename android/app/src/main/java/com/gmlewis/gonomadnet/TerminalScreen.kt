@@ -22,8 +22,26 @@ package com.gmlewis.gonomadnet
  * wrong characters on it. The Go file's vectors are asserted here against the same
  * behaviour rather than retyped, and [TerminalScreenTest] keeps each one readable
  * beside its original.
+ *
+ * One thing here has no counterpart in `vterm.go`, and cannot have: a scrollback. On a
+ * desktop the client draws through a terminal emulator that owns the lines which leave the
+ * window, and the Go file is only ever the screen. In the appliance this emulator *is* the
+ * terminal, so the lines that scroll off the top are kept here — see [historyRowText] — and
+ * the view is what a reader drags back through them.
  */
 class TerminalScreen(cols: Int, rows: Int) {
+
+    /** The fixed facts of this screen. */
+    companion object {
+        /**
+         * How many lines of scrollback are kept.
+         *
+         * A tablet runs for weeks, so this is a bound rather than a policy: the oldest lines
+         * go as the newest arrive, and the memory a session can hold does not depend on how
+         * long it has been running.
+         */
+        const val MAX_SCROLLBACK_LINES: Int = 500
+    }
 
     /** The screen's width, in columns. */
     var cols: Int = cols
@@ -71,6 +89,10 @@ class TerminalScreen(cols: Int, rows: Int) {
 
     private var grid: Array<Array<TerminalCell>> = blankGrid(cols, rows)
 
+    // The lines that have left the top of the screen, oldest first. Each entry is a row
+    // array the grid no longer holds — see recordHistory — so nothing writes to one again.
+    private val history = ArrayDeque<Array<TerminalCell>>()
+
     /**
      * Whether the cursor rests on the last column waiting for the next rune to wrap.
      * A terminal wraps when the next character arrives, not when the last one is
@@ -98,6 +120,35 @@ class TerminalScreen(cols: Int, rows: Int) {
 
     /** penAt reports the pen of one cell, which is what the renderer draws it with. */
     fun penAt(x: Int, y: Int): TerminalPen = grid[y][x].pen
+
+    /** cellAt is one cell of the screen, glyph and pen together, for the renderer to draw. */
+    fun cellAt(x: Int, y: Int): TerminalCell = grid[y][x]
+
+    /** historySize is how many lines have left the top of the screen and been kept. */
+    val historySize: Int
+        get() = history.size
+
+    /**
+     * linesScrolledOff is how many lines have left the top of the screen over this screen's
+     * whole life, whether or not [historySize] still holds them.
+     *
+     * It is what a view re-anchors a reader by. The history is bounded, so `historySize`
+     * stops growing once the buffer is full and cannot say how much output has arrived
+     * since; this keeps counting, and the difference between two readings is exactly the
+     * number of lines that have appeared below a reader parked in the scrollback.
+     *
+     * Only the console's own lines count. A scroll inside a region and a full-screen
+     * client's repaint are the client drawing over itself, and they add nothing to the
+     * console for a reader to have been pushed down by.
+     */
+    var linesScrolledOff: Long = 0L
+        private set
+
+    /** historyRowText renders one kept line's characters, oldest first. */
+    fun historyRowText(line: Int): String = history[line].joinToString("") { it.glyph }
+
+    /** historyCell is one cell of one kept line, for the renderer to draw. */
+    fun historyCell(x: Int, line: Int): TerminalCell = history[line][x]
 
     /** setPen changes the pen a character written now would be drawn with. */
     fun setPen(pen: TerminalPen) {
@@ -258,10 +309,32 @@ class TerminalScreen(cols: Int, rows: Int) {
     /** scrollUp moves the scroll region's rows up and blanks the row it leaves behind. */
     fun scrollUp(count: Int) {
         repeat(count) {
+            // A row leaving the top of the whole screen is a line of the console that has
+            // gone by, and is kept. A scroll inside a region below the top is the client
+            // drawing in part of the screen, and the lines it moves did not leave anything.
+            if (scrollTop == 0 && !isAltScreen) {
+                recordHistory(grid[0])
+            }
             for (y in scrollTop until scrollBottom) {
                 grid[y] = grid[y + 1]
             }
             grid[scrollBottom] = blankRow()
+        }
+    }
+
+    /**
+     * recordHistory keeps a row that has left the top of the screen.
+     *
+     * It is called before the row shuffle, and that is what makes keeping the array itself
+     * safe: the shuffle only ever moves references up and drops the top one, so the array
+     * handed over here is one no part of the grid holds any more and nothing will write to
+     * again. Copying it instead would only cost memory on every line of output.
+     */
+    private fun recordHistory(row: Array<TerminalCell>) {
+        history.addLast(row)
+        linesScrolledOff++
+        while (history.size > MAX_SCROLLBACK_LINES) {
+            history.removeFirst()
         }
     }
 
@@ -504,13 +577,19 @@ class TerminalScreen(cols: Int, rows: Int) {
  * TerminalColor is a colour a cell can be drawn in.
  *
  * The three cases are the three things a client can say: nothing (the theme's own
- * colour), one of the sixteen ANSI colours, or a 24-bit colour of its own.
+ * colour), an entry from the 256-colour palette, or a 24-bit colour of its own.
  */
 sealed interface TerminalColor {
     /** Default is the terminal's own colour, which is what the theme decides. */
     object Default : TerminalColor
 
-    /** Palette is one of the sixteen ANSI colours, 0-based. */
+    /**
+     * Palette is an entry in the terminal's 256-colour palette, 0-based.
+     *
+     * The first sixteen are the ANSI colours a program names directly; the rest are the
+     * 6x6x6 colour cube and the grey ramp. The index is whatever the client asked for and
+     * may be past the end of the table, which [TerminalPalette] clamps rather than rejects.
+     */
     data class Palette(val index: Int) : TerminalColor
 
     /** Rgb is a 24-bit colour, `0xRRGGBB`. */

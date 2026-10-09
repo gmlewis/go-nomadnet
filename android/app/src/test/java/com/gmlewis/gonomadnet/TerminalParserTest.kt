@@ -34,11 +34,38 @@ class TerminalParserTest {
         val screen = TerminalScreen(cols = cols, rows = rows)
         val titles = mutableListOf<String>()
         val clipboard = mutableListOf<String>()
+        val drawn = mutableListOf<Unit>()
         val parser = TerminalParser(
             screen = screen,
             titleSink = { titles += it },
             clipboardSink = { clipboard += it },
+            onOutput = { drawn += Unit },
         )
+    }
+
+    @Test
+    fun `the parser says when it has been given something to draw`() {
+        // The view has to be told there is something new on the screen, and the parser is the
+        // only place that can know. It reports once per write rather than once per byte: a
+        // repaint per character would be a repaint per character on the screen.
+        val fixture = Fixture()
+        assertEquals("a fresh parser reported output", 0, fixture.drawn.size)
+
+        fixture.parser.write("hi")
+        assertEquals("plain text was not reported", 1, fixture.drawn.size)
+
+        // A write that draws no character is still a write. An escape sequence is the client
+        // asking for a repaint, and the screen after it is not the screen before it.
+        fixture.parser.write("\u001b[2J")
+        assertEquals("a control sequence was not reported", 2, fixture.drawn.size)
+
+        // A write with nothing in it cannot have changed anything, so it is not a repaint:
+        // a client that is idle must not keep the view redrawing.
+        fixture.parser.write(ByteArray(0))
+        assertEquals("an empty write was reported as output", 2, fixture.drawn.size)
+
+        fixture.parser.write("!")
+        assertEquals("the parser stopped reporting", 3, fixture.drawn.size)
     }
 
     /** lines renders the whole grid, so a test can state the screen it expects. */

@@ -65,11 +65,9 @@ class StackSupervisor(
             log("could not create and hold the sensor pipes; not starting the stack")
             return false
         }
-        File(paths.runDir).mkdirs()
-        File(paths.logDir).mkdirs()
-        File(paths.configDir).mkdirs()
-        File(paths.rnsConfigDir).mkdirs()
-        File(paths.rnsClientConfigDir).mkdirs()
+        // Every directory the daemons run in and write to, from one list shared with the
+        // console: a child whose working directory does not exist does not start at all.
+        paths.ensureDirectories()
 
         // 2. The transport, which owns the shared instance and every interface. Its
         //    configuration is a DIRECTORY: gornsd looks for "config" inside it and derives

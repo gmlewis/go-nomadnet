@@ -142,6 +142,37 @@ class ConsoleSessionTest {
     }
 
     @Test
+    fun `a size reported before the host connects is sent when it does`() {
+        // The view is measured, and reports its size, the first time the page is laid out —
+        // and at that instant the host has not dialled back yet, so there is no socket to
+        // send it on. A size dropped there is dropped for the whole session: the client keeps
+        // the size it was started with, and a terminal started at 80x24 on a 1920-pixel-wide
+        // tablet draws in one corner of a screen it never claims.
+        val channel = FakeChannel(peerUid = OUR_UID)
+        val fixture = Fixture(peers = listOf(channel))
+
+        fixture.session.start()
+        fixture.session.resize(100, 30)
+        fixture.session.resize(160, 48)
+        assertEquals("a frame was sent before the host connected", 0, channel.sentFrames().size)
+
+        assertTrue(fixture.session.connect())
+        assertEquals(
+            "the size the view reported was never sent, or an old one was replayed",
+            listOf<ConsoleFrame>(ConsoleFrame.Resize(160, 48)),
+            channel.sentFrames(),
+        )
+
+        // Once the host is there, a size goes straight out: the deferred one is a wait, not
+        // a change of behaviour.
+        fixture.session.resize(120, 40)
+        assertEquals(
+            listOf<ConsoleFrame>(ConsoleFrame.Resize(160, 48), ConsoleFrame.Resize(120, 40)),
+            channel.sentFrames(),
+        )
+    }
+
+    @Test
     fun `keystrokes are sent as data frames`() {
         val channel = FakeChannel(peerUid = OUR_UID)
         val fixture = Fixture(peers = listOf(channel))

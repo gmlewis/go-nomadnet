@@ -213,6 +213,137 @@ class TerminalScreenTest {
     }
 
     @Test
+    fun `a line that scrolls off the top is kept in the history`() {
+        // On a desktop the terminal emulator owns the scrollback and the client's screen is
+        // only what fits in the window. In the appliance this emulator *is* the terminal, so
+        // the lines that leave the screen have to be kept, or a reader who drags the console
+        // upwards finds nothing above the top row.
+        val screen = TerminalScreen(cols = 3, rows = 2)
+        assertEquals("a fresh screen has nothing behind it", 0, screen.historySize)
+
+        listOf("abc", "def").forEachIndexed { y, text ->
+            screen.moveCursor(0, y)
+            screen.type(text)
+        }
+        screen.moveCursor(0, 1)
+        screen.lineFeed()
+
+        assertEquals("the screen scrolled", listOf("def", "   "), screen.lines())
+        assertEquals("the line that left the screen was not kept", 1, screen.historySize)
+        assertEquals("the line that left is not the one that was there", "abc", screen.historyRowText(0))
+
+        screen.moveCursor(0, 1)
+        screen.type("ghi")
+        screen.lineFeed()
+
+        assertEquals("the screen scrolled again", listOf("ghi", "   "), screen.lines())
+        assertEquals(
+            "the history holds the lines in the order they left",
+            listOf("abc", "def"),
+            (0 until screen.historySize).map { screen.historyRowText(it) },
+        )
+    }
+
+    @Test
+    fun `a scroll inside a region is not the console's history`() {
+        // A region is the client drawing in part of the screen — a dialog, a scrolling list.
+        // Those lines did not leave the console, they were overwritten, and a reader looking
+        // back should not find the client's half-drawn frames there.
+        val screen = TerminalScreen(cols = 3, rows = 3)
+        listOf("aaa", "bbb", "ccc").forEachIndexed { y, text ->
+            screen.moveCursor(0, y)
+            screen.type(text)
+        }
+        screen.setScrollRegion(1, 2)
+        screen.moveCursor(0, 2)
+        screen.lineFeed()
+
+        assertEquals("the region scrolled", listOf("aaa", "ccc", "   "), screen.lines())
+        assertEquals("a region's scroll was kept as history", 0, screen.historySize)
+    }
+
+    @Test
+    fun `the alternate screen does not fill the history`() {
+        // The alternate screen is where a full-screen client draws itself: its frames are
+        // not the console's output, and keeping them would bury the conversation under a
+        // repaint for every key press.
+        val screen = TerminalScreen(cols = 4, rows = 2)
+        screen.type("MAIN")
+        screen.setAltScreen(true, saveCursor = true)
+        screen.moveCursor(0, 1)
+        screen.type("alt")
+        screen.lineFeed()
+
+        assertEquals("the alternate screen wrote history", 0, screen.historySize)
+
+        screen.setAltScreen(false, saveCursor = true)
+
+        assertEquals("leaving the alternate screen restores the main one", "MAIN", screen.rowText(0))
+        assertEquals("the restored screen brought history with it", 0, screen.historySize)
+    }
+
+    @Test
+    fun `the history is bounded`() {
+        // A tablet runs for weeks. An unbounded history is a leak that ends with the OOM
+        // killer, so the oldest lines go as the newest arrive.
+        val screen = TerminalScreen(cols = 4, rows = 1)
+        val lines = TerminalScreen.MAX_SCROLLBACK_LINES + 100
+
+        for (i in 0 until lines) {
+            screen.moveCursor(0, 0)
+            screen.type("%03d ".format(i))
+            screen.lineFeed()
+        }
+
+        assertEquals("the history grew past its bound", TerminalScreen.MAX_SCROLLBACK_LINES, screen.historySize)
+        assertEquals("the oldest lines were not the ones dropped", "100 ", screen.historyRowText(0))
+        assertEquals(
+            "the newest line is not the last one written",
+            "%03d ".format(lines - 1),
+            screen.historyRowText(screen.historySize - 1),
+        )
+    }
+
+    @Test
+    fun `the count of lines that have scrolled off does not saturate`() {
+        // The scrollback is bounded, so the number of lines it holds stops growing. The
+        // number that have gone off the top does not: the view re-anchors a reader parked in
+        // the scrollback by how much output arrived, and a count that stopped moving once
+        // the buffer filled would let the text drift under their eyes for the rest of the
+        // session — a reader losing their place with no sign that anything went wrong.
+        val screen = TerminalScreen(cols = 4, rows = 1)
+        assertEquals("a fresh screen has scrolled nothing off", 0L, screen.linesScrolledOff)
+
+        val lines = TerminalScreen.MAX_SCROLLBACK_LINES + 25
+        for (i in 0 until lines) {
+            screen.moveCursor(0, 0)
+            screen.type("%03d ".format(i))
+            screen.lineFeed()
+        }
+
+        assertEquals("the history is bounded", TerminalScreen.MAX_SCROLLBACK_LINES, screen.historySize)
+        assertEquals("the count of what left the screen is not", lines.toLong(), screen.linesScrolledOff)
+    }
+
+    @Test
+    fun `a scroll that is not the console's does not count as output`() {
+        // Only a line leaving the whole screen is console output. A region scroll and a
+        // full-screen client's repaint are the client drawing over itself, and counting
+        // them would drag a reader's window upwards on every frame the client drew.
+        val screen = TerminalScreen(cols = 3, rows = 3)
+        screen.setScrollRegion(1, 2)
+        screen.moveCursor(0, 2)
+        screen.lineFeed()
+        assertEquals("a region's scroll counted as output", 0L, screen.linesScrolledOff)
+
+        screen.setScrollRegion(1, 3)
+        screen.setAltScreen(on = true, saveCursor = true)
+        screen.moveCursor(0, 2)
+        screen.lineFeed()
+        assertEquals("the alternate screen's scroll counted as output", 0L, screen.linesScrolledOff)
+    }
+
+    @Test
     fun `the alternate screen is restored with its own contents`() {
         val screen = TerminalScreen(cols = 4, rows = 2)
         screen.type("MAIN")

@@ -17,12 +17,28 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.view.View
+import android.view.WindowInsets
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import java.net.InetSocketAddress
+import java.net.Socket
+
+/**
+ * The client the appliance runs itself, and everything it needs to be started.
+ *
+ * The built-in client is the same program Termux runs — the APK carries one build of it,
+ * under two names — but it is started by the appliance, out of the appliance's own
+ * libraries, with the appliance's own directories. That is the whole difference, and it is
+ * three facts: [binary] is the absolute path inside `nativeLibraryDir`, [argv] is what it
+ * is told, and [home] is where it runs.
+ */
+data class BuiltInClient(val binary: String, val argv: List<String>, val home: String)
 
 /**
  * The appliance's one screen.
@@ -32,6 +48,13 @@ import android.widget.TextView
  * around that terminal — it installs Termux, hands the client and its configuration over to
  * it, and starts and stops the two independent halves of the appliance, the sensors and the
  * daemon stack.
+ *
+ * It also runs the client itself, with no Termux in the picture at all: the APK carries the
+ * client and the console host that gives it a pseudo-terminal, so "Open gonomadnet
+ * (built in)" is one tap from this screen to a working interface. The pieces of that are
+ * [BuiltInClient], [MainActivity.Companion.builtInClient] and
+ * [MainActivity.Companion.consoleHostSpec], which build the command lines as plain data so
+ * that what is started can be asserted without a device.
  *
  * The controls are in the order the work happens in: what a tablet needs before it can run
  * anything, then the two ways into the interface, then the appliance's own halves. Someone
@@ -45,6 +68,25 @@ class MainActivity : Activity() {
     private lateinit var hubField: EditText
     private lateinit var axisButton: Button
     private lateinit var termuxButton: Button
+
+    /**
+     * The controls page, kept so that closing the console comes back to it.
+     *
+     * The terminal is a second page rather than a second activity, because the console's
+     * whole lifetime is a socket, a child process and a thread: an activity that can be
+     * destroyed and recreated by a rotation would have to rebuild all three, and a terminal
+     * that lost its session to a rotation is a terminal nobody can use.
+     */
+    private var controlsPage: View? = null
+
+    /** The running console, if the terminal page is open. Written and read on the UI thread. */
+    private var console: ConsoleSession? = null
+
+    /** The thread reading the console socket, which ends when the client does. */
+    private var consolePump: Thread? = null
+
+    /** The grid the console was last told it has, which is what the client is sized for. */
+    private var consoleGrid = TerminalGrid(cols = DEFAULT_CONSOLE_COLS, rows = DEFAULT_CONSOLE_ROWS)
 
     /**
      * Where the setup script landed in this session, once it has been published.
@@ -88,6 +130,11 @@ class MainActivity : Activity() {
         // is everything after it.
         controls.addView(button("Copy the setup line") { copySetupLine() })
 
+        // The appliance's own way into the interface, and the one that needs nothing else
+        // installed: the APK carries the client and the console host that gives it a
+        // terminal. The two below it hand the same client to Termux, which is what a person
+        // who wants the client in their own terminal uses.
+        controls.addView(button("Open gonomadnet (built in)") { openBuiltInClient() })
         controls.addView(button("Open gonomadnet (standalone)") { launch(TermuxLauncher.standaloneRequest()) })
         controls.addView(button("Open gonomadnet (attached)") { launch(TermuxLauncher.attachedRequest()) })
 
@@ -122,6 +169,7 @@ class MainActivity : Activity() {
         layout.addView(controlScroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 3f))
         layout.addView(statusScroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 2f))
         setContentView(layout)
+        controlsPage = layout
 
         report(prerequisiteChecklist())
         probeTermux()
@@ -412,6 +460,219 @@ class MainActivity : Activity() {
         )
     }
 
+    // ---------------------------------------------------------- the built-in client
+
+    /**
+     * Opens the appliance's own console, starting the transport first.
+     *
+     * The client this opens is an *attached* client: it requires the shared instance the
+     * appliance's transport owns, and it refuses to become a transport itself. Starting the
+     * stack is therefore part of opening the console, and so is waiting for it: the client
+     * looks for the instance for about two hundred milliseconds and then exits, so a console
+     * opened in the same tap that started the transport would show a client that died during
+     * startup and no reason for it.
+     *
+     * Starting the stack is asked of the supervisor through the service, which is the same
+     * path the Start stack button takes and is idempotent: an appliance that is already
+     * running is not restarted, and the wait costs one connection.
+     */
+    private fun openBuiltInClient() {
+        if (console != null) {
+            report("the console is already open")
+            return
+        }
+        report("asking the appliance's transport to start")
+        SensorService.command(this, SensorService.ACTION_START_STACK)
+        Thread({
+            val up = awaitTransport(
+                port = NodeConfigSpec.DEFAULT_SHARED_INSTANCE_PORT,
+                attempts = TRANSPORT_WAIT_ATTEMPTS,
+                waitMs = TRANSPORT_WAIT_MS,
+                probe = ::transportIsUp,
+                sleep = { Thread.sleep(it) },
+            )
+            if (!up) {
+                report(
+                    "the transport has not answered on " +
+                        "${NodeConfigSpec.DEFAULT_SHARED_INSTANCE_PORT} after " +
+                        "${TRANSPORT_WAIT_ATTEMPTS * TRANSPORT_WAIT_MS / 1000} seconds, so the client " +
+                        "would be started with no shared instance to attach to. Check the hub " +
+                        "address and the log.",
+                )
+                return@Thread
+            }
+            runOnUiThread { showConsole() }
+        }, "console-transport").start()
+    }
+
+    /**
+     * whether the transport's shared instance is accepting connections.
+     *
+     * The transport publishes its shared instance on the loopback interface, and the client's
+     * own attach is a connection to it, so a connection is exactly the readiness the client
+     * needs — and the only signal available without reading another process's files. It runs
+     * on a thread of its own, never on the UI thread, where Android forbids it.
+     */
+    private fun transportIsUp(port: Int): Boolean = runCatching {
+        Socket().use { socket ->
+            socket.connect(InetSocketAddress(LOOPBACK, port), TRANSPORT_CONNECT_TIMEOUT_MS)
+        }
+    }.isSuccess
+
+    /**
+     * Builds the console page and starts the session.
+     *
+     * The pieces are each one thing: [TerminalScreen] holds the emulated screen,
+     * [TerminalParser] turns the client's bytes into it, [ConsoleSession] owns the socket and
+     * the host process, and [TerminalView] draws it and reports keys back. The session is
+     * given the view's notifications rather than the other way round, so the class that owns
+     * the socket still knows nothing about any `View` — which is what makes it testable.
+     */
+    private fun showConsole() {
+        if (console != null) {
+            return
+        }
+        val paths = StackPaths(filesDir.absolutePath)
+        // The client's home is the console host's working directory, and a working directory
+        // that does not exist is a host that does not start — with an error that names the
+        // host rather than the directory.
+        paths.ensureDirectories()
+        val client = builtInClient(applicationInfo.nativeLibraryDir, paths)
+        val screen = TerminalScreen(consoleGrid.cols, consoleGrid.rows)
+        val view = TerminalView(this).apply { this.screen = screen }
+        val session = ConsoleSession(
+            // The host needs the size the client should be started with, and the socket name
+            // it is to dial, which does not exist until the session binds it.
+            host = { name ->
+                consoleHostSpec(
+                    nativeLibraryDir = applicationInfo.nativeLibraryDir,
+                    paths = paths,
+                    client = client,
+                    socketName = name,
+                    grid = consoleGrid,
+                )
+            },
+            listeners = LocalConsole,
+            runner = RealProcessRunner(),
+            uid = android.os.Process.myUid(),
+            pid = android.os.Process.myPid(),
+            parser = TerminalParser(screen, onOutput = { view.outputParsed() }),
+            onRefused = { peer ->
+                report("an application with uid $peer connected to the console socket, which is not this appliance")
+            },
+            onEnded = { end -> onConsoleEnded(end) },
+        )
+        view.onKey = { key -> session.sendKey(key) }
+        // A rotation, or the keyboard, changes the grid the client is laid out for. The
+        // screen is resized with it, so the emulator and the terminal it is emulating agree.
+        view.onResize = { grid ->
+            consoleGrid = grid
+            screen.resize(grid.cols, grid.rows)
+            session.resize(grid.cols, grid.rows)
+        }
+        console = session
+
+        // The session is started before the page is shown, because a session that cannot
+        // start has already reported why through [onConsoleEnded] — and a page switched to
+        // first would be a black screen with the reason for it behind the page.
+        session.start()
+        if (session.socketName == null) {
+            console = null
+            return
+        }
+
+        val page = FrameLayout(this)
+        page.addView(view, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+        setContentView(page)
+        applyEdgeToEdgeInsets(page)
+
+        consolePump = Thread({ session.pump() }, "console-pump").also { it.start() }
+        report("the console is open; the client is starting on ${consoleGrid.cols}x${consoleGrid.rows}")
+    }
+
+    /**
+     * Reports how the session ended, and closes the console page.
+     *
+     * This arrives on the thread that read the socket, which is usually the pump, so
+     * everything it touches is either thread-safe — the status readout posts to the UI thread
+     * itself — or posted. The client exiting is the ordinary end of a session: ctrl-q in the
+     * interface quits the client, and the console closes behind it.
+     */
+    private fun onConsoleEnded(end: ConsoleEnd) {
+        report(
+            when (end) {
+                is ConsoleEnd.Exited -> "the client exited with code ${end.code}"
+                ConsoleEnd.Closed -> "the console socket closed"
+                is ConsoleEnd.Failed -> "the console failed: ${end.reason}"
+                ConsoleEnd.Stopped -> "the console was closed"
+            },
+        )
+        runOnUiThread { closeConsole() }
+    }
+
+    /**
+     * Ends the session, if there is one, and goes back to the controls.
+     *
+     * Ending it kills the host, and the host ends the client with it: closing the console
+     * must not leave a client running with nobody reading its terminal, which would be a
+     * process holding a socket nothing is draining and an identity still announcing.
+     */
+    private fun closeConsole() {
+        val session = console ?: return
+        console = null
+        consoleGrid = TerminalGrid(cols = DEFAULT_CONSOLE_COLS, rows = DEFAULT_CONSOLE_ROWS)
+        session.stop()
+        consolePump = null
+        controlsPage?.let { setContentView(it) }
+    }
+
+    /**
+     * Keeps the console inside the system bars.
+     *
+     * On Android 15 the appliance is drawn edge to edge, which for a terminal is what is
+     * wanted — every pixel of a tablet is a pixel of someone's interface — but a grid drawn
+     * under the status bar is a row of the client's window that cannot be read or tapped. The
+     * bars are therefore taken out of the console's own rectangle rather than being drawn
+     * over it.
+     *
+     * The bottom is the larger of the navigation bar and the keyboard: with the keyboard up
+     * the grid must end above it, or the client's last rows — and the key row — are behind it.
+     */
+    @Suppress("DEPRECATION")
+    private fun applyEdgeToEdgeInsets(page: View) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+            // Below Android 15 the window already fits the system bars, so taking them out
+            // again would be padding the console twice.
+            return
+        }
+        window.setDecorFitsSystemWindows(false)
+        page.setOnApplyWindowInsetsListener { view, insets ->
+            val bars = insets.getInsets(WindowInsets.Type.systemBars())
+            val keyboard = insets.getInsets(WindowInsets.Type.ime()).bottom
+            view.setPadding(bars.left, bars.top, bars.right, maxOf(bars.bottom, keyboard))
+            insets
+        }
+        page.requestApplyInsets()
+    }
+
+    /** The Android back gesture leaves the console rather than the appliance. */
+    @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
+    override fun onBackPressed() {
+        if (console != null) {
+            closeConsole()
+            return
+        }
+        super.onBackPressed()
+    }
+
+    override fun onDestroy() {
+        // The pump thread is blocked on a socket read that only closing the connection ends,
+        // so ending the session here is what stops it: the thread then sees the connection
+        // closed and returns.
+        console?.stop()
+        super.onDestroy()
+    }
+
     /**
      * The three permissions this appliance needs and the two settings it cannot set itself.
      *
@@ -452,5 +713,141 @@ class MainActivity : Activity() {
                 "in its ~/.termux/termux.properties, and this appliance has to hold " +
                 "com.termux.permission.RUN_COMMAND (granted in Settings). 'Copy the setup line' " +
                 "does the first two."
+
+        /** The client's name inside `nativeLibraryDir`, where a `.so` suffix is required. */
+        const val CLIENT_NAME = "gonomadnetclient"
+
+        /** The console host's name inside `nativeLibraryDir`, which gives the client a PTY. */
+        const val CONSOLE_HOST_NAME = "gorcons"
+
+        /**
+         * The grid the console starts at, before anything has measured the screen.
+         *
+         * The client is told its size on the command line, so a session started before the
+         * view has been laid out has to name one. Eighty by twenty-four is the terminal every
+         * program already behaves well on, and the first layout replaces it with what the
+         * screen actually fits — which is a resize the client is told about, not a restart.
+         */
+        private const val DEFAULT_CONSOLE_COLS = 80
+        private const val DEFAULT_CONSOLE_ROWS = 24
+
+        /**
+         * How long to wait for the transport's shared instance, as attempts and a gap.
+         *
+         * Ten seconds is a generous bound for a daemon that is already running and a fair one
+         * for one that is being started on a tablet that has just woken up. The wait is not
+         * the client's timeout — the client's own attach gives up after two hundred
+         * milliseconds — it is the wait that keeps the client from being started at all until
+         * there is something for it to attach to.
+         */
+        private const val TRANSPORT_WAIT_ATTEMPTS = 40
+        private const val TRANSPORT_WAIT_MS = 250L
+
+        /**
+         * How long a readiness probe may take.
+         *
+         * The probe connects to the loopback interface, where an open port answers at once
+         * and a closed one is refused at once, so this only bounds a pathological case — a
+         * transport that has accepted its socket and then stopped answering.
+         */
+        private const val TRANSPORT_CONNECT_TIMEOUT_MS = 500
+
+        /** The interface the transport publishes its shared instance on. */
+        private const val LOOPBACK = "127.0.0.1"
+
+        /**
+         * builtInClient is the client as the appliance runs it, with no Termux involved.
+         *
+         * The two directories it names are the ones that make it the *attached* client: the
+         * Reticulum configuration that requires the shared instance the appliance's own
+         * transport owns, rather than one that lists interfaces and would become a second
+         * transport. Its Nomad Network configuration is its own, under the appliance's
+         * private storage: the messages and the identity a Termux install keeps belong to
+         * that install, and two clients announcing one identity is a node that appears twice.
+         */
+        fun builtInClient(nativeLibraryDir: String, paths: StackPaths): BuiltInClient = BuiltInClient(
+            binary = LaunchSpecs.binary(nativeLibraryDir, CLIENT_NAME),
+            argv = listOf(
+                "-t",
+                // The transport's own directory and the client's differ by one word, and by
+                // everything that matters: one lists interfaces and owns the shared instance,
+                // the other requires it. This one is the client's.
+                "--rnsconfig", paths.rnsClientConfigDir,
+                "--config", paths.nomadnetworkConfigDir,
+            ),
+            home = paths.clientHome,
+        )
+
+        /**
+         * consoleHostSpec is the console host, the program that gives the client a terminal.
+         *
+         * Android starts an application's processes with no controlling terminal and no way
+         * to allocate one, so a tview client started directly has nothing to draw on. The
+         * host opens a pseudo-terminal, runs the client on it, and carries the terminal's
+         * bytes back to the socket the session bound — see `cmd/gorcons`.
+         *
+         * The client's own arguments go through `--arg`, one at a time: the host takes its
+         * own flags and nothing else, and an argument left bare is a host that refuses to
+         * start. `HOME` here is the host's working directory rather than the child's
+         * environment, because the host builds the child's environment from nothing by
+         * itself — nothing set here can leak into the client.
+         */
+        fun consoleHostSpec(
+            nativeLibraryDir: String,
+            paths: StackPaths,
+            client: BuiltInClient,
+            socketName: String,
+            grid: TerminalGrid,
+        ): LaunchSpec = LaunchSpec(
+            name = CONSOLE_HOST_NAME,
+            binary = LaunchSpecs.binary(nativeLibraryDir, CONSOLE_HOST_NAME),
+            argv = listOf(
+                "--socket", socketName,
+                "--command", client.binary,
+                "--home", client.home,
+            ) + client.argv.flatMap { listOf("--arg", it) } + listOf(
+                "--cols", grid.cols.toString(),
+                "--rows", grid.rows.toString(),
+            ),
+            env = mapOf("HOME" to client.home),
+            logFile = "${paths.logDir}/$CONSOLE_HOST_NAME.log",
+        )
+
+        /**
+         * awaitTransport waits for the appliance's transport, and reports whether it arrived.
+         *
+         * The built-in client is an *attached* client: it requires the shared instance the
+         * transport owns and refuses to become a transport itself, and it looks for one for
+         * about a fifth of a second before giving up. "Open gonomadnet (built in)" starts the
+         * stack and opens the console as one tap, and a console opened before the transport
+         * has bound its instance is a console showing a client that died during startup.
+         *
+         * So the wait happens before the console exists, it is bounded, and it gives up with a
+         * report rather than hanging. A transport that is already up costs one probe and no
+         * sleep, which is the usual case: Start stack was tapped earlier, or the appliance is
+         * running and the client is being reopened.
+         *
+         * The probe and the sleep are parameters because one is a socket connection and the
+         * other is time, and neither belongs in a unit test.
+         */
+        fun awaitTransport(
+            port: Int,
+            attempts: Int,
+            waitMs: Long,
+            probe: (Int) -> Boolean,
+            sleep: (Long) -> Unit,
+        ): Boolean {
+            repeat(attempts) { attempt ->
+                if (probe(port)) {
+                    return true
+                }
+                // Having used the last attempt there is nothing left to wait for: sleeping
+                // after the final probe would only postpone the report.
+                if (attempt < attempts - 1) {
+                    sleep(waitMs)
+                }
+            }
+            return false
+        }
     }
 }

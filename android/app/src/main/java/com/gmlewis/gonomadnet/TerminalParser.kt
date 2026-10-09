@@ -49,6 +49,20 @@ class TerminalParser(
     private val screen: TerminalScreen,
     private val titleSink: (String) -> Unit = {},
     private val clipboardSink: (String) -> Unit = {},
+
+    /**
+     * onOutput is called whenever the parser has been given bytes to parse.
+     *
+     * It is how the screen gets onto a display: the parser is the only thing that knows the
+     * screen has changed, and a view that guessed would either repaint on a timer or repaint
+     * nothing. It reports once per write and not once per byte — the caller's writes are the
+     * chunks a client sent, and one repaint per chunk is one repaint per frame of output —
+     * and an empty write is not reported at all, because it cannot have changed anything.
+     *
+     * It is called on whichever thread is feeding the parser, which for the appliance is the
+     * thread reading the console socket.
+     */
+    private val onOutput: () -> Unit = {},
 ) {
 
     /** State is where the parser is in the byte stream, byte by byte. */
@@ -93,6 +107,11 @@ class TerminalParser(
 
     /** write feeds the parser the bytes a client printed. */
     fun write(data: ByteArray) {
+        if (data.isEmpty()) {
+            // An empty write is a write that cannot have drawn anything, and reporting it
+            // would be a repaint the client did not ask for.
+            return
+        }
         for (i in data.indices) {
             val b = data[i].toInt() and 0xff
             // Only in the ground state can a byte be text rather than a sequence: a
@@ -106,6 +125,7 @@ class TerminalParser(
             }
             feedByte(b)
         }
+        onOutput()
     }
 
     private fun feedByte(b: Int) {

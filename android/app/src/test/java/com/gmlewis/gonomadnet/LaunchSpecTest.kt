@@ -7,10 +7,13 @@
 
 package com.gmlewis.gonomadnet
 
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
+import java.nio.file.Files
 
 /**
  * Every daemon is launched by absolute path with an explicit configuration and a home
@@ -185,5 +188,102 @@ class LaunchSpecTest {
         )
         assertTrue("the bot's configuration must point at the FIFOs", config.contains(paths.gpsFifo))
         assertEquals(paths.runDir, bot.env["HOME"])
+    }
+
+    @Test
+    fun everyDirectoryAChildIsStartedInHasBeenCreated() {
+        // A child is started with its HOME as its working directory, and a working directory
+        // that does not exist is not a child that starts in the wrong place: it is a child
+        // that does not start at all. The failure reads
+        //
+        //     Cannot run program ".../libgorcons.so" (in directory ".../files/home"):
+        //     error=2, No such file or directory
+        //
+        // which names the program, the program is there, and the directory is what is
+        // missing. The console host is the one that found this: the stack created its own
+        // four directories and nothing created the client's home.
+        val root = tempDir("appliance-")
+        val fresh = StackPaths(root.absolutePath)
+        fresh.ensureDirectories()
+
+        // Every place a child is put, and every place one writes, is on the list.
+        val wanted = listOf(
+            "the transport's home" to fresh.runDir,
+            "the logs" to fresh.logDir,
+            "the configuration" to fresh.configDir,
+            "the transport's Reticulum directory" to fresh.rnsConfigDir,
+            "the client's Reticulum directory" to fresh.rnsClientConfigDir,
+            "the client's home" to fresh.clientHome,
+            "the client's Nomad Network directory" to fresh.nomadnetworkConfigDir,
+        )
+        for ((what, path) in wanted) {
+            assertTrue("$what was not created: $path", File(path).isDirectory)
+        }
+        for (spec in listOf(
+            LaunchSpecs.gornsd(nativeDir, fresh),
+            LaunchSpecs.gorrcd(nativeDir, fresh),
+            LaunchSpecs.gorrcbot(nativeDir, fresh),
+        )) {
+            assertTrue("${spec.name}'s home was not created", File(spec.env.getValue("HOME")).isDirectory)
+            assertTrue("${spec.name}'s log directory was not created", File(spec.logFile).parentFile!!.isDirectory)
+        }
+
+        // The hub's and the bot's own state directories are the exception, and their absence
+        // is the point: an empty state directory is how the supervisor recognises a daemon
+        // that has not written its files yet — a restored backup, or a first run that died —
+        // and has to be bootstrapped again before it is started for real. A list that created
+        // them would make every half-installed daemon look installed.
+        for ((what, path) in listOf("the hub's" to fresh.gorrcdHome, "the bot's" to fresh.gorrcbotHome)) {
+            assertFalse("$what state directory must not be created by the list: $path", File(path).isDirectory)
+        }
+
+        // And a process really can be started there, which is the thing the tablet refused
+        // to do. The assertion above is about the directory; this one is about the runner
+        // that was told to use it.
+        val shell = File("/bin/sh")
+        assertTrue("this test needs a POSIX shell to start a child with", shell.canExecute())
+        val child = ProcessBuilder(listOf(shell.absolutePath, "-c", "exit 0"))
+            .directory(File(fresh.clientHome))
+            .start()
+        assertEquals("a child could not be started in the client's home", 0, child.waitFor())
+    }
+
+    @Test
+    fun theConsoleHostsHomeIsCreatedByTheSameListTheStackUses() {
+        // The stack and the console are two callers of one list, so the client's home cannot
+        // be created by one of them and forgotten by the other.
+        val host = MainActivity.consoleHostSpec(
+            nativeLibraryDir = nativeDir,
+            paths = paths,
+            client = MainActivity.builtInClient(nativeDir, paths),
+            socketName = "gonomadnet-console-1-00",
+            grid = TerminalGrid(cols = 80, rows = 24),
+        )
+        assertEquals(paths.clientHome, host.env["HOME"])
+        assertTrue(
+            "the console host is started in a home the directory list does not create",
+            paths.directories.contains(host.env["HOME"]),
+        )
+    }
+
+    /** tempDir is a scratch directory, cleaned up when the test ends. */
+    private fun tempDir(prefix: String): File {
+        // /tmp is named explicitly rather than left to java.io.tmpdir, because on macOS that
+        // is a per-user path under /var/folders whose real path is long enough to matter here.
+        val base = if (System.getProperty("os.name").orEmpty().startsWith("Mac")) {
+            File("/tmp")
+        } else {
+            File(checkNotNull(System.getProperty("java.io.tmpdir")))
+        }
+        return Files.createTempDirectory(base.toPath(), prefix).toFile().also { scratch += it }
+    }
+
+    private val scratch = mutableListOf<File>()
+
+    @After
+    fun cleanUpScratch() {
+        for (file in scratch) {
+            file.deleteRecursively()
+        }
     }
 }

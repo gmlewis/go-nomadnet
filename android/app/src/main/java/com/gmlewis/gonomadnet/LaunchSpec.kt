@@ -7,6 +7,8 @@
 
 package com.gmlewis.gonomadnet
 
+import java.io.File
+
 /**
  * Every path the appliance uses inside its own private data directory.
  *
@@ -62,6 +64,28 @@ data class StackPaths(val filesDir: String) {
     /** The client-side Reticulum configuration file. */
     val clientConfig get() = "$rnsClientConfigDir/config"
 
+    /**
+     * The client's home directory, which is what `HOME` points at when it runs.
+     *
+     * A program that has not been told where to keep its caches and its logs looks in its
+     * home, and on this device the only home the appliance may write is this one. It is a
+     * directory of its own rather than the client's configuration directory, because the
+     * console host runs in it and a relative path written there must land in the appliance's
+     * storage rather than wherever the host happened to be started.
+     */
+    val clientHome get() = "$filesDir/home"
+
+    /**
+     * The client's own Nomad Network configuration directory, which is what `--config`
+     * points at: its messages, its pages, its peers and its identity.
+     *
+     * It is the built-in client's own, and deliberately not Termux's. A client that read
+     * Termux's configuration would be a second client announcing one identity from two
+     * places at once, and a client that wrote to it would be writing into another
+     * application's private data, which Android does not permit.
+     */
+    val nomadnetworkConfigDir get() = "$configDir/nomadnetwork"
+
     /** The hub's TOML configuration, which `gorrcd --config` takes as a file. */
     val gorrcdConfig get() = "$configDir/rrcd.toml"
 
@@ -78,6 +102,57 @@ data class StackPaths(val filesDir: String) {
      * to match `hubDestinationPath` in `cmd/gorrcd/hub-destination.go`.
      */
     val hubDestinationFile get() = "$gorrcdHome/hub_identity.rrc.hub"
+
+    /**
+     * Every directory the appliance runs in, and the one list that creates them.
+     *
+     * A child is started with its HOME as its working directory, and a working directory
+     * that does not exist is not a child that starts somewhere else — it is a child that
+     * does not start:
+     *
+     *	Cannot run program ".../libgorcons.so" (in directory ".../files/home"):
+     *	error=2, No such file or directory
+     *
+     * The program is there, the directory is not, and the error names the program. So the
+     * directories are one list rather than five lines in the supervisor and a hope that
+     * everyone else remembered: the stack and the console both create what this returns,
+     * and neither can be right while the other is wrong.
+     *
+     * Directories a child only writes *inside* are not here. `files/etc/reticulum/config`
+     * is written by its own renderer, which creates its parent as it writes, and a list that
+     * had to know about it would be a list that went stale every time a file was added.
+     *
+     * [gorrcdHome] and [gorrcbotHome] are deliberately not here either, and that omission is
+     * load-bearing: a daemon that has not yet written its own files has no state directory,
+     * so an empty state directory is how the supervisor knows a hub or a bot was restored
+     * from a backup, or died mid-install, and has to be run once more before it is started
+     * for real. Creating them here would make every half-installed daemon look installed.
+     */
+    val directories: List<String>
+        get() = listOf(
+            runDir,
+            logDir,
+            configDir,
+            rnsConfigDir,
+            rnsClientConfigDir,
+            clientHome,
+            nomadnetworkConfigDir,
+        )
+
+    /**
+     * ensureDirectories creates every directory in [directories].
+     *
+     * Creating a directory that exists is not an error, so this is safe to call on every
+     * start, which is what makes it usable as the one place that answers "is the appliance
+     * ready to run something?". Failures are ignored for the same reason the paths are
+     * absolute: what the caller does next will fail with a message naming the path, and a
+     * throw here would only replace a good error with a worse one.
+     */
+    fun ensureDirectories() {
+        for (path in directories) {
+            File(path).mkdirs()
+        }
+    }
 }
 
 /**

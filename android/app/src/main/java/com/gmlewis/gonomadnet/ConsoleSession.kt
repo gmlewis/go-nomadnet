@@ -152,6 +152,17 @@ class ConsoleSession(
 
     private var channel: ConsoleChannel? = null
 
+    /**
+     * The newest window size that had no socket to go out on.
+     *
+     * The view is measured, and reports its size, the first time the page is laid out —
+     * before the host has dialled back. A size dropped there is dropped for the whole
+     * session: the client keeps the size it was started with, which is a default rather than
+     * the tablet's, and it draws in one corner of a screen it never claims. Only the newest
+     * size is owed, because a client is owed its current size and not a history of them.
+     */
+    private var pendingResize: Pair<Int, Int>? = null
+
     private var ended = false
 
     /**
@@ -225,6 +236,10 @@ class ConsoleSession(
                 peer.close()
                 return false
             }
+            // Anything that was owed while there was nobody to tell goes out now, before the
+            // caller starts reading: the client is about to draw, and it must draw the size
+            // the tablet actually has.
+            flushPendingResize()
             return true
         }
     }
@@ -290,10 +305,16 @@ class ConsoleSession(
      *
      * A size a frame cannot carry is refused rather than truncated: a truncated size is
      * still a size, and the client would lay itself out for a terminal that does not exist.
+     *
+     * A size reported before the host has connected is kept rather than dropped — see
+     * [pendingResize] — because the first one always is: the view is measured as soon as the
+     * page is laid out, and the host has not dialled back by then.
      */
     fun resize(cols: Int, rows: Int) {
         if (cols !in 1..MAX_TERMINAL_DIMENSION || rows !in 1..MAX_TERMINAL_DIMENSION) return
-        write(ConsoleFrame.Resize(cols, rows))
+        if (!write(ConsoleFrame.Resize(cols, rows))) {
+            synchronized(lock) { pendingResize = cols to rows }
+        }
     }
 
     /**
@@ -310,17 +331,39 @@ class ConsoleSession(
     /** finished reports whether the session has ended, which makes it unusable. */
     private fun finished(): Boolean = synchronized(lock) { ended }
 
-    /** write sends one frame to the host, if there is a host to send it to. */
-    private fun write(frame: ConsoleFrame) {
-        val connection = synchronized(lock) { if (ended) null else channel } ?: return
+    /**
+     * flushPendingResize sends the size that was owed, if any, and forgets it.
+     *
+     * It is called once the host has connected and never before, so the frame it writes has
+     * a socket to go out on.
+     */
+    private fun flushPendingResize() {
+        val owed = synchronized(lock) {
+            val size = pendingResize
+            pendingResize = null
+            size
+        } ?: return
+        write(ConsoleFrame.Resize(owed.first, owed.second))
+    }
+
+    /**
+     * write sends one frame to the host, and reports whether there was one to send it to.
+     *
+     * The return is what lets a caller that is owed a write — a window size the client has
+     * not been told yet — keep it instead of losing it.
+     */
+    private fun write(frame: ConsoleFrame): Boolean {
+        val connection = synchronized(lock) { if (ended) null else channel } ?: return false
         try {
             val out = connection.output()
             out.write(ConsoleFrames.encode(frame))
             out.flush()
+            return true
         } catch (e: IOException) {
             // A socket that will not take a keystroke is a socket that has gone: the client
             // is not reading it any more, which is the session's end.
             end(ConsoleEnd.Failed("writing to the console socket: ${e.message}"))
+            return false
         }
     }
 

@@ -192,6 +192,36 @@ nowhere else. The shared instance is a TCP socket rather than an abstract Unix
 socket, because two Android applications cannot be assumed to reach each other's
 abstract sockets.
 
+## The built-in console
+
+**Open gonomadnet (built in)** runs the client *inside the app*: no Termux, nothing
+copied into anybody's home, and no terminal to find. The app binds an abstract Unix
+socket, starts `libgorcons.so`, which opens a pty and runs the APK's own client on
+it, and draws what comes back. The keys a tablet has no way to press — escape, tab
+and the arrows — are a row along the bottom of the console, and Control is a latch
+there: tap it, then type the letter it applies to.
+
+This is the console at 1920x1200, on the Conversations page, with the client's own
+menu bar, both panes and the key row:
+
+![the built-in client running in the app's console](android-console.png)
+
+The capture is the reference for the drawing, because the drawing is the part that
+cannot be asserted from a command line: the menu bar in its colors, the Nerd Font
+glyphs from the APK's assets rather than boxes, the panes filled and bordered, and
+the footer's key hints. To compare a change against it, put the client in the same
+state — Start stack, then **Open gonomadnet (built in)**, then Tab to
+**Conversations** and press Enter — and capture the same screen:
+
+```
+adb shell am start -n com.gmlewis.gonomadnet/.MainActivity
+# tap Start stack, then Open gonomadnet (built in), then Conversations and Enter
+adb exec-out screencap -p > console-now.png
+```
+
+A regression shows up as text that no longer fits, a glyph that has become a box,
+a pane that has not been redrawn, or a key row that has moved or lost a button.
+
 ## The terminal font
 
 The client draws its icons from the Nerd Font private-use area by default —
