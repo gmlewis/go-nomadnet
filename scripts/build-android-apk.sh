@@ -2,18 +2,18 @@
 
 # build-android-apk.sh builds, tests and signs the gonomadnet Android appliance.
 #
-# It exists because the appliance is not a Go program: it is four Go programs, the
-# client that runs inside Termux, a Kotlin application that supervises them, and a
-# signing key. Getting all of that into one installable artifact has to be one
-# command, or it is a checklist that goes stale.
+# It exists because the appliance is not a Go program: it is six Go programs, a Kotlin
+# application that supervises them, and a signing key. Getting all of that into one
+# installable artifact has to be one command, or it is a checklist that goes stale.
 #
-# The Go toolchain builds the four linux/arm64 daemons, and the Android Gradle Plugin
-# packages them under a .so name in nativeLibraryDir — the only extension the packager
+# The Go toolchain builds the four linux/arm64 daemons, the client itself, and the console
+# host that gives the client a terminal under Android, and the Android Gradle Plugin
+# packages all six under a .so name in nativeLibraryDir — the only extension the packager
 # keeps, and the only directory an app with targetSdk >= 29 is allowed to execute a file
-# from. It builds the client for the same Linux/arm64 as the daemons, because Android is
-# Linux, and puts it in the assets: the appliance publishes it into shared storage where
-# Termux, the only process that may run it, picks it up. Bundling it is what turns the
-# release page's dozen assets for a dozen machines into a button.
+# from. They are all built for the same Linux/arm64, because Android is Linux. The client
+# is put in the assets as well, where Termux — the only process that may run it today —
+# picks it up from shared storage. Bundling it is what turns the release page's dozen
+# assets for a dozen machines into a button.
 #
 #   ./scripts/build-android-apk.sh              build a signed release APK
 #   ./scripts/build-android-apk.sh --debug      build an installable debug APK
@@ -80,15 +80,19 @@ VERSION_CODE=$((v_major * 10000 + v_minor * 100 + v_patch))
 echo "building gonomadnet $VERSION_NAME (versionCode $VERSION_CODE)"
 
 # ---------------------------------------------------------------------------
-# The Go daemons, and the client that runs in Termux
+# The Go programs the appliance runs
 # ---------------------------------------------------------------------------
 
 # wagoSupportedTarget mirrors what the release publisher does: the in-process wasm
 # runtime compiles for linux/arm64 with CGO_ENABLED=0, and the tag is additive.
+#
+# The directory is a parameter because the appliance's programs come from two
+# repositories: the four daemons from go-reticulum, and the client and its console host
+# from this one.
 build_binary() {
-  local package="$1" output="$2" tags="$3"
+  local dir="$1" package="$2" output="$3" tags="$4"
   echo "  $output"
-  ( cd "$RETICULUM_DIR" && \
+  ( cd "$dir" && \
     GOOS=linux GOARCH=arm64 CGO_ENABLED=0 \
     go build -trimpath $tags -o "$JNI_DIR/$output" "./$package" )
 }
@@ -114,10 +118,17 @@ if [ "$MODE" != "test" ]; then
   echo "building the bundled daemons for linux/arm64:"
   # The .so extension is required, not cosmetic: without it the packager does not
   # include the file, and nativeLibraryDir stays empty.
-  build_binary "cmd/gornsd"   "libgornsd.so"   "-tags=wago"
-  build_binary "cmd/gorrcd"   "libgorrcd.so"   "-tags=wago"
-  build_binary "cmd/gorrcbot" "libgorrcbot.so" ""
-  build_binary "cmd/gonsensor" "libgonsensor.so" ""
+  build_binary "$RETICULUM_DIR" "cmd/gornsd"   "libgornsd.so"   "-tags=wago"
+  build_binary "$RETICULUM_DIR" "cmd/gorrcd"   "libgorrcd.so"   "-tags=wago"
+  build_binary "$RETICULUM_DIR" "cmd/gorrcbot" "libgorrcbot.so" ""
+  build_binary "$RETICULUM_DIR" "cmd/gonsensor" "libgonsensor.so" ""
+
+  echo "building the client, and the console host that gives it a terminal:"
+  # The client is executed by the app, not read by it, and the console host is the
+  # program the app spawns to put that client on a pseudo-terminal, so both belong in
+  # nativeLibraryDir under a .so name. Neither exists anywhere else on the device.
+  build_binary "$REPO_ROOT" "cmd/gonomadnet" "libgonomadnetclient.so" "-tags=wago"
+  build_binary "$REPO_ROOT" "cmd/gorcons"    "libgorcons.so"         "-tags=wago"
   du -ch "$JNI_DIR"/*.so | tail -1
 
   echo "building the client the appliance hands to Termux:"
@@ -181,6 +192,19 @@ pinned_assertions() {
       exit 1
     fi
   done
+
+  # The two programs this repository contributes are what put the client on a terminal
+  # inside the app, and a build that quietly omitted one of them produces an APK whose
+  # console spawns nothing at all. Only a build can answer for them: in --test-only mode
+  # nothing was cross-compiled, so their absence means nothing.
+  if [ "$MODE" != "test" ]; then
+    for so in libgonomadnetclient.so libgorcons.so; do
+      if [ ! -f "$JNI_DIR/$so" ]; then
+        echo "$so was not built into $JNI_DIR" >&2
+        exit 1
+      fi
+    done
+  fi
 }
 
 pinned_assertions
