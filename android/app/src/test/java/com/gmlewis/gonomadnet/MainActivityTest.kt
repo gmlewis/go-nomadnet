@@ -269,18 +269,7 @@ class MainActivityTest {
         // The claim has to be made in the manifest — there is nowhere else to make it — and
         // it is the kind of claim that is silently lost when an activity is edited, so it is
         // asserted here rather than trusted.
-        val document = manifest()
-        val activities = document.getElementsByTagName("activity")
-        val declared = (0 until activities.length)
-            .map { activities.item(it) as Element }
-            .firstOrNull { it.getAttributeNS(ANDROID_NAMESPACE, "name") == ".${MainActivity::class.java.simpleName}" }
-        assertNotNull("the manifest declares no activity for MainActivity", declared)
-
-        val handled = declared!!
-            .getAttributeNS(ANDROID_NAMESPACE, "configChanges")
-            .split("|")
-            .map { it.trim() }
-            .filter { it.isNotEmpty() }
+        val handled = declaredConfigChanges()
 
         // Every one of these is a way a rotation reaches the activity. Any one of them left
         // out is a rotation that recreates the activity, and a rotation that recreates the
@@ -289,6 +278,31 @@ class MainActivityTest {
             assertTrue(
                 "turning the tablet recreates the activity, which stops the console: the " +
                     "manifest does not declare $change, and declares ${handled.joinToString("|")}",
+                change in handled,
+            )
+        }
+    }
+
+    @Test
+    fun `pairing a keyboard does not end the console`() {
+        // A Bluetooth keyboard connecting is a configuration change like a rotation is, and
+        // it arrives in the middle of a session — the person has just reached for the keys.
+        // The activity did not claim it, so Android destroyed and rebuilt the activity the
+        // moment the keyboard appeared: the console page went with it, the session was
+        // stopped and the client was killed, and the screen the person was reading was
+        // replaced by the appliance's controls. On the tablet it read as the app closing
+        // itself when a key was pressed.
+        //
+        // All three are the same event seen from three sides — the keyboard itself, the soft
+        // keyboard that goes away when one is attached, and the navigation keys a keyboard
+        // reports — and a rotation test alone does not catch any of them, so the claim is
+        // made separately.
+        val handled = declaredConfigChanges()
+        for (change in KEYBOARD_CHANGES) {
+            assertTrue(
+                "attaching a keyboard recreates the activity, which stops the console and " +
+                    "kills the client: the manifest does not declare $change, and declares " +
+                    handled.joinToString("|"),
                 change in handled,
             )
         }
@@ -497,6 +511,20 @@ class MainActivityTest {
         )
     }
 
+    @Test
+    fun `the appliance is called gonomadnet`() {
+        // The name is what the launcher, the task switcher and the radio's own USB chooser
+        // show. In the chooser it is one row among applications that all want the same radio,
+        // which is the one place the name has to be the program rather than a description of
+        // what it is doing — and a description is also what has to be rewritten every time
+        // the appliance does something else.
+        assertEquals(
+            "the appliance is named something other than the program",
+            "gonomadnet",
+            resource("strings.xml", "string", "app_name").textContent.trim(),
+        )
+    }
+
     /** resource is one named element of one of the module's value files. */
     private fun resource(file: String, tag: String, name: String): Element {
         val path = File(RES_DIR, "values/$file")
@@ -506,6 +534,28 @@ class MainActivityTest {
         val found = document.elements(tag).firstOrNull { it.getAttribute("name") == name }
         assertNotNull("$path declares no <$tag name=\"$name\">", found)
         return found!!
+    }
+
+    /**
+     * The configuration changes the console's activity claims to handle itself.
+     *
+     * An unclaimed change is the activity destroyed and rebuilt, and with it the console:
+     * the socket, the host process and the thread reading them are all the activity's. What
+     * the activity claims is therefore a list of the ways a session can be ended from
+     * outside, and each of the tests that reads this list is asserting that one of them is
+     * not in it.
+     */
+    private fun declaredConfigChanges(): List<String> {
+        val activities = manifest().getElementsByTagName("activity")
+        val declared = (0 until activities.length)
+            .map { activities.item(it) as Element }
+            .firstOrNull { it.getAttributeNS(ANDROID_NAMESPACE, "name") == ".${MainActivity::class.java.simpleName}" }
+        assertNotNull("the manifest declares no activity for MainActivity", declared)
+        return declared!!
+            .getAttributeNS(ANDROID_NAMESPACE, "configChanges")
+            .split("|")
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
     }
 
     /** manifest is the module's manifest, parsed so its android: attributes can be read. */
@@ -592,6 +642,17 @@ class MainActivityTest {
 
         /** The configuration changes a rotation produces, every one of which must be handled. */
         val ROTATION_CHANGES = listOf("orientation", "screenSize", "screenLayout", "smallestScreenSize")
+
+        /**
+         * The configuration changes an input device appearing or going away produces.
+         *
+         * A tablet has no keyboard until someone pairs one, and the system announces that by
+         * changing the configuration rather than by sending a key. All three arrive together
+         * — the evidence on the tablet is a single
+         * `changed={CONFIG_KEYBOARD, CONFIG_KEYBOARD_HIDDEN, CONFIG_NAVIGATION}` — so they
+         * are asserted together.
+         */
+        val KEYBOARD_CHANGES = listOf("keyboard", "keyboardHidden", "navigation")
 
         /**
          * Permissions for a thing the appliance no longer does.

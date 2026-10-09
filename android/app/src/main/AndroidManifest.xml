@@ -43,16 +43,22 @@
              changes it handles itself and is left alone: the window is resized, the console
              measures its cells again and tells the client its new size, and the client
              reflows. The four size changes are the ones a rotation produces and every one of
-             them is needed; keyboard and navigation are input devices appearing, which is no
-             reason to end a session. Density and font scale are deliberately not claimed —
-             they change the cell size, and this app re-measures the font only when its view
-             is laid out again, so it is better served by being rebuilt than by drawing with
-             metrics from the old scale. -->
+             them is needed.
+
+             `keyboard` is what an input device appearing changes — a Bluetooth keyboard
+             connecting, or being switched off — and it is not a reason to end a session:
+             without it here the activity was destroyed and rebuilt the moment a keyboard
+             was paired, which killed the client and closed the console out from under the
+             person who had just reached for the keys. `keyboardHidden` and `navigation`
+             change with the same event and are claimed for the same reason. Density and font
+             scale are deliberately not claimed — they change the cell size, and this app
+             re-measures the font only when its view is laid out again, so it is better
+             served by being rebuilt than by drawing with metrics from the old scale. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:label="@string/app_name"
-            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|navigation">
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

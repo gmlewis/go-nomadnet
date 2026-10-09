@@ -171,6 +171,40 @@ class TerminalKeysTest {
         }
     }
 
+    @Test
+    fun `a control combination is the letter its key code stands for`() {
+        // A keyboard's key map is not obliged to give a letter a control code, and the map
+        // on the appliance's own tablet gives none to any of them: ctrl-d arrives carrying
+        // no character at all, so a key handler that read the event's character dropped
+        // every control combination — ctrl-d to send, ctrl-x to leave a room, ctrl-u for a
+        // URL, ctrl-r to reach a hub. The letter comes from the key code instead, and this
+        // is that mapping: the offset is what Android's consecutive letter key codes make
+        // of a key code minus the code of A.
+        val cases = listOf(
+            KeyCase("ctrl-a", TerminalKeyRow.ctrlLetter('a' - 'a')!!, listOf(0x01)),
+            KeyCase("ctrl-d", TerminalKeyRow.ctrlLetter('d' - 'a')!!, listOf(0x04)),
+            KeyCase("ctrl-r", TerminalKeyRow.ctrlLetter('r' - 'a')!!, listOf(0x12)),
+            KeyCase("ctrl-u", TerminalKeyRow.ctrlLetter('u' - 'a')!!, listOf(0x15)),
+            KeyCase("ctrl-x", TerminalKeyRow.ctrlLetter('x' - 'a')!!, listOf(0x18)),
+            KeyCase("ctrl-z", TerminalKeyRow.ctrlLetter('z' - 'a')!!, listOf(0x1a)),
+        )
+        for (case in cases) {
+            assertEquals("${case.name}: the control code", case.want, sent(case.key))
+        }
+
+        // The whole alphabet is there, and nothing that is not a letter is.
+        for (offset in 0..25) {
+            assertEquals(
+                "offset $offset is not the letter it stands for",
+                'a' + offset,
+                (TerminalKeyRow.ctrlLetter(offset) as TerminalKey.Ctrl).letter,
+            )
+        }
+        for (offset in listOf(-1, 26, 27, Int.MIN_VALUE, Int.MAX_VALUE)) {
+            assertEquals("offset $offset is not a letter", null, TerminalKeyRow.ctrlLetter(offset))
+        }
+    }
+
     /** KeyCase is one key and the bytes it must send, as integers so a failure reads. */
     private data class KeyCase(val name: String, val key: TerminalKey, val want: List<Int>)
 }

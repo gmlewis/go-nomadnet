@@ -36,6 +36,67 @@ class NodeConfigRendererTest {
     }
 
     @Test
+    fun theRadioIsRenderedForTheTransport() {
+        // A radio on the tablet's USB port is an interface like any other, and the
+        // transport is the half that owns interfaces. The values are the LoRa ones an RNode
+        // is configured with; the port is the kernel's serial device for the radio, which is
+        // what an RNodeInterface opens.
+        val rendered = NodeConfigRenderer.reticulumConfig(NodeConfigSpec())
+        // The block as the file spells it, indentation included: a section under
+        // [interfaces] is indented two spaces and its keys four, and a radio written at the
+        // wrong depth is a radio Reticulum does not read back as an interface.
+        val block = listOf(
+            "  [[RNode LoRa]]",
+            "    type = RNodeInterface",
+            "    interface_enabled = true",
+            "    port = /dev/ttyACM0",
+            "    frequency = 915000000",
+            "    bandwidth = 125000",
+            "    txpower = 17",
+            "    spreadingfactor = 9",
+            "    codingrate = 5",
+        ).joinToString("\n")
+        assertTrue(
+            "the radio is not in the transport's configuration:\n$rendered",
+            rendered.contains(block),
+        )
+    }
+
+    @Test
+    fun theRadioIsRenderedForAClientToo() {
+        // The client owns no interface — the shared instance does — but its Interfaces page
+        // is a view of this file, so a radio the transport dials and the client cannot see is
+        // an operator looking at a page that says the appliance has no radio.
+        val rendered = NodeConfigRenderer.clientReticulumConfig(NodeConfigSpec())
+        assertTrue(
+            "the client cannot see the radio:\n$rendered",
+            rendered.contains("[[RNode LoRa]]") && rendered.contains("port = /dev/ttyACM0"),
+        )
+    }
+
+    @Test
+    fun aRadioCanBeLeftOut() {
+        val rendered = NodeConfigRenderer.reticulumConfig(NodeConfigSpec(rnode = null))
+        assertFalse("a transport with no radio still describes one", rendered.contains("RNodeInterface"))
+    }
+
+    @Test
+    fun theRadioDefaultsAreTheDocumentedOnes() {
+        val radio = RNodeSpec()
+        assertEquals("RNode LoRa", radio.name)
+        assertEquals("/dev/ttyACM0", radio.port)
+        assertEquals(915_000_000, radio.frequency)
+        assertEquals(125_000, radio.bandwidth)
+        assertEquals(17, radio.txpower)
+        assertEquals(9, radio.spreadingFactor)
+        assertEquals(5, radio.codingRate)
+        assertTrue(
+            "the radio is not enabled by default, so a fresh install would leave it unused",
+            radio.enabled,
+        )
+    }
+
+    @Test
     fun anInterfaceIsRenderedAsATcpClientWithALiteralAddress() {
         val text = NodeConfigRenderer.reticulumConfig(
             NodeConfigSpec(
@@ -142,7 +203,7 @@ class NodeConfigRendererTest {
 
     @Test
     fun theClientStillStatesAnEmptyInterfaceListRatherThanLeavingItBlank() {
-        val client = NodeConfigRenderer.clientReticulumConfig(NodeConfigSpec())
+        val client = NodeConfigRenderer.clientReticulumConfig(NodeConfigSpec(rnode = null))
         assertTrue(client.contains("[interfaces]"))
         assertTrue(
             "an empty list is a deliberate configuration and should say so:\n$client",
@@ -162,12 +223,22 @@ class NodeConfigRendererTest {
 
     @Test
     fun anEmptyInterfaceListIsStatedRatherThanLeftBlank() {
-        val text = NodeConfigRenderer.reticulumConfig(NodeConfigSpec())
+        val text = NodeConfigRenderer.reticulumConfig(NodeConfigSpec(rnode = null))
         assertTrue(text.contains("[interfaces]"))
         assertTrue(
             "an empty transport is a deliberate configuration and should say so",
             text.contains("Deliberately empty"),
         )
+    }
+
+    @Test
+    fun anApplianceWithNoHubInterfaceSaysSoAndStillCarriesTheRadio() {
+        // The radio is not conditional on the hub: an appliance whose hub address resolved
+        // nothing still has the radio on its own USB port, and a section that said
+        // "deliberately empty" over a file with a radio in it would be telling an operator
+        // to go looking for something that is described two lines below.
+        val text = NodeConfigRenderer.reticulumConfig(NodeConfigSpec())
+        assertTrue("a radio alone is not an empty interface section:\n$text", !text.contains("Deliberately empty"))
     }
 
     @Test

@@ -6,7 +6,7 @@ gives an unprivileged Android app a real PTY, a shell, and a writable home
 directory. No Android GUI port is needed: the same `tview`/`tcell` interface,
 the same Reticulum stack, and the same LXMF router run unmodified.
 
-To use the device's own GNSS receiver and compass, install the **gonomadnet node**
+To use the device's own GNSS receiver and compass, install the **gonomadnet**
 app as well — see [Android-APK.md](Android-APK.md). Everything below works without
 it, using a fixed coordinate instead.
 
@@ -15,7 +15,7 @@ program, each with its exact error message so you can recognise it. The examples
 come from an `arm64-v8a` tablet on Android 16; another device differs only in the
 ABI (§3).
 
-**If you are installing the gonomadnet node app**, you do not need this page at
+**If you are installing the gonomadnet app**, you do not need this page at
 all: that app runs the client itself, on a console of its own, with nothing
 installed beside it. See [Android-APK.md](Android-APK.md). Everything below is
 for running the client inside Termux on a device without the appliance, and it is
@@ -117,7 +117,7 @@ every Android device made since about 2017 needs. Take
 Termux's home directory as `gonomadnet` (§4). Downloading it on the device and
 copying it in from shared storage is enough; no computer is needed.
 
-If you have the **gonomadnet node** app installed, its client is already on the
+If you have the **gonomadnet** app installed, its client is already on the
 device and you do not need this one: **Open gonomadnet** starts it on the app's
 own console. The binary below is what you want if you would rather run the client
 in Termux.
@@ -169,7 +169,7 @@ chmod 755 ~/gonomadnet
 ~/gonomadnet --version
 ```
 
-**If you have the gonomadnet node app**, you do not copy anything into Termux:
+**If you have the gonomadnet app**, you do not copy anything into Termux:
 tap **Open gonomadnet** and the app runs its own client on a console inside the
 app. The rest of this section is for a Termux-only install.
 
@@ -269,7 +269,7 @@ name stays the source of truth and a DNS change is picked up on the next launch.
 
 ## 6. Add a home-screen icon
 
-**With the gonomadnet node app installed, this section does not apply.** That app
+**With the gonomadnet app installed, this section does not apply.** That app
 is not a Termux shortcut: it runs its own copy of the client on a console of its
 own, and **Open gonomadnet** is how you start it. This section is for a
 Termux-only install, where the client has to be started from a shortcut of your

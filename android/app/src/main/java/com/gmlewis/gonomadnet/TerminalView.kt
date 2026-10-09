@@ -716,13 +716,22 @@ class TerminalView(context: Context, attrs: AttributeSet? = null) : View(context
         }
         if (special != null) return TerminalKey.Special(special)
 
+        // A control key is a flag on the letter it was held with rather than a character of
+        // its own, and on a device whose key map gives letters no control code — which is
+        // the one on this appliance's tablet — ctrl-d arrives with no character at all. The
+        // letter therefore comes from the key code: a key handler that read the character
+        // would drop every control combination there is, which is every key a terminal
+        // cannot do without.
+        if (event.isCtrlPressed) {
+            TerminalKeyRow.ctrlLetter(event.keyCode - KeyEvent.KEYCODE_A)?.let { letter ->
+                return if (event.isAltPressed) TerminalKey.Alt(letter) else letter
+            }
+        }
+
         val character = event.unicodeChar
         if (character == 0) return null
         val text = String(Character.toChars(character))
-        // A hardware control key is reported as a flag rather than as a code of its own, and
-        // ctrl-c has to reach the client as one byte: this is the only path that can send it
-        // from a keyboard, and the strip's latch is the only one from a touchscreen. Alt is a
-        // flag as well, and a prefix on whatever the key sends.
+        // Alt is a flag as well, and a prefix on whatever the key sends.
         val typed = TerminalKeyRow.withControl(event.isCtrlPressed, TerminalKey.Rune(text))
         return if (event.isAltPressed) TerminalKey.Alt(typed) else typed
     }

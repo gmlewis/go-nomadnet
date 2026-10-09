@@ -1,6 +1,6 @@
 # Building and releasing the Android app
 
-This page is for building, signing and publishing the **gonomadnet node**
+This page is for building, signing and publishing the **gonomadnet**
 appliance. It is not needed to *use* it — if you want to install the app on a
 device, read [Android-APK.md](Android-APK.md) instead, and download the APK from
 the [latest release](https://github.com/gmlewis/go-nomadnet/releases).
@@ -15,7 +15,7 @@ the [latest release](https://github.com/gmlewis/go-nomadnet/releases).
 ./scripts/build-android-apk.sh --test-only  # the Kotlin unit tests only
 ```
 
-The script cross-compiles **six** Go programs for `linux/arm64` and stages them as
+The script cross-compiles **seven** Go programs for `linux/arm64` and stages them as
 `.so` files in `jniLibs` — the only extension the packager keeps, and the only
 directory an app that targets the current `targetSdk` may execute a file from:
 
@@ -25,15 +25,16 @@ directory an app that targets the current `targetSdk` may execute a file from:
 | `libgorrcd.so` | `go-reticulum` | the RRC hub |
 | `libgorrcbot.so` | `go-reticulum` | the chat bot |
 | `libgonsensor.so` | `go-reticulum` | the sensor converters |
-| `libgonomadnetclient.so` | this repository | the client |
-| `libgorcons.so` | this repository | the console host that gives that client a PTY |
+| `libgonomadnetclient.so` | this repository (`cmd/gonomadnet`) | the client |
+| `libgorcons.so` | this repository (`android/console`) | the console host that gives that client a PTY |
+| `libgonomadnetedit.so` | this repository (`android/editor`) | the editor the client opens on its configuration |
 
 It then runs the Kotlin unit tests, assembles the APK, verifies the signature,
 and leaves it in `dist/android/`. The version comes from
 `nomadnet/version/version.go`, and `versionCode` is derived from the same string
 (`major * 10000 + minor * 100 + patch`), so an upgrade cannot install backwards.
 
-The six programs total ~96 MB before compression, and a debug APK is ~74 MB.
+The seven programs total ~101 MB before compression, and a debug APK is ~86 MB.
 
 **The client is built once.** It used to be staged a second time as the asset
 `gonomadnet-client`, for another application to run out of shared storage — worth
@@ -41,8 +42,9 @@ another ~16 MB in the download. The app runs `libgonomadnetclient.so` itself now
 so that copy, the launchers and the setup script that went with it are gone. What
 is still in `assets/` is the console's font and its license, the terminal colors —
 which are the console's own palette as well as the theme the client installs for a
-Termux user — the tmux configuration, and the bundled Bible text the bot's `kjv`
-command reads.
+Termux user — the tmux configuration, the bundled Bible text the bot's `kjv`
+command reads, and the client's own default configuration, which the app writes
+out with the settings that make it a node.
 
 Building needs the Android SDK and a signing key. The release publisher never
 builds an APK, so a machine without either can still cut a Go release.

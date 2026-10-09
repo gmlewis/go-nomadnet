@@ -23,6 +23,7 @@
 package tui
 
 import (
+	"fmt"
 	"os/exec"
 	"runtime"
 
@@ -189,6 +190,13 @@ func (cd *ConfigDisplay) SetEditorCmd(cmd string) { cd.editorCmd = cmd }
 // urwid.LineBox(self.editor_term); Config.py:32). On editor exit the explainer
 // is restored and focus returns to the "Open Editor" button (Python's
 // quit_term restores self.parent.config_explainer; Config.py:74-78).
+//
+// A launch that fails is reported rather than swallowed. The editor is a
+// program this one looks up and starts, so it can be absent, unreadable, or
+// forbidden — and the button that started nothing is indistinguishable from a
+// button that is broken. Python raises out of the same failure; the sibling
+// Interfaces page shows it (see InterfacesDisplay.ShowEditor), and this one
+// now does too.
 func (cd *ConfigDisplay) ShowEditor(editorCmd, filePath string) {
 	if cd.editor != nil {
 		cd.closeEditor()
@@ -203,6 +211,7 @@ func (cd *ConfigDisplay) ShowEditor(editorCmd, filePath string) {
 	cmd := exec.Command(editorCmd, filePath)
 	et, err := NewEmbeddedTerminal(cd.app, cmd, w, h, "linux", cd.closeEditor)
 	if err != nil {
+		cd.showEditorError(editorCmd, err)
 		return
 	}
 	et.SetBorder(true)
@@ -212,6 +221,20 @@ func (cd *ConfigDisplay) ShowEditor(editorCmd, filePath string) {
 	if cd.app != nil {
 		cd.app.SetFocus(et)
 	}
+}
+
+// showEditorError tells the person that the editor did not start, and why.
+//
+// The message names the command as well as the failure, because the command is
+// the thing that is wrong: an editor that is not installed, or a configured
+// name that resolves to nothing, is answered by editing the [textui] editor
+// setting — which is the file this page is about.
+func (cd *ConfigDisplay) showEditorError(editorCmd string, cause error) {
+	message := fmt.Sprintf("Could not start the editor \"%v\":\n\n%v", editorCmd, cause)
+	if cd.app == nil || cd.app.Dialogs == nil {
+		return
+	}
+	cd.app.Dialogs.ShowStatusDialog("Error", message, 60, 9)
 }
 
 // closeEditor removes the embedded editor page and restores the explainer +

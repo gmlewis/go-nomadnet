@@ -182,7 +182,12 @@ class NodeStartOrderTest {
         val client = fixture.written[fixture.paths.clientConfig]!!
         assertTrue("the transport owns the shared instance: $transport", transport.contains("shared_instance_type = tcp"))
         assertTrue("the client requires it: $client", client.contains("require_shared_instance = yes"))
-        assertTrue("the client must own no interface: $client", client.contains("Deliberately empty"))
+        // The client's file names the interfaces the transport dials — its Interfaces page is
+        // a view of this file — so what must never change is that it dials nothing itself.
+        // An attached client owns no interface at all, which is what enable_transport = no
+        // says; require_shared_instance, asserted above, is what keeps it attaching rather
+        // than taking the instance for its own.
+        assertTrue("the client must not run a transport of its own: $client", client.contains("enable_transport = no"))
 
         // And each daemon has to be pointed at the right one.
         for (name in listOf("gorrcd", "gorrcbot")) {

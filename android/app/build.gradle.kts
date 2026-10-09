@@ -80,6 +80,19 @@ android {
         noCompress.add("txt")
     }
 
+    // The client's default configuration file, taken from the Go module that owns it.
+    //
+    // The appliance writes the client's configuration before the client has ever run, so that
+    // a fresh install is a node rather than a client serving nothing. What it writes is the
+    // client's own default with two values changed, so the template has to be the same file
+    // the client embeds — a copy kept beside the Kotlin would be a second default that drifts
+    // from the first, and the drift would show up as an appliance whose configuration no
+    // longer names the keys the appliance sets.
+    //
+    // The directory holds exactly that one file; a second file added to it would be packaged
+    // into the APK, which is why ClientNodeTest asserts the directory's contents.
+    sourceSets.getByName("main").assets.srcDir(rootProject.file("../nomadnet/config/testdata"))
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17

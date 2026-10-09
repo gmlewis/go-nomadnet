@@ -8,6 +8,7 @@
 package com.gmlewis.gonomadnet
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -117,7 +118,7 @@ class ApplianceConfigTest {
     }
 
     @Test
-    fun aHubThatDoesNotResolveLeavesTheTransportIsolated() {
+    fun aHubThatDoesNotResolveLeavesTheTransportWithNoHubInterface() {
         val spec = ApplianceConfig.nodeConfig(
             hubSpec = "this-name-does-not-exist.invalid:4242",
             resolve = { _, _ -> null },
@@ -125,7 +126,12 @@ class ApplianceConfigTest {
         assertTrue(spec.interfaces.isEmpty())
         val rendered = NodeConfigRenderer.reticulumConfig(spec)
         assertTrue("the transport must still be rendered", rendered.contains("[interfaces]"))
-        assertTrue(rendered.contains("Deliberately empty"))
+        assertTrue(rendered.contains("No hub interface"))
+        assertFalse("an unresolved hub must not be dialled", rendered.contains("TCPClientInterface"))
+        assertTrue(
+            "the radio is not conditional on the hub resolving: $rendered",
+            rendered.contains("[[RNode LoRa]]"),
+        )
     }
 
     @Test

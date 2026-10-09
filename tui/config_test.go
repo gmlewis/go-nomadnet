@@ -248,3 +248,26 @@ func TestConfigDisplayUpNotConsumedWhenEditorOpen(t *testing.T) {
 		t.Error("main page has focus while editor is mounted; its InputCapture could steal Up from the editor")
 	}
 }
+
+// TestConfigDisplayEditorFailureIsReported pins the fix for the reported "Open
+// Editor does nothing": a launch that fails used to return silently, leaving a
+// button that started nothing looking exactly like a button that is broken. The
+// failure is now shown, and nothing is left mounted in place of the explainer.
+//
+// The command is one this machine cannot have, so the launch fails on every
+// host the way it fails on an appliance with no editor installed.
+func TestConfigDisplayEditorFailureIsReported(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	cd := NewConfigDisplay(app, "/tmp/gonomadnet-config-for-editor-failure")
+
+	cd.ShowEditor("gonomadnet-no-such-editor", cd.configPath)
+
+	if cd.editor != nil {
+		t.Error("a failed launch left an editor mounted over the explainer")
+	}
+	if got := app.Dialogs.Count(); got != 1 {
+		t.Fatalf("the failure was not reported: dialogs open = %v, want 1", got)
+	}
+}

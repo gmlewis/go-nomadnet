@@ -87,6 +87,15 @@ data class StackPaths(val filesDir: String) {
     val nomadnetworkConfigDir get() = "$configDir/nomadnetwork"
 
     /**
+     * The client's configuration file inside [nomadnetworkConfigDir].
+     *
+     * It is named here for the same reason the directory is: the appliance writes it before
+     * the client has ever run, so that the client's first run is a node rather than a client
+     * that serves nothing — see [ClientNode].
+     */
+    val nomadnetworkConfig get() = "$nomadnetworkConfigDir/config"
+
+    /**
      * The client's storage directory, where its peer directory, its channel store and its
      * message history live.
      *

@@ -82,7 +82,7 @@ hit.
 
 #### With the device's own GNSS and compass
 
-The **gonomadnet node** app runs the Reticulum node stack and a sensor service on
+The **gonomadnet** app runs the Reticulum node stack and a sensor service on
 the device itself, so `gonomadnet` uses the device's real GNSS fix and compass
 instead of a fixed coordinate. Position and heading commands then answer with
 where the device actually is.

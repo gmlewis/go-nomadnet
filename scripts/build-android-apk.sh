@@ -2,13 +2,13 @@
 
 # build-android-apk.sh builds, tests and signs the gonomadnet Android appliance.
 #
-# It exists because the appliance is not a Go program: it is six Go programs, a Kotlin
+# It exists because the appliance is not a Go program: it is seven Go programs, a Kotlin
 # application that supervises them, and a signing key. Getting all of that into one
 # installable artifact has to be one command, or it is a checklist that goes stale.
 #
 # The Go toolchain builds the four linux/arm64 daemons, the client itself, and the console
 # host that gives the client a terminal under Android, and the Android Gradle Plugin
-# packages all six under a .so name in nativeLibraryDir — the only extension the packager
+# packages all seven under a .so name in nativeLibraryDir — the only extension the packager
 # keeps, and the only directory an app with targetSdk >= 29 is allowed to execute a file
 # from. They are all built for the same Linux/arm64, because Android is Linux. The app
 # runs the client itself, so one APK is the whole appliance: nothing else has to be
@@ -106,12 +106,18 @@ if [ "$MODE" != "test" ]; then
   build_binary "$RETICULUM_DIR" "cmd/gorrcbot" "libgorrcbot.so" ""
   build_binary "$RETICULUM_DIR" "cmd/gonsensor" "libgonsensor.so" ""
 
-  echo "building the client, and the console host that gives it a terminal:"
+  echo "building the client, the console host that gives it a terminal, and its editor:"
   # The client is executed by the app, not read by it, and the console host is the
   # program the app spawns to put that client on a pseudo-terminal, so both belong in
   # nativeLibraryDir under a .so name. Neither exists anywhere else on the device.
-  build_binary "$REPO_ROOT" "cmd/gonomadnet" "libgonomadnetclient.so" "-tags=wago"
-  build_binary "$REPO_ROOT" "cmd/gorcons"    "libgorcons.so"         "-tags=wago"
+  #
+  # The editor is there for the same reason and by the same rule: the client opens one
+  # on its configuration file, and Android gives an application no editor to open — no
+  # nano, no vi an app may execute, and no way to look a bare name up. The client's
+  # editor setting names this binary, by the absolute path it lands at.
+  build_binary "$REPO_ROOT" "cmd/gonomadnet"     "libgonomadnetclient.so" "-tags=wago"
+  build_binary "$REPO_ROOT" "android/console"   "libgorcons.so"          "-tags=wago"
+  build_binary "$REPO_ROOT" "android/editor"    "libgonomadnetedit.so"   "-tags=wago"
   du -ch "$JNI_DIR"/*.so | tail -1
 fi
 
@@ -149,7 +155,7 @@ pinned_assertions() {
   # console spawns nothing at all. Only a build can answer for them: in --test-only mode
   # nothing was cross-compiled, so their absence means nothing.
   if [ "$MODE" != "test" ]; then
-    for so in libgonomadnetclient.so libgorcons.so; do
+    for so in libgonomadnetclient.so libgorcons.so libgonomadnetedit.so; do
       if [ ! -f "$JNI_DIR/$so" ]; then
         echo "$so was not built into $JNI_DIR" >&2
         exit 1

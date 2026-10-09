@@ -249,6 +249,26 @@ object TerminalKeyRow {
         if (rune.text.length != 1) return key
         return TerminalKey.Ctrl(rune.text[0])
     }
+
+    /**
+     * ctrlLetter is the control key a control combination on a letter stands for, given
+     * how far the key is from the letter A.
+     *
+     * A keyboard's key map is not obliged to give a letter a control code, and the one on
+     * the appliance's own tablet gives none to any of them: a ctrl-D from a keyboard there
+     * arrives carrying no character at all, and a key handler that read the character would
+     * drop the key. The letter is therefore taken from the key itself, which is what a
+     * control combination is — the control code of the letter pressed.
+     *
+     * The offset is how Android numbers its letter keys: A through Z are consecutive, so a
+     * key code minus the code of A is the letter's place in the alphabet. Anything outside
+     * that range is not a letter and has no control code here.
+     */
+    fun ctrlLetter(offsetFromA: Int): TerminalKey? =
+        if (offsetFromA in 0..(LETTERS - 1)) TerminalKey.Ctrl('a' + offsetFromA) else null
+
+    /** How many letters the alphabet has, which is how many control keys this maps. */
+    private const val LETTERS = 26
 }
 
 /**

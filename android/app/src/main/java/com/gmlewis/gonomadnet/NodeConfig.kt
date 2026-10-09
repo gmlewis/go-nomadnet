@@ -32,6 +32,48 @@ data class InterfaceSpec(
 )
 
 /**
+ * The RNode radio the appliance's transport dials over USB.
+ *
+ * [port] is the kernel's serial device for the radio on the tablet's USB port, which is
+ * what an ESP32-based RNode enumerates as. It is rendered **switched on** and left that
+ * way whether or not a radio is attached: the transport logs an interface it cannot open
+ * and retries it in the background, so a radio plugged in later is picked up without
+ * anybody editing the file, and an appliance with no radio loses nothing but a log line.
+ *
+ * The radio parameters are the ones the appliance ships with, and they have to match the
+ * band the radio is licensed for and the airtime it is allowed where it is. An RNode
+ * reports its own settings back when the interface opens, and a mismatch is a report in
+ * the log rather than a radio that silently transmits somewhere it should not.
+ */
+data class RNodeSpec(
+    val name: String = DEFAULT_NAME,
+    val port: String = DEFAULT_PORT,
+    val frequency: Int = DEFAULT_FREQUENCY,
+    val bandwidth: Int = DEFAULT_BANDWIDTH,
+    val txpower: Int = DEFAULT_TXPOWER,
+    val spreadingFactor: Int = DEFAULT_SPREADING_FACTOR,
+    val codingRate: Int = DEFAULT_CODING_RATE,
+    val enabled: Boolean = true,
+) {
+    companion object {
+        /** The section the radio is rendered under in `[interfaces]`. */
+        const val DEFAULT_NAME = "RNode LoRa"
+
+        /** The serial device an RNode on the tablet's USB port enumerates as. */
+        const val DEFAULT_PORT = "/dev/ttyACM0"
+
+        /** 915 MHz, at 125 kHz of bandwidth: the narrow band an RNode is set up in. */
+        const val DEFAULT_FREQUENCY = 915_000_000
+        const val DEFAULT_BANDWIDTH = 125_000
+
+        /** 17 dBm of transmit power, spreading factor 9 and coding rate 5. */
+        const val DEFAULT_TXPOWER = 17
+        const val DEFAULT_SPREADING_FACTOR = 9
+        const val DEFAULT_CODING_RATE = 5
+    }
+}
+
+/**
  * The transport's configuration.
  *
  * [sharedInstancePort] and [instanceName] are the contract between this app and
@@ -53,6 +95,14 @@ data class NodeConfigSpec(
      */
     val rpcKey: String = "",
     val interfaces: List<InterfaceSpec> = emptyList(),
+    /**
+     * The radio the appliance's transport dials, or null for one that is to have none.
+     *
+     * It defaults to a radio so that a fresh install has one: the appliance is a radio
+     * node, and an operator who plugs an RNode into the tablet should not have to write a
+     * configuration file first. See [RNodeSpec].
+     */
+    val rnode: RNodeSpec? = RNodeSpec(),
     val logLevel: Int = 4,
     val enableTransport: Boolean = true,
 ) {
@@ -162,9 +212,13 @@ object NodeConfigRenderer {
     private fun renderInterfaces(spec: NodeConfigSpec): String {
         val out = StringBuilder()
         out.append("[interfaces]\n")
-        if (spec.interfaces.isEmpty()) {
+        if (spec.interfaces.isEmpty() && spec.rnode == null) {
             out.append("  # Deliberately empty: the appliance resolved no interface to connect through.\n")
+        } else if (spec.interfaces.isEmpty()) {
+            out.append("  # No hub interface: the appliance resolved none to connect through, so\n")
+            out.append("  # the radio below is the only one it dials.\n")
         }
+        spec.rnode?.let { out.append(renderRadio(it)) }
         for (iface in spec.interfaces) {
             val host = literalAddress(iface.host)
                 ?: throw IllegalArgumentException(
@@ -178,6 +232,30 @@ object NodeConfigRenderer {
             out.append("    target_host = ").append(host).append('\n')
             out.append("    target_port = ").append(iface.port).append('\n')
         }
+        return out.toString()
+    }
+
+    /**
+     * renderRadio renders the USB radio's own section.
+     *
+     * It is an `RNodeInterface`, which opens [RNodeSpec.port] as a serial device and speaks
+     * the radio's own protocol over it: the port is the only thing about a radio that the
+     * platform decides, and everything else is the band it is set up in.
+     */
+    private fun renderRadio(radio: RNodeSpec): String {
+        val out = StringBuilder()
+        out.append("  # The radio on the tablet's own USB port. It stays switched on whether or\n")
+        out.append("  # not a radio is attached, and the transport retries an interface it cannot\n")
+        out.append("  # open rather than failing on it.\n")
+        out.append("  [[").append(radio.name).append("]]\n")
+        out.append("    type = RNodeInterface\n")
+        out.append("    interface_enabled = ").append(if (radio.enabled) "true" else "false").append('\n')
+        out.append("    port = ").append(radio.port).append('\n')
+        out.append("    frequency = ").append(radio.frequency).append('\n')
+        out.append("    bandwidth = ").append(radio.bandwidth).append('\n')
+        out.append("    txpower = ").append(radio.txpower).append('\n')
+        out.append("    spreadingfactor = ").append(radio.spreadingFactor).append('\n')
+        out.append("    codingrate = ").append(radio.codingRate).append('\n')
         return out.toString()
     }
 

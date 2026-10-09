@@ -300,6 +300,10 @@ class MainActivity : Activity() {
         // that does not exist is a host that does not start — with an error that names the
         // host rather than the directory.
         paths.ensureDirectories()
+        // The settings that make this a node and give it an editor, written before the client
+        // can own the file: a client whose configuration says `enable_node = no` serves no
+        // pages, and one whose editor is `nano` has no editor on this device at all.
+        seedClientConfig(paths)
         // The channels the appliance comes with, written before the client can own the file.
         // An install that has already run the client has a store of its own, and it is left
         // alone: it is the operator's by then, and it holds whatever they have added.
@@ -369,6 +373,43 @@ class MainActivity : Activity() {
 
         consolePump = Thread({ session.pump() }, "console-pump").also { it.start() }
         report("the console is open; the client is starting on ${consoleGrid.cols}x${consoleGrid.rows}")
+    }
+
+    /**
+     * Writes the settings the appliance states in the client's configuration.
+     *
+     * Two of them are about being an appliance rather than a desktop — a node that serves
+     * pages and has a name, and an editor that is on the device — and the client's own
+     * default says neither. They are written here, before the client's first run, into the
+     * file the client reads; see [ClientConfig] for what is written and what is left alone.
+     *
+     * The file is the Go client's default taken from the APK's assets rather than a
+     * configuration invented here, so an operator who opens the editor sees the documented
+     * file with three values changed. An asset that is not in the APK is reported rather
+     * than silently skipped: the symptom is a console that answers "This instance is not
+     * hosting a node", and the reason has to be on the screen that opened it.
+     */
+    private fun seedClientConfig(paths: StackPaths) {
+        val template = runCatching {
+            assets.open(ClientConfig.TEMPLATE_ASSET_NAME).use { it.readBytes().decodeToString() }
+        }.getOrNull()
+        if (template == null) {
+            report(
+                "the APK carries no ${ClientConfig.TEMPLATE_ASSET_NAME}, so the client keeps the " +
+                    "configuration it writes for itself: it will not host a node and its editor " +
+                    "will not start",
+            )
+            return
+        }
+        val editor = LaunchSpecs.binary(applicationInfo.nativeLibraryDir, ClientConfig.EDITOR_NAME)
+        val seeded = runCatching { ClientConfig.ensure(paths.nomadnetworkConfig, template, editor) }
+            .getOrElse { failure ->
+                report("could not write the client's settings: ${failure.message}")
+                return
+            }
+        if (seeded) {
+            report("wrote the client's settings to ${paths.nomadnetworkConfig}")
+        }
     }
 
     /**
@@ -596,7 +637,7 @@ class MainActivity : Activity() {
          * Android starts an application's processes with no controlling terminal and no way
          * to allocate one, so a tview client started directly has nothing to draw on. The
          * host opens a pseudo-terminal, runs the client on it, and carries the terminal's
-         * bytes back to the socket the session bound — see `cmd/gorcons`.
+         * bytes back to the socket the session bound — see `android/console`.
          *
          * The client's own arguments go through `--arg`, one at a time: the host takes its
          * own flags and nothing else, and an argument left bare is a host that refuses to

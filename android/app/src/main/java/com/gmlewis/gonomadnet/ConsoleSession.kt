@@ -114,7 +114,7 @@ class ConsoleSession(
      *
      * It is a function rather than a built spec because the name does not exist until the
      * session binds: the host is told the name on its command line, and a spec built before
-     * the bind would carry a name nothing is listening on. See `cmd/gorcons`.
+     * the bind would carry a name nothing is listening on. See `android/console`.
      */
     private val host: (socketName: String) -> LaunchSpec,
 

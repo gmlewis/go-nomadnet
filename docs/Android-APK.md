@@ -1,6 +1,6 @@
-# gonomadnet node — the Android app
+# gonomadnet — the Android app
 
-**gonomadnet node** turns an Android tablet into a self-contained Reticulum node.
+**gonomadnet** turns an Android tablet into a self-contained Reticulum node.
 The app runs the Reticulum transport, an RRC hub and a chat bot under its own
 uid, publishes the tablet's GNSS fix and compass heading as a sensor feed, and
 runs the `gonomadnet` client itself, on a console of its own inside the app.
@@ -33,7 +33,7 @@ Download `gonomadnet-<version>-android-arm64-v8a.apk` from the
 your notifications or your Downloads. Android will refuse the first time and offer
 a settings link — allow installing from the app you opened it with (**Chrome**,
 **Files**, or your browser), then tap **Install** again. The app appears as
-**gonomadnet node**.
+**gonomadnet**.
 
 That is the only thing you install. The app carries its own client and the
 console that gives it a terminal, so there is nothing to download per device and
@@ -43,7 +43,7 @@ With a computer: `adb install -r gonomadnet-<version>-android-arm64-v8a.apk`.
 
 ### 2. Grant location
 
-Open **gonomadnet node** and accept the location permission it asks for. It uses
+Open **gonomadnet** and accept the location permission it asks for. It uses
 the permission only to read the device's own GNSS receiver — see
 [Privacy](#privacy).
 
@@ -345,6 +345,18 @@ own, under the app's private storage: the messages, the peers and the identity
 live there, and a second client announcing the same identity is a node that
 appears twice.
 
+Three of its settings are written by the app before the client's first run,
+because the client's own defaults describe a desktop:
+
+| Setting | Value | Why |
+| --- | --- | --- |
+| `[node] enable_node` | `yes` | the tablet is a node and serves pages |
+| `[node] node_name` | `gonomadnet on Android` | the name its node announces |
+| `[textui] editor` | the APK's own editor | Android has no editor an application may run, and no way to look one up |
+
+Everything else in the file is the client's own documented default. Anything you
+change yourself is left alone, including switching node hosting back off.
+
 ## The bot
 
 The bot answers a private request only when the hub can deliver the reply. Two
@@ -456,7 +468,7 @@ adb shell dumpsys location | head -40   # whether a provider has ever produced a
 | --- | --- | --- |
 | The client says it cannot attach; `37428` refuses | The transport is not running | Tap **Start stack** and wait for the app to report the node address; **Open gonomadnet** does this itself |
 | **Open gonomadnet** opens a console that says the client exited at once | The shared instance was not up when the client looked for it | Tap **Open gonomadnet** again, or **Start stack** first and wait for the address |
-| The app says location permission is refused | Android never granted it | Grant it in Settings → Apps → gonomadnet node → Permissions; the sensors cannot run without it |
+| The app says location permission is refused | Android never granted it | Grant it in Settings → Apps → gonomadnet → Permissions; the sensors cannot run without it |
 | `SIGSYS: bad system call` in a daemon's log | A daemon resolved a bare program name; Android kills the process for it | Every subprocess must be launched by an absolute path |
 | `route ip+net: netlinkrib: permission denied` | `AutoInterface` is blocked on Android | Use a `TCPClientInterface` instead; see [`docs/Android.md`](Android.md) |
 | `Failed to initialize TCP server interface …: listen tcp: address [[::]]:4242: missing port in address` | `listen_ip = [::]` was bracketed a second time | Write `listen_ip = ::` without brackets |

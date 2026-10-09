@@ -8,5 +8,10 @@
   version.
 -->
 <resources>
-    <string name="app_name">gonomadnet node</string>
+    <!-- What the launcher, the task switcher and the USB radio's own chooser call the
+         appliance. It is the program's name and nothing more: a name that also said what the
+         app was doing was a name that had to change when it did something else, and in the
+         chooser — a list of applications, all of them asking for the same radio — the extra
+         word is the one that tells the four of them apart least. -->
+    <string name="app_name">gonomadnet</string>
 </resources>
