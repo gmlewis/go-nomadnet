@@ -63,7 +63,17 @@ var notice47Lines = []string{
 // be compared with the capture's plain text. The ts run's literal
 // `[08:45:54]` brackets do NOT match (they carry no color spec), but the
 // bodies under test carry no literal brackets either way.
-var noticeTagStrip = regexp.MustCompile(`\[(?:#[0-9a-fA-F]{3}|#[0-9a-fA-F]{6}|default|-)(?::-[a-zA-Z-]*)*\]`)
+// noticeTagStrip removes the tview style tags the RRC render emits
+// (`[#rrggbb]`, `[default]`, `[-]`, `[-:-:UR]`, …) and the numbered region tags a
+// clickable render emits (`["3"]` … `[""]`) so a tagged render line can be
+// compared with the capture's plain text. The ts run's literal `[08:45:54]`
+// brackets do NOT match (they carry no color spec and no quoted number), but the
+// bodies under test carry no literal brackets either way.
+var noticeTagStrip = regexp.MustCompile(`\[(?:#[0-9a-fA-F]{3,6}|default|-|"[0-9]*")(?::[^]]*)?\]`)
+
+// noticeLeadingHash matches a continuation row that opens inside one of the bare
+// 32-hex link runs Python's _body_markup marks in the capture-47 body.
+var noticeLeadingHash = regexp.MustCompile(`^[0-9a-f]{32}(?:,|$)`)
 
 // TestFormatRRCNoticeWrapParityCapture47 pins the long-notice word-wrap
 // geometry to capture 47: at the capture's 96-column message-pane inner
@@ -88,22 +98,48 @@ func TestFormatRRCNoticeWrapParityCapture47(t *testing.T) {
 	}
 	// The exact tagged lines: line 0 carries the " [HH:MM:SS] " ts run and
 	// the info glyph inside the notice color run; every continuation line
-	// opens with the notice color tag — the LEFT-EDGE body, no ts run.
+	// opens with the notice color tag — the LEFT-EDGE body, no ts run. The
+	// body itself now carries link runs for the bare hashes (Python's
+	// _body_markup marks them, capture below), so the styling claim is pinned
+	// as a PREFIX and the wrap geometry is pinned tag-stripped.
 	tsRun := colorTag(cubeHex3("#888"), "") + " [08:45:54] " + colorReset
 	noticeTag := colorTag(noticeColor(ThemeDark), "")
 	for i, line := range got {
-		var want string
+		prefix, want := noticeTag, notice47Lines[i]
 		if i == 0 {
-			want = tsRun + noticeTag + "󰙎 " + notice47Lines[0] + colorReset
-		} else {
-			want = noticeTag + notice47Lines[i] + colorReset
+			prefix, want = tsRun+noticeTag+"󰙎 ", " [08:45:54] 󰙎 "+notice47Lines[0]
 		}
-		if line != want {
-			t.Errorf("notice line %v =\n%q\nwant\n%q", i, line, want)
+		if !strings.HasPrefix(line, prefix) {
+			t.Errorf("notice line %v = %q, want it to open with %q", i, line, prefix)
+		}
+		if plain := noticeTagStrip.ReplaceAllString(line, ""); plain != want {
+			t.Errorf("notice line %v (tags stripped) =\n%q\nwant\n%q", i, plain, want)
 		}
 		// Every wrapped line fits the 96-column pane (tags excluded).
 		if w := tview.TaggedStringWidth(line); w > 96 {
 			t.Errorf("notice line %v visible width = %v, want <= 96", i, w)
+		}
+	}
+
+	// Python runs the same _body_markup for a notice row as for a chat row
+	// (Channels.py:1303-1305) and hands the link delegate to _wrap_text, so both
+	// bare hashes in this body are link spans. Captured from the source of truth
+	// with this exact body:
+	//
+	//	_body_markup(body, body_attr="irc_notice", own_nick="glenn")
+	//	  has_links=True
+	//	  LinkSpec('light blue,underline', 'default')  0a8b370a62de4c5464b7ef7f56ff33c8
+	//	  LinkSpec('light blue,underline', 'default')  464360ee59ed9938ba59f6677cf4ac4d
+	//
+	// A bot that posts an address in a notice must therefore get the same
+	// clickable run a person typing one in a chat row gets.
+	linkRun := colorTag(rrcRenderColors(ThemeDark)["link"], "u")
+	for _, hashHex := range []string{
+		"0a8b370a62de4c5464b7ef7f56ff33c8",
+		"464360ee59ed9938ba59f6677cf4ac4d",
+	} {
+		if !strings.Contains(strings.Join(got, "\n"), linkRun+hashHex+spanReset) {
+			t.Errorf("notice row did not render %v as a link run (%q)", hashHex, linkRun)
 		}
 	}
 }
@@ -290,10 +326,17 @@ func TestRoomWidgetNoticeRenderLeftEdge(t *testing.T) {
 	mustChatCol(t, screen, firstRow, 12, '󰙎', tcellColorFrom256orHex(255, 215, 95), "info glyph")
 	mustChatCol(t, screen, firstRow, 14, 'm', tcellColorFrom256orHex(255, 215, 95), "body start")
 
-	// ...and every continuation line starts at chat col 0 with the notice
-	// color and no ts run (the capture's `(9ebb7a043a6d),` rows). The per-cell
-	// walk advances by each rune's CELL width, so wide emoji never misalign.
+	// ...and every continuation line starts at chat col 0 with no ts run (the
+	// capture's `(9ebb7a043a6d),` rows). The per-cell walk advances by each
+	// rune's CELL width, so wide emoji never misalign.
+	//
+	// A continuation that begins INSIDE a link run renders in the link color, not
+	// the notice color: Python hands _wrap_text the attributed markup, so a link
+	// span that straddles a wrap keeps its attr on the continuation. The links in
+	// this body are the two bare 32-hex hashes _body_markup marked (captured
+	// above), so a row opening with one of those renders as a link.
 	wantNotice := tcellColorFrom256orHex(255, 215, 95)
+	wantLink := rrcRenderColors(ThemeDark)["link"]
 	for i, wantLine := range notice47Lines[1:] {
 		runes := []rune(wantLine)
 		y := firstRow + 1 + i
@@ -301,9 +344,13 @@ func TestRoomWidgetNoticeRenderLeftEdge(t *testing.T) {
 		if r != runes[0] {
 			t.Fatalf("continuation row %v starts with %q, want %q", i, string(r), string(runes[0]))
 		}
+		wantFg := wantNotice
+		if noticeLeadingHash.MatchString(wantLine) {
+			wantFg = wantLink
+		}
 		_, fg, _ := chatCell(screen, y, 0)
-		if fg != wantNotice {
-			t.Errorf("continuation row %v col 0 fg = %v, want the notice color", i, fg)
+		if fg != wantFg {
+			t.Errorf("continuation row %v col 0 fg = %v, want %v", i, fg, wantFg)
 		}
 		col := 0
 		for _, wantR := range runes {

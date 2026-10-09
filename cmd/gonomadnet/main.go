@@ -25,14 +25,34 @@ import (
 	"fmt"
 	"log"
 	"os"
+	// The embedded time-zone database, which is what lets a zone name resolve on a
+	// device that keeps no zoneinfo files — an Android device keeps them packed in
+	// a format only bionic reads. Without it every timestamp in the interface is
+	// UTC, because that is what the runtime falls back to there.
+	_ "time/tzdata"
 
 	"github.com/gmlewis/go-nomadnet/nomadnet/version"
+	"github.com/gmlewis/go-reticulum/utils"
 )
 
 func main() {
 	// Timestamp every standard-log line so the daemon/client logs are
 	// attributable (the TUI's file redirection keeps these flags).
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds)
+
+	// Point time.Local at the zone the device is set to. On a desktop the runtime
+	// works this out for itself and this does nothing; on Android, where the zone
+	// comes from a system property rather than a file, it is the difference between
+	// a message log in local time and one in UTC.
+	if zone := utils.UseSystemZone(); zone != "" {
+		log.Printf("gonomadnet: local time zone is %v", zone)
+	}
+
+	// Give the terminal this program is drawing into the Nerd Font the Android
+	// appliance published, and tmux the configuration it published, on the one
+	// platform where the appliance cannot put them in place itself. See
+	// termux-setup.go; it does nothing anywhere else.
+	adoptTermuxSetup()
 
 	var (
 		configDir string

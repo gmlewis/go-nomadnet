@@ -48,12 +48,19 @@ type App struct {
 	// theme inside _message_widget, Channels.py:1281+).
 	RRCRender RRCRenderOpts
 
-	// Viewer is the reader's own position, which a `L Micron location construct
-	// resolves its distance and bearing against. It comes from the optional
-	// [location] config section; the zero value means the client has no
-	// position, and every position-dependent form then degrades to the bare
-	// Plus Code.
-	Viewer micron.Viewer
+	// viewer returns the reader's own position and heading, which a `L Micron
+	// location construct resolves its distance and bearing against. It is a
+	// function rather than a field because the position is live: a sensor feed
+	// keeps it current on its own goroutine while the renderers read it here, and
+	// a bare field would be a data race. A source that reports no position, or no
+	// source at all, makes every position-dependent form degrade to the bare Plus
+	// Code.
+	viewer func() micron.Viewer
+
+	// locationReport returns what the client knows about its own position and how
+	// old it is. The privacy model is only real if the reader can see their own
+	// exposure, so the location card states it instead of leaving it implied.
+	locationReport func() string
 
 	// clipboard writes selected text to the system clipboard (mouse text
 	// selection, a Go-only enhancement); selection tracks the mouse-drag /

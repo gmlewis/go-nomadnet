@@ -1,11 +1,19 @@
 AGENTS.md
 GEMINI.md
 PARITY-REPORT.md
+perfect-prompt.md
 SKILLS.md
 TODO.md
 *.log
 *.txt
 captures/
+
+# Two texts the appliance carries as source data rather than scratch, and which the
+# *.txt rule above would otherwise drop from the repository: the King James Version,
+# which is 4.4 MB and which the APK cannot be built without, and the license that has
+# to travel with the Nerd Font the APK hands to the terminal.
+!android/app/src/main/assets/kjv.txt
+!android/app/src/main/assets/AtkinsonHyperlegibleMono-OFL.txt
 /.agents
 /.claude
 /.dsh
@@ -14,3 +22,7 @@ captures/
 /test-all.sh
 go.work*
 __pycache__
+
+# Android release staging: the APK scripts/build-android-apk.sh leaves for the
+# release publisher. Build output, never committed.
+dist/

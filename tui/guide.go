@@ -430,7 +430,7 @@ func (gd *GuideDisplay) showMarkupForTest(markup string) {
 // tview tags at the reader's current width, push it to the reader, and cache
 // the line data (anchor map + per-line text) that jumpToAnchor needs.
 func (gd *GuideDisplay) renderMarkup(markup string) {
-	lines := micron.RenderToStyledLinesFor(markup, micronTheme(gd.app.Theme), gd.app.Viewer)
+	lines := micron.RenderToStyledLinesFor(markup, micronTheme(gd.app.Theme), gd.app.Viewer())
 	text, links, lineTexts := StyledLinesToTviewParts(lines, gd.readerWidth())
 	gd.currentLines = lines
 	gd.links = links
@@ -447,7 +447,7 @@ func (gd *GuideDisplay) rerender(width int) {
 	if gd.currentIdx < 0 {
 		return
 	}
-	lines := micron.RenderToStyledLinesFor(guideTopics[gd.currentIdx].markup, micronTheme(gd.app.Theme), gd.app.Viewer)
+	lines := micron.RenderToStyledLinesFor(guideTopics[gd.currentIdx].markup, micronTheme(gd.app.Theme), gd.app.Viewer())
 	text, links, lineTexts := StyledLinesToTviewParts(lines, width)
 	gd.currentLines = lines
 	gd.links = links

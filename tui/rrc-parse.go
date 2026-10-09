@@ -209,14 +209,22 @@ func ShortHash(hash string, n int) string {
 	return hash[:n]
 }
 
-// FormatTimestamp formats a millisecond timestamp as "HH:MM:SS".
-// Matches Python's _format_ts() exactly.
+// FormatTimestamp formats a millisecond timestamp as "HH:MM:SS" in the local
+// time zone, which is what Python's _format_ts() does with time.localtime
+// (Channels.py:207-211). A negative timestamp has no local rendering and is the
+// empty string, the same answer Python's except clause gives.
 func FormatTimestamp(tsMs int64) string {
+	return formatTimestampIn(tsMs, time.Local)
+}
+
+// formatTimestampIn is [FormatTimestamp] in an explicit zone, so the formatting
+// rule can be asserted without depending on the zone the test machine happens to
+// be in.
+func formatTimestampIn(tsMs int64, loc *time.Location) string {
 	if tsMs < 0 {
 		return ""
 	}
-	t := time.UnixMilli(tsMs).UTC()
-	return t.Format("15:04:05")
+	return time.UnixMilli(tsMs).In(loc).Format("15:04:05")
 }
 
 // CodeBlockRegion represents a span of text that is inside a code block.

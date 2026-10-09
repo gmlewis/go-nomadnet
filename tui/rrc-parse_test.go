@@ -15,7 +15,10 @@
 
 package tui
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestParseWhoNotice(t *testing.T) {
 	t.Parallel()
@@ -245,25 +248,44 @@ func TestShortHash(t *testing.T) {
 func TestFormatTimestamp(t *testing.T) {
 	t.Parallel()
 
+	// A zone that is deliberately not UTC and not the test machine's, so that a
+	// formatter which reached for either is caught. Python renders these through
+	// time.localtime (Channels.py:207-211), so four hours west of UTC is the
+	// expected answer and UTC is the bug.
+	newYork := time.FixedZone("EDT", -4*60*60)
+
 	tests := []struct {
 		name string
 		tsMs int64
 		want string
 	}{
-		{"zero UTC", 0, "00:00:00"},
-		{"noon UTC", 43200000, "12:00:00"},
-		{"minute UTC", 3661000, "01:01:01"},
+		{"epoch", 0, "20:00:00"},
+		{"noon UTC", 43200000, "08:00:00"},
+		{"a minute past one", 3661000, "21:01:01"},
 		{"negative", -1, ""},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := FormatTimestamp(tt.tsMs)
+			got := formatTimestampIn(tt.tsMs, newYork)
 			if got != tt.want {
-				t.Errorf("FormatTimestamp(%v) = %q, want %q", tt.tsMs, got, tt.want)
+				t.Errorf("formatTimestampIn(%v) = %q, want %q", tt.tsMs, got, tt.want)
 			}
 		})
+	}
+}
+
+// TestFormatTimestampUsesTheLocalZone is the reason the live channel view is
+// right on a desktop and wrong on Android until the zone is resolved: the
+// formatter renders in time.Local, whatever that is.
+func TestFormatTimestampUsesTheLocalZone(t *testing.T) {
+	t.Parallel()
+
+	ts := time.Date(2026, 10, 9, 12, 34, 56, 0, time.UTC).UnixMilli()
+	want := time.UnixMilli(ts).In(time.Local).Format("15:04:05")
+	if got := FormatTimestamp(ts); got != want {
+		t.Errorf("FormatTimestamp(%v) = %q, want %q", ts, got, want)
 	}
 }
 

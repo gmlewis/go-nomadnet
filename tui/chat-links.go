@@ -25,6 +25,14 @@ type ChatLinkHandler struct {
 	onOpenRoom func(room string)
 	onOpenLXMF func(hash string)
 	onOpenPage func(url string)
+
+	// OnOpenRRC receives the payload of an "rrc://<hex>[:<dest name>]/<room>" link,
+	// unparsed, when a reader clicks one. It mirrors BrowserDisplay.OnOpenRRC, and
+	// the form is a deliberate extension over Python's chat grammar, which has no
+	// RRC link: the browser's parser and handler already own it (ParseRRCLink →
+	// HandleRRCLink → OnOpenRRC), so the activation is routed back through them
+	// rather than parsed a second time here. Nil leaves such a link inert.
+	OnOpenRRC func(payload string)
 }
 
 // NewChatLinkHandler creates a link handler with the given callbacks.
@@ -41,7 +49,8 @@ func NewChatLinkHandler(
 }
 
 // HandleLink parses and dispatches a link target from chat messages.
-// Supported formats: room://#name, lxmf://lxmf@hash, page://hash.
+// Supported formats: room://#name, lxmf://lxmf@hash, page://hash, and — beyond
+// Python's set — rrc://<hex>[:<dest name>]/<room>.
 // Matches Python's _ChatLinkDelegate.handle_link() at Channels.py:1151.
 func (h *ChatLinkHandler) HandleLink(target string, fields ...string) {
 	if target == "" {
@@ -72,6 +81,10 @@ func (h *ChatLinkHandler) HandleLink(target string, fields ...string) {
 		}
 		if h.onOpenPage != nil {
 			h.onOpenPage(url)
+		}
+	case "rrc":
+		if h.OnOpenRRC != nil && payload != "" {
+			h.OnOpenRRC(payload)
 		}
 	}
 }

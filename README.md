@@ -16,7 +16,7 @@ the internet.
 - **Cross-platform** — works on Linux, macOS, and Windows
 - **Terminal UI** — full-featured TUI built with [gmlewis/tview](https://github.com/gmlewis/tview)
 - **LXMF messaging** — send/receive encrypted messages via Reticulum
-- **RRC chat** — join relay chat rooms on Reticulum hubs
+- **RRC chat** — join relay chat rooms on Reticulum hubs, with clickable addresses (`lxmf@…`, node hashes), `#rooms`, and `rrc://` hub links in any message, including a bot's notices
 - **Node serving** — host Micron pages and files for browsing
 - **Micron markup** — lightweight page rendering with headings, formatting, colors, links
 - **Directory** — peer discovery with trust levels and propagation node selection
@@ -31,7 +31,7 @@ If you already have [Go](https://go.dev/) installed, you can
 install `gonomadnet` directly from GitHub without cloning the repo:
 
 ```bash
-go install github.com/gmlewis/go-nomadnet/cmd/gonomadnet@v0.164.0
+go install github.com/gmlewis/go-nomadnet/cmd/gonomadnet@v0.165.0
 ```
 
 This puts the `gonomadnet` binary in your `$GOPATH/bin` (or `$GOBIN`)
@@ -55,19 +55,49 @@ text UI and the same Reticulum stack, unmodified. It needs no Android GUI port,
 but it does need the **F-Droid** build of Termux (not the Play Store one), and it
 cannot use `AutoInterface`.
 
+Download `gonomadnet-<version>-linux-arm64` from
+[Releases](https://github.com/gmlewis/go-nomadnet/releases), then install it
+inside Termux:
+
+```sh
+termux-setup-storage
+cp ~/storage/downloads/gonomadnet-*     ~/gonomadnet
+chmod 755 ~/gonomadnet
+~/gonomadnet --version
+```
+
+To build it yourself instead:
+
 ```bash
 GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o gonomadnet ./cmd/gonomadnet
 adb push gonomadnet /sdcard/Download/gonomadnet
-# then, inside Termux:
-termux-setup-storage && cp /sdcard/Download/gonomadnet ~/ && chmod 755 ~/gonomadnet
 ```
 
-See **[docs/ANDROID.md](docs/ANDROID.md)** for the complete procedure: the
+See **[docs/Android.md](docs/Android.md)** for the complete procedure: the
 Termux `targetSdk` requirement, configuring a `TCPClientInterface` (and why
 `AutoInterface` is blocked by SELinux), working around Android's missing
 `/etc/resolv.conf` when `target_host` is a hostname, adding a home-screen icon
 with Termux:Widget, and a troubleshooting table of every error you are likely to
 hit.
+
+#### With the device's own GNSS and compass
+
+The **gonomadnet node** app runs the Reticulum node stack and a sensor service on
+the device itself, so `gonomadnet` uses the device's real GNSS fix and compass
+instead of a fixed coordinate. Position and heading commands then answer with
+where the device actually is.
+
+Download `gonomadnet-<version>-android-arm64-v8a.apk` from
+[Releases](https://github.com/gmlewis/go-nomadnet/releases) and open it on the
+device — Android will ask you to allow installing from the app you opened it
+with, once. With a computer, `adb install -r gonomadnet-<version>-android-arm64-v8a.apk`
+does the same thing, and upgrades an installed copy in place.
+
+See **[docs/Android-APK.md](docs/Android-APK.md)** for the full setup: the app
+installs the correct Termux build and publishes the client and the launchers for
+it, so the install is two buttons and one paste — and nothing about your location
+leaves the device unless you ask for it. To build the APK yourself, see
+**[docs/Android-Build.md](docs/Android-Build.md)**.
 
 ## Quick Start
 
@@ -560,10 +590,10 @@ shortcut bar at the bottom of each display.
 
 ## Note for Ghostty users
 
-If you find that your TUI seems sluggish and can't keep up with your mouse
-scrolls and are using Ghostty, please try using a different terminal emulator
-and see if performance improves. For some reason, event handling and rendering
-in Ghostty appear to get extremely bogged down and can even crash with too much I/O.
+If the interface feels sluggish and cannot keep up with mouse scrolling, and you
+are using [Ghostty](https://ghostty.org), try a different terminal emulator to
+see whether it improves. Heavy input under Ghostty can slow rendering down
+sharply, and enough I/O at once can crash it.
 
 ## Testing
 

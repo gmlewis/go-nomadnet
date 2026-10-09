@@ -1,0 +1,25 @@
+# Copyright 2026 Glenn Lewis. All rights reserved.
+#
+# This program is free software: you can redistribute it and/or modify it under the
+# terms of the GNU General Public License as published by the Free Software Foundation,
+# either version 3 of the License, or (at your option) any later version.
+
+# Build output. The ~60 MB of Go binaries under jniLibs are produced by
+# scripts/build-android-apk.sh on every build; committing them would put a release
+# artifact in the history of every change to the appliance.
+build/
+app/build/
+app/src/main/jniLibs/**/*.so
+.gradle/
+.kotlin/
+local.properties
+
+# The client the appliance hands to Termux, cross-compiled by the same script. It is
+# large for the same reason and rebuilt from the same source, so it is generated here
+# rather than stored here. Everything else in app/src/main/assets is committed.
+app/src/main/assets/gonomadnet-client
+
+# The signing key and its passwords. Only keystore.properties.example is committed.
+keystore.properties
+*.jks
+*.keystore

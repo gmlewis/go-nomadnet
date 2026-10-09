@@ -120,6 +120,7 @@ prefixes=(
   probe_lxmf_store kiss-escape- rnstatus-parity-
   logger- logging- cbor-ximpl- expand-home- registry-interop-
   toml-interop- rooms-load- router-part-registry trust- pretty-date-parity-
+  publish-android-
   pyfloat-parity- size-str-parity- speed-str-parity-
 )
 

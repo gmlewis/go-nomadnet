@@ -494,6 +494,10 @@ func pruneReleaseAssets(keep int, dryRun bool, progress io.Writer) error {
 // (returned as names, so the caller can report what it deliberately kept).
 func partitionAssets(rel publishedRelease, re *regexp.Regexp) (deletable []asset, skipped []string) {
 	for _, a := range rel.assets {
+		if isRetainedAsset(a.name) {
+			skipped = append(skipped, a.name)
+			continue
+		}
 		if re.MatchString(a.name) {
 			deletable = append(deletable, a)
 			continue
@@ -501,6 +505,31 @@ func partitionAssets(rel publishedRelease, re *regexp.Regexp) (deletable []asset
 		skipped = append(skipped, a.name)
 	}
 	return deletable, skipped
+}
+
+// retainedAssetSuffixes names the asset kinds the retention prune must never delete, however
+// old the release and whatever assetPlatformPattern grows to say.
+//
+// An installable artifact is not a build output. The binaries in this pattern are rebuilt and
+// republished for every release, so retiring an old one costs a download; an APK is a signed
+// appliance that a person installed once and expects to be able to fetch again to upgrade in
+// place, and a signing key that outlives the artifact it signed is a key nobody can use.
+// Deleting all of them after ten releases is the footgun this list exists to close.
+//
+// The platform pattern does not match these names today, so they are already skipped — which is
+// exactly why the exemption is written down: the next person to add a platform to that pattern
+// must not have to notice this to avoid destroying every appliance ever released.
+var retainedAssetSuffixes = []string{".apk"}
+
+// isRetainedAsset reports whether an asset is one the prune must keep regardless of age.
+func isRetainedAsset(name string) bool {
+	lower := strings.ToLower(name)
+	for _, suffix := range retainedAssetSuffixes {
+		if strings.HasSuffix(lower, suffix) {
+			return true
+		}
+	}
+	return false
 }
 
 // deletableBytes returns the combined size of the given assets.

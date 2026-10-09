@@ -25,6 +25,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gmlewis/go-reticulum/geo"
 	"github.com/gmlewis/go-reticulum/rns"
@@ -145,6 +146,28 @@ type PrintingConfig struct {
 //
 // A blank or absent fix means the client has no position, and every
 // position-dependent form then degrades to the bare Plus Code.
+//
+// The section also carries the live half of the same idea:
+//
+//	[location]
+//	# A live sensor feed, published by a device that has its own receiver —
+//	# an Android appliance, for instance. A device path, tcp://host:port, or
+//	# unix://path. NMEA-0183 sentences, multiplexed: whatever carries a
+//	# position and whatever carries a heading may arrive on one stream.
+//	#
+//	# The port must not be one Reticulum uses: 37428 is the shared instance
+//	# and 37429 is its control port, so a feed there stops the transport from
+//	# binding its own socket.
+//	sensor_feed = tcp://127.0.0.1:37430
+//	# Seconds a reading stays current. A feed that goes quiet degrades to the
+//	# bare Plus Code rather than reporting the last thing it heard.
+//	max_age = 30
+//
+// A sensor feed is deliberately absent from the default configuration: a
+// sensorless install must keep using its static fix, and adding a live source
+// changes what the client trusts. When one is configured it is the only source
+// — live always beats static — and the static fix is consulted only for an
+// install that has no feed at all.
 type LocationConfig struct {
 	// Fix is the position exactly as written in the config file.
 	Fix string
@@ -154,7 +177,18 @@ type LocationConfig struct {
 	Known bool
 	// Err reports why Fix did not parse, or nil when it did or was absent.
 	Err error
+	// SensorFeed is the live NMEA sensor endpoint exactly as written in the
+	// config file, or empty when the client has no live source.
+	SensorFeed string
+	// MaxAge is how long a live reading stays current before the client
+	// reports having no position again.
+	MaxAge time.Duration
 }
+
+// DefaultLocationMaxAge is how long a live sensor reading stays current when
+// the configuration does not say. It is long enough to ride out a receiver's
+// report interval and short enough that a dead feed degrades promptly.
+const DefaultLocationMaxAge = 30 * time.Second
 
 // DefaultConfig returns a Config with all default values set,
 // matching the Python NomadNet defaults.
@@ -204,6 +238,10 @@ func DefaultConfig() *Config {
 			SpaceMsgs:              false,
 			ShowGutters:            true,
 		},
+		// The [location] section is optional and absent from the file
+		// gonomadnet writes, so the only default that matters is the staleness
+		// window a configured feed is held to.
+		Location: LocationConfig{MaxAge: DefaultLocationMaxAge},
 		Node: NodeConfig{
 			EnableNode:             true,
 			AnnounceInterval:       360 * 60, // 360 minutes → seconds
@@ -705,6 +743,18 @@ func (c *Config) applyLocation() {
 	if !ok {
 		return
 	}
+
+	if v, ok := sec["max_age"]; ok {
+		if n, err := asFloat(v); err == nil && n > 0 {
+			c.Location.MaxAge = time.Duration(n * float64(time.Second))
+		}
+	}
+
+	// The feed is taken verbatim: gonomadnet does not decide here whether the
+	// endpoint is usable, because a feed that cannot be reached yet must not
+	// stop the client from starting. A malformed endpoint is reported once the
+	// source is opened, where the error can name it.
+	c.Location.SensorFeed = strings.TrimSpace(sec["sensor_feed"])
 
 	fix := strings.TrimSpace(sec["fix"])
 	if fix == "" {

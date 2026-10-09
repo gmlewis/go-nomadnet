@@ -1,0 +1,263 @@
+#!/bin/bash
+
+# build-android-apk.sh builds, tests and signs the gonomadnet Android appliance.
+#
+# It exists because the appliance is not a Go program: it is four Go programs, the
+# client that runs inside Termux, a Kotlin application that supervises them, and a
+# signing key. Getting all of that into one installable artifact has to be one
+# command, or it is a checklist that goes stale.
+#
+# The Go toolchain builds the four linux/arm64 daemons, and the Android Gradle Plugin
+# packages them under a .so name in nativeLibraryDir — the only extension the packager
+# keeps, and the only directory an app with targetSdk >= 29 is allowed to execute a file
+# from. It builds the client for the same Linux/arm64 as the daemons, because Android is
+# Linux, and puts it in the assets: the appliance publishes it into shared storage where
+# Termux, the only process that may run it, picks it up. Bundling it is what turns the
+# release page's dozen assets for a dozen machines into a button.
+#
+#   ./scripts/build-android-apk.sh              build a signed release APK
+#   ./scripts/build-android-apk.sh --debug      build an installable debug APK
+#   ./scripts/build-android-apk.sh --test-only  run the Kotlin unit tests and stop
+#   ./scripts/build-android-apk.sh --help       show this text
+#
+# The Android unit tests are deliberately NOT part of run-all-tests.sh: that gate is
+# the Go repositories' gate and has to keep working on a machine with no Android SDK.
+# Gradle's own unit-test task is invoked here, before the assemble, so the split is
+# one command rather than two habits.
+#
+# Every Gradle invocation passes --no-daemon. A Gradle daemon is meant to outlive the
+# build that started it and idle out on its own, which is exactly right for a person
+# at a keyboard and exactly wrong for a script: it survives the shell that started it,
+# is reparented to init, and is then an unexplained JVM holding 3 GB for three hours.
+# A single-use daemon exits with the build.
+
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ANDROID_DIR="$REPO_ROOT/android"
+GRADLE="$ANDROID_DIR/gradlew"
+JNI_DIR="$ANDROID_DIR/app/src/main/jniLibs/arm64-v8a"
+ASSETS_DIR="$ANDROID_DIR/app/src/main/assets"
+RETICULUM_DIR="$(cd "$REPO_ROOT/../go-reticulum" 2>/dev/null && pwd || echo "")"
+
+MODE="release"
+for arg in "$@"; do
+  case "$arg" in
+    --help|-h)
+      sed -n '2,29p' "$0" | sed 's/^# \{0,1\}//'
+      exit 0
+      ;;
+    --debug) MODE="debug" ;;
+    --test-only) MODE="test" ;;
+    *)
+      echo "unrecognized argument: $arg" >&2
+      echo "run with --help" >&2
+      exit 2
+      ;;
+  esac
+done
+
+if [ -z "$RETICULUM_DIR" ]; then
+  echo "go-reticulum is expected beside this repository at ../go-reticulum" >&2
+  exit 1
+fi
+
+# ---------------------------------------------------------------------------
+# The version is derived, never hand-maintained
+# ---------------------------------------------------------------------------
+
+# versionFile is the one place a release version is written, and the release
+# publisher already reads it. A versionCode that goes backwards is a silent
+# install failure, so it is computed from the same string rather than typed.
+VERSION_FILE="$REPO_ROOT/nomadnet/version/version.go"
+VERSION_NAME="$(sed -n 's/^const VERSION = "\(.*\)"/\1/p' "$VERSION_FILE" | head -1)"
+if [ -z "$VERSION_NAME" ]; then
+  echo "could not read VERSION from $VERSION_FILE" >&2
+  exit 1
+fi
+IFS=. read -r v_major v_minor v_patch <<< "$VERSION_NAME"
+VERSION_CODE=$((v_major * 10000 + v_minor * 100 + v_patch))
+echo "building gonomadnet $VERSION_NAME (versionCode $VERSION_CODE)"
+
+# ---------------------------------------------------------------------------
+# The Go daemons, and the client that runs in Termux
+# ---------------------------------------------------------------------------
+
+# wagoSupportedTarget mirrors what the release publisher does: the in-process wasm
+# runtime compiles for linux/arm64 with CGO_ENABLED=0, and the tag is additive.
+build_binary() {
+  local package="$1" output="$2" tags="$3"
+  echo "  $output"
+  ( cd "$RETICULUM_DIR" && \
+    GOOS=linux GOARCH=arm64 CGO_ENABLED=0 \
+    go build -trimpath $tags -o "$JNI_DIR/$output" "./$package" )
+}
+
+# build_client cross-compiles this repository's own client for the tablet.
+#
+# The same linux/arm64 as the daemons, with the same build tag the release publisher
+# uses for that target, so the binary a person gets from the release page and the one
+# inside the APK are the same build of the same code. It goes into the assets rather
+# than into jniLibs: nothing on this side of the Termux boundary executes it, so it
+# needs no .so name and no execution permission from Android — Termux runs it, under
+# Termux's uid, from Termux's home directory.
+build_client() {
+  local output="$ASSETS_DIR/gonomadnet-client"
+  echo "  $output"
+  ( cd "$REPO_ROOT" && \
+    GOOS=linux GOARCH=arm64 CGO_ENABLED=0 \
+    go build -trimpath -tags=wago -o "$output" ./cmd/gonomadnet )
+}
+
+if [ "$MODE" != "test" ]; then
+  mkdir -p "$JNI_DIR" "$ASSETS_DIR"
+  echo "building the bundled daemons for linux/arm64:"
+  # The .so extension is required, not cosmetic: without it the packager does not
+  # include the file, and nativeLibraryDir stays empty.
+  build_binary "cmd/gornsd"   "libgornsd.so"   "-tags=wago"
+  build_binary "cmd/gorrcd"   "libgorrcd.so"   "-tags=wago"
+  build_binary "cmd/gorrcbot" "libgorrcbot.so" ""
+  build_binary "cmd/gonsensor" "libgonsensor.so" ""
+  du -ch "$JNI_DIR"/*.so | tail -1
+
+  echo "building the client the appliance hands to Termux:"
+  build_client
+  du -h "$ASSETS_DIR/gonomadnet-client"
+fi
+
+# ---------------------------------------------------------------------------
+# The pinned contract between the appliance and Termux
+# ---------------------------------------------------------------------------
+
+# shared_instance_type, shared_instance_port and instance_name have to agree between
+# the configuration the appliance renders for its own transport and the one Termux's
+# attached client reads. A mismatch produces "no shared instance is running" and
+# nothing else, which is the least debuggable failure this project can produce.
+#
+# The check reads the configuration the APK itself carries. It used to read a copy
+# staged in the home directory of the one machine the tablet was set up from, which
+# meant the pin was verified where it mattered least and not at all anywhere else.
+pinned_assertions() {
+  local kotlin="$ANDROID_DIR/app/src/main/java/com/gmlewis/gonomadnet/NodeConfig.kt"
+  local port name
+  port="$(sed -n 's/.*DEFAULT_SHARED_INSTANCE_PORT = \([0-9]*\).*/\1/p' "$kotlin" | head -1)"
+  name="$(sed -n 's/.*DEFAULT_INSTANCE_NAME = "\([^"]*\)".*/\1/p' "$kotlin" | head -1)"
+  if [ -z "$port" ] || [ -z "$name" ]; then
+    echo "could not read the pinned shared-instance values from $kotlin" >&2
+    exit 1
+  fi
+  echo "pinned shared instance: tcp $name on 127.0.0.1:$port"
+
+  # The sensor feed port is pinned on both sides for the same reason.
+  local feed
+  feed="$(sed -n 's/.*DEFAULT_FEED_PORT = \([0-9]*\).*/\1/p' \
+    "$ANDROID_DIR/app/src/main/java/com/gmlewis/gonomadnet/SensorFeedServer.kt" | head -1)"
+  echo "pinned sensor feed:      tcp 127.0.0.1:$feed"
+
+  local attached="$ASSETS_DIR/reticulum-stack-config"
+  if [ ! -f "$attached" ]; then
+    echo "the attached configuration $attached is not in the APK's assets" >&2
+    exit 1
+  fi
+  if ! grep -q "shared_instance_port = $port" "$attached"; then
+    echo "the attached configuration does not pin shared_instance_port = $port" >&2
+    exit 1
+  fi
+  if ! grep -q "instance_name = $name" "$attached"; then
+    echo "the attached configuration does not pin instance_name = $name" >&2
+    exit 1
+  fi
+  if ! grep -q "shared_instance_type = tcp" "$attached"; then
+    echo "the attached configuration does not reach the appliance over TCP" >&2
+    exit 1
+  fi
+  echo "the attached configuration agrees with the appliance"
+
+  # The launchers and the setup script are what that configuration is for, and both
+  # launchers have to point at the script a person can run when the client is missing.
+  for asset in gonomadnet-standalone gonomadnet-stack gonomadnet-setup.sh; do
+    if [ ! -f "$ASSETS_DIR/$asset" ]; then
+      echo "$asset is not in the APK's assets" >&2
+      exit 1
+    fi
+  done
+}
+
+pinned_assertions
+
+# ---------------------------------------------------------------------------
+# The Android tests: this repository's second gate
+# ---------------------------------------------------------------------------
+
+echo "running the Android unit tests"
+( cd "$ANDROID_DIR" && "$GRADLE" --no-daemon --quiet testDebugUnitTest \
+    -PgonomadnetVersionName="$VERSION_NAME" -PgonomadnetVersionCode="$VERSION_CODE" )
+echo "the Android unit tests passed"
+
+if [ "$MODE" = "test" ]; then
+  echo "test-only: stopping before the assemble"
+  exit 0
+fi
+
+# ---------------------------------------------------------------------------
+# The APK
+# ---------------------------------------------------------------------------
+
+if [ "$MODE" = "release" ] && [ ! -f "$ANDROID_DIR/keystore.properties" ]; then
+  cat >&2 <<'MESSAGE'
+a release build needs a signing key, and cannot be upgraded in place without one.
+
+Create one outside the repository:
+
+  keytool -genkeypair -keystore ~/.android-keys/gonomadnet-release.jks \
+    -alias gonomadnet -keyalg RSA -keysize 4096 -validity 10950 \
+    -storetype PKCS12 -dname "CN=gonomadnet, O=you, C=US"
+
+then copy android/keystore.properties.example to android/keystore.properties and
+fill in the path and the passwords. Both files are gitignored. Use --debug for a
+throwaway build that needs no key.
+MESSAGE
+  exit 1
+fi
+
+TASK="assembleRelease"
+APK="$ANDROID_DIR/app/build/outputs/apk/release/app-release.apk"
+if [ "$MODE" = "debug" ]; then
+  TASK="assembleDebug"
+  APK="$ANDROID_DIR/app/build/outputs/apk/debug/app-debug.apk"
+fi
+
+echo "assembling the $MODE APK"
+( cd "$ANDROID_DIR" && "$GRADLE" --no-daemon --quiet "$TASK" \
+    -PgonomadnetVersionName="$VERSION_NAME" -PgonomadnetVersionCode="$VERSION_CODE" )
+
+if [ ! -f "$APK" ]; then
+  echo "the build reported success but $APK is not there" >&2
+  exit 1
+fi
+
+# The signer is verified rather than assumed: an unsigned or differently-signed APK
+# installs fine over nothing and fails on the next release, which is a bad way to
+# find out.
+APKSIGNER="$(ls "$ANDROID_HOME"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1)"
+if [ -n "$APKSIGNER" ]; then
+  echo "verifying the signature"
+  "$APKSIGNER" verify --print-certs "$APK" | sed -n '1,6p'
+else
+  echo "note: apksigner was not found under \$ANDROID_HOME, so the signature was not checked"
+fi
+
+# Stage the APK where the release publisher looks for it, under the name it will be
+# published as. The publisher never builds an appliance — see androidStagingDir in
+# cmd/publish-github-release-artifacts/main.go — so this hand-off is the whole reason the two
+# scripts know about each other.
+STAGE="$REPO_ROOT/dist/android"
+STAGED="$STAGE/gonomadnet-$VERSION_NAME-android-arm64-v8a.apk"
+mkdir -p "$STAGE"
+cp "$APK" "$STAGED"
+
+echo
+echo "APK:    $APK"
+echo "staged: $STAGED"
+echo "sha256: $(shasum -a 256 "$APK" | cut -d' ' -f1)"
+echo "size:   $(du -h "$APK" | cut -f1)"

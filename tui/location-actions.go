@@ -37,8 +37,8 @@ func (a *App) ShowLocationActions(code string) {
 		return
 	}
 
-	detail := micron.DescribeLocation(code, a.Viewer)
-	card := locationCard(detail)
+	detail := micron.DescribeLocation(code, a.Viewer())
+	card := locationCard(detail) + locationStatusBlock(a.LocationReport())
 	infoRows := strings.Count(card, "\n") + 1
 
 	info := NewUrwidLeftText(card)
@@ -97,8 +97,60 @@ func locationCard(detail micron.LocationDetail) string {
 	if detail.HasFix {
 		fmt.Fprintf(&b, "Distance:   %v\n", detail.Distance)
 		fmt.Fprintf(&b, "Bearing:    %v\n", detail.Bearing)
+		// A bearing is a compass reading; a bearing relative to the direction the
+		// reader is facing is an instruction. It is stated only when a heading is
+		// actually known, never derived from one that has aged out.
+		if detail.RelativeBearing != "" {
+			fmt.Fprintf(&b, "From you:   %v\n", detail.RelativeBearing)
+		}
 	} else {
 		b.WriteString("Distance:   (no position set)\n")
 	}
 	return b.String()
+}
+
+// locationStatusBlock renders what the client knows about its own position. It is
+// the reader's own exposure stated plainly: whether a live fix exists, where it
+// came from, how old it is, and how accurate it is. A client that quietly holds a
+// position and says nothing about it is one nobody can check.
+func locationStatusBlock(report string) string {
+	if report == "" {
+		return ""
+	}
+	return fmt.Sprintf("\nYour position: %v\n", report)
+}
+
+// SetViewer installs the reader's own position and heading source. It must be
+// called before the TUI renders.
+func (a *App) SetViewer(source func() micron.Viewer) {
+	if a == nil {
+		return
+	}
+	a.viewer = source
+}
+
+// Viewer returns the reader's own position and heading, or the zero value when the
+// client has none. It is safe to call from any goroutine.
+func (a *App) Viewer() micron.Viewer {
+	if a == nil || a.viewer == nil {
+		return micron.Viewer{}
+	}
+	return a.viewer()
+}
+
+// SetLocationReport installs the description of what the client knows about its
+// own position.
+func (a *App) SetLocationReport(report func() string) {
+	if a == nil {
+		return
+	}
+	a.locationReport = report
+}
+
+// LocationReport returns that description, or empty when there is nothing to say.
+func (a *App) LocationReport() string {
+	if a == nil || a.locationReport == nil {
+		return ""
+	}
+	return a.locationReport()
 }

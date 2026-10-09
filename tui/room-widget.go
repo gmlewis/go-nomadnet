@@ -17,6 +17,7 @@ package tui
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -138,10 +139,26 @@ type RoomWidget struct {
 	// SLASH_HELP line; without this the next hub refresh wiped the list
 	// ("help goes away quickly").
 	OnLocalMessage func(kind, text string) error
+	// ChatLinks dispatches a link a reader clicked inside a chat or notice row:
+	// the room widget resolves the clicked region back to the link the renderer
+	// tagged and hands its URI to the handler, which owns what each kind opens
+	// (Python's _ChatLinkDelegate, Channels.py:1137-1200). Nil leaves every link
+	// styled but inert.
+	ChatLinks *ChatLinkHandler
+
+	// chatLinksOf resolves the link handler when ChatLinks is nil, so a room built
+	// before the wiring layer installed the handler still dispatches through it. It
+	// is set by the channels display, which is where the handler arrives; see
+	// chatLinkHandler.
+	chatLinksOf func() *ChatLinkHandler
 
 	// Message data
 	chatMessages []ChannelMessage
 	members      []ChannelMember
+	// chatLinks is the link table of the rendered messages on screen, in region-id
+	// order: renderMessages replaces it whenever it re-renders, so a click can never
+	// resolve against a stale line.
+	chatLinks *chatLinkTable
 
 	// roomPart is the room's focused region for the Left/Right pane walk —
 	// Python's RoomFrame.focus_part (Channels.py:511-546), which persists
@@ -234,6 +251,13 @@ func NewRoomWidget(app *App, hubName, roomName string) *RoomWidget {
 	// _StickyMessageListBox, an IndicativeListBox) and the tail is followed
 	// sticky-bottom (Channels.py:553-587).
 	rw.messagesArea = NewIndicativeMessages(rw.messages)
+	// Links in a chat or notice row are wrapped in numbered region tags by the
+	// renderer (RRCRenderOpts.links) so the TextView resolves a click on one to
+	// the link it stands for; the room widget turns that id back into a link and
+	// hands it to OnChatLink. This is the same mechanism the browser's page view
+	// uses for Micron links (browser-nav.go).
+	rw.messages.SetRegions(true)
+	rw.messagesArea.OnRegionClick = rw.handleChatLink
 	// The justified layout pre-wraps at the message view's inner width; when
 	// the view is resized (users pane toggle, terminal resize) the render
 	// re-wraps at the new width before the TextView draws (the
@@ -882,6 +906,39 @@ func (rw *RoomWidget) renderOpts() RRCRenderOpts {
 	return opts
 }
 
+// handleChatLink resolves the region id the message view reported for a click to
+// the chat link it stands for, and hands its URI to the link handler. The id comes
+// from the TextView's own region resolution and the table is the one the current
+// render produced, so the lookup cannot drift from the lines on screen.
+func (rw *RoomWidget) handleChatLink(id string) {
+	idx, err := strconv.Atoi(id)
+	if err != nil {
+		return
+	}
+	link, ok := rw.chatLinks.linkAt(idx)
+	handler := rw.chatLinkHandler()
+	if !ok || handler == nil {
+		return
+	}
+	handler.HandleLink(link.uri())
+}
+
+// chatLinkHandler returns the handler to dispatch a clicked link through.
+//
+// The handler is resolved here rather than read off the field alone, because the
+// wiring layer installs it on the channels display after the RRC handlers that can
+// build a room widget: a WELCOME arriving in that window would otherwise leave this
+// room's links inert until the room was shown again.
+func (rw *RoomWidget) chatLinkHandler() *ChatLinkHandler {
+	if rw.ChatLinks != nil {
+		return rw.ChatLinks
+	}
+	if rw.chatLinksOf != nil {
+		return rw.chatLinksOf()
+	}
+	return nil
+}
+
 // renderMessages renders all chat messages through the Python-parity message
 // formatter (grey [HH:MM:SS] prefix, palette-colored <sender> by the sender
 // hash, #dddddd body, linkified hash runs). With rrc_ui_justify_msgs (the
@@ -894,6 +951,10 @@ func (rw *RoomWidget) renderMessages() {
 		msgs = CollapseJoinPartMessages(msgs)
 	}
 	opts := rw.renderOpts()
+	// The links of this render, in region-id order. The table is swapped in before
+	// the text is drawn, so a click resolves against exactly what is on screen.
+	links := &chatLinkTable{}
+	opts.links = links
 	_, _, width, _ := rw.messages.GetInnerRect()
 	var sb strings.Builder
 	for _, msg := range msgs {
@@ -902,6 +963,7 @@ func (rw *RoomWidget) renderMessages() {
 			sb.WriteString("\n")
 		}
 	}
+	rw.chatLinks = links
 
 	if len(rw.chatMessages) == 0 {
 		// Python update_messages (Channels.py:778-782): the empty placeholder

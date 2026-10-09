@@ -1,0 +1,153 @@
+#!/data/data/com.termux/files/usr/bin/bash
+#
+# Copyright 2026 Glenn Lewis. All rights reserved.
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# gonomadnet launcher shim for the ATTACHED mode (Termux:Widget target script).
+# Tap the "gonomadnet+stack" home-screen icon to run this.
+#
+# This starts gonomadnet against the Android appliance's Reticulum transport
+# instead of the tablet's own. In this mode:
+#
+#   * ~/.reticulum-stack/config is used, NOT ~/.reticulum/config. The standalone
+#     mode's config is never touched by this script.
+#   * There are no interfaces of its own, so there is deliberately NO ping6
+#     hostname-resolution block here. The appliance's gornsd resolved and owns the
+#     TCP interface; copying the standalone launcher's resolution block into this
+#     file would be meaningless at best.
+#   * A local bot usually runs inside the appliance, so /msg gobot works.
+#
+# Both modes share ~/.nomadnetwork, on purpose: the tablet keeps ONE node identity
+# and one message store whichever way it is started. That is also why they are
+# mutually exclusive at run time, and why this script checks before it exec's.
+
+set -u
+
+HOME_DIR="/data/data/com.termux/files/home"
+STACK_RNS="$HOME_DIR/.reticulum-stack"
+STANDALONE_RNS="$HOME_DIR/.reticulum"
+LOCK="$HOME_DIR/.nomadnetwork/gonomadnet.lock"
+SHARED_PORT=37428
+SELF="${0##*/}"
+
+# report prints a status line into the staging file the agent reads back over adb.
+# Termux's home directory cannot be read from adb, so /sdcard/Download is the only
+# return channel, and a launcher that cannot say what it did is a launcher nobody
+# can debug.
+report() {
+  {
+    echo "=== $SELF at $(date -u '+%Y-%m-%dT%H:%M:%SZ') ==="
+    echo "$@"
+  } > /sdcard/Download/gonomadnet-stack-status.txt 2>/dev/null || true
+}
+
+# peer_running reports whether another gonomadnet is already up.
+#
+# Only argv[0] is examined, and only an executable whose name is exactly
+# "gonomadnet" counts. Matching the whole command line would be wrong in a way that is
+# easy to miss: the launcher scripts' own paths contain the word "gonomadnet", so a
+# substring match makes every launcher refuse to start on the grounds that it has
+# found itself.
+#
+# procfs is read directly rather than shelling out to ps, because Termux's $PATH has
+# no ps and Android's seccomp policy terminates a process that resolves a bare program
+# name. See cmd/gonomadnet/instance-lock-unix.go, which reads procfs for the same two
+# reasons.
+peer_running() {
+  local pid argv0
+  for pid in /proc/[0-9]*; do
+    case "${pid##*/}" in "$$") continue ;; esac
+    argv0="$(tr '\0' '\n' < "$pid/cmdline" 2>/dev/null | head -n 1)" || continue
+    case "$argv0" in
+      */gonomadnet|gonomadnet) echo "$pid was running: $argv0"; return 0 ;;
+    esac
+  done
+  return 1
+}
+
+# port_listening reports whether something accepts a connection on loopback.
+#
+# bash's /dev/tcp is used because Termux ships neither nc nor ss, and because the
+# question is exactly "can a client attach", which is the question the shared
+# instance answers. The probe costs one throwaway connection to the appliance.
+port_listening() {
+  local port="$1"
+  (exec 3<>"/dev/tcp/127.0.0.1/$port") 2>/dev/null || return 1
+  exec 3<&- 2>/dev/null || true
+  return 0
+}
+
+cd "$HOME_DIR" || exit 1
+
+if [ ! -x "$HOME_DIR/gonomadnet" ]; then
+  report "gonomadnet is not installed at $HOME_DIR/gonomadnet"
+  echo "gonomadnet is not installed at $HOME_DIR/gonomadnet"
+  echo "Tap 'Set up Termux' in the 'gonomadnet node' app, or run:"
+  echo "  bash /sdcard/Download/gonomadnet-setup.sh"
+  exit 1
+fi
+
+# 1. Never start a second network. Both modes lock the same NomadNet config
+#    directory, so whichever starts second is refused anyway -- but with a bare
+#    "already running" error. Saying it in plain language first is the whole point
+#    of this check, and it also catches the case that matters more: the OTHER mode
+#    running, which would give the tablet two invisible Reticulum networks.
+if peer="$(peer_running)"; then
+  report "refused: another gonomadnet is already running.
+$peer
+
+Stop it first (Ctrl-Q in its session, or close its Termux session), then tap this
+icon again. Running both modes at once would give the tablet two separate
+Reticulum networks with no visibility between them."
+  echo "=============================================================="
+  echo " A gonomadnet is already running, so this one was not started."
+  echo
+  echo "$peer"
+  echo
+  echo " Both modes share ~/.nomadnetwork, so they are mutually exclusive."
+  echo " Running both at once would give the tablet two separate Reticulum"
+  echo " networks with no visibility between them."
+  echo
+  echo " Stop the running one (Ctrl-Q in its session), then tap this icon again."
+  echo " Or use the standalone icon if you meant that mode."
+  echo "=============================================================="
+  exit 1
+fi
+
+# 2. The appliance has to be up. Its gornsd owns the shared instance this client
+#    attaches to, and a bare "no shared instance is running" from Reticulum is
+#    exactly the error this check exists to replace.
+if ! port_listening "$SHARED_PORT"; then
+  report "refused: nothing is listening on 127.0.0.1:$SHARED_PORT, so the appliance stack is not running."
+  echo "=============================================================="
+  echo " The gonomadnet stack is not running."
+  echo
+  echo " Nothing is listening on 127.0.0.1:$SHARED_PORT, which is where the"
+  echo " appliance's transport publishes its shared instance."
+  echo
+  echo " Start the appliance's stack first: open the 'gonomadnet node' app and"
+  echo " tap 'Start stack'."
+  echo
+  echo " Or tap the standalone icon instead, which runs on the tablet's own"
+  echo " network and needs no appliance."
+  echo "=============================================================="
+  exit 1
+fi
+
+if [ ! -f "$STACK_RNS/config" ]; then
+  report "refused: $STACK_RNS/config is missing. Tap 'Set up Termux' in the 'gonomadnet node' app."
+  echo "$STACK_RNS/config is missing."
+  echo "Tap 'Set up Termux' in the 'gonomadnet node' app, or run:"
+  echo "  bash /sdcard/Download/gonomadnet-setup.sh"
+  exit 1
+fi
+
+report "starting the attached mode against 127.0.0.1:$SHARED_PORT
+config: $STACK_RNS/config
+(shared instance, not its own: the appliance owns every interface)"
+
+exec "$HOME_DIR/gonomadnet" -t --rnsconfig "$STACK_RNS"

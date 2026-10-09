@@ -39,6 +39,12 @@ type IndicativeMessages struct {
 	// width change (the resizeShortcutBar DrawFunc cache pattern).
 	OnWidthChange func()
 	lastWrapW     int
+
+	// OnRegionClick, when set, receives the id of the region a left-click landed
+	// on, after the wrapped TextView resolved the click and highlighted it. The
+	// renderer wraps each link run in a numbered region tag and keeps the id →
+	// link mapping, so the owner of that mapping can dispatch the activation.
+	OnRegionClick func(id string)
 }
 
 // NewIndicativeMessages wraps the given message TextView with the indicator
@@ -136,7 +142,30 @@ func (m *IndicativeMessages) InputHandler() func(event *tcell.EventKey, setFocus
 }
 
 // MouseHandler forwards to the wrapped TextView (the fork's handler signature
-// returns consumed+capture like IndicativeListBox.MouseHandler).
+// returns consumed+capture like IndicativeListBox.MouseHandler). When
+// OnRegionClick is set, a left-click that landed on a numbered region is handed
+// to it after the TextView has resolved the click and highlighted the region —
+// the same two steps the browser's page view takes (browser-nav.go), so a link
+// rendered by this pane is clickable exactly like a link on a Micron page.
 func (m *IndicativeMessages) MouseHandler() func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(tview.Primitive)) (consumed bool, capture tview.Primitive) {
-	return m.Text.MouseHandler()
+	base := m.Text.MouseHandler()
+	if m.OnRegionClick == nil {
+		return base
+	}
+	return func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(tview.Primitive)) (consumed bool, capture tview.Primitive) {
+		consumed, capture = base(action, event, setFocus)
+		if action != tview.MouseLeftClick {
+			return consumed, capture
+		}
+		ids := m.Text.GetHighlights()
+		if len(ids) == 0 {
+			return consumed, capture
+		}
+		// Clear the highlight tview just set so the clicked link is not left
+		// visually inverted: urwid does not invert a clicked link, and the
+		// browser's page view clears it for the same reason.
+		m.Text.Highlight()
+		m.OnRegionClick(ids[0])
+		return consumed, capture
+	}
 }

@@ -6,10 +6,22 @@ gives an unprivileged Android app a real PTY, a shell, and a writable home
 directory. No Android GUI port is needed: the same `tview`/`tcell` interface,
 the same Reticulum stack, and the same LXMF router run unmodified.
 
-This guide is written from a verified end-to-end run on a Samsung Galaxy Tab A9+
-(`SM-X210`, `arm64-v8a`, Android 16 / API 36). It documents not just the steps
-but the three Android platform restrictions that will otherwise cost you an
-afternoon, each with its exact error message so you can recognise it.
+To use the device's own GNSS receiver and compass, install the **gonomadnet node**
+app as well — see [Android-APK.md](Android-APK.md). Everything below works without
+it, using a fixed coordinate instead.
+
+This guide covers the Android platform restrictions that apply to a terminal
+program, each with its exact error message so you can recognise it. The examples
+come from an `arm64-v8a` tablet on Android 16; another device differs only in the
+ABI (§3).
+
+**If you are installing the gonomadnet node app**, the app does most of this
+itself: it installs Termux, publishes the client and the launchers, and hands over
+a script that performs §§3, 4 and 6 in one line — `bash
+/sdcard/Download/gonomadnet-setup.sh`. See
+[Android-APK.md](Android-APK.md#getting-started). The rest of this page describes
+the same steps taken by hand, together with what the platform does to a terminal
+program and what to do about each thing.
 
 ---
 
@@ -42,7 +54,7 @@ instead, as shown in [§5](#5-configure-reticulum).
 
 ---
 
-## 2. Install the correct Termux build — do not skip this
+## 2. Install the correct Termux build
 
 **Install Termux from [F-Droid](https://f-droid.org/packages/com.termux/), not
 from Google Play.**
@@ -61,15 +73,29 @@ You can confirm which you have:
 
 ```sh
 # From a host with adb, or read it in Termux's App Info:
-adb shell dumpsys package com.termux | grep -E "versionName|targetSdk"
+adb shell dumpsys package com.termux | grep -E "versionName|targetSdk|installerPackageName"
 ```
 
-The `targetSdk` line must read `28`.
+The `targetSdk` line must read `28`. A `targetSdk` of 29 or more, or an
+`installerPackageName` of `com.android.vending`, is the Play build.
 
+> **The name on the icon is not the build.** More than one application on the
+> stores calls itself Termux, and only the one the Termux project publishes is
+> supported here. The two are signed by different keys, so which one a device has
+> is a matter of record rather than of trust. The supported build — F-Droid
+> `com.termux` 0.118.3, version code 1002 — is signed with
+> `CN=FDroid, OU=FDroid, O=fdroid.org, C=UK`, certificate SHA-256
+> `228fb2cfe90831c1499ec3ccaf61e96e8e1ce70766b9474672ce427334d41c42`. A build
+> signed by anyone else is not it, whatever it is called.
+>
 > **Signing keys are not interchangeable.** F-Droid builds are signed by F-Droid;
 > upstream GitHub release APKs are signed by the Termux maintainers. Switching
 > between the two always requires uninstalling first, which deletes your Termux
 > home directory and everything in it. Pick one source and stay with it.
+
+The F-Droid client that ships with a build signed by that key updates it in
+place, so a Termux installed from F-Droid's repository keeps updating itself
+normally.
 
 If F-Droid refuses to install with `INSTALL_FAILED_VERIFICATION_FAILURE`,
 Android's package verifier is rejecting the sideload:
@@ -83,22 +109,22 @@ Revert later with `adb shell settings delete global <name>`.
 
 ---
 
-## 3. Build a binary for the device
+## 3. Get a binary for the device
 
-Android is Linux under the hood, so build for `linux`, not `android`. Building
-with `GOOS=android` requires cgo and the NDK (`golang.design/x/clipboard` ships
-a cgo JNI implementation behind an `android` build tag), and buys nothing for a
-Termux-hosted process. A `CGO_ENABLED=0` build is a statically linked binary
-that needs no Termux packages installed at all.
+**Download it.** Every release carries a `linux/arm64` binary, which is what
+every Android device made since about 2017 needs. Take
+`gonomadnet-<version>-linux-arm64` from the
+[latest release](https://github.com/gmlewis/go-nomadnet/releases) and put it in
+Termux's home directory as `gonomadnet` (§4). Downloading it on the device and
+copying it in from shared storage is enough; no computer is needed.
 
-Map the device's ABI to a Go target:
+If you have the **gonomadnet node** app installed, you do not download anything:
+tap **Publish files for Termux** and the app writes its own build of this binary
+into Downloads as `gonomadnet-client`, already matched to the device's
+architecture. That is the same build the release page carries, and the setup
+script installs it for you.
 
-| Device ABI (`getprop ro.product.cpu.abi`) | `GOARCH` |
-| --- | --- |
-| `arm64-v8a` (most devices since ~2017) | `arm64` |
-| `armeabi-v7a` | `arm` (`GOARM=7`) |
-| `x86_64` (emulators, some tablets) | `amd64` |
-| `x86` (old emulators) | `386` |
+To build one instead:
 
 ```bash
 git clone https://github.com/gmlewis/go-nomadnet
@@ -106,14 +132,27 @@ cd go-nomadnet
 GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o gonomadnet ./cmd/gonomadnet
 ```
 
-The result is a static ELF, roughly 20 MB:
+Android is Linux under the hood, so build for `linux`, not `android`. Building
+with `GOOS=android` needs cgo and the NDK, and buys nothing for a Termux-hosted
+process; a `CGO_ENABLED=0` build is a static binary that needs no Termux packages
+at all. It comes out as a static ELF of roughly 28 MB:
 
 ```console
 $ file gonomadnet
 gonomadnet: ELF 64-bit LSB executable, ARM aarch64, version 1 (SYSV), statically linked, Go BuildID=..., with debug_info, not stripped
 ```
 
-Copy it to the device over the shared filesystem:
+If you are building for a different device, map its ABI (`getprop
+ro.product.cpu.abi`) to a Go target:
+
+| Device ABI | `GOARCH` |
+| --- | --- |
+| `arm64-v8a` (most devices since ~2017) | `arm64` |
+| `armeabi-v7a` | `arm` (`GOARM=7`) |
+| `x86_64` (emulators, some devices) | `amd64` |
+| `x86` (old emulators) | `386` |
+
+With a computer, either binary can be pushed over the shared filesystem:
 
 ```bash
 adb push gonomadnet /sdcard/Download/gonomadnet
@@ -126,11 +165,28 @@ adb push gonomadnet /sdcard/Download/gonomadnet
 Open Termux and run:
 
 ```sh
-termux-setup-storage          # one-time: grants access to /sdcard
-cp /sdcard/Download/gonomadnet ~/
+termux-setup-storage                        # one-time: grants access to shared storage
+cp ~/storage/downloads/gonomadnet-*         ~/gonomadnet
 chmod 755 ~/gonomadnet
 ~/gonomadnet --version
 ```
+
+**If you have the gonomadnet node app**, tap **Publish files for Termux** and then
+run one line, which does all four of those steps and the launchers and the font as
+well:
+
+```sh
+bash /sdcard/Download/gonomadnet-setup.sh
+```
+
+The app can run that line for you. The paste it cannot avoid is the first one: the
+setting that lets an app start a Termux session lives inside Termux's private
+data, so only a process already running as Termux may write it.
+
+If the copy reports "No such file", list the directory with
+`ls ~/storage/downloads` and use the name the file really has — a browser may
+have saved it into a subdirectory. On a device where you pushed the file with
+`adb`, the path is `/sdcard/Download/gonomadnet`.
 
 The first real run creates `~/.reticulum/config`, `~/.nomadnetwork/`, an
 identity, and the storage tree. Termux's home directory cannot be written from
@@ -223,13 +279,19 @@ name stays the source of truth and a DNS change is picked up on the next launch.
 
 ## 6. Add a home-screen icon
 
+**With the gonomadnet node app, this section is already done.** The setup script
+writes both launchers — `~/.shortcuts/gonomadnet` and
+`~/.shortcuts/gonomadnet+stack` — and the app's own **Open gonomadnet** buttons
+start a Termux session directly through `RUN_COMMAND`, with no Termux:Widget and
+therefore **no "Draw over other apps" grant**. What follows is the same result
+reached by hand.
+
 Termux has no launcher shortcut of its own; the supported mechanism is the
 official **Termux:Widget** add-on, which runs a script from `~/.shortcuts/`.
 
 1. Install **Termux:Widget** from
    [F-Droid](https://f-droid.org/packages/com.termux.widget/).
-2. **Grant Termux "Draw over other apps".** This step is mandatory and is the
-   single most common cause of a shortcut that appears to do nothing. Since
+2. **Grant Termux "Draw over other apps".** This step is required. Since
    Android 10, a background application may not start a foreground activity, so
    the Termux service cannot open the terminal session for your script. The
    attempt fails silently, and Termux's own notification explaining it is
@@ -264,7 +326,7 @@ CONF="$HOME/.reticulum/config"
 cd "$HOME" || exit 1
 
 # Android has no /etc/resolv.conf and this binary is CGO_ENABLED=0, so it
-# cannot resolve names (see docs/ANDROID.md §5). Resolve with bionic and pin
+# cannot resolve names (see docs/Android.md §5). Resolve with bionic and pin
 # the literal address so a DuckDNS/address change is picked up automatically.
 if [ -f "$CONF" ]; then
   line=$(/system/bin/ping6 -n -c 1 -W 3 "$HUB_HOST" 2>/dev/null | head -n 1)
@@ -308,8 +370,36 @@ Tapping the icon now opens Termux and starts the client. Use
   which exists on Android, so selection and copy silently do nothing. Install
   the **Termux:API** app and `pkg install termux-api`, then have the copy path
   shell out to `termux-clipboard-set`.
-- **Glyphs.** `[textui] glyphs = nerdfont` needs a Nerd Font in your terminal
-  font; if box-drawing and icons render as empty boxes, set `glyphs = unicode`.
+- **Glyphs.** `[textui] glyphs = nerdfont` is the shipped default and needs a Nerd
+  Font in your terminal's font; without one, icons render as empty boxes. Termux
+  loads a user font from `~/.termux/font.ttf`, so install a Nerd Font and copy it
+  there, or set `glyphs = unicode` and use the symbols every terminal has. The
+  Android appliance carries one and can publish it for you — see
+  [Android-APK.md](Android-APK.md#the-terminal-font).
+- **Colors.** The client draws its frame, pane titles and key hints in the
+  terminal's *default* colors and its accents from the terminal's 16-color
+  palette, so Termux's stock white-on-black looks different from a themed desktop
+  terminal even though the client is the same. The appliance publishes the desktop
+  terminal's theme as `colors.properties` and the client installs it — see
+  [Android-APK.md](Android-APK.md#the-terminal-colors).
+- **tmux.** Nothing needs tmux — run the client directly in Termux and it keeps
+  the line tmux's status bar would take. If you are debugging and want windows
+  and scrollback anyway, `pkg install tmux`; the appliance publishes a matching
+  `~/.tmux.conf` with 24-bit color. See
+  [Android-APK.md](Android-APK.md#the-tmux-configuration-for-debugging).
+- **Local time.** Android has no `/etc/localtime` and keeps its zone data in a
+  format only bionic reads, so a Go program that asks for the local zone there
+  gets UTC — every chat timestamp, message date and log line four hours off in
+  New York. gonomadnet reads the zone from the `persist.sys.timezone` property
+  and carries its own zone database, so timestamps are local. A log line naming
+  the zone it adopted is written at startup:
+
+  ```
+  gonomadnet: local time zone is America/New_York
+  ```
+
+  If that line is absent and the interface's clock reads UTC, the binary is an
+  older one; take the current `linux-arm64` from the release page (§3).
 - **Log level.** `[logging] loglevel = 7` (extreme) writes megabytes of log in
   minutes. `4` (info) is a better default on battery and flash storage.
 - **Editing files.** `[textui] editor = nano` assumes a Termux package that
@@ -322,7 +412,7 @@ Tapping the icon now opens Termux and starts the client. Use
 Watch `~/.nomadnetwork/logfile`. A healthy start looks like this:
 
 ```
-[Info]     Nomad Network Client 0.163.0 starting...
+[Info]     Go Nomad Network Client 0.164.0 starting...
 [Info]     Initializing RNS transport...
 [Info]     Go TCPClientInterface Home Hub connected
 [Info]     Announce sent for <your lxmf hash>
@@ -346,14 +436,14 @@ grep -E "LXMF Router ready|nomadnetwork.node" ~/.nomadnetwork/logfile | tail
 | Symptom | Cause | Fix |
 | --- | --- | --- |
 | Tapping the icon does nothing | Termux lacks "Draw over other apps" | [§6 step 2](#6-add-a-home-screen-icon) |
-| `bash: gonomadnet: Permission denied` | Termux from Play Store (`targetSdk` ≥ 29) | [§2](#2-install-the-correct-termux-build--do-not-skip-this) |
-| `SIGSYS: bad system call` at startup | An `exec` of a bare program name hit Android's seccomp filter (fixed upstream for `ps` in this repo; other call sites may exist) | Prefer absolute paths; report it |
+| `bash: gonomadnet: Permission denied` | Termux from Play Store (`targetSdk` ≥ 29) | [§2](#2-install-the-correct-termux-build) |
+| `SIGSYS: bad system call` at startup | An `exec` of a bare program name hit Android's seccomp filter | Prefer absolute paths; report it if a daemon hits it |
 | `lookup <name> on [::1]:53: connection refused` | No `/etc/resolv.conf`; Go cannot resolve | [§5](#using-a-hostname-instead-of-a-literal-ip) |
 | `netlinkrib: permission denied` | `AutoInterface` cannot enumerate interfaces | Use `TCPClientInterface` / `RNodeInterface` |
-| `too many colons in address` | An IPv6 literal was joined without brackets | Update `go-reticulum`; fixed in `hostPortAddr` |
+| `too many colons in address` | An IPv6 literal was joined without brackets | Update your `go-reticulum` and rebuild (§3) |
 | TUI starts then exits immediately | No terminal on stdin; the client fell back to daemon mode | Run with `-t` inside a Termux session |
 | Node stops when the screen is off | Doze suspended it | `termux-wake-lock` |
-| `INSTALL_FAILED_VERIFICATION_FAILURE` | Android package verifier | [§2](#2-install-the-correct-termux-build--do-not-skip-this) |
+| `INSTALL_FAILED_VERIFICATION_FAILURE` | Android package verifier | [§2](#2-install-the-correct-termux-build) |
 
 ---
 
@@ -367,7 +457,7 @@ is Android-specific. Two settings are worth attention on a tablet:
 loglevel = 4          ; 7 (extreme) is very heavy on flash and battery
 
 [textui]
-glyphs = unicode      ; use nerdfont only if your terminal font provides them
+glyphs = nerdfont     ; the appliance installs the Nerd Font Termux needs
 
 [node]
 node_name = gonomadnet on <your device>   ; must be unique per node

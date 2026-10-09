@@ -122,6 +122,24 @@ const binaryName = "gonomadnet"
 // not_swept_prefixes there names this prefix so -c keeps it that way.
 const scratchDirPrefix = "publish-release-gonomadnet-*"
 
+// The Android appliance, which reaches a release as a staged file rather than as a build.
+const (
+	// androidStagingDir is where scripts/build-android-apk.sh leaves a signed APK.
+	//
+	// This publisher never builds one. Assembling an APK needs a signing key, an Android SDK
+	// and four cross-compiled Go daemons, and a release path that failed without them would
+	// break the releases of a repository whose whole purpose is a Go program. The appliance is
+	// therefore built and signed beforehand, and consumed from here.
+	androidStagingDir = "dist/android"
+	// androidAssetPrefix and androidAssetSuffix name what the publisher will attach:
+	// gonomadnet-<version>-android-<abi>.apk.
+	androidAssetPrefix = "gonomadnet-"
+	androidAssetSuffix = ".apk"
+	// goReticulumVersionFile is the sibling module's version, which the APK's daemons are
+	// compiled from. A release note that names it is the only record of the cross-repo pin.
+	goReticulumVersionFile = "../go-reticulum/rns/version.go"
+)
+
 // inUseMarker is the file markScratchInUse drops inside the scratch dir. It
 // names this process's PID, and scripts/clean-test-tmp.sh leaves a directory
 // carrying it alone while that PID lives — the second line of defence behind the
@@ -275,6 +293,9 @@ func run(opts options) error {
 	if err != nil {
 		return err
 	}
+
+	// The Android appliance is consumed, never built: see androidStagingDir.
+	assets = append(assets, collectAndroidArtifacts(androidStagingDir, version, progress)...)
 
 	notes := buildReleaseNotes(version, repo, assets)
 
@@ -564,6 +585,81 @@ func buildAll(outDir, version string, progress *os.File) ([]string, error) {
 	return assets, nil
 }
 
+// collectAndroidArtifacts finds the signed Android appliance staged for this release, and
+// explains itself when there is none.
+//
+// It never fails. A release that carried no APK is a normal, working release; a release that
+// refused to happen because an APK was missing would be a regression in the only path the Go
+// project has for shipping anything at all.
+func collectAndroidArtifacts(stagingDir, version string, progress *os.File) []string {
+	entries, err := os.ReadDir(stagingDir)
+	if err != nil {
+		mustFprintf(progress,
+			"No Android appliance staged in %v, so this release will not carry one.\n"+
+				"  Build one with ./scripts/build-android-apk.sh, which leaves a signed APK there.\n",
+			stagingDir)
+		return nil
+	}
+
+	var assets []string
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() {
+			continue
+		}
+		lower := strings.ToLower(name)
+		if !strings.HasPrefix(lower, androidAssetPrefix) || !strings.HasSuffix(lower, androidAssetSuffix) {
+			continue
+		}
+		if !strings.Contains(name, version) {
+			// A stale appliance is worse than none: it would be published as this release's
+			// build while containing daemons from another one.
+			mustFprintf(progress,
+				"Skipping %v: its name does not carry version %v, and a release must not "+
+					"ship an appliance built from other sources.\n", name, version)
+			continue
+		}
+		mustFprintf(progress, "Attaching the Android appliance %v\n", name)
+		assets = append(assets, filepath.Join(stagingDir, name))
+	}
+	if len(assets) == 0 {
+		mustFprintf(progress,
+			"No Android appliance named version %v is staged in %v, so this release will not "+
+				"carry one.\n", version, stagingDir)
+	}
+	return assets
+}
+
+// readGoReticulumVersion returns the version of the sibling go-reticulum module the release
+// binaries and the APK's daemons were compiled from, or an explanatory placeholder.
+//
+// It is a file read rather than a build query because the answer has to appear in the release
+// notes, which are rendered before anything is uploaded and on a machine where a `go list`
+// against the workspace may not be meaningful.
+func readGoReticulumVersion() string {
+	data, err := os.ReadFile(goReticulumVersionFile)
+	if err != nil {
+		return "an unrecorded version"
+	}
+	for raw := range strings.SplitSeq(string(data), "\n") {
+		line := strings.TrimSpace(raw)
+		if after, ok := strings.CutPrefix(line, "const VERSION = "); ok {
+			return strings.Trim(after, "\"")
+		}
+	}
+	return "an unrecorded version"
+}
+
+// hasAndroidArtifact reports whether any staged asset is the Android appliance.
+func hasAndroidArtifact(assets []string) bool {
+	for _, a := range assets {
+		if strings.HasSuffix(strings.ToLower(filepath.Base(a)), androidAssetSuffix) {
+			return true
+		}
+	}
+	return false
+}
+
 // buildReleaseNotes assembles the Markdown body for the release, including a
 // sha256 checksum table for every artifact and DIY hardware targets.
 func buildReleaseNotes(version, repo string, assets []string) string {
@@ -591,6 +687,34 @@ func buildReleaseNotes(version, repo string, assets []string) string {
 		mustFprintf(&b, "| %v | `%v` |\n", filepath.Base(a), sum)
 	}
 	mustFprintf(&b, "\nVerify a download with `shasum -a 256 <file>`.\n\n")
+
+	if hasAndroidArtifact(assets) {
+		// What a reader of the release page needs about the APK: what it is, which go-reticulum
+		// it carries, how to install it, and what the app does about the terminal the client
+		// needs. The cross-repo pin is the reason for the version sentence: the appliance embeds
+		// daemons compiled from the sibling module, so a note that named only this version would
+		// leave its whole transport unaccounted for.
+		mustFprintf(&b, "## Android appliance\n\n")
+		mustFprintf(&b, "This release also carries a signed Android APK, for a tablet or phone. It is "+
+			"not a build of the program above: it is the companion app, and what it adds is the "+
+			"device's own GNSS receiver and compass, the Reticulum node daemons and a sensor "+
+			"service that run in the background, and a `linux/arm64` build of the terminal client. "+
+			"It embeds daemons compiled from **go-reticulum v%v**.\n\n", readGoReticulumVersion())
+		mustFprintf(&b, "To install it, open the downloaded APK on the device and allow Android to "+
+			"install from unknown sources when it asks. From a computer, `adb install -r <apk>` "+
+			"does the same over USB. The APK is signed, so a later release upgrades it in place.\n\n")
+		mustFprintf(&b, "The client is a terminal program, and Android has no terminal, so the app "+
+			"also sets up the terminal environment it runs in: it installs the correct Termux "+
+			"build (F-Droid's, after checking the signing certificate), carries its own "+
+			"`linux/arm64` client inside the APK so nothing is downloaded per device, publishes "+
+			"the client and the launchers into Downloads, and hands over a setup script that "+
+			"installs and configures all of it. Two buttons do it.\n\n")
+		mustFprintf(&b, "Follow [the Android appliance guide]"+
+			"(https://github.com/%v/blob/master/docs/Android-APK.md): it is the eight-step version "+
+			"of the above, and it needs no computer. "+
+			"[Running gonomadnet on Android](https://github.com/%v/blob/master/docs/Android.md) "+
+			"explains what Android does to a terminal program.\n\n", repo, repo)
+	}
 
 	mustFprintf(&b, "## Hardware Projects & Pre-built Artifacts\n\n")
 	mustFprintf(&b, "These binaries are pre-compiled for standalone DIY hardware targets:\n\n")

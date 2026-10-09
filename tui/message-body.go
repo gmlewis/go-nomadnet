@@ -105,6 +105,57 @@ type RRCRenderOpts struct {
 	JustifyMsgs            bool
 	OwnNick                string
 	Glyphs                 map[string]string
+	// links, when set, collects the links of the message list being rendered in
+	// region-id order and makes the renderer wrap each one in the numbered tview
+	// region tags a clickable TextView needs. Nil renders every link styled but
+	// inert, which is what a one-off render (a test, a dialog) wants.
+	links *chatLinkTable
+}
+
+// chatLink is one clickable link in a rendered message list: what kind of thing
+// it points at, and the target within that kind (a room name, a destination hash,
+// a node target, or an rrc link's payload).
+type chatLink struct {
+	kind   string
+	target string
+}
+
+// chatLinkTable records the links of one rendered message list in region-id order,
+// so a mouse handler can turn a clicked region back into the link it stands for.
+// The room widget keeps the table that matches what is on screen and replaces it
+// on the next render.
+type chatLinkTable struct {
+	links []chatLink
+}
+
+// add records one link and returns the region id it was given.
+func (t *chatLinkTable) add(kind, target string) int {
+	t.links = append(t.links, chatLink{kind: kind, target: target})
+	return len(t.links) - 1
+}
+
+// linkAt returns the link a region id stands for.
+func (t *chatLinkTable) linkAt(id int) (chatLink, bool) {
+	if t == nil || id < 0 || id >= len(t.links) {
+		return chatLink{}, false
+	}
+	return t.links[id], true
+}
+
+// uri is the click target this link dispatches: Python's chat delegate splits the
+// target it is handed on "://", so the kind travels with the payload and each kind
+// carries its own sigil the way the displayed text does — "lxmf://lxmf@<hash>",
+// "room://#<room>", "page://<hash>", "rrc://<payload>".
+func (l chatLink) uri() string {
+	switch l.kind {
+	case "lxmf":
+		return "lxmf://lxmf@" + l.target
+	case "room":
+		return "room://#" + l.target
+	case "rrc":
+		return "rrc://" + l.target
+	}
+	return "page://" + l.target
 }
 
 // chatSpan is one styled region of a message body (Python _body_markup's
@@ -119,8 +170,15 @@ var (
 	// chatLinkCoreRE mirrors the alternation core of Python _LINK_RE
 	// (Channels.py:60-64); the (?<!…) / (?!\w) boundary conditions have no
 	// RE2 equivalent and are checked manually in scanChatLinks.
+	//
+	// The rrc:// alternative is a deliberate extension over Python's chat
+	// grammar, which has no RRC form in chat: the request was for an RRC hub link
+	// to work in a chat row exactly as it already does inside a Micron page, where
+	// the browser parses "rrc://<hex>[:<dest name>]/<room>" (Browser.py:277-279,
+	// handle_rrc_link at Browser.py:426). The shape below is that same form.
 	chatLinkCoreRE = regexp.MustCompile(
 		`lxmf@[0-9a-fA-F]{32}` +
+			`|rrc://[0-9a-fA-F]{32}(?::[^\s/]+)?(?:/[^\s/]+)?` +
 			`|[0-9a-fA-F]{32}(?::\S+)?` +
 			`|#[A-Za-z0-9][A-Za-z0-9_\-]{0,62}`)
 
@@ -130,13 +188,13 @@ var (
 
 // linkBoundaryOK checks the lookbehind/lookahead boundaries for a candidate
 // match: prev/next are the runes around the match (present only when inside
-// the body). lxmf/page carry a trailing (?!\w); room does not.
+// the body). lxmf/page/rrc carry a trailing (?!\w); room does not.
 // isWordRune (linkify-motd.go) mirrors Python's \w.
 func linkBoundaryOK(kind, body string, start, end int) bool {
 	if start > 0 {
 		prev, _ := utf8.DecodeLastRuneInString(body[:start])
 		switch kind {
-		case "lxmf", "room":
+		case "lxmf", "room", "rrc":
 			if isWordRune(prev) {
 				return false
 			}
@@ -171,6 +229,10 @@ func scanChatLinks(body string) []chatSpan {
 		switch {
 		case strings.HasPrefix(m, "lxmf@"):
 			kind, target = "lxmf", strings.TrimPrefix(m, "lxmf@")
+		case strings.HasPrefix(m, "rrc://"):
+			// The payload after the scheme is what the browser's own rrc parser
+			// takes (HandleRRCLink strips the same six characters).
+			kind, target = "rrc", strings.TrimPrefix(m, "rrc://")
 		case strings.HasPrefix(m, "#"):
 			kind, target = "room", strings.TrimPrefix(m, "#")
 		default:
@@ -422,8 +484,16 @@ func formatRRCEventLines(msg ChannelMessage, opts RRCRenderOpts, width int) []st
 	}
 	tsRun := ircTsRun(msg.TsMs, colors["ircTs"])
 	flow := " [" + rrcTsText(msg.TsMs) + "] " + iconPart + msg.Text
+	// Python runs the same _body_markup for a system/notice/error row as for a chat
+	// row (Channels.py:1295-1312) and hands the result to _wrap_text together with
+	// the chat link delegate, so an address a bot prints in a notice is styled and
+	// clickable exactly like one a person types in a chat row. The Go port escaped
+	// the body and never scanned it, which left every bot-posted address inert.
+	body := func(text string) string {
+		return formatRRCBody(ChannelMessage{Room: msg.Room, Text: text}, opts)
+	}
 	oneLine := func() []string {
-		return []string{tsRun + colorTag(color, "") + iconPart + escapeTviewTags(msg.Text) + colorReset}
+		return []string{tsRun + colorTag(color, "") + iconPart + body(msg.Text) + colorReset}
 	}
 	if width <= 0 {
 		return oneLine()
@@ -442,9 +512,9 @@ func formatRRCEventLines(msg ChannelMessage, opts RRCRenderOpts, width int) []st
 	// part (the icon's own color run covers it, like the capture's
 	// `[ts][notice]󰙎 members…`); the body part is segment 0 minus the
 	// prefix runes.
-	lines = append(lines, tsRun+colorTag(color, "")+iconPart+escapeTviewTags(string(first[prefixLen:]))+colorReset)
+	lines = append(lines, tsRun+colorTag(color, "")+iconPart+body(string(first[prefixLen:]))+colorReset)
 	for _, seg := range segments[1:] {
-		lines = append(lines, colorTag(color, "")+escapeTviewTags(seg)+colorReset)
+		lines = append(lines, colorTag(color, "")+body(seg)+colorReset)
 	}
 	return lines
 }
@@ -516,7 +586,20 @@ func formatRRCBody(msg ChannelMessage, opts RRCRenderOpts) string {
 			// bare [-] resets colors only, so underline would leak into the
 			// wrapped continuation line (the styled-tview renderer uses the
 			// same [-:-:U] latch).
-			sb.WriteString(colorTag(colors["link"], "u") + seg + spanReset)
+			//
+			// With a link table the run is also a tview region, so a click on it
+			// resolves back to the link it stands for: ["N"] before the run and
+			// [""] after, the same tags StyledLinesToTviewText emits for a Micron
+			// page, for the same reason.
+			sb.WriteString(colorTag(colors["link"], "u"))
+			if opts.links != nil {
+				sb.WriteString(fmt.Sprintf(`["%v"]`, opts.links.add(s.kind, s.target)))
+			}
+			sb.WriteString(seg)
+			if opts.links != nil {
+				sb.WriteString(`[""]`)
+			}
+			sb.WriteString(spanReset)
 		}
 		pos = s.end
 	}

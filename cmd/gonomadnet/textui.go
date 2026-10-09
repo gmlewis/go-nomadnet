@@ -40,6 +40,7 @@ import (
 	"github.com/gmlewis/go-nomadnet/nomadnet/browser"
 	"github.com/gmlewis/go-nomadnet/nomadnet/conversation"
 	"github.com/gmlewis/go-nomadnet/nomadnet/directory"
+	"github.com/gmlewis/go-nomadnet/nomadnet/location"
 	"github.com/gmlewis/go-nomadnet/nomadnet/micron"
 	"github.com/gmlewis/go-nomadnet/nomadnet/util"
 	"github.com/gmlewis/go-nomadnet/tui"
@@ -173,18 +174,66 @@ func runTextUI(configDir, rnsConfigDir string) {
 		Glyphs:                 tuiApp.Glyphs,
 	}
 
-	// Reader position for `L Micron location constructs. The optional
-	// [location] section is a gonomadnet extension; without it the client has
-	// no position and those constructs degrade to the bare Plus Code.
+	// Reader position for `L Micron location constructs, and the reader's heading
+	// for the relative bearing the location card shows. The optional [location]
+	// section is a gonomadnet extension: a static fix for a sensorless install, and
+	// a sensor feed for a device that has its own receiver. Without either, the
+	// client has no position and those constructs degrade to the bare Plus Code.
+	//
+	// The source is live, so it is installed as a function rather than copied:
+	// the TUI renders on one goroutine while the sensor readers run on their own,
+	// and the accessor is what keeps the two from racing.
+	locationSource := location.New(location.Options{})
 	if a.Config != nil {
 		if a.Config.Location.Err != nil {
 			log.Printf("[location] fix %q is not a position the client can place; private distance and bearing will be unavailable: %v",
 				a.Config.Location.Fix, a.Config.Location.Err)
 		}
-		if a.Config.Location.Known {
-			tuiApp.Viewer = micron.Viewer{Pos: a.Config.Location.Pos, Known: true}
-		}
+		locationSource = location.New(location.Options{
+			Feed:         a.Config.Location.SensorFeed,
+			StaticFix:    a.Config.Location.Pos,
+			HasStaticFix: a.Config.Location.Known,
+			MaxAge:       a.Config.Location.MaxAge,
+		})
 	}
+	// A feed that cannot be resolved is reported and then ignored: the client must
+	// still start, because a sensor service that has not started yet is not a
+	// reason for the browser to refuse to run.
+	if err := locationSource.Start(context.Background()); err != nil {
+		log.Printf("%v", err)
+	}
+	tuiApp.SetViewer(locationSource.Viewer)
+	tuiApp.SetLocationReport(locationSource.Status().Describe)
+	// The reader's own exposure, said out loud whenever it changes.
+	//
+	// One line at startup is not enough to satisfy "the user can always see what the app
+	// knows": whether a live fix exists and how old it is are states that change, and a client
+	// that states them once and never again leaves the reader to guess. It is also the only
+	// record that the client ever held a position at all, which is what makes the privacy
+	// capture meaningful — a clean capture from a client that never had a fix proves nothing.
+	// The state is sampled once, and that one sample is both written and used as the
+	// watcher's baseline, so the same line cannot be written twice and a change landing
+	// between the two cannot be missed.
+	described := locationSource.Status().Describe()
+	log.Printf("reader position: %v", described)
+	positionDone := make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(2 * time.Second)
+		defer ticker.Stop()
+		last := described
+		for {
+			select {
+			case <-positionDone:
+				return
+			case <-ticker.C:
+				now := locationSource.Status().Describe()
+				if now != last {
+					last = now
+					log.Printf("reader position: %v", now)
+				}
+			}
+		}
+	}()
 
 	// Crash recovery. An unrecovered panic in a gonomadnet goroutine restores
 	// the terminal and writes the stack to a crash file instead of letting the
@@ -233,6 +282,12 @@ func runTextUI(configDir, rnsConfigDir string) {
 			tuiApp.Main.StopUnreadBlink()
 			if logCleanup != nil {
 				logCleanup()
+			}
+			// Stop the position watcher, then release the sensor feed so no scan
+			// goroutine outlives the client.
+			close(positionDone)
+			if err := locationSource.Close(); err != nil {
+				log.Printf("closing the reader position source: %v", err)
 			}
 			a.Shutdown()
 			tuiApp.Stop()
@@ -2467,6 +2522,36 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 			})
 			main.SelectPage("channels")
 		}
+		// Chat links: a link a reader clicks inside a chat or notice row does what
+		// the same link does on a Micron page. Python's Channels chat delegate
+		// (_ChatLinkDelegate.handle_link, Channels.py:1137-1200) is the model, and
+		// three of the four kinds route through the browser's own HandleLink so
+		// there is one implementation of each activation rather than two that can
+		// drift. A "#room" link cannot: HandleLink reads a leading "#" as an
+		// in-document anchor, so rooms are handled here, the way Python's
+		// _open_room does — remember the room, then select it, which joins it when
+		// the hub is connected (Channels.py:1166-1174). The rrc form is a deliberate
+		// extension over Python's chat grammar; it goes back through the browser's
+		// own parser and handler.
+		chatLinks := tui.NewChatLinkHandler(
+			func(room string) {
+				hub := a.RRC.ActiveHub()
+				if hub == nil {
+					return
+				}
+				hub.AddRoom(room)
+				if channelsDisplay.OnSelectRoom != nil {
+					channelsDisplay.OnSelectRoom(hubIndexFor(a, hub), room)
+				}
+			},
+			func(hashHex string) { bd.HandleLink("lxmf@"+hashHex, "") },
+			func(url string) {
+				main.SelectPage("network")
+				bd.HandleLink(url, "")
+			},
+		)
+		chatLinks.OnOpenRRC = func(payload string) { bd.HandleLink("rrc://"+payload, "") }
+		channelsDisplay.ChatLinks = chatLinks
 		bd.OnPartialUpdate = func(ids []string) {
 			// Python Browser.handle_partial_updates (Browser.py:823-834): a
 			// "p:<id>:<id>" link forces an immediate re-fetch of the named partials.

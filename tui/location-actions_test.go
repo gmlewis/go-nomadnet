@@ -29,7 +29,9 @@ import (
 func locationTestApp(fix bool) (*App, *fakeClipboard) {
 	app := newTestApp()
 	if fix {
-		app.Viewer = micron.Viewer{Pos: geo.LatLng{Lat: 37.4220, Lng: -122.0841}, Known: true}
+		app.SetViewer(func() micron.Viewer {
+			return micron.Viewer{Pos: geo.LatLng{Lat: 37.4220, Lng: -122.0841}, Known: true}
+		})
 	}
 	fake := &fakeClipboard{}
 	app.clipboard = fake

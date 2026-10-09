@@ -785,7 +785,7 @@ func (bd *BrowserDisplay) renderPage() {
 	}
 	bd.keepScroll = false
 	markup := bd.effectiveMarkup()
-	lines := micron.RenderToStyledLinesFor(markup, micronTheme(bd.app.Theme), bd.app.Viewer)
+	lines := micron.RenderToStyledLinesFor(markup, micronTheme(bd.app.Theme), bd.app.Viewer())
 	width := bd.contentWidth()
 	// lineTexts must stay 1:1 with currentLines (one tagged text per StyledLine,
 	// wrapped rows embedded via '\n') so the nav row model (rowsAbove,

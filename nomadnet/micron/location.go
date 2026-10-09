@@ -17,6 +17,7 @@ package micron
 
 import (
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/gmlewis/go-reticulum/geo"
@@ -49,6 +50,14 @@ import (
 type Viewer struct {
 	Pos   geo.LatLng
 	Known bool
+	// HeadingDeg is the direction the reader is facing, in degrees true, and
+	// HasHeading reports whether it is known at all. A position answers "how
+	// far"; a heading is what turns the answer into an instruction — "40° to
+	// your left" rather than a compass reading the reader has to work out. A
+	// page never sees either: the heading is used only by the client's own
+	// location card, and the position only as the origin of a distance.
+	HeadingDeg float64
+	HasHeading bool
 }
 
 // The format vocabulary of a `L construct. With no format the default applies.
@@ -98,6 +107,41 @@ type LocationDetail struct {
 	// HasFix reports whether the reader's position was known, so Distance and
 	// Bearing are meaningful.
 	HasFix bool
+	// RelativeBearing describes the bearing to the code measured from the
+	// direction the reader is facing, or empty when either the position or the
+	// heading is unknown. It is deliberately empty in the zero case rather than
+	// defaulting to the cardinal bearing, because a relative bearing computed
+	// from a heading nobody has is a confidently wrong instruction.
+	RelativeBearing string
+}
+
+// relativeBearingAheadDeg is how near dead ahead, or dead astern, a target has
+// to be before naming a side would be silly.
+const relativeBearingAheadDeg = 10
+
+// DescribeRelativeBearing renders a bearing measured from the direction the
+// reader is facing. The input is a bearing minus a heading, in degrees, and may
+// be negative or beyond a full turn; it is wrapped first.
+func DescribeRelativeBearing(deg float64) string {
+	if math.IsNaN(deg) || math.IsInf(deg, 0) {
+		return ""
+	}
+	relative := geo.NormalizeDegrees(deg)
+	switch {
+	case relative <= relativeBearingAheadDeg || relative >= 360-relativeBearingAheadDeg:
+		return "straight ahead"
+	case relative <= 180:
+		if relative >= 180-relativeBearingAheadDeg {
+			return "behind you"
+		}
+		return fmt.Sprintf("%v° to your right", math.Round(relative))
+	default:
+		left := 360 - relative
+		if left >= 180-relativeBearingAheadDeg {
+			return "behind you"
+		}
+		return fmt.Sprintf("%v° to your left", math.Round(left))
+	}
 }
 
 // DescribeLocation resolves a location link's code for a viewer. It never fails:
@@ -120,8 +164,12 @@ func DescribeLocation(code string, viewer Viewer) LocationDetail {
 		return detail
 	}
 	detail.HasFix = true
+	bearing := geo.InitialBearing(viewer.Pos, target)
 	detail.Distance = micronDistance(geo.HaversineDistance(viewer.Pos, target))
-	detail.Bearing = geo.FormatBearing(geo.InitialBearing(viewer.Pos, target))
+	detail.Bearing = geo.FormatBearing(bearing)
+	if viewer.HasHeading {
+		detail.RelativeBearing = DescribeRelativeBearing(bearing - viewer.HeadingDeg)
+	}
 	return detail
 }
 

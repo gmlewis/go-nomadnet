@@ -369,7 +369,7 @@ func (a *App) Init() error {
 		a.Logger.SetLogFilePath(a.LogFilePath)
 	}
 
-	a.Logger.Info("Nomad Network Client %v starting...", a.Version)
+	a.Logger.Info("Go Nomad Network Client %v starting...", a.Version)
 	a.installPageLogger()
 
 	// Initialize non-blocking subsystems

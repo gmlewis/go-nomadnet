@@ -117,3 +117,24 @@ func TestChatLinkHandleInvalid(t *testing.T) {
 	handler := NewChatLinkHandler(nil, nil, nil)
 	handler.HandleLink("invalid://something")
 }
+
+// TestChatLinkHandleRRC pins the one form beyond Python's chat grammar: an rrc://
+// link hands its payload on unparsed, because the browser's own ParseRRCLink →
+// HandleRRCLink already own that link and one parser serves both.
+func TestChatLinkHandleRRC(t *testing.T) {
+	t.Parallel()
+
+	var openedRRC string
+	handler := NewChatLinkHandler(nil, nil, nil)
+	handler.OnOpenRRC = func(payload string) { openedRRC = payload }
+
+	const hub = "a012129c10205c0b9441fcd2b755b2a7"
+	handler.HandleLink("rrc://" + hub + "/general")
+	if want := hub + "/general"; openedRRC != want {
+		t.Errorf("rrc link opened %q, want %q", openedRRC, want)
+	}
+
+	// A handler without the callback leaves the link inert rather than panicking.
+	inert := NewChatLinkHandler(nil, nil, nil)
+	inert.HandleLink("rrc://" + hub)
+}

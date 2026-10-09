@@ -122,6 +122,10 @@ type ChannelsDisplay struct {
 	// snapshot from the app's RRC hub state.
 	OnShowHubInfo func(hubIdx int)
 	OnSelectRoom  func(hubIdx int, room string)
+	// ChatLinks dispatches links a reader clicks inside a chat or notice row of an
+	// open room. It is forwarded to the room widget, which resolves the clicked
+	// region back to the link the renderer tagged.
+	ChatLinks *ChatLinkHandler
 
 	// Keyboard shortcut callbacks (Python: ChannelsListArea.keypress, RoomFrame.keypress)
 	OnNewHub func()
@@ -620,6 +624,11 @@ func (cd *ChannelsDisplay) ShowRoom(hubIdx int, room string, msgs []ChannelMessa
 		cd.roomWidget = NewRoomWidget(cd.app, hv.Name(), room)
 		cd.roomWidget.hubAddress = hv.AddressHex()
 		rw := cd.roomWidget
+		// Chat links read through the display, which holds the handler the wiring
+		// layer supplied, the way the browser holds its own link callbacks. The
+		// lookup is deferred to the click, because the wiring layer runs after the
+		// RRC handlers that can build a room widget.
+		rw.chatLinksOf = func() *ChatLinkHandler { return cd.ChatLinks }
 		// The room's editor focus switches the main shortcut bar to the
 		// editor region (Python RoomFrame focus setter →
 		// update_active_shortcuts, Channels.py:509-520).
