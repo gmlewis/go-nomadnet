@@ -108,26 +108,33 @@ PY
 # ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
-# Formatting checks: mirror the CI fmt/imports jobs in build.yml. Both run in
-# CHECK mode (-l lists unformatted files) rather than the -w rewrite mode the
-# test-all.sh / test-integration.sh scripts use, so an unformatted file fails
-# the run instead of being silently fixed in the working tree (and then
-# committed broken). goimports is a superset of gofmt (it also normalizes
-# import grouping), so it is checked separately.
+# Formatting checks: mirror the CI fmt/imports jobs in build.yml. gofmt rewrites
+# the working tree (-s -w), the way test-all.sh / test-integration.sh do, while
+# goimports reports instead of rewriting, so a file whose imports are not grouped
+# the way CI wants fails this run rather than being quietly fixed and committed.
+# goimports is a superset of gofmt: it normalizes import grouping as well.
 # ---------------------------------------------------------------------------
 
 echo "Running gofmt..."
 gofmt -s -w .
 
-# SLOW!!!
-# echo "Running goimports check..."
-# unformatted=$(goimports -l .)
-# if [[ -n "$unformatted" ]]; then
-# 	echo "FAIL: goimports would reformat the following (run: goimports -w <files>):" >&2
-# 	echo "$unformatted" >&2
-# 	exit 1
-# fi
-# echo "goimports: clean (all imports formatted)"
+# goimports is checked here because CI checks it, and because gofmt alone does not
+# look at import grouping: a missing blank line between two import groups passed
+# every local gate and failed CI's Go Imports job. It takes well under a second on
+# this repository. A machine without the tool gets a note rather than a failure,
+# so the gate still runs where goimports was never installed.
+if command -v goimports >/dev/null 2>&1; then
+	echo "Running goimports check..."
+	unformatted=$(goimports -l .)
+	if [[ -n "$unformatted" ]]; then
+		echo "FAIL: goimports would reformat the following (run: goimports -w <files>):" >&2
+		echo "$unformatted" >&2
+		exit 1
+	fi
+	echo "goimports: clean (all imports formatted)"
+else
+	echo "note: goimports was not found, so the import check was skipped"
+fi
 
 echo "Running errcheck..."
 ERRCHECK_LOG="errcheck.log"

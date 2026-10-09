@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-// Command nomadnet is the Nomad Network client CLI.
+// Command gonomadnet is the Nomad Network client CLI.
 //
 // It provides a terminal-based interface for messaging, RRC chat,
 // node page browsing, and network directory management over the
@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+
 	// The embedded time-zone database, which is what lets a zone name resolve on a
 	// device that keeps no zoneinfo files — an Android device keeps them packed in
 	// a format only bionic reads. Without it every timestamp in the interface is
