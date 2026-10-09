@@ -11,6 +11,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 
 /**
  * The colours the console is drawn in.
@@ -21,6 +22,11 @@ import org.junit.Test
  * pure — a table and a swap — which is why it is asserted here rather than looked at on a
  * tablet. A palette that is off by one entry draws the whole interface in the wrong
  * colours, and nothing about it looks like a bug in the code.
+ *
+ * The colours the client leaves to the terminal are the ones that matter most, and they are
+ * the appliance's published theme: the same `colors.properties` the client installs under
+ * Termux is the file these tests read, so the console and the Termux install cannot resolve
+ * the operator's theme two different ways.
  */
 class TerminalPaletteTest {
 
@@ -28,31 +34,35 @@ class TerminalPaletteTest {
     private fun argb(value: Int): String = "#%08x".format(value)
 
     @Test
-    fun `the sixteen ansi colours are the standard ones`() {
-        // The first sixteen entries are the ones a program names directly, and every
-        // terminal is expected to agree on them: index 1 is red, index 4 is blue, and the
-        // eight bright ones are the same hues a step brighter.
-        val cases = listOf(
-            PaletteCase("black", 0, 0x000000),
-            PaletteCase("red", 1, 0xcd0000),
-            PaletteCase("green", 2, 0x00cd00),
-            PaletteCase("yellow", 3, 0xcdcd00),
-            PaletteCase("blue", 4, 0x0000ee),
-            PaletteCase("magenta", 5, 0xcd00cd),
-            PaletteCase("cyan", 6, 0x00cdcd),
-            PaletteCase("white", 7, 0xe5e5e5),
-            PaletteCase("bright black", 8, 0x7f7f7f),
-            PaletteCase("bright red", 9, 0xff0000),
-            PaletteCase("bright blue", 12, 0x5c5cff),
-            PaletteCase("bright white", 15, 0xffffff),
-        )
+    fun `the palette is the theme the appliance publishes`() {
+        // The theme is Termux's `colors.properties`, which the APK carries and the client
+        // installs under Termux: a black background, a bright green foreground, and the
+        // gruvbox sixteen. The console resolves the client's unnamed colours and its named
+        // palette entries from this file's values, and the file is what is read here — a
+        // second copy of the sixteen in this test would be a second copy to drift.
+        val theme = publishedTheme()
 
-        for (case in cases) {
-            val want = (0xff shl 24) or case.rgb
+        assertEquals(
+            "the theme's own background",
+            theme["background"],
+            TerminalPalette.DEFAULT_BACKGROUND and 0xffffff,
+        )
+        assertEquals(
+            "the theme's own foreground",
+            theme["foreground"],
+            TerminalPalette.DEFAULT_FOREGROUND and 0xffffff,
+        )
+        // The cursor is drawn as the cell's own colours reversed, so the theme's cursor is
+        // what that block looks like only when the theme's cursor is its foreground.
+        assertEquals("the theme's cursor", theme["foreground"], theme["cursor"])
+
+        for (index in 0..15) {
+            val wanted = theme["color$index"]
+            assertTrue("the theme names no color$index", wanted != null)
             assertEquals(
-                "${case.name}: ${argb(TerminalPalette.foreground(TerminalColor.Palette(case.index)))}",
-                argb(want),
-                argb(TerminalPalette.foreground(TerminalColor.Palette(case.index))),
+                "palette entry $index is not the theme's",
+                argb((0xff shl 24) or wanted!!),
+                argb(TerminalPalette.foreground(TerminalColor.Palette(index))),
             )
         }
     }
@@ -128,9 +138,20 @@ class TerminalPaletteTest {
 
     @Test
     fun `the terminal's own colours are the theme's`() {
-        // A cell the client gave no colour for is drawn in the terminal's own, which is the
-        // dark theme the rest of the appliance uses. The two must differ, or the default
-        // text is invisible on the default background.
+        // A cell the client gave no colour for is drawn in the terminal's own, and the
+        // client leaves most of its chrome to the terminal: the frame borders, the pane
+        // titles, the key hints along the bottom. So the default pair is the whole look of
+        // the interface, and it is the published theme's pair rather than a second one
+        // chosen here.
+        val theme = publishedTheme()
+        assertEquals(
+            argb((0xff shl 24) or theme["foreground"]!!),
+            argb(TerminalPalette.DEFAULT_FOREGROUND),
+        )
+        assertEquals(
+            argb((0xff shl 24) or theme["background"]!!),
+            argb(TerminalPalette.DEFAULT_BACKGROUND),
+        )
         assertNotEquals(
             "the default text is the same colour as the default background",
             TerminalPalette.DEFAULT_FOREGROUND,
@@ -143,14 +164,6 @@ class TerminalPaletteTest {
         assertEquals(
             argb(TerminalPalette.DEFAULT_BACKGROUND),
             argb(TerminalPalette.background(TerminalColor.Default)),
-        )
-        assertTrue(
-            "the default background is not dark: ${argb(TerminalPalette.DEFAULT_BACKGROUND)}",
-            (TerminalPalette.DEFAULT_BACKGROUND and 0xffffff) < 0x404040,
-        )
-        assertTrue(
-            "the default text is not light: ${argb(TerminalPalette.DEFAULT_FOREGROUND)}",
-            (TerminalPalette.DEFAULT_FOREGROUND and 0xffffff) > 0xc0c0c0,
         )
     }
 
@@ -192,6 +205,27 @@ class TerminalPaletteTest {
         )
     }
 
-    /** PaletteCase is one palette entry and the colour it must be. */
-    private data class PaletteCase(val name: String, val index: Int, val rgb: Int)
+    private companion object {
+        /** The terminal theme the APK publishes, as Gradle runs these tests. */
+        const val THEME_FILE = "src/main/assets/colors.properties"
+
+        /**
+         * publishedTheme is the APK's terminal theme, as name to 24-bit colour.
+         *
+         * Termux's format is one `key = value` per line with each colour written `#rrggbb`,
+         * and a comment is a line that starts with `#`. The `#` inside a value is part of
+         * the value, so the split is on the first `=` rather than on the hash.
+         */
+        fun publishedTheme(): Map<String, Int> {
+            val file = File(THEME_FILE)
+            assertTrue("the published theme is not in the APK's assets: $file", file.isFile)
+            return file.readLines()
+                .map { it.trim() }
+                .filter { it.isNotEmpty() && !it.startsWith("#") }
+                .associate { line ->
+                    val (key, value) = line.split("=", limit = 2).map { it.trim() }
+                    key to value.removePrefix("#").toInt(16)
+                }
+        }
+    }
 }

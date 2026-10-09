@@ -56,9 +56,8 @@ Tap **Start stack**. Three daemons start — `gornsd` (transport), `gorrcd` (hub
 and `gorrcbot` (bot) — plus three `gonsensor` converters, and the screen reports
 the node's address when they are up.
 
-The screen is also where the appliance's failures appear, so it is worth watching
-for a moment: the daemons' failures are silent otherwise, and there is no other
-place they become visible.
+Failures appear on this screen as well: the daemons have nowhere else to report
+them.
 
 **Start sensors** and **Stop sensors** control the sensor service on its own. It
 runs with the stack or without it; running it alone costs the least battery.
@@ -97,41 +96,87 @@ Every control on the app's screen, in the order it appears.
 | **Start sensors** / **Stop sensors** | The sensor service on its own. It holds a partial wake lock while it runs — see [Sample rate and battery](#sample-rate-and-battery). |
 | **Start stack** / **Stop stack** | The transport, the hub and the bot. The sensors start with the location permission, independently of these. |
 | **Heading axis** | Which axis the heading is measured from. A mounting choice, not a preference — see [Heading](#heading-the-screen-back-normal). |
-| **hub host:port** and **Save hub address** | The one interface the appliance's transport dials. It is a setting of its own rather than a copy of the client's configuration, because the appliance owns the transport and the client owns none. Saving it resolves the name off the UI thread and reports what it resolved to. |
+| **hub host:port** and **Save hub address** | The one interface the appliance's transport dials. Saving it resolves the name and reports what it resolved to. |
 
-The screen's readout names which of the four running/stopped combinations the
-tablet is in. That is the point of it: the appliance's failures are silent, so
-the readout is where they become visible.
+The readout at the top names which of the four running/stopped combinations the
+tablet is in.
+
+## What the client comes with
+
+The client is configured before it has ever run, because a freshly installed
+appliance has to work without anybody configuring anything.
+
+**The interface it connects through.** The transport dials the hub address the
+controls screen holds — `go-nomadnet.duckdns.org:4242` unless it was changed —
+and the client's own Reticulum configuration lists that same interface. The
+client owns none of it (the shared instance does), but the client's Interfaces
+page is a view of that file, so the page shows the interface the appliance is
+actually talking through, with its live traffic rather than a blank list.
+
+The client asks the transport for those live numbers over the transport's own RPC,
+and both sides are given the key for it (`[reticulum] rpc_key`) rather than each
+deriving one of its own. The key is minted once per install and persists, so the
+page reports the interface the appliance is really using — connected, with its
+traffic — instead of an interface it cannot see.
+
+**Three channels.** The client's channel store is written once, the first time
+the console is opened, and only when the client has never run:
+
+| Channel | What it is |
+| --- | --- |
+| `RNS Community` | the community hub, which carries the wider RRC network |
+| `gonomadnet Public Hub` | this project's public hub |
+| `appliance-hub` | the hub inside the appliance, where its own bot answers `/msg gobot` |
+
+The local hub's destination is derived from an identity generated on the device,
+so it is listed once that hub has published it: an appliance whose stack has
+never been started has no local hub to list, and it appears the next time the
+console is opened. Once the client has run, the store is the client's own file —
+a channel added or removed in the interface stays that way.
 
 ## The console
 
 **Open gonomadnet** runs the client *inside the app*: nothing is copied into
 anybody's home, and there is no terminal to find. The app binds an abstract Unix
 socket, starts `libgorcons.so`, which opens a pty and runs the APK's own client on
-it, and draws what comes back. The keys a tablet has no way to press — escape, tab
-and the arrows — are a row along the bottom of the console, and Control is a latch
-there: tap it, then type the letter it applies to.
+it, and draws what comes back. The console is the whole screen: there is no title
+bar over it and no band under it, because those are rows the client's interface
+does not get.
 
-This is the console at 1920x1200, on the Conversations page, with the client's own
-menu bar, both panes and the key row:
+The keys a tablet has no way to press are a two-row strip along the bottom edge,
+the same one Termux's extra-keys row carries:
 
-![the built-in client running in the app's console](android-console.png)
+| | | | | | | |
+| --- | --- | --- | --- | --- | --- | --- |
+| `ESC` | `/` | `-` | `HOME` | `↑` | `END` | `PGUP` |
+| `▾` | `Ctrl` | `Alt` | `←` | `↓` | `→` | `PGDN` |
 
-The capture is the reference for the drawing, because the drawing is the part that
-cannot be asserted from a command line: the menu bar in its colors, the Nerd Font
-glyphs from the APK's assets rather than boxes, the panes filled and bordered, and
-the footer's key hints. To compare a change against it, put the client in the same
-state — Start stack, then **Open gonomadnet**, then Tab to **Conversations** and
-press Enter — and capture the same screen:
+**Ctrl** and **Alt** are latches rather than keys: tap one, then type the letter it
+applies to, and it is sent as that combination. The **▾** button folds the strip
+away, which hands its two rows back to the client; the **▴** it leaves behind brings
+it back.
 
-```
-adb shell am start -n com.gmlewis.gonomadnet/.MainActivity
-# tap Start stack, then Open gonomadnet, then Conversations and Enter
-adb exec-out screencap -p > console-now.png
-```
+The strip is drawn **only while the on-screen keyboard is up**, and it sits
+directly above it, exactly as Termux's row does. With the keyboard down there is
+no strip and no green divider over the taskbar: the client gets every row of the
+screen. The client is resized around the strip, so its interface reflows rather
+than being covered.
 
-A regression shows up as text that no longer fits, a glyph that has become a box,
-a pane that has not been redrawn, or a key row that has moved or lost a button.
+**A finger scrolls.** Dragging up or down over any pane — a Guide topic, a page in
+the browser, a room's messages — scrolls what is under the finger, and it tracks
+the finger rather than running ahead of it. When the client is not using the mouse
+at all, the same drag scrolls the console's own scrollback instead.
+
+On the console the client draws what it always draws, in the APK's own font and
+colors. Its starter page is the **gonomadnet mascot**, drawn from the `index.mu`
+the client seeds into its pages directory, in half-block characters and true color:
+
+![the client's starter page, full screen in the console](android-console.png)
+
+The Nerd Font icons in the menu bar and the panes are the font travelling in the
+APK, with the key strip above the on-screen keyboard:
+
+![the Nerd Font icons the console draws, with the key strip above the keyboard](android-console-glyphs.png)
 
 ## The terminal font
 
@@ -159,10 +204,14 @@ stock white-on-black palette and under a themed one renders the same interface i
 visibly different colors. Everything the client names explicitly (message text,
 nick colors, the editor bar) is identical either way.
 
-The console inside the app resolves those defaults itself. Under Termux, the
-client installs the desktop terminal's own theme — `colors.properties`, which the
-APK carries — into `~/.termux/colors.properties` the first time it runs, and asks
-Termux to re-read its settings. It never replaces a file that is already there.
+The console inside the app resolves those defaults itself, **from the same file**:
+`assets/colors.properties`, which the APK carries, is the appliance's terminal
+theme — a black background, a bright green foreground, and the sixteen gruvbox
+colors.
+
+Under Termux, the client installs that same file into
+`~/.termux/colors.properties` the first time it runs, and asks Termux to re-read
+its settings. It never replaces a file that is already there.
 
 To see what a terminal is resolving those defaults to, ask it:
 
@@ -260,9 +309,9 @@ you want a live position, and the client and node work without them.
 The sensor service publishes position and heading as a feed the bot and the
 client both read. Two things about it fail quietly, so they are worth knowing.
 
-**The service holds the feed open at both ends** (the FIFOs are opened
-`O_RDWR`). Keep it that way. A reader that opens the pipe read-only **blocks
-forever** when nothing holds the write end, with no error and no timeout.
+**The service holds the feed open at both ends**, so a reader never waits for a
+writer that is not there. A reader that opened the pipe read-only instead would
+**block forever** when nothing holds the write end, with no error and no timeout.
 
 | The service is | A reader that opens the feed | A reader already attached |
 | --- | --- | --- |
@@ -358,7 +407,7 @@ live feed always takes precedence over a configured `fix`.
 
 ## Debugging
 
-Logs first, always.
+Start with the logs.
 
 The commands below need a computer with `adb`, and the ones that use `run-as`
 need a **debug build** of the app (`./scripts/build-android-apk.sh --debug`): a

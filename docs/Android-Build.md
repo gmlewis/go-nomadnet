@@ -39,9 +39,10 @@ The six programs total ~96 MB before compression, and a debug APK is ~74 MB.
 `gonomadnet-client`, for another application to run out of shared storage — worth
 another ~16 MB in the download. The app runs `libgonomadnetclient.so` itself now,
 so that copy, the launchers and the setup script that went with it are gone. What
-is still in `assets/` is the console's font and its license, the terminal colors
-and tmux configuration the client installs for a Termux user, and the bundled
-Bible text the bot's `kjv` command reads.
+is still in `assets/` is the console's font and its license, the terminal colors —
+which are the console's own palette as well as the theme the client installs for a
+Termux user — the tmux configuration, and the bundled Bible text the bot's `kjv`
+command reads.
 
 Building needs the Android SDK and a signing key. The release publisher never
 builds an APK, so a machine without either can still cut a Go release.

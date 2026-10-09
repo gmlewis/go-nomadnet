@@ -17,11 +17,16 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+    <!-- The appliance's own theme, which is the platform's with the window's colours set
+         to the console's: the device's default theme puts the device's accent colour in the
+         status bar, which is a bright bar across the top of a dark terminal. It is declared
+         here rather than on the activity so that the window is themed before the activity
+         is created, which is also the window the launcher shows while it starts. -->
     <application
         android:label="@string/app_name"
         android:allowBackup="false"
         android:extractNativeLibs="true"
-        android:theme="@android:style/Theme.DeviceDefault">
+        android:theme="@style/ApplianceTheme">
 
         <!-- The console lives in this activity: its socket, the host process and the thread
              reading them are all things an activity that is destroyed and rebuilt would have

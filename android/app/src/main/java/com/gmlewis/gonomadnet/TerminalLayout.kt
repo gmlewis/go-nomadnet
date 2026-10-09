@@ -7,6 +7,8 @@
 
 package com.gmlewis.gonomadnet
 
+import kotlin.math.max
+
 /** A terminal's size in cells. */
 data class TerminalGrid(val cols: Int, val rows: Int)
 
@@ -91,11 +93,12 @@ object TerminalScroll {
 }
 
 /**
- * One button on the on-screen key row.
+ * One button on the on-screen key strip.
  *
  * A tablet's keyboard has no escape and no arrows, and the client cannot be driven without
  * them: escape backs out of a dialog, tab moves between the regions of a window, and the
- * arrows walk a menu.
+ * arrows walk a menu. The strip carries the same keys the Termux extra-keys row does, so a
+ * person who has driven this client under Termux has the same buttons here.
  */
 sealed interface KeyRowEntry {
 
@@ -112,35 +115,122 @@ sealed interface KeyRowEntry {
      * spent by the next character: that is how ctrl-c reaches the client at all.
      */
     data class Control(override val label: String = "Ctrl") : KeyRowEntry
+
+    /**
+     * Alt is the alt (meta) key, which is also a latch.
+     *
+     * A terminal sends an alt combination as the key's own bytes with an escape in front of
+     * them — see [TerminalKey.Alt] — so this is a modifier the strip arms and spends rather
+     * than a key it presses.
+     */
+    data class Alt(override val label: String = "Alt") : KeyRowEntry
+
+    /**
+     * Toggle folds the strip away, and brings it back.
+     *
+     * The strip costs rows, and rows are what the interface is made of; a reader who wants
+     * them back for the client's own drawing folds it away and gets the whole screen. It is
+     * never gone: the folded strip is the toggle's own button, so the row can always be
+     * brought back. Which way it points is what the button says.
+     */
+    data class Toggle(val collapsed: Boolean) : KeyRowEntry {
+        override val label: String get() = if (collapsed) "▴" else "▾"
+    }
 }
 
 /**
- * The row of keys the view offers along its bottom edge.
+ * The strip of keys the view offers along its bottom edge.
  *
- * [entries] is the whole of it — what is drawn, what is tapped, and what each button sends
- * — so the row can be asserted without a screen. The buttons share the width equally, and
- * [entryAt] is the division that turns a tap into one of them.
+ * [rows] is the whole of it — what is drawn, what is tapped, and what each button sends —
+ * so the strip can be asserted without a screen. It is two rows of seven, which is the
+ * Termux extra-keys row this appliance's console is modelled on: the keys a terminal needs
+ * that no soft keyboard has.
+ *
+ * The buttons share each row's width equally, and [entryAt] is the division that turns a tap
+ * into one of them.
  */
 object TerminalKeyRow {
 
-    /** entries is the row's buttons, left to right. */
-    val entries: List<KeyRowEntry> = listOf(
-        KeyRowEntry.Control(),
-        KeyRowEntry.Press("Esc", TerminalKey.Special(SpecialKey.ESCAPE)),
-        KeyRowEntry.Press("Tab", TerminalKey.Special(SpecialKey.TAB)),
+    /** ROW_ONE is the strip's top row: escape, the two path characters, and navigation. */
+    private val ROW_ONE: List<KeyRowEntry> = listOf(
+        KeyRowEntry.Press("ESC", TerminalKey.Special(SpecialKey.ESCAPE)),
+        KeyRowEntry.Press("/", TerminalKey.Rune("/")),
+        KeyRowEntry.Press("-", TerminalKey.Rune("-")),
+        KeyRowEntry.Press("HOME", TerminalKey.Special(SpecialKey.HOME)),
         KeyRowEntry.Press("↑", TerminalKey.Special(SpecialKey.UP)),
-        KeyRowEntry.Press("↓", TerminalKey.Special(SpecialKey.DOWN)),
+        KeyRowEntry.Press("END", TerminalKey.Special(SpecialKey.END)),
+        KeyRowEntry.Press("PGUP", TerminalKey.Special(SpecialKey.PAGE_UP)),
+    )
+
+    /** ROW_TWO is the strip's bottom row: the modifiers and the rest of the navigation. */
+    private val ROW_TWO: List<KeyRowEntry> = listOf(
+        KeyRowEntry.Toggle(collapsed = false),
+        KeyRowEntry.Control(),
+        KeyRowEntry.Alt(),
         KeyRowEntry.Press("←", TerminalKey.Special(SpecialKey.LEFT)),
+        KeyRowEntry.Press("↓", TerminalKey.Special(SpecialKey.DOWN)),
         KeyRowEntry.Press("→", TerminalKey.Special(SpecialKey.RIGHT)),
+        KeyRowEntry.Press("PGDN", TerminalKey.Special(SpecialKey.PAGE_DOWN)),
     )
 
     /**
-     * entryAt is the button a tap [x] pixels from the row's left edge landed on.
+     * rows is the strip as it stands, top row first.
      *
-     * A row that has been drawn with no width yet — a view between construction and its
-     * first layout — is its first button rather than a division by zero.
+     * A folded strip is one row holding the toggle and nothing else, which is the button
+     * that unfolds it — a strip that could be folded away and not brought back would be a
+     * keyboard with no escape key and no way to ask for one.
      */
-    fun entryAt(x: Int, width: Int): KeyRowEntry {
+    fun rows(collapsed: Boolean): List<List<KeyRowEntry>> =
+        if (collapsed) {
+            listOf(listOf(KeyRowEntry.Toggle(collapsed = true)))
+        } else {
+            listOf(ROW_ONE, ROW_TWO)
+        }
+
+    /**
+     * padding is the space above and below the strip's rows, from one cell's height.
+     *
+     * It is a fraction of the cell so that the strip keeps its proportions with the font
+     * size, and never less than a few pixels: a button with no margin is a button whose
+     * label touches the row above it.
+     */
+    fun padding(cellHeight: Int): Int = max(4, cellHeight / 4)
+
+    /**
+     * height is how much of the bottom edge [rows] take, given one cell's height.
+     *
+     * The rows are the client's own: what the strip takes from the bottom of the screen is
+     * what the client does not get, which is why showing and hiding it is a resize rather
+     * than a redraw. A strip that is not shown takes nothing at all.
+     */
+    fun height(rows: List<List<KeyRowEntry>>, cellHeight: Int): Int =
+        if (rows.isEmpty()) 0 else rows.size * cellHeight + 2 * padding(cellHeight)
+
+    /**
+     * entryAt is the button a tap at ([x], [y]) landed on, in the view's own pixels.
+     *
+     * [stripTop] is where the strip begins and [rowHeight] how tall one of its rows is, both
+     * of which are the view's arithmetic: the rows are drawn in those bands, so a tap is
+     * divided by them as well. A row or a column a tap cannot be outside of is clamped
+     * rather than rejected, because a finger on an edge is a finger on a button.
+     *
+     * A strip drawn with no width yet — a view between construction and its first layout —
+     * is its first button rather than a division by zero.
+     */
+    fun entryAt(
+        x: Int,
+        y: Int,
+        width: Int,
+        stripTop: Int,
+        rowHeight: Int,
+        rows: List<List<KeyRowEntry>>,
+    ): KeyRowEntry {
+        val row = if (rowHeight <= 0) {
+            0
+        } else {
+            ((y - stripTop) / rowHeight).coerceIn(0, rows.size - 1)
+        }
+        val entries = rows[row]
         if (width <= 0) return entries.first()
         val index = (x.toLong() * entries.size / width).toInt()
         return entries[index.coerceIn(0, entries.size - 1)]
@@ -162,39 +252,57 @@ object TerminalKeyRow {
 }
 
 /**
- * Control, on a keyboard that cannot hold it down.
+ * Control and Alt, on a keyboard that cannot hold them down.
  *
- * A tablet has no Control key, so Control is a switch: a tap on the key row arms it, and the
- * next character spends it. The character is whatever is typed next — on the soft keyboard,
- * or on a keyboard that is not this app's — so the latch belongs to the console and not to
- * the key row. A latch the row alone consulted would send a plain `q` where the person meant
- * `^Q`, which is the difference between quitting and typing.
+ * A tablet has no Control or Alt key, so each is a switch: a tap on the strip arms it, and
+ * the next character spends it. The character is whatever is typed next — on the soft
+ * keyboard, or on a keyboard that is not this app's — so the latch belongs to the console
+ * and not to the strip. A latch the strip alone consulted would send a plain `q` where the
+ * person meant `^Q`, which is the difference between quitting and typing.
  *
- * A key with no control code — an arrow, or a word an input method commits at once — is sent
- * as itself and leaves the latch armed: the person armed Control for a character, and the
- * arrow was not one.
+ * A modifier is spent only by a key it changed. A key with no control code — an arrow, or a
+ * word an input method commits at once — is sent as itself and leaves Control armed: the
+ * person armed Control for a character, and the arrow was not one. Alt changes any key, so
+ * anything spends it.
  */
-class ControlLatch {
+class ModifierLatch {
 
-    /** armed is whether the next character is to be sent with control. */
-    var armed: Boolean = false
+    /** ctrl is whether the next character is to be sent with control. */
+    var ctrl: Boolean = false
         private set
 
-    /** toggle arms the latch, or disarms it if it was already armed. */
-    fun toggle() {
-        armed = !armed
+    /** alt is whether the next key is to be sent as an alt combination. */
+    var alt: Boolean = false
+        private set
+
+    /** toggleCtrl arms the latch, or disarms it if it was already armed. */
+    fun toggleCtrl() {
+        ctrl = !ctrl
+    }
+
+    /** toggleAlt arms the latch, or disarms it if it was already armed. */
+    fun toggleAlt() {
+        alt = !alt
     }
 
     /**
-     * spend applies the latch to [key], and spends it if it changed anything.
+     * spend applies the latches to [key], and spends the ones that changed it.
      *
-     * The return is the key to send, which is [key] itself whenever the latch had nothing to
-     * change about it.
+     * The return is the key to send, which is [key] itself whenever the latches had nothing
+     * to change about it.
      */
     fun spend(key: TerminalKey): TerminalKey {
-        val sent = TerminalKeyRow.withControl(armed, key)
-        if (sent != key) {
-            armed = false
+        var sent = key
+        if (ctrl) {
+            val ctrled = TerminalKeyRow.withControl(armed = true, key = sent)
+            if (ctrled != sent) {
+                sent = ctrled
+                ctrl = false
+            }
+        }
+        if (alt) {
+            sent = TerminalKey.Alt(sent)
+            alt = false
         }
         return sent
     }

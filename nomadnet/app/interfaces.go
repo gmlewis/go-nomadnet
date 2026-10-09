@@ -190,20 +190,7 @@ func (a *App) InterfaceStats() []InterfaceStat {
 	}
 
 	// Build a live-stats lookup by interface name from the transport.
-	statsByName := map[string]InterfaceStat{}
-	a.mu.Lock()
-	ts := a.Transport
-	a.mu.Unlock()
-	if ts != nil {
-		for _, iface := range ts.GetInterfaces() {
-			statsByName[iface.Name()] = InterfaceStat{
-				Connected: iface.Status(),
-				TX:        int64(iface.BytesSent()),
-				RX:        int64(iface.BytesReceived()),
-				Bitrate:   iface.Bitrate(),
-			}
-		}
-	}
+	statsByName := a.liveInterfaceStats()
 
 	out := make([]InterfaceStat, 0, len(entries))
 	for _, e := range entries {
@@ -232,6 +219,60 @@ func (a *App) InterfaceStats() []InterfaceStat {
 		out = append(out, stat)
 	}
 	return out
+}
+
+// liveInterfaceStats returns the running interfaces' statistics, keyed by the
+// name the config file gives them, which is how the page's list and its live
+// numbers are matched up.
+//
+// The stats come from the Reticulum instance rather than from the transport
+// directly, because those are not the same thing for a client attached to a
+// shared instance: the attached client owns no interface at all, and the
+// interfaces it is showing belong to the instance it attached to. Python asks
+// the shared instance over its RPC for exactly this reason
+// (Reticulum.get_interface_stats, Reticulum.py:1359-1364), so a client that read
+// its own transport here would list every interface as down while the traffic
+// went past it. The transport read remains as the fallback for an app whose RNS
+// instance is not up yet — a page drawn during startup rather than one that is
+// wrong.
+func (a *App) liveInterfaceStats() map[string]InterfaceStat {
+	a.mu.Lock()
+	ret := a.RNS
+	ts := a.Transport
+	a.mu.Unlock()
+
+	statsByName := map[string]InterfaceStat{}
+	if ret != nil {
+		snapshot, err := ret.InterfaceStats()
+		if err == nil && snapshot != nil {
+			for _, iface := range snapshot.Interfaces {
+				statsByName[iface.Name] = InterfaceStat{
+					Connected: iface.Status,
+					TX:        int64(iface.TXB),
+					RX:        int64(iface.RXB),
+					Bitrate:   iface.Bitrate,
+				}
+			}
+			return statsByName
+		}
+		// A refused or failed query is reported rather than swallowed: the page it feeds
+		// shows an interface it cannot find as one that is down, which is exactly what a
+		// broken RPC looks like from the operator's side of the screen.
+		if err != nil {
+			a.Logger.Debug("Could not read the transport's interface stats: %v", err)
+		}
+	}
+	if ts != nil {
+		for _, iface := range ts.GetInterfaces() {
+			statsByName[iface.Name()] = InterfaceStat{
+				Connected: iface.Status(),
+				TX:        int64(iface.BytesSent()),
+				RX:        int64(iface.BytesReceived()),
+				Bitrate:   iface.Bitrate(),
+			}
+		}
+	}
+	return statsByName
 }
 
 // ToggleInterfaceEnabled flips the interface_enabled flag of the named

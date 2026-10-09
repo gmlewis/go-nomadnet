@@ -45,6 +45,7 @@ func TestParseArgsAcceptsTheDocumentedForm(t *testing.T) {
 				"--command", clientPath,
 				"--home", homeDir,
 				"--arg", "--config", "--arg", homeDir + "/config",
+				"--env", "GONOMADNET_WHEEL_LINES=1",
 				"--cols", "100", "--rows", "40",
 			},
 		},
@@ -55,6 +56,7 @@ func TestParseArgsAcceptsTheDocumentedForm(t *testing.T) {
 				"--command=" + clientPath,
 				"--home=" + homeDir,
 				"--arg=--config", "--arg=" + homeDir + "/config",
+				"--env=GONOMADNET_WHEEL_LINES=1",
 				"--cols=100", "--rows=40",
 			},
 		},
@@ -65,6 +67,7 @@ func TestParseArgsAcceptsTheDocumentedForm(t *testing.T) {
 		command: clientPath,
 		home:    homeDir,
 		args:    []string{"--config", homeDir + "/config"},
+		env:     []string{"GONOMADNET_WHEEL_LINES=1"},
 		cols:    100,
 		rows:    40,
 	}
@@ -231,6 +234,7 @@ func TestChildEnvIsTheTerminalTheApplianceNeeds(t *testing.T) {
 	tests := []struct {
 		name string
 		home string
+		env  []string
 		want []string
 	}{
 		{
@@ -242,16 +246,80 @@ func TestChildEnvIsTheTerminalTheApplianceNeeds(t *testing.T) {
 			name: "with no home",
 			want: []string{"TERM=xterm-256color", "COLORTERM=truecolor", "LANG=C.UTF-8"},
 		},
+		{
+			// The terminal facts come last for this reason: a caller that asked
+			// for TERM cannot be holding a terminal it does not have, and HOME
+			// stays where the appliance said the client may write.
+			name: "the appliance's own variables do not displace the host's",
+			home: homeDir,
+			env:  []string{"GONOMADNET_WHEEL_LINES=1"},
+			want: []string{
+				"GONOMADNET_WHEEL_LINES=1",
+				"TERM=xterm-256color", "COLORTERM=truecolor", "LANG=C.UTF-8", "HOME=" + homeDir,
+			},
+		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			got := options{home: test.home}.childEnv()
+			got := options{home: test.home, env: test.env}.childEnv()
 			if !reflect.DeepEqual(got, test.want) {
 				t.Errorf("the child's environment is %q, want %q", got, test.want)
 			}
 		})
+	}
+}
+
+func TestParseArgsRefusesAnEnvironmentItCannotState(t *testing.T) {
+	t.Parallel()
+
+	// An env flag is a KEY=VALUE and nothing else, and the four the host owns
+	// are refused rather than quietly overridden: a caller that asks for one has
+	// misunderstood who owns the terminal.
+	tests := []struct {
+		name  string
+		value string
+	}{
+		{name: "no equals sign", value: "GONOMADNET_WHEEL_LINES"},
+		{name: "no name", value: "=1"},
+		{name: "a name with a space", value: "GO NOMADNET=1"},
+		{name: "TERM", value: "TERM=xterm"},
+		{name: "COLORTERM", value: "COLORTERM=false"},
+		{name: "LANG", value: "LANG=C"},
+		{name: "HOME", value: "HOME=/sdcard"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			if _, err := parseArgs([]string{
+				"--socket", socketName, "--command", clientPath, "--env", test.value,
+			}); err == nil {
+				t.Errorf("parseArgs accepted --env %q, want a refusal", test.value)
+			}
+		})
+	}
+}
+
+func TestParseArgsLetsTheLastValueOfANameWin(t *testing.T) {
+	t.Parallel()
+
+	// Two values for one name are one variable, and which one the client sees
+	// must not depend on how a C library picks among duplicates in the
+	// environment array. The last one said is the one meant.
+	got, err := parseArgs([]string{
+		"--socket", socketName, "--command", clientPath,
+		"--env", "GONOMADNET_WHEEL_LINES=8", "--env", "GONOMADNET_WHEEL_LINES=1",
+		"--env", "GONOMADNET_MOUSE_DEBUG=1",
+	})
+	if err != nil {
+		t.Fatalf("parseArgs returned an error: %v", err)
+	}
+
+	want := []string{"GONOMADNET_WHEEL_LINES=1", "GONOMADNET_MOUSE_DEBUG=1"}
+	if !reflect.DeepEqual(got.env, want) {
+		t.Errorf("the client's environment is %q, want %q", got.env, want)
 	}
 }
 

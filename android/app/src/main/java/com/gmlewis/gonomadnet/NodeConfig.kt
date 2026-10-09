@@ -44,6 +44,14 @@ data class InterfaceSpec(
 data class NodeConfigSpec(
     val sharedInstancePort: Int = DEFAULT_SHARED_INSTANCE_PORT,
     val instanceName: String = DEFAULT_INSTANCE_NAME,
+    /**
+     * The key the transport's RPC listener authenticates its clients with, as hex.
+     *
+     * It is stated by the appliance rather than derived from an identity because the two
+     * sides run from different directories and would derive different keys from them. See
+     * [ApplianceSettings.rpcKey].
+     */
+    val rpcKey: String = "",
     val interfaces: List<InterfaceSpec> = emptyList(),
     val logLevel: Int = 4,
     val enableTransport: Boolean = true,
@@ -116,13 +124,46 @@ object NodeConfigRenderer {
         out.append("  # The appliance owns the shared instance, so it must never be the\n")
         out.append("  # one that gives up quietly when something else already holds it.\n")
         out.append("  panic_on_interface_error = no\n")
+        out.append(rpcKeyLine(spec))
         out.append('\n')
         out.append("[logging]\n")
         out.append("  loglevel = ").append(spec.logLevel).append('\n')
         out.append('\n')
+        out.append(renderInterfaces(spec))
+        return out.toString()
+    }
+
+    /**
+     * rpcKeyLine renders the transport's RPC key, or nothing when the appliance has none.
+     *
+     * Both configuration files carry the same key: the instance's listener authenticates
+     * against it, and every client presents it. Without it the two would each derive a key
+     * from the identity in their own storage directory, which are different identities here
+     * (see [ApplianceSettings.rpcKey]), and every RPC would be refused.
+     */
+    private fun rpcKeyLine(spec: NodeConfigSpec): String =
+        if (spec.rpcKey.isBlank()) "" else "  rpc_key = " + spec.rpcKey.trim() + "\n"
+
+    /**
+     * Renders the `[interfaces]` section: the transport's own, and the same one again for a
+     * client.
+     *
+     * A client renders them because its own interface list is a *page* — the client's
+     * Interfaces display reads this file and shows what it finds there — and a section that
+     * said "deliberately empty" produced an appliance whose client reported no interfaces at
+     * all while its transport was dialling one. The interfaces are rendered once, here, so
+     * the page and the wire cannot disagree about what this appliance connects through.
+     *
+     * Listing them does not make the client dial them: an instance that attaches to a shared
+     * instance starts none of its own (an attached client's interfaces are owned by the
+     * instance it attached to), and the client's `require_shared_instance = yes` is what
+     * keeps it attaching rather than becoming one.
+     */
+    private fun renderInterfaces(spec: NodeConfigSpec): String {
+        val out = StringBuilder()
         out.append("[interfaces]\n")
         if (spec.interfaces.isEmpty()) {
-            out.append("  # Deliberately empty: this transport has no interface of its own.\n")
+            out.append("  # Deliberately empty: the appliance resolved no interface to connect through.\n")
         }
         for (iface in spec.interfaces) {
             val host = literalAddress(iface.host)
@@ -143,12 +184,17 @@ object NodeConfigRenderer {
     /**
      * Renders the client-side configuration the hub and the bot attach through.
      *
-     * It lists no interfaces, because the transport owns every one of them, and it says
-     * `require_shared_instance = yes`, because a client that merely *prefers* the shared
-     * instance tries to become the owner first and only falls back to attaching when the
-     * bind fails. Two clients racing for ownership of the transport's shared instance is a
-     * bug that shows up as one of them mysteriously being the transport, so the race is
+     * It says `require_shared_instance = yes`, because a client that merely *prefers* the
+     * shared instance tries to become the owner first and only falls back to attaching when
+     * the bind fails. Two clients racing for ownership of the transport's shared instance is
+     * a bug that shows up as one of them mysteriously being the transport, so the race is
      * removed rather than made unlikely.
+     *
+     * It lists the same interfaces the transport does, and they are the same list for the
+     * same reason: they are what this appliance connects through. The client owns none of
+     * them — the shared instance does — but the client's Interfaces page is a view of this
+     * file, and a file that said "deliberately empty" showed an operator an appliance with no
+     * interfaces at all while its transport was dialling the hub.
      */
     fun clientReticulumConfig(spec: NodeConfigSpec): String {
         val out = StringBuilder()
@@ -162,12 +208,12 @@ object NodeConfigRenderer {
         out.append("  shared_instance_port = ").append(spec.sharedInstancePort).append('\n')
         out.append("  instance_name = ").append(spec.instanceName).append('\n')
         out.append("  require_shared_instance = yes\n")
+        out.append(rpcKeyLine(spec))
         out.append('\n')
         out.append("[logging]\n")
         out.append("  loglevel = ").append(spec.logLevel).append('\n')
         out.append('\n')
-        out.append("[interfaces]\n")
-        out.append("  # Deliberately empty: the appliance's transport owns every interface.\n")
+        out.append(renderInterfaces(spec))
         return out.toString()
     }
 

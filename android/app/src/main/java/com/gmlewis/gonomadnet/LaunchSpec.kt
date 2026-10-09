@@ -86,6 +86,25 @@ data class StackPaths(val filesDir: String) {
      */
     val nomadnetworkConfigDir get() = "$configDir/nomadnetwork"
 
+    /**
+     * The client's storage directory, where its peer directory, its channel store and its
+     * message history live.
+     *
+     * It is named here rather than left to the client to create because the appliance writes
+     * one file into it before the client has ever run — the channels it comes with — and a
+     * path the appliance only guessed at is a file written somewhere the client will never
+     * look.
+     */
+    val nomadnetworkStorageDir get() = "$nomadnetworkConfigDir/storage"
+
+    /**
+     * The client's own channel store.
+     *
+     * It belongs to the client: `rrc.RRCManager` reads and rewrites it, so the appliance only
+     * writes it when there is none, which is the install that has never run the client.
+     */
+    val clientHubStore get() = "$nomadnetworkStorageDir/rrc_hubs"
+
     /** The hub's TOML configuration, which `gorrcd --config` takes as a file. */
     val gorrcdConfig get() = "$configDir/rrcd.toml"
 

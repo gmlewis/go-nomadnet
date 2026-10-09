@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The appliance's theme.
+
+  It is the platform's default — with no title bar — and with the window's own colours
+  replaced. The default is a device theme: its accent colours come from the device's
+  palette, which is a bright bar across the top of a terminal, and on a device whose
+  default is a light theme, a light window behind it. This app is one terminal, so the
+  bars are the console's colour and the status bar icons stay light. The window's
+  background is that colour as well: the console is inset from the system bars, so this is
+  what shows in the band along the bottom of the screen and behind the launcher while the
+  app starts.
+
+  The title bar is not hidden at runtime but absent from the theme. A bar that exists and
+  is then hidden is a bar the window still reserves room for: the content view is slid up
+  by the bar's height and not grown to take it, which leaves the client's first rows above
+  the top of the screen and a band the bar's own height at the bottom of it. There is
+  nothing on either screen that a title would say — the controls name themselves, and the
+  console is the client's own — so the theme carries no action bar at all.
+-->
+<resources>
+    <style name="ApplianceTheme" parent="@android:style/Theme.DeviceDefault.NoActionBar">
+        <item name="android:statusBarColor">@color/console_background</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowBackground">@color/console_background</item>
+    </style>
+</resources>

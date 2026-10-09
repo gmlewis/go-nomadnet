@@ -24,6 +24,13 @@ data class TerminalColors(val foreground: Int, val background: Int)
  * deliberately asks for, and the default pair matters for everything else: a mismatch there
  * is an interface drawn in the wrong colours rather than a visible error.
  *
+ * The theme here is the appliance's own, and there is deliberately only one of it: the
+ * `colors.properties` the APK publishes — the operator's terminal theme, a black background
+ * with a bright green foreground and the gruvbox sixteen — is what the client installs under
+ * Termux, and it is what this console resolves too. The values below are that file, and
+ * [TerminalPaletteTest] reads the file rather than trusting them, so the console and the
+ * published theme cannot drift apart into two terminals that look different.
+ *
  * What is *not* here is the theme's own palette for its named colours. The colour a client
  * sends as entry 1 *is* the palette's red, not the theme's; the theme's colours reach the
  * screen inside the 24-bit values, and its default pair is [DEFAULT_FOREGROUND] and
@@ -33,35 +40,36 @@ object TerminalPalette {
 
     /**
      * DEFAULT_BACKGROUND is the colour behind everything, and behind a cell the client gave
-     * no background for. It is the dark theme's own background.
+     * no background for. It is the published theme's own background.
      */
-    const val DEFAULT_BACKGROUND: Int = 0xff0a141e.toInt()
+    const val DEFAULT_BACKGROUND: Int = 0xff000000.toInt()
 
     /** DEFAULT_FOREGROUND is the colour of text the client gave no colour for. */
-    const val DEFAULT_FOREGROUND: Int = 0xffd8d8d8.toInt()
+    const val DEFAULT_FOREGROUND: Int = 0xff00ff00.toInt()
 
     /** OPAQUE is the alpha every colour is given: a translucent glyph is an unreadable one. */
     private const val OPAQUE: Int = 0xff shl 24
 
     // The first sixteen are the ANSI colours in the order every terminal has them: eight
-    // hues, then the same eight a step brighter.
+    // hues, then the same eight a step brighter. They are the published theme's `color0`
+    // to `color15` — gruvbox — rather than the VGA hues every terminal falls back to.
     private val ANSI: IntArray = intArrayOf(
-        0x000000, // 0 black
-        0xcd0000, // 1 red
-        0x00cd00, // 2 green
-        0xcdcd00, // 3 yellow
-        0x0000ee, // 4 blue
-        0xcd00cd, // 5 magenta
-        0x00cdcd, // 6 cyan
-        0xe5e5e5, // 7 white
-        0x7f7f7f, // 8 bright black
-        0xff0000, // 9 bright red
-        0x00ff00, // 10 bright green
-        0xffff00, // 11 bright yellow
-        0x5c5cff, // 12 bright blue
-        0xff00ff, // 13 bright magenta
-        0x00ffff, // 14 bright cyan
-        0xffffff, // 15 bright white
+        0x1d2021, // 0 black
+        0xcc241d, // 1 red
+        0x98971a, // 2 green
+        0xd79921, // 3 yellow
+        0x458588, // 4 blue
+        0xb16286, // 5 magenta
+        0x689d6a, // 6 cyan
+        0xa89984, // 7 white
+        0x7c6f64, // 8 bright black
+        0xfb4934, // 9 bright red
+        0xb8bb26, // 10 bright green
+        0xfabd2f, // 11 bright yellow
+        0x83a598, // 12 bright blue
+        0xd3869b, // 13 bright magenta
+        0x8ec07c, // 14 bright cyan
+        0xfbf1c7, // 15 bright white
     )
 
     // The six levels the colour cube's axes step through. They are the values terminals

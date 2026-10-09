@@ -52,7 +52,7 @@ const usage = `gorcons runs the gonomadnet client on a pseudo-terminal and bridg
 appliance's console socket.
 
 Usage:
-  gorcons --socket NAME --command ABS [--home DIR] [--arg ARG]... [--cols N] [--rows N]
+  gorcons --socket NAME --command ABS [--home DIR] [--arg ARG]... [--env K=V]... [--cols N] [--rows N]
 
 Options:
   --socket NAME   the abstract-socket name the appliance is listening on,
@@ -60,6 +60,9 @@ Options:
   --command ABS   the absolute path of the client to run
   --home DIR      the client's home, and the directory it runs in
   --arg ARG       an argument for the client; may be given more than once
+  --env K=V       a variable for the client's environment; may be given more
+                  than once. TERM, COLORTERM, LANG and HOME are the host's and
+                  are set after these, so they cannot be replaced.
   --cols N        the terminal's width, 1..65535 (default 80)
   --rows N        the terminal's height, 1..65535 (default 24)
 `
@@ -97,6 +100,7 @@ type options struct {
 	command string
 	home    string
 	args    []string
+	env     []string
 	cols    uint16
 	rows    uint16
 }
@@ -107,6 +111,7 @@ func parseArgs(args []string) (options, error) {
 	var (
 		opts       options
 		clientArgs stringList
+		clientEnv  envList
 		cols       uint
 		rows       uint
 	)
@@ -119,6 +124,7 @@ func parseArgs(args []string) (options, error) {
 	fs.StringVar(&opts.command, "command", "", "the absolute path of the client to run")
 	fs.StringVar(&opts.home, "home", "", "the client's home, and the directory it runs in")
 	fs.Var(&clientArgs, "arg", "an argument for the client; may be given more than once")
+	fs.Var(&clientEnv, "env", "a variable for the client's environment; may be given more than once")
 	fs.UintVar(&cols, "cols", defaultCols, "the terminal's width")
 	fs.UintVar(&rows, "rows", defaultRows, "the terminal's height")
 
@@ -151,6 +157,7 @@ func parseArgs(args []string) (options, error) {
 		return options{}, err
 	}
 	opts.args = clientArgs
+	opts.env = clientEnv
 	return opts, nil
 }
 
@@ -180,9 +187,13 @@ func (o options) config() console.Config {
 // Nothing is inherited from this process: the terminal facts are the host's to
 // state, because this is the only process that knows what terminal the client
 // got, and HOME is the app's, which is the only place on a tablet the client
-// may write to.
+// may write to. Those four are appended last, so a caller cannot hand the client
+// a terminal that is not the one it was given. Everything else is the appliance's
+// to ask for through --env, which is how it tells a client what only the
+// appliance knows — such as how far one wheel notch should move.
 func (o options) childEnv() []string {
-	env := []string{"TERM=xterm-256color", "COLORTERM=truecolor", "LANG=C.UTF-8"}
+	env := append([]string(nil), o.env...)
+	env = append(env, "TERM=xterm-256color", "COLORTERM=truecolor", "LANG=C.UTF-8")
 	if o.home != "" {
 		env = append(env, "HOME="+o.home)
 	}
@@ -212,4 +223,44 @@ func (l *stringList) String() string { return strings.Join(*l, " ") }
 func (l *stringList) Set(value string) error {
 	*l = append(*l, value)
 	return nil
+}
+
+// envList collects the client's extra environment variables.
+//
+// A later value replaces an earlier one for the same name, so that what the
+// client sees never depends on which duplicate a C library's getenv happens to
+// return. The four variables the host owns are refused here rather than
+// silently overridden, because a caller that asked for them has misunderstood
+// who owns the terminal and should be told so.
+type envList []string
+
+// String renders the values for a diagnostic.
+func (l *envList) String() string { return strings.Join(*l, " ") }
+
+// Set adds one KEY=VALUE, replacing any earlier value of the same KEY.
+func (l *envList) Set(value string) error {
+	key, _, ok := strings.Cut(value, "=")
+	if !ok || key == "" {
+		return fmt.Errorf("%q is not KEY=VALUE", value)
+	}
+	if strings.ContainsAny(key, " \t") {
+		return fmt.Errorf("%q is not a variable name", key)
+	}
+	if _, owned := hostEnv[key]; owned {
+		return fmt.Errorf("%v is the console host's to set, not the caller's", key)
+	}
+	for i, existing := range *l {
+		if k, _, _ := strings.Cut(existing, "="); k == key {
+			(*l)[i] = value
+			return nil
+		}
+	}
+	*l = append(*l, value)
+	return nil
+}
+
+// hostEnv names the variables the console host sets for every client, which no
+// caller may replace.
+var hostEnv = map[string]struct{}{
+	"TERM": {}, "COLORTERM": {}, "LANG": {}, "HOME": {},
 }

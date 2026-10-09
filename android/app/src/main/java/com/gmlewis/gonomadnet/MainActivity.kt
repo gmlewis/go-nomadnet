@@ -21,6 +21,7 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import java.io.File
 import java.net.InetSocketAddress
 import java.net.Socket
 
@@ -34,11 +35,12 @@ import java.net.Socket
 data class BuiltInClient(val binary: String, val argv: List<String>, val home: String)
 
 /**
- * The appliance's one screen.
+ * The appliance's two screens.
  *
- * There is no terminal emulator here and there is not meant to be: a tview/tcell user
- * interface needs a real PTY. This screen is the whole appliance — it hands out the one
- * permission it needs, shows what the two halves are doing, and opens the client.
+ * The first is the whole appliance: it hands out the one permission it needs, shows what the
+ * two halves are doing, and opens the client. The second is the client itself, drawn a cell
+ * at a time by [TerminalView] on the screen [TerminalScreen] holds — see the console page in
+ * [showConsole] — with the keys a tablet has no way to press along its bottom edge.
  *
  * The client is run out of the APK itself: it carries the client and the console host that
  * gives it a pseudo-terminal, so "Open gonomadnet" is one tap from this screen to a working
@@ -121,6 +123,16 @@ class MainActivity : Activity() {
         layout.addView(statusScroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 2f))
         setContentView(layout)
         controlsPage = layout
+        applyEdgeToEdgeInsets(layout)
+        // The hub field is not a thing to type into the moment the screen appears, and a field
+        // that holds the focus asks its scroll view to bring it into view: the list then opens
+        // scrolled, with the first button — "Open gonomadnet", the one thing this screen is for
+        // — cut off at the top. The focus is given up and the list put back at its top once the
+        // page has been laid out, which is the first moment either is possible.
+        layout.post {
+            hubField.clearFocus()
+            controlScroll.scrollTo(0, 0)
+        }
 
         report(prerequisiteChecklist())
         requestPermissionsIfNeeded()
@@ -288,6 +300,10 @@ class MainActivity : Activity() {
         // that does not exist is a host that does not start — with an error that names the
         // host rather than the directory.
         paths.ensureDirectories()
+        // The channels the appliance comes with, written before the client can own the file.
+        // An install that has already run the client has a store of its own, and it is left
+        // alone: it is the operator's by then, and it holds whatever they have added.
+        seedDefaultHubs(paths)
         val client = builtInClient(applicationInfo.nativeLibraryDir, paths)
         val screen = TerminalScreen(consoleGrid.cols, consoleGrid.rows)
         val view = TerminalView(this).apply { this.screen = screen }
@@ -314,6 +330,11 @@ class MainActivity : Activity() {
             onEnded = { end -> onConsoleEnded(end) },
         )
         view.onKey = { key -> session.sendKey(key) }
+        // A tap on the console is a mouse event to the client, which is what its lists and
+        // buttons are driven by. The view spells it — the encoding is the terminal's, and
+        // the view is what knows whether the client asked to be told about the mouse — and
+        // the session carries the bytes, as it carries the bytes of a key.
+        view.onMouse = { bytes -> session.sendBytes(bytes) }
         // A rotation, or the keyboard, changes the grid the client is laid out for. The
         // screen is resized with it, so the emulator and the terminal it is emulating agree.
         view.onResize = { grid ->
@@ -334,11 +355,46 @@ class MainActivity : Activity() {
 
         val page = FrameLayout(this)
         page.addView(view, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+        // The console is the whole of the screen it is on, and there is no title bar to take
+        // out of it: the theme carries no action bar, which is what keeps the client's first
+        // rows on the screen. A bar that exists and is hidden at runtime is a bar the window
+        // has already measured itself around: its content view is slid up by the bar's
+        // height and never grown to take it, so the top rows of the client end up above the
+        // screen and a band the bar's own height ends up empty at the bottom of it.
         setContentView(page)
-        applyEdgeToEdgeInsets(page)
+        // The key strip is the soft keyboard's companion: the window insets are what know
+        // whether the keyboard is up, so the console is told from here, and the client is
+        // resized as the strip appears and goes — those rows are its rows.
+        applyEdgeToEdgeInsets(page) { up -> view.keysVisible = up }
 
         consolePump = Thread({ session.pump() }, "console-pump").also { it.start() }
         report("the console is open; the client is starting on ${consoleGrid.cols}x${consoleGrid.rows}")
+    }
+
+    /**
+     * Writes the channels the appliance comes with, if it has never run its client.
+     *
+     * The client keeps its channels in a store of its own and has no notion of a default, so
+     * an appliance that seeded none arrived with an empty Channels page. The store's own
+     * existence is the record that this has been done: once the client has run, the file is
+     * the operator's, and an appliance that rewrote it on every start would undo every channel
+     * they had added or removed.
+     *
+     * The local hub is listed only when it has published its destination, which is derived
+     * from an identity generated on this device and therefore different on every install. An
+     * appliance whose stack has not been started yet has no local hub to list, and it is
+     * listed the next time the console is opened.
+     */
+    private fun seedDefaultHubs(paths: StackPaths) {
+        val localHub = File(paths.hubDestinationFile).takeIf { it.isFile }?.readText()?.trim()
+        val seeded = runCatching { DefaultHubs.seed(File(paths.clientHubStore), localHub) }
+            .getOrElse { failure ->
+                report("could not write the appliance's default channels: ${failure.message}")
+                return
+            }
+        if (seeded) {
+            report("wrote ${DefaultHubs.hubs(localHub).size} default channels to ${paths.clientHubStore}")
+        }
     }
 
     /**
@@ -374,26 +430,35 @@ class MainActivity : Activity() {
         consoleGrid = TerminalGrid(cols = DEFAULT_CONSOLE_COLS, rows = DEFAULT_CONSOLE_ROWS)
         session.stop()
         consolePump = null
-        controlsPage?.let { setContentView(it) }
+        // The controls come back into the same window, which the console left edge to edge:
+        // the page is re-attached by being laid out again, so it is told about the bars
+        // rather than being left to draw under them.
+        controlsPage?.let {
+            setContentView(it)
+            applyEdgeToEdgeInsets(it)
+        }
     }
 
     /**
-     * Keeps the console inside the system bars.
+     * Keeps a page inside the system bars, and reports whether the keyboard is up.
      *
      * On Android 15 the appliance is drawn edge to edge, which for a terminal is what is
      * wanted — every pixel of a tablet is a pixel of someone's interface — but a grid drawn
-     * under the status bar is a row of the client's window that cannot be read or tapped. The
-     * bars are therefore taken out of the console's own rectangle rather than being drawn
-     * over it.
+     * under the status bar is a row of the client's window that cannot be read or tapped.
+     * The bars are therefore taken out of whichever page is showing rather than being drawn
+     * over it. Both pages take them: the console is the one that needs the whole screen, and
+     * the controls follow it into the same edge-to-edge window when the console closes.
      *
      * The bottom is the larger of the navigation bar and the keyboard: with the keyboard up
-     * the grid must end above it, or the client's last rows — and the key row — are behind it.
+     * the grid must end above it, or the client's last rows — and the keys drawn under them —
+     * are behind it. [onKeyboardUp] is told which of the two it is, because the console's
+     * key strip is the keyboard's companion and comes and goes with it.
      */
     @Suppress("DEPRECATION")
-    private fun applyEdgeToEdgeInsets(page: View) {
+    private fun applyEdgeToEdgeInsets(page: View, onKeyboardUp: ((Boolean) -> Unit)? = null) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM) {
             // Below Android 15 the window already fits the system bars, so taking them out
-            // again would be padding the console twice.
+            // again would be padding the page twice.
             return
         }
         window.setDecorFitsSystemWindows(false)
@@ -401,6 +466,7 @@ class MainActivity : Activity() {
             val bars = insets.getInsets(WindowInsets.Type.systemBars())
             val keyboard = insets.getInsets(WindowInsets.Type.ime()).bottom
             view.setPadding(bars.left, bars.top, bars.right, maxOf(bars.bottom, keyboard))
+            onKeyboardUp?.invoke(keyboard > 0)
             insets
         }
         page.requestApplyInsets()
@@ -537,6 +603,12 @@ class MainActivity : Activity() {
          * start. `HOME` here is the host's working directory rather than the child's
          * environment, because the host builds the child's environment from nothing by
          * itself — nothing set here can leak into the client.
+         *
+         * The client is told one wheel notch moves one row, because the only wheel it will
+         * ever see is a finger: a drag arrives as one notch per row it has travelled, and at
+         * the client's own default of several rows a notch the page runs away from the
+         * finger that is dragging it. A whole-notches-per-row multiplier is not a thing the
+         * wire can say, so the client is told what one notch means instead.
          */
         fun consoleHostSpec(
             nativeLibraryDir: String,
@@ -552,12 +624,23 @@ class MainActivity : Activity() {
                 "--command", client.binary,
                 "--home", client.home,
             ) + client.argv.flatMap { listOf("--arg", it) } + listOf(
+                "--env", WHEEL_LINES_ENV,
                 "--cols", grid.cols.toString(),
                 "--rows", grid.rows.toString(),
             ),
             env = mapOf("HOME" to client.home),
             logFile = "${paths.logDir}/$CONSOLE_HOST_NAME.log",
         )
+
+        /**
+         * WHEEL_LINES_ENV is how the console tells the client what one wheel notch means.
+         *
+         * A finger drag is carried to the client as wheel notches, one per row of the
+         * screen it travelled, so what the page does is what the client does with a notch.
+         * The client's default moves several rows per notch, which makes a drag scroll
+         * several times further than the finger went.
+         */
+        const val WHEEL_LINES_ENV = "GONOMADNET_WHEEL_LINES=1"
 
         /**
          * awaitTransport waits for the appliance's transport, and reports whether it arrived.

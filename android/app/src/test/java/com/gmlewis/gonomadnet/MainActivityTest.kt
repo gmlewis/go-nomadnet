@@ -11,6 +11,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.w3c.dom.Element
@@ -160,6 +161,39 @@ class MainActivityTest {
         // takes its own flags and nothing else, so a client argument left bare is a host that
         // refuses to start.
         assertEquals(client.argv, spec.argv.clientArguments())
+    }
+
+    @Test
+    fun `the client is told one wheel notch is one row`() {
+        // A finger drag reaches the client as wheel notches, one per row of the screen it
+        // travelled, so what the page does is what the client does with a notch. The client's
+        // own default moves several rows a notch, and a drag then runs away from the finger —
+        // the "scrolling at 2X the speed of my finger" report. A multiplier the wire cannot
+        // express is not a fix, so the client is told what one notch means instead.
+        val paths = StackPaths(FILES_DIR)
+        val client = MainActivity.builtInClient(NATIVE_LIBRARY_DIR, paths)
+        val spec = MainActivity.consoleHostSpec(
+            nativeLibraryDir = NATIVE_LIBRARY_DIR,
+            paths = paths,
+            client = client,
+            socketName = SOCKET_NAME,
+            grid = TerminalGrid(cols = 100, rows = 30),
+        )
+
+        assertEquals(
+            "the console host does not tell the client how far a notch should move",
+            "GONOMADNET_WHEEL_LINES=1",
+            spec.argv.argAfter("--env"),
+        )
+        assertEquals(
+            "the wheel-lines variable the host passes is not the one the client reads",
+            MainActivity.WHEEL_LINES_ENV,
+            "GONOMADNET_WHEEL_LINES=1",
+        )
+
+        // It is the client's environment and not the host's: the host would ignore it, and
+        // the console would look fixed while nothing had changed.
+        assertNull("the wheel lines were set on the host instead of the client", spec.env["GONOMADNET_WHEEL_LINES"])
     }
 
     @Test
@@ -333,6 +367,74 @@ class MainActivityTest {
         }
     }
 
+    @Test
+    fun `the appliance is dark, and its system bars are the console's own dark`() {
+        // The appliance is a terminal, and a terminal is a dark surface. Left on the
+        // platform's bare default, the window takes the device's own accent instead: a
+        // bright bar across the top of a dark terminal, and on a device whose default is a
+        // light theme a light bar with dark icons. Neither is the console's colour, and the
+        // console is the whole of what this screen shows.
+        //
+        // The colour is not written down twice: the theme's bar is the console's own
+        // background, and the test reads the palette rather than repeating it, so a bar and
+        // a console that have drifted apart are a failure here instead of something nobody
+        // notices until it is on a tablet.
+        //
+        // The window's own background is the same colour and for the same reason. The
+        // console is inset from the system bars, so the window shows through in a band
+        // along the bottom of the screen: on the platform's default that band is the
+        // device theme's grey, a seam across a terminal that is otherwise one surface.
+        val application = manifest().elements("application").single()
+        assertEquals(
+            "the appliance does not wear its own theme: the console is then drawn under a " +
+                "bar in the device's accent colour",
+            "@style/ApplianceTheme",
+            application.getAttributeNS(ANDROID_NAMESPACE, "theme"),
+        )
+
+        // The theme carries no title bar, and that is not a detail of style. A bar that
+        // exists and is hidden at runtime is a bar the window has already measured itself
+        // around — `ActionBar.hide()` slides the content view up by the bar's height and
+        // never grows it, so the client's first rows end up above the top of the screen and
+        // a band exactly that tall is left empty at the bottom. The console is the client's
+        // whole screen, and there is nothing a title would say.
+        assertEquals(
+            "the appliance's theme has an action bar, which the console cannot spare the rows for",
+            "@android:style/Theme.DeviceDefault.NoActionBar",
+            resource("styles.xml", "style", "ApplianceTheme").getAttribute("parent"),
+        )
+
+        val style = resource("styles.xml", "style", "ApplianceTheme").elements("item")
+        for (name in listOf("android:statusBarColor", "android:windowBackground")) {
+            val item = style.firstOrNull { it.getAttribute("name") == name }
+            assertNotNull("ApplianceTheme sets no $name", item)
+            assertEquals(
+                "the appliance does not take the console's own background for $name",
+                "@color/console_background",
+                item!!.textContent.trim(),
+            )
+        }
+
+        val background = resource("colors.xml", "color", "console_background").textContent.trim()
+        assertEquals(
+            "the system bars and the console have drifted apart: the console draws " +
+                "${String.format("#%08x", TerminalPalette.DEFAULT_BACKGROUND)}",
+            String.format("#%08x", TerminalPalette.DEFAULT_BACKGROUND),
+            background,
+        )
+    }
+
+    /** resource is one named element of one of the module's value files. */
+    private fun resource(file: String, tag: String, name: String): Element {
+        val path = File(RES_DIR, "values/$file")
+        assertTrue("the resource file is not with the module: $path", path.isFile)
+        val factory = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
+        val document = factory.newDocumentBuilder().parse(path)
+        val found = document.elements(tag).firstOrNull { it.getAttribute("name") == name }
+        assertNotNull("$path declares no <$tag name=\"$name\">", found)
+        return found!!
+    }
+
     /** manifest is the module's manifest, parsed so its android: attributes can be read. */
     private fun manifest(): org.w3c.dom.Document {
         val file = File(MANIFEST)
@@ -346,6 +448,10 @@ class MainActivityTest {
 
     /** elements is every element of one tag name, in document order. */
     private fun org.w3c.dom.Document.elements(tag: String): List<Element> =
+        (0 until getElementsByTagName(tag).length).map { getElementsByTagName(tag).item(it) as Element }
+
+    /** elements is every descendant of one tag name, in document order. */
+    private fun Element.elements(tag: String): List<Element> =
         (0 until getElementsByTagName(tag).length).map { getElementsByTagName(tag).item(it) as Element }
 
     /** asElementList is the element children of a node, with text and comments dropped. */
@@ -394,6 +500,9 @@ class MainActivityTest {
 
         /** The module's sources, so a class the package no longer has can be looked for. */
         const val SOURCES_DIR = "src/main/java/com/gmlewis/gonomadnet"
+
+        /** The module's resources, where the appliance's own theme is written down. */
+        const val RES_DIR = "src/main/res"
 
         /** What Gradle packages into the APK, which is what a person downloads. */
         const val ASSETS_DIR = "src/main/assets"

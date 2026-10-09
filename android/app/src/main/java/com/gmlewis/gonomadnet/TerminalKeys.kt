@@ -64,6 +64,15 @@ sealed interface TerminalKey {
 
     /** Special is one of the keys that are not characters. */
     data class Special(val key: SpecialKey) : TerminalKey
+
+    /**
+     * Alt is a key held with the alt (meta) key.
+     *
+     * A terminal has no alt byte: what it sends is the key's own bytes with an escape in
+     * front of them, which is what `xterm`'s `metaSendsEscape` does and what the client
+     * reads as a meta combination. A key that sends nothing under alt sends nothing at all.
+     */
+    data class Alt(val key: TerminalKey) : TerminalKey
 }
 
 /**
@@ -86,7 +95,12 @@ object TerminalKeys {
         is TerminalKey.Ctrl -> ctrlByte(key.letter)
         is TerminalKey.Rune -> if (key.text.isEmpty()) null else key.text.toByteArray(Charsets.UTF_8)
         is TerminalKey.Special -> SEQUENCES[key.key]
+        // Alt rides in front of whatever the key itself sends: escape, then the key.
+        is TerminalKey.Alt -> toBytes(key.key)?.let { byteArrayOf(ESCAPE) + it }
     }
+
+    /** ESCAPE is the byte an alt combination is prefixed with, and the escape key's own. */
+    private const val ESCAPE: Byte = 0x1b
 
     /**
      * ctrlByte is the control code a letter's control key sends: ctrl-A is 0x01 through
@@ -111,7 +125,7 @@ object TerminalKeys {
         // Backspace sends DEL: the client is an editor's descendant and reads 0x7f, which
         // is what a terminal sends for the key, and what the Go side sends as well.
         put(SpecialKey.BACKSPACE, byteArrayOf(0x7f))
-        put(SpecialKey.ESCAPE, byteArrayOf(0x1b))
+        put(SpecialKey.ESCAPE, byteArrayOf(ESCAPE))
         put(SpecialKey.UP, csi("A"))
         put(SpecialKey.DOWN, csi("B"))
         put(SpecialKey.RIGHT, csi("C"))
@@ -129,5 +143,5 @@ object TerminalKeys {
 
     /** csi spells a control sequence: the escape byte, the bracket, and the body. */
     private fun csi(body: String): ByteArray =
-        byteArrayOf(0x1b, '['.code.toByte()) + body.toByteArray(Charsets.US_ASCII)
+        byteArrayOf(ESCAPE, '['.code.toByte()) + body.toByteArray(Charsets.US_ASCII)
 }

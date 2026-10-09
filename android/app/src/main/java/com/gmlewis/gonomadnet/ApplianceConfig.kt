@@ -47,6 +47,30 @@ class ApplianceSettings(context: Context) {
             preferences.edit().putString(KEY_HEADING_AXIS, value.name).apply()
         }
 
+    /**
+     * The key the transport's RPC listener authenticates its clients with.
+     *
+     * Python derives this key from the transport identity in the *same storage directory* the
+     * client runs from (Reticulum.py:355-356), and the ordinary setup is one `~/.reticulum`
+     * shared by every process on the machine. The appliance cannot share one: the client must
+     * have a configuration of its own, or it races the transport for ownership of the shared
+     * instance and one of them quietly becomes the other. With separate directories the two
+     * identities differ, and every RPC a client makes is answered "unauthorized" — an
+     * Interfaces page showing an appliance that is connected as though it were not.
+     *
+     * So both sides are told the key instead, which is the supported way to run them apart
+     * (`[reticulum] rpc_key`, Reticulum.py:494-500). It is generated once per install and
+     * persists: a key that changed on every start would be a transport whose clients are all
+     * rejected after every restart.
+     */
+    val rpcKey: String
+        get() {
+            preferences.getString(KEY_RPC_KEY, null)?.takeIf { it.isNotBlank() }?.let { return it }
+            val generated = generateRpcKey()
+            preferences.edit().putString(KEY_RPC_KEY, generated).apply()
+            return generated
+        }
+
     companion object {
         /**
          * The home hub this project runs against, published with both an A and an AAAA
@@ -58,6 +82,17 @@ class ApplianceSettings(context: Context) {
         const val FILE = "gonomadnet-appliance"
         const val KEY_HUB_SPEC = "hub_spec"
         const val KEY_HEADING_AXIS = "heading_axis"
+        const val KEY_RPC_KEY = "rpc_key"
+
+        /** How many bytes the RPC key is, and therefore how long its hex form is. */
+        const val RPC_KEY_BYTES = 32
+
+        /** generateRpcKey mints one key as lowercase hex, which is what the config takes. */
+        fun generateRpcKey(random: java.security.SecureRandom = java.security.SecureRandom()): String {
+            val bytes = ByteArray(RPC_KEY_BYTES)
+            random.nextBytes(bytes)
+            return bytes.joinToString("") { "%02x".format(it) }
+        }
     }
 }
 
@@ -79,14 +114,16 @@ object ApplianceConfig {
         resolve: (String, Int) -> DialableAddress? = { host, port -> Resolver.resolveDialable(host, port) },
         sharedInstancePort: Int = NodeConfigSpec.DEFAULT_SHARED_INSTANCE_PORT,
         instanceName: String = NodeConfigSpec.DEFAULT_INSTANCE_NAME,
+        rpcKey: String = "",
     ): NodeConfigSpec {
         val parsed = Resolver.parseHostPort(hubSpec)
-            ?: return NodeConfigSpec(sharedInstancePort = sharedInstancePort, instanceName = instanceName)
+            ?: return NodeConfigSpec(sharedInstancePort = sharedInstancePort, instanceName = instanceName, rpcKey = rpcKey)
         val resolved = resolve(parsed.first, parsed.second)
-            ?: return NodeConfigSpec(sharedInstancePort = sharedInstancePort, instanceName = instanceName)
+            ?: return NodeConfigSpec(sharedInstancePort = sharedInstancePort, instanceName = instanceName, rpcKey = rpcKey)
         return NodeConfigSpec(
             sharedInstancePort = sharedInstancePort,
             instanceName = instanceName,
+            rpcKey = rpcKey,
             interfaces = listOf(
                 InterfaceSpec(name = HUB_INTERFACE_NAME, host = resolved.literal, port = parsed.second),
             ),

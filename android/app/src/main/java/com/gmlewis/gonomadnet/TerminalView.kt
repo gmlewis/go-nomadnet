@@ -11,6 +11,7 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Typeface
+import android.os.Build
 import android.text.InputType
 import android.util.AttributeSet
 import android.util.TypedValue
@@ -38,14 +39,16 @@ import kotlin.math.roundToInt
  * Everything here is a thin skin over the tested parts. What to draw is
  * [TerminalScreen]'s; how many columns and rows the view holds, where a cell lands, which
  * line the window shows and what the key row offers are [TerminalLayout]'s; what colour a
- * cell is, [TerminalPalette]'s. What is left — and all this file contains — is the calls
- * into `Canvas` and the touches that come back out of it, neither of which a JVM test can
- * reach. Nothing here may be claimed as working until it has been looked at on the tablet.
+ * cell is, [TerminalPalette]'s; what a finger meant when it touched the console,
+ * [TouchGesture]'s; and how a tap is spelled for the client, [TerminalMouse]'s. What is left
+ * — and all this file contains — is the calls into `Canvas` and the touches that come back
+ * out of it, neither of which a JVM test can reach. Nothing here may be claimed as working
+ * until it has been looked at on the tablet.
  *
  * The view never starts or talks to the client itself. It reports a key press through
- * [onKey] and a size change through [onResize], and is told what happened through [screen]
- * and [outputParsed], so the session's lifetime stays [ConsoleSession]'s business and the
- * drawing stays the UI thread's.
+ * [onKey], a mouse event through [onMouse] and a size change through [onResize], and is told
+ * what happened through [screen] and [outputParsed], so the session's lifetime stays
+ * [ConsoleSession]'s business and the drawing stays the UI thread's.
  */
 class TerminalView(context: Context, attrs: AttributeSet? = null) : View(context, attrs) {
 
@@ -74,11 +77,17 @@ class TerminalView(context: Context, attrs: AttributeSet? = null) : View(context
         /** BLINK_MS is how long the cursor rests in each of its two states. */
         private const val BLINK_MS: Long = 500L
 
-        /** DRAG_LINES is how far a finger must move down to scroll a line back. */
-        private const val DRAG_LINES: Int = 1
-
         /** MAX_DELETIONS is the most backspaces one input-method edit can ask for. */
         private const val MAX_DELETIONS: Int = 64
+
+        /**
+         * MAX_WHEEL_NOTCHES is the most wheel reports one movement is sent as.
+         *
+         * A drag is delivered as a whole notch of wheel per cell it crossed, and one movement
+         * of a fast finger can cross the whole screen: each notch is a write on the console
+         * socket, so the burst is bounded rather than proportional to the screen.
+         */
+        private const val MAX_WHEEL_NOTCHES: Int = 48
 
         /**
          * consoleTypeface is the bundled console font, or the system's monospace font.
@@ -105,6 +114,16 @@ class TerminalView(context: Context, attrs: AttributeSet? = null) : View(context
 
     /** onKey reports a key press, which the session turns into what the client reads. */
     var onKey: ((TerminalKey) -> Unit)? = null
+
+    /**
+     * onMouse reports a mouse event as the bytes it is sent as, which the session writes to
+     * the client's terminal.
+     *
+     * It is bytes rather than a report of its own because the spelling is the terminal's —
+     * see [TerminalMouse] — and the decision to send one at all is the view's, which is what
+     * knows whether the client asked to be told about the mouse.
+     */
+    var onMouse: ((ByteArray) -> Unit)? = null
 
     /**
      * onResize reports the size the view can hold, which the client has to be told.
@@ -135,10 +154,34 @@ class TerminalView(context: Context, attrs: AttributeSet? = null) : View(context
     private var scrollOffset = 0
     private var lastScrolledOff = 0L
 
-    // Control, which a tablet cannot hold down — see [ControlLatch] — and the state of the
-    // cursor's blink.
-    private val control = ControlLatch()
+    // Control and Alt, which a tablet cannot hold down — see [ModifierLatch] — and the
+    // state of the cursor's blink.
+    private val modifiers = ModifierLatch()
     private var cursorVisible = true
+
+    /**
+     * keysVisible is whether the on-screen keys are shown, which follows the soft keyboard.
+     *
+     * The strip is the soft keyboard's companion: it comes up with the keyboard and goes with
+     * it, so a reader who is not typing has the client's whole screen. The keyboard is not the
+     * view's business — the page's window insets are what know about it — so this is set from
+     * outside, and setting it is a resize: the rows it takes are the client's rows.
+     */
+    var keysVisible: Boolean = false
+        set(value) {
+            if (field == value) return
+            field = value
+            updateGrid()
+            invalidate()
+        }
+
+    /**
+     * collapsed is whether the reader has folded the key strip away.
+     *
+     * The strip costs rows, and the rows are the client's: folding it hands them back, which
+     * is why it is a resize and not just a redraw.
+     */
+    private var stripCollapsed = false
     private val blink = object : Runnable {
         override fun run() {
             cursorVisible = !cursorVisible
@@ -147,18 +190,27 @@ class TerminalView(context: Context, attrs: AttributeSet? = null) : View(context
         }
     }
 
-    // Where a finger went down, in the view's pixels, and whether it went down on the key
-    // row — a tap there is a key and a drag there must not scroll the console.
-    private var downX = 0f
-    private var downY = 0f
-    private var downOnKeyRow = false
-    private var dragRemainder = 0f
-    private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
+    // The finger on the console, which remembers where it went down and whether it has
+    // travelled far enough since to have been a scroll rather than a tap.
+    private val touch = TouchGesture(ViewConfiguration.get(context).scaledTouchSlop.toFloat())
 
     init {
         // The view draws itself rather than being a background to something else, so it has
         // to be told that: a View that reports no background is otherwise skipped entirely.
         setWillNotDraw(false)
+        // It also carries its own background, in the console's own colour. A view with no
+        // background shows whatever is behind it until its first frame, which for a terminal
+        // is a flash of the window's colour on every rotation.
+        setBackgroundColor(TerminalPalette.DEFAULT_BACKGROUND)
+        // And the framework paints a translucent highlight over a focused view that has no
+        // background of its own — on top of everything the view draws, so the whole console
+        // is washed toward white by about a sixth. The console is focused only to be typed
+        // into, and it is never a thing to be highlighted: what it shows is the client's
+        // screen, and a screen that changes colour because the tablet was driven by a key
+        // rather than a finger is a screen that is lying about what it is drawing.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            setDefaultFocusHighlightEnabled(false)
+        }
         isFocusable = true
         isFocusableInTouchMode = true
     }
@@ -206,16 +258,37 @@ class TerminalView(context: Context, attrs: AttributeSet? = null) : View(context
             // would be by zero. Nothing is drawn until a size arrives that can hold a cell.
             return
         }
+        updateGrid()
+        invalidate()
+    }
+
+    /**
+     * updateGrid is the terminal size the view now has room for, reported when it changes.
+     *
+     * It is called for a new rectangle — a rotation, or the keyboard arriving — and for a
+     * strip that has been folded away, because folding it gives its rows back to the client.
+     * The session is told once the grid actually changed, so a rotation is one resize to the
+     * client rather than one per layout pass.
+     */
+    private fun updateGrid() {
+        val measured = metrics ?: return
+        if (width <= 0 || height <= 0) return
         val wanted = measured.gridFor(width, height - keyRowHeight(measured))
         scrollOffset = scrollOffset.coerceIn(0, TerminalScroll.maxOffset(screenTotalLines(), wanted.rows))
         if (wanted != grid) {
             grid = wanted
-            // The session is told once the grid actually changed, so a rotation is one
-            // resize to the client rather than one per layout pass.
             onResize?.invoke(wanted)
         }
-        invalidate()
     }
+
+    /**
+     * stripRows is the key strip as it stands: two rows of keys, one folded row, or none.
+     *
+     * None is the ordinary state. The keys are there for typing, so they are there when the
+     * keyboard is: a console with no keyboard is a client with the whole screen.
+     */
+    private fun stripRows(): List<List<KeyRowEntry>> =
+        if (!keysVisible) emptyList() else TerminalKeyRow.rows(stripCollapsed)
 
     /**
      * measureCell is what one character of the console measures.
@@ -235,11 +308,11 @@ class TerminalView(context: Context, attrs: AttributeSet? = null) : View(context
 
     /** keyRowHeight is how much of the bottom edge the on-screen keys take. */
     private fun keyRowHeight(metrics: TerminalMetrics): Int =
-        metrics.cellHeight + 2 * keyRowPadding(metrics)
+        TerminalKeyRow.height(stripRows(), metrics.cellHeight)
 
-    private fun keyRowPadding(metrics: TerminalMetrics): Int = max(4, metrics.cellHeight / 4)
+    private fun keyRowPadding(metrics: TerminalMetrics): Int = TerminalKeyRow.padding(metrics.cellHeight)
 
-    /** keyRowTop is the y the key row starts at, or the view's height when there is none. */
+    /** keyRowTop is the y the key strip starts at, or the view's height when there is none. */
     private fun keyRowTop(metrics: TerminalMetrics): Int =
         (height - keyRowHeight(metrics)).coerceAtLeast(0)
 
@@ -365,36 +438,54 @@ class TerminalView(context: Context, attrs: AttributeSet? = null) : View(context
     /**
      * drawKeyRow draws the keys along the bottom edge.
      *
-     * The buttons share the width equally, which is the division [TerminalKeyRow.entryAt]
-     * undoes for a tap, so what is drawn and what is hit are the same arithmetic. Control is
-     * drawn differently while it is armed: a latch that cannot be seen is one a reader
-     * leaves set and then cannot explain the next key press.
+     * The buttons share each row's width equally, which is the division
+     * [TerminalKeyRow.entryAt] undoes for a tap, so what is drawn and what is hit are the
+     * same arithmetic. A modifier is drawn differently while it is armed: a latch that
+     * cannot be seen is one a reader leaves set and then cannot explain the next key press.
      */
     private fun drawKeyRow(canvas: Canvas, metrics: TerminalMetrics) {
+        val rows = stripRows()
+        // No keys and no rule over the client's last row: a console with nothing to type into
+        // is the client's whole screen, and a line across it is a line the client did not draw.
+        if (rows.isEmpty()) return
         val padding = keyRowPadding(metrics)
         val top = keyRowTop(metrics)
-        val rowHeight = height - top
-        if (rowHeight <= 0 || width <= 0) return
+        if (height - top <= 0 || width <= 0) return
 
         textPaint.isFakeBoldText = false
         textPaint.textSkewX = 0f
         textPaint.color = TerminalPalette.DEFAULT_FOREGROUND
         canvas.drawRect(0f, top.toFloat(), width.toFloat(), (top + 1).toFloat(), textPaint)
 
-        val entries = TerminalKeyRow.entries
-        val share = width.toFloat() / entries.size
-        val textY = top + padding + -textPaint.fontMetrics.ascent
-        for ((index, entry) in entries.withIndex()) {
-            val left = index * share
-            if (entry is KeyRowEntry.Control && control.armed) {
+        for ((rowIndex, entries) in rows.withIndex()) {
+            val rowTop = top + padding + rowIndex * metrics.cellHeight
+            val textY = rowTop + -textPaint.fontMetrics.ascent
+            val share = width.toFloat() / entries.size
+            for ((index, entry) in entries.withIndex()) {
+                val left = index * share
+                if (modifierOf(entry)) {
+                    textPaint.color = TerminalPalette.DEFAULT_FOREGROUND
+                    canvas.drawRect(
+                        left,
+                        rowTop.toFloat(),
+                        left + share,
+                        (rowTop + metrics.cellHeight).toFloat(),
+                        textPaint,
+                    )
+                    textPaint.color = TerminalPalette.DEFAULT_BACKGROUND
+                }
+                val labelWidth = textPaint.measureText(entry.label)
+                canvas.drawText(entry.label, left + (share - labelWidth) / 2f, textY, textPaint)
                 textPaint.color = TerminalPalette.DEFAULT_FOREGROUND
-                canvas.drawRect(left, (top + 1).toFloat(), left + share, height.toFloat(), textPaint)
-                textPaint.color = TerminalPalette.DEFAULT_BACKGROUND
             }
-            val labelWidth = textPaint.measureText(entry.label)
-            canvas.drawText(entry.label, left + (share - labelWidth) / 2f, textY, textPaint)
-            textPaint.color = TerminalPalette.DEFAULT_FOREGROUND
         }
+    }
+
+    /** modifierOf is whether a button is a modifier whose latch is currently armed. */
+    private fun modifierOf(entry: KeyRowEntry): Boolean = when (entry) {
+        is KeyRowEntry.Control -> modifiers.ctrl
+        is KeyRowEntry.Alt -> modifiers.alt
+        else -> false
     }
 
     // --------------------------------------------------------------------------- touching
@@ -402,34 +493,14 @@ class TerminalView(context: Context, attrs: AttributeSet? = null) : View(context
     override fun onTouchEvent(event: MotionEvent): Boolean {
         val metrics = metrics ?: return false
         when (event.actionMasked) {
-            MotionEvent.ACTION_DOWN -> {
-                downX = event.x
-                downY = event.y
-                dragRemainder = 0f
-                downOnKeyRow = event.y >= keyRowTop(metrics)
-            }
+            MotionEvent.ACTION_DOWN -> touch.down(event.x, event.y, keyRowTop(metrics))
 
-            MotionEvent.ACTION_MOVE -> {
-                if (downOnKeyRow) return true
-                dragRemainder += event.y - downY
-                downY = event.y
-                val lines = (dragRemainder / metrics.cellHeight).toInt()
-                if (lines != 0) {
-                    dragRemainder -= lines * metrics.cellHeight
-                    scrollBy(-lines * DRAG_LINES)
-                }
-            }
+            MotionEvent.ACTION_MOVE -> scrollOrWheel(event.x, event.y, touch.move(event.x, event.y, metrics.cellHeight))
 
-            MotionEvent.ACTION_UP -> {
-                if (downOnKeyRow && event.y >= keyRowTop(metrics) && abs(event.x - downX) < touchSlop) {
-                    pressKeyRow(event.x.toInt())
-                } else if (!downOnKeyRow && abs(event.y - downY) < touchSlop) {
-                    // A tap on the console itself is how the soft keyboard is asked for: a
-                    // reader who has to find a menu item to type has been given a terminal
-                    // with no way in.
-                    requestFocus()
-                    showSoftKeyboard()
-                }
+            MotionEvent.ACTION_UP -> when (val outcome = touch.up(event.x, event.y)) {
+                is TouchOutcome.KeyRow -> pressKeyRow(outcome.x, outcome.y)
+                is TouchOutcome.Console -> tapConsole(outcome.x, outcome.y)
+                TouchOutcome.None -> Unit
             }
 
             MotionEvent.ACTION_SCROLL -> {
@@ -438,39 +509,105 @@ class TerminalView(context: Context, attrs: AttributeSet? = null) : View(context
                 // rounded, because a wheel that reported a fraction of a step would
                 // otherwise be a gesture that scrolled nothing at all.
                 val lines = event.getAxisValue(MotionEvent.AXIS_VSCROLL).roundToInt()
-                if (lines != 0) scrollBy(lines)
+                if (lines != 0) scrollOrWheel(event.x, event.y, lines)
             }
         }
         return true
     }
 
-    /** pressKeyRow is what a tap on the key row sends. */
-    private fun pressKeyRow(x: Int) {
-        when (val entry = TerminalKeyRow.entryAt(x, width)) {
+    /**
+     * tapConsole is what a tap on the console itself sends, and what it asks for.
+     *
+     * The soft keyboard is asked for, because the console is a thing to be typed into and a
+     * reader who has to find a menu item to type has been given a terminal with no way in.
+     *
+     * The client is told about the tap as well, as the mouse report a real terminal would
+     * have sent it — for the same reason a real terminal sends one: without it, the
+     * interface the client draws is a screen that can be read and not touched, and every
+     * entry in its lists, every button and every menu is unreachable. It is sent only when
+     * the client has asked to be told about the mouse (see [TerminalScreen.mouseReporting]):
+     * a report it never asked for is a click it would act on at a cell nobody touched.
+     *
+     * Nor is one sent while the window is back in the scrollback. What the client draws is
+     * the screen at the newest line, and a click on a line above it would land on whatever
+     * the client has at that row rather than on the line the reader is looking at.
+     */
+    private fun tapConsole(x: Int, y: Int) {
+        val screen = screen
+        val metrics = metrics
+        if (screen != null && metrics != null && screen.mouseReporting && scrollOffset == 0) {
+            val report = MouseReport(
+                button = MouseButton.LEFT,
+                col = (x / metrics.cellWidth).coerceIn(0, screen.cols - 1),
+                row = (y / metrics.cellHeight).coerceIn(0, screen.rows - 1),
+                down = true,
+            )
+            // A press and a release in the same cell, which together are what the client
+            // makes a click out of: a press alone moves its focus and activates nothing.
+            onMouse?.invoke(TerminalMouse.encode(report, screen.mouseSgr))
+            onMouse?.invoke(TerminalMouse.encode(report.copy(down = false), screen.mouseSgr))
+        }
+        requestFocus()
+        showSoftKeyboard()
+    }
+
+    /** pressKeyRow is what a tap on the key strip sends, or which button it works. */
+    private fun pressKeyRow(x: Int, y: Int) {
+        val metrics = metrics ?: return
+        val rows = stripRows()
+        // The keyboard can go away between the finger going down and coming up, which takes
+        // the keys with it: there is then no button under the finger to have pressed.
+        if (rows.isEmpty()) return
+        val entry = TerminalKeyRow.entryAt(
+            x = x,
+            y = y,
+            width = width,
+            stripTop = keyRowTop(metrics),
+            rowHeight = metrics.cellHeight,
+            rows = rows,
+        )
+        when (entry) {
             is KeyRowEntry.Control -> {
-                control.toggle()
+                modifiers.toggleCtrl()
                 invalidate()
             }
 
+            is KeyRowEntry.Alt -> {
+                modifiers.toggleAlt()
+                invalidate()
+            }
+
+            is KeyRowEntry.Toggle -> foldStrip(!stripCollapsed)
             is KeyRowEntry.Press -> send(entry.key)
         }
     }
 
     /**
-     * send hands one key to the session, after the control latch has had its say.
+     * foldStrip folds the key strip away, or brings it back, and hands the rows over with it.
      *
-     * Every key comes through here — the row's buttons, the soft keyboard, and a hardware
-     * keyboard — because the latch is the console's and not the row's: a person arms Control
-     * with a tap and then types a letter wherever they like.
+     * The strip is drawn over the terminal, so the rows it costs are rows the client does not
+     * have: folding it is a resize the client is told about, and unfolding it is another.
+     */
+    private fun foldStrip(collapsed: Boolean) {
+        stripCollapsed = collapsed
+        updateGrid()
+        invalidate()
+    }
+
+    /**
+     * send hands one key to the session, after the modifier latches have had their say.
+     *
+     * Every key comes through here — the strip's buttons, the soft keyboard, and a hardware
+     * keyboard — because the latches are the console's and not the strip's: a person arms
+     * Control with a tap and then types a letter wherever they like.
      */
     private fun send(key: TerminalKey) {
-        val wasArmed = control.armed
-        val sent = control.spend(key)
-        onKey?.invoke(sent)
-        // The Control button is drawn differently while it is armed, so the row is redrawn
-        // when the latch changes — and only then, since a keystroke redraws the console
+        val wasArmed = modifiers.ctrl || modifiers.alt
+        onKey?.invoke(modifiers.spend(key))
+        // A modifier button is drawn differently while it is armed, so the strip is redrawn
+        // when a latch changes — and only then, since a keystroke redraws the console
         // through the client's own output.
-        if (wasArmed != control.armed) {
+        if (wasArmed != (modifiers.ctrl || modifiers.alt)) {
             invalidate()
         }
     }
@@ -481,6 +618,42 @@ class TerminalView(context: Context, attrs: AttributeSet? = null) : View(context
         if (wanted == scrollOffset) return
         scrollOffset = wanted
         invalidate()
+    }
+
+    /**
+     * scrollOrWheel is what a drag, or a wheel, over the console asks for.
+     *
+     * A gesture across the client's interface is a scroll, and whose scroll it is depends on
+     * what the client can do with one. A client that has asked to be told about the mouse is
+     * given wheel reports at the cell the finger is on, so what scrolls is whatever it has
+     * there — a guide, a page, a room's messages — which is the only scrolling a full-screen
+     * client can be given from outside itself. A client that has asked for nothing is
+     * scrolled by the console instead, through the lines it kept above the screen.
+     *
+     * [lines] is [TouchGesture.move]'s own: positive is a finger moving up the screen, which
+     * asks for what is below the window — the next lines of a document and the older lines of
+     * a console are the same gesture, so the wheel turns down and the window moves towards
+     * the newest.
+     */
+    private fun scrollOrWheel(x: Float, y: Float, lines: Int) {
+        if (lines == 0) return
+        val screen = screen
+        val metrics = metrics
+        if (screen != null && metrics != null && screen.mouseReporting && scrollOffset == 0) {
+            val button = if (lines > 0) MouseButton.WHEEL_DOWN else MouseButton.WHEEL_UP
+            val report = MouseReport(
+                button = button,
+                col = (x / metrics.cellWidth).toInt().coerceIn(0, screen.cols - 1),
+                row = (y / metrics.cellHeight).toInt().coerceIn(0, screen.rows - 1),
+                // The wheel has no press and no release: one report is one notch.
+                down = true,
+            )
+            repeat(abs(lines).coerceAtMost(MAX_WHEEL_NOTCHES)) {
+                onMouse?.invoke(TerminalMouse.encode(report, screen.mouseSgr))
+            }
+            return
+        }
+        scrollBy(-lines)
     }
 
     // ------------------------------------------------------------------------ the keyboard
@@ -548,12 +721,10 @@ class TerminalView(context: Context, attrs: AttributeSet? = null) : View(context
         val text = String(Character.toChars(character))
         // A hardware control key is reported as a flag rather than as a code of its own, and
         // ctrl-c has to reach the client as one byte: this is the only path that can send it
-        // from a keyboard, and the key row's latch is the only one from a touchscreen.
-        if (event.isCtrlPressed && text.length == 1) {
-            val ctrl = TerminalKeyRow.withControl(armed = true, key = TerminalKey.Rune(text))
-            if (ctrl != TerminalKey.Rune(text)) return ctrl
-        }
-        return TerminalKey.Rune(text)
+        // from a keyboard, and the strip's latch is the only one from a touchscreen. Alt is a
+        // flag as well, and a prefix on whatever the key sends.
+        val typed = TerminalKeyRow.withControl(event.isCtrlPressed, TerminalKey.Rune(text))
+        return if (event.isAltPressed) TerminalKey.Alt(typed) else typed
     }
 
     private fun showSoftKeyboard() {

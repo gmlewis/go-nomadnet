@@ -43,6 +43,68 @@ class ApplianceConfigTest {
     }
 
     @Test
+    fun theTransportAndItsClientsAreGivenTheSameRpcKey() {
+        // Python derives the RPC key from the identity in the storage directory both sides
+        // share. The appliance's two sides do not share one — the client must have a
+        // configuration of its own, or it races the transport for the shared instance — so the
+        // key is stated on both. Without it the client presents a key the transport never
+        // published and every RPC is answered "unauthorized": the Interfaces page shows an
+        // appliance that is connected as though it were not.
+        val key = ApplianceSettings.generateRpcKey()
+        val spec = ApplianceConfig.nodeConfig(
+            hubSpec = "example.com:4242",
+            resolve = { _, _ -> DialableAddress("2001:db8::1", isIPv6 = true, probed = true) },
+            rpcKey = key,
+        )
+
+        assertEquals(key, spec.rpcKey)
+        val transport = NodeConfigRenderer.reticulumConfig(spec)
+        val client = NodeConfigRenderer.clientReticulumConfig(spec)
+        assertTrue("the transport does not state the key:\n$transport", transport.contains("rpc_key = $key"))
+        assertTrue("the client does not state the key:\n$client", client.contains("rpc_key = $key"))
+    }
+
+    @Test
+    fun anIsolatedTransportStillCarriesTheRpcKey() {
+        // The key is about the transport's own clients, not about the network: a tablet whose
+        // hub does not resolve is still a tablet whose client must be able to ask it for its
+        // interface stats and its path table.
+        val key = ApplianceSettings.generateRpcKey()
+        val spec = ApplianceConfig.nodeConfig(hubSpec = "not-a-host-port", rpcKey = key)
+        assertTrue(spec.interfaces.isEmpty())
+        assertEquals(key, spec.rpcKey)
+        assertTrue(NodeConfigRenderer.reticulumConfig(spec).contains("rpc_key = $key"))
+    }
+
+    @Test
+    fun anRpcKeyIsThirtyTwoBytesOfHexAndDifferentEveryTime() {
+        val key = ApplianceSettings.generateRpcKey()
+        assertEquals(
+            "the key must be 32 bytes: the transport reads it as hex",
+            ApplianceSettings.RPC_KEY_BYTES * 2,
+            key.length,
+        )
+        assertTrue("the key must be lowercase hex: $key", key.all { it in "0123456789abcdef" })
+        assertTrue(
+            "a key minted twice must not repeat",
+            ApplianceSettings.generateRpcKey() != ApplianceSettings.generateRpcKey(),
+        )
+    }
+
+    @Test
+    fun aTransportWithNoKeyStatedIsNotGivenOne() {
+        // The key is the appliance's to state. A spec that does not carry one renders a
+        // configuration without the line at all, rather than an empty value the stack would
+        // reject as an invalid key and fall back from.
+        val spec = ApplianceConfig.nodeConfig(
+            hubSpec = "example.com:4242",
+            resolve = { _, _ -> DialableAddress("2001:db8::1", isIPv6 = true, probed = true) },
+        )
+        assertTrue(!NodeConfigRenderer.reticulumConfig(spec).contains("rpc_key"))
+        assertTrue(!NodeConfigRenderer.clientReticulumConfig(spec).contains("rpc_key"))
+    }
+
+    @Test
     fun aHubThatCannotBeParsedLeavesTheTransportIsolatedRatherThanBroken() {
         // An appliance whose hub address is a typo must still start: the transport comes up
         // with no interface, the node is simply isolated, and the operator is told why.

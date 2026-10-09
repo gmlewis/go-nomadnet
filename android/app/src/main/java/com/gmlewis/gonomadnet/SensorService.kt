@@ -192,7 +192,10 @@ class SensorService : Service() {
         // bundled Go binary cannot resolve a name on Android at all.
         val hubSpec = ApplianceSettings(this).hubSpec
         ApplianceConfig.describeFailure(hubSpec)?.let { report(it) }
-        val config = ApplianceConfig.nodeConfig(hubSpec)
+        // The RPC key is stated rather than derived, because the transport and its clients run
+        // from different configuration directories and would derive different keys from the
+        // identities in them — which leaves every client's RPC refused as "unauthorized".
+        val config = ApplianceConfig.nodeConfig(hubSpec, rpcKey = ApplianceSettings(this).rpcKey)
         if (config.interfaces.isEmpty()) {
             report("the transport has no interface, so the appliance is isolated from the network")
             report("hub address: \"$hubSpec\"")

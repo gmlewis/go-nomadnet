@@ -135,41 +135,160 @@ class TerminalViewTest {
     }
 
     @Test
-    fun `the on-screen key row offers escape tab control and the arrows`() {
-        // The keys a tablet has no way to press. Without them the client cannot be driven at
-        // all: escape backs out of a dialog, tab moves between its regions, and the arrows
-        // are how a menu is walked.
-        val offered = TerminalKeyRow.entries.filterIsInstance<KeyRowEntry.Press>().map { it.key }
+    fun `the key strip offers the keys a tablet has no way to press`() {
+        // The keys a soft keyboard has no button for. Without them the client cannot be
+        // driven at all: escape backs out of a dialog, home and end and the page keys walk a
+        // document, and the arrows are how a menu is walked. They are the Termux extra-keys
+        // row's own keys, so a person who has driven this client under Termux finds the same
+        // buttons here.
+        val rows = TerminalKeyRow.rows(collapsed = false)
+        assertEquals("the strip is not two rows", 2, rows.size)
+        assertEquals("the rows are not the same width", rows[0].size, rows[1].size)
+
+        val top = rows[0].filterIsInstance<KeyRowEntry.Press>()
         assertEquals(
-            "the row does not offer the keys the client needs",
+            "the strip's top row is not escape, the path characters and navigation",
             listOf(
                 TerminalKey.Special(SpecialKey.ESCAPE),
-                TerminalKey.Special(SpecialKey.TAB),
+                TerminalKey.Rune("/"),
+                TerminalKey.Rune("-"),
+                TerminalKey.Special(SpecialKey.HOME),
                 TerminalKey.Special(SpecialKey.UP),
-                TerminalKey.Special(SpecialKey.DOWN),
-                TerminalKey.Special(SpecialKey.LEFT),
-                TerminalKey.Special(SpecialKey.RIGHT),
+                TerminalKey.Special(SpecialKey.END),
+                TerminalKey.Special(SpecialKey.PAGE_UP),
             ),
-            offered,
+            top.map { it.key },
+        )
+        val bottom = rows[1].filterIsInstance<KeyRowEntry.Press>()
+        assertEquals(
+            "the strip's bottom row is not the navigation it should be",
+            listOf(
+                TerminalKey.Special(SpecialKey.LEFT),
+                TerminalKey.Special(SpecialKey.DOWN),
+                TerminalKey.Special(SpecialKey.RIGHT),
+                TerminalKey.Special(SpecialKey.PAGE_DOWN),
+            ),
+            bottom.map { it.key },
         )
 
-        // Control is a latch rather than a key: it is held, and the next character tapped is
-        // sent as its control code. That is how ctrl-c reaches the client at all.
-        val control = TerminalKeyRow.entries.filterIsInstance<KeyRowEntry.Control>()
-        assertEquals("the row offers no control key", 1, control.size)
-        assertEquals("Ctrl", control.single().label)
+        // Control and Alt are latches rather than keys: each is held, and the next character
+        // tapped is sent with it. That is how ctrl-c reaches the client at all, and how alt
+        // combinations reach it from a touchscreen.
+        assertEquals(1, rows[1].filterIsInstance<KeyRowEntry.Control>().size)
+        assertEquals("Ctrl", rows[1].filterIsInstance<KeyRowEntry.Control>().single().label)
+        assertEquals(1, rows[1].filterIsInstance<KeyRowEntry.Alt>().size)
+        assertEquals("Alt", rows[1].filterIsInstance<KeyRowEntry.Alt>().single().label)
 
-        // Every button on the row sends something, and says what it is: a button that sends
-        // nothing is a dead patch of screen.
-        for (entry in TerminalKeyRow.entries) {
+        // Every button on the strip sends something, and says what it is: a button that
+        // sends nothing is a dead patch of screen.
+        for (entry in rows.flatten()) {
+            assertTrue("a button has no label", entry.label.isNotEmpty())
             when (entry) {
-                is KeyRowEntry.Press -> {
-                    assertTrue("a button has no label", entry.label.isNotEmpty())
-                    assertNotNull("${entry.label} sends nothing", TerminalKeys.toBytes(entry.key))
-                }
-                is KeyRowEntry.Control -> assertTrue("the control key has no label", entry.label.isNotEmpty())
+                is KeyRowEntry.Press -> assertNotNull("${entry.label} sends nothing", TerminalKeys.toBytes(entry.key))
+                is KeyRowEntry.Control, is KeyRowEntry.Alt, is KeyRowEntry.Toggle -> Unit
             }
         }
+    }
+
+    @Test
+    fun `the strip folds away to the button that brings it back`() {
+        // The strip costs rows, and the rows are the client's. A reader who wants them back
+        // folds it away — and the folded strip is the toggle itself, because a strip that
+        // could be folded away and not brought back would be a keyboard with no escape key
+        // and no way to ask for one.
+        val folded = TerminalKeyRow.rows(collapsed = true)
+        assertEquals("a folded strip is not one row", 1, folded.size)
+        assertEquals("a folded strip is not one button", 1, folded[0].size)
+        val toggle = folded[0].single()
+        assertTrue("the folded strip is not the toggle", toggle is KeyRowEntry.Toggle)
+        assertEquals("the toggle does not point at unfolding", "▴", toggle.label)
+        assertEquals(
+            "the unfolded toggle does not point at folding",
+            "▾",
+            TerminalKeyRow.rows(collapsed = false)[1].first { it is KeyRowEntry.Toggle }.label,
+        )
+
+        // Two rows of keys cost two rows of the terminal; a folded one costs one. The strip
+        // is drawn over the client, so those rows come out of what the client is told it has.
+        val cellHeight = 16
+        val padding = 2 * TerminalKeyRow.padding(cellHeight)
+        assertEquals(
+            "an unfolded strip does not cost its two rows",
+            2 * cellHeight + padding,
+            TerminalKeyRow.height(TerminalKeyRow.rows(collapsed = false), cellHeight),
+        )
+        assertEquals(
+            "a folded strip does not give a row back",
+            cellHeight + padding,
+            TerminalKeyRow.height(folded, cellHeight),
+        )
+    }
+
+    @Test
+    fun `a strip that is not shown takes no rows at all`() {
+        // The strip comes and goes with the soft keyboard, and the rows it is drawn in are
+        // the client's rows: a console with no keyboard is a client with the whole screen —
+        // and no rule drawn across its last row.
+        val cellHeight = 16
+        assertEquals(
+            "a strip that is not shown still takes room",
+            0,
+            TerminalKeyRow.height(rows = emptyList(), cellHeight = cellHeight),
+        )
+        assertEquals(
+            "a shown strip takes its rows and its padding",
+            2 * cellHeight + 2 * TerminalKeyRow.padding(cellHeight),
+            TerminalKeyRow.height(TerminalKeyRow.rows(collapsed = false), cellHeight),
+        )
+    }
+
+    @Test
+    fun `the strip's buttons are the buttons a tap lands on`() {
+        // The strip is drawn as equal shares of each row's width, so a tap is a division: the
+        // point decides which button it landed on, and the ends of a row are not one button
+        // short. The row is part of the division too, or every tap would be a tap on the top
+        // row's buttons.
+        val rows = TerminalKeyRow.rows(collapsed = false)
+        val width = rows[0].size * 100
+        val rowHeight = 20
+        val stripTop = 800
+
+        assertEquals("the left edge", rows[0][0], TerminalKeyRow.entryAt(x = 0, y = stripTop, width, stripTop, rowHeight, rows))
+        assertEquals(
+            "just inside the first",
+            rows[0][0],
+            TerminalKeyRow.entryAt(x = 99, y = stripTop, width, stripTop, rowHeight, rows),
+        )
+        assertEquals(
+            "just inside the second",
+            rows[0][1],
+            TerminalKeyRow.entryAt(x = 100, y = stripTop, width, stripTop, rowHeight, rows),
+        )
+        assertEquals(
+            "a tap in the middle of the top row",
+            rows[0][3],
+            TerminalKeyRow.entryAt(x = 350, y = stripTop + 5, width, stripTop, rowHeight, rows),
+        )
+        assertEquals(
+            "the last button of the top row must be reachable",
+            rows[0].last(),
+            TerminalKeyRow.entryAt(x = width - 1, y = stripTop, width, stripTop, rowHeight, rows),
+        )
+        assertEquals(
+            "the same place one row down is the row below's button",
+            rows[1][3],
+            TerminalKeyRow.entryAt(x = 350, y = stripTop + rowHeight, width, stripTop, rowHeight, rows),
+        )
+        assertEquals(
+            "the last row's last button must be reachable",
+            rows[1].last(),
+            TerminalKeyRow.entryAt(x = width, y = stripTop + 2 * rowHeight, width, stripTop, rowHeight, rows),
+        )
+        // A view that has not been laid out yet is not a division by zero.
+        assertEquals(
+            rows[0][0],
+            TerminalKeyRow.entryAt(x = 0, y = 0, width = 0, stripTop = 0, rowHeight = 0, rows),
+        )
 
         // With control held, a letter is its control code — and a word an input method
         // committed is not a letter, and neither is a key that has no code.
@@ -180,23 +299,6 @@ class TerminalViewTest {
             TerminalKeyRow.withControl(armed = true, key = TerminalKey.Special(SpecialKey.UP)),
         )
         assertEquals(TerminalKey.Rune("c"), TerminalKeyRow.withControl(armed = false, key = TerminalKey.Rune("c")))
-
-        // The row is drawn as equal shares of the width, so a tap is a division: the point
-        // decides which of the buttons it landed on, and the ends of the row are not one
-        // button short.
-        val width = TerminalKeyRow.entries.size * 100
-        assertEquals("the left edge", TerminalKeyRow.entries[0], TerminalKeyRow.entryAt(x = 0, width = width))
-        assertEquals("just inside the first", TerminalKeyRow.entries[0], TerminalKeyRow.entryAt(x = 99, width = width))
-        assertEquals("just inside the second", TerminalKeyRow.entries[1], TerminalKeyRow.entryAt(x = 100, width = width))
-        assertEquals("a tap in the middle", TerminalKeyRow.entries[3], TerminalKeyRow.entryAt(x = 350, width = width))
-        assertEquals(
-            "the last button must be reachable",
-            TerminalKeyRow.entries.last(),
-            TerminalKeyRow.entryAt(x = width - 1, width = width),
-        )
-        assertEquals("past the right edge", TerminalKeyRow.entries.last(), TerminalKeyRow.entryAt(x = width, width = width))
-        // A view that has not been laid out yet is not a division by zero.
-        assertEquals(TerminalKeyRow.entries[0], TerminalKeyRow.entryAt(x = 0, width = 0))
     }
 
     @Test
@@ -224,44 +326,74 @@ class TerminalViewTest {
     }
 
     @Test
-    fun `the control latch is spent by the next character wherever it is typed`() {
-        // A tablet cannot hold Control down and press a letter, so Control is a switch: armed
-        // by a tap, spent by whatever comes next. "Whatever comes next" is the care here —
-        // the latch belongs to the console rather than to the key row, because the letter it
-        // is spent on is typed on the soft keyboard, or on a keyboard that is not this app's
-        // at all. A latch that only the key row consulted would send a plain q where the
-        // person meant ^Q, which is the difference between quitting and typing.
-        val latch = ControlLatch()
-        assertFalse("the latch starts armed", latch.armed)
+    fun `a modifier latch is spent by the next key wherever it is typed`() {
+        // A tablet cannot hold Control or Alt down and press a letter, so each is a switch:
+        // armed by a tap, spent by whatever comes next. "Whatever comes next" is the care
+        // here — the latch belongs to the console rather than to the strip, because the
+        // letter it is spent on is typed on the soft keyboard, or on a keyboard that is not
+        // this app's at all. A latch that only the strip consulted would send a plain q where
+        // the person meant ^Q, which is the difference between quitting and typing.
+        val latch = ModifierLatch()
+        assertFalse("the latch starts armed", latch.ctrl)
+        assertFalse("the latch starts armed", latch.alt)
 
         assertEquals(TerminalKey.Rune("q"), latch.spend(TerminalKey.Rune("q")))
-        assertFalse("an unarmed latch changed a key", latch.armed)
+        assertFalse("an unarmed latch changed a key", latch.ctrl)
 
-        latch.toggle()
-        assertTrue("a tap on Control must arm the latch", latch.armed)
+        latch.toggleCtrl()
+        assertTrue("a tap on Control must arm the latch", latch.ctrl)
         assertEquals(
             "a character typed while Control is armed is sent with control",
             TerminalKey.Ctrl('q'),
             latch.spend(TerminalKey.Rune("q")),
         )
-        assertFalse("the latch was not spent by the character", latch.armed)
+        assertFalse("the latch was not spent by the character", latch.ctrl)
         assertEquals("the latch was spent twice", TerminalKey.Rune("q"), latch.spend(TerminalKey.Rune("q")))
 
         // An arrow has no control code, so it is sent as itself and the latch is kept: a
         // keyboard with no control key needs it to still be there afterwards. The same goes
         // for a word committed by an input method, which is not a character to a terminal.
-        latch.toggle()
+        latch.toggleCtrl()
         assertEquals(TerminalKey.Special(SpecialKey.LEFT), latch.spend(TerminalKey.Special(SpecialKey.LEFT)))
-        assertTrue("an arrow spent the latch", latch.armed)
+        assertTrue("an arrow spent the latch", latch.ctrl)
         assertEquals(TerminalKey.Rune("hello"), latch.spend(TerminalKey.Rune("hello")))
-        assertTrue("a committed word spent the latch", latch.armed)
+        assertTrue("a committed word spent the latch", latch.ctrl)
         assertEquals("the next real character is the one Control was armed for", TerminalKey.Ctrl('x'), latch.spend(TerminalKey.Rune("x")))
-        assertFalse(latch.armed)
+        assertFalse(latch.ctrl)
 
-        // Two taps are off again, so a person who armed Control by mistake can disarm it.
-        latch.toggle()
-        latch.toggle()
-        assertFalse("two taps must leave the latch disarmed", latch.armed)
+        // Alt is a prefix rather than a code, so it applies to whatever the key sends — an
+        // arrow as much as a letter — and anything spends it.
+        latch.toggleAlt()
+        assertTrue("a tap on Alt must arm the latch", latch.alt)
+        assertEquals(
+            "a character typed while Alt is armed is sent as an alt combination",
+            TerminalKey.Alt(TerminalKey.Rune("x")),
+            latch.spend(TerminalKey.Rune("x")),
+        )
+        assertFalse("the latch was not spent by the character", latch.alt)
+        latch.toggleAlt()
+        assertEquals(
+            "alt applies to a key that has no character of its own",
+            TerminalKey.Alt(TerminalKey.Special(SpecialKey.LEFT)),
+            latch.spend(TerminalKey.Special(SpecialKey.LEFT)),
+        )
+        assertFalse(latch.alt)
+
+        // Both at once is one key press with both modifiers on it, and both are spent.
+        latch.toggleCtrl()
+        latch.toggleAlt()
+        assertEquals(
+            "control and alt together are not both applied",
+            TerminalKey.Alt(TerminalKey.Ctrl('c')),
+            latch.spend(TerminalKey.Rune("c")),
+        )
+        assertFalse("Control survived the character", latch.ctrl)
+        assertFalse("Alt survived the character", latch.alt)
+
+        // Two taps are off again, so a person who armed a modifier by mistake can disarm it.
+        latch.toggleCtrl()
+        latch.toggleCtrl()
+        assertFalse("two taps must leave the latch disarmed", latch.ctrl)
     }
 
     /** GridCase is a rectangle of pixels and the grid that fits in it. */

@@ -297,6 +297,19 @@ class ConsoleSession(
      */
     fun sendKey(key: TerminalKey) {
         val bytes = TerminalKeys.toBytes(key) ?: return
+        sendBytes(bytes)
+    }
+
+    /**
+     * sendBytes writes terminal bytes to the host as a data frame.
+     *
+     * Not everything a terminal sends is a key press: a mouse report is a sequence of its
+     * own, spelled by [TerminalMouse] the way the client asked to be told about it. An empty
+     * write is not sent, because an empty write is still a write and the client would read it
+     * as something having happened.
+     */
+    fun sendBytes(bytes: ByteArray) {
+        if (bytes.isEmpty()) return
         write(ConsoleFrame.Data(bytes))
     }
 

@@ -124,6 +124,38 @@ class TerminalKeysTest {
     }
 
     @Test
+    fun `an alt combination is an escape in front of the key`() {
+        // A terminal has no alt byte to send. What it writes is the key's own bytes with an
+        // escape before them — `xterm`'s metaSendsEscape — and the client reads that as the
+        // meta combination, which is how alt reaches it from a keyboard that cannot hold alt
+        // down. The escape is the prefix and nothing else about the key changes.
+        val cases = listOf(
+            KeyCase("alt and a letter", TerminalKey.Alt(TerminalKey.Rune("x")), listOf(0x1b, 0x78)),
+            KeyCase(
+                "alt and an arrow",
+                TerminalKey.Alt(TerminalKey.Special(SpecialKey.UP)),
+                listOf(0x1b) + listOf(0x1b, 0x5b, 0x41),
+            ),
+            KeyCase("alt and escape", TerminalKey.Alt(TerminalKey.Special(SpecialKey.ESCAPE)), listOf(0x1b, 0x1b)),
+            KeyCase(
+                "alt over control",
+                TerminalKey.Alt(TerminalKey.Ctrl('c')),
+                listOf(0x1b, 0x03),
+            ),
+        )
+
+        for (case in cases) {
+            assertEquals("${case.name}: the bytes", case.want, sent(case.key))
+        }
+
+        // Alt over a key that sends nothing sends nothing: a prefix with no key behind it is
+        // not a key press, and a caller that sent one would be telling the client something
+        // happened.
+        assertEquals(null, sent(TerminalKey.Alt(TerminalKey.Special(SpecialKey.F1))))
+        assertEquals(null, sent(TerminalKey.Alt(TerminalKey.Rune(""))))
+    }
+
+    @Test
     fun `an unmapped key sends nothing`() {
         // The terminal's own vocabulary has no function keys: nothing in the client's
         // interface reads one, and a hardware keyboard's F1 means nothing to it.

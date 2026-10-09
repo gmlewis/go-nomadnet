@@ -114,6 +114,43 @@ class NodeConfigRendererTest {
     }
 
     @Test
+    fun theClientListsTheInterfacesTheTransportDials() {
+        // The client's Interfaces page reads this file and shows what it finds there, so a
+        // client configuration that listed nothing showed the operator an appliance with no
+        // interfaces at all while its transport was dialling the hub. The two sections are
+        // the same list because they are the same interfaces.
+        val spec = NodeConfigSpec(
+            interfaces = listOf(InterfaceSpec("Home Hub", "203.0.113.7", 4242)),
+        )
+        val transport = NodeConfigRenderer.reticulumConfig(spec)
+        val client = NodeConfigRenderer.clientReticulumConfig(spec)
+
+        assertTrue("the client does not list the hub:\n$client", client.contains("[[Home Hub]]"))
+        assertTrue(client.contains("target_host = 203.0.113.7"))
+        assertTrue(client.contains("target_port = 4242"))
+        assertEquals(
+            "the two configuration files disagree about what this appliance connects through",
+            transport.substringAfter("[interfaces]\n"),
+            client.substringAfter("[interfaces]\n"),
+        )
+
+        // Listing an interface is not owning it: the client must still refuse to become the
+        // shared instance, which is the only thing that would make it dial on its own.
+        assertTrue(client.contains("require_shared_instance = yes"))
+        assertTrue(client.contains("enable_transport = no"))
+    }
+
+    @Test
+    fun theClientStillStatesAnEmptyInterfaceListRatherThanLeavingItBlank() {
+        val client = NodeConfigRenderer.clientReticulumConfig(NodeConfigSpec())
+        assertTrue(client.contains("[interfaces]"))
+        assertTrue(
+            "an empty list is a deliberate configuration and should say so:\n$client",
+            client.contains("Deliberately empty"),
+        )
+    }
+
+    @Test
     fun literalAddressAcceptsAddressesAndRefusesNames() {
         for (address in listOf("127.0.0.1", "203.0.113.7", "0.0.0.0", "[2001:db8::1]", "::1")) {
             assertTrue("$address is a literal", NodeConfigRenderer.literalAddress(address) != null)
