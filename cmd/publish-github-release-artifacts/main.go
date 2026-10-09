@@ -137,8 +137,40 @@ const (
 	androidAssetSuffix = ".apk"
 	// goReticulumVersionFile is the sibling module's version, which the APK's daemons are
 	// compiled from. A release note that names it is the only record of the cross-repo pin.
+	// It is relative to the repository root, like every other path here; repoFile is what
+	// makes that true from anywhere.
 	goReticulumVersionFile = "../go-reticulum/rns/version.go"
 )
+
+// repoFile resolves a path named relative to the repository root.
+//
+// The publisher is run from the repository root, so its paths are written relative to it.
+// The unit tests are not run from there: `go test` gives every test the package's own
+// directory as its working directory, so a relative path that is right for the publisher is
+// wrong for the test that checks what the publisher would write — and a test that cannot
+// read what it is asserting on is a test that passes for the wrong reason. The root is
+// found by walking up to the directory holding go.mod, which is the same directory in both
+// cases; a path that already resolves is left alone, and one that never resolves is
+// returned unchanged so its caller reports the path it actually tried.
+func repoFile(rel string) string {
+	if _, err := os.Stat(rel); err == nil {
+		return rel
+	}
+	dir, err := os.Getwd()
+	if err != nil {
+		return rel
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return filepath.Join(dir, rel)
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return rel
+		}
+		dir = parent
+	}
+}
 
 // inUseMarker is the file markScratchInUse drops inside the scratch dir. It
 // names this process's PID, and scripts/clean-test-tmp.sh leaves a directory
@@ -637,7 +669,7 @@ func collectAndroidArtifacts(stagingDir, version string, progress *os.File) []st
 // notes, which are rendered before anything is uploaded and on a machine where a `go list`
 // against the workspace may not be meaningful.
 func readGoReticulumVersion() string {
-	data, err := os.ReadFile(goReticulumVersionFile)
+	data, err := os.ReadFile(repoFile(goReticulumVersionFile))
 	if err != nil {
 		return "an unrecorded version"
 	}
@@ -704,16 +736,16 @@ func buildReleaseNotes(version, repo string, assets []string) string {
 			"install from unknown sources when it asks. From a computer, `adb install -r <apk>` "+
 			"does the same over USB. The APK is signed, so a later release upgrades it in place.\n\n")
 		mustFprintf(&b, "The client is a terminal program, and Android has no terminal, so the app "+
-			"also sets up the terminal environment it runs in: it installs the correct Termux "+
-			"build (F-Droid's, after checking the signing certificate), carries its own "+
-			"`linux/arm64` client inside the APK so nothing is downloaded per device, publishes "+
-			"the client and the launchers into Downloads, and hands over a setup script that "+
-			"installs and configures all of it. Two buttons do it.\n\n")
+			"brings one: it carries both the `linux/arm64` client and the console host that "+
+			"gives it a pseudo-terminal, and draws the result on the screen. There is nothing "+
+			"else to install and nothing to configure by hand — start the node, then open the "+
+			"client, and it attaches to the transport the app owns.\n\n")
 		mustFprintf(&b, "Follow [the Android appliance guide]"+
-			"(https://github.com/%v/blob/master/docs/Android-APK.md): it is the eight-step version "+
+			"(https://github.com/%v/blob/master/docs/Android-APK.md): it is the short version "+
 			"of the above, and it needs no computer. "+
 			"[Running gonomadnet on Android](https://github.com/%v/blob/master/docs/Android.md) "+
-			"explains what Android does to a terminal program.\n\n", repo, repo)
+			"covers running the client on a device without the appliance, and what Android does "+
+			"to a terminal program.\n\n", repo, repo)
 	}
 
 	mustFprintf(&b, "## Hardware Projects & Pre-built Artifacts\n\n")

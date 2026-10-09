@@ -10,10 +10,9 @@
 # host that gives the client a terminal under Android, and the Android Gradle Plugin
 # packages all six under a .so name in nativeLibraryDir — the only extension the packager
 # keeps, and the only directory an app with targetSdk >= 29 is allowed to execute a file
-# from. They are all built for the same Linux/arm64, because Android is Linux. The client
-# is put in the assets as well, where Termux — the only process that may run it today —
-# picks it up from shared storage. Bundling it is what turns the release page's dozen
-# assets for a dozen machines into a button.
+# from. They are all built for the same Linux/arm64, because Android is Linux. The app
+# runs the client itself, so one APK is the whole appliance: nothing else has to be
+# installed on the device, and there is nothing in it for another application to run.
 #
 #   ./scripts/build-android-apk.sh              build a signed release APK
 #   ./scripts/build-android-apk.sh --debug      build an installable debug APK
@@ -44,7 +43,7 @@ MODE="release"
 for arg in "$@"; do
   case "$arg" in
     --help|-h)
-      sed -n '2,29p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,31p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     --debug) MODE="debug" ;;
@@ -97,22 +96,6 @@ build_binary() {
     go build -trimpath $tags -o "$JNI_DIR/$output" "./$package" )
 }
 
-# build_client cross-compiles this repository's own client for the tablet.
-#
-# The same linux/arm64 as the daemons, with the same build tag the release publisher
-# uses for that target, so the binary a person gets from the release page and the one
-# inside the APK are the same build of the same code. It goes into the assets rather
-# than into jniLibs: nothing on this side of the Termux boundary executes it, so it
-# needs no .so name and no execution permission from Android — Termux runs it, under
-# Termux's uid, from Termux's home directory.
-build_client() {
-  local output="$ASSETS_DIR/gonomadnet-client"
-  echo "  $output"
-  ( cd "$REPO_ROOT" && \
-    GOOS=linux GOARCH=arm64 CGO_ENABLED=0 \
-    go build -trimpath -tags=wago -o "$output" ./cmd/gonomadnet )
-}
-
 if [ "$MODE" != "test" ]; then
   mkdir -p "$JNI_DIR" "$ASSETS_DIR"
   echo "building the bundled daemons for linux/arm64:"
@@ -130,24 +113,20 @@ if [ "$MODE" != "test" ]; then
   build_binary "$REPO_ROOT" "cmd/gonomadnet" "libgonomadnetclient.so" "-tags=wago"
   build_binary "$REPO_ROOT" "cmd/gorcons"    "libgorcons.so"         "-tags=wago"
   du -ch "$JNI_DIR"/*.so | tail -1
-
-  echo "building the client the appliance hands to Termux:"
-  build_client
-  du -h "$ASSETS_DIR/gonomadnet-client"
 fi
 
 # ---------------------------------------------------------------------------
-# The pinned contract between the appliance and Termux
+# The pinned contract between the appliance's transport and its client
 # ---------------------------------------------------------------------------
 
 # shared_instance_type, shared_instance_port and instance_name have to agree between
-# the configuration the appliance renders for its own transport and the one Termux's
+# the configuration the appliance renders for its own transport and the one its
 # attached client reads. A mismatch produces "no shared instance is running" and
 # nothing else, which is the least debuggable failure this project can produce.
 #
-# The check reads the configuration the APK itself carries. It used to read a copy
-# staged in the home directory of the one machine the tablet was set up from, which
-# meant the pin was verified where it mattered least and not at all anywhere else.
+# Both configurations are rendered from the constants read here, and the rendering is
+# asserted against those constants by the Android unit tests, which run below. So what
+# is printed here is the pin itself, read from the one place it is written.
 pinned_assertions() {
   local kotlin="$ANDROID_DIR/app/src/main/java/com/gmlewis/gonomadnet/NodeConfig.kt"
   local port name
@@ -164,34 +143,6 @@ pinned_assertions() {
   feed="$(sed -n 's/.*DEFAULT_FEED_PORT = \([0-9]*\).*/\1/p' \
     "$ANDROID_DIR/app/src/main/java/com/gmlewis/gonomadnet/SensorFeedServer.kt" | head -1)"
   echo "pinned sensor feed:      tcp 127.0.0.1:$feed"
-
-  local attached="$ASSETS_DIR/reticulum-stack-config"
-  if [ ! -f "$attached" ]; then
-    echo "the attached configuration $attached is not in the APK's assets" >&2
-    exit 1
-  fi
-  if ! grep -q "shared_instance_port = $port" "$attached"; then
-    echo "the attached configuration does not pin shared_instance_port = $port" >&2
-    exit 1
-  fi
-  if ! grep -q "instance_name = $name" "$attached"; then
-    echo "the attached configuration does not pin instance_name = $name" >&2
-    exit 1
-  fi
-  if ! grep -q "shared_instance_type = tcp" "$attached"; then
-    echo "the attached configuration does not reach the appliance over TCP" >&2
-    exit 1
-  fi
-  echo "the attached configuration agrees with the appliance"
-
-  # The launchers and the setup script are what that configuration is for, and both
-  # launchers have to point at the script a person can run when the client is missing.
-  for asset in gonomadnet-standalone gonomadnet-stack gonomadnet-setup.sh; do
-    if [ ! -f "$ASSETS_DIR/$asset" ]; then
-      echo "$asset is not in the APK's assets" >&2
-      exit 1
-    fi
-  done
 
   # The two programs this repository contributes are what put the client on a terminal
   # inside the app, and a build that quietly omitted one of them produces an APK whose

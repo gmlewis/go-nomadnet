@@ -15,14 +15,33 @@ the [latest release](https://github.com/gmlewis/go-nomadnet/releases).
 ./scripts/build-android-apk.sh --test-only  # the Kotlin unit tests only
 ```
 
-The script cross-compiles the four Go daemons for `linux/arm64`, stages them as
-`libgornsd.so`, `libgorrcd.so`, `libgorrcbot.so` and `libgonsensor.so`, runs the
-Kotlin unit tests, assembles the APK, verifies the signature, and leaves it in
-`dist/android/`. The version comes from `nomadnet/version/version.go`, and
-`versionCode` is derived from the same string (`major * 10000 + minor * 100 +
-patch`), so an upgrade cannot install backwards.
+The script cross-compiles **six** Go programs for `linux/arm64` and stages them as
+`.so` files in `jniLibs` — the only extension the packager keeps, and the only
+directory an app that targets the current `targetSdk` may execute a file from:
 
-The daemons total ~63 MB before compression; the APK is ~34 MB.
+| Staged as | Built from | What it is |
+| --- | --- | --- |
+| `libgornsd.so` | `go-reticulum` | the Reticulum transport |
+| `libgorrcd.so` | `go-reticulum` | the RRC hub |
+| `libgorrcbot.so` | `go-reticulum` | the chat bot |
+| `libgonsensor.so` | `go-reticulum` | the sensor converters |
+| `libgonomadnetclient.so` | this repository | the client |
+| `libgorcons.so` | this repository | the console host that gives that client a PTY |
+
+It then runs the Kotlin unit tests, assembles the APK, verifies the signature,
+and leaves it in `dist/android/`. The version comes from
+`nomadnet/version/version.go`, and `versionCode` is derived from the same string
+(`major * 10000 + minor * 100 + patch`), so an upgrade cannot install backwards.
+
+The six programs total ~96 MB before compression, and a debug APK is ~74 MB.
+
+**The client is built once.** It used to be staged a second time as the asset
+`gonomadnet-client`, for another application to run out of shared storage — worth
+another ~16 MB in the download. The app runs `libgonomadnetclient.so` itself now,
+so that copy, the launchers and the setup script that went with it are gone. What
+is still in `assets/` is the console's font and its license, the terminal colors
+and tmux configuration the client installs for a Termux user, and the bundled
+Bible text the bot's `kjv` command reads.
 
 Building needs the Android SDK and a signing key. The release publisher never
 builds an APK, so a machine without either can still cut a Go release.

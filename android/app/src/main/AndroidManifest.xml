@@ -16,22 +16,6 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <!-- Declaring this is necessary and not sufficient: it is a dangerous permission
-         and the sender has to be granted it by hand as well. -->
-    <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
-    <!-- The appliance installs Termux itself when the device has none that can run a
-         program, which is the step nobody should have to get right by hand: the Play
-         Store's build looks like Termux and cannot execute what it installs. Declaring
-         this still leaves the person to allow "install unknown apps" for this app, and
-         the appliance opens that screen rather than assuming it. -->
-    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
-
-    <!-- Required from targetSdk 30. Without it the RUN_COMMAND intent does not resolve
-         to Termux's service at all, and the launch fails silently rather than with an
-         error naming the missing package. -->
-    <queries>
-        <package android:name="com.termux" />
-    </queries>
 
     <application
         android:label="@string/app_name"
@@ -66,18 +50,5 @@
             android:name=".SensorService"
             android:exported="false"
             android:foregroundServiceType="location" />
-
-        <!-- Where the system reports the Termux install this appliance started, and
-             where it hands over the screen that asks the person to confirm it. Declared
-             here rather than registered by the activity because the answer can arrive
-             while the activity is stopped, and unexported because the answer is only
-             meaningful from the system. -->
-        <receiver
-            android:name=".InstallResultReceiver"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="com.gmlewis.gonomadnet.INSTALL_RESULT" />
-            </intent-filter>
-        </receiver>
     </application>
 </manifest>

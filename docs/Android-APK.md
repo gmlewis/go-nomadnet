@@ -2,23 +2,21 @@
 
 **gonomadnet node** turns an Android tablet into a self-contained Reticulum node.
 The app runs the Reticulum transport, an RRC hub and a chat bot under its own
-uid, and publishes the tablet's GNSS fix and compass heading as a sensor feed.
-The `gonomadnet` client can then use the tablet's real position, and the bot
-answers position and heading commands with it.
+uid, publishes the tablet's GNSS fix and compass heading as a sensor feed, and
+runs the `gonomadnet` client itself, on a console of its own inside the app.
 
-You get two things from one install:
+You get everything from one install — **one APK, one location grant, and no
+second app of any kind**:
 
-- a **node** that runs on the tablet with no computer and no server, and
-- **real sensors**, so position commands answer with where the tablet actually is.
+- a **node** that runs on the tablet with no computer and no server,
+- **real sensors**, so position commands answer with where the tablet actually is, and
+- **the client**, which the app starts out of its own storage and draws on its own screen.
 
 Nothing about your position leaves the device unless you ask for it — see
 [Privacy](#privacy).
 
-If you only want the terminal client and do not need the tablet's sensors, you do
-not need this app at all. See [`docs/Android.md`](Android.md) for the Termux-only
-client, and go-reticulum's
-[Android guide](https://github.com/gmlewis/go-reticulum/blob/master/docs/guides/android.md)
-for the platform-level details.
+If you want the client inside Termux instead, on a device without this app, see
+[`docs/Android.md`](Android.md). It is a complete guide and needs nothing here.
 
 ---
 
@@ -27,9 +25,6 @@ for the platform-level details.
 Everything on this page happens **on the device**. No computer, and no Android
 development tools, are needed — though `adb` is mentioned as an alternative for
 anyone who has them.
-
-You need two things: **this app**, and **Termux**. Both are one download each, and
-the app installs Termux for you.
 
 ### 1. Install the app
 
@@ -40,84 +35,41 @@ a settings link — allow installing from the app you opened it with (**Chrome**
 **Files**, or your browser), then tap **Install** again. The app appears as
 **gonomadnet node**.
 
+That is the only thing you install. The app carries its own client and the
+console that gives it a terminal, so there is nothing to download per device and
+nothing to copy anywhere.
+
 With a computer: `adb install -r gonomadnet-<version>-android-arm64-v8a.apk`.
 
-Grant the location permission it asks for. It uses the permission only to read the
-device's own GNSS receiver — see [Privacy](#privacy).
+### 2. Grant location
 
-### 2. Let the app install Termux
+Open **gonomadnet node** and accept the location permission it asks for. It uses
+the permission only to read the device's own GNSS receiver — see
+[Privacy](#privacy).
 
-Open **gonomadnet node** and tap **Install Termux**. The app downloads the build
-Termux's own project publishes, checks its signing key, and hands it to Android's
-installer for you to confirm.
+Without it the sensors do not run, and the app says so on its screen. Everything
+else works; position commands simply have no fix to answer with.
 
-You want this and not the Play Store: Google's build of Termux **cannot run
-programs it installs**, and the failure it produces names a permission that has
-nothing to do with the problem.
+### 3. Start the node
 
-Android will ask you to allow **install unknown apps** for this app the first
-time. The app opens that screen for you; the toggle is the only thing on it.
+Tap **Start stack**. Three daemons start — `gornsd` (transport), `gorrcd` (hub)
+and `gorrcbot` (bot) — plus three `gonsensor` converters, and the screen reports
+the node's address when they are up.
 
-When the install finishes, the button's own label says which build you now have.
+The screen is also where the appliance's failures appear, so it is worth watching
+for a moment: the daemons' failures are silent otherwise, and there is no other
+place they become visible.
 
-### 3. Tap "Publish files for Termux"
+**Start sensors** and **Stop sensors** control the sensor service on its own. It
+runs with the stack or without it; running it alone costs the least battery.
 
-The app writes everything Termux needs into your Downloads — the **gonomadnet
-client** for this device's architecture, the two launchers, and the terminal's
-font, colors and settings — and none of it is a choice you have to make. You do
-not need to know whether your tablet is `arm64`, which release asset is yours, or
-what a release asset is.
+### 4. Open the client
 
-The screen lists every file with its path, and reports whether Android's own font
-engine can load the font — that engine is the one Termux draws through, so its
-answer is the difference between the interface's icons and empty boxes.
+Tap **Open gonomadnet**. The app starts its transport if it is not already up,
+waits for it, and then runs its own client on a pseudo-terminal it creates — see
+[The console](#the-console).
 
-### 4. Tap "Set up Termux"
-
-Termux does the last part, because only Termux may write into its own home
-directory. The app asks it to run the setup script that step 3 published, and
-Termux reports what it did in the new session it opens.
-
-**The first time on a tablet, Android will refuse that request**, and the app says
-so. Tap **Copy the setup line** instead and paste it into a Termux session you open
-yourself:
-
-```sh
-bash /sdcard/Download/gonomadnet-setup.sh
-```
-
-That one line performs the whole installation. It is also what tells Termux to
-accept commands from the app at all (`allow-external-apps = true`), so it is the
-step that makes the app's own buttons work from then on.
-
-### 5. Grant RUN_COMMAND once
-
-**Settings → Apps → gonomadnet node → Permissions → Additional permissions →
-RUN_COMMAND.** Android gives no way for an app to request this permission or to
-grant it for itself; only you can. The app's startup readout shows whether it is
-granted, and without it the app's **Open gonomadnet** buttons do nothing — the
-client itself still runs, you just start it yourself.
-
-### 6. Start the node
-
-Tap **Start stack**. Three daemons start — `gornsd` (transport), `gorrcd` (hub) and
-`gorrcbot` (bot) — plus three `gonsensor` converters, and the screen reports the
-node's address when they are up. The screen is also where the appliance's failures
-appear, so it is worth watching for a moment. The sensors start with the location
-permission; **Start sensors** and **Stop sensors** control them on their own.
-
-### 7. Open the client
-
-Tap **Open gonomadnet (attached)**, or the *gonomadnet+stack* home-screen icon if
-you installed [Termux:Widget](https://f-droid.org/packages/com.termux.widget/). The
-icons are a convenience, not a requirement: the app's buttons run the same
-launchers, and the launchers are what refresh the hub's address before the client
-starts.
-
-If you want the client to own its own network instead of using this app's
-transport, use **Open gonomadnet (standalone)**. See [The two modes](#the-two-modes).
-
-### 8. Ask the bot where you are
+### 5. Ask the bot where you are
 
 In the client, Tab to **Channels** in the menu bar and press Enter, connect to
 the hub and join a room (`Ctrl-a` adds one), then send `/msg gobot whereami` from
@@ -128,74 +80,33 @@ is, from its own receiver.
 
 | Step | Who |
 | --- | --- |
-| Install Termux, and check it is the build that works | **the app** |
-| Get the right client binary for this device | **the app** |
-| Install the client, the launchers and the attached configuration | the setup script, **run for you** |
-| Set the terminal font, colors and `allow-external-apps` | the setup script |
-| Allow a Termux that is not the Play build | **the app** |
-| Allow installing apps at all | you, once (one toggle) |
-| Grant RUN_COMMAND | you, once (one toggle) |
-| Run the setup script the first time | you, once (one paste) |
-| Start the node, start the sensors, open the client | you, by button |
+| Get the client for this device | **the app** — it is inside the APK |
+| Give the client a terminal | **the app** — its own console, on a pseudo-terminal |
+| Attach the client to a transport | **the app** — one it owns and starts first |
+| Start the node, start the sensors | you, by button |
+| Grant location | you, once (one prompt) |
+| Open the client | you, by button |
 
-### How the pieces fit
+## The controls
 
-```
-GNSS + compass -> JSON -> gonsensor -> FIFO -> gorrcbot -> gorrcd -> gornsd -> the fleet
-                                              the client reads the same fix from the feed
-```
+Every control on the app's screen, in the order it appears.
 
-## The two modes
-
-There are two independent axes.
-
-**Who owns Reticulum.**
-
-| Mode | Config | Behaviour |
-| --- | --- | --- |
-| **Standalone** | `~/.reticulum/config` | Owns its own interfaces and network. |
-| **Attached** | `~/.reticulum-stack/config` | Owns no interface; requires the app's shared instance (which the app owns). |
-
-Both share `~/.nomadnetwork`, so the tablet keeps **one** node identity and one
-message store whichever way it is started. They are mutually exclusive at run
-time because they lock the same config directory.
-
-The attached configuration sets `require_shared_instance = yes`, so the client
-attaches to the app's stack or fails loudly — it can never win a race for
-ownership and quietly become the transport.
-
-**Is the sensor service running.** The sensor service runs with the daemon stack
-or without it. Running it alone gives the standalone client a real position on a
-tablet that runs no local bot at all, and costs the least battery.
-
-### The two icons
-
-| Icon | Mode | Notes |
-| --- | --- | --- |
-| `gonomadnet` | Standalone | Owns its own network. Resolves the hub address with bionic and pins the literal. |
-| `gonomadnet+stack` | Attached | Requires the app's shared instance. Needs no hostname resolution — it has no interfaces of its own. |
-
-Both launchers **refuse to start when the other mode is already up**, in plain
-language, so you can never end up with two Reticulum networks on one device. If a
-launcher says the other mode is running, stop that one first.
-
-### Ports
-
-| Port | Used by |
+| Control | What it does |
 | --- | --- |
-| `127.0.0.1:37428` | Reticulum shared instance (the app owns it) |
-| `127.0.0.1:37429` | Reticulum's own control port — reserved, do not use |
-| `127.0.0.1:37430` | the sensor feed |
+| **Open gonomadnet** | Starts the transport if needed, waits for it, and opens the client on the console. |
+| **Start sensors** / **Stop sensors** | The sensor service on its own. It holds a partial wake lock while it runs — see [Sample rate and battery](#sample-rate-and-battery). |
+| **Start stack** / **Stop stack** | The transport, the hub and the bot. The sensors start with the location permission, independently of these. |
+| **Heading axis** | Which axis the heading is measured from. A mounting choice, not a preference — see [Heading](#heading-the-screen-back-normal). |
+| **hub host:port** and **Save hub address** | The one interface the appliance's transport dials. It is a setting of its own rather than a copy of the client's configuration, because the appliance owns the transport and the client owns none. Saving it resolves the name off the UI thread and reports what it resolved to. |
 
-All three are **loopback only**: they are reachable from this device and from
-nowhere else. The shared instance is a TCP socket rather than an abstract Unix
-socket, because two Android applications cannot be assumed to reach each other's
-abstract sockets.
+The screen's readout names which of the four running/stopped combinations the
+tablet is in. That is the point of it: the appliance's failures are silent, so
+the readout is where they become visible.
 
-## The built-in console
+## The console
 
-**Open gonomadnet (built in)** runs the client *inside the app*: no Termux, nothing
-copied into anybody's home, and no terminal to find. The app binds an abstract Unix
+**Open gonomadnet** runs the client *inside the app*: nothing is copied into
+anybody's home, and there is no terminal to find. The app binds an abstract Unix
 socket, starts `libgorcons.so`, which opens a pty and runs the APK's own client on
 it, and draws what comes back. The keys a tablet has no way to press — escape, tab
 and the arrows — are a row along the bottom of the console, and Control is a latch
@@ -210,12 +121,12 @@ The capture is the reference for the drawing, because the drawing is the part th
 cannot be asserted from a command line: the menu bar in its colors, the Nerd Font
 glyphs from the APK's assets rather than boxes, the panes filled and bordered, and
 the footer's key hints. To compare a change against it, put the client in the same
-state — Start stack, then **Open gonomadnet (built in)**, then Tab to
-**Conversations** and press Enter — and capture the same screen:
+state — Start stack, then **Open gonomadnet**, then Tab to **Conversations** and
+press Enter — and capture the same screen:
 
 ```
 adb shell am start -n com.gmlewis.gonomadnet/.MainActivity
-# tap Start stack, then Open gonomadnet (built in), then Conversations and Enter
+# tap Start stack, then Open gonomadnet, then Conversations and Enter
 adb exec-out screencap -p > console-now.png
 ```
 
@@ -225,46 +136,33 @@ a pane that has not been redrawn, or a key row that has moved or lost a button.
 ## The terminal font
 
 The client draws its icons from the Nerd Font private-use area by default —
-`glyphs = nerdfont` is the shipped setting — and Termux's own font has no such
-glyphs, so the menu bar and the Users pane render as empty boxes. The app carries
-**Atkynson Mono Nerd Font Mono** and hands it to Termux for this.
+`glyphs = nerdfont` is the shipped setting — and a terminal without such glyphs
+renders the menu bar and the Users pane as empty boxes. The APK carries
+**Atkynson Mono Nerd Font Mono** and the console draws with it, so inside the app
+there is nothing to install.
 
-**The setup script installs it**, as `~/.termux/font.ttf` — the name is fixed
-whatever the published file was called in Downloads. You do not copy anything by
-hand, and Termux is asked to re-read its settings so the font takes effect in the
-session you are looking at rather than the next one.
+The font travels with its own license file (SIL Open Font License 1.1), which is
+the other reason it is in the APK.
 
-`font.ttf` is one of the files the script never replaces once it exists: a font you
-chose yourself stays yours. To take the app's font after all, delete the file and
-run the setup line again.
-
-The readout names the file it installed. The app's own screen also reports whether
-Android's font engine could load the font, and that engine is the one Termux draws
-through — so it is the difference between glyphs and empty boxes.
-
-The **license file** published beside the font is the font's own (SIL Open Font
-License 1.1). It travels with the font so the license travels with the copy.
-
-If you would rather not install a font at all, set `glyphs = unicode` in
-`~/.nomadnetwork/config` and the client falls back to the symbols every terminal
-has.
+A **Termux** user gets the same font the same way they get everything else: put
+the file in `/sdcard/Download` and the client installs it to `~/.termux/font.ttf`
+on its first run. See
+[`docs/Android.md`](Android.md#7-clipboard-and-other-polish).
 
 ## The terminal colors
 
 The client draws most of its chrome — the frame borders, the pane titles, the key
 hints along the bottom — in the terminal's **default** foreground and background,
 and its accents from the terminal's own **16-color palette**. Those are resolved
-by whichever terminal is drawing, not by the client, so the same client under
-Termux's stock white-on-black palette and under a themed desktop terminal renders
-the same interface in visibly different colors. Everything the client names
-explicitly (message text, nick colors, the editor bar) is identical either way.
+by whichever terminal is drawing, not by the client, so the same client under a
+stock white-on-black palette and under a themed one renders the same interface in
+visibly different colors. Everything the client names explicitly (message text,
+nick colors, the editor bar) is identical either way.
 
-The app therefore publishes **`colors.properties`**, which is the desktop
-terminal's own theme — its `foreground`, its `background` and its sixteen palette
-colors — in the form Termux reads. **You do not install this one by hand**: the
-client copies it to `~/.termux/colors.properties` the first time it runs inside
-Termux and asks Termux to re-read its settings. It never replaces a file that is
-already there.
+The console inside the app resolves those defaults itself. Under Termux, the
+client installs the desktop terminal's own theme — `colors.properties`, which the
+APK carries — into `~/.termux/colors.properties` the first time it runs, and asks
+Termux to re-read its settings. It never replaces a file that is already there.
 
 To see what a terminal is resolving those defaults to, ask it:
 
@@ -278,15 +176,15 @@ To go back to Termux's own colors, delete `~/.termux/colors.properties` and run
 ## The tmux configuration (for debugging)
 
 **You do not need tmux to run gonomadnet on Android, and neither the app nor the
-client ever starts it.** The client is meant to run directly in Termux: on a
-tablet with a virtual keyboard open, tmux's status bar and its window list cost
-lines that the interface wants for messages.
+client ever starts it.** The client is meant to run directly in Termux or in the
+app's console: on a tablet with a virtual keyboard open, tmux's status bar and its
+window list cost lines that the interface wants for messages.
 
-The app nevertheless publishes **`tmux.conf`** to `/sdcard/Download` for the
-person who chooses to debug under tmux. **You do not install this one by hand**:
-the client does it the first time it runs inside Termux, copying the published
-file to `~/.tmux.conf`. It installs it only when nothing is there already, so a
-configuration you have edited stays yours.
+The APK nevertheless carries **`tmux.conf`** for the person who chooses to debug
+under tmux. **You do not install this one by hand**: the client does it the first
+time it runs inside Termux, copying the published file to `~/.tmux.conf`. It
+installs it only when nothing is there already, so a configuration you have edited
+stays yours.
 
 tmux is not part of the app. It is a Termux package you install yourself, once,
 if you want it:
@@ -378,6 +276,26 @@ service is running; it re-reads the feed immediately.
 bot parks in the open with no log line to say so. The app's **Start stack**
 button does this in the right order.
 
+## The ports
+
+| Port | Used by |
+| --- | --- |
+| `127.0.0.1:37428` | Reticulum shared instance (the app owns it) |
+| `127.0.0.1:37429` | Reticulum's own control port — reserved, do not use |
+| `127.0.0.1:37430` | the sensor feed |
+
+All three are **loopback only**: they are reachable from this device and from
+nowhere else. The shared instance is a TCP socket rather than an abstract Unix
+socket, because two Android applications cannot be assumed to reach each other's
+abstract sockets.
+
+The client the app runs attaches to that shared instance and requires it —
+`require_shared_instance = yes` — so it can never win a race for ownership and
+quietly become a transport of its own. Its Nomad Network configuration is its
+own, under the app's private storage: the messages, the peers and the identity
+live there, and a second client announcing the same identity is a node that
+appears twice.
+
 ## The bot
 
 The bot answers a private request only when the hub can deliver the reply. Two
@@ -454,17 +372,11 @@ adb shell run-as $PKG ls files/logs
 adb shell run-as $PKG cat files/logs/gorrcd.log
 adb shell run-as $PKG cat files/logs/gorrcbot.log
 
-# The app's own log, for permission, install and start-up problems
+# The app's own log, for permission and start-up problems
 adb logcat -s gonomadnet
 
 # The sensor service's log, which is a tag of its own
 adb logcat -s gonomadnet-sensors
-
-# What the setup script did, which is the only report from inside Termux
-adb shell cat /sdcard/Download/gonomadnet-setup-status.txt
-
-# What the appliance published, and under which names
-adb shell ls -l /sdcard/Download | grep -E 'gonomadnet|NerdFont|reticulum|tmux|colors'
 
 # Is the app running, and as which uid?
 adb shell ps -A -o PID,USER,NAME | grep -E 'gonomadnet|gornsd|gorrcd|gorrcbot'
@@ -493,14 +405,9 @@ adb shell dumpsys location | head -40   # whether a provider has ever produced a
 
 | What you see | What it means | What to do |
 | --- | --- | --- |
-| **Open gonomadnet** and **Set up Termux** do nothing at all | Termux ignores commands from other apps until it is told not to, and RUN_COMMAND has to be granted by hand | Tap **Copy the setup line** and paste it into Termux; then grant RUN_COMMAND in Settings (step 5 of [Getting started](#getting-started)) |
-| The app says the Termux on this device "cannot run programs it installs" | It is the Play Store build (`targetSdk` 29 or more) | Uninstall it — that deletes Termux's home directory — and use **Install Termux** in the app |
-| The app says it is "not allowed to install applications yet" | Android's "install unknown apps" is off for this app | Allow it on the screen the app opened; the app cannot turn it on itself |
-| The app refuses the download because it is "signed by … not by F-Droid's key" | Whatever answered on that URL is not the build the app pins | Nothing to do here — it was not installed. Check the network for a captive portal, or install Termux from F-Droid's own client |
-| The setup script says it "cannot read shared storage" | Termux has never been granted access; `~/storage` does not exist | Run the setup line again and accept the prompt Termux shows. The script waits twenty seconds for it |
-| The setup script says the client "was not found" | The app published nothing, or published to a different directory | Tap **Publish files for Termux**, as the script's own report says |
-| `~/gonomadnet: Permission denied` | The client is installed and not executable | Run the setup line again; it chmods the client every time |
-| The client says it cannot attach; `37428` refuses | The node stack is not running | Tap **Start stack**, and wait for the app to report the node address |
+| The client says it cannot attach; `37428` refuses | The transport is not running | Tap **Start stack** and wait for the app to report the node address; **Open gonomadnet** does this itself |
+| **Open gonomadnet** opens a console that says the client exited at once | The shared instance was not up when the client looked for it | Tap **Open gonomadnet** again, or **Start stack** first and wait for the address |
+| The app says location permission is refused | Android never granted it | Grant it in Settings → Apps → gonomadnet node → Permissions; the sensors cannot run without it |
 | `SIGSYS: bad system call` in a daemon's log | A daemon resolved a bare program name; Android kills the process for it | Every subprocess must be launched by an absolute path |
 | `route ip+net: netlinkrib: permission denied` | `AutoInterface` is blocked on Android | Use a `TCPClientInterface` instead; see [`docs/Android.md`](Android.md) |
 | `Failed to initialize TCP server interface …: listen tcp: address [[::]]:4242: missing port in address` | `listen_ip = [::]` was bracketed a second time | Write `listen_ip = ::` without brackets |
@@ -509,7 +416,6 @@ adb shell dumpsys location | head -40   # whether a provider has ever produced a
 | The bot never connects; `hub "…": cannot connect: Hub identity unknown` | The hub is attached to a **different** Reticulum instance than the bot | Start the hub with the same configuration directory the clients use |
 | The bot connects, requests arrive, and **nothing** is answered | The hub is not naming the joiner, so the bot never learns the asker | Run the hub with `--include-joined-member-list` |
 | A restarted bot never starts, and logs nothing | The sensor service is not running, so opening the feed blocks forever | Start the service first; the app's **Start stack** does this in order |
-| `Termux:API NOT INSTALLED` | The optional clipboard add-on is absent | Nothing — only the clipboard is affected |
 
 ### Daemon command-line conventions
 
@@ -530,77 +436,6 @@ default configuration. Starting them as daemons the first time leaves a
 supervisor believing it has a running service when what it has is a file and a
 dead process. Run each to completion once before starting it for real; the
 appliance's supervisor does.
-
-## What the app publishes, and where it goes
-
-The app writes these into your Downloads. **Publish files for Termux** does it, and
-the screen lists each one with the path it actually got — Android's own type table
-renames files as it stores them, so a font published as `…Regular.otf` arrives as
-`…Regular.otf.ttf`, and the app reports the name it really has rather than the one
-it asked for.
-
-| Published | The setup script installs it as |
-| --- | --- |
-| `gonomadnet-client` | `~/gonomadnet` — always replaced, it is the app's own build |
-| `gonomadnet-standalone` | `~/.shortcuts/gonomadnet` |
-| `gonomadnet-stack` | `~/.shortcuts/gonomadnet+stack` |
-| `reticulum-stack-config` | `~/.reticulum-stack/config` |
-| `AtkynsonMonoNerdFontMono-Regular.otf` | `~/.termux/font.ttf` |
-| `AtkinsonHyperlegibleMono-OFL.txt` | (the font's license — not installed) |
-| `gonomadnet-setup.sh` | (the script itself — run, not installed) |
-| `colors.properties` | `~/.termux/colors.properties` — installed by **the client**, on its first run |
-| `tmux.conf` | `~/.tmux.conf` — installed by **the client**, for anyone debugging under tmux |
-
-Everything except the client is installed only when it is not already there. The
-client is replaced every time because it is the app's binary and not yours.
-
-The script writes what it did to `gonomadnet-setup-status.txt` beside those files,
-as well as to its own session. Termux's home directory can be read neither by the
-app nor by `adb`, so shared storage is the only way a setup that half worked can be
-told from one that did nothing.
-
-## By hand, if you prefer
-
-Nothing above needs the app's buttons. Every step is a command, and these are them.
-
-**Termux**, from F-Droid and not from Play — [the package
-page](https://f-droid.org/packages/com.termux/) — plus
-[Termux:Widget](https://f-droid.org/packages/com.termux.widget/) if you want the
-home-screen icons. Check which build you got:
-
-```sh
-adb shell dumpsys package com.termux | grep -E "versionName|targetSdk|installerPackageName"
-```
-
-The `targetSdk` line must read `28`. A higher number, or an
-`installerPackageName` of `com.android.vending`, is the Play build, which cannot
-run programs it installs. See [`docs/Android.md`](Android.md) for what else that
-build breaks and why signing keys are not interchangeable.
-
-**Everything else**, in Termux, once the app has published the files or you have
-put them in `/sdcard/Download` yourself:
-
-```sh
-bash /sdcard/Download/gonomadnet-setup.sh
-```
-
-That is the whole installation — the client, both launchers, the attached
-configuration, the font and `allow-external-apps`. It is idempotent, so running it
-again after a new release updates the client and reports everything else as
-already there. Give it a directory if you published somewhere else:
-`bash gonomadnet-setup.sh /sdcard/MyDownloads`.
-
-Then grant **RUN_COMMAND** in Settings, if you want the app's buttons to work, and
-start the client:
-
-```sh
-~/gonomadnet -t --rnsconfig ~/.reticulum-stack    # attached to the app's transport
-~/gonomadnet -t                                   # or with its own network
-```
-
-With a computer, the equivalent of the publish step is
-`adb push gonomadnet-<version>-linux-arm64 /sdcard/Download/gonomadnet-client`,
-and every Android device made since about 2017 is `arm64`.
 
 ## Building it yourself
 

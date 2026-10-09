@@ -87,17 +87,19 @@ the device itself, so `gonomadnet` uses the device's real GNSS fix and compass
 instead of a fixed coordinate. Position and heading commands then answer with
 where the device actually is.
 
+It also runs the client itself: the APK carries both the client and the console
+host that gives it a terminal, so one install, one location grant and two buttons
+are the whole of it — **no Termux, and nothing else to install**.
+
 Download `gonomadnet-<version>-android-arm64-v8a.apk` from
 [Releases](https://github.com/gmlewis/go-nomadnet/releases) and open it on the
 device — Android will ask you to allow installing from the app you opened it
 with, once. With a computer, `adb install -r gonomadnet-<version>-android-arm64-v8a.apk`
 does the same thing, and upgrades an installed copy in place.
 
-See **[docs/Android-APK.md](docs/Android-APK.md)** for the full setup: the app
-installs the correct Termux build and publishes the client and the launchers for
-it, so the install is two buttons and one paste — and nothing about your location
-leaves the device unless you ask for it. To build the APK yourself, see
-**[docs/Android-Build.md](docs/Android-Build.md)**.
+See **[docs/Android-APK.md](docs/Android-APK.md)** for the full setup — and
+nothing about your location leaves the device unless you ask for it. To build the
+APK yourself, see **[docs/Android-Build.md](docs/Android-Build.md)**.
 
 ## Quick Start
 

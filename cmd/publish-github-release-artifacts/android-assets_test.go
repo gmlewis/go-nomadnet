@@ -258,25 +258,30 @@ func TestReleaseNotesDescribeTheAndroidAppliance(t *testing.T) {
 			"go-reticulum v",
 			"adb install -r",
 			"docs/Android-APK.md",
-			// The appliance's whole reason for existing is that nobody hand-assembles a
-			// Termux install, so the notes have to say so: it installs Termux itself,
-			// carries the client inside the APK, and publishes the launchers.
-			"installs the correct Termux build",
-			"carries its own `linux/arm64` client inside the APK",
-			"publishes the client and the launchers into Downloads",
+			// The appliance's whole reason for existing is that nobody has to assemble a
+			// terminal environment by hand, so the notes have to say what it does instead:
+			// it carries the client and the console host inside the APK, and what is left
+			// is two buttons.
+			"nothing else to install",
+			"carries both the `linux/arm64` client",
+			"gives it a pseudo-terminal",
 		} {
 			if !strings.Contains(notes, want) {
 				t.Errorf("the release notes do not mention %q:\n%v", want, notes)
 			}
 		}
-		// A reader who is told to move a downloaded client into Termux by hand has been
-		// given work the app already does, and a reason to think the app does not do it.
-		if strings.Contains(notes, "moving the `linux-arm64` client") {
-			t.Errorf("the notes still describe a hand-assembled Termux install:\n%v", notes)
+		// The appliance stopped needing another app to run the client, and a reader told to
+		// install one has been given work that does not exist and a reason to think the
+		// appliance is something other than one APK.
+		if strings.Contains(notes, "Termux") {
+			t.Errorf("the notes still send the reader to another app:\n%v", notes)
 		}
 		// The cross-repo pin is the whole reason for the version sentence: the APK embeds
-		// daemons that are not built from this repository at all.
-		if strings.Contains(notes, "go-reticulum v an unrecorded version") {
+		// daemons that are not built from this repository at all. The check is on the phrase
+		// alone, without the "v" the sentence puts in front of it, because a version the
+		// reader cannot use renders as "van unrecorded version" — which is how this went
+		// unnoticed: the guard matched a string the notes never contained.
+		if strings.Contains(notes, "unrecorded version") {
 			t.Errorf("the go-reticulum version was not read from the sibling module:\n%v", notes)
 		}
 	})

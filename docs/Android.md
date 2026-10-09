@@ -15,13 +15,12 @@ program, each with its exact error message so you can recognise it. The examples
 come from an `arm64-v8a` tablet on Android 16; another device differs only in the
 ABI (§3).
 
-**If you are installing the gonomadnet node app**, the app does most of this
-itself: it installs Termux, publishes the client and the launchers, and hands over
-a script that performs §§3, 4 and 6 in one line — `bash
-/sdcard/Download/gonomadnet-setup.sh`. See
-[Android-APK.md](Android-APK.md#getting-started). The rest of this page describes
-the same steps taken by hand, together with what the platform does to a terminal
-program and what to do about each thing.
+**If you are installing the gonomadnet node app**, you do not need this page at
+all: that app runs the client itself, on a console of its own, with nothing
+installed beside it. See [Android-APK.md](Android-APK.md). Everything below is
+for running the client inside Termux on a device without the appliance, and it is
+complete on its own — the appliance publishes nothing into your Downloads and
+nothing here waits on it.
 
 ---
 
@@ -118,11 +117,10 @@ every Android device made since about 2017 needs. Take
 Termux's home directory as `gonomadnet` (§4). Downloading it on the device and
 copying it in from shared storage is enough; no computer is needed.
 
-If you have the **gonomadnet node** app installed, you do not download anything:
-tap **Publish files for Termux** and the app writes its own build of this binary
-into Downloads as `gonomadnet-client`, already matched to the device's
-architecture. That is the same build the release page carries, and the setup
-script installs it for you.
+If you have the **gonomadnet node** app installed, its client is already on the
+device and you do not need this one: **Open gonomadnet** starts it on the app's
+own console. The binary below is what you want if you would rather run the client
+in Termux.
 
 To build one instead:
 
@@ -171,17 +169,9 @@ chmod 755 ~/gonomadnet
 ~/gonomadnet --version
 ```
 
-**If you have the gonomadnet node app**, tap **Publish files for Termux** and then
-run one line, which does all four of those steps and the launchers and the font as
-well:
-
-```sh
-bash /sdcard/Download/gonomadnet-setup.sh
-```
-
-The app can run that line for you. The paste it cannot avoid is the first one: the
-setting that lets an app start a Termux session lives inside Termux's private
-data, so only a process already running as Termux may write it.
+**If you have the gonomadnet node app**, you do not copy anything into Termux:
+tap **Open gonomadnet** and the app runs its own client on a console inside the
+app. The rest of this section is for a Termux-only install.
 
 If the copy reports "No such file", list the directory with
 `ls ~/storage/downloads` and use the name the file really has — a browser may
@@ -279,12 +269,11 @@ name stays the source of truth and a DNS change is picked up on the next launch.
 
 ## 6. Add a home-screen icon
 
-**With the gonomadnet node app, this section is already done.** The setup script
-writes both launchers — `~/.shortcuts/gonomadnet` and
-`~/.shortcuts/gonomadnet+stack` — and the app's own **Open gonomadnet** buttons
-start a Termux session directly through `RUN_COMMAND`, with no Termux:Widget and
-therefore **no "Draw over other apps" grant**. What follows is the same result
-reached by hand.
+**With the gonomadnet node app installed, this section does not apply.** That app
+is not a Termux shortcut: it runs its own copy of the client on a console of its
+own, and **Open gonomadnet** is how you start it. This section is for a
+Termux-only install, where the client has to be started from a shortcut of your
+own.
 
 Termux has no launcher shortcut of its own; the supported mechanism is the
 official **Termux:Widget** add-on, which runs a script from `~/.shortcuts/`.
@@ -373,20 +362,26 @@ Tapping the icon now opens Termux and starts the client. Use
 - **Glyphs.** `[textui] glyphs = nerdfont` is the shipped default and needs a Nerd
   Font in your terminal's font; without one, icons render as empty boxes. Termux
   loads a user font from `~/.termux/font.ttf`, so install a Nerd Font and copy it
-  there, or set `glyphs = unicode` and use the symbols every terminal has. The
-  Android appliance carries one and can publish it for you — see
-  [Android-APK.md](Android-APK.md#the-terminal-font).
+  there, or set `glyphs = unicode` and use the symbols every terminal has.
+
+  The one the appliance draws with — **Atkynson Mono Nerd Font Mono**, with its
+  license beside it — is in the repository under `android/app/src/main/assets/`
+  and inside the APK. Any Nerd Font will do. Put the `.otf` in
+  `/sdcard/Download` and the client installs it to `~/.termux/font.ttf` itself on
+  its next run, or copy it there by hand. The client never replaces a font that
+  is already installed, so a font you chose stays yours.
 - **Colors.** The client draws its frame, pane titles and key hints in the
   terminal's *default* colors and its accents from the terminal's 16-color
   palette, so Termux's stock white-on-black looks different from a themed desktop
-  terminal even though the client is the same. The appliance publishes the desktop
-  terminal's theme as `colors.properties` and the client installs it — see
-  [Android-APK.md](Android-APK.md#the-terminal-colors).
+  terminal even though the client is the same. The desktop terminal's own theme is
+  `colors.properties`, in the same assets directory; put it in `/sdcard/Download`
+  and the client installs it to `~/.termux/colors.properties` on its next run and
+  asks Termux to re-read its settings.
 - **tmux.** Nothing needs tmux — run the client directly in Termux and it keeps
   the line tmux's status bar would take. If you are debugging and want windows
-  and scrollback anyway, `pkg install tmux`; the appliance publishes a matching
-  `~/.tmux.conf` with 24-bit color. See
-  [Android-APK.md](Android-APK.md#the-tmux-configuration-for-debugging).
+  and scrollback anyway, `pkg install tmux`; `tmux.conf`, in the same assets
+  directory, is a matching `~/.tmux.conf` with 24-bit color, and the client
+  installs it from `/sdcard/Download` the same way.
 - **Local time.** Android has no `/etc/localtime` and keeps its zone data in a
   format only bionic reads, so a Go program that asks for the local zone there
   gets UTC — every chat timestamp, message date and log line four hours off in
@@ -457,7 +452,7 @@ is Android-specific. Two settings are worth attention on a tablet:
 loglevel = 4          ; 7 (extreme) is very heavy on flash and battery
 
 [textui]
-glyphs = nerdfont     ; the appliance installs the Nerd Font Termux needs
+glyphs = nerdfont     ; needs a Nerd Font in the terminal, see §7
 
 [node]
 node_name = gonomadnet on <your device>   ; must be unique per node

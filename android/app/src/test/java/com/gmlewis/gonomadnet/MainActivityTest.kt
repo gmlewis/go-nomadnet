@@ -18,19 +18,21 @@ import java.io.File
 import javax.xml.parsers.DocumentBuilderFactory
 
 /**
- * How the appliance runs the client itself.
+ * How the appliance runs the client itself, and what the package is made of.
  *
- * The built-in client is the same client Termux runs, started the same way, with two
- * differences that are the whole point of it: it is the APK's own binary rather than a
- * copy in somebody else's home, and it keeps its configuration in the appliance's private
- * storage rather than in Termux's. Both are facts about a command line, and a command line
- * is the one part of starting a process that can be asserted without a device — which
- * matters here, because the failure modes are silent: a client pointed at the transport's
- * own Reticulum directory becomes the transport, and a client pointed at a home it cannot
- * write to writes nothing and says nothing.
+ * The built-in client is started entirely out of the APK: it is this app's own binary,
+ * running in this app's own storage, attached to the transport this app owns. So there is
+ * no other app in the story, and the two halves of that — the command line the client is
+ * started with, and what the package asks the system for — are asserted here rather than
+ * trusted, because neither can be seen from a passing run: a client pointed at the
+ * transport's own Reticulum directory silently becomes a second transport, a package that
+ * still asks to install apps shows a person a permission dialog nothing in the app
+ * explains, and a package that still carries another app's setup files is a download that
+ * is larger than it needs to be and a lie about what it does.
  *
- * [MainActivity] is never instantiated. These are its companion's pure helpers, and the
- * class is only named — the tests below are arithmetic on a command line.
+ * [MainActivity] is never instantiated. These are its companion's pure helpers plus the
+ * module's own manifest and assets, and the class is only named — the tests below are
+ * arithmetic on a command line and a reading of the files Gradle packages.
  */
 class MainActivityTest {
 
@@ -233,14 +235,7 @@ class MainActivityTest {
         // The claim has to be made in the manifest — there is nowhere else to make it — and
         // it is the kind of claim that is silently lost when an activity is edited, so it is
         // asserted here rather than trusted.
-        val manifest = File(MANIFEST)
-        assertTrue("the manifest is not with the module: $manifest", manifest.isFile)
-
-        // The manifest's attributes are all in the `android:` namespace and none of them are
-        // in its element namespace, so a parser that is not namespace-aware sees an activity
-        // with no name at all.
-        val factory = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
-        val document = factory.newDocumentBuilder().parse(manifest)
+        val document = manifest()
         val activities = document.getElementsByTagName("activity")
         val declared = (0 until activities.length)
             .map { activities.item(it) as Element }
@@ -264,6 +259,98 @@ class MainActivityTest {
             )
         }
     }
+
+    @Test
+    fun `the appliance asks the system for nothing it does not need`() {
+        // The appliance is one APK that starts both halves out of its own storage, so it
+        // installs nothing and it runs nothing in another app. Every permission here is
+        // something the system puts in front of a person, and a permission the app no longer
+        // uses is a dialog nobody can explain — on the install it is a line in the app's
+        // listing that reads like a request to install software behind the person's back.
+        val document = manifest()
+        val permissions = document.elements("uses-permission")
+            .map { it.getAttributeNS(ANDROID_NAMESPACE, "name") }
+        for (gone in UNUSED_PERMISSIONS) {
+            assertFalse(
+                "the appliance still asks the system for $gone, which nothing in it uses: " +
+                    "the manifest declares ${permissions.joinToString(", ")}",
+                gone in permissions,
+            )
+        }
+
+        // And it asks about no other app: a `<queries>` entry is how a package says it means
+        // to resolve another app's components, and this one resolves none.
+        val queried = document.elements("queries")
+            .flatMap { query -> query.childNodes.asElementList().map { it.getAttributeNS(ANDROID_NAMESPACE, "name") } }
+        assertTrue(
+            "the appliance still asks the system about another app's package: " +
+                queried.joinToString(", "),
+            queried.none { it == OTHER_PACKAGE },
+        )
+
+        // The receiver that answer arrived at is gone with the question. A manifest entry
+        // naming a class that no longer exists is a package that fails to install, so this
+        // is also the check that the removal was complete.
+        val receivers = document.elements("receiver")
+            .map { it.getAttributeNS(ANDROID_NAMESPACE, "name") }
+        for (gone in UNUSED_RECEIVERS) {
+            assertFalse(
+                "the manifest still declares the receiver $gone, which no longer exists",
+                gone in receivers.map { it.substringAfterLast('.') },
+            )
+            assertFalse(
+                "the package still carries the source for $gone, which nothing starts",
+                File(SOURCES_DIR, "$gone.kt").isFile,
+            )
+        }
+    }
+
+    @Test
+    fun `the package carries nothing for another app to run`() {
+        // What is in the APK is what it downloads as, and a setup script for an app this one
+        // no longer talks to is dead weight in every download — and worse than dead weight,
+        // because it says the appliance does something it does not. The files that are kept
+        // are kept for reasons of their own: the font is what the console draws with, the
+        // client installs the terminal colours and the tmux configuration into its own home,
+        // and the Bible text is what the bundled offline page reads.
+        val assets = File(ASSETS_DIR)
+        assertTrue("the assets are not with the module: $assets", assets.isDirectory)
+        val present = assets.list()?.toList().orEmpty()
+
+        for (gone in SETUP_ASSETS) {
+            assertFalse(
+                "the package still carries $gone, which nothing in the appliance reads: " +
+                    "it carries ${present.joinToString(", ")}",
+                gone in present,
+            )
+        }
+        for (kept in KEPT_ASSETS) {
+            assertTrue(
+                "the package no longer carries $kept, which it reads at runtime: " +
+                    "it carries ${present.joinToString(", ")}",
+                kept in present,
+            )
+        }
+    }
+
+    /** manifest is the module's manifest, parsed so its android: attributes can be read. */
+    private fun manifest(): org.w3c.dom.Document {
+        val file = File(MANIFEST)
+        assertTrue("the manifest is not with the module: $file", file.isFile)
+        // The manifest's attributes are all in the `android:` namespace and none of them are
+        // in its element namespace, so a parser that is not namespace-aware sees an activity
+        // with no name at all.
+        val factory = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
+        return factory.newDocumentBuilder().parse(file)
+    }
+
+    /** elements is every element of one tag name, in document order. */
+    private fun org.w3c.dom.Document.elements(tag: String): List<Element> =
+        (0 until getElementsByTagName(tag).length).map { getElementsByTagName(tag).item(it) as Element }
+
+    /** asElementList is the element children of a node, with text and comments dropped. */
+    private fun org.w3c.dom.NodeList.asElementList(): List<Element> =
+        (0 until length).mapNotNull { item(it) as? Element }
 
     /** argAfter is the value of a flag, or null when the flag is absent. */
     private fun List<String>.argAfter(flag: String): String? {
@@ -305,10 +392,66 @@ class MainActivityTest {
         /** The manifest, as Gradle runs these tests from the module directory. */
         const val MANIFEST = "src/main/AndroidManifest.xml"
 
+        /** The module's sources, so a class the package no longer has can be looked for. */
+        const val SOURCES_DIR = "src/main/java/com/gmlewis/gonomadnet"
+
+        /** What Gradle packages into the APK, which is what a person downloads. */
+        const val ASSETS_DIR = "src/main/assets"
+
         /** Where the manifest's own attributes live, which is not its element namespace. */
         const val ANDROID_NAMESPACE = "http://schemas.android.com/apk/res/android"
 
         /** The configuration changes a rotation produces, every one of which must be handled. */
         val ROTATION_CHANGES = listOf("orientation", "screenSize", "screenLayout", "smallestScreenSize")
+
+        /**
+         * Permissions for a thing the appliance no longer does.
+         *
+         * `REQUEST_INSTALL_PACKAGES` was for installing another app, and
+         * `com.termux.permission.RUN_COMMAND` for asking it to run a program. The appliance
+         * starts both halves out of its own storage, so it needs neither — and a listing
+         * that asks to install software is the kind of thing a person is right to refuse.
+         */
+        val UNUSED_PERMISSIONS = listOf(
+            "android.permission.REQUEST_INSTALL_PACKAGES",
+            "com.termux.permission.RUN_COMMAND",
+        )
+
+        /** The package the appliance no longer asks the system about. */
+        const val OTHER_PACKAGE = "com.termux"
+
+        /** The receiver the install answer arrived at, gone with the question. */
+        val UNUSED_RECEIVERS = listOf("InstallResultReceiver")
+
+        /**
+         * Setup files for another app, which no code in the appliance reads.
+         *
+         * `gonomadnet-client` is the client as an asset — the copy that used to be handed
+         * over; the app's client is `libgonomadnetclient.so` in its own native library
+         * directory, built by the same script. It is not tracked by git, so a package built
+         * after this change is what proves it is gone.
+         */
+        val SETUP_ASSETS = listOf(
+            "gonomadnet-setup.sh",
+            "gonomadnet-standalone",
+            "gonomadnet-stack",
+            "reticulum-stack-config",
+            "gonomadnet-client",
+        )
+
+        /**
+         * What the package is supposed to carry, and what reads each one.
+         *
+         * The font is the console's, and its licence has to travel with it; the colours and
+         * the tmux configuration are installed into the client's own home by the client's
+         * install-from-storage feature; and the Bible text is the bundled offline page.
+         */
+        val KEPT_ASSETS = listOf(
+            "AtkynsonMonoNerdFontMono-Regular.otf",
+            "AtkinsonHyperlegibleMono-OFL.txt",
+            "colors.properties",
+            "tmux.conf",
+            "kjv.txt",
+        )
     }
 }

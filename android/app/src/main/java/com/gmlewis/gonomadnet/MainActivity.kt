@@ -9,14 +9,9 @@ package com.gmlewis.gonomadnet
 
 import android.Manifest
 import android.app.Activity
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Intent
 import android.content.pm.PackageManager
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.provider.Settings
 import android.view.View
 import android.view.WindowInsets
 import android.view.WindowManager
@@ -30,13 +25,11 @@ import java.net.InetSocketAddress
 import java.net.Socket
 
 /**
- * The client the appliance runs itself, and everything it needs to be started.
+ * The client the appliance runs, and everything it needs to be started.
  *
- * The built-in client is the same program Termux runs — the APK carries one build of it,
- * under two names — but it is started by the appliance, out of the appliance's own
- * libraries, with the appliance's own directories. That is the whole difference, and it is
- * three facts: [binary] is the absolute path inside `nativeLibraryDir`, [argv] is what it
- * is told, and [home] is where it runs.
+ * The client is this APK's own binary, running in this APK's own storage: [binary] is the
+ * absolute path inside `nativeLibraryDir`, [argv] is what it is told, and [home] is where it
+ * runs. All three are plain data, so what is started can be asserted without a device.
  */
 data class BuiltInClient(val binary: String, val argv: List<String>, val home: String)
 
@@ -44,30 +37,26 @@ data class BuiltInClient(val binary: String, val argv: List<String>, val home: S
  * The appliance's one screen.
  *
  * There is no terminal emulator here and there is not meant to be: a tview/tcell user
- * interface needs a real PTY, and Termux already provides one. This screen does everything
- * around that terminal — it installs Termux, hands the client and its configuration over to
- * it, and starts and stops the two independent halves of the appliance, the sensors and the
- * daemon stack.
+ * interface needs a real PTY. This screen is the whole appliance — it hands out the one
+ * permission it needs, shows what the two halves are doing, and opens the client.
  *
- * It also runs the client itself, with no Termux in the picture at all: the APK carries the
- * client and the console host that gives it a pseudo-terminal, so "Open gonomadnet
- * (built in)" is one tap from this screen to a working interface. The pieces of that are
- * [BuiltInClient], [MainActivity.Companion.builtInClient] and
- * [MainActivity.Companion.consoleHostSpec], which build the command lines as plain data so
- * that what is started can be asserted without a device.
+ * The client is run out of the APK itself: it carries the client and the console host that
+ * gives it a pseudo-terminal, so "Open gonomadnet" is one tap from this screen to a working
+ * interface with nothing else installed. The pieces of that are [BuiltInClient],
+ * [MainActivity.Companion.builtInClient] and [MainActivity.Companion.consoleHostSpec], which
+ * build the command lines as plain data so that what is started can be asserted without a
+ * device.
  *
- * The controls are in the order the work happens in: what a tablet needs before it can run
- * anything, then the two ways into the interface, then the appliance's own halves. Someone
- * setting a tablet up reads this list downwards and is done; the halves are two pairs and not
- * one switch because they are independent, and only this screen says which of the four
- * combinations is running.
+ * The controls are in the order the work happens in: what the tablet is asked for, then the
+ * way into the interface, then the appliance's own halves. Someone setting a tablet up reads
+ * this list downwards and is done; the halves are two pairs and not one switch because they
+ * are independent, and only this screen says which of the four combinations is running.
  */
 class MainActivity : Activity() {
 
     private lateinit var status: TextView
     private lateinit var hubField: EditText
     private lateinit var axisButton: Button
-    private lateinit var termuxButton: Button
 
     /**
      * The controls page, kept so that closing the console comes back to it.
@@ -88,17 +77,6 @@ class MainActivity : Activity() {
     /** The grid the console was last told it has, which is what the client is sized for. */
     private var consoleGrid = TerminalGrid(cols = DEFAULT_CONSOLE_COLS, rows = DEFAULT_CONSOLE_ROWS)
 
-    /**
-     * Where the setup script landed in this session, once it has been published.
-     *
-     * Held because three controls want it and because publishing is a 2.5 MB copy through a
-     * content provider: "Set up Termux" and "Copy the setup line" both use what "Publish files
-     * for Termux" or the first of them to be tapped put there, rather than copying the font a
-     * second time. Written on the publishing thread and read on the UI thread.
-     */
-    @Volatile
-    private var publishedScript: String? = null
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -107,36 +85,9 @@ class MainActivity : Activity() {
         status = TextView(this)
         val controls = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
 
-        // The first thing a new tablet needs, and the one step the appliance can take most of
-        // itself: the Play Store's Termux cannot run programs it installs, so the F-Droid build
-        // is fetched, checked against its signing key and handed to Android's installer. The
-        // label says what was found, because "Termux is installed" and "a Termux that works is
-        // installed" are different states and only one of them is worth trusting.
-        termuxButton = button("Install Termux") { checkOrInstallTermux() }
-        controls.addView(termuxButton)
-
-        // The client, the launchers and the terminal's font and colors, put where Termux can
-        // read them. This is the one step that cannot happen inside Termux, because the files
-        // come out of this APK.
-        controls.addView(button("Publish files for Termux") { publishForTermux() })
-
-        // And the step that turns those files into a working terminal: one script, run inside
-        // Termux, which is the only process permitted to write into Termux's own home.
-        controls.addView(button("Set up Termux") { setUpTermux() })
-
-        // The same line, for the one case the button cannot cover: Termux only accepts commands
-        // from other applications once a setting inside Termux's own private files says so, and
-        // that setting is what the line turns on. So the line is the bootstrap, and the button
-        // is everything after it.
-        controls.addView(button("Copy the setup line") { copySetupLine() })
-
-        // The appliance's own way into the interface, and the one that needs nothing else
-        // installed: the APK carries the client and the console host that gives it a
-        // terminal. The two below it hand the same client to Termux, which is what a person
-        // who wants the client in their own terminal uses.
-        controls.addView(button("Open gonomadnet (built in)") { openBuiltInClient() })
-        controls.addView(button("Open gonomadnet (standalone)") { launch(TermuxLauncher.standaloneRequest()) })
-        controls.addView(button("Open gonomadnet (attached)") { launch(TermuxLauncher.attachedRequest()) })
+        // The appliance's way into the interface, and the only one: the APK carries the client
+        // and the console host that gives it a terminal, so this needs nothing else installed.
+        controls.addView(button("Open gonomadnet") { openBuiltInClient() })
 
         controls.addView(button("Start sensors") { startSensors() })
         controls.addView(button("Stop sensors") { command(SensorService.ACTION_STOP_SENSORS) })
@@ -172,7 +123,6 @@ class MainActivity : Activity() {
         controlsPage = layout
 
         report(prerequisiteChecklist())
-        probeTermux()
         requestPermissionsIfNeeded()
     }
 
@@ -181,197 +131,6 @@ class MainActivity : Activity() {
             text = label
             setOnClickListener { action() }
         }
-
-    // ---------------------------------------------------------------- Termux itself
-
-    /** Asks what Termux is on this device, and labels the button with the answer. */
-    private fun probeTermux() {
-        Thread({
-            val status = AndroidTermuxProbe.probe(this@MainActivity)
-            runOnUiThread { termuxButton.text = termuxLabel(status) }
-        }, "termux-probe").start()
-    }
-
-    /** The button's label, which is the state of the first step of the setup. */
-    private fun termuxLabel(status: TermuxStatus): String = when (status.build) {
-        TermuxBuild.ABSENT -> "Install Termux (from F-Droid)"
-        TermuxBuild.MODERN -> "Replace the Play Store Termux"
-        TermuxBuild.USABLE -> "Termux ${status.versionName ?: ""} is installed".trim()
-    }
-
-    /**
-     * Reports what Termux is here, and installs the F-Droid build when there is none that works.
-     *
-     * The two checks before the download are the two ways this can be refused, and both are
-     * settings only the person holding the tablet can change: this appliance has to be allowed
-     * to install applications at all, and Termux has to be absent or the wrong build. Neither
-     * refusal is an error — the download would simply fail at the last step with a message about
-     * a permission — so both are stated and the screen that changes the first is opened.
-     *
-     * The download goes out over the network and is several megabytes, so it runs off the UI
-     * thread, like every other network operation here.
-     */
-    private fun checkOrInstallTermux() {
-        report("looking for Termux")
-        Thread({
-            val status = AndroidTermuxProbe.probe(this@MainActivity)
-            report(TermuxReport.describe(status))
-            runOnUiThread { termuxButton.text = termuxLabel(status) }
-            if (status.usable) {
-                return@Thread
-            }
-            if (!PackageInstallerHandoff.mayInstall(this@MainActivity)) {
-                report(
-                    "this appliance is not allowed to install applications yet, and Android has " +
-                        "no way for it to turn that on itself. Android calls the setting " +
-                        "'install unknown apps'; it is open now, and this appliance is the entry " +
-                        "to allow.",
-                )
-                runOnUiThread { openUnknownSourcesSettings() }
-                return@Thread
-            }
-            val provision = TermuxInstaller(
-                fetch = UrlFetcher()::invoke,
-                read = { apk -> AndroidArchiveIdentity.read(this@MainActivity, apk) },
-                install = { apk -> PackageInstallerHandoff(this@MainActivity).install(apk) },
-                scratch = cacheDir,
-            ).provision()
-            for (note in provision.notes) {
-                report(note)
-            }
-            report(
-                if (provision.installed) {
-                    "confirm the install on Android's own screen; when that is done, tap " +
-                        "'Publish files for Termux'"
-                } else {
-                    "Termux was not installed; the appliance cannot run a user interface without it"
-                },
-            )
-        }, "termux-install").start()
-    }
-
-    /** Opens the one setting that decides whether this appliance may install anything. */
-    private fun openUnknownSourcesSettings() {
-        val intent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES)
-            .setData(Uri.parse("package:$packageName"))
-        runCatching { startActivity(intent) }
-            .onFailure { report("the setting could not be opened: ${it.message}") }
-    }
-
-    // ---------------------------------------------------------------- the hand-off
-
-    /** Publishes everything Termux needs, and says what to do with it. */
-    private fun publishForTermux() = publish { }
-
-    /**
-     * Runs the setup script inside Termux, from the published copy.
-     *
-     * This is the whole of the Termux side of the installation: one command, run by Termux on
-     * Termux's own files. What the appliance gets back is nothing — Termux is another
-     * application — so the script writes what it did where both applications can read it, and
-     * the readout names that file.
-     */
-    private fun setUpTermux() {
-        withSetupScript { script ->
-            val request = TermuxLauncher.setupRequest(script)
-            TermuxLauncher.launch(this, request).fold(
-                onSuccess = {
-                    report("Termux is running the setup script in a new session")
-                    report("it reports what it did into $SHARED_DOWNLOADS_DIR/$SETUP_STATUS_FILE_NAME")
-                },
-                onFailure = { report("Termux refused the launch: ${it.message}\n$PREREQUISITES") },
-            )
-        }
-    }
-
-    /**
-     * Puts the one line a person has to type on the clipboard.
-     *
-     * It exists for the case the button cannot reach: Termux ignores commands from other
-     * applications until a setting inside its own private files allows them, and that setting is
-     * exactly what this line turns on. So on a tablet that has never been set up, this is the
-     * step that has to happen by hand — once, in a terminal somebody opens themselves.
-     */
-    private fun copySetupLine() {
-        withSetupScript { script ->
-            val line = TermuxLauncher.setupLine(script)
-            val clipboard = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
-            clipboard.setPrimaryClip(ClipData.newPlainText("gonomadnet setup", line))
-            report("copied to the clipboard: $line")
-            report("paste it into Termux, in a session you opened yourself")
-        }
-    }
-
-    /** Hands the published script's path to [action], publishing it first if need be. */
-    private fun withSetupScript(action: (String) -> Unit) {
-        publishedScript?.let {
-            action(it)
-            return
-        }
-        publish { outcome ->
-            val script = outcome.setupScript
-            if (script == null || !outcome.clientPublished) {
-                report("nothing was published for Termux to install, so this step was not taken")
-                return@publish
-            }
-            publishedScript = script
-            action(script)
-        }
-    }
-
-    /**
-     * Publishes the client, the launchers and the terminal configuration into shared storage,
-     * then calls [after] on the UI thread with what happened.
-     *
-     * The last step of the Termux side cannot be taken from here: Termux keeps its terminal font
-     * and its properties in its own private data directory, and Android gives one application no
-     * way to write into another's. What this can do is put the files where both applications can
-     * read them — and the script that does the rest is one of them, so a complete build leaves
-     * exactly one line to run.
-     *
-     * The tmux configuration is published for the person debugging with tmux and is deliberately
-     * absent from what the readout says: the client is meant to be run directly in Termux, where
-     * tmux's status bar would cost a line of an already small screen, and nothing here installs
-     * or starts tmux. It is a configuration waiting for anyone who chooses to run it.
-     *
-     * The readout also says what Android's own font engine made of the font, because that engine
-     * is the one Termux draws through and its answer is the difference between glyphs and boxes.
-     *
-     * The copy is megabytes through a content provider, so it runs off the UI thread for the same
-     * reason the hub lookup does.
-     */
-    private fun publish(after: (HandoffOutcome) -> Unit) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-            report(
-                "publishing to $SHARED_DOWNLOADS_DIR needs Android 10 or later; on this device " +
-                    "the client has to be taken out of the APK by hand",
-            )
-            return
-        }
-        report("publishing the files Termux needs to $SHARED_DOWNLOADS_DIR")
-        Thread({
-            val outcome = HandoffInstaller(
-                open = { name -> runCatching { assets.open(name) }.getOrNull() },
-                downloads = MediaStoreDownloads(contentResolver, packageName),
-                probe = AndroidFontProbe(cacheDir),
-            ).install()
-            for (path in outcome.published) {
-                report("published $path")
-            }
-            for (failure in outcome.failures) {
-                report(failure)
-            }
-            outcome.engine?.let { report(it) }
-            publishedScript = outcome.setupScript
-            if (outcome.usable) {
-                report("in Termux, run:\n" + outcome.pasteLines.joinToString("\n") { "  $it" })
-            }
-            if (!outcome.clientPublished) {
-                report("the client was not published, so Termux cannot be set up from here")
-            }
-            runOnUiThread { after(outcome) }
-        }, "handoff").start()
-    }
 
     // ---------------------------------------------------------------- the appliance
 
@@ -450,14 +209,6 @@ class MainActivity : Activity() {
     private fun command(action: String) {
         SensorService.command(this, action)
         report("sent $action")
-    }
-
-    private fun launch(request: RunCommandRequest) {
-        val outcome = TermuxLauncher.launch(this, request)
-        outcome.fold(
-            onSuccess = { report("asked Termux to run ${request.commandPath}") },
-            onFailure = { report("Termux refused the launch: ${it.message}\n$PREREQUISITES") },
-        )
     }
 
     // ---------------------------------------------------------- the built-in client
@@ -674,30 +425,29 @@ class MainActivity : Activity() {
     }
 
     /**
-     * The three permissions this appliance needs and the two settings it cannot set itself.
+     * The one permission this appliance is granted, and what the controls below do.
      *
-     * Every one of them is silent when it is missing: a refused RUN_COMMAND has no symptom on
-     * this screen at all, and a Termux that is the wrong build fails at the first attempt to run
-     * anything with a message about a permission nobody can act on. So the state of each is
-     * printed where somebody debugging an appliance can read it without a manual.
+     * The appliance holds one permission and it is silent when it is missing: a refused
+     * location has no symptom on this screen at all, so its state is printed where somebody
+     * debugging an appliance can read it without a manual. The rest of the readout says which
+     * button starts which half, because there are four combinations of running and stopped and
+     * only this screen says which one the tablet is in.
      */
     private fun prerequisiteChecklist(): String =
-        "Permissions:\n" +
-            "  RUN_COMMAND:  " + if (checkSelfPermission(RunCommandRequest.PERMISSION) == PackageManager.PERMISSION_GRANTED) "granted" else "NOT granted" +
-            "\n  location:     " + if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) "granted" else "NOT granted" +
-            "\n  install apps: " + if (PackageInstallerHandoff.mayInstall(this)) "allowed" else "NOT allowed" +
-            "\n\nSetting a new tablet up: \"Install Termux\" -> \"Publish files for Termux\" ->\n" +
-            "\"Set up Termux\" -> \"Open gonomadnet\". Only the second half of that has to be\ndone by hand, " +
-            "and only once: Termux ignores commands from other applications until\n" +
-            "allow-external-apps = true is in its own ~/.termux/termux.properties, and this\n" +
-            "appliance cannot write there. \"Copy the setup line\" gives you the one line that\n" +
-            "does it, for a terminal you open yourself.\n\n"
+        "Location: " +
+            if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                "granted"
+            } else {
+                "NOT granted"
+            } +
+            "\n\nThe appliance runs both halves out of this app: \"Start stack\" runs the\n" +
+            "transport, and \"Open gonomadnet\" runs the client on it. Nothing else has to be\n" +
+            "installed, and nothing here installs anything.\n\n"
 
     /**
      * Writes to both of the appliance's diagnostic channels: the screen, for the person
-     * holding the tablet, and logcat, for anyone diagnosing it from a host. A launch failure
-     * here is silent by nature — that is the whole reason the prerequisites are printed — so
-     * it has to be visible in both places.
+     * holding the tablet, and logcat, for anyone diagnosing it from a host. The appliance's
+     * failures are silent by nature, so they have to be visible in both places.
      */
     private fun report(line: String) {
         android.util.Log.i(TAG, line)
@@ -708,11 +458,6 @@ class MainActivity : Activity() {
         private const val TAG = "gonomadnet"
 
         private const val REQUEST_CODE = 1
-        private const val PREREQUISITES =
-            "Termux has to be the F-Droid build, and it has to have allow-external-apps = true " +
-                "in its ~/.termux/termux.properties, and this appliance has to hold " +
-                "com.termux.permission.RUN_COMMAND (granted in Settings). 'Copy the setup line' " +
-                "does the first two."
 
         /** The client's name inside `nativeLibraryDir`, where a `.so` suffix is required. */
         const val CLIENT_NAME = "gonomadnetclient"
@@ -756,14 +501,15 @@ class MainActivity : Activity() {
         private const val LOOPBACK = "127.0.0.1"
 
         /**
-         * builtInClient is the client as the appliance runs it, with no Termux involved.
+         * builtInClient is the client as the appliance runs it, out of the APK.
          *
          * The two directories it names are the ones that make it the *attached* client: the
          * Reticulum configuration that requires the shared instance the appliance's own
          * transport owns, rather than one that lists interfaces and would become a second
          * transport. Its Nomad Network configuration is its own, under the appliance's
-         * private storage: the messages and the identity a Termux install keeps belong to
-         * that install, and two clients announcing one identity is a node that appears twice.
+         * private storage: the messages and the identity the client keeps there are the
+         * appliance's, and a second client announcing the same identity is a node that
+         * appears twice.
          */
         fun builtInClient(nativeLibraryDir: String, paths: StackPaths): BuiltInClient = BuiltInClient(
             binary = LaunchSpecs.binary(nativeLibraryDir, CLIENT_NAME),
