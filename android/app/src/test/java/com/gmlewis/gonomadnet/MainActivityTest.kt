@@ -295,6 +295,79 @@ class MainActivityTest {
     }
 
     @Test
+    fun `the appliance offers itself for a USB radio`() {
+        // A radio on the tablet's USB port is a device Android asks who should have. It asks
+        // by matching the attached device against every app's device filter, so an app with
+        // no filter is an app that is never offered — the radio's own chooser listed four
+        // other applications and not this one.
+        //
+        // The claim is only that offer, and it is made in the manifest and one resource, so
+        // both are asserted here: a filter is the kind of thing that is silently lost when an
+        // activity is edited, and the symptom is a dialog without this app in it.
+        val host = manifest().elements("uses-feature")
+            .firstOrNull {
+                it.getAttributeNS(ANDROID_NAMESPACE, "name") == "android.hardware.usb.host"
+            }
+        assertNotNull("the manifest declares no android.hardware.usb.host feature", host)
+        assertEquals(
+            "USB host support is declared as required, which would keep the appliance off " +
+                "every device that has no USB port to host a radio on",
+            "false",
+            host!!.getAttributeNS(ANDROID_NAMESPACE, "required"),
+        )
+
+        val activity = manifest().elements("activity")
+            .firstOrNull {
+                it.getAttributeNS(ANDROID_NAMESPACE, "name") ==
+                    ".${MainActivity::class.java.simpleName}"
+            }
+        assertNotNull("the manifest declares no activity for MainActivity", activity)
+
+        val actions = activity!!.elements("action")
+            .map { it.getAttributeNS(ANDROID_NAMESPACE, "name") }
+        assertTrue(
+            "nothing tells the system to bring the appliance in when a USB device " +
+                "attaches: the activity declares ${actions.joinToString()}",
+            USB_ATTACHED in actions,
+        )
+
+        val filter = activity.elements("meta-data")
+            .firstOrNull { it.getAttributeNS(ANDROID_NAMESPACE, "name") == USB_ATTACHED }
+        assertNotNull("the activity declares the USB_ATTACHED filter with no device filter", filter)
+        assertEquals(
+            "the activity names a device filter that is not the module's",
+            "@xml/usb_device_filter",
+            filter!!.getAttributeNS(ANDROID_NAMESPACE, "resource"),
+        )
+
+        // The filter itself. A device is identified by the vendor and product it reports, and
+        // the RNode hardware in hand is an Espressif USB JTAG/serial debug unit: 0x303a and
+        // 0x1001, spelled in decimal because that is the only form the platform reads.
+        val devices = documentOf(File(RES_DIR, "xml/usb_device_filter.xml")).elements("usb-device")
+        assertTrue("the device filter lists no USB device", devices.isNotEmpty())
+        val rnode = devices.firstOrNull {
+            it.getAttribute("vendor-id") == "12346" && it.getAttribute("product-id") == "4097"
+        }
+        assertNotNull(
+            "the device filter does not match the Espressif USB JTAG/serial unit an RNode " +
+                "presents, so the radio's chooser will not offer the appliance: it lists " +
+                devices.joinToString { it.getAttribute("vendor-id") + ":" + it.getAttribute("product-id") },
+            rnode,
+        )
+
+        // Every entry has to name something. A <usb-device> with no attributes is not a
+        // filter, it is every USB device there is — the platform's own documentation warns
+        // that only an application that needs all of them should ask for all of them.
+        for (device in devices) {
+            assertTrue(
+                "a device filter entry names no vendor and no class, which matches every " +
+                    "USB device there is",
+                device.attributes.length > 0,
+            )
+        }
+    }
+
+    @Test
     fun `the appliance asks the system for nothing it does not need`() {
         // The appliance is one APK that starts both halves out of its own storage, so it
         // installs nothing and it runs nothing in another app. Every permission here is
@@ -437,11 +510,15 @@ class MainActivityTest {
 
     /** manifest is the module's manifest, parsed so its android: attributes can be read. */
     private fun manifest(): org.w3c.dom.Document {
-        val file = File(MANIFEST)
-        assertTrue("the manifest is not with the module: $file", file.isFile)
         // The manifest's attributes are all in the `android:` namespace and none of them are
         // in its element namespace, so a parser that is not namespace-aware sees an activity
         // with no name at all.
+        return documentOf(File(MANIFEST))
+    }
+
+    /** documentOf parses one XML file of the module, with its namespaces. */
+    private fun documentOf(file: File): org.w3c.dom.Document {
+        assertTrue("the file is not with the module: $file", file.isFile)
         val factory = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
         return factory.newDocumentBuilder().parse(file)
     }
@@ -509,6 +586,9 @@ class MainActivityTest {
 
         /** Where the manifest's own attributes live, which is not its element namespace. */
         const val ANDROID_NAMESPACE = "http://schemas.android.com/apk/res/android"
+
+        /** The action the system matches an application against for an attached USB device. */
+        const val USB_ATTACHED = "android.hardware.usb.action.USB_DEVICE_ATTACHED"
 
         /** The configuration changes a rotation produces, every one of which must be handled. */
         val ROTATION_CHANGES = listOf("orientation", "screenSize", "screenLayout", "smallestScreenSize")

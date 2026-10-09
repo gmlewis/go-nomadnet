@@ -17,6 +17,14 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+    <!-- A radio on the tablet's USB port. Not every device can host one, so the appliance
+         says the feature is one it uses rather than one it needs, and a tablet without a
+         USB port still installs it. The filter that decides which devices the system offers
+         the appliance for is res/xml/usb_device_filter.xml, named by the activity below. -->
+    <uses-feature
+        android:name="android.hardware.usb.host"
+        android:required="false" />
+
     <!-- The appliance's own theme, which is the platform's with the window's colours set
          to the console's: the device's default theme puts the device's accent colour in the
          status bar, which is a bright bar across the top of a dark terminal. It is declared
@@ -49,6 +57,19 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
+            <!-- The radio's own chooser. Android matches an attached USB device against
+                 every application's filter and asks the person which of them should have
+                 it; an application with no filter is never in that list. The meta-data
+                 names the filter, and the filter names the devices: the USB-serial bridges
+                 RNode hardware presents. -->
+            <intent-filter>
+                <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
+            </intent-filter>
+
+            <meta-data
+                android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
+                android:resource="@xml/usb_device_filter" />
         </activity>
 
         <service
