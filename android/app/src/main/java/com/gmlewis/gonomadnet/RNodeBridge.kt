@@ -208,6 +208,12 @@ class RNodeBridge(
 
         val name = socketName()
         val spec = bridgeSpec(name)
+        // A bridge killed rather than stopped — `am force-stop`, or a crash — never runs the
+        // cleanup that removes the path it published, and what it left behind names a
+        // pseudo-terminal that is long gone. Clearing that before the spawn is what stops the
+        // wait below from taking a previous bridge's path as this one's, returning before this
+        // bridge has bound its socket, and failing the dial with a perfectly good radio in.
+        clearPublishedPath()
         val started = try {
             runner.spawn(spec)
         } catch (failure: Throwable) {
@@ -240,6 +246,18 @@ class RNodeBridge(
         pump.start(link, socket)
         log("the radio is up: ${device.description} at $path")
         return true
+    }
+
+    /**
+     * clearPublishedPath removes whatever a previous bridge published, if anything.
+     *
+     * The bridge removes the path itself as it stops, but one that is killed never gets to,
+     * and a leftover path is what wedges the radio until the app's files are cleared by hand:
+     * every later Start stack reads it, dials a socket the new bridge has not bound yet, and
+     * gives up. Removing it is what makes the wait below see this bridge's own publish only.
+     */
+    private fun clearPublishedPath() {
+        runCatching { File(ttyFile).delete() }
     }
 
     /**

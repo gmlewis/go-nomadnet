@@ -22,6 +22,12 @@ class RecordingProcessRunner : ProcessRunner {
     val running = LinkedHashMap<String, FakeChildProcess>()
     private val exitCodes = mutableMapOf<String, Int>()
 
+    /**
+     * onSpawn runs as a program is spawned, so a fake can model one that writes a file of its
+     * own as it starts — the radio bridge publishes the serial path it has just allocated.
+     */
+    var onSpawn: ((LaunchSpec) -> Unit)? = null
+
     /** Makes the next spawn of this daemon return a child that is already dead. */
     fun failNextStartFor(name: String, exitCode: Int = 1) {
         exitCodes[name] = exitCode
@@ -30,6 +36,7 @@ class RecordingProcessRunner : ProcessRunner {
     override fun spawn(spec: LaunchSpec): ChildProcess {
         events.add("spawn:${spec.name}")
         specs.add(spec)
+        onSpawn?.invoke(spec)
         val child = FakeChildProcess(spec.name, events)
         if (exitCodes.containsKey(spec.name)) {
             child.alive = false

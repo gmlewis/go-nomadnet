@@ -101,9 +101,9 @@ class RNodeBridgeTest {
         // Without a published path there is nothing for the transport to dial, and a bridge
         // left running against no radio holds the USB device for the life of the install.
         val fixture = BridgeFixture()
-        fixture.attachedRadio()
-        // Nothing writes the file, so the wait ends at once rather than after its polls.
-        File(fixture.paths.rnodeTtyFile).delete()
+        // A bridge that is started but never manages to publish writes nothing, so the wait
+        // ends at once rather than after its polls.
+        fixture.attachedRadio(publishes = null)
 
         val bridge = fixture.bridge(awaitAttempts = 0)
         assertFalse("a bridge with nothing to dial was reported as up", bridge.start())
@@ -111,6 +111,48 @@ class RNodeBridgeTest {
         assertTrue("the bridge program was left running", fixture.events.contains("destroy:gornnode"))
         assertTrue("the radio was left claimed", fixture.attached!!.released)
         assertTrue("the bridge's socket was never dialled, so none was left open", fixture.dialled == null)
+    }
+
+    @Test
+    fun `a path a killed bridge left behind is not taken as this bridge's own`() {
+        // A bridge killed rather than stopped — `am force-stop`, or a crash — skips the
+        // cleanup that removes the path it published, and what it left behind names a
+        // pseudo-terminal that is long gone. If the wait reads that leftover it returns
+        // before this bridge has bound its socket, the dial fails, and every later Start
+        // stack fails the same way with a perfectly good radio attached.
+        val fixture = BridgeFixture()
+        val radio = fixture.attachedRadio(publishes = null)
+        fixture.publish("/dev/pts/3")
+
+        val bridge = fixture.bridge(awaitAttempts = 1)
+        assertFalse("a path a killed bridge left behind was taken as this bridge's", bridge.start())
+        assertNull(bridge.publishedTty)
+        assertTrue("the radio was left claimed", radio.released)
+        assertNull("the bridge's socket was never dialled, so none was left open", fixture.dialled)
+        assertFalse(
+            "the dead bridge's path is still there for the next start to find",
+            File(fixture.paths.rnodeTtyFile).exists(),
+        )
+    }
+
+    @Test
+    fun `the leftover path is gone before the bridge is even started`() {
+        // Both paths are plausible — the leftover names a pseudo-terminal that once worked —
+        // so only the order of the clear and the spawn tells them apart. Clearing after the
+        // spawn would delete the path the bridge had just published; clearing before it is
+        // what makes the wait able to see this bridge's own publish and nothing else.
+        val fixture = BridgeFixture()
+        fixture.attachedRadio(publishes = "/dev/pts/9")
+        fixture.publish("/dev/pts/3")
+
+        val bridge = fixture.bridge()
+        assertTrue("the bridge did not come up: ${fixture.logs}", bridge.start())
+        assertEquals("/dev/pts/9", bridge.publishedTty)
+        assertEquals(
+            "a killed bridge's path was still there as this bridge was started",
+            listOf(false),
+            fixture.staleAtSpawn,
+        )
     }
 
     @Test
@@ -286,12 +328,36 @@ class BridgeFixture(
     var attached: FakeRadio? = null
         private set
 
-    /** Attaches the radio, and arranges for the bridge to publish a serial path. */
-    fun attachedRadio(): FakeRadio {
+    /**
+     * Whether the published-path file was there as each bridge program was started, before it
+     * wrote anything. A bridge program is spawned only after the leftover path has been
+     * cleared, so every entry is false.
+     */
+    val staleAtSpawn = mutableListOf<Boolean>()
+
+    /**
+     * Attaches the radio, and arranges for the bridge program to publish a serial path as it
+     * starts — which is when a real bridge publishes, and the only way a test can tell a path
+     * this bridge published from one a previous one left behind. Pass null for a bridge that
+     * never manages to publish.
+     */
+    fun attachedRadio(publishes: String? = "/dev/pts/7"): FakeRadio {
         val radio = FakeRadio(events)
         attached = radio
-        File(paths.rnodeTtyFile).also { it.parentFile?.mkdirs() }.writeText("/dev/pts/7")
+        runner.onSpawn = { spec ->
+            if (spec.name == RNodeBridge.NAME) {
+                staleAtSpawn.add(File(paths.rnodeTtyFile).exists())
+                if (publishes != null) {
+                    publish(publishes)
+                }
+            }
+        }
         return radio
+    }
+
+    /** publish leaves behind exactly what the bridge program writes for the transport to dial. */
+    fun publish(tty: String) {
+        File(paths.rnodeTtyFile).also { it.parentFile?.mkdirs() }.writeText(tty)
     }
 
     /** publishedTty is what the appliance must render the transport against. */
