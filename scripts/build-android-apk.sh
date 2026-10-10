@@ -97,6 +97,63 @@ build_binary() {
     go build -trimpath $tags -o "$JNI_DIR/$output" "./$package" )
 }
 
+# The launcher icon is rendered in assets/ and staged into the Gradle project's res/ here.
+#
+# assets/ is the single source of truth: it carries the whole icon family the
+# renderer emits, including the iOS sizes and the mascot, and regenerating an icon
+# rewrites it. Nothing derives the Android subset from it automatically, so without
+# this step the application simply has no android:icon to point at and the launcher
+# draws the platform's default green robot in every launcher, the task switcher and
+# the settings list.
+#
+# The file names are the renderer's own, one shape per kind and density, so the
+# mapping is read from them rather than listed: a new density is picked up by adding
+# the file to assets/ and nothing else. Android resolves the density buckets at
+# install time, and mipmap-anydpi-v26 replaces the flat PNG for API 26 and later with
+# the adaptive icon, whose two layers are the foreground and background sets below.
+stage_launcher_icons() {
+  local src="$REPO_ROOT/assets" dst="$ANDROID_DIR/app/src/main/res"
+  local f base kind density dir resname staged=0
+
+  for f in "$src"/gonomadnet-android-*.png "$src"/gonomadnet-android-*.xml; do
+    [ -f "$f" ] || continue
+    base="${f##*/}"
+    base="${base#gonomadnet-android-}"
+
+    case "$base" in
+      # The round launcher is matched before the plain one, because the plain
+      # pattern's '*' would otherwise swallow "round-<density>" as the density.
+      launcher-round-*)
+        density="${base#launcher-round-}"; density="${density%%-*}"
+        dir="mipmap-$density"; resname="ic_launcher_round.png" ;;
+      launcher-*)
+        density="${base#launcher-}"; density="${density%%-*}"
+        dir="mipmap-$density"; resname="ic_launcher.png" ;;
+      adaptive-foreground-*)
+        density="${base#adaptive-foreground-}"; density="${density%%-*}"
+        dir="mipmap-$density"; resname="ic_launcher_foreground.png" ;;
+      adaptive-background-*)
+        density="${base#adaptive-background-}"; density="${density%%-*}"
+        dir="mipmap-$density"; resname="ic_launcher_background.png" ;;
+      adaptive-ic_launcher_round-anydpi-v26.xml)
+        dir="mipmap-anydpi-v26"; resname="ic_launcher_round.xml" ;;
+      adaptive-ic_launcher-anydpi-v26.xml)
+        dir="mipmap-anydpi-v26"; resname="ic_launcher.xml" ;;
+      *) continue ;;
+    esac
+
+    mkdir -p "$dst/$dir"
+    cp "$f" "$dst/$dir/$resname"
+    staged=$((staged + 1))
+  done
+
+  if [ "$staged" -eq 0 ]; then
+    echo "no launcher icons found in $src: the APK would install with the platform's default icon" >&2
+    return 0
+  fi
+  echo "  staged $staged launcher icon files"
+}
+
 if [ "$MODE" != "test" ]; then
   mkdir -p "$JNI_DIR" "$ASSETS_DIR"
   echo "building the bundled daemons for linux/arm64:"
@@ -125,6 +182,9 @@ if [ "$MODE" != "test" ]; then
   build_binary "$REPO_ROOT" "android/editor"    "libgonomadnetedit.so"   "-tags=wago"
   build_binary "$REPO_ROOT" "android/rnode"     "libgornnode.so"         ""
   du -ch "$JNI_DIR"/*.so | tail -1
+
+  echo "staging the launcher icon:"
+  stage_launcher_icons
 fi
 
 # ---------------------------------------------------------------------------

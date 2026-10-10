@@ -26,3 +26,9 @@ __pycache__
 # Android release staging: the APK scripts/build-android-apk.sh leaves for the
 # release publisher. Build output, never committed.
 dist/
+
+# The launcher icon's Android resource directories, staged from assets/ by
+# scripts/build-android-apk.sh on every APK build. Derived from the rendered icon
+# family in assets/, and regenerated whenever one of those files changes, so what
+# lives in the repository is the icon itself and never a second copy of it.
+android/app/src/main/res/mipmap-*/
