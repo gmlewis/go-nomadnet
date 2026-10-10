@@ -33,7 +33,13 @@ func Pump(master, app io.ReadWriteCloser) error {
 	first := <-ended
 	_ = master.Close()
 	_ = app.Close()
-	<-ended
+	// The other direction's result is received and deliberately dropped: whichever
+	// end ended first is the one that explains the transfer, and by the time this
+	// returns the second goroutine can only be unwinding from the Close above — a
+	// "use of closed network connection" that this function's own teardown caused,
+	// not a fault to report. Receiving it is what reaps the goroutine before Pump
+	// returns; leaving it unread would let the bridge outlive its caller.
+	_ = <-ended
 	return cleanEnd(first)
 }
 

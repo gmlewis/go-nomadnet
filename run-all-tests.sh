@@ -137,6 +137,22 @@ else
 fi
 
 echo "Running errcheck..."
+# The version is asserted, not assumed, because the two gates have to be the same
+# gate. errcheck's checks are not stable across releases: v1.30.0 added a check for
+# discarding the value received from an error-typed channel, and installing it as
+# `@latest` in CI turned five lines that had been green since August into a red
+# build — none of them touched by the change being pushed, and invisible to a local
+# run that still had v1.20.0. That is the failure mode this pin exists to prevent:
+# a local gate that reports clean on something CI will reject.
+#
+# build.yml installs the same version. Bump both together.
+ERRCHECK_PIN="v1.30.0"
+ERRCHECK_HAVE="$(errcheck -version 2>/dev/null | awk '{print $2}' || true)"
+if [ "${ERRCHECK_HAVE}" != "${ERRCHECK_PIN}" ]; then
+    echo "FAIL: errcheck ${ERRCHECK_HAVE:-<not installed>} is on PATH, want ${ERRCHECK_PIN}" >&2
+    echo "      install it with: go install github.com/kisielk/errcheck@${ERRCHECK_PIN}" >&2
+    exit 1
+fi
 ERRCHECK_LOG="errcheck.log"
 if ! errcheck ./... >"${ERRCHECK_LOG}" 2>&1; then
     echo "FAIL: errcheck reported unchecked errors (see ${ERRCHECK_LOG}):" >&2

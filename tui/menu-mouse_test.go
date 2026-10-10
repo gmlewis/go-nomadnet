@@ -138,7 +138,10 @@ func TestMenuClickRedrawsPage(t *testing.T) {
 	// The event loop must still be responsive: Ctrl-Q quits cleanly.
 	screen.InjectKey(tcell.KeyCtrlQ, 0, tcell.ModNone)
 	select {
-	case <-runErr:
+	case err := <-runErr:
+		if err != nil {
+			t.Fatalf("the event loop quit with %v, want a clean exit", err)
+		}
 	case <-time.After(4 * time.Second):
 		app.Stop()
 		t.Fatal("event loop did not quit (deadlocked)")

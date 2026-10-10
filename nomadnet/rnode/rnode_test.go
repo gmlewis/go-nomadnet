@@ -252,7 +252,10 @@ func TestPumpCarriesBytesBothWaysAndEndsWhenEitherEndCloses(t *testing.T) {
 	go func() { ended2 <- Pump(bridge2.Master(), app2) }()
 	_ = bridge2.Close()
 	select {
-	case <-ended2:
+	case err := <-ended2:
+		if err != nil {
+			t.Fatalf("Pump returned %v after the bridge was closed, want a clean end", err)
+		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("Pump did not return after the bridge was closed")
 	}
@@ -432,7 +435,10 @@ func TestTheServerRefusesAPeerFromAnotherUid(t *testing.T) {
 
 	cancel()
 	select {
-	case <-served:
+	case err := <-served:
+		if err != nil {
+			t.Fatalf("Serve returned %v when its context was cancelled, want a clean stop", err)
+		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("Serve did not return when its context was cancelled")
 	}

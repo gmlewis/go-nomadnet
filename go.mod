@@ -4,7 +4,7 @@ go 1.26.4
 
 require (
 	github.com/creack/pty/v2 v2.0.1
-	github.com/gmlewis/go-reticulum v0.139.0
+	github.com/gmlewis/go-reticulum v0.140.0
 	github.com/gmlewis/tcell/v2 v2.13.12
 	github.com/gmlewis/tview v0.42.2
 	github.com/mattn/go-runewidth v0.0.16

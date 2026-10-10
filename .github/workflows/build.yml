@@ -129,8 +129,16 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      # Pinned, not @latest. This job is a gate, and a gate that can change under
+      # a push is not a gate: errcheck v1.30.0 added a check for discarding the
+      # value received from an error-typed channel, and installing @latest turned
+      # five pre-existing, long-green lines from August into a red build — none of
+      # them touched by the change that was being pushed. Bump this deliberately,
+      # and run the same version locally (scripts/README or the version printed by
+      # `errcheck -version`) so that the gate here and the gate on a developer's
+      # machine are the same gate.
       - name: Install errcheck
-        run: go install github.com/kisielk/errcheck@latest
+        run: go install github.com/kisielk/errcheck@v1.30.0
 
       - name: Run errcheck
         run: errcheck ./...
