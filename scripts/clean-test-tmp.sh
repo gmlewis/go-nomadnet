@@ -107,6 +107,7 @@ prefixes=(
   gonomadnet-tmux-test-suite- nomadnet-tmux-test-suite-
   gonomadnet-test-conversations- gonomadnet-input-box nomadnet-input-box
   nomadnet-app-test nomadnet-config-test nomadnet-node- android-editor-
+  rnode-bridge-
   nomadnet-conversation-test nomadnet-directory-test nomadnet-dir-persist
   nomadnet-int- nomadnet-lxmf-xproc- nomadnet-peersettings-test
   nomadnet-storage-test nomadnet-cbor- nomadnet-wasmpages-

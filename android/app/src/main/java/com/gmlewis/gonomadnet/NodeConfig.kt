@@ -32,13 +32,27 @@ data class InterfaceSpec(
 )
 
 /**
- * The RNode radio the appliance's transport dials over USB.
+ * The RNode radio the appliance's transport dials.
  *
- * [port] is the kernel's serial device for the radio on the tablet's USB port, which is
- * what an ESP32-based RNode enumerates as. It is rendered **switched on** and left that
- * way whether or not a radio is attached: the transport logs an interface it cannot open
- * and retries it in the background, so a radio plugged in later is picked up without
- * anybody editing the file, and an appliance with no radio loses nothing but a log line.
+ * It is **enabled by default, whether or not a radio is attached**, and that is deliberate.
+ * The appliance is a radio node for everybody who installs it, so it assumes a radio might
+ * be there: the interface is rendered switched on from the first start, before any radio has
+ * ever been plugged in, so that the simplest possible installation — install the APK, tap
+ * Start stack, plug a radio in — needs nothing configured by hand.
+ *
+ * A radio that is not there costs nothing and is not an error. The transport logs the
+ * interface it cannot open and retries it in the background, the Interfaces page shows it as
+ * Disconnected with no traffic, and a radio plugged in a week later is picked up with nobody
+ * touching a file. That steady state is expected and correct.
+ *
+ * [port] is the path the transport opens. It defaults to the serial device the kernel creates
+ * for a radio on the tablet's USB port, which is where a radio would be if the platform gave
+ * an application a serial port at all — on Android it does not, and the path is root-only. So
+ * when the appliance's bridge has a radio open, the bridge's own published path is used
+ * instead (see [StackPaths.rnodeTtyFile]), which is the slave of a pseudo-terminal and the
+ * one serial device an Android application can allocate. That substitution is the whole of
+ * how a radio goes from Disconnected to Connected; without it, the default stands and the
+ * interface waits.
  *
  * The radio parameters are the ones the appliance ships with, and they have to match the
  * band the radio is licensed for and the airtime it is allowed where it is. An RNode
@@ -46,8 +60,8 @@ data class InterfaceSpec(
  * the log rather than a radio that silently transmits somewhere it should not.
  */
 data class RNodeSpec(
-    val name: String = DEFAULT_NAME,
     val port: String = DEFAULT_PORT,
+    val name: String = DEFAULT_NAME,
     val frequency: Int = DEFAULT_FREQUENCY,
     val bandwidth: Int = DEFAULT_BANDWIDTH,
     val txpower: Int = DEFAULT_TXPOWER,
@@ -59,7 +73,12 @@ data class RNodeSpec(
         /** The section the radio is rendered under in `[interfaces]`. */
         const val DEFAULT_NAME = "RNode LoRa"
 
-        /** The serial device an RNode on the tablet's USB port enumerates as. */
+        /**
+         * The serial device an RNode on the tablet's USB port enumerates as.
+         *
+         * It is what the kernel creates for the radio, and it is where the interface points
+         * until a bridge hands the transport a path it can actually open. See [RNodeSpec].
+         */
         const val DEFAULT_PORT = "/dev/ttyACM0"
 
         /** 915 MHz, at 125 kHz of bandwidth: the narrow band an RNode is set up in. */
@@ -98,9 +117,11 @@ data class NodeConfigSpec(
     /**
      * The radio the appliance's transport dials, or null for one that is to have none.
      *
-     * It defaults to a radio so that a fresh install has one: the appliance is a radio
-     * node, and an operator who plugs an RNode into the tablet should not have to write a
-     * configuration file first. See [RNodeSpec].
+     * It defaults to a radio, switched on, pointing at the serial device a radio on the
+     * tablet's USB port would be at: a fresh install has one before any radio has been
+     * plugged in, because the appliance assumes one might be. A radio that is not there is
+     * reported Disconnected and retried in the background, which is not a failure. See
+     * [RNodeSpec].
      */
     val rnode: RNodeSpec? = RNodeSpec(),
     val logLevel: Int = 4,
@@ -239,14 +260,27 @@ object NodeConfigRenderer {
      * renderRadio renders the USB radio's own section.
      *
      * It is an `RNodeInterface`, which opens [RNodeSpec.port] as a serial device and speaks
-     * the radio's own protocol over it: the port is the only thing about a radio that the
-     * platform decides, and everything else is the band it is set up in.
+     * the radio's own protocol over it: the port is where a radio is — the appliance's own
+     * bridge's published path when it has one open, and the kernel's serial device for the
+     * tablet's USB port otherwise.
+     *
+     * It is rendered **switched on**, whatever [RNodeSpec.port] names and whether or not
+     * anything is at the other end of it. An appliance that hid its radio until one was
+     * plugged in would be an appliance that has to be configured before it can be used, and
+     * this one assumes a radio might be there. An interface that cannot be opened is logged
+     * and retried in the background and shows as Disconnected, which is a state and not a
+     * failure: the moment a radio is attached it is picked up, with no file edited and no
+     * button pressed.
      */
     private fun renderRadio(radio: RNodeSpec): String {
         val out = StringBuilder()
-        out.append("  # The radio on the tablet's own USB port. It stays switched on whether or\n")
-        out.append("  # not a radio is attached, and the transport retries an interface it cannot\n")
-        out.append("  # open rather than failing on it.\n")
+        out.append("  # The radio on the tablet's own USB port. It is switched on whether or not a\n")
+        out.append("  # radio is attached: an interface the transport cannot open is retried in the\n")
+        out.append("  # background and reported as disconnected, so a radio plugged in later is\n")
+        out.append("  # picked up without anybody editing this file. When the appliance's own bridge\n")
+        out.append("  # has a radio open, the port below is the path that bridge published, which is\n")
+        out.append("  # the only serial device an Android application can allocate; otherwise it is\n")
+        out.append("  # where the kernel would put one.\n")
         out.append("  [[").append(radio.name).append("]]\n")
         out.append("    type = RNodeInterface\n")
         out.append("    interface_enabled = ").append(if (radio.enabled) "true" else "false").append('\n')

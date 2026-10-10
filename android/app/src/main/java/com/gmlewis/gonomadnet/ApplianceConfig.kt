@@ -108,6 +108,13 @@ object ApplianceConfig {
      * resolves to nothing, produces a transport with **no interfaces at all** and a reason in
      * [describeFailure] — an isolated node is a working node with no peers, which is far
      * better than a node that refuses to start.
+     *
+     * [rnode] is the radio's section, and it defaults to one switched on. The radio is not
+     * conditional on the hub — an appliance whose hub address resolved nothing still has a
+     * radio — and it is not conditional on a radio being attached either: the appliance
+     * assumes one might be, so a fresh install carries the interface from its first start.
+     * The caller passes the path the appliance's own bridge published, when it has one, so
+     * that a radio that *is* attached is reached rather than merely waited for.
      */
     fun nodeConfig(
         hubSpec: String,
@@ -115,15 +122,27 @@ object ApplianceConfig {
         sharedInstancePort: Int = NodeConfigSpec.DEFAULT_SHARED_INSTANCE_PORT,
         instanceName: String = NodeConfigSpec.DEFAULT_INSTANCE_NAME,
         rpcKey: String = "",
+        rnode: RNodeSpec? = RNodeSpec(),
     ): NodeConfigSpec {
         val parsed = Resolver.parseHostPort(hubSpec)
-            ?: return NodeConfigSpec(sharedInstancePort = sharedInstancePort, instanceName = instanceName, rpcKey = rpcKey)
+            ?: return NodeConfigSpec(
+                sharedInstancePort = sharedInstancePort,
+                instanceName = instanceName,
+                rpcKey = rpcKey,
+                rnode = rnode,
+            )
         val resolved = resolve(parsed.first, parsed.second)
-            ?: return NodeConfigSpec(sharedInstancePort = sharedInstancePort, instanceName = instanceName, rpcKey = rpcKey)
+            ?: return NodeConfigSpec(
+                sharedInstancePort = sharedInstancePort,
+                instanceName = instanceName,
+                rpcKey = rpcKey,
+                rnode = rnode,
+            )
         return NodeConfigSpec(
             sharedInstancePort = sharedInstancePort,
             instanceName = instanceName,
             rpcKey = rpcKey,
+            rnode = rnode,
             interfaces = listOf(
                 InterfaceSpec(name = HUB_INTERFACE_NAME, host = resolved.literal, port = parsed.second),
             ),

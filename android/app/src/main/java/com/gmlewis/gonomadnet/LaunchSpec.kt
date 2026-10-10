@@ -114,6 +114,18 @@ data class StackPaths(val filesDir: String) {
      */
     val clientHubStore get() = "$nomadnetworkStorageDir/rrc_hubs"
 
+    /**
+     * Where the radio bridge publishes the serial path the transport is dialled at.
+     *
+     * The path is a pseudo-terminal's slave, which is the only serial device an Android
+     * application can allocate; the kernel's own node for a radio on the USB port is
+     * root-only, and the supported way to reach a USB device hands back a descriptor no
+     * path can name. The file is how the bridge tells the appliance what it was given, and
+     * the appliance renders the radio against whatever it finds there — or renders no radio
+     * at all when there is nothing to find.
+     */
+    val rnodeTtyFile get() = "$configDir/rnode/tty"
+
     /** The hub's TOML configuration, which `gorrcd --config` takes as a file. */
     val gorrcdConfig get() = "$configDir/rrcd.toml"
 
@@ -299,6 +311,34 @@ object LaunchSpecs {
         logFile = "${paths.logDir}/gorrcbot.log",
     )
 
+    /**
+     * gornnode: the radio bridge. It allocates the pseudo-terminal the transport is dialled
+     * at, publishes its slave path, and carries the radio's bytes between it and the app.
+     *
+     * It is started *before* the transport and stopped after it, because the path it
+     * publishes is part of the transport's configuration: a transport started first would be
+     * rendered against a path that does not exist yet, and one still running after the bridge
+     * is gone would be holding a serial port that has been released under it.
+     */
+    fun rnodeBridge(nativeLibraryDir: String, paths: StackPaths, socketName: String): LaunchSpec = LaunchSpec(
+        name = RNODE_BRIDGE_NAME,
+        binary = binary(nativeLibraryDir, RNODE_BRIDGE_NAME),
+        argv = listOf(
+            "--socket", socketName,
+            "--tty", paths.rnodeTtyFile,
+        ),
+        env = mapOf("HOME" to paths.runDir),
+        logFile = "${paths.logDir}/$RNODE_BRIDGE_NAME.log",
+    )
+
     /** The start order. gornsd must own the shared instance before anything attaches. */
     fun startOrder(): List<String> = listOf("gornsd", "gorrcd", "gorrcbot")
+
+    /**
+     * The radio bridge's program name, which is also the name it is staged under.
+     *
+     * It begins with `gorn`, as every bundled daemon does, and it is not one of them: the
+     * `gorrc` names are RRC's and this one is the radio's.
+     */
+    const val RNODE_BRIDGE_NAME = "gornnode"
 }

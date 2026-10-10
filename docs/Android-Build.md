@@ -15,7 +15,7 @@ the [latest release](https://github.com/gmlewis/go-nomadnet/releases).
 ./scripts/build-android-apk.sh --test-only  # the Kotlin unit tests only
 ```
 
-The script cross-compiles **seven** Go programs for `linux/arm64` and stages them as
+The script cross-compiles **eight** Go programs for `linux/arm64` and stages them as
 `.so` files in `jniLibs` — the only extension the packager keeps, and the only
 directory an app that targets the current `targetSdk` may execute a file from:
 
@@ -28,13 +28,14 @@ directory an app that targets the current `targetSdk` may execute a file from:
 | `libgonomadnetclient.so` | this repository (`cmd/gonomadnet`) | the client |
 | `libgorcons.so` | this repository (`android/console`) | the console host that gives that client a PTY |
 | `libgonomadnetedit.so` | this repository (`android/editor`) | the editor the client opens on its configuration |
+| `libgornnode.so` | this repository (`android/rnode`) | the radio bridge: the PTY the transport opens an RNode on |
 
 It then runs the Kotlin unit tests, assembles the APK, verifies the signature,
 and leaves it in `dist/android/`. The version comes from
 `nomadnet/version/version.go`, and `versionCode` is derived from the same string
 (`major * 10000 + minor * 100 + patch`), so an upgrade cannot install backwards.
 
-The seven programs total ~101 MB before compression, and a debug APK is ~86 MB.
+The eight programs total ~101 MB before compression, and a debug APK is ~86 MB.
 
 **The client is built once.** It used to be staged a second time as the asset
 `gonomadnet-client`, for another application to run out of shared storage — worth

@@ -9,6 +9,7 @@ package com.gmlewis.gonomadnet
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -19,6 +20,15 @@ import org.junit.Test
  * here rather than left to a default.
  */
 class NodeConfigRendererTest {
+
+    /**
+     * The serial path a bridge published, as one would look on the tablet.
+     *
+     * It is a pseudo-terminal's slave because that is the only serial device an Android
+     * application can allocate: the kernel's own node for a USB radio is root-only, and the
+     * supported way to reach a USB device hands back a descriptor no path can name.
+     */
+    private val BRIDGED_PORT = "/dev/pts/7"
 
     @Test
     fun theSharedInstanceIsATcpSocketWithThePinnedPortAndName() {
@@ -37,11 +47,13 @@ class NodeConfigRendererTest {
 
     @Test
     fun theRadioIsRenderedForTheTransport() {
-        // A radio on the tablet's USB port is an interface like any other, and the
+        // A radio the appliance's bridge has open is an interface like any other, and the
         // transport is the half that owns interfaces. The values are the LoRa ones an RNode
-        // is configured with; the port is the kernel's serial device for the radio, which is
-        // what an RNodeInterface opens.
-        val rendered = NodeConfigRenderer.reticulumConfig(NodeConfigSpec())
+        // is configured with; the port is the path the bridge published, which is a
+        // pseudo-terminal's slave — the only serial path an app on Android can arrive at.
+        val rendered = NodeConfigRenderer.reticulumConfig(
+            NodeConfigSpec(rnode = RNodeSpec(port = BRIDGED_PORT)),
+        )
         // The block as the file spells it, indentation included: a section under
         // [interfaces] is indented two spaces and its keys four, and a radio written at the
         // wrong depth is a radio Reticulum does not read back as an interface.
@@ -49,7 +61,7 @@ class NodeConfigRendererTest {
             "  [[RNode LoRa]]",
             "    type = RNodeInterface",
             "    interface_enabled = true",
-            "    port = /dev/ttyACM0",
+            "    port = $BRIDGED_PORT",
             "    frequency = 915000000",
             "    bandwidth = 125000",
             "    txpower = 17",
@@ -67,10 +79,12 @@ class NodeConfigRendererTest {
         // The client owns no interface — the shared instance does — but its Interfaces page
         // is a view of this file, so a radio the transport dials and the client cannot see is
         // an operator looking at a page that says the appliance has no radio.
-        val rendered = NodeConfigRenderer.clientReticulumConfig(NodeConfigSpec())
+        val rendered = NodeConfigRenderer.clientReticulumConfig(
+            NodeConfigSpec(rnode = RNodeSpec(port = BRIDGED_PORT)),
+        )
         assertTrue(
             "the client cannot see the radio:\n$rendered",
-            rendered.contains("[[RNode LoRa]]") && rendered.contains("port = /dev/ttyACM0"),
+            rendered.contains("[[RNode LoRa]]") && rendered.contains("port = $BRIDGED_PORT"),
         )
     }
 
@@ -78,6 +92,53 @@ class NodeConfigRendererTest {
     fun aRadioCanBeLeftOut() {
         val rendered = NodeConfigRenderer.reticulumConfig(NodeConfigSpec(rnode = null))
         assertFalse("a transport with no radio still describes one", rendered.contains("RNodeInterface"))
+    }
+
+    @Test
+    fun aFreshInstallCarriesAnEnabledRadioBeforeAnyRadioHasBeenPluggedIn() {
+        // The appliance assumes a radio might be there, and that is the whole point of it: a
+        // person installs the APK, taps Start stack, and plugs a radio in. Nothing is
+        // configured by hand and nothing waits to be told a radio exists.
+        //
+        // A radio that is not there is not an error. The transport logs the interface it
+        // cannot open and retries it in the background, the Interfaces page shows it as
+        // Disconnected with no traffic, and a radio attached later is picked up with no file
+        // edited and no button pressed. That steady state is expected: an appliance that hid
+        // its radio until one appeared would be one that had to be configured first.
+        val radio = NodeConfigSpec().rnode
+        assertNotNull("a fresh install has no radio interface at all", radio)
+        assertTrue("the default radio is switched off", radio!!.enabled)
+
+        val rendered = NodeConfigRenderer.reticulumConfig(NodeConfigSpec())
+        assertTrue("the default configuration has no radio:\n$rendered", rendered.contains("[[RNode LoRa]]"))
+        assertTrue(
+            "the default radio is not switched on:\n$rendered",
+            rendered.contains("    interface_enabled = true"),
+        )
+        // The port is where the kernel would put a radio on the tablet's USB port. It cannot
+        // be opened by an Android application, which is why the interface reports Disconnected
+        // until the bridge publishes the pseudo-terminal it can open instead; naming it costs
+        // nothing and makes the section readable to whoever looks at the file.
+        assertTrue(
+            "the default radio names no port:\n$rendered",
+            rendered.contains("    port = ${RNodeSpec.DEFAULT_PORT}"),
+        )
+    }
+
+    @Test
+    fun theRadioIsDialledAtThePathTheBridgePublishedWhenThereIsOne() {
+        // This is the whole of how a radio goes from Disconnected to Connected: the bridge
+        // allocates a pseudo-terminal, because Android gives an application no serial device
+        // it may open, and names it as the port. Everything else about the radio is the band
+        // it is set up in.
+        val rendered = NodeConfigRenderer.reticulumConfig(
+            NodeConfigSpec(rnode = RNodeSpec(port = BRIDGED_PORT)),
+        )
+        assertTrue("the radio is not dialled at the bridge's path:\n$rendered", rendered.contains("    port = $BRIDGED_PORT"))
+        assertFalse(
+            "the radio is still dialled at the kernel's device, which nothing can open:\n$rendered",
+            rendered.contains("    port = ${RNodeSpec.DEFAULT_PORT}"),
+        )
     }
 
     @Test
@@ -234,10 +295,12 @@ class NodeConfigRendererTest {
     @Test
     fun anApplianceWithNoHubInterfaceSaysSoAndStillCarriesTheRadio() {
         // The radio is not conditional on the hub: an appliance whose hub address resolved
-        // nothing still has the radio on its own USB port, and a section that said
-        // "deliberately empty" over a file with a radio in it would be telling an operator
-        // to go looking for something that is described two lines below.
-        val text = NodeConfigRenderer.reticulumConfig(NodeConfigSpec())
+        // nothing still has its own radio, and a section that said "deliberately empty" over
+        // a file with a radio in it would be telling an operator to go looking for something
+        // that is described two lines below.
+        val text = NodeConfigRenderer.reticulumConfig(
+            NodeConfigSpec(rnode = RNodeSpec(port = BRIDGED_PORT)),
+        )
         assertTrue("a radio alone is not an empty interface section:\n$text", !text.contains("Deliberately empty"))
     }
 

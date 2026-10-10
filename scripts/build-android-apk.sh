@@ -2,17 +2,18 @@
 
 # build-android-apk.sh builds, tests and signs the gonomadnet Android appliance.
 #
-# It exists because the appliance is not a Go program: it is seven Go programs, a Kotlin
+# It exists because the appliance is not a Go program: it is eight Go programs, a Kotlin
 # application that supervises them, and a signing key. Getting all of that into one
 # installable artifact has to be one command, or it is a checklist that goes stale.
 #
-# The Go toolchain builds the four linux/arm64 daemons, the client itself, and the console
-# host that gives the client a terminal under Android, and the Android Gradle Plugin
-# packages all seven under a .so name in nativeLibraryDir — the only extension the packager
-# keeps, and the only directory an app with targetSdk >= 29 is allowed to execute a file
-# from. They are all built for the same Linux/arm64, because Android is Linux. The app
-# runs the client itself, so one APK is the whole appliance: nothing else has to be
-# installed on the device, and there is nothing in it for another application to run.
+# The Go toolchain builds the four linux/arm64 daemons, the client itself, the console host
+# that gives the client a terminal under Android, its editor, and the radio bridge that
+# gives the transport a serial path to the RNode, and the Android Gradle Plugin packages all
+# eight under a .so name in nativeLibraryDir — the only extension the packager keeps, and
+# the only directory an app with targetSdk >= 29 is allowed to execute a file from. They are
+# all built for the same Linux/arm64, because Android is Linux. The app runs the client
+# itself, so one APK is the whole appliance: nothing else has to be installed on the
+# device, and there is nothing in it for another application to run.
 #
 #   ./scripts/build-android-apk.sh              build a signed release APK
 #   ./scripts/build-android-apk.sh --debug      build an installable debug APK
@@ -43,7 +44,7 @@ MODE="release"
 for arg in "$@"; do
   case "$arg" in
     --help|-h)
-      sed -n '2,31p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     --debug) MODE="debug" ;;
@@ -107,6 +108,10 @@ if [ "$MODE" != "test" ]; then
   build_binary "$RETICULUM_DIR" "cmd/gonsensor" "libgonsensor.so" ""
 
   echo "building the client, the console host that gives it a terminal, and its editor:"
+  # The radio bridge is the eighth program and it belongs to this repository: it is what
+  # allocates the pseudo-terminal the transport is dialled at, because Android gives an
+  # application no serial device to open at all. It carries no wasm runtime and so needs no
+  # build tag, and it is named under android/ because nothing but the appliance ever runs it.
   # The client is executed by the app, not read by it, and the console host is the
   # program the app spawns to put that client on a pseudo-terminal, so both belong in
   # nativeLibraryDir under a .so name. Neither exists anywhere else on the device.
@@ -118,6 +123,7 @@ if [ "$MODE" != "test" ]; then
   build_binary "$REPO_ROOT" "cmd/gonomadnet"     "libgonomadnetclient.so" "-tags=wago"
   build_binary "$REPO_ROOT" "android/console"   "libgorcons.so"          "-tags=wago"
   build_binary "$REPO_ROOT" "android/editor"    "libgonomadnetedit.so"   "-tags=wago"
+  build_binary "$REPO_ROOT" "android/rnode"     "libgornnode.so"         ""
   du -ch "$JNI_DIR"/*.so | tail -1
 fi
 
@@ -150,12 +156,13 @@ pinned_assertions() {
     "$ANDROID_DIR/app/src/main/java/com/gmlewis/gonomadnet/SensorFeedServer.kt" | head -1)"
   echo "pinned sensor feed:      tcp 127.0.0.1:$feed"
 
-  # The two programs this repository contributes are what put the client on a terminal
-  # inside the app, and a build that quietly omitted one of them produces an APK whose
-  # console spawns nothing at all. Only a build can answer for them: in --test-only mode
-  # nothing was cross-compiled, so their absence means nothing.
+  # The programs this repository contributes are what put the client on a terminal inside the
+  # app and give the transport a radio to dial, and a build that quietly omitted one of them
+  # produces an APK whose console spawns nothing at all, or whose radio is an interface
+  # enabled against a path that names nothing. Only a build can answer for them: in
+  # --test-only mode nothing was cross-compiled, so their absence means nothing.
   if [ "$MODE" != "test" ]; then
-    for so in libgonomadnetclient.so libgorcons.so libgonomadnetedit.so; do
+    for so in libgonomadnetclient.so libgorcons.so libgonomadnetedit.so libgornnode.so; do
       if [ ! -f "$JNI_DIR/$so" ]; then
         echo "$so was not built into $JNI_DIR" >&2
         exit 1
@@ -235,6 +242,20 @@ fi
 STAGE="$REPO_ROOT/dist/android"
 STAGED="$STAGE/gonomadnet-$VERSION_NAME-android-arm64-v8a.apk"
 mkdir -p "$STAGE"
+
+# The directory the publisher enumerates is a staging area, and it only ever added: every
+# local appliance build left another APK behind for good, and the publisher re-read and
+# re-skipped all of them on every run. The skipping is deliberate — an appliance built from
+# another release's daemons must not be published as this one's — but the accumulation that
+# makes it necessary is not, so the directory is left holding exactly the appliance this
+# build produced.
+for stale in "$STAGE"/gonomadnet-*-android-*.apk; do
+  if [ -e "$stale" ] && [ "$stale" != "$STAGED" ]; then
+    rm -f "$stale"
+    echo "removed the appliance staged for another release: $(basename "$stale")"
+  fi
+done
+
 cp "$APK" "$STAGED"
 
 echo

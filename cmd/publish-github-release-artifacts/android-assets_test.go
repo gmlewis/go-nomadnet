@@ -296,16 +296,71 @@ func TestReleaseNotesDescribeTheAndroidAppliance(t *testing.T) {
 	})
 }
 
-// TestReadGoReticulumVersion asserts the version that the notes quote is the sibling module's
-// own, so the cross-repo pin cannot silently drift.
+// TestReadGoReticulumVersion asserts that the version the notes quote is the pin the release
+// actually ships, so the cross-repo pin cannot silently drift.
+//
+// It compares against go.mod, and it does not skip when a sibling checkout is absent. CI
+// checks out this repository and nothing else, so a sibling is exactly the thing the test
+// could not have: the version it read was the developer's workspace's, the notes said
+// "van unrecorded version" on every published release, and this test passed by skipping on
+// the one machine where the mistake was invisible.
 func TestReadGoReticulumVersion(t *testing.T) {
 	t.Parallel()
 
-	got := readGoReticulumVersion()
-	if got == "an unrecorded version" {
-		t.Skipf("%v is not present beside this repository, so there is nothing to compare", goReticulumVersionFile)
+	pinned := pinnedGoReticulumVersion(t)
+	if got := readGoReticulumVersion(); got != pinned {
+		t.Errorf("readGoReticulumVersion = %q, but go.mod pins %q", got, pinned)
 	}
-	if !strings.HasPrefix(got, "0.") {
-		t.Fatalf("readGoReticulumVersion = %q, want a version like 0.137.0", got)
+	// The sentence in the notes supplies no "v" of its own, so what is read has to carry it.
+	if !strings.HasPrefix(pinned, "v") {
+		t.Errorf("go.mod pins go-reticulum as %q, which is not the form a module version takes", pinned)
+	}
+}
+
+// pinnedGoReticulumVersion is the version go.mod requires, read here independently of the
+// reader under test.
+func pinnedGoReticulumVersion(t *testing.T) string {
+	t.Helper()
+	data, err := os.ReadFile(repoFile(goModFile))
+	if err != nil {
+		t.Fatalf("reading %v: %v", goModFile, err)
+	}
+	for raw := range strings.SplitSeq(string(data), "\n") {
+		if after, ok := strings.CutPrefix(strings.TrimSpace(raw), goReticulumModule+" "); ok {
+			if fields := strings.Fields(after); len(fields) > 0 {
+				return fields[0]
+			}
+		}
+	}
+	t.Fatalf("%v does not require %v", goModFile, goReticulumModule)
+	return ""
+}
+
+// TestGoReticulumVersionInReadsOnlyThePin asserts the reader against a go.mod written here,
+// so that the shape it is given is not whatever this repository's happens to be.
+func TestGoReticulumVersionInReadsOnlyThePin(t *testing.T) {
+	t.Parallel()
+
+	const written = `module github.com/gmlewis/go-nomadnet
+
+go 1.26.4
+
+require (
+	github.com/creack/pty/v2 v2.0.1
+	github.com/gmlewis/go-reticulum v0.139.0
+)
+
+replace github.com/gmlewis/go-reticulum => ../go-reticulum
+`
+	if got, want := goReticulumVersionIn(written), "v0.139.0"; got != want {
+		t.Errorf("goReticulumVersionIn = %q, want %q", got, want)
+	}
+	// A module that is not required at all is not a version. Reading the replace target, or
+	// the module's own path line, would be a version this release did not ship.
+	if got := goReticulumVersionIn("module github.com/gmlewis/go-reticulum\n"); got != unrecordedVersion {
+		t.Errorf("goReticulumVersionIn = %q, want the placeholder", got)
+	}
+	if got := goReticulumVersionIn(""); got != unrecordedVersion {
+		t.Errorf("goReticulumVersionIn = %q, want the placeholder", got)
 	}
 }

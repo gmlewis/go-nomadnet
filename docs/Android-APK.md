@@ -119,6 +119,22 @@ deriving one of its own. The key is minted once per install and persists, so the
 page reports the interface the appliance is really using — connected, with its
 traffic — instead of an interface it cannot see.
 
+**The radio.** The appliance is a radio node, so it comes with an RNode interface
+switched on before you have plugged anything in. With no radio attached the
+Interfaces page shows it as **Disconnected**, which is simply what a radio that is
+not there looks like; nothing is wrong and nothing needs configuring. Plug an RNode
+into the tablet's USB port and it is picked up on its own: the page shows
+**RNode LoRa / Connected** and its traffic starts climbing. Unplug it, or stop the
+stack, and the radio is let go — nothing of it is left behind, and plugging it back
+in brings it up again.
+
+Android gives an application no serial port it may open, so the appliance does not
+use one: it allocates a pseudo-terminal of its own and carries the radio's bytes
+between that and the USB device. The first time a radio is plugged in, Android asks
+whether the appliance may use it; allow it, and it is remembered for that device.
+Until then the interface waits, and the rest of the appliance — the hub, the client,
+the sensors — works exactly as it does without one.
+
 **Three channels.** The client's channel store is written once, the first time
 the console is opened, and only when the client has never run:
 

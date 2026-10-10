@@ -135,11 +135,19 @@ const (
 	// gonomadnet-<version>-android-<abi>.apk.
 	androidAssetPrefix = "gonomadnet-"
 	androidAssetSuffix = ".apk"
-	// goReticulumVersionFile is the sibling module's version, which the APK's daemons are
-	// compiled from. A release note that names it is the only record of the cross-repo pin.
-	// It is relative to the repository root, like every other path here; repoFile is what
-	// makes that true from anywhere.
-	goReticulumVersionFile = "../go-reticulum/rns/version.go"
+	// goModFile is where the go-reticulum version is read from. It is relative to the
+	// repository root, like every other path here; repoFile is what makes that true from
+	// anywhere.
+	goModFile = "go.mod"
+	// goReticulumModule is the sibling module whose version a release that carries the
+	// appliance has to name. Its pin in go.mod is the version the shipped binaries and the
+	// APK's daemons were actually built from — see readGoReticulumVersion.
+	goReticulumModule = "github.com/gmlewis/go-reticulum"
+	// unrecordedVersion is what the notes say when the pin cannot be read at all. It is a
+	// whole phrase rather than a bare number because the sentence it lands in supplies no
+	// "v" of its own: it renders as "go-reticulum an unrecorded version", which reads as an
+	// admission rather than as a typo.
+	unrecordedVersion = "an unrecorded version"
 )
 
 // repoFile resolves a path named relative to the repository root.
@@ -662,24 +670,48 @@ func collectAndroidArtifacts(stagingDir, version string, progress *os.File) []st
 	return assets
 }
 
-// readGoReticulumVersion returns the version of the sibling go-reticulum module the release
-// binaries and the APK's daemons were compiled from, or an explanatory placeholder.
+// readGoReticulumVersion returns the version of go-reticulum the release binaries and the
+// APK's daemons were compiled from, or an explanatory placeholder.
 //
-// It is a file read rather than a build query because the answer has to appear in the release
-// notes, which are rendered before anything is uploaded and on a machine where a `go list`
-// against the workspace may not be meaningful.
+// It reads this repository's own go.mod, and that is the whole of the matter: the require
+// line is the pin those binaries were actually built from — it is what `go build` resolves,
+// what the module cache holds, and what a reader can look up. The sibling checkout at
+// ../go-reticulum is where a developer's workspace happens to point, it is not what ships,
+// and it does not exist at all in CI. Reading it there produced a release note that said
+// the appliance embeds daemons from "van unrecorded version" on every published release,
+// while passing on the one machine it was written on. Nothing reaches outside this
+// repository, so the notes read the same wherever they are rendered.
+//
+// It is a file read rather than `go list`, because the notes are rendered before anything is
+// uploaded and `go list` in a workspace resolves to a directory rather than to a version.
 func readGoReticulumVersion() string {
-	data, err := os.ReadFile(repoFile(goReticulumVersionFile))
+	data, err := os.ReadFile(repoFile(goModFile))
 	if err != nil {
-		return "an unrecorded version"
+		return unrecordedVersion
 	}
-	for raw := range strings.SplitSeq(string(data), "\n") {
+	return goReticulumVersionIn(string(data))
+}
+
+// goReticulumVersionIn returns the pinned version of go-reticulum in a go.mod, with the "v"
+// the module system spells it with, or the placeholder when the module is not required.
+//
+// Only a require line counts. A comment, a replace directive naming some other module, and
+// the require's own block delimiters are all lines that can sit beside the pin without being
+// it, and a version read off one of them would be a version the release did not ship.
+func goReticulumVersionIn(goMod string) string {
+	for raw := range strings.SplitSeq(goMod, "\n") {
 		line := strings.TrimSpace(raw)
-		if after, ok := strings.CutPrefix(line, "const VERSION = "); ok {
-			return strings.Trim(after, "\"")
+		if strings.HasPrefix(line, "//") {
+			continue
+		}
+		if after, ok := strings.CutPrefix(line, goReticulumModule+" "); ok {
+			fields := strings.Fields(after)
+			if len(fields) > 0 {
+				return fields[0]
+			}
 		}
 	}
-	return "an unrecorded version"
+	return unrecordedVersion
 }
 
 // hasAndroidArtifact reports whether any staged asset is the Android appliance.
@@ -731,7 +763,7 @@ func buildReleaseNotes(version, repo string, assets []string) string {
 			"not a build of the program above: it is the companion app, and what it adds is the "+
 			"device's own GNSS receiver and compass, the Reticulum node daemons and a sensor "+
 			"service that run in the background, and a `linux/arm64` build of the terminal client. "+
-			"It embeds daemons compiled from **go-reticulum v%v**.\n\n", readGoReticulumVersion())
+			"It embeds daemons compiled from **go-reticulum %v**.\n\n", readGoReticulumVersion())
 		mustFprintf(&b, "To install it, open the downloaded APK on the device and allow Android to "+
 			"install from unknown sources when it asks. From a computer, `adb install -r <apk>` "+
 			"does the same over USB. The APK is signed, so a later release upgrades it in place.\n\n")

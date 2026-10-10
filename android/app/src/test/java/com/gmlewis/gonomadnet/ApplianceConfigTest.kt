@@ -122,6 +122,7 @@ class ApplianceConfigTest {
         val spec = ApplianceConfig.nodeConfig(
             hubSpec = "this-name-does-not-exist.invalid:4242",
             resolve = { _, _ -> null },
+            rnode = RNodeSpec(port = "/dev/pts/7"),
         )
         assertTrue(spec.interfaces.isEmpty())
         val rendered = NodeConfigRenderer.reticulumConfig(spec)
@@ -132,6 +133,22 @@ class ApplianceConfigTest {
             "the radio is not conditional on the hub resolving: $rendered",
             rendered.contains("[[RNode LoRa]]"),
         )
+    }
+
+    @Test
+    fun anApplianceWithNoRadioAttachedStillCarriesTheRadioInterface() {
+        // The radio is not conditional on anything. A person installs the APK and taps Start
+        // stack with no radio in hand, and the interface is there, switched on, at the
+        // kernel's serial device: the transport retries one it cannot open and reports it
+        // Disconnected, and a radio plugged in later is picked up with nothing configured.
+        val spec = ApplianceConfig.nodeConfig(
+            hubSpec = "example.com:4242",
+            resolve = { _, _ -> DialableAddress("203.0.113.7", isIPv6 = false, probed = true) },
+        )
+        val rendered = NodeConfigRenderer.reticulumConfig(spec)
+        assertTrue("a fresh install carries no radio:\n$rendered", rendered.contains("[[RNode LoRa]]"))
+        assertTrue("the radio is switched off:\n$rendered", rendered.contains("    interface_enabled = true"))
+        assertTrue("the hub is still dialled:\n$rendered", rendered.contains("TCPClientInterface"))
     }
 
     @Test

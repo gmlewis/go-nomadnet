@@ -17,6 +17,7 @@ import android.content.Intent
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
+import android.os.Process
 import android.util.Log
 import android.view.Surface
 import java.io.File
@@ -46,6 +47,16 @@ class SensorService : Service() {
     private var pipeline: SensorPipeline? = null
     private var converter: GonsensorFactory? = null
     private var supervisor: StackSupervisor? = null
+
+    /**
+     * The radio's half of the stack, or null when it is down.
+     *
+     * It is held here rather than inside the supervisor because it is not one of the
+     * supervisor's daemons: it is what gives them a radio, it is started before any of them
+     * and stopped after all of them, and it is the only thing the appliance owns that the
+     * USB system hands back.
+     */
+    private var rnodeBridge: RNodeBridge? = null
     private var monitor: Thread? = null
     private var stopping = false
 
@@ -192,10 +203,39 @@ class SensorService : Service() {
         // bundled Go binary cannot resolve a name on Android at all.
         val hubSpec = ApplianceSettings(this).hubSpec
         ApplianceConfig.describeFailure(hubSpec)?.let { report(it) }
+        // The radio comes first, and it comes first for a reason: when there is a radio, the
+        // bridge is what allocates the pseudo-terminal the transport is dialled at, and the
+        // path it publishes is the only thing that can name that port. Android gives an
+        // application no serial device to open — the kernel's node for a radio is root-only —
+        // so the bridge is the whole of how the appliance reaches one at all.
+        //
+        // With no radio attached the bridge comes up empty and the radio's interface is
+        // rendered anyway, switched on, at the kernel's own serial device: the appliance
+        // assumes a radio might be there, and the transport retries an interface it cannot
+        // open. Nothing has to be configured for the radio somebody plugs in later.
+        val bridge = RNodeBridge(
+            runner = RealProcessRunner(),
+            finder = UsbRadioFinder(this),
+            socketName = { RNodeSocket.name(Process.myPid(), RNodeSocket.randomEntropy()) },
+            bridgeSpec = { name -> LaunchSpecs.rnodeBridge(applicationInfo.nativeLibraryDir, paths, name) },
+            dial = { name -> LocalBridgeChannel(name).takeIf { it.connect() } },
+            ttyFile = paths.rnodeTtyFile,
+            log = ::report,
+        )
+        rnodeBridge = bridge
+        bridge.start()
+        // The bridge's published path when it reached a radio, and the kernel's own serial
+        // device for the tablet's USB port when it did not. Either way the interface is
+        // rendered switched on: one that cannot be opened is a radio that is not there yet.
+        val rnode = RNodeSpec(port = bridge.publishedTty ?: RNodeSpec.DEFAULT_PORT)
+        if (bridge.publishedTty == null) {
+            report("no radio is attached; the radio interface stays on and waits for one")
+        }
+
         // The RPC key is stated rather than derived, because the transport and its clients run
         // from different configuration directories and would derive different keys from the
         // identities in them — which leaves every client's RPC refused as "unauthorized".
-        val config = ApplianceConfig.nodeConfig(hubSpec, rpcKey = ApplianceSettings(this).rpcKey)
+        val config = ApplianceConfig.nodeConfig(hubSpec, rpcKey = ApplianceSettings(this).rpcKey, rnode = rnode)
         if (config.interfaces.isEmpty()) {
             report("the transport has no interface, so the appliance is isolated from the network")
             report("hub address: \"$hubSpec\"")
@@ -227,6 +267,11 @@ class SensorService : Service() {
     private fun stopStack() {
         supervisor?.stop()
         supervisor = null
+        // The radio is put down after the daemons, in the reverse of the order it came up:
+        // the transport is holding the serial path the bridge published, and a bridge stopped
+        // underneath a running transport is a port that disappears from under it.
+        rnodeBridge?.stop()
+        rnodeBridge = null
     }
 
     @Suppress("DEPRECATION")
