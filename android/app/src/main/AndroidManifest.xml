@@ -55,11 +55,20 @@
              change with the same event and are claimed for the same reason. Density and font
              scale are deliberately not claimed — they change the cell size, and this app
              re-measures the font only when its view is laid out again, so it is better
-             served by being rebuilt than by drawing with metrics from the old scale. -->
+             served by being rebuilt than by drawing with metrics from the old scale.
+
+             `singleTop` is what a plugged-in radio needs. The intent-filter below registers
+             this activity for USB_DEVICE_ATTACHED, because that is what raises the USB
+             permission dialog, so every attach is an intent for this activity — and in the
+             default launch mode that intent is a *second* instance started over the one
+             showing the console, which reads as a crash and is not one. Declared singleTop,
+             the instance that is already there receives it through onNewIntent and keeps
+             whatever it is showing. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:label="@string/app_name"
+            android:launchMode="singleTop"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

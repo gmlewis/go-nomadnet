@@ -90,6 +90,10 @@ class SensorService : Service() {
             }
             ACTION_START_STACK -> Thread({ startStack() }, "stack-start").start()
             ACTION_STOP_STACK -> Thread({ stopStack() }, "stack-stop").start()
+            // A radio plugged back in. The stack keeps running and the console is not
+            // touched: the transport is dialled at the appliance's own port path, so the
+            // radio coming back is the link being repointed under it.
+            ACTION_RADIO_ATTACHED -> Thread({ ensureRadio() }, "radio-attach").start()
         }
         startSensors()
         return START_STICKY
@@ -213,21 +217,17 @@ class SensorService : Service() {
         // rendered anyway, switched on, at the kernel's own serial device: the appliance
         // assumes a radio might be there, and the transport retries an interface it cannot
         // open. Nothing has to be configured for the radio somebody plugs in later.
-        val bridge = RNodeBridge(
-            runner = RealProcessRunner(),
-            finder = UsbRadioFinder(this),
-            socketName = { RNodeSocket.name(Process.myPid(), RNodeSocket.randomEntropy()) },
-            bridgeSpec = { name -> LaunchSpecs.rnodeBridge(applicationInfo.nativeLibraryDir, paths, name) },
-            dial = { name -> LocalBridgeChannel(name).takeIf { it.connect() } },
-            ttyFile = paths.rnodeTtyFile,
-            log = ::report,
-        )
+        val bridge = newBridge()
         rnodeBridge = bridge
         bridge.start()
-        // The bridge's published path when it reached a radio, and the kernel's own serial
-        // device for the tablet's USB port when it did not. Either way the interface is
-        // rendered switched on: one that cannot be opened is a radio that is not there yet.
-        val rnode = RNodeSpec(port = bridge.publishedTty ?: RNodeSpec.DEFAULT_PORT)
+        // The transport is dialled at the appliance's own port path, never at what a bridge
+        // published: a pseudo-terminal's number does not survive the radio being unplugged,
+        // and a freed one can be handed to another process. The path is the kernel's own
+        // serial device while no bridge has published anything, so the interface is rendered
+        // switched on exactly as before — and the link is what makes a replug need no
+        // restart at all. See [RNodePortLink].
+        pointPortAtRadio(bridge)
+        val rnode = RNodeSpec(port = paths.rnodePortLink)
         if (bridge.publishedTty == null) {
             report("no radio is attached; the radio interface stays on and waits for one")
         }
@@ -262,6 +262,93 @@ class SensorService : Service() {
             log = ::report,
         ).also { it.start() }
         updateNotification("sensors and stack running")
+    }
+
+    /**
+     * newBridge builds the radio's half of the stack.
+     *
+     * It is a factory rather than one object because a radio that is unplugged ends its
+     * bridge, and the bridge that takes the radio that comes back is a second one: the
+     * device, the socket and the pseudo-terminal are all new, and a bridge reused across a
+     * replug would leave the first radio's terminal unread.
+     */
+    private fun newBridge(): RNodeBridge = RNodeBridge(
+        runner = RealProcessRunner(),
+        finder = UsbRadioFinder(this),
+        socketName = { RNodeSocket.name(Process.myPid(), RNodeSocket.randomEntropy()) },
+        bridgeSpec = { name -> LaunchSpecs.rnodeBridge(applicationInfo.nativeLibraryDir, paths, name) },
+        dial = { name -> LocalBridgeChannel(name).takeIf { it.connect() } },
+        ttyFile = paths.rnodeTtyFile,
+        log = ::report,
+        onRadioGone = ::onRadioGone,
+    )
+
+    /**
+     * onRadioGone repoints the port path away from a terminal the radio has just freed.
+     *
+     * The kernel hands a freed pseudo-terminal's number to the next allocation, and the
+     * console host holds one of its own: a port path still naming the dead radio's terminal
+     * is a path the transport could open onto somebody else's. It is pointed back at the
+     * kernel's own serial device instead, where opening it fails and the interface simply
+     * reports Disconnected until a radio comes back. See [RNodePortLink].
+     */
+    private fun onRadioGone() {
+        if (RNodePortLink.pointAt(paths.rnodePortLink, RNodeSpec.DEFAULT_PORT)) {
+            report("the radio is gone; the port is ${RNodeSpec.DEFAULT_PORT} until one comes back")
+        }
+    }
+
+    /**
+     * pointPortAtRadio repoints the appliance's port path at what [bridge] reached.
+     *
+     * The kernel's own serial device is what it is pointed at when the bridge reached no
+     * radio: the transport then fails to open it and keeps retrying, which is the intended
+     * steady state, and — the reason it matters — the path can never name a pseudo-terminal
+     * that has since been freed and handed to another process.
+     */
+    private fun pointPortAtRadio(bridge: RNodeBridge) {
+        val target = bridge.publishedTty ?: RNodeSpec.DEFAULT_PORT
+        if (RNodePortLink.pointAt(paths.rnodePortLink, target)) {
+            report("the radio's port is $target")
+        }
+    }
+
+    /**
+     * ensureRadio brings the radio back after it has been unplugged and plugged in again.
+     *
+     * Nothing is restarted. The transport has been dialled at the appliance's own port path
+     * since the stack came up and is retrying it every few seconds, so the whole of the
+     * recovery is a bridge for the radio that has just arrived and a repointed link: the
+     * transport's next attempt opens the link, resolves the new radio and reconnects. That
+     * is deliberate — restarting the transport to pick up a radio would drop the client's
+     * shared instance with it, and the console would come down out from under the operator,
+     * which is the failure this exists to prevent.
+     */
+    private fun ensureRadio() {
+        val current = rnodeBridge
+        when (radioAttach(stackUp = supervisor != null, radioUp = current?.isUp() == true)) {
+            RadioAttach.STACK_DOWN -> {
+                report("a radio was attached, but the stack is not running; press Start stack")
+                return
+            }
+            RadioAttach.ALREADY_UP -> {
+                report("a radio was attached, and one is already bridged")
+                return
+            }
+            RadioAttach.REBRIDGE -> Unit
+        }
+        // The bridge that was holding the radio has ended, so it is put down before the
+        // radio that has just arrived is claimed: two bridges for one port would publish two
+        // paths and leave the first radio's terminal unread.
+        current?.stop()
+        val bridge = newBridge()
+        rnodeBridge = bridge
+        val up = bridge.start()
+        pointPortAtRadio(bridge)
+        report(
+            if (up) "the radio is back; the transport will pick it up on its next attempt"
+            else "a radio was attached but could not be bridged; see the log",
+        )
     }
 
     private fun stopStack() {
@@ -338,6 +425,17 @@ class SensorService : Service() {
 
         /** Restarts the sensor half, which is how a changed heading axis takes effect. */
         const val ACTION_RESTART_SENSORS = "com.gmlewis.gonomadnet.RESTART_SENSORS"
+
+        /**
+         * A radio has been plugged in, which the activity forwards here.
+         *
+         * The USB system offers an attached device to whichever component registered for
+         * it, and the appliance registers its activity, because that is also what raises the
+         * permission dialog. The activity hands the attach on: the radio is bridged and the
+         * port path repointed without the transport, the client or the console being
+         * touched. See [SensorService.ensureRadio].
+         */
+        const val ACTION_RADIO_ATTACHED = "com.gmlewis.gonomadnet.RADIO_ATTACHED"
 
         /** Starts the sensor service. */
         fun start(context: Context) {

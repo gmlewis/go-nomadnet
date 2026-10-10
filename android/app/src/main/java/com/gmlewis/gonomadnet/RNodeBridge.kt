@@ -9,6 +9,7 @@ package com.gmlewis.gonomadnet
 
 import java.io.File
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * The path a radio bridge published, and the wait for one to be published.
@@ -67,10 +68,13 @@ object PublishedPath {
  * only a close releases, and a bridge that outlived its radio would hold the USB device and
  * the pseudo-terminal for the life of the install.
  */
-class RadioPump(private val log: (String) -> Unit = {}) {
+class RadioPump(private val log: (String) -> Unit = {}, private val onEnded: () -> Unit = {}) {
 
     /** The ends the pump is carrying between, both of which it closes when it is stopped. */
     private val ends = CopyOnWriteArrayList<ByteStream>()
+
+    /** Reports the radio going away once, whichever of the two threads notices it first. */
+    private val ended = AtomicBoolean(false)
 
     @Volatile
     private var stopped = false
@@ -134,9 +138,22 @@ class RadioPump(private val log: (String) -> Unit = {}) {
                 break
             }
         }
-        // Either end ending ends the pump.
+        // Either end ending ends the pump. When it was not this class that ended it, the
+        // radio has been unplugged, and that is the one moment the appliance learns the
+        // pseudo-terminal it was dialled at has been freed — a number the kernel can hand to
+        // another process, and the console host holds a terminal of its own.
+        if (!stopped) {
+            reportEnded()
+        }
         runCatching { from.close() }
         runCatching { to.close() }
+    }
+
+    /** reportEnded tells the owner the radio went away, once. */
+    private fun reportEnded() {
+        if (ended.compareAndSet(false, true)) {
+            onEnded()
+        }
     }
 
     companion object {
@@ -171,6 +188,15 @@ class RNodeBridge(
     private val log: (String) -> Unit = {},
     private val sleep: (Long) -> Unit = { Thread.sleep(it) },
     private val awaitAttempts: Int = PublishedPath.ATTEMPTS,
+    /**
+     * onRadioGone runs when the radio is unplugged, once, as the pump notices it.
+     *
+     * It is the only moment the appliance can learn that the pseudo-terminal it was dialled
+     * at has been freed, and a freed terminal's number can be handed to another process —
+     * the console host holds one of its own. The appliance repoints its port path away from
+     * the dead terminal there, so the transport can never dial a stranger's.
+     */
+    private val onRadioGone: () -> Unit = {},
 ) {
 
     /** The serial path the transport should be dialled at, or null when there is no radio. */
@@ -180,10 +206,22 @@ class RNodeBridge(
     private var radio: ByteStream? = null
     private var channel: ByteStream? = null
     private var child: ChildProcess? = null
-    private val pump = RadioPump(log)
+    private val pump = RadioPump(log, onRadioGone)
 
     /** The path the bridge publishes the transport's serial port at. */
     val publishedPathFile: String get() = ttyFile
+
+    /**
+     * isUp reports whether a radio is bridged right now.
+     *
+     * A radio that is unplugged ends the pump, which closes the socket, which is what the
+     * bridge program sees before it gives up the pseudo-terminal and exits. The published
+     * path is therefore not enough on its own: it outlives the radio that was bridged, and
+     * the bridge program outliving its radio is exactly the difference between a radio that
+     * is there and one that has been unplugged. See [radioAttach], which is the decision
+     * this answers.
+     */
+    fun isUp(): Boolean = publishedTty != null && child?.isAlive() == true
 
     /**
      * start claims the radio and brings the bridge up.

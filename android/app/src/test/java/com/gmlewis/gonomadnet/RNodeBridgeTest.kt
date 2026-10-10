@@ -211,6 +211,60 @@ class RNodeBridgeTest {
         assertNull(PublishedPath.await(path.absolutePath, attempts = 1, sleep = { }))
     }
 
+    @Test
+    fun `the pump says the radio went away once, and not when it is stopped`() {
+        // This is the only moment the appliance learns the radio's pseudo-terminal has been
+        // freed, and it is what repoints the port path away from a terminal number the kernel
+        // can hand to another process. Two threads can notice the end, so it is said once;
+        // and a stop the appliance asked for is not a radio going away.
+        var gone = 0
+        val pump = RadioPump(onEnded = { gone++ })
+        pump.start(TestStream(), TestStream())
+
+        pump.stop()
+        assertEquals("a pump the appliance stopped reported the radio going away", 0, gone)
+
+        val secondRadio = TestStream()
+        val second = RadioPump(onEnded = { gone++ })
+        second.start(secondRadio, TestStream())
+        // The radio going away on its own, which is what unplugging it looks like.
+        secondRadio.close()
+
+        assertTrue("the pump did not notice its radio going away", await { !second.running() })
+        assertTrue("the radio going away was never reported", await { gone == 1 })
+        second.stop()
+        assertEquals("the radio going away was reported more than once", 1, gone)
+    }
+
+    @Test
+    fun `a bridge is up only while its program is still running`() {
+        // What the bridge published outlives the radio that was bridged: unplugging the radio
+        // ends the pump, the socket closes, and the bridge program gives up the
+        // pseudo-terminal and exits. Reading the published path alone would say a radio is
+        // there when the radio has gone, and the appliance would never bridge the one that
+        // comes back.
+        val fixture = BridgeFixture()
+        fixture.attachedRadio()
+        val bridge = fixture.bridge()
+        assertFalse("a bridge that was never started was reported as up", bridge.isUp())
+
+        assertTrue("the bridge did not come up: ${fixture.logs}", bridge.start())
+        assertTrue("a bridged radio was not reported as up", bridge.isUp())
+
+        // The radio goes away, and the program reading its terminal goes with it.
+        fixture.runner.running[RNodeBridge.NAME]!!.alive = false
+
+        assertFalse(
+            "a bridge whose program has exited was reported as up: ${bridge.publishedTty}",
+            bridge.isUp(),
+        )
+        assertEquals(
+            "the dead bridge's published path was forgotten, and it is what the appliance repoints from",
+            "/dev/pts/7",
+            bridge.publishedTty,
+        )
+    }
+
     /** await waits for a condition, for a bound. It is a settle, not a delay. */
     private fun await(timeoutMs: Long = 5_000, condition: () -> Boolean): Boolean {
         val deadline = System.currentTimeMillis() + timeoutMs

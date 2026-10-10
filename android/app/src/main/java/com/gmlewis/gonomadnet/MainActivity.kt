@@ -9,7 +9,9 @@ package com.gmlewis.gonomadnet
 
 import android.Manifest
 import android.app.Activity
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.hardware.usb.UsbManager
 import android.os.Build
 import android.os.Bundle
 import android.view.View
@@ -136,6 +138,44 @@ class MainActivity : Activity() {
 
         report(prerequisiteChecklist())
         requestPermissionsIfNeeded()
+        // An attach is also how this activity can be *started*: the manifest registers it for
+        // USB_DEVICE_ATTACHED, because that is what raises the permission dialog. It is
+        // forwarded rather than dropped, so plugging a radio in with the appliance already
+        // running starts nothing and, with it not running, says why the radio is not bridged.
+        forwardRadioAttach(intent)
+    }
+
+    /**
+     * A radio has been plugged in.
+     *
+     * This is the half of the replug defect that the operator sees: the attach intent is
+     * delivered to this activity, and an activity in the default launch mode would be a
+     * *second* instance started over the one showing the console — which reads as a crash
+     * and is not one. It is declared `singleTop` for this reason, and this method is what
+     * the existing instance does with the attach: hand it to the service and leave the page
+     * alone. Whatever is on the screen — the console, most of the time — stays there.
+     *
+     * The service does the rest without restarting anything, because the transport has been
+     * dialled at the appliance's own port path since the stack came up. See
+     * [SensorService.ACTION_RADIO_ATTACHED].
+     */
+    @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        // onNewIntent does not replace the activity's own intent, and the page that is
+        // showing was built from the old one: keeping them in step is what stops a later
+        // read of getIntent from describing the launch rather than the attach.
+        setIntent(intent)
+        forwardRadioAttach(intent)
+    }
+
+    /** forwardRadioAttach hands an attach intent to the service, and ignores every other. */
+    private fun forwardRadioAttach(intent: Intent?) {
+        if (intent?.action != UsbManager.ACTION_USB_DEVICE_ATTACHED) {
+            return
+        }
+        report("a radio was attached; asking the appliance to bridge it")
+        SensorService.command(this, SensorService.ACTION_RADIO_ATTACHED)
     }
 
     private fun button(label: String, action: () -> Unit): Button =

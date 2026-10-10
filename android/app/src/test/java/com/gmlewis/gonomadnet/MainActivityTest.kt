@@ -512,6 +512,30 @@ class MainActivityTest {
     }
 
     @Test
+    fun `a radio plugged back in does not take the console away`() {
+        // The manifest registers this activity for USB_DEVICE_ATTACHED — that is how the
+        // system offers the appliance the device, and how the USB permission dialog is
+        // raised — so every attach is an intent for this activity. In the default launch
+        // mode that intent is a *second* instance started over the one showing the console:
+        // the service, the transport and the client all stay up, and the operator is simply
+        // thrown out of the interface they were using, which reads as a crash and is not one.
+        // Declared singleTop, the instance that is already there receives the attach through
+        // onNewIntent and keeps whatever it is showing. See [MainActivity.onNewIntent].
+        val activity = manifest().elements("activity")
+            .firstOrNull {
+                it.getAttributeNS(ANDROID_NAMESPACE, "name") ==
+                    ".${MainActivity::class.java.simpleName}"
+            }
+        assertNotNull("the manifest declares no activity for MainActivity", activity)
+        assertEquals(
+            "a plugged-in radio starts a second instance of the appliance over the console, " +
+                "which the operator sees as the interface disappearing",
+            "singleTop",
+            activity!!.getAttributeNS(ANDROID_NAMESPACE, "launchMode"),
+        )
+    }
+
+    @Test
     fun `the appliance is called gonomadnet`() {
         // The name is what the launcher, the task switcher and the radio's own USB chooser
         // show. In the chooser it is one row among applications that all want the same radio,

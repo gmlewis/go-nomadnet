@@ -126,6 +126,20 @@ data class StackPaths(val filesDir: String) {
      */
     val rnodeTtyFile get() = "$configDir/rnode/tty"
 
+    /**
+     * The appliance's own serial port path, which is what the transport is dialled at.
+     *
+     * A bridge's pseudo-terminal is named by the kernel, so its number is not the
+     * appliance's to choose and does not survive the radio being unplugged. The transport is
+     * therefore never dialled at one directly: it is dialled at this symlink, which the
+     * appliance repoints at whatever the current bridge published, and at
+     * [RNodeSpec.DEFAULT_PORT] while no bridge has published anything. A radio that comes
+     * back repoints the link, and the transport's own reconnect finds it — so a replug
+     * restarts nothing and the console never drops out from under the operator. See
+     * [RNodePortLink].
+     */
+    val rnodePortLink get() = "$configDir/rnode/port"
+
     /** The hub's TOML configuration, which `gorrcd --config` takes as a file. */
     val gorrcdConfig get() = "$configDir/rrcd.toml"
 
