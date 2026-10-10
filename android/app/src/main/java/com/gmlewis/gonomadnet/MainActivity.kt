@@ -305,8 +305,9 @@ class MainActivity : Activity() {
         // pages, and one whose editor is `nano` has no editor on this device at all.
         seedClientConfig(paths)
         // The channels the appliance comes with, written before the client can own the file.
-        // An install that has already run the client has a store of its own, and it is left
-        // alone: it is the operator's by then, and it holds whatever they have added.
+        // This runs on every console open: a store an operator or the client has touched is left
+        // alone, and the appliance's own untouched seed is completed once the local hub has a
+        // destination. See [seedDefaultHubs].
         seedDefaultHubs(paths)
         val client = builtInClient(applicationInfo.nativeLibraryDir, paths)
         val screen = TerminalScreen(consoleGrid.cols, consoleGrid.rows)
@@ -416,15 +417,15 @@ class MainActivity : Activity() {
      * Writes the channels the appliance comes with, if it has never run its client.
      *
      * The client keeps its channels in a store of its own and has no notion of a default, so
-     * an appliance that seeded none arrived with an empty Channels page. The store's own
-     * existence is the record that this has been done: once the client has run, the file is
-     * the operator's, and an appliance that rewrote it on every start would undo every channel
-     * they had added or removed.
+     * an appliance that seeded none arrived with an empty Channels page. The store is written
+     * only into a file that is absent or still byte-identical to the seed this appliance writes,
+     * which is the record that nobody has edited it; once the client has run, or the operator has
+     * added or removed a channel, the file is theirs and nothing here rewrites it.
      *
-     * The local hub is listed only when it has published its destination, which is derived
-     * from an identity generated on this device and therefore different on every install. An
-     * appliance whose stack has not been started yet has no local hub to list, and it is
-     * listed the next time the console is opened.
+     * This runs on every console open, because the local hub is listed only once it has published
+     * its destination, which is derived from an identity generated on this device. The first open
+     * usually comes before the stack has ever run and writes the two public hubs; a later one
+     * finds that untouched seed and completes it with the local hub. See [DefaultHubs.seed].
      */
     private fun seedDefaultHubs(paths: StackPaths) {
         val localHub = File(paths.hubDestinationFile).takeIf { it.isFile }?.readText()?.trim()

@@ -34,9 +34,15 @@ const defaultMaxMsgBytes = 350
 // RoomWidget displays a single RRC chat room with messages, users, and editor.
 // Matches Python's RoomWidget at Channels.py:590.
 type RoomWidget struct {
-	app              *App
-	hubName          string
-	hubAddress       string
+	app        *App
+	hubName    string
+	hubAddress string
+	// hubView is the HubView OBJECT this widget is bound to. It is distinct
+	// from hubAddress: a hub removed and re-added under the same destination
+	// hash comes back as a NEW object carrying the SAME address, and the
+	// composer's live-status gate must follow the object or it keeps reading
+	// the dead hub's status forever. hubAddress stays as a secondary signal.
+	hubView          HubView
 	roomName         string
 	widget           tview.Primitive
 	columns          *tview.Flex

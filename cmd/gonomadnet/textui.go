@@ -1780,8 +1780,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	// Python "ping" (Channels.py:1009-1018): hub.send_ping.
 	channelsDisplay.OnSendPing = func() error {
 		if hub := a.RRC.ActiveHub(); hub != nil {
-			hub.SendPing(strings.ToLower(a.RRC.ActiveRoom()))
-			return nil
+			return hub.SendPing(strings.ToLower(a.RRC.ActiveRoom()))
 		}
 		return errors.New("no hub")
 	}

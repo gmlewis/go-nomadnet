@@ -18,6 +18,7 @@ package tui
 import (
 	"encoding/hex"
 	"fmt"
+	"reflect"
 	"strings"
 
 	"github.com/gmlewis/go-reticulum/rrc"
@@ -600,6 +601,27 @@ type RoomMessagesFunc func(hubIdx int, room string) []ChannelMessage
 // RoomWidget._refresh_users_pane reading hub.get_members).
 type RoomMembersFunc func(hubIdx int, room string) []ChannelMember
 
+// hubViewChanged reports whether hv is a different hub OBJECT than bound, so
+// the room widget can rebind its live-status gate when the hub behind an
+// address is replaced (remove + re-add under the same destination hash yields
+// a fresh *rrc.RRCHub with the same AddressHex).
+//
+// Comparing HubView interface values is only safe when their dynamic types are
+// comparable: production views wrap a *rrc.RRCHub (a pointer, hence
+// comparable), while some test doubles are value structs holding slices. For
+// those non-comparable cases the caller's address check is the fallback, so
+// this returns false rather than panicking on the interface comparison.
+func hubViewChanged(bound, hv HubView) bool {
+	if bound == nil || hv == nil {
+		return bound != hv
+	}
+	tb, th := reflect.TypeOf(bound), reflect.TypeOf(hv)
+	if tb != th || !tb.Comparable() {
+		return false
+	}
+	return bound != hv
+}
+
 // ShowRoom swaps the right pane to the room chat view (Python
 // _show_room, Channels.py:1841-1851): the RoomWidget for the hub+room with
 // the message buffer loaded; the composer routes through OnSendMessage.
@@ -616,13 +638,18 @@ func (cd *ChannelsDisplay) ShowRoom(hubIdx int, room string, msgs []ChannelMessa
 	// the same room name, and reusing the old widget would keep its
 	// hubStatusFn bound to the previous hub — a dead hub there silently
 	// swallows every plain-message send at the composer's connected-gate,
-	// while slash commands (which bypass the gate) keep working. The hub's
-	// destination hash (AddressHex) is the identity, not its name: a hub
-	// re-created under the same name with a new destination must still
-	// rebuild.
-	if cd.roomWidget == nil || cd.roomWidget.RoomName() != room || cd.roomWidget.hubAddress != hv.AddressHex() {
+	// while slash commands (which bypass the gate) keep working. The hub
+	// OBJECT is the identity, not its name or address: a hub removed and
+	// re-added under the same destination hash is a NEW object with the SAME
+	// AddressHex, so comparing the address alone would reuse a widget whose
+	// hubStatusFn still points at the dead hub. The address check remains as a
+	// secondary signal for view implementations whose identity is not
+	// comparable.
+	if cd.roomWidget == nil || cd.roomWidget.RoomName() != room ||
+		hubViewChanged(cd.roomWidget.hubView, hv) || cd.roomWidget.hubAddress != hv.AddressHex() {
 		cd.roomWidget = NewRoomWidget(cd.app, hv.Name(), room)
 		cd.roomWidget.hubAddress = hv.AddressHex()
+		cd.roomWidget.hubView = hv
 		rw := cd.roomWidget
 		// Chat links read through the display, which holds the handler the wiring
 		// layer supplied, the way the browser holds its own link callbacks. The

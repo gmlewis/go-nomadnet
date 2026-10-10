@@ -19,10 +19,14 @@ import java.io.File
  * operator with nothing to connect to, while the transport underneath it was already talking
  * to the mesh.
  *
- * So the appliance writes the store before the client ever runs, once, and only if it is not
- * there. That is what "upon installation" means here: the file's own existence is the record
- * that it has been done, so a channel the operator removes stays removed, and a store the
- * client has already rewritten is never second-guessed.
+ * So the appliance writes the store before the client ever runs, and writes only into a file
+ * that is still its own. A file that is absent has never been written, and a file that is still
+ * byte-identical to the seed this appliance writes is one nobody has edited — that is the record
+ * that this has been done, and both may be written or completed. The first console open usually
+ * comes before the stack has ever run, so the local hub's destination is not known yet and the
+ * two public hubs are written; the local hub is added on a later open, once it is. Anything else
+ * is the operator's, or the client's own rewrite, and is left exactly alone: a channel the
+ * operator removes stays removed, and a store the client has saved is never second-guessed.
  *
  * Three channels, because they are the three an appliance can actually reach:
  *
@@ -79,17 +83,29 @@ object DefaultHubs {
     /**
      * Writes the channels to [store], and reports whether it did.
      *
-     * A store that is already there is left exactly as it is: the client owns that file from
-     * the moment it runs, and an appliance that rewrote it on every start would undo every
-     * channel an operator had added or removed.
+     * A store that is absent is written. A store that is still byte-identical to the seed this
+     * appliance writes with no local hub is the appliance's own untouched file and is completed
+     * with the local hub once [localHub] is known: the two public hubs are written on the first
+     * console open, before the stack has ever run, and the local hub is added on a later one.
+     * Anything else is somebody's decision and is left exactly as it is — the client owns that
+     * file from the moment it runs, and an appliance that rewrote it would undo every channel an
+     * operator had added or removed.
      */
     fun seed(store: File, localHub: String?): Boolean {
-        if (store.exists()) {
+        val existing = store.takeIf { it.isFile }?.readBytes()
+        if (existing == null && store.exists()) {
+            // A path that exists but is not a regular file is not a store, and not ours to
+            // replace.
             return false
         }
-        val bytes = encode(hubs(localHub))
+        val wanted = when {
+            existing == null -> encode(hubs(localHub))
+            localHubHex(localHub) == null -> return false
+            existing.contentEquals(encode(hubs(null))) -> encode(hubs(localHub))
+            else -> return false
+        }
         store.parentFile?.mkdirs()
-        store.writeBytes(bytes)
+        store.writeBytes(wanted)
         return true
     }
 

@@ -68,6 +68,95 @@ func TestShowRoomRebuildsWidgetOnHubChange(t *testing.T) {
 	}
 }
 
+// TestShowRoomHubSwitchRoutesSendToLiveHub goes past the widget-identity check
+// of TestShowRoomRebuildsWidgetOnHubChange: after ShowRoom on a same-named room
+// of a DIFFERENT hub, typing a plain message into the room widget and sending
+// it must reach the display's OnSendMessage. This is the end-to-end guarantee
+// the identity test only implied — a widget stuck on the previous (dead) hub
+// would swallow the message at its connected-gate.
+func TestShowRoomHubSwitchRoutesSendToLiveHub(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	cd := NewChannelsDisplay(app, nil)
+	cd.SetHubs([]HubView{
+		&fakeHub{name: "Dead Hub", addressHex: "aaaa", status: hubStatusDisconnected, joined: []string{"general"}},
+		&fakeHub{name: "Live Hub", addressHex: "bbbb", status: hubStatusConnected, joined: []string{"general"}},
+	})
+
+	var sent []string
+	cd.OnSendMessage = func(text string) { sent = append(sent, text) }
+
+	// Open the room on the dead hub, then on the live hub's same-named room.
+	cd.ShowRoom(0, "general", nil)
+	cd.ShowRoom(1, "general", nil)
+
+	rw := cd.roomWidget
+	if rw == nil {
+		t.Fatal("ShowRoom on the live hub returned no widget")
+	}
+	if !rw.hubIsConnected() {
+		t.Fatal("room widget reports the live hub as disconnected; its gate is still bound to the dead hub")
+	}
+
+	rw.editor.SetText("hello")
+	rw.sendMessage()
+
+	if len(sent) != 1 || sent[0] != "hello" {
+		t.Fatalf("OnSendMessage got %v, want [hello] — the message was swallowed by a stale hub gate", sent)
+	}
+	if got := rw.editor.GetText(); got != "" {
+		t.Errorf("editor = %q, want cleared after a successful send", got)
+	}
+}
+
+// TestShowRoomRebuildsWidgetOnHubObjectReplacement pins the residual defect the
+// address check alone cannot catch. In production a hub removed and re-added
+// under the same destination hash is a NEW *rrc.RRCHub carrying the SAME
+// AddressHex (manager.RemoveHub + manager.AddHub), so a widget must rebuild on
+// hub OBJECT identity, not the address string — otherwise its hubStatusFn stays
+// bound to the dead object and the composer keeps every draft forever while the
+// same-named room's live hub never sees a byte.
+func TestShowRoomRebuildsWidgetOnHubObjectReplacement(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	cd := NewChannelsDisplay(app, nil)
+	// Two HubViews with the SAME AddressHex but different backing status — the
+	// remove/re-add shape. Distinct pointers so their identities differ.
+	dead := &fakeHub{name: "Hub", addressHex: "same", status: hubStatusDisconnected, joined: []string{"general"}}
+	live := &fakeHub{name: "Hub", addressHex: "same", status: hubStatusConnected, joined: []string{"general"}}
+	cd.SetHubs([]HubView{dead, live})
+
+	cd.ShowRoom(0, "general", nil)
+	w1 := cd.roomWidget
+	if w1 == nil {
+		t.Fatal("ShowRoom did not create a room widget")
+	}
+	if w1.hubAddress != "same" {
+		t.Fatalf("widget hubAddress = %q, want %q", w1.hubAddress, "same")
+	}
+
+	var sent []string
+	cd.OnSendMessage = func(text string) { sent = append(sent, text) }
+
+	// Same room name AND same address, but a different hub object: the address
+	// check alone would reuse the widget bound to the dead hub.
+	cd.ShowRoom(1, "general", nil)
+	if cd.roomWidget == w1 {
+		t.Fatal("room widget reused across a hub-object replacement with the same address; hubStatusFn stays bound to the dead hub")
+	}
+	if !cd.roomWidget.hubIsConnected() {
+		t.Fatal("rebuilt widget still reports the replaced hub as disconnected")
+	}
+
+	cd.roomWidget.editor.SetText("hello")
+	cd.roomWidget.sendMessage()
+	if len(sent) != 1 || sent[0] != "hello" {
+		t.Fatalf("OnSendMessage got %v, want [hello] — the replacement hub's live status was not consulted", sent)
+	}
+}
+
 // TestSendMessageDisconnectedGateKeepsDraftWithNotice verifies the composer's
 // disconnected gate keeps the draft (Python Channels.py:873-876) but tells the
 // user why nothing was transmitted, instead of silently swallowing Enter.

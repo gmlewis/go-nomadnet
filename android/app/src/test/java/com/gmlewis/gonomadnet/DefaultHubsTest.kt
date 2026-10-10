@@ -35,6 +35,13 @@ class DefaultHubsTest {
         return file.readBytes()
     }
 
+    /** twoHubFixture is the seed the appliance writes before the local hub has a destination. */
+    private fun twoHubFixture(): ByteArray {
+        val file = File("src/test/resources/default_hubs_no_local.cbor")
+        assertTrue("the golden two-hub store is missing: ${file.absolutePath}", file.isFile)
+        return file.readBytes()
+    }
+
     /** expected is the three channels the fixture was written for. */
     private val expected = listOf(
         DefaultHubs.DefaultHub("RNS Community", "28c7c1a68c735693aa8e6b8193ed44b2", listOf("general")),
@@ -95,6 +102,94 @@ class DefaultHubsTest {
         store.writeBytes("the operator's own store".toByteArray())
         assertFalse("an existing store is left alone", DefaultHubs.seed(store, null))
         assertEquals("the operator's store was overwritten", "the operator's own store", store.readText())
+    }
+
+    @Test
+    fun `the two-hub seed is a store the client can read`() {
+        // The store an appliance writes before its own hub has ever published a destination.
+        // It is on disk in its own right so the Go test that decodes these bytes with the
+        // client's own reader has the exact bytes to decode.
+        assertArrayEquals(
+            "the two-hub seed does not match the store the client reads",
+            twoHubFixture(),
+            DefaultHubs.encode(DefaultHubs.hubs(null)),
+        )
+    }
+
+    @Test
+    fun `seeding writes three channels when the local hub is known and two when it is not`() {
+        val dir = tempDir()
+        val withLocal = File(dir, "known/rrc_hubs")
+        val withoutLocal = File(dir, "unknown/rrc_hubs")
+
+        assertTrue("a fresh install with a local hub is seeded", DefaultHubs.seed(withLocal, "00112233445566778899aabbccddeeff"))
+        assertArrayEquals("the local hub was not listed", fixture(), withLocal.readBytes())
+
+        assertTrue("a fresh install with no local hub is seeded", DefaultHubs.seed(withoutLocal, null))
+        assertArrayEquals("the local hub was invented", twoHubFixture(), withoutLocal.readBytes())
+    }
+
+    @Test
+    fun `a store that is still the appliance's own seed is completed when the local hub appears`() {
+        // The first console open happens before the stack has ever run, so the appliance
+        // writes the two public hubs and no local one. The bytes are still its own — nobody
+        // has edited them — so the next open, by which time the local hub has published a
+        // destination, may complete them. This is the bug: a store written once and then left
+        // alone forever shows two channels where it promised three.
+        val store = File(tempDir(), "rrc_hubs")
+        assertTrue("the first open seeds the two public hubs", DefaultHubs.seed(store, null))
+        assertArrayEquals("the first open wrote something else", twoHubFixture(), store.readBytes())
+
+        assertTrue(
+            "the appliance's own untouched seed is completed once the local hub appears",
+            DefaultHubs.seed(store, "00112233445566778899aabbccddeeff"),
+        )
+        assertArrayEquals("the completed store is not the store the client reads", fixture(), store.readBytes())
+
+        // And it is complete: a second open finds the three-hub store and writes nothing.
+        assertFalse("the completed store is written a second time", DefaultHubs.seed(store, "00112233445566778899aabbccddeeff"))
+        assertArrayEquals("the completed store changed on the second open", fixture(), store.readBytes())
+    }
+
+    @Test
+    fun `a store anyone else has changed is left exactly as it is`() {
+        // Anything that is not byte-for-byte the appliance's own seed is somebody's decision:
+        // the client's, once it has saved, or the operator's, once they have added or removed a
+        // channel. The byte rule exists precisely so removing `appliance-hub` sticks, and a
+        // store that was never the appliance's is left untouched however it differs.
+        val localHub = "00112233445566778899aabbccddeeff"
+        val others = mapOf(
+            "an operator-edited store" to "the operator's own store".toByteArray(),
+            "a two-hub store an operator built" to DefaultHubs.encode(
+                listOf(
+                    DefaultHubs.DefaultHub("RNS Community", DefaultHubs.RNS_COMMUNITY_DESTINATION, listOf("general")),
+                    DefaultHubs.DefaultHub("My Hub", "ffeeddccbbaa99887766554433221100", listOf("general")),
+                ),
+            ),
+            "the seed with a hub renamed" to DefaultHubs.encode(DefaultHubs.hubs(null)).let { seed ->
+                val at = seed.indexOfSubArray("RNS Community".toByteArray())
+                seed.copyOf().also { it[at] = 'X'.code.toByte() }
+            },
+            "a truncated store" to fixture().copyOf(fixture().size / 2),
+            "an empty store" to ByteArray(0),
+        )
+        for ((what, bytes) in others) {
+            val store = File(tempDir(), "rrc_hubs")
+            store.writeBytes(bytes)
+            assertFalse("$what was reported as written", DefaultHubs.seed(store, localHub))
+            assertArrayEquals("$what was overwritten", bytes, store.readBytes())
+        }
+    }
+
+    @Test
+    fun `a store that is already the three-hub seed is not rewritten`() {
+        val store = File(tempDir(), "rrc_hubs")
+        store.writeBytes(fixture())
+        val before = store.lastModified()
+
+        assertFalse("a completed store is left alone", DefaultHubs.seed(store, "00112233445566778899aabbccddeeff"))
+        assertArrayEquals("a completed store was rewritten", fixture(), store.readBytes())
+        assertEquals("a completed store was touched", before, store.lastModified())
     }
 
     @Test
