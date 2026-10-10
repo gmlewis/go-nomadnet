@@ -53,6 +53,18 @@ func carry(dst io.Writer, src io.Reader) error {
 			}
 			return err
 		}
+		if n == 0 {
+			// A read that carried no bytes and reported no error has nothing to give and has
+			// not ended, and going straight back to it would spin a core for as long as the
+			// radio was idle — which on a tablet is the battery, and which this project has
+			// been burned by before.
+			//
+			// It should also be unreachable: a read of zero bytes on an *os.File is io.EOF
+			// (poll.FD.ZeroReadIsEOF), so it is caught above. Reaching here means the source
+			// is something else, and the end of that direction is the honest reading of a
+			// read that can neither carry a byte nor report an end.
+			return nil
+		}
 	}
 }
 

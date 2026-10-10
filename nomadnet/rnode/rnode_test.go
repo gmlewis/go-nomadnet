@@ -43,6 +43,45 @@ func (r *logRecorder) recorded() []string {
 	return append([]string(nil), r.lines...)
 }
 
+// within is how long a test waits for bytes the bridge is supposed to be carrying.
+//
+// Every read a test does on a pty or a socket is bounded by it. An unbounded read turns a
+// platform difference into a hang, and this is not hypothetical: the first version of these
+// tests waited ten minutes on a CI runner for a byte that never arrived, and reported it as
+// a timeout on the whole package rather than as a failure in the test that was wrong. A
+// bound makes such a difference fail in milliseconds and names the read that did not come.
+const within = 10 * time.Second
+
+// readExactly reads count bytes from r, and fails the test rather than blocking forever.
+//
+// The read happens on its own goroutine so that a reader which never returns cannot take the
+// test with it. A goroutine left behind here is harmless — the test binary exits when the
+// package's tests are done — and is very much preferable to a suite that hangs.
+func readExactly(t *testing.T, what string, r io.Reader, count int) []byte {
+	t.Helper()
+	type outcome struct {
+		data []byte
+		err  error
+	}
+	done := make(chan outcome, 1)
+	go func() {
+		buf := make([]byte, count)
+		_, err := io.ReadFull(r, buf)
+		done <- outcome{data: buf, err: err}
+	}()
+
+	select {
+	case got := <-done:
+		if got.err != nil {
+			t.Fatalf("reading %v bytes from %v: %v", count, what, got.err)
+		}
+		return got.data
+	case <-time.After(within):
+		t.Fatalf("nothing arrived from %v within %v, so the bridge is not carrying bytes", what, within)
+		return nil
+	}
+}
+
 // tempRoot returns a fresh directory under /tmp, which is where a test may
 // write and where a socket path is short enough to bind.
 func tempRoot(t *testing.T, prefix string) string {
@@ -83,11 +122,7 @@ func TestTheBridgePublishesARawSerialPath(t *testing.T) {
 	if _, err := bridge.Master().Write(outbound); err != nil {
 		t.Fatalf("writing to the pty's master: %v", err)
 	}
-	got := make([]byte, len(outbound))
-	if _, err := io.ReadFull(slave, got); err != nil {
-		t.Fatalf("reading from the slave: %v", err)
-	}
-	if !bytes.Equal(got, outbound) {
+	if got := readExactly(t, "the slave", slave, len(outbound)); !bytes.Equal(got, outbound) {
 		t.Errorf("the transport reads % x, want % x", got, outbound)
 	}
 
@@ -95,11 +130,7 @@ func TestTheBridgePublishesARawSerialPath(t *testing.T) {
 	if _, err := slave.Write(inbound); err != nil {
 		t.Fatalf("writing to the slave: %v", err)
 	}
-	got = make([]byte, len(inbound))
-	if _, err := io.ReadFull(bridge.Master(), got); err != nil {
-		t.Fatalf("reading from the master: %v", err)
-	}
-	if !bytes.Equal(got, inbound) {
+	if got := readExactly(t, "the master", bridge.Master(), len(inbound)); !bytes.Equal(got, inbound) {
 		t.Errorf("the radio's bytes are % x, want % x", got, inbound)
 	}
 }
@@ -112,25 +143,38 @@ func TestTheSlaveStaysUsableWhileNothingHasOpenedIt(t *testing.T) {
 	// no open file descriptor reports its master as at end of file, so a bridge
 	// that let go of the slave would end the moment it was started — and the
 	// transport would then find a path that no longer names anything.
+	//
+	// What is asserted is that invariant and not a timing: a read on the master must
+	// not report the end of the stream. Bytes are a platform's own business and are
+	// not the end of anything; an error is. An earlier version of this test demanded
+	// that the read not return *at all* inside a 50 ms window, which is a timing
+	// assertion about the absence of an event — and it is the one that failed on a CI
+	// runner whose pty answered immediately, taking the whole package down with it.
 	bridge, err := Open()
 	if err != nil {
 		t.Fatalf("Open failed: %v", err)
 	}
 	defer func() { _ = bridge.Close() }()
 
-	read := make(chan error, 1)
+	ended := make(chan error, 1)
 	go func() {
 		buf := make([]byte, 1)
 		_, err := bridge.Master().Read(buf)
-		read <- err
+		ended <- err
 	}()
 
 	select {
-	case err := <-read:
-		t.Fatalf("the master reported %v with no slave open, so the bridge cannot outlive its start", err)
-	case <-time.After(50 * time.Millisecond):
+	case err := <-ended:
+		if err != nil {
+			t.Fatalf("the master reported %v with no slave open, so the bridge cannot outlive its start", err)
+		}
+	case <-time.After(250 * time.Millisecond):
 	}
 
+	// Whatever that read did, the pair is still a serial path: bytes written to the
+	// master reach a slave that is opened now, which is exactly what the transport
+	// does when it starts. The reader above cannot take them — it is reading the
+	// master, and these are delivered to the slave.
 	slave, err := os.OpenFile(bridge.SlavePath(), os.O_RDWR, 0)
 	if err != nil {
 		t.Fatalf("opening the slave after the fact: %v", err)
@@ -139,11 +183,7 @@ func TestTheSlaveStaysUsableWhileNothingHasOpenedIt(t *testing.T) {
 	if _, err := bridge.Master().Write([]byte("still here")); err != nil {
 		t.Fatalf("writing to the master: %v", err)
 	}
-	got := make([]byte, len("still here"))
-	if _, err := io.ReadFull(slave, got); err != nil {
-		t.Fatalf("reading from the slave: %v", err)
-	}
-	if string(got) != "still here" {
+	if got := readExactly(t, "the slave", slave, len("still here")); string(got) != "still here" {
 		t.Errorf("the transport reads %q, want %q", got, "still here")
 	}
 }
@@ -174,11 +214,7 @@ func TestPumpCarriesBytesBothWaysAndEndsWhenEitherEndCloses(t *testing.T) {
 	if _, err := slave.Write([]byte("to the radio")); err != nil {
 		t.Fatalf("writing to the slave: %v", err)
 	}
-	got := make([]byte, len("to the radio"))
-	if _, err := io.ReadFull(peer, got); err != nil {
-		t.Fatalf("reading from the app's end: %v", err)
-	}
-	if string(got) != "to the radio" {
+	if got := readExactly(t, "the app's end", peer, len("to the radio")); string(got) != "to the radio" {
 		t.Errorf("the app reads %q, want %q", got, "to the radio")
 	}
 
@@ -186,11 +222,7 @@ func TestPumpCarriesBytesBothWaysAndEndsWhenEitherEndCloses(t *testing.T) {
 	if _, err := peer.Write([]byte("from the radio")); err != nil {
 		t.Fatalf("writing to the app's end: %v", err)
 	}
-	got = make([]byte, len("from the radio"))
-	if _, err := io.ReadFull(slave, got); err != nil {
-		t.Fatalf("reading from the slave: %v", err)
-	}
-	if string(got) != "from the radio" {
+	if got := readExactly(t, "the slave", slave, len("from the radio")); string(got) != "from the radio" {
 		t.Errorf("the transport reads %q, want %q", got, "from the radio")
 	}
 
@@ -369,27 +401,33 @@ func TestTheServerRefusesAPeerFromAnotherUid(t *testing.T) {
 		t.Error("the refusal was not reported, so nothing in the log would explain a radio that never connects")
 	}
 
-	// The app itself is still able to connect afterwards.
+	// The app itself is still able to connect afterwards, and the connection it is given
+	// stays open — that is what being served means. A refused peer is closed, so a read on
+	// it ends; a served one is being carried, so a read on it does nothing at all until the
+	// radio says something.
+	//
+	// An earlier version of this test proved "served" by writing a byte to the pty's slave
+	// and waiting for it to come out of the socket. Byte-carrying is the pump's own business
+	// and is asserted in TestPumpCarriesBytesBothWaysAndEndsWhenEitherEndCloses; here all it
+	// did was make the server's accept policy depend on pty timing, and it is where this test
+	// failed on CI — the byte written to the slave never reached the master, the pump sat
+	// idle, and the test hung for the whole ten-minute package timeout.
 	app, err := net.Dial("unix", socketPath)
 	if err != nil {
 		t.Fatalf("dialing the bridge after a refusal: %v", err)
 	}
 	defer func() { _ = app.Close() }()
-	slave, err := os.OpenFile(bridge.SlavePath(), os.O_RDWR, 0)
-	if err != nil {
-		t.Fatalf("opening the slave: %v", err)
-	}
-	defer func() { _ = slave.Close() }()
 
-	if _, err := slave.Write([]byte("ping")); err != nil {
-		t.Fatalf("writing to the slave: %v", err)
+	if err := app.SetReadDeadline(time.Now().Add(250 * time.Millisecond)); err != nil {
+		t.Fatalf("setting a read deadline on the served peer: %v", err)
 	}
-	got := make([]byte, len("ping"))
-	if _, err := io.ReadFull(app, got); err != nil {
-		t.Fatalf("reading from the app's end: %v", err)
-	}
-	if string(got) != "ping" {
-		t.Errorf("the app reads %q, want %q", got, "ping")
+	switch _, err := app.Read(make([]byte, 1)); {
+	case err == nil:
+		t.Fatal("the served peer sent a byte the radio never sent")
+	case errors.Is(err, os.ErrDeadlineExceeded):
+		// Nothing arrived and the connection did not end: the server is carrying it.
+	default:
+		t.Fatalf("the served peer's connection is not open: %v", err)
 	}
 
 	cancel()
