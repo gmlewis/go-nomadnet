@@ -284,18 +284,28 @@ class SensorService : Service() {
     )
 
     /**
-     * onRadioGone repoints the port path away from a terminal the radio has just freed.
+     * onRadioGone ends the bridge and repoints the port path away from the terminal it freed.
      *
-     * The kernel hands a freed pseudo-terminal's number to the next allocation, and the
-     * console host holds one of its own: a port path still naming the dead radio's terminal
-     * is a path the transport could open onto somebody else's. It is pointed back at the
-     * kernel's own serial device instead, where opening it fails and the interface simply
-     * reports Disconnected until a radio comes back. See [RNodePortLink].
+     * Both halves matter. The terminal is only really gone when the bridge program that holds
+     * its master exits — that is what hangs the port up and tells the transport its radio has
+     * gone — and a bridge left running also holds the USB claim for a radio that is not there.
+     * And a freed pseudo-terminal's number is handed to the next allocation, the console host
+     * holding one of its own, so the port path is pointed back at the kernel's own serial
+     * device where opening it fails and the interface simply reports Disconnected. See
+     * [RNodePortLink].
+     *
+     * The bridge is ended on a thread of its own: this is called from the pump thread, and
+     * stopping the bridge joins the pump, so ending it here would be waiting on the thread
+     * that is running this.
      */
     private fun onRadioGone() {
-        if (RNodePortLink.pointAt(paths.rnodePortLink, RNodeSpec.DEFAULT_PORT)) {
-            report("the radio is gone; the port is ${RNodeSpec.DEFAULT_PORT} until one comes back")
-        }
+        Thread({
+            rnodeBridge?.stop()
+            rnodeBridge = null
+            if (RNodePortLink.pointAt(paths.rnodePortLink, RNodeSpec.DEFAULT_PORT)) {
+                report("the radio is gone; the port is ${RNodeSpec.DEFAULT_PORT} until one comes back")
+            }
+        }, "radio-gone").start()
     }
 
     /**
