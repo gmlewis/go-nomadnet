@@ -82,11 +82,24 @@ type NodeInfoDisplay struct {
 	browseBtn   *UrwidButton
 	resetBtn    *UrwidButton
 	announceBtn *UrwidButton
+	// btnRow is the hosting branch's Back | Browse | Rst Stats | Announce
+	// Columns; nil in the not-hosting branch (whose single centered Back row is
+	// a plain Flex). It is what ConsumesLeftRight reports on.
+	btnRow *urwidColumns
 
 	mu      sync.Mutex
 	started bool
 	stopCh  chan struct{}
 	wg      sync.WaitGroup
+}
+
+// ConsumesLeftRight reports whether the focused panel row handles Left/Right
+// itself. Only the hosting branch's button Columns does (urwid Columns.keypress
+// moves focus_column on LEFT/RIGHT); the not-hosting branch's single centered
+// Back row returns them unhandled, so the enclosing Network Columns then moves
+// pane focus to the browser.
+func (ni *NodeInfoDisplay) ConsumesLeftRight() bool {
+	return ni.btnRow != nil && ni.btnRow.HasFocus()
 }
 
 // NewNodeInfoDisplay builds the Local Node Info panel for the given data. Until
@@ -218,6 +231,7 @@ func (ni *NodeInfoDisplay) hostingButtonRow() *urwidColumns {
 	).
 		SetWeight(0, 10).SetWeight(1, 1).SetWeight(2, 12).
 		SetWeight(3, 1).SetWeight(4, 16).SetWeight(5, 1).SetWeight(6, 14)
+	ni.btnRow = row
 	return row
 }
 

@@ -163,6 +163,10 @@ func newKnownNodeInfoDisplay(nd *NetworkDisplay, nodeHash string, data KnownNode
 	// Focus the button row (Python pile.focus_position = len-1).
 	pile.SetFocusIndexLast()
 	pile.SetEscHandler(func() { k.nd.showKnownNodes() })
+	// Down at the bottom of the button row bubbles out of this Pile into the
+	// left pane's next item — the Local Peer panel — as urwid's left_pile does
+	// when contents[0] (this form) returns the key unhandled.
+	pile.SetDownEscapeHandler(k.nd.focusPackPanel)
 
 	k.pile = pile
 	return k

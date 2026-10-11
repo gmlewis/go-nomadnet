@@ -30,7 +30,8 @@ import (
 // "Announce Now" button, another divider, and a Save | Node Info button row.
 type LocalPeerDisplay struct {
 	app         *App
-	widget      *tview.Flex // bordered "Local Peer Info" FlexRow
+	widget      *tview.Flex // bordered "Local Peer Info" FlexRow wrapping pile
+	pile        *pileFiller // the panel's urwid Pile (UP/DOWN walk its rows)
 	lxmfAddr    *tview.TextView
 	identity    *tview.TextView
 	nameEdit    *ReadlineEdit
@@ -38,6 +39,9 @@ type LocalPeerDisplay struct {
 	announceBtn *UrwidButton
 	saveBtn     *UrwidButton
 	nodeInfoBtn *UrwidButton
+	// buttons is the Save | Node Info Columns (urwid Columns: LEFT/RIGHT move
+	// focus_column between the two buttons).
+	buttons *urwidColumns
 
 	// Callbacks fired by the buttons; the wiring layer connects these to the
 	// app (set_display_name / announce_now / show NodeInfo panel).
@@ -103,25 +107,37 @@ func NewLocalPeerDisplay(app *App, lxmfAddr, identityHash, name string, lastAnno
 	// 0.1*50=5, and urwid gives the 1-col leftover to the FIRST column →
 	// Save=23, spacer=5, Node Info=22. tview's proportional Flex gives the
 	// leftover to the LAST column instead, so fixed sizes are used for parity.
-	buttons := tview.NewFlex().SetDirection(tview.FlexColumn).
-		AddItem(lp.saveBtn, 23, 0, false).
-		AddItem(tview.NewBox(), 5, 0, false).
-		AddItem(lp.nodeInfoBtn, 22, 0, false)
+	// urwidColumns (not a tview Flex) is required so LEFT/RIGHT move
+	// focus_column between Save and Node Info, as urwid's Columns.keypress does.
+	lp.buttons = newURWIDColumns(0, lp.saveBtn, tview.NewBox(), lp.nodeInfoBtn).
+		SetFixedWidth(0, 23).
+		SetFixedWidth(1, 5).
+		SetFixedWidth(2, 22)
 
 	glyph := "-"
 	if app != nil && app.Glyphs != nil {
 		glyph = app.Glyphs["divider1"]
 	}
 
+	// The panel body is an urwid Pile of fixed-height flow widgets, mirroring
+	// Python's LocalPeer.display_widget Pile (Network.py:1305-1353). Its
+	// focus_position defaults to the first selectable child — the Name edit —
+	// and UP/DOWN walk Name → Announce Now → the Save | Node Info Columns, so
+	// the Node Info button is reachable from the keyboard exactly as in the
+	// original. The bordered LineBox wrapper stays outside the Pile (Python
+	// wraps it in urwid.LineBox(..., title="Local Peer Info")).
+	lp.pile = newPileFiller()
+	lp.pile.AddItem(lp.lxmfAddr, 1, false)
+	lp.pile.AddItem(lp.identity, 1, false)
+	lp.pile.AddItem(lp.nameEdit, 1, true)
+	lp.pile.AddItem(newDividerRow(glyph), 1, false)
+	lp.pile.AddItem(lp.announce, 1, false)
+	lp.pile.AddItem(lp.announceBtn, 1, true)
+	lp.pile.AddItem(newDividerRow(glyph), 1, false)
+	lp.pile.AddItem(lp.buttons, 1, true)
+
 	lp.widget = tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(lp.lxmfAddr, 1, 0, false).
-		AddItem(lp.identity, 1, 0, false).
-		AddItem(lp.nameEdit, 1, 0, true).
-		AddItem(newDividerRow(glyph), 1, 0, false).
-		AddItem(lp.announce, 1, 0, false).
-		AddItem(lp.announceBtn, 1, 0, false).
-		AddItem(newDividerRow(glyph), 1, 0, false).
-		AddItem(buttons, 1, 0, false)
+		AddItem(lp.pile, 0, 1, true)
 	lp.widget.SetBorder(true)
 	SetTitledBorder(lp.widget, "Local Peer Info")
 
@@ -130,6 +146,11 @@ func NewLocalPeerDisplay(app *App, lxmfAddr, identityHash, name string, lastAnno
 
 // Widget returns the bordered "Local Peer Info" primitive for layout.
 func (lp *LocalPeerDisplay) Widget() *tview.Flex { return lp.widget }
+
+// Pile returns the panel's inner urwid Pile, so the Network left pane can wire
+// its Up-escape (Up at the panel's first selectable row hands focus back to the
+// list, urwid Pile.keypress bubbling the key out to left_pile.contents[0]).
+func (lp *LocalPeerDisplay) Pile() *pileFiller { return lp.pile }
 
 // Height returns the fixed rendered height of the panel: 8 content rows plus 2
 // border rows = 10. Callers use this as the tview Flex fixedSize so the panel
@@ -169,6 +190,34 @@ func (lp *LocalPeerDisplay) SetData(lxmfAddr, identityHash string, lastAnnounce 
 
 // Name returns the current text of the name edit field.
 func (lp *LocalPeerDisplay) Name() string { return lp.nameEdit.GetText() }
+
+// The focus probes below report which of the panel's selectable rows currently
+// holds focus. They are the read counterparts of the panel's urwid Pile focus
+// positions (Network.py:1305-1353): the Name ReadlineEdit, the Announce Now
+// button, and the Save | Node Info Columns, whose own focus_position selects
+// Save or Node Info.
+
+// NameEditHasFocus reports whether the panel's Name edit row holds focus.
+func (lp *LocalPeerDisplay) NameEditHasFocus() bool { return lp.nameEdit.HasFocus() }
+
+// AnnounceButtonHasFocus reports whether the Announce Now button holds focus.
+func (lp *LocalPeerDisplay) AnnounceButtonHasFocus() bool { return lp.announceBtn.HasFocus() }
+
+// SaveButtonHasFocus reports whether the Save button holds focus.
+func (lp *LocalPeerDisplay) SaveButtonHasFocus() bool { return lp.saveBtn.HasFocus() }
+
+// NodeInfoButtonHasFocus reports whether the Node Info button holds focus.
+func (lp *LocalPeerDisplay) NodeInfoButtonHasFocus() bool { return lp.nodeInfoBtn.HasFocus() }
+
+// ConsumesLeftRight reports whether the focused panel row handles Left/Right
+// itself: the Name ReadlineEdit (a urwid Edit consumes them to move the cursor)
+// and the Save | Node Info Columns (urwid Columns.keypress moves focus_column on
+// LEFT/RIGHT). Every other row returns the keys unhandled, so the enclosing
+// Network Columns then moves pane focus to the browser
+// (urwid/widget/pile.py Pile.keypress + columns.py Columns.keypress).
+func (lp *LocalPeerDisplay) ConsumesLeftRight() bool {
+	return lp.nameEdit.HasFocus() || lp.buttons.HasFocus()
+}
 
 // announceLine formats the "Announced : <pretty>" line: "Never" when no
 // announce has been recorded (zero time), otherwise PrettyDate of the stamp —

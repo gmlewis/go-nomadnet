@@ -156,6 +156,11 @@ func newAnnounceInfoDisplay(nd *NetworkDisplay, ann AnnounceEntry, data Announce
 	// Network.py:60-65). The pileFiller intercepts Esc before forwarding to the
 	// focused widget, so Esc works even when focus is on the button row.
 	pile.SetEscHandler(func() { ai.nd.HandleEsc() })
+	// Down at the bottom of the button row bubbles out of this Pile into the
+	// left pane's next item — the Local Peer panel — exactly as urwid's
+	// left_pile does when contents[0] (this AnnounceInfo) returns the key
+	// unhandled (Network.py:59-256 + 1641).
+	pile.SetDownEscapeHandler(ai.nd.focusPackPanel)
 	return ai
 }
 

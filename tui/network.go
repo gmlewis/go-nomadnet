@@ -50,7 +50,7 @@ type NodeEntry struct {
 type NetworkDisplay struct {
 	app            *App
 	widget         tview.Primitive
-	leftPanel      *tview.Flex
+	leftPanel      *pileFiller
 	announces      *tview.List
 	announcesList  *IndicativeListBox
 	announceStream *announceStreamDisplay
@@ -268,18 +268,40 @@ func NewNetworkDisplay(app *App, announces []AnnounceEntry, nodes []NodeEntry) *
 		}
 	}
 
-	// The left pane is a PILE of two separately-bordered LineBoxes — the
+	// The left pane is a urwid PILE of two separately-bordered LineBoxes — the
 	// mode-titled list (Saved Nodes/Announce Stream/Announce Info/…) and the
 	// Local Peer Info panel — with NO outer border around the pile, matching
 	// Python's NetworkLeftPile (Network.py:1641, 867, 446, 256). listBox carries
 	// the list slot's border+title; setLeftList swaps its content and title.
+	//
+	// It must be a real Pile, not a Flex: urwid's Pile.keypress walks
+	// focus_position down/up out of a list that has reached its own boundary, so
+	// Down at the last Saved Nodes row moves focus into the Local Peer panel and
+	// the Node Info button becomes keyboard-reachable (Network.py:1641-1644).
+	// pileFiller is that port, and rebuildLeftPanel composes the two items.
 	nd.listBox = tview.NewFlex().SetDirection(tview.FlexRow)
 	nd.listBox.SetBorder(true)
 	nd.setLeftList(nd.nodesView(), "Saved Nodes")
 
-	nd.leftPanel = tview.NewFlex().SetDirection(tview.FlexRow)
-	nd.leftPanel.AddItem(nd.listBox, 0, 1, true)
-	nd.leftPanel.AddItem(nd.localPeer.Widget(), nd.localPeer.Height(), 0, false)
+	nd.leftPanel = newPileFiller()
+	// Up at the pile's top item (the list slot) bubbles out to the header, as
+	// urwid's MainFrame does when the body's top widget returns Up unhandled.
+	nd.leftPanel.SetUpEscapeHandler(func() {
+		if nd.app != nil && nd.app.Main != nil {
+			nd.app.Main.FocusMenu()
+		}
+	})
+	nd.rebuildLeftPanel()
+
+	// Down at the bottom of the Announce Stream's own Pile (its list) hands
+	// focus out of that nested pile into the left pane's next item — the Local
+	// Peer panel — matching urwid, where the inner Pile's Down candidates run
+	// off its end and the enclosing left_pile moves contents[1] into focus.
+	nd.announceStream.pile.SetDownEscapeHandler(nd.focusPackPanel)
+	// Up at the Local Peer panel's first selectable row (its Name edit) hands
+	// focus back to the list, the symmetric urwid case: the LocalPeer Pile's Up
+	// candidates run off its top, so left_pile.contents[0] takes focus_position.
+	nd.localPeer.Pile().SetUpEscapeHandler(nd.focusLeftList)
 
 	// Content: left panel + detail. Python: self.widget = self.columns
 	// (Network.py:1666) — NO outer LineBox or title around the page; the two
@@ -790,6 +812,10 @@ func (nd *NetworkDisplay) setLeftList(item tview.Primitive, title string) {
 	nd.listBox.Clear()
 	nd.listBox.AddItem(item, 0, 1, true)
 	SetTitledBorder(nd.listBox, title)
+	// The slot's content decides how the left pile routes Up/Down into it, so
+	// re-record the role on every swap (the pile's items are unchanged; only
+	// their item-0 metadata is).
+	nd.installLeftSlotRole(0)
 	nd.repairDetachedFocus()
 }
 
@@ -823,12 +849,18 @@ func (nd *NetworkDisplay) setInfoView(active bool) {
 //   - While the Announce Stream is shown and its tab bar ([ Nodes ]/[ Peers ]/
 //     [ Propagation Nodes ]) or filter bar (Search / [ Show: Name ]) has focus,
 //     those inner Columns consume Left/Right to move between their children.
+//   - While the left pane's PACK panel is focused and the widget focused there
+//     consumes Left/Right (the Local Peer panel's Name edit or its Save | Node
+//     Info Columns, the Node Info panel's button Columns), the pane owns them.
 //   - While a plain list (Saved Nodes, the Announce Stream entry list, or the
 //     LXMF Peers list) has focus, Left/Right are NOT consumed: they bubble up
 //     to the outer Columns, which moves pane focus to the browser — matching
 //     Python, where a urwid ListBox does not handle Left/Right.
 func (nd *NetworkDisplay) leftPaneConsumesLeftRight() bool {
 	if nd.inInfoView {
+		return true
+	}
+	if nd.packPanelConsumesLeftRight() {
 		return true
 	}
 	if nd.showingNodes || nd.showingPeers {
@@ -855,7 +887,10 @@ func (nd *NetworkDisplay) focusLeftList() {
 	if nd.app == nil {
 		return
 	}
-	nd.app.SetFocus(nd.listBox)
+	if nd.leftPanel != nil {
+		nd.leftPanel.SetFocusIndex(0)
+	}
+	nd.app.SetFocus(nd.leftPanel)
 }
 
 // isFocusBroken reports whether app focus was broken (detached zombie or inert)
@@ -964,19 +999,24 @@ func (nd *NetworkDisplay) SetLocalPeerHandlers(onSave func(name string), onAnnou
 // Active/Total/Pages/Files) are live providers that re-read the app each tick
 // regardless, but the static fields (Name, Addr, LXMF propagation address) are
 // captured at construction — rebuilding them each open keeps them current if the
-// rebuildLeftPanel is the ONLY function allowed to mutate nd.leftPanel's
-// contents. It renders the canonical python-parity composition from the
-// widget state — index 0: the list slot (listBox or its listSlotOverlay),
-// index 1 (PACK): the pack panel (Local Peer Info, Local Node Info, or the
-// transient status dialog) — in exactly two items, every time. All panel
-// mutators (ShowNodeInfo/ShowLocalPeer/ShowLocalPeerStatus/
-// CloseLocalPeerStatus/ShowListSlotDialog/CloseListSlotDialog) set state and
-// call this, so panel ordering, position, and visibility can never drift the
-// way they did under the previous incremental remove/add swaps: tview's
-// AddItem always appends, so interleaved mutator sequences stranded panels
-// above the list and resurrected hidden ones (the penguin layout scramble:
-// [Local Node Info, Announce Stream, Local Peer Info] instead of
-// [list, Local Node Info-or-Local Peer Info], with the browser pane right).
+// rebuildLeftPanel is the ONLY function allowed to mutate the left pane. It
+// renders the canonical python-parity composition from the widget state —
+// index 0: the list slot (listBox or its listSlotOverlay), index 1 (PACK): the
+// pack panel (Local Peer Info, Local Node Info, or the transient status
+// dialog) — in exactly two items, every time. All panel mutators
+// (ShowNodeInfo/ShowLocalPeer/ShowLocalPeerStatus/CloseLocalPeerStatus/
+// ShowListSlotDialog/CloseListSlotDialog) set state and call this, so panel
+// ordering, position, and visibility can never drift the way they did under the
+// previous incremental remove/add swaps: tview's AddItem always appends, so
+// interleaved mutator sequences stranded panels above the list and resurrected
+// hidden ones (the penguin layout scramble: [Local Node Info, Announce Stream,
+// Local Peer Info] instead of [list, Local Node Info-or-Local Peer Info], with
+// the browser pane right).
+//
+// Each item's Up/Down role comes from the slot's content: a plain list keeps
+// Up/Down while its cursor can move and hands focus over at its boundary; a
+// nested Pile (the Announce Stream's tab/filter/list pile, a detail view) owns
+// its own Up/Down; the pack panel always owns its own. See pileFiller.
 func (nd *NetworkDisplay) rebuildLeftPanel() {
 	listSlot := tview.Primitive(nd.listBox)
 	if nd.listSlotOverlay != nil {
@@ -993,9 +1033,116 @@ func (nd *NetworkDisplay) rebuildLeftPanel() {
 		packHeight = nd.statusHeight
 	}
 	nd.leftPanel.Clear()
-	nd.leftPanel.AddItem(listSlot, 0, 1, true)
-	nd.leftPanel.AddItem(pack, packHeight, 0, false)
+	nd.leftPanel.AddItem(listSlot, 0, true)
+	// The pack panel is SELECTABLE: it is the pile's second focus_position, the
+	// item Down out of the list's last row lands on (urwid's Pile skips
+	// non-selectable contents when it walks focus, and Python's LocalPeer holds
+	// selectable rows — the Name edit and its buttons — so contents[1] is a
+	// candidate).
+	nd.leftPanel.AddItem(pack, packHeight, true)
+	nd.installLeftSlotRole(0)
+	// The pack panel is always a nested item: it manages Up/Down among its own
+	// rows and hands focus back out through its own escape handlers.
+	nd.leftPanel.SetItemNested(1, true)
 	nd.repairDetachedFocus()
+}
+
+// installLeftSlotRole records how the list-slot item (index 0) handles Up/Down:
+// as a list whose boundary hands focus to the pack panel, or as a nested Pile
+// that owns Up/Down itself. An in-slot dialog overlay is treated as nested so
+// the pile never steals its arrow keys.
+func (nd *NetworkDisplay) installLeftSlotRole(i int) {
+	if nd.leftPanel == nil {
+		return
+	}
+	nd.leftPanel.SetItemNested(i, nd.leftSlotIsNested())
+	nd.leftPanel.SetItemList(i, nd.leftSlotList)
+}
+
+// leftSlotContent returns the widget currently in the bordered list slot:
+// listBox's child (the Saved Nodes list, the Announce Stream Pile, a detail
+// view, the peers list, the no-nodes placeholder), or the in-slot dialog
+// overlay when one is showing.
+func (nd *NetworkDisplay) leftSlotContent() tview.Primitive {
+	if nd.listSlotOverlay != nil {
+		return nd.listSlotOverlay
+	}
+	if nd.listBox == nil || nd.listBox.GetItemCount() == 0 {
+		return nil
+	}
+	return nd.listBox.GetItem(0)
+}
+
+// leftSlotList returns the *tview.List the list slot scrolls, or nil when the
+// slot holds something that is not a plain scrollable list: the no-nodes
+// placeholder, a nested Pile (the Announce Stream's tab/filter/list pile or a
+// detail view), or an in-slot dialog. It is the provider the left pile
+// consults so Down at the list's last row hands focus to the Local Peer panel
+// (urwid Pile.keypress over left_pile.contents, Network.py:1641).
+//
+// The role is read from the SLOT'S CONTENT, never from the showingNodes /
+// showingPeers flags: toggleList swaps the slot before flipping its flag, so a
+// flag-derived role would describe the previous mode.
+func (nd *NetworkDisplay) leftSlotList() *tview.List {
+	if nd.listSlotOverlay != nil {
+		return nil
+	}
+	switch v := nd.leftSlotContent().(type) {
+	case *tview.List:
+		return v
+	case *IndicativeListBox:
+		return v.List
+	}
+	return nil
+}
+
+// leftSlotIsNested reports whether the slot content owns Up/Down itself: a
+// nested Pile (the Announce Stream, or a detail view such as Announce Info /
+// Node Info) or an in-slot dialog. A plain list and the no-nodes placeholder
+// are not nested, so Down on them moves the left pile's focus into the pack
+// panel.
+func (nd *NetworkDisplay) leftSlotIsNested() bool {
+	if nd.listSlotOverlay != nil {
+		return true
+	}
+	_, ok := nd.leftSlotContent().(*pileFiller)
+	return ok
+}
+
+// focusPackPanel moves the left pane's focus to its PACK item (index 1) — the
+// Local Peer Info panel, the Local Node Info panel, or a transient status
+// dialog — and gives it the keyboard. It is the nested piles' Down-escape
+// target (pileFiller.SetDownEscapeHandler).
+func (nd *NetworkDisplay) focusPackPanel() {
+	if nd.app == nil || nd.leftPanel == nil {
+		return
+	}
+	nd.leftPanel.SetFocusIndex(1)
+	nd.app.SetFocus(nd.leftPanel)
+}
+
+// packPanelConsumesLeftRight reports whether the left pane's PACK panel holds
+// the keyboard AND the widget focused there handles Left/Right itself. Only
+// then may the outer Network Columns forward the key into the pane instead of
+// moving pane focus to the browser — urwid's Columns moves focus only when the
+// focused column returns the key unhandled, and a ReadlineEdit (its cursor) or
+// a Columns of buttons (its focus_column) consumes it.
+func (nd *NetworkDisplay) packPanelConsumesLeftRight() bool {
+	if nd.leftPanel == nil {
+		return false
+	}
+	pack := nd.leftPanel.GetItem(1)
+	if pack == nil || !pack.HasFocus() {
+		return false
+	}
+	switch {
+	case nd.statusInPeerSlot != nil:
+		return false // a status dialog's OK button consumes no arrow key
+	case nd.packPanelIsNodeInfo && nd.nodeInfo != nil:
+		return nd.nodeInfo.ConsumesLeftRight()
+	default:
+		return nd.localPeer != nil && nd.localPeer.ConsumesLeftRight()
+	}
 }
 
 // user changes their display name or propagation setting mid-session (the
