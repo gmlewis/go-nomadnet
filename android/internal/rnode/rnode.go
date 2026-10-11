@@ -33,9 +33,11 @@
 package rnode
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/creack/pty/v2"
 	"golang.org/x/sys/unix"
@@ -55,7 +57,83 @@ type Bridge struct {
 	path   string
 }
 
-// Open allocates the pseudo-terminal pair a radio's serial port is built on.
+// Open allocates the pseudo-terminal pair a radio's serial port is built on, retrying an
+// allocation that lost a race.
+//
+// A radio the appliance cannot give a serial path is a radio the appliance does not have, and
+// the bridge reports one by exiting: this is the only step that can fail before it has a path
+// to publish, and nothing restarts it, so a transient failure here costs the radio until the
+// next attach. See retryingOpen for the race being retried and why it is worth waiting out.
+func Open() (*Bridge, error) {
+	return retryingOpen(openOnce, openAttempts, time.Sleep)
+}
+
+// openAttempts bounds how many times Open tries to allocate a pty. openRetryBase and
+// openRetryCap bound how long it waits between tries: the wait doubles from the base up to
+// the cap, so a race that clears at once costs a millisecond and one that takes longer still
+// resolves inside tens of them — far less than the restart a supervising layer would need, and
+// below anything a person holding the tablet would notice.
+const (
+	openAttempts  = 10
+	openRetryBase = time.Millisecond
+	openRetryCap  = 8 * time.Millisecond
+)
+
+// retryingOpen runs open until it succeeds, until it fails for a reason that retrying cannot
+// mend, or until attempts run out — in which case it returns the last error.
+//
+// A pty's /dev/pts/N node is created when its master is opened and removed when the master is
+// closed, and the kernel hands back the lowest free N. Two allocations that overlap can land
+// on the same N: the open reads the number, the other end's teardown removes the node, and
+// opening the slave then fails with ENOENT even though the master was allocated. The appliance
+// has two programs that allocate a pty and can start together — the console that gives the
+// client a terminal, and this bridge — and the device's other ptys churn as well. GitHub's
+// Ubuntu runner loses the same race under a test suite that allocates eight ptys in parallel
+// (run 38166201668, TestPumpEndsWhenEitherEndCloses: "open /dev/pts/0: no such file or
+// directory"), while the same bytes pass on the next run. The node is there again a moment
+// later, so a bounded retry is the whole fix: what is waited out is a teardown still in
+// flight, not a pty that is not there.
+//
+// Only a "not there" error is retried. Every other failure comes back at once, and so does the
+// last not-there error once the attempts are spent, so a genuine failure to allocate a pty is
+// reported to the caller rather than waited away.
+//
+// open and sleep are parameters rather than fixed calls so the retrying can be tested without
+// a pty and without waiting: an error is the only thing that decides a retry, and a test can
+// supply that directly.
+func retryingOpen(open func() (*Bridge, error), attempts int, sleep func(time.Duration)) (*Bridge, error) {
+	var err error
+	for attempt := range attempts {
+		var bridge *Bridge
+		if bridge, err = open(); err == nil {
+			return bridge, nil
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			return nil, err
+		}
+		// A wait precedes a retry: after the last try there is nothing left to wait for.
+		if attempt < attempts-1 {
+			sleep(openRetryWait(attempt))
+		}
+	}
+	return nil, err
+}
+
+// openRetryWait is how long retryingOpen waits before the retry that follows attempt, counting
+// the first retry as zero: the base wait doubled once per attempt, and never past the cap.
+func openRetryWait(attempt int) time.Duration {
+	// A shift this large is past the cap whatever the base, and refusing it here keeps a
+	// raised attempt bound from turning into an overflow.
+	if attempt > 16 {
+		return openRetryCap
+	}
+	if wait := openRetryBase << attempt; wait < openRetryCap {
+		return wait
+	}
+	return openRetryCap
+}
+
+// openOnce allocates the pseudo-terminal pair a radio's serial port is built on.
 //
 // The pair is put into raw mode before it is handed over, because a pty in its
 // default state is a terminal and not a cable: the line discipline turns a
@@ -63,7 +141,7 @@ type Bridge struct {
 // carriage-return newline on the way out, takes 0x03 as an interrupt, and stops
 // the output at a 0x13. An RNode's protocol is HDLC-framed binary, which those
 // rules would corrupt in ways that look like a radio that hears nothing.
-func Open() (*Bridge, error) {
+func openOnce() (*Bridge, error) {
 	master, slave, err := pty.Open()
 	if err != nil {
 		return nil, fmt.Errorf("rnode: opening a pseudo-terminal: %w", err)

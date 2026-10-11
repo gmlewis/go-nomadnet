@@ -17,6 +17,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -141,6 +142,19 @@ func skipIfTheRunnerCannotWakeAParkedPTYRead(t *testing.T) {
 	}
 }
 
+// mustOpen allocates a bridge for a test, failing it if no pty can be had.
+//
+// Open retries the transient race itself (see retryingOpen); this is only the error handling
+// the tests share.
+func mustOpen(t *testing.T) *Bridge {
+	t.Helper()
+	bridge, err := Open()
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	return bridge
+}
+
 // tempRoot returns a fresh directory under /tmp, which is where a test may
 // write and where a socket path is short enough to bind.
 func tempRoot(t *testing.T, prefix string) string {
@@ -156,10 +170,7 @@ func tempRoot(t *testing.T, prefix string) string {
 func TestTheBridgePublishesARawSerialPath(t *testing.T) {
 	t.Parallel()
 
-	bridge, err := Open()
-	if err != nil {
-		t.Fatalf("Open failed: %v", err)
-	}
+	bridge := mustOpen(t)
 	defer func() { _ = bridge.Close() }()
 
 	if bridge.SlavePath() == "" {
@@ -210,10 +221,7 @@ func TestThePairIsHeldUntilTheTransportOpensIt(t *testing.T) {
 	// version of this test required a read on the master not to return inside
 	// 50 ms, which is a timing assertion about the absence of an event, and it
 	// is the one that failed on a CI runner whose pty answered immediately.
-	bridge, err := Open()
-	if err != nil {
-		t.Fatalf("Open failed: %v", err)
-	}
+	bridge := mustOpen(t)
 	defer func() { _ = bridge.Close() }()
 
 	if _, err := bridge.slave.Stat(); err != nil {
@@ -243,10 +251,7 @@ func TestPumpCarriesBytesBothWays(t *testing.T) {
 	t.Parallel()
 	skipIfTheRunnerCannotWakeAParkedPTYRead(t)
 
-	bridge, err := Open()
-	if err != nil {
-		t.Fatalf("Open failed: %v", err)
-	}
+	bridge := mustOpen(t)
 	defer func() { _ = bridge.Close() }()
 
 	slave, err := os.OpenFile(bridge.SlavePath(), os.O_RDWR, 0)
@@ -297,10 +302,7 @@ func TestPumpEndsWhenEitherEndCloses(t *testing.T) {
 
 	// Closing the bridge's own end ends a pump, which is how a context
 	// cancellation releases a radio.
-	bridge, err := Open()
-	if err != nil {
-		t.Fatalf("Open failed: %v", err)
-	}
+	bridge := mustOpen(t)
 	defer func() { _ = bridge.Close() }()
 
 	app, peer := net.Pipe()
@@ -332,10 +334,7 @@ func TestPumpEndsWhenEitherEndCloses(t *testing.T) {
 	// moves for reasons that have nothing to do with the pump — and a sleep is
 	// not a synchronization. What a leaked goroutine would hold is the pty's
 	// descriptor, and that is what is asserted instead.
-	bridge2, err := Open()
-	if err != nil {
-		t.Fatalf("Open failed: %v", err)
-	}
+	bridge2 := mustOpen(t)
 	defer func() { _ = bridge2.Close() }()
 
 	slave2, err := os.OpenFile(bridge2.SlavePath(), os.O_RDWR, 0)
@@ -437,10 +436,7 @@ func TestTheServerRefusesAPeerFromAnotherUid(t *testing.T) {
 	dir := tempRoot(t, "rnode-bridge-")
 	socketPath := filepath.Join(dir, "sock")
 
-	bridge, err := Open()
-	if err != nil {
-		t.Fatalf("Open failed: %v", err)
-	}
+	bridge := mustOpen(t)
 	defer func() { _ = bridge.Close() }()
 
 	ln, err := Listen(socketPath)
@@ -524,10 +520,7 @@ func TestTheServerStopsWhenItsContextIsCancelled(t *testing.T) {
 		t.Fatalf("Listen failed: %v", err)
 	}
 
-	bridge, err := Open()
-	if err != nil {
-		t.Fatalf("Open failed: %v", err)
-	}
+	bridge := mustOpen(t)
 	defer func() { _ = bridge.Close() }()
 
 	srv := &Server{
@@ -557,10 +550,7 @@ func TestTheServerReportsAPeerItCannotIdentify(t *testing.T) {
 	dir := tempRoot(t, "rnode-bridge-")
 	socketPath := filepath.Join(dir, "sock")
 
-	bridge, err := Open()
-	if err != nil {
-		t.Fatalf("Open failed: %v", err)
-	}
+	bridge := mustOpen(t)
 	defer func() { _ = bridge.Close() }()
 
 	ln, err := Listen(socketPath)
@@ -672,4 +662,116 @@ func TestListenBindsAPathAndAnAbstractName(t *testing.T) {
 	if _, err := net.Dial("unix", "@"+name); err != nil {
 		t.Errorf("dialing the abstract name %v: %v", name, err)
 	}
+}
+
+// TestRetryingOpen pins what the retry is for, and what it is not: a node a concurrent
+// teardown has removed is retried on a doubling wait, and a failure retrying cannot mend is
+// handed straight back. Retrying the second kind would turn a broken bridge into a slow one —
+// and in production a slow one is a radio that arrives late, because Open is the last thing
+// that can fail before the bridge publishes a path.
+func TestRetryingOpen(t *testing.T) {
+	t.Parallel()
+
+	// notThere is what Open reports when the slave node whose number it just read has gone: a
+	// path error, wrapped the way Open wraps it. os.ErrNotExist is the error syscall.ENOENT
+	// carries, and errors.Is is what the retry reads it with, so a test can spell it without
+	// naming the platform's errno.
+	notThere := func() error {
+		return fmt.Errorf("rnode: opening a pseudo-terminal: %w",
+			&os.PathError{Op: "open", Path: "/dev/pts/0", Err: os.ErrNotExist})
+	}
+	// cannotMend is a real error of this package's, and not one a retry could outlast.
+	cannotMend := errors.New("rnode: the pseudo-terminal has no slave path")
+
+	t.Run("a node that comes back is retried until it does", func(t *testing.T) {
+		t.Parallel()
+
+		var opens int
+		var waits []time.Duration
+		bridge, err := retryingOpen(func() (*Bridge, error) {
+			opens++
+			if opens < 3 {
+				return nil, notThere()
+			}
+			return &Bridge{}, nil
+		}, openAttempts, func(wait time.Duration) { waits = append(waits, wait) })
+
+		if err != nil {
+			t.Fatalf("retryingOpen = %v, want a bridge", err)
+		}
+		if bridge == nil {
+			t.Error("retryingOpen returned neither a bridge nor an error")
+		}
+		if opens != 3 {
+			t.Errorf("open ran %v times, want 3", opens)
+		}
+		if want := []time.Duration{1 * time.Millisecond, 2 * time.Millisecond}; !slices.Equal(waits, want) {
+			t.Errorf("the waits were %v, want %v", waits, want)
+		}
+	})
+
+	t.Run("a failure a retry cannot mend is not retried", func(t *testing.T) {
+		t.Parallel()
+
+		var opens int
+		var waits []time.Duration
+		_, err := retryingOpen(func() (*Bridge, error) { opens++; return nil, cannotMend },
+			openAttempts, func(wait time.Duration) { waits = append(waits, wait) })
+
+		if !errors.Is(err, cannotMend) {
+			t.Errorf("retryingOpen = %v, want the error it was given", err)
+		}
+		if opens != 1 {
+			t.Errorf("open ran %v times, want 1", opens)
+		}
+		if len(waits) != 0 {
+			t.Errorf("the waits were %v, want none", waits)
+		}
+	})
+
+	t.Run("a node that never comes back stops at the bound", func(t *testing.T) {
+		t.Parallel()
+
+		var opens int
+		var waits []time.Duration
+		_, err := retryingOpen(func() (*Bridge, error) { opens++; return nil, notThere() },
+			openAttempts, func(wait time.Duration) { waits = append(waits, wait) })
+
+		if !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("retryingOpen = %v, want the last not-there error", err)
+		}
+		if opens != openAttempts {
+			t.Errorf("open ran %v times, want the %v attempts asked for", opens, openAttempts)
+		}
+		// One wait between each pair of tries, and none after the last: waiting for an
+		// attempt that is not coming is a wait nobody pays for.
+		if len(waits) != openAttempts-1 {
+			t.Errorf("there were %v waits, want %v", len(waits), openAttempts-1)
+		}
+		if last := waits[len(waits)-1]; last != openRetryCap {
+			t.Errorf("the last wait was %v, want the cap %v by then", last, openRetryCap)
+		}
+	})
+
+	t.Run("the wait doubles from the base and stops at the cap", func(t *testing.T) {
+		t.Parallel()
+
+		for _, tc := range []struct {
+			attempt int
+			want    time.Duration
+		}{
+			{0, 1 * time.Millisecond},
+			{1, 2 * time.Millisecond},
+			{2, 4 * time.Millisecond},
+			{3, openRetryCap},
+			{4, openRetryCap},
+			// Past the cap by a long way, and still the cap rather than a shift that
+			// overflows if the attempt bound is ever raised.
+			{40, openRetryCap},
+		} {
+			if got := openRetryWait(tc.attempt); got != tc.want {
+				t.Errorf("openRetryWait(%v) = %v, want %v", tc.attempt, got, tc.want)
+			}
+		}
+	})
 }
