@@ -13,7 +13,7 @@ import java.io.InputStream
 /**
  * One frame on the console socket.
  *
- * The Kotlin half of the codec the Go host implements in `nomadnet/console/frames.go`.
+ * The Kotlin half of the codec the Go host implements in `android/internal/console/frames.go`.
  * Both halves are asserted against one table of bytes in [ConsoleFramesTest] and
  * `frames_test.go`; a disagreement between them produces a console that renders
  * nothing and reports no error.

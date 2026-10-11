@@ -13,7 +13,7 @@ import (
 	"log"
 	"net"
 
-	"github.com/gmlewis/go-nomadnet/nomadnet/console"
+	"github.com/gmlewis/go-nomadnet/android/internal/console"
 )
 
 // Server carries a radio's bytes between a bridge's pty master and the one

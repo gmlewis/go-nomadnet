@@ -18,7 +18,7 @@
 //
 // The appliance binds an abstract Unix socket and spawns this program, which
 // dials that socket, starts the client on a pseudo-terminal (see
-// nomadnet/console), and carries the terminal's bytes in both directions until
+// android/internal/console), and carries the terminal's bytes in both directions until
 // the client exits or the app closes the connection. Everything it needs is on
 // its command line, because the app is the only thing that runs it.
 package main
@@ -36,7 +36,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/gmlewis/go-nomadnet/nomadnet/console"
+	"github.com/gmlewis/go-nomadnet/android/internal/console"
 )
 
 const (

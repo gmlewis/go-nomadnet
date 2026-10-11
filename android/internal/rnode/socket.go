@@ -14,7 +14,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/gmlewis/go-nomadnet/nomadnet/console"
+	"github.com/gmlewis/go-nomadnet/android/internal/console"
 )
 
 // SocketNamePrefix begins every radio bridge socket name.

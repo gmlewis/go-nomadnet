@@ -26,6 +26,10 @@
 // socket Listen binds (see serve.go) and carries the radio's bytes between
 // that socket and the USB endpoints. The appliance is the only thing that
 // runs this, and everything it needs is on the command line.
+//
+// This package only ever runs on Android, and only the radio bridge imports it.
+// It lives under android/internal rather than beside the client so that nothing
+// in nomadnet/ reads as something a desktop could reuse.
 package rnode
 
 import (

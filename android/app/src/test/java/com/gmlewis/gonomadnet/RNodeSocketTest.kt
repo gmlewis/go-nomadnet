@@ -14,7 +14,7 @@ import org.junit.Test
 
 /**
  * The radio bridge's socket name is the one thing the two halves build in two languages, so
- * it is pinned here as a literal — the same literal `nomadnet/rnode`'s `SocketNamePrefix`
+ * it is pinned here as a literal — the same literal `android/internal/rnode`'s `SocketNamePrefix`
  * is pinned to in Go. A name the two disagree about is an app dialling a socket nobody is
  * listening on: the radio never reaches the transport, the bridge waits for a connection
  * that never comes, and nothing anywhere says why.

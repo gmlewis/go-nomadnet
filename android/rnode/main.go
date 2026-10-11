@@ -31,7 +31,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/gmlewis/go-nomadnet/nomadnet/rnode"
+	"github.com/gmlewis/go-nomadnet/android/internal/rnode"
 )
 
 // usage is the documented form, which is the whole of this program's interface.

@@ -20,10 +20,30 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/gmlewis/go-nomadnet/nomadnet/app"
 	"github.com/gmlewis/go-nomadnet/nomadnet/asciichart"
 	"github.com/gmlewis/tcell/v2"
 	"github.com/gmlewis/tview"
 )
+
+// InterfaceInfoFromStat converts one live interface statistic into the shape the
+// Interfaces page renders. The interface's own configuration parameters come
+// along: the detail view's Connection/Radio/Network/IFAC/Additional blocks are
+// built from them, so dropping them leaves every interface reading "No
+// additional parameters" (Python's page reads app.rns.config['interfaces']
+// directly and so always has them).
+func InterfaceInfoFromStat(s app.InterfaceStat) InterfaceInfo {
+	return InterfaceInfo{
+		Name:      s.Name,
+		Type:      s.Type,
+		Enabled:   s.Enabled,
+		Connected: s.Connected,
+		TX:        s.TX,
+		RX:        s.RX,
+		Bitrate:   s.Bitrate,
+		Params:    s.Params,
+	}
+}
 
 // InterfaceInfo holds status information for a network interface.
 type InterfaceInfo struct {
@@ -272,6 +292,19 @@ func (id *InterfacesDisplay) SetInterfaces(interfaces []InterfaceInfo) {
 		items = append(items, NewSelectableInterfaceItem(iface.Name, iface.Type, iface.Connected, iface.Enabled, iface.TX, iface.RX, icon))
 	}
 	id.listBox.SetItems(items)
+
+	// An open details view is live too. Python's ShowInterface polls the same
+	// interface on the same 1 s cadence as the list (Interfaces.py:2921-2925), so
+	// a radio that comes up while the view is open is reported there rather than
+	// leaving the screen frozen at the moment it was opened.
+	if id.showWidget != nil {
+		for _, iface := range interfaces {
+			if iface.Name == id.showWidget.Name() {
+				id.showWidget.SetInfo(iface)
+				break
+			}
+		}
+	}
 }
 
 // SelectedIndex returns the focused interface index, or -1 if none.

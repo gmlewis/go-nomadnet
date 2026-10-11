@@ -52,6 +52,10 @@ func dialogRowTexts(p tview.Primitive) []string {
 			for line := range strings.SplitSeq(v.GetText(true), "\n") {
 				out = append(out, line)
 			}
+		case *showBody:
+			for line := range strings.SplitSeq(v.GetText(true), "\n") {
+				out = append(out, line)
+			}
 		case *ReadlineEdit:
 			out = append(out, v.GetLabel()+v.GetText())
 		case *tview.InputField:

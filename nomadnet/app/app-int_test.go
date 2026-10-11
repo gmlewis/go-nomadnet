@@ -334,7 +334,7 @@ func TestIntegrationSendConversationWithAttachment(t *testing.T) {
 	waitForAnnounce(t, appB, "peer", 5*time.Second)
 
 	// Write a temp attachment file the sender will stage.
-	attDir := t.TempDir()
+	attDir := testutils.TempDir(t, "nomadnet-int-att")
 	attBody := []byte("attachment payload bytes")
 	attPath := filepath.Join(attDir, "notes.txt")
 	if err := os.WriteFile(attPath, attBody, 0o644); err != nil {
@@ -410,7 +410,7 @@ func TestIntegrationAttachmentExtractionOnReceive(t *testing.T) {
 	waitForAnnounce(t, appB, "peer", 5*time.Second)
 
 	attBody := []byte("the attachment payload for extraction")
-	attDir := t.TempDir()
+	attDir := testutils.TempDir(t, "nomadnet-int-att")
 	attPath := filepath.Join(attDir, "report.txt")
 	if err := os.WriteFile(attPath, attBody, 0o644); err != nil {
 		t.Fatal(err)
@@ -469,7 +469,7 @@ func TestIntegrationSaveConversationAttachments(t *testing.T) {
 	waitForAnnounce(t, appB, "peer", 5*time.Second)
 
 	attBody := []byte("save-path payload")
-	attDir := t.TempDir()
+	attDir := testutils.TempDir(t, "nomadnet-int-att")
 	attPath := filepath.Join(attDir, "invoice.pdf")
 	if err := os.WriteFile(attPath, attBody, 0o644); err != nil {
 		t.Fatal(err)
@@ -496,7 +496,7 @@ func TestIntegrationSaveConversationAttachments(t *testing.T) {
 	}
 
 	// Redirect B's downloads path to a temp dir so we can assert the saved file.
-	destDir := t.TempDir()
+	destDir := testutils.TempDir(t, "nomadnet-int-dest")
 	appB.DownloadsPath = destDir
 	appB.AttachmentSavePath = ""
 

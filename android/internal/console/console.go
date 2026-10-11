@@ -31,6 +31,11 @@
 // The Android side implements the same wire format in Kotlin, against the same
 // golden table of bytes, because a codec disagreement between the two halves
 // produces a console that renders nothing and reports no error.
+//
+// This package only ever runs on Android: its two importers are the console host
+// the appliance stages and the radio bridge beside it. It lives under
+// android/internal rather than beside the client so that nothing in nomadnet/
+// reads as something a desktop could reuse.
 package console
 
 import (

@@ -2109,15 +2109,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		stats := a.InterfaceStats()
 		infos := make([]tui.InterfaceInfo, 0, len(stats))
 		for _, s := range stats {
-			infos = append(infos, tui.InterfaceInfo{
-				Name:      s.Name,
-				Type:      s.Type,
-				Enabled:   s.Enabled,
-				Connected: s.Connected,
-				TX:        s.TX,
-				RX:        s.RX,
-				Bitrate:   s.Bitrate,
-			})
+			infos = append(infos, tui.InterfaceInfoFromStat(s))
 		}
 		return infos
 	}

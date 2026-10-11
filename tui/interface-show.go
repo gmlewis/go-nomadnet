@@ -18,6 +18,7 @@ package tui
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode"
 
@@ -181,38 +182,46 @@ func titleWord(word string) string {
 	return sb.String()
 }
 
-// formatRadioFrequency converts a Hz value to MHz display string.
-func formatRadioFrequency(value any) string {
-	var hz float64
+// paramNumber reads a parameter value as a number. The detail view's parameters
+// come from the RNS config text (App.InterfaceStats keeps them as strings), so a
+// numeric parameter arrives as "915000000" rather than as an int: Python reads
+// the same value out of configobj, which has already parsed it into a number, so
+// every numeric formatter here has to accept the string spelling too.
+func paramNumber(value any) (float64, bool) {
 	switch v := value.(type) {
 	case float64:
-		hz = v
+		return v, true
 	case int64:
-		hz = float64(v)
+		return float64(v), true
 	case int:
-		hz = float64(v)
+		return float64(v), true
+	case string:
+		n, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
+		if err != nil {
+			return 0, false
+		}
+		return n, true
 	default:
+		return 0, false
+	}
+}
+
+// formatRadioFrequency converts a Hz value to MHz display string.
+func formatRadioFrequency(value any) string {
+	hz, ok := paramNumber(value)
+	if !ok {
 		return fmt.Sprintf("%v", value)
 	}
-	mhz := hz / 1000000.0
-	return fmt.Sprintf("%.3f MHz", mhz)
+	return fmt.Sprintf("%.3f MHz", hz/1000000.0)
 }
 
 // formatRadioBandwidth converts a Hz value to kHz display string.
 func formatRadioBandwidth(value any) string {
-	var hz float64
-	switch v := value.(type) {
-	case float64:
-		hz = v
-	case int64:
-		hz = float64(v)
-	case int:
-		hz = float64(v)
-	default:
+	hz, ok := paramNumber(value)
+	if !ok {
 		return fmt.Sprintf("%v", value)
 	}
-	khz := hz / 1000.0
-	return fmt.Sprintf("%.1f kHz", khz)
+	return fmt.Sprintf("%.1f kHz", hz/1000.0)
 }
 
 // interfaceShow is the FULL-PAGE interface detail view (Python ShowInterface,
@@ -232,7 +241,7 @@ type interfaceShow struct {
 	app  *App
 	info InterfaceInfo
 
-	body      *tview.TextView
+	body      *showBody
 	buttons   []*UrwidButton // Back, Disable/Enable, Edit — footer row order
 	buttonRow *urwidColumns
 	inFooter  bool
@@ -251,11 +260,6 @@ type interfaceShow struct {
 
 // NewInterfaceShow builds the full-page detail view for one interface.
 func NewInterfaceShow(app *App, info InterfaceInfo) *interfaceShow {
-	g := glyphsUnicode
-	if app != nil && app.Glyphs != nil {
-		g = app.Glyphs
-	}
-
 	s := &interfaceShow{app: app, info: info}
 
 	// Header (Interfaces.py:2222-2226): centered title + "=" divider.
@@ -263,14 +267,9 @@ func NewInterfaceShow(app *App, info InterfaceInfo) *interfaceShow {
 		AddItem(newCenteredText(tcell.ColorDefault, "Interface: "+info.Name), 1, 0, false).
 		AddItem(newDividerRow("="), 1, 0, false)
 
-	// Body (Interfaces.py:2268-2502).
-	s.body = tview.NewTextView()
-	s.body.SetDynamicColors(true)
-	s.body.SetScrollable(true)
-	s.body.SetTextColor(tcell.ColorDefault)
-	s.body.SetBackgroundColor(tcell.ColorDefault)
-	s.body.SetWrap(true)
-	s.body.SetText(s.buildBodyText(g))
+	// Body (Interfaces.py:2268-2502). The traffic boxes it draws are as wide as
+	// the grid leaves it, so showBody rebuilds the text when the width changes.
+	s.body = newShowBody(s)
 
 	// Footer (Interfaces.py:2228-2248): "=" divider + weighted button row —
 	// Back (0.3), spacer (0.05), Disable/Enable (0.3), spacer (0.05), Edit
@@ -315,11 +314,100 @@ func NewInterfaceShow(app *App, info InterfaceInfo) *interfaceShow {
 // Widget returns the full-page primitive.
 func (s *interfaceShow) Widget() tview.Primitive { return s.Flex }
 
+// glyphs returns the glyph set this view draws its status marker from.
+func (s *interfaceShow) glyphs() GlyphSet {
+	if s.app != nil && s.app.Glyphs != nil {
+		return s.app.Glyphs
+	}
+	return glyphsUnicode
+}
+
+// defaultBodyWidth is the width the body text is first built for, before the
+// grid has measured the view. It only shows through in a capture that never
+// lays the view out; a real layout calls SetRect and rebuilds at the true width.
+const defaultBodyWidth = 80
+
+// showBodyPadding is the body's left and right inset. Python wraps the whole
+// body in Padding(left=2, right=2) (Interfaces.py:2465), so the traffic boxes and
+// the dividers stop two columns short of the frame instead of merging with it.
+const showBodyPadding = 2
+
+// showBody is the detail view's scrolling body. What it holds depends on the
+// width the grid gives it — the two traffic boxes are drawn to that width — so
+// the text is rebuilt whenever the rect changes. Without that, the boxes keep
+// whatever width they were first built at and their borders stop agreeing with
+// the contents drawn inside them.
+type showBody struct {
+	*tview.TextView
+	parent *interfaceShow
+	width  int
+}
+
+// newShowBody creates the body, built once at defaultBodyWidth so that a capture
+// which never lays it out still reads the whole view.
+func newShowBody(parent *interfaceShow) *showBody {
+	b := &showBody{TextView: tview.NewTextView(), parent: parent, width: -1}
+	b.SetDynamicColors(true)
+	b.SetScrollable(true)
+	b.SetTextColor(tcell.ColorDefault)
+	b.SetBackgroundColor(tcell.ColorDefault)
+	b.SetWrap(true)
+	b.SetBorderPadding(0, 0, showBodyPadding, showBodyPadding)
+	b.width = defaultBodyWidth - 2*showBodyPadding
+	b.TextView.SetText(parent.buildBodyText(b.width))
+	return b
+}
+
+// SetRect rebuilds the body at the width the layout gives it.
+func (b *showBody) SetRect(x, y, w, h int) {
+	contentW := max(w-2*showBodyPadding, 1)
+	if contentW != b.width {
+		b.width = contentW
+		b.TextView.SetText(b.parent.buildBodyText(contentW))
+	}
+	b.TextView.SetRect(x, y, w, h)
+}
+
+// Refresh rebuilds the body from the current interface reading at the width the
+// layout last gave it, leaving the reader where they were.
+func (b *showBody) Refresh() {
+	if b.width <= 0 {
+		b.width = defaultBodyWidth - 2*showBodyPadding
+	}
+	row, _ := b.TextView.GetScrollOffset()
+	b.TextView.SetText(b.parent.buildBodyText(b.width))
+	b.TextView.ScrollTo(row, 0)
+}
+
+// Name returns the interface this view was opened on.
+func (s *interfaceShow) Name() string { return s.info.Name }
+
+// SetInfo replaces the reading this view was built from. Python's ShowInterface
+// polls its interface every second — start() arms poll_stats on a 1 s alarm
+// (Interfaces.py:2921-2925), poll_stats re-arms itself (Interfaces.py:2958-2999)
+// — and re-renders the Type/Status and TX/RX rows from it. Without this the one
+// screen whose entire purpose is a live reading is the only stale one: a radio
+// that comes up while the view is open keeps showing "Disconnected".
+func (s *interfaceShow) SetInfo(info InterfaceInfo) {
+	s.info = info
+	if len(s.buttons) > 1 {
+		label := "Disable"
+		if !info.Enabled {
+			label = "Enable"
+		}
+		if s.buttons[1].Label() != label {
+			s.buttons[1].SetLabel(label)
+		}
+	}
+	s.body.Refresh()
+}
+
 // buildBodyText assembles the scrollable body rows with color tags. Python
 // styles "key"/"value"/"rx"/"tx" are absent from the palette, so urwid renders
 // them in the terminal default; the Status row uses connected_status /
-// disconnected_status.
-func (s *interfaceShow) buildBodyText(g GlyphSet) string {
+// disconnected_status. width is the body's laid-out width, which the traffic
+// boxes are drawn to.
+func (s *interfaceShow) buildBodyText(width int) string {
 	var b strings.Builder
 	tag := func(style string) string {
 		tc := GetThemeColors(ThemeDark)
@@ -334,6 +422,7 @@ func (s *interfaceShow) buildBodyText(g GlyphSet) string {
 	connTag := tag(connStyle)
 	reset := "[-:-]"
 
+	g := s.glyphs()
 	marker := g["unselected"]
 	if s.info.Enabled {
 		marker = g["selected"]
@@ -343,34 +432,132 @@ func (s *interfaceShow) buildBodyText(g GlyphSet) string {
 		connWord = "Connected"
 	}
 
+	// Python's urwid.Divider("-") fills its whole row with the divider
+	// character; these rows are already inside the body's padding.
+	divider := strings.Repeat("-", max(width, 1))
+
 	// Info rows (Interfaces.py:2278-2300). Type is a raw RNS-config value and
 	// this body is a dynamic-colors TextView.
 	b.WriteString("Type:    " + escapeTviewTags(s.info.Type) + "\n")
 	b.WriteString("Status:  " + connTag + marker + reset + "  " + connTag + statusWord(s.info.Enabled) + reset + "  |  " + connTag + connWord + reset + "\n")
-	b.WriteString("---\n")
+	b.WriteString(divider + "\n")
 
 	// TX/RX stat row (Interfaces.py:2302-2308).
 	b.WriteString("TX:      " + FormatBytes(float64(s.info.TX)) + "\n")
 	b.WriteString("RX:      " + FormatBytes(float64(s.info.RX)) + "\n")
-	b.WriteString("---\n")
+	b.WriteString(divider + "\n")
 
-	// Charts (Interfaces.py:2312-2346): the chart boxes when connected;
-	// otherwise the disconnected notice box titled "Bandwidth Charts".
-	if s.info.Connected {
-		b.WriteString("┌─ RX Traffic (60s) ─────┐  ┌─ TX Traffic (60s) ─────┐\n")
-		b.WriteString("│ Loading RX data...     │  │ Loading TX data...     │\n")
-		b.WriteString("│                 Peak: 0 B/s  │                 Peak: 0 B/s │\n")
-		b.WriteString("└────────────────────────┘  └────────────────────────┘\n")
-	} else {
-		b.WriteString("┌─ Bandwidth Charts ─────┐\n")
-		b.WriteString("│ Charts not available - Interface is not connected │\n")
-		b.WriteString("└────────────────────────┘\n")
+	// Charts (Interfaces.py:2312-2360): the RX/TX traffic boxes while the
+	// interface is connected; otherwise the notice box titled "Bandwidth
+	// Charts". Their width comes from the grid, so they are drawn for the body
+	// width this text is being built for.
+	for _, line := range s.chartsRows(width) {
+		b.WriteString(line)
+		b.WriteString("\n")
 	}
-	b.WriteString("---\n")
+	b.WriteString(divider + "\n")
 
 	// Parameter blocks (Interfaces.py:2436-2492).
-	b.WriteString(s.paramBlocks())
+	b.WriteString(s.paramBlocks(width))
 	return b.String()
+}
+
+// boxAlign places a drawn box's content row inside its border.
+type boxAlign int
+
+const (
+	boxLeft boxAlign = iota
+	boxRight
+	boxCenter
+)
+
+// boxRow is one content row of a drawn box.
+type boxRow struct {
+	text  string
+	align boxAlign
+}
+
+// drawBox renders a titled, bordered box exactly width columns wide: a top
+// border carrying the title, the content rows, and a bottom border. Python
+// builds these as real urwid LineBox widgets (Interfaces.py:2316-2348), which
+// take their width from the grid; drawing them into a text body means computing
+// that width here and keeping every row of the box the same width, or the
+// borders stop agreeing with the contents.
+func drawBox(width int, title string, rows []boxRow) []string {
+	// "┌─ " + title + " " + dashes + "┐"
+	const overhead = 5
+	if width < len(title)+overhead {
+		width = len(title) + overhead
+	}
+	inner := width - 2
+	out := make([]string, 0, len(rows)+2)
+	out = append(out, "┌─ "+title+" "+strings.Repeat("─", width-len(title)-overhead)+"┐")
+	for _, r := range rows {
+		out = append(out, "│"+alignInBox(r.text, inner, r.align)+"│")
+	}
+	out = append(out, "└"+strings.Repeat("─", inner)+"┘")
+	return out
+}
+
+// alignInBox pads or truncates text to exactly width cells, per align.
+func alignInBox(text string, width int, align boxAlign) string {
+	runes := []rune(text)
+	if len(runes) > width {
+		runes = runes[:width]
+	}
+	text = string(runes)
+	pad := width - len(runes)
+	switch align {
+	case boxRight:
+		return strings.Repeat(" ", pad) + text
+	case boxCenter:
+		left := pad / 2
+		return strings.Repeat(" ", left) + text + strings.Repeat(" ", pad-left)
+	default:
+		return text + strings.Repeat(" ", pad)
+	}
+}
+
+// chartsRows renders the traffic boxes for a body of the given width, or the
+// disconnected notice box. Python stacks the two boxes below 145 columns and
+// puts them side by side at 145 and above (Interfaces.py:2350-2360), and shows
+// the notice box instead of either whenever the interface is not connected.
+func (s *interfaceShow) chartsRows(width int) []string {
+	if !s.info.Connected {
+		return drawBox(width, "Bandwidth Charts", []boxRow{
+			{text: "Charts not available - Interface is not connected", align: boxCenter},
+		})
+	}
+	// Each box holds a left-aligned status row and a right-aligned peak row
+	// (Interfaces.py:2316-2331).
+	contents := func(status string) []boxRow {
+		return []boxRow{
+			{text: status, align: boxLeft},
+			{text: "Peak: 0 B/s", align: boxRight},
+		}
+	}
+	if width >= 145 {
+		left := width / 2
+		rx := drawBox(left, "RX Traffic (60s)", contents("Loading RX data..."))
+		tx := drawBox(width-left, "TX Traffic (60s)", contents("Loading TX data..."))
+		return zipBoxRows(rx, tx)
+	}
+	rx := drawBox(width, "RX Traffic (60s)", contents("Loading RX data..."))
+	return append(rx, drawBox(width, "TX Traffic (60s)", contents("Loading TX data..."))...)
+}
+
+// zipBoxRows places two equally tall boxes side by side, as urwid's
+// Columns([(WEIGHT,1,rx_box),(WEIGHT,1,tx_box)]) does.
+func zipBoxRows(a, b []string) []string {
+	out := make([]string, 0, len(a))
+	for i := range a {
+		if i < len(b) {
+			out = append(out, a[i]+b[i])
+			continue
+		}
+		out = append(out, a[i])
+	}
+	return out
 }
 
 // statusWord maps the enabled flag to Python's Enabled/Disabled words.
@@ -383,8 +570,9 @@ func statusWord(enabled bool) string {
 
 // paramBlocks renders the Connection/Radio/Network/IFAC/Additional parameter
 // groups, sorted by key (Python Interfaces.py:2436-2498), with the MHz/kHz and
-// Yes/No value formatting of create_param_row (Interfaces.py:2400-2434).
-func (s *interfaceShow) paramBlocks() string {
+// Yes/No value formatting of create_param_row (Interfaces.py:2400-2434) and a
+// full-width "-" divider after each group.
+func (s *interfaceShow) paramBlocks(width int) string {
 	var b strings.Builder
 	groups := CategorizeInterfaceParams(paramMapToAny(s.info.Params))
 	emit := func(title string, m map[string]any) {
@@ -395,7 +583,7 @@ func (s *interfaceShow) paramBlocks() string {
 		for _, k := range SortedKeys(m) {
 			b.WriteString(escapeTviewTags(FormatParamKey(k)) + ": " + escapeTviewTags(FormatParamValue(k, m[k])) + "\n")
 		}
-		b.WriteString("---\n")
+		b.WriteString(strings.Repeat("-", max(width, 1)) + "\n")
 	}
 	emit("Connection Parameters", groups.Connection)
 	emit("Radio Parameters", groups.Radio)
@@ -403,7 +591,8 @@ func (s *interfaceShow) paramBlocks() string {
 	emit("IFAC Parameters", groups.IFAC)
 	emit("Additional Parameters", groups.Other)
 	if len(groups.Connection)+len(groups.Radio)+len(groups.Network)+len(groups.IFAC)+len(groups.Other) == 0 {
-		b.WriteString("No additional parameters\n")
+		// Python centers this row (Interfaces.py:2454-2455).
+		b.WriteString(alignInBox("No additional parameters", max(width, 1), boxCenter) + "\n")
 	}
 	return b.String()
 }

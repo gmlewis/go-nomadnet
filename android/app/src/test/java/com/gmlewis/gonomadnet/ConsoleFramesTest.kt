@@ -16,7 +16,7 @@ import org.junit.Test
 /**
  * The console frame codec's contract with the Go host.
  *
- * `nomadnet/console/frames_test.go` carries this same table. If the two codecs disagree,
+ * `android/internal/console/frames_test.go` carries this same table. If the two codecs disagree,
  * the appliance attaches to a console that renders nothing and logs nothing, so the
  * table is asserted byte for byte in both languages.
  */
