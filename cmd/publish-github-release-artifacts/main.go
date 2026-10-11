@@ -800,8 +800,10 @@ func buildReleaseNotes(version, repo string, assets []string) string {
 			"service that run in the background, and a `linux/arm64` build of the terminal client. "+
 			"It embeds daemons compiled from **go-reticulum %v**.\n\n", readGoReticulumVersion())
 		mustFprintf(&b, "To install it, open the downloaded APK on the device and allow Android to "+
-			"install from unknown sources when it asks. From a computer, `adb install -r <apk>` "+
-			"does the same over USB. The APK is signed, so a later release upgrades it in place.\n\n")
+			"install from unknown sources when it asks, then tap **More details** and "+
+			"**Install anyway** at Google Play Protect's \"App blocked to protect your device\" "+
+			"warning. From a computer, `adb install -r <apk>` does the same over USB. The APK is "+
+			"signed, so a later release upgrades it in place.\n\n")
 		mustFprintf(&b, "The client is a terminal program, and Android has no terminal, so the app "+
 			"brings one: it carries both the `linux/arm64` client and the console host that "+
 			"gives it a pseudo-terminal, and draws the result on the screen. There is nothing "+

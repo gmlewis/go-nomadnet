@@ -281,6 +281,11 @@ func TestReleaseNotesDescribeTheAndroidAppliance(t *testing.T) {
 			"go-reticulum v",
 			"adb install -r",
 			"docs/Android-APK.md",
+			// A reader told only to allow unknown sources reaches Google Play Protect's
+			// "App blocked" screen and stops there: the block offers no install button of
+			// its own, so the two taps that get past it are the whole instruction.
+			"More details",
+			"Install anyway",
 			// The appliance's whole reason for existing is that nobody has to assemble a
 			// terminal environment by hand, so the notes have to say what it does instead:
 			// it carries the client and the console host inside the APK, and what is left

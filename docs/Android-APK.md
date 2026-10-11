@@ -32,8 +32,14 @@ Download `gonomadnet-<version>-android-arm64-v8a.apk` from the
 [latest release](https://github.com/gmlewis/go-nomadnet/releases) and open it from
 your notifications or your Downloads. Android will refuse the first time and offer
 a settings link — allow installing from the app you opened it with (**Chrome**,
-**Files**, or your browser), then tap **Install** again. The app appears as
-**gonomadnet**.
+**Files**, or your browser), then tap **Install** again.
+
+Google Play Protect then stops the install with **App blocked to protect your
+device**: it has not seen this app from this developer before. Tap **More
+details**, then **Install anyway**. The APK is signed, and its SHA-256 is
+published beside it on the release page, so scanning it teaches nothing — if your
+device offers **Scan app** instead, that only uploads the file to Google. The app
+appears as **gonomadnet**.
 
 That is the only thing you install. The app carries its own client and the
 console that gives it a terminal, so there is nothing to download per device and
