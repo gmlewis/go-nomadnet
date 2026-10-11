@@ -19,6 +19,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -163,5 +164,89 @@ func TestGetInterfaceConfigMap(t *testing.T) {
 
 	if !reflect.DeepEqual(cfgMap, want) {
 		t.Errorf("GetInterfaceConfigMap = %v, want %v", cfgMap, want)
+	}
+}
+
+// TestInterfaceConfigNestedSubsections pins both directions of an [[[sub]]]
+// subsection: reading one back as a nested map (what RNodeMultiInterface's
+// sub-interface settings are stored as, ConfigObj's dict value) and writing one
+// out again as a [[[sub]]] section rather than as a Go map printed into a
+// single line.
+func TestInterfaceConfigNestedSubsections(t *testing.T) {
+	t.Parallel()
+	dir := tempDir(t)
+	cfgPath := filepath.Join(dir, "config")
+
+	initialConfig := `[interfaces]
+  [[multi]]
+    type = RNodeMultiInterface
+    interface_enabled = True
+    port = /dev/ttyACM0
+    [[[sub1]]]
+      frequency = 868500000
+      bandwidth = 62500
+    [[[sub2]]]
+      frequency = 915000000
+      bandwidth = 125000
+`
+	if err := os.WriteFile(cfgPath, []byte(initialConfig), 0o644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	a := &App{RNSConfigDir: dir}
+
+	got, err := a.GetInterfaceConfigMap("multi")
+	if err != nil {
+		t.Fatalf("GetInterfaceConfigMap failed: %v", err)
+	}
+	if got["port"] != "/dev/ttyACM0" {
+		t.Errorf("port = %v, want /dev/ttyACM0", got["port"])
+	}
+	sub1, ok := got["sub1"].(map[string]any)
+	if !ok {
+		t.Fatalf("sub1 = %#v, want a nested map", got["sub1"])
+	}
+	if sub1["frequency"] != "868500000" {
+		t.Errorf("sub1 frequency = %v, want 868500000", sub1["frequency"])
+	}
+	if sub2, ok := got["sub2"].(map[string]any); !ok || sub2["bandwidth"] != "125000" {
+		t.Errorf("sub2 = %#v, want a nested map with bandwidth 125000", got["sub2"])
+	}
+
+	// Writing the same shape back must produce a [[[sub]]] section that reads
+	// the same way.
+	props := []ConfigProp{
+		{Key: "type", Value: "RNodeMultiInterface"},
+		{Key: "interface_enabled", Value: true},
+		{Key: "port", Value: "/dev/ttyACM0"},
+		{Key: "sub1", Value: map[string]any{"frequency": "868500000", "bandwidth": "62500"}},
+	}
+	if err := a.EditInterfaceConfig("multi", "multi2", props); err != nil {
+		t.Fatalf("EditInterfaceConfig failed: %v", err)
+	}
+
+	rewritten, err := a.GetInterfaceConfigMap("multi2")
+	if err != nil {
+		t.Fatalf("GetInterfaceConfigMap(multi2) failed: %v", err)
+	}
+	sub, ok := rewritten["sub1"].(map[string]any)
+	if !ok {
+		t.Fatalf("rewritten sub1 = %#v, want a nested map", rewritten["sub1"])
+	}
+	if sub["frequency"] != "868500000" || sub["bandwidth"] != "62500" {
+		t.Errorf("rewritten sub1 = %v, want frequency 868500000 and bandwidth 62500", sub)
+	}
+
+	// The written file must spell the subsection the way a config file does, not
+	// as a Go map printed on one line.
+	raw, err := os.ReadFile(cfgPath)
+	if err != nil {
+		t.Fatalf("ReadFile failed: %v", err)
+	}
+	if !strings.Contains(string(raw), "[[[sub1]]]") {
+		t.Errorf("the written config has no [[[sub1]]] subsection:\n%s", raw)
+	}
+	if strings.Contains(string(raw), "map[") {
+		t.Errorf("the written config printed a Go map:\n%s", raw)
 	}
 }

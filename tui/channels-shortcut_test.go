@@ -42,7 +42,7 @@ func TestChannelsShortcutBar(t *testing.T) {
 		{
 			"editor",
 			"editor",
-			"[C-d] Send  [C-x] Leave  [F8] Collapse  [Tab] Complete Nick",
+			"[C-d] Send  [C-x] Leave  [F8] Collapse  [Tab] Complete Nick  [C-g] /msg gobot",
 		},
 		{
 			"body",
@@ -77,7 +77,7 @@ func TestChannelsRoomEditorFocusSwitchesBar(t *testing.T) {
 	rw.OnFocusRegion = cd.setShortcutRegion
 
 	rw.editor.Focus(func(tview.Primitive) {})
-	want := "[C-d] Send  [C-x] Leave  [F8] Collapse  [Tab] Complete Nick"
+	want := "[C-d] Send  [C-x] Leave  [F8] Collapse  [Tab] Complete Nick  [C-g] /msg gobot"
 	if got := cd.GetShortcutText(); got != want {
 		t.Errorf("after room editor focus, shortcut bar = %q, want %q", got, want)
 	}

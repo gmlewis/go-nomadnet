@@ -210,7 +210,7 @@ func (cd *ChannelsDisplay) setShortcutRegion(region string) {
 func (cd *ChannelsDisplay) GetShortcutText() string {
 	if cd.roomWidget != nil {
 		if cd.roomWidget.editorHasFocus() {
-			return "[C-d] Send  [C-x] Leave  [F8] Collapse  [Tab] Complete Nick"
+			return "[C-d] Send  [C-x] Leave  [F8] Collapse  [Tab] Complete Nick  [C-g] /msg gobot"
 		}
 		if cd.roomWidget.bodyHasFocus() {
 			return "[C-x] Leave  [C-u] Users  [C-y] Channels  [F8] Collapse Joins  [Tab] ↓ Editor"
@@ -220,7 +220,7 @@ func (cd *ChannelsDisplay) GetShortcutText() string {
 	// cases where there is no live room widget to query.
 	switch cd.shortcutFocus {
 	case "editor":
-		return "[C-d] Send  [C-x] Leave  [F8] Collapse  [Tab] Complete Nick"
+		return "[C-d] Send  [C-x] Leave  [F8] Collapse  [Tab] Complete Nick  [C-g] /msg gobot"
 	case "body":
 		return "[C-x] Leave  [C-u] Users  [C-y] Channels  [F8] Collapse Joins  [Tab] ↓ Editor"
 	default: // "list"

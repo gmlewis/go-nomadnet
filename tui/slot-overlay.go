@@ -41,6 +41,7 @@ type SlotOverlay struct {
 	dialogHeight int             // PACK natural height of the dialog
 	heightPct    int             // >0 = relative N% of slot height; 0 = use dialogHeight
 	minWidth     int             // >0 = urwid Overlay min_width floor on the relative width
+	minHeight    int             // >0 = urwid Overlay min_height floor on the relative height
 	insetLeft    int             // urwid Overlay left inset (default 2)
 	insetRight   int             // urwid Overlay right inset (default 2)
 }
@@ -133,6 +134,11 @@ func (o *SlotOverlay) SetRect(x, y, w, h int) {
 		dh = h * o.heightPct / 100
 	}
 	dh = min(dh, h)
+	if o.minHeight > 0 {
+		// urwid Overlay min_height: a relative height is floored at min_height
+		// (Interfaces.py:3066 add_interface passes min_height=15).
+		dh = max(dh, min(o.minHeight, h))
+	}
 	dy := y + (h-dh)/2 // valign MIDDLE
 	dy = max(dy, y)
 	if o.dialog != nil {
@@ -153,6 +159,10 @@ func (o *SlotOverlay) SetHeightPct(pct int) *SlotOverlay { o.heightPct = pct; re
 // SetMinWidth floors the relative dialog width (urwid Overlay min_width),
 // used by the My LXMF QR overlay (44, Conversations.py:680).
 func (o *SlotOverlay) SetMinWidth(n int) *SlotOverlay { o.minWidth = n; return o }
+
+// SetMinHeight floors the relative dialog height (urwid Overlay min_height),
+// used by the Add-Interface type picker (15, Interfaces.py:3067).
+func (o *SlotOverlay) SetMinHeight(n int) *SlotOverlay { o.minHeight = n; return o }
 
 // SetInsets overrides the default left/right=2 insets (urwid Overlay left/right
 // args). The My LXMF QR overlay uses Python's default 0

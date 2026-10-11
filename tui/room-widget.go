@@ -469,6 +469,15 @@ func (rw *RoomWidget) handleInput(event *tcell.EventKey) *tcell.EventKey {
 			rw.OnLeaveRoom(rw.roomName)
 		}
 		return nil
+	case tcell.KeyCtrlG:
+		// Go-only addition, requested by the operator: [C-g] types the chat-bot
+		// command into the composer, which is typed constantly in a mesh room.
+		// Python's room has no [C-g] binding (see insertGobotCommand for the
+		// guard). An unguarded press is left unconsumed so the key stays free.
+		if !rw.insertGobotCommand() {
+			return event
+		}
+		return nil
 	case tcell.KeyCtrlU:
 		rw.toggleUsers()
 		return nil
@@ -491,6 +500,29 @@ func (rw *RoomWidget) handleInput(event *tcell.EventKey) *tcell.EventKey {
 	}
 
 	return event
+}
+
+// gobotCommandPrefix is what the room's [C-g] shortcut types into the composer:
+// the private-message command aimed at the mesh's chat bot, with its trailing
+// space so the cursor lands ready for the question. Eleven characters.
+const gobotCommandPrefix = "/msg gobot "
+
+// insertGobotCommand types the chat-bot command at the composer's cursor and
+// reports whether it did. It is a deliberate Go-only addition — Python's room
+// binds no [C-g] — because the command is typed constantly.
+//
+// It fires only while the composer holds focus AND its cursor is at the very
+// first entry position (editorAtTextStart): inserting the command with the
+// cursor mid-message would corrupt what is already being typed, and doing it
+// while another pane holds focus would put text into a line the user is not in.
+// The shortcut bar advertises [C-g] in exactly that region, so the promise and
+// the behaviour line up.
+func (rw *RoomWidget) insertGobotCommand() bool {
+	if rw.editor == nil || !rw.editorHasFocus() || !rw.editorAtTextStart() {
+		return false
+	}
+	rw.editor.InsertAtCursor(gobotCommandPrefix)
+	return true
 }
 
 // SetRoomHeader renders the room's peer-info header exactly like Python

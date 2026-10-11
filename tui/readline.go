@@ -186,6 +186,23 @@ func (re *ReadlineEdit) SetCursorPos(pos int) {
 	re.cursorPos = pos
 }
 
+// InsertAtCursor inserts text at the model cursor and leaves the cursor at the
+// end of the insertion, mirroring urwid's Edit.insert_text (urwid/widget/
+// edit.py:398-410). SetText alone would not do: it sets the cursor to the end of
+// the buffer, and the model cursor is what Draw puts the hardware caret at and
+// what the next keystroke inserts against.
+func (re *ReadlineEdit) InsertAtCursor(text string) {
+	runes := []rune(re.GetText())
+	pos := min(max(re.cursorPos, 0), len(runes))
+	ins := []rune(text)
+	out := make([]rune, 0, len(runes)+len(ins))
+	out = append(out, runes[:pos]...)
+	out = append(out, ins...)
+	out = append(out, runes[pos:]...)
+	re.SetText(string(out))
+	re.cursorPos = pos + len(ins)
+}
+
 // SetCaretShown marks the editor as logically focused, so Draw positions the
 // hardware cursor at the model cursor even when the editor is not the
 // tview-focused primitive. Used by the browser for its off-tree field overlay.

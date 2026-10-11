@@ -169,6 +169,70 @@ func isFalseyConfigBool(v string) bool {
 	return ok && !b
 }
 
+// InterfaceExists reports whether the RNS config has a [[name]] section under
+// [interfaces]. The Add/Edit form uses it to reject a duplicate name, matching
+// Python's on_save check against app.rns.config['interfaces']
+// (Interfaces.py:1887-1891/2132-2135).
+func (a *App) InterfaceExists(name string) bool {
+	path := a.RNSConfigPath()
+	if path == "" {
+		return false
+	}
+	for _, e := range parseInterfaceConfig(path) {
+		if e.name == name {
+			return true
+		}
+	}
+	return false
+}
+
+// TransportEnabled reports whether the RNS config puts this instance in
+// transport mode ([reticulum] enable_transport). It is what gates the
+// transport-mode options (outgoing, mode, announce_cap) on the Add/Edit
+// interface form, matching Python's app.rns.transport_enabled()
+// (Interfaces.py:1580). The standalone appliance node renders
+// enable_transport = yes and its attached client enable_transport = no, so the
+// client's forms correctly omit transport-only options.
+func (a *App) TransportEnabled() bool {
+	path := a.RNSConfigPath()
+	if path == "" {
+		return false
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer func() { _ = f.Close() }()
+
+	section := ""
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, ";") {
+			continue
+		}
+		switch {
+		case strings.HasPrefix(line, "[["):
+			// A [[subsection]] or [[[sub-subsection]]] line is not a top-level
+			// section header, so it never changes the section we are in.
+			continue
+		case strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]"):
+			section = strings.Trim(line, "[] ")
+			continue
+		}
+		if section != "reticulum" {
+			continue
+		}
+		key, value, ok := strings.Cut(line, "=")
+		if !ok || strings.TrimSpace(key) != "enable_transport" {
+			continue
+		}
+		b, ok := rns.ParseConfigBool(strings.TrimSpace(value))
+		return ok && b
+	}
+	return false
+}
+
 // InterfaceStats returns a snapshot of every interface configured in the RNS
 // config, in config-file order, with live status/traffic merged from the
 // transport — matching Python's Interfaces page list (Interfaces.py:2840-2897).

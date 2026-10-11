@@ -88,6 +88,14 @@ type InterfacesDisplay struct {
 	// show_interface, Interfaces.py:3004-3007).
 	showWidget *interfaceShow
 
+	// pickerOverlay is the Add-Interface type picker mounted as the "picker"
+	// page (Python's add_interface overlay, Interfaces.py:3060-3073) and
+	// formOverlay is the Add/Edit form mounted as the "form" page (Python's
+	// AddInterfaceView overlay, Interfaces.py:1464-1472).
+	pickerOverlay *SlotOverlay
+	formOverlay   *SlotOverlay
+	formView      *InterfaceFormView
+
 	// OnToggleInterface fires the Disable/Enable action from the ShowInterface
 	// footer (Python on_toggle_enabled, Interfaces.py:2516). The wiring layer
 	// owns the config write + confirm flow.
@@ -282,6 +290,94 @@ func (id *InterfacesDisplay) closeShowInterface() {
 		id.app.SetFocus(id.layout)
 	}
 }
+
+// ShowTypePicker overlays Python's "Select Interface Type" dialog
+// (Interfaces.py:3017-3073) over the interface list and calls onSelect with the
+// chosen interface type. The dialog is 50% of the slot's width and height,
+// floored at 20x15 with a 2-column inset (Python's
+// urwid.Overlay(width=('relative',50), height=('relative',50), min_width=20,
+// min_height=15, left=2, right=2) over self.interfaces_display, so the list
+// shows through around it).
+func (id *InterfacesDisplay) ShowTypePicker(onSelect func(ifType string)) {
+	id.CloseTypePicker()
+
+	picker := NewInterfaceTypePicker(id.app, id.glyphset)
+	picker.OnSelect = func(ifType string) {
+		if onSelect != nil {
+			onSelect(ifType)
+		}
+	}
+
+	dialog := NewDialogLineBox("Select Interface Type", picker, id.CloseTypePicker)
+	ov := NewSlotOverlay(id.layout, dialog, 50, 0)
+	ov.SetHeightPct(50).SetMinWidth(20).SetMinHeight(15)
+	id.pickerOverlay = ov
+	id.pages.AddPage("picker", ov, true, true)
+	id.pages.SwitchToPage("picker")
+	if id.app != nil {
+		id.app.SetFocus(ov)
+	}
+}
+
+// CloseTypePicker dismisses the type picker and restores the interface list.
+func (id *InterfacesDisplay) CloseTypePicker() {
+	if id.pickerOverlay == nil {
+		return
+	}
+	id.pages.RemovePage("picker")
+	id.pickerOverlay = nil
+	id.pages.SwitchToPage("main")
+	if id.app != nil {
+		id.app.SetFocus(id.layout)
+	}
+}
+
+// ShowForm mounts an interface Add/Edit form as the "form" page: an 85% x 85%
+// overlay over a blank background, matching Python's AddInterfaceView
+// (urwid.Overlay(form_box, background=SolidFill(" "), align='center',
+// width=('relative',85), valign='middle', height=('relative',85)),
+// Interfaces.py:1464-1472). The blank background is the overlay having no
+// bottom primitive, so the list is not drawn through it.
+func (id *InterfacesDisplay) ShowForm(v *InterfaceFormView) {
+	id.CloseForm()
+
+	// The form closes itself through OnCancel, so a Cancel button press, an Esc
+	// and the wiring's own close all run the same restore.
+	prevCancel := v.OnCancel
+	v.OnCancel = func() {
+		id.CloseForm()
+		if prevCancel != nil {
+			prevCancel()
+		}
+	}
+
+	id.formView = v
+	ov := NewSlotOverlay(nil, v.Dialog(), 85, 0)
+	ov.SetHeightPct(85).SetInsets(0, 0)
+	id.formOverlay = ov
+	id.pages.AddPage("form", ov, true, true)
+	id.pages.SwitchToPage("form")
+	if id.app != nil {
+		id.app.SetFocus(ov)
+	}
+}
+
+// CloseForm dismisses an open Add/Edit form and restores the interface list.
+func (id *InterfacesDisplay) CloseForm() {
+	if id.formOverlay == nil {
+		return
+	}
+	id.pages.RemovePage("form")
+	id.formOverlay = nil
+	id.formView = nil
+	id.pages.SwitchToPage("main")
+	if id.app != nil {
+		id.app.SetFocus(id.layout)
+	}
+}
+
+// FormView returns the Add/Edit form currently mounted, or nil.
+func (id *InterfacesDisplay) FormView() *InterfaceFormView { return id.formView }
 
 // SetInterfaces replaces the interface list, rebuilding the selectable items.
 func (id *InterfacesDisplay) SetInterfaces(interfaces []InterfaceInfo) {

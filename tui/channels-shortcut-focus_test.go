@@ -34,7 +34,7 @@ func TestChannelsShortcutBarTracksLiveFocus(t *testing.T) {
 
 	// Focus the composer via the app so GetFocus() sees it.
 	app.SetFocus(rw.editor)
-	wantEditor := "[C-d] Send  [C-x] Leave  [F8] Collapse  [Tab] Complete Nick"
+	wantEditor := "[C-d] Send  [C-x] Leave  [F8] Collapse  [Tab] Complete Nick  [C-g] /msg gobot"
 	if got := cd.GetShortcutText(); got != wantEditor {
 		t.Errorf("editor focused: shortcut bar = %q, want %q", got, wantEditor)
 	}

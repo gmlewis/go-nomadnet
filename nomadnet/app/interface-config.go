@@ -19,6 +19,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 )
 
@@ -83,17 +84,50 @@ func (a *App) AddInterfaceConfig(name string, props []ConfigProp) error {
 	}
 
 	fmt.Fprintf(&sb, "  [[%v]]\n", name)
-	for _, p := range props {
-		if p.Key == "name" {
-			continue
-		}
-		fmt.Fprintf(&sb, "    %v = %v\n", p.Key, configPropValue(p.Value))
-	}
+	writeConfigProps(&sb, props, "    ")
 
 	return os.WriteFile(path, []byte(sb.String()), 0o644)
 }
 
-// GetInterfaceConfigMap reads the [[name]] section key-value pairs from [interfaces].
+// writeConfigProps writes an interface section's properties, in order. A value
+// that is a map is written as a [[[subsection]]] with its own properties one
+// level deeper, which is how a config file spells a nested section and how
+// RNodeMultiInterface stores its sub-interfaces (Python hands ConfigObj a dict
+// value and it writes the subsection).
+func writeConfigProps(sb *strings.Builder, props []ConfigProp, indent string) {
+	for _, p := range props {
+		if p.Key == "name" {
+			continue
+		}
+		if sub, ok := p.Value.(map[string]any); ok {
+			fmt.Fprintf(sb, "%v[[[%v]]]\n", indent, p.Key)
+			nested := make([]ConfigProp, 0, len(sub))
+			for _, k := range sortedConfigKeys(sub) {
+				nested = append(nested, ConfigProp{Key: k, Value: sub[k]})
+			}
+			writeConfigProps(sb, nested, indent+"  ")
+			continue
+		}
+		fmt.Fprintf(sb, "%v%v = %v\n", indent, p.Key, configPropValue(p.Value))
+	}
+}
+
+// sortedConfigKeys returns a map's keys in sorted order, so a nested section is
+// written the same way every time.
+func sortedConfigKeys(m map[string]any) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// GetInterfaceConfigMap reads the [[name]] section of [interfaces] as a
+// property map. A [[[subsection]]] of that section is read back as a nested
+// map under its own name, which is the shape a config file gives a nested
+// section and the shape RNodeMultiInterface's sub-interfaces are configured in;
+// reading them flat would drop them, so an edit would silently delete them.
 func (a *App) GetInterfaceConfigMap(name string) (map[string]any, error) {
 	path := a.RNSConfigPath()
 	if path == "" {
@@ -109,6 +143,7 @@ func (a *App) GetInterfaceConfigMap(name string) (map[string]any, error) {
 	sc := bufio.NewScanner(f)
 	inInterfaces := false
 	inTarget := false
+	subName := "" // the [[[subsection]]] being read, "" at the section's own level
 	res := make(map[string]any)
 
 	for sc.Scan() {
@@ -119,12 +154,16 @@ func (a *App) GetInterfaceConfigMap(name string) (map[string]any, error) {
 		}
 
 		if strings.HasPrefix(trimmed, "[[[") && strings.HasSuffix(trimmed, "]]]") {
-			inTarget = false
+			if inTarget {
+				subName = strings.Trim(trimmed, "[] ")
+				res[subName] = map[string]any{}
+			}
 			continue
 		}
 
 		if strings.HasPrefix(trimmed, "[[") && strings.HasSuffix(trimmed, "]]") {
 			secName := strings.Trim(trimmed, "[] ")
+			subName = ""
 			if inInterfaces && secName == name {
 				inTarget = true
 			} else {
@@ -137,14 +176,24 @@ func (a *App) GetInterfaceConfigMap(name string) (map[string]any, error) {
 			secName := strings.Trim(trimmed, "[] ")
 			inInterfaces = (secName == "interfaces")
 			inTarget = false
+			subName = ""
 			continue
 		}
 
 		if inTarget {
 			k, v, ok := strings.Cut(trimmed, "=")
-			if ok {
-				res[strings.TrimSpace(k)] = strings.TrimSpace(v)
+			if !ok {
+				continue
 			}
+			k = strings.TrimSpace(k)
+			v = strings.TrimSpace(v)
+			if subName != "" {
+				if sub, ok := res[subName].(map[string]any); ok {
+					sub[k] = v
+				}
+				continue
+			}
+			res[k] = v
 		}
 	}
 
@@ -196,13 +245,10 @@ func (a *App) EditInterfaceConfig(oldName, newName string, props []ConfigProp) e
 			if secName == oldName {
 				inTarget = true
 				replaced = true
-				out = append(out, fmt.Sprintf("  [[%v]]", newName))
-				for _, p := range props {
-					if p.Key == "name" {
-						continue
-					}
-					out = append(out, fmt.Sprintf("    %v = %v", p.Key, configPropValue(p.Value)))
-				}
+				var sb strings.Builder
+				fmt.Fprintf(&sb, "  [[%v]]\n", newName)
+				writeConfigProps(&sb, props, "    ")
+				out = append(out, strings.Split(strings.TrimSuffix(sb.String(), "\n"), "\n")...)
 				continue
 			} else {
 				inTarget = false

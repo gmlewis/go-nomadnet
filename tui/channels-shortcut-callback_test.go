@@ -37,7 +37,7 @@ func TestChannelsMainDisplayShortcutUsesLiveFocus(t *testing.T) {
 
 	// Mirror cmd/gonomadnet/textui.go wiring.
 	const listBar = "[C-n] New Hub  [C-a] Add Room  [C-r] Connect  [C-w] Disconnect  [C-t] Auto-reconnect  [C-e] Edit Hub  [C-x] Remove"
-	const editorBar = "[C-d] Send  [C-x] Leave  [F8] Collapse  [Tab] Complete Nick"
+	const editorBar = "[C-d] Send  [C-x] Leave  [F8] Collapse  [Tab] Complete Nick  [C-g] /msg gobot"
 	md.SetShortcut("channels", listBar)
 	md.SetShortcutCallback("channels", cd.GetShortcutText)
 

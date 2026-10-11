@@ -16,7 +16,6 @@
 package tui
 
 import (
-	"fmt"
 	"strings"
 )
 
@@ -68,7 +67,7 @@ var commonInterfaceOptions = []InterfaceField{
 var transportCommonOptions = []InterfaceField{
 	{ConfigKey: "outgoing", Type: "checkbox", Label: "Allow outgoing traffic", Default: "true"},
 	{ConfigKey: "mode", Type: "dropdown", Label: "Interface Mode: ", Options: []string{"full", "gateway", "access_point", "roaming", "boundary"}, Default: "full"},
-	{ConfigKey: "announce_cap", Type: "edit", Label: "Announce Cap: ", Placeholder: "Default: 2.0", Validation: []string{"float"}},
+	{ConfigKey: "announce_cap", Type: "edit", Label: "Announce Cap: ", Placeholder: "Default: 2.0", Validation: []string{"float"}, Transform: transformAnnounceCap},
 }
 
 // AddTransportCommonOptions adds the transport-mode common options (Python's
@@ -168,101 +167,6 @@ func NewInterfaceFormData(ifType string) *InterfaceFormData {
 	return fd
 }
 
-// ValidateAll validates all fields and returns any errors found.
-// existingNames is an optional set of names that should be considered
-// duplicates. Matches Python's validate_all() at Interfaces.py:1846.
-func (fd *InterfaceFormData) ValidateAll(existingNames ...map[string]bool) []ValidationError {
-	var errs []ValidationError
-
-	validateFields := func(fields map[string]*FormFieldEntry) {
-		for key, field := range fields {
-			for _, v := range field.Validation {
-				switch v {
-				case "required":
-					if strings.TrimSpace(field.Value) == "" {
-						errs = append(errs, ValidationError{
-							FieldKey: key,
-							Message:  fmt.Sprintf("%v is required", field.Label),
-						})
-					}
-				case "number":
-					trimmed := strings.TrimSpace(field.Value)
-					if trimmed != "" {
-						var n float64
-						if _, err := fmt.Sscanf(trimmed, "%f", &n); err != nil {
-							errs = append(errs, ValidationError{
-								FieldKey: key,
-								Message:  fmt.Sprintf("%v must be a number", field.Label),
-							})
-						}
-					}
-				case "float":
-					trimmed := strings.TrimSpace(field.Value)
-					if trimmed != "" {
-						var f float64
-						if _, err := fmt.Sscanf(trimmed, "%f", &f); err != nil {
-							errs = append(errs, ValidationError{
-								FieldKey: key,
-								Message:  fmt.Sprintf("%v must be a number", field.Label),
-							})
-						}
-					}
-				}
-			}
-		}
-	}
-
-	validateFields(fd.Fields)
-	validateFields(fd.AdditionalFields)
-	validateFields(fd.CommonFields)
-
-	if len(existingNames) > 0 {
-		nameVal := strings.TrimSpace(fd.Fields["name"].Value)
-		if nameVal != "" && existingNames[0][nameVal] {
-			errs = append(errs, ValidationError{
-				FieldKey: "name",
-				Message:  fmt.Sprintf("Interface name '%v' already exists", nameVal),
-			})
-		}
-	}
-
-	return errs
-}
-
-// BuildConfig constructs the interface configuration dictionary from
-// current field values. Empty values are excluded. Matches Python's
-// on_save() at Interfaces.py:1864.
-func (fd *InterfaceFormData) BuildConfig() map[string]any {
-	config := map[string]any{
-		"type":              fd.IfaceType,
-		"interface_enabled": true,
-	}
-
-	if fd.IfaceType == IfaceCustom {
-		if typeField, ok := fd.Fields["type"]; ok && typeField.Value != "" {
-			config["type"] = typeField.Value
-		}
-	}
-
-	writeFields := func(fields map[string]*FormFieldEntry) {
-		for key, field := range fields {
-			if key == "name" || key == "custom_parameters" || key == "type" {
-				continue
-			}
-			value := strings.TrimSpace(field.Value)
-			if value != "" {
-				config[field.ConfigKey] = value
-			}
-		}
-	}
-
-	writeFields(fd.Fields)
-	writeFields(fd.AdditionalFields)
-	writeFields(fd.CommonFields)
-
-	return config
-}
-
 // humanizeConfigKey converts a snake_case config key to a capitalized
 // human-readable label. For example, "listen_ip" becomes "Listen Ip".
 func humanizeConfigKey(key string) string {
@@ -277,67 +181,4 @@ func humanizeConfigKey(key string) string {
 		}
 	}
 	return strings.Join(parts, " ")
-}
-
-// PopulateFromConfig populates form fields from an existing interface
-// configuration dictionary. This is used by EditInterfaceView to
-// pre-fill the form. Matches Python's EditInterfaceView.__init__()
-// and _populate_form_fields() at Interfaces.py:1997.
-func (fd *InterfaceFormData) PopulateFromConfig(ifaceName string, config map[string]any) {
-	fd.Fields["name"].Value = ifaceName
-
-	if fd.IfaceType == IfaceCustom {
-		if typeField, ok := fd.Fields["type"]; ok {
-			if t, ok := config["type"]; ok {
-				typeField.Value = fmt.Sprintf("%v", t)
-			}
-		}
-	}
-
-	populateMap := func(fields map[string]*FormFieldEntry) {
-		for key, field := range fields {
-			if key == "name" || key == "type" || key == "custom_parameters" {
-				continue
-			}
-			if rawVal, ok := config[key]; ok {
-				field.Value = formatFieldValue(key, rawVal, field.Type)
-			}
-		}
-	}
-
-	populateMap(fd.Fields)
-	populateMap(fd.AdditionalFields)
-	populateMap(fd.CommonFields)
-}
-
-// formatFieldValue converts a config value to a string suitable for a
-// form field. Special-cases RNode frequency (Hz → MHz) and booleans.
-func formatFieldValue(key string, rawVal any, fieldType string) string {
-	switch fieldType {
-	case "checkbox":
-		b, ok := rawVal.(bool)
-		if ok {
-			if b {
-				return "true"
-			}
-			return "false"
-		}
-		return fmt.Sprintf("%v", rawVal)
-	default:
-		if key == "frequency" {
-			if freq, ok := rawVal.(float64); ok {
-				mhz := freq / 1000000.0
-				return fmt.Sprintf("%v", mhz)
-			}
-			if freq, ok := rawVal.(int64); ok {
-				mhz := float64(freq) / 1000000.0
-				return fmt.Sprintf("%v", mhz)
-			}
-			if freq, ok := rawVal.(int); ok {
-				mhz := float64(freq) / 1000000.0
-				return fmt.Sprintf("%v", mhz)
-			}
-		}
-		return fmt.Sprintf("%v", rawVal)
-	}
 }

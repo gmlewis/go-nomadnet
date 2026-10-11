@@ -194,6 +194,18 @@ var keyspecAccepted = map[string]string{
 	"Channels.py:RoomMessageEdit|down": "shared RoomWidget dispatch: body Down→composer belongs to Python RoomFrame's body branch (Channels.py:536-541); the switch serves the room's three mapped classes",
 	"Channels.py:UsersBox|down":        "shared RoomWidget dispatch: body Down→composer belongs to Python RoomFrame's body branch; the switch serves the room's three mapped classes",
 	"Channels.py:UsersBox|up":          "shared RoomWidget dispatch: body Up→menubar belongs to Python RoomFrame's body branch; the switch serves the room's three mapped classes",
+	// [C-g] /msg gobot: a deliberate Go-only ADDITION requested by the operator
+	// (the mesh's chat-bot command is typed constantly in a room), advertised at
+	// the end of the room's shortcut bar. Python's room binds no C-g, so this is
+	// the one accepted entry that is an extension rather than a re-homing. It
+	// types the command into the composer only while the composer holds focus
+	// with its cursor at the very first entry position
+	// (RoomWidget.insertGobotCommand), so it cannot corrupt a half-typed
+	// message. The three keys are the same single Go handler, which serves all
+	// three mapped Python classes.
+	"Channels.py:RoomFrame|ctrl+g":       "Go-only addition requested by the operator: [C-g] types '/msg gobot ' into the composer (RoomWidget.insertGobotCommand); Python binds no C-g in the room",
+	"Channels.py:RoomMessageEdit|ctrl+g": "same Go-only [C-g] /msg gobot addition; the merged RoomWidget dispatch serves the composer's class too",
+	"Channels.py:UsersBox|ctrl+g":        "same Go-only [C-g] /msg gobot addition; the merged RoomWidget dispatch serves the users box's class too",
 	// ChannelsListArea: Up-at-top → menubar is owned by the dispatcher.
 	"Channels.py:ChannelsListArea|up": "Go's dispatcher owns Up-at-top → menu collapse; Python does it in ChannelsListArea.keypress",
 	// The channels-level ancestor capture owns C-d send for the whole page

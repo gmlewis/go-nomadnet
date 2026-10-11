@@ -2136,36 +2136,47 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 
 	// Wire interfaces keyboard shortcuts
 	interfacesDisplay.OnReleaseFocus = func() { main.FocusMenu() }
+
+	// wireInterfaceForm installs the config-write callbacks an Add or Edit form
+	// needs: the save (which writes the section and then shows Python's
+	// restart-required notice), the duplicate-name check against the config's
+	// other sections, and the cancel/close. origName is "" when adding, and the
+	// renamed-from name when editing.
+	wireInterfaceForm := func(form *tui.InterfaceFormView, origName string) *tui.InterfaceFormView {
+		form.OnSave = func(name string, props []app.ConfigProp) error {
+			var err error
+			if origName == "" {
+				err = a.AddInterfaceConfig(name, props)
+			} else {
+				err = a.EditInterfaceConfig(origName, name, props)
+			}
+			if err != nil {
+				return err
+			}
+			refreshInterfaces()
+			interfacesDisplay.CloseForm()
+			interfacesDisplay.ShowRestartRequired()
+			return nil
+		}
+		form.OnNameConflict = func(name string) bool {
+			return name != origName && a.InterfaceExists(name)
+		}
+		return form
+	}
+	formOptions := func() tui.InterfaceFormOptions {
+		return tui.InterfaceFormOptions{TransportEnabled: a.TransportEnabled()}
+	}
+
+	// Ctrl-A opens Python's two-step Add flow: the "Select Interface Type"
+	// dialog, then the full Add form for the chosen type (Interfaces.py:3017 →
+	// 3075). Ctrl-E opens the same form for the selected interface, pre-filled
+	// (Python's EditInterfaceView, Interfaces.py:1997/2927).
 	interfacesDisplay.OnAddInterface = func() {
-		tuiApp.Dialogs.ShowInputDialog("Add Interface",
-			"Interface name:", "",
-			func(name string) {
-				name = strings.TrimSpace(name)
-				if name == "" {
-					return
-				}
-				tuiApp.Dialogs.ShowInputDialog("Interface Type",
-					"Type (e.g. AutoInterface, TCPClientInterface):", "AutoInterface",
-					func(ifType string) {
-						ifType = strings.TrimSpace(ifType)
-						if ifType == "" {
-							ifType = "AutoInterface"
-						}
-						formData := tui.NewInterfaceFormData(ifType)
-						formData.Fields["name"].Value = name
-						cfg := formData.BuildConfig()
-						if err := a.AddInterfaceConfig(name, cfg); err != nil {
-							interfacesDisplay.ShowInterfaceError(err.Error())
-							return
-						}
-						refreshInterfaces()
-						interfacesDisplay.ShowRestartRequired()
-					},
-					func() {},
-				)
-			},
-			func() {},
-		)
+		interfacesDisplay.ShowTypePicker(func(ifType string) {
+			interfacesDisplay.CloseTypePicker()
+			interfacesDisplay.ShowForm(wireInterfaceForm(
+				tui.NewInterfaceAddFormView(tuiApp, ifType, formOptions()), ""))
+		})
 	}
 	interfacesDisplay.OnConfigEditor = func() {
 		// Python's open_config_editor (Interfaces.py:3160-3185) runs $EDITOR
@@ -2193,31 +2204,13 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 			return
 		}
 		iface := items[idx]
-		tuiApp.Dialogs.ShowInputDialog("Edit Interface: "+iface.Name,
-			"New interface name:", iface.Name,
-			func(newName string) {
-				newName = strings.TrimSpace(newName)
-				if newName == "" {
-					newName = iface.Name
-				}
-				existingCfg, err := a.GetInterfaceConfigMap(iface.Name)
-				if err != nil {
-					interfacesDisplay.ShowInterfaceError(err.Error())
-					return
-				}
-				formData := tui.NewInterfaceFormData(iface.Type)
-				formData.PopulateFromConfig(iface.Name, existingCfg)
-				formData.Fields["name"].Value = newName
-				cfg := formData.BuildConfig()
-				if err := a.EditInterfaceConfig(iface.Name, newName, cfg); err != nil {
-					interfacesDisplay.ShowInterfaceError(err.Error())
-					return
-				}
-				refreshInterfaces()
-				interfacesDisplay.ShowRestartRequired()
-			},
-			func() {},
-		)
+		existingCfg, err := a.GetInterfaceConfigMap(iface.Name)
+		if err != nil {
+			interfacesDisplay.ShowInterfaceError(err.Error())
+			return
+		}
+		interfacesDisplay.ShowForm(wireInterfaceForm(
+			tui.NewInterfaceEditFormView(tuiApp, iface.Name, existingCfg, formOptions()), iface.Name))
 	}
 	interfacesDisplay.OnRemoveInterface = func() {
 		idx := interfacesDisplay.SelectedIndex()

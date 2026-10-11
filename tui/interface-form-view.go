@@ -179,10 +179,6 @@ func newInterfaceFormView(app *App, ifType string, opts InterfaceFormOptions) *I
 // Title returns the form's LineBox title.
 func (v *InterfaceFormView) Title() string { return v.title }
 
-// Widget returns the form's body primitive (the pile of rows). It is what the
-// display puts inside a DialogLineBox.
-func (v *InterfaceFormView) Widget() tview.Primitive { return v.pile }
-
 // MoreOptionsVisible reports whether the more-options section is showing.
 func (v *InterfaceFormView) MoreOptionsVisible() bool { return v.more }
 
@@ -295,7 +291,8 @@ func (v *InterfaceFormView) refocus() {
 	}
 }
 
-// Dialog returns the LineBox the form is shown in.
+// Dialog returns the LineBox the form is shown in, whose title is the form's
+// title and whose content is the pile of field rows.
 func (v *InterfaceFormView) Dialog() *DialogLineBox { return v.dialog }
 
 // Cancel dismisses the form without saving.
@@ -509,7 +506,30 @@ func (v *InterfaceFormView) loadConfig(name string, cfg map[string]any) {
 		if !ok {
 			continue
 		}
+		// A nested map is a subsection (RNodeMultiInterface's sub-interfaces),
+		// which the composite row renders as its own lines rather than as text.
+		if sub, isMap := raw.(map[string]any); isMap {
+			r.loadRaw(sub)
+			continue
+		}
 		r.loadValue(fmt.Sprintf("%v", raw))
+	}
+
+	// Sub-interface settings arrive as their own nested maps rather than under a
+	// single key, and Python gathers every dict-valued key that is not one of the
+	// section's standard keys into the multitable widget
+	// (Interfaces.py:2111-2124).
+	if r := v.row("subinterfaces"); r != nil {
+		subs := map[string]any{}
+		for k, val := range cfg {
+			if _, isMap := val.(map[string]any); !isMap || subinterfaceStandardKeys[k] {
+				continue
+			}
+			subs[k] = val
+		}
+		if len(subs) > 0 {
+			r.loadRaw(subs)
+		}
 	}
 
 	// A custom interface keeps every non-standard key as a custom parameter
@@ -534,6 +554,14 @@ var customInterfaceStandardKeys = map[string]bool{
 	"type": true, "interface_enabled": true, "enabled": true, "description": true,
 	"network_name": true, "bitrate": true, "passphrase": true, "ifac_size": true,
 	"mode": true, "outgoing": true, "announce_cap": true,
+}
+
+// subinterfaceStandardKeys are the section keys Python never gathers into the
+// sub-interface table, because they configure the multi-interface itself rather
+// than one of its sub-interfaces (Interfaces.py:2119-2120).
+var subinterfaceStandardKeys = map[string]bool{
+	"type": true, "interface_enabled": true, "enabled": true, "port": true,
+	"id_callsign": true, "id_interval": true,
 }
 
 // newFormRow builds one field row.
