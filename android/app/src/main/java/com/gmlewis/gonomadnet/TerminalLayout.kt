@@ -124,18 +124,6 @@ sealed interface KeyRowEntry {
      * than a key it presses.
      */
     data class Alt(override val label: String = "Alt") : KeyRowEntry
-
-    /**
-     * Toggle folds the strip away, and brings it back.
-     *
-     * The strip costs rows, and rows are what the interface is made of; a reader who wants
-     * them back for the client's own drawing folds it away and gets the whole screen. It is
-     * never gone: the folded strip is the toggle's own button, so the row can always be
-     * brought back. Which way it points is what the button says.
-     */
-    data class Toggle(val collapsed: Boolean) : KeyRowEntry {
-        override val label: String get() = if (collapsed) "▴" else "▾"
-    }
 }
 
 /**
@@ -144,12 +132,23 @@ sealed interface KeyRowEntry {
  * [rows] is the whole of it — what is drawn, what is tapped, and what each button sends —
  * so the strip can be asserted without a screen. It is two rows of seven, which is the
  * Termux extra-keys row this appliance's console is modelled on: the keys a terminal needs
- * that no soft keyboard has.
+ * that no soft keyboard has. The strip has no fold control of its own: the soft keyboard
+ * can already be hidden, and Termux's own second row leads with TAB, which this one keeps.
  *
  * The buttons share each row's width equally, and [entryAt] is the division that turns a tap
- * into one of them.
+ * into one of them. Rows are twice a client cell's height ([rowHeight]), with the labels
+ * scaled to match, so a button is a finger-sized target rather than a text-sized one.
  */
 object TerminalKeyRow {
+
+    /**
+     * FONT_SCALE is how much larger a key-strip row (and its labels) is than a client cell.
+     *
+     * The strip's keys are touched, not read, and a target as small as one terminal cell is
+     * genuinely hard to hit on a tablet — so the row is twice a cell tall and the labels are
+     * twice a cell's font.
+     */
+    const val FONT_SCALE = 2
 
     /** ROW_ONE is the strip's top row: escape, the two path characters, and navigation. */
     private val ROW_ONE: List<KeyRowEntry> = listOf(
@@ -162,9 +161,9 @@ object TerminalKeyRow {
         KeyRowEntry.Press("PGUP", TerminalKey.Special(SpecialKey.PAGE_UP)),
     )
 
-    /** ROW_TWO is the strip's bottom row: the modifiers and the rest of the navigation. */
+    /** ROW_TWO is the strip's bottom row: TAB, the modifiers and the rest of the navigation. */
     private val ROW_TWO: List<KeyRowEntry> = listOf(
-        KeyRowEntry.Toggle(collapsed = false),
+        KeyRowEntry.Press("TAB", TerminalKey.Special(SpecialKey.TAB)),
         KeyRowEntry.Control(),
         KeyRowEntry.Alt(),
         KeyRowEntry.Press("←", TerminalKey.Special(SpecialKey.LEFT)),
@@ -173,38 +172,39 @@ object TerminalKeyRow {
         KeyRowEntry.Press("PGDN", TerminalKey.Special(SpecialKey.PAGE_DOWN)),
     )
 
-    /**
-     * rows is the strip as it stands, top row first.
-     *
-     * A folded strip is one row holding the toggle and nothing else, which is the button
-     * that unfolds it — a strip that could be folded away and not brought back would be a
-     * keyboard with no escape key and no way to ask for one.
-     */
-    fun rows(collapsed: Boolean): List<List<KeyRowEntry>> =
-        if (collapsed) {
-            listOf(listOf(KeyRowEntry.Toggle(collapsed = true)))
-        } else {
-            listOf(ROW_ONE, ROW_TWO)
-        }
+    /** rows is the strip as it stands, top row first. */
+    fun rows(): List<List<KeyRowEntry>> = listOf(ROW_ONE, ROW_TWO)
 
     /**
-     * padding is the space above and below the strip's rows, from one cell's height.
+     * rowHeight is one key row's height in pixels, from one client cell's height.
      *
-     * It is a fraction of the cell so that the strip keeps its proportions with the font
+     * The strip's rows are [FONT_SCALE] times a client cell so a key is a finger-sized
+     * target; the view sizes its key font to the same scale, so a label and the row it sits
+     * in grow together.
+     */
+    fun rowHeight(cellHeight: Int): Int = max(1, cellHeight) * FONT_SCALE
+
+    /**
+     * padding is the space above and below the strip's rows, from one row's height.
+     *
+     * It is a fraction of the row so that the strip keeps its proportions with the font
      * size, and never less than a few pixels: a button with no margin is a button whose
      * label touches the row above it.
      */
-    fun padding(cellHeight: Int): Int = max(4, cellHeight / 4)
+    fun padding(rowHeight: Int): Int = max(4, rowHeight / 4)
 
     /**
-     * height is how much of the bottom edge [rows] take, given one cell's height.
+     * height is how much of the bottom edge [rows] take, given one client cell's height.
      *
      * The rows are the client's own: what the strip takes from the bottom of the screen is
      * what the client does not get, which is why showing and hiding it is a resize rather
      * than a redraw. A strip that is not shown takes nothing at all.
      */
-    fun height(rows: List<List<KeyRowEntry>>, cellHeight: Int): Int =
-        if (rows.isEmpty()) 0 else rows.size * cellHeight + 2 * padding(cellHeight)
+    fun height(rows: List<List<KeyRowEntry>>, cellHeight: Int): Int {
+        if (rows.isEmpty()) return 0
+        val row = rowHeight(cellHeight)
+        return rows.size * row + 2 * padding(row)
+    }
 
     /**
      * entryAt is the button a tap at ([x], [y]) landed on, in the view's own pixels.

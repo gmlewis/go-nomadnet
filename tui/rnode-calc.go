@@ -18,6 +18,8 @@ package tui
 import (
 	"fmt"
 	"math"
+	"strconv"
+	"strings"
 )
 
 // RNodeParams holds optional parameters for RNode on-air calculations.
@@ -61,24 +63,14 @@ var spreadingFactorNoise = map[int]float64{
 
 // CalculateRNodeParameters computes on-air parameters for LoRa RNode
 // interfaces: data rate, sensitivity, and link budget. Matches Python's
-// calculate_rnode_parameters() at Interfaces.py:178.
+// calculate_rnode_parameters() at Interfaces.py:178. All parameters are
+// explicit: Python's function defaults (noise_floor=6, transmit_power=17) are
+// supplied by the caller, since the only caller — RNodeCalculator.
+// update_calculation — always passes the values it parsed (Interfaces.py:
+// 296-366), and a zero noise floor is a meaningful value there, not "unset".
 func CalculateRNodeParameters(bandwidth float64, spreadingFactor, codingRate int, opts RNodeParams) RNodeCalcResult {
 	crN := codingRateN[codingRate]
 	sfNoise := spreadingFactorNoise[spreadingFactor]
-
-	// Apply Python's default argument values (noise_floor=6,
-	// transmit_power=17; antenna_gain defaults to 0 which is already the
-	// Go zero value) when the caller leaves them unset. This mirrors
-	// Python's keyword defaults for the common case but means an explicit
-	// 0 for NoiseFloor/TransmitPower is treated as "unset" rather than the
-	// literal 0 — an accepted divergence, since 0 dB noise floor / 0 dBm
-	// transmit power are not meaningful RNode configurations.
-	if opts.NoiseFloor == 0 {
-		opts.NoiseFloor = 6
-	}
-	if opts.TransmitPower == 0 {
-		opts.TransmitPower = 17
-	}
 
 	dataRate := float64(spreadingFactor) *
 		(4.0 / (4.0 + crN)) /
@@ -107,4 +99,55 @@ func CalculateRNodeParameters(bandwidth float64, spreadingFactor, codingRate int
 		RawLinkBudget:  linkBudget,
 		RawSensitivity: sensitivity,
 	}
+}
+
+// RNodeCalculatorDefaultBandwidth is the bandwidth (Hz) the on-air calculator
+// falls back to when the form's bandwidth field is missing or unparseable
+// (Python Interfaces.py:301-306).
+const RNodeCalculatorDefaultBandwidth = 125000
+
+// RNodeCalculatorReadout mirrors Python's RNodeCalculator.update_calculation
+// (Interfaces.py:296-366): it reads the parent form's bandwidth,
+// spreadingfactor, codingrate and txpower fields (via fieldValue), plus the
+// calculator's own noise-floor and antenna-gain edit texts, applying Python's
+// per-field defaults whenever a value is missing or unparseable, and returns the
+// three readout lines ("Data Rate: …", "Link Budget: …", "Sensitivity: …").
+//
+// The coding-rate field holds a "4:5"-style display value, which Python's int()
+// rejects (a ValueError that its except clause turns into the default 5), so a
+// colon-form coding rate resolves to 5 exactly as Python does.
+func RNodeCalculatorReadout(fieldValue func(key string) (string, bool), noiseFloorText, antennaGainText string) (dataRate, linkBudget, sensitivity string) {
+	atoiOr := func(s string, def int) int {
+		n, err := strconv.Atoi(strings.TrimSpace(s))
+		if err != nil {
+			return def
+		}
+		return n
+	}
+	field := func(key string, def int) int {
+		if fieldValue == nil {
+			return def
+		}
+		v, ok := fieldValue(key)
+		if !ok {
+			return def
+		}
+		return atoiOr(v, def)
+	}
+
+	bandwidth := field("bandwidth", RNodeCalculatorDefaultBandwidth)
+	sf := field("spreadingfactor", 7)
+	cr := field("codingrate", 5)
+	txpower := field("txpower", 17)
+	noiseFloor := atoiOr(noiseFloorText, 0)
+	antennaGain := atoiOr(antennaGainText, 0)
+
+	res := CalculateRNodeParameters(float64(bandwidth), sf, cr, RNodeParams{
+		NoiseFloor:    float64(noiseFloor),
+		AntennaGain:   float64(antennaGain),
+		TransmitPower: float64(txpower),
+	})
+	return "Data Rate: " + res.DataRate,
+		"Link Budget: " + res.LinkBudget,
+		"Sensitivity: " + res.Sensitivity
 }

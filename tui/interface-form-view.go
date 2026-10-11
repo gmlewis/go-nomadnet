@@ -83,6 +83,13 @@ type InterfaceFormView struct {
 	more      bool
 	moreBtn   *UrwidButton
 
+	// RNode on-air calculator (Python's AddInterfaceView RNode branch,
+	// Interfaces.py:1695-1717): the "Show On-Air Calculations" button and the
+	// panel it reveals. Both are nil/absent for non-RNode interface types.
+	calc     bool
+	calcBtn  *UrwidButton
+	calcView *RNodeCalculatorView
+
 	saveBtn   *UrwidButton
 	cancelBtn *UrwidButton
 
@@ -211,8 +218,62 @@ func (v *InterfaceFormView) build() {
 	v.saveBtn = NewUrwidButton("Save").SetSelectedFunc(v.SaveFocused)
 	v.cancelBtn = NewUrwidButton("Cancel").SetSelectedFunc(v.Cancel)
 
+	// The on-air calculator is offered only for RNode interfaces (Python
+	// Interfaces.py:1695-1717). Its FieldValue reads the form's own parameter
+	// fields, so it recomputes from whatever the user has entered.
+	if v.ifaceType == IfaceRNode {
+		v.calcBtn = NewUrwidButton("Show On-Air Calculations").SetSelectedFunc(v.ToggleCalculator)
+		v.calcView = NewRNodeCalculatorView(v.app, v.Value)
+		v.wireCalculatorFields()
+	}
+
 	v.rebuild()
 }
+
+// wireCalculatorFields connects each RNode parameter field's change to a
+// calculator refresh, mirroring Python's connect_all_field_signals
+// (Interfaces.py:284-294): editing bandwidth, spreading factor, coding rate or
+// transmit power updates the readout as the user types.
+func (v *InterfaceFormView) wireCalculatorFields() {
+	if v.calcView == nil {
+		return
+	}
+	refresh := func(string, int) { v.calcView.Update() }
+	for _, r := range append(append([]*formRow{}, v.rows...), v.extraRows...) {
+		if r.input != nil {
+			r.input.SetChangedFunc(func(string) { v.calcView.Update() })
+		}
+		if r.drop != nil {
+			r.drop.SetSelectedFunc(refresh)
+		}
+	}
+}
+
+// ToggleCalculator shows or hides the on-air calculator panel (Python
+// toggle_calculator, Interfaces.py:1813-1821).
+func (v *InterfaceFormView) ToggleCalculator() {
+	if v.calcView == nil {
+		return
+	}
+	v.calc = !v.calc
+	if v.calcBtn != nil {
+		if v.calc {
+			v.calcBtn.SetLabel("Hide On-Air Calculations")
+		} else {
+			v.calcBtn.SetLabel("Show On-Air Calculations")
+		}
+	}
+	v.rebuild()
+	if v.calc {
+		v.calcView.Update()
+	}
+}
+
+// CalculatorVisible reports whether the on-air calculator panel is showing.
+func (v *InterfaceFormView) CalculatorVisible() bool { return v.calc }
+
+// Calculator returns the on-air calculator view (nil for non-RNode forms).
+func (v *InterfaceFormView) Calculator() *RNodeCalculatorView { return v.calcView }
 
 // rebuild lays the pile out again, adding or dropping the more-options section
 // as its visibility changed (urwid's toggle_more_options rewrites the section
@@ -230,6 +291,15 @@ func (v *InterfaceFormView) rebuild() {
 	if v.more {
 		for _, r := range v.extraRows {
 			pile.AddItem(r.row, r.widgetHeight+1, true)
+		}
+	}
+	// RNode on-air calculator: the button and the revealed panel sit between the
+	// more-options section and the save/cancel row (Python pile_items order,
+	// Interfaces.py:1708-1722).
+	if v.calcBtn != nil {
+		pile.AddItem(v.calcBtn, 1, true)
+		if v.calc && v.calcView != nil {
+			pile.AddItem(v.calcView.Widget(), v.calcView.Height(), true)
 		}
 	}
 	pile.AddItem(newDividerRow("─"), 1, false)

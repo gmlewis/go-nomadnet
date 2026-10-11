@@ -185,6 +185,11 @@ type ConversationsDisplay struct {
 	// app.time_format). When nil the widget's "%Y-%m-%d %H:%M:%S" default
 	// applies.
 	OnTimeFormat func() string
+	// OnLiveTransfer, when set, returns the LXMF router's in-flight state for a
+	// pending outbound message by hash, so an open conversation can render a
+	// live transfer progress row (Python scans app.message_router.
+	// pending_outbound, Conversations.py:2711-2720). Nil ⇒ no progress row.
+	OnLiveTransfer OnLiveTransferFunc
 	// OnStampCost supplies the peer's outbound LXMF stamp cost for the peer-info
 	// header bar (Python _update_peer_info, Conversations.py:2103-2105). nil
 	// omits the "Stamp: N" segment.
@@ -961,6 +966,13 @@ func (cd *ConversationsDisplay) DisplayConversation(sourceHash string) {
 	if cd.OnTimeFormat != nil {
 		cw.TimeFormat = cd.OnTimeFormat()
 	}
+	// Inject the live-transfer resolver so the message list can render a
+	// transfer progress row while an outbound RESOURCE message is in transit
+	// (Python scans app.message_router.pending_outbound, Conversations.py:
+	// 2711-2720). Nil leaves every message without a progress row.
+	if cd.OnLiveTransfer != nil {
+		cw.OnLiveTransfer = cd.OnLiveTransfer
+	}
 	// Inject the RNS-dependent peer-info fields (Python _update_peer_info,
 	// Conversations.py:2103-2112): the outbound stamp cost and the transport
 	// hop count. The wiring layer resolves these from the LXMF router and RNS
@@ -1058,6 +1070,24 @@ func (cd *ConversationsDisplay) RefreshRelativeTimes() {
 		return
 	}
 	cd.ReloadCurrentMessages()
+}
+
+// ProgressPollNeeded reports whether the open conversation has a live transfer
+// whose progress row would advance, so the fast UI ticker can run only while a
+// transfer is in flight (Python re-arms its 0.3 s alarm only while _live_lxm is
+// set, Conversations.py:2783-2790). Safe to call off the UI thread.
+func (cd *ConversationsDisplay) ProgressPollNeeded() bool {
+	return cd.currentWidget != nil && cd.currentWidget.ProgressPollNeeded()
+}
+
+// RefreshProgress re-renders the open conversation's message list in place (no
+// disk reload) so a live transfer's progress row advances, mirroring Python's
+// _poll_progress redraw (Conversations.py:2786-2790). Must run on the UI thread.
+func (cd *ConversationsDisplay) RefreshProgress() {
+	if cd.currentWidget == nil {
+		return
+	}
+	cd.currentWidget.RefreshProgress()
 }
 
 // clearDisplayedConversation returns the detail pane to the empty

@@ -77,6 +77,12 @@ type Chart struct {
 	Min     *float64
 	Max     *float64
 	Format  string
+	// FormatFunc, when set, overrides Format with a callable label formatter,
+	// mirroring the Python AsciiChart cfg['format'] hook when it is a function
+	// rather than a format string (e.g. RNS.prettyspeed, Interfaces.py:1341-1353).
+	// Python right-justifies the returned string to 12 columns
+	// (AsciiChart.py:42-43); FormatFunc labels are padded the same way.
+	FormatFunc func(float64) string
 }
 
 // New creates a new Chart with the given glyph set name.
@@ -206,6 +212,9 @@ func (c *Chart) Plot(series [][]float64) string {
 			}
 		}
 		label := formatLabel(labelVal, c.Format)
+		if c.FormatFunc != nil {
+			label = rjust(c.FormatFunc(labelVal), 12)
+		}
 		row := y - min2
 		start := max(offset-len([]rune(label)), 0)
 		setCell(row, start, label)
@@ -291,6 +300,17 @@ func formatLabel(val float64, format string) string {
 
 func formatInt(n int) string {
 	return strconv.Itoa(n)
+}
+
+// rjust right-justifies s in a field of width columns, mirroring Python's
+// str.rjust (padding on the left, no truncation when s is already at least
+// width runes wide).
+func rjust(s string, width int) string {
+	n := len([]rune(s))
+	if n >= width {
+		return s
+	}
+	return strings.Repeat(" ", width-n) + s
 }
 
 // pyRound mirrors Python's built-in round for a single float argument: round

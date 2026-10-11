@@ -19,6 +19,8 @@ import (
 	"fmt"
 	"math"
 	"time"
+
+	"github.com/gmlewis/go-nomadnet/nomadnet/asciichart"
 )
 
 // InterfaceBandwidthChart tracks bandwidth history for an interface
@@ -43,6 +45,10 @@ type InterfaceBandwidthChart struct {
 
 	peakRXForDisplay float64
 	peakTXForDisplay float64
+
+	// glyphSet selects the chart glyph set (Python InterfaceBandwidthChart
+	// glyphset, "unicode" by default).
+	glyphSet string
 }
 
 // NewInterfaceBandwidthChart creates a new bandwidth chart tracker.
@@ -54,8 +60,11 @@ func NewInterfaceBandwidthChart(historyLength int) *InterfaceBandwidthChart {
 		historyLength:        historyLength,
 		rxRates:              make([]float64, historyLength),
 		txRates:              make([]float64, historyLength),
+		maxRXRate:            1,
+		maxTXRate:            1,
 		firstUpdate:          true,
 		stabilizationUpdates: 2,
+		glyphSet:             "unicode",
 	}
 }
 
@@ -104,6 +113,14 @@ func (c *InterfaceBandwidthChart) Update(rxBytes, txBytes float64, now time.Time
 	}
 }
 
+// UpdateNow records a bandwidth sample using the current wall clock, matching
+// Python's InterfaceBandwidthChart.update (which reads time.time() itself,
+// Interfaces.py:1259). Tests that need a deterministic rate use Update with an
+// explicit clock instead.
+func (c *InterfaceBandwidthChart) UpdateNow(rxBytes, txBytes float64) {
+	c.Update(rxBytes, txBytes, time.Now())
+}
+
 // Rates returns the current RX and TX rate history slices.
 // Values are in bits per second.
 func (c *InterfaceBandwidthChart) Rates() (rx, tx []float64) {
@@ -128,6 +145,50 @@ func (c *InterfaceBandwidthChart) MaxRates() (rxMax, txMax float64) {
 	return c.maxRXRate, c.maxTXRate
 }
 
+// SetGlyphSet sets the chart glyph set ("unicode" or "plain"), mirroring
+// Python's InterfaceBandwidthChart(glyphset=...).
+func (c *InterfaceBandwidthChart) SetGlyphSet(g string) {
+	if g != "" {
+		c.glyphSet = g
+	}
+}
+
+// GetCharts renders the RX and TX bandwidth charts plus their peak labels,
+// matching Python's InterfaceBandwidthChart.get_charts (Interfaces.py:1324-1358):
+// each rate history is plotted at the given height with Y-axis labels formatted
+// by RNS.prettyspeed, the min fixed at 0 and the max at 1.1× the running max
+// rate; the peak labels read "0 bps" until the chart's initialization
+// completes. The rate histories are in bits per second.
+func (c *InterfaceBandwidthChart) GetCharts(height int) (rxChart, txChart, peakRX, peakTX string) {
+	var peakRXVal, peakTXVal float64
+	if c.initializationComplete {
+		peakRXVal = c.peakRXForDisplay
+		peakTXVal = c.peakTXForDisplay
+	}
+	peakRX = PrettySpeed(peakRXVal * 8)
+	peakTX = PrettySpeed(peakTXVal * 8)
+	rxChart = c.plotRates(c.rxRates, c.maxRXRate, height)
+	txChart = c.plotRates(c.txRates, c.maxTXRate, height)
+	return rxChart, txChart, peakRX, peakTX
+}
+
+// plotRates plots one rate history as an ASCII chart with the get_charts
+// configuration (min 0, max 1.1× the max rate, prettyspeed labels).
+func (c *InterfaceBandwidthChart) plotRates(rates []float64, maxRate float64, height int) string {
+	glyphSet := c.glyphSet
+	if glyphSet == "" {
+		glyphSet = "unicode"
+	}
+	chart := asciichart.New(glyphSet)
+	chart.Height = height
+	zero := 0.0
+	chart.Min = &zero
+	upper := maxRate * 1.1
+	chart.Max = &upper
+	chart.FormatFunc = PrettySpeed
+	return chart.PlotSingle(rates)
+}
+
 // maxSlice returns the maximum value in a float64 slice.
 func maxSlice(s []float64) float64 {
 	m := s[0]
@@ -139,17 +200,23 @@ func maxSlice(s []float64) float64 {
 	return m
 }
 
-// PrettySpeed formats a rate in bits per second as a human-readable
-// string. Matches Python's RNS.prettyspeed().
+// PrettySpeed formats a rate in bits per second as a human-readable string,
+// matching Python's RNS.prettyspeed (RNS/__init__.py:190):
+// prettysize(num/8, suffix="b") + "ps". The /8 and the suffix-"b" ×8 cancel, so
+// the base-1000 ladder runs over the bits-per-second value itself with the "b"
+// suffix, and plain values print with 0 decimals while K/M/G/... print with 2
+// (e.g. 1200 → "1.20 Kbps", 150 → "150 bps").
 func PrettySpeed(bps float64) string {
-	units := []string{"bps", "Kbps", "Mbps", "Gbps", "Tbps"}
-	unitIndex := 0
-	for bps >= 1000.0 && unitIndex < len(units)-1 {
-		bps /= 1000.0
-		unitIndex++
+	const lastUnit = "Y"
+	num := bps
+	for _, unit := range prettysizeUnits {
+		if absFloat(num) < 1000.0 {
+			if unit == "" {
+				return fmt.Sprintf("%.0f %v%v", num, unit, "bps")
+			}
+			return fmt.Sprintf("%.2f %v%v", num, unit, "bps")
+		}
+		num /= 1000.0
 	}
-	if unitIndex == 0 {
-		return fmt.Sprintf("%v %v", int64(bps), units[unitIndex])
-	}
-	return fmt.Sprintf("%.1f %v", bps, units[unitIndex])
+	return fmt.Sprintf("%.2f%v%v", num, lastUnit, "bps")
 }

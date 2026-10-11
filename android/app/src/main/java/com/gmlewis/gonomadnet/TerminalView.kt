@@ -145,6 +145,17 @@ class TerminalView(context: Context, attrs: AttributeSet? = null) : View(context
             resources.displayMetrics,
         )
     }
+
+    /**
+     * keyPaint draws the key strip's labels, at [TerminalKeyRow.FONT_SCALE] times the console
+     * font.
+     *
+     * A key is touched, not read: the strip's rows are twice a console cell tall, so the
+     * labels are twice a console cell's font, and the two grow together.
+     */
+    private val keyPaint = Paint(textPaint).apply {
+        textSize = textPaint.textSize * TerminalKeyRow.FONT_SCALE
+    }
     private var metrics: TerminalMetrics? = null
     private var grid: TerminalGrid = TerminalGrid(cols = 80, rows = 24)
 
@@ -175,13 +186,6 @@ class TerminalView(context: Context, attrs: AttributeSet? = null) : View(context
             invalidate()
         }
 
-    /**
-     * collapsed is whether the reader has folded the key strip away.
-     *
-     * The strip costs rows, and the rows are the client's: folding it hands them back, which
-     * is why it is a resize and not just a redraw.
-     */
-    private var stripCollapsed = false
     private val blink = object : Runnable {
         override fun run() {
             cursorVisible = !cursorVisible
@@ -282,13 +286,13 @@ class TerminalView(context: Context, attrs: AttributeSet? = null) : View(context
     }
 
     /**
-     * stripRows is the key strip as it stands: two rows of keys, one folded row, or none.
+     * stripRows is the key strip as it stands: two rows of keys, or none.
      *
      * None is the ordinary state. The keys are there for typing, so they are there when the
      * keyboard is: a console with no keyboard is a client with the whole screen.
      */
     private fun stripRows(): List<List<KeyRowEntry>> =
-        if (!keysVisible) emptyList() else TerminalKeyRow.rows(stripCollapsed)
+        if (!keysVisible) emptyList() else TerminalKeyRow.rows()
 
     /**
      * measureCell is what one character of the console measures.
@@ -310,7 +314,10 @@ class TerminalView(context: Context, attrs: AttributeSet? = null) : View(context
     private fun keyRowHeight(metrics: TerminalMetrics): Int =
         TerminalKeyRow.height(stripRows(), metrics.cellHeight)
 
-    private fun keyRowPadding(metrics: TerminalMetrics): Int = TerminalKeyRow.padding(metrics.cellHeight)
+    /** keyRowRowHeight is one key-strip row's height in pixels. */
+    private fun keyRowRowHeight(metrics: TerminalMetrics): Int = TerminalKeyRow.rowHeight(metrics.cellHeight)
+
+    private fun keyRowPadding(metrics: TerminalMetrics): Int = TerminalKeyRow.padding(keyRowRowHeight(metrics))
 
     /** keyRowTop is the y the key strip starts at, or the view's height when there is none. */
     private fun keyRowTop(metrics: TerminalMetrics): Int =
@@ -450,33 +457,34 @@ class TerminalView(context: Context, attrs: AttributeSet? = null) : View(context
         if (rows.isEmpty()) return
         val padding = keyRowPadding(metrics)
         val top = keyRowTop(metrics)
+        val rowHeight = keyRowRowHeight(metrics)
         if (height - top <= 0 || width <= 0) return
 
-        textPaint.isFakeBoldText = false
-        textPaint.textSkewX = 0f
-        textPaint.color = TerminalPalette.DEFAULT_FOREGROUND
-        canvas.drawRect(0f, top.toFloat(), width.toFloat(), (top + 1).toFloat(), textPaint)
+        keyPaint.isFakeBoldText = false
+        keyPaint.textSkewX = 0f
+        keyPaint.color = TerminalPalette.DEFAULT_FOREGROUND
+        canvas.drawRect(0f, top.toFloat(), width.toFloat(), (top + 1).toFloat(), keyPaint)
 
         for ((rowIndex, entries) in rows.withIndex()) {
-            val rowTop = top + padding + rowIndex * metrics.cellHeight
-            val textY = rowTop + -textPaint.fontMetrics.ascent
+            val rowTop = top + padding + rowIndex * rowHeight
+            val textY = rowTop + -keyPaint.fontMetrics.ascent
             val share = width.toFloat() / entries.size
             for ((index, entry) in entries.withIndex()) {
                 val left = index * share
                 if (modifierOf(entry)) {
-                    textPaint.color = TerminalPalette.DEFAULT_FOREGROUND
+                    keyPaint.color = TerminalPalette.DEFAULT_FOREGROUND
                     canvas.drawRect(
                         left,
                         rowTop.toFloat(),
                         left + share,
-                        (rowTop + metrics.cellHeight).toFloat(),
-                        textPaint,
+                        (rowTop + rowHeight).toFloat(),
+                        keyPaint,
                     )
-                    textPaint.color = TerminalPalette.DEFAULT_BACKGROUND
+                    keyPaint.color = TerminalPalette.DEFAULT_BACKGROUND
                 }
-                val labelWidth = textPaint.measureText(entry.label)
-                canvas.drawText(entry.label, left + (share - labelWidth) / 2f, textY, textPaint)
-                textPaint.color = TerminalPalette.DEFAULT_FOREGROUND
+                val labelWidth = keyPaint.measureText(entry.label)
+                canvas.drawText(entry.label, left + (share - labelWidth) / 2f, textY, keyPaint)
+                keyPaint.color = TerminalPalette.DEFAULT_FOREGROUND
             }
         }
     }
@@ -563,7 +571,7 @@ class TerminalView(context: Context, attrs: AttributeSet? = null) : View(context
             y = y,
             width = width,
             stripTop = keyRowTop(metrics),
-            rowHeight = metrics.cellHeight,
+            rowHeight = keyRowRowHeight(metrics),
             rows = rows,
         )
         when (entry) {
@@ -577,21 +585,8 @@ class TerminalView(context: Context, attrs: AttributeSet? = null) : View(context
                 invalidate()
             }
 
-            is KeyRowEntry.Toggle -> foldStrip(!stripCollapsed)
             is KeyRowEntry.Press -> send(entry.key)
         }
-    }
-
-    /**
-     * foldStrip folds the key strip away, or brings it back, and hands the rows over with it.
-     *
-     * The strip is drawn over the terminal, so the rows it costs are rows the client does not
-     * have: folding it is a resize the client is told about, and unfolding it is another.
-     */
-    private fun foldStrip(collapsed: Boolean) {
-        stripCollapsed = collapsed
-        updateGrid()
-        invalidate()
     }
 
     /**

@@ -634,16 +634,20 @@ func (b *interfaceListBox) InputHandler() func(event *tcell.EventKey, setFocus f
 	})
 }
 
-// MouseHandler implements click-to-focus and wheel scrolling, mirroring
-// Python's urwid ListBox mouse handling for the interface list
-// (SelectableInterfaceItem has no mouse_event of its own, so the ListBox owns
-// click-to-focus — Interfaces.py:1125-1252). A left click maps the click row to
-// an item index via InterfaceItemHeight and the scroll offset, focuses that
-// item (○→●), and moves tview focus onto the list so subsequent arrow keys
-// navigate it. The wheel moves the focused item one step per notch — urwid's
-// ListBox maps wheel to "up"/"down" keypresses and the viewport follows the
-// focus — which is also what makes the wheel visibly scroll this list, since
-// Draw re-pins the viewport to the focused item via scrollIntoView.
+// MouseHandler implements click-to-focus, click-to-open and wheel scrolling.
+// Click-to-focus mirrors Python's urwid ListBox mouse handling for the
+// interface list (SelectableInterfaceItem has no mouse_event of its own, so the
+// ListBox owns click-to-focus — Interfaces.py:1125-1252): a left click maps the
+// click row to an item index via InterfaceItemHeight and the scroll offset,
+// focuses that item (○→●), and moves tview focus onto the list so subsequent
+// arrow keys navigate it. Click-to-open is a Go-only addition (operator
+// request, 2026-10-10): a left click on the row that ALREADY holds the focus
+// opens its details view — the same activation Enter fires — while a click that
+// changes the focus only focuses, so a stray click never navigates away. Python
+// has no click-to-open path. The wheel moves the focused item one step per
+// notch — urwid's ListBox maps wheel to "up"/"down" keypresses and the viewport
+// follows the focus — which is also what makes the wheel visibly scroll this
+// list, since Draw re-pins the viewport to the focused item via scrollIntoView.
 func (b *interfaceListBox) MouseHandler() func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(tview.Primitive)) (consumed bool, capture tview.Primitive) {
 	return b.WrapMouseHandler(func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(tview.Primitive)) (consumed bool, capture tview.Primitive) {
 		x, y := event.Position()
@@ -661,10 +665,19 @@ func (b *interfaceListBox) MouseHandler() func(action tview.MouseAction, event *
 			if idx >= len(b.items) {
 				idx = len(b.items) - 1
 			}
+			// A click on the row that ALREADY holds the focus opens its details
+			// view — the same activation Enter fires (onActivate). A click that
+			// changes the focus only focuses, so a stray click never navigates
+			// away (operator request, 2026-10-10; a Go-only addition, since
+			// Python's SelectableInterfaceItem has no mouse_event).
+			alreadyFocused := b.focusIdx >= 0 && b.focusIdx == idx
 			b.focusIdx = idx
 			b.applyFocus()
 			b.scrollIntoView()
 			setFocus(b)
+			if alreadyFocused && b.onActivate != nil {
+				b.onActivate(idx)
+			}
 			return true, b
 		case tview.MouseScrollUp, tview.MouseScrollDown:
 			// Wheel = move the focused item one step (urwid ListBox maps wheel

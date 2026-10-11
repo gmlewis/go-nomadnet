@@ -185,6 +185,13 @@ type ConversationWidget struct {
 	OnOwnHash  func() []byte
 	TimeFormat string
 
+	// OnLiveTransfer, when set, returns the router's in-flight state for an
+	// outbound message by its LXMF hash, so the message list can render a live
+	// transfer progress row while a RESOURCE message is in transit (Python
+	// scans app.message_router.pending_outbound, Conversations.py:2711-2720).
+	// Nil ⇒ no progress row is ever rendered.
+	OnLiveTransfer OnLiveTransferFunc
+
 	// Layout
 	frame       *tview.Flex
 	headerFlex  *tview.Flex
@@ -1260,6 +1267,17 @@ func (cw *ConversationWidget) renderMessageEntry(msg ConversationMessage) *messa
 	// The header embeds remote fields (title, signature description, attachment
 	// names); styleHeader's own [fg:bg]…[-:-] markup stays intact.
 	sb.WriteString(cw.styleHeader(escapeTviewTags(title), style))
+
+	// Live transfer progress row: Python inserts it between the title and the
+	// content while an outbound RESOURCE message is in transit
+	// (Conversations.py:2709-2727). Its empty bar cells carry the same
+	// "progress_full" background as the filled ones (the whole widget is
+	// AttrMap(..., "progress_full")).
+	if lt, ok := cw.liveTransferFor(msg); ok {
+		if row := liveProgressRowText(lt, cw.glyphs(), cw.colorMode()); row != "" {
+			sb.WriteString(cw.styleHeader(escapeTviewTags(row), "progress_full"))
+		}
+	}
 
 	// Body: indent every content line two columns (Python LXMessageWidget
 	// "  "+line for non-markdown content). Content is the remote LXMF body.

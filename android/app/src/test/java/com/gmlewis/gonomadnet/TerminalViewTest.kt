@@ -141,7 +141,7 @@ class TerminalViewTest {
         // document, and the arrows are how a menu is walked. They are the Termux extra-keys
         // row's own keys, so a person who has driven this client under Termux finds the same
         // buttons here.
-        val rows = TerminalKeyRow.rows(collapsed = false)
+        val rows = TerminalKeyRow.rows()
         assertEquals("the strip is not two rows", 2, rows.size)
         assertEquals("the rows are not the same width", rows[0].size, rows[1].size)
 
@@ -161,8 +161,9 @@ class TerminalViewTest {
         )
         val bottom = rows[1].filterIsInstance<KeyRowEntry.Press>()
         assertEquals(
-            "the strip's bottom row is not the navigation it should be",
+            "the strip's bottom row is not TAB and the navigation it should be",
             listOf(
+                TerminalKey.Special(SpecialKey.TAB),
                 TerminalKey.Special(SpecialKey.LEFT),
                 TerminalKey.Special(SpecialKey.DOWN),
                 TerminalKey.Special(SpecialKey.RIGHT),
@@ -185,42 +186,34 @@ class TerminalViewTest {
             assertTrue("a button has no label", entry.label.isNotEmpty())
             when (entry) {
                 is KeyRowEntry.Press -> assertNotNull("${entry.label} sends nothing", TerminalKeys.toBytes(entry.key))
-                is KeyRowEntry.Control, is KeyRowEntry.Alt, is KeyRowEntry.Toggle -> Unit
+                is KeyRowEntry.Control, is KeyRowEntry.Alt -> Unit
             }
         }
     }
 
     @Test
-    fun `the strip folds away to the button that brings it back`() {
-        // The strip costs rows, and the rows are the client's. A reader who wants them back
-        // folds it away — and the folded strip is the toggle itself, because a strip that
-        // could be folded away and not brought back would be a keyboard with no escape key
-        // and no way to ask for one.
-        val folded = TerminalKeyRow.rows(collapsed = true)
-        assertEquals("a folded strip is not one row", 1, folded.size)
-        assertEquals("a folded strip is not one button", 1, folded[0].size)
-        val toggle = folded[0].single()
-        assertTrue("the folded strip is not the toggle", toggle is KeyRowEntry.Toggle)
-        assertEquals("the toggle does not point at unfolding", "▴", toggle.label)
+    fun `a key row is twice a console cell, so a key is a finger-sized target`() {
+        // A terminal cell is a text-sized target, not a finger-sized one, so the strip's rows
+        // are twice a cell tall and its labels twice a cell's font — the two grow together
+        // (the view sizes its key font to TerminalKeyRow.FONT_SCALE). The strip is drawn over
+        // the client, so those rows come out of what the client is told it has.
+        val cellHeight = 16
+        val row = TerminalKeyRow.rowHeight(cellHeight)
+        assertEquals("a key row is not twice a cell", 2 * cellHeight, row)
+        assertEquals("the scale and the row height disagree", cellHeight * TerminalKeyRow.FONT_SCALE, row)
+
+        val padding = 2 * TerminalKeyRow.padding(row)
         assertEquals(
-            "the unfolded toggle does not point at folding",
-            "▾",
-            TerminalKeyRow.rows(collapsed = false)[1].first { it is KeyRowEntry.Toggle }.label,
+            "the strip does not cost its two doubled rows",
+            2 * row + padding,
+            TerminalKeyRow.height(TerminalKeyRow.rows(), cellHeight),
         )
 
-        // Two rows of keys cost two rows of the terminal; a folded one costs one. The strip
-        // is drawn over the client, so those rows come out of what the client is told it has.
-        val cellHeight = 16
-        val padding = 2 * TerminalKeyRow.padding(cellHeight)
-        assertEquals(
-            "an unfolded strip does not cost its two rows",
-            2 * cellHeight + padding,
-            TerminalKeyRow.height(TerminalKeyRow.rows(collapsed = false), cellHeight),
-        )
-        assertEquals(
-            "a folded strip does not give a row back",
-            cellHeight + padding,
-            TerminalKeyRow.height(folded, cellHeight),
+        // There is no fold control: the soft keyboard can already be hidden, and Termux's own
+        // second row leads with TAB, which this one keeps. No button folds the strip.
+        assertTrue(
+            "the strip still has a fold control",
+            TerminalKeyRow.rows().flatten().none { it.label == "▾" || it.label == "▴" },
         )
     }
 
@@ -230,6 +223,7 @@ class TerminalViewTest {
         // the client's rows: a console with no keyboard is a client with the whole screen —
         // and no rule drawn across its last row.
         val cellHeight = 16
+        val row = TerminalKeyRow.rowHeight(cellHeight)
         assertEquals(
             "a strip that is not shown still takes room",
             0,
@@ -237,8 +231,8 @@ class TerminalViewTest {
         )
         assertEquals(
             "a shown strip takes its rows and its padding",
-            2 * cellHeight + 2 * TerminalKeyRow.padding(cellHeight),
-            TerminalKeyRow.height(TerminalKeyRow.rows(collapsed = false), cellHeight),
+            2 * row + 2 * TerminalKeyRow.padding(row),
+            TerminalKeyRow.height(TerminalKeyRow.rows(), cellHeight),
         )
     }
 
@@ -248,7 +242,7 @@ class TerminalViewTest {
         // point decides which button it landed on, and the ends of a row are not one button
         // short. The row is part of the division too, or every tap would be a tap on the top
         // row's buttons.
-        val rows = TerminalKeyRow.rows(collapsed = false)
+        val rows = TerminalKeyRow.rows()
         val width = rows[0].size * 100
         val rowHeight = 20
         val stripTop = 800

@@ -1066,6 +1066,24 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		}
 	})
 
+	// Live transfer progress: while an outbound RESOURCE message is in transit,
+	// re-render the open conversation every 300 ms so its progress row advances
+	// (Python re-arms its 0.3 s alarm only while _live_lxm is set,
+	// Conversations.py:2783-2790). The gate is a cheap boolean read, so outside
+	// a transfer the ticker does no work and never forces a redraw.
+	tuiApp.GoSafe(func() {
+		ticker := time.NewTicker(300 * time.Millisecond)
+		defer ticker.Stop()
+		for range ticker.C {
+			if !conversationsDisplay.ProgressPollNeeded() {
+				continue
+			}
+			tuiApp.QueueUpdateDraw(func() {
+				conversationsDisplay.RefreshProgress()
+			})
+		}
+	})
+
 	// Wire conversation keyboard shortcuts. OnDeleteConv forwards the SELECTED
 	// conversation as resolved by the display against the active tab's
 	// RENDERED rows (Python reads source_hash from
@@ -1482,6 +1500,25 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 			return nil
 		}
 		return a.LXMFDest.Hash
+	}
+	// Live transfer progress: resolve a message's in-flight state from the LXMF
+	// router's pending outbound queue by hash, mirroring Python's scan of
+	// app.message_router.pending_outbound (Conversations.py:2711-2720). The
+	// returned value is a copy, so the UI never touches router internals.
+	conversationsDisplay.OnLiveTransfer = func(hash []byte) (tui.LiveTransfer, bool) {
+		if a.Router == nil {
+			return tui.LiveTransfer{}, false
+		}
+		for _, p := range a.Router.PendingOutbound() {
+			if bytes.Equal(p.Hash, hash) {
+				return tui.LiveTransfer{
+					Progress:       p.Progress,
+					State:          p.State,
+					Representation: p.Representation,
+				}, true
+			}
+		}
+		return tui.LiveTransfer{}, false
 	}
 	// Peer-info bar RNS fields (Python _update_peer_info, Conversations.py:
 	// 2103-2112): the outbound stamp cost (router + recalled-app-data fallback)

@@ -20,6 +20,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/gmlewis/tcell/v2"
@@ -247,6 +248,19 @@ type interfaceShow struct {
 	inFooter  bool
 	btnFocus  int
 
+	// chart tracks the interface's rx/tx byte counters and renders the 8-row
+	// RX/TX traffic charts, mirroring Python ShowInterface.bandwidth_chart
+	// (Interfaces.py:2308). It is fed on every interface snapshot while the
+	// interface is connected (Python's update_bandwidth_charts poll,
+	// Interfaces.py:2759-2790). chartFed records whether at least one poll
+	// update has arrived, so the box shows Python's initial "Loading RX data..."
+	// until then.
+	chart    *InterfaceBandwidthChart
+	chartFed bool
+	// now, when set, supplies the clock for chart sampling so tests can drive a
+	// deterministic rate series. Nil uses time.Now.
+	now func() time.Time
+
 	// OnBack switches back to the interface list (Python on_back →
 	// switch_to_list, Interfaces.py:2817-2819 + 3011-3016).
 	OnBack func()
@@ -261,6 +275,13 @@ type interfaceShow struct {
 // NewInterfaceShow builds the full-page detail view for one interface.
 func NewInterfaceShow(app *App, info InterfaceInfo) *interfaceShow {
 	s := &interfaceShow{app: app, info: info}
+
+	// Live bandwidth chart (Python ShowInterface.__init__ builds
+	// InterfaceBandwidthChart(history_length, glyphset) and feeds it the current
+	// counters once, Interfaces.py:2308-2309).
+	s.chart = NewInterfaceBandwidthChart(60)
+	s.chart.SetGlyphSet(s.glyphSet())
+	s.chart.Update(float64(info.RX), float64(info.TX), s.clockNow())
 
 	// Header (Interfaces.py:2222-2226): centered title + "=" divider.
 	header := tview.NewFlex().SetDirection(tview.FlexRow).
@@ -320,6 +341,24 @@ func (s *interfaceShow) glyphs() GlyphSet {
 		return s.app.Glyphs
 	}
 	return glyphsUnicode
+}
+
+// glyphSet returns the chart glyph-set name ("unicode" or "plain"), mirroring
+// Python's parent.glyphset passed to InterfaceBandwidthChart (Interfaces.py:2308).
+func (s *interfaceShow) glyphSet() string {
+	if s.app != nil && s.app.GlyphSet != "" {
+		return s.app.GlyphSet
+	}
+	return "unicode"
+}
+
+// clockNow returns the chart sampler's clock, honouring an injected now (tests)
+// and falling back to time.Now.
+func (s *interfaceShow) clockNow() time.Time {
+	if s.now != nil {
+		return s.now()
+	}
+	return time.Now()
 }
 
 // defaultBodyWidth is the width the body text is first built for, before the
@@ -398,6 +437,18 @@ func (s *interfaceShow) SetInfo(info InterfaceInfo) {
 		if s.buttons[1].Label() != label {
 			s.buttons[1].SetLabel(label)
 		}
+	}
+	// Feed the bandwidth chart (Python update_bandwidth_charts calls
+	// self.bandwidth_chart.update(rx, tx) each poll while the interface is
+	// connected, Interfaces.py:2771-2778). A disconnect leaves the chart
+	// untouched, exactly as Python returns early without updating it.
+	if info.Connected {
+		if s.chart == nil {
+			s.chart = NewInterfaceBandwidthChart(60)
+			s.chart.SetGlyphSet(s.glyphSet())
+		}
+		s.chart.Update(float64(info.RX), float64(info.TX), s.clockNow())
+		s.chartFed = true
 	}
 	s.body.Refresh()
 }
@@ -528,22 +579,52 @@ func (s *interfaceShow) chartsRows(width int) []string {
 			{text: "Charts not available - Interface is not connected", align: boxCenter},
 		})
 	}
-	// Each box holds a left-aligned status row and a right-aligned peak row
-	// (Interfaces.py:2316-2331).
-	contents := func(status string) []boxRow {
-		return []boxRow{
-			{text: status, align: boxLeft},
-			{text: "Peak: 0 B/s", align: boxRight},
-		}
-	}
+	// Each box holds the RX/TX traffic chart body (or Python's initial
+	// "Loading RX data..." before the first poll) and a right-aligned peak row
+	// (Interfaces.py:2312-2333).
+	rxRows, txRows := s.chartBoxRows()
 	if width >= 145 {
 		left := width / 2
-		rx := drawBox(left, "RX Traffic (60s)", contents("Loading RX data..."))
-		tx := drawBox(width-left, "TX Traffic (60s)", contents("Loading TX data..."))
+		rx := drawBox(left, "RX Traffic (60s)", rxRows)
+		tx := drawBox(width-left, "TX Traffic (60s)", txRows)
 		return zipBoxRows(rx, tx)
 	}
-	rx := drawBox(width, "RX Traffic (60s)", contents("Loading RX data..."))
-	return append(rx, drawBox(width, "TX Traffic (60s)", contents("Loading TX data..."))...)
+	rx := drawBox(width, "RX Traffic (60s)", rxRows)
+	return append(rx, drawBox(width, "TX Traffic (60s)", txRows)...)
+}
+
+// chartBoxRows returns the RX and TX box contents: the traffic chart body (one
+// boxRow per rendered chart line, or the initial "Loading RX data..." line) and
+// the right-aligned peak row, matching Python's rx_box/tx_box Pile
+// (Interfaces.py:2316-2333). The peak label uses RNS.prettyspeed, so the
+// pre-initialisation value reads "0 bps".
+func (s *interfaceShow) chartBoxRows() (rxRows, txRows []boxRow) {
+	if s.chart == nil || !s.chartFed {
+		return loadingChartRows("Loading RX data..."), loadingChartRows("Loading TX data...")
+	}
+	rxChart, txChart, peakRX, peakTX := s.chart.GetCharts(8)
+	return chartRows(rxChart, peakRX), chartRows(txChart, peakTX)
+}
+
+// loadingChartRows is the pre-poll box content: the loading line plus Python's
+// literal "Peak: 0 B/s" placeholder (Interfaces.py:2313-2317).
+func loadingChartRows(loading string) []boxRow {
+	return []boxRow{
+		{text: loading, align: boxLeft},
+		{text: "Peak: 0 B/s", align: boxRight},
+	}
+}
+
+// chartRows turns a rendered chart string plus its peak label into box rows: one
+// left-aligned row per chart line, then the right-aligned "Peak: <label>" row.
+func chartRows(chart, peak string) []boxRow {
+	lines := strings.Split(chart, "\n")
+	rows := make([]boxRow, 0, len(lines)+1)
+	for _, line := range lines {
+		rows = append(rows, boxRow{text: line, align: boxLeft})
+	}
+	rows = append(rows, boxRow{text: "Peak: " + peak, align: boxRight})
+	return rows
 }
 
 // zipBoxRows places two equally tall boxes side by side, as urwid's

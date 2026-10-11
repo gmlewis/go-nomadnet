@@ -165,12 +165,12 @@ the same one Termux's extra-keys row carries:
 | | | | | | | |
 | --- | --- | --- | --- | --- | --- | --- |
 | `ESC` | `/` | `-` | `HOME` | `↑` | `END` | `PGUP` |
-| `▾` | `Ctrl` | `Alt` | `←` | `↓` | `→` | `PGDN` |
+| `TAB` | `Ctrl` | `Alt` | `←` | `↓` | `→` | `PGDN` |
 
 **Ctrl** and **Alt** are latches rather than keys: tap one, then type the letter it
-applies to, and it is sent as that combination. The **▾** button folds the strip
-away, which hands its two rows back to the client; the **▴** it leaves behind brings
-it back.
+applies to, and it is sent as that combination. Every key is twice a console cell
+tall and its label twice a console cell's font, so a button is a finger-sized
+target rather than a text-sized one.
 
 The strip is drawn **only while the on-screen keyboard is up**, and it sits
 directly above it, exactly as Termux's row does. With the keyboard down there is

@@ -18,6 +18,7 @@ package tui
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestInterfaceShowStatusGoesLive pins the details view against the report from
@@ -71,6 +72,74 @@ func TestInterfaceShowStatusGoesLive(t *testing.T) {
 		if !strings.Contains(after, want) {
 			t.Errorf("the open details view did not pick up the new counter %v:\n%v", want, after)
 		}
+	}
+}
+
+// TestInterfaceShowLiveTrafficCharts pins the second half of the report: the
+// details view's RX/TX traffic boxes were drawn but never fed — a static
+// "Loading RX data..." box reading "Peak: 0 B/s" forever (interfaceShow.
+// chartsRows). Python's ShowInterface keeps an InterfaceBandwidthChart per
+// interface (Interfaces.py:2308), samples it from the interface's rx/tx byte
+// counters on a 1 s alarm, and renders get_charts(height=8) plus the peak rate
+// on each side (update_bandwidth_charts, Interfaces.py:2759-2790). This test
+// drives a deterministic sample series through the view's chart and checks the
+// rendered box contents advance: the loading placeholder gives way to a chart
+// body, and the peak row follows the series.
+func TestInterfaceShowLiveTrafficCharts(t *testing.T) {
+	t.Parallel()
+
+	app := NewApp(ThemeDark, GlyphUnicode, ColorModeTrue)
+	app.GlyphSet = GlyphUnicode
+	id := NewInterfacesDisplay(app, []InterfaceInfo{
+		{Name: "RNode LoRa", Type: "RNodeInterface", Enabled: true, Connected: true},
+	})
+	id.ShowInterfaceDetail(id.Items()[0])
+	show := id.showWidget
+	if show == nil {
+		t.Fatal("ShowInterface view not open")
+	}
+	base := time.Unix(1700000000, 0)
+	clock := base
+	show.now = func() time.Time { return clock }
+
+	// Before any poll the box shows the loading placeholder (Python's
+	// rx_chart_text default, Interfaces.py:2313).
+	rxRows, _ := show.chartBoxRows()
+	if len(rxRows) != 2 || rxRows[0].text != "Loading RX data..." {
+		t.Fatalf("pre-poll RX box rows = %+v, want the loading placeholder", rxRows)
+	}
+
+	// Feed a deterministic sample series: two real updates give rates of
+	// 8000 bits/s RX (1000 B/s) and 4000 bits/s TX (500 B/s) on the second
+	// sample, with the max so far equal to those values.
+	clock = base
+	show.SetInfo(InterfaceInfo{Name: "RNode LoRa", Type: "RNodeInterface", Enabled: true, Connected: true, RX: 1000, TX: 500})
+	clock = base.Add(time.Second)
+	show.SetInfo(InterfaceInfo{Name: "RNode LoRa", Type: "RNodeInterface", Enabled: true, Connected: true, RX: 2000, TX: 1000})
+
+	rxRows, _ = show.chartBoxRows()
+	if len(rxRows) < 3 {
+		t.Fatalf("RX box rows after polling = %d, want a chart body (>2 rows): %+v", len(rxRows), rxRows)
+	}
+	// 1000 B/s * 8 = 8000 bits/s → "8.00 Kbps"; the max-rate axis label is
+	// 1.1x the max, i.e. 8800 bits/s → "8.80 Kbps".
+	if !strings.Contains(rxRows[0].text, "Kbps") {
+		t.Errorf("RX chart top row = %q, want a Kbps axis label", rxRows[0].text)
+	}
+	lastRX := rxRows[len(rxRows)-1]
+	if lastRX.align != boxRight || !strings.HasPrefix(lastRX.text, "Peak: ") {
+		t.Errorf("RX box last row = %+v, want a right-aligned Peak row", lastRX)
+	}
+	if lastRX.text == "Peak: 0 B/s" || strings.HasSuffix(lastRX.text, "0 bps") {
+		t.Errorf("RX peak row = %q, want a non-zero peak after two samples", lastRX.text)
+	}
+
+	// A third sample with a larger delta must advance the peak and the max.
+	clock = base.Add(2 * time.Second)
+	show.SetInfo(InterfaceInfo{Name: "RNode LoRa", Type: "RNodeInterface", Enabled: true, Connected: true, RX: 5000, TX: 1000})
+	rxRows2, _ := show.chartBoxRows()
+	if rxRows2[len(rxRows2)-1].text == lastRX.text {
+		t.Errorf("RX peak row did not advance after a larger sample: still %q", lastRX.text)
 	}
 }
 

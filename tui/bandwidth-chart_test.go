@@ -30,10 +30,13 @@ func TestPrettySpeed(t *testing.T) {
 	}{
 		{"zero", 0, "0 bps"},
 		{"small bps", 500, "500 bps"},
-		{"1 Kbps", 1000, "1.0 Kbps"},
-		{"1.5 Kbps", 1500, "1.5 Kbps"},
-		{"1 Mbps", 1000000, "1.0 Mbps"},
-		{"1 Gbps", 1000000000, "1.0 Gbps"},
+		{"150 bps", 150, "150 bps"},
+		{"1 Kbps", 1000, "1.00 Kbps"},
+		{"1.2 Kbps", 1200, "1.20 Kbps"},
+		{"1.5 Kbps", 1500, "1.50 Kbps"},
+		{"9.6 Kbps", 9600, "9.60 Kbps"},
+		{"1 Mbps", 1000000, "1.00 Mbps"},
+		{"1 Gbps", 1000000000, "1.00 Gbps"},
 	}
 
 	for _, tt := range tests {
