@@ -31,7 +31,7 @@ If you already have [Go](https://go.dev/) installed, you can
 install `gonomadnet` directly from GitHub without cloning the repo:
 
 ```bash
-go install github.com/gmlewis/go-nomadnet/cmd/gonomadnet@v0.174.0
+go install github.com/gmlewis/go-nomadnet/cmd/gonomadnet@latest
 ```
 
 This puts the `gonomadnet` binary in your `$GOPATH/bin` (or `$GOBIN`)
@@ -94,8 +94,12 @@ are the whole of it — **no Termux, and nothing else to install**.
 Download `gonomadnet-<version>-android-arm64-v8a.apk` from
 [Releases](https://github.com/gmlewis/go-nomadnet/releases) and open it on the
 device — Android will ask you to allow installing from the app you opened it
-with, once. With a computer, `adb install -r gonomadnet-<version>-android-arm64-v8a.apk`
-does the same thing, and upgrades an installed copy in place.
+with, once, and Google Play Protect then stops the install with **App blocked to
+protect your device**: tap **More details**, then **Install anyway**. The APK is
+signed and its SHA-256 is published beside it, so there is nothing scanning it
+would tell you. With a computer,
+`adb install -r gonomadnet-<version>-android-arm64-v8a.apk` does the same thing,
+skips both prompts, and upgrades an installed copy in place.
 
 See **[docs/Android-APK.md](docs/Android-APK.md)** for the full setup — and
 nothing about your location leaves the device unless you ask for it. To build the
@@ -548,12 +552,14 @@ for the wire format, the geodetic formulas, and certified reference vectors.
 | `nomadnet/config` | INI-style config file parsing and I/O |
 | `nomadnet/conversation` | LXMF conversation management and message storage |
 | `nomadnet/directory` | Peer directory with trust levels and announce streams |
+| `nomadnet/location` | The reader's own position and heading, for `L` location constructs |
 | `nomadnet/micron` | Micron markup parser (headings, formatting, colors, links) |
 | `nomadnet/node` | NomadNet node: serves pages and files over RNS |
 | `nomadnet/peersettings` | Peer settings management |
 | `nomadnet/storage` | Storage directory management |
 | `nomadnet/util` | Text sanitization utilities |
 | `nomadnet/version` | Version constant |
+| `nomadnet/wasmpages` | Sandboxed in-process wasm plugins for executable (`.wasm`) pages |
 | `nomadnet/asciichart` | ASCII chart renderer for bandwidth display |
 | `tui` | Terminal UI: all menu pages (browser, conversations, channels, network, guide, config, log, interfaces), dialogs, micron styled renderer, themes & glyphs |
 
@@ -618,12 +624,16 @@ go-nomadnet/
 │   ├── config/            # Configuration
 │   ├── conversation/      # LXMF messages
 │   ├── directory/         # Peer directory
+│   ├── location/          # The reader's own position and heading
 │   ├── micron/            # Micron parser
 │   ├── node/              # Node serving
 │   ├── peersettings/      # Peer settings
-│   ├── rrc/               # Relay chat
 │   └── ...
 ├── tui/                   # Terminal UI (all menu pages, dialogs, renderer)
+├── android/               # The self-contained appliance: the Kotlin app plus the
+│                          #   console host, editor and radio bridge it runs
+├── assets/                # Launcher icons, fonts and the terminal theme the APK carries
+├── utils/, testutils/     # Shared test helpers and repo-root harnesses
 ├── tooling/               # Parity harnesses & screencast tooling
 ├── scripts/               # Test/run helper shell scripts
 └── skills/                # Repo-local development skills

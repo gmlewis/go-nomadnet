@@ -81,8 +81,8 @@ The `targetSdk` line must read `28`. A `targetSdk` of 29 or more, or an
 > **The name on the icon is not the build.** More than one application on the
 > stores calls itself Termux, and only the one the Termux project publishes is
 > supported here. The two are signed by different keys, so which one a device has
-> is a matter of record rather than of trust. The supported build — F-Droid
-> `com.termux` 0.118.3, version code 1002 — is signed with
+> is a matter of record rather than of trust. The supported build is the one the
+> Termux project publishes through F-Droid, signed with
 > `CN=FDroid, OU=FDroid, O=fdroid.org, C=UK`, certificate SHA-256
 > `228fb2cfe90831c1499ec3ccaf61e96e8e1ce70766b9474672ce427334d41c42`. A build
 > signed by anyone else is not it, whatever it is called.
@@ -407,7 +407,7 @@ Tapping the icon now opens Termux and starts the client. Use
 Watch `~/.nomadnetwork/logfile`. A healthy start looks like this:
 
 ```
-[Info]     Go Nomad Network Client 0.164.0 starting...
+[Info]     Go Nomad Network Client <version> starting...
 [Info]     Initializing RNS transport...
 [Info]     Go TCPClientInterface Home Hub connected
 [Info]     Announce sent for <your lxmf hash>

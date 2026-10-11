@@ -1,9 +1,9 @@
-# Building and releasing the Android app
+# Building the Android app
 
-This page is for building, signing and publishing the **gonomadnet**
-appliance. It is not needed to *use* it — if you want to install the app on a
-device, read [Android-APK.md](Android-APK.md) instead, and download the APK from
-the [latest release](https://github.com/gmlewis/go-nomadnet/releases).
+This page is for building and signing the **gonomadnet** appliance yourself. It
+is not needed to *use* it — to install the app on a device, read
+[Android-APK.md](Android-APK.md) and download the APK from the
+[latest release](https://github.com/gmlewis/go-nomadnet/releases).
 
 ---
 
@@ -47,8 +47,7 @@ Termux user — the tmux configuration, the bundled Bible text the bot's `kjv`
 command reads, and the client's own default configuration, which the app writes
 out with the settings that make it a node.
 
-Building needs the Android SDK and a signing key. The release publisher never
-builds an APK, so a machine without either can still cut a Go release.
+Building needs the Android SDK and a signing key.
 
 ### Signing
 
@@ -93,25 +92,6 @@ Two further notes for anyone editing the Gradle build:
   plugin and no plugin marker are needed — which also keeps the build offline.
 - Stripping a Go binary warns harmlessly (`Unable to strip … libprobe.so`); there
   is no `strip` tool for a Go object, and nothing that matters to strip.
-
-### Publishing with a release
-
-`scripts/publish-github-release-artifacts.sh` attaches a staged APK to the
-**go-nomadnet** GitHub release as
-`gonomadnet-<version>-android-arm64-v8a.apk`.
-
-- **The publisher never builds it.** The APK has to be staged in `dist/android/`
-  first, by `scripts/build-android-apk.sh`. When none is staged, the run says so
-  and carries on: a release without an APK is a normal release.
-- An APK whose name does not carry the version being released is **refused
-  rather than attached**, so a release cannot ship an appliance built from other
-  sources.
-- The retention prune **never deletes an APK**, however old the release. An
-  install artifact is not a build output: the binaries the prune retires are
-  rebuilt for every release, while an APK is a signed thing somebody installed
-  once and must be able to fetch again to upgrade in place.
-- The release notes name the cross-repo pin, because the APK embeds daemons
-  compiled from the sibling `go-reticulum` module.
 
 ## Tests
 
