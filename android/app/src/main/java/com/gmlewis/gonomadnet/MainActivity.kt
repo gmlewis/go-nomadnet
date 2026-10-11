@@ -136,7 +136,6 @@ class MainActivity : Activity() {
             controlScroll.scrollTo(0, 0)
         }
 
-        report(prerequisiteChecklist())
         requestPermissionsIfNeeded()
         // An attach is also how this activity can be *started*: the manifest registers it for
         // USB_DEVICE_ATTACHED, because that is what raises the permission dialog. It is
@@ -187,23 +186,34 @@ class MainActivity : Activity() {
     // ---------------------------------------------------------------- the appliance
 
     private fun requestPermissionsIfNeeded() {
-        if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(
-                arrayOf(
-                    Manifest.permission.ACCESS_FINE_LOCATION,
-                    Manifest.permission.ACCESS_COARSE_LOCATION,
-                    Manifest.permission.POST_NOTIFICATIONS,
-                ),
-                REQUEST_CODE,
-            )
+        if (locationGranted()) {
+            report(prerequisiteChecklist(locationGranted = true))
+            startSensors()
             return
         }
-        startSensors()
+        // Nothing is reported here. On a fresh install the answer does not exist yet, and a
+        // readout rendered from a guess is the one that contradicts itself; it is rendered
+        // from onRequestPermissionsResult instead, which is the first moment it is known.
+        requestPermissions(
+            arrayOf(
+                Manifest.permission.ACCESS_FINE_LOCATION,
+                Manifest.permission.ACCESS_COARSE_LOCATION,
+                Manifest.permission.POST_NOTIFICATIONS,
+            ),
+            REQUEST_CODE,
+        )
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == REQUEST_CODE && grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
+        if (requestCode != REQUEST_CODE) return
+
+        // The permission is read back rather than taken from grantResults: the notification
+        // permission is asked for in the same call, and a person who grants the location and
+        // refuses notifications must not be told the location was refused.
+        val granted = locationGranted()
+        report(prerequisiteChecklist(granted))
+        if (granted) {
             startSensors()
         } else {
             report("location permission is refused; the appliance cannot know where it is")
@@ -580,17 +590,14 @@ class MainActivity : Activity() {
      * debugging an appliance can read it without a manual. The rest of the readout says which
      * button starts which half, because there are four combinations of running and stopped and
      * only this screen says which one the tablet is in.
+     *
+     * The answer is a parameter because the readout is rendered when the answer *exists* and
+     * never before it: this used to be reported from onCreate, ahead of the dialog that asks
+     * for it, and nothing rendered it again — so a fresh install said "Location: NOT granted"
+     * for the rest of the session, on a screen that had just been granted it.
      */
-    private fun prerequisiteChecklist(): String =
-        "Location: " +
-            if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-                "granted"
-            } else {
-                "NOT granted"
-            } +
-            "\n\nThe appliance runs both halves out of this app: \"Start stack\" runs the\n" +
-            "transport, and \"Open gonomadnet\" runs the client on it. Nothing else has to be\n" +
-            "installed, and nothing here installs anything.\n\n"
+    private fun locationGranted(): Boolean =
+        checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
 
     /**
      * Writes to both of the appliance's diagnostic channels: the screen, for the person
@@ -671,6 +678,28 @@ class MainActivity : Activity() {
             ),
             home = paths.clientHome,
         )
+
+        /**
+         * prerequisiteChecklist is the controls page's readout, as a function of the answer.
+         *
+         * Taking the answer as an argument is what lets the two readings be asserted without a
+         * device, and it is also what keeps the readout honest: it says what the permission
+         * *is*, not what it was when the page was built. The location line is first because it
+         * is the only part of this screen that reports something the appliance cannot report
+         * anywhere else — a refused location has no other symptom — and the rest of it says
+         * which button starts which half, because there are four combinations of running and
+         * stopped and only this screen says which one the tablet is in.
+         */
+        fun prerequisiteChecklist(locationGranted: Boolean): String =
+            "Location: " +
+                if (locationGranted) {
+                    "granted"
+                } else {
+                    "NOT granted"
+                } +
+                "\n\nThe appliance runs both halves out of this app: \"Start stack\" runs the\n" +
+                "transport, and \"Open gonomadnet\" runs the client on it. Nothing else has to be\n" +
+                "installed, and nothing here installs anything.\n\n"
 
         /**
          * consoleHostSpec is the console host, the program that gives the client a terminal.

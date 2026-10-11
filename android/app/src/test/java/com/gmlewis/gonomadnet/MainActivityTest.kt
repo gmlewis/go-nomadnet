@@ -549,6 +549,46 @@ class MainActivityTest {
         )
     }
 
+    @Test
+    fun `the location readout says what the answer is and nothing else about it`() {
+        // A refused location has no other symptom anywhere on this screen — the sensors simply
+        // never start — so its state is printed where somebody debugging the appliance can read
+        // it without a manual. It was printed from onCreate, ahead of the dialog that asks for
+        // it, and nothing ever rendered it again: a fresh install showed "Location: NOT
+        // granted" for the rest of the session, on a screen that had just been granted it, and
+        // the readout contradicted the appliance it was describing.
+        //
+        // The answer is an argument, which is what makes both readings assertable here rather
+        // than on a tablet, and it is the activity's job to supply it only once the answer
+        // exists (see MainActivity.requestPermissionsIfNeeded).
+        val granted = MainActivity.prerequisiteChecklist(locationGranted = true)
+        val refused = MainActivity.prerequisiteChecklist(locationGranted = false)
+
+        assertTrue(
+            "a granted location is not reported as granted, so the one line that says whether " +
+                "the sensors can work says nothing: $granted",
+            granted.startsWith("Location: granted"),
+        )
+        assertTrue(
+            "a refused location is not reported as refused, which is the only place on this " +
+                "screen that says why the sensors do not start: $refused",
+            refused.startsWith("Location: NOT granted"),
+        )
+        assertFalse(
+            "a granted location still reads as refused: $granted",
+            granted.contains("NOT granted"),
+        )
+
+        // The rest of the readout describes the buttons, and the buttons do not change with
+        // the answer: a second difference between the two readings is the readout saying
+        // something about the permission that is not the permission's state.
+        assertEquals(
+            "the two readings disagree about something other than the permission",
+            refused.replaceFirst("Location: NOT granted", ""),
+            granted.replaceFirst("Location: granted", ""),
+        )
+    }
+
     /** resource is one named element of one of the module's value files. */
     private fun resource(file: String, tag: String, name: String): Element {
         val path = File(RES_DIR, "values/$file")
