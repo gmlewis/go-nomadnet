@@ -8,6 +8,7 @@
 package com.gmlewis.gonomadnet
 
 import kotlin.math.max
+import kotlin.math.roundToInt
 
 /** A terminal's size in cells. */
 data class TerminalGrid(val cols: Int, val rows: Int)
@@ -136,7 +137,7 @@ sealed interface KeyRowEntry {
  * can already be hidden, and Termux's own second row leads with TAB, which this one keeps.
  *
  * The buttons share each row's width equally, and [entryAt] is the division that turns a tap
- * into one of them. Rows are twice a client cell's height ([rowHeight]), with the labels
+ * into one of them. Rows are one and a half client cells tall ([rowHeight]), with the labels
  * scaled to match, so a button is a finger-sized target rather than a text-sized one.
  */
 object TerminalKeyRow {
@@ -145,10 +146,10 @@ object TerminalKeyRow {
      * FONT_SCALE is how much larger a key-strip row (and its labels) is than a client cell.
      *
      * The strip's keys are touched, not read, and a target as small as one terminal cell is
-     * genuinely hard to hit on a tablet — so the row is twice a cell tall and the labels are
-     * twice a cell's font.
+     * genuinely hard to hit on a tablet — so the row is one and a half cells tall and the
+     * labels are one and a half cells' font. (Twice was tried on hardware and is too big.)
      */
-    const val FONT_SCALE = 2
+    const val FONT_SCALE = 1.5f
 
     /** ROW_ONE is the strip's top row: escape, the two path characters, and navigation. */
     private val ROW_ONE: List<KeyRowEntry> = listOf(
@@ -182,7 +183,7 @@ object TerminalKeyRow {
      * target; the view sizes its key font to the same scale, so a label and the row it sits
      * in grow together.
      */
-    fun rowHeight(cellHeight: Int): Int = max(1, cellHeight) * FONT_SCALE
+    fun rowHeight(cellHeight: Int): Int = (max(1, cellHeight) * FONT_SCALE).roundToInt()
 
     /**
      * padding is the space above and below the strip's rows, from one row's height.

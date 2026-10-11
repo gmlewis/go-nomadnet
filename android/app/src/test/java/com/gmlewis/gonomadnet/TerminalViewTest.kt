@@ -13,6 +13,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import kotlin.math.roundToInt
 
 /**
  * The view's arithmetic, which is the whole of it that can be tested on a JVM.
@@ -192,19 +193,20 @@ class TerminalViewTest {
     }
 
     @Test
-    fun `a key row is twice a console cell, so a key is a finger-sized target`() {
+    fun `a key row is one and a half console cells, so a key is a finger-sized target`() {
         // A terminal cell is a text-sized target, not a finger-sized one, so the strip's rows
-        // are twice a cell tall and its labels twice a cell's font — the two grow together
-        // (the view sizes its key font to TerminalKeyRow.FONT_SCALE). The strip is drawn over
-        // the client, so those rows come out of what the client is told it has.
+        // are one and a half cells tall and its labels one and a half cells' font — the two
+        // grow together (the view sizes its key font to TerminalKeyRow.FONT_SCALE). The strip
+        // is drawn over the client, so those rows come out of what the client is told it has.
         val cellHeight = 16
         val row = TerminalKeyRow.rowHeight(cellHeight)
-        assertEquals("a key row is not twice a cell", 2 * cellHeight, row)
-        assertEquals("the scale and the row height disagree", cellHeight * TerminalKeyRow.FONT_SCALE, row)
+        val wantRow = (cellHeight * TerminalKeyRow.FONT_SCALE).roundToInt()
+        assertEquals("a key row is not one and a half cells", wantRow, row)
+        assertEquals("a 16-pixel cell does not give a 24-pixel key row", 24, row)
 
         val padding = 2 * TerminalKeyRow.padding(row)
         assertEquals(
-            "the strip does not cost its two doubled rows",
+            "the strip does not cost its two enlarged rows",
             2 * row + padding,
             TerminalKeyRow.height(TerminalKeyRow.rows(), cellHeight),
         )
