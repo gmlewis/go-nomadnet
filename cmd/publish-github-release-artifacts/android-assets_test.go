@@ -68,8 +68,9 @@ func stageAPK(t *testing.T, dir, name string) string {
 	return path
 }
 
-// TestCollectAndroidArtifacts pins how the appliance reaches a release: it is consumed from a
-// staging directory where scripts/build-android-apk.sh left it, and never built here.
+// TestCollectAndroidArtifacts pins how the appliance reaches a release: the publisher BUILDS
+// it for the version being published (see TestBuildAndroidApplianceRunsTheBuildScript) and then
+// consumes what the build staged in dist/android.
 func TestCollectAndroidArtifacts(t *testing.T) {
 	t.Parallel()
 
@@ -131,7 +132,7 @@ func TestCollectAndroidArtifacts(t *testing.T) {
 		}
 	})
 
-	t.Run("an appliance from another version is refused", func(t *testing.T) {
+	t.Run("an appliance from another version is ignored, not announced", func(t *testing.T) {
 		t.Parallel()
 
 		dir := tempDir(t)
@@ -143,10 +144,32 @@ func TestCollectAndroidArtifacts(t *testing.T) {
 		if len(got) != 0 {
 			t.Fatalf("collectAndroidArtifacts attached a stale appliance: %v", got)
 		}
-		// A release that shipped an appliance built from other sources would be worse than
-		// one that shipped none, because nothing about the download would say so.
-		if !strings.Contains(log(), "does not carry version") {
-			t.Errorf("a stale appliance was not explained:\n%v", log())
+		// A leftover from another release is not this release's appliance, and a line saying
+		// one had been "skipped" read as though the release had tried to ship it. The build
+		// stages the version being published, so a file named for another version is passed
+		// over without a word.
+		for _, unwanted := range []string{"does not carry version", "Skipping"} {
+			if strings.Contains(log(), unwanted) {
+				t.Errorf("a leftover appliance was announced (%q):\n%v", unwanted, log())
+			}
+		}
+	})
+
+	t.Run("this version's appliance is attached even beside a leftover", func(t *testing.T) {
+		t.Parallel()
+
+		dir := tempDir(t)
+		staging := filepath.Join(dir, "dist", "android")
+		stageAPK(t, staging, "gonomadnet-0.163.0-android-arm64-v8a.apk")
+		want := stageAPK(t, staging, "gonomadnet-"+version+"-android-arm64-v8a.apk")
+		progress, log := progressTo(t, dir)
+
+		got := collectAndroidArtifacts(staging, version, progress)
+		if len(got) != 1 || got[0] != want {
+			t.Fatalf("collectAndroidArtifacts = %v, want [%v]", got, want)
+		}
+		if strings.Contains(log(), "does not carry version") {
+			t.Errorf("the leftover was announced:\n%v", log())
 		}
 	})
 
@@ -363,4 +386,41 @@ replace github.com/gmlewis/go-reticulum => ../go-reticulum
 	if got := goReticulumVersionIn(""); got != unrecordedVersion {
 		t.Errorf("goReticulumVersionIn = %q, want the placeholder", got)
 	}
+}
+
+// TestBuildAndroidApplianceRunsTheBuildScript is the guard for the confusion this replaces: a
+// publish used to only consume a pre-staged APK, so bumping the version and publishing shipped
+// a release with no appliance and a line about a file named for the OLD version having been
+// skipped. A publish now builds the appliance for the version it is publishing.
+func TestBuildAndroidApplianceRunsTheBuildScript(t *testing.T) {
+	t.Parallel()
+
+	t.Run("it runs the build script", func(t *testing.T) {
+		t.Parallel()
+
+		dir := tempDir(t)
+		marker := filepath.Join(dir, "ran")
+		script := filepath.Join(dir, "build-android-apk.sh")
+		if err := os.WriteFile(script, []byte("#!/bin/sh\ntouch "+marker+"\n"), 0o755); err != nil {
+			t.Fatalf("WriteFile: %v", err)
+		}
+		progress, _ := progressTo(t, dir)
+
+		if err := buildAndroidAppliance(script, progress); err != nil {
+			t.Fatalf("buildAndroidAppliance: %v", err)
+		}
+		if _, err := os.Stat(marker); err != nil {
+			t.Errorf("the build script did not run: %v", err)
+		}
+	})
+
+	t.Run("a missing script is an error, not a silent skip", func(t *testing.T) {
+		t.Parallel()
+
+		dir := tempDir(t)
+		progress, _ := progressTo(t, dir)
+		if err := buildAndroidAppliance(filepath.Join(dir, "nope.sh"), progress); err == nil {
+			t.Error("buildAndroidAppliance accepted a script that does not exist")
+		}
+	})
 }

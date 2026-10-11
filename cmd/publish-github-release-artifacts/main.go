@@ -122,19 +122,27 @@ const binaryName = "gonomadnet"
 // not_swept_prefixes there names this prefix so -c keeps it that way.
 const scratchDirPrefix = "publish-release-gonomadnet-*"
 
-// The Android appliance, which reaches a release as a staged file rather than as a build.
+// The Android appliance, which reaches a release by being built for it and then consumed.
 const (
 	// androidStagingDir is where scripts/build-android-apk.sh leaves a signed APK.
 	//
-	// This publisher never builds one. Assembling an APK needs a signing key, an Android SDK
-	// and four cross-compiled Go daemons, and a release path that failed without them would
-	// break the releases of a repository whose whole purpose is a Go program. The appliance is
-	// therefore built and signed beforehand, and consumed from here.
+	// The publisher runs that script itself, once per release, so the appliance always matches
+	// the version being published. It used to only consume a previously staged file, which
+	// meant the staging directory was a cache that every version bump silently invalidated:
+	// bump the version, publish, and the release went out with no appliance and a line
+	// explaining that a file named for the OLD version had been skipped. Building here is what
+	// removes that whole class of confusion. A build that cannot run (no signing key, no
+	// Android SDK) is reported and does not fail the release, because refusing to publish a Go
+	// program's release over an Android toolchain would be worse than publishing it without
+	// the appliance.
 	androidStagingDir = "dist/android"
 	// androidAssetPrefix and androidAssetSuffix name what the publisher will attach:
 	// gonomadnet-<version>-android-<abi>.apk.
 	androidAssetPrefix = "gonomadnet-"
 	androidAssetSuffix = ".apk"
+	// androidBuildScript is the one supported way to produce a signed appliance, and the
+	// publisher runs it rather than reimplementing the build.
+	androidBuildScript = "scripts/build-android-apk.sh"
 	// goModFile is where the go-reticulum version is read from. It is relative to the
 	// repository root, like every other path here; repoFile is what makes that true from
 	// anywhere.
@@ -334,7 +342,17 @@ func run(opts options) error {
 		return err
 	}
 
-	// The Android appliance is consumed, never built: see androidStagingDir.
+	// Build the appliance for THIS release, then consume what the build staged. Building
+	// rather than only consuming is deliberate: the staging directory is a cache that a
+	// version bump invalidates, and a publish must not depend on the operator remembering to
+	// re-run the APK build after every bump. A build that cannot run is reported and does not
+	// fail the release.
+	if err := buildAndroidAppliance(androidBuildScript, progress); err != nil {
+		mustFprintf(progress,
+			"The Android appliance could not be built (%v), so this release will not carry one.\n"+
+				"  Build one by hand with ./scripts/build-android-apk.sh, which leaves a signed APK in %v.\n",
+			err, androidStagingDir)
+	}
 	assets = append(assets, collectAndroidArtifacts(androidStagingDir, version, progress)...)
 
 	notes := buildReleaseNotes(version, repo, assets)
@@ -625,12 +643,31 @@ func buildAll(outDir, version string, progress *os.File) ([]string, error) {
 	return assets, nil
 }
 
+// buildAndroidAppliance builds and signs the release's Android appliance by running
+// androidBuildScript, which stages it in androidStagingDir. The script is the single source of
+// truth for how an APK is made, so it is run rather than reimplemented here. An error means the
+// appliance was not produced — the caller reports it and publishes without one.
+func buildAndroidAppliance(scriptPath string, progress *os.File) error {
+	if _, err := os.Stat(scriptPath); err != nil {
+		return err
+	}
+	cmd := exec.Command(scriptPath)
+	cmd.Stdout = progress
+	cmd.Stderr = progress
+	return cmd.Run()
+}
+
 // collectAndroidArtifacts finds the signed Android appliance staged for this release, and
 // explains itself when there is none.
 //
 // It never fails. A release that carried no APK is a normal, working release; a release that
 // refused to happen because an APK was missing would be a regression in the only path the Go
 // project has for shipping anything at all.
+//
+// Only THIS version's appliance is looked for. A file named for another version is not this
+// release's appliance and is passed over in silence: the build that runs beforehand stages the
+// current one, so anything else in the directory is a leftover download, and announcing that a
+// leftover was skipped read as though the release had tried to ship it.
 func collectAndroidArtifacts(stagingDir, version string, progress *os.File) []string {
 	entries, err := os.ReadDir(stagingDir)
 	if err != nil {
@@ -652,11 +689,9 @@ func collectAndroidArtifacts(stagingDir, version string, progress *os.File) []st
 			continue
 		}
 		if !strings.Contains(name, version) {
-			// A stale appliance is worse than none: it would be published as this release's
-			// build while containing daemons from another one.
-			mustFprintf(progress,
-				"Skipping %v: its name does not carry version %v, and a release must not "+
-					"ship an appliance built from other sources.\n", name, version)
+			// Not this release's appliance: an older download left in the staging directory.
+			// A release must not ship an appliance built from other sources, and the build
+			// above has already staged this version's, so this one is simply not it.
 			continue
 		}
 		mustFprintf(progress, "Attaching the Android appliance %v\n", name)
