@@ -27,6 +27,11 @@ type InterfaceField struct {
 	Validation  []string            `json:"validation,omitempty"`
 	FieldValues []string            `json:"field_values,omitempty"`
 	SubFields   map[string]SubField `json:"sub_fields,omitempty"`
+	// Transform names the conversion between this field's displayed text and
+	// its config value, for the few fields where the two differ (Python's
+	// per-field transform lambdas, Interfaces.py:406). Empty means the text is
+	// the value. See the transform constants in interface-form-view.go.
+	Transform string `json:"transform,omitempty"`
 }
 
 // SubField describes a nested field for multitable interface types
@@ -132,7 +137,7 @@ var interfaceFieldRegistry = map[string][]InterfaceFieldGroup{
 				{ConfigKey: "devices", Type: "multilist", Label: "Devices: "},
 				{ConfigKey: "ignored_devices", Type: "multilist", Label: "Ignored Devices: "},
 				{ConfigKey: "group_id", Type: "edit", Label: "Group ID: ", Placeholder: "e.g., my_custom_network"},
-				{ConfigKey: "discovery_scope", Type: "dropdown", Label: "Discovery Scope: ", Options: []string{"None", "link", "admin", "site", "organisation", "global"}, Default: "None"},
+				{ConfigKey: "discovery_scope", Type: "dropdown", Label: "Discovery Scope: ", Options: []string{"None", "link", "admin", "site", "organisation", "global"}, Default: "None", Transform: transformScopeNone},
 			},
 		},
 	},
@@ -187,11 +192,11 @@ var interfaceFieldRegistry = map[string][]InterfaceFieldGroup{
 		{
 			Fields: []InterfaceField{
 				PortFieldNoSerial(),
-				{ConfigKey: "frequency", Type: "edit", Label: "Frequency (MHz): ", Placeholder: "868.5", Validation: []string{"required", "float"}},
+				{ConfigKey: "frequency", Type: "edit", Label: "Frequency (MHz): ", Placeholder: "868.5", Validation: []string{"required", "float"}, Transform: transformFrequencyHz},
 				{ConfigKey: "txpower", Type: "edit", Label: "Transmit Power (dBm): ", Placeholder: "17", Validation: []string{"required", "number"}},
 				{ConfigKey: "bandwidth", Type: "dropdown", Label: "Bandwidth (Hz): ", Options: []string{"7800", "10400", "15600", "20800", "31250", "41700", "62500", "125000", "250000", "500000", "1625000"}, Default: "7800", Validation: []string{"required"}},
 				{ConfigKey: "spreadingfactor", Type: "dropdown", Label: "Spreading Factor: ", Options: []string{"7", "8", "9", "10", "11", "12"}, Default: "7", Validation: []string{"required"}},
-				{ConfigKey: "codingrate", Type: "dropdown", Label: "Coding Rate: ", Options: []string{"4:5", "4:6", "4:7", "4:8"}, Default: "4:5", Validation: []string{"required"}},
+				{ConfigKey: "codingrate", Type: "dropdown", Label: "Coding Rate: ", Options: []string{"4:5", "4:6", "4:7", "4:8"}, Default: "4:5", Validation: []string{"required"}, Transform: transformCodingRate},
 			},
 			AdditionalOptions: []InterfaceField{
 				{ConfigKey: "id_callsign", Type: "edit", Label: "Callsign: ", Placeholder: "e.g. MYCALL-0"},

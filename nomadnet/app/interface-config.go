@@ -22,9 +22,31 @@ import (
 	"strings"
 )
 
+// ConfigProp is one key/value pair of an interface's [[name]] section, held in
+// the order the Add/Edit form displays the field. A slice rather than a map
+// because the section is written to the config file in that order: Python builds
+// the section from an ordered dict and ConfigObj writes it in insertion order,
+// so a map here would rewrite every interface's section in a different order on
+// every save.
+type ConfigProp struct {
+	Key   string
+	Value any
+}
+
+// configPropValue renders a property the way RNS config files spell it: a bool
+// becomes True/False (ConfigObj's spelling), anything else its default form.
+func configPropValue(v any) string {
+	if b, ok := v.(bool); ok {
+		return boolConfigWord(b)
+	}
+	return fmt.Sprintf("%v", v)
+}
+
 // AddInterfaceConfig appends a new [[name]] section under [interfaces] in the
-// RNS config file and writes it to disk. Matches Python's config write.
-func (a *App) AddInterfaceConfig(name string, props map[string]any) error {
+// RNS config file and writes it to disk. The section's keys are written in the
+// order given by props, after "type"/"interface_enabled" when those are present,
+// matching Python's config write.
+func (a *App) AddInterfaceConfig(name string, props []ConfigProp) error {
 	path := a.RNSConfigPath()
 	if path == "" {
 		return fmt.Errorf("RNS config path unavailable")
@@ -61,11 +83,11 @@ func (a *App) AddInterfaceConfig(name string, props map[string]any) error {
 	}
 
 	fmt.Fprintf(&sb, "  [[%v]]\n", name)
-	for k, v := range props {
-		if k == "name" {
+	for _, p := range props {
+		if p.Key == "name" {
 			continue
 		}
-		fmt.Fprintf(&sb, "    %v = %v\n", k, v)
+		fmt.Fprintf(&sb, "    %v = %v\n", p.Key, configPropValue(p.Value))
 	}
 
 	return os.WriteFile(path, []byte(sb.String()), 0o644)
@@ -139,7 +161,8 @@ func (a *App) GetInterfaceConfigMap(name string) (map[string]any, error) {
 }
 
 // EditInterfaceConfig updates an existing interface subsection (or renames it).
-func (a *App) EditInterfaceConfig(oldName, newName string, props map[string]any) error {
+// The replacement's keys are written in the order given by props.
+func (a *App) EditInterfaceConfig(oldName, newName string, props []ConfigProp) error {
 	path := a.RNSConfigPath()
 	if path == "" {
 		return fmt.Errorf("RNS config path unavailable")
@@ -174,11 +197,11 @@ func (a *App) EditInterfaceConfig(oldName, newName string, props map[string]any)
 				inTarget = true
 				replaced = true
 				out = append(out, fmt.Sprintf("  [[%v]]", newName))
-				for k, v := range props {
-					if k == "name" {
+				for _, p := range props {
+					if p.Key == "name" {
 						continue
 					}
-					out = append(out, fmt.Sprintf("    %v = %v", k, v))
+					out = append(out, fmt.Sprintf("    %v = %v", p.Key, configPropValue(p.Value)))
 				}
 				continue
 			} else {

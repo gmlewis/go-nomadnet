@@ -59,6 +59,50 @@ var commonInterfaceOptions = []InterfaceField{
 	{ConfigKey: "bitrate", Type: "edit", Label: "Inferred Bitrate: ", Placeholder: "Automatically determined", Validation: []string{"number"}},
 }
 
+// transportCommonOptions are the transport-mode options Python appends to the
+// common options when the node runs as a transport
+// (Interfaces.py:1580-1609). Python appends them to the module-global
+// COMMON_INTERFACE_OPTIONS list, so once any form has been opened in transport
+// mode they stay for the rest of the process; here they are added to the form
+// data on construction instead.
+var transportCommonOptions = []InterfaceField{
+	{ConfigKey: "outgoing", Type: "checkbox", Label: "Allow outgoing traffic", Default: "true"},
+	{ConfigKey: "mode", Type: "dropdown", Label: "Interface Mode: ", Options: []string{"full", "gateway", "access_point", "roaming", "boundary"}, Default: "full"},
+	{ConfigKey: "announce_cap", Type: "edit", Label: "Announce Cap: ", Placeholder: "Default: 2.0", Validation: []string{"float"}},
+}
+
+// AddTransportCommonOptions adds the transport-mode common options (Python's
+// transport_enabled() branch of _initialize_common_fields).
+func (fd *InterfaceFormData) AddTransportCommonOptions() {
+	for _, opt := range transportCommonOptions {
+		if _, ok := fd.CommonFields[opt.ConfigKey]; ok {
+			continue
+		}
+		fd.CommonFields[opt.ConfigKey] = &FormFieldEntry{
+			ConfigKey:  opt.ConfigKey,
+			Label:      opt.Label,
+			Type:       opt.Type,
+			Value:      opt.Default,
+			Validation: opt.Validation,
+			Options:    opt.Options,
+		}
+	}
+}
+
+// CommonFieldList returns the common options in the order the form displays
+// them: the shared options first, then the transport-mode ones. Only the
+// options this instance holds are returned, so a client that is not a transport
+// gets no mode/outgoing/announce_cap rows.
+func (fd *InterfaceFormData) CommonFieldList() []InterfaceField {
+	var out []InterfaceField
+	for _, f := range append(append([]InterfaceField{}, commonInterfaceOptions...), transportCommonOptions...) {
+		if _, ok := fd.CommonFields[f.ConfigKey]; ok {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
 // NewInterfaceFormData creates form data for the given interface type,
 // initializing all fields from the INTERFACE_FIELDS registry, common
 // options, and the required "name" field.

@@ -38,11 +38,11 @@ func TestAddInterfaceConfig(t *testing.T) {
 
 	app := &App{RNSConfigDir: dir}
 
-	newProps := map[string]any{
-		"type":              "TCPClientInterface",
-		"target_host":       "127.0.0.1",
-		"target_port":       "4242",
-		"interface_enabled": true,
+	newProps := []ConfigProp{
+		{Key: "type", Value: "TCPClientInterface"},
+		{Key: "interface_enabled", Value: true},
+		{Key: "target_host", Value: "127.0.0.1"},
+		{Key: "target_port", Value: "4242"},
 	}
 
 	if err := app.AddInterfaceConfig("My TCP", newProps); err != nil {
@@ -77,11 +77,11 @@ func TestEditInterfaceConfig(t *testing.T) {
 
 	app := &App{RNSConfigDir: dir}
 
-	updatedProps := map[string]any{
-		"type":              "TCPClientInterface",
-		"target_host":       "192.168.1.100",
-		"target_port":       "4242",
-		"interface_enabled": false,
+	updatedProps := []ConfigProp{
+		{Key: "type", Value: "TCPClientInterface"},
+		{Key: "interface_enabled", Value: false},
+		{Key: "target_host", Value: "192.168.1.100"},
+		{Key: "target_port", Value: "4242"},
 	}
 
 	if err := app.EditInterfaceConfig("My TCP", "My TCP", updatedProps); err != nil {
