@@ -101,12 +101,35 @@ type Hub struct {
 // Name identifies the subsystem in an error.
 func (h *Hub) Name() string { return "hub" }
 
-// Start brings the hub up and begins announcing it.
+// Start brings the hub up, begins announcing it, and publishes where it can be found.
+//
+// The hub has no bootstrap of its own here: gorrcd makes its identity on a first run from
+// the command line, and there is no command line on iOS. Its identity is therefore made
+// here if it is missing, and its address is published beside it — which is the whole reason
+// the bot and the client can reach the appliance's own hub without either being told what it
+// is.
 func (h *Hub) Start(ctx context.Context) error {
+	if h.Config.IdentityPath == nil || *h.Config.IdentityPath == "" {
+		return errors.New("bridge: the hub has no identity to announce itself with")
+	}
+	identityPath := *h.Config.IdentityPath
+	if err := ensureIdentity(identityPath); err != nil {
+		return err
+	}
+
 	svc := rrc.NewHubService(h.Config)
 	svc.SetLogger(rns.NewLogger())
 	if err := svc.Start(); err != nil {
 		return fmt.Errorf("starting the RRC hub: %w", err)
+	}
+
+	// A hub that is serving but unpublished is one nobody can dial: the address is how the
+	// client's channel list and the bot's configuration learn about it at all. Failing the
+	// start is the honest answer — the engine then says the hub did not come up, rather than
+	// leaving a hub running that nothing can find.
+	if err := publishHubDestination(identityPath, svc.DestinationHash()); err != nil {
+		svc.Stop()
+		return err
 	}
 
 	h.mu.Lock()
@@ -151,8 +174,11 @@ func (b *Bot) Name() string { return "bot" }
 //
 // A bot in its first run creates the files it needs and stops instead of
 // connecting, which is not a failure — the engine runs it again, and the second
-// run is the one that connects. Reporting it as an error would make a fresh
-// install look broken.
+// run is the one that connects. Reporting the first run as an error would make a
+// fresh install look broken. The second run's failure *is* reported, and it is
+// waited for: the appliance found on a device that a bot which cannot start its
+// second run — a path it cannot write, say — left the appliance reporting itself
+// running for as long as nobody looked.
 func (b *Bot) Start(ctx context.Context) error {
 	runCtx, cancel := context.WithCancel(ctx)
 	done := make(chan error, 1)
@@ -161,9 +187,11 @@ func (b *Bot) Start(ctx context.Context) error {
 
 	// The first run returns almost immediately; waiting for it here is what makes
 	// Start's contract — that the subsystem is ready when it returns — true.
+	firstRun := false
 	select {
 	case err := <-done:
 		if err == nil || errors.Is(err, bot.ErrFirstRun) {
+			firstRun = true
 			go func() { done <- bot.Run(runCtx, b.Options) }()
 		} else {
 			cancel()
@@ -174,6 +202,21 @@ func (b *Bot) Start(ctx context.Context) error {
 		return ctx.Err()
 	case <-time.After(botStartGrace):
 		// Still running after the grace period means it is serving.
+	}
+
+	if firstRun {
+		// A second run that comes back is a bot that did not start, and saying so is
+		// the difference between an appliance that runs a bot and one that says it does.
+		select {
+		case err := <-done:
+			cancel()
+			return fmt.Errorf("starting the bot after its first run: %w", err)
+		case <-ctx.Done():
+			cancel()
+			return ctx.Err()
+		case <-time.After(botStartGrace):
+			// Serving, which is what the second run is for.
+		}
 	}
 
 	b.mu.Lock()

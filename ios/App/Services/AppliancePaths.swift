@@ -83,15 +83,36 @@ public struct AppliancePaths: Sendable {
     ///
     /// The bot's configuration names this address, and the client's channel list is
     /// seeded with it, so a hub that has published is reachable from both halves without
-    /// either being told what it is.
+    /// either being told what it is. The name is the hub's identity path with the suffix
+    /// gorrcd publishes under, because that is where the Go half writes it: the two agree
+    /// on `<identity>.rrc.hub` rather than on a path either of them chose.
     public var hubDestinationFile: URL {
         clientConfigDir.appendingPathComponent("hub_identity.rrc.hub")
     }
 
-    /// The console's socket, whose name has to stay short: the kernel's `sun_path` holds
-    /// 104 bytes and an app's temporary directory already spends most of them.
-    public func consoleSocket(_ name: String) -> String {
-        container.appendingPathComponent(name).path
+    /// Where the bot's own TOML is written, under the client's configuration directory.
+    ///
+    /// It is here rather than in the bot's home directory because the Go half is told where
+    /// it is: the appliance renders it, and the path it renders to is the path it names.
+    public var botConfigFile: URL {
+        clientConfigDir.appendingPathComponent("gorrcbot.toml")
+    }
+
+    /// The Bible text the bot's `kjv` command reads, or an empty string when the bundle has
+    /// none.
+    ///
+    /// It is read where it is installed rather than copied into the container: it is 4.4 MB
+    /// of text that nothing writes, and the bundle is already the one place it lives.
+    public var kjvTxtFile: String {
+        Bundle.main.url(forResource: "kjv", withExtension: "txt")?.path ?? ""
+    }
+
+    /// The console's socket.
+    ///
+    /// It is not beside the appliance's other files, and the reason is a hard limit rather
+    /// than a preference: see `ConsoleSocket`.
+    public var consoleSocket: String {
+        ConsoleSocket.path(temporaryDirectory: FileManager.default.temporaryDirectory)
     }
 
     /// Creates every directory the appliance writes into.

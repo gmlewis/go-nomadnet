@@ -191,9 +191,27 @@ public final class ApplianceModel: ObservableObject {
     }
 
     /// consoleStatus is what to call the console in the status list.
+    ///
+    /// It names the size the client was told, which is the one number that says whether the
+    /// client is drawing for the window it is in. A client that was never told is one drawing
+    /// 80 by 24 — the size it was started at — and the reader can see that here rather than
+    /// only in a screenshot.
     public var consoleStatus: String {
-        consolePath == nil ? "Closed" : "Open"
+        guard consolePath != nil else { return "Closed" }
+        guard let size = consoleSize else { return "Open" }
+        return "Open · \(size.cols)×\(size.rows)"
     }
+
+    /// consoleSize is the size the client was last told its window is, once it has been told one.
+    @Published public private(set) var consoleSize: TerminalSize?
+
+    /// consoleProblem is why the console did not open, or `nil` when it did.
+    ///
+    /// It is a line of its own rather than an entry in the log because the log is the last
+    /// thing on the controls and scrolls: a reason a reader has to go looking for is one
+    /// the device acceptance could not find either, and the console silently not opening
+    /// is what that cost.
+    @Published public private(set) var consoleProblem: String?
 
     /// locationStatus is what the appliance knows about its own position.
     public var locationStatus: String {
@@ -228,6 +246,7 @@ public final class ApplianceModel: ObservableObject {
             supervisor.stop()
             consolePath = nil
             terminal = nil
+            consoleProblem = nil
         } else {
             supervisor.start()
         }
@@ -250,11 +269,20 @@ public final class ApplianceModel: ObservableObject {
                 self?.append("the console ended: \(end)")
                 self?.consolePath = nil
                 self?.terminal = nil
+                self?.consoleSize = nil
+            }
+            // The size the view tells the client, as it tells it: what the reader sees beside
+            // the Console row is the number the client is drawing for.
+            controller.onResize = { [weak self] size in
+                self?.consoleSize = size
             }
             controller.start()
             terminal = controller
             consolePath = path
+            consoleSize = controller.told
+            consoleProblem = nil
         } catch {
+            consoleProblem = "The console did not open: \(error)"
             append("the console did not open: \(error)")
         }
     }

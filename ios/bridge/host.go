@@ -272,6 +272,28 @@ func serveConsole(
 	return nil
 }
 
+// Closed reports that the host has been shut down, which is what makes a late
+// call a clear error rather than a socket bound after everything else has gone.
+func (h *Host) Closed() bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.closed
+}
+
+// Successor is a host that has not been shut down, carrying over what is registered
+// once for the life of the process: the client a console runs.
+//
+// A Host is one-shot on purpose — shutting one down is what stops a call arriving
+// after the shutdown from resurrecting the stack. The appliance is not one-shot: a
+// reader's Stop Stack followed by Start Stack, which is what the guide tells them to
+// do after pairing a radio, means the same appliance run again, and it gets a host
+// that has not been shut down rather than an error.
+func (h *Host) Successor() *Host {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return &Host{client: h.client}
+}
+
 // Close shuts the appliance down: the console first, then the engine, so the
 // client stops drawing before the transport it draws from goes away.
 //

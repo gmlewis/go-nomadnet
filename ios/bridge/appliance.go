@@ -72,6 +72,17 @@ var (
 	appliance   = &Host{}
 )
 
+// currentAppliance is the host every exported entry point acts on.
+//
+// It is read under the lock because the host is replaced when one that has been
+// shut down is started again, and a caller that read the pointer without it could
+// hold a host that is no longer the appliance.
+func currentAppliance() *Host {
+	applianceMu.Lock()
+	defer applianceMu.Unlock()
+	return appliance
+}
+
 // statusFor maps a Go error onto a status code.
 func statusFor(err error) int {
 	switch {
@@ -90,23 +101,44 @@ func statusFor(err error) int {
 // StartAppliance brings the appliance up: the sensor feed, then the subsystems.
 //
 // feedPort is the loopback port the sensor feed binds; zero means the pinned one.
+//
+// Starting an appliance that has been stopped starts it again rather than reporting a
+// shut-down host. A reader's Stop Stack then Start Stack is one appliance run twice, and
+// the device acceptance found it was one appliance run once: the second start failed, so
+// the stack could not be brought back up after it was taken down, and neither the guide's
+// "stop the stack and start it again" nor its "press Restart Stack" could work.
 func StartAppliance(ctx context.Context, configDir, rnsConfigDir string, feedPort int, subs ...Subsystem) error {
-	appliance.SetClientConfigs(configDir, rnsConfigDir)
-	return appliance.Start(ctx, feedPort, subs...)
+	applianceMu.Lock()
+	h := appliance
+	if h.Closed() {
+		h = h.Successor()
+		appliance = h
+	}
+	h.SetClientConfigs(configDir, rnsConfigDir)
+	applianceMu.Unlock()
+	return h.Start(ctx, feedPort, subs...)
 }
 
 // StopAppliance shuts the appliance down. Stopping something that is not running
 // is not an error.
-func StopAppliance() error { return appliance.Close() }
+//
+// The lock is held across the shutdown so that a stop and a start cannot interleave:
+// bringing the stack back up means the one that is going away is gone first, socket and
+// all, which is what the wait inside Close is for.
+func StopAppliance() error {
+	applianceMu.Lock()
+	defer applianceMu.Unlock()
+	return appliance.Close()
+}
 
 // StartConsoleSession listens for the app and runs the client on the console.
 func StartConsoleSession(ctx context.Context, socketPath string, cols, rows uint16) error {
-	return appliance.StartConsole(ctx, socketPath, cols, rows)
+	return currentAppliance().StartConsole(ctx, socketPath, cols, rows)
 }
 
 // FeedLocation publishes one GNSS fix.
 func FeedLocation(s LocationSample) error {
-	engine := appliance.Engine()
+	engine := currentAppliance().Engine()
 	if engine == nil {
 		return ErrNotRunning
 	}
@@ -115,7 +147,7 @@ func FeedLocation(s LocationSample) error {
 
 // FeedHeading publishes one orientation reading.
 func FeedHeading(s HeadingSample) error {
-	engine := appliance.Engine()
+	engine := currentAppliance().Engine()
 	if engine == nil {
 		return ErrNotRunning
 	}

@@ -35,14 +35,17 @@ public final class TerminalView: UIView, UIKeyInput {
     /// The palette the screen is drawn in.
     public var palette: TerminalPalette = .shipped
 
-    /// The Ctrl and Alt latches the key strip shares with the keyboard.
-    public var latch = ModifierLatch()
-
     /// Called when the reader taps a cell, with the mouse report the client expects.
     public var onMouse: (([UInt8]) -> Void)?
 
-    /// Called when the reader types, with the bytes the client expects.
-    public var onKey: (([UInt8]) -> Void)?
+    /// Called when the reader types, with the key the client expects.
+    ///
+    /// The key and not its bytes, because the modifier latches are the *pane's*: a `Ctrl` the
+    /// reader tapped on the strip is shown as a lit button there, and the key that spends it
+    /// has to spend the same one the strip is showing. A view with its own copy of the latch
+    /// spent that instead — so a `Ctrl` then a letter left `Ctrl` lit on the strip, which is a
+    /// latch a reader cannot tell is spent.
+    public var onKey: ((TerminalKey) -> Void)?
 
     /// Called when the console's own scrollback moves, with the number of rows the view is
     /// now scrolled back from the live output. Zero means the view is at the newest line.
@@ -102,6 +105,17 @@ public final class TerminalView: UIView, UIKeyInput {
         // The console is a terminal, not a document: it has no scroll view of its own,
         // so every touch that is not the software keyboard's belongs to it.
         isUserInteractionEnabled = true
+        // The device acceptance test drives this view and cannot name it by its content:
+        // what it draws is cells, not text. The identifier is what lets that test tap the
+        // console rather than guess at a coordinate, and the view has to be an
+        // accessibility element for it to be findable at all — an identifier on a view
+        // that is not one is an identifier nothing queries.
+        isAccessibilityElement = true
+        accessibilityIdentifier = "gonomadnet-console"
+        // What it is, for anyone who reaches it without being able to see it: the cells
+        // are drawn, not laid out as text, so there is nothing inside to read.
+        accessibilityLabel = "gonomadnet console"
+        accessibilityTraits = .updatesFrequently
         startBlinking()
     }
 
@@ -118,23 +132,52 @@ public final class TerminalView: UIView, UIKeyInput {
     /// disappears, because the strip takes rows from the terminal and the client has to
     /// be told: a client that is not told reflows its own content for a window it does
     /// not have.
-    public func relayout() {
+    /// Called when the grid this view can show has changed, with the grid it can show now.
+    ///
+    /// The view cannot tell the client its window has changed — that belongs to the controller,
+    /// which is the only thing that knows what the client currently believes — but the view is
+    /// the only thing that knows when its own bounds have changed, so it reports rather than
+    /// waits to be asked. Waiting to be asked is what the appliance did: SwiftUI calls a
+    /// representable's `updateUIView` when its inputs change, and a window that has just been
+    /// laid out is not one of those inputs, so the grid was computed once — often while the
+    /// bounds were still empty — and never again. The client drew 80 columns into a 40-column
+    /// pane for the whole session, with the last rows of the screen black, and no rotation could
+    /// fix it because nothing was ever sent.
+    public var onGridChanged: ((TerminalMetrics) -> Void)?
+
+    /// relayout recomputes the grid this view can show for its current bounds, and returns it.
+    ///
+    /// It deliberately does **not** resize the screen. The screen is the client's window, and
+    /// only the controller may change it: a view that resizes it has already answered the
+    /// question the caller is about to ask — "has the client been told its new size?" — and the
+    /// answer is always yes. The caller compares what this returns against the size the client
+    /// was last told, and the controller is the one that acts on it. See `TerminalSizing`.
+    @discardableResult
+    public func relayout() -> TerminalMetrics {
         let available = bounds.height - coveredTop
         guard let new = TerminalMetrics.metrics(
             bounds: (width: Double(bounds.width), height: Double(available)),
             cellWidth: Double(metrics.cellWidth),
             cellHeight: Double(metrics.cellHeight),
             keyStripHeight: 0
-        ) else { return }
+        ) else { return metrics }
 
-        guard new.cols != metrics.cols || new.rows != metrics.rows else { return }
+        guard new.cols != metrics.cols || new.rows != metrics.rows else { return metrics }
         metrics = new
-        screen.resize(cols: new.cols, rows: new.rows)
         setNeedsDisplay()
+        onGridChanged?(metrics)
+        return metrics
     }
 
-    /// The grid the client is currently told it has.
-    public var grid: TerminalMetrics { metrics }
+    /// layoutSubviews is where a window that has changed size is noticed.
+    ///
+    /// The layout the appliance was given arrives here and nowhere else: a rotation, a split
+    /// view being dragged, or the key strip appearing all change this view's bounds, and UIKit
+    /// is what calls this when they do.
+    public override func layoutSubviews() {
+        super.layoutSubviews()
+        relayout()
+    }
 
     // MARK: - Drawing
 
@@ -143,7 +186,6 @@ public final class TerminalView: UIView, UIKeyInput {
 
         context.setFillColor(Self.color(palette.background).cgColor)
         context.fill(rect)
-
         let firstRow = visibleFirstRow()
         for row in 0..<metrics.rows {
             let sourceRow = firstRow + row
@@ -217,9 +259,7 @@ public final class TerminalView: UIView, UIKeyInput {
             }
 
             let line = CTLineCreateWithAttributedString(text)
-            context.textMatrix = .identity
-            context.textPosition = CGPoint(x: CGFloat(col) * cellWidth, y: y + cellHeight - font.descender)
-            CTLineDraw(line, context)
+            draw(line, in: context, cellLeft: CGFloat(col) * cellWidth, cellTop: y)
 
             if cell.pen.underline {
                 let (foregroundARGB, _) = palette.colors(of: cell.pen)
@@ -227,13 +267,31 @@ public final class TerminalView: UIView, UIKeyInput {
                 let thickness = max(1, cellHeight / 12)
                 context.fill(CGRect(
                     x: CGFloat(col) * cellWidth,
-                    y: y + cellHeight - thickness,
+                    y: y + font.ascender + thickness,
                     width: CGFloat(run) * cellWidth,
                     height: thickness
                 ))
             }
             col += run
         }
+    }
+
+    /// draw renders one line of cells, standing up.
+    ///
+    /// The two coordinate systems disagree and this is where they are reconciled. UIKit
+    /// hands a view a context whose y axis points down; Core Text draws glyphs with y
+    /// pointing up. A line drawn with the identity text matrix is therefore mirrored — the
+    /// appliance's whole client rendered upside down on the device, which is what a
+    /// screenshot of the running appliance showed. Negating the text matrix's y is what
+    /// makes the glyphs and the context agree, and once they do the baseline has to be
+    /// named rather than inferred from the cell's floor: it sits one ascent below the cell's
+    /// top, which is where a terminal puts it and what keeps a row's text inside its row.
+    ///
+    /// The position is in the context's own space, so it is not affected by the text matrix.
+    private func draw(_ line: CTLine, in context: CGContext, cellLeft: CGFloat, cellTop: CGFloat) {
+        context.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
+        context.textPosition = CGPoint(x: cellLeft, y: cellTop + font.ascender)
+        CTLineDraw(line, context)
     }
 
     /// runLength is how many cells from an index share the cell's pen and glyph width,
@@ -297,9 +355,7 @@ public final class TerminalView: UIView, UIKeyInput {
             .foregroundColor: Self.color(palette.background),
         ])
         let line = CTLineCreateWithAttributedString(text)
-        context.textMatrix = .identity
-        context.textPosition = CGPoint(x: rect.minX, y: rect.minY + cellHeight - font.descender)
-        CTLineDraw(line, context)
+        draw(line, in: context, cellLeft: rect.minX, cellTop: rect.minY)
     }
 
     /// startBlinking alternates the cursor, which is what tells a reader where their
@@ -344,15 +400,13 @@ public final class TerminalView: UIView, UIKeyInput {
         let point = touch.location(in: self)
         let lines = gesture.move(x: Double(point.x), y: Double(point.y - coveredTop))
         guard lines != 0 else { return }
-        wheel(lines)
+        wheel(lines, x: Double(point.x), y: Double(point.y - coveredTop))
     }
 
     public override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
         switch gesture.up() {
         case .tap(let x, let y):
             tap(x: x, y: y)
-        case .wheel(let notches):
-            wheel(notches)
         case .none:
             break
         }
@@ -362,18 +416,24 @@ public final class TerminalView: UIView, UIKeyInput {
         _ = gesture.up()
     }
 
-    /// wheel reports a drag as mouse wheel notches, or scrolls the console's own
-    /// history when the client is not listening for a mouse.
+    /// wheel reports a drag as mouse wheel notches at the cell the finger is on, or scrolls the
+    /// console's own history when the client is not listening for a mouse.
+    ///
+    /// **The cell is the finger's, not the cursor's**, and that is the whole of whether a drag
+    /// does anything. A client routes a wheel report to whatever it has under the cell, which
+    /// is how a reader scrolls the panel they are dragging — a page, a room's messages, a
+    /// guide. Reported at the cursor instead, the wheel arrives at whichever panel holds the
+    /// focus, which on the NomadNet client is the menu bar: it scrolls nothing at all, and a
+    /// drag anywhere on the screen looks like a console that cannot be dragged.
     ///
     /// A console scrolled away from the live output is a console the reader has taken
     /// over, so the client is not told about the drag at all: sending it both a wheel
     /// report and a scroll would move the client's own view and this one.
-    private func wheel(_ lines: Int) {
+    private func wheel(_ lines: Int, x: Double, y: Double) {
         if screen.mouseReporting, scrollOffset == 0 {
             let button: TerminalMouseButton = lines > 0 ? .wheelDown : .wheelUp
             let notches = min(abs(lines), TouchGesture.maxWheelNotches)
-            let col = max(0, min(metrics.cols - 1, screen.cursorX))
-            let row = max(0, min(metrics.rows - 1, screen.cursorY))
+            let (col, row) = metrics.pixelToCell(x: x, y: y)
             for _ in 0..<notches {
                 onMouse?(TerminalMouse.sgr(button: button, col: col, row: row, pressed: true))
             }
@@ -405,15 +465,14 @@ public final class TerminalView: UIView, UIKeyInput {
 
     // MARK: - Keyboard
 
-    /// Sends a key the strip or a hardware keyboard produced, spending the latches.
+    /// Sends a key the console's own keyboard produced, which is the pane's to spend.
     ///
-    /// The latches are spent here rather than in the strip because the next key may come
-    /// from anywhere: a reader who taps `Ctrl` and then presses `c` on a Magic Keyboard
-    /// means the same thing as one who taps `Ctrl` and then `c` on the strip.
+    /// The latches are the pane's, and it is the pane that applies them, because the next key
+    /// may come from anywhere: a reader who taps `Ctrl` and then presses `c` on a Magic Keyboard
+    /// means the same thing as one who taps `Ctrl` and then `c` on the strip, and the strip has
+    /// to stop showing `Ctrl` as lit either way.
     public func send(key: TerminalKey) {
-        let (control, alt) = latch.spend(key)
-        guard let bytes = TerminalKeys.bytes(for: key, control: control, alt: alt) else { return }
-        onKey?(bytes)
+        onKey?(key)
     }
 
     public override var canBecomeFirstResponder: Bool { true }

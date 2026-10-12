@@ -106,7 +106,7 @@ struct ConsolePane: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            TerminalHostView(terminal: terminal, cellHeight: $cellHeight, latch: latch)
+            TerminalHostView(terminal: terminal, cellHeight: $cellHeight, onKey: send)
                 .ignoresSafeArea(.keyboard, edges: .bottom)
 
             if keyboardHeight > 0 {
@@ -131,7 +131,12 @@ struct ConsolePane: View {
         }
     }
 
-    /// send gives a key from the strip to the client, spending the latches.
+    /// send gives a key to the client, spending the latches.
+    ///
+    /// It is the one place a key becomes bytes, whatever produced it — a button on the strip,
+    /// the software keyboard, or a hardware one — which is what makes the two latches a single
+    /// piece of state: the strip draws them, both keyboards spend them, and the strip stops
+    /// showing one as lit the moment it is spent.
     private func send(_ key: TerminalKey) {
         let (control, alt) = latch.spend(key)
         guard let bytes = TerminalKeys.bytes(for: key, control: control, alt: alt) else { return }
@@ -151,8 +156,11 @@ struct TerminalHostView: UIViewRepresentable {
     /// Reports the console's cell height back, which is what sizes the key strip.
     @Binding var cellHeight: Double
 
-    /// The latches, which the view spends on the next key from anywhere.
-    let latch: ModifierLatch
+    /// What a key from the console's own keyboard is given to, which is the pane.
+    ///
+    /// The key rather than its bytes: the modifier latches belong to the pane, so that the
+    /// button the strip draws as lit and the key that spends it are the same latch.
+    let onKey: (TerminalKey) -> Void
 
     func makeUIView(context: Context) -> TerminalView {
         let view = TerminalView(
@@ -160,23 +168,23 @@ struct TerminalHostView: UIViewRepresentable {
             screen: terminal.screen,
             fontSize: UIFont.preferredFont(forTextStyle: .body).pointSize
         )
-        view.latch = latch
-        view.onKey = { bytes in terminal.send(bytes) }
+        view.onKey = onKey
         view.onMouse = { bytes in terminal.send(bytes) }
+        // The view reports the grid it can show whenever its own bounds change — a rotation, a
+        // split view, the key strip — and the controller decides whether the client has to be
+        // told. Nothing in SwiftUI's own update path is a notification that a window has been
+        // laid out, which is why the view has to say so itself.
+        view.onGridChanged = { [weak terminal] metrics in
+            terminal?.resizeIfNeeded(to: metrics)
+        }
         terminal.onScreenChanged = { [weak view] in view?.screenChanged() }
         return view
     }
 
     func updateUIView(_ view: TerminalView, context: Context) {
-        view.latch = latch
-        view.relayout()
-        let metrics = view.grid
+        // The grid is settled by the view's own layout; this only keeps the key strip's height
+        // in step with the cell the terminal is drawn at.
+        let metrics = view.relayout()
         cellHeight = Double(metrics.cellHeight)
-        // The client is told the window it now has. A client that is not told draws its
-        // interface for the size it was given at start-up, which after a rotation is wrong
-        // on every line.
-        if metrics.cols != terminal.screen.cols || metrics.rows != terminal.screen.rows {
-            terminal.resize(cols: metrics.cols, rows: metrics.rows)
-        }
     }
 }

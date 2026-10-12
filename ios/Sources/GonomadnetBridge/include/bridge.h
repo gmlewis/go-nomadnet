@@ -52,17 +52,24 @@ extern "C" {
 #define GONOMADNET_SHUT_DOWN 5        /* the appliance has already been shut down */
 
 /*
- * GonomadnetStart brings the appliance up: the Reticulum transport first, then the
- * sensor feed that the client and the bot read.
+ * GonomadnetStart brings the whole appliance up: the Reticulum transport, the sensor feed,
+ * the RRC hub and the bot, in that order. The first thing the client and the bot read is
+ * the feed, and the transport owns the shared instance everything else attaches to.
  *
- * configDir     the client's own configuration directory (~/.nomadnetwork)
- * rnsConfigDir  the Reticulum configuration directory the Swift half rendered
+ * configDir     the client's own configuration directory, where its configuration, its
+ *               storage and the local hub's identity live
+ * rnsConfigDir  the Reticulum configuration directory that owns the shared instance
+ * clientRNSDir  the Reticulum configuration directory the hub and the bot attach to the
+ *               shared instance through. It is not the transport's: a second user of the
+ *               transport's directory would try to own an instance that is already owned.
  * feedPort      the loopback port the sensor feed binds; 0 means the pinned 37430
  *
- * It returns as soon as the transport is serving. The hub and the bot are started
- * by the bridge's own subsystem list (see ios/bridge/subsystems.go).
+ * The hub's identity and its published address are made here, because the hub has no
+ * bootstrap run of its own to make them in, and its address is how the bot and the client
+ * find the appliance's own hub at all.
  */
-int GonomadnetStart(const char *configDir, const char *rnsConfigDir, int feedPort);
+int GonomadnetStart(const char *configDir, const char *rnsConfigDir, const char *clientRNSDir,
+                    int feedPort);
 
 /*
  * GonomadnetStop shuts the appliance down and releases every goroutine, socket and

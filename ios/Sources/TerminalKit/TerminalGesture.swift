@@ -32,21 +32,16 @@ public struct TouchGesture: Equatable, Sendable {
 
     /// What a finger did, once it has come up.
     ///
-    /// The three cases are the three things a caller can do about it, so that a caller must
-    /// say what it does with each rather than falling through to the tap it is not. The
-    /// wheel's notches are the client's own sign — negative is a finger moving up the
-    /// screen, which is the wheel's up — because the cell the caller reports it at and the
-    /// button it sends are the caller's alone.
+    /// A drag is not one of the cases, and that is deliberate: every line a drag asked for
+    /// was asked for as it happened, by ``move(x:y:)``, and a caller that acted on those has
+    /// nothing left to do when the finger comes up. A release that reported the drag again
+    /// was a second scroll of the same travel, which is what the appliance did.
     public enum Outcome: Equatable, Sendable {
-        /// A drag that asks for nothing: it crossed the slop, so it is not a tap, and it
-        /// named no whole line, so there is no scroll to send.
+        /// A drag that asks for nothing: it crossed the slop, so it is not a tap, and what it
+        /// asked for has already been asked for.
         case none
-
         /// A tap, at the point the finger came up rather than where it went down.
         case tap(x: Double, y: Double)
-
-        /// A drag, as whole lines crossed: negative is a finger moving up the screen.
-        case wheel(notches: Int)
     }
 
     /// The most whole lines one movement, or one drag, is reported as.
@@ -73,8 +68,6 @@ public struct TouchGesture: Equatable, Sendable {
     /// Unreported travel, kept so that half a line and half a line are a line.
     private var travel: Double
 
-    /// Whole lines crossed by the drag, capped when they are reported.
-    private var crossed: Int
 
     /// Whether the finger ever traveled further than `slop`.
     private var moved: Bool
@@ -96,7 +89,6 @@ public struct TouchGesture: Equatable, Sendable {
         lastX = 0
         lastY = 0
         travel = 0
-        crossed = 0
         moved = false
         active = false
     }
@@ -108,7 +100,6 @@ public struct TouchGesture: Equatable, Sendable {
         lastX = x
         lastY = y
         travel = 0
-        crossed = 0
         moved = false
         active = true
     }
@@ -140,29 +131,23 @@ public struct TouchGesture: Equatable, Sendable {
         // and this reports which way it went, up being positive. The appliance's Android
         // half reports the same, and the two have to agree, because the same finger on the
         // same client has to scroll the same way on both.
-        let reported = -lines
-        crossed += reported
-        return clamp(reported)
+        return clamp(-lines)
     }
 
     /// Ends the gesture, at the point the finger left the screen.
     ///
     /// A tap is reported where the finger came up rather than where it went down, which is
-    /// where every other touch interface reports one and matters only within the slop. A
-    /// drag reports the lines it asked for, so that a caller which did not act on them as
-    /// they happened — because the client's own mouse reporting was what would have scrolled
-    /// — can still send them; a drag that named no line at all has nothing to send and is
-    /// reported as none, which is still not a tap.
-    ///
-    /// The lines carry `move`'s sign: positive is a finger moving up.
+    /// where every other touch interface reports one and matters only within the slop. A drag
+    /// reports nothing: the lines it asked for were asked for as they happened, so a caller
+    /// that acted on them has nothing left to do and one that ignored them has nothing to
+    /// send.
     public mutating func up() -> Outcome {
         guard active else { return .none }
         let wasMoved = moved
-        let total = crossed
+        let x = lastX
+        let y = lastY
         reset()
-        guard wasMoved else { return .tap(x: lastX, y: lastY) }
-        let capped = clamp(total)
-        return capped == 0 ? .none : .wheel(notches: capped)
+        return wasMoved ? .none : .tap(x: x, y: y)
     }
 
     /// Leaves the gesture ready for the next finger.
@@ -170,7 +155,6 @@ public struct TouchGesture: Equatable, Sendable {
         active = false
         moved = false
         travel = 0
-        crossed = 0
     }
 
     /// One report's notches, bounded so that a fast finger cannot write a screenful of

@@ -26,13 +26,14 @@ static archive: a Go library built for `ios/arm64`, and a Swift package built by
 ./scripts/build-ios-app.sh --test-only   # run the Go and Swift tests and stop
 ./scripts/build-ios-app.sh --debug       # build an installable debug .app
 ./scripts/build-ios-app.sh --simulator   # build a debug .app for the Simulator
+./scripts/build-ios-app.sh --acceptance  # drive the appliance on a device (see §6)
 ./scripts/build-ios-app.sh               # build a release .ipa in dist/ios/
 ```
 
 `--test-only` needs no SDK, no signing key and no Xcode project, and it is the gate that
 has to pass before any of the rest is worth doing. It runs:
 
-- `swift test` in `ios/`, which is 216 tests over the terminal engine, the configuration
+- `swift test` in `ios/`, which is 228 tests over the terminal engine, the configuration
   renderers and resolvers, the channel store, the radio's byte pump, and the heading maths.
 - `go test -race ./ios/bridge/...`, which is the frame codec, the console, the sensor feed,
   the appliance engine, and the console's own join to a real tcell screen.
@@ -140,6 +141,22 @@ GONOMADNET_TEAM=ABCDE12345 ./scripts/build-ios-app.sh
 
 A simulator build is never signed, and needs no team.
 
+**A signed build for one device needs the device named as well.** Automatic signing
+creates the certificate and the provisioning profile on the first signed build, but a
+*device* is registered separately, and a profile that does not list the device installs
+nothing: iOS refuses it with *This provisioning profile cannot be installed on this
+device*, and the build itself is already green by then. Naming the device is what registers
+it, and it is the one thing the target's build settings cannot carry:
+
+```bash
+GONOMADNET_TEAM=ABCDE12345 GONOMADNET_DEVICE=<udid> ./scripts/build-ios-app.sh --debug
+```
+
+Find the UDID with `xcrun devicectl list devices`; `id=<udid>` or `id=<identifier>` both
+work as destinations. The registration is a change to the developer account rather than to
+the project, so a generic or simulator build never asks for it and the script only passes
+the flag when a device is named.
+
 ## 6. Running it
 
 On a **device**, install with Xcode's own Run, or with `xcrun devicectl`:
@@ -159,6 +176,29 @@ xcrun simctl launch --console booted com.gmlewis.gonomadnet
 
 The appliance needs location, motion and Bluetooth permission the first time each is
 used; each is asked for when the reader starts the thing that needs it, never at launch.
+
+To have the appliance drive itself instead of a reader doing it, run the acceptance test on
+the device:
+
+```bash
+GONOMADNET_TEAM=ABCDE12345 GONOMADNET_DEVICE=<udid> ./scripts/build-ios-app.sh --acceptance
+```
+
+It installs both the appliance and a test runner, presses the buttons, and asserts what a
+reader would check — see [docs/iOS-App.md](iOS-App.md) §9. Six tests: the first launch
+starts nothing; Start Stack brings up the shared instance and the sensor feed, and Stop Stack
+releases them and they come back; the console renders, takes a keystroke, and scrolls
+the panel a drag is over; rotating reflows it; and Start Sensors turns the sensor path on. It
+leaves its screenshots and its measurements in a result bundle under
+`ios/build/acceptance.xcresult`, which `xcrun xcresulttool export attachments --path …
+--output-path <dir>` unpacks.
+
+While it runs, the appliance shows iOS's own *Automation Running* banner on the device. That
+is the test driving the app, not the appliance: it goes away when the run ends.
+
+The screenshots come out in the device's **native** orientation with the interface drawn
+rotated, so a reader looking at one turns it 90° counter-clockwise and crops the black
+remainder.
 
 ## 7. Testing the halves on their own
 
@@ -185,6 +225,11 @@ toolchain, a beta, `swiftly`) produces `module compiled with Swift X cannot be i
 the Swift Y compiler` — which reads like a broken package and is a shared cache directory.
 `build/swift` belongs to the script, `build/swift-ios` to the iOS-triple build above, and
 `.build` to a bare `swift test` run with whatever is on `PATH`.
+
+**The device acceptance test is not one of these.** It is a UI test — `AcceptanceTests` in
+`ios/App/AcceptanceTests/` — and it needs an installed appliance on real hardware, so it
+runs only through `--acceptance` and never on the machine that builds. What it covers is in
+[docs/iOS-App.md](iOS-App.md) §9.
 
 ## 8. Troubleshooting
 

@@ -20,7 +20,25 @@
 #   ./scripts/build-ios-app.sh --debug      build an installable debug .app
 #   ./scripts/build-ios-app.sh --simulator  build a debug .app for the Simulator
 #   ./scripts/build-ios-app.sh --test-only  run the Go and Swift unit tests and stop
+#   ./scripts/build-ios-app.sh --acceptance run the device acceptance test on a device
 #   ./scripts/build-ios-app.sh --help       show this text
+#
+# A device build is signed when GONOMADNET_TEAM names the team, and is built for one
+# named device when GONOMADNET_DEVICE names it. The two together are what makes the
+# result installable:
+#
+#   GONOMADNET_TEAM=<team> GONOMADNET_DEVICE=<udid> ./scripts/build-ios-app.sh --debug
+#
+# Both are environment variables rather than arguments because neither belongs in the
+# repository: a team identifier and a device UDID are the operator's, not the project's.
+#
+# --acceptance needs both, and a device: it is the one mode that cannot run anywhere else.
+# It drives the installed appliance the way a reader would and asserts what a reader can
+# check — that the first launch starts nothing, that Start Stack brings up the shared
+# instance and the sensor feed, that Stop Stack releases them and they come back, that the
+# console renders and takes a keystroke, that rotating reflows it, and that Start Sensors
+# turns the sensor path on. It is deliberately NOT part of --test-only or run-all-tests.sh:
+# everything they run, runs on a machine with no device.
 #
 # The iOS tests are deliberately NOT part of run-all-tests.sh: that gate is the Go
 # repositories' gate and has to keep working on a machine with no Xcode. `swift test`
@@ -52,12 +70,13 @@ MODE="release"
 for arg in "$@"; do
   case "$arg" in
     --help|-h)
-      sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,41p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     --debug) MODE="debug" ;;
     --simulator) MODE="simulator" ;;
     --test-only) MODE="test" ;;
+    --acceptance) MODE="acceptance" ;;
     *)
       echo "unrecognized argument: $arg" >&2
       echo "run with --help" >&2
@@ -300,7 +319,8 @@ pinned_assertions
 # as build settings, so it never has to be edited for a release. See docs/iOS-Build.md.
 PROJECT="$IOS_DIR/App/Gonomadnet.xcodeproj"
 if [ ! -d "$PROJECT" ]; then
-  echo "ios/App/Gonomadnet.xcodeproj is missing: run ./scripts/build-ios-app.sh --test-only" >&2
+  echo "ios/App/Gonomadnet.xcodeproj is missing: it is committed with the sources it" >&2
+  echo "builds, so a checkout without it did not bring the whole repository." >&2
   exit 1
 fi
 
@@ -313,10 +333,28 @@ ARCHIVE_PATH="$BUILD_DIR/Gonomadnet.xcarchive"
 # archive and the link line are all verified on a machine that has no certificate —
 # the .ipa it produces is a valid package that has to be signed before it will install.
 SIGN_ARGS=()
+# A signed build has to be allowed to talk to the developer portal: automatic signing
+# creates the development certificate and the provisioning profile for the target's
+# bundle identifier on the first run, and refreshes them when they expire. Without this
+# flag xcodebuild refuses to make either and fails before it reaches the compiler, so a
+# team in the environment is what asks for the update and this is how it is granted.
+SIGN_FLAGS=()
 SIGNING="not-applicable"
-if [ "$MODE" != "simulator" ]; then
+if [ "$MODE" = "acceptance" ]; then
+  # The acceptance test is run by a second app on the device, so both it and the appliance
+  # it drives have to be signed and installed. There is nothing to fall back to: a test
+  # runner that cannot be installed tests nothing.
+  if [ -z "${GONOMADNET_TEAM:-}" ] || [ -z "${GONOMADNET_DEVICE:-}" ]; then
+    echo "--acceptance needs both GONOMADNET_TEAM and GONOMADNET_DEVICE" >&2
+    exit 2
+  fi
+  SIGN_ARGS=(DEVELOPMENT_TEAM="$GONOMADNET_TEAM" CODE_SIGN_STYLE=Automatic)
+  SIGN_FLAGS=(-allowProvisioningUpdates -allowProvisioningDeviceRegistration)
+  SIGNING="signed"
+elif [ "$MODE" != "simulator" ]; then
   if [ -n "${GONOMADNET_TEAM:-}" ]; then
     SIGN_ARGS=(DEVELOPMENT_TEAM="$GONOMADNET_TEAM" CODE_SIGN_STYLE=Automatic)
+    SIGN_FLAGS=(-allowProvisioningUpdates)
     SIGNING="signed"
   else
     SIGN_ARGS=(CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="")
@@ -331,6 +369,23 @@ case "$MODE" in
   debug)
     CONFIG="Debug"
     ACTION="build"
+    # A build for one named device is what registers that device on the developer portal:
+    # automatic signing adds a connected device to the provisioning profile when the
+    # destination is the device itself, and a generic destination cannot, because there is
+    # no device for it to name. Without this an install fails with "This provisioning
+    # profile cannot be installed on this device" even though the app signed cleanly.
+    #
+    # Registering it is a separate permission from updating the profile, and xcodebuild is
+    # not granted it by default: without -allowProvisioningDeviceRegistration the build
+    # stops with "Device ... isn't registered in your developer account". Both are asked
+    # for only when the build names the device, so a generic or simulator build never
+    # touches the portal's device list.
+    if [ -n "${GONOMADNET_DEVICE:-}" ]; then
+      DESTINATION_ARGS=(-destination "id=$GONOMADNET_DEVICE")
+      if [ "$SIGNING" = "signed" ]; then
+        SIGN_FLAGS+=(-allowProvisioningDeviceRegistration)
+      fi
+    fi
     ;;
   simulator)
     CONFIG="Debug"
@@ -345,22 +400,44 @@ case "$MODE" in
       exit 1
     fi
     ;;
+  acceptance)
+    CONFIG="Debug"
+    ACTION="test"
+    DESTINATION_ARGS=(-destination "id=$GONOMADNET_DEVICE" -resultBundlePath "$BUILD_DIR/acceptance.xcresult")
+    # A result bundle from an earlier run is refused rather than replaced, and the run that
+    # would replace it is the one worth keeping. It is read by the time the run ends.
+    rm -rf "$BUILD_DIR/acceptance.xcresult"
+    ;;
 esac
+
+# An archive path belongs to the action that makes an archive; asking a test run for one
+# is asking for something it will not produce.
+ARCHIVE_ARGS=(-archivePath "$ARCHIVE_PATH")
+if [ "$ACTION" = "test" ]; then
+  ARCHIVE_ARGS=()
+fi
 
 echo "building the $MODE application"
 xcodebuild -project "$PROJECT" -scheme "$SCHEME" \
   -configuration "$CONFIG" \
   -derivedDataPath "$DERIVED" \
-  -archivePath "$ARCHIVE_PATH" \
+  ${ARCHIVE_ARGS[@]+"${ARCHIVE_ARGS[@]}"} \
   GONOMADNET_VERSION="$VERSION_NAME" \
   GONOMADNET_BUILD="$BUILD_NUMBER" \
   GONOMADNET_ARCHIVE="$ARCHIVE" \
   GONOMADNET_ASSETS="$STAGING_DIR/Resources" \
   ${SIGN_ARGS[@]+"${SIGN_ARGS[@]}"} \
+  ${SIGN_FLAGS[@]+"${SIGN_FLAGS[@]}"} \
   ${DESTINATION_ARGS[@]+"${DESTINATION_ARGS[@]}"} \
   "$ACTION"
 
 case "$MODE" in
+  acceptance)
+    echo
+    echo "the device acceptance test passed"
+    echo "screenshots: xcrun xcresulttool export attachments \\"
+    echo "               --path $BUILD_DIR/acceptance.xcresult --output-path <dir>"
+    ;;
   release)
     APP="$ARCHIVE_PATH/Products/Applications/Gonomadnet.app"
     IPA="$DIST_DIR/gonomadnet-$VERSION_NAME-ios-arm64.ipa"

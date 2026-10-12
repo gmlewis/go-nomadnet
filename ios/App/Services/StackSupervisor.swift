@@ -100,6 +100,7 @@ public final class StackSupervisor {
             try ApplianceBridge.start(
                 configDir: paths.clientConfigDir.path,
                 rnsConfigDir: paths.transportRNSDir.path,
+                clientRNSDir: paths.clientRNSDir.path,
                 feedPort: Int32(NodeConfigRenderer.feedPort)
             )
             state = .running
@@ -136,7 +137,30 @@ public final class StackSupervisor {
     private func prepareFiles() throws {
         try paths.ensureDirectories()
         try writeConfigurations()
-        _ = DefaultHubs.seed(store: paths.hubStore, localHub: nil)
+        try writeBotConfig()
+        _ = DefaultHubs.seed(store: paths.hubStore, localHub: localHubDestination())
+    }
+
+    /// writeBotConfig renders the bot's own configuration.
+    ///
+    /// The bot reads NMEA from the appliance's sensor feed, which on this platform is a
+    /// loopback socket rather than a FIFO, and it dials the appliance's own hub — whose
+    /// address it can only know once that hub has published one, which is why a fresh
+    /// install's first start names no hub and every start after it does.
+    private func writeBotConfig() throws {
+        let spec = BotConfigSpec(
+            gpsPort: NodeConfigRenderer.sensorFeed,
+            compassPort: NodeConfigRenderer.sensorFeed,
+            kjvTxtFile: paths.kjvTxtFile,
+            hubDestination: localHubDestination()
+        )
+        let path = paths.botConfigFile
+        let rendered = NodeConfigRenderer.gorrcbotConfig(spec)
+        if let existing = try? String(contentsOf: path, encoding: .utf8), existing == rendered {
+            return
+        }
+        try rendered.write(to: path, atomically: true, encoding: .utf8)
+        log("the bot's configuration is written to \(path.lastPathComponent)")
     }
 
     /// stop takes the appliance down and releases everything it holds.
@@ -156,19 +180,26 @@ public final class StackSupervisor {
     /// startConsole attaches the NomadNet client to a console and returns the socket
     /// the app dials.
     ///
-    /// The socket name is as short as it can be, and it is checked rather than assumed:
-    /// the kernel's `sun_path` holds 104 bytes, and an iOS app's own temporary
-    /// directory already spends most of that before the name.
+    /// The path is short and it is checked rather than assumed: the kernel's `sun_path`
+    /// holds 104 bytes, an iOS app's container spends most of that before the socket's own
+    /// name, and a path the kernel will not bind is refused by the bridge as well — so the
+    /// check here is what turns it into a reason the reader can be shown. Where the socket
+    /// goes, and why not beside the configuration, is `ConsoleSocket`'s.
     public func startConsole(cols: UInt16, rows: UInt16) throws -> String {
         guard state.isRunning else {
             throw StackError.consoleWithoutStack
         }
 
-        let name = "gm.sock"
-        let path = paths.consoleSocket(name)
-        guard path.utf8.count <= Self.maxSocketPath else {
-            throw StackError.socketPathTooLong(path: path, limit: Self.maxSocketPath)
+        let path = paths.consoleSocket
+        guard path.utf8.count <= ConsoleSocket.maxPath else {
+            throw StackError.socketPathTooLong(path: path, limit: ConsoleSocket.maxPath)
         }
+
+        // The client reads its channel list once, as it starts. Seeding it here rather than
+        // only at prepare is what puts the appliance's own hub in front of the client the
+        // first time there is one to put there: the hub publishes its address as it comes
+        // up, which is after the last time the configuration was written.
+        _ = DefaultHubs.seed(store: paths.hubStore, localHub: localHubDestination())
 
         try ApplianceBridge.startConsole(socketPath: path, cols: cols, rows: rows)
         consolePath = path
@@ -304,9 +335,6 @@ public final class StackSupervisor {
     private func log(_ line: String) {
         onLog?(line)
     }
-
-    /// maxSocketPath is all the kernel's `sun_path` holds, its terminating NUL included.
-    static let maxSocketPath = 103
 }
 
 /// StackError is why the appliance could not be brought up or attached to.

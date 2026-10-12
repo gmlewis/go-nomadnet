@@ -69,11 +69,20 @@ public enum ApplianceBridge {
     ///
     /// - Parameters:
     ///   - configDir: the client's own configuration directory.
-    ///   - rnsConfigDir: the Reticulum configuration directory the appliance rendered.
+    ///   - rnsConfigDir: the Reticulum configuration directory that owns the shared
+    ///     instance.
+    ///   - clientRNSDir: the Reticulum configuration directory the hub and the bot attach
+    ///     to the shared instance through. It is not the transport's: a second user of that
+    ///     directory would try to own an instance that is already owned.
     ///   - feedPort: the loopback port the sensor feed binds; 0 means the pinned one.
     /// - Throws: `ApplianceError` when the appliance could not be brought up.
-    public static func start(configDir: String, rnsConfigDir: String, feedPort: Int32 = 0) throws {
-        let status = Status(rawValue: GonomadnetStart(configDir, rnsConfigDir, feedPort)) ?? .failed
+    public static func start(
+        configDir: String,
+        rnsConfigDir: String,
+        clientRNSDir: String,
+        feedPort: Int32 = 0
+    ) throws {
+        let status = Status(rawValue: GonomadnetStart(configDir, rnsConfigDir, clientRNSDir, feedPort)) ?? .failed
         try check(status, "starting the appliance")
     }
 

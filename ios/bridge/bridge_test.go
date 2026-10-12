@@ -287,6 +287,57 @@ func TestHostStartAndStopAreIdempotent(t *testing.T) {
 	}
 }
 
+// TestTheApplianceStartsAgainAfterAStop is the first thing the device acceptance found.
+//
+// A reader presses Stop Stack and then Start Stack. It is what the guide tells them to do
+// after pairing a radio, and what its troubleshooting tells them to do when the stack did
+// not come up. The host that had been shut down was still the one the next start was asked
+// for, so the appliance came up once per launch and never twice: the second Start Stack
+// failed with "the appliance host has been shut down" and the button stayed on Start Stack.
+func TestTheApplianceStartsAgainAfterAStop(t *testing.T) {
+	applianceMu.Lock()
+	appliance = &Host{}
+	applianceMu.Unlock()
+
+	// The client is registered once, by the host binary's init, and it is not part of
+	// what a stop ends: the appliance that starts again is the same appliance.
+	runner := &fakeRunner{}
+	appliance.SetClientRunner(runner.run)
+
+	sub := &fakeSubsystem{name: "transport"}
+	ctx := context.Background()
+
+	if err := StartAppliance(ctx, "/etc/nomadnetwork", "/etc/reticulum", freePort(t), sub); err != nil {
+		t.Fatalf("StartAppliance: %v", err)
+	}
+	if err := StopAppliance(); err != nil {
+		t.Fatalf("StopAppliance: %v", err)
+	}
+	if err := StartAppliance(ctx, "/etc/nomadnetwork", "/etc/reticulum", freePort(t), sub); err != nil {
+		t.Fatalf("StartAppliance after StopAppliance: %v", err)
+	}
+	t.Cleanup(func() { _ = StopAppliance() })
+
+	if sub.starts != 2 {
+		t.Errorf("the transport started %v times across a stop and a start, want 2", sub.starts)
+	}
+
+	// And the console of the appliance that started again still has a client to run: a
+	// restart that loses the registered runner is one whose console would be silent.
+	path := socketPath(t)
+	if err := StartConsoleSession(ctx, path, 80, 24); err != nil {
+		t.Fatalf("StartConsoleSession after a restart: %v", err)
+	}
+	conn, err := net.Dial("unix", path)
+	if err != nil {
+		t.Fatalf("dialing the console of the appliance that started again: %v", err)
+	}
+	if err := conn.Close(); err != nil {
+		t.Fatalf("closing the app's end: %v", err)
+	}
+	runner.waitForTTY(t)
+}
+
 func TestStatusForNamesTheReasonACallFailed(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {

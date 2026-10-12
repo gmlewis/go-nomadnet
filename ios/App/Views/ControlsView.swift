@@ -40,6 +40,11 @@ struct ControlsView: View {
                         .font(.footnote)
                         .foregroundStyle(.red)
                 }
+                if let problem = model.consoleProblem {
+                    Text(problem)
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                }
 
                 Button(model.state.isRunning ? "Stop Stack" : "Start Stack") {
                     model.toggleStack()

@@ -247,6 +247,30 @@ final class NodeConfigTests: XCTestCase {
         XCTAssertTrue(text.contains("respond_to = { \"general\" = \"gobot\" }"))
     }
 
+    /// The appliance's own bot reads the feed the appliance serves, which is a loopback
+    /// socket and not a FIFO: there is no FIFO here, and a bot pointed at one would wait for
+    /// a writer that is never going to open it.
+    func testTheBotReadsTheAppliancesOwnFeed() {
+        let text = NodeConfigRenderer.gorrcbotConfig(
+            BotConfigSpec(gpsPort: NodeConfigRenderer.sensorFeed, compassPort: NodeConfigRenderer.sensorFeed)
+        )
+        XCTAssertTrue(text.contains("gps_port = \"tcp://127.0.0.1:37430\""), text)
+        XCTAssertTrue(text.contains("compass_port = \"tcp://127.0.0.1:37430\""), text)
+    }
+
+    /// A fresh install's first start has no local hub address to name, because the hub
+    /// publishes one as it comes up and this is rendered before it does. Naming an address
+    /// that is not there yet would have the bot report its own hub as unreachable for the
+    /// life of the install.
+    func testABotWithNoLocalHubYetIsGivenNoHubToDial() {
+        let text = NodeConfigRenderer.gorrcbotConfig(
+            BotConfigSpec(gpsPort: "/gps", compassPort: "/compass")
+        )
+        XCTAssertTrue(text.contains("[bot]"), text)
+        XCTAssertFalse(text.contains("[[hubs]]"), text)
+        XCTAssertFalse(text.contains("destination"), text)
+    }
+
     func testTheBotIsToldWhereTheBundledBibleTextIs() {
         let text = NodeConfigRenderer.gorrcbotConfig(
             BotConfigSpec(

@@ -79,7 +79,10 @@ func ClearLastError() {
 
 // Appliance is the process's host, for the host binary that has to register the
 // client runner.
-func Appliance() *Host { return appliance }
+//
+// It is the host that is the appliance now, which is not the one a stop shut down:
+// registering the runner once at init has to reach the host that starts later.
+func Appliance() *Host { return currentAppliance() }
 
 // The C boundary's own helpers.
 //
@@ -114,13 +117,15 @@ func unsafePointer(p *C.char) unsafe.Pointer { return unsafe.Pointer(p) }
 // the one place nobody can test.
 
 //export GonomadnetStart
-func GonomadnetStart(configDir, rnsConfigDir *C.char, feedPort C.int) C.int {
+func GonomadnetStart(configDir, rnsConfigDir, clientRNSDir *C.char, feedPort C.int) C.int {
 	ClearLastError()
 
-	subs := []Subsystem{
-		&Transport{ConfigDir: C.GoString(rnsConfigDir)},
+	dirs := ApplianceDirs{
+		ClientConfig: C.GoString(configDir),
+		ClientRNS:    C.GoString(clientRNSDir),
+		TransportRNS: C.GoString(rnsConfigDir),
 	}
-	err := StartAppliance(context.Background(), C.GoString(configDir), C.GoString(rnsConfigDir), int(feedPort), subs...)
+	err := StartAppliance(context.Background(), dirs.ClientConfig, dirs.TransportRNS, int(feedPort), dirs.Subsystems()...)
 	if err != nil {
 		setLastError("starting the appliance: %v", err)
 	}

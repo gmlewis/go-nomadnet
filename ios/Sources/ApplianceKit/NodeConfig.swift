@@ -195,8 +195,15 @@ public struct BotConfigSpec: Equatable, Sendable {
     public var kjvTxtFile: String
     /// The name the bot lists the local hub under.
     public var hubName: String
-    /// The local hub's `rrc.hub` destination hash, as hex.
-    public var hubDestination: String
+    /// The local hub's `rrc.hub` destination hash, as hex, or nil when the hub has not
+    /// published one yet.
+    ///
+    /// It is nil on the first start of a fresh install and on no other: the hub's address
+    /// comes from its identity, which the hub makes as it comes up, so the address a start
+    /// renders from is the previous start's. A bot told to dial an address that does not
+    /// exist reports the hub as unreachable for the life of the install, which is worse than
+    /// a bot that dials nothing until the second start.
+    public var hubDestination: String?
     /// The rooms the bot joins on the local hub.
     public var rooms: [String]
     /// The nick the bot announces itself under.
@@ -210,7 +217,7 @@ public struct BotConfigSpec: Equatable, Sendable {
         compassPort: String,
         kjvTxtFile: String = "",
         hubName: String = "gonomadnet local hub",
-        hubDestination: String,
+        hubDestination: String? = nil,
         rooms: [String] = ["general"],
         nick: String = "gobot",
         respondTo: String = "gobot"
@@ -265,6 +272,12 @@ public enum NodeConfigRenderer {
     /// It must not collide with Reticulum's own loopback ports, so it is stated beside
     /// them: the shared instance takes 37428 and Reticulum's control channel 37429.
     public static let feedPort = 37430
+    /// The sensor feed as the bot's configuration names it.
+    ///
+    /// The bot reads NMEA through the same endpoint parser the Android appliance's FIFOs go
+    /// through, so it is given the loopback socket the feed is served on rather than a path:
+    /// there is no FIFO here, and a bot pointed at one would wait for a writer forever.
+    public static let sensorFeed = "tcp://127.0.0.1:\(feedPort)"
     /// The interface's name, which shows up in Reticulum's own diagnostics.
     public static let hubInterfaceName = "Home Hub"
     /// The destination name hubs announce under; the client's own default.
@@ -350,10 +363,14 @@ public enum NodeConfigRenderer {
 
     /// Renders the bot's configuration.
     ///
-    /// The two sensor ports point at FIFOs under the appliance's private directory. A
-    /// bot that reads a FIFO has to find its writer already holding the other end, which
-    /// the sensor service arranges before anything is spawned; opening the read end of a
-    /// FIFO with no writer blocks forever, with no error message at all.
+    /// The two sensor endpoints point at the appliance's own feed, which on this platform is
+    /// a loopback socket rather than the FIFOs the Android appliance writes: the bot reads
+    /// the same NMEA sentences a client does, from the same place, which is what makes the
+    /// bot's "where" and the client's location card agree.
+    ///
+    /// A bot with no hub to dial is a bot with no `[[hubs]]` block at all, which is the honest
+    /// rendering when the local hub has not published an address yet: naming an address that
+    /// does not exist would have the bot report its own hub as unreachable forever.
     public static func gorrcbotConfig(_ spec: BotConfigSpec) -> String {
         var out = "# Rendered by the gonomadnet appliance. Do not edit by hand.\n"
         out += "[bot]\n"
@@ -370,10 +387,13 @@ public enum NodeConfigRenderer {
             out += "# configuration file.\n"
             out += "kjv_txt_file = \(escapeTomlString(spec.kjvTxtFile))\n"
         }
+        guard let destination = spec.hubDestination else { return out }
+
         out += "\n"
+        out += "# The appliance's own hub, whose address it publishes as it comes up.\n"
         out += "[[hubs]]\n"
         out += "name = \(escapeTomlString(spec.hubName))\n"
-        out += "destination = \(escapeTomlString(spec.hubDestination))\n"
+        out += "destination = \(escapeTomlString(destination))\n"
         out += "rooms = [\(spec.rooms.map(escapeTomlString).joined(separator: ", "))]\n"
         out += "nick = \(escapeTomlString(spec.nick))\n"
         let respond = spec.rooms

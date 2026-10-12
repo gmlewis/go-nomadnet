@@ -61,7 +61,10 @@ final class TerminalGestureTests: XCTestCase {
         // is positive here and a caller sends the wheel's own down.
         XCTAssertEqual(gesture.move(x: 100, y: 280), 1, "the drag's first line")
         XCTAssertEqual(gesture.move(x: 100, y: 260), 1, "the drag's second line")
-        XCTAssertEqual(gesture.up(), .wheel(notches: 2), "a drag was also a tap")
+        // And the release says nothing: the two lines were asked for as they happened, so a
+        // caller that acted on them has nothing left to do. Reporting them again is a second
+        // scroll of the same travel, which is what the appliance did.
+        XCTAssertEqual(gesture.up(), .none, "a drag was also a tap")
     }
 
     func testADragIsMeasuredInWholeLinesAndKeepsThePartLeftOver() {
@@ -134,14 +137,14 @@ final class TerminalGestureTests: XCTestCase {
         var gesture = newGesture()
         gesture.down(x: 100, y: 3000)
         XCTAssertEqual(gesture.move(x: 100, y: 1000), 48, "the burst is capped")
-        // The cap bounds what is sent, not what was traveled: the drag is reported capped
-        // as well, rather than the rest arriving on the next movement.
-        XCTAssertEqual(gesture.up(), .wheel(notches: 48))
+        // The cap bounds what is sent, not what was traveled: what is left of the drag is
+        // dropped rather than arriving on the next movement.
+        XCTAssertEqual(gesture.up(), .none)
 
         var downwards = newGesture()
         downwards.down(x: 100, y: 0)
         XCTAssertEqual(downwards.move(x: 100, y: 2000), -48)
-        XCTAssertEqual(downwards.up(), .wheel(notches: -48))
+        XCTAssertEqual(downwards.up(), .none)
     }
 
     func testTheNotchLimitIsTheOneTheViewBounds() {

@@ -54,16 +54,22 @@ Open the app and press **Start Stack** in the sidebar. What it brings up today i
 1. **The sensor feed**, on `127.0.0.1:37430`. It is up first because the client and the
    bot both read it, and a bot that opens a feed that is not there yet waits forever.
 2. **The Reticulum transport**, which owns the shared instance everything else attaches
-   to.
+   to, then **the appliance's own RRC hub**, and then **the bot**. The hub publishes its
+   address as it comes up, which is how the bot and the client find it.
 
-The status line says whether the transport is running. **Stop Stack** takes it down.
+The status line says whether the transport is running. **Stop Stack** takes it down, and
+**Start Stack** brings it back up: stopping and starting again is one appliance run twice,
+and it is what to do after pairing a radio or editing the hub.
 
-The RRC hub and the bot are written for this platform — they are `ios/bridge/subsystems.go`,
-and the renderers that produce their configuration are tested — but they are not in the
-list the appliance starts, so an installed appliance is a transport and a client rather
-than a hub. That is the first thing to finish, and it is stated here rather than in a
-changelog because "the appliance hosts a hub" is a promise a reader would otherwise only
-find out about by trying.
+The hub announces itself every minute and serves the appliance's own rooms; the bot reads
+the same position and heading feed the client's location card does, so its `where` answer and
+the card agree. Neither is a program on this platform — they are parts of the appliance — and
+both are configured from the container the appliance owns, so a hub address a reader changes
+or a radio they pair is picked up the next time the stack starts.
+
+On a brand-new install, the hub's address is made from an identity it creates as it starts,
+so the very first **Start Stack** names no local hub to the bot or to the client's channel
+list. The next one does.
 
 ## 4. The console
 
@@ -73,8 +79,9 @@ menu, the conversations, the browser and the guide.
 
 - **Tap** anywhere in the console to click there. Links, menu entries and buttons all
   respond to a tap.
-- **Drag** to scroll, which the terminal reports to the client as mouse wheel notches,
-  one per row.
+- **Drag** to scroll the panel your finger is on, which the terminal reports to the client as
+  mouse wheel notches, one per row. It scrolls that panel and no other, and a panel with
+  nothing more to show does not move.
 - **The key strip** sits above the on-screen keyboard and carries the keys touch
   keyboards lack: `ESC`, `/`, `-`, `HOME`, `↑`, `END`, `PGUP` on the first row, and
   `TAB`, `Ctrl`, `Alt`, `←`, `↓`, `→`, `PGDN` on the second. `Ctrl` and `Alt` latch:
@@ -82,7 +89,18 @@ menu, the conversations, the browser and the guide.
 - **A hardware keyboard** hides the strip and gives the client every row of the screen.
 
 The console is what the appliance is for, and it is a real one: the client renders the
-same frames it renders anywhere, and the app parses and draws them.
+same frames it renders anywhere, and the app parses and draws them. The **Console** row says
+the size the client was told — `Open · 69×35` — which is the first thing to look at if the
+client's own layouts ever look wrong for the window they are in: a client drawing for a window
+it is not in says so there.
+
+On an iPad **held in portrait** the console takes the whole screen: that is iPadOS's own
+split view putting the controls behind the detail, which is how every app on the device behaves
+and not something the appliance decides. Turn the device back and the controls are beside the
+console again.
+
+![The appliance on an iPad: the controls beside the client's own console, with the
+transport running and the console open](ios-console.png)
 
 ## 5. The radio
 
@@ -153,27 +171,20 @@ new configuration: stop and start the stack, or press **Restart Stack**.
 
 ## 8. What is not there yet
 
-- **Background operation.** iOS suspends an app when it leaves the screen. The stack
-  keeps running while the appliance is in the foreground; a transport that must stay up
-  with the screen off is not something an iOS app is allowed to promise, and the
-  appliance does not pretend otherwise.
-- **Acceptance on a real device.** The app builds, installs and launches in the Simulator,
-  and its first launch has been watched writing every configuration file without starting
-  anything. The parts below have not been run on an iPad or an iPhone, because they need
-  hardware the Simulator does not have:
-  1. **Pairs with a radio.** A real RNode is reachable over Bluetooth, and the transport
-     reports the interface up and a peer reachable over LoRa after the stack is restarted.
-  2. **A fix and a heading reach the readers.** With a real GNSS receiver and motion
-     sensor, the client's location card and the bot's `where` answer from the device's own
-     position, and the heading is withheld when the chosen axis points at the sky.
-  3. **The console on a touch screen.** Tapping activates a link, dragging scrolls, and
-     rotating the device reflows the client for the new grid.
-  4. **The stack comes down cleanly.** Stopping it releases the loopback ports, and the
-     app relaunches without a stale console socket.
-
-The rest of the appliance — the console, the stack, the sensors' math and the
-configuration — is exercised by the Simulator and by unit tests; see
-[docs/iOS-App.md](iOS-App.md) §9 for what is covered and where.
+- **Background operation.** iOS suspends an app when it leaves the screen. The stack keeps
+  running while the appliance is in the foreground; a transport that must stay up with the
+  screen off is not something an iOS app is allowed to promise, and the appliance does not
+  pretend otherwise.
+- **A radio, and a fix and a heading from real hardware.** Both need hardware the appliance
+  has not been given:
+  1. **The radio.** No RNode has been paired yet, so the Bluetooth half — the scan, the
+     connection, the characteristic discovery — is the part nothing has exercised. Pairing
+     needs an RNode that is switched on, in range and not already connected to another
+     device.
+  2. **A fix and a heading.** The sensor path is complete and tested up to the device, but no
+     real receiver has fed it. A Wi-Fi-only iPad has no GNSS at all — its position comes from
+     Wi-Fi positioning — and its heading comes from attitude rather than from a magnetometer,
+     which is why the axis setting matters as much as it does.
 
 ## 9. Troubleshooting
 
@@ -182,9 +193,18 @@ transport was up, or the transport did not start. Press **Stop Stack**, then **S
 Stack**, and check the status line before opening the console again.
 
 **The console is empty but the stack is green.** The client draws into the terminal the
-app built, and the app parses what it draws. A console that is silent and reports no
-error means one of the two halves stopped speaking the frame protocol; the status line
-says whether the session ended, and the log in the app's container says why.
+app built, and the app parses what it draws. A console that is silent and reports no error
+means one of the two halves stopped speaking the frame protocol; the Console row says
+whether the session is open, and the Log at the bottom of the controls says why it ended.
+
+**The console says it did not open.** The reason is under the Console row, in red. A socket
+path longer than the kernel will bind is the one to look for; the appliance avoids it by
+binding the socket in its own temporary directory rather than beside its configuration.
+
+**The client draws its interface in the wrong place, or leaves part of the console black.**
+Look at the size beside the Console row. The client starts at 80×24 and is told the real size
+as soon as the console is laid out; a row still reading `Open · 80×24` means it was never
+told, and everything it draws will be for the wrong window.
 
 **The heading is missing.** That is the appliance being honest. Stand the device up if
 you chose *screen back*, or lay it flat if you chose *screen top*, or change the setting.
