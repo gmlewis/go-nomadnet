@@ -103,6 +103,17 @@ func (w *stdLogLineWriter) route(line string) {
 	fmt.Fprintln(os.Stderr, line)
 }
 
+// reportTUIError reports a terminal interface that would not run.
+//
+// On a desktop it is fatal, and deliberately so: a client whose interface did not
+// start is a client that is not running, and main.go's own comment records why that
+// must be loud rather than a silent exit 0. An appliance that hosts the client
+// inside its own process replaces this with a report and a return, because its
+// app has to survive its console closing.
+var reportTUIError = func(err error) {
+	log.Fatalf("TUI error: %v", err)
+}
+
 // runTextUI starts NomadNet with the terminal UI.
 func runTextUI(configDir, rnsConfigDir string) {
 	// Route the Go std log (library warnings, tcell notices) through the
@@ -330,7 +341,7 @@ func runTextUI(configDir, rnsConfigDir string) {
 		// The rns logger writes asynchronously; flush the queue so queued
 		// diagnostics are not silently lost.
 		a.Logger.Flush()
-		log.Fatalf("TUI error: %v", err)
+		reportTUIError(err)
 	}
 }
 
@@ -627,6 +638,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	refreshTrigger := tui.NewDebouncedCallWithMaxWait(refreshCoalesceWindow, refreshMaxWait, refreshDirectory)
 	a.SetUIChangeCallback(refreshTrigger.Trigger)
 	main.SetDisplay("network", networkDisplay.Widget())
+	main.RegisterSidePanelController(networkDisplay)
 	main.SetShortcut("network", "[C-l] Nodes/Announces  [C-x] Remove  [C-w] Disconnect  [C-d] Back  [C-f] Forward  [C-r] Reload  [C-u] URL  [C-g] Fullscreen  [C-s / C-b] Save Node")
 
 	// Wire Esc to go back from AnnounceInfo before quitting.
@@ -975,6 +987,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	}
 	conversationsDisplay := tui.NewConversationsDisplay(tuiApp, tuiConvs)
 	main.SetDisplay("conversations", conversationsDisplay.Widget())
+	main.RegisterSidePanelController(conversationsDisplay)
 
 	// Conversations supplies its shortcut bar dynamically (it switches between
 	// the list/editor/body bars by focus region). Other pages use their static
@@ -1663,6 +1676,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	// Channels display
 	channelsDisplay := tui.NewChannelsDisplay(tuiApp, nil)
 	main.SetDisplay("channels", channelsDisplay.Widget())
+	main.RegisterSidePanelController(channelsDisplay)
 	main.SetShortcut("channels", "[C-n] New Hub  [C-a] Add Room  [C-r] Connect  [C-w] Disconnect  [C-t] Auto-reconnect  [C-e] Edit Hub  [C-x] Remove")
 	// Channels switches its bar by focus region (list / editor / body) the
 	// same way Conversations does (Python Channels.py:1573-1586 shortcuts()).
@@ -2099,6 +2113,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	// Guide display
 	guideDisplay := tui.NewGuideDisplay(tuiApp)
 	main.SetDisplay("guide", guideDisplay.Widget())
+	main.RegisterSidePanelController(guideDisplay)
 	main.SetShortcutCallback("guide", guideDisplay.Shortcuts)
 	// Wire Guide link activation to the Network browser, mirroring Python's
 	// GuideLinkDelegate.handle_link (Guide.py:103-118): an "#anchor" stays in

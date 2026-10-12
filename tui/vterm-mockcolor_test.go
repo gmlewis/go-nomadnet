@@ -40,3 +40,44 @@ func TestVtermMockColorSequenceChunked(t *testing.T) {
 		t.Errorf("TRUECOLOR: fg=%v, want NewRGBColor(255,128,0)", fg3)
 	}
 }
+
+func TestVtermResizeVirtualCursorStickiness(t *testing.T) {
+	t.Parallel()
+	// Landscape: 80x24. The cursor is placed at (60, 18).
+	s := newVtermScreen(80, 24)
+	s.Write([]byte("\x1b[19;61H")) // 1-based row 19, col 61 -> 0-based (60, 18)
+	if x, y, _ := s.Cursor(); x != 60 || y != 18 {
+		t.Fatalf("expected cursor at (60, 18), got (%v, %v)", x, y)
+	}
+
+	// Rotate to portrait: 40x50. Column shrinks, clamped to 39, row preserved.
+	s.Resize(40, 50)
+	if x, y, _ := s.Cursor(); x != 39 || y != 18 {
+		t.Fatalf("expected cursor at (39, 18) after resize, got (%v, %v)", x, y)
+	}
+
+	// Rotate back to landscape: 80x24. Virtually sticks and restores to (60, 18).
+	s.Resize(80, 24)
+	if x, y, _ := s.Cursor(); x != 60 || y != 18 {
+		t.Fatalf("expected cursor restored to (60, 18), got (%v, %v)", x, y)
+	}
+
+	// Portrait: place cursor at (20, 45).
+	s.Resize(40, 50)
+	s.Write([]byte("\x1b[46;21H")) // 1-based row 46, col 21 -> 0-based (20, 45)
+	if x, y, _ := s.Cursor(); x != 20 || y != 45 {
+		t.Fatalf("expected cursor at (20, 45), got (%v, %v)", x, y)
+	}
+
+	// Rotate to landscape: 80x24. Row shrinks, clamped to 23.
+	s.Resize(80, 24)
+	if x, y, _ := s.Cursor(); x != 20 || y != 23 {
+		t.Fatalf("expected cursor at (20, 23) after resize, got (%v, %v)", x, y)
+	}
+
+	// Rotate back to portrait: 40x50. Virtually sticks and restores to (20, 45).
+	s.Resize(40, 50)
+	if x, y, _ := s.Cursor(); x != 20 || y != 45 {
+		t.Fatalf("expected cursor restored to (20, 45), got (%v, %v)", x, y)
+	}
+}

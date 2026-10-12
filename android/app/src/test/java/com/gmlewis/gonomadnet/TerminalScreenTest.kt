@@ -430,6 +430,42 @@ class TerminalScreenTest {
         assertEquals("shrinking clamps the cursor into the new screen", 1, screen.cursorY)
     }
 
+    @Test
+    fun `resizing between orientations virtually sticks the cursor to its previous location`() {
+        // Landscape: 80x24. The cursor is placed at (60, 18).
+        val screen = TerminalScreen(cols = 80, rows = 24)
+        screen.moveCursor(60, 18)
+        assertEquals(60, screen.cursorX)
+        assertEquals(18, screen.cursorY)
+
+        // Rotate to portrait: 40x50. The column shrinks so cursor is clamped to 39,
+        // but row is preserved.
+        screen.resize(40, 50)
+        assertEquals(39, screen.cursorX)
+        assertEquals(18, screen.cursorY)
+
+        // Rotate back to landscape: 80x24. The cursor virtually sticks and restores to (60, 18)!
+        screen.resize(80, 24)
+        assertEquals(60, screen.cursorX)
+        assertEquals(18, screen.cursorY)
+
+        // Portrait: place cursor at (20, 45).
+        screen.resize(40, 50)
+        screen.moveCursor(20, 45)
+        assertEquals(20, screen.cursorX)
+        assertEquals(45, screen.cursorY)
+
+        // Rotate to landscape: 80x24. The row shrinks so cursor is clamped to 23.
+        screen.resize(80, 24)
+        assertEquals(20, screen.cursorX)
+        assertEquals(23, screen.cursorY)
+
+        // Rotate back to portrait: 40x50. The cursor virtually sticks and restores to (20, 45)!
+        screen.resize(40, 50)
+        assertEquals(20, screen.cursorX)
+        assertEquals(45, screen.cursorY)
+    }
+
     /** EraseCase is one erase mode and the screen it must leave behind. */
     private data class EraseCase(val name: String, val mode: Int, val want: List<String>)
 }

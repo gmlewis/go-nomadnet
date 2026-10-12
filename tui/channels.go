@@ -88,18 +88,21 @@ type ChannelsDisplay struct {
 	selectedHubIdx int
 	// HubViewsCache is the last HubView slice passed to SetHubs, kept so the
 	// hub info panel can read the selected hub's live state.
-	HubViewsCache      []HubView
-	ilb                *IndicativeListBox
-	noHubsText         *tview.TextView
-	chanGutter         tview.Primitive
-	leftWidth          int
-	rooms              *tview.List
-	messages           *tview.TextView
-	members            *tview.List
-	input              *ReadlineEdit
-	channelListVisible bool
-	collapseJoinPart   bool
-	shortcutFocus      string
+	HubViewsCache                    []HubView
+	ilb                              *IndicativeListBox
+	noHubsText                       *tview.TextView
+	chanGutter                       tview.Primitive
+	leftWidth                        int
+	rooms                            *tview.List
+	messages                         *tview.TextView
+	members                          *tview.List
+	input                            *ReadlineEdit
+	channelListVisible               bool
+	isPortrait                       bool
+	portraitAutoCollapsedChannelList bool
+	portraitAutoCollapsedUsers       bool
+	collapseJoinPart                 bool
+	shortcutFocus                    string
 	// pages wraps cd.content so a dialog can overlay the WHOLE channels display
 	// (Python's self.widget = WidgetPlaceholder(columns_widget) + _show_dialog_
 	// overlay setting original_widget = urwid.Overlay(dialog, columns_widget,
@@ -792,6 +795,16 @@ func (cd *ChannelsDisplay) ShowRoom(hubIdx int, room string, msgs []ChannelMessa
 	if cd.app != nil && cd.roomWidget != nil {
 		cd.roomWidget.restoreRoomPart()
 	}
+	if cd.isPortrait {
+		if cd.channelListVisible {
+			cd.portraitAutoCollapsedChannelList = true
+			cd.ToggleChannelListState()
+		}
+		if cd.roomWidget != nil && cd.roomWidget.UsersVisible() {
+			cd.portraitAutoCollapsedUsers = true
+			cd.roomWidget.ToggleUsers()
+		}
+	}
 }
 
 // RefreshRoomIfVisible reloads the showing room's message buffer and member
@@ -890,6 +903,7 @@ func (cd *ChannelsDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 		}
 		return nil
 	case tcell.KeyCtrlY:
+		cd.portraitAutoCollapsedChannelList = false
 		cd.ToggleChannelListState()
 		if cd.OnToggleChannelList != nil {
 			cd.OnToggleChannelList()
@@ -1037,6 +1051,38 @@ func (cd *ChannelsDisplay) ToggleChannelListVisibility() {
 // Matches Python's channel_list_visible at Channels.py:1531.
 func (cd *ChannelsDisplay) ChannelListVisible() bool {
 	return cd.channelListVisible
+}
+
+// SetPortrait collapses or restores the channel list and users panes depending
+// on whether the screen is in portrait (w < h) or landscape (w >= h).
+func (cd *ChannelsDisplay) SetPortrait(portrait bool) {
+	if cd.isPortrait == portrait {
+		return
+	}
+	cd.isPortrait = portrait
+	if portrait {
+		if cd.channelListVisible && cd.paneMode != "" {
+			cd.portraitAutoCollapsedChannelList = true
+			cd.ToggleChannelListState()
+		}
+		if cd.roomWidget != nil && cd.roomWidget.UsersVisible() {
+			cd.portraitAutoCollapsedUsers = true
+			cd.roomWidget.ToggleUsers()
+		}
+	} else {
+		if cd.portraitAutoCollapsedChannelList {
+			cd.portraitAutoCollapsedChannelList = false
+			if !cd.channelListVisible {
+				cd.ToggleChannelListState()
+			}
+		}
+		if cd.portraitAutoCollapsedUsers {
+			cd.portraitAutoCollapsedUsers = false
+			if cd.roomWidget != nil && !cd.roomWidget.UsersVisible() {
+				cd.roomWidget.ToggleUsers()
+			}
+		}
+	}
 }
 
 // ToggleChannelListState toggles the channel list visibility state, rebuilding

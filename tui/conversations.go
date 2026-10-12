@@ -71,16 +71,18 @@ type ConversationsDisplay struct {
 	// indices from the list (highlight, Enter, clicks) always resolve into
 	// visible — never into conversations, whose unfiltered indices drift apart
 	// from the rendered rows and opened the "Undefined" conversation.
-	visible             []ConversationInfo
-	listWidth           int
-	fullscreen          bool
-	selected            int
-	showTrusted         bool   // true = trusted tab, false = untrusted
-	showBlocked         bool   // show blocked peers in untrusted tab
-	currentConversation string // source hash of the conversation shown in the right pane (suppresses its unread/failed badge); "" when none
-	dialogOpen          bool
-	ingestURIValue      string
-	shortcutFocus       string // "list" (default), "editor", or "body" — selects the shortcut bar (Conversations.py:1765-1779)
+	visible               []ConversationInfo
+	listWidth             int
+	fullscreen            bool
+	isPortrait            bool
+	portraitAutoCollapsed bool
+	selected              int
+	showTrusted           bool   // true = trusted tab, false = untrusted
+	showBlocked           bool   // show blocked peers in untrusted tab
+	currentConversation   string // source hash of the conversation shown in the right pane (suppresses its unread/failed badge); "" when none
+	dialogOpen            bool
+	ingestURIValue        string
+	shortcutFocus         string // "list" (default), "editor", or "body" — selects the shortcut bar (Conversations.py:1765-1779)
 	// tabFocus is the focused tab index within the tab bar (0=Trusted,
 	// 1=Untrusted), mirroring Python's tab_bar Columns focus_position
 	// (Conversations.py:392-398). It decides which tab button receives focus
@@ -590,6 +592,7 @@ func (cd *ConversationsDisplay) handleInput(event *tcell.EventKey) *tcell.EventK
 		}
 		return nil
 	case tcell.KeyCtrlG:
+		cd.portraitAutoCollapsed = false
 		cd.ToggleFullscreen()
 		return nil
 	case tcell.KeyCtrlO:
@@ -1791,6 +1794,28 @@ func (cd *ConversationsDisplay) ToggleFullscreen() {
 // Fullscreen reports whether the list pane is currently hidden (fullscreen
 // detail).
 func (cd *ConversationsDisplay) Fullscreen() bool { return cd.fullscreen }
+
+// SetPortrait collapses or restores the conversation list pane depending
+// on whether the screen is in portrait (w < h) or landscape (w >= h).
+func (cd *ConversationsDisplay) SetPortrait(portrait bool) {
+	if cd.isPortrait == portrait {
+		return
+	}
+	cd.isPortrait = portrait
+	if portrait {
+		if !cd.fullscreen {
+			cd.portraitAutoCollapsed = true
+			cd.ToggleFullscreen()
+		}
+	} else {
+		if cd.portraitAutoCollapsed {
+			cd.portraitAutoCollapsed = false
+			if cd.fullscreen {
+				cd.ToggleFullscreen()
+			}
+		}
+	}
+}
 
 // SetShowTrusted switches the conversation list between the Trusted tab
 // (showTrusted=true) and the Untrusted tab (showTrusted=false) and repopulates

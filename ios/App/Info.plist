@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Copyright 2026 Glenn Lewis. All rights reserved.
+
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
+
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+  GNU General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+  Info.plist for the gonomadnet appliance.
+
+  Every usage description here is written for the reader who sees it, because iOS shows
+  these strings in a system alert and a reader who does not understand why an app wants
+  their location has no way to find out afterwards. Two of them are deliberately about
+  what the appliance does NOT do, because a Reticulum node's position is the most
+  sensitive thing it handles and "we never send it anywhere you did not ask for" is the
+  answer to the question the alert is really asking.
+
+  The version keys are substituted by the build from nomadnet/version/version.go, so a
+  release's version is written in one place. See scripts/build-ios-app.sh.
+-->
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>gonomadnet</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(GONOMADNET_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(GONOMADNET_BUILD)</string>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<false/>
+	</dict>
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UIColorName</key>
+		<string>ApplianceBackground</string>
+	</dict>
+	<key>UIRequiredDeviceCapabilities</key>
+	<array>
+		<string>arm64</string>
+	</array>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+
+	<!-- The console font: the Nerd Font the client's glyph set is drawn in, and the
+	     license it ships under. Without the font the client's interface renders as boxes
+	     where it means to draw icons. -->
+	<key>UIAppFonts</key>
+	<array>
+		<string>AtkynsonMonoNerdFontMono-Regular.otf</string>
+	</array>
+
+	<!-- The appliance's own position. It is published to a loopback socket on the device
+	     and nowhere else: the reader sends it where they choose to send it. -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>gonomadnet uses your position to show where you are on the pages and messages that ask, and to answer the bot's "where" command. It is published only to the appliance on this device; nothing is sent anywhere unless you send it.</string>
+
+	<!-- CoreMotion's attitude sensor, which is what the compass is. -->
+	<key>NSMotionUsageDescription</key>
+	<string>gonomadnet reads the device's orientation to give the client a compass heading.</string>
+
+	<!-- Bluetooth, for a LoRa radio. -->
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>gonomadnet connects to an RNode over Bluetooth to send and receive Reticulum traffic with a LoRa radio.</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>gonomadnet connects to an RNode over Bluetooth to send and receive Reticulum traffic with a LoRa radio.</string>
+</dict>
+</plist>

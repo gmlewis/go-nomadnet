@@ -214,6 +214,12 @@ func (id *InterfacesDisplay) ShowEditor(editorCmd, filePath string) {
 	if h <= 0 {
 		h = 24
 	}
+	// A host that cannot start a program is asked first: its answer is the reason the
+	// editor did not open, which is more use than an exec failure would be.
+	if err := checkEditor(editorCmd); err != nil {
+		id.ShowInterfaceError(err.Error())
+		return
+	}
 	cmd := exec.Command(editorCmd, filePath)
 	et, err := NewEmbeddedTerminal(id.app, cmd, w, h, "linux", id.closeEditor)
 	if err != nil {

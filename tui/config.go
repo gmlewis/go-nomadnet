@@ -208,6 +208,12 @@ func (cd *ConfigDisplay) ShowEditor(editorCmd, filePath string) {
 	if h <= 0 {
 		h = 24
 	}
+	// A host that cannot start a program is asked first, and answers with the reason
+	// rather than with a command that would fail as though something were broken.
+	if err := checkEditor(editorCmd); err != nil {
+		cd.showEditorError(editorCmd, err)
+		return
+	}
 	cmd := exec.Command(editorCmd, filePath)
 	et, err := NewEmbeddedTerminal(cd.app, cmd, w, h, "linux", cd.closeEditor)
 	if err != nil {

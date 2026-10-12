@@ -216,7 +216,7 @@ class MainActivity : Activity() {
         if (granted) {
             startSensors()
         } else {
-            report("location permission is refused; the appliance cannot know where it is")
+            report("no location information available")
         }
     }
 
@@ -260,8 +260,8 @@ class MainActivity : Activity() {
     }
 
     private fun startSensors() {
-        if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            report("location permission is refused; the appliance cannot know where it is")
+        if (!locationGranted()) {
+            report("no location information available")
             return
         }
         SensorService.start(this)

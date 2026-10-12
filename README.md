@@ -105,6 +105,27 @@ See **[docs/Android-APK.md](docs/Android-APK.md)** for the full setup — and
 nothing about your location leaves the device unless you ask for it. To build the
 APK yourself, see **[docs/Android-Build.md](docs/Android-Build.md)**.
 
+### iPad and iPhone
+
+The same appliance runs on an iPad, with one difference forced by the platform:
+iOS does not allow a program to start another program at all, so there are no
+separate daemons. The transport, the RRC hub, the bot and the sensor feed run as
+goroutines inside the app, the client draws into a terminal the app itself built,
+and a terminal engine written for the platform parses and renders it.
+
+An iPad makes a good Reticulum appliance: a screen that can stay on, a real GNSS
+receiver and compass on the cellular models, a Magic Keyboard when you want one
+and a two-row key strip when you do not, and a radio over Bluetooth Low Energy
+rather than a cable.
+
+See **[docs/iOS.md](docs/iOS.md)** for running it on an iPad or iPhone,
+**[docs/iOS-App.md](docs/iOS-App.md)** for how the appliance is put together, and
+**[docs/iOS-Build.md](docs/iOS-Build.md)** to build and sign it yourself:
+`./scripts/build-ios-app.sh` builds the app and packages a release `.ipa`,
+`--debug` builds an installable app, `--simulator` builds one for the Simulator, and
+`--test-only` runs both halves' tests with no Xcode project, no signing key and no
+platform SDK installed.
+
 ## Quick Start
 
 ### First Run

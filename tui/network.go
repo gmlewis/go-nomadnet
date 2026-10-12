@@ -95,12 +95,14 @@ type NetworkDisplay struct {
 	// pane (Python NetworkDisplay.given_list_width = 52, Network.py:1622).
 	// fullscreen is true while Ctrl-G has collapsed the left pane to width 0 so
 	// the in-page browser fills the page. See ToggleFullscreen.
-	listWidth     int
-	fullscreen    bool
-	SanitizeNames bool
-	announceData  []AnnounceEntry
-	nodeData      []NodeEntry
-	onNavigate    func(url string)
+	listWidth             int
+	fullscreen            bool
+	isPortrait            bool
+	portraitAutoCollapsed bool
+	SanitizeNames         bool
+	announceData          []AnnounceEntry
+	nodeData              []NodeEntry
+	onNavigate            func(url string)
 
 	// Keyboard shortcut callbacks (Python: NetworkDisplay.keypress)
 	OnToggleFullscreen func()
@@ -380,6 +382,7 @@ func (nd *NetworkDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 		nd.toggleList()
 		return nil
 	case tcell.KeyCtrlG:
+		nd.portraitAutoCollapsed = false
 		nd.ToggleFullscreen()
 		return nil
 	case tcell.KeyCtrlE:
@@ -1361,6 +1364,28 @@ func (nd *NetworkDisplay) ToggleFullscreen() {
 // Fullscreen reports whether the left list pane is currently collapsed (the
 // in-page browser fills the page).
 func (nd *NetworkDisplay) Fullscreen() bool { return nd.fullscreen }
+
+// SetPortrait collapses or restores the left list pane depending
+// on whether the screen is in portrait (w < h) or landscape (w >= h).
+func (nd *NetworkDisplay) SetPortrait(portrait bool) {
+	if nd.isPortrait == portrait {
+		return
+	}
+	nd.isPortrait = portrait
+	if portrait {
+		if !nd.fullscreen {
+			nd.portraitAutoCollapsed = true
+			nd.ToggleFullscreen()
+		}
+	} else {
+		if nd.portraitAutoCollapsed {
+			nd.portraitAutoCollapsed = false
+			if nd.fullscreen {
+				nd.ToggleFullscreen()
+			}
+		}
+	}
+}
 
 // toggleList switches between announces and nodes views (Python
 // toggle_list, Network.py:1668-1678), then fires OnToggleList so the wiring

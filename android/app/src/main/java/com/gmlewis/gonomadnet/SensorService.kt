@@ -14,6 +14,8 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
@@ -69,7 +71,7 @@ class SensorService : Service() {
         File(paths.runDir).mkdirs()
         wakeLock = (getSystemService(Context.POWER_SERVICE) as PowerManager)
             .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, WAKE_LOCK_TAG)
-        startForeground(NOTIFICATION_ID, buildNotification("starting"))
+        startForegroundSafely(buildNotification("starting"))
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -174,7 +176,13 @@ class SensorService : Service() {
             isDaemon = true
             start()
         }
-        updateNotification("live position and heading")
+        val hasLocation = checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+            checkSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        if (hasLocation) {
+            updateNotification("live position and heading")
+        } else {
+            updateNotification("running (no location information available)")
+        }
     }
 
     private fun stopSensors() {
@@ -418,6 +426,37 @@ class SensorService : Service() {
     private fun updateNotification(detail: String) {
         (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
             .notify(NOTIFICATION_ID, buildNotification(detail))
+    }
+
+    private fun startForegroundSafely(notification: Notification) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val hasLocation = checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+                checkSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+            var types = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE or ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+            } else {
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+            }
+            if (hasLocation) {
+                types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
+            }
+            try {
+                startForeground(NOTIFICATION_ID, notification, types)
+            } catch (e: SecurityException) {
+                Log.w(TAG, "startForeground with types failed: ${e.message}, falling back to default startForeground")
+                try {
+                    startForeground(NOTIFICATION_ID, notification)
+                } catch (e2: Exception) {
+                    Log.e(TAG, "startForeground fallback failed: ${e2.message}")
+                }
+            }
+        } else {
+            try {
+                startForeground(NOTIFICATION_ID, notification)
+            } catch (e: Exception) {
+                Log.e(TAG, "startForeground failed: ${e.message}")
+            }
+        }
     }
 
     companion object {

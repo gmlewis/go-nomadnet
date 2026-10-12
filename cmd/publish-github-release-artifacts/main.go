@@ -143,6 +143,22 @@ const (
 	// androidBuildScript is the one supported way to produce a signed appliance, and the
 	// publisher runs it rather than reimplementing the build.
 	androidBuildScript = "scripts/build-android-apk.sh"
+
+	// iosStagingDir is where scripts/build-ios-app.sh leaves the packaged IPA, and the
+	// publisher runs that script for the same reasons it runs the Android one: the appliance
+	// must be built for the version being published rather than consumed from a cache that a
+	// version bump invalidates.
+	//
+	// An iOS appliance needs Xcode and a Go toolchain that can target iOS, and a machine
+	// without them cannot produce one. That is reported and does not fail the release, exactly
+	// as a missing Android SDK does not: refusing to publish a Go program's release over a
+	// mobile toolchain would be worse than publishing it without the appliance.
+	iosStagingDir = "dist/ios"
+	// iosAssetSuffix names what the publisher will attach:
+	// gonomadnet-<version>-ios-arm64.ipa.
+	iosAssetSuffix = ".ipa"
+	// iosBuildScript is the one supported way to produce the iOS appliance.
+	iosBuildScript = "scripts/build-ios-app.sh"
 	// goModFile is where the go-reticulum version is read from. It is relative to the
 	// repository root, like every other path here; repoFile is what makes that true from
 	// anywhere.
@@ -354,6 +370,19 @@ func run(opts options) error {
 			err, androidStagingDir)
 	}
 	assets = append(assets, collectAndroidArtifacts(androidStagingDir, version, progress)...)
+
+	// The same for the iOS appliance. Both builds are attempted, and neither can fail the
+	// release: a platform's toolchain being absent from the publishing machine is not a
+	// reason to withhold the programs that were built for it.
+	if err := buildIOSAppliance(iosBuildScript, progress); err != nil {
+		mustFprintf(progress,
+			"The iOS appliance could not be built (%v), so this release will not carry one.\n"+
+				"  It needs macOS with Xcode and a Go toolchain; ./scripts/build-ios-app.sh --test-only\n"+
+				"  runs its tests without either. Build one by hand with ./scripts/build-ios-app.sh,\n"+
+				"  which leaves an IPA in %v.\n",
+			err, iosStagingDir)
+	}
+	assets = append(assets, collectIOSArtifacts(iosStagingDir, version, progress)...)
 
 	notes := buildReleaseNotes(version, repo, assets)
 
@@ -657,6 +686,77 @@ func buildAndroidAppliance(scriptPath string, progress *os.File) error {
 	return cmd.Run()
 }
 
+// collectIOSArtifacts finds the packaged iOS appliance staged for this release, and explains
+// itself when there is none.
+//
+// It never fails, for the reason the Android collector never fails: a release that carried no
+// iOS appliance is a normal, working release, and only this version's appliance is looked for.
+// An IPA named for another version is a leftover and is passed over in silence, because
+// announcing that a leftover was skipped read as though the release had tried to ship it.
+func collectIOSArtifacts(stagingDir, version string, progress *os.File) []string {
+	assets := stagedAppliances(stagingDir, version, iosAssetSuffix)
+	if len(assets) == 0 {
+		if _, err := os.Stat(stagingDir); err != nil {
+			mustFprintf(progress,
+				"No iOS appliance staged in %v, so this release will not carry one.\n"+
+					"  ./scripts/build-ios-app.sh builds one on a Mac with Xcode and leaves an IPA there.\n",
+				stagingDir)
+			return nil
+		}
+		mustFprintf(progress,
+			"No iOS appliance named version %v is staged in %v, so this release will not carry one.\n",
+			version, stagingDir)
+		return nil
+	}
+	for _, asset := range assets {
+		mustFprintf(progress, "Attaching the iOS appliance %v\n", filepath.Base(asset))
+	}
+	return assets
+}
+
+// buildIOSAppliance packages the release's iOS appliance by running iosBuildScript, which
+// stages it in iosStagingDir. The script is the single source of truth for how the app is
+// made, so it is run rather than reimplemented here.
+func buildIOSAppliance(scriptPath string, progress *os.File) error {
+	if _, err := os.Stat(scriptPath); err != nil {
+		return err
+	}
+	cmd := exec.Command(scriptPath)
+	cmd.Stdout = progress
+	cmd.Stderr = progress
+	return cmd.Run()
+}
+
+// stagedAppliances returns the files in stagingDir that are this release's appliance: named
+// gonomadnet-<version>-<something><suffix>.
+//
+// Only THIS version's appliance is returned. A file named for another version is not this
+// release's appliance, and the build that runs beforehand stages the current one, so anything
+// else in the directory is a leftover download.
+func stagedAppliances(stagingDir, version, suffix string) []string {
+	entries, err := os.ReadDir(stagingDir)
+	if err != nil {
+		return nil
+	}
+
+	var assets []string
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() {
+			continue
+		}
+		lower := strings.ToLower(name)
+		if !strings.HasPrefix(lower, androidAssetPrefix) || !strings.HasSuffix(lower, suffix) {
+			continue
+		}
+		if !strings.Contains(name, version) {
+			continue
+		}
+		assets = append(assets, filepath.Join(stagingDir, name))
+	}
+	return assets
+}
+
 // collectAndroidArtifacts finds the signed Android appliance staged for this release, and
 // explains itself when there is none.
 //
@@ -669,38 +769,22 @@ func buildAndroidAppliance(scriptPath string, progress *os.File) error {
 // current one, so anything else in the directory is a leftover download, and announcing that a
 // leftover was skipped read as though the release had tried to ship it.
 func collectAndroidArtifacts(stagingDir, version string, progress *os.File) []string {
-	entries, err := os.ReadDir(stagingDir)
-	if err != nil {
-		mustFprintf(progress,
-			"No Android appliance staged in %v, so this release will not carry one.\n"+
-				"  Build one with ./scripts/build-android-apk.sh, which leaves a signed APK there.\n",
-			stagingDir)
-		return nil
-	}
-
-	var assets []string
-	for _, entry := range entries {
-		name := entry.Name()
-		if entry.IsDir() {
-			continue
-		}
-		lower := strings.ToLower(name)
-		if !strings.HasPrefix(lower, androidAssetPrefix) || !strings.HasSuffix(lower, androidAssetSuffix) {
-			continue
-		}
-		if !strings.Contains(name, version) {
-			// Not this release's appliance: an older download left in the staging directory.
-			// A release must not ship an appliance built from other sources, and the build
-			// above has already staged this version's, so this one is simply not it.
-			continue
-		}
-		mustFprintf(progress, "Attaching the Android appliance %v\n", name)
-		assets = append(assets, filepath.Join(stagingDir, name))
-	}
+	assets := stagedAppliances(stagingDir, version, androidAssetSuffix)
 	if len(assets) == 0 {
+		if _, err := os.Stat(stagingDir); err != nil {
+			mustFprintf(progress,
+				"No Android appliance staged in %v, so this release will not carry one.\n"+
+					"  Build one with ./scripts/build-android-apk.sh, which leaves a signed APK there.\n",
+				stagingDir)
+			return nil
+		}
 		mustFprintf(progress,
 			"No Android appliance named version %v is staged in %v, so this release will not "+
 				"carry one.\n", version, stagingDir)
+		return nil
+	}
+	for _, asset := range assets {
+		mustFprintf(progress, "Attaching the Android appliance %v\n", filepath.Base(asset))
 	}
 	return assets
 }
@@ -750,6 +834,17 @@ func goReticulumVersionIn(goMod string) string {
 }
 
 // hasAndroidArtifact reports whether any staged asset is the Android appliance.
+// hasIOSArtifact reports whether this release carries an iOS appliance.
+func hasIOSArtifact(assets []string) bool {
+	for _, a := range assets {
+		if strings.HasSuffix(strings.ToLower(filepath.Base(a)), iosAssetSuffix) {
+			return true
+		}
+	}
+	return false
+}
+
+// hasAndroidArtifact reports whether this release carries an Android appliance.
 func hasAndroidArtifact(assets []string) bool {
 	for _, a := range assets {
 		if strings.HasSuffix(strings.ToLower(filepath.Base(a)), androidAssetSuffix) {
@@ -815,6 +910,28 @@ func buildReleaseNotes(version, repo string, assets []string) string {
 			"[Running gonomadnet on Android](https://github.com/%v/blob/master/docs/Android.md) "+
 			"covers running the client on a device without the appliance, and what Android does "+
 			"to a terminal program.\n\n", repo, repo)
+	}
+
+	if hasIOSArtifact(assets) {
+		// The iOS appliance is not built from the same shape as the Android one, and a reader
+		// who assumed it was would look for an APK's worth of separate programs. It is one
+		// process: the platform forbids an app from starting another one, so the transport,
+		// the hub, the bot and the console all run inside the app.
+		mustFprintf(&b, "## iOS appliance\n\n")
+		mustFprintf(&b, "This release also carries an iOS/iPadOS app, for an iPad or iPhone. It is "+
+			"the same appliance as the Android one and it is shaped differently, because iOS "+
+			"gives an application no way to start a program: the Reticulum transport, the RRC "+
+			"hub, the bot and the client all run inside the one app, and the client draws into "+
+			"a terminal the app built rather than into a pseudo-terminal. It adds the device's "+
+			"own GNSS receiver, compass and a Bluetooth LoRa radio.\n\n")
+		mustFprintf(&b, "It is distributed as an unsigned IPA and is **not installable as "+
+			"downloaded**: iOS will not run an app that is not signed for it. Building it from "+
+			"source and signing it with your own developer account is the supported path, and "+
+			"[Building the iOS appliance](https://github.com/%v/blob/master/docs/iOS-Build.md) "+
+			"is the whole of it. The IPA is attached because it is what a signed build produces, "+
+			"and because its contents can be inspected without one.\n\n", repo)
+		mustFprintf(&b, "Follow [Running gonomadnet on iOS and iPadOS]"+
+			"(https://github.com/%v/blob/master/docs/iOS.md) for what the appliance does.\n\n", repo)
 	}
 
 	mustFprintf(&b, "## Hardware Projects & Pre-built Artifacts\n\n")

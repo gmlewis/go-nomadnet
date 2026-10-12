@@ -97,6 +97,11 @@ type App struct {
 	// `reset` and bloats the terminal emulator's scrollback. When nil, a
 	// recovered panic is re-panicked so tests still fail loudly.
 	onPanic func(any)
+
+	// screenErr is what the registered ScreenProvider reported, if anything. Run
+	// returns it before starting the event loop, because an appliance whose
+	// terminal could not be built has nothing to draw into and must say so.
+	screenErr error
 }
 
 // SetFocus shadows tview.Application.SetFocus to enforce the focus invariant:
@@ -125,6 +130,17 @@ func (a *App) SetFocus(p tview.Primitive) *tview.Application {
 // pass ColorModeTrue for the shipped 24-bit default.
 func NewApp(theme int, glyphSet string, colorMode int) *App {
 	tviewApp := tview.NewApplication()
+
+	// The terminal comes from the registered provider when there is one, so an
+	// appliance that has no /dev/tty can hand the client the synthetic tcell.Tty
+	// its own bridge built. A provider that fails is remembered rather than
+	// logged and dropped: Run reports it, and the client never quietly opens a
+	// terminal the device does not have.
+	screen, screenErr := newScreen()
+	if screen != nil {
+		tviewApp.SetScreen(screen)
+	}
+
 	tviewApp.EnableMouse(true)
 	glyphs := GetGlyphSet(glyphSet)
 	if glyphs == nil {
@@ -142,6 +158,7 @@ func NewApp(theme int, glyphSet string, colorMode int) *App {
 		killRing:    &killRing{},
 		updates:     make(chan func(), 128),
 		done:        make(chan struct{}),
+		screenErr:   screenErr,
 	}
 	go a.drainUpdates()
 	a.Styles.Register(theme, colorMode)
@@ -242,6 +259,9 @@ func (a *App) FieldEditor() *ReadlineEdit {
 
 // Run starts the tview application event loop.
 func (a *App) Run() error {
+	if a.screenErr != nil {
+		return a.screenErr
+	}
 	return a.Application.Run()
 }
 

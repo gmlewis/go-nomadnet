@@ -43,9 +43,10 @@ type vtermScreen struct {
 	rows int
 	grid [][]vtermCell // grid[y][x]
 
-	curX, curY int
-	style      tcell.Style // current pen (SGR) state
-	cursorVis  bool
+	curX, curY               int
+	virtualCurX, virtualCurY int
+	style                    tcell.Style // current pen (SGR) state
+	cursorVis                bool
 
 	scrollTop, scrollBottom int
 	wrapPending             bool // deferred autowrap: cursor at last col, wrap on next printable
@@ -115,6 +116,8 @@ func (s *vtermScreen) Resize(cols, rows int) {
 	s.grid = newGrid
 	s.cols, s.rows = cols, rows
 	s.scrollTop, s.scrollBottom = 0, rows-1
+	s.curX = s.virtualCurX
+	s.curY = s.virtualCurY
 	s.clampCursor()
 	// If the alternate screen is active, also resize the saved main grid so a
 	// later restore matches the new dimensions.
@@ -174,17 +177,21 @@ func (s *vtermScreen) groundByte(b byte) {
 		s.state = vtermESC
 	case 0x0d:
 		s.curX = 0
+		s.virtualCurX = 0
 		s.wrapPending = false
 	case 0x0a, 0x0b, 0x0c:
 		s.lineFeed()
+		s.virtualCurY = s.curY
 		s.wrapPending = false
 	case 0x08:
 		if s.curX > 0 {
 			s.curX--
 		}
+		s.virtualCurX = s.curX
 		s.wrapPending = false
 	case 0x09:
 		s.tab()
+		s.virtualCurX = s.curX
 		s.wrapPending = false
 	case 0x07:
 	default:
@@ -206,6 +213,7 @@ func (s *vtermScreen) escByte(b byte) {
 		s.oscBuf = s.oscBuf[:0]
 	case 'M':
 		s.reverseLineFeed()
+		s.virtualCurY = s.curY
 		s.state = vtermGround
 	default:
 		s.state = vtermGround
@@ -268,33 +276,45 @@ func (s *vtermScreen) dispatchCSI(final byte) {
 	case 'A':
 		s.curY -= s.paramInt(0, 1)
 		s.clampCursor()
+		s.virtualCurY = s.curY
 	case 'B':
 		s.curY += s.paramInt(0, 1)
 		s.clampCursor()
+		s.virtualCurY = s.curY
 	case 'C':
 		s.curX += s.paramInt(0, 1)
 		s.clampCursor()
+		s.virtualCurX = s.curX
 	case 'D':
 		s.curX -= s.paramInt(0, 1)
 		s.clampCursor()
+		s.virtualCurX = s.curX
 	case 'E':
 		s.curY += s.paramInt(0, 1)
 		s.curX = 0
 		s.clampCursor()
+		s.virtualCurX = s.curX
+		s.virtualCurY = s.curY
 	case 'F':
 		s.curY -= s.paramInt(0, 1)
 		s.curX = 0
 		s.clampCursor()
+		s.virtualCurX = s.curX
+		s.virtualCurY = s.curY
 	case 'G', 0x60: // 'G' or backtick (0x60): cursor horizontal absolute
 		s.curX = s.paramInt(0, 1) - 1
 		s.clampCursor()
+		s.virtualCurX = s.curX
 	case 'd':
 		s.curY = s.paramInt(0, 1) - 1
 		s.clampCursor()
+		s.virtualCurY = s.curY
 	case 'H', 'f':
 		s.curY = s.paramInt(0, 1) - 1
 		s.curX = s.paramInt(1, 1) - 1
 		s.clampCursor()
+		s.virtualCurX = s.curX
+		s.virtualCurY = s.curY
 	case 'J':
 		s.eraseDisplay(s.paramInt(0, 0))
 	case 'K':
@@ -320,6 +340,7 @@ func (s *vtermScreen) dispatchCSI(final byte) {
 			s.scrollTop, s.scrollBottom = 0, s.rows-1
 		}
 		s.curX, s.curY = 0, 0
+		s.virtualCurX, s.virtualCurY = 0, 0
 	case 'h':
 		s.setMode(true)
 	case 'l':
@@ -369,6 +390,7 @@ func (s *vtermScreen) setAltScreen(on, saveCursor bool) {
 		// The alt screen has its own dimensions; clear to the current style.
 		s.clearScreen()
 		s.curX, s.curY = 0, 0
+		s.virtualCurX, s.virtualCurY = 0, 0
 		s.wrapPending = false
 	} else {
 		if s.savedGrid != nil {
@@ -381,6 +403,8 @@ func (s *vtermScreen) setAltScreen(on, saveCursor bool) {
 			s.clearScreen()
 			s.curX, s.curY = 0, 0
 		}
+		s.virtualCurX = s.curX
+		s.virtualCurY = s.curY
 		s.wrapPending = false
 	}
 	s.altScreen = on
@@ -450,6 +474,8 @@ func (s *vtermScreen) putRune(r rune) {
 		s.wrapPending = true
 		s.curX = s.cols - 1 // cursor rests on the last col until the next char wraps
 	}
+	s.virtualCurX = s.curX
+	s.virtualCurY = s.curY
 }
 
 func (s *vtermScreen) lineFeed() {

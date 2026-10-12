@@ -28,34 +28,43 @@ import (
 	"github.com/mattn/go-runewidth"
 )
 
+// SidePanelController is implemented by displays that have side panels
+// that should automatically close in portrait mode and reopen in landscape.
+type SidePanelController interface {
+	SetPortrait(portrait bool)
+}
+
 // MainDisplay is the top-level layout matching Python's MainFrame:
 // header=menu bar, body=content area, footer=shortcut bar.
 type MainDisplay struct {
-	app               *App
-	frame             *tview.Flex
-	menuBar           *tview.TextView
-	menuItems         []MenuItem
-	contentArea       *bodyPages
-	shortcutBar       *tview.TextView
-	shortcutTextRaw   string          // raw (unwrapped) shortcut text; the bar renders a pre-wrapped copy
-	shortcutWrapSrc   string          // raw text last wrapped into the bar (cache invalidation)
-	shortcutWrapW     int             // width last wrapped at (-1 ⇒ cache cold)
-	activeMenu        int             // focused menu button (highlight); not necessarily the displayed page
-	activePage        string          // key of the currently displayed body page
-	focusRegion       string          // "body" (default) or "menu" — mirrors MainFrame.focus_position
-	lastBodyFocus     tview.Primitive // last focused body primitive, restored on FocusBody (urwid Frame keeps the body's internal focus while the header has it)
-	theme             int
-	glyphs            GlyphSet
-	onQuit            func()
-	onEsc             func() bool // display-specific Esc handler; returns true if consumed
-	shortcuts         map[string]string
-	shortcutCallbacks map[string]func() string // per-page dynamic shortcut providers
-	quitCh            chan struct{}
-	mu                sync.Mutex
-	hideGuide         bool
-	unreadIndicator   bool        // true swaps the menu glyph to unread_menu (Main.py:220-230)
-	hasUnread         func() bool // unread-conversation probe; nil ⇒ none (app injects via SetUnreadCheck)
-	menuWidths        []int       // pixel widths of each menu item for click detection
+	app                  *App
+	frame                *tview.Flex
+	menuBar              *tview.TextView
+	menuItems            []MenuItem
+	contentArea          *bodyPages
+	shortcutBar          *tview.TextView
+	shortcutTextRaw      string          // raw (unwrapped) shortcut text; the bar renders a pre-wrapped copy
+	shortcutWrapSrc      string          // raw text last wrapped into the bar (cache invalidation)
+	shortcutWrapW        int             // width last wrapped at (-1 ⇒ cache cold)
+	activeMenu           int             // focused menu button (highlight); not necessarily the displayed page
+	activePage           string          // key of the currently displayed body page
+	focusRegion          string          // "body" (default) or "menu" — mirrors MainFrame.focus_position
+	lastBodyFocus        tview.Primitive // last focused body primitive, restored on FocusBody (urwid Frame keeps the body's internal focus while the header has it)
+	theme                int
+	glyphs               GlyphSet
+	onQuit               func()
+	onEsc                func() bool // display-specific Esc handler; returns true if consumed
+	shortcuts            map[string]string
+	shortcutCallbacks    map[string]func() string // per-page dynamic shortcut providers
+	quitCh               chan struct{}
+	mu                   sync.Mutex
+	hideGuide            bool
+	unreadIndicator      bool        // true swaps the menu glyph to unread_menu (Main.py:220-230)
+	hasUnread            func() bool // unread-conversation probe; nil ⇒ none (app injects via SetUnreadCheck)
+	menuWidths           []int       // pixel widths of each menu item for click detection
+	sidePanelControllers []SidePanelController
+	isPortrait           bool
+	hasOrientation       bool
 }
 
 // NewMainDisplay creates the main display with Frame layout:
@@ -167,6 +176,7 @@ func NewMainDisplay(app *App, theme int, glyphSetName string) *MainDisplay {
 	// rect as-is (the frame has no border/padding).
 	md.frame.SetDrawFunc(func(screen tcell.Screen, x, y, w, h int) (int, int, int, int) {
 		md.resizeShortcutBar(w)
+		md.checkOrientation(w, h)
 		return x, y, w, h
 	})
 
@@ -187,9 +197,50 @@ func NewMainDisplay(app *App, theme int, glyphSetName string) *MainDisplay {
 	return md
 }
 
+// RegisterSidePanelController registers a display to be notified when
+// the screen orientation changes between portrait and landscape.
+func (md *MainDisplay) RegisterSidePanelController(controller SidePanelController) {
+	md.mu.Lock()
+	defer md.mu.Unlock()
+	md.sidePanelControllers = append(md.sidePanelControllers, controller)
+	if md.hasOrientation {
+		controller.SetPortrait(md.isPortrait)
+	}
+}
+
+// SetPortrait informs all registered controllers of the current orientation.
+func (md *MainDisplay) SetPortrait(portrait bool) {
+	md.mu.Lock()
+	defer md.mu.Unlock()
+	md.hasOrientation = true
+	md.isPortrait = portrait
+	for _, c := range md.sidePanelControllers {
+		c.SetPortrait(portrait)
+	}
+}
+
+// checkOrientation checks if the screen orientation (portrait vs landscape)
+// has changed based on width and height.
+func (md *MainDisplay) checkOrientation(w, h int) {
+	if w <= 0 || h <= 0 {
+		return
+	}
+	isPortrait := w < h
+	if !md.hasOrientation || md.isPortrait != isPortrait {
+		md.hasOrientation = true
+		md.isPortrait = isPortrait
+		for _, c := range md.sidePanelControllers {
+			c.SetPortrait(isPortrait)
+		}
+	}
+}
+
 // SetDisplay replaces the placeholder for a menu key with a real display widget.
 // If key is the currently displayed page it is brought to the front.
 func (md *MainDisplay) SetDisplay(key string, widget tview.Primitive) {
+	if spc, ok := widget.(SidePanelController); ok {
+		md.RegisterSidePanelController(spc)
+	}
 	md.mu.Lock()
 	md.contentArea.AddPage(key, widget, true, false)
 	isActive := key == md.activePage

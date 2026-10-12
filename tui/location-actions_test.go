@@ -189,14 +189,14 @@ func TestLocationCard(t *testing.T) {
 			detail: micron.DescribeLocation("849VCWC8+R9", micron.Viewer{}),
 			want: []string{
 				"Coordinate: 37.422062, -122.084063",
-				"Distance:   (no position set)",
+				"Distance:   (no location information available)",
 			},
 			absent: []string{"Bearing:"},
 		},
 		{
 			name:   "shortened code",
 			detail: micron.DescribeLocation("V75V+8R", micron.Viewer{Pos: geo.LatLng{Lat: 37.4220, Lng: -122.0841}, Known: true}),
-			want:   []string{"Code:       V75V+8R", "Distance:   (no position set)"},
+			want:   []string{"Code:       V75V+8R", "Distance:   (no location information available)"},
 			absent: []string{"Coordinate:"},
 		},
 	}

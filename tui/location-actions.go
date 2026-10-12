@@ -104,7 +104,7 @@ func locationCard(detail micron.LocationDetail) string {
 			fmt.Fprintf(&b, "From you:   %v\n", detail.RelativeBearing)
 		}
 	} else {
-		b.WriteString("Distance:   (no position set)\n")
+		b.WriteString("Distance:   (no location information available)\n")
 	}
 	return b.String()
 }

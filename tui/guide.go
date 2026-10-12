@@ -118,11 +118,14 @@ type GuideDisplay struct {
 	readerBox  *tview.Flex
 	scroll     *ScrollBar
 
-	currentIdx   int // currently displayed topic, -1 = placeholder
-	links        []micron.LinkSpec
-	currentLines []*micron.StyledLine // rendered lines of the current topic
-	anchors      micron.AnchorMap     // anchor name → line index (current topic)
-	lineTexts    []string             // per-line tview-tagged text (current topic)
+	currentIdx            int // currently displayed topic, -1 = placeholder
+	links                 []micron.LinkSpec
+	currentLines          []*micron.StyledLine // rendered lines of the current topic
+	anchors               micron.AnchorMap     // anchor name → line index (current topic)
+	lineTexts             []string             // per-line tview-tagged text (current topic)
+	cols                  *urwidColumns
+	isPortrait            bool
+	portraitAutoCollapsed bool
 
 	// Focus model (B2/B5). Python's Guide reader is a urwid
 	// Scrollable(Pile(LinkableText)): each Down advances the Pile focus to the
@@ -312,9 +315,46 @@ func NewGuideDisplay(app *App) *GuideDisplay {
 	})
 
 	gd.widget = cols
+	gd.cols = cols
 
 	gd.showPlaceholder()
 	return gd
+}
+
+// TopicsVisible reports whether the topics column is currently visible.
+func (gd *GuideDisplay) TopicsVisible() bool {
+	if gd.cols == nil {
+		return true
+	}
+	return gd.cols.FixedWidth(0) != 0
+}
+
+// SetPortrait collapses or restores the topics list pane depending
+// on whether the screen is in portrait (w < h) or landscape (w >= h).
+func (gd *GuideDisplay) SetPortrait(portrait bool) {
+	if gd.isPortrait == portrait {
+		return
+	}
+	gd.isPortrait = portrait
+	if gd.cols == nil {
+		return
+	}
+	if portrait {
+		if gd.cols.FixedWidth(0) != 0 {
+			gd.portraitAutoCollapsed = true
+			gd.cols.SetFixedWidth(0, 0)
+			if gd.app != nil && gd.topics.HasFocus() {
+				gd.app.SetFocus(gd.reader)
+			}
+		}
+	} else {
+		if gd.portraitAutoCollapsed {
+			gd.portraitAutoCollapsed = false
+			if gd.cols.FixedWidth(0) == 0 {
+				gd.cols.SetFixedWidth(0, -1)
+			}
+		}
+	}
 }
 
 // Widget returns the tview primitive for this display.

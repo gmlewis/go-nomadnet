@@ -103,6 +103,8 @@ class TerminalScreen(cols: Int, rows: Int) {
     private var savedGrid: Array<Array<TerminalCell>>? = null
     private var savedCursorX = 0
     private var savedCursorY = 0
+    private var virtualCursorX = 0
+    private var virtualCursorY = 0
 
     // The cursor the child saves for itself with DECSC/DECRC or CSI s / CSI u. It is
     // held apart from the alternate screen's own save, which the client's startup makes
@@ -189,11 +191,14 @@ class TerminalScreen(cols: Int, rows: Int) {
         cursorX = x
         cursorY = y
         clampCursor()
+        virtualCursorX = x
+        virtualCursorY = y
     }
 
     /** carriageReturn returns the cursor to the start of its row (CR). */
     fun carriageReturn() {
         cursorX = 0
+        virtualCursorX = 0
         wrapPending = false
     }
 
@@ -214,6 +219,7 @@ class TerminalScreen(cols: Int, rows: Int) {
         if (cursorX > 0) {
             cursorX--
         }
+        virtualCursorX = cursorX
         wrapPending = false
     }
 
@@ -223,6 +229,7 @@ class TerminalScreen(cols: Int, rows: Int) {
         if (cursorX >= cols) {
             cursorX = cols - 1
         }
+        virtualCursorX = cursorX
         wrapPending = false
     }
 
@@ -269,6 +276,8 @@ class TerminalScreen(cols: Int, rows: Int) {
             wrapPending = true
             cursorX = cols - 1 // the cursor rests on the last column until the next rune
         }
+        virtualCursorX = cursorX
+        virtualCursorY = cursorY
     }
 
     /** lineFeed moves the cursor down one row, scrolling the region at its bottom. */
@@ -280,6 +289,7 @@ class TerminalScreen(cols: Int, rows: Int) {
         if (cursorY < rows - 1) {
             cursorY++
         }
+        virtualCursorY = cursorY
     }
 
     /** reverseLineFeed moves the cursor up one row, scrolling the region at its top (RI). */
@@ -291,6 +301,7 @@ class TerminalScreen(cols: Int, rows: Int) {
         if (cursorY > 0) {
             cursorY--
         }
+        virtualCursorY = cursorY
     }
 
     /** saveCursor remembers the cursor and the pen for [restoreCursor] (DECSC, CSI s). */
@@ -500,6 +511,8 @@ class TerminalScreen(cols: Int, rows: Int) {
             clearScreen()
             cursorX = 0
             cursorY = 0
+            virtualCursorX = 0
+            virtualCursorY = 0
             wrapPending = false
         } else {
             val saved = savedGrid
@@ -515,6 +528,8 @@ class TerminalScreen(cols: Int, rows: Int) {
                 cursorX = 0
                 cursorY = 0
             }
+            virtualCursorX = cursorX
+            virtualCursorY = cursorY
             wrapPending = false
         }
         isAltScreen = on
@@ -537,6 +552,8 @@ class TerminalScreen(cols: Int, rows: Int) {
         rows = newRows
         scrollTop = 0
         scrollBottom = rows - 1
+        cursorX = virtualCursorX
+        cursorY = virtualCursorY
         clampCursor()
         // A saved primary screen is resized with the screen it will be restored onto, so
         // that leaving the alternate screen after a resize still fits.

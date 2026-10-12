@@ -2,6 +2,7 @@ AGENTS.md
 GEMINI.md
 PARITY-REPORT.md
 perfect-prompt.md
+ios-perfect-prompt.md
 SKILLS.md
 TODO.md
 *.log
@@ -32,3 +33,20 @@ dist/
 # family in assets/, and regenerated whenever one of those files changes, so what
 # lives in the repository is the icon itself and never a second copy of it.
 android/app/src/main/res/mipmap-*/
+
+# iOS build artifacts, Swift Package Manager, and Xcode DerivedData
+#
+# Everything the iOS build produces lands under ios/build/, which is ignored above: the
+# staged resources, the Go archive, and the staged asset catalogue with the launcher icons
+# copied into it. The icon set's own manifest is committed with the sources, so there is no
+# *.png under ios/App/ for a rule to catch — one that named the icons' old home would be a
+# rule that silently stopped matching anything.
+ios/**/.build/
+ios/**/.swiftpm/
+ios/**/build/
+ios/**/DerivedData/
+ios/**/*.xcodeproj/xcuserdata/
+ios/**/*.xcodeproj/project.xcworkspace/xcuserdata/
+ios/**/*.xcworkspace/xcuserdata/
+ios/**/*.framework/
+ios/**/*.xcframework/

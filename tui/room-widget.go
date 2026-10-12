@@ -843,6 +843,16 @@ func (rw *RoomWidget) toggleUsers() {
 	// blocks forever in tests where no event loop is running.
 }
 
+// UsersVisible reports whether the users list pane is currently visible.
+func (rw *RoomWidget) UsersVisible() bool {
+	return rw.usersVisible
+}
+
+// ToggleUsers toggles the visibility of the users list pane.
+func (rw *RoomWidget) ToggleUsers() {
+	rw.toggleUsers()
+}
+
 // RoomName returns the room this widget displays.
 func (rw *RoomWidget) RoomName() string { return rw.roomName }
 

@@ -1,0 +1,419 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		AA0000000000000000000001 /* GonomadnetApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000001 /* GonomadnetApp.swift */; };
+		AA0000000000000000000002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000002 /* ContentView.swift */; };
+		AA0000000000000000000003 /* ApplianceModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000003 /* ApplianceModel.swift */; };
+		AA0000000000000000000004 /* AppliancePaths.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000004 /* AppliancePaths.swift */; };
+		AA0000000000000000000005 /* Bridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000005 /* Bridge.swift */; };
+		AA0000000000000000000006 /* LocationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000006 /* LocationManager.swift */; };
+		AA0000000000000000000007 /* MotionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000007 /* MotionManager.swift */; };
+		AA0000000000000000000008 /* StackSupervisor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000008 /* StackSupervisor.swift */; };
+		AA0000000000000000000009 /* TerminalController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000009 /* TerminalController.swift */; };
+		AA0000000000000000000010 /* ControlsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000010 /* ControlsView.swift */; };
+		AA0000000000000000000011 /* KeyStripView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000011 /* KeyStripView.swift */; };
+		AA0000000000000000000012 /* TerminalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000012 /* TerminalView.swift */; };
+		AA0000000000000000000016 /* ConfigEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000016 /* ConfigEditorView.swift */; };
+		AA0000000000000000000013 /* bridge.c in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000013 /* bridge.c */; };
+		AA0000000000000000000014 /* TerminalKit in Frameworks */ = {isa = PBXBuildFile; productRef = B30000000000000000000001 /* TerminalKit */; };
+		AA0000000000000000000015 /* ApplianceKit in Frameworks */ = {isa = PBXBuildFile; productRef = B30000000000000000000002 /* ApplianceKit */; };
+		AA0000000000000000000017 /* RadioManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000017 /* RadioManager.swift */; };
+		AA0000000000000000000020 /* kjv.txt in Resources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000020 /* kjv.txt */; };
+		AA0000000000000000000021 /* AtkynsonMonoNerdFontMono-Regular.otf in Resources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000021 /* AtkynsonMonoNerdFontMono-Regular.otf */; };
+		AA0000000000000000000022 /* AtkinsonHyperlegibleMono-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000022 /* AtkinsonHyperlegibleMono-OFL.txt */; };
+		AA0000000000000000000023 /* colors.properties in Resources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000023 /* colors.properties */; };
+		AA0000000000000000000024 /* tmux.conf in Resources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000024 /* tmux.conf */; };
+		AA0000000000000000000025 /* default.conf in Resources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000025 /* default.conf */; };
+		AA0000000000000000000026 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000026 /* Assets.xcassets */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		AB0000000000000000000001 /* GonomadnetApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GonomadnetApp.swift; sourceTree = "<group>"; };
+		AB0000000000000000000002 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		AB0000000000000000000003 /* ApplianceModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApplianceModel.swift; sourceTree = "<group>"; };
+		AB0000000000000000000004 /* AppliancePaths.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppliancePaths.swift; sourceTree = "<group>"; };
+		AB0000000000000000000005 /* Bridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bridge.swift; sourceTree = "<group>"; };
+		AB0000000000000000000006 /* LocationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationManager.swift; sourceTree = "<group>"; };
+		AB0000000000000000000007 /* MotionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MotionManager.swift; sourceTree = "<group>"; };
+		AB0000000000000000000008 /* StackSupervisor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StackSupervisor.swift; sourceTree = "<group>"; };
+		AB0000000000000000000009 /* TerminalController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalController.swift; sourceTree = "<group>"; };
+		AB0000000000000000000010 /* ControlsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlsView.swift; sourceTree = "<group>"; };
+		AB0000000000000000000011 /* KeyStripView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyStripView.swift; sourceTree = "<group>"; };
+		AB0000000000000000000012 /* TerminalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalView.swift; sourceTree = "<group>"; };
+		AB0000000000000000000016 /* ConfigEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigEditorView.swift; sourceTree = "<group>"; };
+		AB0000000000000000000013 /* bridge.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = bridge.c; sourceTree = "<group>"; };
+		AB0000000000000000000014 /* bridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = bridge.h; sourceTree = "<group>"; };
+		AB0000000000000000000017 /* RadioManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RadioManager.swift; sourceTree = "<group>"; };
+		AB0000000000000000000020 /* kjv.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = kjv.txt; sourceTree = "<group>"; };
+		AB0000000000000000000021 /* AtkynsonMonoNerdFontMono-Regular.otf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "AtkynsonMonoNerdFontMono-Regular.otf"; sourceTree = "<group>"; };
+		AB0000000000000000000022 /* AtkinsonHyperlegibleMono-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "AtkinsonHyperlegibleMono-OFL.txt"; sourceTree = "<group>"; };
+		AB0000000000000000000023 /* colors.properties */ = {isa = PBXFileReference; lastKnownFileType = text; path = colors.properties; sourceTree = "<group>"; };
+		AB0000000000000000000024 /* tmux.conf */ = {isa = PBXFileReference; lastKnownFileType = text; path = tmux.conf; sourceTree = "<group>"; };
+		AB0000000000000000000025 /* default.conf */ = {isa = PBXFileReference; lastKnownFileType = text; path = default.conf; sourceTree = "<group>"; };
+		AB0000000000000000000026 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		AB0000000000000000000030 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		B40000000000000000000001 /* Gonomadnet.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Gonomadnet.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		AD0000000000000000000002 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AA0000000000000000000014 /* TerminalKit in Frameworks */,
+				AA0000000000000000000015 /* ApplianceKit in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		AC0000000000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				AB0000000000000000000001 /* GonomadnetApp.swift */,
+				AB0000000000000000000002 /* ContentView.swift */,
+				AC0000000000000000000002 /* Services */,
+				AC0000000000000000000003 /* Views */,
+				AC0000000000000000000004 /* GonomadnetBridge */,
+				AC0000000000000000000006 /* Resources */,
+				AB0000000000000000000030 /* Info.plist */,
+				AC0000000000000000000007 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		AC0000000000000000000002 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				AB0000000000000000000003 /* ApplianceModel.swift */,
+				AB0000000000000000000004 /* AppliancePaths.swift */,
+				AB0000000000000000000005 /* Bridge.swift */,
+				AB0000000000000000000006 /* LocationManager.swift */,
+				AB0000000000000000000007 /* MotionManager.swift */,
+				AB0000000000000000000008 /* StackSupervisor.swift */,
+				AB0000000000000000000009 /* TerminalController.swift */,
+				AB0000000000000000000017 /* RadioManager.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		AC0000000000000000000003 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				AB0000000000000000000010 /* ControlsView.swift */,
+				AB0000000000000000000011 /* KeyStripView.swift */,
+				AB0000000000000000000012 /* TerminalView.swift */,
+				AB0000000000000000000016 /* ConfigEditorView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		AC0000000000000000000004 /* GonomadnetBridge */ = {
+			isa = PBXGroup;
+			children = (
+				AB0000000000000000000013 /* bridge.c */,
+				AC0000000000000000000005 /* include */,
+			);
+			name = GonomadnetBridge;
+			path = "../Sources/GonomadnetBridge";
+			sourceTree = "<group>";
+		};
+		AC0000000000000000000005 /* include */ = {
+			isa = PBXGroup;
+			children = (
+				AB0000000000000000000014 /* bridge.h */,
+			);
+			path = include;
+			sourceTree = "<group>";
+		};
+		AC0000000000000000000006 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				AB0000000000000000000020 /* kjv.txt */,
+				AB0000000000000000000021 /* AtkynsonMonoNerdFontMono-Regular.otf */,
+				AB0000000000000000000022 /* AtkinsonHyperlegibleMono-OFL.txt */,
+				AB0000000000000000000023 /* colors.properties */,
+				AB0000000000000000000024 /* tmux.conf */,
+				AB0000000000000000000025 /* default.conf */,
+				AB0000000000000000000026 /* Assets.xcassets */,
+			);
+			name = Resources;
+			path = "$(GONOMADNET_ASSETS)";
+			sourceTree = "<group>";
+		};
+		AC0000000000000000000007 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				B40000000000000000000001 /* Gonomadnet.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		AE0000000000000000000001 /* Gonomadnet */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B10000000000000000000002 /* Build configuration list for PBXNativeTarget "Gonomadnet" */;
+			buildPhases = (
+				AD0000000000000000000001 /* Sources */,
+				AD0000000000000000000002 /* Frameworks */,
+				AD0000000000000000000003 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Gonomadnet;
+			packageProductDependencies = (
+				B30000000000000000000001 /* TerminalKit */,
+				B30000000000000000000002 /* ApplianceKit */,
+			);
+			productName = Gonomadnet;
+			productReference = B40000000000000000000001 /* Gonomadnet.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		AF0000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2600;
+				LastUpgradeCheck = 2600;
+				TargetAttributes = {
+					AE0000000000000000000001 = {
+						CreatedOnToolsVersion = 26.0;
+					};
+				};
+			};
+			buildConfigurationList = B10000000000000000000001 /* Build configuration list for PBXProject "Gonomadnet" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = AC0000000000000000000001;
+			packageReferences = (
+				B20000000000000000000001 /* XCLocalSwiftPackageReference ".." */,
+			);
+			productRefGroup = AC0000000000000000000007 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				AE0000000000000000000001 /* Gonomadnet */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		AD0000000000000000000003 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AA0000000000000000000020 /* kjv.txt in Resources */,
+				AA0000000000000000000021 /* AtkynsonMonoNerdFontMono-Regular.otf in Resources */,
+				AA0000000000000000000022 /* AtkinsonHyperlegibleMono-OFL.txt in Resources */,
+				AA0000000000000000000023 /* colors.properties in Resources */,
+				AA0000000000000000000024 /* tmux.conf in Resources */,
+				AA0000000000000000000025 /* default.conf in Resources */,
+				AA0000000000000000000026 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		AD0000000000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AA0000000000000000000001 /* GonomadnetApp.swift in Sources */,
+				AA0000000000000000000002 /* ContentView.swift in Sources */,
+				AA0000000000000000000003 /* ApplianceModel.swift in Sources */,
+				AA0000000000000000000004 /* AppliancePaths.swift in Sources */,
+				AA0000000000000000000005 /* Bridge.swift in Sources */,
+				AA0000000000000000000006 /* LocationManager.swift in Sources */,
+				AA0000000000000000000007 /* MotionManager.swift in Sources */,
+				AA0000000000000000000008 /* StackSupervisor.swift in Sources */,
+				AA0000000000000000000009 /* TerminalController.swift in Sources */,
+				AA0000000000000000000017 /* RadioManager.swift in Sources */,
+				AA0000000000000000000010 /* ControlsView.swift in Sources */,
+				AA0000000000000000000011 /* KeyStripView.swift in Sources */,
+				AA0000000000000000000012 /* TerminalView.swift in Sources */,
+				AA0000000000000000000016 /* ConfigEditorView.swift in Sources */,
+				AA0000000000000000000013 /* bridge.c in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		B00000000000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		B00000000000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		B00000000000000000000003 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				ENABLE_DEBUG_DYLIB = NO;
+				GENERATE_INFOPLIST_FILE = NO;
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/../Sources/GonomadnetBridge/include";
+				INFOPLIST_FILE = "$(SRCROOT)/Info.plist";
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				OTHER_LDFLAGS = (
+					"$(GONOMADNET_ARCHIVE)",
+					"-framework",
+					CoreLocation,
+					"-framework",
+					CoreMotion,
+					"-framework",
+					CoreBluetooth,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.gmlewis.gonomadnet;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_OBJC_BRIDGING_HEADER = "$(SRCROOT)/../Sources/GonomadnetBridge/include/bridge.h";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		B00000000000000000000004 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = NO;
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/../Sources/GonomadnetBridge/include";
+				INFOPLIST_FILE = "$(SRCROOT)/Info.plist";
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				OTHER_LDFLAGS = (
+					"$(GONOMADNET_ARCHIVE)",
+					"-framework",
+					CoreLocation,
+					"-framework",
+					CoreMotion,
+					"-framework",
+					CoreBluetooth,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.gmlewis.gonomadnet;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_OBJC_BRIDGING_HEADER = "$(SRCROOT)/../Sources/GonomadnetBridge/include/bridge.h";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		B10000000000000000000001 /* Build configuration list for PBXProject "Gonomadnet" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B00000000000000000000001 /* Debug */,
+				B00000000000000000000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B10000000000000000000002 /* Build configuration list for PBXNativeTarget "Gonomadnet" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B00000000000000000000003 /* Debug */,
+				B00000000000000000000004 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		B20000000000000000000001 /* XCLocalSwiftPackageReference ".." */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ..;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		B30000000000000000000001 /* TerminalKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = TerminalKit;
+		};
+		B30000000000000000000002 /* ApplianceKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = ApplianceKit;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = AF0000000000000000000001 /* Project object */;
+}

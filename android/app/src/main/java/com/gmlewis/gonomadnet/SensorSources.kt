@@ -55,6 +55,12 @@ class LocationSource(
     fun lastFixAgeMs(nowMs: Long): Long = if (lastFixAtMs == 0L) -1 else nowMs - lastFixAtMs
 
     override fun start(): Boolean {
+        if (context.checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) != android.content.pm.PackageManager.PERMISSION_GRANTED &&
+            context.checkSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION) != android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            log("no location information available")
+            return false
+        }
         val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
             ?: return false
         manager = locationManager
