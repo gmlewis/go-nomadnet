@@ -127,35 +127,45 @@ The target has:
 
 ## 5. Signing
 
-A device build is signed. With no team in the environment the script still builds it —
-unsigned — so that the resources, the C archive and the link line are all verified on a
-machine with no certificate, and it says so when it packages the result: the `.ipa` it
-produces is a valid package that has to be signed before it will install.
-
-To sign, set a development team in the target's Signing & Capabilities and let Xcode manage
-the provisioning profile, or pass it to the script:
+**Nothing has to be set, and nothing is stored in the repository.** The script reads the
+team identifier from the developer certificate in your login keychain — Apple puts the team
+in the certificate's own subject — and signs with it:
 
 ```bash
-GONOMADNET_TEAM=ABCDE12345 ./scripts/build-ios-app.sh
+./scripts/build-ios-app.sh            # a signed release .ipa
+./scripts/build-ios-app.sh --debug    # a signed .app
 ```
 
-A simulator build is never signed, and needs no team.
+A team identifier is not a secret: it is inside every app that team has signed and every
+provisioning profile it has. What is secret is the private key that goes with the certificate,
+and that never leaves the keychain — the script reads the certificate's public subject and
+nothing else. It looks for an `Apple Distribution` certificate first and an `Apple Development`
+one if there is none; which of the two signs a build matters to who can install the result, so
+a machine with both should say which it means with `GONOMADNET_TEAM`.
 
-**A signed build for one device needs the device named as well.** Automatic signing
-creates the certificate and the provisioning profile on the first signed build, but a
-*device* is registered separately, and a profile that does not list the device installs
-nothing: iOS refuses it with *This provisioning profile cannot be installed on this
-device*, and the build itself is already green by then. Naming the device is what registers
-it, and it is the one thing the target's build settings cannot carry:
+`GONOMADNET_TEAM=<team>` overrides the certificate, which is what a machine with more than
+one team needs. On a machine with **no** certificate — a build server — the build still runs
+and still verifies the resources, the C archive and the link line, and the `.ipa` it leaves is
+a valid package that has to be signed before it will install, which the script says when it
+packages it.
+
+A **simulator** build is never signed and needs no certificate.
+
+**A build for one device needs the device named as well.** Signing does not register a device;
+`GONOMADNET_DEVICE` does, by naming it as the build's destination. A profile that does not list
+the device installs nothing, and iOS says so only after the build is green:
 
 ```bash
-GONOMADNET_TEAM=ABCDE12345 GONOMADNET_DEVICE=<udid> ./scripts/build-ios-app.sh --debug
+GONOMADNET_DEVICE=<udid> ./scripts/build-ios-app.sh --debug
 ```
 
-Find the UDID with `xcrun devicectl list devices`; `id=<udid>` or `id=<identifier>` both
-work as destinations. The registration is a change to the developer account rather than to
-the project, so a generic or simulator build never asks for it and the script only passes
-the flag when a device is named.
+Find the UDID with `xcrun devicectl list devices`; `id=<udid>` or `id=<identifier>` both work
+as destinations. Registering a device is a change to the developer account rather than to the
+project, so a generic or simulator build never asks for it.
+
+**A release build needs neither.** It is built for `generic/platform=iOS`, so no device has
+to be attached to build or sign one, and `./scripts/build-ios-app.sh` signs it with whatever
+certificate the machine has.
 
 ## 6. Running it
 

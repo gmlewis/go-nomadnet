@@ -16,21 +16,58 @@
 package main
 
 import (
+	"archive/zip"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
 
-// stageIPA writes a file that stands in for a packaged iOS appliance.
+// stageIPA writes a packaged iOS appliance that is signed, which is what a release can carry.
+//
+// An .ipa is a zip, and what makes it signed is the provisioning profile inside it, so the
+// stand-in is a zip holding exactly that: a file with the right name and nothing else would
+// be the unsigned appliance this publisher must refuse.
 func stageIPA(t *testing.T, dir, name string) string {
+	t.Helper()
+	return stageIPAWith(t, dir, name, true)
+}
+
+// stageUnsignedIPA writes a packaged appliance that carries no signature.
+func stageUnsignedIPA(t *testing.T, dir, name string) string {
+	t.Helper()
+	return stageIPAWith(t, dir, name, false)
+}
+
+func stageIPAWith(t *testing.T, dir, name string, signed bool) string {
 	t.Helper()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("MkdirAll: %v", err)
 	}
 	path := filepath.Join(dir, name)
-	if err := os.WriteFile(path, []byte("not really an IPA"), 0o644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
+
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	defer func() { _ = file.Close() }()
+
+	archive := zip.NewWriter(file)
+	entries := []string{"Payload/Gonomadnet.app/Gonomadnet", "Payload/Gonomadnet.app/Info.plist"}
+	if signed {
+		entries = append(entries, "Payload/Gonomadnet.app/embedded.mobileprovision")
+	}
+	for _, entry := range entries {
+		w, err := archive.Create(entry)
+		if err != nil {
+			t.Fatalf("creating %v: %v", entry, err)
+		}
+		if _, err := w.Write([]byte("stage")); err != nil {
+			t.Fatalf("writing %v: %v", entry, err)
+		}
+	}
+	if err := archive.Close(); err != nil {
+		t.Fatalf("closing the archive: %v", err)
 	}
 	return path
 }
@@ -94,6 +131,25 @@ func TestCollectIOSArtifacts(t *testing.T) {
 		}
 	})
 
+	t.Run("an unsigned appliance is not this release's to publish", func(t *testing.T) {
+		t.Parallel()
+
+		dir := tempDir(t)
+		staging := filepath.Join(dir, "dist", "ios")
+		stageUnsignedIPA(t, staging, "gonomadnet-"+version+"-ios-arm64.ipa")
+		progress, log := progressTo(t, dir)
+
+		if got := collectIOSArtifacts(staging, version, progress); len(got) != 0 {
+			t.Fatalf("collectIOSArtifacts = %v, want nothing: an .ipa with no signature installs on nothing", got)
+		}
+		if !strings.Contains(log(), "is not signed") {
+			t.Errorf("the log does not say why it was passed over:\n%v", log())
+		}
+		if !strings.Contains(log(), "build-ios-app.sh") {
+			t.Errorf("the log does not say how to sign one:\n%v", log())
+		}
+	})
+
 	t.Run("this release's appliance is picked out of a directory full of leftovers", func(t *testing.T) {
 		t.Parallel()
 
@@ -113,9 +169,10 @@ func TestCollectIOSArtifacts(t *testing.T) {
 // TestReleaseNotesDescribeTheIOSAppliance asserts that a release carrying an IPA says what it
 // is and what a reader can do with it.
 //
-// The wording matters more here than anywhere else in the notes: an unsigned IPA will not
-// install, and a reader who downloads it expecting an app and finds "Unable to Install" has
-// been told the appliance exists and given no way to have it.
+// The wording matters more here than anywhere else in the notes: an app that is signed for
+// someone else's team installs on none of a reader's devices, and a reader who downloads it
+// expecting an app and finds "Unable to Install" has been told the appliance exists and given
+// no way to have it.
 func TestReleaseNotesDescribeTheIOSAppliance(t *testing.T) {
 	t.Parallel()
 
@@ -137,10 +194,13 @@ func TestReleaseNotesDescribeTheIOSAppliance(t *testing.T) {
 			"docs/iOS-Build.md",
 			"docs/iOS.md",
 			// The three facts a reader needs and cannot guess: it is one process, Bluetooth is
-			// how a radio is reached, and the IPA is not installable as downloaded.
+			// how a radio is reached, and the IPA is signed for a team whose devices are not
+			// theirs, so running it means building it.
 			"no way to start a program",
 			"Bluetooth LoRa radio",
-			"not installable as downloaded",
+			"carries the maintainer's Apple Development signature",
+			"signing it with your own " +
+				"developer account",
 		} {
 			if !strings.Contains(notes, want) {
 				t.Errorf("the release notes do not mention %q:\n%v", want, notes)

@@ -49,6 +49,7 @@
 package main
 
 import (
+	"archive/zip"
 	"bytes"
 	"flag"
 	"fmt"
@@ -708,10 +709,51 @@ func collectIOSArtifacts(stagingDir, version string, progress *os.File) []string
 			version, stagingDir)
 		return nil
 	}
+	signed := make([]string, 0, len(assets))
 	for _, asset := range assets {
-		mustFprintf(progress, "Attaching the iOS appliance %v\n", filepath.Base(asset))
+		ok, err := isSignedIPA(asset)
+		switch {
+		case err != nil:
+			mustFprintf(progress,
+				"The iOS appliance %v could not be read (%v), so this release will not carry it.\n",
+				filepath.Base(asset), err)
+		case !ok:
+			// A .ipa with no signature installs on nothing: a reader who downloads it gets
+			// "Unable to Install" and no way to find out why. Publishing it would be worse
+			// than publishing no appliance at all, which is a release that still works.
+			mustFprintf(progress,
+				"The iOS appliance %v is not signed, so this release will not carry it.\n"+
+					"  Build it on a Mac that has a developer certificate in its keychain:\n"+
+					"  ./scripts/build-ios-app.sh signs with that certificate and leaves an IPA in %v.\n",
+				filepath.Base(asset), stagingDir)
+		default:
+			mustFprintf(progress, "Attaching the iOS appliance %v\n", filepath.Base(asset))
+			signed = append(signed, asset)
+		}
 	}
-	return assets
+	return signed
+}
+
+// isSignedIPA reports whether a packaged appliance carries a code signature, which is the
+// difference between an app a reader can install and a zip file they cannot.
+//
+// An .ipa is a zip, and a signed one holds the provisioning profile the signature was made
+// against. The archive is read rather than unpacked: the profile is one entry in it, and the
+// appliance is ten megabytes.
+func isSignedIPA(path string) (bool, error) {
+	archive, err := zip.OpenReader(path)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = archive.Close() }()
+
+	for _, entry := range archive.File {
+		name := entry.Name
+		if strings.HasPrefix(name, "Payload/") && strings.HasSuffix(name, ".app/embedded.mobileprovision") {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // buildIOSAppliance packages the release's iOS appliance by running iosBuildScript, which
@@ -924,12 +966,14 @@ func buildReleaseNotes(version, repo string, assets []string) string {
 			"hub, the bot and the client all run inside the one app, and the client draws into "+
 			"a terminal the app built rather than into a pseudo-terminal. It adds the device's "+
 			"own GNSS receiver, compass and a Bluetooth LoRa radio.\n\n")
-		mustFprintf(&b, "It is distributed as an unsigned IPA and is **not installable as "+
-			"downloaded**: iOS will not run an app that is not signed for it. Building it from "+
-			"source and signing it with your own developer account is the supported path, and "+
+		mustFprintf(&b, "The IPA is **signed**, which is what makes it an app rather than a zip "+
+			"file: it carries the maintainer's Apple Development signature, so it installs on the "+
+			"devices registered to that team and on no others. iOS will not run an app that is not "+
+			"signed for your own device, so building it from source and signing it with your own "+
+			"developer account is the way to run it yourself — and "+
 			"[Building the iOS appliance](https://github.com/%v/blob/master/docs/iOS-Build.md) "+
-			"is the whole of it. The IPA is attached because it is what a signed build produces, "+
-			"and because its contents can be inspected without one.\n\n", repo)
+			"is the whole of it: the build script reads the certificate from your keychain, signs "+
+			"with it, and you set nothing at all.\n\n", repo)
 		mustFprintf(&b, "Follow [Running gonomadnet on iOS and iPadOS]"+
 			"(https://github.com/%v/blob/master/docs/iOS.md) for what the appliance does.\n\n", repo)
 	}

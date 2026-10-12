@@ -23,22 +23,30 @@
 #   ./scripts/build-ios-app.sh --acceptance run the device acceptance test on a device
 #   ./scripts/build-ios-app.sh --help       show this text
 #
-# A device build is signed when GONOMADNET_TEAM names the team, and is built for one
-# named device when GONOMADNET_DEVICE names it. The two together are what makes the
-# result installable:
+# A device build is signed, and a release build is signed the same way, with no
+# environment to set: the team is read from the developer certificate in the login
+# keychain, which is where Xcode put it and where Apple keeps the team identifier — in the
+# certificate's own subject. Nothing is stored, and the private key never leaves the
+# keychain. GONOMADNET_TEAM overrides the certificate for a machine with more than one team.
 #
-#   GONOMADNET_TEAM=<team> GONOMADNET_DEVICE=<udid> ./scripts/build-ios-app.sh --debug
+# A build for one named device needs GONOMADNET_DEVICE as well, because a device is not
+# something a certificate can say: it is what registers the device on the developer portal
+# and puts it in the provisioning profile.
 #
-# Both are environment variables rather than arguments because neither belongs in the
-# repository: a team identifier and a device UDID are the operator's, not the project's.
+#   GONOMADNET_DEVICE=<udid> ./scripts/build-ios-app.sh --debug
 #
-# --acceptance needs both, and a device: it is the one mode that cannot run anywhere else.
-# It drives the installed appliance the way a reader would and asserts what a reader can
-# check — that the first launch starts nothing, that Start Stack brings up the shared
-# instance and the sensor feed, that Stop Stack releases them and they come back, that the
-# console renders and takes a keystroke, that rotating reflows it, and that Start Sensors
-# turns the sensor path on. It is deliberately NOT part of --test-only or run-all-tests.sh:
-# everything they run, runs on a machine with no device.
+# It is an environment variable rather than an argument because a device UDID is the
+# operator's, not the project's. A release build needs neither: it is built for
+# `generic/platform=iOS`, so no device has to be attached to sign one.
+#
+# --acceptance needs a device, and a signing team: it is the one mode that cannot run
+# anywhere else. It drives the installed appliance the way a reader would and asserts what a
+# reader can check — that the first launch starts nothing, that Start Stack brings up the
+# shared instance and the sensor feed, that Stop Stack releases them and they come back, that
+# the console renders and takes a keystroke, that a drag scrolls the panel it is over, that
+# rotating reflows it, and that Start Sensors turns the sensor path on. It is deliberately NOT
+# part of --test-only or run-all-tests.sh: everything they run, runs on a machine with no
+# device.
 #
 # The iOS tests are deliberately NOT part of run-all-tests.sh: that gate is the Go
 # repositories' gate and has to keep working on a machine with no Xcode. `swift test`
@@ -70,7 +78,7 @@ MODE="release"
 for arg in "$@"; do
   case "$arg" in
     --help|-h)
-      sed -n '2,41p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,49p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     --debug) MODE="debug" ;;
@@ -328,35 +336,70 @@ SCHEME="Gonomadnet"
 DERIVED="$BUILD_DIR/derived"
 ARCHIVE_PATH="$BUILD_DIR/Gonomadnet.xcarchive"
 
-# A device build is signed and a simulator build is not. With no team in the
-# environment the device build is still made, unsigned, so that the resources, the C
-# archive and the link line are all verified on a machine that has no certificate —
-# the .ipa it produces is a valid package that has to be signed before it will install.
+# A device build is signed and a simulator build is not.
+
+# signing_team prints the team the appliance is signed for, or nothing when this machine
+# cannot sign at all. It reads the one place a Mac already keeps the answer: the developer
+# certificate in the login keychain, whose OU field is the team identifier — which is how
+# Xcode itself knows it, and why no team is ever written into this repository.
+#
+# Nothing secret is involved and nothing is stored. A team identifier is not a secret: it
+# is inside every app that team has ever signed, and inside every provisioning profile. What
+# is secret is the private key that goes with the certificate, and that never leaves the
+# keychain — this only reads the certificate's public subject. GONOMADNET_TEAM, when it is
+# set, is used instead, which is what a machine with more than one team needs.
+signing_team() {
+  if [ -n "${GONOMADNET_TEAM:-}" ]; then
+    printf '%s' "$GONOMADNET_TEAM"
+    return 0
+  fi
+
+  local name subject ou
+  # A distribution certificate is what a release wants, so it is looked for first; a
+  # development one signs a build that installs on a registered device, which is what this
+  # appliance is given anyway.
+  for name in "Apple Distribution" "Apple Development"; do
+    subject="$(security find-certificate -a -c "$name" -p 2>/dev/null       | openssl x509 -noout -subject 2>/dev/null || true)"
+    ou="$(printf '%s' "$subject" | sed -n 's/.*OU=\([A-Za-z0-9]*\).*/\1/p' | head -1)"
+    if [ -n "$ou" ]; then
+      printf '%s' "$ou"
+      return 0
+    fi
+  done
+  return 1
+}
+
+TEAM="$(signing_team || true)"
+
 SIGN_ARGS=()
 # A signed build has to be allowed to talk to the developer portal: automatic signing
-# creates the development certificate and the provisioning profile for the target's
-# bundle identifier on the first run, and refreshes them when they expire. Without this
-# flag xcodebuild refuses to make either and fails before it reaches the compiler, so a
-# team in the environment is what asks for the update and this is how it is granted.
+# creates the provisioning profile for the target's bundle identifier on the first run, and
+# refreshes it when it expires. Without this flag xcodebuild refuses to make one and fails
+# before it reaches the compiler, so a team is what asks for the update and this is how it is
+# granted.
 SIGN_FLAGS=()
 SIGNING="not-applicable"
 if [ "$MODE" = "acceptance" ]; then
   # The acceptance test is run by a second app on the device, so both it and the appliance
   # it drives have to be signed and installed. There is nothing to fall back to: a test
   # runner that cannot be installed tests nothing.
-  if [ -z "${GONOMADNET_TEAM:-}" ] || [ -z "${GONOMADNET_DEVICE:-}" ]; then
-    echo "--acceptance needs both GONOMADNET_TEAM and GONOMADNET_DEVICE" >&2
+  if [ -z "$TEAM" ] || [ -z "${GONOMADNET_DEVICE:-}" ]; then
+    echo "--acceptance needs a signing team and a device" >&2
+    echo "no team was found in the keychain: set GONOMADNET_TEAM, and GONOMADNET_DEVICE" >&2
     exit 2
   fi
-  SIGN_ARGS=(DEVELOPMENT_TEAM="$GONOMADNET_TEAM" CODE_SIGN_STYLE=Automatic)
+  SIGN_ARGS=(DEVELOPMENT_TEAM="$TEAM" CODE_SIGN_STYLE=Automatic)
   SIGN_FLAGS=(-allowProvisioningUpdates -allowProvisioningDeviceRegistration)
   SIGNING="signed"
 elif [ "$MODE" != "simulator" ]; then
-  if [ -n "${GONOMADNET_TEAM:-}" ]; then
-    SIGN_ARGS=(DEVELOPMENT_TEAM="$GONOMADNET_TEAM" CODE_SIGN_STYLE=Automatic)
+  if [ -n "$TEAM" ]; then
+    SIGN_ARGS=(DEVELOPMENT_TEAM="$TEAM" CODE_SIGN_STYLE=Automatic)
     SIGN_FLAGS=(-allowProvisioningUpdates)
     SIGNING="signed"
   else
+    # A machine with no developer certificate — a build server — still builds: the
+    # resources, the C archive and the link line are all verified, and the .ipa it produces
+    # is a valid package that has to be signed before it will install.
     SIGN_ARGS=(CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="")
     SIGNING="unsigned"
   fi
@@ -452,7 +495,7 @@ case "$MODE" in
     echo "sha256: $(shasum -a 256 "$IPA" | cut -d' ' -f1)"
     echo "size:   $(du -h "$IPA" | cut -f1)"
     if [ "$SIGNING" = "unsigned" ]; then
-      echo "note:   the app is unsigned; set GONOMADNET_TEAM to sign it"
+      echo "note:   the app is unsigned: no developer certificate was found in the keychain"
     fi
     ;;
   simulator)
