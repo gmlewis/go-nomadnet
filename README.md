@@ -4,11 +4,13 @@
 The Go gopher was designed by Renee French.
 The design is licensed under the Creative Commons 4.0 Attribution license.](assets/gonomadnet-mascot.png)
 
-A complete Go port of [NomadNet](https://github.com/markqvist/nomadnet), a
+An experimental Go port of [NomadNet](https://github.com/markqvist/nomadnet), a
 peer-to-peer messaging and information sharing system built on
 [Reticulum](https://reticulum.network). NomadNet enables private, encrypted
 communication over any network transport — including LoRa, packet radio, and
 the internet.
+
+Note that AI was heavily used in the port of the original Python3 project to Go.
 
 ## Features
 
