@@ -235,6 +235,12 @@ class SensorService : Service() {
         // switched on exactly as before — and the link is what makes a replug need no
         // restart at all. See [RNodePortLink].
         pointPortAtRadio(bridge)
+        // The client reads the transport's identity cache through this link, so every peer
+        // the instance has heard is verifiable from the client's first message onward — the
+        // arrangement a desktop gets for free by keeping client and instance in one
+        // configuration directory. Pointed here, before the transport starts, which is also
+        // long before the console can open the client that reads it.
+        RNodePortLink.pointAt(paths.clientKnownDestinations, paths.instanceKnownDestinations)
         val rnode = RNodeSpec(port = paths.rnodePortLink)
         if (bridge.publishedTty == null) {
             report("no radio is attached; the radio interface stays on and waits for one")

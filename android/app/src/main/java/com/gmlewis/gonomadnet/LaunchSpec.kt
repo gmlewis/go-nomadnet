@@ -65,6 +65,33 @@ data class StackPaths(val filesDir: String) {
     val clientConfig get() = "$rnsClientConfigDir/config"
 
     /**
+     * The shared instance's identity cache.
+     *
+     * It maps destination hashes to public keys, and it is the only way any process can
+     * verify a message signature or address a peer — a destination's hash cannot be inverted
+     * into a key, so an identity that was never read from an announce is simply unknown.
+     */
+    val instanceKnownDestinations get() = "$rnsConfigDir/storage/known_destinations"
+
+    /**
+     * The identity cache path the client reads: a link to [instanceKnownDestinations].
+     *
+     * A client of a shared Reticulum instance neither loads nor writes its own known
+     * destinations — the instance owns that table (Python `Identity.save_known_destinations`
+     * returns early for a connected-to-shared-instance process, and Go's
+     * `SaveKnownDestinations` does the same). On a desktop that costs nothing, because the
+     * client and the instance share one configuration directory, so the client still READS
+     * the instance's cache and can verify peers that announced before it started. The
+     * appliance's two directories split that arrangement apart, which leaves the client
+     * blind to everything the instance learned before the client's last start: a peer whose
+     * announce is hours old is unverifiable ("! <- Unknown Origin" on its messages) and
+     * unroutable. This link restores the desktop's arrangement. It stays read-only for the
+     * client: the guard that stops a connected-to-shared-instance process from writing the
+     * table is unchanged, so only the instance ever writes it.
+     */
+    val clientKnownDestinations get() = "$rnsClientConfigDir/storage/known_destinations"
+
+    /**
      * The client's home directory, which is what `HOME` points at when it runs.
      *
      * A program that has not been told where to keep its caches and its logs looks in its

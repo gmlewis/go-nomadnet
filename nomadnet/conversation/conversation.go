@@ -171,16 +171,33 @@ func (c *Conversation) ScanStorage() error {
 
 		filePath := filepath.Join(c.MessagesPath, name)
 
-		// Reuse existing message if mtime unchanged
+		// A file already in memory is always reused, mirroring Python's
+		// scan_storage (Conversation.py:2240-2252): it re-appends the cached
+		// ConversationMessage for any path it already knows and never rebuilds
+		// it from the .index. When the file has been rewritten since it was
+		// cached — a delivery proof rewrites the envelope with LXMF DELIVERED —
+		// the cached state is dropped so it is re-read from the envelope, and
+		// the sort timestamp advances to the file's. Restoring the .index here
+		// instead reinstated the stale snapshot: the conversation kept the
+		// indexed SENT state (and its glyph) while the file said DELIVERED, and
+		// WriteIndex then wrote the stale value back.
 		if existing, ok := existingMessages[name]; ok {
-			info, err := entry.Info()
-			if err == nil {
+			if info, err := entry.Info(); err == nil {
 				newMtime := float64(info.ModTime().UnixNano()) / 1e9
-				if newMtime == existing.SortTimestamp {
-					messages = append(messages, existing)
-					continue
+				if newMtime > existing.SortTimestamp {
+					// Drop the cached state and the parsed envelope so the next
+					// read comes from the rewritten file: clearing the state
+					// alone is not enough, because Load returns early while
+					// Loaded is set, and the readers that matter (DisplayMessages,
+					// the header getters) read the cached fields.
+					existing.CachedState = nil
+					existing.CachedRawState = 0
+					existing.Loaded = false
+					existing.SortTimestamp = newMtime
 				}
 			}
+			messages = append(messages, existing)
+			continue
 		}
 
 		msg := NewMessage(filePath)
@@ -196,8 +213,15 @@ func (c *Conversation) ScanStorage() error {
 		// messages skipped the lazy disk load and re-verification, so
 		// gonomadnet rendered a fresh-verified header where nomadnet renders
 		// the cached one (e.g. "✓ ←" vs the indexed "← Unknown Origin").
+		//
+		// The one case the snapshot must not win is an envelope rewritten after
+		// it was taken: a delivery proof rewrites the file with LXMF DELIVERED,
+		// and restoring the entry would reinstate the pre-proof SENT state (and
+		// its glyph) and then write it back. The entry's own timestamps say when
+		// the snapshot was taken, so an envelope strictly newer than them is
+		// read from disk instead.
 		if ie, ok := index.Get(name); ok {
-			if om, ok := ie.(rnsmsgpack.OrderedMap); ok {
+			if om, ok := ie.(rnsmsgpack.OrderedMap); ok && !envelopeNewerThanSnapshot(msg, om) {
 				msg.RestoreFromIndex(om)
 			}
 		}
@@ -367,6 +391,39 @@ func ConversationList(conversationsPath string, displayNames map[string]string, 
 func fileExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+// envelopeNewerThanSnapshot reports whether the message file was rewritten after
+// the .index entry was snapshotted. The entry carries the message's timestamp and
+// sort timestamp as they were when it was written (Python to_index_entry); an
+// envelope strictly newer than both means the file changed afterwards — a
+// delivery proof rewriting the envelope is the case that matters — so the file,
+// not the snapshot, is the truth. An entry without usable timestamps, or a
+// message with no transport to re-read the envelope with, is left to the
+// snapshot, which is the historical behavior.
+func envelopeNewerThanSnapshot(m *Message, entry rnsmsgpack.OrderedMap) bool {
+	if m.Transport == nil {
+		return false
+	}
+	snapshot := 0.0
+	for _, key := range []string{"sort_timestamp", "timestamp"} {
+		v, ok := entry.Get(key)
+		if !ok {
+			continue
+		}
+		if f, ok := v.(float64); ok && f > 0 {
+			snapshot = f
+			break
+		}
+	}
+	if snapshot == 0 {
+		return false
+	}
+	info, err := os.Stat(m.FilePath)
+	if err != nil {
+		return false
+	}
+	return float64(info.ModTime().UnixNano())/1e9 > snapshot
 }
 
 // readCountFile reads an unread/failed flag file and returns its integer

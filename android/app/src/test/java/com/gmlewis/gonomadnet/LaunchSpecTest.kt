@@ -278,6 +278,42 @@ class LaunchSpecTest {
         return Files.createTempDirectory(base.toPath(), prefix).toFile().also { scratch += it }
     }
 
+    @Test
+    fun theClientReadsTheInstancesIdentityCache() {
+        // The link the client reads its peers' identities through must name the instance's
+        // cache, under the transport's own configuration directory — never the client's own
+        // storage, which no connected-to-shared-instance process ever writes. A link that
+        // named the wrong side would leave the client as blind as having no link at all.
+        assertEquals(
+            "${paths.rnsConfigDir}/storage/known_destinations",
+            paths.instanceKnownDestinations,
+        )
+        assertEquals(
+            "${paths.rnsClientConfigDir}/storage/known_destinations",
+            paths.clientKnownDestinations,
+        )
+        assertTrue(
+            "the link the client reads must live in the client's own storage directory",
+            paths.clientKnownDestinations.startsWith("${paths.rnsClientConfigDir}/"),
+        )
+
+        val link = tempDir("known-dest-link")
+        val clientPath = File(link, "client/storage/known_destinations").path
+        assertTrue(
+            "pointAt must write the link",
+            RNodePortLink.pointAt(clientPath, paths.instanceKnownDestinations),
+        )
+        assertEquals(
+            "the link must name the instance's identity cache",
+            paths.instanceKnownDestinations,
+            RNodePortLink.target(clientPath),
+        )
+        assertFalse(
+            "pointing at the same target again must not touch the filesystem",
+            RNodePortLink.pointAt(clientPath, paths.instanceKnownDestinations),
+        )
+    }
+
     private val scratch = mutableListOf<File>()
 
     @After
