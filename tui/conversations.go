@@ -2889,18 +2889,41 @@ func (cd *ConversationsDisplay) showNewConversationDialog(addr, name string, sho
 		AddItem(backBtn, 20, 0, false)
 
 	pile := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(eID, 1, 0, true).
-		AddItem(eName, 1, 0, false).
+		AddItem(eID, 1, 0, true)
+	items := []tview.Primitive{eID}
+
+	// The scan row, when the appliance has a camera to read a code with. It
+	// sits directly under the Addr field, because on a touch screen it is the
+	// only thing that says which field the camera will fill. A client with no
+	// camera — a desktop terminal, every harness — gets no row at all, and this
+	// dialog is then exactly Python's (Conversations.py:1024-1113).
+	scanBtn := NewScanButton(cd.app, func(addr string) {
+		eID.SetText(addr)
+		// The address is put in the field and the field takes the focus back, so a reader
+		// who wants to edit what the camera read can type at it rather than tap it first.
+		if cd.app != nil {
+			cd.app.SetFocus(eID)
+		}
+	})
+	scanRows := 0
+	if scanBtn != nil {
+		pile.AddItem(scanBtn, 1, 0, false)
+		items = append(items, scanBtn)
+		scanRows = 1
+	}
+
+	pile.AddItem(eName, 1, 0, false).
 		AddItem(blank(), 1, 0, false).
 		AddItem(rUntrusted, 1, 0, false).
 		AddItem(rUnknown, 1, 0, false).
 		AddItem(rTrusted, 1, 0, false).
 		AddItem(blank(), 1, 0, false).
 		AddItem(buttons, 1, 0, false)
+	items = append(items, eName, rUntrusted, rUnknown, rTrusted, createBtn, backBtn)
 
 	// Inner content width 46 (the RELATIVE_100 slot overlay is 48 wide → 46
 	// content after the border). 8 content rows → 10 rows tall (PACK + border).
-	height := 8
+	height := 8 + scanRows
 	if showError {
 		errText := tview.NewTextView().SetDynamicColors(true)
 		errText.SetTextAlign(tview.AlignCenter)
@@ -2912,7 +2935,7 @@ func (cd *ConversationsDisplay) showNewConversationDialog(addr, name string, sho
 		// wrapped lines are visible, plus the leading blank separator.
 		pile.AddItem(blank(), 1, 0, false).
 			AddItem(errText, 2, 0, false)
-		height = 11
+		height = 11 + scanRows
 	}
 
 	dismiss := func() { cd.CloseListSlotDialog(); cd.dialogOpen = false }
@@ -2953,7 +2976,7 @@ func (cd *ConversationsDisplay) showNewConversationDialog(addr, name string, sho
 	})
 	backBtn.SetSelectedFunc(dismiss)
 
-	items := []tview.Primitive{eID, eName, rUntrusted, rUnknown, rTrusted, createBtn, backBtn}
+	items = append(items, eName, rUntrusted, rUnknown, rTrusted, createBtn, backBtn)
 	dialog := NewDialogLineBox("New Conversation", pile, dismiss)
 	// Slot-place in the 52-wide list column (Python columns_widget.contents[0],
 	// RELATIVE_100, left=right=2 → 48-wide dialog). height is the content-row

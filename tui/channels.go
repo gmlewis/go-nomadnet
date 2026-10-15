@@ -1461,17 +1461,37 @@ func (cd *ChannelsDisplay) NewHubDialog() {
 	addBtn := NewUrwidButton("Add").SetSelectedFunc(confirm)
 	backBtn := NewUrwidButton("Back").SetSelectedFunc(func() { cd.closeDialog() })
 	layout := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(eHash, 1, 0, true).
-		AddItem(eName, 1, 0, false).
+		AddItem(eHash, 1, 0, true)
+	items := []tview.Primitive{eHash}
+
+	// The scan row, when the appliance has a camera to read a code with: it sits
+	// under the address field it fills. Python's new_hub_dialog has no such row,
+	// so a client with no camera must render exactly the original — see
+	// scan-dialog_test.go.
+	scanBtn := NewScanButton(cd.app, func(hash string) {
+		eHash.SetText(hash)
+		if cd.app != nil {
+			cd.app.SetFocus(eHash)
+		}
+	})
+	scanRows := 0
+	if scanBtn != nil {
+		layout.AddItem(scanBtn, 1, 0, false)
+		items = append(items, scanBtn)
+		scanRows = 1
+	}
+
+	layout.AddItem(eName, 1, 0, false).
 		AddItem(tview.NewTextView().SetText(""), 1, 0, false).
 		AddItem(errorText, 1, 0, false).
 		AddItem(CreateUrwidButtonRow(addBtn, backBtn), 1, 0, false)
+	items = append(items, eName, addBtn, backBtn)
 	dialog := NewDialogLineBox("New Hub", layout, cd.closeDialog)
 	// 5 layout rows + the 2 border rows.
-	cd.showDialogOverlay(dialog, 7)
+	cd.showDialogOverlay(dialog, 7+scanRows)
 	// Python's Pile traversal: Down/Up (and Tab) walk address → name →
 	// buttons; Esc dismisses (wireDialogNav, the shared dialog-nav latch).
-	wireDialogNav(cd.app, cd.closeDialog, []tview.Primitive{eHash, eName, addBtn, backBtn})
+	wireDialogNav(cd.app, cd.closeDialog, items)
 }
 
 // JoinRoomDialog shows the dialog to join a room on the selected hub (Python

@@ -84,6 +84,14 @@ type Host struct {
 	// one.
 	feedPort int
 
+	// scanEndpoint and scanToken are where the app's camera scanner is listening
+	// and what a request for a scan must prove, remembered from Start so the
+	// client can be told when it is started. Empty when the app offered no
+	// scanner, which is a client whose dialogs have no Scan button — see
+	// cmd/gonomadnet/ios-host.go, which puts them in the client's environment.
+	scanEndpoint string
+	scanToken    string
+
 	// consoleCancel ends the running console session, and consoleDone is closed
 	// when its goroutine has finished releasing the socket.
 	consoleCancel context.CancelFunc
@@ -146,6 +154,32 @@ func (h *Host) SetClientConfigs(configDir, rnsConfigDir string) {
 	h.mu.Lock()
 	h.configDir, h.rnsConfigDir = configDir, rnsConfigDir
 	h.mu.Unlock()
+}
+
+// SetScanEndpoint records where the app's camera scanner is listening, and the token
+// a request for a scan must carry.
+//
+// The client has no camera of its own — an iOS application may not start a program,
+// and the camera belongs to the app — so a dialog that would rather read an address
+// from a QR code than have it typed asks the app for one over a loopback connection.
+// The app binds that listener and names it here before the console exists, because a
+// client told an endpoint after it has started is a client whose first Scan button
+// does nothing.
+//
+// An empty endpoint means no scanner at all, which is the right reading of a launch
+// where the listener could not be bound: the client then draws no Scan button, and
+// addresses are typed, exactly as on a desktop terminal.
+func (h *Host) SetScanEndpoint(endpoint, token string) {
+	h.mu.Lock()
+	h.scanEndpoint, h.scanToken = endpoint, token
+	h.mu.Unlock()
+}
+
+// ScanEndpoint returns the scanner the app named, or empty strings when it named none.
+func (h *Host) ScanEndpoint() (endpoint, token string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.scanEndpoint, h.scanToken
 }
 
 // StartConsole listens for the app to attach to a console and then runs the
@@ -291,7 +325,11 @@ func (h *Host) Closed() bool {
 func (h *Host) Successor() *Host {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	return &Host{client: h.client}
+	// Everything that describes the appliance rather than the run is carried over. The
+	// scanner is one of those: a Stop Stack followed by Start Stack is the same app with the
+	// same camera, and a successor that forgot it would leave the reader with dialogs whose
+	// Scan button had gone.
+	return &Host{client: h.client, scanEndpoint: h.scanEndpoint, scanToken: h.scanToken}
 }
 
 // Close shuts the appliance down: the console first, then the engine, so the

@@ -158,6 +158,16 @@ func GonomadnetStartConsole(socketPath *C.char, cols, rows C.uint16_t) C.int {
 	return C.int(StatusOK)
 }
 
+//export GonomadnetSetScanEndpoint
+func GonomadnetSetScanEndpoint(endpoint, token *C.char) C.int {
+	ClearLastError()
+	if err := SetScanEndpoint(C.GoString(endpoint), C.GoString(token)); err != nil {
+		setLastError("recording where the scanner listens: %v", err)
+		return C.int(statusFor(err))
+	}
+	return C.int(StatusOK)
+}
+
 // GonomadnetFeedLocation publishes one GNSS fix.
 //
 // A measurement the device did not take is passed as NaN, which is what an

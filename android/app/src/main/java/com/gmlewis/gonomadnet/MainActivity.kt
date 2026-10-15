@@ -26,6 +26,8 @@ import android.widget.TextView
 import java.io.File
 import java.net.InetSocketAddress
 import java.net.Socket
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.TimeUnit
 
 /**
  * The client the appliance runs, and everything it needs to be started.
@@ -80,6 +82,26 @@ class MainActivity : Activity() {
 
     /** The grid the console was last told it has, which is what the client is sized for. */
     private var consoleGrid = TerminalGrid(cols = DEFAULT_CONSOLE_COLS, rows = DEFAULT_CONSOLE_ROWS)
+
+    /**
+     * The scanner the client's dialogs borrow, while a console is open.
+     *
+     * It lives exactly as long as the console does: the client is the only thing that ever
+     * asks it for a scan, and a listener left bound after the console closed would be a port
+     * nothing is watching, waiting for a request that cannot come.
+     */
+    private var scanServer: ScanServer? = null
+
+    /**
+     * The scan the scanner is being shown for, while it is being shown.
+     *
+     * A camera is a whole activity, so the answer arrives on [onActivityResult] rather than
+     * from anything the caller can wait on directly. This is the join between the two: the
+     * server thread that asked waits on the future, and the result completes it. A future
+     * rather than a queue because the answer may be nothing at all — a reader who backed
+     * out — and a queue of nullable strings cannot hold that.
+     */
+    private var pendingScan: CompletableFuture<String?>? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -360,6 +382,10 @@ class MainActivity : Activity() {
         // destination. See [seedDefaultHubs].
         seedDefaultHubs(paths)
         val client = builtInClient(applicationInfo.nativeLibraryDir, paths)
+        // The scanner the client's dialogs will borrow. It is listening before the client is
+        // started, because the client is told the port it is listening on and a client told a
+        // port nothing is bound to has a Scan button that silently does nothing.
+        val scanner = startScanServer()
         val screen = TerminalScreen(consoleGrid.cols, consoleGrid.rows)
         val view = TerminalView(this).apply { this.screen = screen }
         val session = ConsoleSession(
@@ -372,6 +398,7 @@ class MainActivity : Activity() {
                     client = client,
                     socketName = name,
                     grid = consoleGrid,
+                    scanner = scanner,
                 )
             },
             listeners = LocalConsole,
@@ -521,6 +548,7 @@ class MainActivity : Activity() {
      * process holding a socket nothing is draining and an identity still announcing.
      */
     private fun closeConsole() {
+        stopScanServer()
         val session = console ?: return
         console = null
         consoleGrid = TerminalGrid(cols = DEFAULT_CONSOLE_COLS, rows = DEFAULT_CONSOLE_ROWS)
@@ -533,6 +561,105 @@ class MainActivity : Activity() {
             setContentView(it)
             applyEdgeToEdgeInsets(it)
         }
+    }
+
+    /**
+     * Starts the scanner the client's dialogs borrow, and returns it.
+     *
+     * The listener is on the loopback interface and guarded by a token, and both are handed
+     * to the client on its command line — see [consoleHostSpec]. If it cannot be bound at all
+     * the console still opens: a client with no scanner has no Scan button, which is the
+     * right degradation, and a console that refused to start because a camera could not be
+     * offered would be a far worse one.
+     */
+    private fun startScanServer(): ScanServer? {
+        stopScanServer()
+        val server = runCatching {
+            ScanServer(
+                requester = activityScanRequester(),
+                onRefused = {
+                    report("something other than this appliance's client asked the scanner to read a code")
+                },
+            )
+        }.getOrElse { failure ->
+            report("could not start the scanner, so addresses will have to be typed: ${failure.message}")
+            return null
+        }
+        server.start()
+        scanServer = server
+        // Said out loud because it is what the client was told, and a scan button that does
+        // nothing is otherwise indistinguishable from one whose port nobody is listening on.
+        report("the scanner is listening on ${server.endpoint}")
+        return server
+    }
+
+    /** stopScanServer ends the scanner, if there is one, and lets go of its port. */
+    private fun stopScanServer() {
+        scanServer?.close()
+        scanServer = null
+        // A server thread waiting on a camera that will never be shown has nothing left to
+        // wait for, so the wait is ended rather than left to time out.
+        pendingScan?.complete(null)
+        pendingScan = null
+    }
+
+    /** activityScanRequester is the scanner as the listener sees it. */
+    private fun activityScanRequester(): ScanRequester = object : ScanRequester {
+        override fun scan(): String? = showScanner()
+    }
+
+    /**
+     * showScanner opens the camera and waits for what it read.
+     *
+     * This is called on the server's thread, which is the thread that is holding the client's
+     * connection open, so it blocks until the reader is done: the client asked a question and
+     * is waiting for the answer. The wait is bounded because everything it is waiting on is a
+     * person, and a person who walks away from a tablet with the scanner open should not leave
+     * a thread waiting for the rest of the session.
+     */
+    private fun showScanner(): String? {
+        val answer = CompletableFuture<String?>()
+        // Said out loud because this is the one moment the two halves have to agree: a Scan
+        // button that does nothing is either a client that never asked (nothing here) or an
+        // appliance that could not show the camera (the line after this one).
+        report("the client asked for a scan")
+        runOnUiThread {
+            if (pendingScan != null) {
+                // Two dialogs cannot both be waiting for a camera, and the client will not
+                // ask twice — this is the answer for the request that lost the race.
+                answer.complete(null)
+                return@runOnUiThread
+            }
+            pendingScan = answer
+            startActivityForResult(Intent(this, ScanActivity::class.java), REQUEST_SCAN)
+        }
+        return try {
+            answer.get(SCAN_WAIT_SECONDS, TimeUnit.SECONDS)
+        } catch (e: Exception) {
+            // A timeout, or the appliance going away underneath it. Both mean the same thing
+            // to the client: no address, and the field left as the reader had it.
+            null
+        }
+    }
+
+    /**
+     * The camera's answer.
+     *
+     * It is read from the result rather than from any state of this activity, because the
+     * scan is a screen of its own: what it read comes back as its result, or does not come
+     * back at all. The reader's own dismissal and the activity being finished by the system
+     * are the same answer here, which is that there is no address.
+     */
+    @Deprecated("startActivityForResult: the appliance carries no AndroidX, and the activity-result API is an AndroidX library")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (requestCode != REQUEST_SCAN) {
+            super.onActivityResult(requestCode, resultCode, data)
+            return
+        }
+        val answer = pendingScan ?: return
+        pendingScan = null
+        val payload = if (resultCode == RESULT_OK) data?.getStringExtra(ScanActivity.EXTRA_PAYLOAD) else null
+        answer.complete(payload)
     }
 
     /**
@@ -656,6 +783,19 @@ class MainActivity : Activity() {
          */
         private const val TRANSPORT_CONNECT_TIMEOUT_MS = 500
 
+        /** The request code for the camera permission. */
+        private const val REQUEST_SCAN = 2
+
+        /**
+         * How long a scan may be waited on before the client is told there is no address.
+         *
+         * It is minutes rather than seconds because a reader aiming a camera is not a
+         * transaction: they have to find the code, hold the tablet steady, and wait for the
+         * preview to catch it. It exists at all so that a reader who walks away cannot leave a
+         * server thread waiting for the rest of the session.
+         */
+        private const val SCAN_WAIT_SECONDS = 300L
+
         /** The interface the transport publishes its shared instance on. */
         private const val LOOPBACK = "127.0.0.1"
 
@@ -731,21 +871,49 @@ class MainActivity : Activity() {
             client: BuiltInClient,
             socketName: String,
             grid: TerminalGrid,
-        ): LaunchSpec = LaunchSpec(
-            name = CONSOLE_HOST_NAME,
-            binary = LaunchSpecs.binary(nativeLibraryDir, CONSOLE_HOST_NAME),
-            argv = listOf(
-                "--socket", socketName,
-                "--command", client.binary,
-                "--home", client.home,
-            ) + client.argv.flatMap { listOf("--arg", it) } + listOf(
-                "--env", WHEEL_LINES_ENV,
-                "--cols", grid.cols.toString(),
-                "--rows", grid.rows.toString(),
-            ),
-            env = mapOf("HOME" to client.home),
-            logFile = "${paths.logDir}/$CONSOLE_HOST_NAME.log",
-        )
+            scanner: ScanServer? = null,
+        ): LaunchSpec {
+            // The scanner the client's dialogs borrow. It is passed as the environment the
+            // host builds for its child rather than as an argument, because the host takes its
+            // own flags and nothing else — and because this is the same channel the wheel
+            // behaviour already arrives on. A client given neither variable has no scanner and
+            // no Scan button, which is exactly what a desktop terminal gets.
+            val scanEnv = if (scanner == null) {
+                emptyList()
+            } else {
+                listOf(
+                    "--env", "$SCAN_ADDR_ENV=${scanner.endpoint}",
+                    "--env", "$SCAN_TOKEN_ENV=${scanner.token}",
+                )
+            }
+            return LaunchSpec(
+                name = CONSOLE_HOST_NAME,
+                binary = LaunchSpecs.binary(nativeLibraryDir, CONSOLE_HOST_NAME),
+                argv = listOf(
+                    "--socket", socketName,
+                    "--command", client.binary,
+                    "--home", client.home,
+                ) + client.argv.flatMap { listOf("--arg", it) } + listOf(
+                    "--env", WHEEL_LINES_ENV,
+                ) + scanEnv + listOf(
+                    "--cols", grid.cols.toString(),
+                    "--rows", grid.rows.toString(),
+                ),
+                env = mapOf("HOME" to client.home),
+                logFile = "${paths.logDir}/$CONSOLE_HOST_NAME.log",
+            )
+        }
+
+        /**
+         * SCAN_ADDR_ENV and SCAN_TOKEN_ENV are how the client is told where the camera is.
+         *
+         * They are the names `tui/scanner.go` reads, and both are needed: the address alone
+         * would leave the listener open to any other application on the device, and the token
+         * alone would name nothing to dial. The client treats half of the pair as no scanner
+         * at all, which is the safe reading of a launch that lost one.
+         */
+        const val SCAN_ADDR_ENV = "GONOMADNET_SCAN_ADDR"
+        const val SCAN_TOKEN_ENV = "GONOMADNET_SCAN_TOKEN"
 
         /**
          * WHEEL_LINES_ENV is how the console tells the client what one wheel notch means.

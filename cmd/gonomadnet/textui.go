@@ -215,6 +215,13 @@ func runTextUI(configDir, rnsConfigDir string) {
 	}
 	tuiApp.SetViewer(locationSource.Viewer)
 	tuiApp.SetLocationReport(locationSource.Status().Describe)
+	// The camera a dialog may borrow to read an address from a QR code, or none.
+	//
+	// The appliance names its scanner in the environment — the Android console host
+	// passes it as it passes the wheel behaviour, and the iOS bridge sets it before
+	// the console starts — so a client on a desktop terminal, or in any of the test
+	// and parity harnesses, has no scanner and its dialogs are exactly Python's.
+	tuiApp.SetScanner(tui.ScannerFromEnv())
 	// The reader's own exposure, said out loud whenever it changes.
 	//
 	// One line at startup is not enough to satisfy "the user can always see what the app
@@ -456,12 +463,28 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 			}
 		})
 		layout := tview.NewFlex().SetDirection(tview.FlexRow).
-			AddItem(input, 1, 0, true).
-			AddItem(row, 1, 0, false)
+			AddItem(input, 1, 0, true)
+		items := []tview.Primitive{input}
+		// The scan row, when the appliance has a camera: a bare 32-hex address
+		// typed here is routed as a node hash (tui/browser.go HandleLink), so
+		// this field is one of the places a reader would otherwise have to type
+		// an address out by hand.
+		scanBtn := tui.NewScanButton(tuiApp, func(url string) {
+			input.SetText(url)
+			tuiApp.SetFocus(input)
+		})
+		scanRows := 0
+		if scanBtn != nil {
+			layout.AddItem(scanBtn, 1, 0, false)
+			items = append(items, scanBtn)
+			scanRows = 1
+		}
+		layout.AddItem(row, 1, 0, false)
+		items = append(items, goBtn, cancelBtn)
 		dialog := tui.NewDialogLineBox("Enter URL", layout, nil)
 		// input 1 + button row 1 + border 2 = 4 PACK height; 65% pane width.
-		networkDisplay.ShowBrowserSlotDialog(dialog, 65, 4)
-		tui.WireDialogNav(tuiApp, close, []tview.Primitive{input, goBtn, cancelBtn})
+		networkDisplay.ShowBrowserSlotDialog(dialog, 65, 4+scanRows)
+		tui.WireDialogNav(tuiApp, close, items)
 	}
 
 	// showBrowserConfirm shows a Cancel/Confirm dialog as a slot overlay on the

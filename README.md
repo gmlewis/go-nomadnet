@@ -23,6 +23,7 @@ Note that AI was heavily used in the port of the original Python3 project to Go.
 - **Micron markup** — lightweight page rendering with headings, formatting, colors, links
 - **Directory** — peer discovery with trust levels and propagation node selection
 - **Daemon mode** — headless operation for servers and embedded devices
+- **Scan an address** — the dialogs that take a 32-hex address offer a `< Scan >` button which reads it from a QR code with a camera, on the iOS and Android appliances (see [docs/Android-APK.md](docs/Android-APK.md) and [docs/iOS.md](docs/iOS.md))
 - **Dark/Light themes** — configurable color palettes with unicode/nerdfont glyph sets
 
 ## Installation

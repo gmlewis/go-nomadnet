@@ -136,6 +136,17 @@ func StartConsoleSession(ctx context.Context, socketPath string, cols, rows uint
 	return currentAppliance().StartConsole(ctx, socketPath, cols, rows)
 }
 
+// SetScanEndpoint records where the app's camera scanner is listening.
+//
+// It is called before the console is started, and the client is told the endpoint and
+// the token when it starts. An empty endpoint means the app has no scanner — the
+// listener could not be bound, or the app has no camera — and the client then draws no
+// Scan button at all.
+func SetScanEndpoint(endpoint, token string) error {
+	currentAppliance().SetScanEndpoint(endpoint, token)
+	return nil
+}
+
 // FeedLocation publishes one GNSS fix.
 func FeedLocation(s LocationSample) error {
 	engine := currentAppliance().Engine()

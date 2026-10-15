@@ -102,6 +102,37 @@ type App struct {
 	// returns it before starting the event loop, because an appliance whose
 	// terminal could not be built has nothing to draw into and must say so.
 	screenErr error
+
+	// scanner reads a QR code with the appliance's camera, for the dialogs that
+	// would otherwise make the reader type 32 hex characters by hand. It is nil
+	// on any terminal with no camera to offer — the desktop, and every test and
+	// parity harness — and a nil scanner is what keeps the "< Scan >" button out
+	// of those dialogs entirely. It is installed once, before the event loop
+	// starts, and read from the event loop thereafter; see SetScanner.
+	scanner Scanner
+}
+
+// SetScanner installs the appliance's camera scanner, or removes it when given
+// nil.
+//
+// It is called once while the client is being wired up and before the event
+// loop starts, because that is the only moment at which a dialog cannot already
+// be reading it. A client left without one — a desktop terminal, a test — has
+// dialogs identical to the Python original's.
+func (a *App) SetScanner(scanner Scanner) {
+	if a == nil {
+		return
+	}
+	a.scanner = scanner
+}
+
+// Scanner returns the appliance's camera scanner, or nil when this client has
+// no camera to read a QR code with.
+func (a *App) Scanner() Scanner {
+	if a == nil {
+		return nil
+	}
+	return a.scanner
 }
 
 // SetFocus shadows tview.Application.SetFocus to enforce the focus invariant:

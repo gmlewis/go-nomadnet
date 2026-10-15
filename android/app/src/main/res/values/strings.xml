@@ -14,4 +14,21 @@
          chooser — a list of applications, all of them asking for the same radio — the extra
          word is the one that tells the four of them apart least. -->
     <string name="app_name">gonomadnet</string>
+
+    <!-- What the scanner says while the reader is aiming it. It is one line, at the bottom
+         of the screen, over the preview: the whole of the screen above it is the camera. -->
+    <string name="scan_hint">Point the camera at a QR code.\nThe address will appear in the field you pressed Scan in.</string>
+
+    <!-- The way out of the scanner. The back gesture does the same thing, but a reader
+         holding a tablet one-handed with the camera filling the screen is owed a target. -->
+    <string name="scan_cancel">Cancel</string>
+
+    <!-- A refused camera permission has no other symptom anywhere in this appliance: the
+         reader pressed a button, a system dialog appeared, and then nothing happened. So the
+         reason is said on the screen they are looking at, and it stays until they dismiss it
+         — including for the "don't ask again" answer, which no later attempt can repair. -->
+    <string name="scan_permission_refused">gonomadnet cannot use the camera, so it cannot read a QR code.\n\nAllow the Camera permission for this app in Settings to scan an address instead of typing it. If it was refused with "Don\'t ask again", Settings is the only place it can be granted.</string>
+
+    <!-- The camera would not open: another app is using it, or this device has none. -->
+    <string name="scan_unavailable">The camera could not be started.\n\nAnother app may be using it. Close that app and try again, or type the address by hand.</string>
 </resources>

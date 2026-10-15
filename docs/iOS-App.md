@@ -93,7 +93,64 @@ Three rules the app side has to keep:
 The **Console** row on the controls shows the size the client was told (`Open · 69×35`),
 which is the first thing to look at when the client's layouts look wrong for its window.
 
-## 4. The socket, and its length
+## 4. The camera, and why the client asks for it over a socket
+
+A dialog in the client offers to read a hex address from a QR code rather than have it typed.
+The client has no camera and cannot have one: an iOS application may not start a program, and
+the camera belongs to the app. So the app binds a listener, and the client — which is in the
+same process — asks it for a scan over a loopback TCP connection.
+
+```
+  client (Go, in-process)                 app (Swift)
+  ───────────────────────                 ───────────
+  < Scan > tapped
+       │  dial 127.0.0.1:PORT
+       │  "SCAN <token>"        ───────▶  ScanServer (loopback listener)
+       │                                        │ presents the camera
+       │                                        │ AVCaptureMetadataOutput → QR
+       │  ◀───────  "ADDR <payload>"            │
+  normalize to 32 lowercase hex
+  fill the field that asked
+```
+
+The endpoint and the token reach the client the way everything else does, in its environment:
+`ApplianceModel` starts the server before the console, `GonomadnetSetScanEndpoint` records it,
+and `runClientOnConsole` sets `GONOMADNET_SCAN_ADDR` and `GONOMADNET_SCAN_TOKEN` before
+`runTextUI` reads them. It is the same pair of variables the Android appliance passes on the
+console host's command line, so the client reads one thing on both platforms.
+
+**An empty endpoint is no scanner, and the client draws no Scan button.** That is what a
+listener that could not be bound comes to, what a device with no camera comes to, and what a
+desktop terminal gets — the dialogs are then exactly the ones Python draws, which is what keeps
+the parity harnesses meaningful.
+
+**The listener is bound to `127.0.0.1`, named rather than resolved.** Android's appliance named
+whatever `getLoopbackAddress` returned, which on that device is `::1`, and the client is Go,
+where `net.Dial("tcp", "::1:46635")` is `too many colons in address` and never connects: the
+Scan button opened no camera at all on every device whose loopback resolves to IPv6 first.
+The endpoint is therefore built from the address the socket is *actually* bound to, with an
+IPv6 literal bracketed, and `ScanServerTests` pins both forms.
+
+**The decode is the platform's.** `AVCaptureMetadataOutput` restricted to `.qr` asks the
+device's own detector for codes and hands back the payload; there is no image processing in
+this app at all. What comes back is the code's text exactly as it was read, because it is the
+client that knows what a Reticulum address looks like — `normalizeScannedAddress` in
+`tui/scanner.go` takes the first run of exactly 32 hex digits, so a bare address, an
+`<addr>`-wrapped one, an `lxmf@<addr>` link and a `0x`-prefixed one are all the same address,
+and a 33-digit run or a 64-character public key is none.
+
+The listener is asserted on a machine with no camera — `ScanServerTests` drives a real socket
+against a fake requester — so the parts where a protocol mistake would be silent are tested
+everywhere. What is left for a device is that the two halves of *this* app are talking, and
+that is what `--acceptance`'s `testTheDialogsScanButtonAsksTheApplianceForTheCamera` drives: it
+opens the dialog with Ctrl-N, Tabs from the address field to the `< Scan >` button under it,
+presses it, and asserts that the console changed. That last part is the assertion because the
+client's interface is cells drawn into one custom view — the dialog and its address field are
+not UIKit elements a test could read — so "the button did something" is measured as the
+fraction of the console's pixels that differ before and after the press, which is above the
+caret blinking and below an address appearing.
+
+## 5. The socket, and its length
 
 The app dials a Unix socket the bridge binds. On Android that socket is in the abstract
 namespace and its name is random; Darwin has no abstract namespace, so it has a path — and
@@ -108,7 +165,7 @@ kernel's limit, so the console could never open at all. `ConsoleSocket` is the o
 that decides, and `ConsoleSocketTests` asserts both that a container path fits and that the
 configuration directory does not.
 
-## 5. The sensor feed
+## 6. The sensor feed
 
 **NMEA-0183 sentences**, not JSON, on `127.0.0.1:37430`. The two readers are the client's
 own sensor source and the bot, and both parse NMEA: the appliance converts a sample once,
@@ -131,7 +188,7 @@ Two rules about what is published:
 A heading is published as one sentence, not two: a reader holds one heading, and the true
 one — corrected for declination when the device has a position — wins.
 
-## 6. Configuration
+## 7. Configuration
 
 The Swift half renders the configuration; the Go half only reads it. The templates are
 asserted against golden files in Swift tests that need no device.
@@ -170,7 +227,7 @@ loads.
 
 Validation is the renderers' own in both cases; no screen re-implements a rule.
 
-## 7. The radio
+## 8. The radio
 
 An iPad cannot open a USB serial adapter. What it can do is talk to an RNode over Bluetooth
 Low Energy, where the firmware exposes the Nordic UART Service — one characteristic to write
@@ -196,7 +253,7 @@ The Bluetooth half — the scan, the connection, the characteristic discovery �
 Everything that decides is tested against a fake radio: the identifiers, the scan's name
 rule, the address, and the pump's byte transparency.
 
-## 8. The heading reference
+## 9. The heading reference
 
 A device's attitude says where the case points; which way the *reader* means depends on how
 it is held, so the appliance asks:
@@ -214,7 +271,7 @@ A magnetic heading is corrected to true with the World Magnetic Model's declinat
 device's own position. With no position there is no declination, so the heading stays
 magnetic and says so — the two differ by up to twenty degrees.
 
-## 9. What is tested, and where
+## 10. What is tested, and where
 
 `./scripts/build-ios-app.sh --test-only` runs both halves: `swift test` in `ios/` (228 tests)
 and `go test -race ./ios/bridge/...` (66 tests). `./run-all-tests.sh` is the Go repositories'
@@ -246,7 +303,7 @@ Stop Stack releases them and they come back, the console renders and takes a key
 drag scrolls the panel it is over, rotating reflows the console, and Start Sensors turns the
 sensor path on. See [docs/iOS-Build.md](iOS-Build.md) §6.
 
-## 10. Why the C boundary is one file wide
+## 11. Why the C boundary is one file wide
 
 `ios/bridge/bridge.go` is built only for `GOOS=ios`. A file that imports `"C"` makes the
 compiler generate Go sources for the package, and every analyzer that walks the package is
@@ -255,7 +312,7 @@ appliance ordinary Go, which every gate and every `go test` can see. The exporte
 verified by the build that uses it — `scripts/build-ios-app.sh` compiles it for `ios/arm64`
 and fails if any of the six entry points is missing from the archive.
 
-## 11. The stack, in one process
+## 12. The stack, in one process
 
 The engine starts three subsystems in order, and the order is a dependency: the transport
 owns the shared instance the other two attach to; the hub publishes its own address as it
@@ -278,10 +335,10 @@ Two rules that exist so the appliance does not promise more than it delivers:
   on iOS the container root, a directory the app may not write to. The identity is the one
   path a configuration file may still overrule the home directory with, so both are named.
 
-## 12. What is not there yet
+## 13. What is not there yet
 
 - **Background operation.** iOS suspends an app that leaves the screen. The stack is built to
   be brought down and up cleanly, but the appliance does not claim to run with the screen off.
 - **A radio, a fix and a heading on real hardware.** The Bluetooth half of the radio and a
-  real receiver need hardware; §8 of [docs/iOS.md](iOS.md) says which of those have been
+  real receiver need hardware; §9 of [docs/iOS.md](iOS.md) says which of those have been
   exercised and which have not.

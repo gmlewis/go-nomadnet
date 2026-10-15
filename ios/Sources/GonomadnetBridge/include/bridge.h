@@ -99,6 +99,20 @@ int GonomadnetStop(void);
 int GonomadnetStartConsole(const char *socketPath, uint16_t cols, uint16_t rows);
 
 /*
+ * GonomadnetSetScanEndpoint records where the app's camera scanner is listening, and
+ * the token a request for a scan must carry.
+ *
+ * It is called before GonomadnetStartConsole, because the client is told both when it
+ * starts: a client told an endpoint afterwards would have a Scan button that did
+ * nothing until the console was reopened. An empty endpoint means the app has no
+ * scanner, and the client then draws no Scan button at all — which is what a desktop
+ * terminal and a device without a camera both get.
+ *
+ * The endpoint is the host:port of a loopback listener, and the token is hex.
+ */
+int GonomadnetSetScanEndpoint(const char *endpoint, const char *token);
+
+/*
  * GonomadnetFeedLocation publishes one GNSS fix to every sensor-feed subscriber, as
  * NMEA-0183 sentences.
  *

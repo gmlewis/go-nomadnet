@@ -92,6 +92,13 @@
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>gonomadnet uses your position to show where you are on the pages and messages that ask, and to answer the bot's "where" command. It is published only to the appliance on this device; nothing is sent anywhere unless you send it.</string>
 
+	<!-- The camera, for reading an address out of a QR code instead of having it typed. The
+	     string is the whole of what a reader is told when the system asks, so it says what the
+	     camera is for and what happens to the pictures: they are decoded on the device to find
+	     a code and thrown away, and nothing in them is kept or sent anywhere. -->
+	<key>NSCameraUsageDescription</key>
+	<string>gonomadnet reads a QR code with your camera when you press Scan beside an address field, so the address does not have to be typed. Each frame is decoded on this device to find a code and discarded immediately; nothing is saved, and nothing is sent anywhere.</string>
+
 	<!-- CoreMotion's attitude sensor, which is what the compass is. -->
 	<key>NSMotionUsageDescription</key>
 	<string>gonomadnet reads the device's orientation to give the client a compass heading.</string>

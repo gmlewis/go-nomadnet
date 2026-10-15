@@ -111,6 +111,22 @@ public enum ApplianceBridge {
         try check(status, "starting the console")
     }
 
+    /// setScanEndpoint tells the appliance where the app's camera scanner is listening.
+    ///
+    /// It is called before ``startConsole(socketPath:cols:rows:)``, because the client is told
+    /// the endpoint as it starts: a client told one afterwards has a Scan button that does
+    /// nothing until the console is closed and reopened. An empty endpoint means the app has
+    /// no scanner, and the client then draws no Scan button at all — which is what a device
+    /// without a camera, and a listener that could not be bound, both come to.
+    ///
+    /// - Parameters:
+    ///   - endpoint: the `host:port` of the app's loopback scan listener.
+    ///   - token: what a request for a scan must carry, as hex.
+    public static func setScanEndpoint(endpoint: String, token: String) throws {
+        let status = Status(rawValue: GonomadnetSetScanEndpoint(endpoint, token)) ?? .failed
+        try check(status, "telling the appliance where the scanner is")
+    }
+
     /// feedLocation publishes one GNSS fix to the appliance's sensor stream.
     ///
     /// A measurement the receiver did not take is passed as `nil` and published as an

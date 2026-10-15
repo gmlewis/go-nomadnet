@@ -27,7 +27,7 @@ one than a laptop:
   and a fused attitude sensor. That is what makes the location forms in a Micron page
   and the gobot's `where` answer meaningful, and it is what turns the appliance into
   something worth carrying.
-- **A radio you can add without a cable.** See §5.
+- **A radio you can add without a cable.** See §6.
 
 ## 2. First launch
 
@@ -108,7 +108,41 @@ yourself, with `Ctrl-G`, stays hidden.
 ![The appliance on an iPad: the controls beside the client's own console, with the
 transport running and the console open](ios-console.png)
 
-## 5. The radio
+## 5. Scanning an address instead of typing it
+
+A Reticulum address is 32 hexadecimal characters, and typing one into an iPad is the worst
+part of starting a conversation with somebody. So the three dialogs that take a typed address
+— **New Conversation** (`Addr :`), **New Hub** (`Hub address :`) and **Enter URL** — carry a
+**Scan** button under the address field, which reads the address from a QR code with the
+camera:
+
+```
+┌────────────── New Conversation ──────────────┐
+│Addr :                                        │
+│< Scan                                       >│
+│Name :                                        │
+│( ) Untrusted   (X) Unknown   ( ) Trusted     │
+│                                              │
+│< Create            >     < Back             >│
+└──────────────────────────────────────────────┘
+```
+
+Tap **Scan**, point the iPad at the code, and the address appears in the field you pressed it
+in. **Cancel** leaves whatever you had typed exactly as it was. Both the client's own **My
+LXMF** QR code (the **QR Code** screen in Conversations) and a code carrying a link such as
+`lxmf@2a6105f57145860441a62fe3b2a1352c` are read — the address is taken out of whatever
+surrounds it.
+
+iPadOS asks for the Camera the first time you tap **Scan**. Until it is allowed the appliance
+has no camera, the button is not drawn at all, and nothing in the interface offers something it
+cannot do; if the permission was refused, the scanner says so and points at Settings, which is
+the only place a refusal can be undone.
+
+The camera is opened for that one thing, and its pictures are not kept: every frame is decoded
+on the device to find a code and thrown away, and what comes back is the text of the code, put
+in the field you asked from and nowhere else.
+
+## 6. The radio
 
 An iPad cannot open a USB serial adapter. What it can do is talk to an RNode over
 Bluetooth Low Energy, which every current off-grid board supports — a Heltec LoRa32
@@ -130,7 +164,7 @@ A network-attached RNode works too, as a TCP or UDP KISS gateway on the same Wi-
 hotspot: add it to the Reticulum configuration as a `TCPClientInterface` or a
 `UDPInterface` pointed at the gateway.
 
-## 6. Sensors
+## 7. Sensors
 
 **Start Sensors** turns on the position and heading feed. It is off until it is asked
 for, and everything about it is local:
@@ -150,7 +184,7 @@ for, and everything about it is local:
   bot. Both are remembered, and both are honored when the app comes back from the
   background.
 
-## 7. Configuration
+## 8. Configuration
 
 Every configuration file is written on the first launch — Reticulum's, the client's, and
 the seeded channels — and nothing is started. Nothing is written outside the app's own
@@ -175,7 +209,7 @@ and says so rather than leaving you to find out.
 Changing the hub or pairing a radio means the transport has to be started again from the
 new configuration: stop and start the stack, or press **Restart Stack**.
 
-## 8. What is not there yet
+## 9. What is not there yet
 
 - **Background operation.** iOS suspends an app when it leaves the screen. The stack keeps
   running while the appliance is in the foreground; a transport that must stay up with the
@@ -192,7 +226,7 @@ new configuration: stop and start the stack, or press **Restart Stack**.
      Wi-Fi positioning — and its heading comes from attitude rather than from a magnetometer,
      which is why the axis setting matters as much as it does.
 
-## 9. Troubleshooting
+## 10. Troubleshooting
 
 **"no shared instance is running" in the console.** The client attached before the
 transport was up, or the transport did not start. Press **Stop Stack**, then **Start

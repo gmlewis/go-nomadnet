@@ -106,8 +106,16 @@ android {
 }
 
 dependencies {
-    // The appliance itself needs nothing: a plain Activity, a foreground Service, and the
-    // platform APIs keep the dependency surface, the build, and the APK small. JUnit is
-    // for the unit tests only, and is not packaged.
+    // The one third-party library the appliance carries, and it is pure Java with no
+    // Android dependencies of its own: zxing's decoder reads a QR code out of a
+    // luminance buffer, which is what turns the camera's preview frames into the hex
+    // address a dialog asked for. Everything around it — the preview, the permission,
+    // the activity the scan happens in — is the platform's own API, so the app still
+    // pulls in no AndroidX and stays as small as it was. The encoder that ships in the
+    // same artifact is what the unit tests round-trip against, which is why the decoder
+    // can be tested at all without a device.
+    implementation("com.google.zxing:core:3.5.4")
+
+    // JUnit is for the unit tests only, and is not packaged.
     testImplementation("junit:junit:4.13.2")
 }

@@ -19,12 +19,28 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+    <!-- The camera, for reading an address out of a QR code instead of having it typed. It is
+         asked for when the reader first presses a dialog's Scan button, not at install: the
+         appliance works without it, and a permission prompt on a first launch that has not
+         yet mentioned scanning is a prompt about nothing. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+
     <!-- A radio on the tablet's USB port. Not every device can host one, so the appliance
          says the feature is one it uses rather than one it needs, and a tablet without a
          USB port still installs it. The filter that decides which devices the system offers
          the appliance for is res/xml/usb_device_filter.xml, named by the activity below. -->
     <uses-feature
         android:name="android.hardware.usb.host"
+        android:required="false" />
+
+    <!-- A camera, for the same reason and with the same answer: the appliance scans QR codes
+         where a device has a camera and offers no Scan button where it does not, so a device
+         without one must still be offered the app. -->
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.camera.any"
         android:required="false" />
 
     <!-- The appliance's own theme, which is the platform's with the window's colours set
@@ -90,6 +106,19 @@
                 android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
                 android:resource="@xml/usb_device_filter" />
         </activity>
+
+        <!-- The scanner the client's dialogs borrow. It is not exported, so nothing but this
+             app can start it, and it is declared with the appliance's own theme because it is
+             the same dark screen rather than a light one flashed up for a moment in the
+             middle of a terminal. It claims the two orientation changes so that turning the
+             tablet while aiming does not restart the preview, which is what the reader is
+             looking at; the preview turns with the display instead. -->
+        <activity
+            android:name=".ScanActivity"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:theme="@style/ApplianceTheme"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation" />
 
         <service
             android:name=".SensorService"

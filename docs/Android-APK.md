@@ -206,6 +206,51 @@ APK, with the key strip above the on-screen keyboard:
 
 ![the Nerd Font icons the console draws, with the key strip above the keyboard](android-console-glyphs.png)
 
+## Scanning an address instead of typing it
+
+A Reticulum address is 32 hexadecimal characters, and reading one off another
+screen and typing it into a tablet is the worst part of starting a conversation
+with somebody. So the three dialogs that take a typed address — **New
+Conversation** (`Addr :`), **New Hub** (`Hub address :`) and **Enter URL** — carry
+a **Scan** button under the address field, which reads the address from a QR code
+with the camera:
+
+```
+┌────────────── New Conversation ──────────────┐
+│Addr :                                        │
+│< Scan                                       >│
+│Name :                                        │
+│( ) Untrusted   (X) Unknown   ( ) Trusted     │
+│                                              │
+│< Create            >     < Back             >│
+└──────────────────────────────────────────────┘
+```
+
+Tap **Scan**, point the camera at the code, and the address appears in the field
+you pressed it in. **Cancel**, or the back gesture, leaves whatever you had typed
+exactly as it was. Both the client's own **My LXMF** QR code (the **QR Code**
+screen in Conversations) and a code carrying a link such as
+`lxmf@2a6105f57145860441a62fe3b2a1352c` are read — the address is taken out of
+whatever surrounds it.
+
+The first time you tap **Scan**, Android asks for the Camera permission. Until it
+is granted the appliance has no camera and the button is not drawn at all, so
+nothing in the interface offers something it cannot do. If the permission is
+refused, the scanner says so on its own screen and points at Settings, which is
+the only place a refusal made with "Don't ask again" can be undone.
+
+This is the one place the appliance opens the camera, and it does it for one
+thing:
+
+- **Frames are decoded on the device and thrown away.** No frame is saved, and
+  none leaves the tablet. What comes out of a scan is the text of the code, which
+  is handed to the client and put in the field the scan was asked from — and
+  which you can then read, edit, or discard before pressing anything else.
+- **A code that is not an address does nothing.** A QR code carrying anything
+  other than one 32-character hex address — a Wi-Fi credential, a vCard, a URL
+  with no address in it — leaves the field alone, and the reason is written to
+  the app's log.
+
 ## The terminal font
 
 The client draws its icons from the Nerd Font private-use area by default —
@@ -433,6 +478,13 @@ These are not just rules the code follows: the parts of the client that announce
 fetch pages, send messages and write state are given no access to the position at
 all. The client's interface is the only thing that holds it, and the only thing
 that renders it.
+
+**The camera is opened for one thing, and its pictures are not kept.** Tapping a
+dialog's **Scan** button starts the scanner, which decodes QR codes from the
+preview and throws every frame away as it goes. Nothing is written to storage,
+nothing is sent anywhere, and what leaves the scanner is the text of the code the
+camera was pointed at. There is no other way to reach the camera from the
+appliance.
 
 **You can always see what the app knows.** The client logs the reader's position
 whenever it changes:

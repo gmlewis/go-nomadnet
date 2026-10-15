@@ -170,12 +170,13 @@ fi
 MIN_IOS="${GONOMADNET_MIN_IOS:-16.0}"
 mkdir -p "$ARCHIVE_DIR"
 
-# verify_archive fails the build if any of the six entry points is missing: a build that
+# verify_archive fails the build if any of the seven entry points is missing: a build that
 # quietly dropped one produces an app that launches, shows its interface, and does
 # nothing at all, and the linker would not have said a word.
 verify_archive() {
   local archive="$1" symbol
   for symbol in GonomadnetStart GonomadnetStop GonomadnetStartConsole \
+                GonomadnetSetScanEndpoint \
                 GonomadnetFeedLocation GonomadnetFeedHeading GonomadnetVersion; do
     if ! nm -g "$archive" 2>/dev/null | grep -q "_${symbol}\$"; then
       echo "$symbol is missing from $archive" >&2

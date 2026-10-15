@@ -262,6 +262,13 @@ public final class ApplianceModel: ObservableObject {
             append("start the stack before opening the console")
             return
         }
+        // The camera, offered to the client's dialogs before the client exists. It is told
+        // the endpoint as it starts, so a server that is not listening yet is a console whose
+        // Scan buttons do nothing at all; a server that cannot be bound is reported and the
+        // console opens anyway, with addresses to be typed — which is what a device without a
+        // camera gets too, and is a far better outcome than a console that refuses to open.
+        startScanServer()
+
         do {
             let path = try supervisor.startConsole(cols: 80, rows: 24)
             let controller = TerminalController(socketPath: path, cols: 80, rows: 24)
@@ -270,6 +277,10 @@ public final class ApplianceModel: ObservableObject {
                 self?.consolePath = nil
                 self?.terminal = nil
                 self?.consoleSize = nil
+                // The client that asked the scanner for addresses has gone, so the listener
+                // that answered it goes with it rather than waiting for a request that cannot
+                // come.
+                self?.stopScanServer()
             }
             // The size the view tells the client, as it tells it: what the reader sees beside
             // the Console row is the number the client is drawing for.
@@ -285,6 +296,54 @@ public final class ApplianceModel: ObservableObject {
             consoleProblem = "The console did not open: \(error)"
             append("the console did not open: \(error)")
         }
+    }
+
+    // MARK: - Scanning an address
+
+    /// The camera the client's dialogs borrow, while a console is open.
+    ///
+    /// It lives exactly as long as the console does: the client is the only thing that ever
+    /// asks it for a scan, and a listener left bound after the console closed would be a port
+    /// nothing is watching, waiting for a request that cannot come.
+    private var scanServer: ScanServer?
+
+    /// startScanServer binds the scanner and tells the appliance where it is.
+    ///
+    /// Called before the console is started, because the client is told the endpoint as it
+    /// starts. A listener that cannot be bound is reported and the console opens anyway: a
+    /// console that refused to open because a camera could not be offered would be a far worse
+    /// trade than dialogs with addresses to be typed.
+    private func startScanServer() {
+        stopScanServer()
+        do {
+            let server = try ScanServer(requester: ScanPresenter())
+            server.onRefused = { [weak self] in
+                DispatchQueue.main.async {
+                    self?.append("something other than this appliance's client asked the scanner to read a code")
+                }
+            }
+            // Said out loud because this is the one moment the two halves have to agree: a Scan
+            // button that does nothing is either a client that never asked (nothing here) or an
+            // appliance that could not show the camera (the line after this one).
+            server.onRequest = { [weak self] in
+                DispatchQueue.main.async { self?.append("the client asked for a scan") }
+            }
+            server.start()
+            scanServer = server
+            // Told to the appliance before the client starts, because the client reads it from
+            // its environment once: this is the whole of the agreement between the two halves.
+            try ApplianceBridge.setScanEndpoint(endpoint: server.endpoint, token: server.token)
+            append("the scanner is listening on \(server.endpoint)")
+        } catch {
+            scanServer = nil
+            append("could not start the scanner, so addresses will have to be typed: \(error)")
+        }
+    }
+
+    /// stopScanServer ends the scanner, if there is one, and lets go of its port.
+    private func stopScanServer() {
+        scanServer?.stop()
+        scanServer = nil
     }
 
     // MARK: - Configuration

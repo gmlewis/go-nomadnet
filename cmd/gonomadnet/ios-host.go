@@ -21,6 +21,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 
 	"github.com/gmlewis/go-nomadnet/ios/bridge"
 	"github.com/gmlewis/go-nomadnet/tui"
@@ -110,6 +111,23 @@ func runClientOnConsole(ctx context.Context, tty tcell.Tty, configDir, rnsConfig
 		return ws.PixelWidth, ws.PixelHeight, true
 	})
 	defer tui.SetTerminalPixels(nil)
+
+	// Where the app's camera is, told to the client the way the appliance tells it
+	// everything else: in its environment. It is the same pair of variables the Android
+	// appliance passes on the console host's command line, so the client reads one thing
+	// on both platforms — and the client is one process here, so setting them is the
+	// whole of the handover.
+	//
+	// An empty endpoint is no scanner, and the client then draws no Scan button: that is
+	// what a listener the app could not bind, or an app with no camera, both come to.
+	if endpoint, token := bridge.Appliance().ScanEndpoint(); endpoint != "" {
+		if err := os.Setenv(tui.ScanAddrEnv, endpoint); err != nil {
+			log.Printf("gonomadnet: could not tell the client where the scanner is: %v", err)
+		}
+		if err := os.Setenv(tui.ScanTokenEnv, token); err != nil {
+			log.Printf("gonomadnet: could not tell the client the scanner's token: %v", err)
+		}
+	}
 
 	// runTextUI runs until the reader closes the console. It never returns an
 	// error: a failure to run the interface is reported through reportTUIError,

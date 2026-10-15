@@ -195,11 +195,12 @@ GONOMADNET_TEAM=ABCDE12345 GONOMADNET_DEVICE=<udid> ./scripts/build-ios-app.sh -
 ```
 
 It installs both the appliance and a test runner, presses the buttons, and asserts what a
-reader would check — see [docs/iOS-App.md](iOS-App.md) §9. Six tests: the first launch
-starts nothing; Start Stack brings up the shared instance and the sensor feed, and Stop Stack
-releases them and they come back; the console renders, takes a keystroke, and scrolls
-the panel a drag is over; rotating reflows it; and Start Sensors turns the sensor path on. It
-leaves its screenshots and its measurements in a result bundle under
+reader would check — see [docs/iOS-App.md](iOS-App.md) §10. The first launch starts nothing;
+Start Stack brings up the shared instance and the sensor feed, and Stop Stack releases them
+and they come back; the console renders, takes a keystroke, and scrolls the panel a drag is
+over; rotating reflows it; Start Sensors turns the sensor path on; and a dialog's `< Scan >`
+button reaches the appliance's scanner, which is the one part of that feature a machine with
+no camera cannot test. It leaves its screenshots and its measurements in a result bundle under
 `ios/build/acceptance.xcresult`, which `xcrun xcresulttool export attachments --path …
 --output-path <dir>` unpacks.
 
@@ -239,7 +240,7 @@ the Swift Y compiler` — which reads like a broken package and is a shared cach
 **The device acceptance test is not one of these.** It is a UI test — `AcceptanceTests` in
 `ios/App/AcceptanceTests/` — and it needs an installed appliance on real hardware, so it
 runs only through `--acceptance` and never on the machine that builds. What it covers is in
-[docs/iOS-App.md](iOS-App.md) §9.
+[docs/iOS-App.md](iOS-App.md) §10.
 
 ## 8. Troubleshooting
 

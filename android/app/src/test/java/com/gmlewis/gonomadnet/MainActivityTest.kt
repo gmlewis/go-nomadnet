@@ -197,6 +197,74 @@ class MainActivityTest {
     }
 
     @Test
+    fun `the client is told where the scanner is and how to prove itself`() {
+        // A dialog in the client offers to read an address from a QR code, and the client has
+        // no camera: it asks this appliance, over a loopback listener. It has to be told the
+        // endpoint before it starts — a client told a port nothing is bound to has a Scan
+        // button that silently does nothing — and it has to be told the token, or any other
+        // application on the tablet could open the camera through that listener.
+        val paths = StackPaths(FILES_DIR)
+        val client = MainActivity.builtInClient(NATIVE_LIBRARY_DIR, paths)
+        val scanner = ScanServer(fakeScanRequester(), byteArrayOf(0x0f, 0x1e, 0x2d, 0x3c))
+        try {
+            val spec = MainActivity.consoleHostSpec(
+                nativeLibraryDir = NATIVE_LIBRARY_DIR,
+                paths = paths,
+                client = client,
+                socketName = SOCKET_NAME,
+                grid = TerminalGrid(cols = 100, rows = 30),
+                scanner = scanner,
+            )
+
+            val env = spec.argv.envValues()
+            assertEquals(
+                "the client is not told where to ask for a scan",
+                "${MainActivity.SCAN_ADDR_ENV}=${scanner.endpoint}",
+                env.firstOrNull { it.startsWith(MainActivity.SCAN_ADDR_ENV + "=") },
+            )
+            assertEquals(
+                "the client is not told the token its request must carry",
+                "${MainActivity.SCAN_TOKEN_ENV}=${scanner.token}",
+                env.firstOrNull { it.startsWith(MainActivity.SCAN_TOKEN_ENV + "=") },
+            )
+
+            // The names have to be the ones the client reads, or the button is dead: this is
+            // the whole of the agreement between the two halves of the feature.
+            assertEquals("GONOMADNET_SCAN_ADDR", MainActivity.SCAN_ADDR_ENV)
+            assertEquals("GONOMADNET_SCAN_TOKEN", MainActivity.SCAN_TOKEN_ENV)
+        } finally {
+            scanner.close()
+        }
+    }
+
+    @Test
+    fun `the client is told nothing about a scanner the appliance does not have`() {
+        // A scan server that could not be bound leaves the console working and the dialogs
+        // without a Scan button, which is the right degradation. What must not happen is a
+        // half of the pair: the client treats one variable without the other as no scanner,
+        // so an address with no token is an unguarded listener and a token with no address is
+        // a button that dials nothing.
+        val paths = StackPaths(FILES_DIR)
+        val client = MainActivity.builtInClient(NATIVE_LIBRARY_DIR, paths)
+        val spec = MainActivity.consoleHostSpec(
+            nativeLibraryDir = NATIVE_LIBRARY_DIR,
+            paths = paths,
+            client = client,
+            socketName = SOCKET_NAME,
+            grid = TerminalGrid(cols = 100, rows = 30),
+            scanner = null,
+        )
+
+        val env = spec.argv.envValues()
+        for (name in listOf(MainActivity.SCAN_ADDR_ENV, MainActivity.SCAN_TOKEN_ENV)) {
+            assertNull(
+                "the client is told $name although the appliance has no scanner",
+                env.firstOrNull { it.startsWith(name + "=") },
+            )
+        }
+    }
+
+    @Test
     fun `the client is not started until the transport is up`() {
         // The built-in client requires the shared instance the appliance's transport owns,
         // and it looks for one for a fifth of a second before giving up with "no shared
@@ -668,6 +736,26 @@ class MainActivityTest {
             }
         }
         return out
+    }
+
+    /** envValues is every variable a console host command line hands to the client. */
+    private fun List<String>.envValues(): List<String> {
+        val out = mutableListOf<String>()
+        var i = 0
+        while (i < size) {
+            if (this[i] == "--env" && i + 1 < size) {
+                out.add(this[i + 1])
+                i += 2
+            } else {
+                i++
+            }
+        }
+        return out
+    }
+
+    /** fakeScanRequester stands in for the camera, which a unit test has none of. */
+    private fun fakeScanRequester(): ScanRequester = object : ScanRequester {
+        override fun scan(): String? = null
     }
 
     private companion object {

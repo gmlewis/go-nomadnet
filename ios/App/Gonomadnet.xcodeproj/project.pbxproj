@@ -24,6 +24,8 @@
 		AA0000000000000000000014 /* TerminalKit in Frameworks */ = {isa = PBXBuildFile; productRef = B30000000000000000000001 /* TerminalKit */; };
 		AA0000000000000000000015 /* ApplianceKit in Frameworks */ = {isa = PBXBuildFile; productRef = B30000000000000000000002 /* ApplianceKit */; };
 		AA0000000000000000000017 /* RadioManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000017 /* RadioManager.swift */; };
+		AA0000000000000000000018 /* ScanPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000018 /* ScanPresenter.swift */; };
+		AA0000000000000000000019 /* ScanViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000019 /* ScanViewController.swift */; };
 		AA0000000000000000000020 /* kjv.txt in Resources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000020 /* kjv.txt */; };
 		AA0000000000000000000021 /* AtkynsonMonoNerdFontMono-Regular.otf in Resources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000021 /* AtkynsonMonoNerdFontMono-Regular.otf */; };
 		AA0000000000000000000022 /* AtkinsonHyperlegibleMono-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000022 /* AtkinsonHyperlegibleMono-OFL.txt */; };
@@ -51,6 +53,8 @@
 		AB0000000000000000000013 /* bridge.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = bridge.c; sourceTree = "<group>"; };
 		AB0000000000000000000014 /* bridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = bridge.h; sourceTree = "<group>"; };
 		AB0000000000000000000017 /* RadioManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RadioManager.swift; sourceTree = "<group>"; };
+		AB0000000000000000000018 /* ScanPresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanPresenter.swift; sourceTree = "<group>"; };
+		AB0000000000000000000019 /* ScanViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanViewController.swift; sourceTree = "<group>"; };
 		AB0000000000000000000020 /* kjv.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = kjv.txt; sourceTree = "<group>"; };
 		AB0000000000000000000021 /* AtkynsonMonoNerdFontMono-Regular.otf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "AtkynsonMonoNerdFontMono-Regular.otf"; sourceTree = "<group>"; };
 		AB0000000000000000000022 /* AtkinsonHyperlegibleMono-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "AtkinsonHyperlegibleMono-OFL.txt"; sourceTree = "<group>"; };
@@ -110,6 +114,7 @@
 				AB0000000000000000000008 /* StackSupervisor.swift */,
 				AB0000000000000000000009 /* TerminalController.swift */,
 				AB0000000000000000000017 /* RadioManager.swift */,
+				AB0000000000000000000018 /* ScanPresenter.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -121,6 +126,7 @@
 				AB0000000000000000000011 /* KeyStripView.swift */,
 				AB0000000000000000000012 /* TerminalView.swift */,
 				AB0000000000000000000016 /* ConfigEditorView.swift */,
+				AB0000000000000000000019 /* ScanViewController.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -307,6 +313,8 @@
 				AA0000000000000000000008 /* StackSupervisor.swift in Sources */,
 				AA0000000000000000000009 /* TerminalController.swift in Sources */,
 				AA0000000000000000000017 /* RadioManager.swift in Sources */,
+				AA0000000000000000000018 /* ScanPresenter.swift in Sources */,
+				AA0000000000000000000019 /* ScanViewController.swift in Sources */,
 				AA0000000000000000000010 /* ControlsView.swift in Sources */,
 				AA0000000000000000000011 /* KeyStripView.swift in Sources */,
 				AA0000000000000000000012 /* TerminalView.swift in Sources */,
