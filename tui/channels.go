@@ -595,6 +595,9 @@ func (cd *ChannelsDisplay) ShowHubInfo(hubIdx int) {
 			break
 		}
 	}
+	// A hub opened while the console is already standing up leaves the pane it
+	// was picked from behind: see collapsePanesForPortrait.
+	cd.collapsePanesForPortrait()
 }
 
 // RoomMessagesFunc returns the current message buffer for a hub's room.
@@ -795,16 +798,9 @@ func (cd *ChannelsDisplay) ShowRoom(hubIdx int, room string, msgs []ChannelMessa
 	if cd.app != nil && cd.roomWidget != nil {
 		cd.roomWidget.restoreRoomPart()
 	}
-	if cd.isPortrait {
-		if cd.channelListVisible {
-			cd.portraitAutoCollapsedChannelList = true
-			cd.ToggleChannelListState()
-		}
-		if cd.roomWidget != nil && cd.roomWidget.UsersVisible() {
-			cd.portraitAutoCollapsedUsers = true
-			cd.roomWidget.ToggleUsers()
-		}
-	}
+	// A console that is already standing up has no rotation left to collapse the
+	// panes this just filled: see collapsePanesForPortrait.
+	cd.collapsePanesForPortrait()
 }
 
 // RefreshRoomIfVisible reloads the showing room's message buffer and member
@@ -928,11 +924,11 @@ func (cd *ChannelsDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 				cd.roomWidget.restoreRoomPart()
 				return nil
 			case cd.roomWidget.bodyHasFocus():
-				cd.app.SetFocus(cd.ilb)
+				cd.walkLeftToChannelList()
 				return nil
 			case cd.roomWidget.editorHasFocus():
 				if cd.roomWidget.editorAtTextStart() {
-					cd.app.SetFocus(cd.ilb)
+					cd.walkLeftToChannelList()
 					return nil
 				}
 				// Mid-text: the composer consumes the key (cursor movement).
@@ -940,7 +936,7 @@ func (cd *ChannelsDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 			}
 		} else if cd.paneMode == "info" && cd.hubInfo != nil {
 			// Left from the hub info panel walks back to the channels list.
-			cd.app.SetFocus(cd.ilb)
+			cd.walkLeftToChannelList()
 			return nil
 		}
 		// The channels list is the walk's left boundary (Python: the key
@@ -962,11 +958,11 @@ func (cd *ChannelsDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 				// horizontally, so the key is a no-op.
 				return nil
 			case cd.roomWidget.bodyHasFocus():
-				cd.app.SetFocus(cd.roomWidget.usersList)
+				cd.walkRightToUsers()
 				return nil
 			case cd.roomWidget.editorHasFocus():
 				if cd.roomWidget.editorAtTextEnd() {
-					cd.app.SetFocus(cd.roomWidget.usersList)
+					cd.walkRightToUsers()
 					return nil
 				}
 				// Mid-text: the composer consumes the key (cursor movement).
@@ -1018,6 +1014,28 @@ func (cd *ChannelsDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 	return event
 }
 
+// walkLeftToChannelList moves the keyboard from the right column back to the
+// hub list, and does nothing when there is no list pane to move to: in portrait
+// the pane is collapsed out of the layout, and focus must never enter a pane that
+// is no longer drawn (Python's Columns has no previous column there, so the key
+// simply dies).
+func (cd *ChannelsDisplay) walkLeftToChannelList() {
+	if cd.app == nil || !cd.channelListVisible {
+		return
+	}
+	cd.app.SetFocus(cd.ilb)
+}
+
+// walkRightToUsers moves the keyboard from the chat column into the members
+// pane, and does nothing when that pane is hidden — the other half of
+// walkLeftToChannelList: the collapsed pane is not a focus target.
+func (cd *ChannelsDisplay) walkRightToUsers() {
+	if cd.app == nil || cd.roomWidget == nil || !cd.roomWidget.UsersVisible() {
+		return
+	}
+	cd.app.SetFocus(cd.roomWidget.usersList)
+}
+
 // Widget returns the tview primitive for this display.
 func (cd *ChannelsDisplay) Widget() tview.Primitive {
 	return cd.widget
@@ -1061,19 +1079,12 @@ func (cd *ChannelsDisplay) SetPortrait(portrait bool) {
 	}
 	cd.isPortrait = portrait
 	if portrait {
-		if cd.channelListVisible && cd.paneMode != "" {
-			cd.portraitAutoCollapsedChannelList = true
-			cd.ToggleChannelListState()
-		}
-		if cd.roomWidget != nil && cd.roomWidget.UsersVisible() {
-			cd.portraitAutoCollapsedUsers = true
-			cd.roomWidget.ToggleUsers()
-		}
+		cd.collapsePanesForPortrait()
 	} else {
 		if cd.portraitAutoCollapsedChannelList {
 			cd.portraitAutoCollapsedChannelList = false
 			if !cd.channelListVisible {
-				cd.ToggleChannelListState()
+				cd.setChannelListVisible(true)
 			}
 		}
 		if cd.portraitAutoCollapsedUsers {
@@ -1082,6 +1093,57 @@ func (cd *ChannelsDisplay) SetPortrait(portrait bool) {
 				cd.roomWidget.ToggleUsers()
 			}
 		}
+	}
+}
+
+// collapsePanesForPortrait hides the hub list, and the room's members pane, when
+// the console is standing up. It is the one place that knows how to do that, so
+// it is called both by the rotation (SetPortrait) and by every way the right
+// column can be filled while the console is already standing up — a hub opened
+// then would otherwise arrive beside a 36-column list that will not go away until
+// the device is turned again.
+func (cd *ChannelsDisplay) collapsePanesForPortrait() {
+	if !cd.isPortrait {
+		return
+	}
+	if cd.channelListVisible {
+		cd.portraitAutoCollapsedChannelList = true
+		// Deliberately not ToggleChannelListState: its placeholder guard exists
+		// for the Ctrl-Y toggle, and in portrait the pane goes whether or not a
+		// hub has been opened yet.
+		cd.setChannelListVisible(false)
+	}
+	if cd.roomWidget != nil && cd.roomWidget.UsersVisible() {
+		cd.portraitAutoCollapsedUsers = true
+		usersHadFocus := cd.roomWidget.usersPaneHasFocus()
+		cd.roomWidget.ToggleUsers()
+		if usersHadFocus {
+			// Never leave the keyboard in a pane that is no longer drawn: see
+			// focusRightPane.
+			cd.roomWidget.restoreRoomPart()
+		}
+	}
+}
+
+// focusRightPane moves the keyboard into the right column, for when the pane that
+// held it has just been hidden.
+//
+// tview leaves the terminal's cursor wherever the last-drawn primitive put it, so
+// a focused pane that stops being drawn leaves the cursor lit at its last cell —
+// on the appliance, a bar parked on the border of a pane that is no longer there.
+// Python's urwid Columns behaves the same way for its own reason: removing a
+// column moves focus to the column that is left.
+func (cd *ChannelsDisplay) focusRightPane() {
+	if cd.app == nil {
+		return
+	}
+	switch {
+	case cd.paneMode == "room" && cd.roomWidget != nil:
+		cd.roomWidget.restoreRoomPart()
+	case cd.paneMode == "info" && cd.hubInfo != nil:
+		cd.app.SetFocus(cd.hubInfo.Widget())
+	default:
+		cd.app.SetFocus(cd.placeholder)
 	}
 }
 
@@ -1098,7 +1160,16 @@ func (cd *ChannelsDisplay) ToggleChannelListState() {
 	if cd.channelListVisible && cd.paneMode == "" {
 		return
 	}
-	cd.channelListVisible = !cd.channelListVisible
+	cd.setChannelListVisible(!cd.channelListVisible)
+}
+
+// setChannelListVisible hides or shows the hub-list pane and rebuilds the columns
+// to match. Hiding it also takes the keyboard out of it when it was there, so no
+// focus is left in a pane that is no longer drawn.
+func (cd *ChannelsDisplay) setChannelListVisible(visible bool) {
+	hidden := cd.channelListVisible && !visible
+	hadFocus := cd.ilb != nil && cd.ilb.HasFocus()
+	cd.channelListVisible = visible
 	if cd.content == nil {
 		return
 	}
@@ -1109,6 +1180,9 @@ func (cd *ChannelsDisplay) ToggleChannelListState() {
 	} else {
 		cd.content.AddItem(cd.chanGutter, 1, 0, false)
 		cd.content.AddItem(cd.rightPane, 0, 1, false)
+	}
+	if hidden && hadFocus {
+		cd.focusRightPane()
 	}
 	// No QueueUpdateDraw: this runs on the event loop (input handler or gutter
 	// callback), which redraws automatically afterwards, and QueueUpdateDraw

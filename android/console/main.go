@@ -33,8 +33,10 @@ import (
 	"math"
 	"net"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/gmlewis/go-nomadnet/android/internal/console"
 )
@@ -89,7 +91,18 @@ func main() {
 	if err != nil {
 		log.Fatalf("gorcons: %v", err)
 	}
-	if err := sess.Run(context.Background()); err != nil {
+
+	// The app owns this host's lifetime and ends a console by signalling it when
+	// closing the socket alone has not done it. Catching those signals is what
+	// makes that an orderly stop: the default action would end this process where
+	// it stands, Run's kill-and-reap would never run, and the client — which has a
+	// session of its own on its pty and so is not signalled with this process —
+	// would be left behind, holding the Reticulum shared instance the next console
+	// needs.
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	if err := sess.Run(ctx); err != nil {
 		log.Fatalf("gorcons: %v", err)
 	}
 }

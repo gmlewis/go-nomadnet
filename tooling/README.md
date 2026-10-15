@@ -10,6 +10,9 @@ The older subdirectories have their own READMEs:
   binaries plus `summary.py`/`ansiview.py` decoders. See `tui-parity/README.md`.
 - `micron-parity/` — golden-value extractors for the micron *parser* (no urwid
   needed). See `micron-parity/README.md`.
+- `tablet-drive.sh` / `tablet-measure.py` — the *device* half: driving the
+  appliance on the tablet over adb and measuring what the client drew, for
+  screen-rotation and soft-keyboard defects. See "Driving the tablet" below.
 
 The scripts below are the **color-aware cast comparison** suite. The three
 decoders (`parse_screencast.py`, `substates.py`, `guidetopics.py`) were written
@@ -240,6 +243,74 @@ frame can show stale body rows from the *previous* topic (only changed rows are
 redrawn). If a Python topic frame's body looks like the wrong topic, it is a
 frame-selection artifact, not a port bug — cross-check against the Go frame
 (which renders the full topic) and against the Python source `.mu` content.
+
+## Driving the tablet — `tablet-drive.sh` + `tablet-measure.py`
+
+The cast tools above compare a *desktop* Python and Go client on the same
+terminal. The appliance on the tablet is a different question: the client runs on
+a pty the app drives, and what it draws depends on a window-size frame carrying
+both the cells and the **display's** pixel size — which is what tells it whether
+its console is standing up (see `tui/orientation.go`). A rotation, or the soft
+keyboard, moves all of that, and these two tools are what check it without a
+person at the device.
+
+`tablet-drive.sh` takes deterministic control of the tablet and captures:
+
+```bash
+export SERIAL=<tablet serial or adb address>     # no device identifiers in the repo
+./tooling/tablet-drive.sh setup                 # save the display settings found, pin the rotation
+./tooling/tablet-drive.sh rot portrait
+./tooling/tablet-drive.sh tap 250 53            # a tap in the console is a mouse event to the client
+./tooling/tablet-drive.sh ime down              # Back drops the soft keyboard
+./tooling/tablet-drive.sh shot guide-portrait   # capture raw into $SHOTS and measure it
+./tooling/tablet-drive.sh restore               # put the device's settings back
+```
+
+`tablet-measure.py` (stdlib only; Pillow is needed only for a PNG) reads the
+client's own chrome out of the capture — its menu-bar and footer rules are
+`#00ff00` across their width, its pane dividers are `#00f100` — and reports the
+body in rows, the pane count, and a **verdict**:
+
+```
+/tmp/gonomadnet-shots/guide-portrait.raw
+  screen     1200x1920  portrait
+  rules      y = 80, 1808
+  body       y 80..1808  (1728 px = 72 rows)
+  panes      1  (dividers at x = 6, 1194)
+  CHECK      ok
+```
+
+The pane count is the whole test: held in portrait the Conversations, Network,
+Channels and Guide screens must show **one** pane, and two in landscape. So a
+portrait capture with two panes — or one that does not reach the screen's right
+edge — is a rotation that did not take, which is exactly the defect these tools
+were written for (the Guide's `SetPortrait` deadlock: the client kept its
+landscape grid, then blanked, then ignored every key).
+
+Traps, each of which has cost a session:
+
+  * **A tap on the console raises the soft keyboard**, and the keyboard takes half
+    a portrait screen's height. Dismiss it with Back — the input method consumes
+    that keypress, so it never reaches the activity — and a second Back closes the
+    console, and a third leaves the app.
+  * **Plain `adb shell input keyevent` does not reach the client**: DPAD and ENTER
+    do nothing, while `input keycombination KEYCODE_CTRL_LEFT …` does. Drive with
+    taps and control keys.
+  * **A control key is swallowed by the menu bar while it holds focus**, which is
+    where a menu-bar tap leaves it. `tablet-drive.sh state` reports the soft
+    keyboard and focus so you know which side of that line you are on.
+  * **Never read coordinates off the rendered image** — measure the capture's
+    pixels (`tablet-measure.py`), because a preview is rescaled and eyeballed
+    geometry has already produced a confident report of a defect that was not
+    there.
+  * Nothing here connects to a hub or a node: a tap selects and a rotation
+    re-lays out. Do not send Ctrl-r (Connect) or Ctrl-a (Add Room) to the Channels
+    page.
+
+`python3 tooling/test_tablet_measure.py` tests the scan against synthetic
+captures (8 tests), including the two checks that fail a rotation which did not
+take. The operational half — device facts, the key strip's geometry, install
+semantics — lives in the `android-tablet` skill.
 
 ## Performance profiling & benchmarking
 

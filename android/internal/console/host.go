@@ -21,6 +21,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"syscall"
 	"time"
 
 	"github.com/creack/pty/v2"
@@ -171,13 +172,28 @@ func (c *child) wait() exitStatus {
 	return exitStatus{code: byte(state.ExitCode())}
 }
 
-// kill stops the child.
+// kill stops the child and everything in its process group.
 //
-// A child that has already exited is not a failure: the wait that follows is
-// what decides how the session ended.
+// A console must never outlive the app that owns it, and the client is the one
+// program here that can fail to notice it has: a client wedged on its own lock
+// reads nothing, so the hangup a closing terminal raises and the SIGTERM the app
+// sends to this host both pass it by, and it stays behind holding the Reticulum
+// shared instance the next console needs.
+//
+// The child is therefore signalled by GROUP. startChild gives it a session of its
+// own on the pty (see there), so its process group is its own and a negative pid
+// reaches the client and anything the client started without touching this host
+// or the app above it. The pid alone is the fallback for the one case where that
+// no longer holds: a child already gone, whose group cannot be read.
 func (c *child) kill() {
 	if c.cmd.Process == nil {
 		return
+	}
+	pid := c.cmd.Process.Pid
+	if pgid, err := syscall.Getpgid(pid); err == nil && pgid == pid {
+		if err := syscall.Kill(-pgid, syscall.SIGKILL); err == nil {
+			return
+		}
 	}
 	_ = c.cmd.Process.Kill()
 }

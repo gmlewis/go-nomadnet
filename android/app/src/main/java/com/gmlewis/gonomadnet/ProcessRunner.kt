@@ -10,6 +10,7 @@ package com.gmlewis.gonomadnet
 import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
+import java.util.concurrent.TimeUnit
 
 /** One running child. */
 interface ChildProcess {
@@ -114,15 +115,37 @@ private class RealChild(private val process: Process) : ChildProcess {
         // deliberately starts anything, and a tree kill would take out a helper the
         // operator had attached.
         process.destroy()
-        return try {
-            process.waitFor()
-            true
-        } catch (interrupted: InterruptedException) {
-            Thread.currentThread().interrupt()
-            false
-        }
+        // The wait is bounded, and the kill escalates. This runs on the thread that
+        // is closing the console, and a host that will not stop must not hold that
+        // thread — nor the client it is holding, which has a session of its own and
+        // is not signalled with its parent. SIGKILL cannot be ignored, and it is
+        // what makes "the console is closed" mean the client is too.
+        if (waitFor(exitGraceMs)) return true
+        process.destroyForcibly()
+        return waitFor(exitGraceMs)
+    }
+
+    /** Waits up to [graceMs] for the child to exit, reporting whether it did. */
+    private fun waitFor(graceMs: Long): Boolean = try {
+        process.waitFor(graceMs, TimeUnit.MILLISECONDS)
+    } catch (interrupted: InterruptedException) {
+        Thread.currentThread().interrupt()
+        false
     }
 
     override fun stdin(): OutputStream? = process.outputStream
     override fun stdout(): InputStream? = process.inputStream
+
+    private companion object {
+        /**
+         * How long each step of a stop is given, in milliseconds.
+         *
+         * The first step asks the host to stop, and the host answers by stopping the
+         * client's process group and reaping it, which takes microseconds when the
+         * client is healthy and never finishes when the client is wedged — so the
+         * second step does not wait for that. It is long enough for a host that is
+         * merely busy, and short enough that closing a console always returns.
+         */
+        const val exitGraceMs = 2000L
+    }
 }

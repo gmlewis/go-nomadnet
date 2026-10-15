@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"os"
 	"runtime/debug"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -63,8 +64,10 @@ type MainDisplay struct {
 	hasUnread            func() bool // unread-conversation probe; nil ⇒ none (app injects via SetUnreadCheck)
 	menuWidths           []int       // pixel widths of each menu item for click detection
 	sidePanelControllers []SidePanelController
-	isPortrait           bool
-	hasOrientation       bool
+	isPortrait           bool // orientation the last draw decided (guarded by mu)
+	hasOrientation       bool // a draw has decided an orientation at all (guarded by mu)
+	appliedPortrait      bool // orientation the controllers were last told (guarded by mu)
+	orientationApplied   bool // the controllers have been told at all (guarded by mu)
 }
 
 // NewMainDisplay creates the main display with Frame layout:
@@ -199,44 +202,88 @@ func NewMainDisplay(app *App, theme int, glyphSetName string) *MainDisplay {
 
 // RegisterSidePanelController registers a display to be notified when
 // the screen orientation changes between portrait and landscape.
+//
+// A display that starts up while the orientation is already known is told
+// immediately — unless a rotation is still waiting to be applied on the event
+// loop, in which case that apply tells it, so nothing is said twice.
 func (md *MainDisplay) RegisterSidePanelController(controller SidePanelController) {
 	md.mu.Lock()
-	defer md.mu.Unlock()
 	md.sidePanelControllers = append(md.sidePanelControllers, controller)
-	if md.hasOrientation {
-		controller.SetPortrait(md.isPortrait)
+	tell := md.orientationApplied
+	portrait := md.appliedPortrait
+	md.mu.Unlock()
+
+	if tell {
+		controller.SetPortrait(portrait)
 	}
 }
 
 // SetPortrait informs all registered controllers of the current orientation.
+//
+// It applies the orientation on the calling goroutine, so it is the entry point
+// for a host that knows its own orientation and wants the client laid out for it
+// now (and for tests). It must NOT be called from inside a draw: see
+// checkOrientation for what that costs.
 func (md *MainDisplay) SetPortrait(portrait bool) {
 	md.mu.Lock()
-	defer md.mu.Unlock()
 	md.hasOrientation = true
 	md.isPortrait = portrait
-	for _, c := range md.sidePanelControllers {
-		c.SetPortrait(portrait)
-	}
+	md.mu.Unlock()
+
+	md.applyOrientation()
 }
 
 // checkOrientation checks if the screen orientation (portrait vs landscape)
-// has changed, and informs every registered side-panel controller when it has.
+// has changed, and tells every registered side-panel controller when it has.
 //
 // The width and height are the body's cell grid, as every draw is given them;
 // whether that grid is standing up is the terminal's own answer to give — see
 // terminalIsPortrait, which believes the physical size a terminal reports and
 // falls back to the cell grid when it reports none.
+//
+// It runs from the frame's DrawFunc, i.e. inside tview's Application.draw, which
+// holds the application's write lock for the whole frame. So it DECIDES and
+// RECORDS the orientation here and applies it nowhere: the controllers are told
+// on the event loop by applyOrientation. A display's SetPortrait rebuilds its
+// columns and may move focus (the Guide's does, when the topic list it is
+// collapsing holds focus), and Application.SetFocus takes the very lock this
+// draw holds — the drawing goroutine would block on itself forever, freezing the
+// client with the terminal still holding its last painted frame. Posting the
+// apply is non-blocking, and a post that is dropped while the loop is behind is
+// repeated by the next draw, which re-checks the same condition.
 func (md *MainDisplay) checkOrientation(w, h int) {
 	if w <= 0 || h <= 0 {
 		return
 	}
 	isPortrait := terminalIsPortrait(w, h)
-	if !md.hasOrientation || md.isPortrait != isPortrait {
-		md.hasOrientation = true
-		md.isPortrait = isPortrait
-		for _, c := range md.sidePanelControllers {
-			c.SetPortrait(isPortrait)
-		}
+
+	md.mu.Lock()
+	md.hasOrientation = true
+	md.isPortrait = isPortrait
+	pending := !md.orientationApplied || md.appliedPortrait != isPortrait
+	md.mu.Unlock()
+
+	if pending && md.app != nil {
+		md.app.QueueUpdateDraw(md.applyOrientation)
+	}
+}
+
+// applyOrientation tells every registered controller the orientation the client
+// has detected. It runs on the event loop, off the draw path — checkOrientation
+// explains why it must.
+func (md *MainDisplay) applyOrientation() {
+	md.mu.Lock()
+	md.orientationApplied = true
+	md.appliedPortrait = md.isPortrait
+	portrait := md.appliedPortrait
+	// Copy the list: a controller's SetPortrait reaches back into the interface
+	// (channels toggles panes, the Guide sets focus), so it must not run with mu
+	// held.
+	controllers := slices.Clone(md.sidePanelControllers)
+	md.mu.Unlock()
+
+	for _, c := range controllers {
+		c.SetPortrait(portrait)
 	}
 }
 

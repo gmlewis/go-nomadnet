@@ -426,6 +426,50 @@ func TestHostKillsTheChildWhenTheSocketCloses(t *testing.T) {
 	waitUntil(t, "the child to stop running", func() bool { return childNotRunning(pid) })
 }
 
+// TestHostKillsTheChildsWholeProcessGroup is the orphan a tablet's console left
+// behind: the client is a session leader, so nothing outside its group can
+// signal it by accident — and when the app tears a console down, the host is the
+// only thing left that can.
+//
+// The child here leaves a background helper in its own process group that ignores
+// the hangup the closing terminal raises — which is what a client that is not
+// going to end by itself looks like from the kernel's side. Signalling the child's
+// pid kills the client and leaves that helper running; signalling the group is
+// what leaves nothing behind.
+func TestHostKillsTheChildsWholeProcessGroup(t *testing.T) {
+	t.Parallel()
+	requireShell(t)
+
+	h := startHarness(t, Config{
+		Command: "/bin/sh",
+		Args:    []string{"-c", `trap "" HUP; (trap "" HUP; exec sleep 30) & echo SLEEPER-$!; echo CLIENT-$$; read line`},
+	})
+	// Both markers are read from one snapshot, taken once the SECOND of them has
+	// arrived: waiting for the first would read the output before the shell has
+	// printed the rest of it.
+	output := h.waitFor("CLIENT-")
+	sleeper := pidFrom(t, output, "SLEEPER-")
+	client := pidFrom(t, output, "CLIENT-")
+	t.Cleanup(func() {
+		for _, pid := range []int{sleeper, client} {
+			_ = syscall.Kill(-pid, syscall.SIGKILL)
+			_ = syscall.Kill(pid, syscall.SIGKILL)
+		}
+	})
+
+	// The app has gone. The client must not outlive it, and neither must
+	// anything the client started: an orphaned client holds the Reticulum shared
+	// instance the next console needs.
+	if err := h.local.Close(); err != nil {
+		t.Fatalf("closing the app's end of the connection: %v", err)
+	}
+	if err := h.waitForRun(); err != nil {
+		t.Errorf("Run returned %v, want nil", err)
+	}
+	waitUntil(t, "the child to stop running", func() bool { return childNotRunning(client) })
+	waitUntil(t, "the child's background helper to stop running", func() bool { return childNotRunning(sleeper) })
+}
+
 func TestHostLeavesNoChildBehind(t *testing.T) {
 	t.Parallel()
 	requireShell(t)
