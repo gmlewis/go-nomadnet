@@ -127,10 +127,12 @@ class ConsoleSessionTest {
         fixture.session.start()
         assertTrue(fixture.session.connect())
 
-        fixture.session.resize(132, 43)
+        // A rotation carries the display's physical size with the console's cells: a
+        // 132-column console on a 1920-by-1080 display.
+        fixture.session.resize(132, 43, 1920, 1080)
         assertEquals(
             "the window size did not go out as a resize frame",
-            listOf<ConsoleFrame>(ConsoleFrame.Resize(132, 43)),
+            listOf<ConsoleFrame>(ConsoleFrame.Resize(132, 43, 1920, 1080)),
             channel.sentFrames(),
         )
 
@@ -139,6 +141,17 @@ class ConsoleSessionTest {
         fixture.session.resize(0, 43)
         fixture.session.resize(70000, 43)
         assertEquals("an impossible size was sent anyway", 1, channel.sentFrames().size)
+
+        // A pixel size a frame cannot carry is clamped rather than sent as something else:
+        // the fields are unsigned 16-bit and a size that wrapped would be a smaller terminal.
+        fixture.session.resize(132, 43, 70000, -5)
+        assertEquals(
+            listOf<ConsoleFrame>(
+                ConsoleFrame.Resize(132, 43, 1920, 1080),
+                ConsoleFrame.Resize(132, 43, 65535, 0),
+            ),
+            channel.sentFrames(),
+        )
     }
 
     @Test
@@ -153,13 +166,13 @@ class ConsoleSessionTest {
 
         fixture.session.start()
         fixture.session.resize(100, 30)
-        fixture.session.resize(160, 48)
+        fixture.session.resize(160, 48, 1920, 1080)
         assertEquals("a frame was sent before the host connected", 0, channel.sentFrames().size)
 
         assertTrue(fixture.session.connect())
         assertEquals(
             "the size the view reported was never sent, or an old one was replayed",
-            listOf<ConsoleFrame>(ConsoleFrame.Resize(160, 48)),
+            listOf<ConsoleFrame>(ConsoleFrame.Resize(160, 48, 1920, 1080)),
             channel.sentFrames(),
         )
 
@@ -167,7 +180,10 @@ class ConsoleSessionTest {
         // a change of behaviour.
         fixture.session.resize(120, 40)
         assertEquals(
-            listOf<ConsoleFrame>(ConsoleFrame.Resize(160, 48), ConsoleFrame.Resize(120, 40)),
+            listOf<ConsoleFrame>(
+                ConsoleFrame.Resize(160, 48, 1920, 1080),
+                ConsoleFrame.Resize(120, 40),
+            ),
             channel.sentFrames(),
         )
     }

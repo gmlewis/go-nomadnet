@@ -25,7 +25,8 @@ public enum FrameType: UInt8 {
     /// Raw terminal bytes, in either direction.
     case data = 0x01
 
-    /// A new window size: columns then rows.
+    /// A new window size: the columns and rows of cells, then the width and height
+    /// in pixels.
     case resize = 0x02
 
     /// The client's exit status, sent only from the bridge to the app.
@@ -42,8 +43,16 @@ public enum ConsoleFrame: Equatable, Sendable {
     /// Raw terminal bytes.
     case data([UInt8])
 
-    /// A new window size, columns first.
-    case resize(cols: UInt16, rows: UInt16)
+    /// A new window size: the columns and rows of cells, then the width and height
+    /// in pixels.
+    ///
+    /// Zero pixels mean the window has no physical size to report, which is what a
+    /// terminal that keeps no font metrics says. A window size is both because the
+    /// two answer different questions — how much text fits, and how much room there
+    /// is — and the client's own interface needs the second one: the console's font
+    /// draws a cell about twice as tall as it is wide, so a console standing up
+    /// holds more columns than rows and only its pixel size says so.
+    case resize(cols: UInt16, rows: UInt16, xPixel: UInt16 = 0, yPixel: UInt16 = 0)
 
     /// The client's exit status, 0-255.
     case exit(code: UInt8)
@@ -154,8 +163,13 @@ public enum ConsoleFrames {
         switch frame {
         case .data(let bytes):
             return bytes
-        case .resize(let cols, let rows):
-            return [UInt8(cols >> 8), UInt8(cols & 0xFF), UInt8(rows >> 8), UInt8(rows & 0xFF)]
+        case .resize(let cols, let rows, let xPixel, let yPixel):
+            return [
+                UInt8(cols >> 8), UInt8(cols & 0xFF),
+                UInt8(rows >> 8), UInt8(rows & 0xFF),
+                UInt8(xPixel >> 8), UInt8(xPixel & 0xFF),
+                UInt8(yPixel >> 8), UInt8(yPixel & 0xFF),
+            ]
         case .exit(let code):
             return [code]
         }
@@ -163,19 +177,24 @@ public enum ConsoleFrames {
 
     /// Turns a validated type and payload into a frame.
     ///
-    /// A resize frame is exactly four bytes and an exit frame exactly one; any other
-    /// size is a protocol error rather than something to pad or truncate, because a
-    /// padded resize would name a window size the sender never asked for.
+    /// A resize frame is exactly eight bytes — two cells and two pixel dimensions —
+    /// and an exit frame exactly one; any other size is a protocol error rather than
+    /// something to pad or truncate, because a padded resize would name a window size
+    /// the sender never asked for.
     static func assemble(type: UInt8, payload: [UInt8]) throws -> ConsoleFrame {
         switch FrameType(rawValue: type) {
         case .data:
             return .data(payload)
         case .resize:
-            guard payload.count == 4 else {
+            guard payload.count == 8 else {
                 throw ConsoleFrameError.malformedFrame(
-                    "a resize frame is \(payload.count) bytes, want 4")
+                    "a resize frame is \(payload.count) bytes, want 8")
             }
-            return .resize(cols: uint16(payload, at: 0), rows: uint16(payload, at: 2))
+            return .resize(
+                cols: uint16(payload, at: 0),
+                rows: uint16(payload, at: 2),
+                xPixel: uint16(payload, at: 4),
+                yPixel: uint16(payload, at: 6))
         case .exit:
             guard payload.count == 1 else {
                 throw ConsoleFrameError.malformedFrame(

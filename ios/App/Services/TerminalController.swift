@@ -106,7 +106,10 @@ public final class TerminalController {
     ///
     /// This is the app->bridge half of the protocol, and the client reflows for it: a
     /// console whose grid is not what the client believes it is draws its interface in the
-    /// wrong place, which after a rotation is every line on the screen.
+    /// wrong place, which after a rotation is every line on the screen. The size carries the
+    /// console's physical size as well as its cells, which is what the client needs to know
+    /// whether its terminal is standing up — a cell is about twice as tall as it is wide, so
+    /// a console in portrait holds more columns than rows.
     /// Called when the client is told a new size for its window.
     public var onResize: ((TerminalSize) -> Void)?
 
@@ -119,17 +122,20 @@ public final class TerminalController {
     /// - Parameter metrics: the grid the view can show for its current bounds.
     public func resizeIfNeeded(to metrics: TerminalMetrics) {
         guard let size = TerminalSizing.resize(fitting: metrics, told: told) else { return }
-        resize(cols: size.cols, rows: size.rows)
+        resize(size)
     }
 
     /// resize tells the client what size its window is, and resizes the screen to match.
-    public func resize(cols: Int, rows: Int) {
-        let size = TerminalSize(cols: cols, rows: rows)
+    public func resize(_ size: TerminalSize) {
         guard size != told || screen.cols != size.cols || screen.rows != size.rows else { return }
 
         told = size
         screen.resize(cols: size.cols, rows: size.rows)
-        session.resize(cols: UInt16(clamping: size.cols), rows: UInt16(clamping: size.rows))
+        session.resize(
+            cols: UInt16(clamping: size.cols),
+            rows: UInt16(clamping: size.rows),
+            xPixel: UInt16(clamping: size.pixelWidth),
+            yPixel: UInt16(clamping: size.pixelHeight))
         onResize?(size)
         onScreenChanged?()
     }

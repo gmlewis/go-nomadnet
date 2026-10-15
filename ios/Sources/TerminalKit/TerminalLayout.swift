@@ -39,16 +39,57 @@ public struct TerminalMetrics: Equatable, Sendable {
     /// How many whole rows fit in the rectangle.
     public let rows: Int
 
+    /// How wide the display the console is drawn on is, in the unit the app measured it in.
+    ///
+    /// It is the display's size and not the console rectangle's, because it is what tells a
+    /// console standing up from one lying down: its own interface changes with the shape of
+    /// its terminal, and a cell is about twice as tall as it is wide, so a console in
+    /// portrait holds more columns than rows. The display is what the device's rotation
+    /// turns, so a rotation is a change in this size whether or not the on-screen keyboard
+    /// is up — a console rectangle shrinks by the keyboard's height and would say the
+    /// console is lying down while the device is standing up.
+    public let pixelWidth: Int
+
+    /// How tall the display the console is drawn on is, in the same unit.
+    public let pixelHeight: Int
+
     /// Metrics for a cell of `cellWidth` by `cellHeight` points and a `cols` by `rows` grid.
     ///
     /// A cell of no points is not a small font, it is a font that has not been measured, and
     /// every division over these would be by zero; the invariant is therefore kept by
     /// clamping rather than by trusting the caller.
-    public init(cellWidth: Int, cellHeight: Int, cols: Int, rows: Int) {
+    ///
+    /// The display size defaults to nothing measured, which is what a caller that only knows
+    /// a grid has to report; a view attaches the display it is drawn on with
+    /// ``onDisplay(width:height:)``.
+    public init(
+        cellWidth: Int,
+        cellHeight: Int,
+        cols: Int,
+        rows: Int,
+        pixelWidth: Int = 0,
+        pixelHeight: Int = 0
+    ) {
         self.cellWidth = max(1, cellWidth)
         self.cellHeight = max(1, cellHeight)
         self.cols = max(1, cols)
         self.rows = max(1, rows)
+        self.pixelWidth = max(0, pixelWidth)
+        self.pixelHeight = max(0, pixelHeight)
+    }
+
+    /// onDisplay returns these metrics as they are on a display of this pixel size.
+    ///
+    /// The grid is unchanged: the cells are the console's, and this is the display they are
+    /// drawn on, which is what the client reads to know which way up its terminal is.
+    public func onDisplay(width: Int, height: Int) -> TerminalMetrics {
+        TerminalMetrics(
+            cellWidth: cellWidth,
+            cellHeight: cellHeight,
+            cols: cols,
+            rows: rows,
+            pixelWidth: width,
+            pixelHeight: height)
     }
 
     /// The grid a rectangle can hold, given the cell the view draws with and the strip of

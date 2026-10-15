@@ -164,9 +164,12 @@ final class ConsoleSessionTests: XCTestCase {
         [FrameType.data.rawValue] + length(bytes.count) + bytes
     }
 
-    private func resizeFrame(cols: UInt16, rows: UInt16) -> [UInt8] {
-        [FrameType.resize.rawValue] + length(4)
-            + [UInt8(cols >> 8), UInt8(cols & 0xFF), UInt8(rows >> 8), UInt8(rows & 0xFF)]
+    private func resizeFrame(
+        cols: UInt16, rows: UInt16, xPixel: UInt16 = 0, yPixel: UInt16 = 0
+    ) -> [UInt8] {
+        [FrameType.resize.rawValue] + length(8)
+            + [UInt8(cols >> 8), UInt8(cols & 0xFF), UInt8(rows >> 8), UInt8(rows & 0xFF),
+               UInt8(xPixel >> 8), UInt8(xPixel & 0xFF), UInt8(yPixel >> 8), UInt8(yPixel & 0xFF)]
     }
 
     private func exitFrame(_ code: UInt8) -> [UInt8] {
@@ -198,7 +201,8 @@ final class ConsoleSessionTests: XCTestCase {
 
         let frame = try peer.readFrame()
         XCTAssertEqual(FrameType.resize.rawValue, frame.type, "the size did not go out as a resize frame")
-        XCTAssertEqual([0x00, 0x50, 0x00, 0x18], frame.payload, "the size is columns then rows, big-endian")
+        XCTAssertEqual([0x00, 0x50, 0x00, 0x18, 0x00, 0x00, 0x00, 0x00], frame.payload,
+                       "the size is columns and rows, then the pixels, big-endian")
         session.stop()
     }
 
@@ -208,15 +212,17 @@ final class ConsoleSessionTests: XCTestCase {
         let session = ConsoleSession(socketPath: peer.path, cols: 80, rows: 24)
 
         // The view is measured a few times before the bridge answers, and only the newest size
-        // is owed: a client is owed its current size, not a history of them.
+        // is owed: a client is owed its current size, not a history of them. The console's
+        // physical size goes with the cells — this is the tablet in portrait, 100 columns of 12
+        // pixels and 76 rows of 24, which holds more columns than rows and is standing up.
         session.resize(cols: 100, rows: 30)
-        session.resize(cols: 160, rows: 48)
+        session.resize(cols: 160, rows: 48, xPixel: 1920, yPixel: 1080)
         session.start()
         try peer.accept()
 
         let frame = try peer.readFrame()
         XCTAssertEqual(FrameType.resize.rawValue, frame.type)
-        XCTAssertEqual([0x00, 0xA0, 0x00, 0x30], frame.payload,
+        XCTAssertEqual([0x00, 0xA0, 0x00, 0x30, 0x07, 0x80, 0x04, 0x38], frame.payload,
                        "an old size was replayed, or the newest one was lost")
         XCTAssertThrowsError(try peer.readFrame(timeout: 0.2), "the owed size went out twice")
 
@@ -224,7 +230,7 @@ final class ConsoleSessionTests: XCTestCase {
         // than a change of behavior.
         session.resize(cols: 120, rows: 40)
         let next = try peer.readFrame()
-        XCTAssertEqual([0x00, 0x78, 0x00, 0x28], next.payload)
+        XCTAssertEqual([0x00, 0x78, 0x00, 0x28, 0x00, 0x00, 0x00, 0x00], next.payload)
 
         // A size a frame cannot carry is refused rather than truncated: a truncated size is
         // still a plausible terminal size, and the client would lay itself out for it.
@@ -433,7 +439,7 @@ final class ConsoleSessionTests: XCTestCase {
         session.start()
         try peer.accept()
         _ = try peer.readFrame()
-        try peer.write(resizeFrame(cols: 120, rows: 40))
+        try peer.write(resizeFrame(cols: 120, rows: 40, xPixel: 1200, yPixel: 960))
         try peer.write(dataFrame(Array("hi".utf8)))
 
         wait(for: [output], timeout: 5)

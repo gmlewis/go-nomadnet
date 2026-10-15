@@ -29,6 +29,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/creack/pty/v2"
 )
 
 // The tests below run real, short-lived children on a real PTY, because the
@@ -172,12 +174,12 @@ func (h *consoleHarness) send(text string) {
 }
 
 // resize sends a window-size change, as a rotation would.
-func (h *consoleHarness) resize(cols, rows uint16) {
+func (h *consoleHarness) resize(cols, rows, xPixel, yPixel uint16) {
 	h.t.Helper()
 	if err := h.local.SetWriteDeadline(time.Now().Add(sessionTimeout)); err != nil {
 		h.t.Fatalf("setting a write deadline: %v", err)
 	}
-	if err := WriteFrame(h.local, ResizeFrame(cols, rows)); err != nil {
+	if err := WriteFrame(h.local, ResizeFrame(cols, rows, xPixel, yPixel)); err != nil {
 		h.t.Fatalf("sending a %vx%v resize: %v", cols, rows, err)
 	}
 }
@@ -288,9 +290,59 @@ func TestHostResizesTheChild(t *testing.T) {
 
 	// A rotation is a RESIZE frame, and the kernel turns the ioctl into a
 	// SIGWINCH the child gets for free.
-	h.resize(100, 40)
+	h.resize(100, 40, 1200, 960)
 	h.send("stty size\n")
 	h.waitFor("40 100")
+}
+
+// TestHostAppliesTheResizesPixelSizeToTheChild asserts the half of a window size
+// that `stty size` cannot show.
+//
+// A pty's window size is cells and pixels, and the pixels are what tell a client
+// standing up from one lying down: the console's font draws a cell twice as tall
+// as it is wide, so a tablet in portrait holds more columns than rows and only
+// the physical size can say which way up it is. `stty` reports cells alone, so
+// the size is read back from the pty itself.
+func TestHostAppliesTheResizesPixelSizeToTheChild(t *testing.T) {
+	t.Parallel()
+	requireShell(t)
+
+	c, err := startChild(Config{Command: "/bin/sh", Cols: 80, Rows: 24})
+	if err != nil {
+		t.Fatalf("starting a child on a pty: %v", err)
+	}
+	defer func() {
+		c.kill()
+		c.close()
+	}()
+
+	if err := c.resize(100, 75, 1200, 1920); err != nil {
+		t.Fatalf("resizing the child's terminal: %v", err)
+	}
+
+	ws, err := pty.GetsizeFull(c.master)
+	if err != nil {
+		t.Fatalf("reading the child's window size: %v", err)
+	}
+	if ws.Cols != 100 || ws.Rows != 75 {
+		t.Errorf("the child's terminal is %vx%v cells, want 100x75", ws.Cols, ws.Rows)
+	}
+	if ws.X != 1200 || ws.Y != 1920 {
+		t.Errorf("the child's terminal is %vx%v pixels, want 1200x1920", ws.X, ws.Y)
+	}
+
+	// A window with no physical size to report clears the fields, which is what a
+	// caller that does not know one sends.
+	if err := c.resize(100, 75, 0, 0); err != nil {
+		t.Fatalf("resizing the child's terminal without pixels: %v", err)
+	}
+	ws, err = pty.GetsizeFull(c.master)
+	if err != nil {
+		t.Fatalf("reading the child's window size: %v", err)
+	}
+	if ws.X != 0 || ws.Y != 0 {
+		t.Errorf("the child's terminal is %vx%v pixels, want none reported", ws.X, ws.Y)
+	}
 }
 
 func TestHostForwardsInputToTheChild(t *testing.T) {

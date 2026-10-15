@@ -111,7 +111,10 @@ public final class ConsoleSession {
     /// size dropped there is dropped for the whole session, and the client would keep the size
     /// it was started with and draw in one corner of a screen it never claims. Only the newest
     /// size is owed, because a client is owed its current size and not a history of them.
-    private var pendingResize: (cols: UInt16, rows: UInt16)?
+    ///
+    /// It is the frame itself rather than its parts, so there is one spelling of a resize and
+    /// the size that is owed cannot disagree with the size that is sent.
+    private var pendingResize: ConsoleFrame?
 
     /// A session that will dial `socketPath`, and owes the bridge a `cols` by `rows` terminal.
     ///
@@ -121,7 +124,7 @@ public final class ConsoleSession {
         self.socketPath = socketPath
         self.queue = DispatchQueue(label: "com.gmlewis.gonomadnet.console")
         if cols > 0, rows > 0 {
-            self.pendingResize = (cols: cols, rows: rows)
+            self.pendingResize = .resize(cols: cols, rows: rows)
         }
     }
 
@@ -158,22 +161,28 @@ public final class ConsoleSession {
 
     /// Tells the bridge the terminal's new size, so the client can reflow.
     ///
+    /// The size is the cells the client lays out for and the pixels they cover. Both go, because
+    /// the client's own interface also depends on the shape of its terminal and a cell is about
+    /// twice as tall as it is wide: without the pixels the client cannot tell a console standing
+    /// up from one lying on its side.
+    ///
     /// A size a frame cannot carry is refused rather than truncated: a truncated size is still
     /// a plausible terminal size, and the client would lay itself out for a terminal that does
     /// not exist. A size reported before the bridge answered the dial is kept rather than
     /// dropped, because the first one always is.
-    public func resize(cols: UInt16, rows: UInt16) {
+    public func resize(cols: UInt16, rows: UInt16, xPixel: UInt16 = 0, yPixel: UInt16 = 0) {
         guard cols > 0, rows > 0 else { return }
+        let frame = ConsoleFrame.resize(cols: cols, rows: rows, xPixel: xPixel, yPixel: yPixel)
         lock.lock()
         if descriptor < 0 || ended {
             if !ended {
-                pendingResize = (cols: cols, rows: rows)
+                pendingResize = frame
             }
             lock.unlock()
             return
         }
         lock.unlock()
-        writeFrame(.resize(cols: cols, rows: rows))
+        writeFrame(frame)
     }
 
     /// Ends the session, releasing the connection and reporting the end once.
@@ -231,7 +240,7 @@ public final class ConsoleSession {
         // The size that was owed goes out before the first byte is read: the client is about to
         // draw, and it must draw the size the screen actually has.
         if let owed {
-            writeFrame(.resize(cols: owed.cols, rows: owed.rows))
+            writeFrame(owed)
         }
 
         readFrames(socket)

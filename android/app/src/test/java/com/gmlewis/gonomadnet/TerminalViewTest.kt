@@ -51,6 +51,69 @@ class TerminalViewTest {
     }
 
     @Test
+    fun `a grid with no display measured reports no pixels`() {
+        // The size the console host is started with is cells alone: the view has not been laid
+        // out yet, so there is no display to have measured. Zero is that, and the client falls
+        // back to its cells — which is what every terminal without a physical size does.
+        val grid = TerminalGrid(cols = 80, rows = 24)
+
+        assertEquals("a size that was never measured reports no pixel width", 0, grid.xPixel)
+        assertEquals("a size that was never measured reports no pixel height", 0, grid.yPixel)
+    }
+
+    @Test
+    fun `the display goes with the grid the client is told`() {
+        val metrics = TerminalMetrics(cellWidth = 12, cellHeight = 24)
+        val grid = metrics.gridFor(widthPx = 1200, heightPx = 1803).onDisplay(widthPx = 1200, heightPx = 1920)
+
+        assertEquals("the cells are the console's", 100, grid.cols)
+        assertEquals("the cells are the console's", 75, grid.rows)
+        assertEquals("the pixels are the display's", 1200, grid.xPixel)
+        assertEquals("the pixels are the display's", 1920, grid.yPixel)
+    }
+
+    @Test
+    fun `a tablet in portrait holds more columns than rows and is still standing up`() {
+        // The whole reason the display is carried: at 12x24 pixels a cell, a 1200-pixel-wide
+        // portrait tablet is 100 columns and 75 rows — more columns than rows — and only the
+        // display's own size can say that the terminal is standing up.
+        val metrics = TerminalMetrics(cellWidth = 12, cellHeight = 24)
+        val portrait = metrics.gridFor(widthPx = 1200, heightPx = 1803).onDisplay(1200, 1920)
+
+        assertTrue("the console should hold more columns than rows: $portrait", portrait.cols > portrait.rows)
+        assertTrue("the display should be taller than it is wide: $portrait", portrait.yPixel > portrait.xPixel)
+
+        val landscape = metrics.gridFor(widthPx = 1920, heightPx = 594).onDisplay(1920, 1200)
+        assertTrue("a display on its side is wider than it is tall: $landscape", landscape.xPixel > landscape.yPixel)
+    }
+
+    @Test
+    fun `the keyboard takes the console's height but not the display's`() {
+        // The keyboard is why the pixels are the display's: half of a portrait screen's height
+        // is the keyboard, and the console rectangle measured then is wider than it is tall
+        // while the tablet is standing up. The display is the same size either way, so what the
+        // client reads to tell which way up it is does not move with the keyboard.
+        val consoleWithoutKeyboard = 1200 to 1713
+        val consoleWithKeyboard = 1200 to 1167
+        assertTrue(
+            "the console rectangle with the keyboard up should be wider than it is tall: $consoleWithKeyboard",
+            consoleWithKeyboard.first > consoleWithKeyboard.second,
+        )
+
+        val metrics = TerminalMetrics(cellWidth = 12, cellHeight = 24)
+        val withoutKeyboard = metrics
+            .gridFor(consoleWithoutKeyboard.first, consoleWithoutKeyboard.second)
+            .onDisplay(widthPx = 1200, heightPx = 1920)
+        val withKeyboard = metrics
+            .gridFor(consoleWithKeyboard.first, consoleWithKeyboard.second)
+            .onDisplay(widthPx = 1200, heightPx = 1920)
+
+        assertTrue("the display should be taller than it is wide either way: $withKeyboard", withKeyboard.yPixel > withKeyboard.xPixel)
+        assertEquals("the keyboard gave back rows, not pixels", withoutKeyboard.yPixel, withKeyboard.yPixel)
+        assertTrue("the keyboard took rows", withKeyboard.rows < withoutKeyboard.rows)
+    }
+
+    @Test
     fun `the cell to pixel mapping agrees with the fit`() {
         val metrics = TerminalMetrics(cellWidth = 8, cellHeight = 16)
         val grid = metrics.gridFor(widthPx = 800, heightPx = 480)

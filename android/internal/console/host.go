@@ -93,7 +93,7 @@ func (s *Session) pumpInput(c *child) error {
 				return fmt.Errorf("console: writing to the child's terminal: %w", err)
 			}
 		case FrameResize:
-			if err := c.resize(f.Cols, f.Rows); err != nil {
+			if err := c.resize(f.Cols, f.Rows, f.XPixel, f.YPixel); err != nil {
 				return err
 			}
 		case FrameExit:
@@ -138,9 +138,18 @@ func (c *child) writeAll(p []byte) error {
 }
 
 // resize applies a new window size to the child's terminal.
-func (c *child) resize(cols, rows uint16) error {
-	err := pty.Setsize(c.master, &pty.Winsize{Rows: rows, Cols: cols})
-	if err != nil {
+//
+// The size is cells and pixels, which is what the kernel's own window size is: the
+// cells are the console's and the pixels are the display it is drawn on, because
+// the client reads them to know which way up its terminal is — a tablet held in
+// portrait holds 100 columns of 12 pixels and 75 rows of 24, which is more columns
+// than rows, and only the display's own 1200 by 1920 says that it is standing up.
+// The host computes neither: it applies what the app measured. Zero pixels mean the
+// window has no physical size to report, which is what a caller that does not know
+// one sends.
+func (c *child) resize(cols, rows, xPixel, yPixel uint16) error {
+	ws := &pty.Winsize{Rows: rows, Cols: cols, X: xPixel, Y: yPixel}
+	if err := pty.Setsize(c.master, ws); err != nil {
 		return fmt.Errorf("console: resizing the child's terminal to %vx%v: %w", cols, rows, err)
 	}
 	return nil

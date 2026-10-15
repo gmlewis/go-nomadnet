@@ -184,11 +184,16 @@ func TestConsoleWindowSizeFollowsResizeFrames(t *testing.T) {
 	if ws, err := c.WindowSize(); err != nil || ws.Width != 80 || ws.Height != 24 {
 		t.Fatalf("WindowSize() = %+v, %v, want 80x24", ws, err)
 	}
+	if ws, _ := c.WindowSize(); ws.PixelWidth != 0 || ws.PixelHeight != 0 {
+		t.Errorf("WindowSize() before any resize reports %vx%v pixels, want none", ws.PixelWidth, ws.PixelHeight)
+	}
 
 	resized := make(chan struct{}, 4)
 	c.NotifyResize(func() { resized <- struct{}{} })
 
-	if err := WriteFrame(app, ResizeFrame(132, 43)); err != nil {
+	// A rotation carries the display's physical size as well as the console's cells:
+	// a 132-column console on a 1920-by-1080 display.
+	if err := WriteFrame(app, ResizeFrame(132, 43, 1920, 1080)); err != nil {
 		t.Fatalf("sending a resize frame: %v", err)
 	}
 	select {
@@ -197,8 +202,13 @@ func TestConsoleWindowSizeFollowsResizeFrames(t *testing.T) {
 		t.Fatal("the resize callback was not called within 2s")
 	}
 
-	if ws, err := c.WindowSize(); err != nil || ws.Width != 132 || ws.Height != 43 {
+	ws, err := c.WindowSize()
+	if err != nil || ws.Width != 132 || ws.Height != 43 {
 		t.Errorf("WindowSize() after a resize = %+v, %v, want 132x43", ws, err)
+	}
+	if ws.PixelWidth != 1920 || ws.PixelHeight != 1080 {
+		t.Errorf("WindowSize() after a resize reports %vx%v pixels, want 1920x1080",
+			ws.PixelWidth, ws.PixelHeight)
 	}
 }
 

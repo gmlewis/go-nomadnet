@@ -33,8 +33,22 @@ sealed class ConsoleFrame {
         override fun toString(): String = "Data(${payload.size} bytes)"
     }
 
-    /** A new window size: columns then rows. */
-    data class Resize(val cols: Int, val rows: Int) : ConsoleFrame() {
+    /**
+     * A new window size: the columns and rows of cells, then the width and height in pixels.
+     *
+     * Zero pixels mean the window has no physical size to report, which is what a terminal
+     * that keeps no font metrics says. A window size is both because the two answer
+     * different questions — how much text fits, and how much room there is — and the
+     * client's own layout needs the second one: the console's font draws a cell about twice
+     * as tall as it is wide, so a tablet in portrait holds more columns than rows and only
+     * its pixel size says that it is standing up.
+     */
+    data class Resize(
+        val cols: Int,
+        val rows: Int,
+        val xPixel: Int = 0,
+        val yPixel: Int = 0,
+    ) : ConsoleFrame() {
         override val type: Int get() = ConsoleFrames.TYPE_RESIZE
     }
 
@@ -119,9 +133,11 @@ object ConsoleFrames {
     /** payloadOf returns the bytes [frame] carries, in wire order. */
     fun payloadOf(frame: ConsoleFrame): ByteArray = when (frame) {
         is ConsoleFrame.Data -> frame.payload
-        is ConsoleFrame.Resize -> ByteArray(4).also {
+        is ConsoleFrame.Resize -> ByteArray(8).also {
             putUint16(it, 0, frame.cols)
             putUint16(it, 2, frame.rows)
+            putUint16(it, 4, frame.xPixel)
+            putUint16(it, 6, frame.yPixel)
         }
         is ConsoleFrame.Exit -> byteArrayOf(frame.code.toByte())
     }
@@ -129,16 +145,22 @@ object ConsoleFrames {
     /**
      * assemble turns a validated type and payload into a frame.
      *
-     * A resize frame is exactly four bytes and an exit frame exactly one; any other size
-     * is a protocol error rather than something to pad or truncate.
+     * A resize frame is exactly eight bytes — two cells and two pixel dimensions — and an
+     * exit frame exactly one; any other size is a protocol error rather than something to
+     * pad or truncate.
      */
     fun assemble(type: Int, payload: ByteArray): ConsoleFrame = when (type) {
         TYPE_DATA -> ConsoleFrame.Data(payload)
         TYPE_RESIZE -> {
-            if (payload.size != 4) {
-                throw ConsoleProtocolException("a malformed resize frame is ${payload.size} bytes, want 4")
+            if (payload.size != 8) {
+                throw ConsoleProtocolException("a malformed resize frame is ${payload.size} bytes, want 8")
             }
-            ConsoleFrame.Resize(uint16(payload, 0), uint16(payload, 2))
+            ConsoleFrame.Resize(
+                cols = uint16(payload, 0),
+                rows = uint16(payload, 2),
+                xPixel = uint16(payload, 4),
+                yPixel = uint16(payload, 6),
+            )
         }
         TYPE_EXIT -> {
             if (payload.size != 1) {

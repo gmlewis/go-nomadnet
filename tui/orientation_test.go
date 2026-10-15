@@ -177,3 +177,71 @@ func TestMainDisplayOrientationAutoClosesSidePanels(t *testing.T) {
 		t.Error("expected guide topics list restored in landscape")
 	}
 }
+
+// TestMainDisplayOrientationFollowsTheConsolePhysicalSize is the appliance's own
+// rotation, asserted end to end: a tablet whose display is 1200 by 1920 pixels
+// holds 100 columns of 12 pixels and 75 rows of 24, so its grid has more columns
+// than rows and only the physical size its host reports can say that the console
+// is standing up.
+//
+// It does not run in parallel, because it installs the host's probe for the
+// package while it runs; every parallel test runs after the sequential ones have
+// finished.
+func TestMainDisplayOrientationFollowsTheConsolePhysicalSize(t *testing.T) {
+	width, height := 1200, 1920
+	SetTerminalPixels(func() (int, int, bool) { return width, height, true })
+	t.Cleanup(func() { SetTerminalPixels(nil) })
+
+	app := newTestApp()
+	main := NewMainDisplay(app, ThemeDark, "unicode")
+
+	cd := NewConversationsDisplay(app, nil)
+	nd := NewNetworkDisplay(app, nil, nil)
+	ch := NewChannelsDisplay(app, nil)
+	ch.SetHubs([]HubView{fakeHub{name: "TestHub", status: hubStatusConnected, joined: []string{"lobby"}}})
+	ch.ShowRoom(0, "lobby", nil)
+	gd := NewGuideDisplay(app)
+
+	main.RegisterSidePanelController(cd)
+	main.RegisterSidePanelController(nd)
+	main.RegisterSidePanelController(ch)
+	main.RegisterSidePanelController(gd)
+
+	// The tablet held in portrait: 100x75 cells on a 1200x1920 display.
+	main.checkOrientation(100, 75)
+	if !cd.Fullscreen() {
+		t.Error("expected the conversations list to be closed in portrait")
+	}
+	if !nd.Fullscreen() {
+		t.Error("expected the network list to be closed in portrait")
+	}
+	if ch.ChannelListVisible() {
+		t.Error("expected the channels list to be closed in portrait")
+	}
+	if ch.roomWidget.UsersVisible() {
+		t.Error("expected the channels users list to be closed in portrait")
+	}
+	if gd.TopicsVisible() {
+		t.Error("expected the guide topics list to be closed in portrait")
+	}
+
+	// Rotated to landscape: the console is now 1920x1080 pixels and 160x45 cells,
+	// which is what the app sends with the rotation.
+	width, height = 1920, 1080
+	main.checkOrientation(160, 45)
+	if cd.Fullscreen() {
+		t.Error("expected the conversations list restored in landscape")
+	}
+	if nd.Fullscreen() {
+		t.Error("expected the network list restored in landscape")
+	}
+	if !ch.ChannelListVisible() {
+		t.Error("expected the channels list restored in landscape")
+	}
+	if !ch.roomWidget.UsersVisible() {
+		t.Error("expected the channels users list restored in landscape")
+	}
+	if !gd.TopicsVisible() {
+		t.Error("expected the guide topics list restored in landscape")
+	}
+}

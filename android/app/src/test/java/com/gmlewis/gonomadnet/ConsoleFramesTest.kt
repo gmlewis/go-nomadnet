@@ -27,8 +27,18 @@ class ConsoleFramesTest {
     private val golden = listOf(
         Golden("data hello", "010000000568656c6c6f", ConsoleFrame.Data("hello".toByteArray())),
         Golden("data empty", "0100000000", ConsoleFrame.Data(ByteArray(0))),
-        Golden("resize 80x24", "020000000400500018", ConsoleFrame.Resize(80, 24)),
-        Golden("resize 200x60", "020000000400c8003c", ConsoleFrame.Resize(200, 60)),
+        Golden("resize 80x24", "02000000080050001800000000", ConsoleFrame.Resize(80, 24)),
+        Golden("resize 200x60", "020000000800c8003c00000000", ConsoleFrame.Resize(200, 60)),
+        Golden(
+            "resize 100x75 at 1200x1920",
+            "02000000080064004b04b00780",
+            ConsoleFrame.Resize(100, 75, 1200, 1920),
+        ),
+        Golden(
+            "resize 160x45 at 1920x1080",
+            "020000000800a0002d07800438",
+            ConsoleFrame.Resize(160, 45, 1920, 1080),
+        ),
         Golden("exit 0", "030000000100", ConsoleFrame.Exit(0)),
         Golden("exit 130", "030000000182", ConsoleFrame.Exit(130)),
     )
@@ -105,11 +115,15 @@ class ConsoleFramesTest {
 
     @Test
     fun `a payload of the wrong size for its type is refused`() {
-        // A resize frame is four bytes and an exit frame is one. Any other length is a
-        // protocol error rather than something to pad or truncate.
+        // A resize frame is eight bytes — two cells and two pixel dimensions — and an exit
+        // frame is one. Any other length is a protocol error rather than something to pad
+        // or truncate.
         for (wire in listOf(
             hexToBytes("02000000020050"),
+            hexToBytes("020000000400500018"),
             hexToBytes("02000000050050001800"),
+            hexToBytes("02000000070050001804b007"),
+            hexToBytes("02000000090050001804b0072000"),
             hexToBytes("03000000020000"),
         )) {
             val failure = assertThrows(ConsoleProtocolException::class.java) {
@@ -127,13 +141,15 @@ class ConsoleFramesTest {
         // The session reads frame after frame from one socket, so the reader must stop
         // at a frame boundary rather than swallowing what follows.
         val stream = java.io.ByteArrayInputStream(
-            hexToBytes("010000000568656c6c6f0200000004005000180100000005") +
+            hexToBytes("010000000568656c6c6f0200000008005000180000000002000000080064004b04b00780" +
+                "0100000005") +
                 "world".toByteArray() +
                 hexToBytes("030000000182"),
         )
         val reader = ConsoleFrameReader(stream)
         assertEquals(ConsoleFrame.Data("hello".toByteArray()), reader.read())
         assertEquals(ConsoleFrame.Resize(80, 24), reader.read())
+        assertEquals(ConsoleFrame.Resize(100, 75, 1200, 1920), reader.read())
         assertEquals(ConsoleFrame.Data("world".toByteArray()), reader.read())
         assertEquals(ConsoleFrame.Exit(130), reader.read())
         assertEquals("a clean end at a frame boundary is not an error", null, reader.read())

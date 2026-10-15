@@ -220,12 +220,17 @@ func (md *MainDisplay) SetPortrait(portrait bool) {
 }
 
 // checkOrientation checks if the screen orientation (portrait vs landscape)
-// has changed based on width and height.
+// has changed, and informs every registered side-panel controller when it has.
+//
+// The width and height are the body's cell grid, as every draw is given them;
+// whether that grid is standing up is the terminal's own answer to give — see
+// terminalIsPortrait, which believes the physical size a terminal reports and
+// falls back to the cell grid when it reports none.
 func (md *MainDisplay) checkOrientation(w, h int) {
 	if w <= 0 || h <= 0 {
 		return
 	}
-	isPortrait := w < h
+	isPortrait := terminalIsPortrait(w, h)
 	if !md.hasOrientation || md.isPortrait != isPortrait {
 		md.hasOrientation = true
 		md.isPortrait = isPortrait

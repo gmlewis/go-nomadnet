@@ -392,10 +392,14 @@ class MainActivity : Activity() {
         view.onMouse = { bytes -> session.sendBytes(bytes) }
         // A rotation, or the keyboard, changes the grid the client is laid out for. The
         // screen is resized with it, so the emulator and the terminal it is emulating agree.
+        // The console's pixel size goes with the cells, because it is the client's own
+        // layout that turns on it: the console's font draws a cell twice as tall as it is
+        // wide, so a tablet held in portrait holds more columns than rows and only this can
+        // tell the client that its terminal is standing up.
         view.onResize = { grid ->
             consoleGrid = grid
             screen.resize(grid.cols, grid.rows)
-            session.resize(grid.cols, grid.rows)
+            session.resize(grid.cols, grid.rows, grid.xPixel, grid.yPixel)
         }
         console = session
 

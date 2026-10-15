@@ -57,7 +57,8 @@ const (
 	// FrameData carries raw terminal bytes.
 	FrameData FrameType = 0x01
 
-	// FrameResize carries a new window size: columns then rows, big-endian.
+	// FrameResize carries a window size: columns, then rows, then the width and
+	// height of the window in pixels, each big-endian.
 	FrameResize FrameType = 0x02
 
 	// FrameExit carries the client's exit code, which is the whole payload.
@@ -66,8 +67,8 @@ const (
 
 // Frame is one decoded console frame.
 //
-// Only the fields its Type names are meaningful: Data for FrameData, Cols and
-// Rows for FrameResize, and Code for FrameExit.
+// Only the fields its Type names are meaningful: Data for FrameData, Cols, Rows,
+// XPixel and YPixel for FrameResize, and Code for FrameExit.
 type Frame struct {
 	// Type says which frame this is.
 	Type FrameType
@@ -75,9 +76,24 @@ type Frame struct {
 	// Data is the payload of a FrameData frame.
 	Data []byte
 
-	// Cols and Rows are the window size of a FrameResize frame.
+	// Cols and Rows are the cell size of a FrameResize frame: how many
+	// characters wide and how many lines tall the terminal is.
 	Cols uint16
 	Rows uint16
+
+	// XPixel and YPixel are the physical size of a FrameResize frame: the display
+	// the console is drawn on. Both are zero when the window has none to report.
+	//
+	// A window size is cells and pixels — a pty carries ws_xpixel and ws_ypixel
+	// beside ws_col and ws_row — because the two answer different questions: the
+	// cells are how much text fits and the pixels are how much room there is.
+	// The console's font draws a cell about twice as tall as it is wide, so a
+	// terminal standing up holds more columns than rows, and only this can say so.
+	// It is the display and not the console rectangle because the on-screen
+	// keyboard takes half of a portrait screen's height, which would leave a
+	// rectangle wider than it is tall while the tablet is standing up.
+	XPixel uint16
+	YPixel uint16
 
 	// Code is the exit status of a FrameExit frame.
 	Code byte
@@ -86,9 +102,14 @@ type Frame struct {
 // DataFrame returns a DATA frame carrying p.
 func DataFrame(p []byte) Frame { return Frame{Type: FrameData, Data: p} }
 
-// ResizeFrame returns a RESIZE frame for a cols-by-rows terminal.
-func ResizeFrame(cols, rows uint16) Frame {
-	return Frame{Type: FrameResize, Cols: cols, Rows: rows}
+// ResizeFrame returns a RESIZE frame for a terminal that is cols cells by rows
+// cells and xPixel by yPixel pixels.
+//
+// Zero pixels mean the window has no physical size to report, which is what
+// every terminal before this field existed said and what one that keeps no font
+// metrics still says.
+func ResizeFrame(cols, rows, xPixel, yPixel uint16) Frame {
+	return Frame{Type: FrameResize, Cols: cols, Rows: rows, XPixel: xPixel, YPixel: yPixel}
 }
 
 // ExitFrame returns an EXIT frame carrying the client's exit code.
@@ -100,7 +121,12 @@ func (f Frame) payload() []byte {
 	case FrameData:
 		return f.Data
 	case FrameResize:
-		return []byte{byte(f.Cols >> 8), byte(f.Cols), byte(f.Rows >> 8), byte(f.Rows)}
+		return []byte{
+			byte(f.Cols >> 8), byte(f.Cols),
+			byte(f.Rows >> 8), byte(f.Rows),
+			byte(f.XPixel >> 8), byte(f.XPixel),
+			byte(f.YPixel >> 8), byte(f.YPixel),
+		}
 	case FrameExit:
 		return []byte{f.Code}
 	}
@@ -113,7 +139,10 @@ func (f Frame) String() string {
 	case FrameData:
 		return fmt.Sprintf("Data(%q)", f.Data)
 	case FrameResize:
-		return fmt.Sprintf("Resize(%vx%v)", f.Cols, f.Rows)
+		if f.XPixel == 0 && f.YPixel == 0 {
+			return fmt.Sprintf("Resize(%vx%v)", f.Cols, f.Rows)
+		}
+		return fmt.Sprintf("Resize(%vx%v %vx%vpx)", f.Cols, f.Rows, f.XPixel, f.YPixel)
 	case FrameExit:
 		return fmt.Sprintf("Exit(%v)", f.Code)
 	}
@@ -183,11 +212,13 @@ func ReadFrame(r io.Reader) (Frame, error) {
 	case FrameData:
 		f.Data = payload
 	case FrameResize:
-		if len(payload) != 4 {
-			return Frame{}, fmt.Errorf("%w: a resize frame is %v bytes, want 4", ErrMalformedFrame, len(payload))
+		if len(payload) != 8 {
+			return Frame{}, fmt.Errorf("%w: a resize frame is %v bytes, want 8", ErrMalformedFrame, len(payload))
 		}
 		f.Cols = binary.BigEndian.Uint16(payload[0:2])
 		f.Rows = binary.BigEndian.Uint16(payload[2:4])
+		f.XPixel = binary.BigEndian.Uint16(payload[4:6])
+		f.YPixel = binary.BigEndian.Uint16(payload[6:8])
 	case FrameExit:
 		if len(payload) != 1 {
 			return Frame{}, fmt.Errorf("%w: an exit frame is %v bytes, want 1", ErrMalformedFrame, len(payload))

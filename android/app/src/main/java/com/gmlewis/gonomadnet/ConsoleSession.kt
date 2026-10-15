@@ -161,7 +161,7 @@ class ConsoleSession(
      * the tablet's, and it draws in one corner of a screen it never claims. Only the newest
      * size is owed, because a client is owed its current size and not a history of them.
      */
-    private var pendingResize: Pair<Int, Int>? = null
+    private var pendingResize: ConsoleFrame.Resize? = null
 
     private var ended = false
 
@@ -316,6 +316,11 @@ class ConsoleSession(
     /**
      * resize tells the host the terminal's new size, so the client can reflow.
      *
+     * The size is the cells the client lays out for and the pixels they cover. Both go,
+     * because the client's own layout also depends on the shape of its terminal, and a cell
+     * is about twice as tall as it is wide: without the pixels the client cannot tell a
+     * tablet held in portrait from one lying on its side.
+     *
      * A size a frame cannot carry is refused rather than truncated: a truncated size is
      * still a size, and the client would lay itself out for a terminal that does not exist.
      *
@@ -323,10 +328,16 @@ class ConsoleSession(
      * [pendingResize] — because the first one always is: the view is measured as soon as the
      * page is laid out, and the host has not dialled back by then.
      */
-    fun resize(cols: Int, rows: Int) {
+    fun resize(cols: Int, rows: Int, xPixel: Int = 0, yPixel: Int = 0) {
         if (cols !in 1..MAX_TERMINAL_DIMENSION || rows !in 1..MAX_TERMINAL_DIMENSION) return
-        if (!write(ConsoleFrame.Resize(cols, rows))) {
-            synchronized(lock) { pendingResize = cols to rows }
+        val frame = ConsoleFrame.Resize(
+            cols = cols,
+            rows = rows,
+            xPixel = xPixel.coerceIn(0, MAX_TERMINAL_DIMENSION),
+            yPixel = yPixel.coerceIn(0, MAX_TERMINAL_DIMENSION),
+        )
+        if (!write(frame)) {
+            synchronized(lock) { pendingResize = frame }
         }
     }
 
@@ -356,7 +367,7 @@ class ConsoleSession(
             pendingResize = null
             size
         } ?: return
-        write(ConsoleFrame.Resize(owed.first, owed.second))
+        write(owed)
     }
 
     /**

@@ -77,6 +77,8 @@ type Console struct {
 	mu      sync.Mutex
 	cols    int
 	rows    int
+	xPixel  int
+	yPixel  int
 	notify  func()
 	pending []byte
 	err     error
@@ -153,6 +155,7 @@ func (c *Console) readFrames() {
 		case FrameResize:
 			c.mu.Lock()
 			c.cols, c.rows = int(f.Cols), int(f.Rows)
+			c.xPixel, c.yPixel = int(f.XPixel), int(f.YPixel)
 			notify := c.notify
 			c.mu.Unlock()
 			if notify != nil {
@@ -241,10 +244,22 @@ func (c *Console) Write(p []byte) (int, error) {
 }
 
 // WindowSize reports the terminal's size, which follows the app's RESIZE frames.
+//
+// The size is cells and pixels, and the pixels are the app's own statement of how
+// much room the console has: the client compares them with one another to know
+// whether the terminal is standing up or lying down, which its cell grid alone
+// cannot say — the console's font draws a cell about twice as tall as it is wide,
+// so a portrait console holds more columns than rows. Zero means the app reported
+// no physical size, which is what a client falls back to its cells over.
 func (c *Console) WindowSize() (tcell.WindowSize, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return tcell.WindowSize{Width: c.cols, Height: c.rows}, nil
+	return tcell.WindowSize{
+		Width:       c.cols,
+		Height:      c.rows,
+		PixelWidth:  c.xPixel,
+		PixelHeight: c.yPixel,
+	}, nil
 }
 
 // NotifyResize registers the callback tcell wants called when the terminal is

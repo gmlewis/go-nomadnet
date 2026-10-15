@@ -10,8 +10,40 @@ package com.gmlewis.gonomadnet
 import kotlin.math.max
 import kotlin.math.roundToInt
 
-/** A terminal's size in cells. */
-data class TerminalGrid(val cols: Int, val rows: Int)
+/**
+ * A terminal's size: the cells it holds and the display it is drawn on.
+ *
+ * The pixel size is the *display's*, not the console rectangle's, because it is what tells a
+ * console standing up from one lying down. The client's own layout turns on the shape of its
+ * terminal, and the console's font draws a cell about twice as tall as it is wide: a tablet
+ * held in portrait is 100 columns of 12 pixels and 75 rows of 24, which holds more columns
+ * than rows and is standing up all the same.
+ *
+ * The display is what the device's rotation turns, so a rotation is a change in this size
+ * whether or not the on-screen keyboard is up — and the keyboard takes half the screen's
+ * height in portrait, which would leave a console rectangle wider than it is tall and say the
+ * tablet is lying down while it is standing up.
+ *
+ * Zero pixels mean the size was not measured, which is what the appliance starts a session
+ * with — the console host is given the columns and rows the client should start at, and the
+ * first measurement follows a moment later, with the size the view actually has.
+ */
+data class TerminalGrid(
+    val cols: Int,
+    val rows: Int,
+    val xPixel: Int = 0,
+    val yPixel: Int = 0,
+) {
+
+    /**
+     * onDisplay returns this grid as it is drawn on a display of this pixel size.
+     *
+     * The cells are unchanged: they are the console's, measured from the rectangle the console
+     * has, and this is the display they are drawn on.
+     */
+    fun onDisplay(widthPx: Int, heightPx: Int): TerminalGrid =
+        copy(xPixel = widthPx, yPixel = heightPx)
+}
 
 /**
  * How big one character is, and what fits in a rectangle of pixels.

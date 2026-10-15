@@ -55,12 +55,24 @@ stop, start a console, feed a position, feed a heading, and ask why the last cal
 | Frame | Direction | Payload |
 |---|---|---|
 | `0x01` DATA | both | raw terminal bytes |
-| `0x02` RESIZE | app → bridge | columns then rows, big-endian `uint16` |
+| `0x02` RESIZE | app → bridge | columns, rows, then the width and height in pixels, big-endian `uint16` |
 | `0x03` EXIT | bridge → app | the client's exit status |
 
 A frame is `type(1) | length(4, big-endian) | payload`; a declared length over 1 MiB is
 refused before anything is allocated. The wire format is byte for byte the one the Android
 console host speaks, and the same golden table of bytes is asserted in Go and in Swift.
+
+A window size is cells and pixels because the two answer different questions: the cells are
+how much text fits and the pixels are how much room there is. The console's font draws a cell
+about twice as tall as it is wide, so a console standing up holds more columns than rows — on
+a 1200-by-1920 display in portrait, 100 columns of 12 pixels and 75 rows of 24 — and the
+client's own interface turns on which way up it is: in portrait it hides the side panels of
+its Conversations, Network, Channels and Guide screens, and restores them when the console is
+lying down again. The pixels are the *display's* size, not the console rectangle's: the
+on-screen keyboard takes half of a portrait screen's height, which would leave a rectangle
+wider than it is tall while the device is standing up. Zero pixels mean the app has measured
+no physical size yet, which the client reads as "no physical size to report" and falls back to
+its cells.
 
 Three rules the app side has to keep:
 
@@ -68,7 +80,8 @@ Three rules the app side has to keep:
   new grid against the size the last RESIZE frame carried (`TerminalSizing`,
   `TerminalController.told`). The screen model is resized the moment the layout changes, so
   comparing against it always says "no change" and the client draws for its start-up size
-  forever.
+  forever. The physical size is part of that size, so a console the app has just measured is
+  a telling even when the cells are unchanged.
 - **A view reports the grid it can show.** `TerminalView.layoutSubviews` recomputes it and
   calls back; SwiftUI's `updateUIView` runs when a representable's inputs change, which a
   window being laid out is not.

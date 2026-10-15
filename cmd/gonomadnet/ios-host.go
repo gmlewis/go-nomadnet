@@ -98,6 +98,19 @@ func runClientOnConsole(ctx context.Context, tty tcell.Tty, configDir, rnsConfig
 	tui.SetScreenProvider(func() (tcell.Screen, error) { return screen, nil })
 	defer tui.SetScreenProvider(nil)
 
+	// The console's size is the bridge's to report, not a descriptor's: there is
+	// no pty here for the built-in probe to read, and the app's RESIZE frames —
+	// whose pixel fields say how much room the console has, which the client needs
+	// to know whether it is standing up — are the tty's own answer.
+	tui.SetTerminalPixels(func() (int, int, bool) {
+		ws, err := tty.WindowSize()
+		if err != nil || ws.PixelWidth <= 0 || ws.PixelHeight <= 0 {
+			return 0, 0, false
+		}
+		return ws.PixelWidth, ws.PixelHeight, true
+	})
+	defer tui.SetTerminalPixels(nil)
+
 	// runTextUI runs until the reader closes the console. It never returns an
 	// error: a failure to run the interface is reported through reportTUIError,
 	// which this build replaced with a report rather than a process exit.

@@ -273,11 +273,20 @@ class TerminalView(context: Context, attrs: AttributeSet? = null) : View(context
      * strip that has been folded away, because folding it gives its rows back to the client.
      * The session is told once the grid actually changed, so a rotation is one resize to the
      * client rather than one per layout pass.
+     *
+     * The display the console is drawn on goes with the cells, and it is the display's own size
+     * rather than this view's: the client reads it to know which way up its terminal is, and
+     * the keyboard takes half of a portrait screen's height — a console rectangle would be
+     * wider than it is tall while the tablet is standing up. The root view is the whole screen
+     * the app draws on, which is what a rotation turns and what the keyboard does not change.
      */
     private fun updateGrid() {
         val measured = metrics ?: return
         if (width <= 0 || height <= 0) return
-        val wanted = measured.gridFor(width, height - keyRowHeight(measured))
+        val root = rootView
+        val wanted = measured
+            .gridFor(width, height - keyRowHeight(measured))
+            .onDisplay(root.width, root.height)
         scrollOffset = scrollOffset.coerceIn(0, TerminalScroll.maxOffset(screenTotalLines(), wanted.rows))
         if (wanted != grid) {
             grid = wanted

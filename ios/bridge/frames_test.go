@@ -36,8 +36,10 @@ var goldenFrames = []struct {
 }{
 	{"data hello", "010000000568656c6c6f", DataFrame([]byte("hello"))},
 	{"data empty", "0100000000", DataFrame([]byte{})},
-	{"resize 80x24", "020000000400500018", ResizeFrame(80, 24)},
-	{"resize 200x60", "020000000400c8003c", ResizeFrame(200, 60)},
+	{"resize 80x24", "02000000080050001800000000", ResizeFrame(80, 24, 0, 0)},
+	{"resize 200x60", "020000000800c8003c00000000", ResizeFrame(200, 60, 0, 0)},
+	{"resize 100x75 at 1200x1920", "02000000080064004b04b00780", ResizeFrame(100, 75, 1200, 1920)},
+	{"resize 160x45 at 1920x1080", "020000000800a0002d07800438", ResizeFrame(160, 45, 1920, 1080)},
 	{"exit 0", "030000000100", ExitFrame(0)},
 	{"exit 130", "030000000182", ExitFrame(130)},
 }
@@ -46,6 +48,7 @@ var goldenFrames = []struct {
 // as the same frame: both mean "a DATA frame carrying nothing".
 func framesEqual(a, b Frame) bool {
 	return a.Type == b.Type && a.Cols == b.Cols && a.Rows == b.Rows &&
+		a.XPixel == b.XPixel && a.YPixel == b.YPixel &&
 		a.Code == b.Code && bytes.Equal(a.Data, b.Data)
 }
 
@@ -179,15 +182,18 @@ func TestFrameEndsCleanlyAtAFrameBoundary(t *testing.T) {
 
 func TestFrameRejectsMalformedPayloadLength(t *testing.T) {
 	t.Parallel()
-	// A resize frame carries exactly four bytes and an exit frame exactly one.
-	// A frame that carries any other number is a protocol error, not a short
-	// read to be acted on.
+	// A resize frame carries its two cells and its two pixel dimensions — eight
+	// bytes — and an exit frame exactly one. A frame that carries any other
+	// number is a protocol error, not a short read to be acted on.
 	for _, tc := range []struct {
 		name string
 		hex  string
 	}{
 		{"a resize frame with two bytes", "02000000020050"},
+		{"a resize frame with four bytes, which is the size this frame used to be", "020000000400500018"},
 		{"a resize frame with five bytes", "02000000050050001800"},
+		{"a resize frame with seven bytes", "02000000070050001804b007"},
+		{"a resize frame with nine bytes", "02000000090050001804b0072000"},
 		{"an exit frame with two bytes", "03000000020000"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -229,10 +235,11 @@ func TestFrameRoundTripsRandomPayloads(t *testing.T) {
 
 	// Resize and exit frames round trip too, at both ends of their range.
 	for _, f := range []Frame{
-		ResizeFrame(0, 0),
-		ResizeFrame(1, 1),
-		ResizeFrame(80, 24),
-		ResizeFrame(65535, 65535),
+		ResizeFrame(0, 0, 0, 0),
+		ResizeFrame(1, 1, 1, 1),
+		ResizeFrame(80, 24, 0, 0),
+		ResizeFrame(100, 75, 1200, 1920),
+		ResizeFrame(65535, 65535, 65535, 65535),
 		ExitFrame(0),
 		ExitFrame(1),
 		ExitFrame(255),
@@ -254,7 +261,8 @@ func TestFrameReadsConsecutiveFramesFromOneStream(t *testing.T) {
 	var wire []byte
 	want := []Frame{
 		DataFrame([]byte("hello")),
-		ResizeFrame(80, 24),
+		ResizeFrame(80, 24, 0, 0),
+		ResizeFrame(100, 75, 1200, 1920),
 		DataFrame([]byte("world")),
 		ExitFrame(130),
 	}

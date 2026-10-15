@@ -99,6 +99,12 @@ split view putting the controls behind the detail, which is how every app on the
 and not something the appliance decides. Turn the device back and the controls are beside the
 console again.
 
+**Rotating the device hides the side panels.** Held in portrait, the Conversations,
+Network, Channels and Guide screens drop their side panels — the conversation list, the
+node list, the channel list and room members, the Guide's topic list — and show the pane
+you are reading. Rotated back to landscape, the panels come back. A panel you hid
+yourself, with `Ctrl-G`, stays hidden.
+
 ![The appliance on an iPad: the controls beside the client's own console, with the
 transport running and the console open](ios-console.png)
 

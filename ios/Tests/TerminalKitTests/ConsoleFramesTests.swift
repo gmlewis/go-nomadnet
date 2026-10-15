@@ -34,9 +34,14 @@ final class ConsoleFramesTests: XCTestCase {
     private let golden: [Golden] = [
         Golden(name: "data hello", hex: "010000000568656c6c6f", frame: .data(Array("hello".utf8))),
         Golden(name: "data empty", hex: "0100000000", frame: .data([])),
-        Golden(name: "resize 80x24", hex: "020000000400500018", frame: .resize(cols: 80, rows: 24)),
-        Golden(name: "resize 200x60", hex: "020000000400c8003c",
+        Golden(name: "resize 80x24", hex: "02000000080050001800000000",
+               frame: .resize(cols: 80, rows: 24)),
+        Golden(name: "resize 200x60", hex: "020000000800c8003c00000000",
                frame: .resize(cols: 200, rows: 60)),
+        Golden(name: "resize 100x75 at 1200x1920", hex: "02000000080064004b04b00780",
+               frame: .resize(cols: 100, rows: 75, xPixel: 1200, yPixel: 1920)),
+        Golden(name: "resize 160x45 at 1920x1080", hex: "020000000800a0002d07800438",
+               frame: .resize(cols: 160, rows: 45, xPixel: 1920, yPixel: 1080)),
         Golden(name: "exit 0", hex: "030000000100", frame: .exit(code: 0)),
         Golden(name: "exit 130", hex: "030000000182", frame: .exit(code: 130)),
     ]
@@ -121,9 +126,12 @@ final class ConsoleFramesTests: XCTestCase {
     }
 
     func testAPayloadOfTheWrongSizeForItsTypeIsRefused() {
-        // A resize frame is four bytes and an exit frame is one. Any other length is a
-        // protocol error rather than something to pad or truncate.
-        for wire in ["02000000020050", "02000000050050001800", "03000000020000"] {
+        // A resize frame is eight bytes — two cells and two pixel dimensions — and an
+        // exit frame is one. Any other length is a protocol error rather than something to
+        // pad or truncate.
+        for wire in ["02000000020050", "020000000400500018", "02000000050050001800",
+                     "02000000070050001804b007", "02000000090050001804b0072000",
+                     "03000000020000"] {
             XCTAssertThrowsError(try ConsoleFrames.decode(hex(wire)), wire) { error in
                 guard case .malformedFrame = error as? ConsoleFrameError else {
                     return XCTFail("want a malformed frame, got \(error)")
@@ -137,12 +145,14 @@ final class ConsoleFramesTests: XCTestCase {
         // at a frame boundary rather than swallowing what follows.
         var reader = ConsoleFrameReader()
         reader.append(hex("010000000568656c6c6f"))
-        reader.append(hex("020000000400500018"))
+        reader.append(hex("02000000080050001800000000"))
+        reader.append(hex("02000000080064004b04b00780"))
         reader.append(hex("0100000005") + Array("world".utf8))
         reader.append(hex("030000000182"))
 
         XCTAssertEqual(try reader.next(), .data(Array("hello".utf8)))
         XCTAssertEqual(try reader.next(), .resize(cols: 80, rows: 24))
+        XCTAssertEqual(try reader.next(), .resize(cols: 100, rows: 75, xPixel: 1200, yPixel: 1920))
         XCTAssertEqual(try reader.next(), .data(Array("world".utf8)))
         XCTAssertEqual(try reader.next(), .exit(code: 130))
         XCTAssertNil(try reader.next(), "a clean end at a frame boundary is not an error")

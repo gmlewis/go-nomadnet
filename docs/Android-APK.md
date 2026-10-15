@@ -189,6 +189,12 @@ the browser, a room's messages — scrolls what is under the finger, and it trac
 the finger rather than running ahead of it. When the client is not using the mouse
 at all, the same drag scrolls the console's own scrollback instead.
 
+**Rotating the tablet hides the side panels.** Held in portrait, the Conversations,
+Network, Channels and Guide screens drop their side panels — the conversation list,
+the node list, the channel list and room members, the Guide's topic list — and show
+the pane you are reading. Rotated back to landscape, the panels come back. A panel
+you hid yourself, with `Ctrl-G`, stays hidden.
+
 On the console the client draws what it always draws, in the APK's own font and
 colors. Its starter page is the **gonomadnet mascot**, drawn from the `index.mu`
 the client seeds into its pages directory, in half-block characters and true color:

@@ -362,7 +362,7 @@ func TestConsoleResizeReachesTheClientScreen(t *testing.T) {
 		t.Fatalf("the client's terminal started at %vx%v, wanted 80x24", w, h)
 	}
 
-	if err := WriteFrame(app.conn, ResizeFrame(132, 43)); err != nil {
+	if err := WriteFrame(app.conn, ResizeFrame(132, 43, 1920, 1080)); err != nil {
 		t.Fatalf("sending a resize from the app: %v", err)
 	}
 

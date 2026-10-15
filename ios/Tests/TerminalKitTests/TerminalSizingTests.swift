@@ -23,8 +23,12 @@ import XCTest
 /// the pane could show 75 by 37, and no RESIZE frame was ever sent because the question was
 /// asked of the screen the app was drawing rather than of the size the client had been told.
 final class TerminalSizingTests: XCTestCase {
-    private func metrics(cols: Int, rows: Int) -> TerminalMetrics {
-        TerminalMetrics(cellWidth: 10, cellHeight: 20, cols: cols, rows: rows)
+    private func metrics(
+        cols: Int, rows: Int, pixelWidth: Int = 0, pixelHeight: Int = 0
+    ) -> TerminalMetrics {
+        TerminalMetrics(
+            cellWidth: 10, cellHeight: 20, cols: cols, rows: rows,
+            pixelWidth: pixelWidth, pixelHeight: pixelHeight)
     }
 
     func testAPaneThatFitsMoreThanTheClientWasToldIsATelling() {
@@ -51,5 +55,36 @@ final class TerminalSizingTests: XCTestCase {
     func testASizeIsNeverSmallerThanOneCell() {
         XCTAssertEqual(TerminalSize(cols: 0, rows: 0), TerminalSize(cols: 1, rows: 1))
         XCTAssertEqual(TerminalSize(cols: -5, rows: 3), TerminalSize(cols: 1, rows: 3))
+    }
+
+    /// The console's physical size is part of the size the client is told, so the app learning
+    /// it — the first layout that measured the view, or a rotation — is a telling even when the
+    /// cells are the same. A client that is not told keeps the shape it had, and a console read
+    /// as lying down when it is standing up is every side panel left open.
+    func testTheConsolePhysicalSizeIsATelling() {
+        let told = TerminalSize(cols: 100, rows: 75, pixelWidth: 1200, pixelHeight: 1920)
+
+        XCTAssertNil(TerminalSizing.resize(
+            fitting: metrics(cols: 100, rows: 75, pixelWidth: 1200, pixelHeight: 1920),
+            told: told), "the same console was reported as a change")
+
+        // The same cells in a console that has been measured for the first time.
+        XCTAssertEqual(
+            TerminalSizing.resize(fitting: metrics(cols: 100, rows: 75), told: told),
+            TerminalSize(cols: 100, rows: 75))
+
+        // A rotation changes both, and the size that goes out carries both.
+        XCTAssertEqual(
+            TerminalSizing.resize(
+                fitting: metrics(cols: 160, rows: 45, pixelWidth: 1920, pixelHeight: 1080),
+                told: told),
+            TerminalSize(cols: 160, rows: 45, pixelWidth: 1920, pixelHeight: 1080))
+    }
+
+    /// A negative physical size is not a size, and a client comparing one with itself would read
+    /// a console as standing up for no reason.
+    func testAPhysicalSizeIsNeverNegative() {
+        XCTAssertEqual(TerminalSize(cols: 80, rows: 24, pixelWidth: -1, pixelHeight: -1),
+                       TerminalSize(cols: 80, rows: 24))
     }
 }

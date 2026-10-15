@@ -152,6 +152,13 @@ public final class TerminalView: UIView, UIKeyInput {
     /// question the caller is about to ask — "has the client been told its new size?" — and the
     /// answer is always yes. The caller compares what this returns against the size the client
     /// was last told, and the controller is the one that acts on it. See `TerminalSizing`.
+    ///
+    /// The display the console is drawn on rides with the grid, because the client reads it to
+    /// know which way up its terminal is. It is the window scene's size and not this view's:
+    /// the scene is what the device's rotation turns, while this view's bounds shrink by the
+    /// key strip and by anything the system insets — a keyboard that took half of a portrait
+    /// screen's height would leave a console rectangle wider than it is tall and say the
+    /// device is lying down while it is standing up.
     @discardableResult
     public func relayout() -> TerminalMetrics {
         let available = bounds.height - coveredTop
@@ -162,11 +169,28 @@ public final class TerminalView: UIView, UIKeyInput {
             keyStripHeight: 0
         ) else { return metrics }
 
-        guard new.cols != metrics.cols || new.rows != metrics.rows else { return metrics }
-        metrics = new
+        let onScreen = new.onDisplay(width: displayWidth, height: displayHeight)
+        guard onScreen != metrics else { return metrics }
+        metrics = onScreen
         setNeedsDisplay()
         onGridChanged?(metrics)
         return metrics
+    }
+
+    /// displayWidth is how wide the screen this console is drawn on is.
+    ///
+    /// A view that has not been put in a window yet has no scene to ask, and measures its own
+    /// bounds instead, which is the best answer available and is replaced as soon as there is
+    /// a window: `layoutSubviews` runs again when there is.
+    private var displayWidth: Int {
+        let width = window?.windowScene?.coordinateSpace.bounds.width ?? bounds.width
+        return max(1, Int(width.rounded(.down)))
+    }
+
+    /// displayHeight is how tall the screen this console is drawn on is. See ``displayWidth``.
+    private var displayHeight: Int {
+        let height = window?.windowScene?.coordinateSpace.bounds.height ?? bounds.height
+        return max(1, Int(height.rounded(.down)))
     }
 
     /// layoutSubviews is where a window that has changed size is noticed.
