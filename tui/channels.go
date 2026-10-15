@@ -1387,15 +1387,30 @@ func (cd *ChannelsDisplay) ShowUserInfoDialog(nick, identityHash, lxmfHash strin
 	cd.showDialogOverlay(dialog, len(rows)+2)
 }
 
-// MaybeAutoconnect connects hub if it is disconnected or in a failed state,
-// matching Python's ChannelsDisplay._maybe_autoconnect (Channels.py:1736-1741).
+// MaybeAutoconnect connects hub if it is disconnected or in a failed state and
+// its AutoRcn (auto-reconnect) toggle is on. It is the hook behind selecting a
+// hub or room row in the channels list, and behind a browser rrc:// link opening
+// a hub.
+//
+// Python's ChannelsDisplay._maybe_autoconnect (Channels.py:1736-1741) dials any
+// disconnected or failed hub without consulting auto_reconnect, so simply
+// selecting a hub row — or a room row under it — brought the link up even for a
+// hub the user had deliberately taken off automatic connection, and even though
+// the only documented way to connect is Ctrl-R. The port gates the dial on
+// AutoRcn instead: a hub with AutoRcn off is only ever connected by an explicit
+// gesture — Ctrl-R, sending in one of its rooms, or its /connect slash command,
+// each of which calls ConnectAsync directly — while a hub with AutoRcn on keeps
+// Python's convenience of reviving itself on selection.
 func MaybeAutoconnect(hub *rrc.RRCHub) {
 	if hub == nil {
 		return
 	}
-	// Read the status through the hub's locked accessor: connect workers write
-	// it from their own goroutine (RRCHub.SetStatus), so a raw field read here
-	// races with the very connection attempts this function starts.
+	// Read both fields through the hub's locked accessors: connect workers write
+	// the status from their own goroutine (RRCHub.SetStatus), so a raw field
+	// read here races with the very connection attempts this function starts.
+	if !hub.GetAutoReconnect() {
+		return
+	}
 	if status := hub.GetHubStatus(); status == rrc.StatusDisconnected || status == rrc.StatusFailed {
 		hub.ConnectAsync()
 	}

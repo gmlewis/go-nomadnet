@@ -17,6 +17,7 @@ package tui
 
 import (
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/gmlewis/go-reticulum/rrc"
@@ -270,31 +271,102 @@ func TestChannelsDisplayBootLayout(t *testing.T) {
 	}
 }
 
+// statusCapture collects the hub statuses reported by a manager's change
+// callback. The callback is not a single-goroutine observable: ConnectAsync
+// fires it on the calling goroutine before it spawns the connect worker, and
+// that worker fires it again from its own goroutine, so the collector is
+// locked rather than assuming the two never overlap.
+type statusCapture struct {
+	mu       sync.Mutex
+	statuses []int
+}
+
+func (c *statusCapture) append(status int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.statuses = append(c.statuses, status)
+}
+
+// snapshot returns a copy of the statuses seen so far, so an assertion never
+// reads the slice the callback is appending to.
+func (c *statusCapture) snapshot() []int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]int(nil), c.statuses...)
+}
+
+// MaybeAutoconnect must connect a disconnected or failed hub only when that
+// hub's AutoRcn (auto-reconnect) toggle is on. A hub the user has taken off
+// automatic connection is never dialed by a mere selection: the only ways to
+// bring it up are the explicit Ctrl-R connect, or sending in one of its rooms.
+//
+// The status is set through the hub's locked setter and read through its
+// snapshot: a connect worker writes the status from its own goroutine, so a raw
+// field read here would race with the very attempt this helper starts. The
+// manager's change callback is the observable — ConnectAsync flips the status to
+// Connecting and notifies synchronously, before it spawns the worker.
 func TestMaybeAutoconnect(t *testing.T) {
 	t.Parallel()
 
-	dir := tempDir(t)
-	mgr := rrc.NewManager(dir, nil)
-	hub := mgr.AddHub([]byte{0x01, 0x02, 0x03, 0x04}, "rrc.hub", "Hub 1")
-
-	// Nil hub is a no-op
+	// Nil hub is a no-op.
 	MaybeAutoconnect(nil)
 
-	// The status transitions go through the hub's locked setter: each
-	// MaybeAutoconnect call above/below starts a connect worker that writes the
-	// status from its own goroutine, so a raw field write here would race with
-	// the very attempts this test provokes.
-	// StatusDisconnected -> attempts connect
-	hub.SetStatus(rrc.StatusDisconnected, "")
-	MaybeAutoconnect(hub)
+	tests := []struct {
+		name          string
+		autoReconnect bool
+		status        int
+		wantConnect   bool
+	}{
+		{name: "disconnected hub with AutoRcn on connects", autoReconnect: true, status: rrc.StatusDisconnected, wantConnect: true},
+		{name: "failed hub with AutoRcn on connects", autoReconnect: true, status: rrc.StatusFailed, wantConnect: true},
+		{name: "connected hub with AutoRcn on is left alone", autoReconnect: true, status: rrc.StatusConnected},
+		{name: "disconnected hub with AutoRcn off is left alone", status: rrc.StatusDisconnected},
+		{name: "failed hub with AutoRcn off is left alone", status: rrc.StatusFailed},
+		{name: "connected hub with AutoRcn off is left alone", status: rrc.StatusConnected},
+	}
 
-	// StatusFailed -> attempts connect
-	hub.SetStatus(rrc.StatusFailed, "")
-	MaybeAutoconnect(hub)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	// StatusConnected -> no-op
-	hub.SetStatus(rrc.StatusConnected, "")
-	MaybeAutoconnect(hub)
+			mgr := rrc.NewManager(tempDir(t), nil)
+			hub := mgr.AddHub([]byte{0x01, 0x02, 0x03, 0x04}, "rrc.hub", "Hub 1")
+			// Both toggles notify the manager, so they are set before the
+			// change callback is wired and the capture reflects only the
+			// connect attempt under test.
+			hub.SetAutoReconnect(tt.autoReconnect, false)
+			hub.SetStatus(tt.status, "")
+
+			var statuses statusCapture
+			mgr.SetChangeCallback(func() {
+				status, _, _, _ := hub.Snapshot()
+				statuses.append(status)
+			})
+			// Stop the connect worker before the test returns: with no
+			// transport configured it fails, and a failed hub arms reconnects,
+			// which would keep notifying for the life of the test binary.
+			t.Cleanup(mgr.Shutdown)
+
+			MaybeAutoconnect(hub)
+
+			seen := statuses.snapshot()
+			if !tt.wantConnect {
+				if len(seen) != 0 {
+					t.Errorf("MaybeAutoconnect fired %v change notification(s) %v, want none", len(seen), seen)
+				}
+				if got := hub.GetHubStatus(); got != tt.status {
+					t.Errorf("hub status after MaybeAutoconnect = %v, want %v", got, tt.status)
+				}
+				return
+			}
+			if len(seen) == 0 {
+				t.Fatal("MaybeAutoconnect did not start a connect")
+			}
+			if seen[0] != rrc.StatusConnecting {
+				t.Errorf("status at the connect notification = %v, want %v", seen[0], rrc.StatusConnecting)
+			}
+		})
+	}
 }
 
 func TestChannelsDisplaySelectedEntry(t *testing.T) {

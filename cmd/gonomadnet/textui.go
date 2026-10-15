@@ -1771,24 +1771,16 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	}
 	// Python _select_hub/_select_room (Channels.py:1672-1729): selecting a
 	// hub shows its info panel; selecting a room shows the room chat view.
-	// Both auto-connect a disconnected/failed hub on the way
+	// Both auto-connect a disconnected/failed hub on the way whose AutoRcn is on
 	// (_maybe_autoconnect, Channels.py:1736-1741), and selecting an unjoined
 	// room joins it on the way.
 	channelsDisplay.OnSelectHub = func(hubIdx int) {
 		selectHubRow(a, hubIdx)
 	}
 	channelsDisplay.OnSelectRoom = func(hubIdx int, room string) {
-		hub := rrcHubAt(a, hubIdx)
+		hub := selectRoomRow(a, hubIdx, room)
 		if hub == nil {
 			return
-		}
-		a.RRC.SetActive(hub, strings.ToLower(room))
-		// Python _select_room → _maybe_autoconnect (Channels.py:1736-1741):
-		// selecting a room auto-connects a disconnected/failed hub. This was
-		// previously unwired (the MaybeAutoconnect helper existed unused).
-		tui.MaybeAutoconnect(hub)
-		if hub.GetHubStatus() == rrc.StatusConnected && !hub.HasRoom(room) {
-			hub.JoinRoom(room, false)
 		}
 		msgs := rrcRoomMessages(hub, room)
 		tuiApp.QueueUpdateDraw(func() {
@@ -3181,7 +3173,9 @@ func rrcHubAt(a *app.App, hubIdx int) *rrc.RRCHub {
 // the display show its info panel straight after (Python _show_hub_info).
 // Without the auto-connect the only ways to revive a hub whose link dropped
 // were typing in one of its rooms or /connect: selecting the hub row — the
-// obvious recovery gesture — did nothing at all.
+// obvious recovery gesture — did nothing at all. The auto-connect applies only
+// while the hub's AutoRcn toggle is on, so a hub the user has taken off
+// automatic connection is not dialed by a mere selection (tui.MaybeAutoconnect).
 func selectHubRow(a *app.App, hubIdx int) {
 	hub := rrcHubAt(a, hubIdx)
 	if hub == nil {
@@ -3189,6 +3183,27 @@ func selectHubRow(a *app.App, hubIdx int) {
 	}
 	a.RRC.SetActive(hub, "")
 	tui.MaybeAutoconnect(hub)
+}
+
+// selectRoomRow is the room-row half of Python's ChannelsDisplay._select_room
+// (Channels.py:1722-1734): make the hub and room active, auto-connect the hub
+// when it is down (_maybe_autoconnect), and join a room the hub has not joined
+// yet once it is connected. This half was previously unwired (the
+// MaybeAutoconnect helper existed unused), so selecting a room revived nothing.
+// Like the hub-row path, the auto-connect is gated on the hub's AutoRcn toggle.
+// The hub is returned for the caller's room render, or nil when the index has no
+// hub.
+func selectRoomRow(a *app.App, hubIdx int, room string) *rrc.RRCHub {
+	hub := rrcHubAt(a, hubIdx)
+	if hub == nil {
+		return nil
+	}
+	a.RRC.SetActive(hub, strings.ToLower(room))
+	tui.MaybeAutoconnect(hub)
+	if hub.GetHubStatus() == rrc.StatusConnected && !hub.HasRoom(room) {
+		hub.JoinRoom(room, false)
+	}
+	return hub
 }
 
 // hubIndexFor finds the snapshot index of the given hub, or -1.
