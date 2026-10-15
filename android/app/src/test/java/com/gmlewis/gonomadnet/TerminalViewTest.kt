@@ -298,6 +298,41 @@ class TerminalViewTest {
     }
 
     @Test
+    fun `the console takes the focus, which is where a key goes`() {
+        // A key is delivered to the view that holds the focus, so a console that is drawn but
+        // not focused receives nothing at all: not a hardware keyboard's keys, and not the
+        // input method's, which serves the focused view and has nothing to serve when none is
+        // focused. That is the whole of the client's interface going quiet — its lists, its
+        // buttons, its menu — and it is what a reader meets as "the shortcuts do nothing",
+        // ctrl-e among them, while the strip and the client both still draw.
+        //
+        // The console is the page's only focusable view and the page is a terminal, so the
+        // claim is not a preference: the view takes the focus as soon as there is a window to
+        // hold it, and takes it back when the window comes to the front without it. Neither
+        // can be seen from a passing run — the view draws with a Canvas and no JVM test can
+        // attach it to anything — so the claim is read out of the source rather than trusted,
+        // the way [MainActivityTest] reads the manifest's claims.
+        val source = File(VIEW_SOURCE).readText()
+
+        val attached = source.substringAfter("override fun onAttachedToWindow()")
+            .substringBefore("override fun onWindowFocusChanged(")
+        assertTrue(
+            "the console is attached to a window without asking for the focus, so nothing " +
+                "typed reaches the client until the screen is touched: $VIEW_SOURCE",
+            "requestFocus()" in attached,
+        )
+
+        val refocused = source.substringAfter("override fun onWindowFocusChanged(")
+            .substringBefore("// ------")
+        assertTrue(
+            "the console does not take the focus back when its window comes to the front, " +
+                "so the client goes quiet after the appliance has been in the background: " +
+                VIEW_SOURCE,
+            "requestFocus()" in refocused,
+        )
+    }
+
+    @Test
     fun `the console draws with the font the APK carries`() {
         // The client's interface is not plain text. Its menu bar, its list markers and its
         // arrows are Nerd Font glyphs, and the device's own monospace font has no code point
@@ -412,6 +447,9 @@ class TerminalViewTest {
     private companion object {
         /** The asset directory, as Gradle runs these tests from the module directory. */
         val ASSETS = File("src/main/assets")
+
+        /** The console view's own source, which is where its claim to the focus is made. */
+        val VIEW_SOURCE = "src/main/java/com/gmlewis/gonomadnet/TerminalView.kt"
 
         /** The font's licence, which is distributed beside it. */
         const val FONT_LICENCE = "AtkinsonHyperlegibleMono-OFL.txt"

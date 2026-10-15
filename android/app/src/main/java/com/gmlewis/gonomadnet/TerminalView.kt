@@ -736,13 +736,48 @@ class TerminalView(context: Context, attrs: AttributeSet? = null) : View(context
         manager.showSoftInput(this, InputMethodManager.SHOW_IMPLICIT)
     }
 
-    // ------------------------------------------------------------------------ the blink
+    // --------------------------------------------------------------------------- the focus
 
+    /**
+     * onAttachedToWindow takes the keyboard for the console the moment there is a window to
+     * hold it.
+     *
+     * The client's interface *is* a keyboard's: its lists, its buttons and its menu are
+     * reached with keys, and a key goes to the view that holds the focus. A console that is
+     * only drawn is a console nothing is delivered to — not a hardware keyboard's keys, and
+     * not the input method's, which serves the focused view and has none to serve when nothing
+     * is focused — so every one of the client's shortcuts, ctrl-e included, does nothing at
+     * all until the reader happens to touch the screen. The page is the console and the console
+     * is what is typed into, so it takes the focus as soon as it is the window's content.
+     *
+     * The soft keyboard follows that focus the way it follows a tap, so the appliance's key
+     * row — which is the soft keyboard's companion — is there from the moment the console is.
+     * Nothing else on this page wants the focus: the console is the whole of it.
+     */
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
         cursorVisible = true
         postDelayed(blink, BLINK_MS)
+        requestFocus()
     }
+
+    /**
+     * onWindowFocusChanged re-takes the focus if the console comes back to the front without it.
+     *
+     * The console is the page's only focusable view, so a window that has the focus and no
+     * focused view in it is a console that silently drops every key — the state a reader meets
+     * as "the shortcuts do nothing at all". Taking it back here keeps that from being where the
+     * keyboard goes after the appliance has been in the background, a rotation, or a page that
+     * was replaced under it.
+     */
+    override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
+        super.onWindowFocusChanged(hasWindowFocus)
+        if (hasWindowFocus && !isFocused) {
+            requestFocus()
+        }
+    }
+
+    // ------------------------------------------------------------------------ the blink
 
     override fun onDetachedFromWindow() {
         // The blink is a message posted to this view every half second, and it arms the next

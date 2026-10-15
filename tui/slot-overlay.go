@@ -133,12 +133,17 @@ func (o *SlotOverlay) SetRect(x, y, w, h int) {
 	if o.heightPct > 0 {
 		dh = h * o.heightPct / 100
 	}
-	dh = min(dh, h)
 	if o.minHeight > 0 {
 		// urwid Overlay min_height: a relative height is floored at min_height
 		// (Interfaces.py:3066 add_interface passes min_height=15).
 		dh = max(dh, min(o.minHeight, h))
 	}
+	// A dialog taller than the slot keeps its own height and is CLIPPED by the
+	// slot, which is what urwid does with an overlay that does not fit: the
+	// dialog's canvas is its own PACK height, and the overlay clips it to the
+	// container. Clamping the height instead would draw a bottom border the
+	// dialog does not have (its real one lies outside the slot), so the two
+	// border lines would not line up. See clipScreen and Draw.
 	dy := y + (h-dh)/2 // valign MIDDLE
 	dy = max(dy, y)
 	if o.dialog != nil {
@@ -172,14 +177,23 @@ func (o *SlotOverlay) SetInsets(left, right int) *SlotOverlay {
 	return o
 }
 
-// Draw draws the bottom (show-through) then the dialog on top.
+// Draw draws the bottom (show-through) then the dialog on top, the dialog clipped
+// to the slot.
+//
+// The clip is urwid's: an Overlay renders its widget into the container's canvas,
+// so a dialog taller than the slot shows its top rows and loses the rest — the
+// rows below the slot belong to whatever is under them (the pane's bottom border,
+// the shortcut bar), and a dialog that drew them would be a dialog whose borders
+// no longer line up with the rows it is drawn on. tview clips nothing by itself,
+// so the clip is made here; see clipScreen.
 func (o *SlotOverlay) Draw(screen tcell.Screen) {
 	o.Box.DrawForSubclass(screen, o)
 	if o.bottom != nil {
 		o.bottom.Draw(screen)
 	}
 	if o.dialog != nil {
-		o.dialog.Draw(screen)
+		x, y, w, h := o.GetRect()
+		o.dialog.Draw(newClipScreen(screen, x, y, w, h))
 	}
 }
 

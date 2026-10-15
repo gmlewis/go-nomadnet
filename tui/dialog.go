@@ -239,10 +239,17 @@ func (d *DialogLineBox) Draw(screen tcell.Screen) {
 		}
 	}
 
-	// Draw content in the content rect.
+	// Draw content in the content rect, clipped to it. Every widget in urwid draws
+	// into the size it was given and nothing outside it; tview instead trusts a
+	// primitive to stay inside the rectangle it was set, and a Flex of fixed-height
+	// rows does not: a dialog taller than the space it was placed in draws its last
+	// rows over its own bottom border, over the pane beneath it, and over the
+	// shortcut bar at the bottom of the screen. The visible symptom on a short
+	// terminal is a dialog whose borders no longer line up with the rows it is
+	// drawn on. See clipScreen.
 	if d.content != nil && cw > 0 && ch > 0 {
 		d.content.SetRect(cx, cy, cw, ch)
-		d.content.Draw(screen)
+		d.content.Draw(newClipScreen(screen, cx, cy, cw, ch))
 	}
 }
 

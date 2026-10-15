@@ -456,14 +456,39 @@ public final class TerminalView: UIView, UIKeyInput {
     /// The client makes a click out of a press *and* a release in the same cell, so both
     /// are sent; a console that is not listening for a mouse is not sent either.
     private func tap(x: Double, y: Double) {
+        // The keyboard is taken whatever the console's own state is: a tap is a reader asking to
+        // type into the console they are looking at, and one who has dragged the window back
+        // into the scrollback — or whose client is not listening for a mouse — has no other way
+        // to be typed into at all.
+        becomeFirstResponder()
         guard screen.mouseReporting, scrollOffset == 0 else { return }
         let (col, row) = metrics.pixelToCell(x: x, y: y)
         onMouse?(TerminalMouse.sgr(button: .left, col: col, row: row, pressed: true))
         onMouse?(TerminalMouse.sgr(button: .left, col: col, row: row, pressed: false))
-        becomeFirstResponder()
     }
 
     // MARK: - Keyboard
+
+    /// didMoveToWindow takes the keyboard for the console as soon as there is a window to take
+    /// it in.
+    ///
+    /// A key goes to the first responder. A hardware keyboard's keys arrive there, and the
+    /// software keyboard is served to it; a console that is drawn but is not the first responder
+    /// therefore receives nothing at all. The client's interface is reached with keys — its
+    /// lists, its buttons, its menu, and the shortcuts on its last row — so a console that is not
+    /// the first responder is the client's whole interface going quiet, with nothing on the
+    /// screen to say why. The pane is the console, and the console is what is typed into, so it
+    /// takes the keyboard the moment it has a window.
+    ///
+    /// With a hardware keyboard attached the system presents no software keyboard for it, so the
+    /// pane looks exactly as it did and the keys work; without one the keyboard comes up at once,
+    /// and the key strip that accompanies it, which is the state a tap on the console reaches.
+    public override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window != nil, !isFirstResponder {
+            becomeFirstResponder()
+        }
+    }
 
     /// Sends a key the console's own keyboard produced, which is the pane's to spend.
     ///

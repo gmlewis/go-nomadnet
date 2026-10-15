@@ -279,6 +279,47 @@ final class AcceptanceTests: XCTestCase {
         attach("the console after rotating back")
     }
 
+    /// The console takes the keyboard when it appears, without being touched.
+    ///
+    /// A key goes to the first responder: a hardware keyboard's keys arrive there and the
+    /// software keyboard is served to it, so a console that is drawn but is not the first
+    /// responder receives nothing at all — every list, every button and the menu of the client
+    /// go quiet, with nothing on the screen to say why, and a reader finds that the client's
+    /// shortcuts do nothing until they happen to tap the console. Ctrl-Q is the key that proves
+    /// it here because its effect is the whole console: the client quits, the session ends and
+    /// the controls come back.
+    ///
+    /// No tap on the console happens anywhere in this test, which is the whole of it: every
+    /// other console test taps first, because it needs the key strip that the tap raises, and
+    /// that tap is what hides this defect.
+    func testTheConsoleTakesTheKeyboardWithoutATap() throws {
+        // A console cannot be opened in the Simulator at all, and this test is only about the
+        // console's keyboard. The appliance refuses a socket path longer than the kernel's 103
+        // bytes rather than truncating it, and a Simulator's own application container is 171
+        // bytes deep before the socket's name is added to it — so the appliance reports that it
+        // could not open the console, and there is nothing here to type into. The console is a
+        // device's, and this test is a device's with it.
+        try XCTSkipIf(onSimulator,
+                      "the appliance's console socket path is 171 bytes in a Simulator, and the kernel allows 103")
+
+        startStack()
+        openConsole()
+        XCTAssertTrue(console.waitForExistence(timeout: 30),
+                      "the console did not appear; the appliance logged:\n\(applianceLog())")
+        Thread.sleep(forTimeInterval: 8)
+        attach("the console, untouched")
+
+        // This keystroke is the first thing the console is asked to do, and it can only be
+        // delivered to a view that holds the keyboard.
+        console.typeKey("q", modifierFlags: .control)
+
+        let open = app.buttons["Open gonomadnet"]
+        XCTAssertTrue(open.waitForExistence(timeout: 30),
+                      "Ctrl-Q did not reach the client: the console is still up, so either the " +
+                          "console never took the keyboard or the key was dropped. The appliance logged:\n\(applianceLog())")
+        attach("the controls, after the client was quit from the console's own keyboard")
+    }
+
     /// Start Sensors turns the feed on, which is the one part of the sensor path that needs
     /// iOS rather than a unit test: the permission it asks for, and the location and motion
     /// services behind it, are the platform's.
