@@ -99,6 +99,15 @@ func runClientOnConsole(ctx context.Context, tty tcell.Tty, configDir, rnsConfig
 	tui.SetScreenProvider(func() (tcell.Screen, error) { return screen, nil })
 	defer tui.SetScreenProvider(nil)
 
+	// The console is also where the client's last words go. There is no
+	// controlling terminal here for the restore to open — the console is the
+	// terminal — so the client writes its restore sequence into the same tty it
+	// draws through. Without it, a console whose client has quit would keep
+	// reporting the mouse to the app's own parser, printing a row of escape
+	// codes for every movement of the user's finger.
+	tui.SetTerminalRestoreWriter(tty)
+	defer tui.SetTerminalRestoreWriter(nil)
+
 	// The console's size is the bridge's to report, not a descriptor's: there is
 	// no pty here for the built-in probe to read, and the app's RESIZE frames —
 	// whose pixel fields say how much room the console has, which the client needs

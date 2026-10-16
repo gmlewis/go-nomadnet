@@ -344,7 +344,16 @@ func runTextUI(configDir, rnsConfigDir string) {
 	intro := tui.NewIntroDisplay("Nomad Network", a.Version)
 	tuiApp.ShowIntro(intro.Widget(), introTime)
 
-	if err := tuiApp.Run(); err != nil {
+	err := tuiApp.Run()
+
+	// The client holds the terminal until this moment, and it is given back
+	// before anything else runs: the report below is fatal on a desktop, and an
+	// exit that skipped the restore would leave the shell reading in raw mode
+	// with the terminal still reporting the mouse — which is what prints
+	// escape-sequence garbage into the window when the user moves the mouse.
+	tuiApp.RestoreTerminal()
+
+	if err != nil {
 		// The rns logger writes asynchronously; flush the queue so queued
 		// diagnostics are not silently lost.
 		a.Logger.Flush()

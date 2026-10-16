@@ -12,26 +12,41 @@ cd "$(dirname "$0")"
 # markup) instead of being served statically. On platforms the wago runtime
 # does not support, the tag is harmlessly ignored and gonomadnet falls back
 # to the zero-overhead static-serving stub.
-go install -tags=wago ./cmd/gonomadnet
 
-# Always restore the terminal when gonomadnet exits — including an abrupt crash
-# in a non-event-loop goroutine (transport callback, ticker, the draw drainer).
-# tview restores the tty ONLY for panics in its own event-loop goroutine
-# (application.go defer-recover-Fini); a crash anywhere else leaves the
-# terminal in raw mode + the alternate screen, spewing escape-sequence garbage
-# and forcing a manual `reset`. This EXIT trap runs regardless of how the
-# process ends (clean quit, panic in any goroutine, signal kill), so the user
-# never has to `reset` by hand. It is idempotent: harmless on a clean exit.
-#   stty sane              -> restore cooked termios (undo tcell MakeRaw)
-#   \033[?1049l            -> leave the alternate screen (discard its garbage,
-#                            restore the primary screen + its scrollback)
-#   \033[?25h              -> unhide the cursor (tcell hides it on engage)
-#   \033[0m                -> reset SGR attributes
-# Capture the real exit status BEFORE the trap's own commands overwrite $?,
-# then re-`exit` with it at the end. Without this, bash adopts the status of the
-# trap's last command (the printf, which succeeds) as the script's exit status,
-# masking any upstream failure (e.g. `go install`) and reporting success.
-trap 'rc=$?; stty sane 2>/dev/null; printf "\033[?1049l\033[?25h\033[0m"; exit $rc' EXIT
+# Always hand the terminal back, however gonomadnet ends.
+#
+# gonomadnet does this itself on every exit path it can reach: tui.RestoreTerminal
+# writes the sequence below and puts back the terminal's line settings, from
+# Ctrl-Q, the Quit menu item, a signal, or a panic in any goroutine the client
+# wraps. What it cannot reach is a panic in a goroutine it does not wrap
+# (go-reticulum's own transports and timers) or a SIGKILL — the process is gone
+# before any of its code runs. Those are what this trap is for: without it the
+# terminal is left in raw mode, on the alternate screen, still reporting the
+# mouse, so the shell is unusable until the user works out that `reset` fixes it,
+# and every mouse movement prints escape-sequence garbage first.
+#
+# The settings are the ones the script recorded before the client was started,
+# not a generic `stty sane`, and the codes are the client's own — the same list,
+# in the same order, as tui.TerminalRestoreSeq(). They are checked against it by
+# cmd/gonomadnet/terminal-restore-trap_test.go, so the two cannot drift apart.
+#
+# Everything is written to /dev/tty, the terminal the client draws on, and every
+# step stands down rather than failing when there is no terminal at all (a
+# headless run, where the client falls back to daemon mode and takes no
+# terminal). It is idempotent: harmless on a clean exit.
+saved_stty=$(stty -g </dev/tty 2>/dev/null || true)
+terminal_restore_seq=$'\033[?2026l\033[?1000l\033[?1002l\033[?1003l\033[?1005l\033[?1006l\033[?1015l\033[?1004l\033[?2004l\033[?9001l\033[<u\033[>4;0m\033[?7h\033[?1l\033>\033[?1049l\033[?25h\033[0m'
+restore_terminal() {
+    [ -n "$saved_stty" ] && stty "$saved_stty" </dev/tty 2>/dev/null || true
+    printf '%s' "$terminal_restore_seq" >/dev/tty 2>/dev/null || true
+}
+# Capture the real exit status BEFORE the trap's own commands overwrite $?, then
+# re-`exit` with it at the end. Without this, bash adopts the status of the
+# trap's last command as the script's exit status, masking any upstream failure
+# (e.g. `go install`) and reporting success.
+trap 'rc=$?; restore_terminal; exit $rc' EXIT
+
+go install -tags=wago ./cmd/gonomadnet
 
 # If any "gonomadnet -d" daemon is running, temporarily stop it so the headed
 # TUI below doesn't fight it over the RNS shared instance (@rns/default) and

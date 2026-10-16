@@ -22,7 +22,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/creack/pty/v2"
+	"github.com/gmlewis/go-nomadnet/pty"
 	"github.com/gmlewis/tcell/v2"
 	"github.com/gmlewis/tview"
 )

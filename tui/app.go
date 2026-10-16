@@ -22,6 +22,7 @@ import (
 	"github.com/gmlewis/go-nomadnet/nomadnet/micron"
 	"github.com/gmlewis/tcell/v2"
 	"github.com/gmlewis/tview"
+	"golang.org/x/term"
 )
 
 // applyDefaultStylesOnce guards the write to tview's library-global tview.Styles
@@ -102,6 +103,18 @@ type App struct {
 	// returns it before starting the event loop, because an appliance whose
 	// terminal could not be built has nothing to draw into and must say so.
 	screenErr error
+
+	// termState is the terminal's line settings as they were before tcell put
+	// the terminal into raw mode, captured by Run. RestoreTerminal puts them
+	// back, so no exit path can leave the shell reading in raw mode. It is nil
+	// when the process owns no terminal (an appliance drawing into a terminal it
+	// built itself).
+	termState *term.State
+
+	// restoreOnce makes the final terminal restore happen exactly once, however
+	// many paths reach RestoreTerminal — the menu's Quit item, Ctrl-Q, a signal,
+	// or the crash handler racing a normal exit.
+	restoreOnce sync.Once
 
 	// scanner reads a QR code with the appliance's camera, for the dialogs that
 	// would otherwise make the reader type 32 hex characters by hand. It is nil
@@ -293,6 +306,10 @@ func (a *App) Run() error {
 	if a.screenErr != nil {
 		return a.screenErr
 	}
+	// Record the terminal's line settings before the event loop takes the
+	// terminal over, so RestoreTerminal can put cooked mode back even if the
+	// process leaves by a path that never reaches tcell's own restore.
+	a.termState = captureTerminalState()
 	return a.Application.Run()
 }
 
@@ -346,18 +363,29 @@ func (a *App) GoSafe(fn func()) {
 	}()
 }
 
-// RestoreTerminal best-effort finalizes the tcell screen — exiting the
-// alternate screen and restoring cooked termios — so a crash doesn't leave the
-// terminal in raw mode spewing escape-sequence garbage (the state that forces a
-// manual `reset`). Safe to call from any goroutine; never propagates a panic.
-// The launcher's EXIT trap is the reliable backstop; this covers users running
-// the binary directly.
+// RestoreTerminal finalizes the tcell screen and then gives the terminal back
+// itself: mouse tracking, focus reporting, bracketed paste and the keyboard
+// protocols off, out of the alternate screen, the cursor visible, the character
+// attributes reset, and cooked line settings restored from the state captured
+// before the event loop started.
+//
+// This is deliberately independent of tcell's own Fini. Leaving a terminal
+// reporting the mouse prints an escape sequence into the shell for every
+// movement of the mouse — the garbage a user sees in the window where the client
+// has just quit — and leaving it in raw mode makes the shell unusable until the
+// user runs `reset`. Both must hold on every way out, including a panic in a
+// goroutine that never reached the event loop, so the restore does not ask
+// tcell whether it already did its part.
+//
+// Safe to call from any goroutine; never propagates a panic; the restore itself
+// runs at most once, so the several end-of-session paths may all call it.
 func (a *App) RestoreTerminal() {
 	if a == nil || a.Application == nil {
 		return
 	}
 	defer func() { _ = recover() }()
 	a.Application.Stop()
+	a.restoreOnce.Do(func() { restoreTerminal(a.termState) })
 }
 
 // drainUpdates is the single long-lived goroutine that serializes queued

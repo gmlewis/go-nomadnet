@@ -24,7 +24,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/creack/pty/v2"
+	"github.com/gmlewis/go-nomadnet/pty"
 )
 
 const (
@@ -69,6 +69,10 @@ type exitStatus struct {
 // take its terminal-UI path instead of falling back to daemon mode. Because the
 // kernel owns the terminal, the child is never signalled by hand — a window
 // size change is an ioctl and the kernel delivers SIGWINCH.
+//
+// The pair is the pty package's, and its slave is the master's own peer rather
+// than the node the master reports by name: a name can belong to a pty that is
+// already gone, and a child started on one of those never gets a terminal.
 func startChild(cfg Config) (*child, error) {
 	cmd := exec.Command(cfg.Command, cfg.Args...)
 	cmd.Env = cfg.Env

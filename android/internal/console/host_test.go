@@ -30,7 +30,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/creack/pty/v2"
+	"github.com/gmlewis/go-nomadnet/pty"
 )
 
 // The tests below run real, short-lived children on a real PTY, because the

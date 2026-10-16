@@ -73,7 +73,15 @@ func main() {
 
 	app.Application.SetRoot(et, true)
 	app.Application.SetFocus(et)
-	if err := app.Run(); err != nil {
+	err = app.Run()
+
+	// The terminal is handed back before the report below, which exits the
+	// process: a demo that left the shell reading in raw mode — with the terminal
+	// still reporting the mouse, printing escape-sequence garbage into the window
+	// on every mouse movement — would be a poor advertisement for the widget.
+	app.RestoreTerminal()
+
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "run: %v\n", err)
 		os.Exit(1)
 	}

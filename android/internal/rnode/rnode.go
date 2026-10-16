@@ -39,7 +39,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/creack/pty/v2"
+	"github.com/gmlewis/go-nomadnet/pty"
 	"golang.org/x/sys/unix"
 	"golang.org/x/term"
 )
@@ -85,7 +85,11 @@ const (
 // A pty's /dev/pts/N node is created when its master is opened and removed when the master is
 // closed, and the kernel hands back the lowest free N. Two allocations that overlap can land
 // on the same N: the open reads the number, the other end's teardown removes the node, and
-// opening the slave then fails with ENOENT even though the master was allocated. The appliance
+// opening the slave then fails with ENOENT even though the master was allocated. The pty
+// package asks the kernel for the master's own peer instead of resolving that name, which
+// cannot lose this race, so what the retry is left with is a kernel older than 4.13 — where
+// TIOCGPTPEER does not exist and the name is the only way to the slave — and the rest of this
+// allocation: the raw mode, the pollable duplicate, and the published path. The appliance
 // has two programs that allocate a pty and can start together — the console that gives the
 // client a terminal, and this bridge — and the device's other ptys churn as well. GitHub's
 // Ubuntu runner loses the same race under a test suite that allocates eight ptys in parallel

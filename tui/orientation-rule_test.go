@@ -19,7 +19,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/creack/pty/v2"
+	"github.com/gmlewis/go-nomadnet/pty"
 )
 
 // TestPortraitGrid is the rule, asserted for every combination of a cell grid

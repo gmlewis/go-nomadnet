@@ -251,13 +251,29 @@ func (md *MainDisplay) SetPortrait(portrait bool) {
 // client with the terminal still holding its last painted frame. Posting the
 // apply is non-blocking, and a post that is dropped while the loop is behind is
 // repeated by the next draw, which re-checks the same condition.
+//
+// For the same reason it may not WAIT for mu, so it TryLocks. A holder of mu can
+// be reaching back into the application — refreshShortcuts' fallback goroutine
+// calls the displayed page's shortcut provider while holding mu, and a provider
+// reads live focus through Application.GetFocus, a read lock on the application.
+// Waiting here would therefore close the cycle draw (holding the application's
+// write lock) → mu → the holder → the application's read lock, and the client
+// would never paint again: the freeze where the screen keeps its last frame and
+// every later click is ignored while the rest of the process is healthy. That
+// holder is exactly what a page switch leaves behind: selectMenu and SetDisplay
+// hold mu across SwitchToPage, whose focus cascade fires the new widget's
+// SetFocusFunc → refreshShortcuts, whose own TryLock then fails and defers the
+// refresh to that goroutine. Skipping a frame costs nothing — the next draw
+// re-decides from the same two numbers, and the post above is repeated.
 func (md *MainDisplay) checkOrientation(w, h int) {
 	if w <= 0 || h <= 0 {
 		return
 	}
 	isPortrait := terminalIsPortrait(w, h)
 
-	md.mu.Lock()
+	if !md.mu.TryLock() {
+		return
+	}
 	md.hasOrientation = true
 	md.isPortrait = isPortrait
 	pending := !md.orientationApplied || md.appliedPortrait != isPortrait
