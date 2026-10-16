@@ -35,18 +35,37 @@ object ScanDecoder {
      *
      * Restricting the formats is what keeps a scan quick enough to run on every preview
      * frame: asked for every format it knows, a reader spends its time proving that a QR
-     * code is not a PDF417 symbol. TRY_HARDER is the other half — a reader aiming a tablet at
+     * code is not a PDF417 symbol. TRY_HARDER is the other half — a reader aiming a device at
      * a screen holds it still for a moment at a time, and reading a code from a frame that is
      * slightly blurred or slightly angled is worth the extra work.
+     *
+     * What this reader will be asked for is not set here: see [hints], and the note there about
+     * what happens to a reader that is configured before it is called.
      */
-    private val reader: MultiFormatReader = MultiFormatReader().apply {
-        setHints(
-            mapOf(
-                DecodeHintType.POSSIBLE_FORMATS to listOf(BarcodeFormat.QR_CODE),
-                DecodeHintType.TRY_HARDER to true,
-            ),
-        )
-    }
+    private val reader: MultiFormatReader = MultiFormatReader()
+
+    /**
+     * hints are what each decode is asked for, and they have to travel with the call.
+     *
+     * `decode(bitmap)` is `decode(bitmap, null)`, and that null is passed straight into
+     * `setHints` — so a reader configured once and then asked to decode forgets every hint it
+     * was configured with. A restriction to QR codes that is never applied is a scan that
+     * spends its time on every other format, and `TRY_HARDER` that is never applied is a scan
+     * that gives up on the frame the reader is holding still.
+     *
+     * [DecodeHintType.ALSO_INVERTED] is the one that matters most here, because a code is read
+     * from its contrast and not from which way round the ink is. The appliance's own QR dialog
+     * draws its code in the terminal's colours, so on a dark theme the modules come out light
+     * on a dark field — and so does anything else that draws a code for a screen. A reader
+     * holding a device up to one has no say in the polarity it is given, so it is given both.
+     * The second reading costs a pass over the frame that has already been binarized, and
+     * nothing else.
+     */
+    private val hints: Map<DecodeHintType, Any> = mapOf(
+        DecodeHintType.POSSIBLE_FORMATS to listOf(BarcodeFormat.QR_CODE),
+        DecodeHintType.TRY_HARDER to true,
+        DecodeHintType.ALSO_INVERTED to true,
+    )
 
     /** decode returns the text of the QR code in one frame, or null when the frame holds none.
      *
@@ -73,7 +92,7 @@ object ScanDecoder {
                 // two-dimensional symbol photographed at whatever angle the reader is holding
                 // the tablet, so its illumination varies across the frame, and the hybrid
                 // binarizer is the one that copes with a gradient across the image.
-                reader.decode(BinaryBitmap(HybridBinarizer(source))).text
+                reader.decode(BinaryBitmap(HybridBinarizer(source)), hints).text
             }
         } catch (e: Exception) {
             // NotFoundException is the common case by far, and every other failure here —

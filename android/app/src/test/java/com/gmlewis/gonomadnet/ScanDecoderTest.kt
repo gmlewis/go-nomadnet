@@ -62,10 +62,34 @@ class ScanDecoderTest {
         return Triple(turned, turnedWidth, width)
     }
 
+    /**
+     * inverted returns frame with every pixel complemented: the same code drawn light on dark,
+     * quiet zone included, which is what a dark background makes of it.
+     */
+    private fun inverted(luminance: ByteArray): ByteArray =
+        ByteArray(luminance.size) { (255 - (luminance[it].toInt() and 0xFF)).toByte() }
+
     @Test
     fun `a bare address is read back`() {
         val (luminance, width, height) = frame(address)
         assertEquals(address, ScanDecoder.decode(luminance, width, height))
+    }
+
+    @Test
+    fun `a code drawn light on dark is read as readily as one drawn dark on light`() {
+        // Which way round the ink is is not the reader's to choose: the appliance's own QR
+        // dialog draws its code in the terminal's colours, so a dark theme paints its modules
+        // light on a dark field — and so does anything else that renders a code for a screen.
+        val payload = "lxmf@$address"
+        val (luminance, width, height) = frame(payload)
+        assertEquals(payload, ScanDecoder.decode(inverted(luminance), width, height))
+    }
+
+    @Test
+    fun `a code drawn light on dark and turned a quarter turn is still read`() {
+        val (luminance, width, height) = frame(address)
+        val (turned, turnedWidth, turnedHeight) = quarterTurned(inverted(luminance), width, height)
+        assertEquals(address, ScanDecoder.decode(turned, turnedWidth, turnedHeight))
     }
 
     @Test

@@ -28,16 +28,16 @@ data class PreviewSize(val width: Int, val height: Int) {
  * The smallest size that is at least [MIN_SCAN_PIXELS], or the largest there is when the
  * camera offers nothing that big.
  *
- * Small is the point. Every preview frame is copied, turned into a bitmap and searched for
- * finder patterns, and that work happens between the frames the reader is aiming with: a
- * camera asked for its largest size decodes a code about as often as one asked for VGA, while
- * spending several times as long per frame doing it, which shows up as a preview that stutters
- * and a code that takes longer to catch. 640x480 leaves a QR code far more pixels than the
- * decoder needs and leaves the preview smooth.
+ * Small is the point. Every preview frame is copied and searched for finder patterns, and that
+ * work happens between the frames the reader is aiming with: a camera asked for its largest
+ * size decodes a code about as often as one asked for less, while spending several times as long
+ * per frame doing it, which shows up as a preview that stutters and a code that takes longer to
+ * catch. But small has a floor, and the floor is what the code costs in pixels — see
+ * [MIN_SCAN_PIXELS].
  *
  * The aspect ratio is deliberately not part of the rule. A camera's preview sizes are the
  * shapes its sensor can produce, and the one chosen here is stretched to fill whatever view
- * it is drawn in: a reader aiming a tablet at a code cares that the picture is legible, not
+ * it is drawn in: a reader aiming a device at a code cares that the picture is legible, not
  * that a circle in it is round.
  */
 fun choosePreviewSize(sizes: List<PreviewSize>): PreviewSize? {
@@ -49,16 +49,26 @@ fun choosePreviewSize(sizes: List<PreviewSize>): PreviewSize? {
     if (bigEnough.isNotEmpty()) {
         return bigEnough.minByOrNull { it.pixels }
     }
-    // Nothing as big as VGA: the largest there is, because a camera that small is the one
-    // where every pixel counts, and the reader can still hold the code closer.
+    // Nothing as big as the floor: the largest there is, because a camera that small is the
+    // one where every pixel counts, and the reader can still hold the code closer.
     return landscape.maxByOrNull { it.pixels }
 }
 
 /**
- * MIN_SCAN_PIXELS is the smallest preview worth scanning: 640x480.
+ * MIN_SCAN_PIXELS is the smallest preview worth scanning: 1280x720.
  *
- * It is VGA because that is the size at which a QR code printed on a page and held at arm's
- * length still resolves into enough pixels for the decoder's finder patterns, which is the
- * furthest a reader can reasonably be asked to hold a tablet from a code.
+ * A camera's preview is asked for because a preview frame is the only picture the scanner gets,
+ * and a code in one costs a number of pixels per module. What varies between one reading and the
+ * next is not the code but how much of the frame it fills.
+ *
+ * VGA was the floor while the only code ever read filled the frame: a code printed on a page,
+ * held so that it is the whole picture, resolves there. A code on a screen is not that. The
+ * whole screen has to be in frame to be aimed, the reader is holding a device at arm's length
+ * from another device, and the code is about a fifth of what the camera sees — a fifth of VGA is
+ * roughly four pixels to a module, which is a decode with nothing to spare, and no margin at all
+ * for an optic that is not perfectly sharp.
+ *
+ * 720p puts that same code at about nine pixels to a module and roughly triples the work per
+ * frame, which a frame-dropping decoder and a preview that is read between frames both absorb.
  */
-const val MIN_SCAN_PIXELS: Int = 640 * 480
+const val MIN_SCAN_PIXELS: Int = 1280 * 720

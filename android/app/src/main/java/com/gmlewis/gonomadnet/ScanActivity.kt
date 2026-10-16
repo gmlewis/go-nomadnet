@@ -13,6 +13,8 @@ import android.content.pm.PackageManager
 import android.graphics.Color
 import android.hardware.Camera
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.Gravity
 import android.view.Surface
@@ -61,6 +63,12 @@ class ScanActivity : Activity(), SurfaceHolder.Callback {
     /** The preview size actually in use, cached because the callback runs per frame. */
     private var frameWidth = 0
     private var frameHeight = 0
+
+    /** The handler the focus ticker runs on, made only by a camera that needs one. */
+    private var focusHandler: Handler? = null
+
+    /** The tick that asks a camera without continuous focus to focus again, while it is up. */
+    private var focusTick: Runnable? = null
 
     /** decoding is set while a frame is being read, so frames are dropped rather than queued. */
     private val decoding = AtomicBoolean(false)
@@ -253,12 +261,25 @@ class ScanActivity : Activity(), SurfaceHolder.Callback {
                 opened.release()
                 return
             }
+            // The focus mode is named before the parameters are handed over, because the
+            // platform's own default does not focus: a camera left in FOCUS_MODE_AUTO never
+            // moves its lens until something asks it to, and a code held at arm's length is
+            // then photographed from whatever distance the lens happened to be parked at.
+            val focusMode = chooseFocusMode(parameters.supportedFocusModes)
+            if (focusMode != null) {
+                parameters.focusMode = focusMode
+            }
             opened.parameters = parameters
             opened.setDisplayOrientation(displayOrientation(cameraId))
             opened.setPreviewDisplay(preview?.holder)
             armPreview(opened)
             opened.startPreview()
             camera = opened
+            if (focusMode == Camera.Parameters.FOCUS_MODE_AUTO) {
+                // The one mode that has to be asked, so it is asked for as long as this screen
+                // is up — see startFocusTicker.
+                startFocusTicker()
+            }
         } catch (e: Exception) {
             // Nothing about a preview that failed to start is recoverable here, and leaving
             // the camera open would keep it from the next attempt.
@@ -289,6 +310,37 @@ class ScanActivity : Activity(), SurfaceHolder.Callback {
     }
 
     /**
+     * startFocusTicker keeps asking a camera to focus for as long as the preview is up.
+     *
+     * It is for the cameras that offer no continuous mode at all — see [chooseFocusMode]. On
+     * those, FOCUS_MODE_AUTO is inert: the lens sits where it is until `autoFocus()` is called,
+     * one call focuses once, and a reader who moves the phone has moved out of focus again. So
+     * the call is repeated, at the pace a person moves rather than the pace the sensor could
+     * answer, until the preview stops.
+     *
+     * The ticks are posted to the main looper because that is the thread the camera was opened
+     * on, and the camera's own callbacks arrive there.
+     */
+    private fun startFocusTicker() {
+        val handler = focusHandler ?: Handler(Looper.getMainLooper()).also { focusHandler = it }
+        val tick = object : Runnable {
+            override fun run() {
+                val running = camera ?: return
+                try {
+                    running.autoFocus(null)
+                } catch (e: Exception) {
+                    // autoFocus throws when the camera has gone away or is already focusing.
+                    // Both are answered by the next tick, and neither is worth a word on a
+                    // screen the reader is aiming.
+                }
+                handler.postDelayed(this, FOCUS_INTERVAL_MS)
+            }
+        }
+        focusTick = tick
+        handler.postDelayed(tick, FOCUS_INTERVAL_MS)
+    }
+
+    /**
      * onFrame hands one preview frame to the decoder.
      *
      * The frame is copied before it is handed over, because the buffer it arrived in is the
@@ -316,8 +368,12 @@ class ScanActivity : Activity(), SurfaceHolder.Callback {
         }
     }
 
-    /** stopPreview releases the camera and its callback. */
+    /** stopPreview releases the camera and its callback, and stops asking it to focus. */
     private fun stopPreview() {
+        // The ticker goes first: one that outlived the camera would be asking a released one,
+        // and one that outlived this screen would hold it alive behind the one that replaced it.
+        focusTick?.let { tick -> focusHandler?.removeCallbacks(tick) }
+        focusTick = null
         val running = camera ?: return
         camera = null
         try {
