@@ -17,6 +17,26 @@ package app
 
 import "time"
 
+// lxmfSyncDue reports whether the periodic LXMF sync is due at now. It mirrors
+// Python's job-loop test verbatim (NomadNetworkApp.py:464, "now >
+// self.peer_settings['last_lxmf_sync'] + self.lxmf_sync_interval"), so the clock
+// it reads is the persisted last-sync time, seeded from peer settings at startup
+// (see loadPeerSettings) rather than a per-run in-memory zero. Without that seed
+// the zero time made every launch look like it had never synced, and the client
+// re-synced its whole mailbox on each start.
+//
+// LastLXMFSync and its interval are read under mu because RequestLXMFSync (which
+// writes LastLXMFSync) is reachable from the TUI goroutine while this runs on
+// the job goroutine.
+func (a *App) lxmfSyncDue(now time.Time) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if !a.PeriodicLXMFSync {
+		return false
+	}
+	return now.After(a.LastLXMFSync.Add(time.Duration(a.LXMFSyncInterval) * time.Second))
+}
+
 // jobs runs the background job loop for periodic tasks. The initial defer and
 // the inter-iteration waits select on jobsStop so Shutdown (which closes it)
 // interrupts the loop immediately rather than blocking up to DeferJobs seconds.
@@ -41,7 +61,7 @@ func (a *App) jobs() {
 		now := time.Now()
 
 		// Periodic LXMF sync
-		if a.PeriodicLXMFSync && now.After(a.LastLXMFSync.Add(time.Duration(a.LXMFSyncInterval)*time.Second)) {
+		if a.lxmfSyncDue(now) {
 			a.Logger.Verbose("Initiating automatic LXMF sync")
 			a.RequestLXMFSync(a.LXMFSyncLimit)
 		}

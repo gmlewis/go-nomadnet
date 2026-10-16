@@ -139,17 +139,22 @@ func timeNow() time.Time { return time.Now() }
 // mirroring Python's _sync_status_line (Conversations.py:517-545). The time is
 // read live from PeerSettings.LastLXMFSync (peer_settings["last_lxmf_sync"]),
 // so it survives across runs (a sync writes the field via RequestLXMFSync).
-// LastSyncInfo returns the persisted last-LXMF-sync time and the default
-// propagation node's display label for the Conversations "Last sync:" footer,
-// mirroring Python's _sync_status_line (Conversations.py:517-545). The time is
-// read live from PeerSettings.LastLXMFSync (peer_settings["last_lxmf_sync"]),
-// so it survives across runs (a sync writes the field via RequestLXMFSync).
-// The label is the propagation node's directory display name, falling back to
-// "<" + the first 8 hex chars of its destination hash + "…" (Python lines
-// 530-543). A zero time (no sync recorded) formats as "never" upstream — the
-// label is still resolved in that case (Python computes node_label
-// independently of the sync time).
 func (a *App) LastSyncInfo() (time.Time, string) {
+	return a.lastSyncInfoFor(a.GetDefaultPropagationNode())
+}
+
+// lastSyncInfoFor resolves the Conversations "Last sync:" footer's time and node
+// label for a given default propagation node. The label is the propagation
+// node's directory display name, falling back to "<" + the first 8 hex chars of
+// its destination hash + "…" (Python Conversations.py:530-543). A zero time (no
+// sync recorded) is formatted as "never" by the caller — the label is resolved
+// regardless (Python computes node_label independently of the sync time).
+//
+// A reachability marker is appended to the label when the selected node looks
+// unusable, which Python does not do: Python renders a dead address exactly like
+// a working one, which is how a client can sit for ever on a mailbox nobody
+// serves. See propagation-guard.go.
+func (a *App) lastSyncInfoFor(pnHash []byte) (time.Time, string) {
 	var t time.Time
 	a.psMu.Lock()
 	if a.PeerSettings != nil && a.PeerSettings.LastLXMFSync > 0 {
@@ -157,7 +162,6 @@ func (a *App) LastSyncInfo() (time.Time, string) {
 	}
 	a.psMu.Unlock()
 
-	pnHash := a.GetDefaultPropagationNode()
 	if len(pnHash) == 0 {
 		return t, ""
 	}
@@ -165,17 +169,24 @@ func (a *App) LastSyncInfo() (time.Time, string) {
 	// Recall the node identity and look up its "nomadnetwork.node" directory
 	// entry for the display name (Python: Identity.recall →
 	// hash_from_name_and_identity("nomadnetwork.node", ident) → directory.find).
+	label := ""
 	if a.Transport != nil {
 		if id := rns.RecallIdentity(a.Transport, pnHash); id != nil {
 			nodeDest := rns.CalculateHash(id, "nomadnetwork", "node")
 			if entry := a.Dir.Find(nodeDest); entry != nil && entry.DisplayName != "" {
 				if name := util.StripModifiers(&entry.DisplayName); name != nil && *name != "" {
-					return t, *name
+					label = *name
 				}
 			}
 		}
 	}
 
 	// Fallback: "<" + first 8 hex chars of the propagation node hash + "…".
-	return t, "<" + fmt.Sprintf("%x", pnHash)[:8] + "…>"
+	if label == "" {
+		label = "<" + fmt.Sprintf("%x", pnHash)[:8] + "…>"
+	}
+	if marker := a.propagationNodeMarkerFor(pnHash); marker != "" {
+		label += ", " + marker
+	}
+	return t, label
 }

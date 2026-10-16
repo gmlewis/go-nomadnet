@@ -34,7 +34,7 @@ If you already have [Go](https://go.dev/) installed, you can
 install `gonomadnet` directly from GitHub without cloning the repo:
 
 ```bash
-go install github.com/gmlewis/go-nomadnet/cmd/gonomadnet@v0.180.0
+go install github.com/gmlewis/go-nomadnet/cmd/gonomadnet@v0.181.0
 ```
 
 This puts the `gonomadnet` binary in your `$GOPATH/bin` (or `$GOBIN`)

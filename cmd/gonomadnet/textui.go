@@ -963,10 +963,19 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		// Default-PN toggle (Python save_node, Network.py:730-734): only act if
 		// the user toggled the checkbox. Checked → set the PN to this node's
 		// lxmf.propagation hash; unchecked → clear the selection.
+		//
+		// Go-only guard (no Python counterpart — Python accepts whatever this
+		// derives, silently): that hash is the propagation address of the
+		// identity that announced the NODE, which is only a real mailbox when
+		// the propagation node runs under that same identity. When nothing has
+		// announced it, adopting it would leave the client failing every
+		// propagated send and sync with no visible reason, so refuse it and say
+		// so. See nomadnet/app/propagation-guard.go.
 		if fd.UseAsPNChanged {
 			if fd.UseAsPN {
-				if pn := a.NodePropagationHash(hash); pn != nil {
-					a.SetUserSelectedPropagationNode(pn)
+				if err := a.SetPropagationNodeFromNodeIdentity(hash); err != nil {
+					msg := "\n\n\n" + app.PropagationNodeUnprovenNotice(a.NodePropagationHash(hash)) + "\n\n"
+					networkDisplay.ShowLocalPeerStatus(msg, strings.Count(msg, "\n")+1)
 				}
 			} else {
 				a.SetUserSelectedPropagationNode(nil)

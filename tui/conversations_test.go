@@ -1435,6 +1435,17 @@ func TestConversationsSyncStatusLine(t *testing.T) {
 	if got := cd.syncStatusLine(); got != " Last sync: 1h ago  (TestNode)" {
 		t.Errorf("syncStatusLine() 1h+label = %q, want %q", got, " Last sync: 1h ago  (TestNode)")
 	}
+
+	// A label carrying the reachability marker app.LastSyncInfo appends for a
+	// default propagation node nothing serves must reach the footer verbatim
+	// (nomadnet/app/propagation-guard.go; Python has no such marker).
+	cd.LastSyncInfo = func() (time.Time, string) {
+		return time.Now().Add(-5 * time.Minute), "<ef289bf8…>, no identity"
+	}
+	want := " Last sync: 5m ago  (<ef289bf8…>, no identity)"
+	if got := cd.syncStatusLine(); got != want {
+		t.Errorf("syncStatusLine() unreachable = %q, want %q", got, want)
+	}
 }
 
 func TestConversationsDisplayShowBlocked(t *testing.T) {

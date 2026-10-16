@@ -16,12 +16,20 @@
 package app
 
 import (
+	"time"
+
 	"github.com/gmlewis/go-nomadnet/nomadnet/peersettings"
 )
 
 // loadPeerSettings loads (or creates) the local peer settings file, mirroring
 // the Python NomadNetworkApp peer_settings initialization. The announce
 // interval is always reconciled with the configured value.
+//
+// The persisted last-sync time also seeds the in-memory sync clock, mirroring
+// Python, whose job loop reads peer_settings["last_lxmf_sync"] directly and so
+// inherits the value loaded from disk (NomadNetworkApp.py:263-264, 464). The Go
+// port keeps a separate App field for that clock, so it has to be seeded here or
+// it stays at the zero time and the client re-syncs at every launch.
 func (a *App) loadPeerSettings() {
 	ps, err := peersettings.Load(a.PeerSettingsPath, a.AnnounceInterval)
 	if err != nil {
@@ -31,6 +39,11 @@ func (a *App) loadPeerSettings() {
 	a.psMu.Lock()
 	a.PeerSettings = ps
 	a.psMu.Unlock()
+	if ps.LastLXMFSync > 0 {
+		a.mu.Lock()
+		a.LastLXMFSync = time.Unix(int64(ps.LastLXMFSync), 0)
+		a.mu.Unlock()
+	}
 }
 
 // savePeerSettingsLocked persists the local peer settings to disk. The caller
