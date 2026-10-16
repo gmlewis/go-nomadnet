@@ -32,13 +32,14 @@
 // there is: that slave, and only that one, is opened by name.
 //
 // The window size and the pty library's size helpers are the library's, and are
-// re-exported here so that a caller needs one import rather than two.
+// re-exported here so that a caller needs one import rather than two. A platform
+// with no pseudoterminals at all — Windows — reports the library's
+// ErrUnsupported from both Open and StartWithSize, which is what its callers
+// already handle.
 package pty
 
 import (
 	"os"
-	"os/exec"
-	"syscall"
 
 	creackpty "github.com/creack/pty/v2"
 )
@@ -65,64 +66,4 @@ func GetsizeFull(f *os.File) (*Winsize, error) {
 // caller that publishes the slave for another process to open hands over.
 func Open() (*os.File, *os.File, error) {
 	return open()
-}
-
-// StartWithSize gives cmd a fresh pty, starts it on the slave, and returns the
-// master.
-//
-// The child gets a session of its own and the slave as its controlling terminal,
-// which is the whole point: term.IsTerminal(0) is what makes a program take its
-// terminal-UI path instead of falling back to a non-interactive one. Because the
-// kernel owns the terminal, the child is never signalled by hand — a window size
-// change is an ioctl, and the kernel delivers the SIGWINCH.
-//
-// The command's three standard descriptors are the slave unless the caller has
-// already set them, and ws is applied before the child is started. A nil ws
-// leaves the pty at the kernel's default size.
-func StartWithSize(cmd *exec.Cmd, ws *Winsize) (*os.File, error) {
-	if cmd.SysProcAttr == nil {
-		cmd.SysProcAttr = &syscall.SysProcAttr{}
-	}
-	cmd.SysProcAttr.Setsid = true
-	cmd.SysProcAttr.Setctty = true
-
-	master, slave, err := Open()
-	if err != nil {
-		return nil, err
-	}
-	if ws != nil {
-		if err := Setsize(master, ws); err != nil {
-			_ = slave.Close()
-			_ = master.Close()
-			return nil, err
-		}
-	}
-	if cmd.Stdout == nil {
-		cmd.Stdout = slave
-	}
-	if cmd.Stderr == nil {
-		cmd.Stderr = slave
-	}
-	if cmd.Stdin == nil {
-		cmd.Stdin = slave
-	}
-	// Ctty is an index into the command's standard descriptors, not a file
-	// descriptor, so the controlling terminal is the slot the slave landed in —
-	// which is not stdin when the caller set one of its own.
-	switch {
-	case cmd.Stdin == slave:
-		cmd.SysProcAttr.Ctty = 0
-	case cmd.Stdout == slave:
-		cmd.SysProcAttr.Ctty = 1
-	case cmd.Stderr == slave:
-		cmd.SysProcAttr.Ctty = 2
-	}
-	if err := cmd.Start(); err != nil {
-		_ = slave.Close()
-		_ = master.Close()
-		return nil, err
-	}
-	// The child holds its own descriptors for the slave from here on.
-	_ = slave.Close()
-	return master, nil
 }

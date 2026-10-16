@@ -19,6 +19,7 @@ import (
 	"bytes"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -29,6 +30,15 @@ import (
 // childTimeout bounds every wait in this file. It is a safety net against a
 // child that never answers, never a delay a passing test waits out.
 const childTimeout = 10 * time.Second
+
+// requirePtys skips a test on a platform that has no pseudo-terminals, where
+// Open and StartWithSize answer with the pty library's ErrUnsupported.
+func requirePtys(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("this platform has no pseudo-terminals")
+	}
+}
 
 // requireSlaveIsTheMastersPeer fails a test whose slave is not the peer of its
 // master, which is the property the whole package exists to preserve.
@@ -60,6 +70,7 @@ func requireSlaveIsTheMastersPeer(t *testing.T, master, slave *os.File) {
 
 func TestOpenReturnsTheMastersOwnSlave(t *testing.T) {
 	t.Parallel()
+	requirePtys(t)
 
 	master, slave, err := Open()
 	if err != nil {
@@ -84,6 +95,7 @@ func TestOpenReturnsTheMastersOwnSlave(t *testing.T) {
 // the caller left to the pty.
 func TestStartWithSizeGivesTheChildATerminal(t *testing.T) {
 	t.Parallel()
+	requirePtys(t)
 
 	if _, err := os.Stat("/bin/sh"); err != nil {
 		t.Skipf("this test runs a real child and needs /bin/sh: %v", err)
