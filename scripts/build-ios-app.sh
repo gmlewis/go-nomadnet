@@ -491,6 +491,19 @@ case "$MODE" in
     ( cd "$DIST_DIR/ipa" && zip -qry "$IPA" Payload )
     rm -rf "$DIST_DIR/ipa"
 
+    # The directory the publisher enumerates is a staging area, and it only ever added: every
+    # local appliance build left another IPA behind for good, and the publisher re-read and
+    # re-skipped all of them on every run. The skipping is deliberate — an appliance built from
+    # another release's binaries must not be published as this one's — but the accumulation that
+    # makes it necessary is not, so the directory is left holding exactly the appliance this
+    # build produced. scripts/build-android-apk.sh does the same for dist/android.
+    for stale in "$DIST_DIR"/gonomadnet-*-ios-*.ipa; do
+      if [ -e "$stale" ] && [ "$stale" != "$IPA" ]; then
+        rm -f "$stale"
+        echo "removed the appliance staged for another release: $(basename "$stale")"
+      fi
+    done
+
     echo
     echo "IPA:    $IPA"
     echo "sha256: $(shasum -a 256 "$IPA" | cut -d' ' -f1)"
