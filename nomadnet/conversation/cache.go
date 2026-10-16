@@ -199,19 +199,8 @@ func (cc *ConversationCache) Ingest(msg *lxmf.Message, conversationsPath string,
 	// open conversation widget can reload its message list + trust banner
 	// (mirrors Python's Conversation.ingest firing created_callback +
 	// scan_storage firing __changed_callback, Conversation.py:111-112 + 271).
-	//
-	// The notification is delivered from a goroutine of its own rather than on
-	// the caller's, because the caller is sometimes the tview event loop: the
-	// send and paper-message paths ingest the message they have just sent, and
-	// they run wherever the key was handled. The wiring layer's handler
-	// marshals to the UI thread with QueueUpdateDraw, which blocks until the
-	// event loop runs the queued function, so notifying from the event loop
-	// waited on the event loop itself — the client stopped dead on the first
-	// Ctrl-D (no drawing, no keys, no resize) and stayed that way until the
-	// console was restarted. Delivering from here keeps that marshal valid for
-	// every caller, the background delivery goroutine included.
-	if onChanged := cc.OnChanged; onChanged != nil {
-		go onChanged(sourceHex)
+	if cc.OnChanged != nil {
+		cc.OnChanged(sourceHex)
 	}
 
 	return ingestedPath, nil
