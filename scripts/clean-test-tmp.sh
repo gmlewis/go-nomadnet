@@ -110,6 +110,7 @@ prefixes=(
   rnode-bridge- ios-bridge-
   nomadnet-conversation-test nomadnet-directory-test nomadnet-dir-persist
   nomadnet-int- nomadnet-lxmf-xproc- nomadnet-peersettings-test
+  nomadnet-prophub-
   nomadnet-storage-test nomadnet-cbor- nomadnet-wasmpages-
   nomadnet-sent-test nomadnet-app-page-log nomadnet-browser-wasm
   nomadnet-tui-demo nomadnet-tui-form-wasm instance-lock-test-

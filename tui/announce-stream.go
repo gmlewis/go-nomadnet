@@ -160,6 +160,24 @@ func (as *announceStreamDisplay) toggleDisplayMode() {
 	as.update()
 }
 
+// matches reports whether an announce satisfies the current search text.
+//
+// It matches the announce app data, as Python's update_widget_list does
+// (Network.py:492-498), and — Go-only enhancement, no Python SOT counterpart —
+// also the announce's destination hash. The hash is the one handle a person has
+// on a propagation node: it announces with an empty name and carries no app
+// data to match, and the only identifier anyone can quote for it is its
+// address, so searching for one has to succeed on the hash. Matching the app
+// data remains a strict subset of this, so every query Python answers is
+// answered identically; only hash-shaped queries gain rows. searchText is
+// already lowercased by onSearchChange, and destination hashes render lower.
+func (as *announceStreamDisplay) matches(e AnnounceEntry) bool {
+	if strings.Contains(strings.ToLower(e.AppData), as.searchText) {
+		return true
+	}
+	return strings.Contains(strings.ToLower(e.SourceHash), as.searchText)
+}
+
 // update mirrors Python's update_widget_list (Network.py:481-528): count entries
 // by type, filter by the active tab + search text, repopulate the list, and set
 // the tab labels with the per-type counts.
@@ -173,12 +191,8 @@ func (as *announceStreamDisplay) update() {
 	g := as.nd.glyphs()
 
 	for _, e := range data {
-		// Python matches the search against the announce app_data (e[2]).
-		if as.searchText != "" {
-			hay := strings.ToLower(e.AppData)
-			if !strings.Contains(hay, as.searchText) {
-				continue
-			}
+		if as.searchText != "" && !as.matches(e) {
+			continue
 		}
 		switch e.Type {
 		case "node":

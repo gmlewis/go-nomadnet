@@ -237,6 +237,62 @@ func TestAnnounceStreamSearchFilter(t *testing.T) {
 	}
 }
 
+// TestAnnounceStreamSearchByHash pins the Go-only enhancement to the Announce
+// Stream search box: the query is matched case-insensitively against the
+// announce's destination hash as well as its app data.
+//
+// Python's on_search_change matches only the announce app data
+// (Network.py:492-498), which makes a propagation node impossible to find by
+// hand: it announces with an empty name and no app data to match, so the only
+// handle a person has on it is the hash a peer or the documentation quotes.
+// Searching for one therefore has to succeed on the hash — matching on the app
+// data alone is a strict subset of this and stays intact.
+func TestAnnounceStreamSearchByHash(t *testing.T) {
+	t.Parallel()
+
+	// The fleet's propagation node: empty name, so app-data matching finds
+	// nothing.
+	const pnHash = "7acc095f0e83182feb58c888d090a3cc"
+
+	tests := []struct {
+		name      string
+		tab       announceStreamTab
+		query     string
+		wantCount int
+	}{
+		{name: "hash prefix", tab: tabPN, query: "7acc", wantCount: 1},
+		{name: "hash infix", tab: tabPN, query: "82feb58c", wantCount: 1},
+		{name: "full hash", tab: tabPN, query: pnHash, wantCount: 1},
+		{name: "uppercase hash", tab: tabPN, query: "7ACC095F", wantCount: 1},
+		{name: "name still matches app data", tab: tabNodes, query: "alpha", wantCount: 1},
+		{name: "no match", tab: tabPN, query: "zzzz", wantCount: 0},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := newTestApp()
+			app.Glyphs = GetGlyphSet(GlyphUnicode)
+			now := time.Now()
+			announces := []AnnounceEntry{
+				{Type: "pn", SourceHash: pnHash, Timestamp: now},
+				{DisplayName: "Alpha Node", Type: "node", SourceHash: "aa", Timestamp: now, AppData: "Alpha Node"},
+			}
+			nd := NewNetworkDisplay(app, announces, nil)
+			as := nd.announceStream
+			as.SetCurrentTab(tc.tab)
+
+			as.search.SetText(tc.query)
+			as.onSearchChange()
+
+			if got := as.ilb.List.GetItemCount(); got != tc.wantCount {
+				t.Errorf("search %q: %v rows, want %v", tc.query, got, tc.wantCount)
+			}
+		})
+	}
+}
+
 // TestAnnounceStreamDisplayToggle verifies the display-mode toggle flips the
 // toggle label and re-renders (Network.py:460-466).
 func TestAnnounceStreamDisplayToggle(t *testing.T) {
