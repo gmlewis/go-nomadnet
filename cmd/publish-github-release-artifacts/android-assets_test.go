@@ -18,9 +18,9 @@ package main
 import (
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
+	"time"
 )
 
 // tempDir returns a short-lived directory under /tmp. t.TempDir() is unusable on
@@ -197,65 +197,70 @@ func TestCollectAndroidArtifacts(t *testing.T) {
 	})
 }
 
-// TestThePruneNeverDeletesAnAppliance is the retention guard. The appliance is an install
-// artifact, not a build output: the binaries in the platform pattern are rebuilt for every
-// release, so retiring one costs a download, while an APK is a signed thing somebody installed
-// once and must be able to fetch again to upgrade in place.
-func TestThePruneNeverDeletesAnAppliance(t *testing.T) {
+// TestThePruneDeletesAnApplianceAtTheEndOfItsWindow is the retention policy applied to the
+// appliance: an APK is just another asset of its release, so once that release falls out of
+// the retention window every file on it goes, the appliance included.
+//
+// The appliance used to be exempt from the prune — kept forever as a signed install artifact
+// somebody might want to re-fetch. That grew without bound, and the exemption was
+// inconsistent anyway: the iOS IPA was never on the list, so it survived only because its
+// name happened to miss the platform pattern the APK also happened to miss. The retention
+// window is the only policy now, and it selects nothing by name.
+func TestThePruneDeletesAnApplianceAtTheEndOfItsWindow(t *testing.T) {
 	t.Parallel()
 
-	rel := publishedRelease{
-		tag: "v0.151.0",
-		assets: []asset{
-			{name: "gonomadnet-0.151.0-linux-amd64", id: 1},
-			{name: "gonomadnet-0.151.0-android-arm64-v8a.apk", id: 2},
-			{name: "gonomadnet-0.151.0-android-arm64-v8a.APK", id: 3},
+	newer := func(tag string, day int) publishedRelease {
+		return publishedRelease{
+			tag:       tag,
+			createdAt: time.Date(2026, 9, day, 0, 0, 0, 0, time.UTC),
+			assets:    []asset{{id: 1, name: "gonomadnet-" + tag[1:] + "-linux-amd64"}},
+		}
+	}
+	all := []publishedRelease{
+		newer("v0.155.0", 11),
+		newer("v0.154.0", 10),
+		{
+			tag:       "v0.151.0",
+			createdAt: time.Date(2026, 9, 7, 0, 0, 0, 0, time.UTC),
+			assets: []asset{
+				{name: "gonomadnet-0.151.0-linux-amd64", id: 1},
+				{name: "gonomadnet-0.151.0-android-arm64-v8a.apk", id: 2},
+				{name: "gonomadnet-0.151.0-android-arm64-v8a.APK", id: 3},
+			},
 		},
 	}
-	deletable, skipped := partitionAssets(rel, assetNamePattern("0.151.0"))
 
-	if len(deletable) != 1 || deletable[0].name != "gonomadnet-0.151.0-linux-amd64" {
-		t.Fatalf("deletable = %v, want only the platform binary", deletable)
+	_, _, plans := planPrune(all, 2)
+	if len(plans) != 1 || plans[0].rel.tag != "v0.151.0" {
+		t.Fatalf("plans cover %v, want only v0.151.0 (the release that fell out of the window)",
+			planTags(plans))
 	}
-	for _, name := range []string{"gonomadnet-0.151.0-android-arm64-v8a.apk", "gonomadnet-0.151.0-android-arm64-v8a.APK"} {
-		found := false
-		for _, s := range skipped {
-			if s == name {
-				found = true
-			}
+	if got := len(plans[0].assets); got != 3 {
+		t.Fatalf("plan holds %v asset(s), want all 3 including the appliance", got)
+	}
+	want := map[string]bool{
+		"gonomadnet-0.151.0-linux-amd64":           true,
+		"gonomadnet-0.151.0-android-arm64-v8a.apk": true,
+		"gonomadnet-0.151.0-android-arm64-v8a.APK": true,
+	}
+	for _, a := range plans[0].assets {
+		if !want[a.name] {
+			t.Errorf("plan holds unexpected asset %q", a.name)
 		}
-		if !found {
-			t.Errorf("%v was not reported as skipped, so the prune believes it may delete it", name)
-		}
+		delete(want, a.name)
+	}
+	for name := range want {
+		t.Errorf("plan omits %q; the appliance is pruned with the rest of its release", name)
 	}
 }
 
-// TestAnApplianceWouldSurviveAPlatformPatternThatMatchedIt asserts the exemption is explicit
-// rather than incidental. The platform pattern does not match an APK's name today, so the
-// appliance is already safe — and that is exactly why this is written down: the next person to
-// add "android" to that pattern, which is a natural thing to do, must not have to notice this
-// guard to avoid destroying every appliance ever released.
-func TestAnApplianceWouldSurviveAPlatformPatternThatMatchedIt(t *testing.T) {
-	t.Parallel()
-
-	rel := publishedRelease{
-		tag: "v0.151.0",
-		assets: []asset{
-			{name: "gonomadnet-0.151.0-linux-amd64", id: 1},
-			{name: "gonomadnet-0.151.0-android-arm64-v8a.apk", id: 2},
-		},
+// planTags names the releases a prune plan covers, for test failure messages.
+func planTags(plans []prunePlan) []string {
+	var tags []string
+	for _, pl := range plans {
+		tags = append(tags, pl.rel.tag)
 	}
-	// A pattern greedy enough to match the appliance's name, which is what a future
-	// "and android too" edit would produce.
-	greedy := regexp.MustCompile(`^gonomadnet-0\.151\.0-.*$`)
-
-	deletable, skipped := partitionAssets(rel, greedy)
-	if len(deletable) != 1 || deletable[0].name != "gonomadnet-0.151.0-linux-amd64" {
-		t.Fatalf("deletable = %v, want only the platform binary even under a greedy pattern", deletable)
-	}
-	if len(skipped) != 1 || skipped[0] != "gonomadnet-0.151.0-android-arm64-v8a.apk" {
-		t.Fatalf("skipped = %v, want the appliance", skipped)
-	}
+	return tags
 }
 
 // TestReleaseNotesDescribeTheAndroidAppliance asserts the notes say what the APK is, which

@@ -125,61 +125,89 @@ func TestSelectPrunable(t *testing.T) {
 	}
 }
 
-// TestAssetNamePattern verifies the guard that keeps a hand-attached file safe.
-// The generated list is every asset name the v0.151.0 release actually carries,
-// so the test fails if the publisher's naming ever drifts out of the pattern;
-// anything else — a checksum list, a notes file, an archive, or a binary built
-// for a different version — must not match.
-func TestAssetNamePattern(t *testing.T) {
+// TestPlanPruneDeletesEveryAsset pins the retention policy: the newest keep
+// published releases keep their assets, everything older is planned for
+// deletion, drafts are reported and never planned, and a pruned release's plan
+// holds EVERY asset it still carries — nothing is selected by name.
+//
+// The asset names here cover everything a real release carries: the platform
+// binaries this publisher generates, the installable appliances it publishes
+// for Android and iOS, and a file it never produced. All of them must be
+// planned for deletion on a pruned release; an earlier name-matching guard kept
+// the appliances, and the iOS one escaped only by accident, because its name
+// happened to miss the pattern that exempted the Android one.
+func TestPlanPruneDeletesEveryAsset(t *testing.T) {
 	t.Parallel()
 
-	re := assetNamePattern("0.151.0")
-	generated := []string{
-		"gonomadnet-0.151.0-darwin-amd64",
-		"gonomadnet-0.151.0-darwin-arm64",
-		"gonomadnet-0.151.0-freebsd-amd64",
-		"gonomadnet-0.151.0-freebsd-arm64",
-		"gonomadnet-0.151.0-linux-amd64",
-		"gonomadnet-0.151.0-linux-arm64",
-		"gonomadnet-0.151.0-windows-amd64.exe",
-		"gonomadnet-0.151.0-windows-arm64.exe",
-		"gonomadnet-0.151.0-pocket_terminal-linux-arm",
-		"gonomadnet-0.151.0-pocket_terminal-linux-arm64",
-		"gonomadnet-0.151.0-pocket_terminal-linux-riscv64",
-		"gonomadnet-0.151.0-pocket_communicator-linux-arm",
-		"gonomadnet-0.151.0-pocket_communicator-linux-arm64",
-		"gonomadnet-0.151.0-pocket_communicator-linux-riscv64",
-	}
-	for _, name := range generated {
-		if !re.MatchString(name) {
-			t.Errorf("assetNamePattern(0.151.0) does not match generated name %q", name)
+	assets := func(names ...string) []asset {
+		var out []asset
+		for i, name := range names {
+			out = append(out, asset{id: int64(i + 1), name: name, size: int64(len(name))})
 		}
+		return out
 	}
-	notGenerated := []string{
-		"SHA256SUMS",
-		"release-notes.md",
-		"gonomadnet-0.150.0-linux-amd64",        // a different version's binary
-		"gonomadnet-0.151.0-linux-amd64.tar.gz", // an archive
-		"gonomadnet-0.151.0-linux-amd64.sha256", // a checksum sidecar
-		"gonomadnet-0.151.0-linux-amd64.sig",    // a detached signature
-		"gonomadnet-0.151.0-linux-amd64.pdb",    // debug symbols
-		"gonomadnet-0.151.0-plan9-amd64",        // a platform this tool never builds
-		"gonomadnet-0.151.0-linux-sparc64",      // an architecture it never builds
-	}
-	for _, name := range notGenerated {
-		if re.MatchString(name) {
-			t.Errorf("assetNamePattern(0.151.0) matches non-generated name %q; it must be skipped", name)
-		}
+	all := []publishedRelease{
+		{tag: "v0.154.0", createdAt: time.Date(2026, 9, 10, 0, 0, 0, 0, time.UTC),
+			assets: assets("gonomadnet-0.154.0-linux-amd64")},
+		{tag: "v0.153.0", createdAt: time.Date(2026, 9, 9, 0, 0, 0, 0, time.UTC),
+			assets: assets("gonomadnet-0.153.0-linux-amd64")},
+		{tag: "v0.152.0", createdAt: time.Date(2026, 9, 8, 0, 0, 0, 0, time.UTC),
+			assets: assets(
+				"gonomadnet-0.152.0-linux-amd64",
+				"gonomadnet-0.152.0-android-arm64-v8a.apk",
+				"gonomadnet-0.152.0-ios-arm64.ipa",
+				"SHA256SUMS",
+			)},
+		{tag: "v0.151.0", createdAt: time.Date(2026, 9, 7, 0, 0, 0, 0, time.UTC), draft: true,
+			assets: assets("gonomadnet-0.151.0-linux-amd64")},
 	}
 
-	// The guard is a shape match, so a hand-uploaded file that deliberately
-	// mimics "<program>-<version>-<platform>" is indistinguishable from a real
-	// artifact and would be pruned. This is a known limit, pinned here so the
-	// behavior is a decision rather than an accident.
-	if !re.MatchString("hotfix-gonomadnet-0.151.0-linux-amd64") {
-		t.Error("assetNamePattern(0.151.0) no longer matches a name mimicking the generated scheme; " +
-			"if the pattern was tightened, update this expectation and the comment in prune.go")
+	retained, drafts, plans := planPrune(all, 2)
+
+	if len(retained) != 2 || retained[0].tag != "v0.154.0" || retained[1].tag != "v0.153.0" {
+		t.Errorf("retained = %v, want the newest 2 published releases (v0.154.0, v0.153.0)", tagList(retained))
 	}
+	if len(drafts) != 1 || drafts[0].tag != "v0.151.0" {
+		t.Errorf("drafts = %v, want just v0.151.0", tagList(drafts))
+	}
+	if len(plans) != 1 {
+		t.Fatalf("got %v plan(s), want 1 (only v0.152.0 falls outside the window)", len(plans))
+	}
+	if plans[0].rel.tag != "v0.152.0" {
+		t.Errorf("plan tag = %v, want v0.152.0", plans[0].rel.tag)
+	}
+	if got := len(plans[0].assets); got != len(all[2].assets) {
+		t.Fatalf("plan holds %v asset(s), want all %v of the release's assets", got, len(all[2].assets))
+	}
+	want := map[string]bool{
+		"gonomadnet-0.152.0-linux-amd64":           true,
+		"gonomadnet-0.152.0-android-arm64-v8a.apk": true,
+		"gonomadnet-0.152.0-ios-arm64.ipa":         true,
+		"SHA256SUMS":                               true,
+	}
+	for _, a := range plans[0].assets {
+		if !want[a.name] {
+			t.Errorf("plan holds unexpected asset %q", a.name)
+		}
+		delete(want, a.name)
+	}
+	for name := range want {
+		t.Errorf("plan omits %q; every asset of a pruned release must be deleted", name)
+	}
+
+	// A window wider than a release's remaining assets prunes nothing.
+	if _, _, plans := planPrune(all, 99); len(plans) != 0 {
+		t.Errorf("keep=99 produced %v plan(s), want none", len(plans))
+	}
+}
+
+// tagList returns the tags of releases in order, for test failure messages.
+func tagList(releases []publishedRelease) []string {
+	var tags []string
+	for _, rel := range releases {
+		tags = append(tags, rel.tag)
+	}
+	return tags
 }
 
 // TestHumanBytes checks the size formatting used in the prune report.

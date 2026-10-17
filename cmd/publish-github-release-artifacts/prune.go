@@ -30,6 +30,13 @@
 // source all stay exactly as published, so proxy.golang.org / pkg.go.dev
 // module checksums and changelog links are unaffected. Only the uploaded
 // binaries go away.
+//
+// Every asset of a pruned release is deleted, whatever its name: the retention
+// window is the whole policy. An earlier version selected assets by matching
+// their names against the pattern this publisher generates, exempted Android
+// APKs on top of that, and kept everything else — so the ESP32 firmware the
+// sibling go-reticulum publisher builds was retained forever, and a pruned
+// release kept a signed appliance. Nothing is selected by name now.
 package main
 
 import (
@@ -39,7 +46,6 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -87,12 +93,6 @@ const deleteAttempts = 5
 // progressEvery is how many deletions happen between periodic progress lines,
 // so a long prune shows steady motion without flooding the terminal.
 const progressEvery = 500
-
-// assetPlatformPattern matches the platform suffix of an artifact name, in
-// both the major-target form (linux-amd64) and the hardware form
-// (pocket_terminal-linux-arm64).
-const assetPlatformPattern = `(?:(?:linux|darwin|windows|freebsd)-(?:amd64|arm64|arm|riscv64)|` +
-	`pocket_(?:terminal|communicator|hub)(?:-[a-z]+)?-linux-(?:amd64|arm64|arm|riscv64))`
 
 // errAssetGone reports that an asset was already deleted (or its release was
 // removed). That is a success for our purposes: a prune run that was
@@ -229,20 +229,6 @@ func selectPrunable(releases []publishedRelease, keep int) (retained, prune []pu
 	return releases[:keep], releases[keep:]
 }
 
-// assetNamePattern returns the regexp matching the artifact names this
-// publisher generates for version: "<program>-<version>-<platform>", with an
-// optional .exe suffix.
-//
-// The prune deletes only names matching this pattern, so anything a human
-// attached to an old release — a checksum list, a hotfix binary, a notes file
-// — is reported and left alone. Every one of the 1,454 assets in this repo
-// matches, so nothing is skipped today; the guard exists so that a future
-// hand-uploaded file can never be destroyed by an automatic prune.
-func assetNamePattern(version string) *regexp.Regexp {
-	return regexp.MustCompile(`^[a-z][a-z0-9-]*-` + regexp.QuoteMeta(version) + `-` +
-		assetPlatformPattern + `(?:\.exe)?$`)
-}
-
 // humanBytes formats a byte count as MB or GB with one decimal place.
 func humanBytes(n int64) string {
 	const (
@@ -375,34 +361,15 @@ func pruneReleaseAssets(keep int, dryRun bool, progress io.Writer) error {
 	if err != nil {
 		return err
 	}
-	var drafts, releases []publishedRelease
-	for _, rel := range all {
-		if rel.draft {
-			drafts = append(drafts, rel)
-			continue
-		}
-		releases = append(releases, rel)
-	}
-	retained, prune := selectPrunable(releases, keep)
+	retained, drafts, plans := planPrune(all, keep)
 
-	// Build the plan once, so the dry run and the real run describe exactly the
-	// same set, and so the totals below count only assets this tool will really
-	// delete (never a hand-attached file the guard skips).
-	type prunePlan struct {
-		rel       publishedRelease
-		deletable []asset
-		skipped   []string
-	}
-	plans := make([]prunePlan, 0, len(prune))
+	// Totals come from the same plan the delete loop below executes, so a dry run
+	// and a real run always describe exactly the same set.
 	var assetsToDelete int
 	var bytesToDelete int64
-	var skippedNames []string
-	for _, rel := range prune {
-		deletable, skipped := partitionAssets(rel, assetNamePattern(strings.TrimPrefix(rel.tag, "v")))
-		plans = append(plans, prunePlan{rel: rel, deletable: deletable, skipped: skipped})
-		assetsToDelete += len(deletable)
-		bytesToDelete += deletableBytes(deletable)
-		skippedNames = append(skippedNames, skipped...)
+	for _, pl := range plans {
+		assetsToDelete += len(pl.assets)
+		bytesToDelete += pl.rel.totalBytes()
 	}
 
 	mustFprintf(progress,
@@ -415,25 +382,20 @@ func pruneReleaseAssets(keep int, dryRun bool, progress io.Writer) error {
 		mustFprintf(progress, "  draft %-12v %4v asset(s)  %v (unpublished: assets kept)\n",
 			rel.tag, len(rel.assets), humanBytes(rel.totalBytes()))
 	}
-	if len(prune) == 0 {
-		mustFprintf(progress, "Nothing to prune: only %v release(s) still have assets.\n", len(releases))
+	if len(plans) == 0 {
+		mustFprintf(progress, "Nothing to prune: only %v release(s) still have assets.\n", len(retained))
 		return nil
 	}
 	mustFprintf(progress, "  Pruning %v older release(s): %v asset(s), %v\n",
-		len(prune), assetsToDelete, humanBytes(bytesToDelete))
-	if len(skippedNames) > 0 {
-		mustFprintf(progress,
-			"  %v asset(s) on those releases were not built by this tool and will be kept.\n",
-			len(skippedNames))
-	}
+		len(plans), assetsToDelete, humanBytes(bytesToDelete))
 	if dryRun {
 		for _, pl := range plans {
 			mustFprintf(progress, "  prune %-12v %4v asset(s)  %v\n",
-				pl.rel.tag, len(pl.deletable), humanBytes(deletableBytes(pl.deletable)))
+				pl.rel.tag, len(pl.assets), humanBytes(pl.rel.totalBytes()))
 		}
 		mustFprintf(progress,
 			"Dry run: nothing deleted. %v asset(s) across %v release(s) (%v) would be pruned.\n",
-			assetsToDelete, len(prune), humanBytes(bytesToDelete))
+			assetsToDelete, len(plans), humanBytes(bytesToDelete))
 		return nil
 	}
 
@@ -446,7 +408,7 @@ func pruneReleaseAssets(keep int, dryRun bool, progress io.Writer) error {
 	for _, pl := range plans {
 		var relDeleted int
 		var relBytes int64
-		for _, a := range pl.deletable {
+		for _, a := range pl.assets {
 			if deleted > 0 && deleted%rateLimitCheckEvery == 0 {
 				if err := waitForRateLimit(progress); err != nil {
 					return err
@@ -483,62 +445,44 @@ func pruneReleaseAssets(keep int, dryRun bool, progress io.Writer) error {
 
 	mustFprintf(progress, "Pruned %v asset(s) across %v release(s): %v freed in %v.\n",
 		deleted, len(plans), humanBytes(bytesFreed), time.Since(start).Round(time.Second))
-	for _, name := range skippedNames {
-		mustFprintf(progress, "  kept (not built by this tool): %v\n", name)
-	}
 	return nil
 }
 
-// partitionAssets splits a release's assets into those this tool generated for
-// the release's version (which the prune may delete) and everything else
-// (returned as names, so the caller can report what it deliberately kept).
-func partitionAssets(rel publishedRelease, re *regexp.Regexp) (deletable []asset, skipped []string) {
-	for _, a := range rel.assets {
-		if isRetainedAsset(a.name) {
-			skipped = append(skipped, a.name)
-			continue
-		}
-		if re.MatchString(a.name) {
-			deletable = append(deletable, a)
-			continue
-		}
-		skipped = append(skipped, a.name)
-	}
-	return deletable, skipped
+// prunePlan is the work for one release that has fallen out of the retention
+// window: every asset still attached to it.
+type prunePlan struct {
+	rel    publishedRelease
+	assets []asset
 }
 
-// retainedAssetSuffixes names the asset kinds the retention prune must never delete, however
-// old the release and whatever assetPlatformPattern grows to say.
+// planPrune splits the releases that still hold assets into the retention
+// window (assets kept), drafts (unpublished work, reported but never pruned),
+// and one plan per published release whose assets are all deleted, newest
+// first.
 //
-// An installable artifact is not a build output. The binaries in this pattern are rebuilt and
-// republished for every release, so retiring an old one costs a download; an APK is a signed
-// appliance that a person installed once and expects to be able to fetch again to upgrade in
-// place, and a signing key that outlives the artifact it signed is a key nobody can use.
-// Deleting all of them after ten releases is the footgun this list exists to close.
-//
-// The platform pattern does not match these names today, so they are already skipped — which is
-// exactly why the exemption is written down: the next person to add a platform to that pattern
-// must not have to notice this to avoid destroying every appliance ever released.
-var retainedAssetSuffixes = []string{".apk"}
-
-// isRetainedAsset reports whether an asset is one the prune must keep regardless of age.
-func isRetainedAsset(name string) bool {
-	lower := strings.ToLower(name)
-	for _, suffix := range retainedAssetSuffixes {
-		if strings.HasSuffix(lower, suffix) {
-			return true
+// Every asset of a pruned release is deleted, whatever it is named: the
+// retention window is the whole policy, and a pruned release keeps nothing. No
+// name is consulted, so an artifact this publisher did not generate — an
+// Android APK, an iOS IPA, a hand-attached file — goes with the rest. That is
+// deliberate, and it is why the plan is built in one place: the dry run and the
+// real run cannot disagree about what is about to disappear.
+func planPrune(all []publishedRelease, keep int) (retained, drafts []publishedRelease, plans []prunePlan) {
+	var releases []publishedRelease
+	for _, rel := range all {
+		if rel.draft {
+			drafts = append(drafts, rel)
+			continue
 		}
+		releases = append(releases, rel)
 	}
-	return false
-}
+	var prune []publishedRelease
+	retained, prune = selectPrunable(releases, keep)
 
-// deletableBytes returns the combined size of the given assets.
-func deletableBytes(assets []asset) int64 {
-	var n int64
-	for _, a := range assets {
-		n += a.size
+	plans = make([]prunePlan, 0, len(prune))
+	for _, rel := range prune {
+		plans = append(plans, prunePlan{rel: rel, assets: rel.assets})
 	}
-	return n
+	return retained, drafts, plans
 }
 
 // remainingTime estimates how long the rest of a paced prune takes, based on
