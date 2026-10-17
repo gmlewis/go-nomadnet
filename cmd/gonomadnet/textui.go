@@ -1309,16 +1309,10 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 				if title != "" {
 					dialogTitle = title
 				}
-				qr, err := tui.GenerateQRASCII(sourceHash)
-				body := tview.NewTextView().
-					SetDynamicColors(true).
-					SetTextAlign(tview.AlignCenter)
-				if err != nil || qr == "" {
-					body.SetText("[gray]" + sourceHash + "[-]")
-				} else {
-					body.SetText("[white]" + qr + "[-]")
-				}
-				tuiApp.Dialogs.ShowDialog(dialogTitle, body, 50, 16, nil)
+				// ShowQRDialog always draws the address under the code, so it
+				// can still be read and typed by hand when no camera can scan
+				// the code.
+				tuiApp.Dialogs.ShowQRDialog(dialogTitle, sourceHash)
 			},
 		}, func(result tui.PeerInfoEntry) {
 			h, ok := app.SourceHashFromHex(result.SourceHash)

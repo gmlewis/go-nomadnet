@@ -163,6 +163,53 @@ func (re *ReadlineEdit) offerKey(event *tcell.EventKey) *tcell.EventKey {
 	return re.offeredResult
 }
 
+// MouseHandler focuses the ReadlineEdit itself for a click anywhere in the
+// field.
+//
+// tview routes a mouse event down the tree and into the clicked widget's own
+// handler, and a click on an InputField ends inside it: the field forwards to
+// the TextArea it wraps, and that handler focuses ITSELF (tview textarea.go
+// MouseHandler: setFocus(t)); when the TextArea does not take the event, the
+// field focuses itself (setFocus(i)). The application records whichever of those
+// it was told about, and neither is the ReadlineEdit — while every focus test in
+// the port is written against the ReadlineEdit: the room composer's
+// editorHasFocus (and with it the [C-g] /msg gobot shortcut), the conversation
+// composer's composerHasFocus, and MainDisplay.fieldEditor's *ReadlineEdit
+// assertion, which is what gives the field urwid's "the focused widget sees the
+// key first" ordering.
+//
+// A tap-focused composer was therefore drawn as focused — it paints its caret
+// and takes every keystroke — while all of those comparisons said it was not.
+// On a touch appliance, where a tap is the only way a reader reaches the
+// composer, [C-g] typed nothing and ctrl-u toggled the room's members pane
+// instead of killing the line. The keyboard path never had this problem: the
+// fork's Box.Focus does not delegate, so Application.SetFocus records the
+// ReadlineEdit it was handed.
+//
+// The identity has to be restored here rather than at the comparisons, because
+// the field's own handler cannot know its wrapper: the setFocus call a click
+// makes is the only focus request there is.
+func (re *ReadlineEdit) MouseHandler() func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(p tview.Primitive)) (bool, tview.Primitive) {
+	inner := re.InputField.MouseHandler()
+	if inner == nil {
+		return nil
+	}
+	return func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(p tview.Primitive)) (bool, tview.Primitive) {
+		return inner(action, event, func(p tview.Primitive) { setFocus(re.focusIdentity(p)) })
+	}
+}
+
+// focusIdentity maps the primitive tview's field handlers ask to focus onto the
+// field the rest of the port knows: a click lands on the inner TextArea, and a
+// click the TextArea does not take on the embedded InputField, so both of those
+// ARE this ReadlineEdit. Any other primitive is left alone.
+func (re *ReadlineEdit) focusIdentity(p tview.Primitive) tview.Primitive {
+	if _, isTextArea := p.(*tview.TextArea); isTextArea || p == tview.Primitive(re.InputField) {
+		return re
+	}
+	return p
+}
+
 // SetText sets the edit buffer and positions the model cursor at the end,
 // matching Python's urwid.Edit.set_edit_text (which leaves edit_pos at end).
 func (re *ReadlineEdit) SetText(text string) {

@@ -1765,6 +1765,50 @@ func (cd *ConversationsDisplay) SetConversations(convs []ConversationInfo) {
 	cd.conversations = convs
 	cd.populateList()
 	cd.refreshTabBar()
+	cd.refreshDisplayedPeerInfo()
+}
+
+// refreshDisplayedPeerInfo re-resolves the open conversation's peer-info bar —
+// its display name, hop count and stamp cost — and re-renders it.
+//
+// A peer's display name arrives only with its announce, and the conversation is
+// routinely opened before that: the New Conversation dialog knows nothing but the
+// address it was given, and a fresh pairing has no directory entry with a name.
+// The LIST ROW resolves as soon as the announce lands, because every refresh
+// rebuilds it from App.ConversationList, whose app-data fallback reads the peer's
+// announce. The header was resolved once, at DisplayConversation time, and nothing
+// re-resolved it — so the two disagreed indefinitely, the header holding the
+// "<hex>…" fallback until the operator closed and reopened the conversation.
+//
+// Python has no such split: _update_peer_info runs inside update_widget_list, so
+// every announce-driven list refresh re-resolves the open conversation's header
+// too (Conversations.py:622, 1909). SetConversations is the Go port's equivalent
+// refresh entry point, so the re-resolution belongs here rather than in each
+// caller. The hop count and stamp cost come along for the same reason — they are
+// live lookups through OnHops/OnStampCost, and a peer's hop count is exactly what
+// settles when its announce and path finally arrive.
+//
+// Must run on the UI thread (SetConversations does).
+func (cd *ConversationsDisplay) refreshDisplayedPeerInfo() {
+	cw := cd.currentWidget
+	if cw == nil {
+		return
+	}
+	// A conversation with no entry in the refreshed list keeps the name it was
+	// seeded with rather than being blanked.
+	for _, conv := range cd.conversations {
+		if conv.SourceHash == cw.source {
+			cw.DisplayName = conv.DisplayName
+			break
+		}
+	}
+	if cd.OnStampCost != nil {
+		cw.StampCost = cd.OnStampCost(cw.source)
+	}
+	if cd.OnHops != nil {
+		cw.Hops = cd.OnHops(cw.source)
+	}
+	cw.updatePeerInfo()
 }
 
 // ToggleFullscreen toggles the conversation list pane between its normal fixed
