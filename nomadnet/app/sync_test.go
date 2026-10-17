@@ -67,6 +67,28 @@ func TestGetSyncStatusNoRouter(t *testing.T) {
 	}
 }
 
+// TestSyncActiveNoRouterAndIdle pins the Python button condition on the two
+// states that are reachable without driving a live transfer
+// (Conversations.py:1570): no router, and PR_IDLE. Both must report inactive —
+// that is what puts "Sync Now" on the Message Sync dialog rather than a Cancel
+// button. The remaining boundary (every terminal failure being >= PR_COMPLETE)
+// is covered where it becomes visible: TestSyncButtonOffersSyncNowAfterFailure
+// in the tui package, which drives the dialog through the Active hook.
+func TestSyncActiveNoRouterAndIdle(t *testing.T) {
+	t.Parallel()
+
+	a := NewApp(tempDir(t), "", false, false)
+	a.setupPaths()
+	if a.SyncActive() {
+		t.Error("SyncActive() = true without a router, want false")
+	}
+
+	a.Router = newRouterForTest(t)
+	if a.SyncActive() {
+		t.Error("SyncActive() = true for an idle router, want false")
+	}
+}
+
 func TestCancelLXMFSyncIdle(t *testing.T) {
 	t.Parallel()
 	a := NewApp(tempDir(t), "", false, false)

@@ -49,7 +49,10 @@ func (a *App) GetSyncStatus() string {
 	case lxmf.PRNoPath:
 		return "No path to node"
 	case lxmf.PRLinkFailed:
-		return "Link establisment failed"
+		// "establishment", not Python's "establisment" (NomadNetworkApp.py:502
+		// misspells it and the port copied it faithfully); fixed here on the
+		// operator's instruction.
+		return "Link establishment failed"
 	case lxmf.PRTransferFailed:
 		return "Sync request failed"
 	case lxmf.PRNoIdentityRcvd:
@@ -80,6 +83,29 @@ func (a *App) SyncStatusShowPercent() bool {
 		return true
 	}
 	return false
+}
+
+// SyncActive reports whether an LXMF propagation sync is in progress, matching
+// the Python condition the Message Sync dialog chooses its button label from
+// (Conversations.py:1570):
+//
+//	self.app.get_sync_status() == "Idle" or
+//	self.app.message_router.propagation_transfer_state >= LXMF.LXMRouter.PR_COMPLETE
+//
+// so a state is active only while it is strictly between PR_IDLE (0x00) and
+// PR_COMPLETE (0x07). Every terminal failure is >= PR_COMPLETE — PR_NO_PATH
+// (0xf0), PR_LINK_FAILED (0xf1), PR_TRANSFER_FAILED (0xf2), PR_NO_IDENTITY_RCVD
+// (0xf3), PR_NO_ACCESS (0xf4), PR_FAILED (0xfe) — which is why Python offers a
+// fresh "Sync Now" after a failed sync. Deciding it from the status TEXT instead
+// gets those states wrong: their wording ("Link establishment failed", "No path
+// to node", …) reads as in-flight and leaves a Cancel button with nothing to
+// cancel.
+func (a *App) SyncActive() bool {
+	if a.Router == nil {
+		return false
+	}
+	state := a.Router.PropagationTransferState()
+	return state != lxmf.PRIdle && state < lxmf.PRComplete
 }
 
 // GetSyncProgress returns the propagation sync progress as a fraction between

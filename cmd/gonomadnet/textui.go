@@ -1402,6 +1402,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 				Progress:    a.GetSyncProgress,
 				Status:      a.GetSyncStatus,
 				ShowPercent: a.SyncStatusShowPercent,
+				Active:      a.SyncActive,
 			},
 			func(result tui.SyncDialogResult) {
 				switch result.Action {

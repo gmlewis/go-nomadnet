@@ -3059,6 +3059,13 @@ type SyncDialogHooks struct {
 	Progress    func() float64
 	Status      func() string
 	ShowPercent func() bool
+
+	// Active answers Python's button test — "is a transfer in progress?" —
+	// from the router's STATE rather than its status wording
+	// (Conversations.py:1570). The tui package cannot import lxmf, so the app
+	// layer supplies it (App.SyncActive). Nil falls back to the status text,
+	// which cannot tell a terminal failure from an in-flight transfer.
+	Active func() bool
 }
 
 // ShowSyncDialog shows the Message Sync dialog, matching Python's
@@ -3257,6 +3264,12 @@ func (cd *ConversationsDisplay) ShowSyncDialog(
 // Python's check that the status is not Idle and not yet PR_COMPLETE
 // (Conversations.py:1393,1570).
 func (cd *ConversationsDisplay) isSyncActive() bool {
+	if cd.syncHooks.Active != nil {
+		return cd.syncHooks.Active()
+	}
+	// Fallback for a display built without the state hook. Only "Idle" and the
+	// two PR_COMPLETE wordings are recognised, so a terminal failure reads as
+	// active here; production wires Active (see SyncDialogHooks).
 	if cd.syncHooks.Status == nil {
 		return false
 	}

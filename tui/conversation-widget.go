@@ -873,12 +873,18 @@ func (cw *ConversationWidget) buildFooter() {
 				colors["msg_header_caution_bg"],
 			)
 		}
-		// Height is the wrap count at the live footer width (fallback 46 for
-		// a not-yet-laid-out frame). Draw re-wraps at the true width so a
-		// later resize still centers correctly; extra rows stay caution-bg.
+		// The banner FILLS the footer slot (weight 1), exactly as the composer
+		// does below. Its own height must not be pinned to the wrap count
+		// computed here: this runs with whatever width the frame happens to
+		// have, and the appliance starts the client at 80x24 and RESIZEs it to
+		// the real grid afterwards. A height captured at the narrow width (16
+		// rows at the ~38 columns that phase leaves the pane, against 13 at the
+		// real 52) then painted past the panel's bottom border until the frame
+		// was rebuilt. Draw re-wraps at the live width and the slot's height is
+		// the live wrap count (resizeFooter), so filling it keeps both right.
 		rows := cw.footerRowsAt(cw.footerInnerWidth())
 		cw.footerRows = rows
-		cw.footerArea.AddItem(cw.cautionBanner, rows, 0, false)
+		cw.footerArea.AddItem(cw.cautionBanner, 0, 1, false)
 		if cw.frame != nil {
 			cw.frame.ResizeItem(cw.footerArea, rows, 0)
 		}
