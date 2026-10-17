@@ -141,14 +141,13 @@ and a 33-digit run or a 64-character public key is none.
 
 The listener is asserted on a machine with no camera — `ScanServerTests` drives a real socket
 against a fake requester — so the parts where a protocol mistake would be silent are tested
-everywhere. What is left for a device is that the two halves of *this* app are talking, and
-that is what `--acceptance`'s `testTheDialogsScanButtonAsksTheApplianceForTheCamera` drives: it
-opens the dialog with Ctrl-N, Tabs from the address field to the `< Scan >` button under it,
-presses it, and asserts that the console changed. That last part is the assertion because the
-client's interface is cells drawn into one custom view — the dialog and its address field are
-not UIKit elements a test could read — so "the button did something" is measured as the
-fraction of the console's pixels that differ before and after the press, which is above the
-caret blinking and below an address appearing.
+everywhere. What is left for a device is that the two halves of *this* app are talking, and no
+unattended test settles that: the appliance presents its scanner over the console, and the
+scanner closes only when it reads a code, so the step needs a real QR code held in front of the
+camera. The acceptance suite therefore does not cover the Scan button. The device step is done
+by hand: open a dialog with Ctrl-N, Tab from the address field to the `< Scan >` button under
+it, press it, hold a Reticulum address's QR code to the camera, and watch the address land in
+the field.
 
 ## 5. The socket, and its length
 
