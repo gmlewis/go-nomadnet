@@ -301,6 +301,124 @@ func TestKnownNodeInfoFormDataTrustDefault(t *testing.T) {
 	}
 }
 
+// kndLXMFData builds KnownNodeInfo data whose LXMF address line is the real
+// Python line — g["sent"] + " LXMF Propagation Node Address is " +
+// prettyhexrep(pn_hash) (Network.py:631) — 69 cells with a 32-hex address.
+func kndLXMFData(app *App, pn string) KnownNodeInfoData {
+	return KnownNodeInfoData{
+		DisplayStr:  "gonomadnet on MiniPC",
+		SortStr:     "None",
+		TrustLevel:  "untrusted",
+		OpStr:       "go-nomadnet on MiniPC",
+		HopsStr:     "Unknown",
+		LXMFAddrStr: app.Glyphs["sent"] + " LXMF Propagation Node Address is <" + pn + ">",
+	}
+}
+
+// TestKnownNodeInfoLXMFAddrLineWraps pins the LXMF propagation-node address line
+// at the Network left pane's REAL interior width — 50 columns (the pane is
+// networkListWidth=52 wide, less the list slot's border). Python renders the
+// line as urwid.Text(align=CENTER) inside the Pile (Network.py:631,776), so the
+// 69-cell line wraps to TWO centered rows and the Pile's PACK height follows the
+// wrapped row count: urwid.Text(...).rows((50,)) == 2, and the two rendered rows
+// are
+//
+//	"        <sent> LXMF Propagation Node Address is        "
+//	"        <ef289bf86e1f8108940a364a1c579f93>        "
+//
+// (verified against urwid 2.6; each wrapped line is centered with the extra
+// column on the left). The port gave the row a fixed height of one, so tview
+// word-wrapped the 32-hex address onto an invisible second row and the pane
+// showed "...Address is" with no address at all.
+func TestKnownNodeInfoLXMFAddrLineWraps(t *testing.T) {
+	t.Parallel()
+	app := newTestApp()
+	app.Glyphs = GetGlyphSet(GlyphUnicode)
+	nd := NewNetworkDisplay(app, nil, nil)
+
+	const (
+		hash = "c7d0e7bbd883e595f53e14fa6986188c"
+		pn   = "ef289bf86e1f8108940a364a1c579f93"
+	)
+	sent := app.Glyphs["sent"]
+
+	rows := kndRow(t, nd, hash, kndLXMFData(app, pn), networkListWidth-2, 30)
+
+	if want := "        " + sent + " LXMF Propagation Node Address is"; rows[7] != want {
+		t.Errorf("row 7 (address line 1) = %q, want %q", rows[7], want)
+	}
+	if want := "        <" + pn + ">"; rows[8] != want {
+		t.Errorf("row 8 (address line 2) = %q, want %q — the address must not be clipped", rows[8], want)
+	}
+	if want := strings.Repeat("┄", networkListWidth-2); rows[9] != want {
+		t.Errorf("row 9 = %q, want the divider directly after the two address rows", rows[9])
+	}
+}
+
+// TestKnownNodeInfoLXMFAddrLineFitsOneRowWhenWide is the complement of
+// TestKnownNodeInfoLXMFAddrLineWraps: in a pane wide enough for the whole line
+// urwid gives the Text ONE row (urwid.Text(...).rows((80,)) == 1), so the Pile
+// PACK must shrink back to 17 rows and the divider must follow the address
+// immediately. A fixed two-row address item would reserve a blank row here.
+func TestKnownNodeInfoLXMFAddrLineFitsOneRowWhenWide(t *testing.T) {
+	t.Parallel()
+	app := newTestApp()
+	app.Glyphs = GetGlyphSet(GlyphUnicode)
+	nd := NewNetworkDisplay(app, nil, nil)
+
+	const (
+		hash = "c7d0e7bbd883e595f53e14fa6986188c"
+		pn   = "ef289bf86e1f8108940a364a1c579f93"
+	)
+	sent := app.Glyphs["sent"]
+
+	rows := kndRow(t, nd, hash, kndLXMFData(app, pn), 80, 30)
+
+	// 69 cells centered in 80: ceil-left padding of 6 (urwid CENTER).
+	if want := strings.Repeat(" ", 6) + sent + " LXMF Propagation Node Address is <" + pn + ">"; rows[7] != want {
+		t.Errorf("row 7 (address line) = %q, want %q", rows[7], want)
+	}
+	if want := strings.Repeat("┄", 80); rows[8] != want {
+		t.Errorf("row 8 = %q, want the divider directly after the one-row address line", rows[8])
+	}
+	if !strings.Contains(rows[16], "Save") {
+		t.Errorf("row 16 = %q, want the button row (17-row pile, no reserved blank row)", rows[16])
+	}
+}
+
+// TestKnownNodeInfoCheckBoxLabels pins the two CheckBoxes against urwid's
+// rendering. Python builds them as urwid.CheckBox (Network.py:727-728), which
+// renders the state glyph BEFORE the label — "[ ] Use as default propagation
+// node" / "[X] Identify when connecting" (verified against urwid 2.6) — while
+// tview.Checkbox draws the bare label and its marker after it, which left the
+// pane showing "Identify when connectingX".
+func TestKnownNodeInfoCheckBoxLabels(t *testing.T) {
+	t.Parallel()
+	app := newTestApp()
+	app.Glyphs = GetGlyphSet(GlyphUnicode)
+	nd := NewNetworkDisplay(app, nil, nil)
+
+	hash := strings.Repeat("h", 32)
+	data := KnownNodeInfoData{
+		DisplayStr:        "Test Node",
+		SortStr:           "None",
+		TrustLevel:        "unknown",
+		OpStr:             "Unknown",
+		HopsStr:           "Unknown",
+		LXMFAddrStr:       "No associated Propagation Node known",
+		UseAsPN:           false,
+		IdentifyOnConnect: true,
+	}
+	rows := kndRow(t, nd, hash, data, 80, 30)
+
+	if want := "[ ] Use as default propagation node"; rows[9] != want {
+		t.Errorf("row 9 (default-PN checkbox) = %q, want %q", rows[9], want)
+	}
+	if want := "[X] Identify when connecting"; rows[10] != want {
+		t.Errorf("row 10 (identify checkbox) = %q, want %q", rows[10], want)
+	}
+}
+
 // TestKnownNodeInfoFocusOnButtonRow verifies the pile focus starts on the last
 // selectable item (the button row), matching Python's pile.focus_position =
 // len(pile_widgets)-1 (Network.py:799).

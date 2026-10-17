@@ -78,8 +78,8 @@ type knownNodeInfoDisplay struct {
 	data       KnownNodeInfoData
 	nameEdit   *ReadlineEdit
 	sortEdit   *ReadlineEdit
-	pnCheck    *tview.Checkbox
-	idCheck    *tview.Checkbox
+	pnCheck    *UrwidCheckBox
+	idCheck    *UrwidCheckBox
 	rUntrusted *RadioButton
 	rUnknown   *RadioButton
 	rTrusted   *RadioButton
@@ -121,22 +121,22 @@ func newKnownNodeInfoDisplay(nd *NetworkDisplay, nodeHash string, data KnownNode
 	k.rUnknown = NewRadioButton(group, "Unknown", data.TrustLevel == "unknown", false)
 	k.rTrusted = NewRadioButton(group, "Trusted", data.TrustLevel == "trusted", false)
 
-	// CheckBoxes (Network.py:727-728). The PN checkbox records whether the user
+	// CheckBoxes (Network.py:727-728), rendered by urwid's CheckBox as
+	// "[ ] label" / "[X] label". The PN checkbox records whether the user
 	// toggled it (pn_changed, Network.py:720-721) so Save only acts on it when
 	// the user actually changed it, matching Python.
-	k.pnCheck = tview.NewCheckbox().
-		SetLabel("Use as default propagation node").
-		SetChecked(data.UseAsPN).
-		SetChangedFunc(func(checked bool) { k.pnChanged = true })
-	k.idCheck = tview.NewCheckbox().
-		SetLabel("Identify when connecting").
-		SetChecked(data.IdentifyOnConnect)
+	k.pnCheck = NewUrwidCheckBox("Use as default propagation node", data.UseAsPN).
+		SetChangedFunc(func(bool) { k.pnChanged = true })
+	k.idCheck = NewUrwidCheckBox("Identify when connecting", data.IdentifyOnConnect)
 
-	// LXMF PN address line (centered, Network.py:643-647).
-	lxmfRow := tview.NewTextView().
-		SetDynamicColors(false).
-		SetTextAlign(tview.AlignCenter).
-		SetText(data.LXMFAddrStr)
+	// LXMF PN address line (centered, Network.py:643-647/776). Python holds it
+	// as a urwid.Text(align=CENTER) inside the Pile, so the 69-cell line wraps to
+	// two centered rows in the pane and the Pile's PACK height follows the
+	// wrapped row count (urwid.Text(...).rows((50,)) == 2). AddItemFn is what
+	// expresses that: a fixed one-row item clipped the 32-hex address onto an
+	// invisible second row, and a fixed two-row one would reserve a blank row in
+	// a pane wide enough for the whole line.
+	lxmfRow := NewUrwidCenterText(data.LXMFAddrStr)
 
 	pile := newPileFiller()
 
@@ -149,7 +149,7 @@ func newKnownNodeInfoDisplay(nd *NetworkDisplay, nodeHash string, data KnownNode
 	pile.AddItem(textRow("Distance  : "+data.HopsStr), 1, false) // inserted at index 4
 	pile.AddItem(k.sortEdit, 1, true)
 	pile.AddItem(newDividerRow(g["divider1"]), 1, false)
-	pile.AddItem(lxmfRow, 1, false)
+	pile.AddItemFn(lxmfRow, lxmfRow.RowsAt, false)
 	pile.AddItem(newDividerRow(g["divider1"]), 1, false)
 	pile.AddItem(k.pnCheck, 1, true)
 	pile.AddItem(k.idCheck, 1, true)

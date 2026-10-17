@@ -96,6 +96,14 @@ func (c *urwidLeftText) Draw(screen tcell.Screen) {
 // SetText updates the displayed text.
 func (c *urwidCenterText) SetText(text string) { c.text = text }
 
+// RowsAt returns the number of display rows the text occupies at the given
+// width: urwid.Text.rows((maxcol,)) for a flow widget, i.e. the count of lines
+// its "space" wrap produces. A container that must reserve room for the widget
+// before rendering (a Pile's PACK height) uses this to size its item.
+func (c *urwidCenterText) RowsAt(width int) int {
+	return max(len(urwidSpaceWrap(c.text, width)), 1)
+}
+
 // Draw renders the text centered per row, WRAPPING each source line at the
 // widget width with urwid's "space" algorithm (urwid.Text wraps its content to
 // maxcol and the Pile PACK height follows the wrapped row count — a no-wrap

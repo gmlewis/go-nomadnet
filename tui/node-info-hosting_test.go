@@ -142,6 +142,57 @@ func TestNodeInfoHostingLayoutDisabledPropagation(t *testing.T) {
 	}
 }
 
+// TestNodeInfoHostingLXMFAddrLineWraps pins the Local Node Info panel's LXMF
+// propagation address line — the same line Python builds for the remote form
+// (Network.py:1465-1466,1477): g["sent"] + " LXMF Propagation Node Address is "
+// + prettyhexrep(hash), held as a urwid.Text(align=CENTER). With a 32-hex
+// address the line is 69 cells, so urwid wraps it onto two centered rows in the
+// pane's 50 interior columns and the Pile PACK height grows to 16 rows (14
+// content + 2 border). The port rendered it in a one-row Flex item, so the
+// address was clipped away exactly as in the remote Node Info form.
+func TestNodeInfoHostingLXMFAddrLineWraps(t *testing.T) {
+	t.Parallel()
+	app := newTestApp()
+	app.Glyphs = GetGlyphSet(GlyphUnicode)
+	app.GlyphSet = GlyphUnicode
+
+	const pn = "ef289bf86e1f8108940a364a1c579f93"
+	d := nodeInfoHostingData()
+	d.LXMFPropAddr = "<" + pn + ">"
+	ni := NewNodeInfoDisplay(app, d)
+
+	// The wrapped address line adds a second content row: 14 content + 2 border.
+	if got := ni.Height(); got != 16 {
+		t.Fatalf("Height = %v, want 16 (14 content + 2 border rows)", got)
+	}
+
+	// Render at the pane's real width so the interior is 50 columns, as in the
+	// left pane (networkListWidth=52 less the slot border).
+	rows := renderNodeInfo(t, ni, networkListWidth, ni.Height())
+	addrRow := -1
+	for i, r := range rows {
+		if strings.Contains(r, "LXMF Propagation Node Address is") {
+			addrRow = i
+			break
+		}
+	}
+	if addrRow < 0 {
+		t.Fatalf("rendered panel missing the LXMF propagation address line:\n%v", strings.Join(rows, "\n"))
+	}
+	// Interior row text: strip the panel's border columns and trailing padding.
+	interior := func(row string) string {
+		return strings.TrimRight(strings.TrimPrefix(row, "│"), " │")
+	}
+	wantFirst := "        " + app.Glyphs["sent"] + " LXMF Propagation Node Address is"
+	if got := interior(rows[addrRow]); got != wantFirst {
+		t.Errorf("address row 1 = %q, want %q", got, wantFirst)
+	}
+	wantSecond := "        <" + pn + ">"
+	if got := interior(rows[addrRow+1]); got != wantSecond {
+		t.Errorf("address row 2 = %q, want %q — the address must not be clipped", got, wantSecond)
+	}
+}
+
 // TestNodeInfoHostingButtonCallbacks verifies the Announce, Browse, and Rst
 // Stats buttons fire their callbacks when activated.
 func TestNodeInfoHostingButtonCallbacks(t *testing.T) {

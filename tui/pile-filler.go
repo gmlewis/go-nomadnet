@@ -61,8 +61,12 @@ type pileFiller struct {
 }
 
 type pfItem struct {
-	widget     tview.Primitive
-	height     int // natural height in rows
+	widget tview.Primitive
+	height int // natural height in rows
+	// heightFn, when non-nil, derives the item's height from the layout width,
+	// the way urwid measures a flow widget's natural rows at the width its
+	// container renders it at (see AddItemFn). It takes precedence over height.
+	heightFn   func(width int) int
 	selectable bool
 	// listFn, when non-nil, reports the *tview.List this item scrolls. The pile
 	// consults it to implement urwid's list-boundary handoff for an item that
@@ -95,16 +99,51 @@ func (p *pileFiller) AddItem(widget tview.Primitive, height int, selectable bool
 	if height < 0 {
 		height = 0
 	}
+	return p.appendItem(pfItem{widget: widget, height: height, selectable: selectable})
+}
+
+// AddItemFn appends an item whose height is computed at layout time from the
+// width the pile is rendered at, which is how urwid gives a flow widget its
+// natural (wrapped) rows: a Pile's PACK height follows the wrapped row count of
+// each child, so the same urwid.Text is one row in a wide pane and two in a
+// narrow one. A fixed height cannot express that — it would either clip the
+// wrapped rows or reserve a blank row where the text fits on one line. The
+// item is otherwise a fixed-height item: it is not stretched to fill spare
+// height (AddItem with height 0 is).
+//
+// heightFn must return at least 0 (a negative height is clamped to 0, which
+// makes the item flexible) and is called with the pile's current inner width.
+func (p *pileFiller) AddItemFn(widget tview.Primitive, heightFn func(width int) int, selectable bool) *pileFiller {
+	return p.appendItem(pfItem{widget: widget, heightFn: heightFn, selectable: selectable})
+}
+
+// appendItem adds a prepared item and registers it for focus when selectable.
+// It returns the pile for chaining.
+func (p *pileFiller) appendItem(item pfItem) *pileFiller {
 	idx := len(p.items)
-	p.items = append(p.items, pfItem{widget: widget, height: height, selectable: selectable})
+	p.items = append(p.items, item)
 	p.visible = append(p.visible, false)
-	if selectable {
+	if item.selectable {
 		p.selectable = append(p.selectable, idx)
 		if p.focusIndex < 0 {
 			p.focusIndex = 0
 		}
 	}
 	return p
+}
+
+// fixedHeight reports the item's height at the given layout width when that
+// height is known independently of the box height: an explicit height, or a
+// width-derived one. Items without either are the flexible ones (urwid WEIGHT),
+// which share whatever height is left over.
+func fixedHeight(it pfItem, width int) (int, bool) {
+	if it.heightFn != nil {
+		return max(it.heightFn(width), 0), true
+	}
+	if it.height > 0 {
+		return it.height, true
+	}
+	return 0, false
 }
 
 // FocusIndex returns the index (into selectable[]) of the focused selectable
@@ -276,8 +315,8 @@ func (p *pileFiller) SetRect(x, y, w, h int) {
 	fixedTotal := 0
 	flexibleCount := 0
 	for _, it := range p.items {
-		if it.height > 0 {
-			fixedTotal += it.height
+		if h, ok := fixedHeight(it, iw); ok {
+			fixedTotal += h
 		} else {
 			flexibleCount++
 		}
@@ -288,7 +327,21 @@ func (p *pileFiller) SetRect(x, y, w, h int) {
 		flexHeight = (ih - fixedTotal) / flexibleCount
 	}
 
-	total := fixedTotal + flexHeight*flexibleCount
+	// Resolve every item's height once: fixed items keep their own (possibly
+	// width-derived) height, flexible items share the leftover equally.
+	heights := make([]int, len(p.items))
+	for i, it := range p.items {
+		if h, ok := fixedHeight(it, iw); ok {
+			heights[i] = h
+		} else {
+			heights[i] = flexHeight
+		}
+	}
+
+	total := 0
+	for _, h := range heights {
+		total += h
+	}
 
 	// Compute the top-trim in rows (urwid Filler.render cursor-trim), based on
 	// the currently focused selectable item's position.
@@ -296,15 +349,11 @@ func (p *pileFiller) SetRect(x, y, w, h int) {
 	if total > ih {
 		if fi := p.focusedItem(); fi != nil {
 			focusedTop := 0
-			for _, it := range p.items {
+			for i, it := range p.items {
 				if it.widget == fi {
 					break
 				}
-				itemH := it.height
-				if itemH == 0 {
-					itemH = flexHeight
-				}
-				focusedTop += itemH
+				focusedTop += heights[i]
 			}
 			topTrim = max(focusedTop-ih+1, 0)
 			if max := total - ih; topTrim > max {
@@ -320,10 +369,7 @@ func (p *pileFiller) SetRect(x, y, w, h int) {
 	// height from the box top.
 	cy := iy - topTrim
 	for i, it := range p.items {
-		itemH := it.height
-		if itemH == 0 {
-			itemH = flexHeight
-		}
+		itemH := heights[i]
 		itemTop := cy
 		itemBottom := cy + itemH
 		cy = itemBottom

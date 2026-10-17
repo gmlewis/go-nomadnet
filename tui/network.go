@@ -35,6 +35,12 @@ type AnnounceEntry struct {
 	DisplayName string
 }
 
+// networkListWidth is the Network left pane's normal (non-fullscreen) width in
+// columns — Python's NetworkDisplay.given_list_width (Network.py:1622). The
+// pane's bordered list slot and the pack panel below it both render at this
+// width, so their interior (usable) width is networkListWidth-2.
+const networkListWidth = 52
+
 // NodeEntry holds a known node/peer for display.
 type NodeEntry struct {
 	SourceHash  string
@@ -309,9 +315,9 @@ func NewNetworkDisplay(app *App, announces []AnnounceEntry, nodes []NodeEntry) *
 	// (Network.py:1666) — NO outer LineBox or title around the page; the two
 	// columns sit directly in the body.
 	mainCols := newURWIDColumns(0, nd.leftPanel, nd.browser.Widget()).
-		SetFixedWidth(0, 52).
+		SetFixedWidth(0, networkListWidth).
 		SetWeight(1, 1)
-	nd.listWidth = 52
+	nd.listWidth = networkListWidth
 	mainCols.SetInputCapture(nd.handleInput)
 	// The right pane (browser) is self-managing: it owns Left/Right for its
 	// part-cursor model + Left-at-start focus release, so the outer Columns
@@ -1026,14 +1032,16 @@ func (nd *NetworkDisplay) rebuildLeftPanel() {
 		listSlot = nd.listSlotOverlay
 	}
 	pack := tview.Primitive(nd.localPeer.Widget())
-	packHeight := nd.localPeer.Height()
+	packHeight := func(int) int { return nd.localPeer.Height() }
 	if nd.packPanelIsNodeInfo && nd.nodeInfo != nil {
+		// The Local Node Info panel's height depends on the width it is given:
+		// its centered LXMF propagation address line wraps (see HeightAt).
 		pack = nd.nodeInfo.Widget()
-		packHeight = nd.nodeInfo.Height()
+		packHeight = nd.nodeInfo.HeightAt
 	}
 	if nd.statusInPeerSlot != nil {
 		pack = nd.statusInPeerSlot
-		packHeight = nd.statusHeight
+		packHeight = func(int) int { return nd.statusHeight }
 	}
 	nd.leftPanel.Clear()
 	nd.leftPanel.AddItem(listSlot, 0, true)
@@ -1042,7 +1050,7 @@ func (nd *NetworkDisplay) rebuildLeftPanel() {
 	// non-selectable contents when it walks focus, and Python's LocalPeer holds
 	// selectable rows — the Name edit and its buttons — so contents[1] is a
 	// candidate).
-	nd.leftPanel.AddItem(pack, packHeight, true)
+	nd.leftPanel.AddItemFn(pack, packHeight, true)
 	nd.installLeftSlotRole(0)
 	// The pack panel is always a nested item: it manages Up/Down among its own
 	// rows and hands focus back out through its own escape handlers.

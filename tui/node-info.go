@@ -176,12 +176,13 @@ func (ni *NodeInfoDisplay) buildHosting() {
 		AddItem(newDividerRow(g), 1, 0, false)
 
 	if !ni.data.DisablePropagation {
-		// Centered LXMF propagation address (Network.py:1465-1466,1477).
-		lxmf := tview.NewTextView().
-			SetDynamicColors(false).
-			SetTextAlign(tview.AlignCenter).
-			SetText("LXMF Propagation Node Address is " + ni.data.LXMFPropAddr)
-		layout.AddItem(lxmf, 1, 0, false).
+		// Centered LXMF propagation address (Network.py:1465-1466,1477). Python
+		// holds g["sent"]+" LXMF Propagation Node Address is "+prettyhexrep(...)
+		// as a urwid.Text(align=CENTER), so a 32-hex address (69 cells) wraps onto
+		// two centered rows in the pane's 50 interior columns; the Flex row is
+		// sized to exactly those rows, and HeightAt accounts for them.
+		lxmf := NewUrwidCenterText(ni.lxmfAddrLine())
+		layout.AddItem(lxmf, ni.lxmfAddrRows(networkListWidth), 0, false).
 			AddItem(newDividerRow(g), 1, 0, false)
 	}
 
@@ -330,21 +331,43 @@ func animationInterval() time.Duration {
 // Widget returns the bordered "Local Node Info" primitive for layout.
 func (ni *NodeInfoDisplay) Widget() *tview.Flex { return ni.widget }
 
-// Height returns the rendered height of the panel: the not-hosting branch is
-// 7 content rows + 2 border rows = 9. The hosting branch is 11 content rows +
-// 2 border = 13 with propagation disabled, or 13 content + 2 border = 15 with
-// the LXMF propagation address line (Network.py:1473-1517).
-func (ni *NodeInfoDisplay) Height() int {
+// Height returns the panel's height at the production pane width (the Network
+// left pane is networkListWidth columns wide, NetworkDisplay.given_list_width).
+// See HeightAt.
+func (ni *NodeInfoDisplay) Height() int { return ni.HeightAt(networkListWidth) }
+
+// HeightAt returns the height the panel needs when its widget is given a rect of
+// the given width. Every row is one row tall except the centered LXMF
+// propagation address line, whose height follows urwid's wrap at the panel's
+// interior width (width-2, the border takes two columns): a 32-hex propagation
+// address is 69 cells, so it is two rows in the production 50-column interior.
+// The enclosing pile sizes the pack item with this, mirroring urwid's Pile PACK
+// height for a flow widget.
+func (ni *NodeInfoDisplay) HeightAt(width int) int {
 	if !ni.data.HasNode {
 		return 9
 	}
-	// 2 header (Addr, Name) + 1 divider + [1 LXMF + 1 divider] + 6 stats +
-	// 1 divider + 1 buttons = 11 base + 2 when propagation enabled.
+	// 2 header (Addr, Name) + 1 divider + [R LXMF rows + 1 divider] + 6 stats +
+	// 1 divider + 1 buttons = 11 base rows, plus the address block when
+	// propagation is enabled, plus 2 border rows.
 	h := 2 + 1 + 6 + 1 + 1
 	if !ni.data.DisablePropagation {
-		h += 2
+		h += ni.lxmfAddrRows(width) + 1
 	}
-	return h + 2 // +2 border rows
+	return h + 2
+}
+
+// lxmfAddrLine returns the centered LXMF propagation address line exactly as
+// Python builds it (Network.py:1465): the glyph set's "sent" glyph, the fixed
+// label, and the propagation address.
+func (ni *NodeInfoDisplay) lxmfAddrLine() string {
+	return sentGlyph(ni.app) + " LXMF Propagation Node Address is " + ni.data.LXMFPropAddr
+}
+
+// lxmfAddrRows returns the number of rows the LXMF propagation address line
+// occupies inside a panel rect of the given width (its border takes 2 columns).
+func (ni *NodeInfoDisplay) lxmfAddrRows(width int) int {
+	return NewUrwidCenterText(ni.lxmfAddrLine()).RowsAt(max(width-2, 1))
 }
 
 // urwidButtonNaturalWidth returns the flat render width of a UrwidButton with
@@ -375,6 +398,16 @@ func newCenteredButtonRow(btn *UrwidButton, naturalWidth int) *tview.Flex {
 func dividerGlyph(app *App) string {
 	if app != nil && app.Glyphs != nil {
 		return app.Glyphs["divider1"]
+	}
+	return "-"
+}
+
+// sentGlyph returns the "sent" glyph for the app's glyph set (the marker Python
+// prefixes the LXMF propagation address lines with, Network.py:1465,631),
+// falling back to "-" like dividerGlyph.
+func sentGlyph(app *App) string {
+	if app != nil && app.Glyphs != nil {
+		return app.Glyphs["sent"]
 	}
 	return "-"
 }
