@@ -41,6 +41,17 @@ type KnownNodeInfoData struct {
 	LXMFAddrStr       string // centered PN-address line (stub: "No associated …")
 	UseAsPN           bool   // preselected "Use as default propagation node" (stub: false)
 	IdentifyOnConnect bool   // directory.should_identify_on_connect(source_hash)
+
+	// PropagationNotServing is true when the node's own identity has declared its
+	// lxmf.propagation address as not serving (an announce with node_state false,
+	// app.NodePropagationNotServing). Such a node has no propagation node to
+	// associate with it, so the form omits the centered address line AND the
+	// "Use as default propagation node" checkbox rather than presenting an address
+	// that cannot be used. Python's KnownNodeInfo has no equivalent test — it
+	// prints the derived address unconditionally and lets the user adopt an
+	// address nothing serves; the Go-only guard refuses that adoption
+	// (SetPropagationNodeFromNodeIdentity) and this is the matching display change.
+	PropagationNotServing bool
 }
 
 // KnownNodeInfoFormData is the edited form state collected when the user presses
@@ -149,9 +160,19 @@ func newKnownNodeInfoDisplay(nd *NetworkDisplay, nodeHash string, data KnownNode
 	pile.AddItem(textRow("Distance  : "+data.HopsStr), 1, false) // inserted at index 4
 	pile.AddItem(k.sortEdit, 1, true)
 	pile.AddItem(newDividerRow(g["divider1"]), 1, false)
-	pile.AddItemFn(lxmfRow, lxmfRow.RowsAt, false)
-	pile.AddItem(newDividerRow(g["divider1"]), 1, false)
-	pile.AddItem(k.pnCheck, 1, true)
+	// The propagation address line and its "Use as default propagation node"
+	// checkbox are omitted when the node's own identity has declared the address
+	// as not serving: there is no propagation node to associate with this node, so
+	// offering the address (with a control that adopts it) would be a dead end. The
+	// local Node Info panel already follows the same rule for this instance
+	// (Network.py:1472 `if not self.app.disable_propagation` omits the line
+	// entirely); this applies it to the peer's own declaration. See
+	// app.NodePropagationNotServing.
+	if !data.PropagationNotServing {
+		pile.AddItemFn(lxmfRow, lxmfRow.RowsAt, false)
+		pile.AddItem(newDividerRow(g["divider1"]), 1, false)
+		pile.AddItem(k.pnCheck, 1, true)
+	}
 	pile.AddItem(k.idCheck, 1, true)
 	pile.AddItem(newDividerRow(g["divider1"]), 1, false)
 	pile.AddItem(k.rUntrusted, 1, true)

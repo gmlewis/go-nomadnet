@@ -125,6 +125,10 @@ func (a *App) startNode() error {
 	a.Node.OnPageServed = a.onNodePageServed
 	a.Node.OnFileServed = a.onNodeFileServed
 	a.Node.OnAnnounced = a.onNodeAnnounced
+	// Python's Node.announce ends by declaring the app's propagation address
+	// (Node.py:217 → NomadNetworkApp's LXMF router), so every node announce
+	// carries an lxmf.propagation declaration alongside the node name.
+	a.Node.OnAnnouncePropagationNode = a.declarePropagationNodeAddress
 
 	// Announce at start (Node.py:40-47): a daemon thread sleeps
 	// START_ANNOUNCE_DELAY then sends the first node announce. Python makes

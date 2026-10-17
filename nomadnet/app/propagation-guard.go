@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/gmlewis/go-reticulum/lxmf"
 	"github.com/gmlewis/go-reticulum/rns"
 )
 
@@ -56,6 +57,13 @@ var ErrPropagationNodeUnproven = errors.New("no propagation node has announced t
 // destination table by destination hash and fills it from every received
 // announce (rns.Identity.remember), so a recalled identity here means a
 // propagation node announced this exact address.
+//
+// Known is NOT the same as serving: NomadNet declares its own propagation
+// address on every node announce (Node.py:216-220) and announces the withdrawal
+// when propagation is switched off (LXMRouter.disable_propagation,
+// LXMRouter.py:692-694), so an address can be announced with the payload's
+// node_state element false. Use PropagationNodeServing to ask whether the
+// address is backed by a node that actually serves propagation.
 func (a *App) PropagationNodeKnown(pnHash []byte) bool {
 	if a.Transport == nil || len(pnHash) == 0 {
 		return false
@@ -63,23 +71,71 @@ func (a *App) PropagationNodeKnown(pnHash []byte) bool {
 	return rns.RecallIdentity(a.Transport, pnHash) != nil
 }
 
+// PropagationNodeServing reports whether the identity that announced the given
+// `lxmf.propagation` address declared itself as an *active* propagation node —
+// the node_state element of the announce payload
+// (lxmf.PropagationNodeStateFromAppData; Python LXMRouter.py:324-336 and its
+// pn_announce_data_is_valid acceptance rules).
+//
+// This is the check that matters for adopting a propagation node. A NomadNet
+// node declares its own propagation address on every node announce even when it
+// serves nothing, so "announced" alone would adopt an address that answers no
+// requests — the trap this file exists to prevent. An address that was never
+// announced, or whose latest announce carries no readable state, is not serving.
+func (a *App) PropagationNodeServing(pnHash []byte) bool {
+	if a.Transport == nil || len(pnHash) == 0 {
+		return false
+	}
+	serving, ok := lxmf.PropagationNodeStateFromAppData(a.Transport.RecallAppData(pnHash))
+	return ok && serving
+}
+
+// NodePropagationNotServing reports whether the node identified by nodeHash has
+// declared that it does not serve a propagation node — that is, the
+// `lxmf.propagation` address derived from the node's identity has been announced
+// by that same identity with node_state false.
+//
+// The declaration is the node's own, so it is authoritative: the node is telling
+// the network "this is my propagation address, and I am not serving it" (Python's
+// Node.announce declares it on every node announce, Node.py:216-220, and
+// disable_propagation announces the withdrawal, LXMRouter.py:692-694). A caller
+// that offers the node's propagation address for adoption — the KnownNodeInfo
+// "LXMF Propagation Node Address is <hex>" line and its "Use as default
+// propagation node" checkbox — must not offer it at all in that case: the address
+// cannot be used as a propagation node, and presenting it (with a control that
+// adopts it) is exactly the trap this file's guard exists to refuse.
+//
+// An address that was never declared at all is NOT covered: absence of a
+// declaration means "unknown", not "not serving", so the caller keeps the
+// SoT behavior (show the derived address; the guard refuses an unserved
+// adoption).
+func (a *App) NodePropagationNotServing(nodeHash []byte) bool {
+	pnHash := a.NodePropagationHash(nodeHash)
+	return len(pnHash) > 0 && a.PropagationNodeKnown(pnHash) && !a.PropagationNodeServing(pnHash)
+}
+
 // propagationNodeMarker classifies a default propagation node from the two
 // facts the transport can supply, as a short ASCII annotation for the
 // Conversations footer: the empty string when the node looks usable, otherwise
-// the reason it does not. The two failure states are kept apart deliberately —
+// the reason it does not. The three failure states are kept apart deliberately —
 // "no identity" means no process has announced that address at all (a dead
-// selection, and the state the fleet's phones were left in), while "no path"
-// means the address is real but not currently routable (a transient condition
-// that resolves itself, e.g. once the node re-announces).
+// selection, and the state the fleet's phones were left in); "stopped" means the
+// address is declared but its node_state says it is not serving (a NomadNet
+// node's own propagation address, which it declares even with propagation
+// switched off); "no path" means the address is real and serving but not
+// currently routable (a transient condition that resolves itself, e.g. once the
+// node re-announces).
 //
 // The wording is short on purpose. The footer is one line in a 52-column pane
 // and the marker is appended to the node label, so a longer phrase pushed the
 // *reason* past the right edge — leaving the reader with "unreachable: " and no
 // idea why, which is worse than saying nothing.
-func propagationNodeMarker(identityKnown, hasPath bool) string {
+func propagationNodeMarker(identityKnown, serving, hasPath bool) string {
 	switch {
 	case !identityKnown:
 		return "no identity"
+	case !serving:
+		return "stopped"
 	case !hasPath:
 		return "no path"
 	}
@@ -93,7 +149,11 @@ func (a *App) propagationNodeMarkerFor(pnHash []byte) string {
 	if a.Transport == nil || len(pnHash) == 0 {
 		return ""
 	}
-	return propagationNodeMarker(a.PropagationNodeKnown(pnHash), a.Transport.HasPath(pnHash))
+	return propagationNodeMarker(
+		a.PropagationNodeKnown(pnHash),
+		a.PropagationNodeServing(pnHash),
+		a.Transport.HasPath(pnHash),
+	)
 }
 
 // PropagationNodeMarker returns the reachability marker for the default
@@ -107,16 +167,19 @@ func (a *App) PropagationNodeMarker() string {
 // KnownNodeInfo "Use as default propagation node" checkbox implies: the
 // `lxmf.propagation` address derived from the identity that announced nodeHash
 // (Python save_node, Network.py:730-734). It refuses with
-// ErrPropagationNodeUnproven when nothing has announced the derived address,
-// which is the case whenever the host's node and its propagation node run under
-// different identities. This guard is Go-only; see the file comment above.
+// ErrPropagationNodeUnproven unless a propagation node is actually *serving* at
+// the derived address — announced with node_state true
+// (PropagationNodeServing) — which is the case whenever the host's node and its
+// propagation node run under different identities, and also for a NomadNet node
+// that declares its own address with propagation switched off. This guard is
+// Go-only; see the file comment above.
 //
 // The caller is expected to show the returned error to the user rather than
 // dropping it, because the whole point of the guard is that a dead address must
 // never be accepted silently.
 func (a *App) SetPropagationNodeFromNodeIdentity(nodeHash []byte) error {
 	pnHash := a.NodePropagationHash(nodeHash)
-	if !a.PropagationNodeKnown(pnHash) {
+	if !a.PropagationNodeServing(pnHash) {
 		return ErrPropagationNodeUnproven
 	}
 	a.SetUserSelectedPropagationNode(pnHash)

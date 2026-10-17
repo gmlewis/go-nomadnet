@@ -72,6 +72,12 @@ type Paths struct {
 
 	// Examples is the path to the examples directory.
 	Examples string
+
+	// PNAnnounced is the marker file recording that this instance has announced
+	// LXMF propagation state (Python's pnannouncedpath, NomadNetworkApp.py:110).
+	// Its existence is what makes a startup with propagation disabled announce
+	// the withdrawal (NomadNetworkApp.py:379-385).
+	PNAnnounced string
 }
 
 // New creates a Paths struct rooted at the given config directory.
@@ -92,6 +98,7 @@ func New(root string) *Paths {
 		LogFile:       filepath.Join(root, "logfile"),
 		ErrorFile:     filepath.Join(root, "errors"),
 		Examples:      filepath.Join(root, "examples"),
+		PNAnnounced:   filepath.Join(root, "pnannounced"),
 	}
 }
 

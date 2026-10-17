@@ -466,3 +466,61 @@ func TestKnownNodeInfoEscReturnsToNodes(t *testing.T) {
 		t.Error("after Esc showingNodes = false, want true")
 	}
 }
+
+// TestKnownNodeInfoOmitsPropagationFieldsWhenNodeIsNotAPN pins the display rule
+// for a node whose own identity has declared that its propagation address is not
+// serving (app.NodePropagationNotServing → KnownNodeInfoData.PropagationNotServing).
+// Such a node offers no usable propagation node, so the form drops the centered
+// "LXMF Propagation Node Address is <hex>" line AND the "Use as default
+// propagation node" checkbox — the address cannot be used as a propagation node,
+// and a control that adopts it is a dead end. Nothing else changes: the identity
+// checkbox, the trust radios and the buttons stay, and the pile is three rows
+// shorter (address line, its divider, the checkbox).
+//
+// The local Node Info panel already behaves this way for this instance: Python
+// omits the line entirely when propagation is switched off
+// (Network.py:1472), so this is the same rule applied to a peer's declaration.
+func TestKnownNodeInfoOmitsPropagationFieldsWhenNodeIsNotAPN(t *testing.T) {
+	t.Parallel()
+	app := newTestApp()
+	app.Glyphs = GetGlyphSet(GlyphUnicode)
+	nd := NewNetworkDisplay(app, nil, nil)
+
+	hash := strings.Repeat("i", 32)
+	data := KnownNodeInfoData{
+		DisplayStr:            "Test Node",
+		SortStr:               "None",
+		TrustLevel:            "unknown",
+		OpStr:                 "Unknown",
+		HopsStr:               "Unknown",
+		LXMFAddrStr:           app.Glyphs["sent"] + " LXMF Propagation Node Address is <ef289bf86e1f8108940a364a1c579f93>",
+		IdentifyOnConnect:     true,
+		PropagationNotServing: true,
+	}
+
+	k := newKnownNodeInfoDisplay(nd, hash, data)
+	if got, want := k.pile.GetItemCount(), 14; got != want {
+		t.Errorf("pile item count = %v, want %v (17 less the address line, its divider and the PN checkbox)", got, want)
+	}
+
+	rows := kndRow(t, nd, hash, data, 50, 30)
+	joined := strings.Join(rows, "\n")
+	for _, gone := range []string{"LXMF Propagation Node Address is", "Use as default propagation node"} {
+		if strings.Contains(joined, gone) {
+			t.Errorf("rendered panel still contains %q; a node that declares no propagation node must not offer one", gone)
+		}
+	}
+	for _, want := range []string{"Node Addr : <" + hash + ">", "Identify when connecting", "(X) Unknown", "Save"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("rendered panel missing %q", want)
+		}
+	}
+
+	// Dividers must never end up adjacent where the block was removed.
+	divider := strings.Repeat("┄", 50)
+	for i, row := range rows {
+		if row == divider && i > 0 && rows[i-1] == divider {
+			t.Errorf("rows %v and %v are adjacent dividers after removing the propagation block", i-1, i)
+		}
+	}
+}

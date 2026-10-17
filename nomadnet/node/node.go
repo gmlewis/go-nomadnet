@@ -97,6 +97,13 @@ type Node struct {
 	OnPageServed    func()
 	OnFileServed    func()
 	OnAnnounced     func()
+	// OnAnnouncePropagationNode runs after each successful node announce to
+	// declare this node's LXMF propagation address, mirroring the trailing
+	// self.app.message_router.announce_propagation_node() in Python's
+	// Node.announce (Node.py:216-220). The app wires it to its LXMF router — so
+	// the node package keeps its one-way dependency — and a nil hook declares
+	// nothing.
+	OnAnnouncePropagationNode func()
 
 	destination *rns.Destination
 	identity    *rns.Identity
@@ -390,7 +397,15 @@ func (n *Node) SetName(name string) {
 }
 
 // Announce sends an announce for this node on the RNS network with
-// the node name as app data. Matches Python's Node.announce().
+// the node name as app data, and then declares the node's LXMF propagation
+// address. Matches Python's Node.announce() (Node.py:214-220), which announces
+// the node destination and then calls
+// self.app.message_router.announce_propagation_node(): every NomadNet node
+// declares the lxmf.propagation address derived from its own identity, so the
+// "LXMF Propagation Node Address is <hex>" line a peer's node Info page shows
+// (Network.py:629-634) refers to a destination that actually exists on the
+// network. The declaration carries the router's node_state, so a node whose
+// propagation is switched off still declares the address — as not serving.
 func (n *Node) Announce() error {
 	if n.destination == nil {
 		return errors.New("node not started")
@@ -406,7 +421,14 @@ func (n *Node) Announce() error {
 	if n.OnAnnounced != nil {
 		n.OnAnnounced()
 	}
-	return n.destination.Announce(appData)
+	err := n.destination.Announce(appData)
+	if err != nil {
+		return err
+	}
+	if n.OnAnnouncePropagationNode != nil {
+		n.OnAnnouncePropagationNode()
+	}
+	return nil
 }
 
 // PeerConnected handles a peer establishing a link to this node, mirroring

@@ -914,7 +914,12 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		data.HopsStr = tui.FormatHopsStr(a.PeerHops(hash))
 		pnHash := a.NodePropagationHash(hash)
 		data.LXMFAddrStr = tui.FormatLXMFAddrStr(pnHash, tuiApp.Glyphs["sent"])
-		if pnHash != nil {
+		// A node that has declared (from its own identity) that its propagation
+		// address is not serving has no propagation node to offer: the form drops
+		// the address line and the default-PN checkbox instead of showing an address
+		// that cannot be used as a propagation node.
+		data.PropagationNotServing = a.NodePropagationNotServing(hash)
+		if pnHash != nil && !data.PropagationNotServing {
 			if sel := a.GetUserSelectedPropagationNode(); sel != nil && bytes.Equal(sel, pnHash) {
 				data.UseAsPN = true
 			}

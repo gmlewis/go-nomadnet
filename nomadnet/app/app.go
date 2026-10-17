@@ -494,6 +494,13 @@ func (a *App) initRNS() {
 	})
 	a.Logger.Info("Announce handlers registered")
 
+	// Apply [node] disable_propagation to the router (Python
+	// NomadNetworkApp.py:378-396): an enabled instance starts serving a
+	// propagation node, a disabled one that had announced propagation state
+	// declares the withdrawal. Both paths are what make this instance's
+	// lxmf.propagation address a declared destination.
+	a.applyPropagationConfig()
+
 	// Restore the saved (or best trusted) propagation node at boot (Python
 	// NomadNetworkApp.py:413 self.autoselect_propagation_node() right after the
 	// announce handlers register). Without this the LXMF router starts with no
@@ -631,6 +638,10 @@ func (a *App) InitWithTransport(ts *rns.TransportSystem, identity *rns.Identity)
 		AspectFilter:                "lxmf.propagation",
 		ReceivedAnnounceWithContext: a.handlePNAnnounce,
 	})
+
+	// Apply [node] disable_propagation to the router, exactly as the production
+	// initRNS path does (Python NomadNetworkApp.py:378-396).
+	a.applyPropagationConfig()
 
 	// Mirror the production initRNS path (which calls startNode so a node is
 	// hosted when the config enables it). Tests that need a specific node state

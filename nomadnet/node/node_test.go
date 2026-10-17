@@ -19,6 +19,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -891,5 +892,76 @@ func writeFile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestAnnounceDeclaresPropagationNode pins the trailing declaration in Python's
+// Node.announce (Node.py:216-220):
+//
+//	self.destination.announce(app_data=self.app_data)
+//	self.app.message_router.announce_propagation_node()
+//
+// Every NomadNet node declares its LXMF propagation address on each node
+// announce — the address the node's identity derives and a peer's node Info page
+// prints (Network.py:629-634) — and does so *after* the node destination is
+// announced. Without that declaration the printed address is backed by nothing.
+func TestAnnounceDeclaresPropagationNode(t *testing.T) {
+	t.Parallel()
+
+	ts := rns.NewTransportSystem(nil)
+	id, err := rns.NewIdentity(true, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dir := tempDir(t)
+	n := NewNode("TestNode", dir, dir, 720, 0, 0, false)
+	if err := n.Start(ts, id); err != nil {
+		t.Fatalf("Start error: %v", err)
+	}
+	defer n.Stop()
+
+	var calls []string
+	n.OnAnnounced = func() { calls = append(calls, "node-announce") }
+	n.OnAnnouncePropagationNode = func() { calls = append(calls, "declare-propagation-node") }
+
+	if err := n.Announce(); err != nil {
+		t.Fatalf("Announce error: %v", err)
+	}
+	if want := []string{"node-announce", "declare-propagation-node"}; !slices.Equal(calls, want) {
+		t.Errorf("announce sequence = %v, want %v (the node announce precedes the declaration)", calls, want)
+	}
+
+	// A node with no hook wired must still announce cleanly.
+	n.OnAnnouncePropagationNode = nil
+	if err := n.Announce(); err != nil {
+		t.Fatalf("Announce with no declaration hook error: %v", err)
+	}
+}
+
+// TestAnnounceWithoutHookIsSilent verifies the declaration hook is optional: a
+// node constructed without one (every non-app caller, e.g. serve-page) announces
+// without panicking.
+func TestAnnounceWithoutHookIsSilent(t *testing.T) {
+	t.Parallel()
+
+	ts := rns.NewTransportSystem(nil)
+	id, err := rns.NewIdentity(true, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dir := tempDir(t)
+	n := NewNode("TestNode", dir, dir, 720, 0, 0, false)
+	if err := n.Start(ts, id); err != nil {
+		t.Fatalf("Start error: %v", err)
+	}
+	defer n.Stop()
+
+	if n.OnAnnouncePropagationNode != nil {
+		t.Error("a freshly constructed node should have no declaration hook")
+	}
+	if err := n.Announce(); err != nil {
+		t.Fatalf("Announce error: %v", err)
 	}
 }
