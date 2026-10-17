@@ -1040,11 +1040,16 @@ func (a *App) ConversationList() []conversation.ConversationInfo {
 					sortRanks[hashHex] = de.SortRank
 				}
 			}
-			// Python builds a cached Conversation object for every list entry,
-			// whose __init__ recalls the peer (Conversation.py:204-208) and
-			// marks the peer's RNS known-destinations entry as used. Do the
-			// same here so peers the user talks to survive the transport's
-			// pathless/never-used cleanup even between direct openings.
+			// Recall the peer so its RNS known-destinations entry is recorded
+			// as in use and survives the transport's pathless/never-used
+			// cleanup even between direct openings. Python reaches the same
+			// entry with Identity.recall_app_data in conversation_list
+			// (Conversation.py:124) — which, unlike Conversation.__init__,
+			// issues no path request. A peer whose identity is unknown is
+			// therefore asked for by the code that constructs a Conversation
+			// (App.peerConversation → Conversation.RecallPeer), not here: the
+			// list is rebuilt on every refresh and must not broadcast a
+			// request each time.
 			if a.Transport != nil {
 				a.Transport.Recall(hashBytes)
 			}

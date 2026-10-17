@@ -169,8 +169,10 @@ type ConversationsDisplay struct {
 	// connects it to App.SendConversation so a composed message is built
 	// into an outbound lxmf.Message and dispatched through the router.
 	// The source hash of the open conversation is forwarded along with the
-	// composed content/title.
-	OnSend func(sourceHash, content, title string, attachments []string)
+	// composed content/title. It reports whether the message was dispatched, so
+	// the composer can keep a draft whose send failed (Python clears the editor
+	// only on a successful send, Conversations.py:2435-2436).
+	OnSend func(sourceHash, content, title string, attachments []string) bool
 
 	// OnLoadMessages supplies the ConversationMessages for an open
 	// conversation (the wiring layer maps App.ConversationMessages →
@@ -932,13 +934,15 @@ func (cd *ConversationsDisplay) DisplayConversation(sourceHash string) {
 			cd.OnPaperMessageFailed()
 		}
 	}
-	cw.OnSend = func(content, title string, attachments []string) {
+	cw.OnSend = func(content, title string, attachments []string) bool {
 		// Forward the open conversation's source hash so the wiring layer can
 		// build and dispatch the outbound message via App.SendConversation
-		// (the C-d send path, Conversations.py:1834-1841).
-		if cd.OnSend != nil {
-			cd.OnSend(sourceHash, content, title, attachments)
+		// (the C-d send path, Conversations.py:1834-1841), and report back
+		// whether it went out — the composer keeps the draft when it did not.
+		if cd.OnSend == nil {
+			return false
 		}
+		return cd.OnSend(sourceHash, content, title, attachments)
 	}
 	// Ctrl-U purges the FAILED messages of the open conversation (Python
 	// ConversationWidget.keypress "ctrl u" → conversation.purge_failed +

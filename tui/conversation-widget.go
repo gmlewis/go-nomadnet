@@ -229,10 +229,15 @@ type ConversationWidget struct {
 	renderedTitles map[string]string
 
 	// Callbacks
-	OnClose                  func()
-	OnPurgeFailed            func()
-	OnClearHistory           func()
-	OnSend                   func(content, title string, attachments []string)
+	OnClose        func()
+	OnPurgeFailed  func()
+	OnClearHistory func()
+	// OnSend hands the composer's content, title and staged attachment paths to
+	// the wiring layer, which builds and dispatches the LXMF message. It reports
+	// whether the message was dispatched: the composer is cleared only on true,
+	// matching Python's `if self.conversation.send(...): self.clear_editor()`
+	// (Conversations.py:2435-2436).
+	OnSend                   func(content, title string, attachments []string) bool
 	OnAttach                 func()
 	OnToggleFullscreen       func()
 	OnPaperMessage           func(action, content, title string) (path string, ok bool)
@@ -1000,7 +1005,15 @@ func (cw *ConversationWidget) footerIndicatorText() string {
 	return cw.attachmentIndicator.GetText(true)
 }
 
-// sendMessage sends the current editor content.
+// sendMessage sends the current editor content. The composer is cleared only
+// when the send was actually dispatched, mirroring Python's send_message, which
+// clears the editor only when conversation.send() returned True
+// (Conversations.py:2435-2436). A send can fail without sending anything — most
+// often because the peer's identity has not been recalled, and LXMF encrypts to
+// the recipient's identity, so no message can be built at all — so the draft and
+// the staged attachments stay in place for a retry. Clearing them regardless
+// loses the message silently: it disappears from the screen with nothing sent,
+// nothing stored and no error shown.
 func (cw *ConversationWidget) sendMessage() {
 	content := cw.editor.GetText()
 	if content == "" {
@@ -1010,14 +1023,13 @@ func (cw *ConversationWidget) sendMessage() {
 	if cw.fullEditorActive {
 		title = cw.titleEditor.GetText()
 	}
-	// Hand off the staged attachments (file paths) to the wiring layer so
-	// it can build the LXMF FIELD_FILE_ATTACHMENTS field, then clear the
-	// staging list (Python send_message + clear_editor,
-	// Conversations.py:2412-2436,2294-2298).
+	// Hand off the staged attachments (file paths) to the wiring layer so it can
+	// build the LXMF FIELD_FILE_ATTACHMENTS field (Python send_message,
+	// Conversations.py:2412-2433). They are dropped only by ClearEditor, which
+	// Python reaches solely on a successful send.
 	attachments := cw.pendingAttachments
-	cw.pendingAttachments = nil
-	if cw.OnSend != nil {
-		cw.OnSend(content, title, attachments)
+	if cw.OnSend != nil && !cw.OnSend(content, title, attachments) {
+		return
 	}
 	cw.ClearEditor()
 }

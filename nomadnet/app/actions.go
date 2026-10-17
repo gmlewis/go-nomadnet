@@ -220,7 +220,10 @@ const truncatedHashHexLen = rns.TruncatedHashLength / 8 * 2
 // a directory entry (so the peer shows up in the directory) and an on-disk
 // conversation directory (so the conversation persists and appears in
 // conversation_list, matching Python's Conversation(source_hash, initiator=True)
-// creating the directory). The variadic displayNameFallback names the new
+// creating the directory). Either way it then builds the peer's Conversation
+// object, which asks the network for the peer's identity when it is not already
+// known — the step that makes a newly addressed peer messagable (see
+// peerConversation). The variadic displayNameFallback names the new
 // directory entry when no announced app_data can be recalled (the announce-stream
 // paths pass the operator/peer display string, Python Network.py:152-157/705-709).
 // It returns whether a new conversation was created.
@@ -235,9 +238,13 @@ func (a *App) OpenLXMFLink(sourceHashHex string, displayNameFallback ...string) 
 		return false, errors.New("could not decode destination hash from LXMF link")
 	}
 
-	// An existing conversation directory means this is a known peer.
+	// An existing conversation directory means this is a known peer. Python's
+	// "Converse" entry points construct the Conversation object whether or not
+	// one already exists, so the peer's entry is refreshed and its identity is
+	// asked for here too — see peerConversation below.
 	for _, c := range a.ConversationList() {
 		if c.SourceHash == sourceHashHex {
+			a.peerConversation(sourceHashHex)
 			isNew = false
 			return isNew, nil
 		}
@@ -278,8 +285,32 @@ func (a *App) OpenLXMFLink(sourceHashHex string, displayNameFallback ...string) 
 		}
 	}
 
+	// Python's create path ends by constructing the Conversation
+	// (Conversations.py:1058, "new_conversation = nomadnet.Conversation(...,
+	// initiator=True)"), and Conversation.__init__ asks the network for the
+	// peer's identity when it does not already know it (Conversation.py:204-208).
+	// That request is the only thing that makes a merely-addressed peer
+	// messagable: LXMF encrypts to the recipient's identity, so without it no
+	// message can be built — not directly and not through a propagation node
+	// either. Skipping it left a QR-scanned or typed address permanently
+	// unmessagable until an lxmf.delivery announce happened to arrive on its own
+	// (announce_interval defaults to 6 hours).
+	a.peerConversation(sourceHashHex)
+
 	isNew = true
 	return isNew, nil
+}
+
+// peerConversation builds (or reuses) the peer's Conversation object, the way
+// every Python site that creates or converses with a peer does — the New
+// Conversation dialog, the Network page's Converse, a browser LXMF link and a
+// channel member's Converse all construct nomadnet.Conversation(...). Doing so
+// runs Conversation.__init__'s peer recall, which marks the peer's RNS
+// known-destinations entry as in use and, when the identity cannot be recalled,
+// asks the network for it (Conversation.py:204-208). It is a no-op when no
+// conversation path is configured.
+func (a *App) peerConversation(sourceHashHex string) {
+	a.conversationFor(sourceHashHex)
 }
 
 // ForgetNode removes the directory entry for sourceHash, mirroring the Python

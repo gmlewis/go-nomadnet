@@ -1532,12 +1532,18 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	// Send hook: C-d in the open conversation's composer builds the outbound
 	// LXMF message (App.SendConversation wires Conversation.SetSendDeps and
 	// dispatches via the router) and refreshes the list so the new message's
-	// last-activity/unread state shows. This closes the "Wire conversation
-	// send" gap (TODO).
-	conversationsDisplay.OnSend = func(sourceHash, content, title string, attachments []string) {
-		a.SendConversation(sourceHash, content, title, attachments...)
+	// last-activity/unread state shows. It reports whether the message was
+	// dispatched — a send fails when the peer's identity has not been recalled,
+	// since LXMF encrypts to the recipient's identity — and the composer keeps
+	// the draft in that case, as Python's send_message does by clearing the
+	// editor only on a successful send (Conversations.py:2435-2436).
+	conversationsDisplay.OnSend = func(sourceHash, content, title string, attachments []string) bool {
+		if !a.SendConversation(sourceHash, content, title, attachments...) {
+			return false
+		}
 		refreshConvs()
 		conversationsDisplay.ReloadCurrentMessages()
+		return true
 	}
 
 	// Message-loading hooks: supply the open conversation's messages (parsed

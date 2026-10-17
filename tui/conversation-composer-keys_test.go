@@ -47,7 +47,7 @@ func newComposerCW(t *testing.T) (*ConversationWidget, *composerCallbacks) {
 	cw.OnAttach = func() { cb.attaches++ }
 	cw.OnClose = func() { cb.closes++ }
 	cw.OnPurgeFailed = func() { cb.purges++ }
-	cw.OnSend = func(content, title string, attachments []string) { cb.sends++ }
+	cw.OnSend = func(content, title string, attachments []string) bool { cb.sends++; return true }
 	return cw, cb
 }
 

@@ -122,8 +122,9 @@ func TestConversationWidgetSendMessage(t *testing.T) {
 	cw := NewConversationWidget(app, "aabb1122")
 
 	var sentContent string
-	cw.OnSend = func(content, title string, _ []string) {
+	cw.OnSend = func(content, title string, _ []string) bool {
 		sentContent = content
+		return true
 	}
 
 	cw.editor.SetText("Hello world")
@@ -144,7 +145,7 @@ func TestConversationWidgetSendMessageEmpty(t *testing.T) {
 	cw := NewConversationWidget(app, "aabb1122")
 
 	sent := false
-	cw.OnSend = func(content, title string, _ []string) { sent = true }
+	cw.OnSend = func(content, title string, _ []string) bool { sent = true; return true }
 	cw.sendMessage()
 
 	if sent {

@@ -592,9 +592,10 @@ func TestDisplayConversationWiresOnSend(t *testing.T) {
 
 	var gotSource, gotContent, gotTitle string
 	var fired bool
-	cd.OnSend = func(sourceHash, content, title string, _ []string) {
+	cd.OnSend = func(sourceHash, content, title string, _ []string) bool {
 		fired = true
 		gotSource, gotContent, gotTitle = sourceHash, content, title
+		return true
 	}
 
 	cd.DisplayConversation(hash)
@@ -643,8 +644,9 @@ func TestDisplayConversationOnSendForwardsTitle(t *testing.T) {
 	cd := NewConversationsDisplay(app, convs)
 
 	var gotTitle string
-	cd.OnSend = func(sourceHash, content, title string, _ []string) {
+	cd.OnSend = func(sourceHash, content, title string, _ []string) bool {
 		gotTitle = title
+		return true
 	}
 
 	cd.DisplayConversation(hash)
@@ -921,9 +923,10 @@ func TestConversationWidgetPendingAttachments(t *testing.T) {
 
 	var gotAttachments []string
 	var gotContent string
-	cd.OnSend = func(sourceHash, content, title string, attachments []string) {
+	cd.OnSend = func(sourceHash, content, title string, attachments []string) bool {
 		gotContent = content
 		gotAttachments = attachments
+		return true
 	}
 
 	cd.DisplayConversation(hash)
