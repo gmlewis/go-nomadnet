@@ -198,11 +198,16 @@ It installs both the appliance and a test runner, presses the buttons, and asser
 reader would check — see [docs/iOS-App.md](iOS-App.md) §10. The first launch starts nothing;
 Start Stack brings up the shared instance and the sensor feed, and Stop Stack releases them
 and they come back; the console renders, takes a keystroke, and scrolls the panel a drag is
-over; rotating reflows it; Start Sensors turns the sensor path on; and a dialog's `< Scan >`
-button reaches the appliance's scanner, which is the one part of that feature a machine with
-no camera cannot test. It leaves its screenshots and its measurements in a result bundle under
+over; rotating reflows it; and Start Sensors turns the sensor path on. Nothing in it needs a
+person at the device, and it is not told anything about the room the appliance is in. It
+leaves its screenshots and its measurements in a result bundle under
 `ios/build/acceptance.xcresult`, which `xcrun xcresulttool export attachments --path …
 --output-path <dir>` unpacks.
+
+The `< Scan >` button in a dialog is deliberately not in that suite: the appliance presents
+its scanner over the console and closes it only when it reads a code, so the step needs a
+real QR code held in front of the camera. It is checked by hand, as
+[docs/iOS-App.md](iOS-App.md) §4 describes.
 
 While it runs, the appliance shows iOS's own *Automation Running* banner on the device. That
 is the test driving the app, not the appliance: it goes away when the run ends.
