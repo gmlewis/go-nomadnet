@@ -117,7 +117,7 @@ func newAnnounceInfoDisplay(nd *NetworkDisplay, ann AnnounceEntry, data Announce
 
 	// Common header rows (Network.py:236-239 / 227-230).
 	pile.AddItem(textRow("Time  : "+tsStr), 1, false)
-	pile.AddItem(textRow("Addr  : "+addrStr), 1, false)
+	pile.AddItem(NewAddrRow(nd.app, "Announce Address", "Addr  : "+addrStr), 1, false)
 	pile.AddItem(textRow("Type  : "+typeString), 1, false)
 
 	if isPN {

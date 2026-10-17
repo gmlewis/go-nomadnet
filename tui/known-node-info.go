@@ -148,6 +148,7 @@ func newKnownNodeInfoDisplay(nd *NetworkDisplay, nodeHash string, data KnownNode
 	// invisible second row, and a fixed two-row one would reserve a blank row in
 	// a pane wide enough for the whole line.
 	lxmfRow := NewUrwidCenterText(data.LXMFAddrStr)
+	MakeCenterAddrClickable(nd.app, "Propagation Node Address", lxmfRow)
 
 	pile := newPileFiller()
 
@@ -155,7 +156,7 @@ func newKnownNodeInfoDisplay(nd *NetworkDisplay, nodeHash string, data KnownNode
 	// and Distance at index 4 (Network.py:789,797).
 	pile.AddItem(textRow("Type      : "+typeString), 1, false)
 	pile.AddItem(k.nameEdit, 1, true)
-	pile.AddItem(textRow("Node Addr : "+addrStr), 1, false)
+	pile.AddItem(NewAddrRow(nd.app, "Node Address", "Node Addr : "+addrStr), 1, false)
 	pile.AddItem(textRow("Operator  : "+data.OpStr), 1, false)   // inserted at index 3
 	pile.AddItem(textRow("Distance  : "+data.HopsStr), 1, false) // inserted at index 4
 	pile.AddItem(k.sortEdit, 1, true)

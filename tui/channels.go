@@ -1333,11 +1333,18 @@ func (cd *ChannelsDisplay) ShowUserInfoDialog(nick, identityHash, lxmfHash strin
 	addCenter := func(text string) {
 		rows = append(rows, NewUrwidCenterText(text))
 	}
+	// The identity hash and the LXMF address are clickable: a click copies the
+	// bare address and opens its QR code.
+	addLeftClickable := func(text, title string) {
+		row := NewUrwidLeftText(text)
+		MakeLeftAddrClickable(cd.app, title, row)
+		rows = append(rows, row)
+	}
 	addLeft("")
 	addLeft(" Nick     : " + nick)
-	addLeft(" Identity : " + identityHash)
+	addLeftClickable(" Identity : "+identityHash, "Identity Hash")
 	if lxmfHash != "" {
-		addLeft(" LXMF     : " + lxmfHash)
+		addLeftClickable(" LXMF     : "+lxmfHash, "LXMF Address")
 	}
 
 	var row *urwidColumns

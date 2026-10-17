@@ -1524,11 +1524,15 @@ func (nd *NetworkDisplay) ShowLocalPeerDialog(lxmfAddr, identityHash, name strin
 			// Trigger announce
 		}), 0, 1, false)
 
+	info := tview.NewTextView().
+		SetDynamicColors(true).
+		SetTextColor(tcell.ColorDefault)
+	// The block carries two addresses — the LXMF address and the identity hash —
+	// so both are made clickable under the neutral modal title.
+	MakeAddrClickable(nd.app, "", info, sb.String())
+
 	layout := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(tview.NewTextView().
-			SetDynamicColors(true).
-			SetTextColor(tcell.ColorDefault).
-			SetText(sb.String()), 0, 1, false).
+		AddItem(info, 0, 1, false).
 		AddItem(buttons, 1, 0, false)
 
 	nd.app.Dialogs.ShowDialog("Local Peer", layout, 50, 10, nil)

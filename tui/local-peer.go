@@ -57,12 +57,10 @@ type LocalPeerDisplay struct {
 func NewLocalPeerDisplay(app *App, lxmfAddr, identityHash, name string, lastAnnounce time.Time) *LocalPeerDisplay {
 	lp := &LocalPeerDisplay{app: app}
 
-	lp.lxmfAddr = tview.NewTextView().
-		SetDynamicColors(false).
-		SetText("LXMF Addr : " + lxmfAddr)
-	lp.identity = tview.NewTextView().
-		SetDynamicColors(false).
-		SetText("Identity  : " + identityHash)
+	lp.lxmfAddr = tview.NewTextView().SetDynamicColors(false)
+	MakeAddrClickable(app, "LXMF Address", lp.lxmfAddr, "LXMF Addr : "+lxmfAddr)
+	lp.identity = tview.NewTextView().SetDynamicColors(false)
+	MakeAddrClickable(app, "Identity Hash", lp.identity, "Identity  : "+identityHash)
 
 	if app != nil && app.killRing != nil {
 		lp.nameEdit = NewReadlineEdit(app.killRing, "Name      : ", "")
@@ -183,8 +181,10 @@ func (lp *LocalPeerDisplay) SetName(name string) {
 // (Network.py:1271); only the announce time and identity fields update on a
 // refresh.
 func (lp *LocalPeerDisplay) SetData(lxmfAddr, identityHash string, lastAnnounce time.Time) {
-	lp.lxmfAddr.SetText("LXMF Addr : " + lxmfAddr)
-	lp.identity.SetText("Identity  : " + identityHash)
+	// SetAddrRowText both sets the text and re-tags the address in it, so a
+	// refreshed row keeps the click its constructor wired.
+	SetAddrRowText(lp.lxmfAddr, "LXMF Addr : "+lxmfAddr)
+	SetAddrRowText(lp.identity, "Identity  : "+identityHash)
 	lp.announce.SetText(lp.announceLine(lastAnnounce))
 }
 

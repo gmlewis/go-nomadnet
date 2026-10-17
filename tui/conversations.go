@@ -2663,10 +2663,11 @@ func (cd *ConversationsDisplay) ShowPeerInfoDialog(entry PeerInfoEntry, hooks Pe
 	}
 
 	// Address (read-only): urwid.Text("Addr : "+hash), Python selected_id_widget.
+	// Clickable: a click copies the bare address and opens its QR code.
 	addrText := tview.NewTextView()
 	addrText.SetDynamicColors(true)
 	addrText.SetTextColor(tcell.ColorDefault)
-	addrText.SetText("Addr : " + entry.SourceHash)
+	MakeAddrClickable(cd.app, "Peer Address", addrText, "Addr : "+entry.SourceHash)
 
 	// Name (editable): ReadlineEdit "Name : ".
 	eName := NewReadlineEdit(cd.app.killRing, "Name : ", "")

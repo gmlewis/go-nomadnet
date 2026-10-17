@@ -155,7 +155,8 @@ func (ni *NodeInfoDisplay) buildNotHosting() {
 func (ni *NodeInfoDisplay) buildHosting() {
 	g := dividerGlyph(ni.app)
 
-	addrText := tview.NewTextView().SetDynamicColors(false).SetText("Addr : " + ni.data.Addr)
+	addrText := tview.NewTextView().SetDynamicColors(false)
+	MakeAddrClickable(ni.app, "Node Address", addrText, "Addr : "+ni.data.Addr)
 	nameText := tview.NewTextView().SetDynamicColors(false).SetText("Name : " + ni.data.Name)
 
 	// Stat lines (Network.py:1479-1484,1501-1506) in pile order: Last Announce,
@@ -182,6 +183,7 @@ func (ni *NodeInfoDisplay) buildHosting() {
 		// two centered rows in the pane's 50 interior columns; the Flex row is
 		// sized to exactly those rows, and HeightAt accounts for them.
 		lxmf := NewUrwidCenterText(ni.lxmfAddrLine())
+		MakeCenterAddrClickable(ni.app, "Propagation Node Address", lxmf)
 		layout.AddItem(lxmf, ni.lxmfAddrRows(networkListWidth), 0, false).
 			AddItem(newDividerRow(g), 1, 0, false)
 	}

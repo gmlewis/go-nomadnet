@@ -346,6 +346,9 @@ func NewConversationWidget(app *App, sourceHash string) *ConversationWidget {
 	cw.peerInfoBar.SetDynamicColors(true)
 	cw.peerInfoBar.SetTextColor(tc["msg_header_sent_fg"])
 	cw.peerInfoBar.SetBackgroundColor(tc["msg_header_sent_bg"])
+	// A peer with no display name shows its hash here, and that hash is clickable
+	// like every other address. Wired once: updatePeerInfo only re-tags the text.
+	MakeAddrClickable(app, "Peer Address", cw.peerInfoBar, "")
 	cw.updatePeerInfo()
 
 	// Trust banner — style "msg_warning_untrusted" (TextUI.py:39/92): true-color
@@ -1023,7 +1026,7 @@ func (cw *ConversationWidget) sendMessage() {
 // is unavailable.
 func (cw *ConversationWidget) updatePeerInfo() {
 	if cw.source == "" {
-		cw.peerInfoBar.SetText(" No conversation selected")
+		SetAddrRowText(cw.peerInfoBar, " No conversation selected")
 		return
 	}
 	name := cw.DisplayName
@@ -1054,8 +1057,11 @@ func (cw *ConversationWidget) updatePeerInfo() {
 	rightParts = append(rightParts, speed+hopsStr)
 
 	// The peer display name is remote text; this bar is a dynamic-colors
-	// TextView.
-	cw.peerInfoBar.SetText(" " + escapeTviewTags(name) + " | " + strings.Join(rightParts, "  ") + " ")
+	// TextView. When the peer has no name the bar shows its hash, which is
+	// clickable like every other address the app displays; a named peer's bar
+	// carries no address and renders exactly as before.
+	SetAddrRowText(cw.peerInfoBar,
+		" "+escapeTviewTags(name)+" | "+strings.Join(rightParts, "  ")+" ")
 }
 
 // hasVisibleTrustBanner reports whether the trust banner should show,

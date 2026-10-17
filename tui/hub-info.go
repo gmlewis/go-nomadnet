@@ -58,6 +58,9 @@ func NewHubInfoArea(app *App, hubName string) *HubInfoArea {
 		SetDynamicColors(true).
 		SetScrollable(true).
 		SetTextColor(GetThemeColors(app.Theme)["scrollbar"]))
+	// The address click is wired here, once, on top of the wheel capture so both
+	// keep working; refreshView only re-tags the text it writes.
+	MakeAddrClickable(app, "Hub Address", hia.view, "")
 
 	hia.widget = tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(hia.view, 0, 1, false)
@@ -223,7 +226,7 @@ func (hia *HubInfoArea) dividerRow() string {
 func (hia *HubInfoArea) refreshView() {
 	snap := hia.snapshot
 	if snap == nil {
-		hia.view.SetText("[gray]No hub info available[-]")
+		SetAddrRowText(hia.view, "[gray]No hub info available[-]")
 		return
 	}
 	colors := GetThemeColors(hia.app.Theme)
@@ -301,5 +304,7 @@ func (hia *HubInfoArea) refreshView() {
 			fmt.Fprintf(&sb, "    #%v\n", r)
 		}
 	}
-	hia.view.SetText(sb.String())
+	// SetAddrRowText re-tags the hub address in the rebuilt block, so the click
+	// wired at construction keeps working across refreshes.
+	SetAddrRowText(hia.view, sb.String())
 }

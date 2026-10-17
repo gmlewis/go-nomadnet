@@ -50,6 +50,14 @@ func (dm *DialogManager) ShowQRDialog(title, data string) {
 // undersized dialog drops rows from the bottom, and the bottom row is the
 // encoded text.
 func qrDialogBody(qrText, data string) (*tview.Flex, int) {
+	return qrDialogBodyWithNote(qrText, data, "")
+}
+
+// qrDialogBodyWithNote is qrDialogBody with one extra centered line underneath,
+// used to report a side effect of opening the dialog — a click on an address
+// copies it, and a copy that says nothing is indistinguishable from a click that
+// did nothing. An empty note adds no row.
+func qrDialogBodyWithNote(qrText, data, note string) (*tview.Flex, int) {
 	body := tview.NewFlex().SetDirection(tview.FlexRow)
 	rows := 0
 	if qrText != "" {
@@ -69,5 +77,12 @@ func qrDialogBody(qrText, data string) (*tview.Flex, int) {
 		SetText("< " + data + " >")
 	body.AddItem(encoded, 1, 0, false)
 
-	return body, rows + 1
+	if note == "" {
+		return body, rows + 1
+	}
+	body.AddItem(tview.NewTextView().
+		SetTextAlign(tview.AlignCenter).
+		SetText(note), 1, 0, false)
+
+	return body, rows + 2
 }
