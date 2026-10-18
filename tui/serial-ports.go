@@ -44,6 +44,25 @@ func GetPortInfo() []SerialPortInfo {
 	}
 }
 
+// portDeviceForDescription resolves a port dropdown's displayed description back
+// to the device path the config carries, mirroring Python's
+// `device_map[x]` transform (Interfaces.py:158,164). It reports false when no
+// detected port carries that description.
+func portDeviceForDescription(description string) (string, bool) {
+	return portDeviceForDescriptionFrom(description, GetPortInfo())
+}
+
+// portDeviceForDescriptionFrom is portDeviceForDescription against an explicit port
+// list, so the lookup can be exercised without real hardware.
+func portDeviceForDescriptionFrom(description string, ports []SerialPortInfo) (string, bool) {
+	for _, p := range ports {
+		if p.Description == description {
+			return p.Device, true
+		}
+	}
+	return "", false
+}
+
 // scanDevPorts scans /dev for serial port devices on Unix systems.
 func scanDevPorts() []SerialPortInfo {
 	entries, err := os.ReadDir("/dev")

@@ -48,6 +48,13 @@ const (
 	// empty field rather than nothing: the option is written even when it was
 	// never filled in (Interfaces.py:1607).
 	transformAnnounceCap = "announce_cap"
+	// transformPortDevice maps a port dropdown's displayed description to the
+	// device path written to the config, mirroring Python's
+	// `transform: lambda x: device_map[x]` on get_port_field's dropdown branch
+	// (Interfaces.py:164). The dropdown lists ports by description, so without
+	// this the config would carry "/dev/ttyUSB0 — USB Serial" instead of the
+	// device node.
+	transformPortDevice = "port_device"
 )
 
 // InterfaceFormOptions carries the wiring-dependent choices an interface form
@@ -118,6 +125,9 @@ type formRow struct {
 	transform  string
 	validation []string
 	options    []string
+	// valueMap is the field's own option-text to config-value map, when it has
+	// one (see InterfaceField.ValueMap).
+	valueMap map[string]string
 
 	input *tview.InputField
 	drop  *tview.DropDown
@@ -641,6 +651,7 @@ func newFormRow(f InterfaceField) *formRow {
 		label:      f.Label,
 		kind:       f.Type,
 		transform:  f.Transform,
+		valueMap:   f.ValueMap,
 		validation: f.Validation,
 		options:    f.Options,
 	}
@@ -730,11 +741,36 @@ func (r *formRow) selectOption(raw string) {
 		return
 	}
 	for i, opt := range r.options {
+		if v, ok := r.valueMap[opt]; ok && fmt.Sprintf("%v", v) == raw {
+			r.drop.SetCurrentOption(i)
+			return
+		}
+	}
+	for i, opt := range r.options {
 		if fmt.Sprintf("%v", applyFormTransform(r.transform, opt)) == raw {
 			r.drop.SetCurrentOption(i)
 			return
 		}
 	}
+	// Nothing matched: the configured value is not one of the field's options — for
+	// the serial-port field, a device that is not currently plugged in. Python's
+	// _set_field_value just falls through in that case, leaving the dropdown on its
+	// default (Interfaces.py:2071-2085), so editing any other field of that
+	// interface and saving silently rewrites the port to whichever port was detected
+	// first. That silently loses the user's configuration, so the value is kept
+	// instead: appended to the list and selected, which preserves it across a save.
+	r.addOption(raw)
+}
+
+// addOption appends a value the option list does not cover and selects it, so a
+// configured value survives an edit-and-save (see selectOption).
+func (r *formRow) addOption(text string) {
+	if text == "" || indexOfOption(r.options, text) >= 0 {
+		return
+	}
+	r.options = append(r.options, text)
+	r.drop.SetOptions(r.options, nil)
+	r.drop.SetCurrentOption(len(r.options) - 1)
 }
 
 // loadValue fills the row from a config value, inverting the field's transform.
@@ -797,6 +833,13 @@ func (r *formRow) value() (any, bool) {
 		_, t := r.drop.GetCurrentOption()
 		if r.transform == transformScopeNone && t == "None" {
 			return "", false
+		}
+		// A field that carries its own option→value map resolves exactly against
+		// the options it was built from (Python's closure-captured device_map),
+		// which a name-based transform cannot do when the underlying list can
+		// change between render and save.
+		if v, ok := r.valueMap[t]; ok {
+			return v, t != ""
 		}
 		return applyFormTransform(r.transform, t), t != ""
 	case formMultiField:
@@ -868,6 +911,16 @@ func applyFormTransform(transform, text string) any {
 	case transformCodingRate:
 		if _, after, ok := strings.Cut(text, ":"); ok {
 			return after
+		}
+		return text
+	case transformPortDevice:
+		// The dropdown lists ports by description; the config carries the device
+		// node (Python's device_map transform, Interfaces.py:158-164). A description
+		// that no longer matches a detected port — the device vanished between
+		// render and save — is passed through unchanged rather than dropped, so the
+		// user's entry is never silently lost.
+		if dev, ok := portDeviceForDescription(text); ok {
+			return dev
 		}
 		return text
 	default:

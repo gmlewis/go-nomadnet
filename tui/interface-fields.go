@@ -15,6 +15,8 @@
 
 package tui
 
+import "runtime"
+
 // InterfaceField describes a single form field for interface configuration.
 // Matches Python's INTERFACE_FIELDS field definitions at Interfaces.py:406.
 type InterfaceField struct {
@@ -32,6 +34,13 @@ type InterfaceField struct {
 	// per-field transform lambdas, Interfaces.py:406). Empty means the text is
 	// the value. See the transform constants in interface-form-view.go.
 	Transform string `json:"transform,omitempty"`
+	// ValueMap, when set, maps a dropdown option's displayed text to the value the
+	// config carries, for fields whose options cannot be converted by a fixed rule
+	// — the serial-port dropdown, whose option text is a port's description and
+	// whose value is its device node. Python captures the equivalent map in the
+	// field's transform closure at build time (Interfaces.py:158), so it describes
+	// the options THIS field was built from, not whatever is detected later.
+	ValueMap map[string]string `json:"value_map,omitempty"`
 }
 
 // SubField describes a nested field for multitable interface types
@@ -64,7 +73,47 @@ func InterfaceFieldsFor(ifType string) []InterfaceFieldGroup {
 // otherwise it returns a text edit field.
 // Matches Python's get_port_field() at Interfaces.py:142.
 func PortField() InterfaceField {
-	ports := GetPortInfo()
+	return PortFieldFrom(GetPortInfo())
+}
+
+// portField returns the port field the running platform can honour: the real
+// detector where serial detection is implemented, and the "detection not
+// available" form elsewhere. Python makes the same choice on PYSERIAL_AVAILABLE
+// (Interfaces.py:143-153); the port has no pyserial, so the equivalent condition is
+// whether GetPortInfo can enumerate anything on this GOOS.
+func portField() InterfaceField {
+	if serialDetectionAvailable() {
+		return PortField()
+	}
+	return PortFieldNoSerial()
+}
+
+// serialDetectionAvailable reports whether GetPortInfo can enumerate serial ports
+// on this platform, mirroring the GOOS switch in GetPortInfo itself.
+func serialDetectionAvailable() bool {
+	switch runtime.GOOS {
+	case "darwin", "linux":
+		return true
+	default:
+		return false
+	}
+}
+
+// PortFieldFrom is PortField for an explicit port list, so the three branches
+// Python distinguishes can be exercised without real hardware:
+//
+//   - no ports     → a text field with Python's "/dev/ttyXXX (or COM port on
+//     Windows)" placeholder;
+//   - exactly one  → a text field defaulted to that port's device;
+//   - two or more  → a dropdown listing the ports by description, whose VALUE is
+//     the device path.
+//
+// The last case needs the transform: Python's dropdown shows
+// `p['description']` but its transform is `lambda x: device_map[x]`
+// (Interfaces.py:157-167), so the option text and the value written to the config
+// are different strings. Without it the port line would be written as a human
+// description rather than a device path.
+func PortFieldFrom(ports []SerialPortInfo) InterfaceField {
 	if len(ports) > 1 {
 		options := make([]string, len(ports))
 		for i, p := range ports {
@@ -74,6 +123,10 @@ func PortField() InterfaceField {
 		if len(options) > 0 {
 			defVal = options[0]
 		}
+		valueMap := make(map[string]string, len(ports))
+		for _, p := range ports {
+			valueMap[p.Description] = p.Device
+		}
 		return InterfaceField{
 			ConfigKey:  "port",
 			Type:       "dropdown",
@@ -81,6 +134,8 @@ func PortField() InterfaceField {
 			Options:    options,
 			Default:    defVal,
 			Validation: []string{"required"},
+			Transform:  transformPortDevice,
+			ValueMap:   valueMap,
 		}
 	}
 
@@ -109,7 +164,7 @@ func PortFieldNoSerial() InterfaceField {
 		Type:        "edit",
 		Label:       "Port: ",
 		Default:     "",
-		Placeholder: "/dev/ttyUSB0 or COM port (serial detection not available)",
+		Placeholder: "/dev/ttyUSB0 or COM port (pyserial not installed)",
 		Validation:  []string{"required"},
 	}
 }
@@ -191,7 +246,7 @@ var interfaceFieldRegistry = map[string][]InterfaceFieldGroup{
 	IfaceRNode: {
 		{
 			Fields: []InterfaceField{
-				PortFieldNoSerial(),
+				portField(),
 				{ConfigKey: "frequency", Type: "edit", Label: "Frequency (MHz): ", Placeholder: "868.5", Validation: []string{"required", "float"}, Transform: transformFrequencyHz},
 				{ConfigKey: "txpower", Type: "edit", Label: "Transmit Power (dBm): ", Placeholder: "17", Validation: []string{"required", "number"}},
 				{ConfigKey: "bandwidth", Type: "dropdown", Label: "Bandwidth (Hz): ", Options: []string{"7800", "10400", "15600", "20800", "31250", "41700", "62500", "125000", "250000", "500000", "1625000"}, Default: "7800", Validation: []string{"required"}},
@@ -209,7 +264,7 @@ var interfaceFieldRegistry = map[string][]InterfaceFieldGroup{
 	IfaceRNodeMulti: {
 		{
 			Fields: []InterfaceField{
-				PortFieldNoSerial(),
+				portField(),
 				{
 					ConfigKey:  "subinterfaces",
 					Type:       "multitable",
@@ -233,7 +288,7 @@ var interfaceFieldRegistry = map[string][]InterfaceFieldGroup{
 	IfaceSerial: {
 		{
 			Fields: []InterfaceField{
-				PortFieldNoSerial(),
+				portField(),
 				{ConfigKey: "speed", Type: "edit", Label: "Speed (bps): ", Placeholder: "e.g. 115200", Validation: []string{"required", "number"}},
 				{ConfigKey: "databits", Type: "edit", Label: "Databits: ", Placeholder: "e.g. 8", Validation: []string{"required", "number"}},
 				{ConfigKey: "parity", Type: "edit", Label: "Parity: ", Validation: []string{"number"}},
@@ -252,7 +307,7 @@ var interfaceFieldRegistry = map[string][]InterfaceFieldGroup{
 	IfaceKISS: {
 		{
 			Fields: []InterfaceField{
-				PortFieldNoSerial(),
+				portField(),
 				{ConfigKey: "speed", Type: "edit", Label: "Speed (bps): ", Placeholder: "e.g. 115200", Validation: []string{"required", "number"}},
 				{ConfigKey: "databits", Type: "edit", Label: "Databits: ", Placeholder: "e.g. 8", Validation: []string{"required", "number"}},
 				{ConfigKey: "parity", Type: "edit", Label: "Parity: ", Validation: []string{"number"}},
@@ -272,7 +327,7 @@ var interfaceFieldRegistry = map[string][]InterfaceFieldGroup{
 	IfaceAX25KISS: {
 		{
 			Fields: []InterfaceField{
-				PortFieldNoSerial(),
+				portField(),
 				{ConfigKey: "callsign", Type: "edit", Label: "Callsign: ", Placeholder: "e.g. NO1CLL", Validation: []string{"required"}},
 				{ConfigKey: "ssid", Type: "edit", Label: "SSID: ", Placeholder: "e.g. 0", Validation: []string{"required"}},
 				{ConfigKey: "speed", Type: "edit", Label: "Speed (bps): ", Placeholder: "e.g. 115200", Validation: []string{"required", "number"}},
