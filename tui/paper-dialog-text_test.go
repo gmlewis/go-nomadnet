@@ -49,3 +49,41 @@ func TestPaperMessageDialogText(t *testing.T) {
 		t.Error("dialog text is the truncated form that never named the destination directory")
 	}
 }
+
+// TestAnimationIntervalReachesTheDisplay pins the wiring half of
+// [textui] animation_interval: the configured seconds must reach the Network
+// page's live widgets, which Python drives from the same key
+// (ui/textui/Network.py:399,1030-1231,1542). The port hardcoded one second, so a
+// user who asked for a slower or faster refresh got neither.
+func TestAnimationIntervalReachesTheDisplay(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		opts  []Option
+		wantS float64
+	}{
+		{"configured interval", []Option{WithAnimationInterval(0.25)}, 0.25},
+		{"another configured interval", []Option{WithAnimationInterval(3)}, 3},
+		{"unset keeps the reference default", nil, 1},
+		{"a non-positive value keeps the default", []Option{WithAnimationInterval(0)}, 1},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := NewApp(ThemeDark, GlyphUnicode, ColorModeTrue, tc.opts...)
+			got := app.AnimationInterval().Seconds()
+			if got != tc.wantS {
+				t.Errorf("AnimationInterval = %vs, want %vs", got, tc.wantS)
+			}
+
+			// The display's ticker must read the same value, not a constant.
+			ni := NewNodeInfoDisplay(app, NodeInfoData{})
+			if d := ni.animationInterval(); d != app.AnimationInterval() {
+				t.Errorf("the Node Info ticker uses %v, want the app's %v", d, app.AnimationInterval())
+			}
+		})
+	}
+}

@@ -80,15 +80,20 @@ type TextUIConfig struct {
 	// Python reads config["textui"]["intro_text"], defaulting to
 	// "Nomad Network" (NomadNetworkApp.py:919-920), and feeds it to
 	// IntroDisplay (ui/textui/Extras.py:8).
-	IntroText     string
-	Theme         string
-	ColorMode     string
-	Glyphs        string
-	MouseEnabled  bool
-	Editor        string
-	HideGuide     bool
-	SanitizeNames bool
-	ClipboardCopy bool
+	IntroText string
+	// AnimationInterval is the refresh interval, in seconds, for the Network page's
+	// live widgets. Python reads config["textui"]["animation_interval"], defaulting
+	// to 1 (NomadNetworkApp.py:948-951), and drives each widget's timeout from it
+	// (ui/textui/Network.py:399,1030-1231,1542).
+	AnimationInterval float64
+	Theme             string
+	ColorMode         string
+	Glyphs            string
+	MouseEnabled      bool
+	Editor            string
+	HideGuide         bool
+	SanitizeNames     bool
+	ClipboardCopy     bool
 }
 
 // RRCConfig holds Reticulum Relay Chat settings.
@@ -221,16 +226,17 @@ func DefaultConfig() *Config {
 			ComposeInMarkdown:        true,
 		},
 		TextUI: TextUIConfig{
-			IntroTime:     1,
-			IntroText:     "Nomad Network",
-			Theme:         "dark",
-			ColorMode:     "24bit",
-			Glyphs:        "nerdfont",
-			MouseEnabled:  true,
-			Editor:        "nano",
-			HideGuide:     false,
-			SanitizeNames: true,
-			ClipboardCopy: false,
+			IntroTime:         1,
+			AnimationInterval: 1,
+			IntroText:         "Nomad Network",
+			Theme:             "dark",
+			ColorMode:         "24bit",
+			Glyphs:            "nerdfont",
+			MouseEnabled:      true,
+			Editor:            "nano",
+			HideGuide:         false,
+			SanitizeNames:     true,
+			ClipboardCopy:     false,
 		},
 		RRC: RRCConfig{
 			HistoryPerRoomCap:      500,
@@ -510,6 +516,11 @@ func (c *Config) applyTextUI() {
 	if v, ok := sec["intro_time"]; ok {
 		if f, err := asFloat(v); err == nil {
 			c.TextUI.IntroTime = f
+		}
+	}
+	if v, ok := sec["animation_interval"]; ok {
+		if f, err := asFloat(v); err == nil && f > 0 {
+			c.TextUI.AnimationInterval = f
 		}
 	}
 	if v, ok := sec["intro_text"]; ok {

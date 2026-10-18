@@ -172,7 +172,8 @@ func runTextUI(configDir, rnsConfigDir string) {
 	// and always showed the Guide button, so both keys had no effect.
 	tuiApp := tui.NewApp(theme, glyphSet, colorMode,
 		tui.WithMouseEnabled(a.Config.TextUI.MouseEnabled),
-		tui.WithHideGuide(a.Config.TextUI.HideGuide))
+		tui.WithHideGuide(a.Config.TextUI.HideGuide),
+		tui.WithAnimationInterval(a.Config.TextUI.AnimationInterval))
 
 	// RRC message-render options (Python reads the rrc_* config toggles and
 	// the theme inside _message_widget, Channels.py:1281+): palette override,

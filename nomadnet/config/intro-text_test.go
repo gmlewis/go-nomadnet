@@ -93,3 +93,44 @@ func TestIntroTextNotWrittenBySave(t *testing.T) {
 		t.Errorf("Save wrote intro_text, which the reference config never carries:\n%v", got)
 	}
 }
+
+// TestAnimationIntervalFromConfig pins [textui] animation_interval, the refresh
+// interval Python drives every Network-page live widget's timeout from. Python
+// defaults it to 1 when absent (NomadNetworkApp.py:948-951) and reads it at
+// ui/textui/Network.py:399,1030-1231,1542. The port had no field at all: the
+// interval was hardcoded to one second in tui/node-info.go, so the key did nothing.
+func TestAnimationIntervalFromConfig(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		textUI string
+		want   float64
+	}{
+		{"explicit value", "animation_interval = 0.25\n", 0.25},
+		{"a whole number", "animation_interval = 3\n", 3},
+		{"absent uses the reference default", "", 1},
+		{"zero and below keep the default", "animation_interval = 0\n", 1},
+		{"a negative value keeps the default", "animation_interval = -2\n", 1},
+		{"a non-number keeps the default", "animation_interval = fast\n", 1},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := tempDir(t)
+			path := filepath.Join(dir, "config")
+			if err := os.WriteFile(path, []byte("[textui]\n"+tc.textUI), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			c, err := Load(path)
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			if c.TextUI.AnimationInterval != tc.want {
+				t.Errorf("AnimationInterval = %v, want %v", c.TextUI.AnimationInterval, tc.want)
+			}
+		})
+	}
+}

@@ -297,9 +297,18 @@ func NewAppWithTransport(configDir string, opts ...AppOption) *App {
 // Init initializes subsystems that don't block, then starts RNS
 // initialization in a goroutine so the TUI can start immediately.
 func (a *App) Init() error {
-	// Ensure storage directories exist
+	// Ensure storage directories exist. Whether this is a first run is decided
+	// BEFORE the dirs are created, because Python gates the tmp-dir clear on the
+	// attachments directory already existing (NomadNetworkApp.py:193-198: the clear
+	// sits in the else-branch of that makedirs). Files in tmp are leftovers from an
+	// interrupted print or download, so they are removed on every later start.
+	_, attachStatErr := os.Stat(a.AttachmentPath)
+	notFirstRun := attachStatErr == nil
 	if err := a.Storage.EnsureDirs(); err != nil {
 		return err
+	}
+	if notFirstRun {
+		a.ClearTmpDir()
 	}
 
 	// Load or create config. On first run (config file missing) write the
@@ -564,8 +573,13 @@ func (a *App) initRNS() {
 // transport and identity, bypassing the automatic initRNS flow. This is
 // used for integration testing where external RNS instances are injected.
 func (a *App) InitWithTransport(ts *rns.TransportSystem, identity *rns.Identity) error {
+	_, attachStatErr := os.Stat(a.AttachmentPath)
+	notFirstRun := attachStatErr == nil
 	if err := a.Storage.EnsureDirs(); err != nil {
 		return err
+	}
+	if notFirstRun {
+		a.ClearTmpDir()
 	}
 
 	cfg, err := config.Load(a.ConfigPath)

@@ -284,7 +284,7 @@ func TestNodeInfoHostingRefreshTicker(t *testing.T) {
 		ni.start(false) // synchronous (no event loop in tests; QueueUpdateDraw would block)
 		// Durably block so the bubble's virtual clock advances through the
 		// 1 s refresh ticker (synctest.Wait alone never advances the clock).
-		time.Sleep(2 * animationInterval())
+		time.Sleep(2 * ni.animationInterval())
 		ni.Stop()
 		afterRun := calls
 		if afterRun <= afterConstruction {
@@ -294,7 +294,7 @@ func TestNodeInfoHostingRefreshTicker(t *testing.T) {
 		// After Stop, the ticker must not keep calling the provider. The
 		// virtual clock can overshoot, but with the worker stopped (Stop
 		// waits for it) no further ticks are possible.
-		time.Sleep(2 * animationInterval())
+		time.Sleep(2 * ni.animationInterval())
 		testutils.Wait()
 		if calls > afterRun {
 			t.Errorf("ticker kept firing after Stop: calls=%v afterRun=%v", calls, afterRun)

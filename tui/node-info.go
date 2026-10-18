@@ -290,7 +290,7 @@ func (ni *NodeInfoDisplay) start(marshal bool) {
 	ni.mu.Unlock()
 
 	ni.wg.Go(func() {
-		ticker := time.NewTicker(animationInterval())
+		ticker := time.NewTicker(ni.animationInterval())
 		defer ticker.Stop()
 		for {
 			select {
@@ -321,13 +321,14 @@ func (ni *NodeInfoDisplay) Stop() {
 	}
 }
 
-// animationInterval returns the stat-refresh interval (Python
-// config["textui"]["animation_interval"]). Until the Go config exposes it,
-// default to 1 second (the NodeInfo task spec: "1 s refresh").
-func animationInterval() time.Duration {
-	// TODO: read from app config when exposed; 1s matches the task spec and
-	// Python's default animation_interval.
-	return time.Second
+// animationInterval returns this display's stat-refresh interval: the configured
+// `[textui] animation_interval` (Python's default is 1), or one second when no
+// display is wired.
+func (ni *NodeInfoDisplay) animationInterval() time.Duration {
+	if ni.app == nil {
+		return time.Second
+	}
+	return ni.app.AnimationInterval()
 }
 
 // Widget returns the bordered "Local Node Info" primitive for layout.

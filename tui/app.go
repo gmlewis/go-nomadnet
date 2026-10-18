@@ -46,6 +46,10 @@ type App struct {
 	// hideGuide mirrors [textui] hide_guide (Python ui/textui/Main.py:201):
 	// NewMainDisplay leaves the Guide button out of the menu bar.
 	hideGuide bool
+	// animationInterval is [textui] animation_interval: the refresh interval for
+	// the Network page's live widgets. Zero means unconfigured (see
+	// AnimationInterval).
+	animationInterval time.Duration
 
 	// RRCRender carries the RRC message-render options the wiring layer
 	// derives from the app config (Python reads the rrc_* toggles and the
@@ -189,6 +193,10 @@ type appOptions struct {
 	// `if self.app.config["textui"]["hide_guide"]:` branch
 	// (ui/textui/Main.py:201).
 	hideGuide bool
+	// animationInterval is the Network page's widget refresh interval, from
+	// [textui] animation_interval. Zero means "not configured", which leaves the
+	// reference default of one second in place.
+	animationInterval time.Duration
 }
 
 // WithMouseEnabled sets whether the terminal is put into mouse-reporting mode.
@@ -205,6 +213,28 @@ func WithMouseEnabled(enabled bool) Option {
 // builds the button list, which is when Python's MenuDisplay does.
 func WithHideGuide(hide bool) Option {
 	return func(o *appOptions) { o.hideGuide = hide }
+}
+
+// WithAnimationInterval sets the Network page's live-widget refresh interval, from
+// `[textui] animation_interval` in seconds (Python reads the same key for every
+// widget's timeout, ui/textui/Network.py:399,1030-1231,1542). A non-positive value
+// leaves the reference default in place.
+func WithAnimationInterval(seconds float64) Option {
+	return func(o *appOptions) {
+		if seconds > 0 {
+			o.animationInterval = time.Duration(seconds * float64(time.Second))
+		}
+	}
+}
+
+// AnimationInterval returns the refresh interval for the Network page's live
+// widgets: the configured [textui] animation_interval, or the reference default of
+// one second when it was not configured.
+func (a *App) AnimationInterval() time.Duration {
+	if a.animationInterval > 0 {
+		return a.animationInterval
+	}
+	return time.Second
 }
 
 func NewApp(theme int, glyphSet string, colorMode int, opts ...Option) *App {
@@ -241,9 +271,11 @@ func NewApp(theme int, glyphSet string, colorMode int, opts ...Option) *App {
 		Styles:      newStyleRegistry(),
 		killRing:    &killRing{},
 		hideGuide:   cfg.hideGuide,
-		updates:     make(chan func(), 128),
-		done:        make(chan struct{}),
-		screenErr:   screenErr,
+
+		animationInterval: cfg.animationInterval,
+		updates:           make(chan func(), 128),
+		done:              make(chan struct{}),
+		screenErr:         screenErr,
 	}
 	go a.drainUpdates()
 	a.Styles.Register(theme, colorMode)
