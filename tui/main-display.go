@@ -90,7 +90,12 @@ func NewMainDisplay(app *App, theme int, glyphSetName string) *MainDisplay {
 		focusRegion:       "body",
 	}
 
-	// Filter menu items based on hideGuide setting
+	// Filter menu items based on the hide_guide setting, which NewApp carried in
+	// from the config (Python's MenuDisplay reads it when it builds its buttons,
+	// ui/textui/Main.py:201).
+	if app != nil {
+		md.hideGuide = app.hideGuide
+	}
 	md.menuItems = make([]MenuItem, 0, len(MenuItems))
 	for _, item := range MenuItems {
 		if md.hideGuide && item.Key == "guide" {

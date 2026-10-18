@@ -143,3 +143,42 @@ func TestMainDisplaySelectPage(t *testing.T) {
 		t.Errorf("after unknown SelectPage: activePage = %q, want conversations", md.activePage)
 	}
 }
+
+// TestMenuStructureHideGuideFromConfig pins the wiring half of hide_guide: the
+// value has to arrive from the config through NewApp, not only work when
+// SetHideGuide is called by hand. Python reads `config["textui"]["hide_guide"]`
+// while MenuDisplay builds its buttons (ui/textui/Main.py:201), so a Go run that
+// never threads the setting through shows the Guide button no matter what the
+// user configured.
+func TestMenuStructureHideGuideFromConfig(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		opts     []Option
+		wantHide bool
+	}{
+		{"default shows the Guide button", nil, false},
+		{"hide_guide drops it", []Option{WithHideGuide(true)}, true},
+		{"hide_guide = no keeps it", []Option{WithHideGuide(false)}, false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := NewApp(ThemeDark, GlyphNerd, ColorModeTrue, tc.opts...)
+			md := NewMainDisplay(app, ThemeDark, GlyphNerd)
+
+			var found bool
+			for _, mi := range md.menuItems {
+				if mi.Label == "Guide" {
+					found = true
+				}
+			}
+			if found == tc.wantHide {
+				t.Errorf("Guide button present = %v, want hidden = %v (menuItems %v)", found, tc.wantHide, md.menuItems)
+			}
+		})
+	}
+}

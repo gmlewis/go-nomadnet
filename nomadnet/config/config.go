@@ -75,7 +75,12 @@ type ClientConfig struct {
 
 // TextUIConfig holds text UI settings.
 type TextUIConfig struct {
-	IntroTime     float64
+	IntroTime float64
+	// IntroText is the title the startup splash renders in big letters.
+	// Python reads config["textui"]["intro_text"], defaulting to
+	// "Nomad Network" (NomadNetworkApp.py:919-920), and feeds it to
+	// IntroDisplay (ui/textui/Extras.py:8).
+	IntroText     string
 	Theme         string
 	ColorMode     string
 	Glyphs        string
@@ -217,6 +222,7 @@ func DefaultConfig() *Config {
 		},
 		TextUI: TextUIConfig{
 			IntroTime:     1,
+			IntroText:     "Nomad Network",
 			Theme:         "dark",
 			ColorMode:     "24bit",
 			Glyphs:        "nerdfont",
@@ -504,6 +510,11 @@ func (c *Config) applyTextUI() {
 	if v, ok := sec["intro_time"]; ok {
 		if f, err := asFloat(v); err == nil {
 			c.TextUI.IntroTime = f
+		}
+	}
+	if v, ok := sec["intro_text"]; ok {
+		if t := strings.TrimSpace(v); t != "" {
+			c.TextUI.IntroText = t
 		}
 	}
 	if v, ok := sec["theme"]; ok {

@@ -346,11 +346,18 @@ func (a *App) Init() error {
 	a.Logger = rns.NewLogger()
 	a.Logger.SetLogLevel(a.Config.Logging.LogLevel)
 
-	// Configure logging destination — always log to file in TUI mode
-	// to prevent RNS logs from destroying the terminal display.
-	if a.ForceConsoleLog {
+	// Configure the logging destination, mirroring Python's applyConfig
+	// (NomadNetworkApp.py:811-818): the file destination is selected only when
+	// `[logging] destination = file` AND console logging was not forced, and
+	// EVERY other value — including an explicit "stdout" — selects stdout. The
+	// port previously chose the file unless -c was given, so `destination =
+	// stdout` was silently ignored.
+	switch {
+	case a.ForceConsoleLog:
 		a.Logger.SetLogDest(rns.LogStdout)
-	} else {
+	case a.Config.Logging.Destination != "file":
+		a.Logger.SetLogDest(rns.LogStdout)
+	default:
 		// Ensure the log directory exists
 		logDir := filepath.Dir(a.LogFilePath)
 		if err := os.MkdirAll(logDir, 0o755); err != nil {

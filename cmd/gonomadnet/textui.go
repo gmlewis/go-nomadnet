@@ -165,7 +165,14 @@ func runTextUI(configDir, rnsConfigDir string) {
 	}
 
 	// Create and run the TUI
-	tuiApp := tui.NewApp(theme, glyphSet, colorMode)
+	// [textui] mouse_enabled and hide_guide reach the terminal and the menu bar
+	// here. Python hands the first to urwid as handle_mouse=mouse_enabled
+	// (ui/TextUI.py:201,229) and reads the second when it builds the menu buttons
+	// (ui/textui/Main.py:201); without these the port always enabled the mouse
+	// and always showed the Guide button, so both keys had no effect.
+	tuiApp := tui.NewApp(theme, glyphSet, colorMode,
+		tui.WithMouseEnabled(a.Config.TextUI.MouseEnabled),
+		tui.WithHideGuide(a.Config.TextUI.HideGuide))
 
 	// RRC message-render options (Python reads the rrc_* config toggles and
 	// the theme inside _message_widget, Channels.py:1281+): palette override,
@@ -341,7 +348,14 @@ func runTextUI(configDir, rnsConfigDir string) {
 	if a.Config != nil {
 		introTime = a.Config.TextUI.IntroTime
 	}
-	intro := tui.NewIntroDisplay("Nomad Network", a.Version)
+	// The splash title is [textui] intro_text, defaulting to "Nomad Network"
+	// (Python feeds config["textui"]["intro_text"] to IntroDisplay,
+	// NomadNetworkApp.py:919-920 + ui/textui/Extras.py:8).
+	introText := "Nomad Network"
+	if a.Config != nil && a.Config.TextUI.IntroText != "" {
+		introText = a.Config.TextUI.IntroText
+	}
+	intro := tui.NewIntroDisplay(introText, a.Version)
 	tuiApp.ShowIntro(intro.Widget(), introTime)
 
 	err := tuiApp.Run()

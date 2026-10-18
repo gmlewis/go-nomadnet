@@ -43,6 +43,9 @@ type App struct {
 	Dialogs   *DialogManager
 	Styles    *StyleRegistry
 	killRing  *killRing
+	// hideGuide mirrors [textui] hide_guide (Python ui/textui/Main.py:201):
+	// NewMainDisplay leaves the Guide button out of the menu bar.
+	hideGuide bool
 
 	// RRCRender carries the RRC message-render options the wiring layer
 	// derives from the app config (Python reads the rrc_* toggles and the
@@ -172,7 +175,44 @@ func (a *App) SetFocus(p tview.Primitive) *tview.Application {
 // NewApp creates a new tview Application with the given theme, color depth,
 // and glyph set. colorMode selects the palette variant (mono/16/256/true);
 // pass ColorModeTrue for the shipped 24-bit default.
-func NewApp(theme int, glyphSet string, colorMode int) *App {
+// Option adjusts the application at construction. Every option is applied after
+// the application and its screen exist and before anything is drawn.
+type Option func(*appOptions)
+
+// appOptions holds the pre-Run configuration an Option can set.
+type appOptions struct {
+	// mouseEnabled mirrors Python's `handle_mouse=mouse_enabled`
+	// (ui/TextUI.py:201,229). It defaults to true, which is the [textui]
+	// mouse_enabled default in the reference (NomadNetworkApp.py:929).
+	mouseEnabled bool
+	// hideGuide drops the Guide button from the menu bar, mirroring Python's
+	// `if self.app.config["textui"]["hide_guide"]:` branch
+	// (ui/textui/Main.py:201).
+	hideGuide bool
+}
+
+// WithMouseEnabled sets whether the terminal is put into mouse-reporting mode.
+// A false value leaves it off, so a click produces nothing at all — the same
+// user-visible result as Python's handle_mouse=False. tview only calls into the
+// screen when this differs from its own (initially false) state, so false means
+// the mouse mode is simply never entered.
+func WithMouseEnabled(enabled bool) Option {
+	return func(o *appOptions) { o.mouseEnabled = enabled }
+}
+
+// WithHideGuide drops the Guide button from the menu bar, as `[textui]
+// hide_guide = yes` does in the reference. NewMainDisplay applies it while it
+// builds the button list, which is when Python's MenuDisplay does.
+func WithHideGuide(hide bool) Option {
+	return func(o *appOptions) { o.hideGuide = hide }
+}
+
+func NewApp(theme int, glyphSet string, colorMode int, opts ...Option) *App {
+	cfg := appOptions{mouseEnabled: true}
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
 	tviewApp := tview.NewApplication()
 
 	// The terminal comes from the registered provider when there is one, so an
@@ -185,7 +225,7 @@ func NewApp(theme int, glyphSet string, colorMode int) *App {
 		tviewApp.SetScreen(screen)
 	}
 
-	tviewApp.EnableMouse(true)
+	tviewApp.EnableMouse(cfg.mouseEnabled)
 	glyphs := GetGlyphSet(glyphSet)
 	if glyphs == nil {
 		glyphs = glyphsUnicode
@@ -200,6 +240,7 @@ func NewApp(theme int, glyphSet string, colorMode int) *App {
 		Dialogs:     &DialogManager{},
 		Styles:      newStyleRegistry(),
 		killRing:    &killRing{},
+		hideGuide:   cfg.hideGuide,
 		updates:     make(chan func(), 128),
 		done:        make(chan struct{}),
 		screenErr:   screenErr,
