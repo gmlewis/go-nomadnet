@@ -21,7 +21,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/gmlewis/go-nomadnet/nomadnet/app"
 	"github.com/gmlewis/go-nomadnet/tui"
+	"github.com/gmlewis/go-reticulum/rrc"
 	"github.com/gmlewis/tcell/v2"
 )
 
@@ -107,4 +109,58 @@ func TestCompleteRemoteFilePath(t *testing.T) {
 			t.Errorf("footer = %q, want no download line for a page fetch", footer)
 		}
 	})
+}
+
+// TestShouldRingMentionBell pins the bell's gate, mirroring Python's
+// _on_rrc_message (Channels.py:2262-2271): only a message that mentions the local
+// nick rings, and only when its room is not the one already on screen. The bell
+// itself (debounce, the BEL byte) is covered by tui/mention-bell_test.go; this is
+// the call site, which had none — the bell was dead code.
+func TestShouldRingMentionBell(t *testing.T) {
+	t.Parallel()
+
+	newApp := func(t *testing.T) (*app.App, *rrc.RRCHub, *rrc.RRCHub) {
+		t.Helper()
+		a := app.NewApp(tempDir(t), "", false, false)
+		a.RRC = rrc.NewManager(tempDir(t), func() []byte { return []byte("ownhash") })
+		hub := a.RRC.AddHub([]byte("hubhash"), "rrc.chat", "TestHub")
+		other := a.RRC.AddHub([]byte("otherhash"), "rrc.chat", "OtherHub")
+		return a, hub, other
+	}
+
+	tests := []struct {
+		name    string
+		mention bool
+		// active selects which hub/room the manager reports as on screen.
+		activeHub  string // "hub", "other" or "" for none
+		activeRoom string
+		room       string
+		want       bool
+	}{
+		{"a mention in an unseen room rings", true, "", "", "general", true},
+		{"a mention in another hub rings", true, "other", "general", "general", true},
+		{"a mention in the room on screen stays silent", true, "hub", "general", "general", false},
+		{"a mention in a different room of the active hub rings", true, "hub", "lounge", "general", true},
+		{"the active room is matched case-insensitively", true, "hub", "GENERAL", "general", false},
+		{"a message without a mention never rings", false, "hub", "lounge", "general", false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			a, hub, other := newApp(t)
+			msg := &rrc.RRCMessage{Kind: "msg", Room: tc.room, Mention: tc.mention}
+			switch tc.activeHub {
+			case "hub":
+				a.RRC.SetActive(hub, tc.activeRoom)
+			case "other":
+				a.RRC.SetActive(other, tc.activeRoom)
+			}
+
+			if got := shouldRingMentionBell(a, hub, msg); got != tc.want {
+				t.Errorf("shouldRingMentionBell = %v, want %v", got, tc.want)
+			}
+		})
+	}
 }

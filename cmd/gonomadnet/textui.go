@@ -1771,8 +1771,19 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 			})
 	}
 	// Python manager._notify_messages → the UI's per-message room update.
+	// bell is the per-app mention bell; the ring happens inside the UI update
+	// below, on the event loop, exactly where Python runs it (its _wake(action)
+	// defers the ring to the UI loop, Channels.py:2262-2281).
+	bell := tui.NewMentionBell()
+	var bellEpoch = time.Now()
 	a.RRC.SetMessageCallback(func(hub *rrc.RRCHub, msg *rrc.RRCMessage) {
 		tuiApp.QueueUpdateDraw(func() {
+			// A mention in a room the user is not looking at rings the terminal
+			// bell, debounced per (hub, room). The bell was implemented and tested
+			// but never called, so a mention arrived silently.
+			if shouldRingMentionBell(a, hub, msg) {
+				bell.Ring(hex.EncodeToString(hub.HubHash), strings.ToLower(msg.Room), time.Since(bellEpoch).Seconds())
+			}
 			channelsDisplay.SetHubs(a.HubViews())
 			channelsDisplay.RefreshRoomIfVisible(func(hubIdx int, room string) []tui.ChannelMessage {
 				if h := rrcHubAt(a, hubIdx); h != nil {
@@ -3026,6 +3037,26 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 // raw LXMF state int and method are passed through unchanged so the header
 // logic compares against the raw LXMF constants, exactly like the Python
 // original (Conversations.py:2609-2626).
+// shouldRingMentionBell reports whether an arriving RRC message should ring the
+// terminal bell, mirroring Python's _on_rrc_message (Channels.py:2262-2271):
+//
+//	is_active = current_room_widget.hub is hub and current_room_widget.room == msg.room
+//	if msg.mention and not is_active: ring the bell
+//
+// So only a message that mentions the local nick rings, and only when its room is
+// not the one already on screen — a mention you can see does not need to beep. The
+// manager's active hub/room is what tracks the visible room widget (the Channels
+// display sets it on hub/room selection).
+func shouldRingMentionBell(a *app.App, hub *rrc.RRCHub, msg *rrc.RRCMessage) bool {
+	if a == nil || hub == nil || msg == nil || !msg.Mention {
+		return false
+	}
+	if a.RRC == nil {
+		return true
+	}
+	return !(a.RRC.ActiveHub() == hub && strings.EqualFold(a.RRC.ActiveRoom(), msg.Room))
+}
+
 // completeRemoteFilePath finishes a completed fetch whose path is a /file/
 // download: it saves the response under downloadsDir and reports "Saved <name>"
 // with the file's size and the elapsed transfer time. It reports whether the
