@@ -104,18 +104,105 @@ func TestChatLinkHandlePageWithFields(t *testing.T) {
 	}
 }
 
+// TestChatLinkHandleNil pins the nil-callback contract: a handler built with no
+// callbacks wired accepts every link form — the ones it knows and the ones it does not
+// — without panicking. Completing is the assertion here: a nil callback invoked through
+// a missing guard crashes the test.
 func TestChatLinkHandleNil(t *testing.T) {
 	t.Parallel()
 
 	handler := NewChatLinkHandler(nil, nil, nil)
-	handler.HandleLink("")
+	for _, target := range []string{
+		"",
+		"room://#general",
+		"lxmf://lxmf@abcdef",
+		"page://abcdef",
+		"rrc://abcdef/#general",
+		"invalid://something",
+		"notalink",
+	} {
+		handler.HandleLink(target)
+	}
 }
 
+// TestChatLinkHandleInvalid pins that a target this handler does not recognise opens
+// nothing. Python's _ChatLinkDelegate.handle_link switches on the scheme it parsed and
+// has no branch for anything else (Channels.py:1151+), so an unknown scheme, a
+// scheme-less string, an empty scheme and a non-chat scheme are all inert. Before this
+// test asserted nothing, a regression that opened the first thing it saw would have
+// gone unnoticed.
 func TestChatLinkHandleInvalid(t *testing.T) {
 	t.Parallel()
 
-	handler := NewChatLinkHandler(nil, nil, nil)
-	handler.HandleLink("invalid://something")
+	tests := []struct {
+		name   string
+		target string
+	}{
+		{"empty target", ""},
+		{"no scheme separator", "notalink"},
+		{"empty scheme", "://payload"},
+		{"unknown scheme", "invalid://something"},
+		{"a scheme that is not part of the chat grammar", "http://example.com"},
+		{"a scheme-prefixed empty payload", "room://"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var opened []string
+			handler := NewChatLinkHandler(
+				func(room string) { opened = append(opened, "room:"+room) },
+				func(hash string) { opened = append(opened, "lxmf:"+hash) },
+				func(url string) { opened = append(opened, "page:"+url) },
+			)
+			// Every callback this handler can dispatch through is wired, so a target
+			// that reached ANY branch would be recorded — including the rrc extension,
+			// whose callback is an exported field rather than a constructor argument.
+			handler.OnOpenRRC = func(payload string) { opened = append(opened, "rrc:"+payload) }
+			handler.HandleLink(tc.target)
+
+			if len(opened) != 0 {
+				t.Errorf("HandleLink(%q) opened %v, want nothing", tc.target, opened)
+			}
+		})
+	}
+}
+
+// TestChatLinkHandleKnownFormsStillOpen is the complement of the rejection test: the
+// schemes the handler does know must still open, so a fix that made the rejection
+// blanket would not pass as "more correct".
+func TestChatLinkHandleKnownFormsStillOpen(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		target string
+		want   string
+	}{
+		{"room link", "room://#general", "room:general"},
+		{"lxmf link", "lxmf://lxmf@abcdef", "lxmf:abcdef"},
+		{"page link", "page://abcdef", "page:abcdef"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var opened []string
+			handler := NewChatLinkHandler(
+				func(room string) { opened = append(opened, "room:"+room) },
+				func(hash string) { opened = append(opened, "lxmf:"+hash) },
+				func(url string) { opened = append(opened, "page:"+url) },
+			)
+			handler.OnOpenRRC = func(payload string) { opened = append(opened, "rrc:"+payload) }
+			handler.HandleLink(tc.target)
+
+			if len(opened) != 1 || opened[0] != tc.want {
+				t.Errorf("HandleLink(%q) opened %v, want [%v]", tc.target, opened, tc.want)
+			}
+		})
+	}
 }
 
 // TestChatLinkHandleRRC pins the one form beyond Python's chat grammar: an rrc://

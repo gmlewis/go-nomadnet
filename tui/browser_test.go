@@ -156,6 +156,11 @@ func TestBrowserPageViewWheelMultiplier(t *testing.T) {
 	}
 }
 
+// TestBrowserPageHeaderAndMicronRendering pins what the test's name promises: a page's
+// section header and its body markup reach the render. It used to assert only that the
+// text was non-empty — and its one content check was disabled under -short, which is
+// exactly how run-all-tests.sh runs it — so in the gate a renderer producing one stray
+// character passed.
 func TestBrowserPageHeaderAndMicronRendering(t *testing.T) {
 	t.Parallel()
 
@@ -166,12 +171,33 @@ func TestBrowserPageHeaderAndMicronRendering(t *testing.T) {
 	bd.LoadURL("nomadnetwork://44f0dbf2ec1c2ac47277995475217aed/page/status.mu")
 	bd.RenderPage(">Welcome Node\n-")
 
-	text := bd.content.GetText(true)
-	if text == "" {
-		t.Fatal("content text is empty after RenderPage")
+	if len(bd.currentLines) < 2 {
+		t.Fatalf("rendered %v lines, want the heading and the divider", len(bd.currentLines))
 	}
-	if !testing.Short() && len(text) < 5 {
-		t.Errorf("content text too short: %q", text)
+
+	// >Welcome Node is a level-1 section header: its text intact, carrying the theme's
+	// heading1 style (Python's heading_1 palette entry, TextUI.py).
+	heading := bd.currentLines[0]
+	if heading.HeadingLevel != 1 {
+		t.Errorf("first line heading level = %v, want 1", heading.HeadingLevel)
+	}
+	if len(heading.Spans) != 1 || heading.Spans[0].Text != "Welcome Node" {
+		t.Errorf("header spans = %+v, want one span reading %q", heading.Spans, "Welcome Node")
+	}
+	if heading.Spans[0].FG != "#222222" || heading.Spans[0].BG != "#bbbbbb" {
+		t.Errorf("header fg/bg = %v/%v, want the heading1 style #222222/#bbbbbb",
+			heading.Spans[0].FG, heading.Spans[0].BG)
+	}
+
+	// A bare "-" line is a micron divider.
+	if !bd.currentLines[1].Divider {
+		t.Errorf("second line is not a divider: %+v", bd.currentLines[1])
+	}
+
+	// And the painted text carries the header, so the content is really on screen
+	// rather than only in the line model.
+	if text := bd.content.GetText(true); !strings.Contains(text, "Welcome Node") {
+		t.Errorf("painted content does not contain the header text: %q", text)
 	}
 }
 

@@ -17,6 +17,7 @@ package storage
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/gmlewis/go-reticulum/testutils"
@@ -105,6 +106,11 @@ func TestEnsureDirs(t *testing.T) {
 	}
 }
 
+// TestEnsureDirsIdempotent pins that a second EnsureDirs neither fails nor disturbs
+// what the first created: it is called on every startup against a tree that already
+// exists. Asserting only that the two calls returned nil would pass for a function
+// that created nothing at all, so every directory — and the file a caller may have put
+// in one — is checked after each call.
 func TestEnsureDirsIdempotent(t *testing.T) {
 	t.Parallel()
 
@@ -114,8 +120,34 @@ func TestEnsureDirsIdempotent(t *testing.T) {
 	if err := p.EnsureDirs(); err != nil {
 		t.Fatalf("First EnsureDirs: %v", err)
 	}
+
+	dirs := []string{
+		p.Storage, p.Cache, p.Resources, p.Conversations,
+		p.Pages, p.Files, p.TmpFiles, p.Attachments,
+	}
+	for _, d := range dirs {
+		if info, err := os.Stat(d); err != nil || !info.IsDir() {
+			t.Fatalf("first EnsureDirs did not create %v: info=%v err=%v", d, info, err)
+		}
+	}
+
+	// Something a previous run left behind must survive the second call: EnsureDirs
+	// creates missing directories, it does not clear existing ones.
+	keeper := filepath.Join(p.Conversations, "existing")
+	if err := os.WriteFile(keeper, []byte("kept"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
 	if err := p.EnsureDirs(); err != nil {
 		t.Fatalf("Second EnsureDirs: %v", err)
+	}
+	for _, d := range dirs {
+		if info, err := os.Stat(d); err != nil || !info.IsDir() {
+			t.Errorf("second EnsureDirs lost %v: info=%v err=%v", d, info, err)
+		}
+	}
+	if data, err := os.ReadFile(keeper); err != nil || string(data) != "kept" {
+		t.Errorf("the second EnsureDirs disturbed an existing file: data=%q err=%v", data, err)
 	}
 }
 
