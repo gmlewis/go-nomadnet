@@ -244,6 +244,46 @@ redrawn). If a Python topic frame's body looks like the wrong topic, it is a
 frame-selection artifact, not a port bug — cross-check against the Go frame
 (which renders the full topic) and against the Python source `.mu` content.
 
+## `sot_drift_scan.py` — reference text frozen from a superseded release
+
+The cast tools above compare *rendered* output. This one compares *text*: it finds
+wording in the Go tree that came from an older nomadnet release than the one the
+port targets.
+
+That failure mode deserves its own tool because of how well it hides. A parity test
+asserting a hand-transcribed string will happily assert wording from the wrong
+release, so instead of catching the divergence it *enforces* it, and it keeps
+passing. The identity-unknown conversation banner was transcribed from a nomadnet
+1.2.3 checkout; 1.2.8 reworded it; the frozen literal held the superseded text for
+the life of the port, until a live comparison against the reference surfaced it.
+
+The scan folds adjacent Python string literals with `ast` (so a message the
+reference spread over several quoted fragments is compared as the single string a
+caller would see), folds each `+`-joined run of Go literals the same way, and
+reports every superseded literal still present **verbatim** in the Go sources.
+
+```bash
+# with the interpreter that has the pinned nomadnet installed
+/opt/homebrew/bin/python3 tooling/sot_drift_scan.py
+
+# compare against a specific older checkout
+/opt/homebrew/bin/python3 tooling/sot_drift_scan.py --stale ~/src/github.com/markqvist/nomadnet
+```
+
+Exit status is 0 when clean and 1 when drift is found, so it can gate a release. It
+resolves the source-of-truth tree from the interpreter's own `import nomadnet` and
+prints both trees with their versions — read that line, because several nomadnet
+copies normally coexist on a development machine, and comparing the wrong pair is
+exactly how the original drift went unnoticed.
+
+Two limits, by construction: it cannot see wording the port *invented* that never
+existed in any release, nor a reference string the port *omits*. Both need the
+reverse sweep (every user-visible SOT string must appear somewhere in Go). And
+because the match is verbatim, a long block that merely *resembles* the old release
+is not reported — that is a different finding, not a frozen string.
+
+Tests: `python3 -m pytest tooling/test_sot_drift_scan.py`.
+
 ## Driving the tablet — `tablet-drive.sh` + `tablet-measure.py`
 
 The cast tools above compare a *desktop* Python and Go client on the same

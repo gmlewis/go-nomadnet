@@ -983,15 +983,24 @@ func (cw *ConversationWidget) resizeFooter(width, height int) {
 
 // editorAllowedBannerText builds the identity-unknown warning body, matching
 // Python check_editor_allowed's urwid.Text string in the source-of-truth
-// nomadnet tree (Conversations.py:2195-2214): info glyph, blank line, the
-// cannot-message paragraph, blank line, manual-query instructions. The live
-// layout is AttrMap+Padding+Text(align=CENTER) — a FOOTER swap, not a dialog.
+// nomadnet tree (ui/textui/Conversations.py:2208-2216, nomadnet 1.2.8): info
+// glyph, blank line, the cannot-message paragraph, blank line, manual-query
+// instructions. The live layout is AttrMap+Padding+Text(align=CENTER) — a
+// FOOTER swap, not a dialog.
+//
+// The wording is asserted byte-for-byte against the installed Python reference
+// by TestEditorAllowedBannerTextMatchesSOT, so a nomadnet upgrade that rewords
+// this string fails that test rather than going unnoticed. The text must not be
+// re-transcribed by hand from a checkout: nomadnet 1.2.3 said "should arrive
+// shortly, if available. Close this conversation and reopen it to try again.",
+// and a stale literal of that wording was held here long after 1.2.8 replaced
+// it with "…you will be able to send messages as soon as they arrive."
 func (cw *ConversationWidget) editorAllowedBannerText() string {
 	g := cw.glyphs()
 	return "\n" + g["info"] + "\n\n" +
 		"You cannot currently message this peer, since its identity keys are not known. " +
-		"The keys have been requested from the network and should arrive shortly, if available. " +
-		"Close this conversation and reopen it to try again.\n\n" +
+		"The keys have been requested from the network, and you will be able to send messages " +
+		"as soon as they arrive.\n\n" +
 		"To query the network manually, select this conversation in the conversation list, " +
 		"press Ctrl-E, and use the query button.\n"
 }

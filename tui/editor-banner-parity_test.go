@@ -19,6 +19,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/gmlewis/go-nomadnet/testutils"
 	"github.com/gmlewis/tcell/v2"
 )
 
@@ -54,12 +55,15 @@ func TestConversationEditorAllowedBanner(t *testing.T) {
 	}
 
 	// Body must match the Python SOT string (not a dialog title/body pair).
+	// PROVENANCE: ui/textui/Conversations.py:2208-2216 (nomadnet 1.2.8). These
+	// fragments are a cheap structural check only — the authoritative
+	// byte-for-byte comparison against the live Python reference is
+	// TestEditorAllowedBannerTextMatchesSOT below.
 	joined := cw.editorAllowedBannerText()
 	for _, frag := range []string{
 		"You cannot currently message this peer",
 		"identity keys are not known",
-		"should arrive shortly, if available",
-		"Close this conversation and reopen it",
+		"you will be able to send messages as soon as they arrive",
 		"Ctrl-E, and use the query button",
 	} {
 		if !strings.Contains(joined, frag) {
@@ -195,5 +199,73 @@ func TestDeleteConversationConfirmListSlotDialog(t *testing.T) {
 	}
 	if yes != 0 || no != 0 {
 		t.Fatalf("callbacks fired without activation (yes=%v no=%v)", yes, no)
+	}
+}
+
+// bannerTextProbeScript extracts the identity-unknown banner body from the
+// INSTALLED nomadnet reference source. It locates the package directory via
+// nomadnet's own __file__ and parses Conversations.py with ast, so the expected
+// string is derived from the reference's real source instead of being
+// transcribed by hand (see editorAllowedBannerText for why that matters). RNS
+// output is silenced because it prints to stdout and would corrupt the JSON
+// channel RunPythonNomadnet decodes.
+const bannerTextProbeScript = `
+import ast, json, os
+import RNS
+RNS.loglevel = RNS.LOG_NONE
+import nomadnet
+
+path = os.path.join(os.path.dirname(nomadnet.__file__), "ui", "textui", "Conversations.py")
+with open(path, encoding="utf-8") as f:
+    src = f.read()
+marker = "You cannot currently message this peer"
+matches = [
+    node.value
+    for node in ast.walk(ast.parse(src))
+    if isinstance(node, ast.Constant)
+    and isinstance(node.value, str)
+    and marker in node.value
+]
+print(json.dumps({"file": path, "matches": matches}))
+`
+
+// TestEditorAllowedBannerTextMatchesSOT asserts the identity-unknown banner
+// wording byte-for-byte against the installed Python nomadnet reference,
+// extracted from the reference's own source with ast. Deriving the expectation
+// rather than hand-copying it is what stops a nomadnet upgrade from being
+// silently absorbed: 1.2.8 replaced the 1.2.3 wording ("…and should arrive
+// shortly, if available. Close this conversation and reopen it to try again.")
+// with "…and you will be able to send messages as soon as they arrive.", and a
+// transcribed literal pinned the superseded text for the port's whole life.
+//
+// Skips (does not fail) when no Python nomadnet reference is importable, per the
+// testutils convention.
+func TestEditorAllowedBannerTextMatchesSOT(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	cw := NewConversationWidget(app, "abcdef0123456789abcdef0123456789")
+
+	var ref struct {
+		File    string   `json:"file"`
+		Matches []string `json:"matches"`
+	}
+	testutils.RunPythonNomadnet(t, nil, bannerTextProbeScript, &ref)
+
+	if len(ref.Matches) != 1 {
+		t.Fatalf("expected exactly 1 string containing the banner marker in %v, got %d: %q",
+			ref.File, len(ref.Matches), ref.Matches)
+	}
+
+	// Python builds "\n" + g["info"] + "\n\n" + <body>; the Go side
+	// interpolates the same glyph, so strip that prefix and compare the body.
+	text := cw.editorAllowedBannerText()
+	body, ok := strings.CutPrefix(text, "\n"+cw.glyphs()["info"])
+	if !ok {
+		t.Fatalf("banner text %q does not start with the info-glyph prefix", text)
+	}
+	if body != ref.Matches[0] {
+		t.Errorf("banner body differs from the nomadnet %v reference (%v)\ngot:  %q\nwant: %q",
+			testutils.SOTNomadnetVersion, ref.File, body, ref.Matches[0])
 	}
 }
