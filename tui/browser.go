@@ -46,11 +46,15 @@ type BrowserDisplay struct {
 	currentURLDisp string
 	// Transfer stats for the footer status text (Python response_size/
 	// response_transfer_size/response_time/loaded_from_cache, Browser.py:1756).
-	responseSize      int64
-	responseTransfer  int64
-	responseTime      float64
-	hasTransfer       bool
-	loadedFromCache   bool
+	responseSize     int64
+	responseTransfer int64
+	responseTime     float64
+	hasTransfer      bool
+	loadedFromCache  bool
+	// savedFileName is the basename a /file/ download wrote, or "" — Python
+	// self.saved_file_name, which switches the DONE status text to
+	// "Saved <name>" (Browser.py:982,1650,1670 + :1797-1798).
+	savedFileName     string
 	linkStatusShowing bool
 	content           *browserPageView
 	// contentFG is the browser content area's default text color: the
@@ -746,6 +750,12 @@ func (bd *BrowserDisplay) showContent() {
 // fetch runs via OnFetchPartial. On the next navigation the previous loop is
 // stopped.
 func (bd *BrowserDisplay) RenderPage(markup string) {
+	// A page render ends any download's claim on the footer: Python resets
+	// saved_file_name on every page load (Browser.py:1278,1357,1431), so the
+	// status line goes back to "Done ...".
+	if bd.savedFileName != "" {
+		bd.savedFileName = ""
+	}
 	bd.currentMarkup = markup
 	bd.partialContents = nil
 	bd.stopPartials()
@@ -1384,6 +1394,33 @@ func (bd *BrowserDisplay) MarkedLink(target, fields string) {
 // "Done  ▤ <size>   ↓<size> in <t>s   ◷ <speed>b/s". cached marks a cache hit
 // (" (cached)"). Call with hasTransfer=false before the fetch completes to show
 // the in-flight status label instead.
+// FooterText returns the footer status line exactly as rendered. The status line
+// is user-visible state — "No path to destination known", "Establishing link...",
+// "Saved <name>", the byte/speed stats — so tests assert on it rather than on the
+// internal fields that feed it.
+func (bd *BrowserDisplay) FooterText() string {
+	return bd.footerStatus.GetText(true)
+}
+
+// SetSavedFile records the name of the file a /file/ download wrote, so the
+// footer reports "Saved <name>" rather than "Done" (Python self.saved_file_name,
+// Browser.py:982/1650/1670 + status_text :1797-1798). Pass "" to clear it.
+func (bd *BrowserDisplay) SetSavedFile(name string) {
+	bd.savedFileName = name
+	bd.refreshFooterStatus()
+}
+
+// ShowDownload reports a completed /file/ download on the display: the footer
+// switches to "Saved <name>" carrying the saved file's size and the elapsed
+// transfer time. The page body is deliberately left alone — Python's
+// download_file/file_received only set saved_file_name and saved_file_size and
+// refresh the display (Browser.py:982-984, 1645-1661); they never touch the body.
+// The file itself has already been written by browser.SaveDownload.
+func (bd *BrowserDisplay) ShowDownload(savedName string, savedSize int, elapsed float64) {
+	bd.SetSavedFile(savedName)
+	bd.SetTransferStats(int64(savedSize), int64(savedSize), elapsed, false)
+}
+
 func (bd *BrowserDisplay) SetTransferStats(responseSize, transferSize int64, responseTime float64, cached bool) {
 	bd.responseSize = responseSize
 	bd.responseTransfer = transferSize
@@ -1416,7 +1453,7 @@ func (bd *BrowserDisplay) refreshFooterStatus() {
 func (bd *BrowserDisplay) refreshFooterStatusFor(status browserStatus) {
 	g := bd.app.Glyphs
 	text := browserStatusText(g, status, bd.responseSize, bd.responseTransfer,
-		bd.responseTime, bd.hasTransfer, bd.loadedFromCache, "")
+		bd.responseTime, bd.hasTransfer, bd.loadedFromCache, bd.savedFileName)
 	bd.footerStatus.SetText(text)
 }
 

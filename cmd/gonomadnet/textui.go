@@ -2777,7 +2777,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 					go func() {
 						start := time.Now()
 						var data []byte
-						if strings.HasPrefix(path, "/file/") {
+						if browser.IsFilePath(path) {
 							savedName, _, _ := browser.ServeLocalFile(a.FilesPath, path, a.DownloadsPath)
 							elapsed := time.Since(start).Seconds()
 							tuiApp.QueueUpdateDraw(func() {
@@ -2856,6 +2856,17 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 							link.Teardown()
 						}
 						bd.SetContent(fmt.Sprintf("[red]%v[-]", browser.StatusText(browser.ErrToStatus(ferr))))
+						return
+					}
+					// A /file/<name> request is a download, not a page: Python
+					// routes it to download_file, which saves the response and
+					// reports "Saved <name>" with the size and elapsed time
+					// (Browser.py:932-940, 1645-1661, 1797-1798). Saving here
+					// reuses the whole fetch above — path resolution, link reuse,
+					// timeouts, progress — exactly as Python's download_file
+					// shares its link handling with __load. The file bytes used to
+					// reach RenderPage and be rendered as markup.
+					if completeRemoteFilePath(bd, a.DownloadsPath, path, data, elapsed) {
 						return
 					}
 					if rd == nil {
@@ -3015,6 +3026,30 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 // raw LXMF state int and method are passed through unchanged so the header
 // logic compares against the raw LXMF constants, exactly like the Python
 // original (Conversations.py:2609-2626).
+// completeRemoteFilePath finishes a completed fetch whose path is a /file/
+// download: it saves the response under downloadsDir and reports "Saved <name>"
+// with the file's size and the elapsed transfer time. It reports whether the
+// response was a download at all, so the caller can skip the page path (cache +
+// render) for one.
+//
+// Python draws the same line in Browser.load_page: a path starting with "/file/"
+// goes to download_file, everything else to load_page (Browser.py:932-940). The
+// download's own display rules live in tui.BrowserDisplay.ShowDownload, and the
+// naming/collision rules in browser.SaveDownload; this is the decision plus the
+// two calls, kept here so the branch itself is testable.
+func completeRemoteFilePath(bd *tui.BrowserDisplay, downloadsDir, path string, data []byte, elapsed float64) bool {
+	if !browser.IsFilePath(path) {
+		return false
+	}
+	savedName, savedSize, err := browser.SaveDownload(downloadsDir, path, data)
+	if err != nil {
+		bd.SetContent(fmt.Sprintf("[red]Could not save %v: %v[-]", tview.Escape(path), err))
+		return true
+	}
+	bd.ShowDownload(savedName, savedSize, elapsed)
+	return true
+}
+
 func toConversationMessages(in []conversation.MessageDisplayData) []tui.ConversationMessage {
 	if len(in) == 0 {
 		return nil

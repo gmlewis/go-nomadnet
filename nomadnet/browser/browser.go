@@ -612,6 +612,14 @@ func FetchPageReuseLink(ctx context.Context, ts *rns.TransportSystem, destHash [
 	return fetchBytes(ctx, ts, destHash, path, requestData, timeout, onProgress, onLinkEstablished, existing)
 }
 
+// IsFilePath reports whether a browser path names a file download rather than a
+// page, mirroring Python Browser.load_page's `if path.startswith("/file/")`
+// branch (Browser.py:932-940), which routes the request to download_file /
+// download_local_file instead of fetching and rendering markup.
+func IsFilePath(path string) bool {
+	return strings.HasPrefix(path, "/file/")
+}
+
 // DownloadFile fetches a /file/<name> path from the nomadnetwork.node
 // destination and saves the response to downloadsDir, mirroring Python
 // Browser.download_file (Browser.py:999-1068) + file_received
