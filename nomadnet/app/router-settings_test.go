@@ -239,3 +239,35 @@ func TestStaticPeerHashesValidation(t *testing.T) {
 		})
 	}
 }
+
+// TestRRCMaxAcceptedResourceSizeReachesTheManager pins the wiring of
+// [rrc] max_accepted_resource_size through to the RRC manager, which is where the
+// hub reads the cap for every incoming resource advertisement. The port hardcoded
+// 262144 at that call site, so a configured cap had no effect on the client.
+func TestRRCMaxAcceptedResourceSizeReachesTheManager(t *testing.T) {
+	t.Parallel()
+
+	const contents = "[rrc]\n  max_accepted_resource_size = 512\n\n[node]\n  enable_node = no\n"
+	dir := tempDir(t)
+	if err := os.WriteFile(filepath.Join(dir, "config"), []byte(contents), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ts := rns.NewTransportSystem(nil)
+	id, err := rns.NewIdentity(true, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := NewAppWithTransport(dir, WithTransport(ts), WithIdentity(id))
+	if err := a.InitWithTransport(ts, id); err != nil {
+		t.Fatalf("InitWithTransport: %v", err)
+	}
+	t.Cleanup(a.Shutdown)
+
+	// The config value is kilobytes; the manager works in bytes.
+	if got, want := a.RRCMaxAcceptedResourceBytes, 512*1024; got != want {
+		t.Errorf("App cap = %v bytes, want %v", got, want)
+	}
+	if got, want := a.RRC.MaxAcceptedResourceBytes(), 512*1024; got != want {
+		t.Errorf("manager cap = %v bytes, want %v (the configured 512 KB)", got, want)
+	}
+}

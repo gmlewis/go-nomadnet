@@ -141,19 +141,23 @@ type App struct {
 	PrioritisedLXMF      []string
 
 	// RRC settings
-	RRCHistoryPerRoomCap      int
-	RRCFilterLoadedHistory    bool
-	RRCEphemeralNotices       int // seconds
-	RRCNickColors             bool
-	RRCNickColorsTheme        []string
-	RRCMentionColor           string
-	RRCColorMentionTimestamps bool
-	RRCUIJustifyMsgs          bool
-	RRCUISpaceMsgs            bool
-	RRCUIRenderMarkdown       bool
-	RRCUIRenderMicron         bool
-	RRCShowGutters            bool
-	RRCEnableEsoterics        bool
+	RRCHistoryPerRoomCap   int
+	RRCFilterLoadedHistory bool
+	RRCEphemeralNotices    int // seconds
+	// RRCMaxAcceptedResourceSize is the largest incoming RRC resource this client
+	// accepts, in bytes (Python self.rrc_max_accepted_resource_size,
+	// NomadNetworkApp.py:158,998-1002).
+	RRCMaxAcceptedResourceBytes int
+	RRCNickColors               bool
+	RRCNickColorsTheme          []string
+	RRCMentionColor             string
+	RRCColorMentionTimestamps   bool
+	RRCUIJustifyMsgs            bool
+	RRCUISpaceMsgs              bool
+	RRCUIRenderMarkdown         bool
+	RRCUIRenderMicron           bool
+	RRCShowGutters              bool
+	RRCEnableEsoterics          bool
 
 	// Printing settings
 	PrintMessages                   bool
@@ -402,6 +406,7 @@ func (a *App) Init() error {
 	a.Dir.SetPersistPath(a.DirectoryPath)
 	a.RRC = rrc.NewManager(a.StoragePath, nil)
 	a.RRC.SetHistoryConfig(a.RRCHistoryPerRoomCap, a.RRCFilterLoadedHistory, a.RRCEphemeralNotices)
+	a.RRC.SetMaxAcceptedResourceBytes(a.RRCMaxAcceptedResourceBytes)
 	if err := a.RRC.Load(); err != nil {
 		a.Logger.Error("Could not load RRC hubs: %v", err)
 	}
@@ -472,6 +477,7 @@ func (a *App) initRNS() {
 	a.Logger.Info("Identity loaded: %v", rns.PrettyHex(a.Identity.Hash))
 	a.RRC.SetIdentity(a.Identity)
 	a.RRC.SetHistoryConfig(a.RRCHistoryPerRoomCap, a.RRCFilterLoadedHistory, a.RRCEphemeralNotices)
+	a.RRC.SetMaxAcceptedResourceBytes(a.RRCMaxAcceptedResourceBytes)
 
 	// Initialize LXMF router
 	a.Logger.Info("Initializing LXMF router...")
@@ -622,6 +628,7 @@ func (a *App) InitWithTransport(ts *rns.TransportSystem, identity *rns.Identity)
 	a.RRC = rrc.NewManager(a.StoragePath, nil)
 	a.RRC.SetIdentity(a.Identity)
 	a.RRC.SetHistoryConfig(a.RRCHistoryPerRoomCap, a.RRCFilterLoadedHistory, a.RRCEphemeralNotices)
+	a.RRC.SetMaxAcceptedResourceBytes(a.RRCMaxAcceptedResourceBytes)
 	if err := a.RRC.Load(); err != nil {
 		a.Logger.Error("Could not load RRC hubs: %v", err)
 	}
@@ -830,6 +837,9 @@ func (a *App) applyConfig(cfg *config.Config) {
 	// Python stores rrc_ephemeral_notices in seconds (value*60); the Go config
 	// holds minutes, so convert to seconds here to match Python.
 	a.RRCEphemeralNotices = int(cfg.RRC.EphemeralNotices) * 60
+	// Python stores this in bytes: the config value is kilobytes here
+	// (NomadNetworkApp.py:998-1002 multiplies by 1024).
+	a.RRCMaxAcceptedResourceBytes = int(cfg.RRC.MaxAcceptedResourceSize * 1024)
 	a.RRCNickColors = cfg.RRC.NickColors
 	a.RRCNickColorsTheme = cfg.RRC.NickColorsTheme
 	a.RRCMentionColor = cfg.RRC.MentionColor

@@ -102,15 +102,19 @@ type RRCConfig struct {
 	FilterLoadedHistory    bool
 	EphemeralNotices       float64 // minutes
 	ColorMentionTimestamps bool
-	RenderMarkdown         bool
-	RenderMicron           bool
-	NickColors             bool
-	JustifyMsgs            bool
-	SpaceMsgs              bool
-	ShowGutters            bool
-	MentionColor           string
-	NickColorsTheme        []string
-	EnableEsoterics        bool
+	// MaxAcceptedResourceSize is the largest incoming RRC resource this client
+	// accepts, in KILOBYTES. Python reads it and multiplies by 1024
+	// (NomadNetworkApp.py:998-1002); the shipped default is 256, i.e. 262144 bytes.
+	MaxAcceptedResourceSize float64
+	RenderMarkdown          bool
+	RenderMicron            bool
+	NickColors              bool
+	JustifyMsgs             bool
+	SpaceMsgs               bool
+	ShowGutters             bool
+	MentionColor            string
+	NickColorsTheme         []string
+	EnableEsoterics         bool
 }
 
 // NodeConfig holds node settings.
@@ -243,12 +247,15 @@ func DefaultConfig() *Config {
 			FilterLoadedHistory:    true,
 			EphemeralNotices:       10,
 			ColorMentionTimestamps: true,
-			RenderMarkdown:         true,
-			RenderMicron:           true,
-			NickColors:             true,
-			JustifyMsgs:            true,
-			SpaceMsgs:              false,
-			ShowGutters:            true,
+			// 256 KB, matching the shipped [rrc] max_accepted_resource_size = 256
+			// (NomadNetworkApp.py:1413).
+			MaxAcceptedResourceSize: 256,
+			RenderMarkdown:          true,
+			RenderMicron:            true,
+			NickColors:              true,
+			JustifyMsgs:             true,
+			SpaceMsgs:               false,
+			ShowGutters:             true,
 		},
 		// The [location] section is optional and absent from the file
 		// gonomadnet writes, so the only default that matters is the staleness
@@ -571,6 +578,14 @@ func (c *Config) applyRRC() {
 	if v, ok := sec["ephemeral_notices"]; ok {
 		if f, err := asFloat(v); err == nil {
 			c.RRC.EphemeralNotices = f
+		}
+	}
+	if v, ok := sec["max_accepted_resource_size"]; ok {
+		// Python accepts any value >= 0 and multiplies by 1024
+		// (NomadNetworkApp.py:998-1002); a value of 0 therefore means "accept no
+		// resources at all", which is a meaningful setting and is preserved.
+		if f, err := asFloat(v); err == nil && f >= 0 {
+			c.RRC.MaxAcceptedResourceSize = f
 		}
 	}
 	if v, ok := sec["color_mention_timestamps"]; ok {

@@ -18,8 +18,11 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/gmlewis/go-nomadnet/testutils"
 )
 
 // TestIntroTextFromConfig pins [textui] intro_text, the title the startup splash
@@ -134,3 +137,98 @@ func TestAnimationIntervalFromConfig(t *testing.T) {
 		})
 	}
 }
+
+// TestMaxAcceptedResourceSizeFromConfig pins [rrc] max_accepted_resource_size, the
+// largest incoming RRC resource the client accepts. Python reads it in kilobytes and
+// multiplies by 1024, accepting any value >= 0 (NomadNetworkApp.py:998-1002); the
+// shipped default is 256, i.e. 262144 bytes (:1413). The port had no field, and the
+// client-side cap was hardcoded to 262144, so the key did nothing.
+func TestMaxAcceptedResourceSizeFromConfig(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		rrc   string
+		wantK float64
+	}{
+		{"explicit kilobytes", "max_accepted_resource_size = 512\n", 512},
+		{"a raised value", "max_accepted_resource_size = 2048\n", 2048},
+		{"zero is meaningful and preserved", "max_accepted_resource_size = 0\n", 0},
+		{"absent uses the shipped 256", "", 256},
+		{"a negative value keeps the default", "max_accepted_resource_size = -1\n", 256},
+		{"a non-number keeps the default", "max_accepted_resource_size = big\n", 256},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := tempDir(t)
+			path := filepath.Join(dir, "config")
+			if err := os.WriteFile(path, []byte("[rrc]\n"+tc.rrc), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			c, err := Load(path)
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			if c.RRC.MaxAcceptedResourceSize != tc.wantK {
+				t.Errorf("MaxAcceptedResourceSize = %v KB, want %v", c.RRC.MaxAcceptedResourceSize, tc.wantK)
+			}
+		})
+	}
+}
+
+// TestDefaultConfigMatchesPythonVerbatim pins the bundled default configuration
+// against the reference string. defaults.go documents defaultConfigText as "the
+// same string Python ships as __default_nomadnet_config__" and "written to disk on
+// first run so the on-disk file is byte-identical to what Python produces" — which
+// was false: the whole max_accepted_resource_size block (its six comment lines and
+// the key) was missing from an otherwise identical file, so a fresh install got a
+// config that named the setting nowhere while Python's default carried it.
+//
+// The expected text is read from the installed reference at test time, so the two
+// cannot drift apart silently.
+func TestDefaultConfigMatchesPythonVerbatim(t *testing.T) {
+	t.Parallel()
+	testutils.SkipIfNoPythonNomadnet(t)
+
+	req := map[string]any{}
+	var want string
+	testutils.RunPythonNomadnet(t, req, pythonDefaultConfigScript, &want)
+
+	if got := DefaultConfigText(); got != want {
+		gotLines, wantLines := strings.Count(got, "\n"), strings.Count(want, "\n")
+		t.Errorf("DefaultConfigText() differs from Python's __default_nomadnet_config__ (%v vs %v lines)", gotLines, wantLines)
+		for _, line := range firstDiffLines(got, want) {
+			t.Error(line)
+		}
+	}
+}
+
+// firstDiffLines reports the first differing line pair, for a readable failure.
+func firstDiffLines(got, want string) []string {
+	g, w := strings.Split(got, "\n"), strings.Split(want, "\n")
+	for i := 0; i < len(g) && i < len(w); i++ {
+		if g[i] != w[i] {
+			return []string{
+				"first difference at line " + strconv.Itoa(i+1) + ":",
+				"  go    : " + strconv.Quote(g[i]),
+				"  python: " + strconv.Quote(w[i]),
+			}
+		}
+	}
+	if len(g) != len(w) {
+		return []string{"the files differ only in length: go " + strconv.Itoa(len(g)) + " lines, python " + strconv.Itoa(len(w))}
+	}
+	return nil
+}
+
+// pythonDefaultConfigScript prints the reference's default configuration text.
+const pythonDefaultConfigScript = `
+import json, re
+import nomadnet
+src = open(nomadnet.__file__.replace("__init__.py", "NomadNetworkApp.py")).read()
+m = re.search(r"__default_nomadnet_config__ = '''(.*?)'''", src, re.S)
+print(json.dumps(m.group(1)))
+`

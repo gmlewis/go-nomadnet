@@ -119,17 +119,20 @@ func Save(c *Config, path string) (retErr error) {
 	})
 
 	rrcKeys := map[string]string{
-		"history_per_room_cap":     fmt.Sprintf("%v", c.RRC.HistoryPerRoomCap),
-		"filter_loaded_history":    boolStr(c.RRC.FilterLoadedHistory),
-		"ephemeral_notices":        fmt.Sprintf("%.0f", c.RRC.EphemeralNotices),
-		"color_mention_timestamps": boolStr(c.RRC.ColorMentionTimestamps),
-		"render_markdown":          boolStr(c.RRC.RenderMarkdown),
-		"render_micron":            boolStr(c.RRC.RenderMicron),
-		"nick_colors":              boolStr(c.RRC.NickColors),
-		"justify_msgs":             boolStr(c.RRC.JustifyMsgs),
-		"space_msgs":               boolStr(c.RRC.SpaceMsgs),
-		"show_gutters":             boolStr(c.RRC.ShowGutters),
-		"enable_esoterics":         boolStr(c.RRC.EnableEsoterics),
+		"history_per_room_cap":  fmt.Sprintf("%v", c.RRC.HistoryPerRoomCap),
+		"filter_loaded_history": boolStr(c.RRC.FilterLoadedHistory),
+		// Python writes this key from the same value it reads (kilobytes,
+		// NomadNetworkApp.py:1413), so a saved config carries it too.
+		"max_accepted_resource_size": fmt.Sprintf("%.0f", c.RRC.MaxAcceptedResourceSize),
+		"ephemeral_notices":          fmt.Sprintf("%.0f", c.RRC.EphemeralNotices),
+		"color_mention_timestamps":   boolStr(c.RRC.ColorMentionTimestamps),
+		"render_markdown":            boolStr(c.RRC.RenderMarkdown),
+		"render_micron":              boolStr(c.RRC.RenderMicron),
+		"nick_colors":                boolStr(c.RRC.NickColors),
+		"justify_msgs":               boolStr(c.RRC.JustifyMsgs),
+		"space_msgs":                 boolStr(c.RRC.SpaceMsgs),
+		"show_gutters":               boolStr(c.RRC.ShowGutters),
+		"enable_esoterics":           boolStr(c.RRC.EnableEsoterics),
 	}
 	if c.RRC.MentionColor != "" {
 		rrcKeys["mention_color"] = c.RRC.MentionColor
