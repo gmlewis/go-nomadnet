@@ -804,7 +804,7 @@ func attachmentNamesFromIndex(list []any) []AttachmentInfo {
 // also OrderedMap. An empty OrderedMap is returned when the index is absent or
 // unreadable so callers can use Get uniformly.
 func ReadIndex(conversationPath string) rnsmsgpack.OrderedMap {
-	indexPath := filepath.Join(conversationPath, ".index")
+	indexPath := filepath.Join(conversationPath, IndexFilename())
 	data, err := os.ReadFile(indexPath)
 	if err != nil {
 		return rnsmsgpack.OrderedMap{}
