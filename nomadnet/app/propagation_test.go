@@ -71,20 +71,141 @@ func TestAutoSelectPropagationNodeUserSelected(t *testing.T) {
 	}
 }
 
+// TestAutoSelectPropagationNodeTrustedFewestHops pins the selection rule Python's
+// autoselect_propagation_node implements (NomadNetworkApp.py:613-625): among the
+// TRUSTED directory nodes only, the one with the fewest hops wins, and its strict
+// `<` means the first of several equally-close nodes is kept. Untrusted nodes are
+// skipped however close they are, and with no trusted node nothing is selected at
+// all.
+//
+// This test previously constructed the same state and asserted NOTHING — it called
+// AutoSelectPropagationNode and stopped, so the contract named in its title was
+// unverified (parity-gaps §5.2).
 func TestAutoSelectPropagationNodeTrustedFewestHops(t *testing.T) {
 	t.Parallel()
-	ts := rns.NewTransportSystem(nil)
-	a := NewApp(tempDir(t), "", false, false)
-	a.setupPaths()
-	a.loadPeerSettings()
-	a.Dir = directory.New()
-	a.Transport = ts
 
-	// Two trusted nodes; HopsTo returns PathfinderM for unknown hashes, so both
-	// tie and the first encountered wins. Add a non-trusted node that should be
-	// skipped.
-	a.Dir.Remember(&directory.Entry{SourceHash: []byte{1}, TrustLevel: directory.TrustTrusted, HostsNode: true})
-	a.Dir.Remember(&directory.Entry{SourceHash: []byte{2}, TrustLevel: directory.TrustUntrusted, HostsNode: true})
-	// AutoSelect with no router should not panic and should pick a trusted node.
+	trusted := func(hash byte) *directory.Entry {
+		return &directory.Entry{SourceHash: []byte{hash}, TrustLevel: directory.TrustTrusted, HostsNode: true}
+	}
+	untrusted := func(hash byte) *directory.Entry {
+		return &directory.Entry{SourceHash: []byte{hash}, TrustLevel: directory.TrustUntrusted, HostsNode: true}
+	}
+
+	tests := []struct {
+		name  string
+		nodes []*directory.Entry
+		// hops maps a node's single-byte source hash to its hop count. A hash
+		// absent from the map is unreachable (PathfinderM), like an unlearned path.
+		hops map[byte]int
+		// want is the selected hash's single byte, or 0 for "nothing selected".
+		want byte
+	}{
+		{
+			name:  "the trusted node with the fewest hops wins",
+			nodes: []*directory.Entry{trusted(1), trusted(2), trusted(3)},
+			hops:  map[byte]int{1: 4, 2: 2, 3: 7},
+			want:  2,
+		},
+		{
+			name:  "an untrusted node is skipped however close it is",
+			nodes: []*directory.Entry{untrusted(1), trusted(2)},
+			hops:  map[byte]int{1: 1, 2: 5},
+			want:  2,
+		},
+		{
+			name:  "the first of several equally-close nodes wins",
+			nodes: []*directory.Entry{trusted(1), trusted(2), trusted(3)},
+			hops:  map[byte]int{1: 3, 2: 3, 3: 3},
+			want:  1,
+		},
+		{
+			name:  "no trusted node selects nothing",
+			nodes: []*directory.Entry{untrusted(1), untrusted(2)},
+			hops:  map[byte]int{1: 1, 2: 2},
+			want:  0,
+		},
+		{
+			name:  "a directory with no nodes selects nothing",
+			nodes: nil,
+			hops:  map[byte]int{},
+			want:  0,
+		},
+		{
+			name:  "an unreachable trusted node is still selected when it is the only one",
+			nodes: []*directory.Entry{trusted(1)},
+			hops:  map[byte]int{},
+			want:  1,
+		},
+		{
+			name:  "a later nearer node overtakes an earlier one",
+			nodes: []*directory.Entry{trusted(1), trusted(2)},
+			hops:  map[byte]int{1: 6, 2: 2},
+			want:  2,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			hops := func(hash []byte) int {
+				if len(hash) == 1 {
+					if h, ok := tc.hops[hash[0]]; ok {
+						return h
+					}
+				}
+				return rns.PathfinderM
+			}
+
+			got := autoSelectPropagationNode(tc.nodes, hops)
+			if tc.want == 0 {
+				if got != nil {
+					t.Fatalf("selected %x, want nothing (no trusted node)", got)
+				}
+				return
+			}
+			if len(got) != 1 || got[0] != tc.want {
+				t.Errorf("selected %x, want [%x]", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestAutoSelectPropagationNodeAppPath pins the app-level half: a stored user choice
+// is used as-is, and it is stored on the router (Python's
+// autoselect_propagation_node sets it via set_outbound_propagation_node,
+// NomadNetworkApp.py:632).
+func TestAutoSelectPropagationNodeAppPath(t *testing.T) {
+	t.Parallel()
+
+	a := newTestAppWithRouter(t)
+
+	// A propagation node hash is a truncated destination hash: 16 bytes, which is
+	// what the router's setter requires.
+	userChosen := []byte{0xaa, 0xbb, 0xcc, 0xdd, 0x01, 0x02, 0x03, 0x04,
+		0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c}
+	a.SetUserSelectedPropagationNode(userChosen)
+
+	if got := a.Router.GetOutboundPropagationNode(); !bytes.Equal(got, userChosen) {
+		t.Errorf("outbound propagation node = %x, want the user's %x", got, userChosen)
+	}
+	if got := a.GetDefaultPropagationNode(); !bytes.Equal(got, userChosen) {
+		t.Errorf("GetDefaultPropagationNode = %x, want the user's %x", got, userChosen)
+	}
+}
+
+// TestAutoSelectPropagationNodeWithoutATrustedNode pins the "nothing to select"
+// branch: with a directory holding only untrusted nodes, the router's outbound
+// propagation node stays unset.
+func TestAutoSelectPropagationNodeWithoutATrustedNode(t *testing.T) {
+	t.Parallel()
+
+	a := newTestAppWithRouter(t)
+	a.Dir.Remember(&directory.Entry{SourceHash: []byte{1}, TrustLevel: directory.TrustUntrusted, HostsNode: true})
+
 	a.AutoSelectPropagationNode()
+
+	if got := a.Router.GetOutboundPropagationNode(); got != nil {
+		t.Errorf("outbound propagation node = %x, want nil with no trusted node", got)
+	}
 }

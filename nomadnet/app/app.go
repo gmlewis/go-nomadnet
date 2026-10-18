@@ -1051,20 +1051,7 @@ func (a *App) AutoSelectPropagationNode() {
 	}
 	a.psMu.Unlock()
 	if selected == nil && a.Dir != nil {
-		bestHops := rns.PathfinderM + 1
-		for _, node := range a.Dir.KnownNodes() {
-			if node.TrustLevel != directory.TrustTrusted {
-				continue
-			}
-			hops := rns.PathfinderM + 1
-			if a.Transport != nil {
-				hops = a.Transport.HopsTo(node.SourceHash)
-			}
-			if hops < bestHops {
-				bestHops = hops
-				selected = node.SourceHash
-			}
-		}
+		selected = autoSelectPropagationNode(a.Dir.KnownNodes(), a.hopsTo)
 	}
 	if selected == nil {
 		if a.Logger != nil {
@@ -1073,8 +1060,46 @@ func (a *App) AutoSelectPropagationNode() {
 		return
 	}
 	if a.Router != nil {
-		_ = a.Router.SetOutboundPropagationNode(selected)
+		if err := a.Router.SetOutboundPropagationNode(selected); err != nil && a.Logger != nil {
+			// The router refuses a hash that is not a truncated destination hash. A
+			// directory entry with a malformed hash would otherwise be selected and
+			// then dropped in silence, leaving propagation pointed at nothing.
+			a.Logger.Error("Could not set %v as the outbound propagation node: %v", rns.PrettyHex(selected), err)
+		}
 	}
+}
+
+// hopsTo reports the hop count to a destination, or one past the maximum when no
+// transport is wired — which makes every candidate tie and leaves nothing selected,
+// as the original inline loop did.
+func (a *App) hopsTo(hash []byte) int {
+	if a.Transport == nil {
+		return rns.PathfinderM + 1
+	}
+	return a.Transport.HopsTo(hash)
+}
+
+// autoSelectPropagationNode picks the propagation node to use: the TRUSTED directory
+// node with the fewest hops, or nil when no node is trusted. It mirrors Python's
+// autoselect_propagation_node (NomadNetworkApp.py:613-625) — the user's explicit
+// choice is handled by the caller, which is where Python checks it too — including
+// its strict `<`, so the first of several equally-close trusted nodes wins.
+//
+// It takes the node list and the hop lookup as arguments so the rule can be
+// exercised without a transport whose path table the app package cannot reach.
+func autoSelectPropagationNode(nodes []*directory.Entry, hops func(hash []byte) int) []byte {
+	var selected []byte
+	bestHops := rns.PathfinderM + 1
+	for _, node := range nodes {
+		if node == nil || node.TrustLevel != directory.TrustTrusted {
+			continue
+		}
+		if h := hops(node.SourceHash); h < bestHops {
+			bestHops = h
+			selected = node.SourceHash
+		}
+	}
+	return selected
 }
 
 // DirAnnounceEvents returns the persisted directory announce stream as display
