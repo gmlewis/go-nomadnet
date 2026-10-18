@@ -14,30 +14,30 @@ import org.junit.Test
 import java.io.File
 
 /**
- * The colours the console is drawn in.
+ * The colors the console is drawn in.
  *
- * The client sends colours as terminal escapes, so what the screen holds is a colour
+ * The client sends colors as terminal escapes, so what the screen holds is a color
  * *name*: which of the 256 palette entries, a 24-bit value, or the terminal's own default.
  * The view draws pixels, so something has to turn one into the other, and that something is
  * pure — a table and a swap — which is why it is asserted here rather than looked at on a
  * tablet. A palette that is off by one entry draws the whole interface in the wrong
- * colours, and nothing about it looks like a bug in the code.
+ * colors, and nothing about it looks like a bug in the code.
  *
- * The colours the client leaves to the terminal are the ones that matter most, and they are
+ * The colors the client leaves to the terminal are the ones that matter most, and they are
  * the appliance's published theme: the same `colors.properties` the client installs under
  * Termux is the file these tests read, so the console and the Termux install cannot resolve
  * the operator's theme two different ways.
  */
 class TerminalPaletteTest {
 
-    /** argb renders a colour the way the table does, so a failure reads as a colour. */
+    /** argb renders a color the way the table does, so a failure reads as a color. */
     private fun argb(value: Int): String = "#%08x".format(value)
 
     @Test
     fun `the palette is the theme the appliance publishes`() {
         // The theme is Termux's `colors.properties`, which the APK carries and the client
         // installs under Termux: a black background, a bright green foreground, and the
-        // gruvbox sixteen. The console resolves the client's unnamed colours and its named
+        // gruvbox sixteen. The console resolves the client's unnamed colors and its named
         // palette entries from this file's values, and the file is what is read here — a
         // second copy of the sixteen in this test would be a second copy to drift.
         val theme = publishedTheme()
@@ -52,7 +52,7 @@ class TerminalPaletteTest {
             theme["foreground"],
             TerminalPalette.DEFAULT_FOREGROUND and 0xffffff,
         )
-        // The cursor is drawn as the cell's own colours reversed, so the theme's cursor is
+        // The cursor is drawn as the cell's own colors reversed, so the theme's cursor is
         // what that block looks like only when the theme's cursor is its foreground.
         assertEquals("the theme's cursor", theme["foreground"], theme["cursor"])
 
@@ -68,10 +68,10 @@ class TerminalPaletteTest {
     }
 
     @Test
-    fun `the rest of the palette is the colour cube and the grey ramp`() {
+    fun `the rest of the palette is the color cube and the grey ramp`() {
         // Entries 16 to 231 are a 6x6x6 cube whose steps are the ones every terminal uses,
         // and the last twenty-four are the greys. This is the part a program reaches for
-        // when it asks for 256 colours, which the client does.
+        // when it asks for 256 colors, which the client does.
         val steps = listOf(0x00, 0x5f, 0x87, 0xaf, 0xd7, 0xff)
 
         for (r in 0..5) {
@@ -100,9 +100,9 @@ class TerminalPaletteTest {
             )
         }
 
-        // An index past the end of the table comes from a program that asked for a colour
+        // An index past the end of the table comes from a program that asked for a color
         // that does not exist. It is clamped rather than thrown: a terminal that dies on a
-        // colour escape is worse than one that draws white.
+        // color escape is worse than one that draws white.
         assertEquals(
             argb(TerminalPalette.foreground(TerminalColor.Palette(255))),
             argb(TerminalPalette.foreground(TerminalColor.Palette(999))),
@@ -114,21 +114,21 @@ class TerminalPaletteTest {
     }
 
     @Test
-    fun `a 24-bit colour is drawn as it was sent`() {
+    fun `a 24-bit color is drawn as it was sent`() {
         // The client is run with COLORTERM=truecolor, so most of what it draws arrives as
         // 24-bit rather than as a palette entry, and it must reach the screen unchanged:
-        // rounding it into the 256-colour cube is what makes a themed interface look wrong.
+        // rounding it into the 256-color cube is what makes a themed interface look wrong.
         val cases = listOf(0x0a141e, 0x00a533, 0xfd3, 0xffffff, 0x000000)
 
         for (value in cases) {
             assertEquals(
-                "the colour #$value",
+                "the color #$value",
                 argb((0xff shl 24) or value),
                 argb(TerminalPalette.foreground(TerminalColor.Rgb(value))),
             )
         }
 
-        // Anything above the 24 bits a colour has is not a colour, and must not leak into
+        // Anything above the 24 bits a color has is not a color, and must not leak into
         // the alpha byte: a fully transparent glyph is an invisible one.
         assertEquals(
             argb((0xff shl 24) or 0x123456),
@@ -137,8 +137,8 @@ class TerminalPaletteTest {
     }
 
     @Test
-    fun `the terminal's own colours are the theme's`() {
-        // A cell the client gave no colour for is drawn in the terminal's own, and the
+    fun `the terminal's own colors are the theme's`() {
+        // A cell the client gave no color for is drawn in the terminal's own, and the
         // client leaves most of its chrome to the terminal: the frame borders, the pane
         // titles, the key hints along the bottom. So the default pair is the whole look of
         // the interface, and it is the published theme's pair rather than a second one
@@ -153,7 +153,7 @@ class TerminalPaletteTest {
             argb(TerminalPalette.DEFAULT_BACKGROUND),
         )
         assertNotEquals(
-            "the default text is the same colour as the default background",
+            "the default text is the same color as the default background",
             TerminalPalette.DEFAULT_FOREGROUND,
             TerminalPalette.DEFAULT_BACKGROUND,
         )
@@ -168,7 +168,7 @@ class TerminalPaletteTest {
     }
 
     @Test
-    fun `a pen resolves to the two colours a cell is drawn with`() {
+    fun `a pen resolves to the two colors a cell is drawn with`() {
         assertEquals(
             TerminalColors(TerminalPalette.DEFAULT_FOREGROUND, TerminalPalette.DEFAULT_BACKGROUND),
             TerminalPalette.colorsOf(TerminalPen()),
@@ -198,7 +198,7 @@ class TerminalPaletteTest {
             ),
             TerminalPalette.colorsOf(plain.copy(reverse = true)),
         )
-        // Reversing a cell that named no colours swaps the theme's own two.
+        // Reversing a cell that named no colors swaps the theme's own two.
         assertEquals(
             TerminalColors(TerminalPalette.DEFAULT_BACKGROUND, TerminalPalette.DEFAULT_FOREGROUND),
             TerminalPalette.colorsOf(TerminalPen(reverse = true)),
@@ -210,9 +210,9 @@ class TerminalPaletteTest {
         const val THEME_FILE = "src/main/assets/colors.properties"
 
         /**
-         * publishedTheme is the APK's terminal theme, as name to 24-bit colour.
+         * publishedTheme is the APK's terminal theme, as name to 24-bit color.
          *
-         * Termux's format is one `key = value` per line with each colour written `#rrggbb`,
+         * Termux's format is one `key = value` per line with each color written `#rrggbb`,
          * and a comment is a line that starts with `#`. The `#` inside a value is part of
          * the value, so the split is on the first `=` rather than on the hash.
          */

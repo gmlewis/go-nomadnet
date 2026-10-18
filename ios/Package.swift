@@ -27,7 +27,7 @@ import PackageDescription
 //
 // Nothing here depends on a third-party package. The frameworks the appliance
 // uses — Foundation, CoreLocation, CoreMotion, CoreBluetooth, SwiftUI — are all
-// part of the SDK, and the terminal engine, the key encodings and the colour
+// part of the SDK, and the terminal engine, the key encodings and the color
 // resolution are the appliance's own code, so the wire format it speaks to the
 // Go bridge is one this package can assert byte for byte.
 let package = Package(

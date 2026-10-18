@@ -38,7 +38,7 @@ import kotlin.math.roundToInt
  *
  * Everything here is a thin skin over the tested parts. What to draw is
  * [TerminalScreen]'s; how many columns and rows the view holds, where a cell lands, which
- * line the window shows and what the key row offers are [TerminalLayout]'s; what colour a
+ * line the window shows and what the key row offers are [TerminalLayout]'s; what color a
  * cell is, [TerminalPalette]'s; what a finger meant when it touched the console,
  * [TouchGesture]'s; and how a tap is spelled for the client, [TerminalMouse]'s. What is left
  * — and all this file contains — is the calls into `Canvas` and the touches that come back
@@ -202,15 +202,15 @@ class TerminalView(context: Context, attrs: AttributeSet? = null) : View(context
         // The view draws itself rather than being a background to something else, so it has
         // to be told that: a View that reports no background is otherwise skipped entirely.
         setWillNotDraw(false)
-        // It also carries its own background, in the console's own colour. A view with no
+        // It also carries its own background, in the console's own color. A view with no
         // background shows whatever is behind it until its first frame, which for a terminal
-        // is a flash of the window's colour on every rotation.
+        // is a flash of the window's color on every rotation.
         setBackgroundColor(TerminalPalette.DEFAULT_BACKGROUND)
         // And the framework paints a translucent highlight over a focused view that has no
         // background of its own — on top of everything the view draws, so the whole console
         // is washed toward white by about a sixth. The console is focused only to be typed
         // into, and it is never a thing to be highlighted: what it shows is the client's
-        // screen, and a screen that changes colour because the tablet was driven by a key
+        // screen, and a screen that changes color because the tablet was driven by a key
         // rather than a finger is a screen that is lying about what it is drawing.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             setDefaultFocusHighlightEnabled(false)
@@ -377,7 +377,7 @@ class TerminalView(context: Context, attrs: AttributeSet? = null) : View(context
         val left = metrics.pixelX(col)
         val colors = TerminalPalette.colorsOf(cell.pen)
 
-        // The background is filled only where it is not the console's own: a colour per
+        // The background is filled only where it is not the console's own: a color per
         // cell over the whole screen is three thousand rectangles to say what the cleared
         // canvas already said.
         if (colors.background != TerminalPalette.DEFAULT_BACKGROUND) {
@@ -414,7 +414,7 @@ class TerminalView(context: Context, attrs: AttributeSet? = null) : View(context
     /**
      * drawCursor draws the block the client's cursor rests on.
      *
-     * A block rather than an outline, drawn in the two colours a reverse-video cell is
+     * A block rather than an outline, drawn in the two colors a reverse-video cell is
      * drawn in, which is what makes it visible over both dark and light text. It is left
      * out while the client has hidden its cursor, and while it is scrolled out of view:
      * a reader up in the scrollback is looking at history the cursor is not on.

@@ -55,7 +55,7 @@ import (
 // defaultKeepReleases is the default retention window: the assets of the
 // newest N releases that still have assets are kept and everything older is
 // pruned. See pruneReleaseAssets.
-const defaultKeepReleases = 10
+const defaultKeepReleases = 3
 
 // deletesPerMinute paces asset-deletion requests. Two GitHub limits bind:
 //

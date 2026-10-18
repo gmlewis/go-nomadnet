@@ -2,12 +2,12 @@
 <!--
   The appliance's theme.
 
-  It is the platform's default — with no title bar — and with the window's own colours
-  replaced. The default is a device theme: its accent colours come from the device's
+  It is the platform's default — with no title bar — and with the window's own colors
+  replaced. The default is a device theme: its accent colors come from the device's
   palette, which is a bright bar across the top of a terminal, and on a device whose
   default is a light theme, a light window behind it. This app is one terminal, so the
-  bars are the console's colour and the status bar icons stay light. The window's
-  background is that colour as well: the console is inset from the system bars, so this is
+  bars are the console's color and the status bar icons stay light. The window's
+  background is that color as well: the console is inset from the system bars, so this is
   what shows in the band along the bottom of the screen and behind the launcher while the
   app starts.
 

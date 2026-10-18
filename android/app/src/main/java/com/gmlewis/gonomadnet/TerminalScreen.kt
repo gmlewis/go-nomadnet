@@ -71,7 +71,7 @@ class TerminalScreen(cols: Int, rows: Int) {
     var mouseSgr: Boolean = false
         private set
 
-    /** The colour and attributes a character written now would be drawn with. */
+    /** The color and attributes a character written now would be drawn with. */
     var pen: TerminalPen = TerminalPen.DEFAULT
         private set
 
@@ -591,30 +591,30 @@ class TerminalScreen(cols: Int, rows: Int) {
 }
 
 /**
- * TerminalColor is a colour a cell can be drawn in.
+ * TerminalColor is a color a cell can be drawn in.
  *
  * The three cases are the three things a client can say: nothing (the theme's own
- * colour), an entry from the 256-colour palette, or a 24-bit colour of its own.
+ * color), an entry from the 256-color palette, or a 24-bit color of its own.
  */
 sealed interface TerminalColor {
-    /** Default is the terminal's own colour, which is what the theme decides. */
+    /** Default is the terminal's own color, which is what the theme decides. */
     object Default : TerminalColor
 
     /**
-     * Palette is an entry in the terminal's 256-colour palette, 0-based.
+     * Palette is an entry in the terminal's 256-color palette, 0-based.
      *
-     * The first sixteen are the ANSI colours a program names directly; the rest are the
-     * 6x6x6 colour cube and the grey ramp. The index is whatever the client asked for and
+     * The first sixteen are the ANSI colors a program names directly; the rest are the
+     * 6x6x6 color cube and the grey ramp. The index is whatever the client asked for and
      * may be past the end of the table, which [TerminalPalette] clamps rather than rejects.
      */
     data class Palette(val index: Int) : TerminalColor
 
-    /** Rgb is a 24-bit colour, `0xRRGGBB`. */
+    /** Rgb is a 24-bit color, `0xRRGGBB`. */
     data class Rgb(val value: Int) : TerminalColor
 }
 
 /**
- * TerminalPen is the colour and the attributes a character is drawn with: what a real
+ * TerminalPen is the color and the attributes a character is drawn with: what a real
  * terminal holds in the graphic rendition the SGR sequences set.
  *
  * It is a value, so a save and a restore are a copy rather than a set of flags to undo,
@@ -654,7 +654,7 @@ data class TerminalPen(
                 continue
             }
             when {
-                n == 0 -> { // the reset: no colour and no attributes
+                n == 0 -> { // the reset: no color and no attributes
                     fg = TerminalColor.Default
                     bg = TerminalColor.Default
                     bold = false
@@ -705,7 +705,7 @@ data class TerminalPen(
     }
 
     companion object {
-        /** DEFAULT is the pen a terminal starts with: the theme's own colours, no attributes. */
+        /** DEFAULT is the pen a terminal starts with: the theme's own colors, no attributes. */
         val DEFAULT = TerminalPen()
     }
 }
@@ -720,12 +720,12 @@ data class TerminalPen(
  */
 data class TerminalCell(val glyph: String, val pen: TerminalPen, val width: Int)
 
-/** SgrColor is a colour an SGR sequence named, and how many parameters spelling it took. */
+/** SgrColor is a color an SGR sequence named, and how many parameters spelling it took. */
 private data class SgrColor(val color: TerminalColor, val consumed: Int)
 
 /**
- * parseSgrColor reads the colour an SGR 38 or 48 introduces: `5;n` for a palette colour,
- * `2;r;g;b` for a 24-bit one. It returns null when the parameters do not spell a colour,
+ * parseSgrColor reads the color an SGR 38 or 48 introduces: `5;n` for a palette color,
+ * `2;r;g;b` for a 24-bit one. It returns null when the parameters do not spell a color,
  * which leaves the pen as it was rather than guessing.
  */
 private fun parseSgrColor(params: List<String>, i: Int): SgrColor? {

@@ -188,6 +188,30 @@ func RenderToStyledLines(markup string, theme Theme) []*StyledLine {
 // against. A zero Viewer renders the position-dependent forms exactly the way
 // RenderToStyledLines does.
 func RenderToStyledLinesFor(markup string, theme Theme, viewer Viewer) []*StyledLine {
+	return RenderToStyledLinesWith(markup, theme, StyledOptions{Viewer: viewer})
+}
+
+// StyledOptions carries the renderer's starting colors and the reader's position. A
+// zero value renders exactly as RenderToStyledLines does: the theme's plain style and
+// no reader position.
+type StyledOptions struct {
+	// Viewer is the reader's position, for `L location constructs.
+	Viewer Viewer
+	// DefaultFG and DefaultBG are the colors plain, unformatted runs take, and the
+	// colors a `f / `b reset returns to. Python's default_state(fg, bg) takes the same
+	// pair and falls back to the theme's plain style when the caller passes None
+	// (MicronParser.py:41-45,63-64). Two callers need an explicit value: a message body
+	// uses the conversation's "bbb" (dark) / "444" (light) rather than the page default
+	// (Conversations.py:2715-2721), and a page's `#!fg=` color reaches every plain run
+	// the same way (Browser.py:1269,1348,1513). Empty means "use the theme's plain
+	// style", so a zero StyledOptions cannot accidentally recolor a page.
+	DefaultFG string
+	DefaultBG string
+}
+
+// RenderToStyledLinesWith renders markup with an explicit starting color pair and
+// reader position — the full form of RenderToStyledLines.
+func RenderToStyledLinesWith(markup string, theme Theme, opts StyledOptions) []*StyledLine {
 	// Python strip_modifiers ends with .strip() (util.py:88), which trims
 	// whitespace from the whole markup before parsing. Mirror that here so a
 	// markup that starts or ends with blank lines does not emit blank
@@ -199,7 +223,15 @@ func RenderToStyledLinesFor(markup string, theme Theme, viewer Viewer) []*Styled
 	lines := splitLines(strings.TrimSpace(markup))
 	ps := &parseState{}
 	rs := newRenderState(theme)
-	rs.viewer = viewer
+	rs.viewer = opts.Viewer
+	if opts.DefaultFG != "" {
+		rs.fg = opts.DefaultFG
+		rs.defaultFG = opts.DefaultFG
+	}
+	if opts.DefaultBG != "" {
+		rs.bg = opts.DefaultBG
+		rs.defaultBG = opts.DefaultBG
+	}
 
 	var out []*StyledLine
 	for _, line := range lines {

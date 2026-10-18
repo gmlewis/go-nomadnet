@@ -34,7 +34,7 @@
 // every uploaded artifact.
 //
 // Pruning happens LAST, after a successful publish: the assets of every release
-// older than the newest --keep-releases (default 10) releases that still have
+// older than the newest --keep-releases (default 3) releases that still have
 // assets are deleted. Releases, release notes, and git tags are never touched —
 // only the uploaded binaries — so module checksums and changelog links are
 // unaffected while release-asset storage stops growing without bound. Use

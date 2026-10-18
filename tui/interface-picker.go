@@ -193,7 +193,7 @@ func (p *InterfaceTypePicker) Draw(screen tcell.Screen) {
 }
 
 // printPickerText draws plain text, and printPickerStyledText draws it with a
-// foreground/background style (tview.Print takes only a colour, so a styled row
+// foreground/background style (tview.Print takes only a color, so a styled row
 // needs the screen directly).
 func printPickerText(screen tcell.Screen, text string, x, y, maxWidth int, color tcell.Color) {
 	printPickerStyledText(screen, text, x, y, maxWidth, tcell.StyleDefault.Foreground(color))

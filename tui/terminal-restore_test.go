@@ -60,7 +60,7 @@ func TestTerminalRestoreSeqCoversEveryModeTheClientTurnsOn(t *testing.T) {
 		{"application keypad", "\x1b=", "\x1b>", "the keypad"},
 		{"alternate screen", "\x1b[?1049h", "\x1b[?1049l", "the screen the client drew on"},
 		{"hidden cursor", "\x1b[?25l", "\x1b[?25h", "the cursor"},
-		{"attributes", "", "\x1b[0m", "colours and other attributes"},
+		{"attributes", "", "\x1b[0m", "colors and other attributes"},
 		{"win32 input mode", "\x1b[?9001h", "\x1b[?9001l", "the keyboard protocol"},
 		{"kitty keyboard protocol", "\x1b[>1u", "\x1b[<u", "the keyboard protocol"},
 	}

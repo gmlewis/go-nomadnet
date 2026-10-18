@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Copyright 2026 Glenn Lewis. All rights reserved.
 #
-# Tests for tooling/tablet-measure.py — the colour scan over a raw screencap.
+# Tests for tooling/tablet-measure.py — the color scan over a raw screencap.
 #
 # The captures these read are the tablet's own, so the tests build synthetic ones:
 # a header, then RGBA_8888 pixels painted with the client's two greens in the

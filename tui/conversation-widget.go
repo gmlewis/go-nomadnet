@@ -317,6 +317,10 @@ type ConversationMessage struct {
 	IsFailed    bool
 	HasAttach   bool
 	AttachCount int
+	// Markdown reports that the message body is markdown, so it is rendered through
+	// the markdown-to-micron converter instead of as plain indented text (Python
+	// Conversations.py:2714-2722).
+	Markdown bool
 
 	// LXMF wire fields used by LXMessageHeader for Python-parity rendering
 	// (Conversations.py:2596-2670). When State/SourceHash are zero, the

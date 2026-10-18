@@ -500,7 +500,7 @@ class MainActivityTest {
         // no longer talks to is dead weight in every download — and worse than dead weight,
         // because it says the appliance does something it does not. The files that are kept
         // are kept for reasons of their own: the font is what the console draws with, the
-        // client installs the terminal colours and the tmux configuration into its own home,
+        // client installs the terminal colors and the tmux configuration into its own home,
         // and the Bible text is what the bundled offline page reads.
         val assets = File(ASSETS_DIR)
         assertTrue("the assets are not with the module: $assets", assets.isDirectory)
@@ -527,22 +527,22 @@ class MainActivityTest {
         // The appliance is a terminal, and a terminal is a dark surface. Left on the
         // platform's bare default, the window takes the device's own accent instead: a
         // bright bar across the top of a dark terminal, and on a device whose default is a
-        // light theme a light bar with dark icons. Neither is the console's colour, and the
+        // light theme a light bar with dark icons. Neither is the console's color, and the
         // console is the whole of what this screen shows.
         //
-        // The colour is not written down twice: the theme's bar is the console's own
+        // The color is not written down twice: the theme's bar is the console's own
         // background, and the test reads the palette rather than repeating it, so a bar and
         // a console that have drifted apart are a failure here instead of something nobody
         // notices until it is on a tablet.
         //
-        // The window's own background is the same colour and for the same reason. The
+        // The window's own background is the same color and for the same reason. The
         // console is inset from the system bars, so the window shows through in a band
         // along the bottom of the screen: on the platform's default that band is the
         // device theme's grey, a seam across a terminal that is otherwise one surface.
         val application = manifest().elements("application").single()
         assertEquals(
             "the appliance does not wear its own theme: the console is then drawn under a " +
-                "bar in the device's accent colour",
+                "bar in the device's accent color",
             "@style/ApplianceTheme",
             application.getAttributeNS(ANDROID_NAMESPACE, "theme"),
         )
@@ -844,7 +844,7 @@ class MainActivityTest {
         /**
          * What the package is supposed to carry, and what reads each one.
          *
-         * The font is the console's, and its licence has to travel with it; the colours and
+         * The font is the console's, and its licence has to travel with it; the colors and
          * the tmux configuration are installed into the client's own home by the client's
          * install-from-storage feature; and the Bible text is the bundled offline page.
          */

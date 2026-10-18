@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  The appliance's own colours.
+  The appliance's own colors.
 
   There is one here, and it is the console's background: the system bars take it so that
-  the top and bottom edges of the screen are the terminal's colour rather than the
+  the top and bottom edges of the screen are the terminal's color rather than the
   device's accent. It is the same value as TerminalPalette.DEFAULT_BACKGROUND, which is
   what the console is drawn on, and which is itself the published terminal theme's
   background (assets/colors.properties); a test compares the two, so the bar, the console

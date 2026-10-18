@@ -23,6 +23,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 
 	"github.com/gmlewis/go-reticulum/lxmf"
 	"github.com/gmlewis/go-reticulum/rns"
@@ -316,6 +317,31 @@ func (m *Message) ContentRenderer() any {
 		m.Load()
 	}
 	return m.Renderer
+}
+
+// IsMarkdown reports whether the message declares the markdown content renderer
+// (FIELD_RENDERER == RENDERER_MARKDOWN, 0x02). Python branches on exactly this to
+// render the body through MarkdownToMicron instead of as plain indented text
+// (Conversations.py:2714-2722), and the port composes markdown by default
+// (ComposeMarkdown), so it is the common case for a message this client sent.
+//
+// The field's msgpack integer width varies with the value, so the comparison goes
+// through toInt rather than a type assertion.
+func (m *Message) IsMarkdown() bool {
+	r := m.ContentRenderer()
+	if r == nil {
+		return false
+	}
+	if n, ok := toInt(r); ok {
+		return n == lxmf.RendererMarkdown
+	}
+	// Python stores the renderer as whatever FIELD_RENDERER carried, which is an int
+	// in practice; a string spelling of the same value is accepted for robustness.
+	if str, ok := r.(string); ok {
+		n, err := strconv.Atoi(str)
+		return err == nil && n == lxmf.RendererMarkdown
+	}
+	return false
 }
 
 // HasAttachments returns whether the message has any attachments. When the

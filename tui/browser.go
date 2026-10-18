@@ -795,7 +795,18 @@ func (bd *BrowserDisplay) renderPage() {
 	}
 	bd.keepScroll = false
 	markup := bd.effectiveMarkup()
-	lines := micron.RenderToStyledLinesFor(markup, micronTheme(bd.app.Theme), bd.app.Viewer())
+	// The page's #!bg=/#!fg= directives are the parse state's starting colors, so
+	// every plain run takes them — Python passes the same pair to markup_to_attrmaps
+	// (Browser.py:1269,1348,1513 → MicronParser.py:104-108,41-45,63-64). Feeding them
+	// only to the TextView default (which this also does, further down) was not
+	// enough: every micron span carries an explicit color, so the spans overrode the
+	// widget default and `#!fg=` had no effect on body text.
+	pageBG, pageFG := ParseMicronColors(markup)
+	lines := micron.RenderToStyledLinesWith(markup, micronTheme(bd.app.Theme), micron.StyledOptions{
+		Viewer:    bd.app.Viewer(),
+		DefaultFG: pageFG,
+		DefaultBG: pageBG,
+	})
 	width := bd.contentWidth()
 	// lineTexts must stay 1:1 with currentLines (one tagged text per StyledLine,
 	// wrapped rows embedded via '\n') so the nav row model (rowsAbove,
@@ -816,7 +827,7 @@ func (bd *BrowserDisplay) renderPage() {
 	// (which emit plain text inheriting the TextView default) pick them up,
 	// matching Python's fg_color/bg_color default. Reset to defaults when a
 	// page declares no colors (Python resets both to None each load).
-	bg, fg := ParseMicronColors(markup)
+	bg, fg := pageBG, pageFG
 	if fg != "" {
 		bd.content.SetTextColor(parseColor("#" + fg))
 	} else {

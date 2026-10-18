@@ -38,7 +38,7 @@
 #	./scripts/publish-github-release-artifacts.sh --prune-only --dry-run
 #	./scripts/publish-github-release-artifacts.sh --prune-only
 #
-#	# Change the retention window (default 10 releases):
+#	# Change the retention window (default 3 releases):
 #	./scripts/publish-github-release-artifacts.sh --keep-releases 20
 #
 # The prune is safe to interrupt: it recomputes its plan from live state on

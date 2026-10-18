@@ -5,7 +5,7 @@
 
 The appliance's console is full of pure green: the client's menu-bar rule and
 shortcut-bar rule are #00ff00 across their whole width, and its pane dividers
-are #00f100. Scanning a capture for those two colours measures three things at
+are #00f100. Scanning a capture for those two colors measures three things at
 once, and all three are what a screen-rotation defect moves:
 
   - the body between the two rules -> the rows the client believes it has
@@ -41,7 +41,7 @@ import zlib
 HEADER_LONG = 16
 HEADER_SHORT = 12
 
-# The two colours the client's chrome is drawn in: the palette's pure green for
+# The two colors the client's chrome is drawn in: the palette's pure green for
 # the menu bar's and footer's rules, and the cube-quantized border green for the
 # pane dividers. Both are pinned by the tests.
 RULE = (0x00, 0xFF, 0x00)

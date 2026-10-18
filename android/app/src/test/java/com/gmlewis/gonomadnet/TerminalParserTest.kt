@@ -113,14 +113,14 @@ class TerminalParserTest {
     }
 
     @Test
-    fun `an sgr sequence sets a colour and does not print`() {
+    fun `an sgr sequence sets a color and does not print`() {
         val cases = listOf(
             SgrCase("red", "\u001b[31m", TerminalPen(foreground = TerminalColor.Palette(1))),
             SgrCase("bright red", "\u001b[91m", TerminalPen(foreground = TerminalColor.Palette(9))),
             SgrCase("a background", "\u001b[44m", TerminalPen(background = TerminalColor.Palette(4))),
             SgrCase("a bright background", "\u001b[101m", TerminalPen(background = TerminalColor.Palette(9))),
-            SgrCase("a palette colour", "\u001b[38;5;200m", TerminalPen(foreground = TerminalColor.Palette(200))),
-            SgrCase("a true colour", "\u001b[38;2;10;20;30m", TerminalPen(foreground = TerminalColor.Rgb(0x0a141e))),
+            SgrCase("a palette color", "\u001b[38;5;200m", TerminalPen(foreground = TerminalColor.Palette(200))),
+            SgrCase("a true color", "\u001b[38;2;10;20;30m", TerminalPen(foreground = TerminalColor.Rgb(0x0a141e))),
             SgrCase("bold", "\u001b[1m", TerminalPen(bold = true)),
             SgrCase("italic and underline", "\u001b[3;4m", TerminalPen(italic = true, underline = true)),
             SgrCase("reverse and blink", "\u001b[5;7m", TerminalPen(blink = true, reverse = true)),
@@ -135,23 +135,23 @@ class TerminalParserTest {
             assertEquals("${case.name}: the cursor did not move", 0, fixture.screen.cursorX)
 
             // A character written under a pen carries that pen into its cell, which is
-            // what lets the renderer draw a screen that mixes colours.
+            // what lets the renderer draw a screen that mixes colors.
             fixture.parser.write("R")
             assertEquals("${case.name}: the cell's pen", case.pen, fixture.screen.penAt(0, 0))
         }
 
-        // SGR 0 returns the pen to the terminal's own colours and no attributes.
+        // SGR 0 returns the pen to the terminal's own colors and no attributes.
         val reset = Fixture()
         reset.parser.write("\u001b[31;1;4;7m")
         assertFalse("the pen was set", reset.screen.pen == TerminalPen.DEFAULT)
         reset.parser.write("\u001b[0m")
         assertEquals(TerminalPen.DEFAULT, reset.screen.pen)
 
-        // 39 and 49 are "the default colour" rather than "no colour".
+        // 39 and 49 are "the default color" rather than "no color".
         reset.parser.write("\u001b[32;46m")
         reset.parser.write("\u001b[39;49m")
         assertTrue(
-            "39 and 49 return both colours to the default",
+            "39 and 49 return both colors to the default",
             reset.screen.pen.foreground == TerminalColor.Default && reset.screen.pen.background == TerminalColor.Default,
         )
     }

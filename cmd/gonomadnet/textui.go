@@ -3110,6 +3110,7 @@ func toConversationMessages(in []conversation.MessageDisplayData) []tui.Conversa
 			SignatureValidated:   m.SignatureValidated,
 			SignatureDescription: m.SignatureDescription,
 			HasAttach:            m.HasAttachments,
+			Markdown:             m.Markdown,
 			AttachCount:          len(m.AttachmentNames),
 			AttachmentTypes:      m.AttachmentTypes,
 			AttachmentNames:      m.AttachmentNames,

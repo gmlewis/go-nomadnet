@@ -43,8 +43,8 @@
         android:name="android.hardware.camera.any"
         android:required="false" />
 
-    <!-- The appliance's own theme, which is the platform's with the window's colours set
-         to the console's: the device's default theme puts the device's accent colour in the
+    <!-- The appliance's own theme, which is the platform's with the window's colors set
+         to the console's: the device's default theme puts the device's accent color in the
          status bar, which is a bright bar across the top of a dark terminal. It is declared
          here rather than on the activity so that the window is themed before the activity
          is created, which is also the window the launcher shows while it starts. -->

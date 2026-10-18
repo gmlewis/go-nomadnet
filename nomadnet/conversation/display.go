@@ -45,8 +45,12 @@ type MessageDisplayData struct {
 	SignatureValidated   bool
 	SignatureDescription string
 	HasAttachments       bool
-	AttachmentTypes      []string
-	AttachmentNames      []string
+	// Markdown reports that the message declares the markdown renderer, so the TUI
+	// renders its body through the markdown-to-micron converter rather than as plain
+	// indented text (Python Conversations.py:2714).
+	Markdown        bool
+	AttachmentTypes []string
+	AttachmentNames []string
 }
 
 // DisplayMessages returns display data for every message in the conversation,
@@ -93,6 +97,7 @@ func (c *Conversation) DisplayMessages() []MessageDisplayData {
 			SignatureValidated:   m.SignatureValidated(),
 			SignatureDescription: m.GetSignatureDescription(),
 			HasAttachments:       m.HasAttachments(),
+			Markdown:             m.IsMarkdown(),
 		}
 		for _, a := range m.CachedAttachmentNames {
 			d.AttachmentTypes = append(d.AttachmentTypes, a.Type)

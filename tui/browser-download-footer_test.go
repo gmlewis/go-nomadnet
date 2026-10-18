@@ -19,6 +19,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/gmlewis/go-nomadnet/nomadnet/micron"
 	"github.com/gmlewis/tcell/v2"
 )
 
@@ -84,4 +85,58 @@ func TestBrowserShowsDownloadAndClearsItOnPageRender(t *testing.T) {
 	if footer := bd.footerStatus.GetText(true); strings.Contains(footer, "Saved ") {
 		t.Errorf("footer after a page render = %q, want the download line cleared", footer)
 	}
+}
+
+// TestPageFgDirectiveColorsBodyText pins `#!fg=`: the directive is the parse state's
+// starting color, so every plain run takes it. Python feeds the page colors into
+// markup_to_attrmaps as fg_color/bg_color (Browser.py:1269,1348,1513 →
+// MicronParser.py:104-108,41-45,63-64). The port set them only as the TextView default,
+// and because every micron span carries an explicit color, the spans overrode it — so
+// `#!fg=` changed nothing about body text while `#!bg=` appeared to work (the pane
+// background showed through).
+func TestPageFgDirectiveColorsBodyText(t *testing.T) {
+	app := NewApp(ThemeDark, GlyphUnicode, ColorModeTrue)
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatalf("screen.Init: %v", err)
+	}
+	t.Cleanup(screen.Fini)
+	app.SetScreen(screen)
+	screen.SetSize(80, 24)
+
+	bd := NewBrowserDisplay(app)
+
+	// The directive must be terminated by a newline to be recognised, and it applies to
+	// the whole page.
+	bd.RenderPage("#!fg=f00\n>>A Page\n\nplain body text\n")
+	plain := firstPlainSpan(t, bd)
+	if plain.FG != "#ff0000" {
+		t.Errorf("plain run FG = %v, want the page's #!fg= color #ff0000", plain.FG)
+	}
+
+	// Without the directive the theme's plain color is used, so the assertion above is
+	// about the directive rather than a constant.
+	bd.RenderPage(">>A Page\n\nplain body text\n")
+	plain = firstPlainSpan(t, bd)
+	if plain.FG != "#dddddd" {
+		t.Errorf("plain run FG = %v without a directive, want the theme plain #dddddd", plain.FG)
+	}
+}
+
+// firstPlainSpan returns the first span of the rendered body that carries text and no
+// heading styling — the run the page's #!fg= applies to.
+func firstPlainSpan(t *testing.T, bd *BrowserDisplay) micron.StyledSpan {
+	t.Helper()
+	for _, line := range bd.currentLines {
+		if line.HeadingLevel > 0 || line.Divider {
+			continue
+		}
+		for _, span := range line.Spans {
+			if strings.TrimSpace(span.Text) != "" && span.Link == nil {
+				return span
+			}
+		}
+	}
+	t.Fatal("no plain span found in the rendered page")
+	return micron.StyledSpan{}
 }

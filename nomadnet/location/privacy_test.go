@@ -96,7 +96,7 @@ var markupCorpus = []string{
 	"`L849VCWC8+R9|%b`L",
 	"`L849VCWC8+R9|%ll`L",
 	">>A heading\nsome body text\n",
-	"`c0,0,0`k`F222`b a coloured line`f`B",
+	"`c0,0,0`k`F222`b a colored line`f`B",
 	"|field|value|\n|second|row|\n",
 	"!cell one!cell two!\n",
 	"\"a link\":nomadnetwork.node:abcdef\n",

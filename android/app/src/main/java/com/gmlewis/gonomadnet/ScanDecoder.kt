@@ -55,7 +55,7 @@ object ScanDecoder {
      *
      * [DecodeHintType.ALSO_INVERTED] is the one that matters most here, because a code is read
      * from its contrast and not from which way round the ink is. The appliance's own QR dialog
-     * draws its code in the terminal's colours, so on a dark theme the modules come out light
+     * draws its code in the terminal's colors, so on a dark theme the modules come out light
      * on a dark field — and so does anything else that draws a code for a screen. A reader
      * holding a device up to one has no say in the polarity it is given, so it is given both.
      * The second reading costs a pass over the frame that has already been binarized, and

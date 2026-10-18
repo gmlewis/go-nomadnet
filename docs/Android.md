@@ -28,7 +28,7 @@ nothing here waits on it.
 
 | Capability | On Android | Notes |
 | --- | --- | --- |
-| Text UI (tview/tcell) | **Works** | Full menu bar, colours, wide characters, mouse |
+| Text UI (tview/tcell) | **Works** | Full menu bar, colors, wide characters, mouse |
 | Reticulum transport, identity, storage | **Works** | Interface enumeration is the exception — see below |
 | LXMF messaging, announces, path learning | **Works** | Verified sending and receiving |
 | Serving your own NomadNet node | **Works** | Peers can open links to it |
@@ -458,5 +458,5 @@ glyphs = nerdfont     ; needs a Nerd Font in the terminal, see §7
 node_name = gonomadnet on <your device>   ; must be unique per node
 ```
 
-Everything else — `[client]`, `[textui]` theme and colour depth, announce
+Everything else — `[client]`, `[textui]` theme and color depth, announce
 intervals, propagation settings — behaves exactly as it does on desktop.
