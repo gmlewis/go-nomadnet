@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 
 	"github.com/gmlewis/go-reticulum/lxmf"
@@ -36,8 +37,8 @@ import (
 type ConversationCache struct {
 	mu             sync.Mutex
 	cached         map[string]*Conversation
-	unread         map[string]bool
-	failed         map[string]bool
+	unread         map[string]int
+	failed         map[string]int
 	attachmentPath string
 
 	// OnChanged, when set, is fired by Ingest after a message has been written
@@ -58,8 +59,8 @@ type ConversationCache struct {
 func NewConversationCache() *ConversationCache {
 	return &ConversationCache{
 		cached: make(map[string]*Conversation),
-		unread: make(map[string]bool),
-		failed: make(map[string]bool),
+		unread: make(map[string]int),
+		failed: make(map[string]int),
 	}
 }
 
@@ -120,20 +121,60 @@ func (cc *ConversationCache) MarkRead(sourceHash, conversationsPath string) {
 	cc.mu.Unlock()
 }
 
-// IsUnread reports whether sourceHash is currently held in the in-memory
-// unread cache.
+// IsUnread reports whether sourceHash is currently flagged unread in the
+// in-memory cache, i.e. its unread count is non-zero.
 func (cc *ConversationCache) IsUnread(sourceHash string) bool {
+	return cc.UnreadCount(sourceHash) > 0
+}
+
+// IsFailed reports whether sourceHash is currently flagged failed in the
+// in-memory cache, i.e. its failure count is non-zero.
+func (cc *ConversationCache) IsFailed(sourceHash string) bool {
+	return cc.FailedCount(sourceHash) > 0
+}
+
+// UnreadCount returns the cached number of unread messages for sourceHash, or 0
+// when the conversation is not flagged. Python keeps the same per-conversation
+// counter (Conversation.unread_conversations) and the conversation list renders
+// it directly, so the badge reads "(N)" for N waiting messages.
+func (cc *ConversationCache) UnreadCount(sourceHash string) int {
 	cc.mu.Lock()
 	defer cc.mu.Unlock()
 	return cc.unread[sourceHash]
 }
 
-// IsFailed reports whether sourceHash is currently held in the in-memory
-// failed cache.
-func (cc *ConversationCache) IsFailed(sourceHash string) bool {
+// FailedCount returns the cached number of failed outbound messages for
+// sourceHash, or 0 when the conversation has no failures.
+func (cc *ConversationCache) FailedCount(sourceHash string) int {
 	cc.mu.Lock()
 	defer cc.mu.Unlock()
 	return cc.failed[sourceHash]
+}
+
+// increment bumps the count for sourceHash in the given counter map and returns
+// the new value. A hash already present is incremented; a new one starts from
+// whatever the flag file on disk already holds, so a restart does not reset the
+// tally. Python gets the same effect from a class-level dict that
+// conversation_list seeds out of the flag file (Conversation.py:88-91, 101-104,
+// 139, 151) — the seed has to be reproduced here because the port keeps the
+// counters on the cache rather than in a package global, and Ingest can run
+// before any conversation listing has happened.
+func (cc *ConversationCache) increment(counters map[string]int, sourceHash, flagPath string) int {
+	cc.mu.Lock()
+	defer cc.mu.Unlock()
+	if _, ok := counters[sourceHash]; !ok {
+		counters[sourceHash] = readCountFile(flagPath)
+	}
+	counters[sourceHash]++
+	return counters[sourceHash]
+}
+
+// writeCountFile writes a flag file holding the decimal count, mirroring
+// Python's `uf.write(str(count))` (Conversation.py:94-97). Python wraps the
+// write in a bare except and lets the failure pass, so an unwritable flag file
+// never breaks an ingest.
+func writeCountFile(path string, count int) {
+	_ = os.WriteFile(path, []byte(strconv.Itoa(count)), 0o644)
 }
 
 // Ingest writes an incoming or outgoing LXMF message to the appropriate
@@ -187,12 +228,18 @@ func (cc *ConversationCache) Ingest(msg *lxmf.Message, conversationsPath string,
 	// event loop in the wiring layer), so the new message still appears
 	// without a manual reload.
 
+	// Flag the conversation unread or failed, mirroring Python's ingest
+	// (Conversation.py:82-111). The branches are exclusive: an inbound message
+	// only ever increments the unread counter, while an outbound message whose
+	// LXMF state is FAILED or REJECTED increments the failure counter. The
+	// counter *value* is what lands in the flag file, so the conversation list
+	// can render "(N)" — writing a literal "1" pinned every badge at "(1)".
 	if !originator {
-		unreadPath := filepath.Join(convDir, "unread")
-		_ = os.WriteFile(unreadPath, []byte("1"), 0o644)
-		cc.mu.Lock()
-		cc.unread[sourceHex] = true
-		cc.mu.Unlock()
+		count := cc.increment(cc.unread, sourceHex, filepath.Join(convDir, "unread"))
+		writeCountFile(filepath.Join(convDir, "unread"), count)
+	} else if state := msg.State(); state == lxmf.StateFailed || state == lxmf.StateRejected {
+		count := cc.increment(cc.failed, sourceHex, filepath.Join(convDir, "failed"))
+		writeCountFile(filepath.Join(convDir, "failed"), count)
 	}
 
 	// Notify the UI that this conversation's on-disk content changed, so the

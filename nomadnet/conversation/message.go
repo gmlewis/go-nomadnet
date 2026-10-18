@@ -403,10 +403,17 @@ func (m *Message) Load() {
 
 	ts := lxm.Timestamp
 	m.Timestamp = &ts
-	if len(lxm.Hash) > 0 {
+	// The hash seeded from the 64-hex file name wins over the hash recomputed
+	// from the envelope contents, mirroring Python's `if self._cached_hash is
+	// None:` guard (Conversation.py:466-467). The two differ for a stripped
+	// message: stripping removes the attachment fields, which changes the
+	// content hash while the file keeps its name. Overwriting the file-name
+	// hash would point every subsequent attachment lookup — the per-message
+	// attachment directory is keyed by it — at a directory that does not exist.
+	if m.CachedHash == nil && len(lxm.Hash) > 0 {
 		m.CachedHash = lxm.Hash
 	}
-	if len(lxm.SourceHash) > 0 {
+	if m.CachedSourceHash == nil && len(lxm.SourceHash) > 0 {
 		m.CachedSourceHash = lxm.SourceHash
 	}
 
@@ -453,52 +460,42 @@ func (m *Message) Load() {
 	}
 
 	m.computeAttachmentCache()
+
+	// Migrate the message's attachments the first time it is read, mirroring
+	// Python's ConversationMessage.load (Conversation.py:549-552): extract the
+	// payloads into the per-message attachment directory, then rewrite the
+	// envelope without them so the bytes are stored once instead of twice. The
+	// extract step is what creates the manifest the attachment cache falls back
+	// to once the fields are gone; the strip step is what removes the fields.
+	// Both are best-effort — Python wraps the pair in try/except and logs — and
+	// both are skipped when no attachment base is configured (there would be
+	// nowhere to extract to).
+	if m.AttachmentPath != "" && m.lxm != nil {
+		if err := ExtractAttachmentsFromLXM(m.lxm, m.AttachmentPath); err != nil {
+			log.Printf("Error extracting attachments: %v", err)
+		}
+		if err := StripAttachmentsFromFile(m.FilePath, m.AttachmentPath); err != nil {
+			log.Printf("Error stripping attachments: %v", err)
+		}
+	}
 }
 
-// mapLXMFState maps an LXMF state constant onto a conversation MessageState,
-// mirroring the Python NomadNet state semantics.
-func mapLXMFState(lxmfState int) MessageState {
-	switch lxmfState {
-	case lxmf.StateGenerating:
-		return StateGenerating
-	case lxmf.StateOutbound, lxmf.StateSending:
-		return StatePending
-	case lxmf.StateSent:
-		return StateSent
-	case lxmf.StateDelivered:
-		return StateDelivered
-	case lxmf.StateFailed, lxmf.StateRejected, lxmf.StateCancelled:
-		return StateFailed
-	case lxmfStatePaper:
-		return StatePaper
-	}
-	if lxmfState > lxmf.StateGenerating && lxmfState < lxmf.StateSent {
-		return StatePending
-	}
-	return StateDraft
-}
-
-// computeAttachmentCache populates CachedHasAttachments and the attachment name
-// list from the parsed LXMF fields, mirroring the Python NomadNet load
-// attachment discovery.
-func (m *Message) computeAttachmentCache() {
-	m.CachedHasAttachments = false
-	m.CachedAttachmentNames = nil
+// computeAttachmentCacheFromFields populates CachedHasAttachments and
+// CachedAttachmentNames from the parsed LXMF file/image/audio fields, returning
+// true when any of them is present. This mirrors Python's `found_in_fields`
+// branch (Conversation.py:495-527).
+func (m *Message) computeAttachmentCacheFromFields() bool {
 	if m.cachedFields == nil {
-		return
+		return false
 	}
-	if _, ok := fieldLookup(m.cachedFields, lxmf.FieldFileAttachments); ok {
-		m.CachedHasAttachments = true
+	_, hasFile := fieldLookup(m.cachedFields, lxmf.FieldFileAttachments)
+	_, hasImage := fieldLookup(m.cachedFields, lxmf.FieldImage)
+	_, hasAudio := fieldLookup(m.cachedFields, lxmf.FieldAudio)
+	if !hasFile && !hasImage && !hasAudio {
+		return false
 	}
-	if _, ok := fieldLookup(m.cachedFields, lxmf.FieldImage); ok {
-		m.CachedHasAttachments = true
-	}
-	if _, ok := fieldLookup(m.cachedFields, lxmf.FieldAudio); ok {
-		m.CachedHasAttachments = true
-	}
-	if !m.CachedHasAttachments {
-		return
-	}
+
+	m.CachedHasAttachments = true
 
 	if fv, ok := fieldLookup(m.cachedFields, lxmf.FieldFileAttachments); ok {
 		fileAtts, _ := fv.([]any)
@@ -531,6 +528,82 @@ func (m *Message) computeAttachmentCache() {
 			m.CachedAttachmentNames = append(m.CachedAttachmentNames, AttachmentInfo{Type: "file", Name: safe, Size: len(data)})
 		}
 	}
+	return true
+}
+
+// computeAttachmentCacheFromManifest rebuilds the attachment names from the
+// per-message attachment manifest, used when the envelope carries no attachment
+// fields. That is the state of every message that has already been through the
+// extraction + strip migration, so this is the branch that keeps the attachment
+// rows on screen after a reload. It mirrors Python's `if not found_in_fields:`
+// fallback (Conversation.py:529-548): the manifest must exist, must parse, and
+// must list at least one file; anything else leaves the message with no
+// attachments.
+func (m *Message) computeAttachmentCacheFromManifest() {
+	attDir := m.attachmentDir()
+	if attDir == "" || !isDir(attDir) {
+		return
+	}
+	files, ok := m.readAttachmentManifest(attDir)["files"].([]any)
+	if !ok || len(files) == 0 {
+		return
+	}
+	names := make([]AttachmentInfo, 0, len(files))
+	for _, f := range files {
+		entry, ok := f.(map[any]any)
+		if !ok {
+			continue
+		}
+		name, _ := entry["name"].(string)
+		size, _ := toInt(entry["size"])
+		names = append(names, AttachmentInfo{Type: "file", Name: name, Size: size})
+	}
+	m.CachedHasAttachments = true
+	m.CachedAttachmentNames = names
+}
+
+// mapLXMFState maps an LXMF state constant onto a conversation MessageState,
+// mirroring the Python NomadNet state semantics.
+func mapLXMFState(lxmfState int) MessageState {
+	switch lxmfState {
+	case lxmf.StateGenerating:
+		return StateGenerating
+	case lxmf.StateOutbound, lxmf.StateSending:
+		return StatePending
+	case lxmf.StateSent:
+		return StateSent
+	case lxmf.StateDelivered:
+		return StateDelivered
+	case lxmf.StateFailed, lxmf.StateRejected, lxmf.StateCancelled:
+		return StateFailed
+	case lxmfStatePaper:
+		return StatePaper
+	}
+	if lxmfState > lxmf.StateGenerating && lxmfState < lxmf.StateSent {
+		return StatePending
+	}
+	return StateDraft
+}
+
+// computeAttachmentCache populates CachedHasAttachments and the attachment name
+// list, mirroring the Python NomadNet load attachment discovery: the names come
+// from the envelope's file/image/audio fields when any is present, and from the
+// per-message attachment manifest when they are not (Conversation.py:495-548).
+func (m *Message) computeAttachmentCache() {
+	// Python computes this block only while `_cached_has_attachments is None`,
+	// so a value restored from the index (Conversation.py:472) is authoritative
+	// and is not recomputed from the envelope.
+	if m.attachSet {
+		return
+	}
+
+	m.CachedHasAttachments = false
+	m.CachedAttachmentNames = nil
+
+	if m.computeAttachmentCacheFromFields() {
+		return
+	}
+	m.computeAttachmentCacheFromManifest()
 }
 
 // ToIndexEntry serializes the message metadata for the index file. It returns an
@@ -670,6 +743,32 @@ func (m *Message) RestoreFromIndex(entry rnsmsgpack.OrderedMap) {
 		m.CachedHasAttachments, _ = v.(bool)
 		m.attachSet = true
 	}
+	// Python restores the cached name list alongside the flag
+	// (Conversation.py:473), so a message whose .index already records its
+	// attachment names does not need a disk load to render the attachment rows.
+	if v, ok := entry.Get("attachment_names"); ok {
+		if list, ok := v.([]any); ok {
+			m.CachedAttachmentNames = attachmentNamesFromIndex(list)
+		}
+	}
+}
+
+// attachmentNamesFromIndex converts the ["file", name, size] triples stored in
+// the message index into AttachmentInfo values, skipping entries that do not
+// have that shape.
+func attachmentNamesFromIndex(list []any) []AttachmentInfo {
+	names := make([]AttachmentInfo, 0, len(list))
+	for _, item := range list {
+		triple, ok := item.([]any)
+		if !ok || len(triple) < 3 {
+			continue
+		}
+		name, _ := triple[1].(string)
+		size, _ := toInt(triple[2])
+		typ, _ := triple[0].(string)
+		names = append(names, AttachmentInfo{Type: typ, Name: name, Size: size})
+	}
+	return names
 }
 
 // ReadIndex reads the message index from a conversation directory. It returns

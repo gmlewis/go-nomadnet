@@ -459,7 +459,7 @@ func (a *App) initRNS() {
 
 	// Initialize LXMF router
 	a.Logger.Info("Initializing LXMF router...")
-	a.Router, err = lxmf.NewRouter(a.Transport, a.Identity, a.StoragePath)
+	a.Router, err = lxmf.NewRouterFromConfig(a.Transport, a.lxmfRouterConfig())
 	if err != nil {
 		a.Logger.Error("Could not create LXMF router: %v", err)
 		return
@@ -471,12 +471,16 @@ func (a *App) initRNS() {
 	// from the persisted ignored file at startup.
 	a.applyIgnoredDestinations()
 
-	// Register delivery identity for receiving messages
-	a.LXMFDest, err = a.Router.RegisterDeliveryIdentity(a.Identity, a.Config.Client.UserInterface, nil)
+	// Register delivery identity for receiving messages. Python passes the
+	// configured stamp cost here (NomadNetworkApp.py:355 stamp_cost=
+	// self.required_stamp_cost), so the inbound requirement is in place before
+	// the first announce rather than only after AnnounceNow runs.
+	a.LXMFDest, err = a.Router.RegisterDeliveryIdentity(a.Identity, a.Config.Client.UserInterface, a.RequiredStampCost)
 	if err != nil {
 		a.Logger.Error("Could not register delivery identity: %v", err)
 		return
 	}
+	a.applyRouterSettings()
 	a.Logger.Info("LXMF Router ready to receive on %v", rns.PrettyHex(a.LXMFDest.Hash))
 
 	// Register announce handlers with RNS transport
@@ -612,7 +616,7 @@ func (a *App) InitWithTransport(ts *rns.TransportSystem, identity *rns.Identity)
 	a.Dir.SetBlockedFilter(a.IsIgnored)
 	a.ConversationCache.SetAttachmentPath(a.AttachmentPath)
 
-	a.Router, err = lxmf.NewRouter(a.Transport, a.Identity, a.StoragePath)
+	a.Router, err = lxmf.NewRouterFromConfig(a.Transport, a.lxmfRouterConfig())
 	if err != nil {
 		return fmt.Errorf("creating LXMF router: %w", err)
 	}
@@ -621,10 +625,14 @@ func (a *App) InitWithTransport(ts *rns.TransportSystem, identity *rns.Identity)
 	a.applyIgnoredDestinations()
 	a.Router.RegisterDeliveryCallback(a.lxmfDelivery)
 
-	a.LXMFDest, err = a.Router.RegisterDeliveryIdentity(a.Identity, a.Config.Client.UserInterface, nil)
+	// The configured stamp cost goes in at registration, as Python does
+	// (NomadNetworkApp.py:355), so the requirement is set before the first
+	// announce rather than only once AnnounceNow runs.
+	a.LXMFDest, err = a.Router.RegisterDeliveryIdentity(a.Identity, a.Config.Client.UserInterface, a.RequiredStampCost)
 	if err != nil {
 		return fmt.Errorf("registering delivery identity: %w", err)
 	}
+	a.applyRouterSettings()
 
 	a.Transport.RegisterAnnounceHandler(&rns.AnnounceHandler{
 		AspectFilter:                "lxmf.delivery",
@@ -675,6 +683,78 @@ func (a *App) setupPaths() {
 	a.DownloadsPath = expandUser("~/Downloads")
 
 	a.Storage = storage.New(a.ConfigDir)
+}
+
+// lxmfRouterConfig assembles the settings Python passes to its LXMRouter
+// constructor (NomadNetworkApp.py:334-347): autopeer, the three per-transfer
+// limits, max_peers, the decoded static peers and the node propagation cost.
+// These values were previously parsed into App fields and then never handed to
+// the router, so a configured cap or peer list had no effect at all.
+func (a *App) lxmfRouterConfig() lxmf.RouterConfig {
+	cfg := lxmf.RouterConfig{
+		Identity:        a.Identity,
+		StoragePath:     a.StoragePath,
+		Autopeer:        true,
+		MaxPeers:        a.MaxPeers,
+		StaticPeers:     a.staticPeerHashes(),
+		PropagationCost: a.NodePropagationCost,
+	}
+	if a.LXMFMaxPropagationSize != nil {
+		cfg.PropagationLimit = float64(*a.LXMFMaxPropagationSize)
+	}
+	if a.LXMFMaxSyncSize != nil {
+		cfg.SyncLimit = float64(*a.LXMFMaxSyncSize)
+	}
+	if a.LXMFMaxIncomingSize != nil {
+		cfg.DeliveryLimit = float64(*a.LXMFMaxIncomingSize)
+	}
+	return cfg
+}
+
+// staticPeerHashes decodes the [node] static_peers entries, mirroring Python's
+// loop at NomadNetworkApp.py:334-341: each entry must be valid hex naming a
+// TRUNCATED_HASHLENGTH//8 (16) byte destination. A malformed entry is logged and
+// skipped rather than failing the whole configuration, exactly as Python's
+// per-entry try/except does.
+func (a *App) staticPeerHashes() [][]byte {
+	var out [][]byte
+	for _, peer := range a.StaticPeers {
+		destHash, err := hex.DecodeString(strings.TrimSpace(peer))
+		if err != nil {
+			a.Logger.Error("Could not decode static peer destination hash %v: %v", peer, err)
+			continue
+		}
+		if len(destHash) != rns.TruncatedHashLength/8 {
+			a.Logger.Error("Could not decode static peer destination hash %v: Invalid destination length", peer)
+			continue
+		}
+		out = append(out, destHash)
+	}
+	return out
+}
+
+// applyRouterSettings applies what Python applies immediately after building the
+// router and registering the delivery identity (NomadNetworkApp.py:356-377):
+// enforce_stamps unless invalid stamps are accepted, and — only when the node is
+// enabled — the message storage limit and the prioritised LXMF destinations.
+// All three were previously parsed and discarded, so `accept_invalid_stamps`,
+// `message_storage_limit` and `prioritise_destinations` were inert.
+func (a *App) applyRouterSettings() {
+	if !a.AcceptInvalidStamps {
+		a.Router.EnforceStamps()
+	}
+	if !a.EnableNode {
+		return
+	}
+	a.Router.SetMessageStorageLimit(a.MessageStorageLimit)
+	for _, destStr := range a.PrioritisedLXMF {
+		destHash, err := hex.DecodeString(strings.TrimSpace(destStr))
+		if err != nil || len(destHash) != rns.TruncatedHashLength/8 {
+			a.Logger.Error("Cannot prioritise %v, it is not a valid destination hash", destStr)
+			continue
+		}
+		a.Router.Prioritise(destHash)
+	}
 }
 
 // applyConfig applies a loaded config to the App fields.
