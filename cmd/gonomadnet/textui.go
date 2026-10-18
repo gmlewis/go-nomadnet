@@ -1046,6 +1046,9 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		}
 	}
 	conversationsDisplay := tui.NewConversationsDisplay(tuiApp, tuiConvs)
+	// The Create Paper Message dialog names the directory paper files are written
+	// to (Python reads app.downloads_path there, Conversations.py:2540).
+	conversationsDisplay.DownloadsPath = a.DownloadsPath
 	main.SetDisplay("conversations", conversationsDisplay.Widget())
 	main.RegisterSidePanelController(conversationsDisplay)
 

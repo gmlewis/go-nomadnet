@@ -16,12 +16,14 @@
 package conversation
 
 import (
+	"bytes"
 	"encoding/hex"
+	"image"
+	"image/png"
 	"os"
 	"path/filepath"
 
 	"github.com/gmlewis/go-reticulum/lxmf"
-	"rsc.io/qr"
 )
 
 // PaperOutputMode selects how a paper (offline) message is emitted, mirroring
@@ -43,6 +45,37 @@ const (
 	// file or ingesting.
 	PaperReturnURI
 )
+
+// ingestPaperMessage ingests the outbound paper message and appends the INGESTED
+// message to the conversation, mirroring Python's paper_output, which in every
+// ingesting mode runs
+//
+//	message_path = Conversation.ingest(lxm, self.app, originator=True)
+//	self.messages.append(ConversationMessage(message_path))
+//
+// (Conversation.py:358-360, 368-370, 377-379). The appended conversation message is
+// therefore the file inside the conversation directory — not the PNG or URI written
+// to downloads_path, and not the temporary print file. The port appended the latter,
+// and for print_qr it appended a path it had already deleted, so the new entry
+// pointed at a file that did not exist.
+func (c *Conversation) ingestPaperMessage(lxm *lxmf.Message) bool {
+	messagePath, err := c.sendDeps.Ingest(lxm, true)
+	if err != nil {
+		return false
+	}
+	c.Messages = append(c.Messages, NewMessage(messagePath))
+	return true
+}
+
+// writePNG encodes img as a PNG file at path. The bytes are buffered before the
+// write so a failed encode cannot leave a truncated QR on disk.
+func writePNG(path string, img image.Image) error {
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		return err
+	}
+	return os.WriteFile(path, buf.Bytes(), 0o644)
+}
 
 // PaperOutput generates an offline paper (QR/URI) message addressed to the
 // conversation peer, mirroring Python Conversation.paper_output at
@@ -89,44 +122,32 @@ func (c *Conversation) PaperOutput(content, title string, mode PaperOutputMode) 
 		if err := os.WriteFile(path, []byte(uri+"\n"), 0o644); err != nil {
 			return "", false
 		}
-		if _, err := deps.Ingest(lxm, true); err != nil {
+		if !c.ingestPaperMessage(lxm) {
 			return "", false
 		}
-		c.Messages = append(c.Messages, NewMessage(path))
 		return path, true
 
 	case PaperSaveQR:
-		uri, err := lxm.AsURI(false)
+		img, err := lxm.AsQR()
 		if err != nil {
 			return "", false
 		}
-		code, err := qr.Encode(uri, qr.L)
-		if err != nil {
-			return "", false
-		}
-		lxm.DetermineTransportEncryption()
 		path := filepath.Join(deps.DownloadsPath(), "LXM_"+hex.EncodeToString(lxm.Hash)+".png")
-		if err := os.WriteFile(path, code.PNG(), 0o644); err != nil {
+		if err := writePNG(path, img); err != nil {
 			return "", false
 		}
-		if _, err := deps.Ingest(lxm, true); err != nil {
+		if !c.ingestPaperMessage(lxm) {
 			return "", false
 		}
-		c.Messages = append(c.Messages, NewMessage(path))
 		return path, true
 
 	case PaperPrintQR:
-		uri, err := lxm.AsURI(false)
+		img, err := lxm.AsQR()
 		if err != nil {
 			return "", false
 		}
-		code, err := qr.Encode(uri, qr.L)
-		if err != nil {
-			return "", false
-		}
-		lxm.DetermineTransportEncryption()
 		tmpPath := filepath.Join(deps.TmpFilesPath(), hex.EncodeToString(lxm.Hash))
-		if err := os.WriteFile(tmpPath, code.PNG(), 0o644); err != nil {
+		if err := writePNG(tmpPath, img); err != nil {
 			return "", false
 		}
 		printOK := deps.PrintFile(tmpPath)
@@ -134,10 +155,9 @@ func (c *Conversation) PaperOutput(content, title string, mode PaperOutputMode) 
 		if !printOK {
 			return "", false
 		}
-		if _, err := deps.Ingest(lxm, true); err != nil {
+		if !c.ingestPaperMessage(lxm) {
 			return "", false
 		}
-		c.Messages = append(c.Messages, NewMessage(tmpPath))
 		return "", true
 
 	default:

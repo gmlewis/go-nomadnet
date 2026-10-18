@@ -66,6 +66,11 @@ type ConversationsDisplay struct {
 	showBlockedCheckbox *tview.Checkbox
 	syncStatus          *tview.TextView
 	conversations       []ConversationInfo
+	// DownloadsPath is the directory paper-message QR/URI files are written to.
+	// The wiring layer injects it because tui must not import the app package;
+	// the Create Paper Message dialog names it, mirroring Python's
+	// app.downloads_path in that dialog's text (Conversations.py:2540).
+	DownloadsPath string
 	// visible is the subset of conversations currently RENDERED in the list
 	// (after the trusted/untrusted + show-blocked filters), in row order. Row
 	// indices from the list (highlight, Enter, clicks) always resolve into
@@ -2447,7 +2452,7 @@ func (cd *ConversationsDisplay) PaperMessageDialog(
 	onSaveURI func(),
 ) {
 	cd.dialogOpen = true
-	msg := "Select the desired paper message output method."
+	msg := paperMessageDialogText(cd.DownloadsPath)
 	msgRows := strings.Count(msg, "\n") + 1
 	close := func() { cd.CloseDetailSlotDialog(); cd.dialogOpen = false }
 	printBtn := NewUrwidButton("Print QR").SetSelectedFunc(func() {
@@ -2476,6 +2481,20 @@ func (cd *ConversationsDisplay) PaperMessageDialog(
 	dialog := NewDialogLineBox("Create Paper Message", layout, close)
 	cd.ShowDetailSlotDialog(dialog, 0, 60, msgRows+1+2)
 	wireDialogNav(cd.app, close, []tview.Primitive{printBtn, saveQRBtn, saveURIBtn, cancelBtn})
+}
+
+// paperMessageDialogText builds the body of the Create Paper Message dialog. It
+// mirrors Python's paper_message, whose centred text is
+//
+//	"Select the desired paper message output method.\nSaved files will be
+//	 written to:\n\n" + str(self.app.downloads_path) + "\n"
+//
+// (Conversations.py:2538-2541). The port showed only the first sentence, so the
+// user was never told where the file would land — and an empty composer makes the
+// dialog close without doing anything at all, which is baffling without it.
+func paperMessageDialogText(downloadsPath string) string {
+	return "Select the desired paper message output method.\n" +
+		"Saved files will be written to:\n\n" + downloadsPath + "\n"
 }
 
 // PaperMessageFailed shows a failure message for paper message operations,
