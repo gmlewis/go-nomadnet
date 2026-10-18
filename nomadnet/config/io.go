@@ -20,7 +20,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
+	"sync"
 )
 
 // Load reads and parses a NomadNet INI-style config file.
@@ -44,6 +46,50 @@ func Load(path string) (*Config, error) {
 	c.Raw = raw
 	c.Apply()
 	return c, nil
+}
+
+// defaultKeyOrder returns, for each section of the shipped default configuration, the
+// order its keys appear in. It is derived from defaultConfigText (the verbatim
+// __default_nomadnet_config__) so the reference text is the single source of truth for
+// ordering, and is computed once.
+var defaultKeyOrder = sync.OnceValue(func() map[string][]string {
+	order := map[string][]string{}
+	section := ""
+	for line := range strings.SplitSeq(defaultConfigText, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		if strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]") {
+			section = strings.Trim(trimmed, "[]")
+			continue
+		}
+		if key, _, ok := strings.Cut(trimmed, "="); ok && section != "" {
+			order[section] = append(order[section], strings.TrimSpace(key))
+		}
+	}
+	return order
+})
+
+// orderedKeys returns the keys of a section in the default config's order, followed by
+// any key the default text does not carry in sorted order.
+func orderedKeys(section string, keys map[string]string) []string {
+	ordered := make([]string, 0, len(keys))
+	seen := make(map[string]bool, len(keys))
+	for _, k := range defaultKeyOrder()[section] {
+		if _, ok := keys[k]; ok && !seen[k] {
+			ordered = append(ordered, k)
+			seen[k] = true
+		}
+	}
+	extra := make([]string, 0, len(keys))
+	for k := range keys {
+		if !seen[k] {
+			extra = append(extra, k)
+		}
+	}
+	slices.Sort(extra)
+	return append(ordered, extra...)
 }
 
 // Save writes the config to the specified path in INI format.
@@ -70,10 +116,15 @@ func Save(c *Config, path string) (retErr error) {
 		}
 	}()
 
+	// writeSection emits one section in the key order the shipped default config uses.
+	// A Go map has no order, so iterating one directly (as this did) put the keys in a
+	// different arrangement on every save, while Python serialises through ConfigObj
+	// and preserves the default text's order. Keys the default text does not carry —
+	// the Go-only extensions — follow in sorted order, so they are at least stable.
 	writeSection := func(name string, keys map[string]string) {
 		_, _ = fmt.Fprintf(w, "[%v]\n", name)
-		for k, v := range keys {
-			_, _ = fmt.Fprintf(w, "%v = %v\n", k, v)
+		for _, k := range orderedKeys(name, keys) {
+			_, _ = fmt.Fprintf(w, "%v = %v\n", k, keys[k])
 		}
 		_, _ = fmt.Fprintln(w)
 	}

@@ -18,6 +18,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -232,3 +233,91 @@ src = open(nomadnet.__file__.replace("__init__.py", "NomadNetworkApp.py")).read(
 m = re.search(r"__default_nomadnet_config__ = '''(.*?)'''", src, re.S)
 print(json.dumps(m.group(1)))
 `
+
+// TestSavedConfigKeyOrderMatchesTheDefault pins the key order a saved config carries.
+// Python serialises through ConfigObj, which preserves the shipped default text's
+// order; the port iterated a Go map, so every save shuffled each section's keys. The
+// file stayed readable either way, but it was not byte-stable, so two saves of the
+// same state differed and any byte-parity test over the written config would have been
+// flaky by construction.
+func TestSavedConfigKeyOrderMatchesTheDefault(t *testing.T) {
+	t.Parallel()
+
+	dir := tempDir(t)
+	path := filepath.Join(dir, "config")
+
+	c := DefaultConfig()
+	if err := Save(c, path); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Save twice: the order must be identical, which is what a map iteration could
+	// not guarantee.
+	second := filepath.Join(dir, "config2")
+	if err := Save(c, second); err != nil {
+		t.Fatalf("Save (second): %v", err)
+	}
+	again, err := os.ReadFile(second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != string(again) {
+		t.Error("two saves of the same config produced different bytes")
+	}
+
+	// For the keys a section shares with the default text, the written order must be
+	// the default text's relative order.
+	wantOrder := defaultKeyOrder()
+	gotSections := sectionKeyOrder(t, string(data))
+	for section, want := range wantOrder {
+		got, ok := gotSections[section]
+		if !ok {
+			continue // a section this config does not write
+		}
+		wantShared := intersectKeys(want, got) // default order, restricted to written keys
+		gotShared := intersectKeys(got, want)  // written order, restricted to default keys
+		if !slices.Equal(gotShared, wantShared) {
+			t.Errorf("section %q: written keys %v\n  want the default config's order %v", section, gotShared, wantShared)
+		}
+	}
+}
+
+// sectionKeyOrder parses a written config into section → keys, in file order.
+func sectionKeyOrder(t *testing.T, text string) map[string][]string {
+	t.Helper()
+	out := map[string][]string{}
+	section := ""
+	for line := range strings.SplitSeq(text, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		if strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]") {
+			section = strings.Trim(trimmed, "[]")
+			continue
+		}
+		if key, _, ok := strings.Cut(trimmed, "="); ok && section != "" {
+			out[section] = append(out[section], strings.TrimSpace(key))
+		}
+	}
+	return out
+}
+
+// intersectKeys returns the keys of got that also appear in want.
+func intersectKeys(got, want []string) []string {
+	inWant := make(map[string]bool, len(want))
+	for _, k := range want {
+		inWant[k] = true
+	}
+	out := make([]string, 0, len(got))
+	for _, k := range got {
+		if inWant[k] {
+			out = append(out, k)
+		}
+	}
+	return out
+}
