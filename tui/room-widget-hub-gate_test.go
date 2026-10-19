@@ -85,7 +85,7 @@ func TestShowRoomHubSwitchRoutesSendToLiveHub(t *testing.T) {
 	})
 
 	var sent []string
-	cd.OnSendMessage = func(text string) { sent = append(sent, text) }
+	cd.OnSendMessage = func(text string) error { sent = append(sent, text); return nil }
 
 	// Open the room on the dead hub, then on the live hub's same-named room.
 	cd.ShowRoom(0, "general", nil)
@@ -138,7 +138,7 @@ func TestShowRoomRebuildsWidgetOnHubObjectReplacement(t *testing.T) {
 	}
 
 	var sent []string
-	cd.OnSendMessage = func(text string) { sent = append(sent, text) }
+	cd.OnSendMessage = func(text string) error { sent = append(sent, text); return nil }
 
 	// Same room name AND same address, but a different hub object: the address
 	// check alone would reuse the widget bound to the dead hub.
@@ -203,7 +203,7 @@ func TestSendMessageConnectedGateSendsWithoutNotice(t *testing.T) {
 	var sent string
 	rw.hubStatusFn = func() int { return hubStatusConnected }
 	rw.OnConnectHub = func() { t.Error("OnConnectHub must not fire on a connected hub") }
-	rw.OnSendMessage = func(text string) { sent = text }
+	rw.OnSendMessage = func(text string) error { sent = text; return nil }
 
 	rw.editor.SetText("hello")
 	rw.sendMessage()

@@ -126,6 +126,10 @@ type ChannelsDisplay struct {
 	// snapshot from the app's RRC hub state.
 	OnShowHubInfo func(hubIdx int)
 	OnSelectRoom  func(hubIdx int, room string)
+	// OnOpenRoom opens a room a hub-info click asked for (a MOTD room link or
+	// a room row). Python's _ChatLinkDelegate._open_room joins an unjoined room
+	// when connected, otherwise queues it locally, then selects it.
+	OnOpenRoom func(hubIdx int, room string)
 	// ChatLinks dispatches links a reader clicks inside a chat or notice row of an
 	// open room. It is forwarded to the room widget, which resolves the clicked
 	// region back to the link the renderer tagged.
@@ -148,7 +152,7 @@ type ChannelsDisplay struct {
 	OnEditHub             func()
 	OnRemoveHub           func()
 	OnToggleChannelList   func()
-	OnSendMessage         func(text string)
+	OnSendMessage         func(text string) error
 	OnLeaveRoom           func(room string)
 	OnToggleCollapse      func()
 	OnMemberClick         func(nick, hash string)
@@ -561,6 +565,11 @@ func (cd *ChannelsDisplay) ShowHubInfo(hubIdx int) {
 		JoinedRooms: hv.JoinedRooms(),
 		AvailRooms:  hv.AvailableRoomList(),
 	}
+	// Room topics are optional on the HubView contract, so read them through an
+	// assertion: test doubles need not implement it.
+	if tp, ok := hv.(interface{ AvailableRoomTopics() map[string]string }); ok {
+		snap.AvailRoomTopics = tp.AvailableRoomTopics()
+	}
 	if cd.hubInfo == nil {
 		cd.hubInfo = NewHubInfoArea(cd.app, hv.Name())
 		// Python's HubInfoArea.keypress delegates EVERY shortcut to
@@ -578,6 +587,11 @@ func (cd *ChannelsDisplay) ShowHubInfo(hubIdx int) {
 		hia.OnEditHub = func() { cd.handleInput(tcell.NewEventKey(tcell.KeyCtrlE, 0, tcell.ModNone)) }
 		hia.OnRemoveHub = func() { cd.handleInput(tcell.NewEventKey(tcell.KeyCtrlX, 0, tcell.ModNone)) }
 		hia.OnToggleChannelList = func() { cd.handleInput(tcell.NewEventKey(tcell.KeyCtrlY, 0, tcell.ModNone)) }
+		hia.OnOpenRoom = func(room string) {
+			if cd.OnOpenRoom != nil {
+				cd.OnOpenRoom(hubIdx, room)
+			}
+		}
 	}
 	cd.hubInfo.SetHubInfo(*snap)
 	cd.paneMode = "info"
@@ -673,10 +687,11 @@ func (cd *ChannelsDisplay) ShowRoom(hubIdx int, room string, msgs []ChannelMessa
 				cd.app.Main.FocusMenu()
 			}
 		}
-		rw.OnSendMessage = func(text string) {
+		rw.OnSendMessage = func(text string) error {
 			if cd.OnSendMessage != nil {
-				cd.OnSendMessage(text)
+				return cd.OnSendMessage(text)
 			}
+			return nil
 		}
 		// Python RoomWidget.send_message reads self.hub.status LIVE at send
 		// time (Channels.py:873); the hubConnected snapshot goes stale between

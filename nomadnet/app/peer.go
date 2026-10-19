@@ -44,6 +44,31 @@ func (a *App) loadPeerSettings() {
 		a.LastLXMFSync = time.Unix(int64(ps.LastLXMFSync), 0)
 		a.mu.Unlock()
 	}
+	// Python's job loop compares against peer_settings["last_announce"]
+	// (NomadNetworkApp.py:469, persisted at :605), so a restart resumes the
+	// announce timer instead of re-announcing ~90 s later.
+	if ts, ok := settingsUnix(ps.LastAnnounce); ok && ts > 0 {
+		a.mu.Lock()
+		a.LastAnnounce = time.Unix(int64(ts), 0)
+		a.mu.Unlock()
+	}
+}
+
+// settingsUnix converts a persisted peer-settings timestamp to Unix seconds.
+// The value round-trips as a float64 from Python and from this port, but an
+// older file may carry an integer.
+func settingsUnix(v any) (float64, bool) {
+	switch n := v.(type) {
+	case float64:
+		return n, true
+	case int64:
+		return float64(n), true
+	case int:
+		return float64(n), true
+	case uint64:
+		return float64(n), true
+	}
+	return 0, false
 }
 
 // savePeerSettingsLocked persists the local peer settings to disk. The caller

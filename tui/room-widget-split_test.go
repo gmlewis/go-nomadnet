@@ -62,7 +62,7 @@ func TestRoomWidgetOverLimitUsesLiveHubLimit(t *testing.T) {
 	rw.hubMaxMsgBytesFn = func() int { return 400 }
 
 	var sent []string
-	rw.OnSendMessage = func(text string) { sent = append(sent, text) }
+	rw.OnSendMessage = func(text string) error { sent = append(sent, text); return nil }
 	rw.editor.SetText(rrcCommunityDraft)
 
 	rw.sendMessage()
@@ -134,7 +134,7 @@ func TestRoomWidgetOverLimitWithoutDialogSaysWhyAndKeepsDraft(t *testing.T) {
 	rw := NewRoomWidget(app, "hub1", "general")
 
 	var sent []string
-	rw.OnSendMessage = func(text string) { sent = append(sent, text) }
+	rw.OnSendMessage = func(text string) error { sent = append(sent, text); return nil }
 	var kind, notice string
 	rw.OnLocalMessage = func(k, text string) error { kind, notice = k, text; return nil }
 	rw.editor.SetText(rrcCommunityDraft)
@@ -171,7 +171,7 @@ func TestRoomWidgetSendSplitParts(t *testing.T) {
 	rw.hubMaxMsgBytesFn = func() int { return 20 }
 
 	var sent []string
-	rw.OnSendMessage = func(text string) { sent = append(sent, text) }
+	rw.OnSendMessage = func(text string) error { sent = append(sent, text); return nil }
 	rw.editor.SetText(rrcCommunityDraft)
 
 	parts := SplitMessage(rrcCommunityDraft, 350)

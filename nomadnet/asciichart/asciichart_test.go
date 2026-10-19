@@ -55,7 +55,10 @@ func TestPlotEmpty(t *testing.T) {
 	t.Parallel()
 
 	c := New("unicode")
-	result := c.Plot([][]float64{})
+	result, err := c.Plot([][]float64{})
+	if err != nil {
+		t.Fatalf("Plot: %v", err)
+	}
 	if result != "" {
 		t.Errorf("Plot empty = %q, want empty", result)
 	}
@@ -66,7 +69,10 @@ func TestPlotSingleSeries(t *testing.T) {
 
 	c := New("unicode")
 	series := []float64{1, 2, 3, 4, 5}
-	result := c.PlotSingle(series)
+	result, err := c.PlotSingle(series)
+	if err != nil {
+		t.Fatalf("Plot: %v", err)
+	}
 
 	if len(result) == 0 {
 		t.Error("PlotSingle returned empty")
@@ -87,7 +93,10 @@ func TestPlotMultipleSeries(t *testing.T) {
 		{1, 2, 3, 4, 5},
 		{5, 4, 3, 2, 1},
 	}
-	result := c.Plot(series)
+	result, err := c.Plot(series)
+	if err != nil {
+		t.Fatalf("Plot: %v", err)
+	}
 
 	if len(result) == 0 {
 		t.Error("Plot multiple series returned empty")
@@ -99,7 +108,10 @@ func TestPlotWithNaN(t *testing.T) {
 
 	c := New("unicode")
 	series := []float64{1, math.NaN(), 3, 4, 5}
-	result := c.PlotSingle(series)
+	result, err := c.PlotSingle(series)
+	if err != nil {
+		t.Fatalf("Plot: %v", err)
+	}
 
 	if len(result) == 0 {
 		t.Error("Plot with NaN returned empty")
@@ -111,7 +123,10 @@ func TestPlotAllNaN(t *testing.T) {
 
 	c := New("unicode")
 	series := []float64{math.NaN(), math.NaN(), math.NaN()}
-	result := c.PlotSingle(series)
+	result, err := c.PlotSingle(series)
+	if err != nil {
+		t.Fatalf("Plot: %v", err)
+	}
 
 	if result != "" {
 		t.Errorf("Plot all NaN = %q, want empty", result)
@@ -123,7 +138,10 @@ func TestPlotConstant(t *testing.T) {
 
 	c := New("unicode")
 	series := []float64{5, 5, 5, 5, 5}
-	result := c.PlotSingle(series)
+	result, err := c.PlotSingle(series)
+	if err != nil {
+		t.Fatalf("Plot: %v", err)
+	}
 
 	if len(result) == 0 {
 		t.Error("Plot constant returned empty")
@@ -140,7 +158,10 @@ func TestPlotWithMinMax(t *testing.T) {
 	c.Max = &maxVal
 
 	series := []float64{2, 4, 6, 8}
-	result := c.PlotSingle(series)
+	result, err := c.PlotSingle(series)
+	if err != nil {
+		t.Fatalf("Plot: %v", err)
+	}
 
 	if len(result) == 0 {
 		t.Error("Plot with min/max returned empty")
@@ -153,7 +174,10 @@ func TestPlotMinMaxExceeded(t *testing.T) {
 	c := New("unicode")
 	series := []float64{-5, 0, 5}
 	// Should not panic even with values outside default range
-	result := c.PlotSingle(series)
+	result, err := c.PlotSingle(series)
+	if err != nil {
+		t.Fatalf("Plot: %v", err)
+	}
 
 	if len(result) == 0 {
 		t.Error("Plot with exceeded min/max returned empty")
@@ -165,7 +189,10 @@ func TestPlotPlain(t *testing.T) {
 
 	c := New("plain")
 	series := []float64{1, 2, 3, 2, 1}
-	result := c.PlotSingle(series)
+	result, err := c.PlotSingle(series)
+	if err != nil {
+		t.Fatalf("Plot: %v", err)
+	}
 
 	if len(result) == 0 {
 		t.Error("Plot plain returned empty")
@@ -183,7 +210,10 @@ func TestPlotWidth(t *testing.T) {
 	c := New("unicode")
 	c.Offset = 5
 	series := []float64{1, 2, 3, 4, 5}
-	result := c.PlotSingle(series)
+	result, err := c.PlotSingle(series)
+	if err != nil {
+		t.Fatalf("Plot: %v", err)
+	}
 
 	lines := strings.SplitSeq(result, "\n")
 	for line := range lines {
@@ -200,7 +230,10 @@ func TestPlotHeight(t *testing.T) {
 	c := New("unicode")
 	c.Height = 2
 	series := []float64{1, 2, 3, 4, 5}
-	result := c.PlotSingle(series)
+	result, err := c.PlotSingle(series)
+	if err != nil {
+		t.Fatalf("Plot: %v", err)
+	}
 
 	lines := strings.Split(result, "\n")
 	// Height should limit vertical extent
@@ -214,7 +247,10 @@ func TestPlotRising(t *testing.T) {
 
 	c := New("unicode")
 	series := []float64{1, 2, 3, 4, 5}
-	result := c.PlotSingle(series)
+	result, err := c.PlotSingle(series)
+	if err != nil {
+		t.Fatalf("Plot: %v", err)
+	}
 
 	lines := strings.Split(result, "\n")
 	// Rising series should have corner characters
@@ -235,7 +271,10 @@ func TestPlotFalling(t *testing.T) {
 
 	c := New("unicode")
 	series := []float64{5, 4, 3, 2, 1}
-	result := c.PlotSingle(series)
+	result, err := c.PlotSingle(series)
+	if err != nil {
+		t.Fatalf("Plot: %v", err)
+	}
 
 	lines := strings.Split(result, "\n")
 	hasCorner := false
@@ -291,5 +330,19 @@ func TestPlainSymbols(t *testing.T) {
 	s := PlainSymbols
 	if s.Cross != "+" || s.TeeRight != "|" || s.VertLine != "|" {
 		t.Error("PlainSymbols values incorrect")
+	}
+}
+
+// TestPlotRejectsInvertedMinMax pins Python's ValueError when the configured
+// minimum exceeds the maximum (AsciiChart.py:21-22). The port silently swapped
+// them, hiding a caller's inverted range.
+func TestPlotRejectsInvertedMinMax(t *testing.T) {
+	t.Parallel()
+
+	c := New("unicode")
+	lo, hi := 5.0, 1.0
+	c.Min, c.Max = &lo, &hi
+	if _, err := c.PlotSingle([]float64{1, 2, 3}); err == nil {
+		t.Error("Plot accepted min > max; Python raises ValueError")
 	}
 }

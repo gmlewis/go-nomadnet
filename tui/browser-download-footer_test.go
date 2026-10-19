@@ -147,10 +147,9 @@ func firstPlainSpan(t *testing.T, bd *BrowserDisplay) micron.StyledSpan {
 // wording has to match rather than merely exist. Each fragment was checked verbatim
 // against the installed reference.
 //
-// The transitions themselves are NOT wired yet — SetBrowserStatus has no production
-// caller, so these labels are only reachable from tests today (parity-gaps §2.4). This
-// test pins the words for the moment they are connected, and fails if a label drifts in
-// the meantime.
+// The transitions are wired: fetchBytes reports each Browser status transition and
+// cmd/gonomadnet/textui.go feeds them to BrowserDisplay.SetBrowserFetchStage. This test
+// pins the words, and TestBrowserFetchStageReachesTheFooter pins the stage mapping.
 func TestBrowserStatusLabelsMatchPython(t *testing.T) {
 	t.Parallel()
 

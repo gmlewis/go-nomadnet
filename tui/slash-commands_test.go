@@ -153,7 +153,7 @@ func TestBareSlashEmptyCommand(t *testing.T) {
 	rw := NewRoomWidget(app, "hub1", "general")
 	rw.hubStatusFn = func() int { return hubStatusConnected }
 	var sent int
-	rw.OnSendMessage = func(string) { sent++ }
+	rw.OnSendMessage = func(string) error { sent++; return nil }
 
 	rw.editor.SetText("/")
 	rw.sendMessage()

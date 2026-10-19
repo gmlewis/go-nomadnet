@@ -186,7 +186,11 @@ func (c *InterfaceBandwidthChart) plotRates(rates []float64, maxRate float64, he
 	upper := maxRate * 1.1
 	chart.Max = &upper
 	chart.FormatFunc = PrettySpeed
-	return chart.PlotSingle(rates)
+	out, err := chart.PlotSingle(rates)
+	if err != nil {
+		return ""
+	}
+	return out
 }
 
 // maxSlice returns the maximum value in a float64 slice.

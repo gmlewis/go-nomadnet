@@ -16,6 +16,7 @@
 package tui
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 	"unicode"
@@ -28,21 +29,22 @@ import (
 // regexp engine does not support lookarounds.
 var motdRoomRe = regexp.MustCompile(`#([A-Za-z0-9][A-Za-z0-9_\-]{0,62})`)
 
-// LinkifyMOTD replaces #room references in a hub MOTD with Micron link markup
-// of the form `[`#room`room://room]`, matching Python's _linkify_motd
-// (Channels.py:1231). A `#` that is preceded by `[` (an already-linked room)
-// or by a word character (e.g. `word#room`) is left unchanged, replicating
-// the `(?<!\[)(?<!\w)` lookbehinds of _MOTD_ROOM_RE.
-func LinkifyMOTD(text string) string {
-	if text == "" {
-		return ""
-	}
-	var sb strings.Builder
+// motdSpan is one #room reference found in a MOTD line.
+type motdSpan struct {
+	Start, End int // byte offsets of the "#room" text
+	Room       string
+}
+
+// motdRoomSpans finds every #room reference Python's _MOTD_ROOM_RE matches in
+// one MOTD line (Channels.py:1229). A `#` preceded by `[` (an already-linked
+// room) or by a word character (e.g. `word#room`) is rejected, replicating the
+// `(?<!\[)(?<!\w)` lookbehinds.
+func motdRoomSpans(text string) []motdSpan {
+	var spans []motdSpan
 	pos := 0
 	for pos < len(text) {
 		loc := motdRoomRe.FindStringIndex(text[pos:])
 		if loc == nil {
-			sb.WriteString(text[pos:])
 			break
 		}
 		start := pos + loc[0]
@@ -50,23 +52,31 @@ func LinkifyMOTD(text string) string {
 		if start > 0 {
 			prev, _ := utf8.DecodeLastRuneInString(text[:start])
 			if prev == '[' || isWordRune(prev) {
-				// Lookbehind rejected this candidate; emit up to and
-				// including the '#' and continue scanning after it.
-				sb.WriteString(text[pos : start+1])
 				pos = start + 1
 				continue
 			}
 		}
-		sb.WriteString(text[pos:start])
-		match := text[start:end]
-		name := text[start+1 : end]
-		sb.WriteString("`[")
-		sb.WriteString(match)
-		sb.WriteString("`room://")
-		sb.WriteString(name)
-		sb.WriteString("]")
+		spans = append(spans, motdSpan{Start: start, End: end, Room: text[start+1 : end]})
 		pos = end
 	}
+	return spans
+}
+
+// LinkifyMOTD replaces #room references in a hub MOTD with Micron link markup
+// of the form `[`#room`room://room]`, matching Python's _linkify_motd
+// (Channels.py:1231).
+func LinkifyMOTD(text string) string {
+	if text == "" {
+		return ""
+	}
+	var sb strings.Builder
+	prev := 0
+	for _, span := range motdRoomSpans(text) {
+		sb.WriteString(text[prev:span.Start])
+		fmt.Fprintf(&sb, "`[%v`room://%v]", text[span.Start:span.End], span.Room)
+		prev = span.End
+	}
+	sb.WriteString(text[prev:])
 	return sb.String()
 }
 

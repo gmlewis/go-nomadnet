@@ -26,13 +26,17 @@ import (
 
 // AnnounceEntry holds a single announce for display.
 type AnnounceEntry struct {
-	Timestamp   time.Time
-	TimestampF  float64 // same instant as Timestamp, as the float64 seconds the directory stores
-	SourceHash  string
-	AppData     string
-	Type        string // "node", "peer", "pn"
-	TrustLevel  string
-	DisplayName string
+	Timestamp  time.Time
+	TimestampF float64 // same instant as Timestamp, as the float64 seconds the directory stores
+	SourceHash string
+	AppData    string
+	// AppDataDecodeFailed marks app data that is not valid UTF-8. Python
+	// decodes the announce bytes and substitutes "Decode failed" in the
+	// untrusted style when the decode raises (Network.py:93-100).
+	AppDataDecodeFailed bool
+	Type                string // "node", "peer", "pn"
+	TrustLevel          string
+	DisplayName         string
 }
 
 // networkListWidth is the Network left pane's normal (non-fullscreen) width in

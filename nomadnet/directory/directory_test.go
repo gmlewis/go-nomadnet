@@ -16,6 +16,7 @@
 package directory
 
 import (
+	"bytes"
 	"testing"
 )
 
@@ -495,5 +496,36 @@ func TestLen(t *testing.T) {
 	d.Forget(hash)
 	if d.Len() != 0 {
 		t.Errorf("Len after forget = %v, want 0", d.Len())
+	}
+}
+
+// TestKnownNodesSortKey pins Python known_nodes' sort key (Directory.py:393):
+// `sort_rank if not None else 2^32` — 2^32 is XOR, i.e. 34 — then
+// TRUSTED-trust, then the display name with None sorting as "_".
+func TestKnownNodesSortKey(t *testing.T) {
+	t.Parallel()
+
+	h := func(b byte) []byte { return bytes.Repeat([]byte{b}, 16) }
+	rank := func(n int) *int { return &n }
+
+	d := New()
+	d.Remember(&Entry{SourceHash: h(1), DisplayName: "fifty", SortRank: rank(50), TrustLevel: TrustUnknown, HostsNode: true})
+	d.Remember(&Entry{SourceHash: h(2), DisplayName: "no-rank", TrustLevel: TrustUnknown, HostsNode: true})
+	d.Remember(&Entry{SourceHash: h(3), DisplayName: "five", SortRank: rank(5), TrustLevel: TrustUnknown, HostsNode: true})
+	d.Remember(&Entry{SourceHash: h(4), DisplayName: "Zed", TrustLevel: TrustUnknown, HostsNode: true})
+	d.Remember(&Entry{SourceHash: h(5), DisplayName: "", TrustLevel: TrustUnknown, HostsNode: true})
+
+	var names []string
+	for _, e := range d.KnownNodes() {
+		names = append(names, e.DisplayName)
+	}
+	want := []string{"five", "Zed", "", "no-rank", "fifty"}
+	if len(names) != len(want) {
+		t.Fatalf("KnownNodes names = %v, want %v", names, want)
+	}
+	for i := range want {
+		if names[i] != want[i] {
+			t.Fatalf("KnownNodes names = %v, want %v (nil rank sorts at 34, not last)", names, want)
+		}
 	}
 }

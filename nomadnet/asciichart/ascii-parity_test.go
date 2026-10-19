@@ -17,7 +17,6 @@ package asciichart
 
 import (
 	"math"
-	"strings"
 	"sync"
 	"testing"
 
@@ -45,6 +44,9 @@ var asciiInputs = []struct {
 	{"multi", "unicode", [][]*float64{{new(1.0), new(2.0), new(3.0), new(4.0), new(5.0)}, {new(5.0), new(4.0), new(3.0), new(2.0), new(1.0)}}, nil},
 	{"constant", "unicode", [][]*float64{{new(5.0), new(5.0), new(5.0), new(5.0), new(5.0)}}, nil},
 	{"custom_format", "unicode", [][]*float64{{new(1.0), new(2.0), new(3.0), new(4.0), new(5.0)}}, map[string]any{"format": "{:6.1f}"}},
+	{"format_no_placeholder", "unicode", [][]*float64{{new(1.0), new(2.0), new(3.0)}}, map[string]any{"format": "plain"}},
+	{"format_empty_braces", "unicode", [][]*float64{{new(1.0), new(2.0), new(3.0)}}, map[string]any{"format": "{}"}},
+	{"explicit_height_zero", "unicode", [][]*float64{{new(0.0), new(1.0), new(2.0)}}, map[string]any{"min": 0, "max": 2, "height": 0}},
 	{"negative", "unicode", [][]*float64{{new(-5.0), new(0.0), new(5.0)}}, nil},
 	{"bigvals", "unicode", [][]*float64{{new(100.0), new(200.0), new(300.0), new(250.0), new(150.0)}}, nil},
 	{"fractional", "unicode", [][]*float64{{new(1.5), new(2.25), new(3.125), new(2.5), new(1.875)}}, nil},
@@ -86,17 +88,6 @@ func asciiPython(t *testing.T) []string {
 		testutils.RunPythonNomadnet(t, asciiInputs, asciiParityScript, &asciiPythonOut)
 	})
 	return asciiPythonOut
-}
-
-// pyFormatToGo converts a Python format placeholder like "{:8.2f} " to a Go
-// fmt verb like "%8.2f ".
-func pyFormatToGo(s string) string {
-	if s == "" {
-		return ""
-	}
-	s = strings.ReplaceAll(s, "{:", "%")
-	s = strings.ReplaceAll(s, "}", "")
-	return s
 }
 
 func toInt(v any) int {
@@ -151,6 +142,7 @@ func TestPlotPythonParity(t *testing.T) {
 				}
 				if v, ok := tc.Cfg["height"]; ok {
 					c.Height = toInt(v)
+					c.HasHeight = true
 				}
 				if v, ok := tc.Cfg["min"]; ok {
 					fv := toFloat(v)
@@ -162,11 +154,16 @@ func TestPlotPythonParity(t *testing.T) {
 				}
 				if v, ok := tc.Cfg["format"]; ok {
 					if s, ok := v.(string); ok {
-						c.Format = pyFormatToGo(s)
+						// The chart now accepts Python str.format templates
+						// directly, so feed the reference's own string through.
+						c.Format = s
 					}
 				}
 			}
-			got := c.Plot(toFloatSeries(tc.Series))
+			got, err := c.Plot(toFloatSeries(tc.Series))
+			if err != nil {
+				t.Fatalf("Plot: %v", err)
+			}
 			if got != want[i] {
 				t.Errorf("Plot(%v) mismatch:\n--- got ---\n%v\n--- want ---\n%v", tc.Label, got, want[i])
 			}

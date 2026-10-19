@@ -45,6 +45,10 @@ func newCenteredText(color tcell.Color, lines ...string) *centeredText {
 // callers that inspect the empty-state text.
 func (c *centeredText) GetText() string { return strings.Join(c.lines, "\n") }
 
+// SetText replaces the rendered lines, for a live header such as the interface
+// count.
+func (c *centeredText) SetText(lines ...string) { c.lines = lines }
+
 // newMiddleCentered builds a vertically MIDDLE-centered, horizontally CENTER
 // text primitive matching urwid Filler(Text(..., align=CENTER), MIDDLE): two
 // equal-weight blank spacers above and below a fixed-height centeredText. This

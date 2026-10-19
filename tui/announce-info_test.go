@@ -16,6 +16,7 @@
 package tui
 
 import (
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -553,5 +554,70 @@ func TestAnnounceInfoNodeButtonNavigation(t *testing.T) {
 
 	if connectedHash != hash {
 		t.Errorf("got connectedHash %q, want %q", connectedHash, hash)
+	}
+}
+
+// TestAnnounceInfoDecodeFailed pins Python's decode-failure branch
+// (Network.py:93-100): app data that is not valid UTF-8 renders "Decode failed"
+// in the untrusted style instead of lossy replacement characters.
+func TestAnnounceInfoDecodeFailed(t *testing.T) {
+	t.Parallel()
+	app := newTestApp()
+	app.Glyphs = GetGlyphSet(GlyphUnicode)
+	nd := NewNetworkDisplay(app, nil, nil)
+
+	hash := strings.Repeat("a", 32)
+	ann := AnnounceEntry{
+		Timestamp:           time.Date(2026, 1, 2, 15, 4, 5, 0, time.UTC),
+		SourceHash:          hash,
+		AppData:             "\xff\xfe bad bytes",
+		AppDataDecodeFailed: true,
+		Type:                "peer",
+	}
+	rows := renderAnnounceInfo(t, nd, ann, AnnounceInfoData{
+		DisplayStr: "<" + hash + ">",
+		TrustStr:   "Unknown",
+		TrustStyle: "list_unknown",
+		OpStr:      "Unknown",
+	}, 50, 14)
+
+	found := false
+	for _, row := range rows {
+		if row == "Decode failed" {
+			found = true
+		}
+		if strings.ContainsRune(row, '�') {
+			t.Errorf("a decode-failed announce rendered a replacement character: %q", row)
+		}
+	}
+	if !found {
+		t.Errorf("no row rendered %q; rows = %v", "Decode failed", rows)
+	}
+}
+
+// TestAnnounceInfoStripsModifiers pins that the announce data passes through
+// strip_modifiers before display (Network.py:94), as it does for page markup.
+func TestAnnounceInfoStripsModifiers(t *testing.T) {
+	t.Parallel()
+	app := newTestApp()
+	app.Glyphs = GetGlyphSet(GlyphUnicode)
+	nd := NewNetworkDisplay(app, nil, nil)
+
+	hash := strings.Repeat("b", 32)
+	ann := AnnounceEntry{
+		Timestamp:  time.Date(2026, 1, 2, 15, 4, 5, 0, time.UTC),
+		SourceHash: hash,
+		AppData:    "Hello‍World",
+		Type:       "peer",
+	}
+	rows := renderAnnounceInfo(t, nd, ann, AnnounceInfoData{
+		DisplayStr: "<" + hash + ">",
+		TrustStr:   "Unknown",
+		TrustStyle: "list_unknown",
+		OpStr:      "Unknown",
+	}, 50, 14)
+
+	if !slices.Contains(rows, "HelloWorld") {
+		t.Errorf("announce data did not pass through strip_modifiers; rows = %v", rows)
 	}
 }

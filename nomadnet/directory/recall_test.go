@@ -74,3 +74,32 @@ func TestPNTrustLevel(t *testing.T) {
 		t.Error("PNTrustLevel for unrecalled identity should return ok=false")
 	}
 }
+
+// TestRememberPropagatesPeerTrustToNode pins Python Directory.remember
+// (Directory.py:343-348): remembering a peer copies its trust level onto the
+// associated nomadnetwork.node entry derived from the recalled identity, so
+// trusting a peer trusts the node that peer hosts.
+func TestRememberPropagatesPeerTrustToNode(t *testing.T) {
+	t.Parallel()
+	ts := rns.NewTransportSystem(nil)
+	id, err := rns.NewIdentity(true, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	peerHash := rns.CalculateHash(id, "lxmf", "delivery")
+	nodeHash := rns.CalculateHash(id, "nomadnetwork", "node")
+	ts.Remember(nil, peerHash, id.GetPublicKey(), nil)
+
+	d := New()
+	d.Transport = ts
+	d.Remember(&Entry{SourceHash: nodeHash, DisplayName: "Node", TrustLevel: TrustUnknown})
+	d.Remember(&Entry{SourceHash: peerHash, DisplayName: "Peer", TrustLevel: TrustTrusted})
+
+	entry := d.Find(nodeHash)
+	if entry == nil {
+		t.Fatal("node entry disappeared")
+	}
+	if entry.TrustLevel != TrustTrusted {
+		t.Errorf("node trust after trusting its peer = 0x%02X, want trusted (Python Directory.remember propagates it)", entry.TrustLevel)
+	}
+}

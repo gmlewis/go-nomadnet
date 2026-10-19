@@ -63,9 +63,9 @@ func TestRenderToStyledLinesFormattingToggles(t *testing.T) {
 	spans := lines[0].Spans
 	wantSpans := []StyledSpan{
 		{Text: "bold", FG: "#dddddd", BG: "default", Bold: true},
-		{Text: " and ", FG: "#dddddd", BG: "default", Bold: true},
+		{Text: "and ", FG: "#dddddd", BG: "default", Bold: true},
 		{Text: "underline", FG: "#dddddd", BG: "default", Bold: true, Underline: true},
-		{Text: " and ", FG: "#dddddd", BG: "default", Bold: true, Underline: true},
+		{Text: "and ", FG: "#dddddd", BG: "default", Bold: true, Underline: true},
 		{Text: "italic", FG: "#dddddd", BG: "default", Bold: true, Underline: true, Italic: true},
 	}
 	if len(spans) != len(wantSpans) {

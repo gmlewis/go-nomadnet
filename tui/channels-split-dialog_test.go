@@ -62,7 +62,7 @@ func TestChannelsCtrlDOverLimitOpensSplitDialog(t *testing.T) {
 	cd := newSplitDialogCD(t, defaultMaxMsgBytes)
 
 	var sent []string
-	cd.OnSendMessage = func(text string) { sent = append(sent, text) }
+	cd.OnSendMessage = func(text string) error { sent = append(sent, text); return nil }
 	cd.roomWidget.editor.SetText(rrcCommunityDraft)
 
 	cd.roomWidget.handleInput(tcell.NewEventKey(tcell.KeyCtrlD, 0, tcell.ModNone))
@@ -151,7 +151,7 @@ func TestChannelsSplitDialogSendSplitSendsPartsAndClearsDraft(t *testing.T) {
 	cd := newSplitDialogCD(t, defaultMaxMsgBytes)
 
 	var sent []string
-	cd.OnSendMessage = func(text string) { sent = append(sent, text) }
+	cd.OnSendMessage = func(text string) error { sent = append(sent, text); return nil }
 	cd.roomWidget.editor.SetText(rrcCommunityDraft)
 	cd.roomWidget.handleInput(tcell.NewEventKey(tcell.KeyCtrlD, 0, tcell.ModNone))
 
@@ -184,7 +184,7 @@ func TestChannelsSplitDialogCancelKeepsDraft(t *testing.T) {
 	cd := newSplitDialogCD(t, defaultMaxMsgBytes)
 
 	var sent []string
-	cd.OnSendMessage = func(text string) { sent = append(sent, text) }
+	cd.OnSendMessage = func(text string) error { sent = append(sent, text); return nil }
 	cd.roomWidget.editor.SetText(rrcCommunityDraft)
 	cd.roomWidget.handleInput(tcell.NewEventKey(tcell.KeyCtrlD, 0, tcell.ModNone))
 
@@ -257,7 +257,7 @@ func TestShowRoomWiresHubMessageLimitIntoComposer(t *testing.T) {
 	}
 
 	var sent []string
-	cd.OnSendMessage = func(text string) { sent = append(sent, text) }
+	cd.OnSendMessage = func(text string) error { sent = append(sent, text); return nil }
 	cd.roomWidget.editor.SetText(rrcCommunityDraft)
 	cd.roomWidget.handleInput(tcell.NewEventKey(tcell.KeyCtrlD, 0, tcell.ModNone))
 

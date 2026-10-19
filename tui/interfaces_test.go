@@ -234,7 +234,9 @@ func TestFormatMessageMention(t *testing.T) {
 func TestInterfacesDisplayTitleCeilLeftCentering(t *testing.T) {
 	t.Parallel()
 	app := newTestApp()
-	id := NewInterfacesDisplay(app, nil)
+	// Python heads the list with "Interfaces (N)" (Interfaces.py:3146), so the
+	// centering check uses a page with one interface.
+	id := NewInterfacesDisplay(app, []InterfaceInfo{{Name: "eth0", Type: "AutoInterface"}})
 
 	screen := tcell.NewSimulationScreen("UTF-8")
 	if err := screen.Init(); err != nil {
@@ -245,12 +247,13 @@ func TestInterfacesDisplayTitleCeilLeftCentering(t *testing.T) {
 	id.layout.SetRect(0, 0, 81, 24)
 	id.layout.Draw(screen)
 
-	// 'I' of "Interfaces" on row 0 at the ceil-left column (36).
-	if main, _, _, _ := cellContent(screen, 36, 0); main != 'I' {
-		t.Errorf("title 'I' at col 36 = %q, want 'I' (ceil-left)", main)
+	title := "Interfaces (1)"
+	start := (81 - len(title) + 1) / 2 // urwid's ceil-left centering
+	if main, _, _, _ := cellContent(screen, start, 0); main != 'I' {
+		t.Errorf("title 'I' at col %v = %q, want 'I' (ceil-left)", start, main)
 	}
-	if main, _, _, _ := cellContent(screen, 35, 0); main == 'I' {
-		t.Errorf("title 'I' found at col 35 (floor-left); want ceil-left at 36")
+	if main, _, _, _ := cellContent(screen, start-1, 0); main == 'I' {
+		t.Errorf("title 'I' found at col %v (floor-left); want ceil-left at %v", start-1, start)
 	}
 }
 

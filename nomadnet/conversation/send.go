@@ -147,7 +147,14 @@ func (c *Conversation) Send(content, title string, fields map[any]any) bool {
 func (c *Conversation) MessageNotification(message *lxmf.Message) {
 	deps := c.sendDeps
 	if message.State() == lxmf.StateFailed && message.TryPropagationOnFail {
+		// Python resets the whole retry state before re-sending
+		// (Conversation.py:395-402): the flag, the attempt counter, the next
+		// attempt time, the packed bytes (so the propagated form is rebuilt),
+		// and the desired method.
 		message.TryPropagationOnFail = false
+		message.DeliveryAttempts = 0
+		message.NextDeliveryAttempt = 0
+		message.Packed = nil
 		message.DesiredMethod = lxmf.MethodPropagated
 		if deps != nil {
 			_ = deps.HandleOutbound(message)

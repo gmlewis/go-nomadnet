@@ -174,7 +174,13 @@ func NewInterfaceEditFormView(app *App, ifaceName string, cfg map[string]any, op
 	v.editing = true
 	v.origName = ifaceName
 	v.title = "Edit Interface: " + ifaceName
-	v.header = ifaceName
+	// Python keeps the BODY header as "Add new {icon} {type}" in the edit form
+	// too; only the LineBox title changes (Interfaces.py:1656-1659,2018).
+	glyphset := GlyphUnicode
+	if app != nil {
+		glyphset = app.GlyphSet
+	}
+	v.header = fmt.Sprintf("Add new %v %v", GetInterfaceIcon(glyphset, ifType), ifType)
 	v.build()
 	v.loadConfig(ifaceName, cfg)
 	return v
@@ -195,6 +201,10 @@ func newInterfaceFormView(app *App, ifType string, opts InterfaceFormOptions) *I
 
 // Title returns the form's LineBox title.
 func (v *InterfaceFormView) Title() string { return v.title }
+
+// HeaderText returns the form's body header ("Add new {icon} {type}"), which
+// Python renders for both the add and edit forms (Interfaces.py:1656-1659).
+func (v *InterfaceFormView) HeaderText() string { return v.header }
 
 // MoreOptionsVisible reports whether the more-options section is showing.
 func (v *InterfaceFormView) MoreOptionsVisible() bool { return v.more }
@@ -457,6 +467,14 @@ func (v *InterfaceFormView) Build() (string, []app.ConfigProp) {
 		}
 	}
 
+	// Python keys the form's fields by config_key (Interfaces.py:1645-1660), so
+	// two rows sharing a key (BackboneInterface's "port" and "Target Port") hold
+	// ONE value: the last row's. Writing both produced duplicate `port =` lines
+	// in the config.
+	propIndex := make(map[string]int, len(props))
+	for i, p := range props {
+		propIndex[p.Key] = i
+	}
 	for _, r := range append(append([]*formRow{}, v.rows...), v.extraRows...) {
 		switch r.key {
 		case "name", "type", "subinterfaces", "custom_parameters":
@@ -466,6 +484,11 @@ func (v *InterfaceFormView) Build() (string, []app.ConfigProp) {
 		if !ok {
 			continue
 		}
+		if i, ok := propIndex[r.key]; ok {
+			props[i] = app.ConfigProp{Key: r.key, Value: value}
+			continue
+		}
+		propIndex[r.key] = len(props)
 		props = append(props, app.ConfigProp{Key: r.key, Value: value})
 	}
 

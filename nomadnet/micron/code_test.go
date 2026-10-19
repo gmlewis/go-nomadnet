@@ -122,6 +122,23 @@ func TestLiteralBlockEscapedToggle(t *testing.T) {
 	}
 }
 
+// TestLiteralBlockEscapedToggleIsExactLine pins that \`= is unescaped only when
+// it is the whole line. Python make_output tests `if line == "\\`="`
+// (MicronParser.py:595-598), so an escape sequence inside a longer literal line
+// is emitted verbatim.
+func TestLiteralBlockEscapedToggleIsExactLine(t *testing.T) {
+	t.Parallel()
+
+	markup := "`=\nbefore \\`= after\n`="
+	lines := RenderToStyledLines(markup, ThemeDark)
+	if len(lines) != 1 {
+		t.Fatalf("len(lines) = %v, want 1", len(lines))
+	}
+	if got, want := textOf(lines[0]), "before \\`= after"; got != want {
+		t.Errorf("literal text = %q, want %q (an embedded escape is not substituted)", got, want)
+	}
+}
+
 // textOf concatenates a line's span text.
 func textOf(l *StyledLine) string {
 	var sb strings.Builder

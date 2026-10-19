@@ -213,8 +213,11 @@ func DefaultConfig() *Config {
 			Destination: "file",
 		},
 		Client: ClientConfig{
-			EnableClient:             true,
-			UserInterface:            "text",
+			// Python's seeds when a key is absent (NomadNetworkApp.py:83-151):
+			// the client is off and no UI mode is chosen; the shipped default
+			// config file turns both on.
+			EnableClient:             false,
+			UserInterface:            "",
 			DownloadsPath:            "~/Downloads",
 			NotifyOnNewMessage:       true,
 			AnnounceAtStart:          true,
@@ -225,22 +228,28 @@ func DefaultConfig() *Config {
 			LXMFSyncLimit:            8,
 			RequiredStampCost:        nil,
 			AcceptInvalidStamps:      false,
-			MaxAcceptedSize:          500,
-			CompactAnnounceStream:    true,
-			ComposeInMarkdown:        true,
+			// 0 means unlimited (Python self.lxmf_max_incoming_size = None).
+			MaxAcceptedSize: 0,
+			// Python's in-code default is False (NomadNetworkApp.py:151); the
+			// shipped default config file sets compact_announce_stream = yes.
+			CompactAnnounceStream: false,
+			ComposeInMarkdown:     true,
 		},
 		TextUI: TextUIConfig{
 			IntroTime:         1,
 			AnimationInterval: 1,
 			IntroText:         "Nomad Network",
 			Theme:             "dark",
-			ColorMode:         "24bit",
-			Glyphs:            "nerdfont",
-			MouseEnabled:      true,
-			Editor:            "nano",
-			HideGuide:         false,
-			SanitizeNames:     true,
-			ClipboardCopy:     false,
+			// Python's seed when [textui] colormode is absent is COLORMODE_16
+			// (NomadNetworkApp.py:953-954); the shipped default config file
+			// sets 24bit.
+			ColorMode:     "16",
+			Glyphs:        "unicode",
+			MouseEnabled:  true,
+			Editor:        "nano",
+			HideGuide:     false,
+			SanitizeNames: true,
+			ClipboardCopy: false,
 		},
 		RRC: RRCConfig{
 			HistoryPerRoomCap:      500,
@@ -255,7 +264,10 @@ func DefaultConfig() *Config {
 			NickColors:              true,
 			JustifyMsgs:             true,
 			SpaceMsgs:               false,
-			ShowGutters:             true,
+			// Python's in-code default is False (NomadNetworkApp.py:168); the
+			// shipped default config file sets show_gutters = yes, so this only
+			// shows when a config has no [rrc] section at all.
+			ShowGutters: false,
 		},
 		// The [location] section is optional and absent from the file
 		// gonomadnet writes, so the only default that matters is the staleness
@@ -263,7 +275,7 @@ func DefaultConfig() *Config {
 		Location: LocationConfig{MaxAge: DefaultLocationMaxAge},
 		Node: NodeConfig{
 			EnableNode:             true,
-			AnnounceInterval:       360 * 60, // 360 minutes → seconds
+			AnnounceInterval:       720 * 60, // Python's seed is 720 minutes (NomadNetworkApp.py:1113)
 			AnnounceAtStart:        true,
 			DisablePropagation:     true,
 			PropagationCost:        16,
@@ -569,7 +581,9 @@ func (c *Config) applyRRC() {
 
 	if v, ok := sec["history_per_room_cap"]; ok {
 		if n, err := asInt(v); err == nil {
-			c.RRC.HistoryPerRoomCap = n
+			if n >= 0 {
+				c.RRC.HistoryPerRoomCap = n
+			}
 		}
 	}
 	if v, ok := sec["filter_loaded_history"]; ok {

@@ -24,22 +24,22 @@ import (
 // computes at view time (Network.py:612-740): the display name, sort rank, trust
 // level (+ display string + palette style), operator display, hop distance, the
 // LXMF propagation-node address line, and the two checkbox preselections (use as
-// default PN, identify on connect). The RNS-dependent fields (operator string
-// via Identity.recall, hop count via Transport.hops_to, the PN address hash, the
-// current user-selected PN) are stubs until node hosting is wired in; identify-on-connect comes
-// from the directory entry and is wired now.
+// default PN, identify on connect). All of these are populated by the wiring
+// layer (cmd/gonomadnet/textui.go): the operator string and hop count come from
+// the recalled identity/transport, the PN address from the selected propagation
+// node, and identify-on-connect from the directory entry.
 type KnownNodeInfoData struct {
 	DisplayStr string // directory display name (or "<hex>")
 	SortStr    string // "None" or str(sort_rank)
 	TrustLevel string // "untrusted"/"unknown"/"trusted"/"warning" (radio preselect)
-	OpStr      string // node operator display (stub: "Unknown")
+	OpStr      string // node operator display ("Unknown" when not recallable)
 	// OpHash is the hex "lxmf.delivery" destination hash derived from the
 	// node's recallable identity (Network.py:704) — the address the Msg Op
 	// button targets; empty when the identity is not recallable.
 	OpHash            string
-	HopsStr           string // "N hop(s)" or "Unknown" (stub: "Unknown")
-	LXMFAddrStr       string // centered PN-address line (stub: "No associated …")
-	UseAsPN           bool   // preselected "Use as default propagation node" (stub: false)
+	HopsStr           string // "N hop(s)" or "Unknown"
+	LXMFAddrStr       string // centered PN-address line ("No associated …" when none)
+	UseAsPN           bool   // preselected "Use as default propagation node"
 	IdentifyOnConnect bool   // directory.should_identify_on_connect(source_hash)
 
 	// PropagationNotServing is true when the node's own identity has declared its

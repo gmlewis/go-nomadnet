@@ -264,7 +264,11 @@ func (bd *BrowserDisplay) loadLinkDirect(target, linkFields, anchor string) {
 	// the push so only a link click (not a typed-URL LoadURL, which displayURL
 	// clears) is rolled back — see the pendingLinkHist field doc.
 	bd.rollbackPendingLink()
-	bd.pushHistory(target)
+	// Collect the link's live field values before recording history: the
+	// entry keeps them so Back/Forward re-issue the same parameterised fetch
+	// (Python stores request_data in the history entry, Browser.py:1069-1071).
+	rd := bd.collectFields(linkFields)
+	bd.pushHistory(target, rd)
 	// Record the requested anchor only now: pushHistory rolls a superseded
 	// click back itself (that is what clears a stale pendingAnchor), so setting
 	// it before this call would have the same click wipe it again.
@@ -285,10 +289,9 @@ func (bd *BrowserDisplay) loadLinkDirect(target, linkFields, anchor string) {
 	// click-focus contract that the mouse tests pin).
 	bd.setURLHeader(target)
 	if bd.OnRetrieveURL != nil {
-		// A submit link names the form fields to send (linkFields). Collect
-		// their live values from the rendered page (recurse_down analog) and
-		// forward as request_data; a plain link has no fields → nil request
-		// data (the cache + var_*-suffix path is unchanged).
-		bd.OnRetrieveURL(target, bd.collectFields(linkFields))
+		// A submit link names the form fields to send (linkFields); the values
+		// collected above go with the fetch. A plain link has no fields → nil
+		// request data (the cache + var_*-suffix path is unchanged).
+		bd.OnRetrieveURL(target, rd)
 	}
 }

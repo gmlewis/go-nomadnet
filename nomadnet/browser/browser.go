@@ -308,6 +308,55 @@ func CurrentURL(destHash []byte, path string, requestData map[string]string) str
 	return b.String()
 }
 
+// FetchStage identifies a point in a fetch's lifecycle that the display layer
+// can report in its footer. The values correspond to Python Browser status
+// transitions (Browser.py:1000-1018,1032-1064,1385-1447):
+//
+//	NO_PATH            -> FetchStageNoPath
+//	PATH_REQUESTED     -> FetchStagePathRequested
+//	(no status)        -> FetchStagePathKnown   (path resolved; Python goes on
+//	                                              to ESTABLISHING_LINK directly)
+//	ESTABLISHING_LINK  -> FetchStageEstablishingLink
+//	LINK_ESTABLISHED   -> FetchStageLinkEstablished
+//	REQUESTING         -> FetchStageRequesting
+//	REQUEST_SENT       -> FetchStageRequestSent
+//
+// Python defines RECEIVING_RESPONSE and renders it in status_text
+// (Browser.py:86,1794) but never assigns it; no stage is reported for it,
+// because a footer that said "Receiving response..." would diverge from the
+// reference's "Request sent, awaiting response...".
+type FetchStage int
+
+const (
+	// FetchStageNoPath reports that no path is known, before a path request.
+	FetchStageNoPath FetchStage = iota
+	// FetchStagePathRequested reports that a path request was sent.
+	FetchStagePathRequested
+	// FetchStagePathKnown reports that the path is resolved and link
+	// establishment begins.
+	FetchStagePathKnown
+	// FetchStageEstablishingLink reports that the link handshake has started.
+	FetchStageEstablishingLink
+	// FetchStageLinkEstablished reports that the link became ACTIVE.
+	FetchStageLinkEstablished
+	// FetchStageRequesting reports that the request is about to be sent.
+	FetchStageRequesting
+	// FetchStageRequestSent reports that the request receipt was returned.
+	FetchStageRequestSent
+)
+
+// FetchStageReporter receives a fetch's lifecycle stages. It is called from the
+// fetch goroutine, so a UI caller must marshal the update onto its event loop.
+// A nil reporter is a no-op.
+type FetchStageReporter func(FetchStage)
+
+// reportStage invokes onStage when one is installed.
+func reportStage(onStage FetchStageReporter, stage FetchStage) {
+	if onStage != nil {
+		onStage(stage)
+	}
+}
+
 // fetchBytes establishes an RNS link to the nomadnetwork.node destination for
 // destHash and issues a request for path, returning the raw response bytes and
 // the (open) link. It is the shared link-establish + request core for both
@@ -339,7 +388,7 @@ func CurrentURL(destHash []byte, path string, requestData map[string]string) str
 //
 // The returned link is OPEN on success (the caller decides whether to retain
 // or tear it down); it is torn down on every failure/timeout path.
-func fetchBytes(ctx context.Context, ts *rns.TransportSystem, destHash []byte, path string, requestData map[string]string, timeout time.Duration, onProgress func(float64), onLinkEstablished func(*rns.Link), existing *rns.Link) ([]byte, *rns.Link, error) {
+func fetchBytes(ctx context.Context, ts *rns.TransportSystem, destHash []byte, path string, requestData map[string]string, timeout time.Duration, onProgress func(float64), onLinkEstablished func(*rns.Link), onStage FetchStageReporter, existing *rns.Link) ([]byte, *rns.Link, map[string][]byte, error) {
 	if timeout <= 0 {
 		timeout = time.Duration(DefaultTimeout) * time.Second
 	}
@@ -351,7 +400,7 @@ func fetchBytes(ctx context.Context, ts *rns.TransportSystem, destHash []byte, p
 	// goroutine (page load or partial refresh) raced ahead of async initRNS or
 	// outlived Shutdown closing the transport.
 	if ts == nil {
-		return nil, nil, ErrNoPath
+		return nil, nil, nil, ErrNoPath
 	}
 	// Pre-resolution hop count: when the path is already known this adjusts the
 	// timeout up front for the multi-hop DH handshake. When the path is NOT yet
@@ -372,7 +421,7 @@ func fetchBytes(ctx context.Context, ts *rns.TransportSystem, destHash []byte, p
 		ctx = context.Background()
 	}
 	if ctx.Err() != nil {
-		return nil, nil, ctx.Err()
+		return nil, nil, nil, ctx.Err()
 	}
 
 	// 0. Reuse a retained link if it is still ACTIVE. Python Browser.__load
@@ -404,7 +453,9 @@ func fetchBytes(ctx context.Context, ts *rns.TransportSystem, destHash []byte, p
 		}
 		// 1. Path resolution.
 		if !ts.HasPath(destHash) {
+			reportStage(onStage, FetchStageNoPath)
 			_ = ts.RequestPath(destHash)
+			reportStage(onStage, FetchStagePathRequested)
 			// Python Browser.__load (Browser.py:1404-1409) waits
 			// first_hop_timeout(hash) + self.timeout for a path. Use
 			// TransportSystem.FirstHopTimeout to include the bitrate-latency
@@ -418,12 +469,12 @@ func fetchBytes(ctx context.Context, ts *rns.TransportSystem, destHash []byte, p
 			deadline := time.Now().Add(timeout + firstHop)
 			for time.Now().Before(deadline) && !ts.HasPath(destHash) {
 				if ctx.Err() != nil {
-					return nil, nil, ctx.Err()
+					return nil, nil, nil, ctx.Err()
 				}
 				time.Sleep(250 * time.Millisecond)
 			}
 			if !ts.HasPath(destHash) {
-				return nil, nil, ErrNoPath
+				return nil, nil, nil, ErrNoPath
 			}
 		}
 		// Re-read hop count after path resolution: when preHops was 0
@@ -439,14 +490,18 @@ func fetchBytes(ctx context.Context, ts *rns.TransportSystem, destHash []byte, p
 			}
 		}
 
+		// The path is resolved (either it was already known or the request
+		// above supplied it). Python moves straight on to ESTABLISHING_LINK.
+		reportStage(onStage, FetchStagePathKnown)
+
 		// 2. Recall identity + build outbound destination.
 		identity := ts.Recall(destHash)
 		if identity == nil {
-			return nil, nil, ErrNoPath
+			return nil, nil, nil, ErrNoPath
 		}
 		dest, err := rns.NewDestination(ts, identity, rns.DestinationOut, rns.DestinationSingle, nodeAspect[0], nodeAspect[1:]...)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 
 		// 3. Establish the link (non-blocking Establish + wait for ACTIVE).
@@ -462,9 +517,10 @@ func fetchBytes(ctx context.Context, ts *rns.TransportSystem, destHash []byte, p
 		// RNS's watchdog exits the wait immediately, and use RNS's own
 		// establishment timeout (now bitrate-aware via FirstHopTimeout) as
 		// the external safety-net deadline (with a small margin).
+		reportStage(onStage, FetchStageEstablishingLink)
 		link, err = rns.NewLink(ts, dest)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		established := make(chan struct{}, 1)
 		closed := make(chan struct{}, 1)
@@ -481,7 +537,7 @@ func fetchBytes(ctx context.Context, ts *rns.TransportSystem, destHash []byte, p
 			}
 		})
 		if err := link.Establish(); err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		// Compute the link-establishment deadline from RNS's own formula
 		// (link.go): first_hop_timeout + PER_HOP*max(1, hops), where
@@ -496,17 +552,19 @@ func fetchBytes(ctx context.Context, ts *rns.TransportSystem, destHash []byte, p
 		select {
 		case <-established:
 		case <-closed:
-			return nil, nil, ErrLinkTimeout
+			return nil, nil, nil, ErrLinkTimeout
 		case <-time.After(linkEstablishTimeout):
 			link.Teardown()
-			return nil, nil, ErrLinkTimeout
+			return nil, nil, nil, ErrLinkTimeout
 		case <-ctx.Done():
 			link.Teardown()
-			return nil, nil, ctx.Err()
+			return nil, nil, nil, ctx.Err()
 		}
 
 		// 3b. Link is ACTIVE — give the caller a chance to identify to the remote
 		// node (Python link_established, Browser.py:1454-1459) before the request.
+		// Python's link_established sets LINK_ESTABLISHED before returning.
+		reportStage(onStage, FetchStageLinkEstablished)
 		if onLinkEstablished != nil {
 			onLinkEstablished(link)
 		}
@@ -539,17 +597,19 @@ func fetchBytes(ctx context.Context, ts *rns.TransportSystem, destHash []byte, p
 	}
 	diagFile("/tmp/fetch-diag.log", fmt.Sprintf("[%v] fetchBytes path=%q rdNil=%v rd=%v timeout=%v hops=%v", time.Now().Format("15:04:05.000"), path, requestData == nil, requestData, timeout, ts.HopsTo(destHash)))
 	type result struct {
-		data []byte
-		err  error
+		data     []byte
+		metadata map[string][]byte
+		err      error
 	}
 	resCh := make(chan result, 1)
+	reportStage(onStage, FetchStageRequesting)
 	_, err := link.Request(path, dataArg, func(rr *rns.RequestReceipt) {
 		diagFile("/tmp/fetch-diag.log", fmt.Sprintf("response cb status=%v dataLen=%v", rr.Status, len(rr.GetResponse())))
 		if rr.Status != rns.RequestReady {
 			resCh <- result{err: ErrRequestFailed}
 			return
 		}
-		resCh <- result{data: rr.GetResponse()}
+		resCh <- result{data: rr.GetResponse(), metadata: responseMetadata(rr.Metadata)}
 	}, func(rr *rns.RequestReceipt) {
 		diagFile("/tmp/fetch-diag.log", fmt.Sprintf("failed cb status=%v", rr.Status))
 		resCh <- result{err: ErrRequestFailed}
@@ -567,20 +627,50 @@ func fetchBytes(ctx context.Context, ts *rns.TransportSystem, destHash []byte, p
 		if !reusedLink {
 			link.Teardown()
 		}
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
+	// Python sets REQUEST_SENT as soon as link.request returns a receipt
+	// (Browser.py:1064,1447), before the response arrives.
+	reportStage(onStage, FetchStageRequestSent)
 	select {
 	case r := <-resCh:
 		diagFile("/tmp/fetch-diag.log", fmt.Sprintf("resCh err=%v dataLen=%v", r.err, len(r.data)))
 		if r.err != nil {
 			link.Teardown()
-			return nil, nil, r.err
+			return nil, nil, nil, r.err
 		}
-		return r.data, link, nil
+		return r.data, link, r.metadata, nil
 	case <-ctx.Done():
 		diagFile("/tmp/fetch-diag.log", "ctx.Done")
 		link.Teardown()
-		return nil, nil, ctx.Err()
+		return nil, nil, nil, ctx.Err()
+	}
+}
+
+// responseMetadata extracts a response resource's metadata map. Python's
+// request_receipt.metadata is a dict (None for an inline response); the Go
+// resource layer carries it either as map[string][]byte or as the generic
+// msgpack map, so accept both.
+func responseMetadata(v any) map[string][]byte {
+	switch m := v.(type) {
+	case nil:
+		return nil
+	case map[string][]byte:
+		return m
+	case map[any]any:
+		out := make(map[string][]byte, len(m))
+		for k, val := range m {
+			ks, ok := k.(string)
+			if !ok {
+				continue
+			}
+			if vb, ok := val.([]byte); ok {
+				out[ks] = vb
+			}
+		}
+		return out
+	default:
+		return nil
 	}
 }
 
@@ -592,7 +682,7 @@ func fetchBytes(ctx context.Context, ts *rns.TransportSystem, destHash []byte, p
 // FetchPageReuseLink. See fetchBytes for the per-step behavior and the
 // requestData/onProgress/onLinkEstablished/timeout semantics.
 func FetchPage(ctx context.Context, ts *rns.TransportSystem, destHash []byte, path string, requestData map[string]string, timeout time.Duration, onProgress func(float64), onLinkEstablished func(*rns.Link)) ([]byte, error) {
-	data, link, err := fetchBytes(ctx, ts, destHash, path, requestData, timeout, onProgress, onLinkEstablished, nil)
+	data, link, _, err := fetchBytes(ctx, ts, destHash, path, requestData, timeout, onProgress, onLinkEstablished, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -608,8 +698,11 @@ func FetchPage(ctx context.Context, ts *rns.TransportSystem, destHash []byte, pa
 // destination and tear it down on destination change / disconnect. The caller
 // guarantees existing belongs to destHash (it must tear the link down when the
 // destination changes).
-func FetchPageReuseLink(ctx context.Context, ts *rns.TransportSystem, destHash []byte, path string, requestData map[string]string, timeout time.Duration, onProgress func(float64), onLinkEstablished func(*rns.Link), existing *rns.Link) ([]byte, *rns.Link, error) {
-	return fetchBytes(ctx, ts, destHash, path, requestData, timeout, onProgress, onLinkEstablished, existing)
+// It also returns the response resource's metadata: a served file's response
+// carries {"name": ...}, which the caller uses as the download name the way
+// Python's file_received does (Browser.py:1638-1640).
+func FetchPageReuseLink(ctx context.Context, ts *rns.TransportSystem, destHash []byte, path string, requestData map[string]string, timeout time.Duration, onProgress func(float64), onLinkEstablished func(*rns.Link), onStage FetchStageReporter, existing *rns.Link) ([]byte, *rns.Link, map[string][]byte, error) {
+	return fetchBytes(ctx, ts, destHash, path, requestData, timeout, onProgress, onLinkEstablished, onStage, existing)
 }
 
 // IsFilePath reports whether a browser path names a file download rather than a
@@ -633,12 +726,19 @@ func IsFilePath(path string) bool {
 // used, with a ".N" suffix appended on collision, matching Python's
 // saved_file_name) and its size in bytes.
 func DownloadFile(ctx context.Context, ts *rns.TransportSystem, destHash []byte, path string, requestData map[string]string, downloadsDir string, timeout time.Duration, onProgress func(float64), onLinkEstablished func(*rns.Link)) (savedName string, savedSize int, err error) {
-	data, link, err := fetchBytes(ctx, ts, destHash, path, requestData, timeout, onProgress, onLinkEstablished, nil)
+	data, link, metadata, err := fetchBytes(ctx, ts, destHash, path, requestData, timeout, onProgress, onLinkEstablished, nil, nil)
 	if err != nil {
 		return "", 0, err
 	}
 	link.Teardown()
-	return SaveDownload(downloadsDir, path, data)
+	// Python file_received names the file from the response metadata
+	// (Browser.py:1638-1640: os.path.basename(metadata["name"].decode())),
+	// falling back to the request path for a peer that supplies none.
+	name := path
+	if n := metadata["name"]; len(n) > 0 {
+		name = string(n)
+	}
+	return SaveDownload(downloadsDir, name, data)
 }
 
 // SaveDownload writes data to a uniquely-named file under downloadsDir,

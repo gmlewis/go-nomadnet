@@ -41,6 +41,12 @@ import (
 //go:embed default-index.mu
 var defaultIndexContent string
 
+// nodeStartAnnounceDelay mirrors Python Node.START_ANNOUNCE_DELAY = 6
+// (Node.py:12,42). It is distinct from the app-level peer announce delay
+// (NomadNetworkApp.START_ANNOUNCE_DELAY = 3): this port reused the peer
+// constant for both.
+const nodeStartAnnounceDelay = 6 * time.Second
+
 // ensureDefaultPages creates the pages directory and a default index.mu file
 // if they don't already exist. This gives node operators a starter page to
 // customize rather than serving only the in-memory fallback.
@@ -138,7 +144,7 @@ func (a *App) startNode() error {
 	if a.NodeAnnounceAtStart {
 		go func() {
 			select {
-			case <-time.After(startAnnounceDelay):
+			case <-time.After(nodeStartAnnounceDelay):
 			case <-a.jobsStop:
 				return
 			}
@@ -202,7 +208,9 @@ func (a *App) onNodeAnnounced() {
 	if a.PeerSettings == nil {
 		return
 	}
-	a.PeerSettings.NodeLastAnnounce = time.Now().Unix()
+	// Python stores self.last_announce, a time.time() float (Node.py:218), not
+	// an integer; the persisted bytes have to match.
+	a.PeerSettings.NodeLastAnnounce = float64(time.Now().UnixNano()) / 1e9
 	a.savePeerSettingsLocked()
 }
 

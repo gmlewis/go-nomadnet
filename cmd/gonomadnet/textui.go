@@ -35,6 +35,7 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gmlewis/go-nomadnet/nomadnet/app"
 	"github.com/gmlewis/go-nomadnet/nomadnet/browser"
@@ -141,10 +142,12 @@ func runTextUI(configDir, rnsConfigDir string) {
 		stdLog.logger.Store(a.Logger)
 	}
 
-	// Determine theme from config
-	theme := tui.ThemeDark
-	if a.Config != nil && a.Config.TextUI.Theme == "light" {
-		theme = tui.ThemeLight
+	// Determine theme and color depth from config. Python raises ValueError
+	// (and panics with exit code 255) for an invalid value.
+	theme, colorMode, err := textUIAppearance(a.Config)
+	if err != nil {
+		log.Printf("gonomadnet: %v", err)
+		os.Exit(255)
 	}
 
 	// Determine glyph set
@@ -156,12 +159,6 @@ func runTextUI(configDir, rnsConfigDir string) {
 		case "nerdfont":
 			glyphSet = tui.GlyphNerd
 		}
-	}
-
-	// Determine color depth from config (default 24-bit true color).
-	colorMode := tui.ColorModeTrue
-	if a.Config != nil {
-		colorMode = tui.ParseColorMode(a.Config.TextUI.ColorMode)
 	}
 
 	// Create and run the TUI
@@ -359,7 +356,7 @@ func runTextUI(configDir, rnsConfigDir string) {
 	intro := tui.NewIntroDisplay(introText, a.Version)
 	tuiApp.ShowIntro(intro.Widget(), introTime)
 
-	err := tuiApp.Run()
+	err = tuiApp.Run()
 
 	// The client holds the terminal until this moment, and it is given back
 	// before anything else runs: the report below is fatal on a desktop, and an
@@ -600,12 +597,13 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		tuiConvs := make([]tui.AnnounceEntry, len(anns))
 		for i, ann := range anns {
 			tuiConvs[i] = tui.AnnounceEntry{
-				Timestamp:   ann.Timestamp,
-				TimestampF:  ann.TimestampF,
-				SourceHash:  fmt.Sprintf("%x", ann.SourceHash),
-				AppData:     string(ann.AppData),
-				Type:        ann.AnnounceType,
-				DisplayName: ann.DisplayName,
+				Timestamp:           ann.Timestamp,
+				TimestampF:          ann.TimestampF,
+				SourceHash:          fmt.Sprintf("%x", ann.SourceHash),
+				AppData:             string(ann.AppData),
+				AppDataDecodeFailed: !utf8.Valid(ann.AppData),
+				Type:                ann.AnnounceType,
+				DisplayName:         ann.DisplayName,
 			}
 		}
 		networkDisplay.UpdateAnnounces(tuiConvs)
@@ -686,7 +684,8 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	a.SetUIChangeCallback(refreshTrigger.Trigger)
 	main.SetDisplay("network", networkDisplay.Widget())
 	main.RegisterSidePanelController(networkDisplay)
-	main.SetShortcut("network", "[C-l] Nodes/Announces  [C-x] Remove  [C-w] Disconnect  [C-d] Back  [C-f] Forward  [C-r] Reload  [C-u] URL  [C-g] Fullscreen  [C-s / C-b] Save Node")
+	clipboardCopy := a.Config != nil && a.Config.TextUI.ClipboardCopy
+	main.SetShortcut("network", networkShortcutBar(clipboardCopy))
 
 	// Wire Esc to go back from AnnounceInfo before quitting.
 	main.SetEscCallback(func() bool {
@@ -1830,6 +1829,12 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	channelsDisplay.OnSelectHub = func(hubIdx int) {
 		selectHubRow(a, hubIdx)
 	}
+	// A hub-info click (MOTD #room link or a room row) opens the room through
+	// the same selection path, which joins an unjoined room or queues it on a
+	// disconnected hub (Python _ChatLinkDelegate._open_room, Channels.py:1170-1179).
+	channelsDisplay.OnOpenRoom = func(hubIdx int, room string) {
+		channelsDisplay.OnSelectRoom(hubIdx, room)
+	}
 	channelsDisplay.OnSelectRoom = func(hubIdx int, room string) {
 		hub := selectRoomRow(a, hubIdx, room)
 		if hub == nil {
@@ -1866,10 +1871,21 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		})
 	}
 	// The room chat composer (Python RoomWidget send → hub.send_message).
-	channelsDisplay.OnSendMessage = func(text string) {
-		if hub := a.RRC.ActiveHub(); hub != nil {
-			hub.SendMessage(strings.ToLower(a.RRC.ActiveRoom()), text)
+	channelsDisplay.OnSendMessage = func(text string) error {
+		hub := a.RRC.ActiveHub()
+		if hub == nil {
+			return errors.New("no hub")
 		}
+		room := strings.ToLower(a.RRC.ActiveRoom())
+		// A server-forwarded slash command goes through the user-command path
+		// (Python hub.send_command inside _handle_slash_command), which reports
+		// a send failure; chat text takes the normal record-and-send path.
+		if strings.HasPrefix(text, "/") {
+			_, err := hub.SendUserCommand(text, room)
+			return err
+		}
+		hub.SendMessage(room, text)
+		return nil
 	}
 	// Python _handle_slash_command "me" (Channels.py:1054-1068): hub.send_action
 	// with the hub's max body limit enforced locally.
@@ -2275,7 +2291,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 			}
 			refreshInterfaces()
 			interfacesDisplay.CloseForm()
-			interfacesDisplay.ShowRestartRequired()
+			interfacesDisplay.ShowInterfaceSaved(name, origName == "")
 			return nil
 		}
 		form.OnNameConflict = func(name string) bool {
@@ -2339,17 +2355,13 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 			return
 		}
 		iface := items[idx]
-		tuiApp.Dialogs.ShowConfirmDialog("Remove interface "+iface.Name+"?",
-			func() {
-				if err := a.RemoveInterfaceConfig(iface.Name); err != nil {
-					interfacesDisplay.ShowInterfaceError(err.Error())
-					return
-				}
-				refreshInterfaces()
-				interfacesDisplay.ShowRestartRequired()
-			},
-			func() {},
-		)
+		interfacesDisplay.ShowRemoveConfirm(iface.Name, func() {
+			if err := a.RemoveInterfaceConfig(iface.Name); err != nil {
+				interfacesDisplay.ShowInterfaceError(err.Error())
+				return
+			}
+			refreshInterfaces()
+		})
 	}
 	interfacesDisplay.OnShowInterface = func(idx int) {
 		// G1: Enter opens Python's FULL-PAGE ShowInterface view (title header,
@@ -2362,18 +2374,18 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		interfacesDisplay.ShowInterfaceDetail(items[idx])
 	}
 	interfacesDisplay.OnToggleInterface = func(info tui.InterfaceInfo) {
-		// Python on_toggle_enabled (Interfaces.py:2516-2600): flip
-		// interface_enabled in the RNS config and write it. The Go config file
-		// is the source of truth for the interface list, so flip the value in
-		// place. The confirm dialog + restart-required notice are a follow-up
-		// (deviation noted here).
-		if err := a.ToggleInterfaceEnabled(info.Name); err != nil {
-			tuiApp.QueueUpdateDraw(func() {
+		// Python on_toggle_enabled (Interfaces.py:2516-2617): confirm first, then
+		// flip interface_enabled in the RNS config, write it, and show the
+		// per-interface restart notice. The confirm's Yes runs on the event loop,
+		// so the refresh and the notice are invoked directly.
+		interfacesDisplay.ShowEnableDisableConfirm(info.Name, info.Enabled, func() {
+			if err := a.ToggleInterfaceEnabled(info.Name); err != nil {
 				interfacesDisplay.ShowInterfaceError(err.Error())
-			})
-			return
-		}
-		refreshInterfaces()
+				return
+			}
+			refreshInterfaces()
+			interfacesDisplay.ShowEnableDisableNotice(info.Name, !info.Enabled)
+		})
 	}
 
 	// Browser display (hidden by default, shown when navigating from network)
@@ -2840,9 +2852,22 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 				// link is absent or has gone stale (remote closed it), in which
 				// case FetchPageReuseLink establishes a fresh one.
 				existing := activeRetainedLink(bd)
-				data, link, ferr := browser.FetchPageReuseLink(ctx, a.Transport, dest, path, rd,
+				// Report each lifecycle stage to the footer while the fetch is
+				// in flight, mirroring Python Browser's status transitions
+				// (Browser.py:1000-1064,1385-1447). The reporter runs on the
+				// fetch goroutine, so marshal it onto the event loop and drop
+				// updates from a superseded fetch.
+				onStage := func(stage browser.FetchStage) {
+					tuiApp.QueueUpdateDraw(func() {
+						if seq != bd.CurrentRequestSeq() || ctx.Err() != nil {
+							return
+						}
+						bd.SetBrowserFetchStage(stage)
+					})
+				}
+				data, link, responseMeta, ferr := browser.FetchPageReuseLink(ctx, a.Transport, dest, path, rd,
 					time.Duration(browser.DefaultTimeout)*time.Second, nil,
-					identifyOnConnect(dest), existing)
+					identifyOnConnect(dest), onStage, existing)
 				elapsed := time.Since(start).Seconds()
 				tuiApp.QueueUpdateDraw(func() {
 					if seq != bd.CurrentRequestSeq() || ctx.Err() != nil {
@@ -2870,7 +2895,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 						if link != nil {
 							link.Teardown()
 						}
-						bd.SetContent(fmt.Sprintf("[red]%v[-]", browser.StatusText(browser.ErrToStatus(ferr))))
+						bd.ShowRequestFailed(browser.StatusText(browser.ErrToStatus(ferr)))
 						return
 					}
 					// A /file/<name> request is a download, not a page: Python
@@ -2881,7 +2906,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 					// timeouts, progress — exactly as Python's download_file
 					// shares its link handling with __load. The file bytes used to
 					// reach RenderPage and be rendered as markup.
-					if completeRemoteFilePath(bd, a.DownloadsPath, path, data, elapsed) {
+					if completeRemoteFilePath(bd, a.DownloadsPath, path, data, responseMeta, elapsed) {
 						return
 					}
 					if rd == nil {
@@ -3072,11 +3097,17 @@ func shouldRingMentionBell(a *app.App, hub *rrc.RRCHub, msg *rrc.RRCMessage) boo
 // download's own display rules live in tui.BrowserDisplay.ShowDownload, and the
 // naming/collision rules in browser.SaveDownload; this is the decision plus the
 // two calls, kept here so the branch itself is testable.
-func completeRemoteFilePath(bd *tui.BrowserDisplay, downloadsDir, path string, data []byte, elapsed float64) bool {
+func completeRemoteFilePath(bd *tui.BrowserDisplay, downloadsDir, path string, data []byte, metadata map[string][]byte, elapsed float64) bool {
 	if !browser.IsFilePath(path) {
 		return false
 	}
-	savedName, savedSize, err := browser.SaveDownload(downloadsDir, path, data)
+	// Python names a saved file from the response metadata
+	// (Browser.py:1638-1640), falling back to the request path.
+	name := path
+	if n := metadata["name"]; len(n) > 0 {
+		name = string(n)
+	}
+	savedName, savedSize, err := browser.SaveDownload(downloadsDir, name, data)
 	if err != nil {
 		bd.SetContent(fmt.Sprintf("[red]Could not save %v: %v[-]", tview.Escape(path), err))
 		return true
@@ -3309,8 +3340,15 @@ func selectRoomRow(a *app.App, hubIdx int, room string) *rrc.RRCHub {
 	}
 	a.RRC.SetActive(hub, strings.ToLower(room))
 	tui.MaybeAutoconnect(hub)
-	if hub.GetHubStatus() == rrc.StatusConnected && !hub.HasRoom(room) {
-		hub.JoinRoom(room, false)
+	if !hub.HasRoom(room) {
+		// Python _select_room (Channels.py:1727-1733): join when connected,
+		// otherwise add the room locally so it survives the session and is
+		// selectable on a disconnected hub.
+		if hub.GetHubStatus() == rrc.StatusConnected {
+			hub.JoinRoom(room, false)
+		} else {
+			hub.AddRoom(room)
+		}
 	}
 	return hub
 }

@@ -229,3 +229,25 @@ func TestSelectRoomRowIgnoresUnknownHub(t *testing.T) {
 		t.Errorf("active hub after selecting an out-of-range room row = %v, want nil", got)
 	}
 }
+
+// TestSelectRoomRowQueuesUnjoinedRoomWhenDisconnected pins Python _select_room
+// (Channels.py:1727-1733): an unjoined room selected on a DISCONNECTED hub is
+// added locally (hub.add_room), not silently ignored. The port only joined
+// when connected, so selecting an available room on an offline hub did nothing.
+func TestSelectRoomRowQueuesUnjoinedRoomWhenDisconnected(t *testing.T) {
+	t.Parallel()
+
+	mgr := rrc.NewManager(tempDir(t), nil)
+	a := &app.App{RRC: mgr}
+	hub := mgr.AddHub([]byte{0x05, 0x06, 0x07, 0x08}, "rrc.hub", "Offline Hub")
+	hub.AutoReconnect = false
+	hub.Status = rrc.StatusDisconnected
+	t.Cleanup(mgr.Shutdown)
+
+	if got := selectRoomRow(a, 0, "newroom"); got != hub {
+		t.Fatalf("selectRoomRow returned %v, want the hub", got)
+	}
+	if !hub.HasRoom("newroom") {
+		t.Error("selecting an unjoined room on a disconnected hub did not queue it (Python hub.add_room)")
+	}
+}

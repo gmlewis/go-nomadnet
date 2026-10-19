@@ -19,6 +19,7 @@
 package asciichart
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"strconv"
@@ -76,7 +77,11 @@ type Chart struct {
 	Height  int
 	Min     *float64
 	Max     *float64
-	Format  string
+	// HasHeight marks Height as explicitly set. Python's height comes from the
+	// cfg dict and `cfg.get('height', interval)` distinguishes an absent height
+	// from an explicit 0; Go's zero Height means "unset" unless this is set.
+	HasHeight bool
+	Format    string
 	// FormatFunc, when set, overrides Format with a callable label formatter,
 	// mirroring the Python AsciiChart cfg['format'] hook when it is a function
 	// rather than a format string (e.g. RNS.prettyspeed, Interfaces.py:1341-1353).
@@ -108,9 +113,9 @@ func (s Symbols) list() []string {
 // AsciiChart.plot, including that library's quirk that the Y-axis label is
 // stored as a single (possibly multi-character) cell in each row, so the
 // rendered line width depends on the formatted label length.
-func (c *Chart) Plot(series [][]float64) string {
+func (c *Chart) Plot(series [][]float64) (string, error) {
 	if len(series) == 0 {
-		return ""
+		return "", nil
 	}
 
 	// Find min/max across all series.
@@ -131,7 +136,7 @@ func (c *Chart) Plot(series [][]float64) string {
 		}
 	}
 	if !hasValues {
-		return ""
+		return "", nil
 	}
 
 	if c.Min != nil {
@@ -140,8 +145,10 @@ func (c *Chart) Plot(series [][]float64) string {
 	if c.Max != nil {
 		maxVal = *c.Max
 	}
+	// Python raises ValueError here (AsciiChart.py:21-22); silently swapping
+	// hid a caller's inverted range.
 	if minVal > maxVal {
-		minVal, maxVal = maxVal, minVal
+		return "", errors.New("the min value cannot exceed the max value")
 	}
 
 	interval := maxVal - minVal
@@ -151,7 +158,7 @@ func (c *Chart) Plot(series [][]float64) string {
 	// if interval > 0 else 1. An unset height (c.Height == 0) therefore yields
 	// ratio = 1, matching Python's default height == interval.
 	ratio := 1.0
-	if interval > 0 && c.Height != 0 {
+	if interval > 0 && (c.HasHeight || c.Height != 0) {
 		ratio = float64(c.Height) / interval
 	}
 
@@ -276,26 +283,80 @@ func (c *Chart) Plot(series [][]float64) string {
 		line := strings.TrimRight(strings.Join(row, ""), " ")
 		lines = append(lines, line)
 	}
-	return strings.Join(lines, "\n")
+	return strings.Join(lines, "\n"), nil
 }
 
 // PlotSingle is a convenience method for plotting a single series.
-func (c *Chart) PlotSingle(series []float64) string {
+func (c *Chart) PlotSingle(series []float64) (string, error) {
 	return c.Plot([][]float64{series})
 }
 
-// formatLabel formats a Y-axis value. The format string is a Go fmt verb
-// (e.g. "%8.2f ") mirroring the Python placeholder (e.g. "{:8.2f }"). A format
-// without a "%" verb yields a blank 12-column label, matching Python's
-// non-callable placeholder edge handling.
+// formatLabel formats a Y-axis value. Python's cfg['format'] is a str.format
+// template ("{:8.2f} ", "{}", or even a string with no field); a Go fmt verb is
+// also accepted. A template with no placeholder yields the literal text, as
+// str.format does, where this port used to emit twelve blanks.
 func formatLabel(val float64, format string) string {
-	if !strings.Contains(format, "%") {
-		return strings.Repeat(" ", 12)
-	}
 	if math.IsNaN(val) || math.IsInf(val, 0) {
 		return "     NaN "
 	}
-	return fmt.Sprintf(format, val)
+	if strings.ContainsAny(format, "{}") {
+		return pythonFormat(format, val)
+	}
+	if strings.Contains(format, "%") {
+		return fmt.Sprintf(format, val)
+	}
+	// No placeholder: Python's str.format returns the literal template.
+	return format
+}
+
+// pythonFormat applies a Python str.format template to one float.
+func pythonFormat(template string, val float64) string {
+	var b strings.Builder
+	for i := 0; i < len(template); i++ {
+		c := template[i]
+		switch {
+		case c == '{' && i+1 < len(template) && template[i+1] == '{':
+			b.WriteByte('{')
+			i++
+		case c == '}' && i+1 < len(template) && template[i+1] == '}':
+			b.WriteByte('}')
+			i++
+		case c == '{':
+			end := strings.IndexByte(template[i:], '}')
+			if end < 0 {
+				b.WriteString(template[i:])
+				i = len(template)
+				continue
+			}
+			field := template[i+1 : i+end]
+			if strings.HasPrefix(field, ":") {
+				b.WriteString(fmt.Sprintf("%"+field[1:], val))
+			} else {
+				// An empty or named field binds this call's only value; Python
+				// renders it with str(), which keeps the ".0" on an integral
+				// float.
+				b.WriteString(pyFloatString(val))
+			}
+			i += end
+		default:
+			if c == '%' {
+				b.WriteString("%%")
+			} else {
+				b.WriteByte(c)
+			}
+		}
+	}
+	return b.String()
+}
+
+// pyFloatString renders a float the way Python's format(value, "") (str) does:
+// shortest round-trip, with ".0" for an integral value.
+func pyFloatString(val float64) string {
+	s := strconv.FormatFloat(val, 'g', -1, 64)
+	if !strings.ContainsAny(s, ".eEnN") {
+		s += ".0"
+	}
+	return s
 }
 
 func formatInt(n int) string {

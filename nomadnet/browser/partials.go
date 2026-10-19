@@ -186,7 +186,9 @@ func FetchPartial(ctx context.Context, ts *rns.TransportSystem, partial Partial,
 		}
 		return data, nil
 	}
-	data, link, err := fetchBytes(ctx, ts, dest, path, rd, opts.Timeout, opts.OnProgress, opts.OnLinkEstablished, nil)
+	// Partial fetches do not report stages: Python's __load_partial uses a
+	// separate link and never touches the main browser footer status.
+	data, link, _, err := fetchBytes(ctx, ts, dest, path, rd, opts.Timeout, opts.OnProgress, opts.OnLinkEstablished, nil, nil)
 	if err != nil {
 		return nil, err
 	}

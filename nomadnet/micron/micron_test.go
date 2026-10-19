@@ -122,7 +122,7 @@ func TestParseBold(t *testing.T) {
 	if nodes[2].Type != NodeText || nodes[2].Text != "bold" {
 		t.Errorf("node[2] = %v", nodes[2])
 	}
-	if nodes[3].Type != NodeText || nodes[3].Text != " text" {
+	if nodes[3].Type != NodeText || nodes[3].Text != "text" {
 		t.Errorf("node[3] = %v", nodes[3])
 	}
 }

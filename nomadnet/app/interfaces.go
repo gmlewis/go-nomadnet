@@ -112,11 +112,11 @@ func parseInterfaceConfig(path string) []interfaceConfigEntry {
 		}
 		switch {
 		case strings.HasPrefix(line, "[[[") && strings.HasSuffix(line, "]]]"):
-			subName := strings.Trim(line, "[] ")
-			if cur != nil {
-				// Record sub-interface for RNodeMultiInterface
-				_ = subName
-			}
+			// A sub-interface block: its keys describe the sub-interface. Stop
+			// attributing them to the parent, which previously let an
+			// RNodeMulti's sub-interface type override the parent's and its
+			// interface_enabled silently disable the whole interface.
+			cur = nil
 		case strings.HasPrefix(line, "[[") && strings.HasSuffix(line, "]]"):
 			name := strings.Trim(line, "[] ")
 			if section == "interfaces" {

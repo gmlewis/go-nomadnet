@@ -17,6 +17,7 @@ package tui
 
 import (
 	"fmt"
+	"log"
 	"strings"
 	"unicode/utf8"
 
@@ -121,7 +122,9 @@ func (cd *ChannelsDisplay) ShowSplitDialog(text string, limit int) {
 			rw.SendSplitParts(info.Parts)
 		} else if cd.OnSendMessage != nil {
 			for _, part := range info.Parts {
-				cd.OnSendMessage(part)
+				if err := cd.OnSendMessage(part); err != nil {
+					log.Printf("Failed to send RRC message part: %v", err)
+				}
 			}
 		}
 		closeDialog()

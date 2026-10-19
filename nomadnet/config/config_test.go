@@ -28,6 +28,16 @@ func TestDefaultConfig(t *testing.T) {
 
 	c := DefaultConfig()
 
+	// RRC defaults: Python's in-code default is rrc_show_gutters = False
+	// (NomadNetworkApp.py:168). The shipped default config file turns it on, so
+	// this only matters for a config with no [rrc] section.
+	if c.RRC.ShowGutters {
+		t.Error("RRC.ShowGutters = true, want Python's in-code default false")
+	}
+	if c.Client.CompactAnnounceStream {
+		t.Error("Client.CompactAnnounceStream = true, want Python's in-code default false (NomadNetworkApp.py:151)")
+	}
+
 	// Logging defaults
 	if c.Logging.LogLevel != 4 {
 		t.Errorf("LogLevel = %v, want 4", c.Logging.LogLevel)
@@ -37,11 +47,14 @@ func TestDefaultConfig(t *testing.T) {
 	}
 
 	// Client defaults
-	if !c.Client.EnableClient {
-		t.Error("EnableClient = false, want true")
+	// Python's seeds when a key is absent (NomadNetworkApp.py:83-87): the
+	// client is off and no UI mode is chosen. The shipped default config file
+	// enables both, so this only describes a config without those keys.
+	if c.Client.EnableClient {
+		t.Error("EnableClient = true, want Python's seed false")
 	}
-	if c.Client.UserInterface != "text" {
-		t.Errorf("UserInterface = %q, want %q", c.Client.UserInterface, "text")
+	if c.Client.UserInterface != "" {
+		t.Errorf("UserInterface = %q, want Python's seed None (empty)", c.Client.UserInterface)
 	}
 	if c.Client.DownloadsPath != "~/Downloads" {
 		t.Errorf("DownloadsPath = %q, want %q", c.Client.DownloadsPath, "~/Downloads")
@@ -55,8 +68,8 @@ func TestDefaultConfig(t *testing.T) {
 	if c.Client.RequiredStampCost != nil {
 		t.Errorf("RequiredStampCost = %v, want nil", *c.Client.RequiredStampCost)
 	}
-	if c.Client.MaxAcceptedSize != 500 {
-		t.Errorf("MaxAcceptedSize = %f, want 500", c.Client.MaxAcceptedSize)
+	if c.Client.MaxAcceptedSize != 0 {
+		t.Errorf("MaxAcceptedSize = %f, want 0 (Python's None, unlimited)", c.Client.MaxAcceptedSize)
 	}
 
 	// TextUI defaults
@@ -66,11 +79,11 @@ func TestDefaultConfig(t *testing.T) {
 	if c.TextUI.Theme != "dark" {
 		t.Errorf("Theme = %q, want %q", c.TextUI.Theme, "dark")
 	}
-	if c.TextUI.ColorMode != "24bit" {
-		t.Errorf("ColorMode = %q, want %q", c.TextUI.ColorMode, "24bit")
+	if c.TextUI.ColorMode != "16" {
+		t.Errorf("ColorMode = %q, want %q (Python's absent-key seed)", c.TextUI.ColorMode, "16")
 	}
-	if c.TextUI.Glyphs != "nerdfont" {
-		t.Errorf("Glyphs = %q, want %q", c.TextUI.Glyphs, "nerdfont")
+	if c.TextUI.Glyphs != "unicode" {
+		t.Errorf("Glyphs = %q, want %q", c.TextUI.Glyphs, "unicode")
 	}
 	if !c.TextUI.MouseEnabled {
 		t.Error("MouseEnabled = false, want true")
@@ -103,8 +116,8 @@ func TestDefaultConfig(t *testing.T) {
 	if !c.Node.EnableNode {
 		t.Error("EnableNode = false, want true")
 	}
-	if c.Node.AnnounceInterval != 360*60 {
-		t.Errorf("Node.AnnounceInterval = %v, want %v", c.Node.AnnounceInterval, 360*60)
+	if c.Node.AnnounceInterval != 720*60 {
+		t.Errorf("Node.AnnounceInterval = %v, want %v (Python's 720-minute seed)", c.Node.AnnounceInterval, 720*60)
 	}
 	if c.Node.PropagationCost != 16 {
 		t.Errorf("PropagationCost = %v, want 16", c.Node.PropagationCost)
@@ -477,9 +490,9 @@ func TestLoadMissingFile(t *testing.T) {
 		t.Fatalf("Load missing file: %v", err)
 	}
 
-	// Should return default config
-	if !c.Client.EnableClient {
-		t.Error("Missing file should return default config with EnableClient=true")
+	// A missing file returns DefaultConfig, which carries Python's seeds.
+	if c.Client.EnableClient {
+		t.Error("Missing file should return DefaultConfig (EnableClient is Python's seed false)")
 	}
 }
 
@@ -587,9 +600,9 @@ print_command = lp
 		t.Errorf("Destination = %q, want %q", c.Logging.Destination, "file")
 	}
 
-	// Verify client
+	// Verify client (this file states every key, so the values come from it)
 	if !c.Client.EnableClient {
-		t.Error("EnableClient = false, want true")
+		t.Error("EnableClient = false, want true (file says enable_client = yes)")
 	}
 	if c.Client.UserInterface != "text" {
 		t.Errorf("UserInterface = %q, want %q", c.Client.UserInterface, "text")
@@ -601,7 +614,7 @@ print_command = lp
 		t.Errorf("RequiredStampCost = %v, want nil", c.Client.RequiredStampCost)
 	}
 	if c.Client.MaxAcceptedSize != 500 {
-		t.Errorf("MaxAcceptedSize = %f, want 500", c.Client.MaxAcceptedSize)
+		t.Errorf("MaxAcceptedSize = %f, want 500 (file says max_accepted_size = 500)", c.Client.MaxAcceptedSize)
 	}
 
 	// Verify textui

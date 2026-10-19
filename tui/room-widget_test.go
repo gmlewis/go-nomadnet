@@ -43,7 +43,7 @@ func TestRoomWidgetSendMessage(t *testing.T) {
 	rw := NewRoomWidget(app, "hub1", "general")
 
 	var sent string
-	rw.OnSendMessage = func(text string) { sent = text }
+	rw.OnSendMessage = func(text string) error { sent = text; return nil }
 
 	rw.editor.SetText("Hello world")
 	rw.sendMessage()
@@ -63,7 +63,7 @@ func TestRoomWidgetSendMessageEmpty(t *testing.T) {
 	rw := NewRoomWidget(app, "hub1", "general")
 
 	sent := false
-	rw.OnSendMessage = func(text string) { sent = true }
+	rw.OnSendMessage = func(text string) error { sent = true; return nil }
 	rw.sendMessage()
 
 	if sent {
@@ -78,7 +78,7 @@ func TestRoomWidgetSendMessageWhitespaceOnly(t *testing.T) {
 	rw := NewRoomWidget(app, "hub1", "general")
 
 	sent := false
-	rw.OnSendMessage = func(text string) { sent = true }
+	rw.OnSendMessage = func(text string) error { sent = true; return nil }
 	rw.editor.SetText("   ")
 	rw.sendMessage()
 
@@ -100,7 +100,7 @@ func TestRoomWidgetSendMessageHubDisconnected(t *testing.T) {
 	var connected bool
 	rw.OnConnectHub = func() { connected = true }
 	var sent string
-	rw.OnSendMessage = func(text string) { sent = text }
+	rw.OnSendMessage = func(text string) error { sent = text; return nil }
 	rw.editor.SetText("Hello")
 	rw.sendMessage()
 
@@ -195,7 +195,7 @@ func TestRoomWidgetKeyboardShortcuts(t *testing.T) {
 	rw := NewRoomWidget(app, "hub1", "general")
 
 	var fired []string
-	rw.OnSendMessage = func(text string) { fired = append(fired, "send:"+text) }
+	rw.OnSendMessage = func(text string) error { fired = append(fired, "send:"+text); return nil }
 	rw.OnLeaveRoom = func(target string) { fired = append(fired, "leave:"+target) }
 
 	tests := []struct {
@@ -501,7 +501,7 @@ func TestRoomWidgetSlashCommands(t *testing.T) {
 		{"/join #test", "", "", "", "test", "", false, false},
 		{"/j #test", "", "", "", "test", "", false, false},
 		{"/me dances", "", "", "dances", "", "", false, false},
-		{"/nick alice", "", "", "", "", "alice", true, false},
+		{"/nick alice", "", "", "", "", "alice", false, false},
 		{"/who", "/who", "", "", "", "", false, false},
 		{"/names", "/names", "", "", "", "", false, false},
 		{"/topic new topic", "/topic new topic", "", "", "", "", false, false},
@@ -523,7 +523,7 @@ func TestRoomWidgetSlashCommands(t *testing.T) {
 			var action, joined, nickSet string
 			nickInfo := false
 			disconnected := false
-			rw.OnSendMessage = func(text string) { sentText = text }
+			rw.OnSendMessage = func(text string) error { sentText = text; return nil }
 			rw.OnLeaveRoom = func(target string) { leftRoom = target }
 			rw.OnSendAction = func(text string) error { action = text; return nil }
 			rw.OnJoinRoomNamed = func(room string) error { joined = room; return nil }

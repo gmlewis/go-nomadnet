@@ -90,10 +90,22 @@ func main() {
 		os.Exit(0)
 	}
 
-	// textui overrides daemon
-	if textUI {
-		daemon = false
+	// Default config directory
+	if configDir == "" {
+		home, _ := os.UserHomeDir()
+		configDir = resolveDefaultConfigDir(home)
 	}
+
+	// Select the UI mode from the config the way Python does: --daemon forces
+	// the daemon, otherwise user_interface picks (text/none), and an absent or
+	// unimplemented value is fatal. --textui only cancels --daemon.
+	modeDaemon, modeErr := resolveUIMode(configDir, daemon, textUI)
+	if modeErr != nil {
+		log.Printf("gonomadnet: %v", modeErr)
+		// Python's nomadnet.panic() exits 255; log.Fatal would report 1.
+		os.Exit(255)
+	}
+	daemon = modeDaemon
 
 	// Auto-fallback to daemon mode when no TTY is available. The tview TUI
 	// requires a terminal; launched via nohup, systemd, or a non-interactive
@@ -106,12 +118,6 @@ func main() {
 		log.Println("gonomadnet: no TTY detected (stdin is not a terminal); " +
 			"falling back to daemon mode. Use -t for TUI or -d for explicit daemon mode.")
 		daemon = true
-	}
-
-	// Default config directory
-	if configDir == "" {
-		home, _ := os.UserHomeDir()
-		configDir = resolveDefaultConfigDir(home)
 	}
 
 	// Idiot-proof single-instance guard: refuse to start if a nomadnet

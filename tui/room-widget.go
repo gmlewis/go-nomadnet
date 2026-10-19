@@ -17,9 +17,11 @@ package tui
 
 import (
 	"fmt"
+	"log"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/gmlewis/tcell/v2"
 	"github.com/gmlewis/tview"
@@ -81,7 +83,7 @@ type RoomWidget struct {
 	hubMaxMsgBytesFn func() int
 
 	// Callbacks
-	OnSendMessage func(text string)
+	OnSendMessage func(text string) error
 	// OnLeaveRoom parts the named room (Python /part's target,
 	// Channels.py:1044-1053: the argument when given, the current room
 	// otherwise). The wiring decides the placeholder switch.
@@ -558,12 +560,16 @@ func (rw *RoomWidget) SetRoomHeader(serverName, hubVersion, statusLabel string) 
 // sendMessage sends the current editor content.
 // Matches Python's RoomWidget.send_message() at Channels.py:864.
 func (rw *RoomWidget) sendMessage() {
-	text := strings.TrimSpace(rw.editor.GetText())
-	if text == "" {
+	// Python sends the editor text as typed: it rejects only blank input and
+	// detects a command with text.lstrip().startswith("/")
+	// (Channels.py:864-871). Trimming the whole text here stripped the
+	// leading/trailing whitespace a message is supposed to carry.
+	text := rw.editor.GetText()
+	if strings.TrimSpace(text) == "" {
 		return
 	}
-	if strings.HasPrefix(text, "/") {
-		rw.handleSlashCommand(text)
+	if strings.HasPrefix(strings.TrimLeftFunc(text, unicode.IsSpace), "/") {
+		rw.handleSlashCommand(strings.TrimLeftFunc(text, unicode.IsSpace))
 		return
 	}
 	// Python RoomWidget.send_message (Channels.py:873-876) reads the hub's
@@ -598,7 +604,10 @@ func (rw *RoomWidget) sendMessage() {
 		return
 	}
 	if rw.OnSendMessage != nil {
-		rw.OnSendMessage(text)
+		if err := rw.OnSendMessage(text); err != nil {
+			// Python send_message logs a failed send (Channels.py:884-886).
+			log.Printf("Failed to send RRC message: %v", err)
+		}
 	}
 	rw.editor.SetText("")
 }
@@ -671,12 +680,16 @@ func (rw *RoomWidget) handleSlashCommand(text string) {
 		}
 	}
 
-	parts := strings.SplitN(text, " ", 2)
-	cmd := strings.ToLower(parts[0])
-	arg := ""
-	if len(parts) > 1 {
-		arg = strings.TrimSpace(parts[1])
+	// Python parses with text[1:].split(None, 1) (Channels.py:997-1001): any
+	// whitespace separates the command from its argument, so "/join\t#room"
+	// is a join, not an unknown command. ParseSlashCommand is that parser.
+	cmd, arg, ok := ParseSlashCommand(text)
+	if !ok {
+		rw.appendLocalNotice("Empty command", true)
+		rw.editor.SetText("")
+		return
 	}
+	cmd = "/" + cmd
 
 	switch cmd {
 	case "/":
@@ -705,7 +718,10 @@ func (rw *RoomWidget) handleSlashCommand(text string) {
 			break
 		}
 		if rw.OnSendMessage != nil {
-			rw.OnSendMessage("/list")
+			// Python reports a failed /list locally (Channels.py:1023-1026).
+			if err := rw.OnSendMessage("/list"); err != nil {
+				rw.appendLocalNotice("/list failed: "+err.Error(), true)
+			}
 		}
 	case "/msg", "/dn", "/dnotice":
 		// Python has no private-message command: /msg is this client's
@@ -766,21 +782,29 @@ func (rw *RoomWidget) handleSlashCommand(text string) {
 	case "/nick":
 		if arg == "" {
 			if rw.OnNickInfo != nil {
+				// Python: cur = get_effective_nick() or " unset" — the leading
+				// space is part of the fallback string, so an unset nick renders
+				// "Nick on this hub:  unset (global)" (Channels.py:1073-1075).
 				nick, isOverride := rw.OnNickInfo()
+				cur := nick
+				if cur == "" {
+					cur = " unset"
+				}
 				src := "global"
 				if isOverride {
 					src = "nick: "
 				}
-				rw.appendLocalNotice("Nick on this hub: "+nick+" ("+src+")", false)
+				rw.appendLocalNotice("Nick on this hub: "+cur+" ("+src+")", false)
 			}
 			break
 		}
 		if rw.OnSetNick != nil {
-			localErr(rw.OnSetNick(arg))
-			if rw.OnNickInfo != nil {
-				nick, _ := rw.OnNickInfo()
-				rw.appendLocalNotice("Nick on this hub set to "+nick+" (use /nick with no argument to view)", false)
+			if err := rw.OnSetNick(arg); err != nil {
+				localErr(err)
+				break
 			}
+			// Python echoes the argument as typed (Channels.py:1081-1083).
+			rw.appendLocalNotice("Nick on this hub set to "+arg+" (use /nick with no argument to view)", false)
 		}
 	case "/clear":
 		if rw.OnClearMessages != nil {
@@ -805,7 +829,9 @@ func (rw *RoomWidget) handleSlashCommand(text string) {
 				break
 			}
 			if rw.OnSendMessage != nil {
-				rw.OnSendMessage(text)
+				if err := rw.OnSendMessage(text); err != nil {
+					rw.appendLocalNotice(cmd+" failed: "+err.Error(), true)
+				}
 			}
 			break
 		}
@@ -1251,7 +1277,9 @@ func (rw *RoomWidget) SendSplitParts(parts []string) {
 		return
 	}
 	for _, part := range parts {
-		rw.OnSendMessage(part)
+		if err := rw.OnSendMessage(part); err != nil {
+			log.Printf("Failed to send RRC message part: %v", err)
+		}
 	}
 	rw.editor.SetText("")
 }

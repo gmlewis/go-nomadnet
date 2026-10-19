@@ -328,6 +328,11 @@ func TestMessageNotificationFailedRetriesAsPropagated(t *testing.T) {
 	}
 	lxm.SetState(lxmf.StateFailed)
 	lxm.TryPropagationOnFail = true
+	// Python Conversation.message_notification (Conversation.py:395-402) clears
+	// the whole retry state before re-sending; the port left these stale.
+	lxm.DeliveryAttempts = 3
+	lxm.NextDeliveryAttempt = 12345
+	lxm.Packed = []byte("stale direct payload")
 
 	c.MessageNotification(lxm)
 
@@ -340,6 +345,15 @@ func TestMessageNotificationFailedRetriesAsPropagated(t *testing.T) {
 	}
 	if retried.TryPropagationOnFail {
 		t.Error("TryPropagationOnFail still true after retry")
+	}
+	if retried.DeliveryAttempts != 0 {
+		t.Errorf("DeliveryAttempts = %v after retry, want 0 (Python resets it)", retried.DeliveryAttempts)
+	}
+	if retried.NextDeliveryAttempt != 0 {
+		t.Errorf("NextDeliveryAttempt = %v after retry, want it cleared", retried.NextDeliveryAttempt)
+	}
+	if retried.Packed != nil {
+		t.Errorf("Packed = %x after retry, want nil so the propagated payload is rebuilt", retried.Packed)
 	}
 	if deps.ingestCount != 0 {
 		t.Errorf("Ingest called %v times, want 0 on retry", deps.ingestCount)

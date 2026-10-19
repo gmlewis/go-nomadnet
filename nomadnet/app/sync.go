@@ -97,7 +97,7 @@ func (a *App) SyncStatusShowPercent() bool {
 // (0xf0), PR_LINK_FAILED (0xf1), PR_TRANSFER_FAILED (0xf2), PR_NO_IDENTITY_RCVD
 // (0xf3), PR_NO_ACCESS (0xf4), PR_FAILED (0xfe) — which is why Python offers a
 // fresh "Sync Now" after a failed sync. Deciding it from the status TEXT instead
-// gets those states wrong: their wording ("Link establishment failed", "No path
+// gets those states wrong: their wording ("Link establisment failed", "No path
 // to node", …) reads as in-flight and leaves a Cancel button with nothing to
 // cancel.
 func (a *App) SyncActive() bool {

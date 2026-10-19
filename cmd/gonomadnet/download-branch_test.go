@@ -59,7 +59,7 @@ func TestCompleteRemoteFilePath(t *testing.T) {
 		bd := newDownloadTestDisplay(t)
 		dir := tempDir(t)
 
-		if !completeRemoteFilePath(bd, dir, "/file/report.txt", body, 1.5) {
+		if !completeRemoteFilePath(bd, dir, "/file/report.txt", body, nil, 1.5) {
 			t.Fatal("completeRemoteFilePath = false for a /file/ path, want true")
 		}
 
@@ -80,7 +80,7 @@ func TestCompleteRemoteFilePath(t *testing.T) {
 		bd := newDownloadTestDisplay(t)
 		dir := tempDir(t)
 
-		if !completeRemoteFilePath(bd, dir, "/file/docs/readme.md", body, 0.5) {
+		if !completeRemoteFilePath(bd, dir, "/file/docs/readme.md", body, nil, 0.5) {
 			t.Fatal("completeRemoteFilePath = false for a nested /file/ path, want true")
 		}
 		if _, err := os.Stat(filepath.Join(dir, "readme.md")); err != nil {
@@ -91,11 +91,30 @@ func TestCompleteRemoteFilePath(t *testing.T) {
 		}
 	})
 
+	t.Run("the response metadata names the saved file", func(t *testing.T) {
+		bd := newDownloadTestDisplay(t)
+		dir := tempDir(t)
+
+		metadata := map[string][]byte{"name": []byte("from-server.txt")}
+		if !completeRemoteFilePath(bd, dir, "/file/request-name.txt", body, metadata, 0.75) {
+			t.Fatal("completeRemoteFilePath = false for a /file/ path, want true")
+		}
+		if _, err := os.Stat(filepath.Join(dir, "from-server.txt")); err != nil {
+			t.Errorf("download was not saved under the response metadata name: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(dir, "request-name.txt")); err == nil {
+			t.Error("download was saved under the request path despite the response metadata name")
+		}
+		if footer := bd.FooterText(); !strings.HasPrefix(footer, "Saved from-server.txt") {
+			t.Errorf("footer = %q, want it to start with %q", footer, "Saved from-server.txt")
+		}
+	})
+
 	t.Run("a page path is not touched", func(t *testing.T) {
 		bd := newDownloadTestDisplay(t)
 		dir := tempDir(t)
 
-		if completeRemoteFilePath(bd, dir, "/page/index.mu", body, 1.0) {
+		if completeRemoteFilePath(bd, dir, "/page/index.mu", body, nil, 1.0) {
 			t.Fatal("completeRemoteFilePath = true for a page path, want false")
 		}
 		entries, err := os.ReadDir(dir)

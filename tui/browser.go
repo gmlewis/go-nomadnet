@@ -19,12 +19,14 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"maps"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/gmlewis/go-nomadnet/nomadnet/browser"
 	"github.com/gmlewis/go-nomadnet/nomadnet/micron"
+	"github.com/gmlewis/go-nomadnet/nomadnet/util"
 	"github.com/gmlewis/tcell/v2"
 	"github.com/gmlewis/tview"
 )
@@ -56,7 +58,13 @@ type BrowserDisplay struct {
 	// "Saved <name>" (Browser.py:982,1650,1670 + :1797-1798).
 	savedFileName     string
 	linkStatusShowing bool
-	content           *browserPageView
+	// status is the current lifecycle state (Python Browser.status). The
+	// footer link peek is gated on it: Python's marked_link updates the peek
+	// only while status == DONE (Browser.py:177-179), so moving the cursor onto
+	// a link during a fetch does not replace "Establishing link..." with
+	// "Link to ...".
+	status  browserStatus
+	content *browserPageView
 	// contentFG is the browser content area's default text color: the
 	// cube-quantized body_text palette entry (Python wraps the display widget
 	// in AttrMap(..., "body_text"), Browser.py:562; body_text is 3-hex #ddd dark
@@ -69,6 +77,13 @@ type BrowserDisplay struct {
 	contentFG tcell.Color
 	history   []string
 	histIdx   int
+	// histRequestData is parallel to history: the request data a form submit
+	// carried when that entry was pushed. Python's history entry is
+	// [destination_hash, path, request_data] (Browser.py:1069-1071) and
+	// back()/forward() re-issue the fetch with it (Browser.py:1085,1095), so
+	// returning to a form-submitted page re-runs the parameterised request
+	// rather than serving the cached unparameterised page.
+	histRequestData []map[string]string
 	// histStates is parallel to history and holds the reading position saved
 	// with each entry: the focused line, the per-line part cursors, and the
 	// content pane's scroll row. Python keeps URLs only (Browser.py:131-132) and
@@ -300,7 +315,10 @@ type BrowserDisplay struct {
 // BrowserDisplay itself renders NO border and NO title, so there is no nested
 // "Browser" box. There is no top nav bar; controls live in the footer.
 func NewBrowserDisplay(app *App) *BrowserDisplay {
-	bd := &BrowserDisplay{app: app}
+	// A freshly constructed display is idle between pages, so the link peek is
+	// enabled just as it is after a load (status Done); a fetch moves it to an
+	// in-flight state and gates the peek off again.
+	bd := &BrowserDisplay{app: app, status: browserDone}
 	g := app.Glyphs
 	divGlyph := glyph(g, "divider1")
 	if divGlyph == "" {
@@ -470,8 +488,8 @@ func (bd *BrowserDisplay) LoadURL(url string) {
 
 // loadURLDirect performs the unguarded LoadURL body (push history + display).
 func (bd *BrowserDisplay) loadURLDirect(url string) {
-	bd.pushHistory(url)
-	bd.displayURL(url)
+	bd.pushHistory(url, nil)
+	bd.displayURL(url, nil)
 }
 
 // interceptBlockedConnect reports whether url targets a BLOCKED destination
@@ -505,7 +523,7 @@ func (bd *BrowserDisplay) interceptBlockedConnect(url string, proceed func()) bo
 // on a successful retrieve_url, Browser.py:131-145). bd.histIdx advances to the
 // new (now last) entry. A still-pending link-click history push is rolled back
 // first so a superseded click does not leave a stale row below the new entry.
-func (bd *BrowserDisplay) pushHistory(url string) {
+func (bd *BrowserDisplay) pushHistory(url string, requestData map[string]string) {
 	bd.rollbackPendingLink()
 	// Leaving the current page for a new one: remember where the reader was so
 	// Back can return there, and drop any Back/Forward restore — a fresh
@@ -515,9 +533,11 @@ func (bd *BrowserDisplay) pushHistory(url string) {
 	if bd.histIdx < len(bd.history)-1 {
 		bd.history = bd.history[:bd.histIdx+1]
 		bd.histStates = bd.histStates[:bd.histIdx+1]
+		bd.histRequestData = bd.histRequestData[:bd.histIdx+1]
 	}
 	bd.history = append(bd.history, url)
 	bd.histStates = append(bd.histStates, navSnapshot{})
+	bd.histRequestData = append(bd.histRequestData, copyRequestData(requestData))
 	bd.histIdx = len(bd.history) - 1
 }
 
@@ -557,6 +577,9 @@ func (bd *BrowserDisplay) popHistory() {
 	if len(bd.histStates) > 0 {
 		bd.histStates = bd.histStates[:len(bd.histStates)-1]
 	}
+	if len(bd.histRequestData) > 0 {
+		bd.histRequestData = bd.histRequestData[:len(bd.histRequestData)-1]
+	}
 	bd.histIdx = max(len(bd.history)-1, 0)
 }
 
@@ -588,7 +611,7 @@ func (bd *BrowserDisplay) GoBack() {
 		bd.snapshotCurrent()
 		bd.histIdx--
 		bd.pendingRestore = bd.savedState(bd.histIdx)
-		bd.displayURL(bd.history[bd.histIdx])
+		bd.displayURL(bd.history[bd.histIdx], bd.historyRequestDataAt(bd.histIdx))
 	}
 }
 
@@ -602,8 +625,28 @@ func (bd *BrowserDisplay) GoForward() {
 		bd.snapshotCurrent()
 		bd.histIdx++
 		bd.pendingRestore = bd.savedState(bd.histIdx)
-		bd.displayURL(bd.history[bd.histIdx])
+		bd.displayURL(bd.history[bd.histIdx], bd.historyRequestDataAt(bd.histIdx))
 	}
+}
+
+// historyRequestDataAt returns the request data recorded with history entry
+// idx (nil when the entry carried none).
+func (bd *BrowserDisplay) historyRequestDataAt(idx int) map[string]string {
+	if idx >= 0 && idx < len(bd.histRequestData) {
+		return bd.histRequestData[idx]
+	}
+	return nil
+}
+
+// copyRequestData snapshots a request-data map so a later form edit cannot
+// change what a history entry re-sends.
+func copyRequestData(rd map[string]string) map[string]string {
+	if rd == nil {
+		return nil
+	}
+	out := make(map[string]string, len(rd))
+	maps.Copy(out, rd)
+	return out
 }
 
 // displayURL shows a URL without modifying history. It sets the URL bar, shows
@@ -614,16 +657,17 @@ func (bd *BrowserDisplay) GoForward() {
 // mirrors Python Browser.retrieve_url → __load, run on a background thread so
 // the UI stays responsive. A still-pending link-click push is rolled back first
 // (a typed URL / Back / Forward supersedes it).
-func (bd *BrowserDisplay) displayURL(url string) {
+func (bd *BrowserDisplay) displayURL(url string, requestData map[string]string) {
 	bd.rollbackPendingLink()
 	bd.setURLHeader(url)
 	bd.showLoading(bd.currentURLDisp)
 	if bd.OnRetrieveURL != nil {
-		// displayURL is the typed-URL/dialog path: entered URLs carry no
-		// collected field values, so request data is nil. A backtick var_*
-		// field-suffix embedded in the URL is still parsed by ParseURL in the
-		// app-layer wiring (textui.go).
-		bd.OnRetrieveURL(url, nil)
+		// A typed URL carries no collected field values. Back/Forward/Reload
+		// re-send the request data recorded with the history entry, matching
+		// Python's history entry carrying request_data (Browser.py:1069-1071,
+		// 1085,1095). A backtick var_* field-suffix embedded in the URL is still
+		// parsed by ParseURL in the app-layer wiring (textui.go).
+		bd.OnRetrieveURL(url, requestData)
 	}
 }
 
@@ -794,7 +838,7 @@ func (bd *BrowserDisplay) renderPage() {
 		keepRow, _ = bd.content.GetScrollOffset()
 	}
 	bd.keepScroll = false
-	markup := bd.effectiveMarkup()
+	markup := bd.currentMarkup
 	// The page's #!bg=/#!fg= directives are the parse state's starting colors, so
 	// every plain run takes them — Python passes the same pair to markup_to_attrmaps
 	// (Browser.py:1269,1348,1513 → MicronParser.py:104-108,41-45,63-64). Feeding them
@@ -802,11 +846,24 @@ func (bd *BrowserDisplay) renderPage() {
 	// enough: every micron span carries an explicit color, so the spans overrode the
 	// widget default and `#!fg=` had no effect on body text.
 	pageBG, pageFG := ParseMicronColors(markup)
-	lines := micron.RenderToStyledLinesWith(markup, micronTheme(bd.app.Theme), micron.StyledOptions{
+	// Python renders strip_modifiers(self.markup) (Browser.py:1269,1348,1513):
+	// CRLF line ends, zero-width joiners, variation selectors and emoji
+	// modifiers are removed before parsing. The page-color directives are read
+	// from the unstripped markup, as Python does.
+	if stripped := util.StripModifiers(&markup); stripped != nil {
+		markup = *stripped
+	}
+	micronOpts := micron.StyledOptions{
 		Viewer:    bd.app.Viewer(),
 		DefaultFG: pageFG,
 		DefaultBG: pageBG,
-	})
+	}
+	lines := micron.RenderToStyledLinesWith(markup, micronTheme(bd.app.Theme), micronOpts)
+	// Each partial is parsed as its own document, with the page's default
+	// colors, exactly as Python renders it through markup_to_attrmaps
+	// (Browser.py:699-702). A partial that has not arrived keeps its ⧖
+	// placeholder line.
+	lines = bd.splicePartialLines(lines, micronTheme(bd.app.Theme), micronOpts)
 	width := bd.contentWidth()
 	// lineTexts must stay 1:1 with currentLines (one tagged text per StyledLine,
 	// wrapped rows embedded via '\n') so the nav row model (rowsAbove,
@@ -839,6 +896,9 @@ func (bd *BrowserDisplay) renderPage() {
 		bd.content.SetBackgroundColor(tcell.ColorDefault)
 	}
 
+	// A page renders left-aligned; a request-failed body may have centred the
+	// text view (ShowRequestFailed).
+	bd.content.SetTextAlign(tview.AlignLeft)
 	bd.content.SetText(text)
 
 	// Swap the page content back in if the centered loading body was showing
@@ -921,6 +981,9 @@ func (bd *BrowserDisplay) JumpToAnchor(name string) {
 	if name != "" {
 		idx, ok := bd.anchors.JumpTarget(name)
 		if !ok {
+			// Python reports an unknown anchor in the footer instead of
+			// silently doing nothing (Browser.py:331-336).
+			bd.footerStatus.SetText("Unknown anchor: #" + escapeTviewTags(name))
 			return
 		}
 		targetIdx = idx
@@ -965,10 +1028,13 @@ func (bd *BrowserDisplay) rowsAbove(idx int) int {
 	return total
 }
 
-// effectiveMarkup returns the current page markup with each fetched partial's
-// content substituted for its directive (browser.Partial.Raw). Unfetched
-// partials keep their directive (the micron renderer shows the ⧖ placeholder),
-// matching Python's pre-fetch state.
+// splicePartialLines replaces each fetched partial's placeholder line with the
+// lines produced by rendering that partial as its own document. Python renders
+// every partial through markup_to_attrmaps with the page's default colors
+// (Browser.py:699-702), so the partial starts from a clean formatting state and
+// cannot change the page's state after it. Parsing the content inline — the
+// previous string substitution — let an unclosed toggle on the page bleed into
+// the partial (and vice versa).
 //
 // Every occurrence of a directive is substituted, not just the first. A page
 // may legally repeat a directive — the node's own index.mu embeds the two
@@ -977,13 +1043,19 @@ func (bd *BrowserDisplay) rowsAbove(idx int) int {
 // whose page_partials dict is keyed by partial_hash (Browser.py:668) and so
 // retains only the last pile per directive, leaving every earlier duplicate
 // stuck on the ⧖ placeholder forever.
-func (bd *BrowserDisplay) effectiveMarkup() string {
+func (bd *BrowserDisplay) splicePartialLines(lines []*micron.StyledLine, theme micron.Theme, opts micron.StyledOptions) []*micron.StyledLine {
 	if len(bd.partialContents) == 0 {
-		return bd.currentMarkup
+		return lines
 	}
-	out := bd.currentMarkup
-	for raw, content := range bd.partialContents {
-		out = strings.ReplaceAll(out, raw, content)
+	out := make([]*micron.StyledLine, 0, len(lines))
+	for _, sl := range lines {
+		if sl != nil && sl.PartialRaw != "" {
+			if content, ok := bd.partialContents[sl.PartialRaw]; ok {
+				out = append(out, micron.RenderToStyledLinesWith(content, theme, opts)...)
+				continue
+			}
+		}
+		out = append(out, sl)
 	}
 	return out
 }
@@ -1110,7 +1182,13 @@ func (bd *BrowserDisplay) fetchAndSubstitute(p browser.Partial, cancel chan stru
 			// literally.
 			bd.partialContents[p.Raw] = fmt.Sprintf("Could not load partial %v: %v", p.URL, err)
 		} else {
-			bd.partialContents[p.Raw] = strings.TrimRight(string(data), "\n")
+			content := string(data)
+			// Python parses each partial through strip_modifiers as well
+			// (Browser.py:700), after decoding and rstripping the response.
+			if stripped := util.StripModifiers(&content); stripped != nil {
+				content = *stripped
+			}
+			bd.partialContents[p.Raw] = content
 		}
 		// A partial's content landing is not a navigation: repaint in place so
 		// the reader keeps their place (see repaint).
@@ -1162,7 +1240,7 @@ func (bd *BrowserDisplay) Reload() {
 		// A reload starts the page at the top (Python re-retrieves and rebuilds
 		// the Pile), so it must not inherit a Back/Forward restore.
 		bd.pendingRestore = nil
-		bd.displayURL(bd.history[bd.histIdx])
+		bd.displayURL(bd.history[bd.histIdx], bd.historyRequestDataAt(bd.histIdx))
 	}
 }
 
@@ -1175,6 +1253,7 @@ func (bd *BrowserDisplay) Disconnect() {
 	bd.CancelRequest()
 	bd.history = nil
 	bd.histStates = nil
+	bd.histRequestData = nil
 	bd.pendingRestore = nil
 	bd.histIdx = 0
 	bd.SetCurrentDest(nil)
@@ -1218,11 +1297,25 @@ func (bd *BrowserDisplay) SetContent(text string) {
 	// for it — preserving the prior eager-push behavior for typed URLs.
 	bd.rollbackPendingLink()
 	bd.showContent()
+	bd.content.SetTextAlign(tview.AlignLeft)
 	bd.content.SetText(text)
 	// Error text is not a rendered micron page (no renderPage/initNavState ran):
 	// reset the per-line nav model so an arrow key falls into handleNavKey's
 	// empty-page guard instead of indexing an empty bd.lineCursors and
 	// panicking ("index out of range [0] with length 0"). See resetNavState.
+	bd.resetNavState()
+}
+
+// ShowRequestFailed replaces the body with Python's request-failure page
+// (Browser.get_request_failed_widget, Browser.py:530-547): a centred "!" line
+// followed by the status text, instead of a red one-liner. Python also draws a
+// Back button there; in the Go TUI Back is Ctrl-d, which the browser shortcut
+// bar advertises, so the error page leaves navigation to the same key.
+func (bd *BrowserDisplay) ShowRequestFailed(statusText string) {
+	bd.rollbackPendingLink()
+	bd.showContent()
+	bd.content.SetTextAlign(tview.AlignCenter)
+	bd.content.SetText("!\n\n" + tview.Escape(statusText))
 	bd.resetNavState()
 }
 
@@ -1374,6 +1467,11 @@ func (bd *BrowserDisplay) CancelRequest() {
 // restores the transfer-status widget. This is the link-peek that enables
 // in-page link-following.
 func (bd *BrowserDisplay) MarkedLink(target, fields string) {
+	// Python only records/clears the peek while the load is DONE
+	// (Browser.py:177-179).
+	if bd.status != browserDone {
+		return
+	}
 	if target == "" {
 		bd.linkStatusShowing = false
 		bd.refreshFooterStatus()
@@ -1449,6 +1547,32 @@ func (bd *BrowserDisplay) SetBrowserStatus(status int) {
 	bd.refreshFooterStatusFor(browserStatus(status))
 }
 
+// SetBrowserFetchStage maps a fetch lifecycle stage reported by the browser
+// package onto the footer status state and refreshes it. The stages mirror
+// Python Browser's status transitions (Browser.py:1000-1018,1032-1064); the
+// only stage with no Python status is path-known, which Python transitions
+// through silently on its way to ESTABLISHING_LINK. Call from the UI goroutine
+// — the fetch goroutine must marshal it onto the event loop.
+func (bd *BrowserDisplay) SetBrowserFetchStage(stage browser.FetchStage) {
+	switch stage {
+	case browser.FetchStageNoPath:
+		bd.SetBrowserStatus(int(browserNoPath))
+	case browser.FetchStagePathRequested:
+		bd.SetBrowserStatus(int(browserPathRequested))
+	case browser.FetchStagePathKnown:
+		// No Python status: the next stage (ESTABLISHING_LINK) is the first
+		// observable one once a path exists.
+	case browser.FetchStageEstablishingLink:
+		bd.SetBrowserStatus(int(browserEstablishingLink))
+	case browser.FetchStageLinkEstablished:
+		bd.SetBrowserStatus(int(browserLinkEstablished))
+	case browser.FetchStageRequesting:
+		bd.SetBrowserStatus(int(browserRequesting))
+	case browser.FetchStageRequestSent:
+		bd.SetBrowserStatus(int(browserRequestSent))
+	}
+}
+
 // refreshFooterStatus rebuilds the footer status text for the current stats and
 // the DONE state (the common state once a page has rendered), unless a link
 // peek is currently showing (Python link_status_showing suppresses the status
@@ -1462,6 +1586,7 @@ func (bd *BrowserDisplay) refreshFooterStatus() {
 
 // refreshFooterStatusFor renders the footer text for a given lifecycle status.
 func (bd *BrowserDisplay) refreshFooterStatusFor(status browserStatus) {
+	bd.status = status
 	g := bd.app.Glyphs
 	text := browserStatusText(g, status, bd.responseSize, bd.responseTransfer,
 		bd.responseTime, bd.hasTransfer, bd.loadedFromCache, bd.savedFileName)

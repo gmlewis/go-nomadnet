@@ -19,6 +19,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"testing"
 	"time"
@@ -269,6 +270,45 @@ func TestIsAllowedNoFile(t *testing.T) {
 	// No .allowed file — should allow everyone
 	if !IsAllowed(pagePath, []byte{0x01}) {
 		t.Error("IsAllowed should return true when no .allowed file exists")
+	}
+}
+
+// TestIsAllowedExecutableFile pins Python Node.py:124-129: an executable
+// .allowed file is RUN and its stdout is the allow list, so a dynamically
+// generated list is honoured. A non-executable file only ever read as text
+// cannot admit the identity.
+func TestIsAllowedExecutableFile(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("executable-bit semantics do not exist on Windows")
+	}
+
+	dir := tempDir(t)
+	pagePath := filepath.Join(dir, "page.mu")
+	writeFile(t, pagePath, "content")
+
+	allowedHash := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	otherHash := "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+	script := "#!/bin/sh\necho " + allowedHash + "\n"
+	allowedPath := pagePath + ".allowed"
+	if err := os.WriteFile(allowedPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("write executable .allowed: %v", err)
+	}
+
+	hashes, err := ParseAllowedFile(allowedPath)
+	if err != nil {
+		t.Fatalf("ParseAllowedFile: %v", err)
+	}
+	if len(hashes) != 1 {
+		t.Fatalf("ParseAllowedFile returned %v hashes from the script's stdout, want 1", len(hashes))
+	}
+	want, _ := hexDecode(allowedHash)
+	other, _ := hexDecode(otherHash)
+	if !IsAllowed(pagePath, want) {
+		t.Error("an executable .allowed file did not admit the identity its stdout names")
+	}
+	if IsAllowed(pagePath, other) {
+		t.Error("an executable .allowed file admitted an identity it never printed")
 	}
 }
 
@@ -963,5 +1003,74 @@ func TestAnnounceWithoutHookIsSilent(t *testing.T) {
 	}
 	if err := n.Announce(); err != nil {
 		t.Fatalf("Announce error: %v", err)
+	}
+}
+
+// TestFileHandlerAttachesNameMetadata pins Python Node.serve_file's response
+// shape (Node.py:206-211): [file bytes, {"name": <path under /file/>}], which
+// the browser uses as the download name.
+func TestFileHandlerAttachesNameMetadata(t *testing.T) {
+	t.Parallel()
+
+	dir := tempDir(t)
+	filesDir := filepath.Join(dir, "files")
+	if err := os.MkdirAll(filepath.Join(filesDir, "docs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	filePath := filepath.Join(filesDir, "docs", "report.txt")
+	writeFile(t, filePath, "file contents")
+
+	n := NewNode("meta-node", dir, filesDir, 720, 0, 0, false)
+	handler := n.makeFileHandler(filePath)
+	resp := handler("/file/docs/report.txt", nil, nil, nil, nil, time.Now())
+
+	pair, ok := resp.([]any)
+	if !ok || len(pair) != 2 {
+		t.Fatalf("file handler response = %#v, want a [data, metadata] pair", resp)
+	}
+	if got := string(pair[0].([]byte)); got != "file contents" {
+		t.Errorf("file handler data = %q, want the file contents", got)
+	}
+	metadata, ok := pair[1].(map[string][]byte)
+	if !ok {
+		t.Fatalf("file handler metadata = %#v, want a map", pair[1])
+	}
+	if got := string(metadata["name"]); got != "docs/report.txt" {
+		t.Errorf("file handler metadata name = %q, want %q", got, "docs/report.txt")
+	}
+}
+
+// TestRegisterPagesReRegistersHandlers pins Python register_pages' effect
+// (Node.py:54-68, called from the refresh job at :229-237): scanning after
+// startup registers the pages that appeared since, so they are served without
+// a restart. The port updated the served-file list but left the RNS handlers
+// as they were.
+func TestRegisterPagesReRegistersHandlers(t *testing.T) {
+	t.Parallel()
+
+	dir := tempDir(t)
+	writeFile(t, filepath.Join(dir, "first.mu"), ">First\n")
+
+	n := NewNode("refresh-node", dir, dir, 720, 1, 0, false)
+	n.PagesPath = dir
+	ts := rns.NewTransportSystem(nil)
+	dest, err := rns.NewDestination(ts, ts.Identity(), rns.DestinationIn, rns.DestinationSingle, "nomadnetwork", "node")
+	if err != nil {
+		t.Fatal(err)
+	}
+	n.destination = dest
+
+	n.RegisterPages()
+	if !dest.HasRequestHandler("/page/first.mu") {
+		t.Fatal("the initial page was not registered")
+	}
+	if dest.HasRequestHandler("/page/second.mu") {
+		t.Fatal("an uncreated page already has a handler")
+	}
+
+	writeFile(t, filepath.Join(dir, "second.mu"), ">Second\n")
+	n.RegisterPages()
+	if !dest.HasRequestHandler("/page/second.mu") {
+		t.Error("a page added after startup was not served: the refresh did not re-register handlers")
 	}
 }

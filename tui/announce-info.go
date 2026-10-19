@@ -16,6 +16,8 @@
 package tui
 
 import (
+	"github.com/gmlewis/go-nomadnet/nomadnet/util"
+	"github.com/gmlewis/tcell/v2"
 	"github.com/gmlewis/tview"
 )
 
@@ -109,7 +111,13 @@ func newAnnounceInfoDisplay(nd *NetworkDisplay, ann AnnounceEntry, data Announce
 	// styling tags; the Go announce app data is already plain text, so we only
 	// truncate.
 	dataStr := ann.AppData
-	if data.TrustStr != "Trusted" && len([]rune(dataStr)) > 32 {
+	decodeFailed := ann.AppDataDecodeFailed
+	if decodeFailed {
+		dataStr = "Decode failed"
+	} else if stripped := util.StripModifiers(&dataStr); stripped != nil {
+		dataStr = *stripped
+	}
+	if !decodeFailed && data.TrustStr != "Trusted" && len([]rune(dataStr)) > 32 {
 		dataStr = string([]rune(dataStr)[:32]) + " [...]"
 	}
 
@@ -134,7 +142,7 @@ func newAnnounceInfoDisplay(nd *NetworkDisplay, ann AnnounceEntry, data Announce
 		}
 		pile.AddItem(ai.trustRow(), 1, false)
 		pile.AddItem(newDividerRow(g["divider1"]), 1, false)
-		pile.AddItem(ai.announceDataRow(dataStr), 2, false)
+		pile.AddItem(ai.announceDataRow(dataStr, decodeFailed), 2, false)
 		pile.AddItem(newDividerRow(g["divider1"]), 1, false)
 		pile.AddItem(ai.buttonRow(), 1, true)
 		if isNode {
@@ -192,13 +200,16 @@ func (ai *announceInfoDisplay) trustRow() *tview.TextView {
 // (Network.py:243: Text(["Announce Data: \n", (data_style, data_str)])). The
 // label "Announce Data: " is row 0 (default style); the data is row 1. The
 // data_style is "" on a normal decode and "list_untrusted" on decode failure
-// (Network.py:95-100); a failure is not reachable from the Go port (app data
-// is pre-decoded), so the data renders in the default style.
-func (ai *announceInfoDisplay) announceDataRow(dataStr string) *tview.TextView {
-	return tview.NewTextView().
+// (Network.py:95-100).
+func (ai *announceInfoDisplay) announceDataRow(dataStr string, untrusted bool) *tview.TextView {
+	tv := tview.NewTextView().
 		SetDynamicColors(false).
 		SetTextAlign(tview.AlignLeft).
 		SetText("Announce Data: \n" + dataStr)
+	if untrusted {
+		tv.SetTextColor(tcell.NewHexColor(0xaa2222))
+	}
+	return tv
 }
 
 // buttonRow builds the weighted button Columns matching Python's button_columns

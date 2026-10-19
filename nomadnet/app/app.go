@@ -322,6 +322,12 @@ func (a *App) Init() error {
 		if !os.IsNotExist(err) {
 			return fmt.Errorf("checking config file: %w", err)
 		}
+		// Python copies its packaged examples tree into the config directory
+		// only on first run, and only when the target directory is absent
+		// (NomadNetworkApp.py:215-223), so a returning user's edits survive.
+		if err := a.copyExamplesIfAbsent(); err != nil {
+			return fmt.Errorf("copying examples: %w", err)
+		}
 		if err := a.CreateDefaultConfig(); err != nil {
 			return fmt.Errorf("creating default config: %w", err)
 		}
@@ -497,7 +503,10 @@ func (a *App) initRNS() {
 	// configured stamp cost here (NomadNetworkApp.py:355 stamp_cost=
 	// self.required_stamp_cost), so the inbound requirement is in place before
 	// the first announce rather than only after AnnounceNow runs.
-	a.LXMFDest, err = a.Router.RegisterDeliveryIdentity(a.Identity, a.Config.Client.UserInterface, a.RequiredStampCost)
+	// Python passes peer_settings["display_name"] as the delivery identity's
+	// name (NomadNetworkApp.py:355); this port passed the UI mode string
+	// ("text"), so the destination advertised the wrong name.
+	a.LXMFDest, err = a.Router.RegisterDeliveryIdentity(a.Identity, a.GetDisplayName(), a.RequiredStampCost)
 	if err != nil {
 		a.Logger.Error("Could not register delivery identity: %v", err)
 		return
@@ -656,7 +665,10 @@ func (a *App) InitWithTransport(ts *rns.TransportSystem, identity *rns.Identity)
 	// The configured stamp cost goes in at registration, as Python does
 	// (NomadNetworkApp.py:355), so the requirement is set before the first
 	// announce rather than only once AnnounceNow runs.
-	a.LXMFDest, err = a.Router.RegisterDeliveryIdentity(a.Identity, a.Config.Client.UserInterface, a.RequiredStampCost)
+	// Python passes peer_settings["display_name"] as the delivery identity's
+	// name (NomadNetworkApp.py:355); this port passed the UI mode string
+	// ("text"), so the destination advertised the wrong name.
+	a.LXMFDest, err = a.Router.RegisterDeliveryIdentity(a.Identity, a.GetDisplayName(), a.RequiredStampCost)
 	if err != nil {
 		return fmt.Errorf("registering delivery identity: %w", err)
 	}
@@ -820,7 +832,13 @@ func (a *App) applyConfig(cfg *config.Config) {
 	a.applyUIMode(cfg.Client.UserInterface)
 	// Python stores these as floats (as_float); the App fields are *int KB
 	// values. The config package has already applied defaults and clamping.
-	a.LXMFMaxIncomingSize = new(int(cfg.Client.MaxAcceptedSize))
+	// Python's lxmf_max_incoming_size is None when the key is absent, which
+	// the router treats as unlimited; the port always installed a 500 KB limit.
+	if cfg.Client.MaxAcceptedSize > 0 {
+		a.LXMFMaxIncomingSize = new(int(cfg.Client.MaxAcceptedSize))
+	} else {
+		a.LXMFMaxIncomingSize = nil
+	}
 	a.LXMFMaxPropagationSize = new(int(cfg.Node.MaxTransferSize))
 	a.LXMFMaxSyncSize = new(int(cfg.Node.MaxSyncSize))
 	a.DisablePropagation = cfg.Node.DisablePropagation
@@ -1283,7 +1301,7 @@ func (a *App) handleLXMFAnnounce(destHash []byte, identity *rns.Identity, appDat
 		SourceHash:   destHash,
 		AppData:      appData,
 		AnnounceType: "peer",
-	}, true)
+	}, a.CompactStream)
 
 	if a.UIChangeCallback != nil {
 		a.UIChangeCallback()
@@ -1305,7 +1323,7 @@ func (a *App) handleNodeAnnounce(destHash []byte, identity *rns.Identity, appDat
 		SourceHash:   destHash,
 		AppData:      appData,
 		AnnounceType: "node",
-	}, true)
+	}, a.CompactStream)
 
 	if identity != nil && !a.IsIgnored(destHash) {
 		// Go-only enhancement guard (no Python SOT counterpart): a blocked
@@ -1332,6 +1350,14 @@ func (a *App) handleNodeAnnounce(destHash []byte, identity *rns.Identity, appDat
 
 // handlePNAnnounce processes propagation node announces.
 func (a *App) handlePNAnnounce(destHash []byte, identity *rns.Identity, appData []byte, isPathResponse bool) {
+	// Python's PNAnnounceHandler acts only on valid announce data whose node
+	// state is True (Directory.py:20-30: pn_announce_data_is_valid then
+	// `data[2] == True`). A malformed or withdrawn announcement must not enter
+	// the PN stream.
+	serving, ok := lxmf.PropagationNodeStateFromAppData(appData)
+	if !ok || !serving {
+		return
+	}
 	displayName, _ := lxmf.DisplayNameFromAppData(appData)
 	a.Logger.Info("PN announce received: hash=%x name=%q", destHash, displayName)
 
@@ -1343,7 +1369,11 @@ func (a *App) handlePNAnnounce(destHash []byte, identity *rns.Identity, appData 
 		SourceHash:   destHash,
 		AppData:      appData,
 		AnnounceType: "pn",
-	}, true)
+	}, a.CompactStream)
+
+	// Python also re-runs auto-selection after an active PN announce
+	// (Directory.py:30).
+	a.AutoSelectPropagationNode()
 
 	if a.UIChangeCallback != nil {
 		a.UIChangeCallback()

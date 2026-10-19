@@ -169,3 +169,41 @@ func TestParseInterfaceConfigNameProperty(t *testing.T) {
 		t.Errorf("section key = %q, want %q", entries[0].name, "if0")
 	}
 }
+
+// TestParseInterfaceConfigSkipsRNodeMultiSubInterfaces verifies that an
+// RNodeMultiInterface's [[[sub-interface]]] blocks do not contribute their keys
+// to the parent. A sub-interface's type/enabled used to overwrite the parent's,
+// so the list showed the last sub's type and could report the whole radio
+// disabled. Python collects the sub-blocks into a "sub_interfaces" list that
+// nothing reads (Interfaces.py:2846-2860).
+func TestParseInterfaceConfigSkipsRNodeMultiSubInterfaces(t *testing.T) {
+	t.Parallel()
+
+	dir := tempDir(t)
+	config := `[interfaces]
+  [[RNode Multi]]
+    type = RNodeMultiInterface
+    port = /dev/ttyUSB0
+    interface_enabled = yes
+    [[[Sub A]]]
+      type = RNodeInterface
+      interface_enabled = no
+      name = sub-a
+`
+	if err := os.WriteFile(filepath.Join(dir, "config"), []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	entries := parseInterfaceConfig(filepath.Join(dir, "config"))
+	if len(entries) != 1 {
+		t.Fatalf("got %v entries, want 1 (sub-interfaces are not top-level items)", len(entries))
+	}
+	if entries[0].typeStr != "RNodeMultiInterface" {
+		t.Errorf("type = %q, want RNodeMultiInterface (a sub-interface key overwrote it)", entries[0].typeStr)
+	}
+	if entries[0].iface != "RNode Multi" {
+		t.Errorf("display name = %q, want %q", entries[0].iface, "RNode Multi")
+	}
+	if !entries[0].enabled {
+		t.Error("the parent interface is disabled by a sub-interface's interface_enabled = no")
+	}
+}

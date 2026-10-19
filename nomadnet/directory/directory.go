@@ -117,6 +117,18 @@ func (d *Directory) Remember(entry *Entry) {
 	}
 	d.entries[key] = entry
 
+	// Python remember (Directory.py:343-348) propagates a peer's trust level to
+	// its associated nomadnetwork.node entry: the node address is derived from
+	// the recalled identity, and its entry (if any) takes this trust level.
+	if d.Transport != nil {
+		if identity := d.Transport.Recall(entry.SourceHash); identity != nil {
+			associated := rns.CalculateHash(identity, "nomadnetwork", "node")
+			if nodeEntry, ok := d.entries[hexKey(associated)]; ok {
+				nodeEntry.TrustLevel = entry.TrustLevel
+			}
+		}
+	}
+
 	path := d.persistPath
 	d.mu.Unlock()
 
@@ -521,27 +533,38 @@ func (d *Directory) removeAnnounceFromList(list *[]Announce, timestamp float64) 
 	}
 }
 
+// nodeSortKey reproduces Python known_nodes' sort key (Directory.py:393):
+//
+//	(e.sort_rank if e.sort_rank != None else 2^32,
+//	 DirectoryEntry.TRUSTED-e.trust_level,
+//	 e.display_name if e.display_name != None else "_")
+//
+// `2^32` is Python's XOR, i.e. 34, so an entry with no rank sorts at 34 rather
+// than after every ranked entry. Go's empty DisplayName stands for Python's
+// None and sorts as "_".
+func nodeSortKey(e *Entry) (int, int, string) {
+	rank := 34 // 2 ^ 32 in Python
+	if e.SortRank != nil {
+		rank = *e.SortRank
+	}
+	name := "_"
+	if e.DisplayName != "" {
+		name = e.DisplayName
+	}
+	return rank, int(TrustTrusted) - int(e.TrustLevel), name
+}
+
+// shouldSwap reports whether a must sort after b under Python's key.
 func shouldSwap(a, b *Entry) bool {
-	// Sort rank: nil goes to the end
-	if a.SortRank == nil && b.SortRank != nil {
-		return false
+	ar, at, an := nodeSortKey(a)
+	br, bt, bn := nodeSortKey(b)
+	if ar != br {
+		return ar > br
 	}
-	if a.SortRank != nil && b.SortRank == nil {
-		return true
+	if at != bt {
+		return at > bt
 	}
-	if a.SortRank != nil && b.SortRank != nil {
-		if *a.SortRank != *b.SortRank {
-			return *a.SortRank > *b.SortRank
-		}
-	}
-
-	// Trust level descending
-	if a.TrustLevel != b.TrustLevel {
-		return a.TrustLevel < b.TrustLevel
-	}
-
-	// Display name ascending
-	return a.DisplayName > b.DisplayName
+	return an > bn
 }
 
 func hexKey(hash []byte) string {

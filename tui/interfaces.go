@@ -70,10 +70,14 @@ type InterfaceInfo struct {
 // rounded bordered interface boxes (Python SelectableInterfaceItem), plus
 // add/edit/show/remove and config-editor actions.
 type InterfacesDisplay struct {
-	app      *App
-	widget   tview.Primitive
-	layout   *tview.Flex
-	listBox  *interfaceListBox
+	app     *App
+	widget  tview.Primitive
+	layout  *tview.Flex
+	listBox *interfaceListBox
+	// title is the centered header showing "Interfaces (N)" and the empty-state
+	// message (Python Interfaces.py:3146-3149). It is refreshed with the item
+	// list.
+	title    *centeredText
 	items    []InterfaceInfo
 	glyphset string
 	// pages wraps id.layout so a dialog can overlay the WHOLE interfaces display
@@ -136,7 +140,8 @@ func NewInterfacesDisplay(app *App, interfaces []InterfaceInfo) *InterfacesDispl
 	// tview.AlignCenter floors left, so use centeredText for parity. A 2-row
 	// item renders the title on row 0 and a blank on row 1, matching Python's
 	// header + urwid.Divider().
-	title := newCenteredText(tcell.ColorDefault, "Interfaces", "")
+	title := newCenteredText(tcell.ColorDefault, interfaceHeader(len(interfaces)), "")
+	id.title = title
 
 	id.listBox = newInterfaceListBox(id.app, id.glyphset)
 	// Row activation (Python SelectableInterfaceItem.keypress "enter" →
@@ -388,6 +393,9 @@ func (id *InterfacesDisplay) FormView() *InterfaceFormView { return id.formView 
 // SetInterfaces replaces the interface list, rebuilding the selectable items.
 func (id *InterfacesDisplay) SetInterfaces(interfaces []InterfaceInfo) {
 	id.items = interfaces
+	if id.title != nil {
+		id.title.SetText(interfaceHeader(len(interfaces)))
+	}
 	items := make([]*SelectableInterfaceItem, 0, len(interfaces))
 	for _, iface := range interfaces {
 		icon := GetInterfaceIcon(id.glyphset, iface.Type)
@@ -601,9 +609,6 @@ func (b *interfaceListBox) Draw(screen tcell.Screen) {
 		h--
 	}
 	if w < 4 || h < InterfaceItemHeight || len(b.items) == 0 {
-		if len(b.items) == 0 {
-			tview.Print(screen, "No interfaces configured", x, y, w, tview.AlignCenter, tcell.ColorYellow)
-		}
 		return
 	}
 	b.scrollIntoView()
@@ -732,7 +737,10 @@ func formatInterfaces(interfaces []InterfaceInfo) string {
 
 		if len(iface.Traffic) > 0 {
 			sb.WriteString("\n")
-			chartView := chart.PlotSingle(iface.Traffic)
+			chartView, err := chart.PlotSingle(iface.Traffic)
+			if err != nil {
+				chartView = ""
+			}
 			for line := range strings.SplitSeq(chartView, "\n") {
 				sb.WriteString("  ")
 				sb.WriteString(line)
@@ -809,11 +817,13 @@ func FormatInterfaceDetail(iface InterfaceInfo) string {
 // display (Python Interfaces.py:2570-2590: frame.body = urwid.Overlay(...,
 // width=50, height=7), title "Confirm").
 func (id *InterfacesDisplay) ShowEnableDisableConfirm(name string, enabled bool, onConfirm func()) {
-	action := "Enable"
+	action := "enable"
 	if enabled {
-		action = "Disable"
+		action = "disable"
 	}
-	msg := fmt.Sprintf("%v interface %v?", action, name)
+	// Python on_toggle_enabled (Interfaces.py:2564-2568): the confirm text names
+	// the action and the interface.
+	msg := fmt.Sprintf("Are you sure you want to %v the %v interface?", action, name)
 	close := id.closeDialog
 	yes := NewUrwidButton("Yes").SetSelectedFunc(func() {
 		close()
@@ -831,6 +841,15 @@ func (id *InterfacesDisplay) ShowEnableDisableConfirm(name string, enabled bool,
 	wireDialogNav(id.app, close, []tview.Primitive{yes, no})
 }
 
+// interfaceHeader renders the interfaces header: the count while any interface
+// exists, Python's add hint when none do (Interfaces.py:3146-3149).
+func interfaceHeader(n int) string {
+	if n == 0 {
+		return "No interfaces found. Press Ctrl + A to add a new interface "
+	}
+	return fmt.Sprintf("Interfaces (%v)", n)
+}
+
 // ShowRestartRequired shows a notice that a restart is required, overlaid on
 // the interfaces display (Python Interfaces.py:2589-2610: title "Notice",
 // width=50, height=7, message + OK).
@@ -845,6 +864,74 @@ func (id *InterfacesDisplay) ShowRestartRequired() {
 	dialog := NewDialogLineBox("Notice", layout, close)
 	id.showDialogOverlay(dialog, 50, 7)
 	wireDialogNav(id.app, close, []tview.Primitive{ok})
+}
+
+// ShowInterfaceSaved shows Python's named save notice: an add reports
+// "Interface {name} added. Restart NomadNet to start using this interface"
+// (Interfaces.py:1960) and an edit "Interface {name} updated. Restart NomadNet
+// for these changes to take effect" (:2201). The generic restart notice named
+// no interface.
+func (id *InterfacesDisplay) ShowInterfaceSaved(name string, added bool) {
+	var msg string
+	if added {
+		msg = fmt.Sprintf("Interface %v added. Restart NomadNet to start using this interface", name)
+	} else {
+		msg = fmt.Sprintf("Interface %v updated. Restart NomadNet for these changes to take effect", name)
+	}
+	close := id.closeDialog
+	ok := NewUrwidButton("OK").SetSelectedFunc(close)
+	row := CreateUrwidButtonRow(ok)
+	layout := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(NewUrwidCenterText(msg), 0, 1, false).
+		AddItem(row, 1, 0, true)
+	dialog := NewDialogLineBox("Notice", layout, close)
+	id.showDialogOverlay(dialog, 50, 7)
+	wireDialogNav(id.app, close, []tview.Primitive{ok})
+}
+
+// ShowEnableDisableNotice reports a completed toggle with Python's per-interface
+// restart notice (Interfaces.py:2589-2617): title "Notice", width 50, height 8.
+// enabled is the NEW state.
+func (id *InterfacesDisplay) ShowEnableDisableNotice(name string, enabled bool) {
+	state := "disabled"
+	if enabled {
+		state = "enabled"
+	}
+	msg := fmt.Sprintf("Interface %v has been %v.\nRestart required for changes to take effect.", name, state)
+	close := id.closeDialog
+	ok := NewUrwidButton("OK").SetSelectedFunc(close)
+	row := CreateUrwidButtonRow(ok)
+	layout := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(NewUrwidCenterText(msg), 0, 1, false).
+		AddItem(row, 1, 0, true)
+	dialog := NewDialogLineBox("Notice", layout, close)
+	id.showDialogOverlay(dialog, 50, 8)
+	wireDialogNav(id.app, close, []tview.Primitive{ok})
+}
+
+// ShowRemoveConfirm asks before removing an interface, mirroring Python
+// remove_selected_interface (Interfaces.py:3080-3136): "Remove interface
+// {name}?", title "?", a 35x5 overlay, and the "No" button focused so Enter
+// never deletes. The removal itself shows no further notice in Python.
+func (id *InterfacesDisplay) ShowRemoveConfirm(name string, onConfirm func()) {
+	close := id.closeDialog
+	yes := NewUrwidButton("Yes").SetSelectedFunc(func() {
+		close()
+		if onConfirm != nil {
+			onConfirm()
+		}
+	})
+	no := NewUrwidButton("No").SetSelectedFunc(close)
+	row := CreateUrwidButtonRow(yes, no)
+	layout := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(NewUrwidCenterText("Remove interface "+name+"?"), 3, 0, false).
+		AddItem(row, 1, 0, true)
+	dialog := NewDialogLineBox("?", layout, close)
+	id.showDialogOverlay(dialog, 35, 5)
+	wireDialogNav(id.app, close, []tview.Primitive{yes, no})
+	if id.app != nil {
+		id.app.SetFocus(no)
+	}
 }
 
 // ShowInterfaceError shows an error message, overlaid on the interfaces display

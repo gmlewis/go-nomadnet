@@ -31,6 +31,10 @@ import "time"
 func (a *App) lxmfSyncDue(now time.Time) bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	// Deliberate Go improvement: Python's __jobs never consults
+	// periodic_lxmf_sync (NomadNetworkApp.py:465-467), so the key is inert there.
+	// Honoring it makes a documented setting actually work; see §6 of
+	// parity-gaps.md.
 	if !a.PeriodicLXMFSync {
 		return false
 	}

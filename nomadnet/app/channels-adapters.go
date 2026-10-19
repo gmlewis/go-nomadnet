@@ -95,6 +95,13 @@ func (v rrcHubView) AutoWho() bool { return v.hub.GetAutoWho() }
 // but the client has not joined.
 func (v rrcHubView) AvailableRoomList() []string { return v.hub.GetAvailableRoomList() }
 
+// AvailableRoomTopics returns each advertised room's topic, keyed by room name
+// (Python's "↳ topic" line in the hub-info Available rooms list,
+// Channels.py:1806-1824).
+func (v rrcHubView) AvailableRoomTopics() map[string]string {
+	return v.hub.GetAvailableRoomTopics()
+}
+
 // MaxMsgBodyLimit returns the hub's live per-message body byte limit — the
 // WELCOME-advertised max_msg_body_bytes, or the 350-byte default until the hub
 // advertises one (Python's `self.hub.max_msg_body_bytes or 350`,

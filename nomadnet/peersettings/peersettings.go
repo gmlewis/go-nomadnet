@@ -39,7 +39,8 @@ type Settings struct {
 	AnnounceInterval int
 	// last_announce (a float timestamp, or nil)
 	LastAnnounce any
-	// node_last_announce (a 16-byte announce hash, or nil)
+	// node_last_announce (a float unix timestamp, or nil; Python
+	// peer_settings["node_last_announce"] = self.last_announce, Node.py:218)
 	NodeLastAnnounce any
 	// propagation_node (a 16-byte destination hash, or nil)
 	PropagationNode any

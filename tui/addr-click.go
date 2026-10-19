@@ -240,28 +240,35 @@ func MakeAddrClickable(app *App, title string, tv *tview.TextView, text string) 
 		return action, event
 	})
 	tv.SetHighlightedFunc(func(added, _, _ []string) {
-		if len(added) == 0 || app == nil || !strings.HasPrefix(added[0], addrRegionPrefix) {
-			return
-		}
-		// tview inverts a highlighted region on the next draw; clear it before
-		// the modal covers the row, the way the browser clears a clicked link.
-		tv.Highlight()
-		idx, ok := addrRegionIndex(added[0])
-		// Read the addresses back off the row rather than closing over them, so a
-		// row whose text was replaced still copies what it displays. GetText(true)
-		// strips the region tags again.
-		showing := addrSpans(tv.GetText(true))
-		if !ok || idx >= len(showing) {
-			return
-		}
-		prev := before
-		app.showAddressActions(title, showing[idx].addr, func() {
-			if prev != nil {
-				app.SetFocus(prev)
-			}
-		})
+		dispatchAddrRegion(app, tv, title, before, added)
 	})
 	SetAddrRowText(tv, text)
+}
+
+// dispatchAddrRegion runs the address click for a highlighted region. It is
+// shared with views that install their own highlight handler (the hub-info
+// panel's room links), because tview keeps only one handler per TextView and
+// offers no getter to compose with.
+func dispatchAddrRegion(app *App, tv *tview.TextView, title string, before tview.Primitive, added []string) {
+	if len(added) == 0 || app == nil || !strings.HasPrefix(added[0], addrRegionPrefix) {
+		return
+	}
+	// tview inverts a highlighted region on the next draw; clear it before
+	// the modal covers the row, the way the browser clears a clicked link.
+	tv.Highlight()
+	idx, ok := addrRegionIndex(added[0])
+	// Read the addresses back off the row rather than closing over them, so a
+	// row whose text was replaced still copies what it displays. GetText(true)
+	// strips the region tags again.
+	showing := addrSpans(tv.GetText(true))
+	if !ok || idx >= len(showing) {
+		return
+	}
+	app.showAddressActions(title, showing[idx].addr, func() {
+		if before != nil {
+			app.SetFocus(before)
+		}
+	})
 }
 
 // addrRegionIndex parses the address's index out of an address region tag.

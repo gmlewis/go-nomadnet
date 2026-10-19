@@ -820,3 +820,73 @@ func TestInterfaceEditFormRoundTripsCompositeSections(t *testing.T) {
 		})
 	}
 }
+
+// TestEditFormKeepsAddNewHeader pins Python AddInterfaceView/EditInterfaceView
+// (Interfaces.py:1656-1659,2018): the BODY header stays "Add new {icon} {type}"
+// in the edit form; only the LineBox title names the interface.
+func TestEditFormKeepsAddNewHeader(t *testing.T) {
+	t.Parallel()
+
+	v := NewInterfaceEditFormView(newTestApp(), "rnode0", map[string]any{"type": "RNodeInterface"}, InterfaceFormOptions{})
+	got := v.HeaderText()
+	if !strings.HasPrefix(got, "Add new ") || !strings.Contains(got, "RNodeInterface") {
+		t.Errorf("edit form body header = %q, want Python's %q", got, "Add new <icon> RNodeInterface")
+	}
+	if strings.Contains(got, "rnode0") {
+		t.Errorf("edit form body header = %q, want it not to name the interface section", got)
+	}
+	if v.Title() != "Edit Interface: rnode0" {
+		t.Errorf("edit form title = %q, want %q", v.Title(), "Edit Interface: rnode0")
+	}
+}
+
+// TestBuildWritesOnePortKey pins Python's config_key-keyed form fields
+// (Interfaces.py:1645-1660): BackboneInterface declares "port" twice (listen
+// and target), so the dict keeps one value — the last row's — and the config
+// gets a single `port =` line. The port wrote both, producing duplicate keys.
+func TestBuildWritesOnePortKey(t *testing.T) {
+	t.Parallel()
+
+	v := NewInterfaceAddFormView(newTestApp(), IfaceBackbone, InterfaceFormOptions{})
+	if r := v.row("name"); r != nil && r.input != nil {
+		r.input.SetText("backbone-test")
+	}
+	var ports []*formRow
+	for _, r := range v.allRows() {
+		if r.key == "port" {
+			ports = append(ports, r)
+		}
+	}
+	if len(ports) != 2 {
+		t.Fatalf("Backbone form has %v port rows, want 2 (listen and target)", len(ports))
+	}
+	ports[0].input.SetText("4242")
+	ports[1].input.SetText("5252")
+
+	_, props := v.Build()
+	var values []string
+	for _, p := range props {
+		if p.Key == "port" {
+			values = append(values, fmt.Sprint(p.Value))
+		}
+	}
+	if len(values) != 1 {
+		t.Fatalf("Build wrote %v port entries %v, want exactly 1", len(values), values)
+	}
+	if values[0] != "5252" {
+		t.Errorf("port = %q, want the last row's value %q (Python keeps the last field per key)", values[0], "5252")
+	}
+}
+
+// TestInterfaceHeader pins the interfaces header text (Interfaces.py:
+// 3146-3149): a count while any interface exists, the add hint when none do.
+func TestInterfaceHeader(t *testing.T) {
+	t.Parallel()
+
+	if got, want := interfaceHeader(0), "No interfaces found. Press Ctrl + A to add a new interface "; got != want {
+		t.Errorf("interfaceHeader(0) = %q, want %q", got, want)
+	}
+	if got, want := interfaceHeader(3), "Interfaces (3)"; got != want {
+		t.Errorf("interfaceHeader(3) = %q, want %q", got, want)
+	}
+}

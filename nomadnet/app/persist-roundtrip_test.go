@@ -20,6 +20,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/gmlewis/go-reticulum/rns"
 )
@@ -158,5 +159,38 @@ func TestBlockedDestinationIsNotWrittenTwice(t *testing.T) {
 	}
 	if got := bytes.Count(data, []byte("\n")); got != 1 {
 		t.Errorf("ignored file holds %v lines, want 1: %q", got, data)
+	}
+}
+
+// TestAnnounceTimerRestoredFromDisk pins Python's announce-timer restore
+// (NomadNetworkApp.py:469 compares against peer_settings["last_announce"],
+// written at :605): after a restart the client must not fire an announce just
+// because its in-memory clock started at zero.
+func TestAnnounceTimerRestoredFromDisk(t *testing.T) {
+	t.Parallel()
+
+	dir := tempDir(t)
+	writeTestNomadNetConfig(t, dir)
+	first := newPersistApp(t, dir)
+
+	// Simulate an announce that happened an hour ago and was persisted.
+	when := time.Now().Add(-1 * time.Hour).Truncate(time.Second)
+	first.mu.Lock()
+	first.LastAnnounce = when
+	first.mu.Unlock()
+	first.psMu.Lock()
+	first.PeerSettings.LastAnnounce = float64(when.Unix())
+	first.savePeerSettingsLocked()
+	first.psMu.Unlock()
+
+	second := newPersistApp(t, dir)
+	second.mu.Lock()
+	restored := second.LastAnnounce
+	second.mu.Unlock()
+	if restored.IsZero() {
+		t.Fatal("the announce timer was not restored from peer settings; the next restart would announce immediately")
+	}
+	if got := restored.Unix(); got != when.Unix() {
+		t.Errorf("restored announce time = %v, want %v", got, when.Unix())
 	}
 }

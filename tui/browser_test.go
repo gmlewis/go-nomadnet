@@ -19,6 +19,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/gmlewis/go-nomadnet/nomadnet/micron"
 	"github.com/gmlewis/tcell/v2"
 	"github.com/gmlewis/tview"
 )
@@ -360,52 +361,109 @@ func TestBrowserDisplayReload(t *testing.T) {
 	}
 }
 
-// TestBrowserDisplayEffectiveMarkup pins the partial-substitution logic: the
-// original markup (with directives) is kept, and each fetched partial's content
-// replaces its directive (Partial.Raw) for rendering. Unfetched partials keep
-// their directive (the micron renderer shows the ⧖ placeholder). Mirrors
-// Python's per-Pile partial replacement without the urwid widget tree.
-func TestBrowserDisplayEffectiveMarkup(t *testing.T) {
+// TestBrowserDisplayPartialSplicing pins the partial substitution: each fetched
+// partial is rendered as its own document and its lines replace the ⧖
+// placeholder line. Parsing it inline let formatting state cross the boundary,
+// whereas Python parses every partial through markup_to_attrmaps with the
+// page's default colors (Browser.py:699-702).
+func TestBrowserDisplayPartialSplicing(t *testing.T) {
 	t.Parallel()
 	app := newTestApp()
 	bd := NewBrowserDisplay(app)
 
-	// No partial contents → effectiveMarkup == currentMarkup.
-	bd.currentMarkup = ">Page\n`{url`5}\nEnd"
-	if got := bd.effectiveMarkup(); got != bd.currentMarkup {
-		t.Errorf("effectiveMarkup (no contents) = %q, want %q", got, bd.currentMarkup)
+	// An unfetched partial keeps its placeholder line.
+	bd.RenderPage(">Page\n`!bold \n`{url`5}\nafter")
+	if !lineTextsContain(bd.currentLines, "⧖") {
+		t.Fatalf("an unfetched partial did not render its placeholder: %v", lineTexts(bd.currentLines))
 	}
 
-	// Substitute one partial's content for its directive.
-	bd.partialContents = map[string]string{"`{url`5}": ">Partial\nBody"}
-	got := bd.effectiveMarkup()
-	want := ">Page\n>Partial\nBody\nEnd"
-	if got != want {
-		t.Errorf("effectiveMarkup (one partial) = %q, want %q", got, want)
+	// Once the content arrives, its own lines replace the placeholder. The
+	// page's unclosed bold must NOT reach the partial, and the partial must not
+	// reset the page's bold for the line after it.
+	bd.partialContents = map[string]string{"`{url`5}": "partial text"}
+	bd.renderPage()
+
+	var partialLine, afterLine *micron.StyledLine
+	for _, sl := range bd.currentLines {
+		switch styledLineText(sl) {
+		case "partial text":
+			partialLine = sl
+		case "after":
+			afterLine = sl
+		}
+	}
+	if partialLine == nil {
+		t.Fatalf("partial content was not spliced in: %v", lineTexts(bd.currentLines))
+	}
+	for _, span := range partialLine.Spans {
+		if span.Text != "" && span.Bold {
+			t.Errorf("partial span %q inherited the page's bold formatting", span.Text)
+		}
+	}
+	if afterLine == nil {
+		t.Fatalf("the page line after the partial is missing: %v", lineTexts(bd.currentLines))
+	}
+	bold := false
+	for _, span := range afterLine.Spans {
+		if span.Text != "" && span.Bold {
+			bold = true
+		}
+	}
+	if !bold {
+		t.Errorf("the partial reset the page's formatting state; the line after it lost the page's bold")
+	}
+	if lineTextsContain(bd.currentLines, "⧖") {
+		t.Errorf("the placeholder survived a fetched partial: %v", lineTexts(bd.currentLines))
 	}
 
-	// Two partials substitute independently.
-	bd.currentMarkup = ">A\n`{p1}\nmid\n`{p2}\nend"
-	bd.partialContents = map[string]string{"`{p1}": "X", "`{p2}": "Y"}
-	got = bd.effectiveMarkup()
-	want = ">A\nX\nmid\nY\nend"
-	if got != want {
-		t.Errorf("effectiveMarkup (two partials) = %q, want %q", got, want)
-	}
-
-	// The SAME directive may appear more than once in one page: the node pages
-	// embed the two hit-counter partials in the body AND repeat them in the
-	// footer. Every occurrence must receive the fetched content. Python's
-	// page_partials dict is keyed by partial_hash (Browser.py:668), so it
-	// patches only the last pile and leaves earlier duplicates showing ⧖; the
-	// Go port deliberately patches all of them.
-	bd.currentMarkup = ">A\n`{p1}\nmid\n`{p1}\nend"
+	// The SAME directive may appear more than once in one page: every
+	// occurrence must receive the fetched content (a deliberate divergence from
+	// Python's hash-keyed page_partials, which patches only the last pile).
+	bd.RenderPage(">A\n`{p1}\nmid\n`{p1}\nend")
 	bd.partialContents = map[string]string{"`{p1}": "COUNT"}
-	got = bd.effectiveMarkup()
-	want = ">A\nCOUNT\nmid\nCOUNT\nend"
-	if got != want {
-		t.Errorf("effectiveMarkup (repeated directive) = %q, want %q", got, want)
+	bd.renderPage()
+	if got := countText(bd.currentLines, "COUNT"); got != 2 {
+		t.Errorf("repeated directive rendered %v copies of its content, want 2", got)
 	}
+}
+
+// styledLineText concatenates a line's span text.
+func styledLineText(l *micron.StyledLine) string {
+	var sb strings.Builder
+	for _, s := range l.Spans {
+		sb.WriteString(s.Text)
+	}
+	return sb.String()
+}
+
+// lineTexts returns the concatenated text of each rendered line.
+func lineTexts(lines []*micron.StyledLine) []string {
+	out := make([]string, len(lines))
+	for i, l := range lines {
+		out[i] = styledLineText(l)
+	}
+	return out
+}
+
+// lineTextsContain reports whether any line's text contains sub.
+func lineTextsContain(lines []*micron.StyledLine, sub string) bool {
+	for _, l := range lines {
+		if strings.Contains(styledLineText(l), sub) {
+			return true
+		}
+	}
+	return false
+}
+
+// countText counts how many lines equal text.
+func countText(lines []*micron.StyledLine, text string) int {
+	n := 0
+	for _, l := range lines {
+		if styledLineText(l) == text {
+			n++
+		}
+	}
+	return n
 }
 
 // TestBrowserDisplayPartialsInertWithoutCallback verifies that RenderPage with

@@ -171,6 +171,11 @@ func TestAppInit(t *testing.T) {
 		}
 	}
 
+	// A fresh install materialises the examples tree (NomadNetworkApp.py:215-223).
+	if _, err := os.Stat(filepath.Join(a.ExamplesPath, "messageboard", "messageboard.mu")); err != nil {
+		t.Errorf("first Init did not copy the examples tree: %v", err)
+	}
+
 	// Verify subsystems
 	if a.Config == nil {
 		t.Error("Config is nil after Init")

@@ -27,7 +27,9 @@ import (
 	"errors"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -228,28 +230,42 @@ func (n *Node) ActiveLinkCount() int {
 // registerRequestHandlers registers RNS request handlers for all served
 // pages and files, plus the default index.
 func (n *Node) registerRequestHandlers() {
-	if n.destination == nil {
+	// Snapshot the lists under the lock: the refresh job now calls this while
+	// another goroutine may be updating them.
+	n.mu.Lock()
+	dest := n.destination
+	pages := append([]string(nil), n.ServedPages...)
+	files := append([]string(nil), n.ServedFiles...)
+	pagesPath, filesPath := n.PagesPath, n.FilesPath
+	n.mu.Unlock()
+	if dest == nil {
 		return
 	}
 
+	// Python suppresses the default-index handler only when the ROOT
+	// index.mu is served (Node.py:57: `not pagespath+"index.mu" in
+	// servedpages`), so a page at pages/sub/index.mu does not shadow
+	// /page/index.mu's default response. Testing the basename made any nested
+	// index.mu suppress it, leaving /page/index.mu unanswered.
+	rootIndex := filepath.Clean(filepath.Join(pagesPath, "index.mu"))
 	hasIndex := false
-	for _, page := range n.ServedPages {
-		if filepath.Base(page) == "index.mu" {
+	for _, page := range pages {
+		if filepath.Clean(page) == rootIndex {
 			hasIndex = true
 		}
-		reqPath := PageRequestPath(page, n.PagesPath)
+		reqPath := PageRequestPath(page, pagesPath)
 		if reqPath == "" {
 			continue
 		}
-		n.destination.RegisterRequestHandler(reqPath, n.makePageHandler(page), rns.AllowAll, nil, true)
+		dest.RegisterRequestHandler(reqPath, n.makePageHandler(page), rns.AllowAll, nil, true)
 	}
 
 	if !hasIndex {
-		n.destination.RegisterRequestHandler("/page/index.mu", n.defaultIndexHandler, rns.AllowAll, nil, true)
+		dest.RegisterRequestHandler("/page/index.mu", n.defaultIndexHandler, rns.AllowAll, nil, true)
 	}
 
-	for _, file := range n.ServedFiles {
-		reqPath := FileRequestPath(file, n.FilesPath)
+	for _, file := range files {
+		reqPath := FileRequestPath(file, filesPath)
 		if reqPath == "" {
 			continue
 		}
@@ -264,6 +280,11 @@ func (n *Node) registerRequestHandlers() {
 // statically, as before.
 func (n *Node) makePageHandler(filePath string) func(string, any, []byte, []byte, *rns.Identity, time.Time) any {
 	return func(path string, data any, requestID []byte, linkID []byte, remoteIdentity *rns.Identity, requestedAt time.Time) any {
+		// Python counts the request BEFORE the allow-list check and the read
+		// (Node.py:111), so a denied or unreadable page still counts as served.
+		n.mu.Lock()
+		n.ServedPageRequests++
+		n.mu.Unlock()
 		if !isRequestAllowed(filePath, remoteIdentity) {
 			return ServeNotAllowed()
 		}
@@ -274,9 +295,6 @@ func (n *Node) makePageHandler(filePath string) func(string, any, []byte, []byte
 		if content == nil {
 			return nil
 		}
-		n.mu.Lock()
-		n.ServedPageRequests++
-		n.mu.Unlock()
 		if n.OnPageServed != nil {
 			n.OnPageServed()
 		}
@@ -303,9 +321,8 @@ func (n *Node) serveWasmPage(filePath, path string, data any, linkID []byte, rem
 	if err != nil {
 		return nil
 	}
-	n.mu.Lock()
-	n.ServedPageRequests++
-	n.mu.Unlock()
+	// The counter was taken by makePageHandler before the allow-list check
+	// (Python increments before the check as well); do not count twice.
 	if n.OnPageServed != nil {
 		n.OnPageServed()
 	}
@@ -361,6 +378,10 @@ func pageRequestFields(data any) map[string]string {
 // makeFileHandler returns a request handler function for a specific file.
 func (n *Node) makeFileHandler(filePath string) func(string, any, []byte, []byte, *rns.Identity, time.Time) any {
 	return func(path string, data any, requestID []byte, linkID []byte, remoteIdentity *rns.Identity, requestedAt time.Time) any {
+		// Python counts before the allow-list check and the open (Node.py:194).
+		n.mu.Lock()
+		n.ServedFileRequests++
+		n.mu.Unlock()
 		if !isRequestAllowed(filePath, remoteIdentity) {
 			return ServeNotAllowed()
 		}
@@ -368,13 +389,14 @@ func (n *Node) makeFileHandler(filePath string) func(string, any, []byte, []byte
 		if err != nil {
 			return nil
 		}
-		n.mu.Lock()
-		n.ServedFileRequests++
-		n.mu.Unlock()
 		if n.OnFileServed != nil {
 			n.OnFileServed()
 		}
-		return fileData
+		// Python serve_file returns [file, {"name": file_name.encode()}]
+		// (Node.py:206-211): the response names the file after the requested
+		// path under /file/, which the browser uses as the download name.
+		name := strings.TrimPrefix(path, "/file/")
+		return []any{fileData, map[string][]byte{"name": []byte(name)}}
 	}
 }
 
@@ -580,20 +602,27 @@ func ScanFiles(basePath string) []string {
 	return files
 }
 
-// RegisterPages scans the pages directory and updates the served pages list.
+// RegisterPages scans the pages directory, updates the served pages list, and
+// re-registers the request handlers, mirroring Python register_pages
+// (Node.py:54-68): the refresh job calls it so a page added after startup is
+// served without a restart. (Python's TODO notes that handlers for removed
+// pages are not deregistered; the same applies here.)
 func (n *Node) RegisterPages() {
+	pages := ScanPages(n.PagesPath)
 	n.mu.Lock()
-	defer n.mu.Unlock()
-
-	n.ServedPages = ScanPages(n.PagesPath)
+	n.ServedPages = pages
+	n.mu.Unlock()
+	n.registerRequestHandlers()
 }
 
-// RegisterFiles scans the files directory and updates the served files list.
+// RegisterFiles scans the files directory, updates the served files list, and
+// re-registers the request handlers (Python register_files, Node.py:70-81).
 func (n *Node) RegisterFiles() {
+	files := ScanFiles(n.FilesPath)
 	n.mu.Lock()
-	defer n.mu.Unlock()
-
-	n.ServedFiles = ScanFiles(n.FilesPath)
+	n.ServedFiles = files
+	n.mu.Unlock()
+	n.registerRequestHandlers()
 }
 
 // PageRequestPath returns the request path for a page file.
@@ -618,8 +647,20 @@ func FileRequestPath(filePath, filesPath string) string {
 
 // ParseAllowedFile reads an .allowed file and returns the list of
 // permitted identity hashes. Each line should be a 64-character hex string.
+//
+// An executable .allowed file is run and its stdout is parsed instead of the
+// file contents, mirroring Python Node.py:124-129:
+//
+//	if os.access(allowed_path, os.X_OK):
+//	    allowed_input = subprocess.run([allowed_path], stdout=subprocess.PIPE).stdout
+//	else:
+//	    allowed_input = open(allowed_path, "rb").read()
+//
+// This lets an operator generate the allow list dynamically. A failing script
+// yields an error, and IsAllowed then denies every request, matching Python's
+// exception path (the list stays empty, so the identity is not in it).
 func ParseAllowedFile(path string) ([][]byte, error) {
-	data, err := os.ReadFile(path)
+	data, err := readAllowedInput(path)
 	if err != nil {
 		return nil, err
 	}
@@ -627,11 +668,8 @@ func ParseAllowedFile(path string) ([][]byte, error) {
 	var hashes [][]byte
 	lines := strings.SplitSeq(string(data), "\n")
 	for line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		// Expected: 64 hex chars = 32 bytes
+		// Python tests len(hash_str) == 64 with NO trimming (Node.py:137), so a
+		// line with a trailing space is rejected; TrimSpace here accepted it.
 		if len(line) != 64 {
 			continue
 		}
@@ -643,6 +681,24 @@ func ParseAllowedFile(path string) ([][]byte, error) {
 	}
 
 	return hashes, nil
+}
+
+// readAllowedInput returns the raw bytes an .allowed file contributes to the
+// allow list. An executable file is run and its stdout is used (Python's
+// X_OK branch); every other file is read. Windows has no executable-bit
+// semantics, so the file is always read there, as Python does under
+// platformutils.is_windows().
+func readAllowedInput(path string) ([]byte, error) {
+	if runtime.GOOS != "windows" {
+		info, err := os.Stat(path)
+		if err != nil {
+			return nil, err
+		}
+		if info.Mode()&0o111 != 0 {
+			return exec.Command(path).Output()
+		}
+	}
+	return os.ReadFile(path)
 }
 
 // isRequestAllowed checks if a request from the given identity is allowed

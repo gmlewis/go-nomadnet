@@ -55,6 +55,27 @@ func ParseColorMode(s string) int {
 	return ColorModeTrue
 }
 
+// ParseColorModeStrict maps a config "colormode" string to its numeric depth,
+// accepting only the values Python's applyConfig recognizes — "monochrome",
+// "16", "88", "256" and "24bit" (NomadNetworkApp.py:955-970) — and reporting
+// whether the value was valid. Python raises ValueError for anything else;
+// callers that need that behavior exit with its panic code.
+func ParseColorModeStrict(s string) (int, bool) {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "monochrome":
+		return ColorModeMono, true
+	case "16":
+		return ColorMode16, true
+	case "88":
+		return ColorMode88, true
+	case "256":
+		return ColorMode256, true
+	case "24bit":
+		return ColorModeTrue, true
+	}
+	return ColorModeTrue, false
+}
+
 // PaletteEntry is one urwid palette row as a 5-tuple: the 16-color
 // foreground/background, the monochrome spec, and the 88/256/24-bit
 // foreground/background. It mirrors the columns of THEMES in Python

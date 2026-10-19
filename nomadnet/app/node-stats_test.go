@@ -86,9 +86,10 @@ func TestNodeLastAnnounceRoundTrip(t *testing.T) {
 	if !ok {
 		t.Fatal("NodeLastAnnounceSetting reported no settings")
 	}
-	stamp, isInt := got.(int64)
-	if !isInt {
-		t.Fatalf("node last announce = %#v (%T), want an int64 unix timestamp", got, got)
+	// Python stores time.time(), a float (Node.py:218).
+	stamp, isFloat := got.(float64)
+	if !isFloat {
+		t.Fatalf("node last announce = %#v (%T), want a float64 unix timestamp", got, got)
 	}
 	if stamp <= 0 {
 		t.Errorf("node last announce = %v, want a positive unix timestamp", stamp)

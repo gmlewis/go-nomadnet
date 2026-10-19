@@ -27,6 +27,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -208,9 +209,14 @@ func parseLine(line string, state *parseState) []*Node {
 
 	// In literal mode, output the line as-is (no inline formatting)
 	if state.literal {
-		// Handle escaped literal toggle: \`= → `=
-		escaped := strings.ReplaceAll(line, "\\`=", "`=")
-		return []*Node{{Type: NodeText, Text: escaped, Depth: state.depth}}
+		// Only a whole line of \`= is unescaped to `=; occurrences inside a
+		// longer line are left alone. Python MicronParser.make_output checks
+		// `if line == "\\`="` (MicronParser.py:595-598), an exact-line test,
+		// where this port used to rewrite every occurrence.
+		if line == "\\`=" {
+			line = "`="
+		}
+		return []*Node{{Type: NodeText, Text: line, Depth: state.depth}}
 	}
 
 	// Check for comment
@@ -599,9 +605,11 @@ func parseFormatting(line string, start int) ([]*Node, int) {
 	case ':': // anchor declaration
 		nameEnd := start + 2
 		for nameEnd < len(line) {
-			ch := line[nameEnd]
-			if (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '_' || ch == '-' {
-				nameEnd++
+			// Python accepts any str.isalnum() character plus '_' and '-'
+			// (MicronParser.py:661-663), so an anchor may be Unicode.
+			r, size := utf8.DecodeRuneInString(line[nameEnd:])
+			if unicode.IsLetter(r) || unicode.IsNumber(r) || r == '_' || r == '-' {
+				nameEnd += size
 			} else {
 				break
 			}
@@ -610,6 +618,9 @@ func parseFormatting(line string, start int) ([]*Node, int) {
 		if name != "" {
 			return []*Node{{Type: NodeAnchor, AnchorName: name}}, nameEnd - start
 		}
+		// An empty anchor name consumes the marker character and drops it,
+		// as Python's formatting pass does for any unrecognized character.
+		return nil, 2
 	case 'T': // timestamp: `T<seconds>|<format>`T, rendered in the viewer's zone
 		if ts, tc := parseTimestamp(line, start); ts != nil {
 			return []*Node{ts}, tc
@@ -646,6 +657,16 @@ func parseFormatting(line string, start int) ([]*Node, int) {
 		return nil, 1 + lc
 	}
 
+	// An unrecognized formatting character is consumed together with its
+	// backtick and dropped. Python enters formatting mode on the backtick,
+	// flushes the pending text, processes the character through its command
+	// chain (which has no fallback), and returns to text mode
+	// (MicronParser.py:610-840). Emitting the character as text, as this port
+	// did, turns "use `code` here" into "use code here" where the reference
+	// renders "use odehere".
+	if start+1 < len(line) {
+		return nil, 2
+	}
 	return nil, consumed
 }
 
@@ -871,19 +892,47 @@ func removeChar(s string, c byte) string {
 }
 
 func parseInt(s string) (int, bool) {
+	// Python parses the field width with int(field_flags) inside a try/except
+	// (MicronParser.py:706-710), so surrounding whitespace, a sign, and single
+	// underscores between digits are all accepted (" 24", "-5", "1_0"). A
+	// bare-digit parser rejected them and silently kept the default width 24.
+	s = strings.TrimSpace(s)
 	if s == "" {
 		return 0, false
 	}
-	n := 0
+	sign := 1
+	switch s[0] {
+	case '+':
+		s = s[1:]
+	case '-':
+		sign = -1
+		s = s[1:]
+	}
+	if s == "" {
+		return 0, false
+	}
+	var digits strings.Builder
+	prevDigit := false
 	for i := 0; i < len(s); i++ {
 		c := s[i]
-		if c >= '0' && c <= '9' {
-			n = n*10 + int(c-'0')
-		} else {
+		if c == '_' {
+			if !prevDigit || i+1 >= len(s) || s[i+1] < '0' || s[i+1] > '9' {
+				return 0, false
+			}
+			prevDigit = false
+			continue
+		}
+		if c < '0' || c > '9' {
 			return 0, false
 		}
+		digits.WriteByte(c)
+		prevDigit = true
 	}
-	return n, true
+	n, err := strconv.Atoi(digits.String())
+	if err != nil {
+		return 0, false
+	}
+	return sign * n, true
 }
 
 // Slugify converts Micron text to a URL-friendly slug.

@@ -17,6 +17,7 @@ package tui
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/gmlewis/tcell/v2"
@@ -45,6 +46,16 @@ type HubInfoArea struct {
 	OnEditHub             func()
 	OnRemoveHub           func()
 	OnToggleChannelList   func()
+
+	// OnOpenRoom opens a room a click on the panel asked for: a #room link in
+	// the MOTD or a row in the joined/available lists (Python's
+	// _ChatLinkDelegate._open_room / ChannelListEntry click signal).
+	OnOpenRoom func(room string)
+
+	// Region maps: the index in a tview region tag back to the room it wraps.
+	motdLinks   []string
+	joinedLinks []string
+	availLinks  []string
 }
 
 // NewHubInfoArea creates a hub detail panel for the given hub.
@@ -57,10 +68,35 @@ func NewHubInfoArea(app *App, hubName string) *HubInfoArea {
 	hia.view = applyWheelMultiplier(tview.NewTextView().
 		SetDynamicColors(true).
 		SetScrollable(true).
+		SetRegions(true).
 		SetTextColor(GetThemeColors(app.Theme)["scrollbar"]))
 	// The address click is wired here, once, on top of the wheel capture so both
 	// keep working; refreshView only re-tags the text it writes.
 	MakeAddrClickable(app, "Hub Address", hia.view, "")
+	// tview hit-tests region tags on a click and highlights the one under the
+	// cursor. The view holds both address regions and room-link regions, and
+	// tview keeps only one highlight handler, so this handler serves both.
+	hia.view.SetHighlightedFunc(func(added, _, _ []string) {
+		if len(added) == 0 {
+			return
+		}
+		id := added[0]
+		// Clear the inverted region before the pane switches away.
+		hia.view.Highlight()
+		if hia.OnOpenRoom != nil {
+			if idx, ok := regionIndex(id, "motdroom"); ok && idx < len(hia.motdLinks) {
+				hia.OnOpenRoom(hia.motdLinks[idx])
+				return
+			} else if idx, ok := regionIndex(id, "joinedroom"); ok && idx < len(hia.joinedLinks) {
+				hia.OnOpenRoom(hia.joinedLinks[idx])
+				return
+			} else if idx, ok := regionIndex(id, "availroom"); ok && idx < len(hia.availLinks) {
+				hia.OnOpenRoom(hia.availLinks[idx])
+				return
+			}
+		}
+		dispatchAddrRegion(hia.app, hia.view, "Hub Address", nil, added)
+	})
 
 	hia.widget = tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(hia.view, 0, 1, false)
@@ -184,6 +220,10 @@ type HubInfoSnapshot struct {
 	AutoWho     bool
 	JoinedRooms []string
 	AvailRooms  []string
+	// AvailRoomTopics carries each advertised room's topic (Python's
+	// Available rooms list shows a "↳ topic" line under the room,
+	// Channels.py:1806-1824). Nil when the provider does not supply topics.
+	AvailRoomTopics map[string]string
 }
 
 // HubStatusLabels map the HubView status ints to Python's status labels
@@ -287,24 +327,88 @@ func (hia *HubInfoArea) refreshView() {
 
 	if snap.MOTD != "" {
 		sb.WriteString(hia.dividerRow() + "\n  MOTD:\n")
+		hia.motdLinks = hia.motdLinks[:0]
 		for line := range strings.SplitSeq(snap.MOTD, "\n") {
-			fmt.Fprintf(&sb, "  %v\n", escapeTviewTags(line))
+			fmt.Fprintf(&sb, "  %v\n", hia.motdLine(line))
 		}
+	} else {
+		hia.motdLinks = hia.motdLinks[:0]
 	}
 
 	if len(snap.JoinedRooms) > 0 {
 		sb.WriteString(hia.dividerRow() + "\n  Joined rooms:\n")
+		hia.joinedLinks = hia.joinedLinks[:0]
 		for _, r := range snap.JoinedRooms {
-			fmt.Fprintf(&sb, "    #%v\n", r)
+			fmt.Fprintf(&sb, "    %v\n", hia.roomRegion("joinedroom", r))
 		}
+	} else {
+		hia.joinedLinks = hia.joinedLinks[:0]
 	}
 	if len(snap.AvailRooms) > 0 {
 		sb.WriteString(hia.dividerRow() + "\n  Available rooms:\n")
+		hia.availLinks = hia.availLinks[:0]
 		for _, r := range snap.AvailRooms {
-			fmt.Fprintf(&sb, "    #%v\n", r)
+			fmt.Fprintf(&sb, "    %v\n", hia.roomRegion("availroom", r))
+			// Python renders the room's topic as a "↳ topic" line under it
+			// (Channels.py:1806-1824).
+			if topic := snap.AvailRoomTopics[r]; topic != "" {
+				fmt.Fprintf(&sb, "      %v %v\n", glyph(glyphs, "arrow_r"), escapeTviewTags(topic))
+			}
 		}
+	} else {
+		hia.availLinks = hia.availLinks[:0]
 	}
 	// SetAddrRowText re-tags the hub address in the rebuilt block, so the click
 	// wired at construction keeps working across refreshes.
 	SetAddrRowText(hia.view, sb.String())
+}
+
+// regionIndex parses the index out of a region id such as "motdroom3".
+func regionIndex(id, prefix string) (int, bool) {
+	if !strings.HasPrefix(id, prefix) {
+		return 0, false
+	}
+	idx, err := strconv.Atoi(strings.TrimPrefix(id, prefix))
+	if err != nil || idx < 0 {
+		return 0, false
+	}
+	return idx, true
+}
+
+// motdLine renders one MOTD line with every #room reference wrapped in a
+// clickable region, recording the targets in motdLinks. Python renders the
+// MOTD through _linkify_motd with a _ChatLinkDelegate that opens room links
+// (Channels.py:1229-1240,1795-1801).
+func (hia *HubInfoArea) motdLine(line string) string {
+	spans := motdRoomSpans(line)
+	if len(spans) == 0 {
+		return escapeTviewTags(line)
+	}
+	var b strings.Builder
+	prev := 0
+	for _, span := range spans {
+		b.WriteString(escapeTviewTags(line[prev:span.Start]))
+		fmt.Fprintf(&b, `["motdroom%v"]`, len(hia.motdLinks))
+		hia.motdLinks = append(hia.motdLinks, span.Room)
+		b.WriteString(escapeTviewTags(line[span.Start:span.End]))
+		b.WriteString(`[""]`)
+		prev = span.End
+	}
+	b.WriteString(escapeTviewTags(line[prev:]))
+	return b.String()
+}
+
+// roomRegion renders "#room" as a clickable region and records the link target
+// under prefix ("joinedroom" or "availroom").
+func (hia *HubInfoArea) roomRegion(prefix, room string) string {
+	var idx int
+	switch prefix {
+	case "joinedroom":
+		idx = len(hia.joinedLinks)
+		hia.joinedLinks = append(hia.joinedLinks, room)
+	default:
+		idx = len(hia.availLinks)
+		hia.availLinks = append(hia.availLinks, room)
+	}
+	return fmt.Sprintf(`["%v%v"]#%v[""]`, prefix, idx, escapeTviewTags(room))
 }

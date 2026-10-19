@@ -141,6 +141,10 @@ type StyledLine struct {
 	DividerChar  string // divider character (default U+2500)
 	DividerRight int    // right pad for a divider at depth>0 (Python right_indent)
 	Anchor       string // anchor name bound to this line (heading slug or `:name)
+	// PartialRaw is the source directive ("`{url...}") this line stands in
+	// for, set on a line that is a partial placeholder. The browser uses it to
+	// replace the placeholder with the partial's own rendered lines.
+	PartialRaw string
 }
 
 // renderState tracks the inline formatting state across lines, mirroring
@@ -234,6 +238,11 @@ func RenderToStyledLinesWith(markup string, theme Theme, opts StyledOptions) []*
 	}
 
 	var out []*StyledLine
+	// pendingAnchor carries an anchor declared on a line that produced no
+	// output (a lone `:name marker) to the next rendered line, which is how
+	// Python's zero-width anchor binds to the following line — including a
+	// blank one (MicronParser.py:94-147).
+	var pendingAnchor string
 	for _, line := range lines {
 		if line == "" {
 			// Python renders an empty markup line as urwid.Text("") wrapped in
@@ -242,18 +251,34 @@ func RenderToStyledLinesWith(markup string, theme Theme, opts StyledOptions) []*
 			// or bold/italic run continues across blank lines), not the theme
 			// plain defaults. Pinning this parity rule (see
 			// TestBlankLineCarriesFormattingState).
-			out = append(out, &StyledLine{Spans: []StyledSpan{{
+			blank := &StyledLine{Spans: []StyledSpan{{
 				Text:      "",
 				FG:        highColor(rs.fg),
 				BG:        highColor(rs.bg),
 				Bold:      rs.bold,
 				Underline: rs.underline,
 				Italic:    rs.italic,
-			}}})
+			}}}
+			blank.Anchor = pendingAnchor
+			pendingAnchor = ""
+			out = append(out, blank)
 			continue
 		}
 		nodes := parseLine(line, ps)
-		out = append(out, renderLineNodes(nodes, rs, theme, ps.depth)...)
+		rendered := renderLineNodes(nodes, rs, theme, ps.depth)
+		if len(rendered) > 0 {
+			if pendingAnchor != "" && rendered[0].Anchor == "" {
+				rendered[0].Anchor = pendingAnchor
+			}
+			pendingAnchor = ""
+		} else {
+			for _, n := range nodes {
+				if n.Type == NodeAnchor {
+					pendingAnchor = n.AnchorName
+				}
+			}
+		}
+		out = append(out, rendered...)
 	}
 	return out
 }
@@ -275,6 +300,7 @@ func renderLineNodes(nodes []*Node, rs *renderState, theme Theme, depth int) []*
 	sl := &StyledLine{Indent: leftIndent(depth)}
 
 	hasLiteral := false
+	hasField := false
 	for _, node := range nodes {
 		switch node.Type {
 		case NodeHeading:
@@ -295,6 +321,7 @@ func renderLineNodes(nodes []*Node, rs *renderState, theme Theme, depth int) []*
 		case NodeTable:
 			out = append(out, renderTableLines(node, rs, theme, depth)...)
 		case NodePartial:
+			sl.PartialRaw = node.PartialRaw
 			sl.Spans = append(sl.Spans, StyledSpan{
 				Text: partialPlaceholder, // ⧖ hourglass (Python parse_partial)
 				FG:   highColor(rs.fg), BG: highColor(rs.bg),
@@ -302,6 +329,13 @@ func renderLineNodes(nodes []*Node, rs *renderState, theme Theme, depth int) []*
 			})
 		case NodeLiteral:
 			hasLiteral = true
+		case NodeField:
+			// A line containing a field renders as an urwid.Columns of the
+			// text runs and field widgets (MicronParser.py:363-407). Columns
+			// takes no align argument, so the row is left-aligned whatever the
+			// state's alignment is.
+			hasField = true
+			renderInlineNode(sl, node, rs)
 		default:
 			renderInlineNode(sl, node, rs)
 		}
@@ -309,7 +343,11 @@ func renderLineNodes(nodes []*Node, rs *renderState, theme Theme, depth int) []*
 
 	// Flush a trailing line that accumulated inline content.
 	if len(sl.Spans) > 0 {
-		sl.Align = rs.align
+		if hasField {
+			sl.Align = AlignLeft
+		} else {
+			sl.Align = rs.align
+		}
 		out = append(out, sl)
 	}
 
@@ -448,6 +486,16 @@ func renderHeadingLine(sl *StyledLine, node *Node, rs *renderState, theme Theme)
 	for _, child := range node.Children {
 		renderInlineNode(sl, child, rs)
 	}
+	// A heading renders as urwid.Text(output, align=state["align"]), so an
+	// alignment token inside the heading line applies to it
+	// (MicronParser.py:314-318). Python reads the state after make_output has
+	// run the heading's inline tags; take rs.align before restoring.
+	sl.Align = rs.align
+	// Python's heading style latch (state_to_style/style_to_state,
+	// MicronParser.py:427-440) carries fg/bg/bold/underline/italic but not
+	// alignment, so an alignment token inside the heading persists for the
+	// following lines. Keep the heading's align when restoring.
+	latched.align = rs.align
 	rs.restore(latched)
 
 	sl.HeadingLevel = level
