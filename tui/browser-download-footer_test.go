@@ -140,3 +140,70 @@ func firstPlainSpan(t *testing.T, bd *BrowserDisplay) micron.StyledSpan {
 	t.Fatal("no plain span found in the rendered page")
 	return micron.StyledSpan{}
 }
+
+// TestBrowserStatusLabelsMatchPython pins the in-flight footer labels against the
+// reference. Python's Browser.status_text returns one fixed string per lifecycle state
+// (SOT: ui/textui/Browser.py:1756-1803, nomadnet 1.2.8); they are user-visible, so the
+// wording has to match rather than merely exist. Each fragment was checked verbatim
+// against the installed reference.
+//
+// The transitions themselves are NOT wired yet — SetBrowserStatus has no production
+// caller, so these labels are only reachable from tests today (parity-gaps §2.4). This
+// test pins the words for the moment they are connected, and fails if a label drifts in
+// the meantime.
+func TestBrowserStatusLabelsMatchPython(t *testing.T) {
+	t.Parallel()
+
+	g := GetGlyphSet(GlyphUnicode)
+	if g == nil {
+		t.Fatal("no unicode glyph set")
+	}
+
+	tests := []struct {
+		status browserStatus
+		want   string
+	}{
+		{browserNoPath, "No path to destination known"},
+		{browserPathRequested, "Path requested, waiting for path..."},
+		{browserEstablishingLink, "Establishing link..."},
+		{browserLinkTimeout, "Link establishment timed out"},
+		{browserLinkEstablished, "Link established"},
+		{browserRequesting, "Sending request..."},
+		{browserRequestSent, "Request sent, awaiting response..."},
+		{browserRequestFailed, "Request failed"},
+		{browserRequestTimeout, "Request timed out"},
+		{browserReceivingResponse, "Receiving response..."},
+		{browserDisconnected, "Disconnected"},
+	}
+
+	for _, tc := range tests {
+		if got := browserStatusText(g, tc.status, 0, 0, 0, false, false, ""); got != tc.want {
+			t.Errorf("status %v label = %q, want %q", tc.status, got, tc.want)
+		}
+	}
+}
+
+// TestBrowserStatusReachesTheFooter pins the display half: a status set on the display is
+// what the footer renders. It is the assertion §4.5 recorded as missing ("nothing asserts
+// the user ever sees ..."), so it holds even before the fetch path drives the statuses.
+func TestBrowserStatusReachesTheFooter(t *testing.T) {
+	app := NewApp(ThemeDark, GlyphUnicode, ColorModeTrue)
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatalf("screen.Init: %v", err)
+	}
+	t.Cleanup(screen.Fini)
+	app.SetScreen(screen)
+	screen.SetSize(100, 30)
+
+	bd := NewBrowserDisplay(app)
+
+	bd.SetBrowserStatus(int(browserNoPath))
+	if got := bd.FooterText(); got != "No path to destination known" {
+		t.Errorf("footer after SetBrowserStatus(no path) = %q, want %q", got, "No path to destination known")
+	}
+	bd.SetBrowserStatus(int(browserRequestSent))
+	if got := bd.FooterText(); got != "Request sent, awaiting response..." {
+		t.Errorf("footer after SetBrowserStatus(request sent) = %q, want %q", got, "Request sent, awaiting response...")
+	}
+}
