@@ -189,18 +189,43 @@ func TestNewMainDisplay(t *testing.T) {
 	}
 }
 
+// TestMainDisplaySetDisplay pins what SetDisplay does, which the test previously
+// discarded: it mounts the widget as a page, and it switches to that page only when it is
+// the ACTIVE one (SetDisplay's isActive branch). A display registered for a page the user
+// is not looking at must be added without stealing the view — the other pages keep
+// refreshing in the background, and a steal would yank the reader off their page.
 func TestMainDisplaySetDisplay(t *testing.T) {
 	t.Parallel()
 
 	app := newTestApp()
 	md := NewMainDisplay(app, ThemeDark, GlyphUnicode)
 
-	// Add a test page
+	// Make an existing menu page active, then give it a widget.
+	md.SelectPage("network")
+	if got := md.ActivePage(); got != "network" {
+		t.Fatalf("ActivePage after SelectPage = %q, want %q", got, "network")
+	}
 	page := tview.NewTextView()
-	md.SetDisplay("test", page)
+	md.SetDisplay("network", page)
 
-	// Verify page was added
-	_, _ = md.contentArea.GetFrontPage()
+	name, front := md.contentArea.GetFrontPage()
+	if name != "network" || front != page {
+		t.Errorf("front page = %q/%v, want the %q widget SetDisplay mounted", name, front, "network")
+	}
+
+	// A widget for a page that is not active is mounted but not shown.
+	other := tview.NewTextView()
+	md.SetDisplay("log", other)
+	name, front = md.contentArea.GetFrontPage()
+	if name != "network" || front != page {
+		t.Errorf("a non-active SetDisplay changed the visible page to %q/%v", name, front)
+	}
+	if got := md.ActivePage(); got != "network" {
+		t.Errorf("ActivePage = %q after a non-active SetDisplay, want %q", got, "network")
+	}
+	if p := md.contentArea.GetPage("log"); p != other {
+		t.Error("the non-active page was not mounted")
+	}
 }
 
 func TestMainDisplaySetGlyphs(t *testing.T) {
