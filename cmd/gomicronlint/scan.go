@@ -281,9 +281,12 @@ func ScanMarkup(name, markup string) []Finding {
 		}
 	}
 
-	// What the visitor actually reads.
+	// What the visitor actually reads. Micron consumes the "`{" lead of a
+	// directive it does not treat as a partial (the reference renders
+	// "done.`{:/page/x`0}" as "done.:/page/x}"), so the URL text is the evidence
+	// that reaches the reader, not the brace.
 	for _, text := range renderedLines(markup) {
-		if strings.Contains(text, "{:") {
+		if strings.Contains(text, ":/page/") {
 			out = append(out, Finding{Path: name, Kind: KindLeakedDirective,
 				Detail: "a partial directive reached the rendered text: it did not parse as a partial where it sits",
 				Text:   text})
