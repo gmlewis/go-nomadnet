@@ -380,6 +380,15 @@ func NewConversationWidget(app *App, sourceHash string) *ConversationWidget {
 	// keypress branches on, and its bannerVisible hook lets the main
 	// dispatcher's Up-at-top check respect the trust banner (A3/A7).
 	cw.messageList = newMessageListBox()
+	// A markdown body is laid out for a width, so a resize has to rebuild the entries.
+	// SetRect calls this from inside Draw; defer the rebuild to the event loop (and do
+	// nothing without one, as tests drive rendering directly).
+	cw.messageList.OnWidthChange = func(int) {
+		if cw.app == nil || cw.app.Application == nil {
+			return
+		}
+		cw.app.QueueUpdateDraw(cw.renderMessages)
+	}
 	cw.messageList.bannerVisible = cw.hasVisibleTrustBanner
 	cw.messageList.SetFocusFunc(func() {
 		cw.focusPart = "body"
@@ -1316,12 +1325,23 @@ func (cw *ConversationWidget) renderMessageEntry(msg ConversationMessage) *messa
 		}
 	}
 
-	// Body: indent every content line two columns (Python LXMessageWidget
-	// "  "+line for non-markdown content). Content is the remote LXMF body.
-	for line := range strings.SplitSeq(msg.Content, "\n") {
-		sb.WriteString("  ")
-		sb.WriteString(escapeTviewTags(line))
-		sb.WriteString("\n")
+	// Body. A message whose FIELD_RENDERER is markdown goes through the
+	// markdown→micron→styled-lines pipeline, exactly as Python branches on the renderer
+	// (Conversations.py:2714-2722); every other body is the raw content, indented two
+	// columns ("  "+line). The markdown path needs the pane width because a section
+	// heading is painted across the full row.
+	if msg.Markdown {
+		theme := ThemeDark
+		if cw.app != nil {
+			theme = cw.app.Theme
+		}
+		sb.WriteString(markdownMessageBodyText(msg.Content, theme, cw.messageList.width))
+	} else {
+		for line := range strings.SplitSeq(msg.Content, "\n") {
+			sb.WriteString("  ")
+			sb.WriteString(escapeTviewTags(line))
+			sb.WriteString("\n")
+		}
 	}
 	if msg.HasAttach && len(msg.AttachmentNames) == 0 {
 		fmt.Fprintf(&sb, "  [gray]%v %v attachment(s)[-]\n", cw.glyphs()["file"], msg.AttachCount)

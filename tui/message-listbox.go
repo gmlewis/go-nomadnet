@@ -55,6 +55,12 @@ type messageListBox struct {
 	width   int   // layout width used for the entry heights (0 = unset)
 	focus   int   // focused entry index; starts at the last (newest) entry
 
+	// OnWidthChange, when set, reports a new layout width so the owner can rebuild
+	// entries whose content depends on it (a markdown message body is laid out for a
+	// width). It is called from SetRect, which runs inside Draw, so the owner must
+	// defer its work rather than re-enter the layout.
+	OnWidthChange func(width int)
+
 	// bannerVisible, when set, reports whether the conversation's trust banner
 	// is currently visible. The main dispatcher consults it via bodyListAtTop
 	// so Up at the message-list top goes to the banner (Python
@@ -112,6 +118,9 @@ func (m *messageListBox) SetRect(x, y, w, h int) {
 		m.layout()
 		if m.focus >= len(m.entries) {
 			m.focus = max(len(m.entries)-1, 0)
+		}
+		if m.OnWidthChange != nil && w > 0 {
+			m.OnWidthChange(w)
 		}
 	}
 	if wChanged || h != ph {
