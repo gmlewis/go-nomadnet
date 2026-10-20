@@ -26,7 +26,7 @@ func TestR1DeleteConversationRetainsDirectoryEntry(t *testing.T) {
 	a.Dir = directory.New()
 
 	// Create a directory entry for a peer with a display name and trusted level.
-	hash := []byte{0xaa, 0xbb, 0xcc, 0xdd}
+	hash := hash16(0xaa, 0xbb, 0xcc, 0xdd)
 	a.CreateDirectoryEntry(hash, "TestPeer")
 	a.SetPeerTrustLevel(hash, directory.TrustTrusted)
 

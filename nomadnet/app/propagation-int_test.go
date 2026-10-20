@@ -157,7 +157,10 @@ func newPropagationHub(t *testing.T) *propagationHub {
 		{appB, pnDest.Hash},
 	}
 	for _, pair := range trusted {
-		entry := directory.NewEntry(pair.hash)
+		entry, err := directory.NewEntry(pair.hash)
+		if err != nil {
+			t.Fatalf("NewEntry: %v", err)
+		}
 		entry.TrustLevel = directory.TrustTrusted
 		pair.a.Dir.Remember(entry)
 	}
@@ -188,7 +191,10 @@ func (h *propagationHub) setPreferredDelivery(t *testing.T, delivery byte) {
 	if !ok {
 		t.Fatalf("SourceHashFromHex(%q) failed", h.hexB)
 	}
-	entry := directory.NewEntry(hash)
+	entry, err := directory.NewEntry(hash)
+	if err != nil {
+		t.Fatalf("NewEntry: %v", err)
+	}
 	entry.PreferredDelivery = delivery
 	h.appA.Dir.Remember(entry)
 }

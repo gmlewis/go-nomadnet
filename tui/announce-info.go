@@ -36,6 +36,11 @@ type AnnounceInfoData struct {
 	// announced node's recallable identity (Network.py:143). It is the address
 	// the Msg Op button targets; empty when the identity cannot be recalled.
 	OpHash string
+	// KeysUnknown marks a NODE announce whose identity could not be recalled.
+	// Python's AnnounceInfo raises KeyError there (Network.py:138-141) and the
+	// Network display offers the "Keys Unknown" dialog instead of the detail
+	// view (Network.py:337-385).
+	KeysUnknown bool
 }
 
 // trustPaletteHex maps a trust palette key to the hex color tview color tags

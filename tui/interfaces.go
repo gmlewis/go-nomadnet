@@ -286,6 +286,7 @@ func (id *InterfacesDisplay) ShowInterfaceDetail(info InterfaceInfo) {
 	if id.app != nil {
 		id.app.SetFocus(show.body)
 	}
+	id.refreshShortcuts()
 }
 
 // closeShowInterface restores the interface list after the detail view
@@ -300,6 +301,7 @@ func (id *InterfacesDisplay) closeShowInterface() {
 	if id.app != nil {
 		id.app.SetFocus(id.layout)
 	}
+	id.refreshShortcuts()
 }
 
 // ShowTypePicker overlays Python's "Select Interface Type" dialog
@@ -371,6 +373,7 @@ func (id *InterfacesDisplay) ShowForm(v *InterfaceFormView) {
 	if id.app != nil {
 		id.app.SetFocus(ov)
 	}
+	id.refreshShortcuts()
 }
 
 // CloseForm dismisses an open Add/Edit form and restores the interface list.
@@ -385,6 +388,7 @@ func (id *InterfacesDisplay) CloseForm() {
 	if id.app != nil {
 		id.app.SetFocus(id.layout)
 	}
+	id.refreshShortcuts()
 }
 
 // FormView returns the Add/Edit form currently mounted, or nil.
@@ -959,4 +963,28 @@ func (id *InterfacesDisplay) ShowRNSDisconnected() {
 		AddItem(NewUrwidCenterText(msg), 0, 1, false)
 	dialog := NewDialogLineBox("Disconnected", layout, id.closeDialog)
 	id.showDialogOverlay(dialog, 35, 4)
+}
+
+// ShortcutText returns the shortcut bar for the interfaces view currently on
+// screen, mirroring Python's InterfaceDisplayShortcuts: the list default, the
+// ShowInterface bar advertising the h/v chart keys (set on
+// switch_to_show_interface, Interfaces.py:2219,3205-3208), or the Add/Edit form
+// bar (Interfaces.py:1428,3209-3215).
+func (id *InterfacesDisplay) ShortcutText() string {
+	switch {
+	case id.formView != nil:
+		return "[Up/Down] Navigate Fields [Enter] Select Option"
+	case id.showWidget != nil:
+		return "[Up/Down] Navigate [Tab] Switch Focus [h] Horizontal Charts [v] Vertical Charts "
+	}
+	return "[C-a] Add Interface [C-e] Edit Interface [C-x] Remove Interface [Enter] Show Interface [C-w] Open Text Editor"
+}
+
+// refreshShortcuts asks the main display to re-read ShortcutText after a view
+// transition. The active page does not change, so the footer would otherwise
+// keep whichever bar it cached when the page was entered.
+func (id *InterfacesDisplay) refreshShortcuts() {
+	if id.app != nil && id.app.Main != nil {
+		id.app.Main.refreshShortcuts()
+	}
 }

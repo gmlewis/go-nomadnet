@@ -63,7 +63,7 @@ func TestSaveToDiskPythonByteParity(t *testing.T) {
 	path := filepath.Join(dir, "directory")
 
 	bob := &Entry{
-		SourceHash:        []byte{1, 2, 3, 4, 5, 6, 7, 8},
+		SourceHash:        hash16(1, 2, 3, 4, 5, 6, 7, 8),
 		DisplayName:       "Bob",
 		TrustLevel:        TrustUntrusted,
 		HostsNode:         true,
@@ -73,7 +73,7 @@ func TestSaveToDiskPythonByteParity(t *testing.T) {
 		Notes:             "bob notes",
 	}
 	carol := &Entry{
-		SourceHash:        []byte{0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11},
+		SourceHash:        hash16(0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11),
 		DisplayName:       "Carol",
 		TrustLevel:        TrustUnknown,
 		HostsNode:         false,
@@ -85,9 +85,9 @@ func TestSaveToDiskPythonByteParity(t *testing.T) {
 	// Announce order in the file is node + peer + pn (Python save_to_disk
 	// concatenates _node_announces + _peer_announces + _pn_announces); Go
 	// SaveToDisk concatenates the same way, so add one of each type.
-	nodeAnn := Announce{Timestamp: 200, SourceHash: []byte{2}, AppData: []byte("nodedata"), AnnounceType: "node"}
-	peerAnn := Announce{Timestamp: 100, SourceHash: []byte{1}, AppData: []byte("peerdata"), AnnounceType: "peer"}
-	pnAnn := Announce{Timestamp: 300, SourceHash: []byte{3}, AppData: []byte("pndata"), AnnounceType: "pn"}
+	nodeAnn := Announce{Timestamp: 200, SourceHash: hash16(2), AppData: []byte("nodedata"), AnnounceType: "node"}
+	peerAnn := Announce{Timestamp: 100, SourceHash: hash16(1), AppData: []byte("peerdata"), AnnounceType: "peer"}
+	pnAnn := Announce{Timestamp: 300, SourceHash: hash16(3), AppData: []byte("pndata"), AnnounceType: "pn"}
 
 	d := New()
 	d.Remember(bob)

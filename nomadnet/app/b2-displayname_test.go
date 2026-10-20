@@ -129,7 +129,11 @@ func TestB2StoredEmptyNameFallsBackToAnnounce(t *testing.T) {
 
 	// A stored directory entry with an EMPTY display name (the wiped /
 	// no-name state) must not defeat the announced-name fallback.
-	a.Dir.Remember(directory.NewEntry(peerHash))
+	entry, err := directory.NewEntry(peerHash)
+	if err != nil {
+		t.Fatalf("NewEntry: %v", err)
+	}
+	a.Dir.Remember(entry)
 
 	convDir := filepath.Join(a.ConversationPath, peerDest.HexHash)
 	if err := os.MkdirAll(convDir, 0o755); err != nil {

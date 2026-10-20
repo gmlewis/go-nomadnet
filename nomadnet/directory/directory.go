@@ -105,7 +105,14 @@ func (d *Directory) SetPersistPath(path string) {
 // saved to disk after the update so the entry survives across runs even if
 // the process exits without reaching the shutdown path — matching Python's
 // eager remember→save_to_disk behavior.
+//
+// An entry whose source hash is not SourceHashLength bytes is refused: Python
+// cannot construct one (DirectoryEntry raises TypeError, Directory.py:419),
+// so nothing reaches its remember in that shape.
 func (d *Directory) Remember(entry *Entry) {
+	if entry == nil || !ValidSourceHash(entry.SourceHash) {
+		return
+	}
 	d.mu.Lock()
 
 	key := hexKey(entry.SourceHash)

@@ -16,6 +16,7 @@
 package directory
 
 import (
+	"fmt"
 	"os"
 
 	rnsmsgpack "github.com/gmlewis/go-reticulum/rns/msgpack"
@@ -113,8 +114,8 @@ func (d *Directory) LoadFromDisk(path string) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	d.entries = make(map[string]*Entry)
-	d.entryOrder = d.entryOrder[:0]
+	entries := make(map[string]*Entry)
+	var entryOrder []string
 	if entryList, ok := m["entry_list"].([]any); ok {
 		for _, item := range entryList {
 			tuple, ok := item.([]any)
@@ -122,8 +123,13 @@ func (d *Directory) LoadFromDisk(path string) error {
 				continue
 			}
 			sourceHash, _ := tuple[0].([]byte)
-			if len(sourceHash) == 0 {
-				continue
+			// Python's load_from_disk constructs a DirectoryEntry for every
+			// row, so a short hash raises TypeError and the whole load aborts
+			// with nothing assigned (Directory.py:144,157-159). The entries
+			// are built aside and published only after the loop, so a bad row
+			// cannot leave a partially loaded directory behind.
+			if !ValidSourceHash(sourceHash) {
+				return fmt.Errorf("%w: %v bytes in entry_list", ErrInvalidSourceHash, len(sourceHash))
 			}
 			// Python's load_from_disk (Directory.py:116-117) substitutes
 			// "Undefined" ONLY for a nil display_name (a saved Python None):
@@ -170,10 +176,12 @@ func (d *Directory) LoadFromDisk(path string) error {
 				}
 			}
 			key := hexKey(sourceHash)
-			d.entries[key] = entry
-			d.entryOrder = append(d.entryOrder, key)
+			entries[key] = entry
+			entryOrder = append(entryOrder, key)
 		}
 	}
+	d.entries = entries
+	d.entryOrder = entryOrder
 
 	d.nodeAnnounces = nil
 	d.peerAnnounces = nil

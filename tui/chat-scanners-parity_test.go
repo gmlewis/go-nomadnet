@@ -336,3 +336,85 @@ type nickLiveWant struct {
 	Nick  string `json:"nick"`
 	Match string `json:"match"`
 }
+
+// TestScanChatSpansMentionsPythonParity drives the PRODUCTION span scanner
+// (scanChatSpans, used by formatRRCBody) over the same battery and compares
+// its mention spans with what Python's _body_markup emits. Python _scan_mentions
+// compiles with re.IGNORECASE and ASCII [A-Za-z0-9_] boundaries
+// (Channels.py:124-129); _scan_nick_mentions yields every other @nick
+// (Channels.py:131-137). The previous production scanner was case-sensitive and
+// emitted no nick_mention spans at all, so @ALICE lost its highlight and
+// @othernick lost its hash color.
+func TestScanChatSpansMentionsPythonParity(t *testing.T) {
+	t.Parallel()
+
+	type mentionSpanInput struct {
+		Text    string `json:"text"`
+		OwnNick string `json:"own_nick"`
+	}
+	cases := []mentionSpanInput{
+		{"Hey @alice!", "alice"},
+		{"Hey @ALICE!", "alice"},
+		{"@alice and @bob", "alice"},
+		{"Hey @bob", "alice"},
+		{"not@bob", "alice"},
+		{"café @bob", "alice"},
+		{"`@alice` code", "alice"},
+		{"@alice_2", "alice"},
+		{"@alice hi @alice", "alice"},
+		{"@Alice and @bob", "Alice"},
+		{"mail@alice.com", "alice"},
+		{"é@alice", "alice"},
+		{"@alice.", "alice"},
+	}
+
+	const script = `
+import sys, json
+import nomadnet.ui.textui.Channels as C
+inputs = json.load(sys.stdin)
+out = []
+for inp in inputs:
+    spans, _ = C._body_markup(inp["text"], "body_text", own_nick=inp["own_nick"], check_links=False)
+    out.append([{"style": s, "text": t} for s, t in spans if s in ("irc_mention", "nick_mention")])
+json.dump(out, sys.stdout)
+`
+
+	var want [][]mentionSpanLiveWant
+	runPythonNomadnet(t, cases, script, &want)
+
+	goKind := func(style string) string {
+		if style == "irc_mention" {
+			return "mention"
+		}
+		return "nick_mention"
+	}
+	for i, c := range cases {
+		t.Run(c.Text, func(t *testing.T) {
+			t.Parallel()
+			var got []chatSpan
+			for _, s := range scanChatSpans(c.Text, c.OwnNick) {
+				if s.kind == "mention" || s.kind == "nick_mention" {
+					got = append(got, s)
+				}
+			}
+			if len(got) != len(want[i]) {
+				t.Fatalf("scanChatSpans(%q, %q) mention spans = %+v, want %v (Python): %+v",
+					c.Text, c.OwnNick, got, len(want[i]), want[i])
+			}
+			for j, w := range want[i] {
+				if got[j].kind != goKind(w.Style) {
+					t.Errorf("span[%v].kind = %q, want %q (Python style %q)",
+						j, got[j].kind, goKind(w.Style), w.Style)
+				}
+				if match := c.Text[got[j].start:got[j].end]; match != w.Text {
+					t.Errorf("span[%v] = %q, want %q (Python)", j, match, w.Text)
+				}
+			}
+		})
+	}
+}
+
+type mentionSpanLiveWant struct {
+	Style string `json:"style"`
+	Text  string `json:"text"`
+}

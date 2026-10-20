@@ -31,7 +31,7 @@ func TestDirectorySaveLoadRoundTrip(t *testing.T) {
 	d := New()
 	rank := 7
 	d.Remember(&Entry{
-		SourceHash:        []byte{1, 2, 3, 4, 5, 6, 7, 8},
+		SourceHash:        hash16(1, 2, 3, 4, 5, 6, 7, 8),
 		DisplayName:       "Alice",
 		TrustLevel:        TrustTrusted,
 		HostsNode:         true,
@@ -41,13 +41,13 @@ func TestDirectorySaveLoadRoundTrip(t *testing.T) {
 		Notes:             "a note",
 	})
 	d.Remember(&Entry{
-		SourceHash:  []byte{9, 9, 9, 9, 9, 9, 9, 9},
+		SourceHash:  hash16(9, 9, 9, 9, 9, 9, 9, 9),
 		DisplayName: "",
 		TrustLevel:  TrustUnknown,
 	})
-	d.PeerAnnounceReceived(Announce{Timestamp: 100, SourceHash: []byte{1}, AppData: []byte("peerdata"), AnnounceType: "peer"}, false)
-	d.NodeAnnounceReceived(Announce{Timestamp: 200, SourceHash: []byte{2}, AppData: []byte("nodedata"), AnnounceType: "node"}, false)
-	d.PNAnnounceReceived(Announce{Timestamp: 300, SourceHash: []byte{3}, AppData: []byte("pndata"), AnnounceType: "pn"}, false)
+	d.PeerAnnounceReceived(Announce{Timestamp: 100, SourceHash: hash16(1), AppData: []byte("peerdata"), AnnounceType: "peer"}, false)
+	d.NodeAnnounceReceived(Announce{Timestamp: 200, SourceHash: hash16(2), AppData: []byte("nodedata"), AnnounceType: "node"}, false)
+	d.PNAnnounceReceived(Announce{Timestamp: 300, SourceHash: hash16(3), AppData: []byte("pndata"), AnnounceType: "pn"}, false)
 
 	if err := d.SaveToDisk(path); err != nil {
 		t.Fatal(err)
@@ -62,7 +62,7 @@ func TestDirectorySaveLoadRoundTrip(t *testing.T) {
 	}
 
 	// entries
-	e := d2.Find([]byte{1, 2, 3, 4, 5, 6, 7, 8})
+	e := d2.Find(hash16(1, 2, 3, 4, 5, 6, 7, 8))
 	if e == nil {
 		t.Fatal("entry not found after load")
 	}
@@ -93,7 +93,7 @@ func TestDirectorySaveLoadRoundTrip(t *testing.T) {
 	// a nil display_name (saved None), never for a saved empty string, so an
 	// empty stored name keeps falling back to the announced app-data name
 	// (Conversation.py:151-152) after a restart.
-	e2 := d2.Find([]byte{9, 9, 9, 9, 9, 9, 9, 9})
+	e2 := d2.Find(hash16(9, 9, 9, 9, 9, 9, 9, 9))
 	if e2 == nil {
 		t.Fatal("second entry not found")
 	}
@@ -137,7 +137,7 @@ func TestRememberEagerPersist(t *testing.T) {
 
 	// First Remember must write the file.
 	d.Remember(&Entry{
-		SourceHash:  []byte{1, 2, 3, 4, 5, 6, 7, 8},
+		SourceHash:  hash16(1, 2, 3, 4, 5, 6, 7, 8),
 		DisplayName: "Alice",
 		TrustLevel:  TrustTrusted,
 		HostsNode:   true,
@@ -151,13 +151,13 @@ func TestRememberEagerPersist(t *testing.T) {
 	if err := d2.LoadFromDisk(path); err != nil {
 		t.Fatal(err)
 	}
-	if e := d2.Find([]byte{1, 2, 3, 4, 5, 6, 7, 8}); e == nil || e.DisplayName != "Alice" {
+	if e := d2.Find(hash16(1, 2, 3, 4, 5, 6, 7, 8)); e == nil || e.DisplayName != "Alice" {
 		t.Fatalf("after reload, entry = %+v, want Alice", e)
 	}
 
 	// A second Remember overwrites the entry and re-saves.
 	d.Remember(&Entry{
-		SourceHash:  []byte{1, 2, 3, 4, 5, 6, 7, 8},
+		SourceHash:  hash16(1, 2, 3, 4, 5, 6, 7, 8),
 		DisplayName: "Alicia",
 		TrustLevel:  TrustTrusted,
 	})
@@ -165,14 +165,14 @@ func TestRememberEagerPersist(t *testing.T) {
 	if err := d3.LoadFromDisk(path); err != nil {
 		t.Fatal(err)
 	}
-	if e := d3.Find([]byte{1, 2, 3, 4, 5, 6, 7, 8}); e == nil || e.DisplayName != "Alicia" {
+	if e := d3.Find(hash16(1, 2, 3, 4, 5, 6, 7, 8)); e == nil || e.DisplayName != "Alicia" {
 		t.Fatalf("after second Remember + reload, entry = %+v, want Alicia", e)
 	}
 
 	// Remember must also persist the announce stream (Python save_to_disk
 	// serializes entries + announce_stream together).
-	d.NodeAnnounceReceived(Announce{Timestamp: 123, SourceHash: []byte{2}, AppData: []byte("nodedata"), AnnounceType: "node"}, false)
-	d.Remember(&Entry{SourceHash: []byte{9, 9, 9, 9, 9, 9, 9, 9}, DisplayName: "Bob", TrustLevel: TrustTrusted})
+	d.NodeAnnounceReceived(Announce{Timestamp: 123, SourceHash: hash16(2), AppData: []byte("nodedata"), AnnounceType: "node"}, false)
+	d.Remember(&Entry{SourceHash: hash16(9, 9, 9, 9, 9, 9, 9, 9), DisplayName: "Bob", TrustLevel: TrustTrusted})
 	d4 := New()
 	if err := d4.LoadFromDisk(path); err != nil {
 		t.Fatal(err)
@@ -192,12 +192,12 @@ func TestRememberNoPersistPath(t *testing.T) {
 	path := filepath.Join(dir, "directory")
 
 	d := New() // no SetPersistPath
-	d.Remember(&Entry{SourceHash: []byte{1, 2, 3, 4}, DisplayName: "Alice", TrustLevel: TrustTrusted})
+	d.Remember(&Entry{SourceHash: hash16(1, 2, 3, 4), DisplayName: "Alice", TrustLevel: TrustTrusted})
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatalf("no persist path: file should not be written, got err=%v", err)
 	}
 	// In-memory state still updated.
-	if e := d.Find([]byte{1, 2, 3, 4}); e == nil || e.DisplayName != "Alice" {
+	if e := d.Find(hash16(1, 2, 3, 4)); e == nil || e.DisplayName != "Alice" {
 		t.Fatalf("in-memory entry = %+v, want Alice", e)
 	}
 }

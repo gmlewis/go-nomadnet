@@ -16,6 +16,7 @@
 package app
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -23,6 +24,16 @@ import (
 	"github.com/gmlewis/go-nomadnet/nomadnet/directory"
 	"github.com/gmlewis/go-reticulum/lxmf"
 )
+
+// hash16 builds a 16-byte source hash from the given leading bytes, zero
+// filled. Directory entries require a full truncated RNS identity hash
+// (directory.SourceHashLength; Python DirectoryEntry raises otherwise,
+// Directory.py:419,433-434).
+func hash16(leading ...byte) []byte {
+	out := make([]byte, 16)
+	copy(out, leading)
+	return out
+}
 
 func mkUnreadConv(t *testing.T, base, hash string) {
 	t.Helper()
@@ -93,8 +104,8 @@ func TestAppShouldPrint(t *testing.T) {
 		a.Dir = directory.New()
 		return a
 	}
-	trusted := []byte{1, 2, 3}
-	untrusted := []byte{4, 5, 6}
+	trusted := hash16(1, 2, 3)
+	untrusted := hash16(4, 5, 6)
 
 	t.Run("disabled", func(t *testing.T) {
 		a := mk()
@@ -127,7 +138,7 @@ func TestAppShouldPrint(t *testing.T) {
 	t.Run("allowed_destinations", func(t *testing.T) {
 		a := mk()
 		a.PrintMessages = true
-		a.AllowedMessagePrintDestinations = []string{"040506"}
+		a.AllowedMessagePrintDestinations = []string{fmt.Sprintf("%x", hash16(4, 5, 6))}
 		if !a.ShouldPrint(&lxmf.Message{SourceHash: untrusted}) {
 			t.Fatal("allowed destination should print")
 		}
@@ -158,7 +169,7 @@ func TestAppCreateDirectoryEntry(t *testing.T) {
 	t.Parallel()
 	a := NewApp(tempDir(t), "", false, false)
 	a.setupPaths()
-	hash := []byte{0xaa, 0xbb}
+	hash := hash16(0xaa, 0xbb)
 	entry := a.CreateDirectoryEntry(hash, "Alice")
 	if entry == nil {
 		t.Fatal("entry should not be nil")
@@ -182,7 +193,7 @@ func TestAppSetPeerTrustLevel(t *testing.T) {
 	t.Parallel()
 	a := NewApp(tempDir(t), "", false, false)
 	a.setupPaths()
-	hash := []byte{0xaa, 0xbb}
+	hash := hash16(0xaa, 0xbb)
 	a.CreateDirectoryEntry(hash, "Alice")
 
 	a.SetPeerTrustLevel(hash, directory.TrustTrusted)
@@ -198,7 +209,7 @@ func TestAppSetPeerTrustLevel(t *testing.T) {
 	}
 
 	// SetPeerTrustLevel on an unknown peer creates the entry.
-	hash2 := []byte{0xcc, 0xdd}
+	hash2 := hash16(0xcc, 0xdd)
 	a.SetPeerTrustLevel(hash2, directory.TrustUntrusted)
 	if e := a.Dir.Find(hash2); e == nil || e.TrustLevel != directory.TrustUntrusted {
 		got := directory.TrustUnknown

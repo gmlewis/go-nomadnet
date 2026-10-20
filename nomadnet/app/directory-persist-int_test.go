@@ -53,7 +53,7 @@ func TestDirectoryPersistsAcrossShutdown(t *testing.T) {
 		t.Fatalf("InitWithTransport #1: %v", err)
 	}
 
-	peerHash := make([]byte, 32)
+	peerHash := make([]byte, directory.SourceHashLength)
 	for i := range peerHash {
 		peerHash[i] = byte(i + 1)
 	}

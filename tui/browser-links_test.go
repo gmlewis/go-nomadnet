@@ -155,7 +155,7 @@ func TestBrowserHandleRRCLink(t *testing.T) {
 	bd := NewBrowserDisplay(app)
 
 	var hubHash, room string
-	bd.OnOpenRRC = func(hash, r string) { hubHash = hash; room = r }
+	bd.OnOpenRRC = func(hash, r, _ string) { hubHash = hash; room = r }
 
 	bd.HandleRRCLink("aabb1122aabb1122aabb1122aabb1122/general")
 
@@ -287,7 +287,7 @@ func TestBrowserHandleLink(t *testing.T) {
 			var gotError string
 
 			bd.OnJumpAnchor = func(name string) { gotAnchor = name }
-			bd.OnOpenRRC = func(hub, room string) { gotRRCHub = hub; gotRRCRoom = room }
+			bd.OnOpenRRC = func(hub, room, _ string) { gotRRCHub = hub; gotRRCRoom = room }
 			bd.OnOpenLXMF = func(hash string) { gotLXMFHash = hash }
 			bd.OnRetrieveURL = func(url string, requestData map[string]string) { gotNodeURL = url }
 			bd.OnPartialUpdate = func(ids []string) { gotPartialIDs = ids }

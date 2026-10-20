@@ -25,7 +25,7 @@ func TestCreateDirectoryEntry(t *testing.T) {
 	t.Parallel()
 	a := NewApp(tempDir(t), "", false, false)
 	a.setupPaths()
-	hash := []byte{1, 2, 3, 4}
+	hash := hash16(1, 2, 3, 4)
 	entry := a.CreateDirectoryEntry(hash, "alice")
 	if entry == nil {
 		t.Fatal("expected entry")
@@ -39,7 +39,7 @@ func TestSaveNodeAndForget(t *testing.T) {
 	t.Parallel()
 	a := NewApp(tempDir(t), "", false, false)
 	a.setupPaths()
-	hash := []byte{9, 9, 9}
+	hash := hash16(9, 9, 9)
 	a.SaveNode(hash, "node1")
 	if a.Dir.Find(hash) == nil {
 		t.Fatal("SaveNode did not remember entry")
@@ -57,7 +57,7 @@ func TestSaveConnectedNodeHostsNode(t *testing.T) {
 	t.Parallel()
 	a := NewApp(tempDir(t), "", false, false)
 	a.setupPaths()
-	hash := []byte{1, 2, 3, 4}
+	hash := hash16(1, 2, 3, 4)
 	entry := a.SaveConnectedNode(hash, "Some Node")
 	if entry == nil || !entry.HostsNode {
 		t.Fatalf("SaveConnectedNode entry HostsNode = %v, want true", entry)
@@ -66,7 +66,7 @@ func TestSaveConnectedNodeHostsNode(t *testing.T) {
 		t.Fatalf("remembered entry = %+v, want DisplayName=Some Node HostsNode=true", got)
 	}
 	// Generic SaveNode does NOT set HostsNode.
-	hash2 := []byte{5, 6, 7, 8}
+	hash2 := hash16(5, 6, 7, 8)
 	a.SaveNode(hash2, "peer")
 	if got := a.Dir.Find(hash2); got == nil || got.HostsNode {
 		t.Fatalf("SaveNode entry HostsNode = %v, want false", got)
@@ -78,21 +78,21 @@ func TestForgetNodeNilDir(t *testing.T) {
 	a := NewApp(tempDir(t), "", false, false)
 	a.setupPaths()
 	a.Dir = nil
-	a.ForgetNode([]byte{1}) // must not panic
+	a.ForgetNode(hash16(1)) // must not panic
 }
 
 func TestSetPeerDisplayName(t *testing.T) {
 	t.Parallel()
 	a := NewApp(tempDir(t), "", false, false)
 	a.setupPaths()
-	hash := []byte{7, 7}
+	hash := hash16(7, 7)
 	a.CreateDirectoryEntry(hash, "")
 	a.SetPeerDisplayName(hash, "bob")
 	if got := a.PeerDisplayName(hash); got != "bob" {
 		t.Fatalf("PeerDisplayName=%q want bob", got)
 	}
 	// SetPeerDisplayName on an unknown peer creates the entry.
-	hash2 := []byte{8, 8}
+	hash2 := hash16(8, 8)
 	a.SetPeerDisplayName(hash2, "carol")
 	if got := a.PeerDisplayName(hash2); got != "carol" {
 		t.Fatalf("PeerDisplayName=%q want carol", got)
@@ -108,7 +108,7 @@ func TestRememberPeerInfoRoundTrip(t *testing.T) {
 	t.Parallel()
 	a := NewApp(tempDir(t), "", false, false)
 	a.setupPaths()
-	hash := []byte{0xaa, 0xbb, 0xcc}
+	hash := hash16(0xaa, 0xbb, 0xcc)
 
 	// A peer with no entry loads the Python defaults: Unknown trust, direct
 	// delivery, unpinned, empty notes.
@@ -182,9 +182,12 @@ func TestRememberPeerInfoPreservesNodeFlags(t *testing.T) {
 	a := NewApp(tempDir(t), "", false, false)
 	a.setupPaths()
 	a.Dir = directory.New()
-	hash := []byte{0x01, 0x02, 0x03}
+	hash := hash16(0x01, 0x02, 0x03)
 
-	entry := directory.NewEntry(hash)
+	entry, err := directory.NewEntry(hash)
+	if err != nil {
+		t.Fatalf("NewEntry: %v", err)
+	}
 	entry.HostsNode = true
 	entry.IdentifyOnConnect = true
 	a.Dir.Remember(entry)
@@ -213,7 +216,7 @@ func TestRemoveAnnounce(t *testing.T) {
 	ts := 12345.6
 	a.Dir.PeerAnnounceReceived(directory.Announce{
 		Timestamp:  ts,
-		SourceHash: []byte{1},
+		SourceHash: hash16(1),
 	}, false)
 	if len(a.Dir.AnnounceStream()) != 1 {
 		t.Fatalf("expected 1 announce, got %v", len(a.Dir.AnnounceStream()))
@@ -229,12 +232,17 @@ func TestRemoveAnnounce(t *testing.T) {
 
 func TestSourceHashFromHex(t *testing.T) {
 	t.Parallel()
-	b, ok := SourceHashFromHex("01020304")
-	if !ok || len(b) != 4 || b[0] != 1 {
+	b, ok := SourceHashFromHex("0102030405060708090a0b0c0d0e0f10")
+	if !ok || len(b) != 16 || b[0] != 1 {
 		t.Fatalf("decode got %v ok=%v", b, ok)
 	}
 	if _, ok := SourceHashFromHex("not-hex"); ok {
 		t.Fatal("expected invalid hex")
+	}
+	// Python cannot build a DirectoryEntry from a short hash
+	// (Directory.py:419,433-434), so neither can the UI path.
+	if _, ok := SourceHashFromHex("01020304"); ok {
+		t.Fatal("expected a short hash to be rejected")
 	}
 }
 
@@ -255,7 +263,7 @@ func TestPeerStampCostNilGuards(t *testing.T) {
 	t.Parallel()
 	a := NewApp(tempDir(t), "", false, false)
 	a.setupPaths()
-	hash := []byte{0xaa, 0xbb, 0xcc}
+	hash := hash16(0xaa, 0xbb, 0xcc)
 
 	if got := a.PeerStampCost(hash); got != nil {
 		t.Errorf("PeerStampCost with no router/transport = %v, want nil", *got)
@@ -272,7 +280,7 @@ func TestPeerHopsNilGuards(t *testing.T) {
 	t.Parallel()
 	a := NewApp(tempDir(t), "", false, false)
 	a.setupPaths()
-	hash := []byte{0xaa, 0xbb, 0xcc}
+	hash := hash16(0xaa, 0xbb, 0xcc)
 
 	if got := a.PeerHops(hash); got != nil {
 		t.Errorf("PeerHops with no transport = %v, want nil", *got)

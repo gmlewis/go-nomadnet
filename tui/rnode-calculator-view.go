@@ -16,6 +16,8 @@
 package tui
 
 import (
+	"time"
+
 	"github.com/gmlewis/tcell/v2"
 	"github.com/gmlewis/tview"
 )
@@ -26,6 +28,11 @@ import (
 // the trailing note — ten rows, matching Python's RNodeCalculator layout
 // (Interfaces.py:244-273).
 const rnodeCalculatorHeight = 10
+
+// rnodeCalculatorDebounce is Python's recompute delay: _queue_update cancels
+// and re-arms a 0.3 s alarm on every field change (Interfaces.py:291-302), so
+// typing a value costs one recompute, not one per keystroke.
+const rnodeCalculatorDebounce = 300 * time.Millisecond
 
 // RNodeCalculatorView is the "On-Air Calculations" panel the RNode Add/Edit
 // form reveals behind the "Show On-Air Calculations" button, mirroring Python's
@@ -46,12 +53,27 @@ type RNodeCalculatorView struct {
 	// (bandwidth / spreadingfactor / codingrate / txpower). Nil leaves each
 	// value at Python's per-field default.
 	FieldValue func(key string) (string, bool)
+
+	// debounce coalesces the field-change burst into Python's single delayed
+	// recompute (Interfaces.py:291-302).
+	debounce *debouncedCall
 }
 
 // NewRNodeCalculatorView builds the on-air calculator panel. fieldValue reads
 // the parent form's parameter fields; nil falls back to Python's defaults.
 func NewRNodeCalculatorView(app *App, fieldValue func(key string) (string, bool)) *RNodeCalculatorView {
+	return newRNodeCalculatorView(app, fieldValue, nil)
+}
+
+// newRNodeCalculatorView is the test seam: a non-nil clock makes the 0.3 s
+// debounce deterministic instead of wall-clock.
+func newRNodeCalculatorView(app *App, fieldValue func(key string) (string, bool), clk clock) *RNodeCalculatorView {
 	c := &RNodeCalculatorView{app: app, FieldValue: fieldValue}
+	if clk != nil {
+		c.debounce = newDebouncedCallWithClock(rnodeCalculatorDebounce, c.debouncedUpdate, clk)
+	} else {
+		c.debounce = NewDebouncedCall(rnodeCalculatorDebounce, c.debouncedUpdate)
+	}
 
 	kr := &killRing{}
 	if app != nil && app.killRing != nil {
@@ -63,10 +85,10 @@ func NewRNodeCalculatorView(app *App, fieldValue func(key string) (string, bool)
 	c.antennaGain.SetFieldBackgroundColor(tcell.ColorDefault)
 
 	// Python connects the 'change' signal of both edits (and the parent's RNode
-	// fields) to a debounced recompute (Interfaces.py:284-294); recompute on
-	// every keystroke here, which is visually identical and has no timer.
-	c.noiseFloor.SetChangedFunc(func(string) { c.Update() })
-	c.antennaGain.SetChangedFunc(func(string) { c.Update() })
+	// fields) to a debounced recompute (Interfaces.py:284-302); every change
+	// re-arms the 0.3 s timer, so a burst of keystrokes recomputes once.
+	c.noiseFloor.SetChangedFunc(func(string) { c.QueueUpdate() })
+	c.antennaGain.SetChangedFunc(func(string) { c.QueueUpdate() })
 
 	c.dataRate = tview.NewTextView().SetDynamicColors(false)
 	c.linkBudget = tview.NewTextView().SetDynamicColors(false)
@@ -113,6 +135,27 @@ func (c *RNodeCalculatorView) Widget() tview.Primitive { return c.widget }
 
 // Height returns the panel's fixed row count.
 func (c *RNodeCalculatorView) Height() int { return rnodeCalculatorHeight }
+
+// QueueUpdate schedules Python's delayed recompute (Interfaces.py:291-302):
+// each change cancels the pending alarm and re-arms it 0.3 s out, so a typing
+// burst produces one recalculation.
+func (c *RNodeCalculatorView) QueueUpdate() {
+	if c == nil || c.debounce == nil {
+		return
+	}
+	c.debounce.Trigger()
+}
+
+// debouncedUpdate applies a due recompute. The timer runs off the event loop,
+// so view mutations are marshalled onto it when an app is available; a bare
+// calculator (tests, construction) updates directly.
+func (c *RNodeCalculatorView) debouncedUpdate() {
+	if c.app != nil {
+		c.app.QueueUpdateDraw(c.Update)
+		return
+	}
+	c.Update()
+}
 
 // Update recomputes the readout from the current field and edit values,
 // mirroring Python's RNodeCalculator.update_calculation (Interfaces.py:296-366).

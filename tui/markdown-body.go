@@ -66,11 +66,11 @@ func markdownToMicronBody(content string) string {
 // A non-positive width falls back to the converter's own 80 columns, which the first
 // layout then replaces.
 //
-// The returned string is tview colour-tag markup, ready to append to a dynamic-colors
+// The returned string is tview color-tag markup, ready to append to a dynamic-colors
 // TextView: StyledLinesToTviewText escapes each span's text, so a message containing
 // "[" cannot inject a tag.
 func markdownMessageBodyText(content string, theme int, width int) string {
-	// Python's default_fg for a message body, not the theme's plain colour: "bbb" on
+	// Python's default_fg for a message body, not the theme's plain color: "bbb" on
 	// the dark palette, "444" on the light one (Conversations.py:2715).
 	defaultFG := "bbb"
 	if theme == ThemeLight {

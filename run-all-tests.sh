@@ -213,6 +213,26 @@ if [[ -s "${STATICCHECK_LOG}" ]]; then
 fi
 echo "staticcheck: clean (SA* + U1000, with integration tags)"
 
+echo "Compiling build variants (tags the default ./... run never sees)..."
+VARIANTS_LOG="build-variants.log"
+: > "${VARIANTS_LOG}"
+for tags in no_tui embedded pocket_communicator pocket_hub; do
+    if ! go build -o /dev/null -tags "${tags}" ./cmd/gonomadnet >>"${VARIANTS_LOG}" 2>&1; then
+        echo "FAIL: cmd/gonomadnet did not compile with -tags ${tags} (see ${VARIANTS_LOG}):" >&2
+        cat "${VARIANTS_LOG}" >&2
+        exit 1
+    fi
+done
+# pty/open-other.go (//go:build !linux) is otherwise only compiled on darwin.
+if ! CGO_ENABLED=0 GOOS=freebsd GOARCH=amd64 go build -o /dev/null ./pty >>"${VARIANTS_LOG}" 2>&1; then
+    echo "FAIL: ./pty did not compile for freebsd (//go:build !linux), see ${VARIANTS_LOG}:" >&2
+    cat "${VARIANTS_LOG}" >&2
+    exit 1
+fi
+# cmd/gonomadnet's //go:build ios file needs Apple's clang (scripts/build-ios-app.sh),
+# so the iOS slice is built by that script rather than here; there is no iOS CI job.
+echo "build variants: clean (no_tui, embedded, pocket_communicator, pocket_hub, pty/!linux)"
+
 echo "Running deadcode (advisory, whole-program reachability)..."
 bash "${REPO_ROOT}/scripts/deadcode-check.sh"
 

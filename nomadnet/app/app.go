@@ -1334,11 +1334,13 @@ func (a *App) handleNodeAnnounce(destHash []byte, identity *rns.Identity, appDat
 		if a.Dir.TrustLevel(associatedPeer, nil) == directory.TrustTrusted {
 			existing := a.Dir.Find(destHash)
 			if existing == nil {
-				nodeEntry := directory.NewEntry(destHash)
-				nodeEntry.DisplayName = displayName
-				nodeEntry.TrustLevel = directory.TrustTrusted
-				nodeEntry.HostsNode = true
-				a.Dir.Remember(nodeEntry)
+				nodeEntry, err := directory.NewEntry(destHash)
+				if err == nil {
+					nodeEntry.DisplayName = displayName
+					nodeEntry.TrustLevel = directory.TrustTrusted
+					nodeEntry.HostsNode = true
+					a.Dir.Remember(nodeEntry)
+				}
 			}
 		}
 	}

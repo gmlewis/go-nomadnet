@@ -50,7 +50,11 @@ func main() {
 			fmt.Fprintf(os.Stderr, "bad hash %v: %v\n", n.hash, err)
 			continue
 		}
-		entry := directory.NewEntry(hashBytes)
+		entry, err := directory.NewEntry(hashBytes)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "bad hash %v: %v\n", n.hash, err)
+			continue
+		}
 		entry.DisplayName = n.name
 		entry.HostsNode = true
 		d.Remember(entry)

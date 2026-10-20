@@ -420,6 +420,65 @@ func (cd *ChannelsDisplay) showDialogOverlayConfirm(title, message string, onYes
 	wireDialogNav(cd.app, close, []tview.Primitive{yes, no})
 }
 
+// ShowConfirmNewHub shows Python's "Open RRC hub?" privacy confirmation, which
+// a browser rrc:// link must pass before a hub is added and saved
+// (Channels.py:1960-2003, Browser.py:455-461). onOpen performs the add/save and
+// returns an error: the reference keeps the dialog open and shows
+// "Could not add hub: …" in that case.
+func (cd *ChannelsDisplay) ShowConfirmNewHub(hubHash []byte, destName, room string, onOpen func() error) {
+	colors := GetThemeColors(ThemeDark)
+	if cd.app != nil {
+		colors = GetThemeColors(cd.app.Theme)
+	}
+	aspect := destName
+	if aspect == "" {
+		aspect = "rrc.hub"
+	}
+	roomStr := "(none)"
+	if room != "" {
+		roomStr = "#" + room
+	}
+	errText := NewUrwidLeftText("").SetTextColor(colors["error_text"])
+
+	layout := tview.NewFlex().SetDirection(tview.FlexRow)
+	add := func(text string, color tcell.Color) {
+		layout.AddItem(NewUrwidLeftText(text).SetTextColor(color), 1, 0, false)
+	}
+	add("", tcell.ColorDefault)
+	add("  A page is requesting to open an RRC hub.", tcell.ColorDefault)
+	add("", tcell.ColorDefault)
+	add("  Address : "+fmt.Sprintf("%x", hubHash), tcell.ColorDefault)
+	add("  Aspect  : "+aspect, tcell.ColorDefault)
+	add("  Room    : "+roomStr, tcell.ColorDefault)
+	add("", tcell.ColorDefault)
+	add("  Opening will add this hub to your client,", colors["list_unknown"])
+	add("  and reveal your identity hash to the hub", colors["list_unknown"])
+	add("  to the hub operator.", colors["list_unknown"])
+	add("", tcell.ColorDefault)
+	layout.AddItem(errText, 1, 0, false)
+
+	open := NewUrwidButton("Open").SetSelectedFunc(func() {
+		if onOpen != nil {
+			if err := onOpen(); err != nil {
+				errText.SetText("Could not add hub: " + err.Error())
+				return
+			}
+		}
+		cd.closeDialog()
+	})
+	cancel := NewUrwidButton("Cancel").SetSelectedFunc(cd.closeDialog)
+	row := newURWIDColumns(0, open, tview.NewBox(), cancel).
+		SetWeight(0, 45).SetWeight(1, 10).SetWeight(2, 45)
+	layout.AddItem(row, 1, 0, true)
+
+	dialog := NewDialogLineBox("Open RRC hub?", layout, cd.closeDialog)
+	// 12 text rows + the button row, plus the two border rows.
+	cd.showDialogOverlay(dialog, 13+2)
+	if cd.app != nil {
+		wireDialogNav(cd.app, cd.closeDialog, []tview.Primitive{open, cancel})
+	}
+}
+
 // populateRooms fills the room list from the given channel infos.
 func (cd *ChannelsDisplay) populateRooms(rooms []ChannelInfo) {
 	cd.rooms.Clear()

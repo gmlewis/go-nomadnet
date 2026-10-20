@@ -179,6 +179,13 @@ func runTextUI(configDir, rnsConfigDir string) {
 	if len(a.RRCNickColorsTheme) > 0 {
 		rrcPalette = a.RRCNickColorsTheme
 	}
+	// With rrc_nick_colors on, Python colors an own mention and its timestamp
+	// with get_nick_color(app.identity.hash, …) (Channels.py:1350-1353), so the
+	// local identity hash travels with the render options.
+	var ownHash string
+	if a.Identity != nil {
+		ownHash = strings.ToLower(fmt.Sprintf("%x", a.Identity.Hash))
+	}
 	tuiApp.RRCRender = tui.RRCRenderOpts{
 		Theme:                  theme,
 		Palette:                rrcPalette,
@@ -187,6 +194,7 @@ func runTextUI(configDir, rnsConfigDir string) {
 		ColorMentionTimestamps: a.RRCColorMentionTimestamps,
 		JustifyMsgs:            a.RRCUIJustifyMsgs,
 		OwnNick:                a.RRC.GetNickname(),
+		OwnHash:                ownHash,
 		Glyphs:                 tuiApp.Glyphs,
 	}
 
@@ -853,6 +861,16 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		}
 		a.SetUserSelectedPropagationNode(hash)
 	}
+	// [Request keys] in the "Keys Unknown" dialog asks the network for the
+	// announced destination's path, exactly Python's
+	// RNS.Transport.request_path(announce[1]) (Network.py:352).
+	networkDisplay.OnRequestKeys = func(sourceHash string) {
+		hash, ok := app.SourceHashFromHex(sourceHash)
+		if !ok {
+			return
+		}
+		a.QueryForPeer(hash)
+	}
 	// Resolve directory-backed fields for the AnnounceInfo view (Python
 	// AnnounceInfo __init__: trust_level, simplest_display_str, op_str). The
 	// operator string for a node announce recalls the identity and derives the
@@ -872,6 +890,11 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 			data.OpStr = a.NodeOperatorDisplay(hash)
 			if opHash := a.NodeOperatorHash(hash); opHash != nil {
 				data.OpHash = fmt.Sprintf("%x", opHash)
+			} else {
+				// Python's AnnounceInfo raises KeyError here and the Network
+				// display offers the "Keys Unknown" dialog (Network.py:138-141,
+				// 337-385).
+				data.KeysUnknown = true
 			}
 		}
 		switch a.Dir.TrustLevel(hash, nil) {
@@ -961,7 +984,10 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		if !ok {
 			return
 		}
-		entry := directory.NewEntry(hash)
+		entry, err := directory.NewEntry(hash)
+		if err != nil {
+			return
+		}
 		entry.DisplayName = fd.Name
 		entry.HostsNode = true
 		entry.IdentifyOnConnect = fd.IdentifyOnConnect
@@ -2237,7 +2263,11 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	// appear here — a known gap vs Python, which enumerates them from the config.
 	interfacesDisplay := tui.NewInterfacesDisplay(tuiApp, nil)
 	main.SetDisplay("interfaces", interfacesDisplay.Widget())
-	main.SetShortcut("interfaces", "[C-a] Add Interface [C-e] Edit Interface [C-x] Remove Interface [Enter] Show Interface [C-w] Open Text Editor")
+	// The bar follows the sub-view Python switches it for: list default,
+	// ShowInterface's h/v hints, and the Add/Edit form bar
+	// (Interfaces.py:2219,3205-3215). The display refreshes it on each switch
+	// because the active page itself never changes.
+	main.SetShortcutCallback("interfaces", interfacesDisplay.ShortcutText)
 
 	// interfaceInfos snapshots the live transport interfaces into the
 	// InterfaceInfo shape the display consumes.
@@ -2594,7 +2624,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 			conversationsDisplay.DisplayConversation(hashHex)
 			main.SelectPage("conversations")
 		}
-		bd.OnOpenRRC = func(hubHex, room string) {
+		bd.OnOpenRRC = func(hubHex, room, destName string) {
 			hubHex = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(hubHex)), "0x")
 			hashBytes, err := hex.DecodeString(hubHex)
 			if err != nil || len(hashBytes) != 16 {
@@ -2606,37 +2636,51 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 			if a.RRC == nil {
 				return
 			}
-			// Python Browser.handle_rrc_link (Browser.py:426-463): show
-			// Channels, then select the hub/room. For a new hub it opens a
-			// confirm dialog; Go adds the hub directly (same net effect once
-			// confirmed) and follows _select_room: SetActive + auto-connect.
+			roomNorm := strings.ToLower(strings.TrimSpace(room))
+			// selectHub follows Python's _select_room: SetActive + auto-connect.
 			// A disconnected hub's stored rooms are re-joined on WELCOME
 			// (RRCManager.OnWelcome / Python _on_welcome), so JoinRoom only
 			// needs to fire when already connected.
-			hub := a.RRC.FindHub(hashBytes, "rrc.hub")
-			if hub == nil {
-				hub = a.RRC.AddHub(hashBytes, "rrc.hub", "")
-				if err := a.RRC.Save(); err != nil && a.Logger != nil {
-					a.Logger.Error("Could not save RRC hubs: %v", err)
-				}
-			}
-			roomNorm := strings.ToLower(strings.TrimSpace(room))
-			a.RRC.SetActive(hub, roomNorm)
-			tui.MaybeAutoconnect(hub)
-			if roomNorm != "" {
-				wasJoined := hub.HasRoom(roomNorm)
-				hub.AddRoom(roomNorm)
-				if hub.GetHubStatus() == rrc.StatusConnected && !wasJoined {
-					hub.JoinRoom(roomNorm, false)
-				}
-			}
-			tuiApp.QueueUpdateDraw(func() {
-				channelsDisplay.SetHubs(a.HubViews())
+			selectHub := func(hub *rrc.RRCHub) {
+				a.RRC.SetActive(hub, roomNorm)
+				tui.MaybeAutoconnect(hub)
 				if roomNorm != "" {
-					channelsDisplay.ShowRoom(hubIndexFor(a, hub), roomNorm, rrcRoomMessages(hub, roomNorm))
+					wasJoined := hub.HasRoom(roomNorm)
+					hub.AddRoom(roomNorm)
+					if hub.GetHubStatus() == rrc.StatusConnected && !wasJoined {
+						hub.JoinRoom(roomNorm, false)
+					}
 				}
-			})
+				tuiApp.QueueUpdateDraw(func() {
+					channelsDisplay.SetHubs(a.HubViews())
+					if roomNorm != "" {
+						channelsDisplay.ShowRoom(hubIndexFor(a, hub), roomNorm, rrcRoomMessages(hub, roomNorm))
+					}
+				})
+				main.SelectPage("channels")
+			}
+			// Python find_hub defaults dest_name to DEFAULT_DEST_NAME
+			// (RRC.py:1379-1380), so "rrc.hub" is the aspect a bare link means.
+			lookupDest := destName
+			if lookupDest == "" {
+				lookupDest = rrc.DefaultDestName
+			}
+			if hub := a.RRC.FindHub(hashBytes, lookupDest); hub != nil {
+				selectHub(hub)
+				return
+			}
+			// A new hub first shows Channels, then Python's privacy confirmation
+			// (Browser.py:455-461, Channels.py:1960-2003); the hub is added and
+			// saved only on Open.
 			main.SelectPage("channels")
+			channelsDisplay.ShowConfirmNewHub(hashBytes, destName, roomNorm, func() error {
+				hub := a.RRC.AddHub(hashBytes, destName, "")
+				if err := a.RRC.Save(); err != nil {
+					return err
+				}
+				selectHub(hub)
+				return nil
+			})
 		}
 		// Chat links: a link a reader clicks inside a chat or notice row does what
 		// the same link does on a Micron page. Python's Channels chat delegate

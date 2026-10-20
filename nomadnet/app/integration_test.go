@@ -278,7 +278,10 @@ func TestIntegrationNodeAnnounceCreatesKnownNodeForTrustedPeer(t *testing.T) {
 	defer cleanup()
 
 	peerHash := rns.CalculateHash(appA.Identity, "lxmf", "delivery")
-	entry := directory.NewEntry(peerHash)
+	entry, err := directory.NewEntry(peerHash)
+	if err != nil {
+		t.Fatalf("NewEntry: %v", err)
+	}
 	entry.DisplayName = "TrustedPeer"
 	entry.TrustLevel = directory.TrustTrusted
 	appB.Dir.Remember(entry)

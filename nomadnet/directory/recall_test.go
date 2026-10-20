@@ -39,7 +39,7 @@ func TestIsKnown(t *testing.T) {
 	if !d.IsKnown(dest.Hash) {
 		t.Error("known destination should be reported as known")
 	}
-	if d.IsKnown([]byte{0xff, 0xff, 0xff, 0xff}) {
+	if d.IsKnown(hash16(0xff, 0xff, 0xff, 0xff)) {
 		t.Error("unknown destination should not be known")
 	}
 }
@@ -70,7 +70,7 @@ func TestPNTrustLevel(t *testing.T) {
 	}
 
 	// Unknown PN source -> ok=false
-	if _, ok := d.PNTrustLevel([]byte{0, 0, 0, 0}); ok {
+	if _, ok := d.PNTrustLevel(hash16(0, 0, 0, 0)); ok {
 		t.Error("PNTrustLevel for unrecalled identity should return ok=false")
 	}
 }

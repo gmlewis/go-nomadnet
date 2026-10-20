@@ -275,7 +275,7 @@ type BrowserDisplay struct {
 	OnToggleFullscreen func()
 	OnCopyURL          func()
 	OnOpenLXMF         func(hash string)
-	OnOpenRRC          func(hubHex, room string)
+	OnOpenRRC          func(hubHex, room, destName string)
 	OnBrowserError     func(msg string)
 	OnJumpAnchor       func(name string)
 	OnRetrieveURL      func(url string, requestData map[string]string)

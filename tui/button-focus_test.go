@@ -29,7 +29,7 @@ import (
 // only where they are wrapped in an AttrMap, which these are not. urwid shows focus as a
 // HARDWARE CURSOR on the label's first cell (SelectableIcon cursor position 0).
 //
-// So there is no colour difference to assert between focused and unfocused: the same
+// So there is no color difference to assert between focused and unfocused: the same
 // cells carry the same style in both states, and the focus indicator is the cursor. §3.1
 // item 4 reported "no focus highlight" from a `tmux capture-pane -e` capture, which
 // cannot show a hardware cursor — the measurement could never have found one.

@@ -16,6 +16,8 @@
 package tui
 
 import (
+	"bytes"
+	"errors"
 	"strings"
 	"testing"
 
@@ -458,5 +460,99 @@ func TestChannelsMemberClickFiresUserInfo(t *testing.T) {
 	}
 	if gotNick != "alice" || gotHash != "aa11" {
 		t.Errorf("OnMemberClick = (%q, %q), want (%q, %q)", gotNick, gotHash, "alice", "aa11")
+	}
+}
+
+// TestChannelsConfirmNewHubDialog pins Python's confirm_new_hub_dialog
+// (Channels.py:1960-2003), shown when an rrc:// link names a hub that is not
+// already known (Browser.py:455-461): the "Open RRC hub?" privacy warning, the
+// address/aspect/room lines, and Open/Cancel. Open adds the hub (the wiring's
+// callback); a failure keeps the dialog open with "Could not add hub: …".
+func TestChannelsConfirmNewHubDialog(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	cd := NewChannelsDisplay(app, nil)
+	hubHash := bytes.Repeat([]byte{0xab}, 16)
+	hex := strings.Repeat("ab", 16)
+
+	var opened int
+	var openErr error
+	cd.ShowConfirmNewHub(hubHash, "rrc.custom", "general", func() error {
+		opened++
+		return openErr
+	})
+	if cd.dialogOverlay == nil {
+		t.Fatal("confirm_new_hub_dialog did not open the overlay")
+	}
+	if got := cd.dialogOverlay.Dialog().GetTitle(); got != "Open RRC hub?" {
+		t.Errorf("dialog title = %q, want %q (Channels.py:1996)", got, "Open RRC hub?")
+	}
+	text := dialogText(t, cd)
+	for _, want := range []string{
+		"  A page is requesting to open an RRC hub.",
+		"  Address : " + hex,
+		"  Aspect  : rrc.custom",
+		"  Room    : #general",
+		"  Opening will add this hub to your client,",
+		"  and reveal your identity hash to the hub",
+		"  to the hub operator.",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("dialog text %q missing %q", text, want)
+		}
+	}
+
+	// Cancel dismisses without adding.
+	dialogButton(t, cd, "Cancel").InputHandler()(
+		tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone), func(tview.Primitive) {})
+	if cd.dialogOverlay != nil {
+		t.Error("Cancel must close the dialog")
+	}
+	if opened != 0 {
+		t.Errorf("Cancel added the hub (%v calls)", opened)
+	}
+
+	// A failure keeps the dialog open and reports it.
+	openErr = errors.New("hub refused")
+	cd.ShowConfirmNewHub(hubHash, "rrc.custom", "general", func() error {
+		opened++
+		return openErr
+	})
+	dialogButton(t, cd, "Open").InputHandler()(
+		tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone), func(tview.Primitive) {})
+	if cd.dialogOverlay == nil {
+		t.Fatal("a failed Open must leave the dialog open (Channels.py:1975-1976)")
+	}
+	if got := dialogText(t, cd); !strings.Contains(got, "Could not add hub: hub refused") {
+		t.Errorf("dialog text %q missing the error line", got)
+	}
+
+	// A successful Open adds the hub and closes.
+	openErr = nil
+	dialogButton(t, cd, "Open").InputHandler()(
+		tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone), func(tview.Primitive) {})
+	if cd.dialogOverlay != nil {
+		t.Error("a successful Open must close the dialog")
+	}
+	if opened != 2 {
+		t.Errorf("Open fired %v times, want 2", opened)
+	}
+}
+
+// TestChannelsConfirmNewHubDialogDefaults pins the absent-value spellings:
+// Aspect defaults to "rrc.hub" and an empty room renders "(none)"
+// (Channels.py:1971-1973).
+func TestChannelsConfirmNewHubDialogDefaults(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	cd := NewChannelsDisplay(app, nil)
+	cd.ShowConfirmNewHub(bytes.Repeat([]byte{0x01}, 16), "", "", func() error { return nil })
+	text := dialogText(t, cd)
+	for _, want := range []string{"  Aspect  : rrc.hub", "  Room    : (none)"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("dialog text %q missing %q", text, want)
+		}
 	}
 }

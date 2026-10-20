@@ -20,8 +20,8 @@ import "testing"
 func TestRemoveAnnounceWithTimestampPerStream(t *testing.T) {
 	t.Parallel()
 	d := New()
-	d.PeerAnnounceReceived(Announce{Timestamp: 10, SourceHash: []byte{1}, AnnounceType: "peer"}, false)
-	d.PNAnnounceReceived(Announce{Timestamp: 20, SourceHash: []byte{2}, AnnounceType: "pn"}, false)
+	d.PeerAnnounceReceived(Announce{Timestamp: 10, SourceHash: hash16(1), AnnounceType: "peer"}, false)
+	d.PNAnnounceReceived(Announce{Timestamp: 20, SourceHash: hash16(2), AnnounceType: "pn"}, false)
 
 	d.RemoveAnnounceWithTimestamp(10)
 	if len(d.PeerAnnounces()) != 0 {

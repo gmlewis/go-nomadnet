@@ -17,8 +17,25 @@ package directory
 
 import (
 	"bytes"
+	"encoding/hex"
+	"errors"
+	"os"
+	"path/filepath"
 	"testing"
+
+	rnsmsgpack "github.com/gmlewis/go-reticulum/rns/msgpack"
 )
+
+// hash16 builds a 16-byte source hash from the given leading bytes, zero
+// filled. Directory entries require a full truncated RNS identity hash
+// (SourceHashLength; Python DirectoryEntry raises for anything else,
+// Directory.py:419,433-434), so test fixtures use this rather than a short
+// literal.
+func hash16(leading ...byte) []byte {
+	out := make([]byte, SourceHashLength)
+	copy(out, leading)
+	return out
+}
 
 func TestTrustLevels(t *testing.T) {
 	t.Parallel()
@@ -51,11 +68,14 @@ func TestDeliveryTypes(t *testing.T) {
 func TestNewEntry(t *testing.T) {
 	t.Parallel()
 
-	hash := []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08}
-	entry := NewEntry(hash)
+	hash := hash16(0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08)
+	entry, err := NewEntry(hash)
+	if err != nil {
+		t.Fatalf("NewEntry(%v): %v", hash, err)
+	}
 
-	if len(entry.SourceHash) != 8 {
-		t.Errorf("SourceHash len = %v, want 8", len(entry.SourceHash))
+	if len(entry.SourceHash) != SourceHashLength {
+		t.Errorf("SourceHash len = %v, want %v", len(entry.SourceHash), SourceHashLength)
 	}
 	if entry.TrustLevel != TrustUnknown {
 		t.Errorf("TrustLevel = 0x%02X, want 0x%02X", entry.TrustLevel, TrustUnknown)
@@ -78,8 +98,11 @@ func TestRememberAndFind(t *testing.T) {
 	t.Parallel()
 
 	d := New()
-	hash := []byte{0xAA, 0xBB, 0xCC, 0xDD}
-	entry := NewEntry(hash)
+	hash := hash16(0xAA, 0xBB, 0xCC, 0xDD)
+	entry, err := NewEntry(hash)
+	if err != nil {
+		t.Fatalf("NewEntry(%v): %v", hash, err)
+	}
 	entry.DisplayName = "Test Peer"
 	entry.TrustLevel = TrustTrusted
 
@@ -101,8 +124,11 @@ func TestForget(t *testing.T) {
 	t.Parallel()
 
 	d := New()
-	hash := []byte{0x01, 0x02, 0x03, 0x04}
-	entry := NewEntry(hash)
+	hash := hash16(0x01, 0x02, 0x03, 0x04)
+	entry, err := NewEntry(hash)
+	if err != nil {
+		t.Fatalf("NewEntry(%v): %v", hash, err)
+	}
 	d.Remember(entry)
 
 	d.Forget(hash)
@@ -117,8 +143,11 @@ func TestDisplayName(t *testing.T) {
 	t.Parallel()
 
 	d := New()
-	hash := []byte{0x01, 0x02, 0x03, 0x04}
-	entry := NewEntry(hash)
+	hash := hash16(0x01, 0x02, 0x03, 0x04)
+	entry, err := NewEntry(hash)
+	if err != nil {
+		t.Fatalf("NewEntry(%v): %v", hash, err)
+	}
 	entry.DisplayName = "Alice"
 
 	d.Remember(entry)
@@ -129,7 +158,7 @@ func TestDisplayName(t *testing.T) {
 	}
 
 	// Unknown hash returns empty
-	unknown := []byte{0xFF, 0xFE, 0xFD, 0xFC}
+	unknown := hash16(0xFF, 0xFE, 0xFD, 0xFC)
 	if name := d.DisplayName(unknown); name != "" {
 		t.Errorf("DisplayName for unknown = %q, want empty", name)
 	}
@@ -139,8 +168,11 @@ func TestTrustLevel(t *testing.T) {
 	t.Parallel()
 
 	d := New()
-	hash := []byte{0x01, 0x02, 0x03, 0x04}
-	entry := NewEntry(hash)
+	hash := hash16(0x01, 0x02, 0x03, 0x04)
+	entry, err := NewEntry(hash)
+	if err != nil {
+		t.Fatalf("NewEntry(%v): %v", hash, err)
+	}
 	entry.TrustLevel = TrustTrusted
 	d.Remember(entry)
 
@@ -151,7 +183,7 @@ func TestTrustLevel(t *testing.T) {
 	}
 
 	// Unknown hash returns UNKNOWN
-	unknown := []byte{0xFF, 0xFE, 0xFD, 0xFC}
+	unknown := hash16(0xFF, 0xFE, 0xFD, 0xFC)
 	level = d.TrustLevel(unknown, nil)
 	if level != TrustUnknown {
 		t.Errorf("TrustLevel for unknown = 0x%02X, want 0x%02X", level, TrustUnknown)
@@ -164,14 +196,20 @@ func TestTrustLevelNameCollision(t *testing.T) {
 	d := New()
 
 	// Add two entries with different hashes but same display name
-	hash1 := []byte{0x01, 0x02, 0x03, 0x04}
-	entry1 := NewEntry(hash1)
+	hash1 := hash16(0x01, 0x02, 0x03, 0x04)
+	entry1, err := NewEntry(hash1)
+	if err != nil {
+		t.Fatalf("NewEntry(%v): %v", hash1, err)
+	}
 	entry1.DisplayName = "SharedName"
 	entry1.TrustLevel = TrustUntrusted
 	d.Remember(entry1)
 
-	hash2 := []byte{0x05, 0x06, 0x07, 0x08}
-	entry2 := NewEntry(hash2)
+	hash2 := hash16(0x05, 0x06, 0x07, 0x08)
+	entry2, err := NewEntry(hash2)
+	if err != nil {
+		t.Fatalf("NewEntry(%v): %v", hash2, err)
+	}
 	entry2.DisplayName = "SharedName"
 	entry2.TrustLevel = TrustUnknown
 	d.Remember(entry2)
@@ -195,8 +233,11 @@ func TestPreferredDelivery(t *testing.T) {
 	t.Parallel()
 
 	d := New()
-	hash := []byte{0x01, 0x02, 0x03, 0x04}
-	entry := NewEntry(hash)
+	hash := hash16(0x01, 0x02, 0x03, 0x04)
+	entry, err := NewEntry(hash)
+	if err != nil {
+		t.Fatalf("NewEntry(%v): %v", hash, err)
+	}
 	entry.PreferredDelivery = DeliveryPropagated
 	d.Remember(entry)
 
@@ -206,7 +247,7 @@ func TestPreferredDelivery(t *testing.T) {
 	}
 
 	// Unknown hash returns DIRECT
-	unknown := []byte{0xFF, 0xFE, 0xFD, 0xFC}
+	unknown := hash16(0xFF, 0xFE, 0xFD, 0xFC)
 	delivery = d.PreferredDelivery(unknown)
 	if delivery != DeliveryDirect {
 		t.Errorf("PreferredDelivery for unknown = 0x%02X, want 0x%02X", delivery, DeliveryDirect)
@@ -217,8 +258,11 @@ func TestShouldIdentifyOnConnect(t *testing.T) {
 	t.Parallel()
 
 	d := New()
-	hash := []byte{0x01, 0x02, 0x03, 0x04}
-	entry := NewEntry(hash)
+	hash := hash16(0x01, 0x02, 0x03, 0x04)
+	entry, err := NewEntry(hash)
+	if err != nil {
+		t.Fatalf("NewEntry(%v): %v", hash, err)
+	}
 	entry.IdentifyOnConnect = true
 	d.Remember(entry)
 
@@ -226,7 +270,7 @@ func TestShouldIdentifyOnConnect(t *testing.T) {
 		t.Error("ShouldIdentifyOnConnect = false, want true")
 	}
 
-	unknown := []byte{0xFF, 0xFE, 0xFD, 0xFC}
+	unknown := hash16(0xFF, 0xFE, 0xFD, 0xFC)
 	if d.ShouldIdentifyOnConnect(unknown) {
 		t.Error("ShouldIdentifyOnConnect for unknown = true, want false")
 	}
@@ -236,8 +280,11 @@ func TestSetIdentifyOnConnect(t *testing.T) {
 	t.Parallel()
 
 	d := New()
-	hash := []byte{0x01, 0x02, 0x03, 0x04}
-	entry := NewEntry(hash)
+	hash := hash16(0x01, 0x02, 0x03, 0x04)
+	entry, err := NewEntry(hash)
+	if err != nil {
+		t.Fatalf("NewEntry(%v): %v", hash, err)
+	}
 	d.Remember(entry)
 
 	d.SetIdentifyOnConnect(hash, true)
@@ -257,16 +304,19 @@ func TestSimplestDisplayStr(t *testing.T) {
 	d := New()
 
 	// Unknown hash
-	unknown := []byte{0xFF, 0xFE, 0xFD, 0xFC}
+	unknown := hash16(0xFF, 0xFE, 0xFD, 0xFC)
 	got := d.SimplestDisplayStr(unknown)
-	want := "<fffefdfc>"
+	want := "<" + hex.EncodeToString(unknown) + ">"
 	if got != want {
 		t.Errorf("SimplestDisplayStr unknown = %q, want %q", got, want)
 	}
 
 	// Trusted entry with name
-	hash1 := []byte{0x01, 0x02, 0x03, 0x04}
-	entry1 := NewEntry(hash1)
+	hash1 := hash16(0x01, 0x02, 0x03, 0x04)
+	entry1, err := NewEntry(hash1)
+	if err != nil {
+		t.Fatalf("NewEntry(%v): %v", hash1, err)
+	}
 	entry1.DisplayName = "Alice"
 	entry1.TrustLevel = TrustTrusted
 	d.Remember(entry1)
@@ -277,27 +327,33 @@ func TestSimplestDisplayStr(t *testing.T) {
 	}
 
 	// Untrusted entry with name
-	hash2 := []byte{0x05, 0x06, 0x07, 0x08}
-	entry2 := NewEntry(hash2)
+	hash2 := hash16(0x05, 0x06, 0x07, 0x08)
+	entry2, err := NewEntry(hash2)
+	if err != nil {
+		t.Fatalf("NewEntry(%v): %v", hash2, err)
+	}
 	entry2.DisplayName = "Bob"
 	entry2.TrustLevel = TrustUntrusted
 	d.Remember(entry2)
 
 	got = d.SimplestDisplayStr(hash2)
-	want = "Bob <05060708>"
+	want = "Bob <" + hex.EncodeToString(hash2) + ">"
 	if got != want {
 		t.Errorf("SimplestDisplayStr untrusted = %q, want %q", got, want)
 	}
 
 	// Trusted entry without name
-	hash3 := []byte{0x09, 0x0A, 0x0B, 0x0C}
-	entry3 := NewEntry(hash3)
+	hash3 := hash16(0x09, 0x0A, 0x0B, 0x0C)
+	entry3, err := NewEntry(hash3)
+	if err != nil {
+		t.Fatalf("NewEntry(%v): %v", hash3, err)
+	}
 	entry3.TrustLevel = TrustTrusted
 	entry3.DisplayName = ""
 	d.Remember(entry3)
 
 	got = d.SimplestDisplayStr(hash3)
-	want = "<090a0b0c>"
+	want = "<" + hex.EncodeToString(hash3) + ">"
 	if got != want {
 		t.Errorf("SimplestDisplayStr no name = %q, want %q", got, want)
 	}
@@ -307,8 +363,11 @@ func TestAllegedDisplayStr(t *testing.T) {
 	t.Parallel()
 
 	d := New()
-	hash := []byte{0x01, 0x02, 0x03, 0x04}
-	entry := NewEntry(hash)
+	hash := hash16(0x01, 0x02, 0x03, 0x04)
+	entry, err := NewEntry(hash)
+	if err != nil {
+		t.Fatalf("NewEntry(%v): %v", hash, err)
+	}
 	entry.DisplayName = "Bob"
 	d.Remember(entry)
 
@@ -317,7 +376,7 @@ func TestAllegedDisplayStr(t *testing.T) {
 		t.Errorf("AllegedDisplayStr = %q, want %q", got, "Bob")
 	}
 
-	unknown := []byte{0xFF, 0xFE, 0xFD, 0xFC}
+	unknown := hash16(0xFF, 0xFE, 0xFD, 0xFC)
 	got = d.AllegedDisplayStr(unknown)
 	if got != "" {
 		t.Errorf("AllegedDisplayStr unknown = %q, want empty", got)
@@ -330,22 +389,31 @@ func TestKnownNodes(t *testing.T) {
 	d := New()
 
 	// Add non-node entry
-	hash1 := []byte{0x01, 0x02, 0x03, 0x04}
-	entry1 := NewEntry(hash1)
+	hash1 := hash16(0x01, 0x02, 0x03, 0x04)
+	entry1, err := NewEntry(hash1)
+	if err != nil {
+		t.Fatalf("NewEntry(%v): %v", hash1, err)
+	}
 	entry1.DisplayName = "Peer"
 	d.Remember(entry1)
 
 	// Add node entry
-	hash2 := []byte{0x05, 0x06, 0x07, 0x08}
-	entry2 := NewEntry(hash2)
+	hash2 := hash16(0x05, 0x06, 0x07, 0x08)
+	entry2, err := NewEntry(hash2)
+	if err != nil {
+		t.Fatalf("NewEntry(%v): %v", hash2, err)
+	}
 	entry2.DisplayName = "Node A"
 	entry2.HostsNode = true
 	entry2.TrustLevel = TrustTrusted
 	d.Remember(entry2)
 
 	// Add another node entry
-	hash3 := []byte{0x09, 0x0A, 0x0B, 0x0C}
-	entry3 := NewEntry(hash3)
+	hash3 := hash16(0x09, 0x0A, 0x0B, 0x0C)
+	entry3, err := NewEntry(hash3)
+	if err != nil {
+		t.Fatalf("NewEntry(%v): %v", hash3, err)
+	}
 	entry3.DisplayName = "Node B"
 	entry3.HostsNode = true
 	entry3.TrustLevel = TrustUntrusted
@@ -371,19 +439,19 @@ func TestAnnounceStream(t *testing.T) {
 
 	d.NodeAnnounceReceived(Announce{
 		Timestamp:    1.0,
-		SourceHash:   []byte{0x01},
+		SourceHash:   hash16(0x01),
 		AnnounceType: "node",
 	}, false)
 
 	d.PeerAnnounceReceived(Announce{
 		Timestamp:    2.0,
-		SourceHash:   []byte{0x02},
+		SourceHash:   hash16(0x02),
 		AnnounceType: "peer",
 	}, false)
 
 	d.PNAnnounceReceived(Announce{
 		Timestamp:    3.0,
-		SourceHash:   []byte{0x03},
+		SourceHash:   hash16(0x03),
 		AnnounceType: "pn",
 	}, false)
 
@@ -397,7 +465,7 @@ func TestAnnounceStreamCompact(t *testing.T) {
 	t.Parallel()
 
 	d := New()
-	hash := []byte{0x01, 0x02, 0x03, 0x04}
+	hash := hash16(0x01, 0x02, 0x03, 0x04)
 
 	// Add two peer announces from same source
 	d.PeerAnnounceReceived(Announce{
@@ -427,7 +495,7 @@ func TestAnnounceStreamMaxLen(t *testing.T) {
 	for i := range AnnounceStreamMaxLen + 10 {
 		d.PeerAnnounceReceived(Announce{
 			Timestamp:  float64(i),
-			SourceHash: []byte{byte(i)},
+			SourceHash: hash16(byte(i)),
 		}, false)
 	}
 
@@ -444,11 +512,11 @@ func TestRemoveAnnounceWithTimestamp(t *testing.T) {
 
 	d.NodeAnnounceReceived(Announce{
 		Timestamp:  1.0,
-		SourceHash: []byte{0x01},
+		SourceHash: hash16(0x01),
 	}, false)
 	d.NodeAnnounceReceived(Announce{
 		Timestamp:  2.0,
-		SourceHash: []byte{0x02},
+		SourceHash: hash16(0x02),
 	}, false)
 
 	d.RemoveAnnounceWithTimestamp(1.0)
@@ -468,8 +536,11 @@ func TestEntries(t *testing.T) {
 	d := New()
 
 	for i := range 5 {
-		hash := []byte{byte(i), 0x02, 0x03, 0x04}
-		entry := NewEntry(hash)
+		hash := hash16(byte(i), 0x02, 0x03, 0x04)
+		entry, err := NewEntry(hash)
+		if err != nil {
+			t.Fatalf("NewEntry(%v): %v", hash, err)
+		}
 		d.Remember(entry)
 	}
 
@@ -487,8 +558,12 @@ func TestLen(t *testing.T) {
 		t.Errorf("Len = %v, want 0", d.Len())
 	}
 
-	hash := []byte{0x01, 0x02, 0x03, 0x04}
-	d.Remember(NewEntry(hash))
+	hash := hash16(0x01, 0x02, 0x03, 0x04)
+	entry, err := NewEntry(hash)
+	if err != nil {
+		t.Fatalf("NewEntry: %v", err)
+	}
+	d.Remember(entry)
 	if d.Len() != 1 {
 		t.Errorf("Len = %v, want 1", d.Len())
 	}
@@ -527,5 +602,67 @@ func TestKnownNodesSortKey(t *testing.T) {
 		if names[i] != want[i] {
 			t.Fatalf("KnownNodes names = %v, want %v (nil rank sorts at 34, not last)", names, want)
 		}
+	}
+}
+
+// TestDirectoryRejectsInvalidSourceHash pins Python DirectoryEntry's TypeError
+// (Directory.py:419,433-434) at both ways a hash can enter the Go directory:
+// the constructor, and the store (a Go struct literal bypasses the
+// constructor, so Remember refuses it too).
+func TestDirectoryRejectsInvalidSourceHash(t *testing.T) {
+	t.Parallel()
+
+	for _, n := range []int{0, 1, 4, 8, 15, 17, 32} {
+		if _, err := NewEntry(bytes.Repeat([]byte{1}, n)); !errors.Is(err, ErrInvalidSourceHash) {
+			t.Errorf("NewEntry(%v bytes) err = %v, want ErrInvalidSourceHash", n, err)
+		}
+	}
+	if _, err := NewEntry(bytes.Repeat([]byte{1}, SourceHashLength)); err != nil {
+		t.Errorf("NewEntry(%v bytes) err = %v, want nil", SourceHashLength, err)
+	}
+
+	d := New()
+	d.Remember(&Entry{SourceHash: []byte{1, 2, 3, 4}, DisplayName: "short"})
+	if d.Find([]byte{1, 2, 3, 4}) != nil {
+		t.Error("Remember stored an entry with a 4-byte source hash")
+	}
+	full := hash16(0x01)
+	d.Remember(&Entry{SourceHash: full, DisplayName: "full"})
+	if d.Find(full) == nil {
+		t.Error("Remember refused a valid 16-byte entry")
+	}
+}
+
+// TestLoadFromDiskRejectsInvalidSourceHash pins Python's load_from_disk
+// behaviour (Directory.py:144,157-159): building a DirectoryEntry for a short
+// hash raises, the exception aborts the whole load, and no entry is assigned.
+func TestLoadFromDiskRejectsInvalidSourceHash(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(tempDir(t), "directory")
+	bad := rnsmsgpack.OrderedMap{
+		{Key: "entry_list", Value: []any{
+			[]any{[]byte{1, 2, 3, 4}, "Short", uint64(TrustUnknown)},
+		}},
+		{Key: "announce_stream", Value: []any{}},
+	}
+	data, err := rnsmsgpack.Pack(bad)
+	if err != nil {
+		t.Fatalf("pack: %v", err)
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	d := New()
+	d.Remember(&Entry{SourceHash: hash16(0x09), DisplayName: "kept"})
+	if err := d.LoadFromDisk(path); !errors.Is(err, ErrInvalidSourceHash) {
+		t.Fatalf("LoadFromDisk err = %v, want ErrInvalidSourceHash", err)
+	}
+	if d.Find(hash16(0x09)) == nil {
+		t.Error("a failed load must leave the existing directory untouched (Directory.py:157-159)")
+	}
+	if d.Find([]byte{1, 2, 3, 4}) != nil {
+		t.Error("LoadFromDisk stored an entry with a 4-byte source hash")
 	}
 }

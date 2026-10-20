@@ -17,6 +17,7 @@ package tui
 
 import (
 	"testing"
+	"time"
 
 	"github.com/gmlewis/tview"
 )
@@ -196,3 +197,138 @@ func hasButtonLabel(v *InterfaceFormView, label string) bool {
 }
 
 var _ = tview.NewBox // keep tview import if assertions above change
+
+// TestRNodeCalculatorDebounce pins Python's 0.3 s recompute debounce
+// (Interfaces.py:291-302): a change schedules one delayed recalculation, and a
+// burst of changes within the window collapses into a single recompute of the
+// final values.
+func TestRNodeCalculatorDebounce(t *testing.T) {
+	t.Parallel()
+
+	clk := &fakeClock{}
+	reads := 0
+	fieldValue := func(key string) (string, bool) {
+		reads++
+		switch key {
+		case "bandwidth":
+			return "7800", true
+		case "spreadingfactor":
+			return "7", true
+		case "codingrate":
+			return "4:5", true
+		case "txpower":
+			return "17", true
+		}
+		return "", false
+	}
+	c := newRNodeCalculatorView(nil, fieldValue, clk)
+	_, initialLink, _ := c.Readout()
+
+	reads = 0
+	c.Update()
+	perUpdate := reads
+	if perUpdate == 0 {
+		t.Fatal("Update read no fields")
+	}
+
+	// A single change: nothing before 0.3 s, exactly one recompute at it.
+	reads = 0
+	c.SetNoiseFloor("-120")
+	clk.advance(299 * time.Millisecond)
+	if reads != 0 {
+		t.Errorf("recomputed after 299 ms (%v field reads), want the 0.3 s alarm", reads)
+	}
+	if _, link, _ := c.Readout(); link != initialLink {
+		t.Errorf("readout changed before the alarm: %q", link)
+	}
+	clk.advance(time.Millisecond)
+	if reads != perUpdate {
+		t.Errorf("recomputed %v times at 300 ms, want one (%v field reads)", reads/perUpdate, perUpdate)
+	}
+	if _, link, _ := c.Readout(); link == initialLink {
+		t.Error("readout did not change after the alarm")
+	}
+
+	// A burst of three changes within the window collapses to one recompute.
+	reads = 0
+	c.SetNoiseFloor("-100")
+	clk.advance(100 * time.Millisecond)
+	c.SetNoiseFloor("-110")
+	clk.advance(100 * time.Millisecond)
+	c.SetNoiseFloor("-120")
+	clk.advance(299 * time.Millisecond)
+	if reads != 0 {
+		t.Fatalf("recomputed during the burst (%v field reads), want a trailing-edge alarm", reads)
+	}
+	clk.advance(time.Millisecond)
+	if reads != perUpdate {
+		t.Errorf("burst recomputed %v field reads, want one update (%v)", reads, perUpdate)
+	}
+}
+
+// TestInterfaceFormCalculatorFieldWiring pins connect_all_field_signals
+// (Interfaces.py:284-294): only bandwidth, spreading factor, coding rate and
+// transmit power (plus the calculator's own two edits) schedule a recompute; a
+// change to any other form field does not.
+func TestInterfaceFormCalculatorFieldWiring(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp()
+	app.Glyphs = GetGlyphSet(GlyphUnicode)
+	app.GlyphSet = GlyphUnicode
+	app.killRing = &killRing{}
+
+	form := NewInterfaceAddFormView(app, IfaceRNode, InterfaceFormOptions{})
+	calc := form.Calculator()
+	if calc == nil {
+		t.Fatal("RNode form has no calculator")
+	}
+	clk := &fakeClock{}
+	// The recompute runs on the timer goroutine; with no event loop under test,
+	// update directly instead of marshalling.
+	calc.app = nil
+	calc.debounce = newDebouncedCallWithClock(rnodeCalculatorDebounce, calc.debouncedUpdate, clk)
+	// Count recomputes: a spurious one would recompute the same readout, so
+	// comparing the strings alone cannot see it.
+	reads := 0
+	orig := calc.FieldValue
+	calc.FieldValue = func(key string) (string, bool) {
+		reads++
+		return orig(key)
+	}
+
+	_, before, _ := calc.Readout()
+
+	// A non-calculator field must not schedule anything.
+	reads = 0
+	form.SetValue("name", "radio")
+	clk.advance(time.Second)
+	if reads != 0 {
+		t.Errorf("changing the name recomputed the calculator (%v field reads, want none)", reads)
+	}
+	if _, after, _ := calc.Readout(); after != before {
+		t.Errorf("changing the name recomputed the calculator (%q -> %q)", before, after)
+	}
+
+	// A calculator field schedules one recompute at 0.3 s.
+	reads = 0
+	form.SetValue("bandwidth", "125000")
+	clk.advance(299 * time.Millisecond)
+	if reads != 0 {
+		t.Errorf("bandwidth recomputed before 0.3 s (%v field reads)", reads)
+	}
+	if _, after, _ := calc.Readout(); after != before {
+		t.Errorf("bandwidth recomputed before 0.3 s (%q -> %q)", before, after)
+	}
+	clk.advance(time.Millisecond)
+	if reads == 0 {
+		t.Error("bandwidth change did not recompute the calculator at 0.3 s")
+	}
+	dataRate, after, _ := calc.Readout()
+	if after == before {
+		t.Error("bandwidth change did not change the readout")
+	}
+	if dataRate == "" {
+		t.Error("data rate is empty after recompute")
+	}
+}

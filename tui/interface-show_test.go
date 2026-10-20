@@ -16,7 +16,10 @@
 package tui
 
 import (
+	"strings"
 	"testing"
+
+	"github.com/gmlewis/tcell/v2"
 )
 
 func TestCategorizeInterfaceParams(t *testing.T) {
@@ -129,5 +132,91 @@ func TestFormatParamKey(t *testing.T) {
 				t.Errorf("FormatParamKey(%q) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
+	}
+}
+
+// TestInterfaceShowChartOrientationToggle pins the h/v chart-layout keys
+// (Interfaces.py:2717-2752): below 145 columns the RX/TX boxes start stacked,
+// `h` switches to the side-by-side Columns layout, `v` switches back, and
+// neither key does anything while the interface is disconnected.
+func TestInterfaceShowChartOrientationToggle(t *testing.T) {
+	t.Parallel()
+
+	const (
+		rxTitle = "RX Traffic (60s)"
+		txTitle = "TX Traffic (60s)"
+	)
+	sideBySide := func(rows []string) bool {
+		for _, row := range rows {
+			if strings.Contains(row, rxTitle) && strings.Contains(row, txTitle) {
+				return true
+			}
+		}
+		return false
+	}
+
+	info := InterfaceInfo{Name: "test", Type: "TCPServerInterface", Connected: true, Enabled: true}
+	s := NewInterfaceShow(nil, info)
+	if sideBySide(s.chartsRows(100)) {
+		t.Fatal("width 100 default = side by side, want stacked")
+	}
+	if !sideBySide(s.chartsRows(145)) {
+		t.Fatal("width 145 default = stacked, want side by side")
+	}
+
+	// A narrow view: `h` overrides the width default.
+	if sideBySide(s.chartsRows(100)) {
+		t.Fatal("precondition: width 100 must start stacked")
+	}
+	if key := s.handleKey(tcell.NewEventKey(tcell.KeyRune, 'h', tcell.ModNone)); key != nil {
+		t.Errorf("h key = %v, want consumed while connected", key)
+	}
+	if !sideBySide(s.chartsRows(100)) {
+		t.Error("after h the boxes must be side by side at width 100 (Interfaces.py:2717-2720)")
+	}
+
+	// `v` switches back, and the override wins over the width default.
+	if key := s.handleKey(tcell.NewEventKey(tcell.KeyRune, 'v', tcell.ModNone)); key != nil {
+		t.Errorf("v key = %v, want consumed while connected", key)
+	}
+	if sideBySide(s.chartsRows(200)) {
+		t.Error("after v the boxes must be stacked even at width 200 (Interfaces.py:2721-2723)")
+	}
+
+	// Disconnected: neither key changes the layout (Python gates both on
+	// self.is_connected).
+	off := NewInterfaceShow(nil, InterfaceInfo{Name: "test", Connected: false})
+	if key := off.handleKey(tcell.NewEventKey(tcell.KeyRune, 'h', tcell.ModNone)); key == nil {
+		t.Error("h key on a disconnected interface must not be consumed")
+	}
+	if off.layoutSet {
+		t.Error("h key on a disconnected interface must not set the layout")
+	}
+}
+
+// TestInterfaceShortcutText pins Python's three interfaces shortcut bars and
+// when each is shown: the list default, the ShowInterface bar with the h/v
+// hints (set on switch_to_show_interface, Interfaces.py:2219,3205-3208), and
+// the Add/Edit form bar (Interfaces.py:1428,3209-3215).
+func TestInterfaceShortcutText(t *testing.T) {
+	t.Parallel()
+
+	const (
+		defaultBar = "[C-a] Add Interface [C-e] Edit Interface [C-x] Remove Interface [Enter] Show Interface [C-w] Open Text Editor"
+		showBar    = "[Up/Down] Navigate [Tab] Switch Focus [h] Horizontal Charts [v] Vertical Charts "
+		formBar    = "[Up/Down] Navigate Fields [Enter] Select Option"
+	)
+
+	id := &InterfacesDisplay{}
+	if got := id.ShortcutText(); got != defaultBar {
+		t.Errorf("list bar = %q, want %q", got, defaultBar)
+	}
+	id.showWidget = &interfaceShow{}
+	if got := id.ShortcutText(); got != showBar {
+		t.Errorf("show bar = %q, want %q", got, showBar)
+	}
+	id.formView = &InterfaceFormView{}
+	if got := id.ShortcutText(); got != formBar {
+		t.Errorf("form bar = %q, want %q", got, formBar)
 	}
 }

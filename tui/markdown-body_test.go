@@ -80,8 +80,8 @@ print(json.dumps(out))
 `
 
 // TestMarkdownMessageBodyText pins the render half: the body is drawn in the message
-// body's own default colour (Python passes fg_color="bbb" for the dark theme and "444" for
-// the light one, Conversations.py:2715) rather than the page plain colour, every row is
+// body's own default color (Python passes fg_color="bbb" for the dark theme and "444" for
+// the light one, Conversations.py:2715) rather than the page plain color, every row is
 // inset two columns (the urwid Padding), and the raw markdown punctuation is gone.
 func TestMarkdownMessageBodyText(t *testing.T) {
 	t.Parallel()

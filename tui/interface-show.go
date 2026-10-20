@@ -257,6 +257,13 @@ type interfaceShow struct {
 	// until then.
 	chart    *InterfaceBandwidthChart
 	chartFed bool
+	// isHorizontal is the layout the reader chose with h/v; layoutSet records
+	// that they chose it, so the width-based default (side by side at 145
+	// columns and above, Interfaces.py:2350-2358) no longer applies. Python
+	// keeps the same two pieces of state on ShowInterface (`is_horizontal`,
+	// and the switch methods never consult the width again).
+	isHorizontal bool
+	layoutSet    bool
 	// now, when set, supplies the clock for chart sampling so tests can drive a
 	// deterministic rate series. Nil uses time.Now.
 	now func() time.Time
@@ -583,7 +590,7 @@ func (s *interfaceShow) chartsRows(width int) []string {
 	// "Loading RX data..." before the first poll) and a right-aligned peak row
 	// (Interfaces.py:2312-2333).
 	rxRows, txRows := s.chartBoxRows()
-	if width >= 145 {
+	if s.horizontalCharts(width) {
 		left := width / 2
 		rx := drawBox(left, "RX Traffic (60s)", rxRows)
 		tx := drawBox(width-left, "TX Traffic (60s)", txRows)
@@ -591,6 +598,16 @@ func (s *interfaceShow) chartsRows(width int) []string {
 	}
 	rx := drawBox(width, "RX Traffic (60s)", rxRows)
 	return append(rx, drawBox(width, "TX Traffic (60s)", txRows)...)
+}
+
+// horizontalCharts reports the chart layout: the reader's h/v choice when they
+// made one, otherwise Python's width default (side by side at 145 columns and
+// above, Interfaces.py:2350-2358).
+func (s *interfaceShow) horizontalCharts(width int) bool {
+	if s.layoutSet {
+		return s.isHorizontal
+	}
+	return width >= 145
 }
 
 // chartBoxRows returns the RX and TX box contents: the traffic chart body (one
@@ -742,6 +759,28 @@ func (s *interfaceShow) handleKey(event *tcell.EventKey) *tcell.EventKey {
 			s.OnBack()
 		}
 		return nil
+	case tcell.KeyRune:
+		// Chart orientation (Interfaces.py:2717-2752): h/v switch the RX/TX
+		// layout only while the interface is connected, and only when the
+		// requested layout is not already showing.
+		width := defaultBodyWidth
+		if s.body != nil && s.body.width > 0 {
+			width = s.body.width
+		}
+		switch event.Rune() {
+		case 'h':
+			if s.info.Connected && !s.horizontalCharts(width) {
+				s.isHorizontal, s.layoutSet = true, true
+				s.body.Refresh()
+				return nil
+			}
+		case 'v':
+			if s.info.Connected && s.horizontalCharts(width) {
+				s.isHorizontal, s.layoutSet = false, true
+				s.body.Refresh()
+				return nil
+			}
+		}
 	}
 	return event
 }

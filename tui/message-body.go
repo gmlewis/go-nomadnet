@@ -104,7 +104,17 @@ type RRCRenderOpts struct {
 	ColorMentionTimestamps bool
 	JustifyMsgs            bool
 	OwnNick                string
-	Glyphs                 map[string]string
+	// OwnHash is the local identity-hash hex. With rrc_nick_colors on, Python
+	// colors an own mention (and its timestamp) with the local user's palette
+	// color, get_nick_color(app.identity.hash, …) (Channels.py:1350-1353); an
+	// empty value reproduces the exception fallback to theme["mention"].
+	OwnHash string
+	Glyphs  map[string]string
+	// nickSources maps a room's nicks to their identity-hash hex, the Go
+	// equivalent of Python's room_nick_src_cache that get_nick_src consults to
+	// color an @othernick mention by its author's hash (Channels.py:1264-1279,
+	// 1357-1365). Nil leaves every other-nick mention unstyled.
+	nickSources map[string]string
 	// links, when set, collects the links of the message list being rendered in
 	// region-id order and makes the renderer wrap each one in the numbered tview
 	// region tags a clickable TextView needs. Nil renders every link styled but
@@ -253,39 +263,69 @@ func scanChatLinks(body string) []chatSpan {
 	return spans
 }
 
-// scanChatSpans produces the body's styled spans: links and @own mentions,
-// excluding spans that overlap code blocks and deduplicating to
-// non-overlapping left-to-right order (Channels.py:152-198).
+// chatNickMentionRE is Python _scan_nick_mentions' pattern (Channels.py:133):
+// any @nick other than the own nick. The lookbehind/lookahead boundaries are
+// applied manually by mentionBoundaryOK, as Go's regexp has no lookbehind.
+var chatNickMentionRE = regexp.MustCompile(`@([A-Za-z0-9_]+)`)
+
+// scanChatSpans produces the body's styled spans: links, @own mentions and
+// @othernick mentions, excluding spans that overlap code blocks and
+// deduplicating to non-overlapping left-to-right order (Channels.py:152-198).
+// Python appends links first, then own mentions, then nick mentions, and its
+// stable sort leaves a same-start own mention ahead of the nick mention the
+// nick scanner also reports when the own nick differs only in case
+// (Channels.py:155-160) — the own mention must win, exactly as it does there.
 func scanChatSpans(body, ownNick string) []chatSpan {
 	spans := scanChatLinks(body)
 	if ownNick != "" && body != "" {
-		pat := regexp.MustCompile(`@` + regexp.QuoteMeta(ownNick))
-		for _, loc := range pat.FindAllStringIndex(body, -1) {
+		own := regexp.MustCompile(`(?i)@` + regexp.QuoteMeta(ownNick))
+		for _, loc := range own.FindAllStringIndex(body, -1) {
 			if mentionBoundaryOK(body, loc[0], loc[1]) {
 				spans = append(spans, chatSpan{loc[0], loc[1], "mention", ""})
 			}
+		}
+		for _, loc := range chatNickMentionRE.FindAllStringSubmatchIndex(body, -1) {
+			start, end := loc[0], loc[1]
+			if !mentionBoundaryOK(body, start, end) {
+				continue
+			}
+			nick := body[loc[2]:loc[3]]
+			// Python compares the lower-cased matched nick with own_nick as
+			// stored (Channels.py:136), not with a lower-cased copy, so the
+			// same text under a differently-cased own nick reports both spans
+			// and the own mention wins the overlap filter above.
+			if strings.ToLower(nick) == ownNick {
+				continue
+			}
+			spans = append(spans, chatSpan{start, end, "nick_mention", nick})
 		}
 	}
 	spans = filterOverlappingChatSpans(spans, scanChatCodeBlocks(body))
 	return nonOverlappingChatSpans(stableSortChatSpans(spans))
 }
 
-// mentionBoundaryOK checks the Python mention pattern's (?<![A-Za-z0-9_]) …
-// (?![A-Za-z0-9_]) boundaries around an @<own_nick> match.
+// mentionBoundaryOK checks Python's mention-pattern boundaries,
+// (?<![A-Za-z0-9_]) … (?![A-Za-z0-9_]) (Channels.py:27-36,133). The class is
+// ASCII, unlike Python's \w elsewhere: "é@alice" is an own mention.
 func mentionBoundaryOK(body string, start, end int) bool {
 	if start > 0 {
 		prev, _ := utf8.DecodeLastRuneInString(body[:start])
-		if isWordRune(prev) {
+		if mentionWordRune(prev) {
 			return false
 		}
 	}
 	if end < len(body) {
 		next, _ := utf8.DecodeRuneInString(body[end:])
-		if isWordRune(next) {
+		if mentionWordRune(next) {
 			return false
 		}
 	}
 	return true
+}
+
+// mentionWordRune reports whether r is in the ASCII class [A-Za-z0-9_].
+func mentionWordRune(r rune) bool {
+	return r == '_' || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9')
 }
 
 // scanChatCodeBlocks returns ``` fence and `inline` code regions.
@@ -351,6 +391,52 @@ func nonOverlappingChatSpans(spans []chatSpan) []chatSpan {
 		}
 	}
 	return filtered
+}
+
+// rrcOwnMentionColor picks the color of an @own mention, reproducing
+// _message_widget's irc_mention branches (Channels.py:1342-1356):
+//
+//   - without rrc_nick_colors, rrc_mention_color if set, else theme["mention"];
+//   - with rrc_nick_colors, rrc_mention_color if set, else the local identity's
+//     palette color, with theme["mention"] as the exception fallback.
+func rrcOwnMentionColor(opts RRCRenderOpts) tcell.Color {
+	colors := rrcRenderColors(opts.Theme)
+	if opts.MentionColor != "" {
+		return hexColorOr(opts.MentionColor, colors["mention"])
+	}
+	if opts.NickColors && opts.OwnHash != "" {
+		return NickColorByHashHexColor(opts.OwnHash, opts.Palette)
+	}
+	return colors["mention"]
+}
+
+// rrcTsColor picks the timestamp color. When rrc_color_mention_timestamps is
+// on and the body names the local user, Python recolors the timestamp run with
+// the mention color (Channels.py:1346,1353); the no-nick-colors branch always
+// uses theme["mention"] even when rrc_mention_color is set.
+func rrcTsColor(msg ChannelMessage, opts RRCRenderOpts) tcell.Color {
+	colors := rrcRenderColors(opts.Theme)
+	if !opts.ColorMentionTimestamps || !hasOwnMention(msg.Text, opts.OwnNick) {
+		return colors["ts"]
+	}
+	if opts.NickColors {
+		return rrcOwnMentionColor(opts)
+	}
+	return colors["mention"]
+}
+
+// hasOwnMention reports whether the body names the local user, the condition
+// under which Python recolors the timestamp (Channels.py:1346,1353).
+func hasOwnMention(body, ownNick string) bool {
+	if ownNick == "" {
+		return false
+	}
+	for _, s := range scanChatSpans(body, ownNick) {
+		if s.kind == "mention" {
+			return true
+		}
+	}
+	return false
 }
 
 // rrcTsText renders the timestamp's bracket text: "[HH:MM:SS]" for real
@@ -530,9 +616,8 @@ func formatRRCMessage(msg ChannelMessage, opts RRCRenderOpts) string {
 	if msg.IsSystem || msg.IsNotice || msg.IsError {
 		return strings.Join(formatRRCEventLines(msg, opts, 0), "\n") + "\n"
 	}
-	colors := rrcRenderColors(opts.Theme)
 	var sb strings.Builder
-	sb.WriteString(" " + rrcTsPrefix(msg.TsMs, colors["ts"]) +
+	sb.WriteString(" " + rrcTsPrefix(msg.TsMs, rrcTsColor(msg, opts)) +
 		colorTag(rrcNickColor(msg, opts), "") + rrcPrivateTag(msg) + "<" + escapeTviewTags(rrcSenderName(msg)) + ">" + colorReset + " " +
 		formatRRCBody(msg, opts) + colorReset + "\n")
 	return sb.String()
@@ -574,11 +659,16 @@ func formatRRCBody(msg ChannelMessage, opts RRCRenderOpts) string {
 		seg := escapeTviewTags(body[s.start:s.end])
 		switch s.kind {
 		case "mention":
-			color := colors["mention"]
-			if opts.MentionColor != "" {
-				color = hexColorOr(opts.MentionColor, color)
+			sb.WriteString(colorTag(rrcOwnMentionColor(opts), "r") + seg + spanReset)
+		case "nick_mention":
+			// Python colors @othernick from that nick's identity hash when
+			// rrc_nick_colors is on and the nick's source is known; otherwise
+			// the run is emitted unchanged (Channels.py:1357-1365).
+			if src, ok := opts.nickSources[s.target]; ok && src != "" && opts.NickColors {
+				sb.WriteString(colorTag(NickColorByHashHexColor(src, opts.Palette), "r") + seg + spanReset)
+			} else {
+				sb.WriteString(seg)
 			}
-			sb.WriteString(colorTag(color, "r") + seg + spanReset)
 		default:
 			// Links render underlined in the link palette color
 			// (Channels.py:1373: underline + `F{t['link']}`). The span reset
@@ -732,7 +822,6 @@ func formatRRCMessageLines(msg ChannelMessage, opts RRCRenderOpts, width int) []
 // "<sender>" only — the space after it carries the body (base) color like the
 // live capture's row 27 col 49.
 func formatJustifiedHead(msg ChannelMessage, opts RRCRenderOpts, seg string, nickLen int) string {
-	colors := rrcRenderColors(opts.Theme)
 	// The wrapped first line may END inside the "<sender> " prefix: urwid's
 	// space wrap breaks AT the nick's trailing space and drops it, leaving a
 	// segment as short as "<sender>" (a narrow chat pane, or a wrap point
@@ -749,7 +838,7 @@ func formatJustifiedHead(msg ChannelMessage, opts RRCRenderOpts, seg string, nic
 	}
 	var sb strings.Builder
 	sb.WriteString(defaultPadTag + " ")
-	sb.WriteString(rrcTsPrefix(msg.TsMs, colors["ts"]))
+	sb.WriteString(rrcTsPrefix(msg.TsMs, rrcTsColor(msg, opts)))
 	sb.WriteString("[default] ")
 	sb.WriteString(colorTag(rrcNickColor(msg, opts), "") + escapeTviewTags(nick) + colorReset)
 	sb.WriteString(" " + formatRRCBody(ChannelMessage{Room: msg.Room, Text: body}, opts))

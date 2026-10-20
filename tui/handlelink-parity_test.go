@@ -243,7 +243,7 @@ func TestHandleLinkDispatchRouting(t *testing.T) {
 			gotNodeFired := false
 
 			bd.OnJumpAnchor = func(name string) { gotAnchor = name; gotAnchorFired = true }
-			bd.OnOpenRRC = func(hub, room string) { gotRRC = true }
+			bd.OnOpenRRC = func(hub, room, dest string) { gotRRC = true }
 			bd.OnOpenLXMF = func(hash string) { gotLXMF = hash }
 			bd.OnRetrieveURL = func(url string, requestData map[string]string) { gotNode = url; gotNodeFired = true }
 			bd.OnPartialUpdate = func(ids []string) { gotPartial = ids }

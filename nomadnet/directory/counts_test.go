@@ -26,9 +26,9 @@ func TestNumberOfKnownNodes(t *testing.T) {
 	if got := d.NumberOfKnownNodes(); got != 0 {
 		t.Fatalf("empty dir: got %v, want 0", got)
 	}
-	d.Remember(&Entry{SourceHash: []byte{1}, HostsNode: true, DisplayName: "a"})
-	d.Remember(&Entry{SourceHash: []byte{2}, HostsNode: false, DisplayName: "b"})
-	d.Remember(&Entry{SourceHash: []byte{3}, HostsNode: true, DisplayName: "c"})
+	d.Remember(&Entry{SourceHash: hash16(1), HostsNode: true, DisplayName: "a"})
+	d.Remember(&Entry{SourceHash: hash16(2), HostsNode: false, DisplayName: "b"})
+	d.Remember(&Entry{SourceHash: hash16(3), HostsNode: true, DisplayName: "c"})
 	if got := d.NumberOfKnownNodes(); got != 2 {
 		t.Fatalf("got %v, want 2", got)
 	}
@@ -40,11 +40,11 @@ func TestNumberOfKnownPeers(t *testing.T) {
 	now := float64(time.Now().Unix())
 	old := now - 10000
 	// peer announces: hash 1 (recent), hash 1 again (recent dup), hash 2 (old)
-	d.PeerAnnounceReceived(Announce{Timestamp: now, SourceHash: []byte{1}}, false)
-	d.PeerAnnounceReceived(Announce{Timestamp: now, SourceHash: []byte{1}}, false)
-	d.PeerAnnounceReceived(Announce{Timestamp: old, SourceHash: []byte{2}}, false)
+	d.PeerAnnounceReceived(Announce{Timestamp: now, SourceHash: hash16(1)}, false)
+	d.PeerAnnounceReceived(Announce{Timestamp: now, SourceHash: hash16(1)}, false)
+	d.PeerAnnounceReceived(Announce{Timestamp: old, SourceHash: hash16(2)}, false)
 	// node announces also count: hash 3 recent
-	d.NodeAnnounceReceived(Announce{Timestamp: now, SourceHash: []byte{3}}, false)
+	d.NodeAnnounceReceived(Announce{Timestamp: now, SourceHash: hash16(3)}, false)
 
 	// no lookback: all unique hashes -> 1, 2, 3 => 3
 	if got := d.NumberOfKnownPeers(nil); got != 3 {
@@ -62,16 +62,16 @@ func TestSortRank(t *testing.T) {
 	t.Parallel()
 	d := New()
 	rank := 5
-	d.Remember(&Entry{SourceHash: []byte{1}, SortRank: &rank})
-	if got := d.SortRank([]byte{1}); got == nil || *got != 5 {
+	d.Remember(&Entry{SourceHash: hash16(1), SortRank: &rank})
+	if got := d.SortRank(hash16(1)); got == nil || *got != 5 {
 		t.Fatalf("got %v, want 5", got)
 	}
-	if got := d.SortRank([]byte{2}); got != nil {
+	if got := d.SortRank(hash16(2)); got != nil {
 		t.Fatalf("unknown hash: got %v, want nil", got)
 	}
 	d2 := New()
-	d2.Remember(&Entry{SourceHash: []byte{9}})
-	if got := d2.SortRank([]byte{9}); got != nil {
+	d2.Remember(&Entry{SourceHash: hash16(9)})
+	if got := d2.SortRank(hash16(9)); got != nil {
 		t.Fatalf("nil rank entry: got %v, want nil", got)
 	}
 }

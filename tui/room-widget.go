@@ -977,6 +977,21 @@ func (rw *RoomWidget) renderOpts() RRCRenderOpts {
 	if len(opts.Palette) == 0 {
 		opts.Palette = DefaultNickPalette(opts.Theme)
 	}
+	// Python's room_nick_src_cache learns nick→source from every rendered
+	// message and from hub.nicks (Channels.py:1264-1279,1327-1330); the
+	// members and the loaded message buffer are that table here.
+	sources := make(map[string]string, len(rw.chatMessages)+len(rw.members))
+	for _, m := range rw.chatMessages {
+		if m.Nick != "" && m.SrcHash != "" {
+			sources[m.Nick] = m.SrcHash
+		}
+	}
+	for _, m := range rw.members {
+		if m.Nick != "" && m.Hash != "" {
+			sources[m.Nick] = m.Hash
+		}
+	}
+	opts.nickSources = sources
 	return opts
 }
 

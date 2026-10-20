@@ -118,7 +118,7 @@ func TestBlockedFilterNilIsPassthrough(t *testing.T) {
 	}
 
 	d.SetBlockedFilter(func([]byte) bool { return true }) // block everything
-	d.NodeAnnounceReceived(announceFixture([]byte{1, 2}, "node"), true)
+	d.NodeAnnounceReceived(announceFixture(hash16(1, 2), "node"), true)
 	if got := len(d.AnnounceStream()); got != 0 {
 		t.Fatalf("announces visible through filter = %v, want 0", got)
 	}

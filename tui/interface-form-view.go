@@ -253,18 +253,25 @@ func (v *InterfaceFormView) build() {
 // wireCalculatorFields connects each RNode parameter field's change to a
 // calculator refresh, mirroring Python's connect_all_field_signals
 // (Interfaces.py:284-294): editing bandwidth, spreading factor, coding rate or
-// transmit power updates the readout as the user types.
+// transmit power queues the readout recompute. The noise-floor and antenna-gain
+// edits are wired by the calculator itself; no other form field affects the
+// calculation, so typing a name must not schedule one.
 func (v *InterfaceFormView) wireCalculatorFields() {
 	if v.calcView == nil {
 		return
 	}
-	refresh := func(string, int) { v.calcView.Update() }
+	calcKeys := map[string]bool{
+		"bandwidth": true, "spreadingfactor": true, "codingrate": true, "txpower": true,
+	}
 	for _, r := range append(append([]*formRow{}, v.rows...), v.extraRows...) {
+		if !calcKeys[r.key] {
+			continue
+		}
 		if r.input != nil {
-			r.input.SetChangedFunc(func(string) { v.calcView.Update() })
+			r.input.SetChangedFunc(func(string) { v.calcView.QueueUpdate() })
 		}
 		if r.drop != nil {
-			r.drop.SetSelectedFunc(refresh)
+			r.drop.SetSelectedFunc(func(string, int) { v.calcView.QueueUpdate() })
 		}
 	}
 }

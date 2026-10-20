@@ -111,16 +111,14 @@ func (d *appSendDeps) DeliveryLinkAvailable(hash []byte) bool {
 	return d.a.Router.DeliveryLinkAvailable(hash)
 }
 
-// CurrentRatchetID returns a non-nil value when a forward-secrecy ratchet is
-// known for the hash (Python RNS.Identity.current_ratchet_id), enabling
-// opportunistic delivery. send.go only checks the result for nil/non-nil, so
-// the transport's stored ratchet public key (non-nil when known) stands in for
-// the ratchet ID.
+// CurrentRatchetID returns the ratchet ID when a forward-secrecy ratchet is
+// known for the hash, mirroring Python RNS.Identity.current_ratchet_id. The
+// transport owns the ratchet store in this port.
 func (d *appSendDeps) CurrentRatchetID(hash []byte) []byte {
 	if d.a.Transport == nil {
 		return nil
 	}
-	return d.a.Transport.GetRatchet(hash)
+	return d.a.Transport.CurrentRatchetID(hash)
 }
 
 // TryPropagationOnFail mirrors app.try_propagation_on_fail.

@@ -20,8 +20,8 @@ import "testing"
 func TestNodeAnnounceReceivedPeerCreatesTrustedEntry(t *testing.T) {
 	t.Parallel()
 	d := New()
-	peerHash := []byte{0x11, 0x22, 0x33, 0x44}
-	nodeHash := []byte{0x55, 0x66, 0x77, 0x88}
+	peerHash := hash16(0x11, 0x22, 0x33, 0x44)
+	nodeHash := hash16(0x55, 0x66, 0x77, 0x88)
 	d.Remember(&Entry{SourceHash: peerHash, DisplayName: "Trusted Peer", TrustLevel: TrustTrusted})
 
 	d.NodeAnnounceReceivedPeer(Announce{
@@ -49,8 +49,8 @@ func TestNodeAnnounceReceivedPeerCreatesTrustedEntry(t *testing.T) {
 func TestNodeAnnounceReceivedPeerUntrustedNoEntry(t *testing.T) {
 	t.Parallel()
 	d := New()
-	peerHash := []byte{0x11, 0x22, 0x33, 0x44}
-	nodeHash := []byte{0x55, 0x66, 0x77, 0x88}
+	peerHash := hash16(0x11, 0x22, 0x33, 0x44)
+	nodeHash := hash16(0x55, 0x66, 0x77, 0x88)
 	d.Remember(&Entry{SourceHash: peerHash, DisplayName: "Random", TrustLevel: TrustUnknown})
 
 	d.NodeAnnounceReceivedPeer(Announce{
@@ -72,8 +72,8 @@ func TestNodeAnnounceReceivedPeerUntrustedNoEntry(t *testing.T) {
 func TestNodeAnnounceReceivedPeerExistingEntryNotOverwritten(t *testing.T) {
 	t.Parallel()
 	d := New()
-	peerHash := []byte{0x11, 0x22, 0x33, 0x44}
-	nodeHash := []byte{0x55, 0x66, 0x77, 0x88}
+	peerHash := hash16(0x11, 0x22, 0x33, 0x44)
+	nodeHash := hash16(0x55, 0x66, 0x77, 0x88)
 	d.Remember(&Entry{SourceHash: peerHash, TrustLevel: TrustTrusted})
 	d.Remember(&Entry{SourceHash: nodeHash, DisplayName: "Existing", TrustLevel: TrustUntrusted})
 

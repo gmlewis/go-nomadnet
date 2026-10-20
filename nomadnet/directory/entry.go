@@ -15,6 +15,13 @@
 
 package directory
 
+import (
+	"errors"
+	"fmt"
+
+	"github.com/gmlewis/go-reticulum/rns"
+)
+
 // Trust levels for directory entries, matching the Python NomadNet values.
 const (
 	TrustWarning   byte = 0x00
@@ -41,9 +48,25 @@ type Entry struct {
 	Notes             string
 }
 
+// SourceHashLength is the length of a directory entry's source hash: a
+// truncated RNS identity hash (RNS.Identity.TRUNCATED_HASHLENGTH//8 = 16).
+const SourceHashLength = rns.TruncatedHashLength / 8
+
+// ErrInvalidSourceHash reports a source hash that is not exactly
+// SourceHashLength bytes.
+var ErrInvalidSourceHash = errors.New("directory: invalid source hash")
+
+// ValidSourceHash reports whether hash is a valid directory source hash.
+func ValidSourceHash(hash []byte) bool { return len(hash) == SourceHashLength }
+
 // NewEntry creates a DirectoryEntry with the given source hash and defaults.
-// Source hash must be the correct length for RNS identity hashes.
-func NewEntry(sourceHash []byte) *Entry {
+// The source hash must be exactly SourceHashLength bytes; anything else is an
+// error, mirroring Python DirectoryEntry.__init__, which raises TypeError
+// "Attempt to add invalid source hash to directory" (Directory.py:419,433-434).
+func NewEntry(sourceHash []byte) (*Entry, error) {
+	if !ValidSourceHash(sourceHash) {
+		return nil, fmt.Errorf("%w: %v bytes, want %v", ErrInvalidSourceHash, len(sourceHash), SourceHashLength)
+	}
 	return &Entry{
 		SourceHash:        sourceHash,
 		DisplayName:       "",
@@ -52,5 +75,5 @@ func NewEntry(sourceHash []byte) *Entry {
 		HostsNode:         false,
 		IdentifyOnConnect: false,
 		Notes:             "",
-	}
+	}, nil
 }

@@ -101,7 +101,7 @@ func (bd *BrowserDisplay) HandleLXMFLink(linkTarget string) {
 // On success calls OnOpenRRC; on failure calls OnBrowserError.
 // Matches Python's handle_rrc_link() at Browser.py:426.
 func (bd *BrowserDisplay) HandleRRCLink(linkTarget string) {
-	hubHex, room, _, err := ParseRRCLink(linkTarget)
+	hubHex, room, dest, err := ParseRRCLink(linkTarget)
 	if err != nil {
 		if bd.OnBrowserError != nil {
 			bd.OnBrowserError(fmt.Sprintf("Could not open RRC link: %v", err))
@@ -109,7 +109,7 @@ func (bd *BrowserDisplay) HandleRRCLink(linkTarget string) {
 		return
 	}
 	if bd.OnOpenRRC != nil {
-		bd.OnOpenRRC(hubHex, room)
+		bd.OnOpenRRC(hubHex, room, dest)
 	}
 }
 

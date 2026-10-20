@@ -165,7 +165,10 @@ func (a *App) CreateDirectoryEntry(sourceHash []byte, displayName string) *direc
 	if a.Dir == nil {
 		a.Dir = directory.New()
 	}
-	entry := directory.NewEntry(sourceHash)
+	entry, err := directory.NewEntry(sourceHash)
+	if err != nil {
+		return nil
+	}
 	if displayName != "" {
 		entry.DisplayName = displayName
 	}
@@ -200,7 +203,10 @@ func (a *App) SaveConnectedNode(sourceHash []byte, displayName string) *director
 	if a.Dir == nil {
 		a.Dir = directory.New()
 	}
-	entry := directory.NewEntry(sourceHash)
+	entry, err := directory.NewEntry(sourceHash)
+	if err != nil {
+		return nil
+	}
 	if displayName != "" {
 		entry.DisplayName = displayName
 	}
@@ -331,7 +337,11 @@ func (a *App) SetPeerDisplayName(sourceHash []byte, displayName string) {
 	}
 	entry := a.Dir.Find(sourceHash)
 	if entry == nil {
-		entry = directory.NewEntry(sourceHash)
+		var err error
+		entry, err = directory.NewEntry(sourceHash)
+		if err != nil {
+			return
+		}
 	}
 	entry.DisplayName = displayName
 	a.Dir.Remember(entry)
@@ -357,7 +367,11 @@ func (a *App) SetPeerTrustLevel(sourceHash []byte, trustLevel byte) {
 	}
 	entry := a.Dir.Find(sourceHash)
 	if entry == nil {
-		entry = directory.NewEntry(sourceHash)
+		var err error
+		entry, err = directory.NewEntry(sourceHash)
+		if err != nil {
+			return
+		}
 	}
 	entry.TrustLevel = trustLevel
 	a.Dir.Remember(entry)
@@ -412,7 +426,11 @@ func (a *App) RememberPeerInfo(sourceHash []byte, data PeerInfoData) *directory.
 	}
 	entry := a.Dir.Find(sourceHash)
 	if entry == nil {
-		entry = directory.NewEntry(sourceHash)
+		var err error
+		entry, err = directory.NewEntry(sourceHash)
+		if err != nil {
+			return nil
+		}
 	}
 	entry.SourceHash = sourceHash
 	entry.DisplayName = data.DisplayName
@@ -503,10 +521,12 @@ func (a *App) LXMFAddressHex() string {
 }
 
 // SourceHashFromHex decodes a hex source-hash string (as shown in the UI) to
-// bytes. It returns nil (and ok=false) for an invalid hex string.
+// bytes. It returns nil (and ok=false) for an invalid hex string or a hash that
+// is not a 16-byte RNS identity hash (directory.SourceHashLength), which Python
+// refuses when it builds the DirectoryEntry (Directory.py:419,433-434).
 func SourceHashFromHex(s string) ([]byte, bool) {
 	b, err := hex.DecodeString(s)
-	if err != nil {
+	if err != nil || !directory.ValidSourceHash(b) {
 		return nil, false
 	}
 	return b, true

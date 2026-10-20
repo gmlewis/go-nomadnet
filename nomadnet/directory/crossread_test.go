@@ -29,7 +29,7 @@ func TestLoadFromDiskPythonWritten(t *testing.T) {
 	if err := d.LoadFromDisk(path); err != nil {
 		t.Fatal(err)
 	}
-	e := d.Find([]byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08})
+	e := d.Find(hash16(0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08))
 	if e == nil {
 		t.Fatal("Bob entry not found")
 	}
@@ -54,7 +54,7 @@ func TestLoadFromDiskPythonWritten(t *testing.T) {
 	if e.Notes != "bob notes" {
 		t.Errorf("Notes = %q, want 'bob notes'", e.Notes)
 	}
-	e2 := d.Find([]byte{0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11})
+	e2 := d.Find(hash16(0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11))
 	if e2 == nil {
 		t.Fatal("second entry not found")
 	}

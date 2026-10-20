@@ -170,6 +170,15 @@ type NetworkDisplay struct {
 	// (the view then falls back to the AnnounceEntry's own fields).
 	OnResolveAnnounceInfo func(ann AnnounceEntry) (AnnounceInfoData, bool)
 
+	// OnRequestKeys asks the network for the identity/path of an announced
+	// destination. It is the [Request keys] action of the "Keys Unknown" dialog
+	// (Python RNS.Transport.request_path(announce[1]), Network.py:352).
+	OnRequestKeys func(sourceHash string)
+
+	// keysUnknown is the active "Keys Unknown" dialog, retained so its Request
+	// keys action can update the message in place.
+	keysUnknown *keysUnknownDialog
+
 	// OnResolveKnownNodeInfo resolves the directory-backed fields a KnownNodeInfo
 	// form needs at view time (Python KnownNodeInfo __init__: display_str,
 	// sort_rank, trust_level, op_str, hops, pn address, identify_on_connect).
@@ -482,6 +491,14 @@ func (nd *NetworkDisplay) showAnnounceDetailFor(ann AnnounceEntry) {
 		if resolved, ok := nd.OnResolveAnnounceInfo(ann); ok {
 			data = resolved
 		}
+	}
+
+	// Python's AnnounceInfo raises KeyError when a node's identity cannot be
+	// recalled (Network.py:138-141); display_announce catches it and offers the
+	// "Keys Unknown" dialog instead of the detail view (Network.py:337-385).
+	if data.KeysUnknown {
+		nd.ShowKeysUnknown(ann)
+		return
 	}
 
 	ai := newAnnounceInfoDisplay(nd, ann, data)
@@ -977,6 +994,14 @@ func (nd *NetworkDisplay) UpdateLocalPeer(lxmfAddr, identityHash string, lastAnn
 	nd.localPeer.SetData(lxmfAddr, identityHash, lastAnnounce)
 }
 
+// SetLastAnnounce refreshes the Local Peer Info panel's "Announced" line.
+func (nd *NetworkDisplay) SetLastAnnounce(t time.Time) {
+	if nd.localPeer == nil {
+		return
+	}
+	nd.localPeer.SetLastAnnounce(t)
+}
+
 // SetLocalPeerName seeds the name edit field once with the current display
 // name. It mirrors Python's LocalPeer.__init__ setting e_name.edit_text at
 // construction (Network.py:1271) and never re-setting it; the Go wiring layer
@@ -1238,6 +1263,71 @@ func (nd *NetworkDisplay) CloseListSlotDialog() {
 	// index 1.
 	nd.rebuildLeftPanel()
 	nd.focusLeftList()
+}
+
+// keysUnknownDialog holds the "Keys Unknown" dialog's widgets: the message is
+// replaced in place when the keys are requested, mirroring Python's confirmed
+// handler rewriting dialog_pile.contents[0] (Network.py:351), while the button
+// row stays.
+type keysUnknownDialog struct {
+	dialog   *DialogLineBox
+	layout   *tview.Flex
+	message  *urwidCenterText
+	request  *UrwidButton
+	closeBtn *UrwidButton
+}
+
+// ShowKeysUnknown shows Python's "Keys Unknown" dialog for a node announce
+// whose identity cannot be recalled (Network.py:337-385): a centered warning
+// with [Request keys] and [Close], overlaid on the left list slot. Request keys
+// asks the network for the destination's path and confirms with "Keys requested
+// from network"; Close or Esc restores the list.
+func (nd *NetworkDisplay) ShowKeysUnknown(ann AnnounceEntry) {
+	k := &keysUnknownDialog{}
+	k.message = NewUrwidCenterText(
+		"The keys for the announced destination could not be recalled. " +
+			"You can wait for an announce to arrive, or request the keys from the network.\n")
+	k.request = NewUrwidButton("Request keys").SetSelectedFunc(func() {
+		if nd.OnRequestKeys != nil {
+			nd.OnRequestKeys(ann.SourceHash)
+		}
+		k.message.SetText("\nKeys requested from network\n")
+		nd.showKeysUnknownDialog(k)
+	})
+	k.closeBtn = NewUrwidButton("Close").SetSelectedFunc(nd.closeKeysUnknown)
+	row := newURWIDColumns(0, k.request, tview.NewBox(), k.closeBtn).
+		SetWeight(0, 45).SetWeight(1, 10).SetWeight(2, 45)
+	k.layout = tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(k.message, 1, 0, false).
+		AddItem(row, 1, 0, true)
+	k.dialog = NewDialogLineBox("Keys Unknown", k.layout, nil)
+	nd.showKeysUnknownDialog(k)
+}
+
+// showKeysUnknownDialog mounts (or re-mounts) the dialog at its wrapped PACK
+// height. Python's overlay takes its height from the Pile, so the message grows
+// when the confirmation text replaces the warning (Network.py:344-360).
+func (nd *NetworkDisplay) showKeysUnknownDialog(k *keysUnknownDialog) {
+	width := 40
+	if _, _, w, _ := nd.listBox.GetInnerRect(); w > 0 {
+		width = w
+	}
+	rows := k.message.RowsAt(max(width-2, 1))
+	k.layout.ResizeItem(k.message, rows, 0)
+	nd.keysUnknown = k
+	nd.ShowListSlotDialog(k.dialog, rows+1+2) // message + button row + border
+	// Dismissing restores the list the dialog was opened over, and leaves the
+	// detail-view state (Python ListDialogLineBox → close_list_dialogs).
+	k.dialog.onDismiss = nd.closeKeysUnknown
+	nd.setInfoView(true)
+}
+
+// closeKeysUnknown dismisses the Keys Unknown dialog and returns to the list
+// (Python close_list_dialogs, Network.py:1728-1734).
+func (nd *NetworkDisplay) closeKeysUnknown() {
+	nd.keysUnknown = nil
+	nd.CloseListSlotDialog()
+	nd.showAnnounceStream()
 }
 
 // ShowListSlotConfirm shows a Yes/No confirmation dialog overlaid on the

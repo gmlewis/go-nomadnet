@@ -339,10 +339,19 @@ func TestScanChatSpansBoundaries(t *testing.T) {
 		t.Errorf("room spans = %+v, want only #test", spans)
 	}
 
-	// Mentions with boundaries: @bob matches, x@bob and @bob1 do not.
+	// Mentions with boundaries: @bob is the own mention, x@bob matches
+	// neither, and @bob1 is an @othernick mention — Python's own-nick pattern
+	// fails its trailing [A-Za-z0-9_] boundary but _scan_nick_mentions still
+	// yields the longer nick (Channels.py:124-137).
 	spans = scanChatSpans("hey @bob and x@bob and @bob1", "bob")
-	if len(spans) != 1 || spans[0].start != 4 {
-		t.Errorf("mention spans = %+v, want one at offset 4", spans)
+	if len(spans) != 2 {
+		t.Fatalf("mention spans = %+v, want the own and nick mentions", spans)
+	}
+	if spans[0].kind != "mention" || spans[0].start != 4 {
+		t.Errorf("span[0] = %+v, want the own mention at offset 4", spans[0])
+	}
+	if spans[1].kind != "nick_mention" || spans[1].start != 23 || spans[1].target != "bob1" {
+		t.Errorf("span[1] = %+v, want the nick mention @bob1 at offset 23", spans[1])
 	}
 }
 
@@ -377,5 +386,132 @@ func TestFormatRRCMessageSystemNoticeError(t *testing.T) {
 		colorTag(cubeHex3("#f55"), "") + opts.Glyphs["warning"] + " boom" + colorReset + "\n"
 	if got != want {
 		t.Errorf("error render =\n%q\nwant\n%q", got, want)
+	}
+}
+
+// TestRRCMentionColors pins _message_widget's irc_mention / nick_mention
+// color rules (Channels.py:1342-1365) and the timestamp recoloring gated on
+// rrc_color_mention_timestamps (Channels.py:1346,1353).
+func TestRRCMentionColors(t *testing.T) {
+	t.Parallel()
+
+	const ownHash = "0102030405060708090a0b0c0d0e0f10"
+	const bobHash = "101112131415161718191a1b1c1d1e1f"
+	ts := time.Date(2026, 9, 3, 7, 57, 16, 0, time.Local).UnixMilli()
+
+	ownPalette := NickColorByHashHexColor(ownHash, DefaultNickPalette(ThemeDark))
+	bobPalette := NickColorByHashHexColor(bobHash, DefaultNickPalette(ThemeDark))
+	mentionTheme := rrcRenderColors(ThemeDark)["mention"]
+	tsTheme := rrcRenderColors(ThemeDark)["ts"]
+	mentionOverride := hexColorOr("aabbcc", tcell.ColorDefault)
+
+	tests := []struct {
+		name      string
+		text      string
+		ownNick   string
+		opts      RRCRenderOpts
+		wantBody  tcell.Color // mention span color; ColorDefault means unstyled
+		wantTS    tcell.Color
+		bodyPlain bool // the mention span must carry no style tags at all
+	}{
+		{
+			name: "nick colors own mention uses the local identity palette color",
+			text: "hey @alice", ownNick: "alice",
+			opts:     RRCRenderOpts{NickColors: true, ColorMentionTimestamps: true, OwnHash: ownHash},
+			wantBody: ownPalette, wantTS: ownPalette,
+		},
+		{
+			name: "mention color overrides the identity color for body and ts",
+			text: "hey @alice", ownNick: "alice",
+			opts:     RRCRenderOpts{NickColors: true, ColorMentionTimestamps: true, OwnHash: ownHash, MentionColor: "aabbcc"},
+			wantBody: mentionOverride, wantTS: mentionOverride,
+		},
+		{
+			name: "without nick colors the ts keeps theme mention even with an override",
+			text: "hey @alice", ownNick: "alice",
+			opts:     RRCRenderOpts{NickColors: false, ColorMentionTimestamps: true, MentionColor: "aabbcc"},
+			wantBody: mentionOverride, wantTS: mentionTheme,
+		},
+		{
+			name: "without nick colors or override both use theme mention",
+			text: "hey @alice", ownNick: "alice",
+			opts:     RRCRenderOpts{NickColors: false, ColorMentionTimestamps: true},
+			wantBody: mentionTheme, wantTS: mentionTheme,
+		},
+		{
+			name: "timestamps off leaves the ts grey",
+			text: "hey @alice", ownNick: "alice",
+			opts:     RRCRenderOpts{NickColors: true, ColorMentionTimestamps: false, OwnHash: ownHash},
+			wantBody: ownPalette, wantTS: tsTheme,
+		},
+		{
+			name: "unknown identity hash falls back to theme mention",
+			text: "hey @alice", ownNick: "alice",
+			opts:     RRCRenderOpts{NickColors: true, ColorMentionTimestamps: true},
+			wantBody: mentionTheme, wantTS: mentionTheme,
+		},
+		{
+			name: "no mention leaves the ts grey",
+			text: "hello", ownNick: "alice",
+			opts:     RRCRenderOpts{NickColors: true, ColorMentionTimestamps: true, OwnHash: ownHash},
+			wantBody: tcell.ColorDefault, wantTS: tsTheme,
+		},
+		{
+			name: "other nick uses its own hash palette color",
+			text: "hey @bob", ownNick: "alice",
+			opts: RRCRenderOpts{NickColors: true, ColorMentionTimestamps: true,
+				nickSources: map[string]string{"bob": bobHash}},
+			wantBody: bobPalette, wantTS: tsTheme,
+		},
+		{
+			name: "other nick unknown source stays plain",
+			text: "hey @bob", ownNick: "alice",
+			opts:     RRCRenderOpts{NickColors: true, ColorMentionTimestamps: true},
+			wantBody: tcell.ColorDefault, wantTS: tsTheme, bodyPlain: true,
+		},
+		{
+			name: "other nick without nick colors stays plain",
+			text: "hey @bob", ownNick: "alice",
+			opts: RRCRenderOpts{NickColors: false, ColorMentionTimestamps: true,
+				nickSources: map[string]string{"bob": bobHash}},
+			wantBody: tcell.ColorDefault, wantTS: tsTheme, bodyPlain: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			opts := tt.opts
+			opts.Theme = ThemeDark
+			opts.Palette = DefaultNickPalette(ThemeDark)
+			opts.OwnNick = tt.ownNick
+			msg := ChannelMessage{Room: "test", Nick: "Bob", SrcHash: ownHash, Text: tt.text, TsMs: ts}
+
+			body := formatRRCBody(msg, opts)
+			mention := ""
+			if i := strings.Index(tt.text, "@"); i >= 0 {
+				mention = tt.text[i:]
+			}
+			if tt.bodyPlain {
+				if body != escapeTviewTags(tt.text) {
+					t.Errorf("body = %q, want the plain text %q (Channels.py:1357-1365)", body, tt.text)
+				}
+			} else if mention != "" {
+				if want := colorTag(tt.wantBody, "r") + mention + spanReset; !strings.Contains(body, want) {
+					t.Errorf("body = %q, want the run %q", body, want)
+				}
+			}
+
+			if got := rrcTsColor(msg, opts); got != tt.wantTS {
+				t.Errorf("ts color = %v, want %v (Channels.py:1342-1356)", got, tt.wantTS)
+			}
+			// The justified head must use the same timestamp color.
+			if tt.ownNick != "" {
+				head := formatJustifiedHead(msg, opts, "Bob> "+tt.text, len("<Bob> "))
+				if want := rrcTsPrefix(ts, tt.wantTS); !strings.Contains(head, want) {
+					t.Errorf("justified head = %q, want the ts run %q", head, want)
+				}
+			}
+		})
 	}
 }
