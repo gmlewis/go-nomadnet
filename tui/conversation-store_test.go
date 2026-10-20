@@ -89,7 +89,14 @@ func TestConversationStoreDeleteMissing(t *testing.T) {
 	t.Parallel()
 
 	store := NewConversationStore()
-	store.Delete("nonexistent") // should not panic
+	store.Add(ConversationInfo{SourceHash: "aabb", DisplayName: "A"})
+	store.Delete("nonexistent")
+	if got := store.Count(); got != 1 {
+		t.Errorf("deleting a missing conversation changed the count: %v, want 1", got)
+	}
+	if store.Get("aabb") == nil {
+		t.Errorf("deleting a missing conversation removed another entry")
+	}
 }
 
 func TestConversationStoreSearch(t *testing.T) {

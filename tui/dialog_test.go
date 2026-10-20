@@ -91,8 +91,9 @@ func TestDialogLineBoxNilDismiss(t *testing.T) {
 	t.Parallel()
 
 	d := NewDialogLineBox("Test", nil, nil)
-	// Should not panic
+	// The documented contract of a nil dismiss is that no callback is
+	// installed, so a dismissal path never has anything to call.
 	if d.onDismiss != nil {
-		d.onDismiss()
+		t.Fatalf("NewDialogLineBox(nil dismiss) installed an onDismiss callback")
 	}
 }

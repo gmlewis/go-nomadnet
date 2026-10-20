@@ -16,10 +16,12 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/gmlewis/tcell/v2"
+	"github.com/gmlewis/tview"
 )
 
 func TestNewNetworkDisplay(t *testing.T) {
@@ -297,13 +299,83 @@ func TestNetworkToggleFullscreenFiresCallback(t *testing.T) {
 	}
 }
 
+// networkDialog returns the single dialog the display opened.
+func networkDialog(t *testing.T, app *App) *DialogLineBox {
+	t.Helper()
+	app.Dialogs.mu.Lock()
+	defer app.Dialogs.mu.Unlock()
+	if len(app.Dialogs.stack) != 1 {
+		t.Fatalf("dialog stack has %v entries, want 1", len(app.Dialogs.stack))
+	}
+	return app.Dialogs.stack[0].dialog
+}
+
+// networkDialogText walks a dialog's content and returns every text it
+// contains (text views, urwid text primitives and list rows).
+func networkDialogText(t *testing.T, dialog *DialogLineBox) string {
+	t.Helper()
+	flex, ok := dialog.Content().(*tview.Flex)
+	if !ok {
+		t.Fatalf("dialog content is %T, want *tview.Flex", dialog.Content())
+	}
+	var sb strings.Builder
+	var walk func(p tview.Primitive)
+	walk = func(p tview.Primitive) {
+		switch v := p.(type) {
+		case *tview.TextView:
+			sb.WriteString(v.GetText(true))
+			sb.WriteString("\n")
+		case *tview.List:
+			for i := 0; i < v.GetItemCount(); i++ {
+				main, secondary := v.GetItemText(i)
+				sb.WriteString(main)
+				sb.WriteString(" ")
+				sb.WriteString(secondary)
+				sb.WriteString("\n")
+			}
+		case *tview.Flex:
+			for i := 0; i < v.GetItemCount(); i++ {
+				walk(v.GetItem(i))
+			}
+		}
+	}
+	for i := 0; i < flex.GetItemCount(); i++ {
+		walk(flex.GetItem(i))
+	}
+	return sb.String()
+}
+
+// TestShowLocalPeerDialog pins the local-peer panel: the LXMF address,
+// identity hash, display name and last announce are all shown under the
+// "Local Peer" title.
 func TestShowLocalPeerDialog(t *testing.T) {
 	t.Parallel()
 	app := newTestApp()
 	nd := NewNetworkDisplay(app, nil, nil)
 
-	// Should not panic
 	nd.ShowLocalPeerDialog("addr123", "ident456", "MyPeer", "2h ago")
+	dialog := networkDialog(t, app)
+	if title := dialog.GetTitle(); title != "Local Peer" {
+		t.Errorf("dialog title = %q, want Local Peer", title)
+	}
+	text := networkDialogText(t, dialog)
+	for _, want := range []string{
+		"LXMF Addr : addr123",
+		"Identity  : ident456",
+		"Name      : MyPeer",
+		"Last Announce: 2h ago",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("local peer panel %q missing %q", text, want)
+		}
+	}
+
+	// An empty last-announce line is omitted.
+	app2 := newTestApp()
+	NewNetworkDisplay(app2, nil, nil).ShowLocalPeerDialog("a", "b", "c", "")
+	if text := networkDialogText(t, networkDialog(t, app2)); strings.Contains(text, "Last Announce:") {
+		t.Errorf("empty last announce was rendered: %q", text)
+	}
 }
 
 func TestShowLXMFPeersDialogEmpty(t *testing.T) {
@@ -312,6 +384,13 @@ func TestShowLXMFPeersDialogEmpty(t *testing.T) {
 	nd := NewNetworkDisplay(app, nil, nil)
 
 	nd.ShowLXMFPeersDialog(nil)
+	dialog := networkDialog(t, app)
+	if title := dialog.GetTitle(); title != "LXMF Peers" {
+		t.Errorf("dialog title = %q, want LXMF Peers", title)
+	}
+	if text := networkDialogText(t, dialog); !strings.Contains(text, "No propagation peers") {
+		t.Errorf("empty peers dialog %q missing its placeholder", text)
+	}
 }
 
 func TestShowLXMFPeersDialogWithPeers(t *testing.T) {
@@ -324,4 +403,15 @@ func TestShowLXMFPeersDialogWithPeers(t *testing.T) {
 		{Hash: "ccdd3344", Name: "Peer2", Alive: false, Pending: 0},
 	}
 	nd.ShowLXMFPeersDialog(peers)
+	text := networkDialogText(t, networkDialog(t, app))
+	for _, want := range []string{
+		"Peer1 [green]alive[-] aabb1122",
+		"Pending: 3",
+		"Peer2 [red]dead[-] ccdd3344",
+		"Pending: 0",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("peers dialog %q missing %q", text, want)
+		}
+	}
 }

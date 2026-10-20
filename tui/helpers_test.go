@@ -68,7 +68,10 @@ func TestClickableIconClickNilCallback(t *testing.T) {
 	t.Parallel()
 
 	ci := NewClickableIcon("📋", nil)
-
+	if ci.action != nil {
+		t.Fatalf("NewClickableIcon(nil) installed a callback")
+	}
+	// A click on an icon with no action must be a no-op, not a panic.
 	ci.HandleMouseLeftClick()
 }
 

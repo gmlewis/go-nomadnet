@@ -294,19 +294,111 @@ func TestInterfacesDisplayKeyboardShortcuts(t *testing.T) {
 	}
 }
 
+// overlayDialogText walks an open interfaces dialog's content (including the
+// button row) and returns every text primitive it contains.
+func overlayDialogText(t *testing.T, ov *SlotOverlay) string {
+	t.Helper()
+	flex, ok := ov.Dialog().Content().(*tview.Flex)
+	if !ok {
+		t.Fatalf("dialog content is %T, want *tview.Flex", ov.Dialog().Content())
+	}
+	var sb strings.Builder
+	var walk func(p tview.Primitive)
+	walk = func(p tview.Primitive) {
+		switch v := p.(type) {
+		case *tview.TextView:
+			sb.WriteString(v.GetText(true))
+			sb.WriteString("\n")
+		case *centeredText:
+			sb.WriteString(v.GetText())
+			sb.WriteString("\n")
+		case *urwidCenterText:
+			sb.WriteString(v.text)
+			sb.WriteString("\n")
+		case *urwidLeftText:
+			sb.WriteString(v.text)
+			sb.WriteString("\n")
+		case *tview.Flex:
+			for i := 0; i < v.GetItemCount(); i++ {
+				walk(v.GetItem(i))
+			}
+		case *urwidColumns:
+			for _, child := range v.children {
+				walk(child)
+			}
+		}
+	}
+	for i := 0; i < flex.GetItemCount(); i++ {
+		walk(flex.GetItem(i))
+	}
+	return sb.String()
+}
+
+// overlayDialogButton finds a button in an open interfaces dialog.
+func overlayDialogButton(t *testing.T, ov *SlotOverlay, label string) *UrwidButton {
+	t.Helper()
+	flex, ok := ov.Dialog().Content().(*tview.Flex)
+	if !ok {
+		t.Fatalf("dialog content is %T, want *tview.Flex", ov.Dialog().Content())
+	}
+	for i := 0; i < flex.GetItemCount(); i++ {
+		row, ok := flex.GetItem(i).(*urwidColumns)
+		if !ok {
+			continue
+		}
+		for _, child := range row.children {
+			if btn, ok := child.(*UrwidButton); ok && btn.Label() == label {
+				return btn
+			}
+		}
+	}
+	t.Fatalf("dialog has no %q button", label)
+	return nil
+}
+
+// TestInterfacesDisplayShowEnableDisableConfirm pins the confirm dialog: the
+// question names the action and interface, Yes runs the callback after
+// closing, and No closes without it (Interfaces.py:2516-2617).
 func TestInterfacesDisplayShowEnableDisableConfirm(t *testing.T) {
 	t.Parallel()
 
-	// Test that the function exists and can be called without panic
-	// (actual dialog display requires a running app)
 	app := newTestApp()
 	id := NewInterfacesDisplay(app, nil)
 
-	// Verify the function exists and can be called
-	// Note: ShowConfirmDialog requires a running tview app to display,
-	// so we just verify the function signature works.
-	if id == nil {
-		t.Fatal("InterfacesDisplay is nil")
+	var confirmed int
+	id.ShowEnableDisableConfirm("RNode", true, func() { confirmed++ })
+	if id.dialogOverlay == nil {
+		t.Fatal("ShowEnableDisableConfirm did not open the overlay")
+	}
+	if title := id.dialogOverlay.Dialog().GetTitle(); title != "Confirm" {
+		t.Errorf("dialog title = %q, want %q", title, "Confirm")
+	}
+	if text := overlayDialogText(t, id.dialogOverlay); !strings.Contains(text, "Are you sure you want to disable the RNode interface?") {
+		t.Errorf("dialog text %q missing the confirm question", text)
+	}
+
+	// No closes without confirming.
+	overlayDialogButton(t, id.dialogOverlay, "No").InputHandler()(
+		tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone), func(tview.Primitive) {})
+	if id.dialogOverlay != nil {
+		t.Error("No left the dialog open")
+	}
+	if confirmed != 0 {
+		t.Errorf("No ran the confirm callback")
+	}
+
+	// Yes closes and confirms.
+	id.ShowEnableDisableConfirm("RNode", false, func() { confirmed++ })
+	if text := overlayDialogText(t, id.dialogOverlay); !strings.Contains(text, "enable the RNode interface?") {
+		t.Errorf("enable dialog text %q missing the question", text)
+	}
+	overlayDialogButton(t, id.dialogOverlay, "Yes").InputHandler()(
+		tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone), func(tview.Primitive) {})
+	if id.dialogOverlay != nil {
+		t.Error("Yes left the dialog open")
+	}
+	if confirmed != 1 {
+		t.Errorf("Yes did not run the confirm callback (%v calls)", confirmed)
 	}
 }
 
@@ -315,8 +407,22 @@ func TestInterfacesDisplayShowRestartRequired(t *testing.T) {
 	app := newTestApp()
 	id := NewInterfacesDisplay(app, nil)
 
-	// Should not panic
 	id.ShowRestartRequired()
+	if id.dialogOverlay == nil {
+		t.Fatal("ShowRestartRequired did not open the overlay")
+	}
+	if title := id.dialogOverlay.Dialog().GetTitle(); title != "Notice" {
+		t.Errorf("dialog title = %q, want Notice", title)
+	}
+	text := overlayDialogText(t, id.dialogOverlay)
+	for _, want := range []string{
+		"RNS must be restarted for interface changes to take effect.",
+		"Restart Nomad Network to apply changes.",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("notice %q missing %q", text, want)
+		}
+	}
 }
 
 func TestInterfacesDisplayShowInterfaceError(t *testing.T) {
@@ -324,17 +430,37 @@ func TestInterfacesDisplayShowInterfaceError(t *testing.T) {
 	app := newTestApp()
 	id := NewInterfacesDisplay(app, nil)
 
-	// Should not panic
 	id.ShowInterfaceError("Test error message")
+	if id.dialogOverlay == nil {
+		t.Fatal("ShowInterfaceError did not open the overlay")
+	}
+	if title := id.dialogOverlay.Dialog().GetTitle(); title != "Error" {
+		t.Errorf("dialog title = %q, want Error", title)
+	}
+	if text := overlayDialogText(t, id.dialogOverlay); !strings.Contains(text, "Error: Test error message") {
+		t.Errorf("error dialog %q missing the message", text)
+	}
 }
 
+// TestInterfacesDisplayShowRNSDisconnected pins the passive disconnected
+// notice (Interfaces.py:2794-2830): title "Disconnected" and the two-line
+// warning, with no buttons to dismiss it.
 func TestInterfacesDisplayShowRNSDisconnected(t *testing.T) {
 	t.Parallel()
 	app := newTestApp()
 	id := NewInterfacesDisplay(app, nil)
 
-	// Should not panic
 	id.ShowRNSDisconnected()
+	if id.dialogOverlay == nil {
+		t.Fatal("ShowRNSDisconnected did not open the overlay")
+	}
+	if title := id.dialogOverlay.Dialog().GetTitle(); title != "Disconnected" {
+		t.Errorf("dialog title = %q, want Disconnected", title)
+	}
+	if text := overlayDialogText(t, id.dialogOverlay); !strings.Contains(text, "(!) RNS Instance Disconnected") ||
+		!strings.Contains(text, "Waiting to Reconnect...") {
+		t.Errorf("disconnected notice %q missing its lines", text)
+	}
 }
 
 // TestInterfacesDisplayListFocusDraw verifies the selectable interface list

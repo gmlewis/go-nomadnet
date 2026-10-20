@@ -16,6 +16,7 @@
 package app
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/gmlewis/go-reticulum/rns"
@@ -40,7 +41,33 @@ func TestExceptionHandler(t *testing.T) {
 	a := NewApp(tempDir(t), "", false, false)
 	a.setupPaths()
 	a.Logger = rns.NewLogger()
-	a.Logger.SetLogDest(rns.LogStdout)
-	// ExceptionHandler should not panic on a nil-ish value.
+	a.Logger.SetLogDest(rns.LogCallback)
+
+	// The handler's contract is to report the recovered value and the
+	// goroutine's stack at error level (Python's panic() log block).
+	var lines []string
+	a.Logger.SetLogCallback(func(line string) { lines = append(lines, line) })
+	a.ExceptionHandler("something broke")
+
+	joined := strings.Join(lines, "\n")
+	for _, want := range []string{
+		"An unhandled panic occurred:",
+		"Value: something broke",
+		"Trace:\n",
+		"goroutine ",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("exception report missing %q in:\n%v", want, joined)
+		}
+	}
+}
+
+// TestExceptionHandlerWithoutLogger pins the nil-logger guard: a handler
+// called before the logger exists must not panic.
+func TestExceptionHandlerWithoutLogger(t *testing.T) {
+	t.Parallel()
+	a := NewApp(tempDir(t), "", false, false)
+	a.setupPaths()
+	a.Logger = nil
 	a.ExceptionHandler("something broke")
 }

@@ -22,6 +22,7 @@ import (
 
 	"github.com/gmlewis/go-reticulum/rrc"
 	"github.com/gmlewis/tcell/v2"
+	"github.com/gmlewis/tview"
 )
 
 func TestNewChannelsDisplay(t *testing.T) {
@@ -63,10 +64,38 @@ func TestChannelsDisplayShowMessages(t *testing.T) {
 		{Nick: "Alice", Text: "Hello!", IsSelf: false},
 		{Nick: "Bob", Text: "Hi there!", IsSelf: true},
 		{Text: "System message", IsSystem: true},
+		{Text: "A notice", IsNotice: true},
+		{Text: "An error", IsError: true},
 	}
 
-	// Should not panic
 	cd.ShowMessages(msgs)
+	text := cd.messages.GetText(false)
+	for _, want := range []string{
+		"[" + nickColor("Alice") + "]Alice[-] Hello!",
+		"[green]Bob[-] Hi there!",
+		"[gray]System message[-]",
+		"[yellow]A notice[-]",
+		"[red]An error[-]",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("messages view %q missing %q", text, want)
+		}
+	}
+
+	// With join/part collapsing on, a run of system join/leave events is
+	// summarised instead of printed one per line.
+	cd.collapseJoinPart = true
+	cd.ShowMessages([]ChannelMessage{
+		{Text: "alice joined", IsSystem: true},
+		{Text: "bob left", IsSystem: true},
+	})
+	collapsed := cd.messages.GetText(false)
+	if strings.Contains(collapsed, "alice joined") {
+		t.Errorf("collapsed view still prints each join/leave: %q", collapsed)
+	}
+	if !strings.Contains(collapsed, "join/leave events") {
+		t.Errorf("collapsed view %q missing the summary label", collapsed)
+	}
 }
 
 func TestChannelsDisplayShowMembers(t *testing.T) {
@@ -80,8 +109,26 @@ func TestChannelsDisplayShowMembers(t *testing.T) {
 		{Nick: "Bob", Hash: "789ghi012jkl", Online: false},
 	}
 
-	// Should not panic
 	cd.ShowMembers(members)
+	if got := cd.members.GetItemCount(); got != 2 {
+		t.Fatalf("member list has %v rows, want 2", got)
+	}
+	wantRows := []struct{ main, secondary string }{
+		{"● Alice", "abc123def456"},
+		{"○ Bob", "789ghi012jkl"},
+	}
+	for i, want := range wantRows {
+		main, secondary := cd.members.GetItemText(i)
+		if main != want.main || secondary != want.secondary {
+			t.Errorf("member row %v = (%q, %q), want (%q, %q)", i, main, secondary, want.main, want.secondary)
+		}
+	}
+
+	// A later update replaces the list.
+	cd.ShowMembers([]ChannelMember{{Nick: "Carol", Hash: "abcdef123456", Online: true}})
+	if got := cd.members.GetItemCount(); got != 1 {
+		t.Errorf("ShowMembers did not clear the previous rows (%v left)", got)
+	}
 }
 
 func TestNickColor(t *testing.T) {
@@ -195,14 +242,60 @@ func TestShowUserInfoDialog(t *testing.T) {
 	app := newTestApp()
 	cd := NewChannelsDisplay(app, nil)
 
-	// Verify function exists and can be called without panic
-	cd.ShowUserInfoDialog("Alice", "aabb1122334455667788", "ccdd1122334455667788", false, nil)
+	// The full profile: nick, identity and LXMF address, plus the Open
+	// Conversation action when the peer's LXMF address is known.
+	var opened int
+	cd.ShowUserInfoDialog("Alice", "aabb1122334455667788", "ccdd1122334455667788", false, func() { opened++ })
+	if cd.dialogOverlay == nil {
+		t.Fatal("ShowUserInfoDialog did not open the overlay")
+	}
+	if title := cd.dialogOverlay.Dialog().GetTitle(); title != "User Info" {
+		t.Errorf("dialog title = %q, want User Info", title)
+	}
+	text := dialogText(t, cd)
+	for _, want := range []string{
+		" Nick     : Alice",
+		" Identity : aabb1122334455667788",
+		" LXMF     : ccdd1122334455667788",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("user info dialog %q missing %q", text, want)
+		}
+	}
+	dialogButton(t, cd, "Open Conversation").InputHandler()(
+		tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone), func(tview.Primitive) {})
+	if cd.dialogOverlay != nil {
+		t.Error("Open Conversation left the dialog open")
+	}
+	if opened != 1 {
+		t.Errorf("Open Conversation fired %v times, want 1", opened)
+	}
 
-	// Verify self-user case
-	cd.ShowUserInfoDialog("Bob", "aabb1122334455667788", "", true, nil)
+	// Self: a marker instead of an action, and no LXMF row.
+	cd.ShowUserInfoDialog("Bob", "aabb1122334455667788", "ccdd1122334455667788", true, nil)
+	text = dialogText(t, cd)
+	if !strings.Contains(text, " (This is you)") {
+		t.Errorf("self dialog %q missing the self marker", text)
+	}
+	if strings.Contains(text, "Open Conversation") {
+		t.Errorf("self dialog offers Open Conversation")
+	}
 
-	// Verify the identity-not-in-cache branch (no LXMF hash, not self)
+	// Unknown peer: the cache-miss explanation, no action and no LXMF row.
 	cd.ShowUserInfoDialog("Carol", "aabb1122334455667788", "", false, nil)
+	text = dialogText(t, cd)
+	for _, want := range []string{
+		" Identity not in local cache;",
+		" conversation can't be opened until",
+		" the peer announces.",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("cache-miss dialog %q missing %q", text, want)
+		}
+	}
+	if strings.Contains(text, " LXMF     :") {
+		t.Errorf("cache-miss dialog shows an LXMF row")
+	}
 }
 
 // TestChannelsDisplayBootLayout pins the Channels page boot (no-hubs) layout

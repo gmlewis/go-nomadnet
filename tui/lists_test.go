@@ -53,21 +53,34 @@ func TestNewTrustListItem(t *testing.T) {
 	}
 }
 
+// TestFocusFirstChild asserts the helper's contract: the first child marked
+// focusable in a Flex becomes the application's focused primitive, without
+// disturbing a focusable child that comes before it.
 func TestFocusFirstChild(t *testing.T) {
 	t.Parallel()
 
+	app := newTestApp()
 	flex := tview.NewFlex()
-	flex.AddItem(tview.NewTextView(), 1, 1, false)
+	first := tview.NewTextView()
+	second := tview.NewTextView()
+	flex.AddItem(first, 1, 1, true)
+	flex.AddItem(second, 1, 1, false)
 
-	// Should not panic
-	FocusFirstChild(flex)
+	// Give focus to something else first, so a no-op implementation cannot
+	// pass by accident.
+	app.Application.SetRoot(tview.NewTextView(), true)
+	FocusFirstChild(app.Application, flex)
+	if got := app.Application.GetFocus(); got != first {
+		t.Errorf("focus after FocusFirstChild = %T, want the first focusable child", got)
+	}
 }
 
 func TestFocusFirstChildNil(t *testing.T) {
 	t.Parallel()
 
-	// Should not panic
-	FocusFirstChild(nil)
+	// The nil guards are the function's contract for missing app/flex.
+	FocusFirstChild(nil, nil)
+	FocusFirstChild(newTestApp().Application, nil)
 }
 
 // TestListFocusColors asserts the list selection colors come from the theme's

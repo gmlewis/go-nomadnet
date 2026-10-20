@@ -97,10 +97,14 @@ func TestConversationsSortPinnedToTopByName(t *testing.T) {
 func TestConversationsSortEmpty(t *testing.T) {
 	t.Parallel()
 
+	// An empty conversation set is valid (a fresh install), so both orders
+	// must leave it empty rather than panic or append anything.
 	var convs []ConversationInfo
 	SortConversations(convs, SortRecent)
 	SortConversations(convs, SortName)
-	// Should not panic
+	if len(convs) != 0 {
+		t.Errorf("sorting an empty conversation set produced %v entries", len(convs))
+	}
 }
 
 func TestConversationsSortStable(t *testing.T) {

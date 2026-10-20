@@ -79,18 +79,16 @@ func NewTrustListItem(name, trustLevel string) string {
 	return icon + " " + escapeTviewTags(name)
 }
 
-// FocusFirstChild moves focus to the first focusable child of a Flex.
-func FocusFirstChild(flex *tview.Flex) {
-	if flex == nil {
+// FocusFirstChild moves focus to the first child of a Flex. It takes the
+// application because tview focus is application-owned: a Flex cannot move the
+// focus itself, and the previous signature's delegate was an empty lambda, so
+// the helper never moved anything.
+func FocusFirstChild(app *tview.Application, flex *tview.Flex) {
+	if app == nil || flex == nil || flex.GetItemCount() == 0 {
 		return
 	}
-	count := flex.GetItemCount()
-	if count > 0 {
-		first := flex.GetItem(0)
-		flex.Focus(func(p tview.Primitive) {
-			_ = p
-		})
-		_ = first
+	if first := flex.GetItem(0); first != nil {
+		app.SetFocus(first)
 	}
 }
 

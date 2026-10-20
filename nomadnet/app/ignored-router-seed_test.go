@@ -62,10 +62,21 @@ func TestApplyIgnoredDestinationsSeedsRouter(t *testing.T) {
 }
 
 // TestApplyIgnoredDestinationsNoRouter verifies the no-router case is a safe
-// no-op (the list may be applied before the router exists).
+// no-op: the list may be applied before the router exists, so the call must
+// leave the list intact for the later seeding.
 func TestApplyIgnoredDestinationsNoRouter(t *testing.T) {
 	t.Parallel()
 	a := NewApp(tempDir(t), "", false, false)
 	a.setupPaths()
-	a.applyIgnoredDestinations() // must not panic
+	a.IgnoredList = [][]byte{hash16(0x31), hash16(0x32)}
+	a.Router = nil
+
+	a.applyIgnoredDestinations()
+
+	if a.Router != nil {
+		t.Errorf("applyIgnoredDestinations created a router")
+	}
+	if len(a.IgnoredList) != 2 {
+		t.Errorf("ignored list has %v entries after a no-router apply, want 2", len(a.IgnoredList))
+	}
 }

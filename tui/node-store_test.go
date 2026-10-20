@@ -178,8 +178,15 @@ func TestNodeStoreDeleteNonexistent(t *testing.T) {
 	t.Parallel()
 
 	ns := NewNodeStore()
+	ns.Add("aabb", "Alice", "trusted", true, "tcp")
+	before := ns.Count()
 	ns.Delete("nonexistent")
-	// Should not panic
+	if got := ns.Count(); got != before {
+		t.Errorf("deleting a missing node changed the count: %v -> %v", before, got)
+	}
+	if ns.Get("aabb") == nil {
+		t.Errorf("deleting a missing node removed another entry")
+	}
 }
 
 func TestNodeStoreSearchByName(t *testing.T) {
