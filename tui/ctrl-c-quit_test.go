@@ -21,15 +21,15 @@ import (
 	"github.com/gmlewis/tcell/v2"
 )
 
-// TestCtrlCQuitsLikeCtrlQ pins the parity fix that routes Ctrl-C through the
-// same onQuit path as Ctrl-Q. In Python, Ctrl-C raises KeyboardInterrupt which
-// the urwid loop catches to exit cleanly, and the atexit handler then saves the
-// directory (NomadNetworkApp.py:38-42). tcell runs the terminal in raw mode so
-// Ctrl-C arrives as a key event (KeyCtrlC) rather than SIGINT; without this
-// routing it would be a no-op and the user would lose all discovered nodes on
-// Ctrl-C, since the shutdown path is the only one that persists the directory.
-// Both keys must invoke onQuit (which performs App.Shutdown → SaveToDisk) and
-// consume the event.
+// TestCtrlCQuitsLikeCtrlQ verifies that Ctrl-C routes through the same onQuit
+// path as Ctrl-Q. In Python, Ctrl-C raises KeyboardInterrupt which the urwid
+// loop catches to exit cleanly, and the atexit handler then saves the directory
+// (NomadNetworkApp.py:38-42). tcell runs the terminal in raw mode so Ctrl-C
+// arrives as a key event (KeyCtrlC) rather than SIGINT; without this routing it
+// would be a no-op and the user would lose all discovered nodes, since the
+// shutdown path is the only one that persists the directory. Both keys must
+// invoke onQuit (which performs App.Shutdown → SaveToDisk) and consume the
+// event.
 func TestCtrlCQuitsLikeCtrlQ(t *testing.T) {
 	t.Parallel()
 

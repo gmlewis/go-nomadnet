@@ -26,9 +26,8 @@ import (
 // The examples tree is embedded so a fresh install can materialise it without
 // depending on a source checkout. Upstream copies its packaged examples
 // directory on first run (NomadNetworkApp.py:215-223); this is the equivalent
-// here, with the example content adapted for the Go port (see §6 of
-// parity-gaps.md: upstream's messageboard page is executable Python, which this
-// port does not run).
+// here, with the example content adapted for the Go port: upstream's
+// messageboard page is executable Python, which this port does not run.
 //
 //go:embed examples
 var examplesFS embed.FS

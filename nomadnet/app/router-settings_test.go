@@ -43,9 +43,7 @@ const routerSettingsConfig = `[client]
 // TestRouterSettingsReachRouterFromConfig drives the settings through the real
 // Init path and asserts each one lands on the router. Python passes them to its
 // LXMRouter constructor and to the calls right after it
-// (NomadNetworkApp.py:334-377); the port parsed every one into an App field and
-// then never handed it over, so a configured transfer cap, peer cap or stamp
-// requirement had no effect at all.
+// (NomadNetworkApp.py:334-377).
 func TestRouterSettingsReachRouterFromConfig(t *testing.T) {
 	t.Parallel()
 
@@ -125,8 +123,8 @@ func TestRouterSettingsAcceptInvalidStampsLeavesEnforcementOff(t *testing.T) {
 
 // TestApplyRouterSettingsNodeBranches covers the half of applyRouterSettings that
 // only runs when the node is enabled: the message storage limit and the
-// prioritised destinations, both of which were parsed and discarded before.
-// Python gates the pair on `if self.enable_node:` (NomadNetworkApp.py:369-377).
+// prioritised destinations. Python gates the pair on `if self.enable_node:`
+// (NomadNetworkApp.py:369-377).
 func TestApplyRouterSettingsNodeBranches(t *testing.T) {
 	t.Parallel()
 
@@ -242,8 +240,7 @@ func TestStaticPeerHashesValidation(t *testing.T) {
 
 // TestRRCMaxAcceptedResourceSizeReachesTheManager pins the wiring of
 // [rrc] max_accepted_resource_size through to the RRC manager, which is where the
-// hub reads the cap for every incoming resource advertisement. The port hardcoded
-// 262144 at that call site, so a configured cap had no effect on the client.
+// hub reads the cap for every incoming resource advertisement.
 func TestRRCMaxAcceptedResourceSizeReachesTheManager(t *testing.T) {
 	t.Parallel()
 

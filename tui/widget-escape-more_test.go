@@ -22,8 +22,8 @@ import (
 	"github.com/gmlewis/tview"
 )
 
-// Regression tests for the remote-data bracket escapes outside the RRC room
-// widget: the Network/announce views, the peer/directory helpers, and the
+// These tests pin that remote-data bracket escapes are applied outside the RRC
+// room widget: the Network/announce views, the peer/directory helpers, and the
 // LXMF/conversation surfaces. A remote display name, announce app-data, or
 // attachment name containing "[x]" must reach the tag-parsing widget escaped.
 //

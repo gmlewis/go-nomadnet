@@ -41,12 +41,11 @@ func g1Info() InterfaceInfo {
 	}
 }
 
-// TestG1EnterOpensFullPageShow pins G1: Enter on an interface mounts Python's
+// TestG1EnterOpensFullPageShow pins that Enter on an interface mounts Python's
 // full-page ShowInterface view (Interfaces.py:2198-2620) — the `===` header
 // with the centered "Interface: <name>" title, the info rows, the TX/RX stat
 // row, the chart boxes, the Connection/Radio/Network/IFAC/Additional parameter
-// blocks, and the footer [Back | Disable/Enable | Edit] row — replacing the
-// former tiny `Interface: <name>` modal.
+// blocks, and the footer [Back | Disable/Enable | Edit] row.
 func TestG1EnterOpensFullPageShow(t *testing.T) {
 	t.Parallel()
 
@@ -100,7 +99,7 @@ func TestG1EnterOpensFullPageShow(t *testing.T) {
 		t.Errorf("IFAC Parameters block must be absent when all its values are empty: %q", rows)
 	}
 
-	// Footer buttons (G2): Back / Disable / Edit all present.
+	// Footer buttons: Back / Disable / Edit all present.
 	for _, want := range []string{"Back", "Disable", "Edit"} {
 		if !dialogHasButton(id.showWidget.Widget(), want) {
 			t.Errorf("footer %q button missing", want)
@@ -108,10 +107,10 @@ func TestG1EnterOpensFullPageShow(t *testing.T) {
 	}
 }
 
-// TestG2TabReachesFooterButtons pins G2: Tab moves focus body → footer button
-// row (Back first), cycles Back → Disable/Enable → Edit → Back, and Enter on
-// Back returns to the interface list (Python on_back → switch_to_list,
-// Interfaces.py:2817-2819 + 3011-3016).
+// TestG2TabReachesFooterButtons pins the footer focus model: Tab moves focus
+// body → footer button row (Back first), cycles Back → Disable/Enable → Edit →
+// Back, and Enter on Back returns to the interface list (Python on_back →
+// switch_to_list, Interfaces.py:2817-2819 + 3011-3016).
 func TestG2TabReachesFooterButtons(t *testing.T) {
 	t.Parallel()
 

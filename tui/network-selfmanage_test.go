@@ -48,14 +48,12 @@ func nodeAnnounce(name string) AnnounceEntry {
 	}
 }
 
-// TestNetworkAnnounceInfoRightMovesButtonsNotPane pins the fix for the user
-// report "on the Announce Info page, the cursor is on Back and I hit RightArrow
-// to move to Connect but it doesn't move". The root cause was the outer Network
-// Columns (urwidColumns) handling Right/Left BEFORE forwarding to its focused
-// child, so it grabbed Right to jump to the browser pane instead of letting the
-// nested AnnounceInfo button row move Back→Connect. With the left column marked
-// self-managing while the detail view is open, Right forwards to the button row
-// and moves Back→Connect; the outer Columns stays on the left pane.
+// TestNetworkAnnounceInfoRightMovesButtonsNotPane pins that Right on the
+// Announce Info page moves the cursor Back→Connect instead of jumping to the
+// browser pane. The outer Network Columns (urwidColumns) must not handle
+// Right/Left BEFORE forwarding to its focused child; with the left column
+// marked self-managing while the detail view is open, Right forwards to the
+// button row and the outer Columns stays on the left pane.
 func TestNetworkAnnounceInfoRightMovesButtonsNotPane(t *testing.T) {
 	t.Parallel()
 	app := newTestApp()
@@ -148,8 +146,7 @@ func TestNetworkListRightMovesToBrowser(t *testing.T) {
 // TestNetworkBrowserRightStaysInBrowser pins the self-managing browser column:
 // once focus is in the right-pane browser, Left/Right belong to the browser's
 // part-cursor model (and its Left-at-start focus release), so the outer Columns
-// must NOT pane-wrap back to the left list on Right. Before the fix, Right on
-// the browser wrapped the Columns focus to the left pane (column 0).
+// must NOT pane-wrap back to the left list on Right.
 func TestNetworkBrowserRightStaysInBrowser(t *testing.T) {
 	t.Parallel()
 	app := newTestApp()

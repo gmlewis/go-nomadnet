@@ -103,9 +103,8 @@ object ClientConfig {
      * section, and a rewrite that scanned the whole document would change a value it had
      * not understood the first time another section grew a key of the same name.
      *
-     * A template that no longer carries the keys is refused rather than patched: the
-     * alternative is a file that looks correct and hosts nothing, which is the failure this
-     * whole mechanism exists to remove.
+     * A template that no longer carries the keys is refused rather than patched, because the
+     * alternative is a configuration that looks correct and hosts nothing.
      */
     fun settings(template: String, editor: String): String {
         val served = rewrite(template, NODE_SECTION, setOf(ENABLE_NODE, NODE_NAME_KEY)) { key, _ ->

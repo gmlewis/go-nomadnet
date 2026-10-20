@@ -144,8 +144,7 @@ type RoomWidget struct {
 	// OnLocalMessage records a client-only row (system/error/notice) in the
 	// hub's room buffer so it survives RefreshRoomIfVisible — Python
 	// _local_message (Channels.py:938-946). /help emits one system row per
-	// SLASH_HELP line; without this the next hub refresh wiped the list
-	// ("help goes away quickly").
+	// SLASH_HELP line, and the buffer keeps them across a hub refresh.
 	OnLocalMessage func(kind, text string) error
 	// ChatLinks dispatches a link a reader clicked inside a chat or notice row:
 	// the room widget resolves the clicked region back to the link the renderer
@@ -210,9 +209,8 @@ func NewRoomWidget(app *App, hubName, roomName string) *RoomWidget {
 	rw.messages.SetBackgroundColor(tcell.ColorDefault)
 	// Message rows are PRE-WRAPPED at the chat inner width (the justified
 	// two-column layout, Channels.py:1408-1413 — continuation lines indent to
-	// the "<" column), so the TextView must render the wrapped lines
-	// verbatim; letting tview wrap at draw time diverged from Python's break
-	// positions (the conversations.go:3071 precedent). IndicativeMessages
+	// the "<" column), so the TextView must render the wrapped lines verbatim;
+	// tview's own wrapping would break at different columns. IndicativeMessages
 	// re-renders on width change via OnWidthChange.
 	rw.messages.SetWrap(false)
 
@@ -262,7 +260,7 @@ func NewRoomWidget(app *App, hubName, roomName string) *RoomWidget {
 	// Links in a chat or notice row are wrapped in numbered region tags by the
 	// renderer (RRCRenderOpts.links) so the TextView resolves a click on one to
 	// the link it stands for; the room widget turns that id back into a link and
-	// hands it to OnChatLink. This is the same mechanism the browser's page view
+	// hands it to ChatLinks. This is the same mechanism the browser's page view
 	// uses for Micron links (browser-nav.go).
 	rw.messages.SetRegions(true)
 	rw.messagesArea.OnRegionClick = rw.handleChatLink
@@ -299,26 +297,22 @@ func NewRoomWidget(app *App, hubName, roomName string) *RoomWidget {
 	})
 	rw.chatBox.SetBorder(true)
 
-	// Users list: ShowSecondaryText(false) — the fork's List defaults to
-	// rendering each item's (empty) secondary text as a phantom row, which
-	// painted a blank row after EVERY member (the channels hub list already
-	// calls it for this exact reason). Python renders members on consecutive
-	// rows (Channels.py:694-705).
+	// Users list: ShowSecondaryText(false) — the fork's List otherwise renders
+	// each item's (empty) secondary text as a phantom row after EVERY member.
+	// Python renders members on consecutive rows (Channels.py:694-705).
 	rw.usersList = tview.NewList()
 	rw.usersList.ShowSecondaryText(false)
 	// The users pane is an INTERACTIVE list in the Go port (Python's pane is a
 	// plain urwid.ListBox): the selected row carries the port's standard
 	// list_focus colors and the highlight fills the row, moving with the
 	// selection as the pane scrolls (Up/Down, mouse wheel and clicks all
-	// re-anchor the highlight — the selection tests pin it).
+	// re-anchor the highlight).
 	//
 	// Python only highlights the focused row while the LIST BOX HAS FOCUS
 	// (each member row is AttrMap(entry, style, "list_focus"),
 	// Channels.py:714 — the focus map applies on focus, the row's own style
 	// otherwise), so an unfocused pane renders the selected member like any
-	// other row. The fork's SetSelectedFocusOnly mirrors that AttrMap pair:
-	// without it the highlight stays painted while the cursor sits in the
-	// message body (the "Users panel always keeps a highlighted line" bug).
+	// other row. The fork's SetSelectedFocusOnly mirrors that AttrMap pair.
 	rw.usersList.SetSelectedFocusOnly(true)
 	ApplyListFocusStyle(rw.usersList, app.Theme)
 	rw.usersList.SetHighlightFullLine(true)
@@ -350,8 +344,7 @@ func NewRoomWidget(app *App, hubName, roomName string) *RoomWidget {
 	// The " N users" count row is a PLAIN urwid.Text row in Python
 	// (Channels.py:694 — default-styled, never the selection highlight), so
 	// it lives OUT of the List in a one-row TextView above it; a tview List
-	// item would paint the selection highlight on it (measured live: the
-	// count row rendered fg 0,0,0 / bg 175,175,175).
+	// item would paint the selection highlight on it.
 	rw.usersCount = tview.NewTextView()
 	rw.usersCount.SetTextColor(tcell.ColorDefault)
 
@@ -472,10 +465,10 @@ func (rw *RoomWidget) handleInput(event *tcell.EventKey) *tcell.EventKey {
 		}
 		return nil
 	case tcell.KeyCtrlG:
-		// Go-only addition, requested by the operator: [C-g] types the chat-bot
-		// command into the composer, which is typed constantly in a mesh room.
-		// Python's room has no [C-g] binding (see insertGobotCommand for the
-		// guard). An unguarded press is left unconsumed so the key stays free.
+		// Go-only: [C-g] types the chat-bot command into the composer, which is
+		// typed constantly in a mesh room. Python's room has no [C-g] binding
+		// (see insertGobotCommand for the guard). An unguarded press is left
+		// unconsumed so the key stays free.
 		if !rw.insertGobotCommand() {
 			return event
 		}
@@ -517,8 +510,7 @@ const gobotCommandPrefix = "/msg gobot "
 // first entry position (editorAtTextStart): inserting the command with the
 // cursor mid-message would corrupt what is already being typed, and doing it
 // while another pane holds focus would put text into a line the user is not in.
-// The shortcut bar advertises [C-g] in exactly that region, so the promise and
-// the behaviour line up.
+// The shortcut bar advertises [C-g] in exactly that region.
 func (rw *RoomWidget) insertGobotCommand() bool {
 	if rw.editor == nil || !rw.editorHasFocus() || !rw.editorAtTextStart() {
 		return false
@@ -533,15 +525,10 @@ func (rw *RoomWidget) insertGobotCommand() bool {
 // left-aligned, with the ┄ divider glyph between the room and the advertised
 // server name.
 //
-// The two names are different fields and are both rendered on purpose: the
-// advertised server name is what the hub calls itself in the RRC handshake
-// (hub.hub_name, from the hub's rrcd.toml), while the parenthesized hub display
-// name is this client's own label for that hub. They read as a duplicate only
-// when the hub advertises a name that already contains the client's label —
-// e.g. hub_name "gonomadnet Public RRC Hub" against the label "gonomadnet
-// Public Hub" — which is a naming choice on the hub, not a rendering bug. The
-// official RNS Community hub shows the intended shape: " ┄ rnscommunity
-// v0.3.2  (RNS Community)".
+// The two names are different fields. The advertised server name is what the
+// hub calls itself in the RRC handshake (hub.hub_name, from the hub's
+// rrcd.toml); the parenthesized name is this client's own label for that hub,
+// so the two can legitimately look alike.
 func (rw *RoomWidget) SetRoomHeader(serverName, hubVersion, statusLabel string) {
 	server := ""
 	if serverName != "" {
@@ -647,6 +634,7 @@ func (rw *RoomWidget) appendLocalNotice(text string, isError bool) {
 // OnSendMessage (the rrc layer records nothing for them), and unknown commands
 // get Python's "Unknown command" error. Every hub-touching command requires a
 // connected hub first (Python _require_connected, Channels.py:991-996).
+
 // appendSelfEcho renders the command line the user typed, exactly as typed —
 // the way an IRC client echoes its own input — instead of a rewritten
 // paraphrase of it, so a private conversation stays readable from the input
@@ -1186,8 +1174,7 @@ func (rw *RoomWidget) renderMembers(prevHash string) {
 		// EVERY user; is_self only swaps the peer glyph for the arrow.
 		color := NickColorByHashHexColor(m.Hash, palette)
 		// Python truncates the display name to its first 15 chars plus an
-		// ellipsis once it exceeds 16 (Channels.py:681) — a hard-cut 15-char
-		// name is a Go-port artifact.
+		// ellipsis once it exceeds 16 (Channels.py:681).
 		name := m.Nick
 		if runes := []rune(name); len(runes) > 16 {
 			name = string(runes[:15]) + "…"
@@ -1206,18 +1193,16 @@ func (rw *RoomWidget) renderMembers(prevHash string) {
 		// The member's palette color rides the ITEM style, not an embedded
 		// color tag: the fork's selected style replaces the item style on
 		// selection (the AttrMap(attr, focus_attr) pair) but cannot override
-		// a tag inside the text — a tagged row kept its palette fg over the
-		// list_focus background and rendered unreadable (amber on light
-		// gray, the live 2026-09-04 capture's self row). The same fix the
-		// channels hub list already uses (channels.go SetHubs).
+		// a tag inside the text, so a tagged row would keep its palette fg
+		// over the list_focus background. Same approach as the channels hub
+		// list (channels.go SetHubs).
 		rw.usersList.SetItemStyle(rw.usersList.GetItemCount()-1,
 			tcell.StyleDefault.Foreground(color))
 	}
 	if len(rw.members) == 0 {
 		// Python (Channels.py:717): the empty pane appends a PLAIN
 		// urwid.Text(" (no members)") row — default-styled, no attribute, so
-		// no embedded color tag may fight the focused row's list_focus style
-		// (the same tagged-fg-over-highlight bug the member rows had).
+		// no embedded color tag may fight the focused row's list_focus style.
 		rw.usersList.AddItem(" (no members)", "", 0, nil)
 	}
 	// Restore the selection to the same member after a rebuild (Python's

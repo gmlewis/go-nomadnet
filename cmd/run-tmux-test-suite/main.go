@@ -3,14 +3,13 @@
 // Command run-tmux-test-suite drives a live gonomadnet TUI (go run
 // ./cmd/gonomadnet) inside a tmux session via remote-control keystrokes, and
 // ACTIVELY VERIFIES each step by parsing the pane's ANSI-escape screen capture
-// plus the terminal cursor position — rather than blindly sleeping and grepping
-// like its bash predecessor (scripts/run-tmux-test-suite.sh).
+// plus the terminal cursor position.
 //
 // It runs five phases: (1) tour every main-menu command except Quit; (2) select
 // Network, Down, Ctrl-L to the Announce Stream; (3) connect to up to N nodes,
 // wait for the index.mu to actually render (or detect an error), follow a couple
-// of links, repeat; (4) go to the Guide, walk all 12 topics, exercising the
-// known scroll-not-reset bug; (5) navigate to Quit and select it.
+// of links, repeat; (4) go to the Guide, walk all 12 topics and check that each
+// opens scrolled to the top; (5) navigate to Quit and select it.
 //
 // Everything — every keystroke, every assertion, every screen snapshot — is
 // logged to /tmp/gonomadnet-tmux-test-suite-NNN.log (NNN = seconds since epoch).
@@ -267,10 +266,10 @@ func run(args []string) error {
 		both("attaching tmux session so you can watch (detach with Ctrl-b d to leave it running)...")
 		both("progress is being logged to: %v", logFile)
 		both("")
-		// NOTE: exec.Command connects unset Stdin/Stdout/Stderr to /dev/null
+		// exec.Command connects unset Stdin/Stdout/Stderr to /dev/null
 		// (os/exec exec.go: "If Stdin is nil, the process reads from the null
-		// device"), so we MUST explicitly hand tmux attach the real terminal
-		// fds or it cannot take over the screen and exits immediately.
+		// device"), so hand tmux attach the real terminal fds or it cannot take
+		// over the screen and exits immediately.
 		attach := exec.Command("tmux", "attach", "-t", sessionName)
 		attach.Stdin = os.Stdin
 		attach.Stdout = os.Stdout

@@ -30,16 +30,14 @@ import (
 // not: its items are given the heights they ask for, so a column of fixed-height
 // rows taller than the Flex draws its last rows below it, over whatever is there —
 // the dialog's own bottom border, the pane under it, the shortcut bar at the bottom
-// of the screen. urwid, which is the original here, gives every widget a size and
-// clips its canvas to that size, so nothing it draws can reach outside it.
+// of the screen. urwid gives every widget a size and clips its canvas to that
+// size, so nothing it draws can reach outside it.
 //
-// The dialog is where this is easy to see, because its content is a fixed column of
-// rows: the Peer Info dialog is 28 rows and the appliance's tablet has 21 rows in
-// its client with the soft keyboard up, and the last of those rows is the client's
-// own shortcut bar. What the reader saw was the dialog's explanation of an unknown
-// peer printed over the shortcut bar, with the dialog's border drawn on top of the
-// pane's — the border lines not lining up. These tests pin both halves: the box
-// clips its content, and the overlay clips the box to the slot.
+// A dialog's content is a fixed column of rows, which makes overflow easy to
+// produce: the Peer Info dialog is 28 rows, while the appliance's tablet has 21
+// rows in its client with the soft keyboard up, the last of them the client's
+// own shortcut bar. These tests pin both halves: the box clips its content, and
+// the overlay clips the box to the slot.
 
 // TestDialogContentIsClippedToItsBox draws a dialog whose content is taller than
 // the dialog, and requires that nothing outside the dialog's rectangle changed.

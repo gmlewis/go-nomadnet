@@ -25,7 +25,7 @@ import (
 
 // asciiInputs is the input battery for the live cross-implementation parity
 // check. The Go test owns these inputs; the expected rendered outputs are
-// derived FRESH on every run by executing the real Python
+// derived on every run by executing the real Python
 // nomadnet.vendor.AsciiChart reference (see asciiPythonOnce). A nil element in
 // a series row represents NaN (a gap), mirroring Python's use of float('nan').
 var asciiInputs = []struct {
@@ -74,7 +74,7 @@ for c in cases:
 print(json.dumps(out, ensure_ascii=False))
 `
 
-// asciiPythonOnce caches the single live Python run that derives fresh expected
+// asciiPythonOnce caches the single live Python run that derives expected
 // rendered outputs for every asciichart parity case, so the test below shares
 // one python3 exec instead of one per case.
 var (
@@ -126,7 +126,7 @@ func toFloatSeries(s [][]*float64) [][]float64 {
 }
 
 // TestPlotPythonParity runs the Go asciichart Plot against the input battery
-// and diffs each rendered chart against the FRESH output of the real Python
+// and diffs each rendered chart against the output of the real Python
 // nomadnet.vendor.AsciiChart reference executed live via python3. The test is
 // skipped (not failed) when the Python nomadnet reference is not importable.
 func TestPlotPythonParity(t *testing.T) {
@@ -154,7 +154,7 @@ func TestPlotPythonParity(t *testing.T) {
 				}
 				if v, ok := tc.Cfg["format"]; ok {
 					if s, ok := v.(string); ok {
-						// The chart now accepts Python str.format templates
+						// The chart accepts Python str.format templates
 						// directly, so feed the reference's own string through.
 						c.Format = s
 					}

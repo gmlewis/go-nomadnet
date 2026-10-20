@@ -25,9 +25,7 @@ import (
 // TestInterfaceInfoFromStatCarriesParams pins the seam the Interfaces page
 // builds its rows from. The detail view's parameter blocks are built from
 // InterfaceInfo.Params, so an InterfaceStat whose parameters are dropped on the
-// way in makes every interface read "No additional parameters" — which is what
-// the tablet showed for the appliance's own RNode interface, whose six
-// parameters were all present in the RNS config.
+// way in makes every interface read "No additional parameters".
 func TestInterfaceInfoFromStatCarriesParams(t *testing.T) {
 	t.Parallel()
 

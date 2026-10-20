@@ -19,9 +19,9 @@ interface SampleSink : Closeable {
  * A sink whose converter's sentences are what the loopback subscribers read.
  *
  * The broadcast converter turns the same JSON samples into NMEA on its standard output, and
- * something has to carry those bytes to the socket. Leaving that to the caller is how the feed
- * came to accept connections and then send nothing at all: the pipes were wired, the threads
- * were not, and a subscriber saw a hung socket rather than an error.
+ * something has to carry those bytes to the socket; this interface is that seam. Without it
+ * the feed accepts a connection and then sends nothing at all, so a subscriber sees a hung
+ * socket rather than an error.
  */
 interface BroadcastSink : SampleSink {
     /** The converter's sentences, or null when it was not started with a readable output. */

@@ -379,10 +379,9 @@ final class TerminalScreenTests: XCTestCase {
 
     func testTheCountOfLinesThatHaveScrolledOffDoesNotSaturate() {
         // The scrollback is bounded, so the number of lines it holds stops growing. The
-        // number that have gone off the top does not: the view re-anchors a reader parked
-        // in the scrollback by how much output arrived, and a count that stopped moving
-        // once the buffer filled would let the text drift under their eyes for the rest of
-        // the session — a reader losing their place with no sign that anything went wrong.
+        // number that have gone off the top does not: the view re-anchors a reader parked in
+        // the scrollback by how much output arrived, so this count must keep moving after
+        // the buffer has filled.
         let bound = 40
         let screen = TerminalScreen(cols: 4, rows: 1, maxScrollback: bound)
         XCTAssertEqual(0, screen.linesScrolledOff, "a fresh screen has scrolled nothing off")

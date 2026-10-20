@@ -24,7 +24,7 @@ import (
 // and _local_message at 938-946): each SLASH_HELP line becomes a SYSTEM row in
 // the current room buffer with a live timestamp (the IRC "[HH:MM:SS] →" look),
 // not a dialog overlay. The hub must also receive the rows so a later
-// SetMessages/refresh does not wipe them ("help goes away quickly").
+// SetMessages/refresh does not wipe them.
 func TestSlashHelpLocalRoomMessages(t *testing.T) {
 	t.Parallel()
 

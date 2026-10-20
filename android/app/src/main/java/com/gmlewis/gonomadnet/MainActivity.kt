@@ -169,12 +169,11 @@ class MainActivity : Activity() {
     /**
      * A radio has been plugged in.
      *
-     * This is the half of the replug defect that the operator sees: the attach intent is
-     * delivered to this activity, and an activity in the default launch mode would be a
-     * *second* instance started over the one showing the console — which reads as a crash
-     * and is not one. It is declared `singleTop` for this reason, and this method is what
-     * the existing instance does with the attach: hand it to the service and leave the page
-     * alone. Whatever is on the screen — the console, most of the time — stays there.
+     * The attach intent is delivered to the activity that is already showing, which is why
+     * this activity is declared `singleTop`: a second instance started over the one showing
+     * the console would read as a crash. This method hands the attach to the service and
+     * leaves the page alone, so whatever is on the screen — the console, most of the time —
+     * stays there.
      *
      * The service does the rest without restarting anything, because the transport has been
      * dialled at the appliance's own port path since the stack came up. See
@@ -341,7 +340,7 @@ class MainActivity : Activity() {
     }
 
     /**
-     * whether the transport's shared instance is accepting connections.
+     * Reports whether the transport's shared instance is accepting connections.
      *
      * The transport publishes its shared instance on the loopback interface, and the client's
      * own attach is a connection to it, so a connection is exactly the readiness the client
@@ -722,10 +721,8 @@ class MainActivity : Activity() {
      * button starts which half, because there are four combinations of running and stopped and
      * only this screen says which one the tablet is in.
      *
-     * The answer is a parameter because the readout is rendered when the answer *exists* and
-     * never before it: this used to be reported from onCreate, ahead of the dialog that asks
-     * for it, and nothing rendered it again — so a fresh install said "Location: NOT granted"
-     * for the rest of the session, on a screen that had just been granted it.
+     * The readout is rendered when the answer *exists* and never before it, so a fresh install
+     * is not told "Location: NOT granted" ahead of the dialog that asks for it.
      */
     private fun locationGranted(): Boolean =
         checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
@@ -930,9 +927,9 @@ class MainActivity : Activity() {
          *
          * The built-in client is an *attached* client: it requires the shared instance the
          * transport owns and refuses to become a transport itself, and it looks for one for
-         * about a fifth of a second before giving up. "Open gonomadnet (built in)" starts the
-         * stack and opens the console as one tap, and a console opened before the transport
-         * has bound its instance is a console showing a client that died during startup.
+         * about a fifth of a second before giving up. "Open gonomadnet" starts the stack and
+         * opens the console as one tap, and a console opened before the transport has bound its
+         * instance is a console showing a client that died during startup.
          *
          * So the wait happens before the console exists, it is bounded, and it gives up with a
          * report rather than hanging. A transport that is already up costs one probe and no

@@ -23,17 +23,13 @@ import (
 	"github.com/gmlewis/tview"
 )
 
-// TestBrowserPaneDisconnectClearsLoading pins the regression where C-w on the
-// Network page left the "Remote Node" right pane stuck on "Retrieving" forever
-// after a connect to a non-responding node. The Network page's C-w was a no-op:
-// networkDisplay.OnDisconnect was never wired, so the in-flight fetch was never
-// cancelled and the loading body was never swapped out.
-//
-// BrowserPane.Disconnect mirrors Python Browser.disconnect → update_display
-// DISCONECTED (Browser.py:862-888, 549-559): it cancels the underlying
-// BrowserDisplay's in-flight fetch + clears history (BrowserDisplay.Disconnect,
-// which swaps the loading body out via showContent), then resets the pane to
-// the centered "Disconnected ← →" body with the "Remote Node" title.
+// TestBrowserPaneDisconnectClearsLoading pins that C-w on the Network page
+// disconnects the "Remote Node" right pane while a fetch is in flight:
+// BrowserPane.Disconnect cancels the underlying BrowserDisplay's fetch and
+// clears its history (BrowserDisplay.Disconnect, which swaps the loading body
+// out via showContent), then resets the pane to the centered "Disconnected ← →"
+// body with the "Remote Node" title. Mirrors Python Browser.disconnect →
+// update_display DISCONECTED (Browser.py:862-888, 549-559).
 func TestBrowserPaneDisconnectClearsLoading(t *testing.T) {
 	t.Parallel()
 	app := newTestApp()
@@ -122,15 +118,14 @@ func TestNetworkCtrlWDisconnectsBrowserPane(t *testing.T) {
 	}
 }
 
-// TestBrowserPaneDisconnectReleasesFocus pins the focus-trap regression: after
-// BrowserPane.Disconnect resets the pane to the centered "Disconnected" body,
-// focus MUST return to the owning view (the Network left list). The Network
-// Columns is self-managing (network.go SetSelfManaging) — it forwards Left/
-// Right to the pane but does NOT do urwid-style column-arrow traversal, so
-// unlike Python (where Left on the disconnected body bubbles to the Columns and
-// moves focus to the list) a disconnected Go pane would trap focus. The pane
-// therefore releases focus explicitly on disconnect via the BrowserDisplay's
-// OnReleaseFocus (wired to networkDisplay.FocusLists in the wiring layer).
+// TestBrowserPaneDisconnectReleasesFocus pins that BrowserPane.Disconnect
+// returns focus to the owning view (the Network left list). The Network Columns
+// is self-managing (network.go SetSelfManaging) — it forwards Left/Right to the
+// pane but does NOT do urwid-style column-arrow traversal, so unlike Python
+// (where Left on the disconnected body bubbles to the Columns and moves focus to
+// the list) a disconnected Go pane would trap focus. The pane therefore releases
+// focus explicitly on disconnect via the BrowserDisplay's OnReleaseFocus (wired
+// to networkDisplay.FocusLists in the wiring layer).
 func TestBrowserPaneDisconnectReleasesFocus(t *testing.T) {
 	t.Parallel()
 	app := newTestApp()

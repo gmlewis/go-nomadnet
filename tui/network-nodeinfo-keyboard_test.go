@@ -21,9 +21,9 @@ import (
 	"github.com/gmlewis/tcell/v2"
 )
 
-// The keyboard route to the Local Peer panel's "Node Info" button, measured
-// from the Python source of truth with a urwid probe (urwid 4.0.3, the version
-// the Python original runs under). Python's Network left pane is
+// The keyboard route to the Local Peer panel's "Node Info" button, following
+// urwid 4.0.3 (the version the Python original runs under). Python's Network
+// left pane is
 //
 //	left_pile = Pile([(WEIGHT, 1, known_nodes), (PACK, local_peer)])
 //
@@ -112,12 +112,11 @@ func TestNetworkNodeInfoButtonKeyboardReachable(t *testing.T) {
 }
 
 // TestAnnounceStreamDownEntersPanel pins the nested-pile half of the same
-// urwid rule, measured the same way: with the Announce Stream shown (its own
-// Pile of tab bar / filter bar / list), Down walks tab bar → filter bar → list,
-// the list keeps Down while its cursor can still move, and at the list's last
-// row the key bubbles out of the inner Pile into the left pane's next item —
-// the Local Peer panel — exactly as the Python probe shows the outer
-// left_pile.contents[1] taking focus_position.
+// urwid rule: with the Announce Stream shown (its own Pile of tab bar / filter
+// bar / list), Down walks tab bar → filter bar → list, the list keeps Down
+// while its cursor can still move, and at the list's last row the key bubbles
+// out of the inner Pile into the left pane's next item — the Local Peer panel —
+// as the outer left_pile.contents[1] takes focus_position.
 func TestAnnounceStreamDownEntersPanel(t *testing.T) {
 	t.Parallel()
 

@@ -21,24 +21,19 @@ import (
 	"github.com/gmlewis/tview"
 )
 
-// TestListSlotDialogPreservesPanelOrder pins the reported bug "when a Saved
-// Node is connected to, the panels in gonomadnet switch positions unexpectedly
-// (the Local Node Info should always be at the bottom)". Python's left_pile is
-// a urwid.Pile whose contents are addressed by index:
+// TestListSlotDialogPreservesPanelOrder pins that opening and closing a
+// list-slot dialog never reorders the left-pane panels: the Local Node Info
+// panel stays at the bottom. Python's left_pile is a urwid.Pile whose contents
+// are addressed by index:
 //
 //	contents[0] = WEIGHT 1 list slot (KnownNodes / AnnounceStream / overlay)
 //	contents[1] = PACK    LocalPeer (Local Node Info) — ALWAYS at the bottom
 //
 // Python swaps contents[0] via indexed assignment
-// (left_pile.contents[0] = overlay, Network.py:918-919) which keeps
+// (left_pile.contents[0] = overlay, Network.py:918-919), which keeps
 // contents[1] in place. The Go port uses tview.Flex, whose AddItem always
-// appends to the end; removing only listBox and appending the overlay left
-// localPeer at index 0 (top) and the overlay at index 1 (bottom). Closing the
-// dialog appended listBox after localPeer, leaving [localPeer, listBox] —
-// Local Node Info at the top, list at the bottom — the reported swap.
-//
-// The fix removes BOTH items and re-adds them in the correct order so
-// localPeer always stays at index 1 (bottom), matching Python's contents[1].
+// appends to the end, so the implementation must re-add BOTH items in the
+// correct order to keep localPeer at index 1 (bottom).
 func TestListSlotDialogPreservesPanelOrder(t *testing.T) {
 	t.Parallel()
 
@@ -88,8 +83,8 @@ func TestListSlotDialogPreservesPanelOrder(t *testing.T) {
 }
 
 // TestListSlotDialogRepeatPreservesOrder verifies the ordering survives
-// multiple open/close cycles — the scenario the user hits when connecting to
-// several saved nodes in a row.
+// multiple open/close cycles, as when connecting to several saved nodes in a
+// row.
 func TestListSlotDialogRepeatPreservesOrder(t *testing.T) {
 	t.Parallel()
 

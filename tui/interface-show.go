@@ -225,10 +225,9 @@ func formatRadioBandwidth(value any) string {
 	return fmt.Sprintf("%.1f kHz", hz/1000.0)
 }
 
-// interfaceShow is the FULL-PAGE interface detail view (Python ShowInterface,
-// Interfaces.py:2198-2620) opened by Enter on an interface in the list — G1
-// replaces the former tiny `Interface: <name>` modal. Layout (a Frame in a
-// LineBox):
+// interfaceShow is the full-page interface detail view (Python ShowInterface,
+// Interfaces.py:2198-2620) opened by Enter on an interface in the list.
+// Layout (a Frame in a LineBox):
 //
 //	header: "Interface: <name>" centered + an "=" divider
 //	body:   Type/Status info rows, a "-" divider, the TX/RX stat row, a "-"
@@ -431,9 +430,9 @@ func (s *interfaceShow) Name() string { return s.info.Name }
 // SetInfo replaces the reading this view was built from. Python's ShowInterface
 // polls its interface every second — start() arms poll_stats on a 1 s alarm
 // (Interfaces.py:2921-2925), poll_stats re-arms itself (Interfaces.py:2958-2999)
-// — and re-renders the Type/Status and TX/RX rows from it. Without this the one
-// screen whose entire purpose is a live reading is the only stale one: a radio
-// that comes up while the view is open keeps showing "Disconnected".
+// — and re-renders the Type/Status and TX/RX rows from it. Callers must pass
+// every poll result, or a radio that comes up while the view is open keeps
+// showing "Disconnected".
 func (s *interfaceShow) SetInfo(info InterfaceInfo) {
 	s.info = info
 	if len(s.buttons) > 1 {
@@ -711,7 +710,7 @@ func paramMapToAny(m map[string]string) map[string]any {
 // Tab body→footer and Back→Disable/Enable→Edit cycling in the footer;
 // Shift-Tab footer→body; Down at the body bottom → footer (Back); Up in the
 // footer → body (scrolled to the bottom, Interfaces.py:2682-2690); Left/Right
-// cycle the buttons in the footer; Esc → Back (the accepted Go enhancement).
+// cycle the buttons in the footer; Esc → Back (Go extension).
 func (s *interfaceShow) handleKey(event *tcell.EventKey) *tcell.EventKey {
 	switch event.Key() {
 	case tcell.KeyTab:

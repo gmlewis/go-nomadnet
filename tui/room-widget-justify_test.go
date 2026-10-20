@@ -24,9 +24,8 @@ import (
 )
 
 // renderJustifiedRoom draws a RoomWidget with the given messages at the
-// fleet's chat geometry (120 total cols → 22 users pane + 2 chat borders =
-// the 96-wide chat inner measured on all 6 nodes) and returns the screen for
-// per-cell assertions.
+// production chat geometry (120 total cols → 22 users pane + 2 chat borders =
+// a 96-wide chat inner) and returns the screen for per-cell assertions.
 func renderJustifiedRoom(t *testing.T, msgs []ChannelMessage) tcell.Screen {
 	t.Helper()
 
@@ -55,8 +54,7 @@ func renderJustifiedRoom(t *testing.T, msgs []ChannelMessage) tcell.Screen {
 
 // chatCell returns the cell at the given CHAT-INNER column (chat col 0 =
 // screen col 1 here: the bare RoomWidget has no left pane, so the chat box
-// border sits at screen col 0 and the 96-wide inner starts at col 1, the
-// same inner width the 6-node fleet measures at 120 total cols).
+// border sits at screen col 0 and the 96-wide inner starts at col 1).
 func chatCell(s tcell.Screen, y, col int) (rune, tcell.Color, tcell.Color) {
 	r, _, style, _ := cellContent(s, 1+col, y)
 	fg, bg, _ := style.Decompose()
@@ -88,11 +86,7 @@ func mustChatCol(t *testing.T, s tcell.Screen, y, col int, wantRune rune, wantFg
 // "[HH:MM:SS] " run (11 chars, fg #888888), col 12 a DEFAULT-styled gap space
 // (the column divider), and the body column starts at chat col 13 with
 // "<nick>". Wrapped continuation lines indent to chat col 13 — the same
-// column as the "<" — and their leading pad is DEFAULT-styled. Measured on
-// the 2026-09-03 12:32 full-fleet capture (mac rows 22/27/28): pad len 1
-// default, ts len 11 (136,136,136), gap len 1 default, "<d13aa6887074>"
-// palette at col 13, body (221,221,221) from col 13/27; A2 continuation
-// "original" at col 13.
+// column as the "<" — and their leading pad is DEFAULT-styled.
 func TestRoomWidgetJustifyLayout(t *testing.T) {
 	t.Parallel()
 
@@ -144,9 +138,8 @@ func TestRoomWidgetJustifyLayout(t *testing.T) {
 	}
 	mustChatCol(t, screen, row2, 13, 'o', tcellColorFrom256orHex(221, 221, 221), "continuation body")
 
-	// The body column's fill carries #dddddd to the chat box edge (the
-	// urwid AttrMap fill — the 2026-09-03 12:32 capture's rows 22/27/28:
-	// the body run + trailing spaces run to chat col 95).
+	// The body column's fill carries #dddddd to the chat box edge (the urwid
+	// AttrMap fill: the body run and its trailing spaces run to chat col 95).
 	for _, y := range []int{firstRow, row2} {
 		_, fg, _ := chatCell(screen, y, 95)
 		if fg != tcellColorFrom256orHex(221, 221, 221) {
@@ -155,8 +148,7 @@ func TestRoomWidgetJustifyLayout(t *testing.T) {
 	}
 }
 
-// tcellColorFrom256orHex builds the tcell color for an RGB triple the way the
-// capture decoder reports it (truecolor values).
+// tcellColorFrom256orHex builds a truecolor tcell.Color from an RGB triple.
 func tcellColorFrom256orHex(r, g, b int32) tcell.Color {
 	return tcell.NewHexColor(r<<16 | g<<8 | b)
 }

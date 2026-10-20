@@ -34,9 +34,8 @@ import (
 // and Edit.mouse_event moves the edit cursor to the clicked cell (edit.py:547-
 // 568, `move_cursor_to_coords`). The Go page body is a single tview.TextView
 // whose form fields are drawn as off-tree overlays (see renderedField), so no
-// widget sits under the mouse and the click had no effect at all on a field:
-// the field could only be reached with Down/Up. These helpers restore the
-// urwid behavior by hit-testing the rendered geometry.
+// widget sits under the mouse; these helpers reproduce the urwid behavior by
+// hit-testing the rendered geometry.
 
 // lineAtScreenY maps a screen row to the rendered page line drawn there plus
 // the wrapped row within that line. It inverts the row math the nav model uses

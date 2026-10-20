@@ -17,11 +17,10 @@
 //
 // Guide display: this file ports Python's Guide.py. The per-topic micron
 // source is embedded from the original nomadnet Guide.py (under
-// tui/guidetopics/*.mu) and rendered through the Phase-3 styled-line
-// renderer (micron.RenderToStyledLines) so body text is NOT all-bold. The
-// topic content has had a deliberate, user-authorized grammar / US-spelling
-// cleanup pass (see the guide-grammar-review-findings memory); it therefore
-// intentionally diverges from the Python source text in those respects.
+// tui/guidetopics/*.mu) and rendered through the styled-line renderer
+// (micron.RenderToStyledLines) so body text is not all-bold. The topic text
+// carries a deliberate US-spelling and grammar cleanup, so it intentionally
+// diverges from the Python source wording.
 
 package tui
 
@@ -36,8 +35,7 @@ import (
 )
 
 // Embedded guide topic micron source, extracted from the original
-// nomadnet/ui/textui/Guide.py TOPIC_* strings (then given a grammar /
-// US-spelling cleanup pass; see above). Each file begins with a
+// nomadnet/ui/textui/Guide.py TOPIC_* strings. Each file begins with a
 // suppressed `#`-comment copyright header (micron comments render no output),
 // so the first rendered line is the topic heading, matching the original.
 //
@@ -127,7 +125,7 @@ type GuideDisplay struct {
 	isPortrait            bool
 	portraitAutoCollapsed bool
 
-	// Focus model (B2/B5). Python's Guide reader is a urwid
+	// Focus model. Python's Guide reader is a urwid
 	// Scrollable(Pile(LinkableText)): each Down advances the Pile focus to the
 	// next SELECTABLE line (text lines; headings, dividers and blank lines are
 	// non-selectable and skipped), and the Scrollable keeps the focused line
@@ -140,8 +138,8 @@ type GuideDisplay struct {
 	// offset into the focused line's RENDERED span text, i.e. counting each
 	// span's drawn footprint (spanText: a field's padded box, a checkbox's icon
 	// column) — the within-line cursor, mirroring LinkableText's part cursor;
-	// lastKey drives the 2s
-	// key-timeout that gates hardware-cursor visibility (B5).
+	// lastKey is the last key time whose 2s timeout gates hardware-cursor
+	// visibility.
 	selectable []int
 	lineRows   []int
 	focusSel   int
@@ -175,21 +173,16 @@ func NewGuideDisplay(app *App) *GuideDisplay {
 	// "list_focus") (Guide.py:133-135). ApplyListFocusStyle only sets the
 	// SELECTED colors; without this the unfocused rows fall back to tview's
 	// terminal-default fg instead of the themed #ddd (dark) / #222 (light)
-	// (Python TextUI.py:52 dark, :105 light; the first palette block is
-	// THEME_DARK at TextUI.py:19).
+	// (TextUI.py:52 dark, :105 light).
 	gd.topics.SetMainTextColor(GetThemeColors(app.Theme)["topic_list_normal"])
 	for i := range guideTopics {
 		gd.topics.AddItem(guideTopics[i].label, "", 0, func() { gd.showTopic(i) })
 	}
-	// Note: no SetChangedFunc — mirroring Python's TopicList, arrow navigation
-	// only moves the highlight and does NOT render the topic. Python's
-	// ListEntry emits its "click" signal solely on the ACTIVATE command
-	// (Enter/Space) and mouse press (Guide.py:20-26), and display_topic (the
-	// click handler) is what builds the reader content + focus_reader
-	// (Guide.py:138-154). tview's SetChangedFunc fires on every selection
-	// change (i.e. on arrow Down), which would render topics on navigation and
-	// diverge from the original; the selected func above (Enter) is the
-	// equivalent of the "click" signal.
+	// Note: no SetChangedFunc. Python's ListEntry emits its "click" signal only
+	// on ACTIVATE (Enter/Space) or mouse press (Guide.py:20-26), and
+	// display_topic builds the reader content and focuses it (Guide.py:138-154).
+	// tview's SetChangedFunc would fire on every arrow Down; the AddItem
+	// selected func above is the equivalent of "click".
 
 	// Reader (right pane). A thin wrapper around tview.TextView overrides
 	// SetRect so horizontal dividers re-expand to the pane width on resize.
@@ -204,8 +197,7 @@ func NewGuideDisplay(app *App) *GuideDisplay {
 	// #dddddd (dark) / #222222 (light). Styled spans carry the same tag, but
 	// tview's `[-:-:-]` resets and the indent/padding spaces written before
 	// the first span fall back to this base color, so it must agree or those
-	// runs diverge to a third color Python never emits (the port previously
-	// used 0xbbbbbb).
+	// runs diverge to a third color Python never emits.
 	readerFG := tcell.NewHexColor(0xdddddd)
 	if gd.app.Theme == ThemeLight {
 		readerFG = tcell.NewHexColor(0x222222)
@@ -237,12 +229,10 @@ func NewGuideDisplay(app *App) *GuideDisplay {
 	gd.scroll = NewScrollBar(gd.reader)
 	gd.scroll.SetThumbColor(GetThemeColors(app.Theme)["scrollbar"])
 	// Up-at-top escape (main dispatcher bodyListAtTop): the reader is scrolled
-	// to its top AND the line cursor sits at the first selectable line. Without
-	// the focusSel term, Up would escape to the menu on the first press even
-	// with the cursor mid-document (focusSel > 0 at scroll top), breaking the
-	// B2 cursor walk; with it, Up moves the cursor up the document first and
-	// only collapses to the menu once the walk reaches the first line —
-	// replacing focusUp's silent clamp there (guide-focus.go:149-167).
+	// to its top AND the line cursor sits at the first selectable line. The
+	// focusSel term matters: without it, Up would escape to the menu on the
+	// first press even with the cursor mid-document (focusSel > 0 at scroll
+	// top), skipping the cursor walk up the document.
 	gd.scroll.SetAtTopFunc(func() bool {
 		row, _ := gd.reader.GetScrollOffset()
 		return row <= 0 && gd.focusSel <= 0
@@ -252,13 +242,13 @@ func NewGuideDisplay(app *App) *GuideDisplay {
 	gd.readerBox.SetBorder(true)
 
 	// Weights 33 : 67 replicate Python's float weights [0.33, 0.67] (Guide.py
-	// list_width = 0.33) EXACTLY: 33/100 == 0.33 in float64, so urwidColumnWidths
+	// list_width = 0.33): 33/100 == 0.33 in float64, so urwidColumnWidths
 	// (which divides weight/wtotal) produces the same subtractive rounding urwid
-	// applies to int(maxcol*0.33 + 0.5). Using [1, 2] (1/3, 2/3) instead rounds
+	// applies to int(maxcol*0.33 + 0.5). Weights [1, 2] (1/3, 2/3) would round
 	// the topics pane one column wider at widths where 1/3 of the width lands
-	// just above 0.33 of it (e.g. maxcol 200 → 67 vs Python's 66), shifting every
-	// reader wrap point by one column (B7). The topics pane is the initial focus
-	// (focus=true) on a normal launch.
+	// just above 0.33 of it (e.g. maxcol 200 → 67 vs Python's 66), shifting
+	// every reader wrap point by one column. The topics pane is the initial
+	// focus (focus=true) on a normal launch.
 	cols := newURWIDColumns(0, gd.topicsBox, gd.readerBox)
 	cols.SetWeight(0, 33)
 	cols.SetWeight(1, 67)
@@ -285,7 +275,7 @@ func NewGuideDisplay(app *App) *GuideDisplay {
 				gd.FocusReader()
 				return nil
 			}
-			// Reader focused: Right steps the within-line cursor (B2/B5).
+			// Reader focused: Right steps the within-line cursor.
 			if gd.scroll.HasFocus() {
 				gd.handleReaderKey(event)
 				return nil
@@ -302,10 +292,10 @@ func NewGuideDisplay(app *App) *GuideDisplay {
 				return nil
 			}
 		case tcell.KeyDown, tcell.KeyUp, tcell.KeyEnter, tcell.KeyCtrlJ:
-			// Reader-focused focus-model navigation (B2): Down/Up advance
-			// focus to the next/previous selectable line; Enter activates
-			// the link at the cursor. When the topics list is focused these
-			// keys fall through to it (list navigation / activation).
+			// Reader-focused focus-model navigation: Down/Up advance focus to
+			// the next/previous selectable line; Enter activates the link at
+			// the cursor. When the topics list is focused these keys fall
+			// through to it (list navigation / activation).
 			if gd.scroll.HasFocus() {
 				gd.handleReaderKey(event)
 				return nil
@@ -433,8 +423,8 @@ func (gd *GuideDisplay) showTopic(idx int) {
 	// reuses one TextView, and tview's SetText/clear leave lineOffset untouched,
 	// so without this the previous topic's scroll offset leaks into the new one
 	// (the first visible line would not be the topic's `>Title` heading).
-	// NOTE: this reset lives in showTopic, NOT in renderMarkup/rerender — those
-	// are also used by jumpToAnchor and the resize re-render path, which must
+	// This reset belongs in showTopic, not in renderMarkup/rerender — those are
+	// also used by jumpToAnchor and the resize re-render path, which must
 	// preserve the user's current scroll position.
 	gd.reader.ScrollTo(0, 0)
 	// Reset the focus model: Python rebuilds the entire Pile on every topic
@@ -451,13 +441,14 @@ func (gd *GuideDisplay) showTopic(idx int) {
 // Shortcuts returns the footer shortcut text for the Guide page, matching
 // Python's GuideDisplayShortcuts (Guide.py:8-13): an empty urwid.Text("") wrapped
 // in the "shortcutbar" attr — the Guide footer row is just the shortcutbar
-// background fill with NO text. (pinned by TestGuideShortcutBarEmpty.)
+// background fill with no text.
 func (gd *GuideDisplay) Shortcuts() string {
 	return ""
 }
 
-// unit-testing jumpToAnchor/handleLink without going through the embedded topic
-// list). Production uses showTopic.
+// showMarkupForTest renders raw markup into the reader so unit tests can drive
+// jumpToAnchor/handleLink without going through the embedded topic list.
+// Production uses showTopic.
 func (gd *GuideDisplay) showMarkupForTest(markup string) {
 	gd.currentIdx = 0 // mark "a topic is shown" so jumpToAnchor/rerender act
 	gd.renderMarkup(markup)
@@ -631,14 +622,11 @@ func (gr *guideReader) SetRect(x, y, w, h int) {
 
 // Draw renders the reader and, when it (via the ScrollBar) is focused and the
 // cursor is within the 2s key-timeout window, re-positions the terminal
-// hardware cursor on the focused selectable line's within-line cursor column
-// (B5). This mirrors Python LinkableText.render setting canvas.cursor
+// hardware cursor on the focused selectable line's within-line cursor column.
+// This mirrors Python LinkableText.render setting canvas.cursor
 // (MicronParser.py:982-992); tview's Application.Draw hides the cursor each
 // frame, so the focused widget must re-show it on every draw (the same pattern
-// ReadlineEdit.Draw uses, readline.go:152). The cursor is capture-invisible
-// (tmux capture-pane records the cell buffer, not the cursor), so this is
-// verified by the cursorRow golden in guide-focus_test.go and the live
-// tmux-suite cursor-y tracking, not parity.sh.
+// ReadlineEdit.Draw uses, readline.go:152).
 func (gr *guideReader) Draw(screen tcell.Screen) {
 	gr.TextView.Draw(screen)
 	if gr.gd == nil {

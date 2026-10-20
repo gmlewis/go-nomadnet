@@ -329,7 +329,8 @@ func TestMessageNotificationFailedRetriesAsPropagated(t *testing.T) {
 	lxm.SetState(lxmf.StateFailed)
 	lxm.TryPropagationOnFail = true
 	// Python Conversation.message_notification (Conversation.py:395-402) clears
-	// the whole retry state before re-sending; the port left these stale.
+	// the whole retry state before re-sending; these stale values must all be
+	// gone by the time the router sees the retry.
 	lxm.DeliveryAttempts = 3
 	lxm.NextDeliveryAttempt = 12345
 	lxm.Packed = []byte("stale direct payload")

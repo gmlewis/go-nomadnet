@@ -151,9 +151,9 @@ func TestRenderPageKVStoreScopedPerPlugin(t *testing.T) {
 	}
 }
 
-// TestRenderPageDeniesUnwiredImport pins the deny-by-default policy after the
-// KV and log capabilities were wired: a module importing a capability the host
-// does not provide fails to load rather than reaching the guest.
+// TestRenderPageDeniesUnwiredImport pins the deny-by-default policy: a module
+// importing a capability the host does not provide fails to load rather than
+// reaching the guest.
 func TestRenderPageDeniesUnwiredImport(t *testing.T) {
 	t.Parallel()
 

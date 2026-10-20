@@ -123,18 +123,12 @@ func readFails(t *testing.T, what string, r io.Reader) error {
 // reach a reader that was already parked on the pty's master when they were
 // written.
 //
-// That wake is the host's business and not the bridge's, and GitHub's Ubuntu
-// runner has been measured failing it. On 2026-10-10 the pump test waited its
-// whole bound for bytes written to the slave and never saw them, while in the
-// same run the package passed in the runner's other test job (1.3s) and the
-// test that writes before it reads — TestTheBridgePublishesARawSerialPath —
-// passed in the failing job itself. The same sequence delivers 180 of 180
-// writes to an already-parked master read on a normal Linux kernel (6.8.0, the
-// same generation as the runner's) and has never failed under darwin, so what
-// is skipped is a property of that runner rather than of this code. Every other
-// test here writes before it reads and runs on the runner as well;
-// run-all-tests.sh runs this one too, which is where the bridge's byte-carrying
-// is verified.
+// That wake is the host's business, not the bridge's. GitHub's Ubuntu runner
+// does not reliably wake such a read, while the same sequence delivers on a
+// normal Linux kernel and under darwin, so the skip covers a property of that
+// runner rather than of this code. Every other test here writes before it
+// reads and runs on the runner as well; run-all-tests.sh runs this one too,
+// which is where the bridge's byte-carrying is verified.
 func skipIfTheRunnerCannotWakeAParkedPTYRead(t *testing.T) {
 	t.Helper()
 	if os.Getenv("GITHUB_ACTIONS") == "true" {

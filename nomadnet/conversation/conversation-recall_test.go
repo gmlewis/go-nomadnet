@@ -34,9 +34,7 @@ func newRecallTestPeer(t *testing.T) (*rns.TransportSystem, *rns.Destination) {
 // use-marking recall, mirroring Python Conversation.__init__
 // (Conversation.py:204-208): a peer whose entry was never used must have its
 // use-timestamp bumped above zero, which keeps the entry out of the
-// transport's pathless/never-used cleanup (the protection whose absence let
-// CleanKnownDestinations drop conversation peers and left "Unknown Origin"
-// stamps after a node restart).
+// transport's pathless/never-used cleanup.
 func TestRecallPeerMarksPeerUsed(t *testing.T) {
 	ts, peer := newRecallTestPeer(t)
 

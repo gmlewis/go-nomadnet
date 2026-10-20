@@ -25,14 +25,13 @@ import (
 )
 
 // =============================================================================
-// Layer 4 — full-page end-to-end Draw (broad sweep across every body page)
+// Full-page end-to-end Draw (broad sweep across every body page)
 //
 // Each benchmark mounts one body page into a real MainDisplay and measures the
 // per-frame cost the tview event loop pays whenever ANY consumed event fires:
 // screen.Clear() + MainDisplay.Root().Draw() + screen.Show(). This is the whole
 // tree (menu bar + content page + shortcut bar), so it surfaces pages whose
-// full-tree Draw is expensive even outside the reported scroll/flicker
-// symptoms — the "broad sweep" requested.
+// full-tree Draw is expensive.
 // =============================================================================
 
 // benchPageDraw mounts the page built by build into a fresh MainDisplay,

@@ -67,7 +67,7 @@ func NewSelectableInterfaceItem(name, ifaceType string, connected, enabled bool,
 // SetApp wires the app whose StyleRegistry resolves the palette styles used to
 // color the status/connection rows (Python Interfaces.py:1136-1158). It is
 // optional: with no app (or no Styles) the item falls back to tcell.StyleDefault
-// for every row, matching the legacy monochrome rendering.
+// for every row.
 func (s *SelectableInterfaceItem) SetApp(app *App) { s.app = app }
 
 // style resolves a named palette entry to a tcell.Style via the wired app's
@@ -184,9 +184,8 @@ func (s *SelectableInterfaceItem) Draw(screen tcell.Screen) {
 	// (connected_status green / disconnected_status red); the "key" labels
 	// ("Status:", "Type:", "TX:", "RX:") and "value" iface-type/byte-counts are
 	// undefined in Python's palette and so render terminal-default. The span
-	// text matches the previous plain-string layout byte-for-byte (the
-	// InterfaceItemRowText text-parity helper is unchanged), so this is purely a
-	// coloring change.
+	// text is the same as InterfaceItemRowText's, which is the text-parity view
+	// of the same rows.
 	divider := strings.Repeat("-", cw)
 	rows := [][]styledSpan{
 		{

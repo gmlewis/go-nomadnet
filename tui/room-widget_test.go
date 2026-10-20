@@ -293,7 +293,7 @@ func TestRoomWidgetMemberRows(t *testing.T) {
 
 	// The hash-based palette color rides the item's ENTRY STYLE (not an
 	// embedded color tag): the selected style must be able to replace it on
-	// the focused row (Bug#3), and the tag form would defeat it. Render the
+	// the focused row, and a tag inside the text would defeat it. Render the
 	// pane with a second member so the self row is NOT the selected row and
 	// pins its entry-style foreground.
 	screen, rendered := renderUsersPane(t, []ChannelMember{
@@ -329,7 +329,7 @@ func TestRoomWidgetMemberRows(t *testing.T) {
 // TestRoomWidgetRoomHeader pins the peer-info header format (Python
 // RoomWidget._update_peer_info, Channels.py:737-756): left-aligned
 // " #<room> ┄ <server>[ v<version>]  (<hub>) | <Status> " with the divider1
-// glyph — the live Python capture renders
+// glyph, e.g.
 // " #test ┄ RaspPi Local Hub v0.3.2  (RaspPi Local Hub) | Connected ".
 func TestRoomWidgetRoomHeader(t *testing.T) {
 	t.Parallel()
@@ -409,9 +409,7 @@ func TestRoomWidgetTabComplete(t *testing.T) {
 // TestRoomWidgetEditorNoPlaceholder pins the composer's idle render to the
 // Python SOT: RoomWidget builds RoomMessageEdit(caption="", edit_text="",
 // multiline=True) (Channels.py:605) — no placeholder — so an idle editor row
-// renders EMPTY inside the chat border. Measured live (2026-09-03 12:32
-// full-fleet capture, row 34): mac `| |`; every Go node rendered
-// `|Type a message...|`.
+// renders EMPTY inside the chat border.
 func TestRoomWidgetEditorNoPlaceholder(t *testing.T) {
 	t.Parallel()
 

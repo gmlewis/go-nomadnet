@@ -103,12 +103,10 @@ type ChannelsDisplay struct {
 	portraitAutoCollapsedUsers       bool
 	collapseJoinPart                 bool
 	shortcutFocus                    string
-	// pages wraps cd.content so a dialog can overlay the WHOLE channels display
-	// (Python's self.widget = WidgetPlaceholder(columns_widget) + _show_dialog_
-	// overlay setting original_widget = urwid.Overlay(dialog, columns_widget,
-	// width=(RELATIVE,60), min_width=40, height=PACK), Channels.py:2196-2210).
-	// "main" = cd.content; "dialog" = the SlotOverlay. dialogOverlay tracks the
-	// active overlay for closeDialog.
+	// pages wraps cd.content so a dialog can overlay the whole channels display
+	// (Python overlays the dialog on columns_widget at 60% width, min 40, PACK
+	// height, Channels.py:2196-2210). "main" = cd.content; "dialog" = the
+	// SlotOverlay. dialogOverlay tracks the active overlay for closeDialog.
 	pages         *tview.Pages
 	dialogOverlay *SlotOverlay
 
@@ -328,8 +326,7 @@ func NewChannelsDisplay(app *App, rooms []ChannelInfo) *ChannelsDisplay {
 	})
 	// Compose editor — Python wraps it in `AttrMap(editor, "msg_editor")`
 	// (Channels.py:609); msg_editor is 3-hex #111/#0bb (ui/TextUI.py:32/85),
-	// cube-quantized to #000000/#00afaf. Route through the palette rather than
-	// the prior 0x222222/0xdddddd (which is not Python's msg_editor).
+	// cube-quantized to #000000/#00afaf.
 	tc := GetThemeColors(app.Theme)
 	cd.input = NewReadlineEdit(app.killRing, "", "Type a message...")
 	cd.input.SetFieldBackgroundColor(tc["msg_editor_bg"])
@@ -518,22 +515,16 @@ func (cd *ChannelsDisplay) SetHubs(hubs []HubView) {
 	cd.HubViewsCache = hubs
 	cd.rooms.Clear()
 	for i, e := range entries {
-		// Render the label PADDED to the list's inner width (padToWidth
+		// Render the label padded to the list's inner width (padToWidth
 		// truncates an over-wide one) and set the row's palette color via
-		// SetItemStyle instead. Python's urwid AttrMap rows paint the
-		// row's attr across the FULL pane width (the connected hub row's
-		// fg #5faf00 covers all 34 left-pane columns — the 2026-09-03
-		// 12:32 full-fleet capture), while the fork's List paints item
-		// text only and full-line-fills the SELECTED row (tview list.go:
-		// the fill block fires when selected && highlightFullLine) — the
-		// padded trailing spaces carry the row's fg in the item text
-		// itself, byte-exact with Python's fill. The former un-padded
-		// tagged-text form overrode the list's selected colors on the
-		// HIGHLIGHTED row: a disconnected hub's list_unknown foreground
-		// (#afafaf) on the list_focus background (#afafaf) rendered the
-		// selected row INVISIBLE (gray on gray). tview's selected style
-		// replaces item styles on selection but cannot override tags
-		// embedded in the text.
+		// SetItemStyle instead. Python's urwid AttrMap rows paint the row's attr
+		// across the full pane width, while the fork's List paints item text
+		// only and full-line-fills the SELECTED row, so the padded trailing
+		// spaces carry the row's fg in the item text itself. A tagged-text label
+		// cannot work: tview's selected style replaces item styles but cannot
+		// override tags embedded in the text, so a disconnected hub's
+		// list_unknown fg (#afafaf) on the list_focus background (#afafaf)
+		// renders the selected row invisible.
 		label := e.Label
 		if e.Kind != RowSpacer {
 			label = padToWidth(e.Label, ' ', channelsListInnerWidth)
@@ -594,11 +585,8 @@ func (cd *ChannelsDisplay) ShowHubInfo(hubIdx int) {
 	if cd.app == nil || hubIdx < 0 || hubIdx >= len(cd.HubViewsCache) {
 		return
 	}
-	// Locate the hub's LIST row: the hub index is NOT the row index — a
-	// spacer row separates consecutive hubs (ComposeHubList), so hub 1's row
-	// is entry 2+. The previous hubEntries[hubIdx] lookup hit the spacer and
-	// silently returned, which meant the info panel never opened for the
-	// second and later hubs.
+	// Locate the hub's LIST row: the hub index is NOT the row index, because a
+	// spacer row separates consecutive hubs (ComposeHubList).
 	rowIdx := -1
 	for i, e := range cd.hubEntries {
 		if e.Kind == RowHub && e.HubIdx == hubIdx {
@@ -633,10 +621,9 @@ func (cd *ChannelsDisplay) ShowHubInfo(hubIdx int) {
 		cd.hubInfo = NewHubInfoArea(cd.app, hv.Name())
 		// Python's HubInfoArea.keypress delegates EVERY shortcut to
 		// self.delegate (the Channels display), Channels.py:381-409. Wire the
-		// panel's callbacks to the display's own dispatch so Ctrl-Y (and the
-		// other hub-info shortcuts) behave identically when the panel holds
-		// focus — including the Ctrl-Y channel-list toggle, which the panel's
-		// own handler previously swallowed with no action.
+		// panel's callbacks to the display's own dispatch so Ctrl-Y and the
+		// other hub-info shortcuts behave identically when the panel holds
+		// focus.
 		hia := cd.hubInfo
 		hia.OnNewHub = func() { cd.handleInput(tcell.NewEventKey(tcell.KeyCtrlN, 0, tcell.ModNone)) }
 		hia.OnJoinRoom = func() { cd.handleInput(tcell.NewEventKey(tcell.KeyCtrlA, 0, tcell.ModNone)) }
@@ -655,7 +642,7 @@ func (cd *ChannelsDisplay) ShowHubInfo(hubIdx int) {
 	cd.hubInfo.SetHubInfo(*snap)
 	cd.paneMode = "info"
 	// The hub info area carries its own titled border (Python HubInfoArea,
-	// Channels.py:1827); the outer placeholder border goes away (item 14).
+	// Channels.py:1827); the outer placeholder border goes away.
 	cd.rightPane.SetBorder(false)
 	// Swap the right pane's sole item to the hub info widget.
 	cd.rightPane.Clear()
@@ -715,15 +702,12 @@ func (cd *ChannelsDisplay) ShowRoom(hubIdx int, room string, msgs []ChannelMessa
 
 	// The widget must also rebuild when the HUB changes: two hubs can expose
 	// the same room name, and reusing the old widget would keep its
-	// hubStatusFn bound to the previous hub — a dead hub there silently
-	// swallows every plain-message send at the composer's connected-gate,
-	// while slash commands (which bypass the gate) keep working. The hub
-	// OBJECT is the identity, not its name or address: a hub removed and
-	// re-added under the same destination hash is a NEW object with the SAME
-	// AddressHex, so comparing the address alone would reuse a widget whose
-	// hubStatusFn still points at the dead hub. The address check remains as a
-	// secondary signal for view implementations whose identity is not
-	// comparable.
+	// hubStatusFn bound to the previous hub, silently swallowing plain-message
+	// sends at the composer's connected-gate. The hub OBJECT is the identity,
+	// not its name or address: a hub removed and re-added under the same
+	// destination hash is a NEW object with the SAME AddressHex. The address
+	// check remains as a secondary signal for view implementations whose
+	// identity is not comparable.
 	if cd.roomWidget == nil || cd.roomWidget.RoomName() != room ||
 		hubViewChanged(cd.roomWidget.hubView, hv) || cd.roomWidget.hubAddress != hv.AddressHex() {
 		cd.roomWidget = NewRoomWidget(cd.app, hv.Name(), room)
@@ -846,18 +830,14 @@ func (cd *ChannelsDisplay) ShowRoom(hubIdx int, room string, msgs []ChannelMessa
 	cd.roomWidget.SetRoomHeader(hv.ServerName(), hv.HubVersion(), hubStatusLabel(hv.Status()))
 	cd.paneMode = "room"
 	// Python replaces the right pane's content with the room widget, which
-	// carries its own borders — the outer placeholder border goes away
-	// (item 14: no double border around the room area).
+	// carries its own borders — the outer placeholder border goes away.
 	cd.rightPane.SetBorder(false)
 	cd.rightPane.Clear()
 	cd.rightPane.AddItem(cd.roomWidget.Widget(), 0, 1, true)
-	// Python's selected_key invariant (Channels.py:1722-1724): the shown
-	// room's row IS the channels-list selection — the opened room's row
-	// carries the list's highlight (the joined-room highlight the user
-	// reads). The 2026-09-03 fleet captures showed the Go selection stuck on
-	// the hub row while a room was open. Moving the highlight does NOT move
-	// the tview focus, so the keyboard stays with the room pane (the
-	// eaten-cursor note below still holds).
+	// Python's selected_key invariant (Channels.py:1722-1724): the shown room's
+	// row IS the channels-list selection, so the opened room's row carries the
+	// list's highlight. Moving the highlight does NOT move the tview focus, so
+	// the keyboard stays with the room pane.
 	for i, e := range cd.hubEntries {
 		if e.Kind == RowRoom && e.HubIdx == hubIdx && e.Room == room {
 			cd.rooms.SetCurrentItem(i)
@@ -1470,18 +1450,15 @@ func (cd *ChannelsDisplay) ShowUserInfoDialog(nick, identityHash, lxmfHash strin
 
 // MaybeAutoconnect connects hub if it is disconnected or in a failed state and
 // its AutoRcn (auto-reconnect) toggle is on. It is the hook behind selecting a
-// hub or room row in the channels list, and behind a browser rrc:// link opening
-// a hub.
+// hub or room row in the channels list, and behind a browser rrc:// link
+// opening a hub.
 //
-// Python's ChannelsDisplay._maybe_autoconnect (Channels.py:1736-1741) dials any
-// disconnected or failed hub without consulting auto_reconnect, so simply
-// selecting a hub row — or a room row under it — brought the link up even for a
-// hub the user had deliberately taken off automatic connection, and even though
-// the only documented way to connect is Ctrl-R. The port gates the dial on
-// AutoRcn instead: a hub with AutoRcn off is only ever connected by an explicit
-// gesture — Ctrl-R, sending in one of its rooms, or its /connect slash command,
-// each of which calls ConnectAsync directly — while a hub with AutoRcn on keeps
-// Python's convenience of reviving itself on selection.
+// This deliberately diverges from Python's ChannelsDisplay._maybe_autoconnect
+// (Channels.py:1736-1741), which dials any disconnected or failed hub without
+// consulting auto_reconnect. Gating the dial on AutoRcn keeps the only
+// automatic connection path off a hub the user took off automatic connection;
+// explicit gestures (Ctrl-R, sending in one of its rooms, /connect) call
+// ConnectAsync directly and are unaffected.
 func MaybeAutoconnect(hub *rrc.RRCHub) {
 	if hub == nil {
 		return
@@ -1654,8 +1631,7 @@ func (cd *ChannelsDisplay) JoinRoomDialog() {
 		AddItem(tview.NewTextView().SetText(""), 1, 0, false).
 		AddItem(row, 1, 0, false)
 	dialog := NewDialogLineBox("Add Room on "+hubName, layout, cd.closeDialog)
-	// 6 layout rows + the 2 border rows: the earlier height 7 clipped the
-	// button row onto the bottom border.
+	// 6 layout rows + the 2 border rows.
 	cd.showDialogOverlay(dialog, 8)
 	// Python's update_key_visibility placeholder swap (Channels.py:1946-1955)
 	// removes the key field from the Pile while "Keyed room (+k)" is unchecked,

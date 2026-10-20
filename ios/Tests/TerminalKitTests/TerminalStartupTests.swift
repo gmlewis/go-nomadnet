@@ -20,9 +20,9 @@ import XCTest
 /// What the client asks for as it starts, parsed from the bytes it actually writes.
 ///
 /// The other parser tests use sequences written by hand, which is what a parser needs to be
-/// pinned against — and it is also what let a whole class of mistake through: a sequence that
-/// is plausible but is not what the client sends. These are the bytes the NomadNet client's own
-/// tcell writes to the appliance's console on startup, kept verbatim.
+/// pinned against — but a sequence that is plausible is not necessarily what the client sends.
+/// These are the bytes the NomadNet client's own tcell writes to the appliance's console on
+/// startup, kept verbatim.
 final class TerminalStartupTests: XCTestCase {
     /// The client's startup, as captured from the appliance's console.
     private let startup = "\u{1B}[?2004l\u{1B}[?1049h\u{1B}[22;0;0t\u{1B}[22;2t\u{1B}[?1h\u{1B}="

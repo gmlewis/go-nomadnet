@@ -40,10 +40,6 @@ import (
 // goroutine drains input bytes to the PTY master. tview primitives are touched
 // only on the UI loop (Draw, InputHandler). The App's GoSafe/onPanic handle
 // reader/writer panics.
-//
-// This is a Phase-1 prototype: it proves render + input for an embedded
-// editor. Mouse forwarding, fine-grained resize debouncing, and full xterm
-// parity are deferred (see the design plan).
 type EmbeddedTerminal struct {
 	*tview.Box
 
@@ -265,7 +261,7 @@ func (et *EmbeddedTerminal) InputHandler() func(event *tcell.EventKey, setFocus 
 			select {
 			case et.writeCh <- b:
 			default:
-				// drop on full buffer (best-effort for the prototype)
+				// drop on full buffer (best-effort)
 			}
 		}
 	})
@@ -400,10 +396,9 @@ func (et *EmbeddedTerminal) close() {
 }
 
 // stop closes stopCh exactly once. It is called from both Close (the UI
-// goroutine) and the child-exit watcher goroutine, so the old
-// check-then-close pattern could race into "close of closed channel" (a
-// pre-existing flake that panics the whole process — under -race it killed
-// the entire test binary). sync.Once makes it idempotent and race-free.
+// goroutine) and the child-exit watcher goroutine, so it must be idempotent:
+// a check-then-close would race into "close of closed channel" and panic the
+// whole process. sync.Once makes it race-free.
 func (et *EmbeddedTerminal) stop() {
 	et.stopOnce.Do(func() { close(et.stopCh) })
 }

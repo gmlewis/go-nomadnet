@@ -29,13 +29,11 @@ import (
 // TestIntroTextFromConfig pins [textui] intro_text, the title the startup splash
 // renders. Python reads config["textui"]["intro_text"] and defaults it to
 // "Nomad Network" when the key is absent (NomadNetworkApp.py:919-920); the value
-// is consumed by IntroDisplay (ui/textui/Extras.py:8). The port had no field at
-// all and rendered a hardcoded title, so the key did nothing.
+// is consumed by IntroDisplay (ui/textui/Extras.py:8).
 //
 // The key is deliberately NOT written back by Save: Python's createDefaultConfig
 // writes the shipped default text verbatim and never rewrites the file
-// (NomadNetworkApp.py:790-798), and that text has no intro_text entry, so adding
-// one to the written config would be a new divergence rather than a fix.
+// (NomadNetworkApp.py:790-798), and that text has no intro_text entry.
 func TestIntroTextFromConfig(t *testing.T) {
 	t.Parallel()
 
@@ -101,8 +99,7 @@ func TestIntroTextNotWrittenBySave(t *testing.T) {
 // TestAnimationIntervalFromConfig pins [textui] animation_interval, the refresh
 // interval Python drives every Network-page live widget's timeout from. Python
 // defaults it to 1 when absent (NomadNetworkApp.py:948-951) and reads it at
-// ui/textui/Network.py:399,1030-1231,1542. The port had no field at all: the
-// interval was hardcoded to one second in tui/node-info.go, so the key did nothing.
+// ui/textui/Network.py:399,1030-1231,1542.
 func TestAnimationIntervalFromConfig(t *testing.T) {
 	t.Parallel()
 
@@ -142,8 +139,7 @@ func TestAnimationIntervalFromConfig(t *testing.T) {
 // TestMaxAcceptedResourceSizeFromConfig pins [rrc] max_accepted_resource_size, the
 // largest incoming RRC resource the client accepts. Python reads it in kilobytes and
 // multiplies by 1024, accepting any value >= 0 (NomadNetworkApp.py:998-1002); the
-// shipped default is 256, i.e. 262144 bytes (:1413). The port had no field, and the
-// client-side cap was hardcoded to 262144, so the key did nothing.
+// shipped default is 256, i.e. 262144 bytes (:1413).
 func TestMaxAcceptedResourceSizeFromConfig(t *testing.T) {
 	t.Parallel()
 
@@ -181,15 +177,10 @@ func TestMaxAcceptedResourceSizeFromConfig(t *testing.T) {
 }
 
 // TestDefaultConfigMatchesPythonVerbatim pins the bundled default configuration
-// against the reference string. defaults.go documents defaultConfigText as "the
-// same string Python ships as __default_nomadnet_config__" and "written to disk on
-// first run so the on-disk file is byte-identical to what Python produces" — which
-// was false: the whole max_accepted_resource_size block (its six comment lines and
-// the key) was missing from an otherwise identical file, so a fresh install got a
-// config that named the setting nowhere while Python's default carried it.
-//
-// The expected text is read from the installed reference at test time, so the two
-// cannot drift apart silently.
+// against the reference string: defaultConfigText must be byte-identical to
+// Python's __default_nomadnet_config__, so a fresh install writes exactly what
+// Python produces. The expected text is read from the installed reference at
+// test time, so the two cannot drift apart silently.
 func TestDefaultConfigMatchesPythonVerbatim(t *testing.T) {
 	t.Parallel()
 	testutils.SkipIfNoPythonNomadnet(t)
@@ -236,10 +227,8 @@ print(json.dumps(m.group(1)))
 
 // TestSavedConfigKeyOrderMatchesTheDefault pins the key order a saved config carries.
 // Python serialises through ConfigObj, which preserves the shipped default text's
-// order; the port iterated a Go map, so every save shuffled each section's keys. The
-// file stayed readable either way, but it was not byte-stable, so two saves of the
-// same state differed and any byte-parity test over the written config would have been
-// flaky by construction.
+// order. A Go map has no order, so Save must impose that order explicitly: two
+// saves of the same state have to be byte-identical.
 func TestSavedConfigKeyOrderMatchesTheDefault(t *testing.T) {
 	t.Parallel()
 
@@ -255,8 +244,7 @@ func TestSavedConfigKeyOrderMatchesTheDefault(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Save twice: the order must be identical, which is what a map iteration could
-	// not guarantee.
+	// Save twice: the output must be identical both times.
 	second := filepath.Join(dir, "config2")
 	if err := Save(c, second); err != nil {
 		t.Fatalf("Save (second): %v", err)

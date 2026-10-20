@@ -11,7 +11,7 @@ import (
 
 // TestShowStatusDialogRendersOKButton renders the status dialog to a screen
 // and asserts the "OK" button is visible (the dismiss affordance the Python
-// original has and the bare-text port lacked).
+// original has).
 func TestShowStatusDialogRendersOKButton(t *testing.T) {
 	app, _, _ := setupDialogTest(t)
 	dm := app.Dialogs

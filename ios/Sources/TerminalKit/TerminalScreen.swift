@@ -26,9 +26,7 @@ import Foundation
 /// It is a port of the Go client's `tui/vterm.go`, deliberately function for function:
 /// that file is what the same client draws through on a desktop terminal, and two
 /// emulators that disagree are not an error anyone sees, they are a screen with the wrong
-/// characters on it. The Go file's vectors are asserted here against the same behavior
-/// rather than retyped, and `TerminalScreenTests` keeps each one readable beside its
-/// original.
+/// characters on it.
 ///
 /// One thing here has no counterpart in `vterm.go`, and cannot have: a scrollback. On a
 /// desktop the client draws through a terminal emulator that owns the lines which leave

@@ -22,9 +22,9 @@ import (
 	"github.com/gmlewis/go-reticulum/geo"
 )
 
-// The certified reference vectors below are the ones published with the
-// extension. The distances and bearings were produced with the formulas in the
-// specification and a spherical Earth of radius 6,371,000 m.
+// The certified reference vectors below are the ones published with the `L
+// construct specification. The distances and bearings were produced with the
+// formulas in that specification and a spherical Earth of radius 6,371,000 m.
 var (
 	// googleplex is the reader position in the first two vectors.
 	googleplex = geo.LatLng{Lat: 37.4220, Lng: -122.0841}

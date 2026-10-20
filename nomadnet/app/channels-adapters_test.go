@@ -37,7 +37,7 @@ func TestHubViews(t *testing.T) {
 	hub1.AddRoom("random")
 	hub1.AddRoom("general")
 	// Mutate exported room state directly. No RRC worker goroutine is running
-	// (we never called Connect), so this is race-free and avoids needing the
+	// (Connect is never called), so this is race-free and avoids needing the
 	// unexported hub lock from outside the rrc package.
 	hub1.Messages["zzz"] = []*rrc.RRCMessage{{Text: "hi"}}
 	hub1.UnreadRooms["onlymsg"] = true

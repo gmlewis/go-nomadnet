@@ -295,12 +295,9 @@ func (a *App) OpenLXMFLink(sourceHashHex string, displayNameFallback ...string) 
 	// (Conversations.py:1058, "new_conversation = nomadnet.Conversation(...,
 	// initiator=True)"), and Conversation.__init__ asks the network for the
 	// peer's identity when it does not already know it (Conversation.py:204-208).
-	// That request is the only thing that makes a merely-addressed peer
-	// messagable: LXMF encrypts to the recipient's identity, so without it no
-	// message can be built — not directly and not through a propagation node
-	// either. Skipping it left a QR-scanned or typed address permanently
-	// unmessagable until an lxmf.delivery announce happened to arrive on its own
-	// (announce_interval defaults to 6 hours).
+	// That request is what makes a merely-addressed peer messagable: LXMF
+	// encrypts to the recipient's identity, so without it no message can be
+	// built — not directly and not through a propagation node either.
 	a.peerConversation(sourceHashHex)
 
 	isNew = true

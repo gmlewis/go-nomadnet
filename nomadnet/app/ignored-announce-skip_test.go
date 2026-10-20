@@ -27,8 +27,8 @@ import (
 // from an ignored (blocked) destination is never added to the directory's
 // announce stream, and its auto-remember of a trusted-operator directory
 // entry is skipped even when the associated peer is trusted. This guard has
-// NO Python SOT counterpart (Python nomadnet cannot block nodes), so it must
-// not be removed when auditing parity.
+// NO Python SOT counterpart (Python nomadnet cannot block nodes), so it is
+// deliberate rather than a parity gap.
 func TestHandleNodeAnnounceSkipsBlockedAutoRemember(t *testing.T) {
 	t.Parallel()
 	a := NewApp(tempDir(t), "", false, false)

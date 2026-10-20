@@ -72,8 +72,7 @@ func terminalPixels() (width, height int, ok bool) {
 // be standing up. A tablet whose display is 1200 by 1920 pixels holds 100 columns
 // of 12 pixels and 75 rows of 24, which is portrait by every measure except the
 // one the cell counts alone can make. A terminal that reports its physical size is
-// therefore believed; one that reports none falls back to its cell grid, which is
-// what every terminal before this feature had.
+// therefore believed; one that reports none falls back to its cell grid.
 func terminalIsPortrait(cols, rows int) bool {
 	width, height, havePixels := terminalPixels()
 	return portraitGrid(cols, rows, width, height, havePixels)

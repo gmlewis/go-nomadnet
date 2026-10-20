@@ -22,10 +22,10 @@ import (
 	"github.com/gmlewis/tcell/v2"
 )
 
-// TestDividerReflowsToContentWidth verifies the R-MICRON-DIVIDER-WIDTH fix: a
-// micron `-` horizontal divider must fill the browser content's real width,
-// not the stale/zero width seen when the fetch callback renders the page
-// before the content TextView has been drawn at its true size.
+// TestDividerReflowsToContentWidth verifies that a micron `-` horizontal
+// divider fills the browser content's real width, not the stale/zero width seen
+// when the fetch callback renders the page before the content TextView has been
+// drawn at its true size.
 //
 // The real flow is: OnRetrieveURL fires (via QueueUpdateDraw) before the
 // browser display's first Draw, so contentWidth() returns a stale value and

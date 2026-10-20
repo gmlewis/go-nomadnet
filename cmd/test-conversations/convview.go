@@ -29,9 +29,8 @@ func dialogOpen(v *utils.View, title string) bool {
 // myLxmfDialogOpen reports whether the C-p "My LXMF" dialog is on screen. Its
 // border title is not fixed: Python picks it from whether the QR code rendered
 // (Conversations.py:679, `dialog_title = "LXMF Address" if qr_text is None else
-// "QR Code"`), and the running Python build has the qrcode module, so a normal
-// run shows "QR Code". Accept either title so the assertion does not depend on
-// whether the QR renderer is available on the platform under test.
+// "QR Code"`). Accept either title so the assertion does not depend on whether
+// the QR renderer is available on the platform under test.
 func myLxmfDialogOpen(v *utils.View) bool {
 	return dialogOpen(v, "QR Code") || dialogOpen(v, "LXMF Address")
 }

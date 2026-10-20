@@ -211,8 +211,7 @@ func parseLine(line string, state *parseState) []*Node {
 	if state.literal {
 		// Only a whole line of \`= is unescaped to `=; occurrences inside a
 		// longer line are left alone. Python MicronParser.make_output checks
-		// `if line == "\\`="` (MicronParser.py:595-598), an exact-line test,
-		// where this port used to rewrite every occurrence.
+		// `if line == "\\`="` (MicronParser.py:595-598), an exact-line test.
 		if line == "\\`=" {
 			line = "`="
 		}
@@ -243,10 +242,10 @@ func parseLine(line string, state *parseState) []*Node {
 	// Check for horizontal dividers: -X (custom char) or longer (default)
 	if line[0] == '-' {
 		char := rune('\u2500')
-		// Python's `len(line) == 2` / `line[1]` operate on CHARACTERS
-		// (codepoints), not bytes \u2014 markup.mu uses "-\u223f" (U+223F SINE WAVE,
-		// 2 UTF-8 bytes) as its section divider. Use rune count so a multibyte
-		// custom char is recognized; fall through to the default \u2500 otherwise.
+		// Python's `len(line) == 2` / `line[1]` operate on codepoints, not
+		// bytes, so use a rune count: a multibyte custom char such as
+		// "-\u223f" (U+223F SINE WAVE) is recognized, and anything else falls
+		// through to the default \u2500.
 		if utf8.RuneCountInString(line) == 2 {
 			r, _ := utf8.DecodeRuneInString(line[1:])
 			char = r
@@ -583,8 +582,7 @@ func parseFormatting(line string, start int) ([]*Node, int) {
 		// start+5. The 24-bit `FTRRGGBB form is taken only when 'T' is present
 		// AND there are 6 trailing digits (start+9); otherwise it falls back
 		// to the 12-bit `FRRGGB form. consumed covers backtick+F+3 digits = 5
-		// (Python skip=3 from 'F'); the prior value of 4 left the last digit
-		// in the following text.
+		// (Python skip=3 from 'F').
 		if start+5 <= len(line) {
 			if line[start+2] == 'T' && start+9 <= len(line) {
 				color := line[start+3 : start+9]
@@ -661,9 +659,8 @@ func parseFormatting(line string, start int) ([]*Node, int) {
 	// backtick and dropped. Python enters formatting mode on the backtick,
 	// flushes the pending text, processes the character through its command
 	// chain (which has no fallback), and returns to text mode
-	// (MicronParser.py:610-840). Emitting the character as text, as this port
-	// did, turns "use `code` here" into "use code here" where the reference
-	// renders "use odehere".
+	// (MicronParser.py:610-840). Emitting the character as text instead would
+	// turn "use `code` here" into "use code here".
 	if start+1 < len(line) {
 		return nil, 2
 	}
@@ -894,8 +891,7 @@ func removeChar(s string, c byte) string {
 func parseInt(s string) (int, bool) {
 	// Python parses the field width with int(field_flags) inside a try/except
 	// (MicronParser.py:706-710), so surrounding whitespace, a sign, and single
-	// underscores between digits are all accepted (" 24", "-5", "1_0"). A
-	// bare-digit parser rejected them and silently kept the default width 24.
+	// underscores between digits are all accepted (" 24", "-5", "1_0").
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return 0, false

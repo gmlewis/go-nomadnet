@@ -16,17 +16,14 @@ import java.io.File
 /**
  * The colors the console is drawn in.
  *
- * The client sends colors as terminal escapes, so what the screen holds is a color
- * *name*: which of the 256 palette entries, a 24-bit value, or the terminal's own default.
- * The view draws pixels, so something has to turn one into the other, and that something is
- * pure — a table and a swap — which is why it is asserted here rather than looked at on a
- * tablet. A palette that is off by one entry draws the whole interface in the wrong
- * colors, and nothing about it looks like a bug in the code.
+ * The client sends colors as terminal escapes, so the screen holds a color *name*: a
+ * palette index, a 24-bit value, or the terminal's own default; the view draws pixels. The
+ * conversion is pure (a table and a swap), so it is asserted here rather than checked on a
+ * tablet.
  *
- * The colors the client leaves to the terminal are the ones that matter most, and they are
- * the appliance's published theme: the same `colors.properties` the client installs under
- * Termux is the file these tests read, so the console and the Termux install cannot resolve
- * the operator's theme two different ways.
+ * The colors the client leaves to the terminal come from the theme the APK publishes: the
+ * same `colors.properties` the client installs under Termux, so the console and the Termux
+ * install cannot resolve the operator's theme two different ways.
  */
 class TerminalPaletteTest {
 
@@ -37,9 +34,8 @@ class TerminalPaletteTest {
     fun `the palette is the theme the appliance publishes`() {
         // The theme is Termux's `colors.properties`, which the APK carries and the client
         // installs under Termux: a black background, a bright green foreground, and the
-        // gruvbox sixteen. The console resolves the client's unnamed colors and its named
-        // palette entries from this file's values, and the file is what is read here — a
-        // second copy of the sixteen in this test would be a second copy to drift.
+        // gruvbox sixteen. Reading the file here rather than a second copy of the sixteen
+        // keeps the two from drifting.
         val theme = publishedTheme()
 
         assertEquals(
@@ -70,8 +66,7 @@ class TerminalPaletteTest {
     @Test
     fun `the rest of the palette is the color cube and the grey ramp`() {
         // Entries 16 to 231 are a 6x6x6 cube whose steps are the ones every terminal uses,
-        // and the last twenty-four are the greys. This is the part a program reaches for
-        // when it asks for 256 colors, which the client does.
+        // and the last twenty-four are the greys.
         val steps = listOf(0x00, 0x5f, 0x87, 0xaf, 0xd7, 0xff)
 
         for (r in 0..5) {
@@ -115,9 +110,9 @@ class TerminalPaletteTest {
 
     @Test
     fun `a 24-bit color is drawn as it was sent`() {
-        // The client is run with COLORTERM=truecolor, so most of what it draws arrives as
-        // 24-bit rather than as a palette entry, and it must reach the screen unchanged:
-        // rounding it into the 256-color cube is what makes a themed interface look wrong.
+        // The client runs with COLORTERM=truecolor, so most of what it draws arrives as
+        // 24-bit and must reach the screen unchanged; rounding it into the 256-color cube
+        // is what makes a themed interface look wrong.
         val cases = listOf(0x0a141e, 0x00a533, 0xfd3, 0xffffff, 0x000000)
 
         for (value in cases) {
@@ -138,11 +133,9 @@ class TerminalPaletteTest {
 
     @Test
     fun `the terminal's own colors are the theme's`() {
-        // A cell the client gave no color for is drawn in the terminal's own, and the
-        // client leaves most of its chrome to the terminal: the frame borders, the pane
-        // titles, the key hints along the bottom. So the default pair is the whole look of
-        // the interface, and it is the published theme's pair rather than a second one
-        // chosen here.
+        // A cell the client gave no color for is drawn in the terminal's own color, and
+        // the client leaves most of its chrome to the terminal: the frame borders, the
+        // pane titles, the key hints along the bottom.
         val theme = publishedTheme()
         assertEquals(
             argb((0xff shl 24) or theme["foreground"]!!),

@@ -387,12 +387,12 @@ func (c *clipboardSpy) SetClipboard(data []byte) {
 	c.Screen.SetClipboard(data)
 }
 
-// TestMouseDragAlsoPostsOSC52 is the regression test for fleet bug #11 (the
-// glenn-mac-mini-m2 remote session): the system-clipboard write lands on the
-// machine gonomadnet RUNS on — over SSH the remote pasteboard, which the
-// local Cmd-V never sees. The selection must ALSO post OSC 52 through the
-// terminal (tcell Screen.SetClipboard) so the escape travels app → tmux →
-// outer terminal and sets the clipboard of the machine the user types on.
+// TestMouseDragAlsoPostsOSC52 pins the OSC 52 clipboard path: the
+// system-clipboard write lands on the machine gonomadnet RUNS on — over SSH
+// the remote pasteboard, which a local paste never sees. The selection must
+// ALSO post OSC 52 through the terminal (tcell Screen.SetClipboard) so the
+// escape travels app → tmux → outer terminal and sets the clipboard of the
+// machine the user types on.
 func TestMouseDragAlsoPostsOSC52(t *testing.T) {
 	t.Parallel()
 

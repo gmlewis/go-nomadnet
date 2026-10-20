@@ -236,11 +236,6 @@ func NewNetworkDisplay(app *App, announces []AnnounceEntry, nodes []NodeEntry) *
 	// by "Currently, no nodes are saved\n\nCtrl+L to view the announce stream",
 	// in a TOP-filled Filler. The whole message uses the warning_text palette
 	// color (#ba4 → #bbaa44). Shown in place of the nodes list when it is empty.
-	// KnownNodes empty-state (Network.py:833-882): when no nodes are saved the
-	// "Saved Nodes" LineBox shows a centered warning-colored info glyph followed
-	// by "Currently, no nodes are saved\n\nCtrl+L to view the announce stream",
-	// in a TOP-filled Filler. The whole message uses the warning_text palette
-	// color (#ba4 → #bbaa44). Shown in place of the nodes list when it is empty.
 	// centeredText ceil-left-centers each line to match urwid (tview's
 	// AlignCenter floors, landing 1 col right of the original on odd slack).
 	nd.nodeEmptyState = newCenteredText(
@@ -347,7 +342,7 @@ func NewNetworkDisplay(app *App, announces []AnnounceEntry, nodes []NodeEntry) *
 	// outer Columns. Without this dynamic predicate the outer Columns grabs
 	// Left/Right before the inner tab bar can move between [ Nodes ] /
 	// [ Peers ] / [ Propagation Nodes ], and before the filter bar can move
-	// between "Search" and "[ Show: Name ]" (the reported parity bugs).
+	// between "Search" and "[ Show: Name ]".
 	mainCols.SetSelfManagingFunc(0, nd.leftPaneConsumesLeftRight)
 	nd.mainCols = mainCols
 	nd.widget = mainCols
@@ -366,10 +361,9 @@ func NewNetworkDisplay(app *App, announces []AnnounceEntry, nodes []NodeEntry) *
 	// KnownNodes NodeEntry "click" signal → connect_node, Network.py:1019 +
 	// 881-919). The ListEntry "click" signal fires on Enter (and mouse click),
 	// NOT on selection change — node_list_selection (Network.py:878-879) is the
-	// selection-change callback (`pass`), which the prior no-op comment mistook
-	// for the Enter handler. Resolve the row through nodeData (which maps 1:1 to
-	// list rows) and dispatch to OnConnectNode; the wiring layer builds the
-	// Yes/No/Info dialog.
+	// selection-change callback (`pass`). Resolve the row through nodeData
+	// (which maps 1:1 to list rows) and dispatch to OnConnectNode; the wiring
+	// layer builds the Yes/No/Info dialog.
 	nd.nodes.SetSelectedFunc(func(i int, _, _ string, _ rune) {
 		if i < 0 || i >= len(nd.nodeData) {
 			return
@@ -464,9 +458,9 @@ func (nd *NetworkDisplay) addNodeEntry(node NodeEntry) {
 	nd.nodes.AddItem(text, "", 0, nil)
 }
 
-// showAnnounceDetail is retained for backward compatibility (tests); it looks
-// up the entry in the full announce data by index. New callers should use
-// showAnnounceDetailFor with the entry resolved through the AnnounceStream.
+// showAnnounceDetail looks up the entry in the full announce data by index and
+// shows it. New callers should use showAnnounceDetailFor with the entry
+// resolved through the AnnounceStream.
 func (nd *NetworkDisplay) showAnnounceDetail(i int) {
 	if i < 0 || i >= len(nd.announceData) {
 		return
@@ -1026,30 +1020,15 @@ func (nd *NetworkDisplay) SetLocalPeerHandlers(onSave func(name string), onAnnou
 	nd.localPeer.OnNodeInfo = onNodeInfo
 }
 
-// ShowNodeInfo swaps the bottom of the left pane from the Local Peer Info panel
-// to the Local Node Info panel (Python node_info_query, Network.py:1399-1401),
-// building it fresh from the given data. The list slot above is unaffected.
-// The NodeInfo panel's Back button swaps back via ShowLocalPeer.
-//
-// The panel is rebuilt on every call rather than cached, mirroring Python's
-// node_info_query which constructs a fresh NodeInfo(self.app, self.parent) each
-// time (Network.py:1399-1401). The dynamic stat lines (Last Announce, Storage,
-// Active/Total/Pages/Files) are live providers that re-read the app each tick
-// regardless, but the static fields (Name, Addr, LXMF propagation address) are
-// captured at construction — rebuilding them each open keeps them current if the
 // rebuildLeftPanel is the ONLY function allowed to mutate the left pane. It
-// renders the canonical python-parity composition from the widget state —
-// index 0: the list slot (listBox or its listSlotOverlay), index 1 (PACK): the
-// pack panel (Local Peer Info, Local Node Info, or the transient status
-// dialog) — in exactly two items, every time. All panel mutators
-// (ShowNodeInfo/ShowLocalPeer/ShowLocalPeerStatus/CloseLocalPeerStatus/
-// ShowListSlotDialog/CloseListSlotDialog) set state and call this, so panel
-// ordering, position, and visibility can never drift the way they did under the
-// previous incremental remove/add swaps: tview's AddItem always appends, so
-// interleaved mutator sequences stranded panels above the list and resurrected
-// hidden ones (the penguin layout scramble: [Local Node Info, Announce Stream,
-// Local Peer Info] instead of [list, Local Node Info-or-Local Peer Info], with
-// the browser pane right).
+// renders the canonical composition from the widget state — index 0: the list
+// slot (listBox or its listSlotOverlay), index 1 (PACK): the pack panel (Local
+// Peer Info, Local Node Info, or the transient status dialog) — in exactly two
+// items, every time. All panel mutators (ShowNodeInfo/ShowLocalPeer/
+// ShowLocalPeerStatus/CloseLocalPeerStatus/ShowListSlotDialog/
+// CloseListSlotDialog) set state and call this. Because tview's AddItem always
+// appends, rebuilding both items is what keeps panel order, position, and
+// visibility canonical across interleaved mutator sequences.
 //
 // Each item's Up/Down role comes from the slot's content: a plain list keeps
 // Up/Down while its cursor can move and hands focus over at its boundary; a
@@ -1185,10 +1164,20 @@ func (nd *NetworkDisplay) packPanelConsumesLeftRight() bool {
 	}
 }
 
-// user changes their display name or propagation setting mid-session (the
-// previous `if nd.nodeInfo == nil` cache showed the first-open values forever).
-// Any previously built panel is stopped first so no background refresh
-// goroutine leaks.
+// ShowNodeInfo swaps the bottom of the left pane from the Local Peer Info panel
+// to the Local Node Info panel (Python node_info_query, Network.py:1399-1401),
+// building it fresh from the given data. The list slot above is unaffected.
+// The NodeInfo panel's Back button swaps back via ShowLocalPeer.
+//
+// The panel is rebuilt on every call rather than cached, mirroring Python's
+// node_info_query which constructs a fresh NodeInfo(self.app, self.parent) each
+// time (Network.py:1399-1401). The dynamic stat lines (Last Announce, Storage,
+// Active/Total/Pages/Files) are live providers that re-read the app each tick
+// regardless, but the static fields (Name, Addr, LXMF propagation address) are
+// captured at construction — rebuilding them each open keeps them current when
+// the user changes their display name or propagation setting mid-session. Any
+// previously built panel is stopped first so no background refresh goroutine
+// leaks.
 func (nd *NetworkDisplay) ShowNodeInfo(data NodeInfoData) {
 	if nd.nodeInfo != nil {
 		nd.nodeInfo.Stop()
@@ -1225,10 +1214,6 @@ func (nd *NetworkDisplay) ShowLocalPeer() {
 // is centered in the slot at the slot's width (RELATIVE_100) and its natural
 // (PACK) height. Esc/confirm dismisses via CloseListSlotDialog, restoring the
 // list. dialogHeight is the dialog's PACK height (content rows + 2 border).
-//
-// This replaces the former screen-centered modal placement so Network confirm
-// dialogs (connect / delete-node) render in the correct slot at the correct
-// width, byte-identical to nomadnet.
 func (nd *NetworkDisplay) ShowListSlotDialog(dialog *DialogLineBox, dialogHeight int) {
 	if nd.listSlotOverlay != nil {
 		nd.CloseListSlotDialog()
@@ -1238,11 +1223,10 @@ func (nd *NetworkDisplay) ShowListSlotDialog(dialog *DialogLineBox, dialogHeight
 	nd.listSlotOverlay = ov
 	// Rebuild from state so the list slot is ALWAYS leftPanel index 0 and the
 	// pack panel (Local Peer Info OR the Local Node Info panel, whichever is
-	// showing) is ALWAYS index 1. Tview Flex.AddItem only appends, so the
-	// previous remove/re-add pair scrambled the stack whenever a third panel
-	// (the Local Node Info detail) was showing: python uses indexed
-	// assignment (left_pile.contents[0] = overlay, Network.py:918-919) which
-	// never reorders its other contents.
+	// showing) is ALWAYS index 1. Python uses indexed assignment
+	// (left_pile.contents[0] = overlay, Network.py:918-919), which never
+	// reorders its other contents; tview Flex.AddItem only appends, so the
+	// whole stack must be rebuilt to get the same effect.
 	nd.rebuildLeftPanel()
 	if nd.app != nil {
 		nd.app.SetFocus(ov)

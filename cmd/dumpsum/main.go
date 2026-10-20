@@ -20,8 +20,8 @@
 //   - total goroutine count and counts grouped by scheduler state;
 //   - a role table mapping each goroutine to its first non-runtime frame,
 //     so missing subsystem readers are obvious at a glance;
-//   - callouts for [running]/[runnable] goroutines (the red-handed CPU
-//     burners) and for [syscall] goroutines (potential instant-error spins);
+//   - callouts for [running]/[runnable] goroutines (the CPU burners) and for
+//     [syscall] goroutines (potential instant-error spins);
 //   - creation-site ("created by") histogram, which reconstructs lineage
 //     such as reconnectLoop-spawned-by-failConn transitions;
 //   - the highest live goroutine ID, which combined with process uptime

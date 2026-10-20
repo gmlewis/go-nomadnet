@@ -30,15 +30,11 @@ import (
 // message whose file changed while it was cached (Conversation.py:2240-2258):
 // a path already in memory is ALWAYS reused, and when the file is newer than
 // the cached sort_timestamp the cached state is dropped so it is re-read from
-// the envelope. The Go port instead required the file's mtime to equal
-// SortTimestamp exactly and otherwise threw the in-memory message away and
-// rebuilt it from the .index — which reinstates the stale snapshot.
+// the envelope.
 //
-// The live symptom is a delivery proof: the proof rewrites the envelope with
-// LXMF DELIVERED, and the conversation kept rendering the indexed SENT state
-// (the 󰳐 glyph) forever, because scan_storage restored the index entry instead
-// of the rewritten file. Real storage shows exactly that split —
-// conversations/<peer>/.index says state 4 while the message file says 8.
+// The case that matters is a delivery proof rewriting the envelope with LXMF
+// DELIVERED: the header must render the file's DELIVERED state, not the stale
+// indexed SENT state (and its glyph).
 func TestScanStorageRereadsRewrittenEnvelope(t *testing.T) {
 	t.Parallel()
 
@@ -124,12 +120,10 @@ func TestScanStorageRereadsRewrittenEnvelope(t *testing.T) {
 	}
 }
 
-// TestScanStorageEnvelopeNewerThanIndexSnapshot covers the shape the operator's
-// own storage is in: the .index holds the state as it was when the message was
-// displayed, and the envelope was rewritten afterwards (a delivery proof). A
-// scan that has no in-memory message must still render the file, not the
-// snapshot — conversations/<peer>/.index said state 4 (SENT) while the message
-// file said 8 (DELIVERED), 0.13 s newer.
+// TestScanStorageEnvelopeNewerThanIndexSnapshot covers a scan with no
+// in-memory message, as after a restart: when the .index snapshot was taken
+// before the envelope was rewritten with a delivery proof, the file must win
+// over the snapshot.
 func TestScanStorageEnvelopeNewerThanIndexSnapshot(t *testing.T) {
 	t.Parallel()
 

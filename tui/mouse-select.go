@@ -193,17 +193,16 @@ func (s *selectionTracker) copySelection() {
 	}
 	normalized := normalizeCopiedWord(text)
 	// The system-clipboard write below lands on the machine gonomadnet RUNS
-	// on. Over SSH (the glenn-mac-mini-m2 and every other fleet session) that
-	// is the remote box's pasteboard — Cmd-V on the machine the user is
-	// typing on never sees it (fleet bug #11). The paths that DO cross the
-	// SSH boundary:
+	// on. Over SSH that is the remote box's pasteboard — a paste on the
+	// machine the user is typing on never sees it. The paths that DO cross
+	// the SSH boundary:
 	//
 	//   - `tmux load-buffer -w`, run by WriteText whenever $TMUX is set: tmux
 	//     emits the OSC 52 itself, and tmux's own clipboard write is forwarded
 	//     to the outer terminal under the default `set-clipboard external`.
 	//   - The OSC 52 posted below through tcell: only forwarded where tmux's
-	//     set-clipboard is `on` (the local Mac, glenn-kamrui) — with
-	//     `external` tmux DROPS an application's OSC 52 (verified on 3.7c).
+	//     set-clipboard is `on`; with `external` tmux DROPS an application's
+	//     OSC 52.
 	//
 	// Running locally all paths write the same clipboard; over SSH the tmux
 	// buffer write is the one that reaches the user's machine.

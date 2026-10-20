@@ -18,8 +18,8 @@ package micron
 import "testing"
 
 // Expected values captured from Python MicronParser.parse_line
-// (MicronParser.py:220-416), extracted via /tmp/micron_parseline.py.
-// Covers dividers (custom char only when the line is exactly two chars),
+// (MicronParser.py:220-416). Covers dividers (custom char only when the line
+// is exactly two chars),
 // comments (no output), and section-reset ("<" resets depth to 0 and
 // re-parses the rest of the line, recursively for multiple "<").
 func TestParseLineLevelParity(t *testing.T) {

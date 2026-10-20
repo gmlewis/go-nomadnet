@@ -63,11 +63,8 @@ type HubEntry struct {
 	// both (AddRoom/RemoveRoom/TotalUnreadCount), so the lock order is always
 	// hm.mu → hub.mu and never the reverse — no deadlock. Standalone HubEntry
 	// accessors (GetRoom/UnreadCount/HubSummary/FormatHubStatus) acquire only
-	// hub.mu, which synchronizes them against AddRoom/RemoveRoom writes that
-	// mutate Rooms from a background RRC-event goroutine. Without this lock,
-	// a concurrent AddRoom/RemoveRoom write and a UI-side range/len/read of
-	// Rooms triggers "fatal error: concurrent map read/write" /
-	// "concurrent map iteration and map write".
+	// hub.mu, which synchronizes them against AddRoom/RemoveRoom writes from a
+	// background RRC-event goroutine.
 	mu sync.RWMutex
 }
 

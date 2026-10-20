@@ -41,12 +41,12 @@ func captureFocusDump() (restore func(), got *[]string) {
 	return func() { focusInvariantDump = prev }, &captured
 }
 
-// TestHandleInputRecoversNilFocus reproduces the lock-up root cause: the app's
-// focused primitive becomes nil (the diag log showed GetFocus()=<nil> for key
-// after key, so arrow keys dispatched to nothing). MainDisplay.handleInput must
-// recover focus before dispatching and dump a stack so the violation surfaces.
-// The nil is forced via the embedded *tview.Application.SetFocus (bypassing the
-// *App shadow) to mimic tview's internal cascade delegate(nil).
+// TestHandleInputRecoversNilFocus verifies that when the app's focused
+// primitive becomes nil (arrow keys would then dispatch to nothing),
+// MainDisplay.handleInput recovers focus before dispatching and dumps a stack
+// so the violation surfaces. The nil is forced via the embedded
+// *tview.Application.SetFocus (bypassing the *App shadow) to mimic tview's
+// internal cascade delegate(nil).
 func TestHandleInputRecoversNilFocus(t *testing.T) {
 	focusDumpMu.Lock()
 	defer focusDumpMu.Unlock()
@@ -76,10 +76,9 @@ func TestHandleInputRecoversNilFocus(t *testing.T) {
 	}
 }
 
-// TestDismissTopRestoresFocusOnNilPrevFocus pins the dialog-overlay fix: when a
-// dialog was opened while focus was already nil (prevFocus=nil), the old code
-// skipped SetFocus and left the app with no focused primitive. DismissTop must
-// now fall back to the main content so focus is never nil after a dismiss.
+// TestDismissTopRestoresFocusOnNilPrevFocus verifies that when a dialog was
+// opened while focus was already nil (prevFocus=nil), DismissTop falls back to
+// the main content so focus is never nil after a dismiss.
 func TestDismissTopRestoresFocusOnNilPrevFocus(t *testing.T) {
 	app, main, pages := setupDialogTest(t)
 	app.Application.SetRoot(pages, true)

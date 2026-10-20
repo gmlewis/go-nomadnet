@@ -31,18 +31,17 @@ import (
 // This file is the appliance's host wiring, and it is the one piece of the iOS
 // appliance that does not live under ios/.
 //
-// It has to be here because of a rule of the language rather than a preference:
-// the NomadNet client is `package main`, Go forbids importing a main package, and
-// this file is what calls runTextUI. The build tag confines it to GOOS=ios, so
-// every other build of this binary — the desktop client, the Android one, the
-// tests on any host — is exactly the program it was before.
+// It has to be here because the NomadNet client is `package main`, Go forbids
+// importing a main package, and this file is what calls runTextUI. The build
+// tag confines it to GOOS=ios, so every other build of this binary is
+// unaffected.
 
 // terminalName is the terminal the appliance's console claims to be.
 //
-// The name has one home, in the bridge package beside the console that is the
-// terminal, so that the entry the client renders through and the entry the
-// appliance's Swift half parses cannot drift apart. It is a direct-color entry:
-// the client draws in 24-bit color on the device's own terminal.
+// The name lives in the bridge package beside the console that is the terminal,
+// so the entry the client renders through and the entry the appliance's Swift
+// half parses cannot drift apart. It is a direct-color entry: the client draws
+// in 24-bit color on the device's own terminal.
 const terminalName = bridge.TerminalName
 
 func init() {
@@ -64,12 +63,10 @@ func init() {
 
 // editorUnavailable is why the client cannot open an editor on the appliance.
 //
-// The client's Config page opens the editor named in its `[textui] editor` setting by
-// starting that program, and the appliance's own configuration says there is none —
-// an iOS application is forbidden from starting a program at all, so the setting is
-// empty and there is nothing for the button to run. Saying so, and naming the screen
-// that does the job, is the difference between a button that is broken and one that
-// is not for this platform.
+// The client's Config page opens the editor named in its `[textui] editor`
+// setting by starting that program, and an iOS application is forbidden from
+// starting a program at all, so the setting is empty and there is nothing for
+// the button to run. The message names the screen that does the job instead.
 func editorUnavailable(editorCmd string) error {
 	return fmt.Errorf(
 		"the appliance edits its configuration in the gonomadnet app, not on the console: "+
@@ -102,7 +99,7 @@ func runClientOnConsole(ctx context.Context, tty tcell.Tty, configDir, rnsConfig
 	// The console is also where the client's last words go. There is no
 	// controlling terminal here for the restore to open — the console is the
 	// terminal — so the client writes its restore sequence into the same tty it
-	// draws through. Without it, a console whose client has quit would keep
+	// draws through. Otherwise a console whose client has quit would keep
 	// reporting the mouse to the app's own parser, printing a row of escape
 	// codes for every movement of the user's finger.
 	tui.SetTerminalRestoreWriter(tty)
@@ -121,14 +118,12 @@ func runClientOnConsole(ctx context.Context, tty tcell.Tty, configDir, rnsConfig
 	})
 	defer tui.SetTerminalPixels(nil)
 
-	// Where the app's camera is, told to the client the way the appliance tells it
-	// everything else: in its environment. It is the same pair of variables the Android
-	// appliance passes on the console host's command line, so the client reads one thing
-	// on both platforms — and the client is one process here, so setting them is the
-	// whole of the handover.
+	// Where the app's camera is, told to the client in its environment. It is the
+	// same pair of variables the Android appliance passes on the console host's
+	// command line, so the client reads one thing on both platforms — and the
+	// client is one process here, so setting them is the whole of the handover.
 	//
-	// An empty endpoint is no scanner, and the client then draws no Scan button: that is
-	// what a listener the app could not bind, or an app with no camera, both come to.
+	// An empty endpoint is no scanner, and the client then draws no Scan button.
 	if endpoint, token := bridge.Appliance().ScanEndpoint(); endpoint != "" {
 		if err := os.Setenv(tui.ScanAddrEnv, endpoint); err != nil {
 			log.Printf("gonomadnet: could not tell the client where the scanner is: %v", err)

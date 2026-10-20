@@ -28,13 +28,10 @@ import (
 // presence semantics on index-restored messages: Python's getters check
 // `_cached_X is not None`, so a message restored from the .index with an
 // EMPTY title, EMPTY content, FALSE transport_encrypted or FALSE
-// has_attachments is fully populated and NEVER reloads from disk. The Go
-// port previously treated an empty string / false bool as "missing", so
-// GetTitle (called by DisplayMessages for every message) triggered a
-// full envelope reload that clobbered the index-restored raw state
-// (e.g. OUTBOUND 0x01 → FAILED 0xFF via the pending-outbound check) and
-// signature validation (true → false, "Unknown Origin"), producing
-// completely different LXMessageWidget headers from nomadnet.
+// has_attachments is fully populated and NEVER reloads from disk. A reload
+// would clobber the index-restored raw state (e.g. OUTBOUND 0x01 → FAILED
+// 0xFF via the pending-outbound check) and signature validation (true →
+// false, "Unknown Origin"), changing the LXMessageWidget header.
 func TestRestoredEmptyFieldsDoNotReload(t *testing.T) {
 	t.Parallel()
 

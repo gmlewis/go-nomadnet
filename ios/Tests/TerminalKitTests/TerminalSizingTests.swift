@@ -19,9 +19,9 @@ import XCTest
 
 /// The tests for when the client is told its window has changed.
 ///
-/// These are the appliance's device finding written down: it started its client at 80 by 24,
-/// the pane could show 75 by 37, and no RESIZE frame was ever sent because the question was
-/// asked of the screen the app was drawing rather than of the size the client had been told.
+/// The question must be asked of the size the client has been told, not of the screen the app
+/// is drawing: the view resizes its own screen on every layout, so the two would always agree
+/// and no RESIZE frame would ever be sent.
 final class TerminalSizingTests: XCTestCase {
     private func metrics(
         cols: Int, rows: Int, pixelWidth: Int = 0, pixelHeight: Int = 0

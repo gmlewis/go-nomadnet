@@ -24,8 +24,7 @@ import (
 // TestLocalPeerDialogTextColor pins the Local Peer dialog's info text to
 // the "default" style. Python's LocalPeer (Network.py:1259-1355) uses BARE
 // urwid.Text for LXMF Addr/Identity/Name — no AttrMap, default terminal
-// colors. The Go port previously used 0xdddddd which Python never emits
-// for this panel.
+// colors. Python never emits 0xdddddd for this panel.
 //
 // Python source: Network.py:1271-1273 (bare urwid.Text, no AttrMap),
 // Network.py:1351 (bare urwid.LineBox, no AttrMap).

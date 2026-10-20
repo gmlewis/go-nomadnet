@@ -23,12 +23,10 @@ import (
 	"github.com/gmlewis/tview"
 )
 
-// TestRoomEditorGrowsPanelParity pins the fleet-reported parity behavior:
-// as the user keeps typing, Python's room composer (urwid Edit multiline=True
-// in the RoomFrame footer, Channels.py:605/615) grows by one row per wrapped
-// line and the message list shrinks to make room — the whole panel content
-// "moves up". gonomadnet previously fixed the composer at one row, clipped
-// the text at the right border, and walked the caret past the panel.
+// TestRoomEditorGrowsPanelParity pins the composer growth: as the user keeps
+// typing, Python's room composer (urwid Edit multiline=True in the RoomFrame
+// footer, Channels.py:605/615) grows by one row per wrapped line and the
+// message list shrinks to make room — the whole panel content "moves up".
 func TestRoomEditorGrowsPanelParity(t *testing.T) {
 	t.Parallel()
 
@@ -38,9 +36,8 @@ func TestRoomEditorGrowsPanelParity(t *testing.T) {
 	rw.editor.SetCursorPos(len([]rune(c4Message)))
 	rw.editor.Focus(func(tview.Primitive) {})
 
-	// 98-wide room pane = the live fleet geometry (156-col terminal − 36 list
-	// − 22 users), so the editor's inner width is 96 and the draft wraps to
-	// three rows exactly like the Python capture.
+	// 98-wide room pane (a 156-col terminal − 36 list − 22 users), so the
+	// editor's inner width is 96 and the draft wraps to three rows.
 	screen := tcell.NewSimulationScreen("UTF-8")
 	if err := screen.Init(); err != nil {
 		t.Fatalf("screen.Init: %v", err)

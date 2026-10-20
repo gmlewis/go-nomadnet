@@ -24,13 +24,12 @@ import (
 	"github.com/gmlewis/tview"
 )
 
-// TestB1MessageEntryRowOrder pins B1: each message entry renders the HEADER
-// row(s) FIRST, then the indented content rows, then one trailing empty row —
-// the Python LXMessageWidget Pile order [title, content, ""] (source:
+// TestB1MessageEntryRowOrder pins the row order: each message entry renders the
+// HEADER row(s) FIRST, then the indented content rows, then one trailing empty
+// row — the Python LXMessageWidget Pile order [title, content, ""] (source:
 // Conversations.py:2670-2762 — pile_widgets starts with the title AttrMap,
-// appends the indented content, and ends with urwid.Text("")). The earlier Go
-// build rendered the content above the header and an extra blank row between
-// header and content; this test fails if either ever returns.
+// appends the indented content, and ends with urwid.Text("")). Content above
+// the header, or an extra blank row between them, fails this test.
 func TestB1MessageEntryRowOrder(t *testing.T) {
 	t.Parallel()
 
@@ -107,11 +106,11 @@ func TestB1MultiLineHeaderKeepsContentAfter(t *testing.T) {
 	}
 }
 
-// TestB2MinimalEditorInvisible pins B2: the minimal composer is an INVISIBLE
-// empty one-line footer — no caption and no placeholder text (Python:
+// TestB2MinimalEditorInvisible pins the minimal composer: an INVISIBLE empty
+// one-line footer — no caption and no placeholder text (Python:
 // MessageEdit(caption="", edit_text="") wrapped in AttrMap(..., "msg_editor"),
-// Conversations.py:1916). The Go port used to paint a visible
-// "Type a message... (Ctrl-D to send)" placeholder row.
+// Conversations.py:1916). Any visible placeholder would paint glyphs in the
+// one-row footer.
 func TestB2MinimalEditorInvisible(t *testing.T) {
 	t.Parallel()
 

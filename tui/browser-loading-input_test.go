@@ -22,26 +22,14 @@ import (
 	"github.com/gmlewis/tview"
 )
 
-// TestBrowserShortcutsWorkDuringLoading pins the user-reported regression:
-// "while a node is 'Retrieving...', nomadnet still fully responds to the
-// keyboard navigation whereas gonomadnet.sh does not."
-//
-// Root cause: showLoading swaps the focused bd.content OUT of bd.body and puts
-// the centered "Retrieving" body (bd.loading) in its place, but does NOT move
-// focus onto bd.loading. Application.SetFocus only blurs a single leaf, and
-// Flex.RemoveItem does not blur the removed child, so after the swap the app's
-// focused primitive is still the now-DISCONNECTED bd.content — no child of the
-// browser page's widget tree has focus, so bd.Widget().HasFocus() is false.
-// bodyPages.InputHandler dispatches a key only to a page that is BOTH visible
-// AND HasFocus (body-pages.go:86), so during the whole fetch the browser page
-// receives NO key events — the Ctrl-d/C-w/C-u/etc. shortcuts in handleInput
-// (browser.go) never run, and the user is stranded on "Retrieving" with a dead
-// keyboard. Python's BrowserFrame.keypress (Browser.py:21) always runs for the
-// browser region regardless of the loading body, so nomadnet stays responsive.
-//
-// Fix: showLoading moves focus onto bd.loading when bd.content held it (so the
-// browser page keeps a focused child and bodyPages keeps dispatching to it);
-// showContent moves focus back onto bd.content when bd.loading held it.
+// TestBrowserShortcutsWorkDuringLoading pins that the browser page still
+// receives keys while the centered "Retrieving" body is up. showLoading swaps
+// the focused bd.content out of bd.body, so it must move focus onto bd.loading
+// when bd.content held it: bodyPages dispatches a key only to a page that is
+// both visible and HasFocus (body-pages.go:86), and a page with no focused child
+// would drop every shortcut. showContent moves focus back to bd.content when
+// bd.loading held it. Python's BrowserFrame.keypress (Browser.py:21) always runs
+// for the browser region, so nomadnet stays responsive during a fetch.
 func TestBrowserShortcutsWorkDuringLoading(t *testing.T) {
 	t.Parallel()
 	app := newTestApp()
@@ -64,7 +52,7 @@ func TestBrowserShortcutsWorkDuringLoading(t *testing.T) {
 	bd.showLoading("cafe1234:/page/index.mu")
 
 	// The browser page's widget tree must STILL have a focused child while
-	// "Retrieving" is up — otherwise bodyPages drops every key (the bug).
+	// "Retrieving" is up, or bodyPages drops every key.
 	if !bd.Widget().HasFocus() {
 		t.Errorf("bd.Widget().HasFocus() = false during loading — bodyPages will not dispatch keys to the browser (dead keyboard)")
 	}

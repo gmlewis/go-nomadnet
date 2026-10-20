@@ -28,9 +28,7 @@ import java.io.File
  *
  * Nothing but a pipe may ever be at these two paths. A regular file is read from offset
  * zero — the whole history of every sample ever written — and a reader comes to rest on
- * the last line in it, which never changes again and is reported as if it were live. That
- * is not hypothetical: `files/run/compass.nmea` was found on the tablet as a regular file,
- * and the bot reported the same frozen heading across requests minutes apart.
+ * the last line in it, which never changes again and is reported as if it were live.
  *
  * A pipe, once made, is a meeting point and not a thing anybody owns. Whoever holds the
  * handles takes them before spawning anything that writes, and gives them back without
@@ -127,10 +125,9 @@ class RealSensorFifos(private val paths: StackPaths) : SensorFifoHolder {
      *
      * The paths are deliberately not removed. A converter spawned against one of them may
      * still be writing, and a bot spawned against one later must find the same pipe rather
-     * than a path that has to be made again — and making it again is what orphaned the
-     * writers that were found on the tablet holding `gps.nmea (deleted)`. A pipe that
-     * outlives its readers costs an inode; a pipe that is replaced costs the appliance its
-     * sensors.
+     * than a path that has to be made again — and making it again orphans any writer that
+     * still holds the old inode. A pipe that outlives its readers costs an inode; a pipe
+     * that is replaced costs the appliance its sensors.
      */
     override fun close() {
         for (handle in handles) {

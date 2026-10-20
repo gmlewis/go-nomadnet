@@ -24,8 +24,7 @@ import (
 )
 
 // RelativeTime formats a timestamp as a relative string matching
-// Python's relative_time() exactly. Includes the weeks range that
-// the previous Go implementation was missing.
+// Python's relative_time() exactly, including its weeks range.
 func RelativeTime(t time.Time) string {
 	return relativeTimeAt(t, time.Now())
 }

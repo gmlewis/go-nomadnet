@@ -140,9 +140,9 @@ func TestGetCachedExpired(t *testing.T) {
 
 // TestGetCachedExpiredFractional pins the float (not int-truncated) expiry
 // comparison: an entry expiring at now+0.2s must be gone after a 0.5s sleep,
-// which int-second truncation (the original bug) would have left stale. The
-// bubble virtualizes the clock so the 0.5s wait is free while preserving the
-// exact fractional-expiry semantics (expiresAfter reads the bubble's clock).
+// which int-second truncation would leave stale. The bubble virtualizes the
+// clock so the 0.5s wait is free while preserving the exact fractional-expiry
+// semantics (expiresAfter reads the bubble's clock).
 func TestGetCachedExpiredFractional(t *testing.T) {
 	cacheDir := bcTempDir(t)
 	testutils.RunInBubble(t, func(t *testing.T) {
@@ -318,8 +318,8 @@ func TestCanonicalURLIsTheCacheKey(t *testing.T) {
 		t.Fatalf("CanonicalURL() = %q, want %q", got, canonical)
 	}
 
-	// The regression: the entry survives an uncache keyed on the raw target,
-	// so the reload's cache lookup hits again and the stale page is served.
+	// Uncache keyed on the raw target leaves the entry in place, so the reload's
+	// cache lookup hits again and the stale page is served.
 	bc := NewBrowserCache(bcTempDir(t))
 	bc.CachePage(canonical, []byte("stale page"), expiresAfter(5*time.Minute))
 	bc.UncachePage(bd.CurrentURL())
@@ -335,10 +335,8 @@ func TestCanonicalURLIsTheCacheKey(t *testing.T) {
 // TestServeFromCache pins the page-cache consultation policy (Python
 // Browser.load_page, Browser.py:1237-1244): the cache is consulted whenever no
 // request_data is attached, REGARDLESS of retained-link state. A form submit
-// (request_data present) always re-fetches. The former Go-only gate (cache only
-// when an active retained link existed) made Back/Forward re-fetch when the link
-// was stale; this test pins the parity fix that consults the cache based solely
-// on request_data, matching Python's instant cache hit on back.
+// (request_data present) always re-fetches, so Back/Forward to a cached page
+// stays an instant cache hit.
 func TestServeFromCache(t *testing.T) {
 	t.Parallel()
 	if !ServeFromCache(nil) {

@@ -15,7 +15,7 @@
 
 package tui
 
-// Phase-1 keyspec parity: the Python UI source is the SPEC. A static AST scan
+// Keyspec parity: the Python UI source is the SPEC. A static AST scan
 // (tooling/keyspec/extract_py.py) derives every keypress/mouse_event/
 // unhandled_input handler with the keys it handles, plus the Ctrl-keys the
 // shortcut bars advertise, fresh from the current Python checkout on every
@@ -24,7 +24,7 @@ package tui
 // shortcut-bar strings) and diffs the two, keyed by a static mapping of
 // Python widget classes to the Go functions that port them.
 //
-// Phase 1 is purely static: neither TUI runs, so the two implementations
+// The comparison is purely static: neither TUI runs, so the two implementations
 // never need to be alive at the same time (the shared RNS instance can host
 // at most one client stack; these tests run neither).
 //
@@ -66,7 +66,7 @@ type keyspecPair struct {
 }
 
 // keyspecDisplayPairs covers the display-level handlers plus the sub-widget
-// handlers already verified as ported. Extend as new handlers are audited.
+// handlers already ported. Extend as new handlers are ported.
 var keyspecDisplayPairs = []keyspecPair{
 	{"Main.py", "MenuColumns", "keypress", "main-display.go", "MainDisplay", []string{"handleMenuInput"}},
 	{"TextUI.py", "TextUI", "unhandled_input", "main-display.go", "MainDisplay", []string{"handleInput"}},
@@ -194,15 +194,14 @@ var keyspecAccepted = map[string]string{
 	"Channels.py:RoomMessageEdit|down": "shared RoomWidget dispatch: body Down→composer belongs to Python RoomFrame's body branch (Channels.py:536-541); the switch serves the room's three mapped classes",
 	"Channels.py:UsersBox|down":        "shared RoomWidget dispatch: body Down→composer belongs to Python RoomFrame's body branch; the switch serves the room's three mapped classes",
 	"Channels.py:UsersBox|up":          "shared RoomWidget dispatch: body Up→menubar belongs to Python RoomFrame's body branch; the switch serves the room's three mapped classes",
-	// [C-g] /msg gobot: a deliberate Go-only ADDITION requested by the operator
-	// (the mesh's chat-bot command is typed constantly in a room), advertised at
-	// the end of the room's shortcut bar. Python's room binds no C-g, so this is
-	// the one accepted entry that is an extension rather than a re-homing. It
-	// types the command into the composer only while the composer holds focus
-	// with its cursor at the very first entry position
-	// (RoomWidget.insertGobotCommand), so it cannot corrupt a half-typed
-	// message. The three keys are the same single Go handler, which serves all
-	// three mapped Python classes.
+	// [C-g] /msg gobot: a deliberate Go-only addition (the mesh's chat-bot
+	// command is typed constantly in a room), advertised at the end of the
+	// room's shortcut bar. Python's room binds no C-g, so this is the one
+	// accepted entry that is an extension rather than a re-homing. It types the
+	// command into the composer only while the composer holds focus with its
+	// cursor at the very first entry position (RoomWidget.insertGobotCommand),
+	// so it cannot corrupt a half-typed message. The three keys are the same
+	// single Go handler, which serves all three mapped Python classes.
 	"Channels.py:RoomFrame|ctrl+g":       "Go-only addition requested by the operator: [C-g] types '/msg gobot ' into the composer (RoomWidget.insertGobotCommand); Python binds no C-g in the room",
 	"Channels.py:RoomMessageEdit|ctrl+g": "same Go-only [C-g] /msg gobot addition; the merged RoomWidget dispatch serves the composer's class too",
 	"Channels.py:UsersBox|ctrl+g":        "same Go-only [C-g] /msg gobot addition; the merged RoomWidget dispatch serves the users box's class too",
@@ -537,9 +536,8 @@ func keyspecPyActionOf(h keyspecPyHandler, canonical string) string {
 
 // TestKeyspecGoAdvertisedKeysAreHandled pins the Go port's self-consistency:
 // every Ctrl-key a Go shortcut bar advertises must be handled by an explicit
-// handler case somewhere in the app. An advertised-but-dead key is exactly how
-// the Ctrl-X delete bug presented to the user — the bar promised an action the
-// state could never deliver.
+// handler case somewhere in the app. An advertised key that no state can
+// deliver would promise the user an action that never runs.
 func TestKeyspecGoAdvertisedKeysAreHandled(t *testing.T) {
 	t.Parallel()
 

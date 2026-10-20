@@ -24,8 +24,7 @@ import (
 // TestFullscreenHidesLeftPane verifies that ToggleFullscreen collapses the
 // left pane to width 0 (hidden) so the browser pane fills the full width,
 // matching Python's NetworkDisplay.toggle_fullscreen (Network.py:1678-1686).
-// Before the fix, SetFixedWidth(0, 0) was treated as "not fixed" (use
-// weight) instead of "fixed at 0" (hidden), so both panes remained visible.
+// SetFixedWidth(0, 0) must mean "fixed at 0" (hidden), not "not fixed".
 func TestFullscreenHidesLeftPane(t *testing.T) {
 	t.Parallel()
 

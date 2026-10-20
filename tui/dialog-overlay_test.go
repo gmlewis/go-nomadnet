@@ -36,9 +36,9 @@ func setupDialogTest(t *testing.T) (*App, tview.Primitive, *tview.Pages) {
 	return app, main, pages
 }
 
-// TestDialogOverlayPreservesUnderlying asserts the spec for 0.5: opening a
-// dialog keeps the underlying page widget in the tree, and dismissing
-// restores the previous focus.
+// TestDialogOverlayPreservesUnderlying verifies that opening a dialog keeps
+// the underlying page widget in the tree, and that dismissing restores the
+// previous focus.
 func TestDialogOverlayPreservesUnderlying(t *testing.T) {
 	t.Parallel()
 	app, main, pages := setupDialogTest(t)

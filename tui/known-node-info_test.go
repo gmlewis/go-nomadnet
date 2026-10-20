@@ -327,9 +327,9 @@ func kndLXMFData(app *App, pn string) KnownNodeInfoData {
 //	"        <ef289bf86e1f8108940a364a1c579f93>        "
 //
 // (verified against urwid 2.6; each wrapped line is centered with the extra
-// column on the left). The port gave the row a fixed height of one, so tview
-// word-wrapped the 32-hex address onto an invisible second row and the pane
-// showed "...Address is" with no address at all.
+// column on the left). A fixed one-row item word-wraps the 32-hex address onto
+// an invisible second row, leaving the pane showing "...Address is" with no
+// address at all; the item height must follow the wrapped row count.
 func TestKnownNodeInfoLXMFAddrLineWraps(t *testing.T) {
 	t.Parallel()
 	app := newTestApp()
@@ -389,9 +389,8 @@ func TestKnownNodeInfoLXMFAddrLineFitsOneRowWhenWide(t *testing.T) {
 // TestKnownNodeInfoCheckBoxLabels pins the two CheckBoxes against urwid's
 // rendering. Python builds them as urwid.CheckBox (Network.py:727-728), which
 // renders the state glyph BEFORE the label — "[ ] Use as default propagation
-// node" / "[X] Identify when connecting" (verified against urwid 2.6) — while
-// tview.Checkbox draws the bare label and its marker after it, which left the
-// pane showing "Identify when connectingX".
+// node" / "[X] Identify when connecting" (verified against urwid 2.6) — whereas
+// a bare tview.Checkbox draws the label first and its marker after it.
 func TestKnownNodeInfoCheckBoxLabels(t *testing.T) {
 	t.Parallel()
 	app := newTestApp()

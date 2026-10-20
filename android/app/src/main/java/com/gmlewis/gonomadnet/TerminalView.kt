@@ -42,8 +42,7 @@ import kotlin.math.roundToInt
  * cell is, [TerminalPalette]'s; what a finger meant when it touched the console,
  * [TouchGesture]'s; and how a tap is spelled for the client, [TerminalMouse]'s. What is left
  * — and all this file contains — is the calls into `Canvas` and the touches that come back
- * out of it, neither of which a JVM test can reach. Nothing here may be claimed as working
- * until it has been looked at on the tablet.
+ * out of it, neither of which a JVM test can reach.
  *
  * The view never starts or talks to the client itself. It reports a key press through
  * [onKey], a mouse event through [onMouse] and a size change through [onResize], and is told
@@ -150,8 +149,9 @@ class TerminalView(context: Context, attrs: AttributeSet? = null) : View(context
      * keyPaint draws the key strip's labels, at [TerminalKeyRow.FONT_SCALE] times the console
      * font.
      *
-     * A key is touched, not read: the strip's rows are twice a console cell tall, so the
-     * labels are twice a console cell's font, and the two grow together.
+     * A key is touched, not read: the strip's rows are [TerminalKeyRow.FONT_SCALE] times a
+     * console cell tall, so the labels are that much larger than a console cell's font, and
+     * the two grow together.
      */
     private val keyPaint = Paint(textPaint).apply {
         textSize = textPaint.textSize * TerminalKeyRow.FONT_SCALE

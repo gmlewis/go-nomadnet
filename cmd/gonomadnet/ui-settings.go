@@ -38,8 +38,8 @@ func networkShortcutBar(clipboardCopy bool) string {
 // textUIAppearance validates the [textui] theme and colormode the way Python's
 // applyConfig does (NomadNetworkApp.py:953-977): an absent theme is dark, an
 // absent colormode is COLORMODE_16, and any other unrecognized spelling raises
-// ValueError (which panics). This port silently fell back to dark/truecolor,
-// hiding a typo in the operator's config.
+// ValueError (which panics), so a typo in the operator's config is reported
+// rather than silently replaced by a default.
 func textUIAppearance(cfg *config.Config) (theme, colorMode int, err error) {
 	theme = tui.ThemeDark
 	colorMode = tui.ColorMode16

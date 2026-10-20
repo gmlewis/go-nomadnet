@@ -107,14 +107,12 @@ func TestAnnounceInfoMsgOpTargetsOperatorLXMF(t *testing.T) {
 	}
 }
 
-// TestMsgOpCreatesAndOpensOperatorConversation pins the fixed behavior: acting
-// on Msg Op performs the same action as the Conversations page's "New
-// Conversation on this address and open it" path. The callback is wired the way
-// the production wiring does it — create the conversation on the target (the
-// operator's LXMF address), refresh the list, open it with
-// DisplayConversation, and switch to the Conversations page. Before this
-// path existed, Msg Op switched to the Conversations page with no entry
-// created and no conversation opened ("No conversation selected").
+// TestMsgOpCreatesAndOpensOperatorConversation pins that acting on Msg Op
+// performs the same action as the Conversations page's "New Conversation on
+// this address and open it" path. The callback is wired the way the production
+// wiring does it — create the conversation on the target (the operator's LXMF
+// address), refresh the list, open it with DisplayConversation, and switch to
+// the Conversations page.
 func TestMsgOpCreatesAndOpensOperatorConversation(t *testing.T) {
 	app := NewApp(ThemeDark, GlyphUnicode, ColorModeTrue)
 	nd := NewNetworkDisplay(app, nil, nil)

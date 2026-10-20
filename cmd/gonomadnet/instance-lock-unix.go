@@ -50,12 +50,11 @@ var procRoot = "/proc"
 // listProcessArgs enumerates running processes (PID + full command line), used
 // by the best-effort nomadnet-detection check.
 //
-// Procfs is read directly in preference to executing ps(1). That is not merely
-// an optimisation: on Android an application runs under a seccomp policy that
-// terminates the process with SIGSYS on the faccessat2(2) call os/exec issues
-// while resolving a bare program name, and Termux's $PATH contains no ps at all
-// — so the ps route kills gonomadnet outright on that platform. Reading procfs
-// is pure Go and needs no external program. Where the kernel hides other users'
+// Procfs is read directly rather than executing ps(1): on Android an
+// application runs under a seccomp policy that terminates the process with
+// SIGSYS on the faccessat2(2) call os/exec issues while resolving a bare
+// program name, and Termux's $PATH contains no ps at all. Reading procfs is
+// pure Go and needs no external program. Where the kernel hides other users'
 // processes (as Android does for apps) enumeration returns only what is visible.
 func listProcessArgs() ([]processArg, error) {
 	procs, err := listProcessArgsFromProc(procRoot)

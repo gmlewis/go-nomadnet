@@ -80,7 +80,7 @@ func drawFocusedAt(t *testing.T, p tview.Primitive, focus bool, width, height in
 	return rec, nil
 }
 
-// TestUrwidCheckBoxRenderPinsPins urwid's CheckBox rendering ("[X] label" /
+// TestUrwidCheckBoxRenderPins pins urwid's CheckBox rendering ("[X] label" /
 // "[ ] label", Conversations.py:890 urwid.CheckBox("Pin to top")) for the Peer
 // Info "Pin to top" checkbox. tview.Checkbox renders only the bare label, so
 // the dialog uses the faithful UrwidCheckBox port.
@@ -176,8 +176,7 @@ func TestUrwidCheckBoxClickToggles(t *testing.T) {
 
 // TestRadioButtonFocusedCursorAtMiddleCell pins the hardware cursor on the
 // middle cell of the "(X)"/"( )" glyph for a focused RadioButton (urwid
-// SelectableIcon cursor position 1) — the Peer Info modal's radio rows were
-// previously invisible-cursor.
+// SelectableIcon cursor position 1).
 func TestRadioButtonFocusedCursorAtMiddleCell(t *testing.T) {
 	t.Parallel()
 	group := &DialogRadioGroup{}
@@ -204,8 +203,7 @@ func TestRadioButtonFocusedCursorAtMiddleCell(t *testing.T) {
 // TestWireDialogNavDoesNotWrap pins urwid Pile traversal without wrap-around:
 // Down on the last item and Up on the first item leave the focus in place
 // (Python: urwid/widpile.py Pile.keypress returns the key unhandled at the
-// edges; nothing else in the modal consumes up/down). The wrap-around was the
-// Peer Info modal's original top-to-bottom focus bug.
+// edges; nothing else in the modal consumes up/down).
 func TestWireDialogNavDoesNotWrap(t *testing.T) {
 	t.Parallel()
 	app := newTestApp()
@@ -324,8 +322,7 @@ func describePrimitive(p tview.Primitive) string {
 
 // TestPeerInfoDialogButtonRowLeftRight pins Left/Right movement within the
 // horizontal button rows (Python urwid Columns.keypress: left/right move the
-// focus between the Save/Back buttons; the Peer Info rows previously ignored
-// them entirely).
+// focus between the Save/Back buttons).
 func TestPeerInfoDialogButtonRowLeftRight(t *testing.T) {
 	t.Parallel()
 	app := newTestApp()

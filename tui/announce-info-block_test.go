@@ -93,9 +93,8 @@ func TestAnnounceInfoNodeHasBlockButton(t *testing.T) {
 	}
 
 	// Second row: the Go enhancement Block button. It must NOT span the full
-	// panel width (bug report: "< Block >" filled the whole Announce Info
-	// panel); it renders in the same ~9/41 column share as the row above, so
-	// it aligns with the first button of the Python-parity row.
+	// panel width; it renders in the same ~9/41 column share as the row above,
+	// so it aligns with the first button of the Python-parity row.
 	second := ai.blockButtonRow()
 	weights := second.weights
 	if len(weights) != 3 || weights[0] != 9 || weights[1] != 2 || weights[2] != 30 {
@@ -112,10 +111,10 @@ func TestAnnounceInfoNodeHasBlockButton(t *testing.T) {
 }
 
 // TestAnnounceInfoBlockRowRendersNarrowWidth pins the fixed-width rendering of
-// the Go-only Block row (bug report: the Block button spanned the whole panel
-// width). At inner 50 the row above lays out as [11,2,11,2,11,2,11]; the Block
-// row must give its button the same 11-cell column as Back's, with the rest of
-// the row blank.
+// the Go-only Block row: the button must not span the whole panel width. At
+// inner 50 the row above lays out as [11,2,11,2,11,2,11]; the Block row must
+// give its button the same 11-cell column as Back's, with the rest of the row
+// blank.
 func TestAnnounceInfoBlockRowRendersNarrowWidth(t *testing.T) {
 	t.Parallel()
 	nd, ann := newBlockTestNetworkDisplay(nil)
@@ -139,10 +138,9 @@ func TestAnnounceInfoBlockRowRendersNarrowWidth(t *testing.T) {
 }
 
 // TestAnnounceInfoBlockRowFocusTraversal pins the arrow-key path to the Block
-// row (bug report: arrow keys could not reach Block — the row was not a
-// selectable pile item). Down from the Python-parity button row must focus
-// the Block row; Up must return; and Enter on the focused Block row must fire
-// OnBlockNode.
+// row: it is a selectable pile item. Down from the Python-parity button row
+// must focus the Block row; Up must return; and Enter on the focused Block row
+// must fire OnBlockNode.
 func TestAnnounceInfoBlockRowFocusTraversal(t *testing.T) {
 	t.Parallel()
 	var blocked string

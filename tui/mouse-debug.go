@@ -28,14 +28,11 @@ import (
 // would corrupt the display). When the env var is unset, mouseDebug is nil and
 // dbgMouse is a no-op — zero overhead in normal runs and tests.
 //
-// It exists to diagnose a live-only symptom: the user reports the mouse wheel
-// over the Network "Announce Stream" list does not scroll a long list, yet the
-// same path scrolls correctly headless through the full app root. The
-// instrumentation in IndicativeListBox.MouseHandler and pileFiller.MouseHandler
-// logs which primitive receives each wheel event, whether InRect passes, the
-// current offset/item count, and the consumed result — enough to localize
-// whether the event never reaches the list, reaches it but InRect bails, or
-// reaches it but the list fits the viewport.
+// The instrumentation in IndicativeListBox.MouseHandler and
+// pileFiller.MouseHandler logs which primitive receives each wheel event,
+// whether InRect passes, the current offset/item count, and the consumed
+// result, which localizes whether the event never reaches a list, reaches it
+// but InRect bails, or reaches it but the list fits the viewport.
 var mouseDebug *log.Logger
 
 func init() {

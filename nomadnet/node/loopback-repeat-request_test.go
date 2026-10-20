@@ -14,17 +14,14 @@ import (
 	"github.com/gmlewis/go-reticulum/testutils"
 )
 
-// TestLoopbackRepeatRequestOnSameLink reproduces the stress-test-nomadnet
-// "link answers a few requests then dies" symptom on a loopback shared-instance
-// interface (the production path for a gonomadnet client talking to its own
-// shared instance's node). It establishes ONE link and fires N sequential
-// page requests over it, reporting which succeed/fail and how long each took.
+// TestLoopbackRepeatRequestOnSameLink pins that one link on a loopback
+// shared-instance interface (the production path for a gonomadnet client
+// talking to its own shared instance's node) serves N sequential page
+// requests. It establishes ONE link and fires N requests over it, reporting
+// which succeed, fail, and how long each took.
 //
-// The nomadnet server never tears a link down after serving (verified: no
-// Teardown in the page/file handlers or the resource path), and this test does
-// not call Teardown between requests — so every request should succeed. A
-// failure or timeout after the first request reproduces the go-reticulum
-// link-dies-after-N-requests bug.
+// The nomadnet server never tears a link down after serving, and this test does
+// not call Teardown between requests, so every request must succeed.
 func TestLoopbackRepeatRequestOnSameLink(t *testing.T) {
 	t.Parallel()
 	testutils.SkipShortIntegration(t)

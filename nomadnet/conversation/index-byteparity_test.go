@@ -26,9 +26,8 @@ import (
 	"github.com/gmlewis/go-nomadnet/testutils"
 )
 
-// TestWriteIndexPythonByteParity pins the hard parity requirement for the
-// conversation .index msgpack migration: WriteIndex MUST emit byte-for-byte
-// identical msgpack to Python NomadNet's ConversationMessage.write_index
+// TestWriteIndexPythonByteParity pins the byte-for-byte msgpack parity of
+// WriteIndex with Python NomadNet's ConversationMessage.write_index
 // (Conversation.py:990) for the same messages.
 //
 // This is a LIVE cross-implementation test: it execs the real Python nomadnet
@@ -41,9 +40,9 @@ import (
 //
 // The scenario exercises:
 //   - outer fixmap(0x82) with two 64-char filename keys -> str8(0xd9 0x40) in
-//     the messages-slice insertion order (the rns/msgpack migration uses
-//     OrderedMap.Set so existing keys keep their place and new keys append,
-//     matching Python dict semantics; a Go map would randomize the order).
+//     the messages-slice insertion order (WriteIndex uses OrderedMap.Set so
+//     existing keys keep their place and new keys append, matching Python dict
+//     semantics; a Go map would randomize the order).
 //   - inner fixmap(0x8e) with the 14 to_index_entry keys in Python's
 //     declaration order (via OrderedMap).
 //   - state/method as unsigned fixint (0x03/0x01/0x00), matching Python's
@@ -58,9 +57,7 @@ import (
 // Note: Python distinguishes None from zero for title/content/method/
 // transport_encrypted/transport_encryption. The Go Message struct uses
 // non-nilable zero values there, so a Python entry storing None for those
-// fields is NOT byte-reproducible by Go. That is a pre-existing data-model
-// gap (present under vmihailenco too), not a codec regression, and is out of
-// scope for the rns/msgpack migration; this test deliberately uses Python
+// fields is NOT byte-reproducible by Go. This test deliberately uses Python
 // zero-values for entry2 so the codec layer is byte-identical.
 func TestWriteIndexPythonByteParity(t *testing.T) {
 	t.Parallel()

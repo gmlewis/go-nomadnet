@@ -21,8 +21,7 @@ import (
 )
 
 // TestChunkByBytes verifies ChunkByBytes matches Python's _chunk_by_bytes
-// (Channels.py:85) exactly. Expected values were captured from the Python
-// source run in /tmp/chunk_ref.py. The algorithm slices a byte budget (not a
+// (Channels.py:85) exactly. The algorithm slices a byte budget (not a
 // rune count), strips trailing UTF-8 continuation bytes, decodes with
 // errors="ignore", and splits on a whitespace boundary in the second half of
 // the chunk — falling back to the whole chunk (not a single character) when
@@ -86,7 +85,6 @@ func TestChunkByBytesBudgetValidation(t *testing.T) {
 
 // TestSplitMessage verifies SplitMessage matches Python's _split_message
 // (Channels.py:107), including the "(i/N) " prefix and the convergence loop.
-// Expected values captured from /tmp/chunk_ref.py.
 func TestSplitMessage(t *testing.T) {
 	t.Parallel()
 

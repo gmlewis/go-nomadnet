@@ -44,11 +44,11 @@ func (s *boundsAssertScreen) SetContent(x, y int, mainc rune, combc []rune, st t
 
 // TestDialogLineBoxDrawClampsToScreen verifies DialogLineBox.Draw never writes
 // at negative coordinates. When the dialog's inner rect sits at the top-left
-// edge (x=0, y=0) and is narrower than its title, the previous implementation
-// drew the left/top border at x-1=-1 / y-1=-1 and centered the title at a
-// negative x, relying on tcell to clip. On resize to a terminal smaller than
-// the dialog this is the fragile spot in the resize path. The draw must clamp
-// every cell write to non-negative coordinates.
+// edge (x=0, y=0) and is narrower than its title, the left/top border would be
+// drawn at x-1=-1 / y-1=-1 and the title centered at a negative x, relying on
+// tcell to clip. On resize to a terminal smaller than the dialog this is the
+// fragile spot in the resize path. The draw must clamp every cell write to
+// non-negative coordinates.
 func TestDialogLineBoxDrawClampsToScreen(t *testing.T) {
 	t.Parallel()
 

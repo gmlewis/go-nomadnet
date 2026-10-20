@@ -24,11 +24,11 @@ import (
 	"github.com/gmlewis/tview"
 )
 
-// TestFormatRRCBodyEscapesBrackets pins the live bug where a user-typed
-// bracket run without spaces ("[bug]") was parsed by tview as a color tag and
-// silently swallowed, while "[ bug ]" survived because a space is not a valid
-// tag start. Python urwid has no tag grammar, so the whole literal body —
-// including the no-span early return — must reach tview escaped.
+// TestFormatRRCBodyEscapesBrackets pins bracket escaping in the chat body: a
+// user-typed bracket run without spaces ("[bug]") would be parsed by tview as
+// a color tag and silently swallowed, while "[ bug ]" survives because a space
+// is not a valid tag start. Python urwid has no tag grammar, so the whole
+// literal body — including the no-span early return — must reach tview escaped.
 func TestFormatRRCBodyEscapesBrackets(t *testing.T) {
 	t.Parallel()
 
@@ -53,7 +53,7 @@ func TestFormatRRCBodyEscapesBrackets(t *testing.T) {
 
 // TestChatBodyRendersBracketsThroughTviewEngine draws chat rows through a real
 // tview TextView (SetDynamicColors) on a simulation screen and reads the
-// painted cells. Only a full render proves the fork's tag parser no longer eats
+// painted cells. Only a full render proves the fork's tag parser does not eat
 // a literal "[swallowed]" — string-level escape assertions alone are not
 // enough. The second row also covers the link-span branch, where the literal
 // runs on either side of the link must stay escaped.

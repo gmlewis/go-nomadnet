@@ -14,8 +14,7 @@ import java.io.File
  * The channels a freshly installed appliance already knows about.
  *
  * The client keeps its channels in a store of its own — `rrc_hubs`, where each entry is a hub
- * destination, the name to show it under, and the rooms to join — and it has no notion of a
- * default. An appliance that shipped none therefore arrived with an empty Channels page and an
+ * default. Without a seed the appliance would arrive with an empty Channels page and an
  * operator with nothing to connect to, while the transport underneath it was already talking
  * to the mesh.
  *
@@ -31,7 +30,7 @@ import java.io.File
  * Three channels, because they are the three an appliance can actually reach:
  *
  *  * the community hub, which carries the wider RRC network;
- *  * this project's public hub, which is the one the README documents;
+ *  * this project's public hub;
  *  * the hub running **inside this appliance**, which is where its own bot answers, and whose
  *    destination is different on every install because it is derived from an identity
  *    generated on the device. It is written only when that identity has published its
@@ -48,7 +47,7 @@ object DefaultHubs {
     /** Its RRC destination. */
     const val RNS_COMMUNITY_DESTINATION = "28c7c1a68c735693aa8e6b8193ed44b2"
 
-    /** This project's public hub, the one the README documents. */
+    /** This project's public hub. */
     const val PUBLIC_HUB_NAME = "gonomadnet Public Hub"
 
     /** Its RRC destination. */

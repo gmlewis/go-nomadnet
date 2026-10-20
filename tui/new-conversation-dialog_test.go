@@ -80,8 +80,8 @@ func containsRow(rows []string, substr string) bool {
 // (Unknown), flat Create/Back buttons, the "New Conversation" title, and a
 // 48-wide bordered dialog. (Python's urwid.RadioButton "first True" default
 // leaves BOTH Untrusted and Unknown checked on open — verified True/True/False
-// for the Conversations.py:1028-1030 construction — but the owner asked for
-// one checked radio, a deliberate deviation; see showNewConversationDialog.)
+// for the Conversations.py:1028-1030 construction — but this dialog shows one
+// checked radio, a deliberate deviation; see showNewConversationDialog.)
 func TestNewConversationDialogLayout(t *testing.T) {
 	t.Parallel()
 	rows := renderNewConversationDialog(t, false)
@@ -96,7 +96,7 @@ func TestNewConversationDialogLayout(t *testing.T) {
 		t.Errorf("Name field label missing from render")
 	}
 	// Exactly ONE radio pre-checked (Unknown): Untrusted and Trusted show
-	// "( )" (owner-requested deviation from Python's two-checked quirk).
+	// "( )" (deliberate deviation from Python's two-checked quirk).
 	if !containsRow(rows, "( ) Untrusted") {
 		t.Errorf("( ) Untrusted missing")
 	}

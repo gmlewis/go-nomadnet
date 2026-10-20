@@ -106,10 +106,8 @@ func (c *urwidCenterText) RowsAt(width int) int {
 
 // Draw renders the text centered per row, WRAPPING each source line at the
 // widget width with urwid's "space" algorithm (urwid.Text wraps its content to
-// maxcol and the Pile PACK height follows the wrapped row count — a no-wrap
-// render chopped long dialog messages mid-word, e.g. the ingest error's
-// "Check your inp"). Extra columns go on the LEFT for odd slack (urwid
-// CENTER).
+// maxcol, and the Pile PACK height follows the wrapped row count). Extra
+// columns go on the LEFT for odd slack (urwid CENTER).
 func (c *urwidCenterText) Draw(screen tcell.Screen) {
 	c.Box.DrawForSubclass(screen, c)
 	x, y, w, h := c.GetRect()
@@ -265,8 +263,8 @@ func (d *DialogLineBox) Draw(screen tcell.Screen) {
 // widget receives focus when the application focuses the dialog
 // (tview.Application.SetFocus calls Focus with a SetFocus delegate). Without
 // this override the embedded *tview.Box.Focus would only flag the dialog
-// itself and no inner field would ever gain focus, leaving every dialog
-// keyboard-uneditable (only mouse clicks could focus a field).
+// itself and no inner field would ever gain focus, leaving the dialog
+// keyboard-uneditable.
 func (d *DialogLineBox) Focus(delegate func(p tview.Primitive)) {
 	if d.content != nil {
 		d.content.Focus(delegate)
@@ -310,13 +308,12 @@ func (d *DialogLineBox) InputHandler() func(event *tcell.EventKey, setFocus func
 // MouseHandler forwards mouse events to the dialog's content so clicks on a
 // dialog's buttons/fields reach them. Without this override, DialogLineBox
 // inherits *tview.Box.MouseHandler, which does NOT forward to content (Box has
-// no notion of children) — so every dialog button (OK / Yes / No / Save /
-// Cancel / etc.) was keyboard-only: Enter worked (InputHandler forwards to
-// content) but a mouse click was silently dropped, never reaching the button's
-// selected callback. This is the same delegate-to-content pattern used by
-// InputHandler and Focus above. The content's rect is set to the dialog's
-// inner rect in Draw, so the content's own InRect check (Flex/Button)
-// correctly gates which child the click hits.
+// no notion of children), so a click on a dialog button would be silently
+// dropped even though Enter works (InputHandler forwards to content). This is
+// the same delegate-to-content pattern used by InputHandler and Focus above.
+// The content's rect is set to the dialog's inner rect in Draw, so the
+// content's own InRect check (Flex/Button) correctly gates which child the
+// click hits.
 func (d *DialogLineBox) MouseHandler() func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(tview.Primitive)) (consumed bool, capture tview.Primitive) {
 	return d.WrapMouseHandler(func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(tview.Primitive)) (consumed bool, capture tview.Primitive) {
 		if !d.InRect(event.Position()) {
@@ -408,8 +405,7 @@ func (dm *DialogManager) ShowConfirmDialog(message string, onYes, onNo func()) {
 	// arbitrary-length error text like "Could not open LXMF link: …"). Size at
 	// the 46-column inner width of the narrowest real terminal (the parity
 	// tooling floor) — wider terminals wrap the same or fewer rows, and the
-	// extra room just pads the dialog. Never fewer than 3 rows, matching the
-	// historical fixed sizing for the standard two-line questions.
+	// extra room just pads the dialog. Never fewer than 3 rows.
 	msgRows := max(3, len(urwidSpaceWrap(message, 46)))
 
 	layout := tview.NewFlex().SetDirection(tview.FlexRow).
@@ -418,13 +414,11 @@ func (dm *DialogManager) ShowConfirmDialog(message string, onYes, onNo func()) {
 
 	dm.ShowDialog("Confirm", layout, 0, msgRows+3, nil)
 
-	// GUARANTEE the Yes button owns the keyboard. ShowDialog's generic
-	// SetFocus(dialog) walk normally cascades to the first focusable child,
-	// but in some pre-dialog focus states it strands focus on the button-row
-	// CONTAINER — and a bare Enter on the row then died in the row's
-	// InputHandler without firing either button (fleet bug #10: Ctrl-x →
-	// confirm → Enter did nothing, the conversation was never deleted).
-	// Point focus at the primary action explicitly.
+	// Point focus at the primary action explicitly. ShowDialog's generic
+	// SetFocus(dialog) walk normally cascades to the first focusable child, but
+	// some pre-dialog focus states strand focus on the button-row CONTAINER,
+	// and a bare Enter on the row then reaches the row's InputHandler without
+	// firing either button.
 	if dm.app != nil {
 		dm.app.SetFocus(yesBtn)
 	}
@@ -432,14 +426,13 @@ func (dm *DialogManager) ShowConfirmDialog(message string, onYes, onNo func()) {
 
 // ShowBlockedNodeConfirmDialog shows the Go-only "blocked node" connect
 // warning modal: a DialogLineBox titled "Blocked node" wrapping a centered
-// message + a button Columns (Cancel / Connect). This is a DELIBERATE
+// message + a button Columns (Cancel / Connect). This is a deliberate
 // gonomadnet enhancement with no Python nomadnet counterpart — Python offers
-// no way to block a node at all, so do NOT remove this as a parity
-// divergence. The user asked for a guard before connecting to a blocked
-// destination whose SAFE default is Cancel: the Cancel button is the FIRST
-// button (so it takes the initial focus) and Esc also dismisses through the
-// cancel path, so a bare Enter never connects. Tab/Left/Right move focus
-// between Cancel and Connect, whose Enter proceeds.
+// no way to block a node at all — so do not remove it as a parity divergence.
+// The safe default is Cancel: it is the FIRST button (so it takes the initial
+// focus) and Esc also dismisses through the cancel path, so a bare Enter never
+// connects. Tab/Left/Right move focus between Cancel and Connect, whose Enter
+// proceeds.
 func (dm *DialogManager) ShowBlockedNodeConfirmDialog(message string, onConnect, onCancel func()) {
 	cancelFn := func() {
 		dm.DismissTop()
@@ -546,12 +539,10 @@ func (dm *DialogManager) ShowInputDialogBtns(title, label, defaultValue, confirm
 // / show_error_message (Interfaces.py:1969-1977, 2589-2603, 2619-2628).
 //
 // Esc also dismisses (DialogLineBox default, plus MainDisplay routes Esc to
-// DismissTop when any dialog is open). The OK button matters because a bare
-// centered-text modal gives NO visible dismiss affordance: the user can press
-// Esc, but there is nothing on screen to signal that, so the dialog appears
-// stuck — the Local Peer "Saved" dialog was reported undismissable for exactly
-// this reason. The OK button restores the Python UX and gives a guaranteed
-// click/Enter dismiss path that does not depend on tview's focus routing.
+// DismissTop when any dialog is open). The OK button provides a visible
+// dismiss affordance and a guaranteed click/Enter dismiss path that does not
+// depend on tview's focus routing; a bare centered-text modal shows nothing
+// on screen to signal that Esc works.
 func (dm *DialogManager) ShowStatusDialog(title, message string, width, height int) {
 	text := NewUrwidCenterText(message)
 	okBtn := NewUrwidButton("OK").SetSelectedFunc(func() { dm.DismissTop() })

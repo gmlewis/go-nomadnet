@@ -362,11 +362,11 @@ func TestNavCursorHiddenBeforeKeypress(t *testing.T) {
 	}
 }
 
-// TestNavReleaseFocusWiredToMenu confirms the standalone browser page's
+// TestNavReleaseFocusDelegate confirms the standalone browser page's
 // OnReleaseFocus hands focus to the menu bar (the Go port's equivalent of
-// Python focus_lists for a standalone browser frame). This is wired in
-// cmd/gonomadnet; here we assert the delegate plumbing (OnReleaseFocus fires
-// MicronReleasedFocus → callback).
+// Python focus_lists for a standalone browser frame). The menu-bar wiring lives
+// in cmd/gonomadnet; this test asserts the delegate plumbing (OnReleaseFocus
+// fires MicronReleasedFocus → callback).
 func TestNavReleaseFocusDelegate(t *testing.T) {
 	t.Parallel()
 	_, bd := newNavTestBrowser(t)

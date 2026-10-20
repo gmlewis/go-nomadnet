@@ -307,10 +307,9 @@ class TerminalScreenTest {
     @Test
     fun `the count of lines that have scrolled off does not saturate`() {
         // The scrollback is bounded, so the number of lines it holds stops growing. The
-        // number that have gone off the top does not: the view re-anchors a reader parked in
-        // the scrollback by how much output arrived, and a count that stopped moving once
-        // the buffer filled would let the text drift under their eyes for the rest of the
-        // session — a reader losing their place with no sign that anything went wrong.
+        // number that have gone off the top does not: the view re-anchors a reader parked
+        // in the scrollback by how much output arrived, so this count must keep moving
+        // after the buffer has filled.
         val screen = TerminalScreen(cols = 4, rows = 1)
         assertEquals("a fresh screen has scrolled nothing off", 0L, screen.linesScrolledOff)
 
@@ -444,7 +443,7 @@ class TerminalScreenTest {
         assertEquals(39, screen.cursorX)
         assertEquals(18, screen.cursorY)
 
-        // Rotate back to landscape: 80x24. The cursor virtually sticks and restores to (60, 18)!
+        // Rotate back to landscape: 80x24. The cursor sticks and restores to (60, 18).
         screen.resize(80, 24)
         assertEquals(60, screen.cursorX)
         assertEquals(18, screen.cursorY)
@@ -460,7 +459,7 @@ class TerminalScreenTest {
         assertEquals(20, screen.cursorX)
         assertEquals(23, screen.cursorY)
 
-        // Rotate back to portrait: 40x50. The cursor virtually sticks and restores to (20, 45)!
+        // Rotate back to portrait: 40x50. The cursor sticks and restores to (20, 45).
         screen.resize(40, 50)
         assertEquals(20, screen.cursorX)
         assertEquals(45, screen.cursorY)

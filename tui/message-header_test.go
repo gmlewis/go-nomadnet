@@ -23,21 +23,19 @@ import (
 
 // TestLXMessageHeaderPythonParity is a LIVE cross-implementation check: it
 // runs the stubbed-urwid golden capture script tooling/tui-parity/
-// lxmsg_title_golden.py fresh on every run. That script stubs gi/urwid (GLib
-// is broken on this host), instantiates the real Python nomadnet
-// LXMessageWidget (Conversations.py:2596-2670) with a fake app + fake message
-// at a fixed now (unix 1700000000) and 1h-prior timestamp, and prints the
-// title string + header style for each named case. The Go test reproduces each
-// case through LXMessageHeader and compares title+style to the freshly
-// captured Python values, matched by case name.
+// lxmsg_title_golden.py fresh on every run. That script instantiates the real
+// Python nomadnet LXMessageWidget (Conversations.py:2596-2670) with a fake app
+// + fake message at a fixed now (unix 1700000000) and 1h-prior timestamp, and
+// prints the title string + header style for each named case. The Go test
+// reproduces each case through LXMessageHeader and compares title+style to the
+// freshly computed Python values, matched by case name.
 //
 // Both sides render the strftime timestamp in the machine's LOCAL zone — Go via
 // time.Unix(ts,0) (matching production, which feeds msg.Timestamp straight
 // through without forcing UTC) and Python via datetime.fromtimestamp — so the
-// timestamp portion is zone-consistent across implementations rather than a
-// UTC-vs-local artifact. relative_time ("1h ago") is a delta and zone-
-// independent. The test SKIPs, not fails, when the Python reference is not
-// importable or the script file is not accessible.
+// timestamp portion is zone-consistent across implementations. relative_time
+// ("1h ago") is a delta and zone-independent. The test SKIPs, not fails, when
+// the Python reference is not importable or the script file is not accessible.
 func TestLXMessageHeaderPythonParity(t *testing.T) {
 	t.Parallel()
 
@@ -164,8 +162,8 @@ func TestStrftimeLayout(t *testing.T) {
 	}
 }
 
-// TestRelativeTimeAtParity checks the time-injected relative_time against the
-// captured Python relative_time buckets at a fixed now.
+// TestRelativeTimeAtParity checks the time-injected relative_time against
+// Python's relative_time buckets at a fixed now.
 func TestRelativeTimeAtParity(t *testing.T) {
 	t.Parallel()
 

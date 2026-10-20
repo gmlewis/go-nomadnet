@@ -22,8 +22,8 @@ import (
 // Multiline editing for ReadlineEdit, mirroring the source-of-truth urwid
 // Edit(wrap="space") behavior that Python nomadnet's multiline editors
 // inherit (RoomMessageEdit Channels.py:413, MessageEdit Conversations.py).
-// The goldens in editor-multiline-parity_test.go were captured live from
-// urwid 4.0.3, the version the installed Python nomadnet runs on.
+// The parity goldens in editor-multiline-parity_test.go come from urwid
+// 4.0.3, the version the installed Python nomadnet runs on.
 
 // editorRow is one wrapped display row of a multiline editor: the rune range
 // [start, end) of its rendered content in the edit buffer, plus tail — the

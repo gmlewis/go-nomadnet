@@ -31,9 +31,7 @@ var storedNameRE = regexp.MustCompile(`^file_\d+$`)
 // from the message's AttachmentPath and its hash. It returns an empty string
 // when no attachment path is set or no hash is available. The attachment path
 // is stamped onto each message by ConversationCache.Store (via
-// Conversation.ScanStorage), so the conversation package never needs a
-// package-level provider to locate attachments. This mirrors the Python
-// NomadNet _attachment_dir.
+// Conversation.ScanStorage). This mirrors the Python NomadNet _attachment_dir.
 func (m *Message) attachmentDir() string {
 	base := m.AttachmentPath
 	if base == "" {

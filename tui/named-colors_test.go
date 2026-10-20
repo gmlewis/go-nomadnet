@@ -27,9 +27,8 @@ import (
 // green" in the high-color column; urwid renders these as 16-color ANSI codes
 // even in truecolor mode (e.g. "dark red" → SGR 31). The tcell equivalents
 // (ColorMaroon=0x800000, ColorGray=0x808080, ColorGreen=0x008000) also emit
-// 16-color codes. The Go port previously used wrong hex values (0xaa2222,
-// 0x666666, 0x66bb22, 0xff0000) that match neither the named color NOR any
-// 3-hex palette entry.
+// 16-color codes. Raw hex values such as 0xaa2222, 0x666666, 0x66bb22 or
+// 0xff0000 match neither the named color nor any 3-hex palette entry.
 //
 // Python source: TextUI.py:28-62 (dark), 140-172 (light).
 func TestNamedColorEntries(t *testing.T) {
@@ -74,8 +73,8 @@ func TestNamedColorEntries(t *testing.T) {
 
 // TestMsgWarningUntrustedBG pins the msg_warning_untrusted bg to ColorMaroon
 // (dark red, not ColorRed which is light red). Python's palette has
-// msg_warning_untrusted high BG = "dark red" (TextUI.py:39). The Go port's
-// theme.go previously used tcell.ColorRed (0xff0000 = light red).
+// msg_warning_untrusted high BG = "dark red" (TextUI.py:39); ColorRed
+// (0xff0000) is the wrong shade.
 func TestMsgWarningUntrustedBG(t *testing.T) {
 	t.Parallel()
 

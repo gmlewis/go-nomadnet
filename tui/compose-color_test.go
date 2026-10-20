@@ -23,8 +23,7 @@ import (
 // editor field colors to the cube-quantized msg_editor palette. Python wraps
 // BOTH the title editor and the message editor in `AttrMap(..., "msg_editor")`
 // (Conversations.py:1921, 1926). msg_editor is 3-hex #111/#0bb (ui/TextUI.py:32
-// /85), cube-quantized to #000000/#00afaf. The Go port previously used
-// 0x222222/0xdddddd, which is not Python's msg_editor.
+// /85), cube-quantized to #000000/#00afaf.
 func TestComposeDisplayPaletteColors(t *testing.T) {
 	t.Parallel()
 

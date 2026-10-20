@@ -48,24 +48,18 @@ public struct TerminalSize: Equatable, Sendable {
 
 /// TerminalSizing decides when the client has to be told that its window has changed.
 ///
-/// The appliance asks this question on every layout, and for a long time it asked it of the
-/// wrong thing. It compared the grid the view could show against `screen.cols`, which is the
-/// grid the app is *drawing* — and the view resizes that screen itself the moment the layout
-/// changes, so the two were equal by construction and the answer was always "no change". No
-/// RESIZE frame was ever sent. The appliance started its client at 80 by 24, the pane could
-/// show 75 by 37, and the client spent the whole session drawing an 80-column interface into a
-/// 75-column window: clipped on the right, with thirteen rows of the screen left black.
-///
 /// The question is only answerable against what the *client* believes, which is the size the
-/// last frame carried. That is `TerminalSize`, and it is kept by the thing that sends the
-/// frames rather than read back off the screen they are drawn into.
+/// last frame carried — not against the grid the view can show, since the view resizes its
+/// own screen the moment the layout changes and the two would be equal by construction. That
+/// size is `TerminalSize`, and it is kept by the thing that sends the frames rather than read
+/// back off the screen they are drawn into.
 public enum TerminalSizing {
     /// resize returns the size to tell the client, or `nil` when it already has that size.
     ///
-    /// "That size" is the whole of it: a window that has grown by less than a cell is a window
-    /// the client is not laid out differently for, but it is still a window whose physical size
-    /// has changed, and the client reads that size to know which way up it is. A console the
-    /// app has learned the shape of is therefore a telling, even when the cells are the same.
+    /// "That size" includes the pixels: a window that has grown by less than a cell is not
+    /// laid out differently, but its physical size has changed, and the client reads that
+    /// size to know which way up it is. A console the app has learned the shape of is
+    /// therefore a telling, even when the cells are the same.
     ///
     /// - Parameters:
     ///   - metrics: the grid the view can show for its current bounds.

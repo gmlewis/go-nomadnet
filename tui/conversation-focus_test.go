@@ -35,18 +35,17 @@ func newEmptyConversationDisplay(t *testing.T) *ConversationsDisplay {
 }
 
 // TestCreateClearsOpenConversation pins the state the New Conversation dialog's
-// Create leaves behind, verified live against nomadnet 1.2.8: Python's
-// confirmed() calls display_conversation(source_hash_text) POSITIONALLY
-// (Conversations.py:1076), so the hash binds to the `sender` parameter and
-// source_hash stays None — display_conversation then does
+// Create leaves behind: Python's confirmed() calls
+// display_conversation(source_hash_text) POSITIONALLY (Conversations.py:1076),
+// so the hash binds to the `sender` parameter and source_hash stays None —
+// display_conversation then does
 // columns_widget.contents[1] = ConversationWidget(None) (the "\n  No
 // conversation selected" placeholder, Conversations.py:1892) and
-// columns_widget.focus_position = 0 (Conversations.py:1649-1650). The observed
-// 1.2.8 behavior is therefore: after Create the right pane reads "No
-// conversation selected" and the LIST holds focus — even when a conversation
-// was already open before the dialog was opened. Keeping the old conversation
-// displayed (and focusing its composer) would leave the user typing into the
-// previous peer after creating a new one.
+// columns_widget.focus_position = 0 (Conversations.py:1649-1650). After Create
+// the right pane therefore reads "No conversation selected" and the LIST holds
+// focus — even when a conversation was already open before the dialog was
+// opened. Keeping the old conversation displayed (and focusing its composer)
+// would leave the user typing into the previous peer after creating a new one.
 func TestCreateClearsOpenConversation(t *testing.T) {
 	t.Parallel()
 	cd := newEmptyConversationDisplay(t)

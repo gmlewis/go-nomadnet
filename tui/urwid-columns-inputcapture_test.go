@@ -22,13 +22,12 @@ import (
 	"github.com/gmlewis/tview"
 )
 
-// TestURWIDColumnsInputCaptureHonored pins the fix for the Ctrl-L regression:
-// urwidColumns.InputHandler must route through WrapInputHandler so that an
-// input capture installed with SetInputCapture is actually consulted. Before
-// the fix the handler returned a bare closure that never invoked the capture,
-// so page-level shortcuts on the Network page (Ctrl-L toggles Saved
-// Nodes/Announce Stream) silently did nothing. The capture must run, and when
-// it returns the event unchanged the inner column handling must still run.
+// TestURWIDColumnsInputCaptureHonored pins that urwidColumns.InputHandler
+// routes through WrapInputHandler so an input capture installed with
+// SetInputCapture is actually consulted. Without it, page-level shortcuts on
+// the Network page (Ctrl-L toggles Saved Nodes/Announce Stream) silently do
+// nothing. The capture must run, and when it returns the event unchanged the
+// inner column handling must still run.
 func TestURWIDColumnsInputCaptureHonored(t *testing.T) {
 	t.Parallel()
 
@@ -56,8 +55,7 @@ func TestURWIDColumnsInputCaptureHonored(t *testing.T) {
 		t.Fatal("InputHandler() returned nil")
 	}
 
-	// Consumed key: the capture running at all is the regression pin. Before
-	// the fix SetInputCapture was silently ignored.
+	// Consumed key: the capture running at all is what is pinned here.
 	handler(tcell.NewEventKey(tcell.KeyCtrlL, 0, tcell.ModNone),
 		func(p tview.Primitive) { app.SetFocus(p) })
 	if !captureRan {

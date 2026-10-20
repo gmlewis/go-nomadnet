@@ -32,11 +32,10 @@ class ApplianceSettings(context: Context) {
     /**
      * Which device axis the heading is measured along.
      *
-     * The two references degenerate in opposite mountings, so which one is right depends
-     * entirely on how the tablet is being held: the screen-back normal is well conditioned on
-     * a stand and useless lying flat, and the screen-top axis is the other way round. It is a
-     * setting for that reason, and it persists, because a tablet that lives on a stand should
-     * not have to be told twice.
+     * The two references degenerate in opposite mountings, so which one is correct depends on
+     * how the tablet is held: the screen-back normal is well conditioned on a stand and
+     * useless lying flat, and the screen-top axis is the other way round. It persists so a
+     * tablet that lives on a stand need only be told once.
      */
     var headingAxis: HeadingAxis
         get() {
@@ -51,17 +50,16 @@ class ApplianceSettings(context: Context) {
      * The key the transport's RPC listener authenticates its clients with.
      *
      * Python derives this key from the transport identity in the *same storage directory* the
-     * client runs from (Reticulum.py:355-356), and the ordinary setup is one `~/.reticulum`
-     * shared by every process on the machine. The appliance cannot share one: the client must
-     * have a configuration of its own, or it races the transport for ownership of the shared
-     * instance and one of them quietly becomes the other. With separate directories the two
-     * identities differ, and every RPC a client makes is answered "unauthorized" — an
-     * Interfaces page showing an appliance that is connected as though it were not.
+     * client runs from (Reticulum.py:355-356), which normally means one `~/.reticulum` shared
+     * by every process on the machine. The appliance cannot share one: the client must have a
+     * configuration of its own, or it races the transport for ownership of the shared instance.
+     * With separate directories the two identities differ, and every RPC a client makes is
+     * answered "unauthorized".
      *
-     * So both sides are told the key instead, which is the supported way to run them apart
+     * Both sides are told the key instead, which is the supported way to run them apart
      * (`[reticulum] rpc_key`, Reticulum.py:494-500). It is generated once per install and
-     * persists: a key that changed on every start would be a transport whose clients are all
-     * rejected after every restart.
+     * persists, because a key that changed on every start would reject every client after
+     * every restart.
      */
     val rpcKey: String
         get() {
@@ -102,19 +100,17 @@ object ApplianceConfig {
     /**
      * Renders the transport's configuration for a `host:port` specification.
      *
-     * The resolution happens here, at rendering time, on every start: a DuckDNS address
-     * changes, and a literal pinned once at install time would be a node that connects until
-     * the day it silently does not. A specification that cannot be parsed, or a name that
-     * resolves to nothing, produces a transport with **no interfaces at all** and a reason in
-     * [describeFailure] — an isolated node is a working node with no peers, which is far
-     * better than a node that refuses to start.
+     * Resolution happens here, at rendering time, on every start, because a DuckDNS address
+     * changes and a literal pinned at install time would eventually stop connecting. A
+     * specification that cannot be parsed, or a name that resolves to nothing, produces a
+     * transport with **no interfaces at all** and a reason in [describeFailure]: an isolated
+     * node is a working node with no peers, which is better than a node that refuses to start.
      *
      * [rnode] is the radio's section, and it defaults to one switched on. The radio is not
-     * conditional on the hub — an appliance whose hub address resolved nothing still has a
-     * radio — and it is not conditional on a radio being attached either: the appliance
-     * assumes one might be, so a fresh install carries the interface from its first start.
-     * The caller passes the path the appliance's own bridge published, when it has one, so
-     * that a radio that *is* attached is reached rather than merely waited for.
+     * conditional on the hub — an appliance whose hub resolved nothing still has a radio — nor
+     * on a radio being attached, so a fresh install carries the interface from its first start.
+     * The caller passes the path the appliance's own bridge published, when it has one, so a
+     * radio that is attached is reached rather than merely waited for.
      */
     fun nodeConfig(
         hubSpec: String,

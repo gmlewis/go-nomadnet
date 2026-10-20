@@ -79,8 +79,8 @@ func (c *Conversation) DisplayMessages() []MessageDisplayData {
 		// from disk when the index lacks the state. Loading unconditionally
 		// would overwrite the index-restored raw state with the on-disk
 		// container state, which can differ (the index state is the value
-		// captured at first load; the on-disk state may have been updated by
-		// the router since) — causing header glyph divergence from nomadnet.
+		// captured at first load; the router may have updated the file since)
+		// and would change the header glyph.
 		if m.CachedState == nil {
 			m.Load()
 		}
@@ -108,9 +108,7 @@ func (c *Conversation) DisplayMessages() []MessageDisplayData {
 	// Persist the index for the messages this display pass loaded: Python's
 	// post-load scan_storage index update writes every message whose cached
 	// state is populated (Conversation.py:257-267), so the .index cache holds
-	// the decoded fields after the first view. Skipping this left Go's .index
-	// a 1-byte empty map where Python's carried the full entry (found by the
-	// differential explorer's disk diff on the open-conversation path).
+	// the decoded fields after the first view.
 	if err := WriteIndex(c.MessagesPath, msgs); err != nil {
 		log.Printf("Warning: could not write conversation index for %v: %v", c.MessagesPath, err)
 	}

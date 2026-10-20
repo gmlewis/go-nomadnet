@@ -26,9 +26,8 @@ import (
 // TestBrowserStatusTextSavedFile pins the footer line a completed /file/ download
 // shows: Python's status_text returns "Saved "+saved_file_name+stats_string
 // (Browser.py:1797-1798), where the stats use saved_file_size as the response
-// size (:1761). Before the download path was wired the saved-file branch was
-// unreachable — the only caller passed "" — so a download reported "Done ..."
-// like a page fetch.
+// size (:1761). Without a saved name the same numbers produce the "Done ..."
+// line a page fetch shows.
 func TestBrowserStatusTextSavedFile(t *testing.T) {
 	t.Parallel()
 
@@ -90,10 +89,9 @@ func TestBrowserShowsDownloadAndClearsItOnPageRender(t *testing.T) {
 // TestPageFgDirectiveColorsBodyText pins `#!fg=`: the directive is the parse state's
 // starting color, so every plain run takes it. Python feeds the page colors into
 // markup_to_attrmaps as fg_color/bg_color (Browser.py:1269,1348,1513 →
-// MicronParser.py:104-108,41-45,63-64). The port set them only as the TextView default,
-// and because every micron span carries an explicit color, the spans overrode it — so
-// `#!fg=` changed nothing about body text while `#!bg=` appeared to work (the pane
-// background showed through).
+// MicronParser.py:104-108,41-45,63-64). Setting them only as the TextView default
+// is not enough, because every micron span carries an explicit color and would
+// override it.
 func TestPageFgDirectiveColorsBodyText(t *testing.T) {
 	app := NewApp(ThemeDark, GlyphUnicode, ColorModeTrue)
 	screen := tcell.NewSimulationScreen("UTF-8")
@@ -183,8 +181,8 @@ func TestBrowserStatusLabelsMatchPython(t *testing.T) {
 }
 
 // TestBrowserStatusReachesTheFooter pins the display half: a status set on the display is
-// what the footer renders. It is the assertion §4.5 recorded as missing ("nothing asserts
-// the user ever sees ..."), so it holds even before the fetch path drives the statuses.
+// what the footer renders, so the user-visible footer carries the status the fetch path
+// reports.
 func TestBrowserStatusReachesTheFooter(t *testing.T) {
 	app := NewApp(ThemeDark, GlyphUnicode, ColorModeTrue)
 	screen := tcell.NewSimulationScreen("UTF-8")

@@ -103,11 +103,10 @@ func TestBrowserStatusTextInFlight(t *testing.T) {
 	}
 }
 
-// TestBrowserDisplayNoInnerBorder pins R-NET-BROWSER-STRUCTURE: the
-// BrowserDisplay layout renders NO border and NO "Browser" title — Python has
-// a single LineBox(BrowserFrame(...), title=<hash>) and the enclosing LineBox
-// is the BrowserPane's responsibility, so the display itself must not add a
-// nested bordered box.
+// TestBrowserDisplayNoInnerBorder pins that the BrowserDisplay layout renders
+// NO border and NO "Browser" title — Python has a single LineBox(BrowserFrame(...),
+// title=<hash>) and the enclosing LineBox is the BrowserPane's responsibility,
+// so the display itself must not add a nested bordered box.
 func TestBrowserDisplayNoInnerBorder(t *testing.T) {
 	t.Parallel()
 	app := newTestApp()
@@ -126,10 +125,10 @@ func TestBrowserDisplayNoInnerBorder(t *testing.T) {
 	}
 }
 
-// TestBrowserDisplayNoNavBar pins R-NET-BROWSER-NAVBAR: no spurious top nav bar
-// "Enter Load  Ctrl-L Back  Ctrl-R Forward  Esc URL bar". Python has no top nav
-// bar; controls live in the footer. The layout's first rows must be the URL
-// header + divider, never the nav-bar text.
+// TestBrowserDisplayNoNavBar pins that there is no top nav bar "Enter Load
+// Ctrl-L Back  Ctrl-R Forward  Esc URL bar". Python has no top nav bar;
+// controls live in the footer. The layout's first rows must be the URL header
+// + divider, never the nav-bar text.
 func TestBrowserDisplayNoNavBar(t *testing.T) {
 	t.Parallel()
 	app := newTestApp()
@@ -145,10 +144,10 @@ func TestBrowserDisplayNoNavBar(t *testing.T) {
 	}
 }
 
-// TestBrowserDisplayURLHeader pins R-NET-BROWSER-URLBAR: the URL header is a
-// non-editable Text showing g["node"]+" "+<url> ("Ⓝ <hash>:/path"), NOT an
-// editable "URL: <hash>" field. The urlHeader is a TextView (not ReadlineEdit)
-// and shows the node glyph + the canonical URL after a load.
+// TestBrowserDisplayURLHeader pins the URL header: a non-editable Text
+// showing g["node"]+" "+<url> ("Ⓝ <hash>:/path"), NOT an editable
+// "URL: <hash>" field. The urlHeader is a TextView (not ReadlineEdit) and
+// shows the node glyph + the canonical URL after a load.
 func TestBrowserDisplayURLHeader(t *testing.T) {
 	t.Parallel()
 	app := newTestApp()
@@ -162,7 +161,7 @@ func TestBrowserDisplayURLHeader(t *testing.T) {
 
 	// A 32-hex hash URL loads as "<hash>:/page/index.mu"; the header shows the
 	// node glyph + " " + that canonical URL. Give the content a wide rect so the
-	// URL-bar ellipsis truncation (Q2) does not clip it — this test targets
+	// URL-bar ellipsis truncation does not clip it — this test targets
 	// canonicalization, not truncation (see TestSetURLHeaderEllipsizes).
 	hash := "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6"
 	bd.content.SetRect(0, 0, 100, 10)
@@ -176,7 +175,7 @@ func TestBrowserDisplayURLHeader(t *testing.T) {
 	}
 }
 
-// TestBrowserDisplayChromeDividers pins R-NET-BROWSER-DIVIDER: the header (below
+// TestBrowserDisplayChromeDividers pins the chrome dividers: the header (below
 // the URL row) and the footer (above the status row) each render a full-width
 // "┄┄┄" divider (urwid.Divider(self.g["divider1"])).
 func TestBrowserDisplayChromeDividers(t *testing.T) {
@@ -207,9 +206,9 @@ func TestBrowserDisplayChromeDividers(t *testing.T) {
 	}
 }
 
-// TestBrowserDisplayFooterTransferStats pins R-NET-BROWSER-FOOTER: after a
-// fetch with transfer stats, the footer shows the "Done  ▤ <size>   ↓<size> in
-// <t>s   ◷ <speed>b/s" line (Python make_status_widget, Browser.py:497-501).
+// TestBrowserDisplayFooterTransferStats pins the footer after a fetch with
+// transfer stats: the "Done  ▤ <size>   ↓<size> in <t>s   ◷ <speed>b/s" line
+// (Python make_status_widget, Browser.py:497-501).
 func TestBrowserDisplayFooterTransferStats(t *testing.T) {
 	t.Parallel()
 	app := newTestApp()
@@ -227,9 +226,9 @@ func TestBrowserDisplayFooterTransferStats(t *testing.T) {
 	}
 }
 
-// TestBrowserDisplayLinkPeekFooter pins R-NET-BROWSER-LINKPEEK: marked_link
-// shows "Link to <target>" in the browser FOOTER (not the global shortcut bar),
-// and clearing it restores the transfer-status widget.
+// TestBrowserDisplayLinkPeekFooter pins the link peek: marked_link shows
+// "Link to <target>" in the browser FOOTER (not the global shortcut bar), and
+// clearing it restores the transfer-status widget.
 func TestBrowserDisplayLinkPeekFooter(t *testing.T) {
 	t.Parallel()
 	app := NewApp(ThemeDark, GlyphUnicode, ColorModeTrue)

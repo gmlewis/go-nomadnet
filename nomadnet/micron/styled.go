@@ -76,19 +76,17 @@ type LinkSpec struct {
 // FormSubmitLeft and FormSubmitRight bracket the label of a form-submit link,
 // so the control renders as a flat button — "< Sign the guestbook >" — the same
 // shape urwid's Button gives the rest of the UI (urwidButtonLeft/Right plus the
-// label spacing in tui/urwid-button.go; urwid renders "< label >", not a
-// bordered box).
+// label spacing in tui/urwid-button.go).
 //
 // A Micron link whose third backtick component is non-empty (link_fields)
 // submits the enclosing page's form (MicronParser.py:780-819), so it is a
-// CONTROL, not a navigation link. Python renders it as ordinary label text —
-// the label is wrapped in a LinkableText and nothing marks it as a control —
-// which leaves the only way to submit a form looking exactly like the prose
-// around it. The brackets are therefore a deliberate, reviewed divergence from
-// Python for form-submit links ONLY: a plain link (no link_fields) keeps the
-// exact Python rendering. The span Text carries the brackets, so every consumer
-// that derives from it (line plain text, part positions, the hardware cursor,
-// link hit-testing, region tags) agrees on the rendered geometry.
+// control, not a navigation link. Python renders it as ordinary label text,
+// which leaves the only way to submit a form indistinguishable from the prose
+// around it. The brackets apply to form-submit links only; a plain link (no
+// link_fields) keeps the exact Python rendering. The span Text carries the
+// brackets, so every consumer that derives from it (line plain text, part
+// positions, the hardware cursor, link hit-testing, region tags) agrees on the
+// rendered geometry.
 const (
 	FormSubmitLeft  = "< "
 	FormSubmitRight = " >"
@@ -247,10 +245,9 @@ func RenderToStyledLinesWith(markup string, theme Theme, opts StyledOptions) []*
 		if line == "" {
 			// Python renders an empty markup line as urwid.Text("") wrapped in
 			// AttrMap(make_style(state)) (MicronParser.py:117-120): the row
-			// carries the LIVE formatting state (an active `F<color>/`B<color>
+			// carries the live formatting state (an active `F<color>/`B<color>
 			// or bold/italic run continues across blank lines), not the theme
-			// plain defaults. Pinning this parity rule (see
-			// TestBlankLineCarriesFormattingState).
+			// plain defaults.
 			blank := &StyledLine{Spans: []StyledSpan{{
 				Text:      "",
 				FG:        highColor(rs.fg),

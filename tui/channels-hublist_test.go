@@ -240,11 +240,10 @@ func TestChannelsDisplaySetHubs(t *testing.T) {
 	}
 	// Rows render the label WITHOUT an embedded color tag: the palette color
 	// is applied per-row via SetItemStyle instead, so tview's selected style
-	// (dark text on the list_focus background) wins on the HIGHLIGHTED row.
-	// The former tagged form overrode the selected colors, rendering the
-	// selected row invisible (a disconnected hub's list_unknown #afafaf
-	// foreground on the list_focus #afafaf background — the Pi's empty
-	// highlighted hub line).
+	// (dark text on the list_focus background) wins on the HIGHLIGHTED row. A
+	// tag would override the selected colors and make the selected row
+	// invisible (a disconnected hub's list_unknown #afafaf foreground on the
+	// list_focus #afafaf background).
 	wantTexts := []string{
 		"= hub1",
 		"     #general",
@@ -257,8 +256,7 @@ func TestChannelsDisplaySetHubs(t *testing.T) {
 		// Hub and room rows are PADDED to the list's inner width so the
 		// row's SetItemStyle foreground fills the full pane width like
 		// Python's urwid AttrMap rows (the connected hub row's fg covers
-		// all 34 left-pane columns — the 2026-09-03 12:32 full-fleet
-		// capture); the content is the unpadded label.
+		// all 34 left-pane columns); the content is the unpadded label.
 		if got := strings.TrimRight(main, " "); got != want {
 			t.Errorf("row %v main = %q, want %q", i, got, want)
 		}
@@ -287,11 +285,11 @@ func TestChannelsDisplaySetHubs(t *testing.T) {
 	}
 }
 
-// The HIGHLIGHTED hub row must render its display name with the selected
-// colors (dark text on the list_focus background) — the Pi's live bug was the
-// selected hub line rendering EMPTY because the row's embedded color tag
-// (a disconnected hub's list_unknown #afafaf foreground) overrode the
-// selected colors, leaving #afafaf text on the #afafaf highlight.
+// TestChannelsDisplaySelectedHubRowRendersName pins that the HIGHLIGHTED hub row
+// renders its display name with the selected colors (dark text on the list_focus
+// background): the row's own color tag (a disconnected hub's list_unknown #afafaf
+// foreground) must not override them, which would leave #afafaf text on the
+// #afafaf highlight.
 func TestChannelsDisplaySelectedHubRowRendersName(t *testing.T) {
 	t.Parallel()
 
@@ -345,9 +343,8 @@ func TestChannelsDisplaySelectedHubRowRendersName(t *testing.T) {
 	}
 }
 
-// C-n on the Channels page must open the New Hub dialog (the OnAddHub stub
-// regression: the Pi's flow opened it, but the dialog mechanism needs a
-// regression pin).
+// TestChannelsDisplayNewHubDialogOpens pins that C-n on the Channels page opens
+// the New Hub dialog through the OnNewHub callback.
 func TestChannelsDisplayNewHubDialogOpens(t *testing.T) {
 	t.Parallel()
 
@@ -369,11 +366,11 @@ func TestChannelsDisplayNewHubDialogOpens(t *testing.T) {
 	}
 }
 
-// TestChannelsDisplayNewHubDialogSingleForm pins item 19: ONE dialog with the
-// address field, the display-name field, the error line and an Add/Back row
-// (Python new_hub_dialog, Channels.py:1921-1958) — not two chained
-// single-field dialogs — driven end-to-end by keys: Down/Up traverse fields,
-// Enter activates the focused button, and a valid submit calls OnAddHub.
+// TestChannelsDisplayNewHubDialogSingleForm pins the dialog shape: ONE dialog
+// with the address field, the display-name field, the error line and an
+// Add/Back row (Python new_hub_dialog, Channels.py:1921-1958), not two chained
+// single-field dialogs. It is driven end-to-end by keys: Down/Up traverse
+// fields, Enter activates the focused button, and a valid submit calls OnAddHub.
 func TestChannelsDisplayNewHubDialogSingleForm(t *testing.T) {
 	t.Parallel()
 

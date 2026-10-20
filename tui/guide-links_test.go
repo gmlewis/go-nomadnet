@@ -128,7 +128,7 @@ func TestResolveGuideLinkPartial(t *testing.T) {
 func TestGuideAnchors(t *testing.T) {
 	t.Parallel()
 
-	// Test that we can extract anchors from Micron content
+	// Explicit anchors declared in Micron content must be extracted.
 	content := `>> Introduction
 Some content here
 >>[#getting-started] Getting Started

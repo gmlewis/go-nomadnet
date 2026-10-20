@@ -29,14 +29,12 @@ import (
 // TextView's SetTextColor. Python colors the message body with the RRC
 // render's default fg (Channels.py _render_body fg=t["text"], where t is the
 // Channels theme dict): 3-hex "ddd" (dark) / "111" (light) flows through
-// MicronParser high_color, which NIBBLE-DOUBLES it to "#dddddd"/"#111111" —
-// the live #test capture shows the body at 221;221;221 (#dddddd), NOT the
-// cube-quantized #d7d7d7 the static palette's 3-hex entries get.
+// MicronParser high_color, which NIBBLE-DOUBLES it to "#dddddd"/"#111111", NOT
+// the cube-quantized #d7d7d7 the static palette's 3-hex entries get.
 //
 // Editor: Python wraps the room message editor in `AttrMap(editor,
 // "msg_editor")` (Channels.py:609). msg_editor is #111/#0bb (both themes,
-// ui/TextUI.py:32,85), cube-quantized to #000000/#00afaf. The Go port
-// previously used 0x222222/0xdddddd.
+// ui/TextUI.py:32,85), cube-quantized to #000000/#00afaf.
 func TestRoomWidgetPaletteColors(t *testing.T) {
 	t.Parallel()
 

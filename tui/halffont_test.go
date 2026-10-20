@@ -22,8 +22,8 @@ import (
 
 // TestHalfBlock5x4Glyphs asserts the ported glyph table matches urwid's
 // HalfBlock5x4Font for a representative sample of characters. Expected rows
-// (including trailing spaces, exactly W runes wide) were captured from urwid
-// 4.0.3's HalfBlock5x4Font.render — the read-only Python source of truth.
+// (including trailing spaces, exactly W runes wide) come from urwid 4.0.3's
+// HalfBlock5x4Font.render.
 func TestHalfBlock5x4Glyphs(t *testing.T) {
 	t.Parallel()
 

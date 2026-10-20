@@ -26,8 +26,8 @@ import (
 // TestRRCoomMembersFollowTheLocalNickOverride asserts the Users pane row for
 // the local user picks up a /nick change at once. The pane renders every member
 // through the hub's learned nick table, and the hub learns our nick from our
-// next message — so without the local override the user's own row kept the hash
-// prefix, or the previous name, until they spoke again.
+// next message, so without the local override the user's own row would keep the
+// hash prefix, or the previous name, until they spoke again.
 func TestRRCoomMembersFollowTheLocalNickOverride(t *testing.T) {
 	t.Parallel()
 

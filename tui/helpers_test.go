@@ -91,8 +91,7 @@ func TestClickableIconClickWithText(t *testing.T) {
 // TestClickableIconGlyphColor pins the ClickableIcon glyph color to the
 // browser_controls palette value (#bbb dark, 3-hex cube-quantized to
 // #afafaf). Python's ClickableIcon is a bare urwid.Text inside an
-// AttrMap("browser_controls") so it inherits #bbb. The Go port previously
-// used 0xdddddd which Python never emits.
+// AttrMap("browser_controls") so it inherits #bbb.
 //
 // Python source: Browser.py:516-521 (ClickableIcon inside
 // AttrMap(..., "browser_controls")); TextUI.py:53 (browser_controls = #bbb).

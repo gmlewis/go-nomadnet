@@ -42,7 +42,7 @@ public struct DefaultHub: Equatable, Sendable {
 /// Three channels, because they are the three an appliance can actually reach:
 ///
 ///  * the community hub, which carries the wider RRC network;
-///  * this project's public hub, which is the one the README documents;
+///  * this project's public hub;
 ///  * the hub running **inside this appliance**, which is where its own bot answers, and
 ///    whose destination is different on every install because it is derived from an
 ///    identity generated on the device. It is written only when that identity has
@@ -58,7 +58,7 @@ public enum DefaultHubs {
     /// Its RRC destination.
     public static let rnsCommunityDestination = "28c7c1a68c735693aa8e6b8193ed44b2"
 
-    /// This project's public hub, the one the README documents.
+    /// This project's public hub.
     public static let publicHubName = "gonomadnet Public Hub"
     /// Its RRC destination.
     public static let publicHubDestination = "a012129c10205c0b9441fcd2b755b2a7"

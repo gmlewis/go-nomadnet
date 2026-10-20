@@ -15,14 +15,12 @@ import org.junit.Test
 /**
  * The order in which a converter and the pipe it writes come into being.
  *
- * It is the whole of the bug that was found on the tablet, and it is invisible until it is
- * fatal. A converter's standard output is redirected to `files/run/gps.nmea` at the moment
- * it is spawned. If the path is not a pipe then, the redirect creates a plain file, and the
- * pipe is made afterwards by deleting what is there — which is, from the converter's side,
- * its own output vanishing. The converter keeps writing into an inode nothing can reach,
- * the bot reads a pipe no process will ever write, and `whereami` answers "no GNSS fix yet"
- * for as long as the appliance runs. It was confirmed on the tablet: both converters held
- * `files/run/gps.nmea (deleted)` and `files/run/compass.nmea (deleted)`.
+ * The order is invisible until it is fatal. A converter's standard output is redirected to
+ * `files/run/gps.nmea` at the moment it is spawned. If the path is not a pipe then, the
+ * redirect creates a plain file, and a pipe made afterwards replaces it — which is, from the
+ * converter's side, its own output vanishing. The converter keeps writing into an inode
+ * nothing can reach, the bot reads a pipe no process will ever write, and `whereami` answers
+ * "no GNSS fix yet" for as long as the appliance runs.
  *
  * The pipe therefore belongs to whoever spawns the writers, and it is made and held before
  * the first of them exists.

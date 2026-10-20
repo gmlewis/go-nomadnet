@@ -30,8 +30,8 @@ import (
 // Guide's "Markup" topic documents input fields and checkboxes
 // (guidetopics/markup.mu:381-447), so a field's padded box (or a checkbox's icon
 // column) sits between the visible label and the link on those lines; measuring
-// the raw span text dropped the hardware cursor ~24 columns left of the glyph it
-// marks and made the links after a field unreachable.
+// the raw span text would put the hardware cursor left of the glyph it marks
+// and make the links after a field unreachable.
 func TestGuideFieldCursorFollowsRenderedRow(t *testing.T) {
 	t.Parallel()
 

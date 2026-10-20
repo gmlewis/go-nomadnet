@@ -25,8 +25,8 @@ import (
 // helper used by the rendering path never splits a multibyte rune and appends
 // the ellipsis only when the input exceeds the limit. TruncateString keeps at
 // most maxVisible runes of the input and appends "..." when truncation
-// occurred — the rune-safe replacement for the byte-wise `name[:8]+"..."`
-// pattern that split multibyte runes and produced U+FFFD.
+// occurred, instead of the byte-wise `name[:8]+"..."` pattern that can split
+// multibyte runes and produce U+FFFD.
 func TestTruncateStringPreservesRuneBoundaries(t *testing.T) {
 	t.Parallel()
 

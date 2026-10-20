@@ -205,9 +205,9 @@ class ScanServer(
          *	too many colons in address
          *
          * and never connects. An appliance that named itself unbracketed would offer a Scan
-         * button that did nothing at all — which is what it did, on the tablet, until this
-         * was found. The rule is a function of its own so that both addresses can be asserted
-         * on whichever one the machine running the tests happens to have.
+         * button that did nothing at all. The rule is a function of its own so that both
+         * addresses can be asserted on whichever one the machine running the tests happens to
+         * have.
          */
         fun endpointOf(host: String, port: Int): String =
             if (host.contains(':')) "[$host]:$port" else "$host:$port"

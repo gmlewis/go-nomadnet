@@ -32,9 +32,9 @@ import (
 // pinned there by DefaultHubsTest, and the client's own reader is run against those same bytes
 // here.
 //
-// A store the client cannot read is the worst kind of failure: RRCManager.Load reports it as
-// an error at startup and carries on with no channels at all, so the appliance would show an
-// empty Channels page and nothing anywhere would say why.
+// A store the client cannot read is reported by RRCManager.Load as a startup error while
+// carrying on with no channels at all, so the appliance would show an empty Channels page with
+// no indication of why.
 const applianceHubStoreFixture = "../../android/app/src/test/resources/default_hubs.cbor"
 
 // applianceHubNoLocalFixture is the store the appliance writes before its own hub has a
@@ -55,9 +55,8 @@ var fixtureHubs = []struct {
 }
 
 // TestApplianceHubStoreLoads covers the store the appliance writes reaching the client as
-// channels, which is the whole point of writing it. These are the upgraded bytes — the store
-// the appliance completes its untouched two-hub seed into, which DefaultHubsTest asserts is
-// byte-identical to this fixture.
+// channels. These are the upgraded bytes — the store the appliance completes its untouched
+// two-hub seed into, which DefaultHubsTest asserts is byte-identical to this fixture.
 func TestApplianceHubStoreLoads(t *testing.T) {
 	t.Parallel()
 
@@ -132,9 +131,9 @@ func TestApplianceTwoHubSeedStoreLoads(t *testing.T) {
 	}
 }
 
-// TestApplianceHubStoreIsNotAnEmptyStore covers the failure this contract exists to prevent in
-// the other direction: bytes the client cannot parse must not be mistaken for a store with no
-// channels, because those two are indistinguishable from the operator's side of the screen.
+// TestApplianceHubStoreIsNotAnEmptyStore covers the other direction of the contract: bytes the
+// client cannot parse must not be mistaken for a store with no channels, because the two are
+// indistinguishable from the operator's side of the screen.
 func TestApplianceHubStoreIsNotAnEmptyStore(t *testing.T) {
 	t.Parallel()
 

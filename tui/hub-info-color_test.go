@@ -26,8 +26,7 @@ import (
 // "scrollbar" palette entry. Python wraps the hub info body in
 // `urwid.AttrMap(body, "scrollbar")` (Channels.py:1827), so bare label rows
 // inherit scrollbar's fg = #444 (dark, 3-hex cube-quantized to #5f5f5f) /
-// #444 (light). The Go port previously used a hardcoded 0xbbbbbb which
-// Python never emits.
+// #444 (light).
 //
 // Python source: Channels.py:1827
 // `info = HubInfoArea(urwid.AttrMap(body, "scrollbar"), title=hub.name)`.

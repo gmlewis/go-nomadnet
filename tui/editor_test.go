@@ -93,8 +93,8 @@ func TestAnEditorCheckIsAskedTheConfiguredEditor(t *testing.T) {
 	}
 }
 
-// TestAnEditorCheckIsNotInstalledByDefault asserts the desktop path is what it was:
-// with no check installed, the client starts the editor it was configured with.
+// TestAnEditorCheckIsNotInstalledByDefault asserts the desktop path: with no
+// check installed, the client starts the editor it was configured with.
 func TestAnEditorCheckIsNotInstalledByDefault(t *testing.T) {
 	defer SetEditorCheck(nil)
 	SetEditorCheck(nil)
@@ -102,8 +102,8 @@ func TestAnEditorCheckIsNotInstalledByDefault(t *testing.T) {
 	app := newTestApp()
 	cd := NewConfigDisplay(app, "/tmp/gonomadnet-config-for-editor-check")
 
-	// A command this machine cannot have, so the launch fails the way it always did
-	// rather than being refused by a check nobody installed.
+	// A command this machine cannot have, so the launch fails rather than being
+	// refused by a check nobody installed.
 	cd.ShowEditor("gonomadnet-no-such-editor", cd.configPath)
 
 	if cd.editor != nil {

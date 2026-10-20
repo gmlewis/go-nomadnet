@@ -60,8 +60,6 @@ func newIngestFixture(t *testing.T) (*rns.TransportSystem, *rns.Destination) {
 // (Conversation.py:87-98): each inbound message increments a per-conversation
 // counter and the *number* is written to the `unread` flag file, so three
 // arrivals leave the file holding "3" and the conversation list renders "(3)".
-// The port wrote a literal "1" on every arrival and only tracked a bool, so the
-// badge was stuck at "(1)" no matter how many messages were waiting.
 func TestIngestAccumulatesUnreadCount(t *testing.T) {
 	t.Parallel()
 
@@ -105,8 +103,8 @@ func TestIngestAccumulatesUnreadCount(t *testing.T) {
 // TestIngestWritesFailedFlagForFailedOutbound pins Python's failed accounting
 // (Conversation.py:100-111): an OUTBOUND message whose LXMF state is FAILED or
 // REJECTED increments a per-conversation failure counter and writes it to the
-// `failed` flag file. The port had no such branch at all, so the failed badge,
-// the warning glyph and the failed count never fired for anything.
+// `failed` flag file, driving the failed badge, the warning glyph and the
+// failed count.
 func TestIngestWritesFailedFlagForFailedOutbound(t *testing.T) {
 	t.Parallel()
 
@@ -217,16 +215,10 @@ func TestIngestInboundFailureIsNotCountedAsFailed(t *testing.T) {
 // unread accounting. Python keeps the counter in a class-level dict that
 // conversation_list seeds from the flag file's contents (Conversation.py:139),
 // so a restart does not reset the tally: a conversation already holding "2"
-// goes to "3" on the next arrival, not back to "1". Without the seed the port
-// overwrote a "2" with a "1" after every restart.
+// goes to "3" on the next arrival, not back to "1".
 //
-// Measured against the installed nomadnet 1.2.8 / RNS 1.5.0 / LXMF 1.1.1
-// reference: with the conversation list read first — which is what the running
-// UI does on every refresh, and therefore the steady state — Python writes "3".
-// Only if ingest somehow runs before the very first listing does Python write
-// "1", because its dict has not been seeded yet. The port reproduces the
-// steady state, and must: its counters live on the cache rather than in a
-// package global, and Ingest can legitimately run before any listing.
+// The seed is read on the first increment, so Ingest keeps the steady-state
+// count even when it runs before any conversation listing.
 func TestIngestUnreadCountContinuesFromDisk(t *testing.T) {
 	t.Parallel()
 
@@ -234,7 +226,7 @@ func TestIngestUnreadCountContinuesFromDisk(t *testing.T) {
 	ts, dest := newIngestFixture(t)
 	cache := NewConversationCache()
 
-	// Prime the conversation on disk as a previous run would have left it.
+	// Prime the conversation on disk as a running client would leave it.
 	first := ingestMsg(t, ts, dest, "before restart")
 	if _, err := cache.Ingest(first, dir, false); err != nil {
 		t.Fatalf("Ingest: %v", err)

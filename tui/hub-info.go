@@ -248,9 +248,8 @@ func (hia *HubInfoArea) SetHubInfo(snap HubInfoSnapshot) {
 
 // dividerRow renders one full-width divider row: Python's
 // urwid.Divider(g["divider1"]) (Channels.py:1783) repeats the divider glyph
-// across the whole row, where the Go port previously wrote a single glyph.
-// The width comes from the laid-out widget rect (falling back to a sane
-// default before the first draw).
+// across the whole row. The width comes from the laid-out widget rect
+// (falling back to a sane default before the first draw).
 func (hia *HubInfoArea) dividerRow() string {
 	_, _, w, _ := hia.widget.GetInnerRect()
 	if w <= 0 {

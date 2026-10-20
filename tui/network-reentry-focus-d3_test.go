@@ -22,11 +22,10 @@ import (
 	"github.com/gmlewis/tview"
 )
 
-// TestD3NetworkReentryFocusesList pins D3: re-entering the Network page from
-// the menubar with a browser still open must put focus on the saved-nodes
-// LIST (Python keeps left-list focus; the live sweep observed the Go port
-// dropping focus into *tui.browserPageView where every arrow is dead until
-// Tab). Esc exiting an overlay (Announce Info → HandleEsc →
+// TestD3NetworkReentryFocusesList pins that re-entering the Network page from
+// the menubar with a browser still open puts focus on the saved-nodes LIST
+// (Python keeps left-list focus), never on a *browserPageView where every
+// arrow is dead until Tab. Esc exiting an overlay (Announce Info → HandleEsc →
 // showAnnounceStream) must land on the list as well.
 func TestD3NetworkReentryFocusesList(t *testing.T) {
 	t.Parallel()

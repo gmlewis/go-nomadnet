@@ -25,12 +25,12 @@ import (
 )
 
 // TestUrwidColumnWidths pins the column-width distribution against values
-// measured from the Python original's urwid Columns (captured at 80x24,
-// /tmp/cap-py-ai frame 06): the Announce Stream tab bar uses weights
-// [1,1,3] dividechars 1 over inner width 50 → [10,10,28], and the filter bar
-// uses weights [2,1] dividechars 1 over 50 → [33,16]. urwid sorts weighted
-// columns by (weight,index) and rounds with +0.5, so the leftover lands on the
-// heaviest column — NOT tview Flex's last-item rule (which would give [9,9,28]).
+// measured from the Python original's urwid Columns at 80x24: the Announce
+// Stream tab bar uses weights [1,1,3] dividechars 1 over inner width 50 →
+// [10,10,28], and the filter bar uses weights [2,1] dividechars 1 over 50 →
+// [33,16]. urwid sorts weighted columns by (weight,index) and rounds with
+// +0.5, so the leftover lands on the heaviest column — NOT tview Flex's
+// last-item rule (which would give [9,9,28]).
 func TestUrwidColumnWidths(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -118,8 +118,8 @@ func TestTabButtonRequiredHeight(t *testing.T) {
 }
 
 // TestAnnounceStreamDisplayLayout pins the AnnounceStream Pile against the
-// captured Python tab bar + filter bar (Network.py:394-466, /tmp/cap-py-ai
-// frame 06): a 2-row tab bar "[ Nodes  ] [ Peers  ] [ Propagation Nodes (2)    ]"
+// Python tab bar + filter bar (Network.py:394-466): a 2-row tab bar
+// "[ Nodes  ] [ Peers  ] [ Propagation Nodes (2)    ]"
 // over "  (3)        (4)                                  " (the wrapped counts;
 // brackets blank on row 2), then the filter bar "Search: ... [ Show: Name   ]",
 // then the IndicativeListBox. Counts are per-type over the announce stream.
@@ -337,10 +337,9 @@ func TestAnnounceStreamFocusNavigation(t *testing.T) {
 
 	// Python parity: the AnnounceStream Pile (Network.py:437-441) is built
 	// without an explicit focus_position, so urwid defaults to index 0 — the
-	// tab bar. A live capture confirms it: after Ctrl-L the Python announce
-	// stream needs TWO Downs (tab bar → filter bar → list) before Enter opens
-	// a node's Announce Info, whereas the Go port previously pre-focused the
-	// list (one Down). Match Python by leaving the Pile at its default index.
+	// tab bar. After Ctrl-L the Python announce stream therefore needs TWO Downs
+	// (tab bar → filter bar → list) before Enter opens a node's Announce Info.
+	// Match Python by leaving the Pile at its default index.
 	if !as.tabBar.HasFocus() {
 		t.Fatalf("expected initial focus on the tab bar (Python parity), not the list")
 	}

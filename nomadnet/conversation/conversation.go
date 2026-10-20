@@ -177,10 +177,9 @@ func (c *Conversation) ScanStorage() error {
 		// it from the .index. When the file has been rewritten since it was
 		// cached — a delivery proof rewrites the envelope with LXMF DELIVERED —
 		// the cached state is dropped so it is re-read from the envelope, and
-		// the sort timestamp advances to the file's. Restoring the .index here
-		// instead reinstated the stale snapshot: the conversation kept the
-		// indexed SENT state (and its glyph) while the file said DELIVERED, and
-		// WriteIndex then wrote the stale value back.
+		// the sort timestamp advances to the file's; otherwise the conversation
+		// would keep the stale indexed state (and its glyph) while the file
+		// says DELIVERED, and WriteIndex would write the stale value back.
 		if existing, ok := existingMessages[name]; ok {
 			if info, err := entry.Info(); err == nil {
 				newMtime := float64(info.ModTime().UnixNano()) / 1e9
@@ -209,10 +208,9 @@ func (c *Conversation) ScanStorage() error {
 		// exactly like Python's scan_storage for newly-discovered message
 		// files (Conversation.py:2240-2246: `if filename in index:
 		// msg.restore_from_index(index[filename])` — no mtime comparison).
-		// Adding an mtime guard here diverged from Python: index-restored
-		// messages skipped the lazy disk load and re-verification, so
-		// gonomadnet rendered a fresh-verified header where nomadnet renders
-		// the cached one (e.g. "✓ ←" vs the indexed "← Unknown Origin").
+		// An index-restored message therefore skips the lazy disk load and
+		// re-verification, so the header renders the cached values
+		// ("← Unknown Origin" rather than a fresh "✓ ←").
 		//
 		// The one case the snapshot must not win is an envelope rewritten after
 		// it was taken: a delivery proof rewrites the file with LXMF DELIVERED,
@@ -400,7 +398,7 @@ func fileExists(path string) bool {
 // delivery proof rewriting the envelope is the case that matters — so the file,
 // not the snapshot, is the truth. An entry without usable timestamps, or a
 // message with no transport to re-read the envelope with, is left to the
-// snapshot, which is the historical behavior.
+// snapshot.
 func envelopeNewerThanSnapshot(m *Message, entry rnsmsgpack.OrderedMap) bool {
 	if m.Transport == nil {
 		return false

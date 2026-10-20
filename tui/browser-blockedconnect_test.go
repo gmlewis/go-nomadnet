@@ -47,8 +47,8 @@ func confirmModalConnect(app *App) {
 // guard on BrowserDisplay.LoadURL (no Python SOT counterpart): navigating to a
 // blocked destination defers the fetch behind the "blocked node" warning modal
 // (default focus = Cancel), Cancel fetches nothing, and an explicit Connect
-// proceeds with the original URL. Unblocked destinations navigate directly and
-// a nil check hook preserves the historical behavior.
+// proceeds with the original URL. Unblocked destinations navigate directly, and
+// a nil check hook leaves LoadURL navigating directly too.
 func TestBrowserDisplayLoadURLBlockedNodeWarns(t *testing.T) {
 	t.Parallel()
 	app := newTestApp()
@@ -101,8 +101,8 @@ func TestBrowserDisplayLoadURLBlockedNodeWarns(t *testing.T) {
 }
 
 // TestBrowserDisplayLoadURLBlockedNilHookUnchanged pins that with no
-// OnBlockedConnectCheck wired, LoadURL behaves exactly as before (no dialog,
-// immediate navigation).
+// OnBlockedConnectCheck wired, LoadURL navigates directly (no dialog, immediate
+// fetch).
 func TestBrowserDisplayLoadURLBlockedNilHookUnchanged(t *testing.T) {
 	t.Parallel()
 	app := newTestApp()

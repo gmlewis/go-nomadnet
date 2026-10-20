@@ -22,12 +22,9 @@ import (
 	"github.com/gmlewis/tcell/v2"
 )
 
-// rrcCommunityDraft is the 362-byte draft captured live from the glenn-kamrui
-// session on 2026-09-14 while the RNS Community hub's #general room was open.
-// It is 12 bytes over the 350-byte per-message limit the composer used to
-// hardcode, which is exactly why C-d appeared to do nothing: the over-limit
-// gate returned without a wired split dialog, so the draft was never sent and
-// nothing was reported. Kept verbatim as the regression fixture.
+// rrcCommunityDraft is a real 362-byte chat draft: 12 bytes over the 350-byte
+// default per-message limit, which is the case the split dialog exists for.
+// Kept verbatim so its byte length stays pinned.
 const rrcCommunityDraft = "@qbit - I don't understand - are you talking about 24-bit ASCII art like nomadnet can render? If so,\n" +
 	"I'm seeing it just fine through tmux. I've got this in my ~/.tmux.conf:\n" +
 	"# Enable true-color (24-bit) passthrough for terminals that support it.\n" +
@@ -35,8 +32,8 @@ const rrcCommunityDraft = "@qbit - I don't understand - are you talking about 24
 	"set -ga terminal-overrides \",*256col*:Tc\""
 
 // TestRRCommunityDraftIsOverTheDefaultLimit pins the fixture's size: the draft
-// must stay just over the 350-byte default, which is the condition that tripped
-// the bug. (That a 350-byte body still fits one RNS link envelope — the reason
+// must stay just over the 350-byte default so it exercises the over-limit
+// path. (That a 350-byte body still fits one RNS link envelope — the reason
 // the limit exists — is pinned on the wire encoder in the rrc package.)
 func TestRRCommunityDraftIsOverTheDefaultLimit(t *testing.T) {
 	t.Parallel()

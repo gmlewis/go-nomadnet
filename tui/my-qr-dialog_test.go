@@ -23,14 +23,13 @@ import (
 	"github.com/gmlewis/tview"
 )
 
-// TestC5MyQRDialogWholeDisplayOverlay pins C5: the My LXMF dialog is a
+// TestC5MyQRDialogWholeDisplayOverlay pins the My LXMF dialog as a
 // WHOLE-display centered overlay at 70% relative width with min_width 44
 // (Python _overlay_dialog: urwid.Overlay(dialog, columns_widget, CENTER,
 // width=("relative", 70), MIDDLE, PACK, min_width=44), Conversations.py:
 // 678-692) — NOT a 52-col list-slot dialog and NOT a 50-col screen modal.
-// It must carry a Close button (Python: a 12-wide button in a
-// [weight, 12, weight] row, Conversations.py:669-675) — the previous Go build
-// omitted it entirely.
+// It must also carry a Close button (Python: a 12-wide button in a
+// [weight, 12, weight] row, Conversations.py:669-675).
 func TestC5MyQRDialogWholeDisplayOverlay(t *testing.T) {
 	t.Parallel()
 
@@ -79,7 +78,7 @@ func TestC5MyQRDialogWholeDisplayOverlay(t *testing.T) {
 	_ = dx
 }
 
-// TestC5MyQRDialogCloseButtonWorks pins the C1 dismissal contract: the Close
+// TestC5MyQRDialogCloseButtonWorks pins the dismissal contract: the Close
 // button restores the two-pane display, and Down/Tab from the QR view reaches
 // the button (keyboard traversal).
 func TestC5MyQRDialogCloseButtonWorks(t *testing.T) {

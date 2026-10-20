@@ -153,9 +153,8 @@ final class ScanServerTests: XCTestCase {
     func testARequestThatCarriesTheTokenIsAnnounced() throws {
         // The appliance says out loud that the client asked, before it shows a camera. It is
         // the one moment the two halves of the feature have to agree, and the symptom of their
-        // disagreeing is silence — which is why the announcement is made rather than inferred:
-        // the device acceptance asserts on this line, and a button that renders and does
-        // nothing produces no line at all.
+        // disagreeing is silence: a button that renders and does nothing produces no line at
+        // all.
         let requester = FakeRequester(payload: nil)
         let server = try ScanServer(requester: requester)
         let announced = Counter()
@@ -198,9 +197,8 @@ final class ScanServerTests: XCTestCase {
         defer { server.stop() }
 
         // Named rather than resolved, and IPv4 rather than whatever the loopback happens to
-        // be. Android's appliance named `getLoopbackAddress`, which is `::1` there, and Go
-        // refuses an unbracketed IPv6 literal with "too many colons in address" — the Scan
-        // button did nothing at all until that was found. This endpoint is one Go dials.
+        // be: Go refuses an unbracketed IPv6 literal with "too many colons in address", so
+        // this endpoint is one Go dials.
         XCTAssertEqual(server.endpoint, "127.0.0.1:\(server.port)")
         XCTAssertFalse(server.endpoint.contains("::"), "the endpoint names an IPv6 literal: \(server.endpoint)")
     }

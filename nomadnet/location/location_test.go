@@ -186,9 +186,9 @@ func TestSourceWithoutAFeedUsesTheStaticFix(t *testing.T) {
 	}
 }
 
-// TestLiveFeedBeatsTheStaticFix pins the precedence rule the whole design rests
-// on: a configured live source is the only source, so the static fix never leaks
-// into a reading taken while the feed is up.
+// TestLiveFeedBeatsTheStaticFix pins the precedence rule: a configured live
+// source is the only source, so the static fix never leaks into a reading taken
+// while the feed is up.
 func TestLiveFeedBeatsTheStaticFix(t *testing.T) {
 	t.Parallel()
 
@@ -218,9 +218,8 @@ func TestLiveFeedBeatsTheStaticFix(t *testing.T) {
 }
 
 // TestUnreachableFeedNeverFallsBackToTheStaticFix pins the other half of the same
-// rule: a feed that is configured but silent means the client has no position. It
-// must not quietly substitute a different one, because the reader would have no
-// way to tell which position they were looking at.
+// rule: a feed that is configured but silent means the client has no position,
+// never a substituted static one.
 func TestUnreachableFeedNeverFallsBackToTheStaticFix(t *testing.T) {
 	t.Parallel()
 
@@ -243,8 +242,7 @@ func TestUnreachableFeedNeverFallsBackToTheStaticFix(t *testing.T) {
 }
 
 // TestStaleFixDegradesToNoPosition asserts a feed that goes quiet stops being a
-// position, because a confidently stale position is the same class of bug as a
-// confidently wrong one.
+// position once the MaxAge window has passed.
 func TestStaleFixDegradesToNoPosition(t *testing.T) {
 	t.Parallel()
 
@@ -313,8 +311,7 @@ func TestStaleHeadingDegradesToNoHeading(t *testing.T) {
 }
 
 // TestViewerIsRaceFree hammers the accessor from many goroutines while the feed
-// keeps publishing, which is the race a bare field would have and the reason the
-// accessor exists.
+// keeps publishing, exercising the synchronization the accessor exists for.
 func TestViewerIsRaceFree(t *testing.T) {
 	t.Parallel()
 
@@ -385,9 +382,7 @@ func TestMalformedFeedIsReported(t *testing.T) {
 	}
 }
 
-// TestStatusReportsAge asserts the client can say how old what it knows is, which
-// is what makes the privacy model checkable by the person holding the device
-// rather than merely asserted in documentation.
+// TestStatusReportsAge asserts the client can say how old what it knows is.
 func TestStatusReportsAge(t *testing.T) {
 	t.Parallel()
 

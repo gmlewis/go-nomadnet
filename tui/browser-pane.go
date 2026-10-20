@@ -25,8 +25,7 @@ import (
 // display. Matches Python's Browser.display_widget (Browser.py:486): a LineBox
 // titled "Remote Node" wrapping a BrowserFrame whose body is a MIDDLE-filled,
 // centered "Disconnected\n<arrow_l>  <arrow_r>" while no page is loaded
-// (browser_inactive fg #444). URL fetching / page rendering arrive with the RNS
-// link; until then the disconnected state is the boot appearance.
+// (browser_inactive fg #444).
 type BrowserPane struct {
 	app     *App
 	widget  *tview.Flex
@@ -112,12 +111,11 @@ func FormatRemoteNodeTitle(url string) string {
 // urwid-style column-arrow traversal, so unlike Python — where Left on the
 // disconnected body bubbles to the Columns and moves focus to the list — a
 // disconnected Go pane (the centered bp.body, with no LinkableText
-// Left-at-start handler) would TRAP focus, and the test suite's recovery
-// (C-w → Left → Home → Down → Enter) could never reopen Announce Info. The
-// BrowserDisplay's OnReleaseFocus is wired to networkDisplay.FocusLists in the
-// wiring layer (cmd/gonomadnet/textui.go), the same callback the loaded browser
-// fires on Left-at-start; reuse it here so disconnecting returns focus to the
-// list. It is released BEFORE Clear so SetFocus lands on the list while the
+// Left-at-start handler) would TRAP focus. The BrowserDisplay's OnReleaseFocus
+// is wired to networkDisplay.FocusLists in the wiring layer
+// (cmd/gonomadnet/textui.go), the same callback the loaded browser fires on
+// Left-at-start; reuse it here so disconnecting returns focus to the list. It
+// is released BEFORE Clear so SetFocus lands on the list while the
 // (still-mounted) BrowserDisplay is the active focus target, not a dangling
 // removed widget.
 func (bp *BrowserPane) Disconnect() {
@@ -144,9 +142,9 @@ func (bp *BrowserPane) LoadURL(url string) {
 	SetTitledBorder(bp.widget, FormatRemoteNodeTitle(url))
 	// While disconnected the pane holds leaf (Box) focus — its spacers are not
 	// focusable, so Flex.Focus falls through to Box.Focus (which sets hasFocus
-	// without calling the delegate), and app.GetFocus() stays on bp.widget. The
+	// without calling the delegate), and app.GetFocus() stays on bp.widget. A
 	// URL-dialog connect dismisses the dialog (restoring that leaf focus) and
-	// THEN calls LoadURL here, so the newly mounted BrowserDisplay never receives
+	// then calls LoadURL here, so the newly mounted BrowserDisplay never receives
 	// a SetFocus cascade: bd.layout.HasFocus() stays false, Flex.InputHandler
 	// finds no focused child, and every Down/typing key is silently dropped
 	// (BrowserDisplay.handleInput never fires). When the pane already has focus,

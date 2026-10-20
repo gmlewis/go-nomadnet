@@ -28,11 +28,9 @@ import (
 // Conversation dialog knows nothing but the address it was given. The list row
 // resolves the name as soon as the announce lands, because the row is rebuilt
 // from App.ConversationList, whose app-data fallback reads the peer's announce
-// (nomadnet/app/app.go). The peer-info HEADER was resolved once, when the
-// conversation was displayed, and nothing re-resolved it — so the row and the
-// header disagreed indefinitely, and the header kept the "<hex>…" fallback until
-// the operator closed and reopened the conversation. Seen on the tablet
-// 2026-10-16: row "Anonymous Peer", header "<59b4…> | ⚙ 2 hops".
+// (nomadnet/app/app.go). The peer-info HEADER is resolved only when the
+// conversation is displayed, so without a re-resolve the row and the header
+// disagree, and the header keeps its "<hex>…" fallback.
 //
 // Python has no such split: _update_peer_info runs inside update_widget_list, so
 // every announce-driven list refresh re-resolves the open conversation's header

@@ -32,11 +32,11 @@ func TestHubInfoAreaCreation(t *testing.T) {
 	}
 }
 
-// TestHubInfoAreaPanelText pins item 18's panel goldens (Python
-// _show_hub_info, Channels.py:1764-1783): the Server line carries the
-// advertised version (" v0.3.2"), the AutoList/AutoWho hints read
-// "Ctrl-E to edit" (AutoRcn keeps "Ctrl-T to toggle"), and the divider
-// renders as a full-width run of the divider1 glyph.
+// TestHubInfoAreaPanelText pins the panel goldens (Python _show_hub_info,
+// Channels.py:1764-1783): the Server line carries the advertised version
+// (" v0.3.2"), the AutoList/AutoWho hints read "Ctrl-E to edit" (AutoRcn keeps
+// "Ctrl-T to toggle"), and the divider renders as a full-width run of the
+// divider1 glyph.
 func TestHubInfoAreaPanelText(t *testing.T) {
 	t.Parallel()
 

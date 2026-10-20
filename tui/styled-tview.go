@@ -26,7 +26,7 @@ import (
 )
 
 // StyledLinesToTviewText converts rendered Micron styled lines (the output of
-// micron.RenderToStyledLines, the Phase-3 24-bit-depth renderer) into a tview
+// micron.RenderToStyledLines, the 24-bit-depth renderer) into a tview
 // color-tagged string suitable for a tview.TextView with dynamic colors (and
 // regions) enabled. It is the display bridge between the structured micron
 // renderer and tview, used by the Guide reader and the Browser page so that
@@ -100,10 +100,10 @@ func StyledLinesToTviewParts(lines []*micron.StyledLine, width int) (string, []m
 			// fallback attribute for every cell the Text does not cover, so urwid
 			// fills the ENTIRE row — the left-indent spaces, the heading text, and
 			// the right padding — with the heading background. The left-aligned
-			// path below only colors the text characters, so the highlight stops
-			// after the last letter (the reported parity bug). Reproduce the
-			// full-width highlight: emit the heading background across the whole
-			// row (indent + text + trailing pad), wrapping at the full width like
+			// path below only colors the text characters, so the highlight would
+			// stop after the last letter. Reproduce the full-width highlight:
+			// emit the heading background across the whole row (indent + text +
+			// trailing pad), wrapping at the full width like
 			// Python's heading Text (the indent lives inside the text, not as a
 			// Padding inset, so the wrap width is the full pane width).
 			base := line.Spans[0]

@@ -28,11 +28,10 @@ import (
 // mouseWheelLines is how many list rows one mouse-wheel notch moves the
 // highlight. The wheel is translated into a SetCurrentItem jump (arrow-key
 // semantics) instead of tview's default itemOffset-only viewport move, which the
-// Draw keep-current-visible clamp cancels at the viewport edges — the "wheel
-// stuck at the highlight" bug on the Network Announce Stream / Saved Nodes
-// lists. Configurable per launch via GONOMADNET_WHEEL_LINES; tests
-// override it via SetMouseWheelLines. This is a set-once-at-startup config var,
-// the same pattern as the mouseDebug logger (tui/mouse-debug.go).
+// Draw keep-current-visible clamp cancels at the viewport edges. Configurable
+// per launch via GONOMADNET_WHEEL_LINES; tests override it via
+// SetMouseWheelLines. This is a set-once-at-startup config var, the same
+// pattern as the mouseDebug logger (tui/mouse-debug.go).
 var mouseWheelLines = 8
 
 func init() {
@@ -75,8 +74,7 @@ type IndicativeListBox struct {
 	emptyWidget      tview.Primitive // optional widget drawn in the list area when empty
 	// emptyFG/emptyBG, when set, style the emptyText placeholder row. Python
 	// paints the Conversations empty-state placeholder with the list_off_focus
-	// palette across the full inner width in EVERY focus state (live captures
-	// pyaconv_100x28_00/01/02 row 4: fg 0,0,0 bg 135,135,135 — the vendor ILB's
+	// palette across the full inner width in EVERY focus state (the vendor ILB's
 	// off-focus attribute sticks to the placeholder item), so the style is
 	// applied unconditionally, not only while focused.
 	emptyFG tcell.Color
@@ -145,8 +143,6 @@ func (i *IndicativeListBox) SetRect(x, y, w, h int) {
 	i.List.SetRect(listX, listY, listW, listH)
 }
 
-// listRect returns the rect to assign to the wrapped List (the full rect minus
-// one row top and one row bottom when height >= 3).
 // SetSkipUnselectable installs the row-rejection predicate used by the
 // Up/Down cursor movement (nil disables the skipping).
 func (i *IndicativeListBox) SetSkipUnselectable(fn func(idx int) bool) {
@@ -196,9 +192,8 @@ func (i *IndicativeListBox) skipUnselectableCapture(event *tcell.EventKey) *tcel
 		if want > i.List.GetItemCount()-1 {
 			// urwid ListBox: Down at the bottom bubbles unhandled and the
 			// enclosing containers ignore it, so the highlight STAYS. tview's
-			// List instead WRAPS to the first row, teleporting the selection
-			// to the top — the live fleet bug where navigating to the last
-			// hub row silently reset the cursor to the first hub.
+			// List instead WRAPS to the first row, teleporting the selection to
+			// the top.
 			return nil
 		}
 		i.List.SetCurrentItem(i.nextSelectableFrom(want, true))
@@ -215,6 +210,8 @@ func (i *IndicativeListBox) skipUnselectableCapture(event *tcell.EventKey) *tcel
 	return event
 }
 
+// listRect returns the rect to assign to the wrapped List (the full rect minus
+// one row top and one row bottom when height >= 3).
 func (i *IndicativeListBox) listRect() (int, int, int, int) {
 	x, y, w, h := i.GetRect()
 	if h >= 3 {
@@ -295,9 +292,7 @@ func (i *IndicativeListBox) Draw(screen tcell.Screen) {
 			// Conversations list), 1 otherwise (Guide / Saved Nodes lists).
 			// urwid renders the hardware cursor on the FIRST row of the focused
 			// entry (single widget per entry), so with two-line entries the
-			// cursor offset must be scaled by the item height; the previous
-			// item-index-as-row math put the cursor one conversation below the
-			// highlight and drifted a row per arrow keypress.
+			// cursor offset must be scaled by the item height.
 			rowHeight := 1
 			if i.List.GetShowSecondaryText() {
 				rowHeight = 2
@@ -375,17 +370,13 @@ func (i *IndicativeListBox) InputHandler() func(event *tcell.EventKey, setFocus 
 // The jump is the rows-per-notch multiplier (GONOMADNET_WHEEL_LINES), so one
 // notch moves N rows. Lists do not use tview TextView's trackEnd, so this
 // per-primitive multiplier (one delivery of N rows) is safe — unlike a root
-// re-dispatch, which triggers the TextView trackEnd jump-to-bottom bug on
-// TextView-based regions (see applyWheelMultiplier).
+// re-dispatch, which makes a TextView-based region jump to the bottom (see
+// applyWheelMultiplier).
 //
 // The wheel uses i.InRect (the full bar+list rect), not the inset List rect, so
-// a wheel over the indicator rows also scrolls (the inset excludes them, so
-// List.InRect would bail — the old indicator-row no-op gap). At a scroll
-// boundary (next == current) the handler declines to consume so tview skips the
-// no-op redraw, the same philosophy as the boundary guard in scroll-bar.go /
-// browser-nav.go. SetCurrentItem fires only the changed callback; no
-// IndicativeListBox list wires SetChangedFunc (guide.go:179 even comments "no
-// SetChangedFunc"), so a wheel fires nothing.
+// a wheel over the indicator rows also scrolls. At a scroll boundary
+// (next == current) the handler declines to consume so tview skips the no-op
+// redraw.
 //
 // When the mouse-debug logger is enabled (GONOMADNET_MOUSE_DEBUG), wheel events
 // are traced with the current/next index and item count.

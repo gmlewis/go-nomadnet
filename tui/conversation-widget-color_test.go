@@ -33,11 +33,9 @@ import (
 //	msg_editor       = #111 / #0bb   (both themes, lines 32 & 85)
 //
 // Both are 3-hex, so urwid cube-quantizes them even in truecolor: #111→#000000,
-// #ddd→#d7d7d7, #0bb→#00afaf. The Go port previously used nibble-doubled / wrong
-// literals: the editor 0x222222/0xdddddd (Python never uses #222/#ddd for the
-// editor — it is #0bb/#111) and the peer-info bar 0x111111/0xdddddd (exact, not
-// the cube-quantized #000000/#d7d7d7 Python emits). The message-list base was
-// 0xbbbbbb where Python uses default.
+// #ddd→#d7d7d7, #0bb→#00afaf. Python never uses #222/#ddd for the editor (it
+// is #0bb/#111), and the message-list base is the terminal default, not
+// #bbbbbb.
 func TestConversationWidgetPaletteColors(t *testing.T) {
 	t.Parallel()
 
@@ -129,8 +127,7 @@ func TestConversationWidgetPaletteColors(t *testing.T) {
 // AttrMap(..., "msg_header_<style>") (Conversations.py:2596-2670 + TextUI.py
 // palette lines 33-38), so e.g. a SENT header is dark text (#111 cube→#000000)
 // on a light-gray background (#ddd cube→#d7d7d7), NOT colored text on the
-// default background. The Go port previously emitted a foreground-only tview
-// tag, producing completely different colors from nomadnet.
+// default background.
 func TestConversationWidgetHeaderColors(t *testing.T) {
 	t.Parallel()
 

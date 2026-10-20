@@ -21,16 +21,14 @@ import (
 	"github.com/gmlewis/tcell/v2"
 )
 
-// TestFocusBodyRemovesMenuCursor pins the fix for the DownArrow menu-cursor bug.
-// The solid green menu cursor is the terminal hardware cursor, painted by a
+// TestFocusBodyRemovesMenuCursor pins the DownArrow menu-cursor behavior. The
+// solid green menu cursor is the terminal hardware cursor, painted by a
 // DrawFunc installed on menuBar while focusRegion == "menu". When the user
 // presses Down/Tab to drop to the body, FocusBody must re-run redrawMenuBar so
-// its else branch clears that DrawFunc (SetDrawFunc(nil)). Before the fix,
-// FocusBody only flipped focusRegion and moved tview focus without redrawing,
-// so the stale DrawFunc kept painting the cursor onto the menu bar on every
-// frame — the cursor appeared to stay in the menu even though focus had moved
-// to the body, deviating from Python's MainFrame (focus_position = "body"
-// removes the menu highlight).
+// its else branch clears that DrawFunc (SetDrawFunc(nil)); without the redraw
+// the stale DrawFunc keeps painting the cursor onto the menu bar on every
+// frame, deviating from Python's MainFrame (focus_position = "body" removes the
+// menu highlight).
 func TestFocusBodyRemovesMenuCursor(t *testing.T) {
 	t.Parallel()
 
@@ -66,8 +64,7 @@ func TestFocusBodyRemovesMenuCursor(t *testing.T) {
 // handleMenuInput consumes the Down key (Python's MenuColumns.keypress sets
 // frame.focus_position = "body" and drops the key — urwid Frame.keypress
 // dispatches by the entry-time focus part, so the mid-flight change never
-// re-dispatches into the body; verified live on nomadnet 1.2.8, where the
-// first Down from the menu renders nothing).
+// re-dispatches into the body; the first Down from the menu renders nothing).
 func TestHandleMenuInputDownRemovesMenuCursor(t *testing.T) {
 	t.Parallel()
 

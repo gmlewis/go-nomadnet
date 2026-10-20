@@ -145,9 +145,9 @@ func TestAppNodeHostingNameFallback(t *testing.T) {
 
 // TestAppNodeHostingConfigNamePinsPanelAndAnnounce verifies that a configured
 // node_name (ConfigObj-stripped of surrounding quotes before it reaches here)
-// is used verbatim for both the announce and ResolveNodeName — the OMEN
-// fleet case where `node_name = "Go port of NomadNet"` must announce as
-// `Go port of NomadNet`, matching Python Node.py:28.
+// is used verbatim for both the announce and ResolveNodeName, so
+// `node_name = "Go port of NomadNet"` announces as `Go port of NomadNet`,
+// matching Python Node.py:28.
 func TestAppNodeHostingConfigNamePinsPanelAndAnnounce(t *testing.T) {
 	t.Parallel()
 	appA, _, cleanup := setupTwoNodeApps(t)

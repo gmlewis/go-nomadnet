@@ -97,7 +97,7 @@ func (bd *BrowserDisplay) buildLineFields(lines []*micron.StyledLine) {
 // formatting state at its position — the page foreground on the terminal
 // background unless an inline color run covers it (MicronParser.py:363, 371).
 // Without this the editor would keep tview.NewInputField's hardcoded
-// white-on-blue ContrastBackgroundColor style, the only garish field in the UI.
+// white-on-blue ContrastBackgroundColor style.
 func (bd *BrowserDisplay) newRenderedField(span micron.StyledSpan, startCol int) *renderedField {
 	spec := span.Field
 	width := spec.Width
@@ -269,7 +269,7 @@ func (bd *BrowserDisplay) syncFieldFocus() {
 	// there while typing (urwid moves the terminal cursor with edit_pos).
 	tf.editor.SetCaretShown(true)
 	// NOTE: focus is intentionally LEFT on bd.content (not moved to the editor).
-	// The ReadlineEdit overlay is drawn off the primitive tree by drawFieldOverlay,
+	// The ReadlineEdit overlay is drawn off the primitive tree by drawFieldOverlays,
 	// so tview's input cascade (root → ... → bd.layout) can never reach an
 	// off-tree focused primitive — SetFocus(editor) would orphan focus, the
 	// cascade would stop finding the editor in-tree, and typed runes would be
@@ -313,9 +313,8 @@ func (bd *BrowserDisplay) unmountFieldOverlay() {
 // It stamps the keypress first, exactly as every handleNavKey branch does. A
 // key pressed while a field is in edit mode is consumed by the overlay and
 // never reaches handleNavKey, so without the stamp the page's hardware cursor
-// is not drawn on the newly focused line: the terminal cursor stays where the
-// overlay last put it — visibly still inside the text box the visitor pressed
-// Down in — until some later nav key refreshes the visibility window. Python
+// is not drawn on the newly focused line and stays wherever the overlay last
+// put it until some later nav key refreshes the visibility window. Python
 // refreshes that window on every keypress that moves page focus (LinkableText
 // .keypress sets delegate.last_keypress before returning "down"/"up" to the
 // Pile, MicronParser.py:932-935), so the cursor follows the focus there.
@@ -360,11 +359,10 @@ func (bd *BrowserDisplay) moveFieldFocus(key tcell.Key) {
 //
 // Every field is drawn, not just the one in edit mode: an editor is the only
 // thing that holds what the visitor typed, and the page text underneath still
-// carries the markup's own value. Drawing only the mounted field would make a
-// value vanish the moment focus moved on — the visitor types their name, presses
-// Down to reach the message field, and watches what they typed disappear.
-// urwid draws each Edit's content whether or not it holds focus, so an
-// unfocused field keeps showing its value here too.
+// carries the markup's own value. Drawing only the mounted field would drop a
+// typed value from the screen as soon as focus moved on. urwid draws each Edit's
+// content whether or not it holds focus, so an unfocused field keeps showing its
+// value here too.
 func (bd *BrowserDisplay) drawFieldOverlays(screen tcell.Screen) {
 	for line, row := range bd.lineFields {
 		for _, rf := range row {

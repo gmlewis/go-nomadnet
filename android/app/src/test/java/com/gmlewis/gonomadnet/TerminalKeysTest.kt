@@ -174,12 +174,12 @@ class TerminalKeysTest {
     @Test
     fun `a control combination is the letter its key code stands for`() {
         // A keyboard's key map is not obliged to give a letter a control code, and the map
-        // on the appliance's own tablet gives none to any of them: ctrl-d arrives carrying
-        // no character at all, so a key handler that read the event's character dropped
-        // every control combination — ctrl-d to send, ctrl-x to leave a room, ctrl-u for a
-        // URL, ctrl-r to reach a hub. The letter comes from the key code instead, and this
-        // is that mapping: the offset is what Android's consecutive letter key codes make
-        // of a key code minus the code of A.
+        // on the appliance's own tablet gives none to any of them: a ctrl-D from that
+        // keyboard arrives carrying no character at all, so a key handler that read the
+        // event's character would drop every control combination — ctrl-d to send, ctrl-x to
+        // leave a room, ctrl-u for a URL, ctrl-r to reach a hub. The letter comes from the key
+        // code instead, and this is that mapping: the offset is what Android's consecutive
+        // letter key codes make of a key code minus the code of A.
         val cases = listOf(
             KeyCase("ctrl-a", TerminalKeyRow.ctrlLetter('a' - 'a')!!, listOf(0x01)),
             KeyCase("ctrl-d", TerminalKeyRow.ctrlLetter('d' - 'a')!!, listOf(0x04)),

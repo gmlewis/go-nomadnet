@@ -29,11 +29,7 @@ import (
 // ConversationCache is the per-app in-memory cache of conversations and their
 // unread/failed flags, together with the configured attachment base directory.
 // It is owned by app.App (App.Conversations) so each App — and each parallel
-// test — gets isolated state instead of sharing package-level maps. Moving the
-// former package globals (cachedConversations, unreadConversations,
-// failedConversations, cachedMu, and the attachment-path provider) onto this
-// struct removes the last mutable package-level state from the conversation
-// package.
+// test — gets isolated state instead of sharing package-level maps.
 type ConversationCache struct {
 	mu             sync.Mutex
 	cached         map[string]*Conversation
@@ -156,9 +152,8 @@ func (cc *ConversationCache) FailedCount(sourceHash string) int {
 // whatever the flag file on disk already holds, so a restart does not reset the
 // tally. Python gets the same effect from a class-level dict that
 // conversation_list seeds out of the flag file (Conversation.py:88-91, 101-104,
-// 139, 151) — the seed has to be reproduced here because the port keeps the
-// counters on the cache rather than in a package global, and Ingest can run
-// before any conversation listing has happened.
+// 139, 151). Ingest can run before any conversation listing has happened, so
+// the seed is read here rather than only at listing time.
 func (cc *ConversationCache) increment(counters map[string]int, sourceHash, flagPath string) int {
 	cc.mu.Lock()
 	defer cc.mu.Unlock()
@@ -215,25 +210,22 @@ func (cc *ConversationCache) Ingest(msg *lxmf.Message, conversationsPath string,
 		_ = ExtractAttachmentsFromLXM(msg, cc.attachmentPath)
 	}
 
-	// NOTE: a previously-cached conversation's storage is NOT rescanned here.
-	// Ingest runs on the LXMF delivery goroutine (and the outbound delivery
-	// callback goroutine), while ConversationMessages/DisplayMessages read
-	// c.Messages on the tview event loop. Calling cached.ScanStorage() here
-	// would reassign c.Messages concurrently with the UI loop's ScanStorage/
-	// DisplayMessages — a data race on the unsynchronized []*Message slice
-	// header that, after hours of message traffic, produces a torn read in
-	// DisplayMessages' copy(msgs, c.Messages) and panics with "slice bounds
-	// out of range". The on-disk file written above is picked up by the UI
-	// loop's ScanStorage, triggered by OnChanged below (marshalled to the
-	// event loop in the wiring layer), so the new message still appears
-	// without a manual reload.
+	// A cached conversation's storage is NOT rescanned here. Ingest runs on the
+	// LXMF delivery goroutine (and the outbound delivery callback goroutine),
+	// while ConversationMessages/DisplayMessages read c.Messages on the tview
+	// event loop. Calling cached.ScanStorage() here would reassign c.Messages
+	// concurrently with the UI loop, a data race on the unsynchronized
+	// []*Message slice header. The on-disk file written above is picked up by
+	// the UI loop's ScanStorage, triggered by OnChanged below (marshalled to the
+	// event loop in the wiring layer), so the new message still appears without
+	// a manual reload.
 
 	// Flag the conversation unread or failed, mirroring Python's ingest
 	// (Conversation.py:82-111). The branches are exclusive: an inbound message
 	// only ever increments the unread counter, while an outbound message whose
 	// LXMF state is FAILED or REJECTED increments the failure counter. The
 	// counter *value* is what lands in the flag file, so the conversation list
-	// can render "(N)" — writing a literal "1" pinned every badge at "(1)".
+	// can render "(N)".
 	if !originator {
 		count := cc.increment(cc.unread, sourceHex, filepath.Join(convDir, "unread"))
 		writeCountFile(filepath.Join(convDir, "unread"), count)

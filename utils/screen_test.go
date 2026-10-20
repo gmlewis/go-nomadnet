@@ -221,9 +221,9 @@ func TestAnnounceNodeName(t *testing.T) {
 	}
 }
 
-// TestAnnounceNodeNameDedupStability confirms the dedup key is stable across a
-// re-announce (new timestamp, same name) — the exact bug that made the old
-// suite reconnect the same node repeatedly.
+// TestAnnounceNodeNameDedupStability confirms the dedup key stays stable across
+// a re-announce (new timestamp, same name), so one node is not treated as a new
+// one on every announce.
 func TestAnnounceNodeNameDedupStability(t *testing.T) {
 	first := announceNodeName("│16:32:23 Ⓝ  Rostov      │")
 	again := announceNodeName("│16:33:55 Ⓝ  Rostov      │")
@@ -336,9 +336,8 @@ func TestBrowserURLParsing(t *testing.T) {
 }
 
 // TestBrowserURLBordered confirms browserURL strips BOTH the leading '││' border
-// AND the trailing '   ││' border of the URL bar row — the bug that made the
-// connect step record 0 successes (url came back as "<hash>││", never matching
-// the target hash, so every connect timed out as state="").
+// AND the trailing '   ││' border of the URL bar row, so the hash it returns
+// matches the one a caller compares against.
 func TestBrowserURLBordered(t *testing.T) {
 	bar := menuBar()
 	// Nested node-page box: "││URL: <hash>   ││" with leading AND trailing
@@ -381,10 +380,9 @@ func TestGuideTopicRendered(t *testing.T) {
 }
 
 // TestGuideTopicRenderedBordered confirms the reader title is extracted cleanly
-// when the reader pane is a bordered box — every content row is wrapped in
-// leading '│' and trailing '│' (or '┃' scrollbar) chars that TrimSpace does
-// NOT strip. Without stripping the trailing border the title compared as
-// "Nomad Network │", falsely reporting the scroll-reset bug on every topic.
+// when the reader pane is a bordered box: every content row is wrapped in
+// leading '│' and trailing '│' (or '┃' scrollbar) chars that TrimSpace does not
+// strip, so the title must compare without them.
 func TestGuideTopicRenderedBordered(t *testing.T) {
 	const W = 60
 	blankRow := strings.Repeat(" ", W)
@@ -411,9 +409,9 @@ func TestXterm256(t *testing.T) {
 // TestBrowserFooterLink confirms BrowserFooterLink extracts the link target
 // from the browser footer ("Link to <target>"), which renders in the BrowserFrame
 // footer — the right-pane row immediately ABOVE the LineBox bottom border '└'. It
-// returns "" when no link footer is present, and crucially does NOT match "Link
-// to " text in the page BODY (a false positive would make examineMainPage press
-// Enter + C-d and navigate away from the main page).
+// returns "" when no link footer is present, and does NOT match "Link to " text
+// in the page BODY (a false positive would make a caller follow a non-link line
+// and navigate away from the page).
 func TestBrowserFooterLink(t *testing.T) {
 	const W = 135
 	pad := func(left, right string) string {
@@ -450,8 +448,7 @@ func TestBrowserFooterLink(t *testing.T) {
 		t.Errorf("BrowserFooterLink = %q, want \"\" (no Link to footer present)", got)
 	}
 
-	// "Link to " in the page BODY (not the footer row) must NOT match — this is
-	// the false positive that caused the Phase-3 cascade failures.
+	// "Link to " in the page BODY (not the footer row) must NOT match.
 	bodyRow := pad("│08:09:09 Ⓝ  BasilYes Git node                     │", "Link to our forum is at the bottom of this page")
 	raw3 := menuBar() + "\n" + bodyRow + "\n" + footerRow2 + "\n" + borderRow + "\n"
 	v3 := viewOf(raw3, 0, 1)

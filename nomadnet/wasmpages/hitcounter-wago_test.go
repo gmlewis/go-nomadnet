@@ -217,9 +217,9 @@ func TestExampleHitCounterIncrements(t *testing.T) {
 	}
 }
 
-// TestExampleHitCounterCountsPerPage pins the whole point of the per-page
-// counter: each page named by a partial's var_page keeps its own independent
-// count in its own store key, and a visit to one page never advances another.
+// TestExampleHitCounterCountsPerPage pins that each page named by a partial's
+// var_page keeps its own independent count in its own store key, and a visit to
+// one page never advances another.
 func TestExampleHitCounterCountsPerPage(t *testing.T) {
 	t.Parallel()
 

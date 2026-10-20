@@ -29,12 +29,11 @@ import (
 	"github.com/gmlewis/go-reticulum/testutils"
 )
 
-// propagationHub is the three-cornered topology of the fleet: two clients and a
-// propagation node, each with a transport of its own, all joined to one hub that
-// carries every announce, path request and link between them. That is the shape
-// the two Android appliances talk over — each phone dials the hub and the
-// propagation node is a client of the same hub — so a failure here is a failure
-// there, with stacks and -race available to say where it went.
+// propagationHub is a three-cornered topology: two clients and a propagation
+// node, each with a transport of its own, all joined to one hub that carries
+// every announce, path request and link between them. A failure here exercises
+// the same topology a real deployment uses, with stacks and -race available to
+// say where it went.
 type propagationHub struct {
 	appA *App
 	appB *App
@@ -75,8 +74,7 @@ func newPropagationHub(t *testing.T) *propagationHub {
 	// The hub is a transport node: it is the only thing joining the three
 	// corners, so a bare (non-transport) instance would validate and drop every
 	// announce instead of rebroadcasting it, and no client would ever learn a
-	// path or an identity. glenn-kamrui runs exactly this way
-	// (enable_transport = yes).
+	// path or an identity (enable_transport = yes).
 	tsHub.SetEnabled(true)
 	tsA, aCleanup := newStartedTSApp(t, dirA)
 	tsB, bCleanup := newStartedTSApp(t, dirB)
@@ -143,10 +141,9 @@ func newPropagationHub(t *testing.T) *propagationHub {
 		hubCleanup()
 	}
 
-	// Both peers are trusted BEFORE anything announces, as the two phones'
-	// operators trust each other, and the propagation node is trusted too: the
-	// client syncs "from the nearest trusted node", and it only records the
-	// announces of peers it trusts.
+	// Both peers are trusted BEFORE anything announces, and so is the propagation
+	// node: the client syncs "from the nearest trusted node", and it only records
+	// the announces of peers it trusts.
 	trusted := []struct {
 		a    *App
 		hash []byte
@@ -166,9 +163,7 @@ func newPropagationHub(t *testing.T) *propagationHub {
 	}
 
 	// Announce a few rounds so both clients learn the paths, then let the mesh
-	// settle. The harness does not gate on a probe of its own: what is being
-	// measured is whether the message reaches the recipient's conversation, and a
-	// probe that is wrong would only hide that behind a failure of the probe.
+	// settle.
 	announceAll := func() {
 		_ = appA.Router.Announce(appA.LXMFDest.Hash)
 		_ = appB.Router.Announce(appB.LXMFDest.Hash)
@@ -233,11 +228,8 @@ func waitForConversationMessage(t *testing.T, a *App, hexConv, body string, time
 // can be told apart.
 //
 // First the sender's own copy must reach the Sent state, which is what handing
-// the message to the propagation node means — the lightning glyph the tablet
-// showed on its "cldtest2" and "cldtest3". Then the recipient's sync must put
-// the message in its conversation with the sender, which is what never happened
-// on the Pixel: its sync reported "Downloaded 1 new messages" and its
-// conversation stayed empty.
+// the message to the propagation node means. Then the recipient's sync must put
+// the message in its conversation with the sender.
 func (h *propagationHub) assertPropagatedDelivery(t *testing.T, sender, recipient *App, peerHex, recipientConvHex, body string, recipientDelivered *atomic.Int64) {
 	t.Helper()
 
@@ -271,17 +263,17 @@ func (h *propagationHub) assertPropagatedDelivery(t *testing.T, sender, recipien
 	})
 }
 
-// TestIntegrationPropagatedConversationReachesRecipient is the fleet's failing
-// case, reduced to one process: two clients that cannot reach each other
-// directly, a propagation node both are configured to use, and conversation
-// messages that have to cross it — in both directions, because a one-way
-// exchange would not tell a broken recipient path from a broken sender path.
+// TestIntegrationPropagatedConversationReachesRecipient covers two clients that
+// cannot reach each other directly, a propagation node both are configured to
+// use, and conversation messages that have to cross it — in both directions,
+// because a one-way exchange would not tell a broken recipient path from a
+// broken sender path.
 func TestIntegrationPropagatedConversationReachesRecipient(t *testing.T) {
 	t.Parallel()
 	hub := newPropagationHub(t)
 	defer hub.cleanup()
 
-	// Both clients use the propagation node, as both phones are configured to.
+	// Both clients use the propagation node.
 	hub.appA.SetUserSelectedPropagationNode(hub.pnHash)
 	hub.appB.SetUserSelectedPropagationNode(hub.pnHash)
 	hub.setPreferredDelivery(t, directory.DeliveryPropagated)

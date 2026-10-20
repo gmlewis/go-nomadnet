@@ -17,8 +17,8 @@ package micron
 
 import "testing"
 
-// TestFormSubmitLinkRendersAsButton pins the reviewed, deliberate divergence
-// that gives a Micron form-submit link button chrome.
+// TestFormSubmitLinkRendersAsButton pins the deliberate divergence that gives
+// a Micron form-submit link button chrome.
 //
 // Python renders the label as an ordinary LinkableText (MicronParser.py:780-819:
 // the label is the only thing that varies, wrapped in a LinkSpec), so the one

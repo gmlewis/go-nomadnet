@@ -262,7 +262,7 @@ public struct TerminalMetrics: Equatable, Sendable {
     ///
     /// The strip's keys are touched, not read, and a target as small as one terminal cell is
     /// genuinely hard to hit on a tablet — so the row is one and a half cells tall and the
-    /// labels are one and a half cells' font. (Twice was tried on hardware and is too big.)
+    /// labels are one and a half cells' font.
     private static let fontScale = 1.5
 
     /// How many rows of keys the strip has, which is what ``stripHeight(rowHeight:)`` needs.

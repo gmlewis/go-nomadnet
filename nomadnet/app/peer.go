@@ -94,11 +94,9 @@ func (a *App) SavePeerSettings() {
 // LXMF delivery destination, updates the hosted node's name so subsequent
 // announces carry the new display name, and persists peer settings. This
 // mirrors the Python NomadNetworkApp.set_display_name, plus a Go-specific
-// propagation to the node's Name field (Python sets self.name once in
-// Node.__init__ and never updates it; the Go port adds this so a TUI name
-// change takes effect on the next announce instead of carrying the stale
-// startup name — which may have been empty if display_name was unset at
-// startup time).
+// propagation to the node's Name field: Python sets self.name once in
+// Node.__init__ and never updates it, so a TUI name change would otherwise
+// leave the stale startup name on the next announce.
 func (a *App) SetDisplayName(displayName string) {
 	a.psMu.Lock()
 	if a.PeerSettings == nil {
@@ -113,9 +111,9 @@ func (a *App) SetDisplayName(displayName string) {
 	// Propagate the new display name to the hosted node so the next
 	// announce carries it. The derived name mirrors nodeName (Python
 	// Node.py:28-36): node_name from config when set, otherwise the display
-	// name with "'s Node" appended — Python fixes Node.name at startup and
-	// never updates it, but keeping it in sync here is strictly better and
-	// wire-identical for announces made after the change.
+	// name with "'s Node" appended. Python fixes Node.name at startup and
+	// never updates it; keeping it in sync is wire-identical for announces
+	// made after the change.
 	if a.Node != nil {
 		a.Node.SetName(a.nodeName())
 	}

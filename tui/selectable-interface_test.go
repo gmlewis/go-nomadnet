@@ -107,8 +107,8 @@ func TestSelectableInterfaceItemByteFormatting(t *testing.T) {
 }
 
 // TestInterfaceItemRowTextPythonParity is a LIVE cross-implementation check:
-// it stubs only gi (GLib is broken on this host) but uses the REAL urwid
-// (4.0.3, whose text render engine does not need GLib), instantiates Python's
+// it stubs only the gi module but uses the real urwid 4.0.3, whose text
+// render engine does not need GLib. It instantiates Python's
 // real SelectableInterfaceItem (Interfaces.py:1125) with the real
 // _get_interface_icon, calls its render at width 60 (which sets the focus
 // selection glyph ●/○ and title style), then renders the inner Pile at the

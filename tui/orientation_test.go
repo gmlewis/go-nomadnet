@@ -169,10 +169,10 @@ func TestChannelsDisplayOpeningAHubInPortraitCollapsesTheHubList(t *testing.T) {
 	}
 }
 
-// TestChannelsDisplayHiddenPaneGivesUpFocus is the hardware cursor a device
-// showed parked on a pane border. The hub list draws the terminal's cursor on its
-// focused row — at the pane's left border column — and a collapse that leaves the
-// keyboard on that list leaves the cursor lit at coordinates belonging to a pane
+// TestChannelsDisplayHiddenPaneGivesUpFocus pins the focus handoff when a pane
+// collapses. The hub list draws the terminal's cursor on its focused row — at
+// the pane's left border column — and a collapse that leaves the keyboard on
+// that list leaves the cursor lit at coordinates belonging to a pane
 // that is no longer in the layout: tview shows the cursor where the last-drawn
 // primitive put it, and nothing hides it once that primitive stops drawing.
 func TestChannelsDisplayHiddenPaneGivesUpFocus(t *testing.T) {
@@ -379,10 +379,9 @@ func TestMainDisplayOrientationFollowsTheConsolePhysicalSize(t *testing.T) {
 // collapsed for the shape of the terminal, and every draw after that has to
 // leave them that way.
 //
-// It is the regression this feature is exposed to. A display that rebuilds its
-// columns on a draw — a width table applied again, a widget replaced — would put
-// the pane back while the terminal is still standing up, which is a panel that
-// reappears on a rotation and never goes away again.
+// A display that rebuilds its columns on a draw — a width table applied again, a
+// widget replaced — would put the pane back while the terminal is still standing
+// up, which is a panel that reappears on a rotation and never goes away again.
 func TestPortraitCollapseSurvivesADraw(t *testing.T) {
 	t.Parallel()
 	app := NewApp(ThemeDark, GlyphUnicode, ColorModeTrue)

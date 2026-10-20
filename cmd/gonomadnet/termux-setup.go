@@ -109,18 +109,17 @@ var publishedItems = []publishedItem{
 // can render its glyphs, is colored as the desktop's terminal is, and — when
 // tmux is used — is configured as on a desktop.
 //
-// The appliance carries those files but cannot install them. Termux reads its
-// terminal font and its colors from `~/.termux/` and tmux reads its settings from
-// `~/.tmux.conf`, all inside Termux's own private data directory, and Android
-// gives one application no way at all to write into another's — so the appliance
-// publishes them into shared storage and this moves them the last step. This is
-// the only process of the pair that runs inside Termux, and the only one that can.
+// Termux reads its terminal font and its colors from `~/.termux/` and tmux reads
+// its settings from `~/.tmux.conf`, all inside Termux's own private data
+// directory, and Android gives one application no way to write into another's.
+// The appliance therefore publishes them into shared storage and this process
+// moves them the last step.
 //
-// It is conservative by design. A file that is already installed is never
-// replaced, so a person who chose their own terminal font, colors or tmux
-// configuration keeps them, and a file that is not there to adopt is not a
-// complaint: the appliance may not have published it yet, or shared storage may
-// not be set up. The only lines it writes describe files it has just installed.
+// A file that is already installed is never replaced, so a person who chose
+// their own terminal font, colors or tmux configuration keeps them. A file that
+// is not there to adopt is not a complaint: the appliance may not have published
+// it yet, or shared storage may not be set up. The only lines it writes describe
+// files it has just installed.
 func adoptTermuxSetup() {
 	if !inTermux(os.Getenv) || os.Getenv(setupOptOutEnv) != "" {
 		return
@@ -238,12 +237,9 @@ func pickName(names []string, item publishedItem) (string, bool) {
 
 // installFile copies source to target and reports whether it did.
 //
-// It declines when target already holds a file. That is the whole of the safety
-// rule: this exists to give a terminal that has no Nerd Font one, a terminal
-// still wearing its stock colors the desktop's theme, and a tmux that has no
-// configuration one, and a file that is already there has been put there by
-// somebody who meant it — including, in tmux's case, the person using the
-// tablet, who may well have edited it.
+// It declines when target already holds a file: a file that is already there
+// has been put there by somebody who meant it — including, in tmux's case, the
+// person using the tablet, who may well have edited it.
 //
 // The copy lands through a neighbouring temporary file that is renamed into
 // place, so an interrupted install cannot leave a half-written font where Termux

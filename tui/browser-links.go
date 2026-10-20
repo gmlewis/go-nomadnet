@@ -213,15 +213,14 @@ func (bd *BrowserDisplay) HandleLink(linkTarget, linkFields string) {
 // field list, returning that anchor name and the remaining field list.
 //
 // Micron gives a link no place to carry a URL fragment, so a Markdown
-// "page.md#section" link has to become a request field, which is what
+// "page.md#section" link becomes a request field, which is what
 // tools/bin/sync-go-reticulum-docs emits: `:/page/page.mu plus
 // "anchor=<section>". Python's handle_link folds every k=v field into
 // request_data["var_k"], so it sends var_anchor to the page and the reader lands
-// at the top of the target instead of the section — the generated
-// documentation's cross-page section links do not work there. The Go port keeps
-// the k=v convention for every other key and reads this one as the navigation
-// request it was meant to be: the entry is removed from the collected request
-// data and handed to the caller, which records it for the post-load jump.
+// at the top of the target. The Go port keeps the k=v convention for every
+// other key and reads this one as the navigation request it was meant to be:
+// the entry is removed from the collected request data and handed to the
+// caller, which records it for the post-load jump.
 //
 // Only an exact "anchor=" prefix matches, so an unrelated key such as
 // "myanchor=x" is left alone. The last non-empty anchor wins, matching the way a
@@ -270,23 +269,21 @@ func (bd *BrowserDisplay) loadLinkDirect(target, linkFields, anchor string) {
 	rd := bd.collectFields(linkFields)
 	bd.pushHistory(target, rd)
 	// Record the requested anchor only now: pushHistory rolls a superseded
-	// click back itself (that is what clears a stale pendingAnchor), so setting
-	// it before this call would have the same click wipe it again.
+	// click back itself (clearing any stale pendingAnchor), so setting it
+	// before this call would have the same click wipe it again.
 	bd.pendingAnchor = anchor
 	bd.pendingLinkHist = true
 	// Move the URL bar to the clicked target, exactly as the typed-URL / Back /
-	// Forward path does in displayURL. Without this the header kept the
-	// PREVIOUS page's URL: a click on the wasm demo (or any link) rendered the
-	// new page under a URL bar still naming the page the link was on, because
-	// refreshURLHeader only re-truncates bd.currentURLDisp rather than deriving
-	// it from the page. Python updates the control widget on every
-	// retrieve_url, clicked or typed (Browser.py:216-268 → 505-524).
+	// Forward path does in displayURL. refreshURLHeader only re-truncates
+	// bd.currentURLDisp rather than deriving it from the page, so without this
+	// the header keeps naming the page the link was on. Python updates the
+	// control widget on every retrieve_url, clicked or typed
+	// (Browser.py:216-268 → 505-524).
 	//
 	// The centered "Retrieving" body that displayURL also shows is deliberately
 	// NOT swapped in here: HandleLink already leaves the old page's content up
-	// until the fetch lands, and swapping it changes the focused widget under a
-	// mouse click (it blurred the content pane and hid the cursor, breaking the
-	// click-focus contract that the mouse tests pin).
+	// until the fetch lands, and swapping it would change the focused widget
+	// under a mouse click, breaking the click-focus contract.
 	bd.setURLHeader(target)
 	if bd.OnRetrieveURL != nil {
 		// A submit link names the form fields to send (linkFields); the values

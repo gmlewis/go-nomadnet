@@ -25,16 +25,16 @@ import (
 	"github.com/gmlewis/tview"
 )
 
-// TestF1FirstUpGoesToMenu pins F1: Python's LogTerminal.keypress sends "up"
-// straight to the main display header (Log.py:58-61) — the FIRST Up collapses
-// focus to the menu regardless of scroll position (the embedded `tail -fn50`
-// terminal never scrolls via keys, so there is no scroll-then-escape dance).
-// The Go port used to scroll its TextView and only escape at the very top.
+// TestF1FirstUpGoesToMenu pins the Up escape: Python's LogTerminal.keypress
+// sends "up" straight to the main display header (Log.py:58-61) — the FIRST Up
+// collapses focus to the menu regardless of scroll position (the embedded
+// `tail -fn50` terminal never scrolls via keys, so there is no
+// scroll-then-escape step).
 func TestF1FirstUpGoesToMenu(t *testing.T) {
 	t.Parallel()
 
 	// A log file whose content far exceeds the viewport, so the view can be
-	// scrolled away from the top (the precondition the old behavior needed).
+	// scrolled away from the top.
 	logPath := "/tmp/parity-a-f1-test.log"
 	var sb strings.Builder
 	for i := range 300 {

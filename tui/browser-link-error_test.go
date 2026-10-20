@@ -22,19 +22,15 @@ import (
 	"github.com/gmlewis/tcell/v2"
 )
 
-// TestNotifyLinkErrorKeepsPage pins the parity gap where clicking a malformed
-// link (e.g. an https:// URL, which ParseURL rejects as ErrMalformedURL) in the
-// Go browser REPLACED the current page with the error text and left the user
-// stranded: no history entry had been pushed for the failed link, so Back
-// (Ctrl-d) had nothing to return to. Python's Browser.retrieve_url raises
-// ValueError("Malformed URL") BEFORE touching status/destination/history, and
-// handle_link (or url_dialog) catches it into the FOOTER ("Could not open
-// link: ...") — the current page stays visible (Browser.py:300-304, 1142-1150),
-// so Back is never needed and works as normal when there is history.
+// TestNotifyLinkErrorKeepsPage pins that a malformed link (e.g. an https:// URL,
+// which ParseURL rejects as ErrMalformedURL) surfaces its error in the browser
+// FOOTER and leaves the current page and its nav state intact. Python's
+// Browser.retrieve_url raises ValueError("Malformed URL") BEFORE touching
+// status/destination/history, and handle_link (or url_dialog) catches it into
+// the footer ("Could not open link: ...") (Browser.py:300-304, 1142-1150).
 //
-// NotifyLinkError mirrors that: it surfaces the error in the footer and leaves
-// the rendered page (and its nav state) intact, instead of overwriting the
-// content area.
+// NotifyLinkError mirrors that instead of overwriting the content area, so Back
+// is never needed for the failed link and the page stays navigable.
 func TestNotifyLinkErrorKeepsPage(t *testing.T) {
 	t.Parallel()
 	app := newTestApp()
@@ -76,7 +72,7 @@ func TestNotifyLinkErrorKeepsPage(t *testing.T) {
 // TestNotifyLinkErrorRestoresLoadingSwap pins the URL-bar variant: LoadURL swaps
 // in the "Retrieving" loading body (showLoading). A malformed URL entered there
 // must restore the prior page (swap loading back out) and show the footer error,
-// not leave "Retrieving" stuck and not replace the page with the error.
+// leaving neither "Retrieving" nor the error in the content area.
 func TestNotifyLinkErrorRestoresLoadingSwap(t *testing.T) {
 	t.Parallel()
 	app := newTestApp()

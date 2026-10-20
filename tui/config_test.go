@@ -94,8 +94,8 @@ func TestResolveEditorCmdDefault(t *testing.T) {
 // blank, "To change…", blank, the config path, blank, "Restart Nomad Network
 // for changes to take effect", blank — followed by a floor-left-centered
 // "< Open Editor >" button (urwid.Padding width=15 align=CENTER → 32 leading
-// spaces at width 80). The rows below are blank. Capture-verified byte-identical
-// to the original (only the config path differs per seed).
+// spaces at width 80). The rows below are blank. Byte-identical to the
+// original (only the config path differs per seed).
 func TestConfigDisplayLayout(t *testing.T) {
 	t.Parallel()
 
@@ -157,9 +157,9 @@ func TestConfigDisplayLayout(t *testing.T) {
 // to the menu bar (MainFrame.focus_position = "header"). The centralized
 // MainDisplay.bodyListAtTop only recognizes *tview.List / IndicativeListBox /
 // centeredText, so the button-focused config page must own this transition
-// itself, exactly as Python's ConfigFiller wrapper does. This reproduces the
-// reported bug where, after Ctrl-x exits the editor and the cursor lands back
-// on "Open Editor", Up could no longer reach the main menu.
+// itself, exactly as Python's ConfigFiller wrapper does: after Ctrl-x exits
+// the editor and the cursor lands back on "Open Editor", Up must still reach
+// the main menu.
 func TestConfigDisplayUpToMenu(t *testing.T) {
 	t.Parallel()
 
@@ -249,10 +249,10 @@ func TestConfigDisplayUpNotConsumedWhenEditorOpen(t *testing.T) {
 	}
 }
 
-// TestConfigDisplayEditorFailureIsReported pins the fix for the reported "Open
-// Editor does nothing": a launch that fails used to return silently, leaving a
-// button that started nothing looking exactly like a button that is broken. The
-// failure is now shown, and nothing is left mounted in place of the explainer.
+// TestConfigDisplayEditorFailureIsReported pins that a failed editor launch is
+// reported: a silent return leaves a button that started nothing looking
+// exactly like a button that is broken. The failure must be shown, and nothing
+// left mounted in place of the explainer.
 //
 // The command is one this machine cannot have, so the launch fails on every
 // host the way it fails on an appliance with no editor installed.

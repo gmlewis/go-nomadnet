@@ -21,11 +21,11 @@ import (
 	"testing"
 )
 
-// TestIndexFilenameIsTheFilesTheIndexerWrites pins the conversation index file name
-// against actual behaviour rather than as a lone literal: the name both implementations
-// must agree on (Python writes ".index" in each conversation directory) is the one
-// WriteIndex creates and ReadIndex reads. A constant that drifted from the writer would
-// leave both tests asserting a string nothing used.
+// TestIndexFilenameIsTheFilesTheIndexerWrites pins the conversation index file
+// name against the file WriteIndex creates and ReadIndex reads: the name both
+// implementations must agree on (Python writes ".index" in each conversation
+// directory). A constant that drifted from the writer would leave the test
+// asserting a string nothing used.
 func TestIndexFilenameIsTheFilesTheIndexerWrites(t *testing.T) {
 	t.Parallel()
 
@@ -61,8 +61,8 @@ func TestIndexFilenameIsTheFilesTheIndexerWrites(t *testing.T) {
 // resolution: ConversationCache.SetAttachmentPath stamps the base directory onto every
 // conversation it stores, and ScanStorage propagates it to each message so
 // Message.attachmentDir can find the extracted files. Setting the path on a Message
-// directly is covered by the attachment tests; this is the wiring from the cache, which
-// had no test — without it the extracted attachments are on disk but unreachable.
+// directly is covered by the attachment tests; without this wiring the extracted
+// attachments are on disk but unreachable.
 func TestSetAttachmentPathReachesScannedMessages(t *testing.T) {
 	t.Parallel()
 

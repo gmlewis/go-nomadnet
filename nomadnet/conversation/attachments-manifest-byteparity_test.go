@@ -26,9 +26,8 @@ import (
 	"github.com/gmlewis/go-reticulum/lxmf"
 )
 
-// TestExtractAttachmentsManifestByteParity pins the hard parity requirement for
-// the attachment manifest migration: ExtractAttachmentsFromLXM MUST emit a
-// byte-for-byte identical manifest to Python NomadNet's
+// TestExtractAttachmentsManifestByteParity pins the byte-for-byte manifest
+// parity of ExtractAttachmentsFromLXM with Python NomadNet's
 // extract_attachments_from_lxm (Conversation.py:753), which writes
 // msgpack.packb({"files": [...]}).
 //
@@ -44,8 +43,8 @@ import (
 //   - a top-level fixmap(0x81) with a single "files" key -> fixarray(0x92) of two
 //     entries.
 //   - each entry a fixmap(0x83) with keys "name","stored_name","size" in Python's
-//     insertion order (the rns/msgpack migration uses OrderedMap to reproduce it;
-//     a Go map would randomize the key order).
+//     insertion order (OrderedMap reproduces it; a Go map would randomize the
+//     key order).
 //   - size as an unsigned encoding: 200 -> uint8 (0xcc 0xc8), 300 -> uint16
 //     (0xcd 0x01 0x2c). A Go int would pack 200/300 as signed int16 (0xd1 ...),
 //     diverging from Python's unsigned encoding, so size is widened to uint.

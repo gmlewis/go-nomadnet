@@ -21,8 +21,7 @@ import (
 
 // TestGrayscaleRamp pins the parseColor gNN handling to the urwid 256-color
 // grayscale ramp. urwid maps gNN through _GRAY_256_LOOKUP_101 to a 256-color
-// index, then to RGB via _COLOR_VALUES_256. The Go port previously used a
-// linear v*255/99 formula which diverged (e.g. g93 → 239 linear vs 238 ramp).
+// index, then to RGB via _COLOR_VALUES_256.
 // Python source: urwid display/common.py _parse_color_256, _GRAY_256_LOOKUP_101,
 // _COLOR_VALUES_256.
 func TestGrayscaleRamp(t *testing.T) {
@@ -50,8 +49,7 @@ func TestGrayscaleRamp(t *testing.T) {
 // TestHeadingColor pins the theme.go heading color to the urwid g93 grayscale
 // ramp value (#eeeeee). The Python palette uses "g93,underline" for the heading
 // high-color (TextUI.py:20). urwid's grayscale ramp maps g93 to 256-color
-// index 255 → RGB (238,238,238) = #eeeeee. The Go port previously used 0x999999
-// (153) which is not the correct g93 value.
+// index 255 → RGB (238,238,238) = #eeeeee.
 func TestHeadingColor(t *testing.T) {
 	t.Parallel()
 
@@ -74,17 +72,16 @@ func TestHeadingColor(t *testing.T) {
 	}
 }
 
-// TestListsHeadingColor pins the lists.go and main-display.go heading color
-// (0x999999) to the correct g93 value (#eeeeee). These widgets set the heading
-// text color directly via tcell.NewHexColor(0x999999).
+// TestListsHeadingColor pins the heading text color to the g93 value
+// (#eeeeee): parseColor is the source of truth for gNN, and the theme's
+// heading entry must agree.
 func TestListsHeadingColor(t *testing.T) {
 	t.Parallel()
 
 	app := NewApp(ThemeDark, GlyphUnicode, ColorModeTrue)
 	_ = app
 
-	// The heading color in lists.go and main-display.go should match g93.
-	// We check the parseColor value which is the source of truth for gNN.
+	// parseColor("g93") is the source of truth for the gNN value.
 	got := parseColor("g93")
 	if uint32(got.Hex())&0xffffff != 0xeeeeee {
 		t.Errorf("parseColor(g93) = #%06x, want #eeeeee", uint32(got.Hex())&0xffffff)

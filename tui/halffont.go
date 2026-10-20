@@ -22,7 +22,7 @@ import (
 	"sync"
 )
 
-// halffont_glyph is one parsed entry of urwid's HalfBlock5x4Font: a glyph that
+// halffontGlyph is one parsed entry of urwid's HalfBlock5x4Font: a glyph that
 // is W columns wide and 4 character rows tall (each row exactly W runes,
 // trailing spaces included so glyphs concatenate without misalignment).
 type halffontGlyph struct {
@@ -39,8 +39,8 @@ var (
 	halffontHeight = 4
 )
 
-// loadHalffont parses the embedded glyph table (captured from urwid's
-// HalfBlock5x4Font — the read-only Python source of truth) on first use.
+// loadHalffont parses the embedded glyph table (urwid's HalfBlock5x4Font) on
+// first use.
 func loadHalffont() {
 	var raw map[string]halffontGlyph
 	if err := json.Unmarshal(halffontDataJSON, &raw); err != nil {

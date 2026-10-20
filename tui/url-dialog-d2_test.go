@@ -21,14 +21,12 @@ import (
 	"github.com/gmlewis/tcell/v2"
 )
 
-// TestD2CtrlUDelegatesToBrowserDialog pins D2: C-u must open the browser's
-// URL dialog PRE-FILLED with the current page URL. Python routes "ctrl u" to
+// TestD2CtrlUDelegatesToBrowserDialog pins that C-u opens the browser's URL
+// dialog PRE-FILLED with the current page URL. Python routes "ctrl u" to
 // browser.url_dialog() from BOTH the NetworkLeftPile (Network.py:1607-1608)
 // and the BrowserFrame (Browser.py:30-33); url_dialog pre-fills the edit with
 // self.current_url() (Browser.py:1136) — so with a page loaded the field shows
-// "URL : <hash>:/page/index.mu". The Go mainCols input capture used to
-// intercept C-u first and fire the display-level handler, which always opened
-// the dialog with an EMPTY field.
+// "URL : <hash>:/page/index.mu".
 func TestD2CtrlUDelegatesToBrowserDialog(t *testing.T) {
 	t.Parallel()
 

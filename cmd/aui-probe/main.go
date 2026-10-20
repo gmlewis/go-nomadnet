@@ -44,8 +44,7 @@
 // If B prints verified tokens from A's link-local address, IPv6 multicast
 // crosses the network and discovery failures are a software problem. If B
 // stays silent while A reports successful sends, the network is dropping
-// IPv6 multicast (check AP snooping settings) — no amount of code changes on
-// the nodes will fix that.
+// IPv6 multicast (check AP snooping settings).
 //
 // Flags common to send/listen:
 //

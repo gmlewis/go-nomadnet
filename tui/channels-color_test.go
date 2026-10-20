@@ -26,9 +26,7 @@ import (
 // `AttrMap(editor, "msg_editor")` (Channels.py:609) and builds the message list
 // as a bare `_StickyMessageListBox` with NO AttrMap (Channels.py:784), so its
 // base is the terminal default. msg_editor is 3-hex #111/#0bb (ui/TextUI.py:32
-// /85), cube-quantized to #000000/#00afaf. The Go port previously used
-// 0x222222/0xdddddd for the editor (not Python's msg_editor) and 0xbbbbbb for
-// the message view base (Python uses default).
+// /85), cube-quantized to #000000/#00afaf.
 func TestChannelsDisplayPaletteColors(t *testing.T) {
 	t.Parallel()
 

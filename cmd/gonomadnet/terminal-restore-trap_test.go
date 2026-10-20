@@ -30,9 +30,9 @@ import (
 // The trap is the client's backstop for the two deaths that run no code of the
 // client's own: a panic in a goroutine the client does not wrap (go-reticulum's
 // transports and timers) and a SIGKILL. It therefore carries a copy of the
-// sequence tui.RestoreTerminal writes, and a copy that has fallen behind is
-// worse than none: it looks like cover while leaving a terminal in whatever
-// mode was added since. The two lists must be identical, code for code.
+// sequence tui.RestoreTerminal writes, and the two lists must be identical,
+// code for code; a copy that has fallen behind leaves the terminal in whatever
+// mode was added since.
 //
 // The launcher is the only place in the tree where this sequence is written by
 // anything other than the client, which is why the check is here and not in the

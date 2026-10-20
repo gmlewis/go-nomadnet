@@ -30,8 +30,8 @@ import (
 // at least left/right=2 cells. dialogHeight is the dialog's PACK (natural)
 // height (content rows + 2 border rows).
 //
-// This is what makes gonomadnet's Network/Browser dialogs render in the correct
-// slot at the correct width instead of as a screen-centered box of a fixed size.
+// Dialogs therefore render in the slot at the slot's width rather than as a
+// screen-centered fixed-size box.
 type SlotOverlay struct {
 	*tview.Box
 	bottom       tview.Primitive // slot content drawn underneath (show-through)
@@ -215,6 +215,8 @@ func (o *SlotOverlay) Blur() {
 	o.Box.Blur()
 }
 
+// HasFocus reports whether the dialog (or the overlay box when there is no
+// dialog) currently holds focus.
 func (o *SlotOverlay) HasFocus() bool {
 	if o.dialog != nil {
 		return o.dialog.HasFocus()
@@ -234,9 +236,8 @@ func (o *SlotOverlay) InputHandler() func(event *tcell.EventKey, setFocus func(p
 	})
 }
 
-// MouseHandler routes clicks to the dialog first (so buttons/fields respond),
-// then to the bottom (so the show-through slot content remains non-interactive
-// but a click outside the dialog is not silently swallowed).
+// MouseHandler routes clicks to the dialog first so its buttons and fields
+// respond. Clicks the dialog does not consume are left unconsumed.
 func (o *SlotOverlay) MouseHandler() func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(p tview.Primitive)) (consumed bool, capture tview.Primitive) {
 	return func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(p tview.Primitive)) (bool, tview.Primitive) {
 		if o.dialog != nil {

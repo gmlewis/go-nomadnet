@@ -9,18 +9,18 @@ import (
 )
 
 // screen.go parses `tmux capture-pane -e -p` output (which embeds real ANSI
-// SGR escapes) into a 2D cell grid, and exposes query helpers that let the test
-// driver actively verify the TUI's state instead of blindly sleeping.
+// SGR escapes) into a 2D cell grid, and exposes query helpers that let a test
+// driver verify the TUI's state instead of sleeping.
 //
-// Per a full audit of the Go NomadNet render path (dark theme, true color), the
-// ONLY focus signal that is distinguishable by SGR color is the tview.List
-// selected row — fg #111111 bg #aaaaaa (full-line, palette.go "list_focus"). The
-// menu buttons, tab buttons, and action buttons are all rendered in a neutral
-// style whether focused or not; their focus is indicated solely by the terminal
+// The only focus signal distinguishable by SGR color is the tview.List selected
+// row — fg #111111 bg #aaaaaa (full-line, tui/theme.go "list_focus_fg" and
+// "list_focus_bg"). The menu buttons, tab buttons and action buttons render in a
+// neutral style whether focused or not; their focus shows only as the terminal's
 // hardware cursor position, which `tmux capture-pane -e` does NOT embed as SGR.
-// So the screen model is paired with a cursor position (queried separately via
-// `tmux display-message #{cursor_x},#{cursor_y}`) in the View type, and the
-// focus-detecting helpers use the cursor position rather than color.
+// The screen model is therefore paired with a cursor position (queried
+// separately via `tmux display-message #{cursor_x},#{cursor_y}`) in the View
+// type, and the focus-detecting helpers use the cursor position rather than
+// color.
 
 // Sentinel for "default" fg/bg (the terminal default color, emitted as SGR 39/49
 // or the absence of any color directive). Distinct from black (0x000000).
@@ -419,10 +419,10 @@ func xterm256(idx int) int32 {
 	}
 }
 
-// --- focus / state constants from the render audit ---
+// --- focus / state constants ---
 
 const (
-	listFocusBG = int32(0xaaaaaa) // palette "list_focus" bg — the ONLY SGR focus signal
+	listFocusBG = int32(0xaaaaaa) // tui/theme.go "list_focus_bg"; the only SGR focus signal
 )
 
 // MenuLabels is the menu-bar button text in order (tui/theme.go MenuItems),
@@ -467,8 +467,8 @@ type MenuButton struct {
 // glyph's byte-width-minus-one — and MenuFocusedButton (which compares
 // CursorX, a cell coordinate, against Start/End) would never match. RowText
 // emits exactly one rune per cell, so a rune-index search gives the cell
-// coordinate. We search over []rune to stay cell-accurate regardless of glyph
-// set.
+// coordinate. Searching over []rune keeps the result cell-accurate regardless
+// of glyph set.
 func (v *View) menuButtons() []MenuButton {
 	if v.Screen == nil || len(v.Screen.Rows) == 0 {
 		return nil
@@ -559,9 +559,9 @@ func (v *View) ActivePage() string {
 		body.WriteByte('\n')
 	}
 	s := body.String()
-	// "Topics" is the Guide's left-pane border title — the distinctive signal
-	// the blind script never checked for (so it walked 12 "topics" on the
-	// Network page). Match it as a border title: flanked by border dashes.
+	// "Topics" is the Guide's left-pane border title. Match it as a border
+	// title (flanked by border dashes) so the Network page's body text cannot
+	// match it.
 	if HasBorderTitle(s, "Topics") {
 		return "guide"
 	}
@@ -770,9 +770,8 @@ func (v *View) AnnounceListRows() []ListRow {
 		if t == "" {
 			continue
 		}
-		// Skip the bordered-title row and the tab/filter bar rows: these are
-		// above the list and never carry the list_focus background. Keep them
-		// out of the "node row" count by only treating #aaaaaa rows as nodes.
+		// The bordered-title row and the tab/filter bar rows above the list
+		// never carry the list_focus background, so they come back unselected.
 		out = append(out, ListRow{Y: y, Text: t, Selected: selected})
 	}
 	return out
@@ -784,15 +783,15 @@ func (v *View) AnnounceListRows() []ListRow {
 // selected node row has no background fill, just fg #afafaf), so the PRIMARY
 // signal is the row the cursor is on (when it is an Ⓝ node row). The Go port
 // additionally fills the selected row with the #aaaaaa list_focus background
-// whether the list has focus or not, so we fall back to that row when the
+// whether the list has focus or not, so this falls back to that row when the
 // cursor is not on a node row (e.g. focus is in the browser but the list still
 // shows the #aaaaaa selection). Returns nil if neither signal is present.
 //
-// NOTE: the Python announce stream re-sorts as new announces arrive, which
-// makes the cursor reading flicker (the ilb cursor is sometimes hidden at
-// (0,0) even while the list has focus). Callers that must identify a node
-// robustly should key on the Announce Info address hash (content-based), not
-// on this row (see the node-connection step in the tmux harness).
+// The Python announce stream re-sorts as new announces arrive, which makes the
+// cursor reading flicker (the ilb cursor is sometimes hidden at (0,0) even
+// while the list has focus). A caller that must identify a node robustly should
+// key on the Announce Info address hash (content-based) rather than on this
+// row.
 func (v *View) SelectedAnnounceRow() *ListRow {
 	if v.CursorOnAnnounceNodeRow() {
 		return &ListRow{Y: v.CursorY, Text: v.leftPaneText(v.CursorY), Selected: true}
@@ -810,9 +809,9 @@ func (v *View) SelectedAnnounceRow() *ListRow {
 // so a node can be recognized across re-announces. The row text (captured inside
 // the bordered list box) is "│{ts} {glyph} {displayStr}   │" — the timestamp
 // changes on every re-announce, but displayStr (the node name, or the hex hash in
-// show-destination mode) is stable. We strip the wrapping '│' borders, then take
-// the text after the second space (the "{ts} {glyph} " prefix has no internal
-// spaces), which is displayStr. Returns "" for a non-conforming row.
+// show-destination mode) is stable. The wrapping '│' borders are stripped, then
+// the text after the second space is taken (the "{ts} {glyph} " prefix has no
+// internal spaces), which is displayStr. Returns "" for a non-conforming row.
 func announceNodeName(rowText string) string {
 	s := strings.TrimSpace(rowText)
 	// Strip the box-drawing border chars that wrap every list content row.
@@ -840,11 +839,11 @@ func AnnounceNodeName(rowText string) string {
 // (the "Addr  : <hash>" row), with ok=false if no such row is present.
 //
 // The row is rendered inside a bordered box, so its text actually begins with a
-// '│' border char: "│Addr  : <hash>   │". TrimSpace does not remove '│', so we
-// must use Contains (not HasPrefix) and extract the first "<...>" that follows the
-// "Addr" marker. The Announce Info box sits above the Local Peer Info box, whose
-// "LXMF Addr : <hash>" row also contains "Addr" — but the Announce Info row comes
-// first, so the first match is the node hash we want.
+// '│' border char: "│Addr  : <hash>   │". TrimSpace does not remove '│', so the
+// lookup must use Contains (not HasPrefix) and extract the first "<...>" that
+// follows the "Addr" marker. The Announce Info box sits above the Local Peer Info
+// box, whose "LXMF Addr : <hash>" row also contains "Addr" — but the Announce
+// Info row comes first, so the first match is the node hash.
 func (v *View) AnnounceInfoAddr() (string, bool) {
 	if v.Screen == nil {
 		return "", false
@@ -871,10 +870,10 @@ func (v *View) AnnounceInfoAddr() (string, bool) {
 // (buttons are color-neutral). ok=false if the cursor is not on a button row.
 //
 // Buttons are padded to a fixed inner width, so the on-screen text is actually
-// "< Back    >", "< Connect >", "< Msg Op  >", "< Save    >", etc. — NOT the
-// unpadded "< Back >" a naive search would look for. We therefore scan the row
-// generically for every "< ... >" span, trim+collapse the inner label, and
-// return the one whose column range contains CursorX.
+// "< Back    >", "< Connect >", "< Msg Op  >", "< Save    >", etc., and not the
+// unpadded "< Back >" a naive search would look for. The row is therefore
+// scanned generically for every "< ... >" span, the inner label trimmed and
+// whitespace-collapsed, and the span containing CursorX returned.
 func (v *View) FocusedActionButton() (string, bool) {
 	if v.Screen == nil || !v.CursorOK {
 		return "", false
@@ -975,8 +974,8 @@ func (v *View) BrowserState() (state, url string) {
 // target hash. The Go port renders a "URL: <hash>" bar; the Python original
 // renders the URL as the browser border title "<hash>" and a
 // "Ⓝ <hash>:/page/..." line. Both live in the right pane (x >=
-// NetworkLeftWidth), so we scan only the right pane to avoid matching the
-// Announce Info / Local Peer Info "<hash>" rows in the left pane.
+// NetworkLeftWidth), so the scan is restricted to the right pane to avoid
+// matching the Announce Info / Local Peer Info "<hash>" rows in the left pane.
 func (v *View) browserURL() string {
 	if v.Screen == nil {
 		return ""
@@ -1059,19 +1058,16 @@ func (v *View) rightPaneText(y int) string {
 // The Python browser sets its footer via LinkableText.peek_link (called from
 // render() while the focused LinkableText is within key_timeout of the last
 // keypress) -> marked_link -> set_alarm_in(0.1s, marked_link_job), which renders
-// "Link to <target>" in the BrowserFrame footer — the LAST content row INSIDE
-// the browser LineBox, i.e. the right-pane row immediately ABOVE the LineBox
-// bottom border ('└'). So during a Down-walk (a keypress every ~200ms <
-// key_timeout) the footer reliably reports the link under the cursor's position
-// 0, letting examineMainPage follow ONLY link-bearing lines.
+// "Link to <target>" in the BrowserFrame footer — the last content row inside
+// the browser LineBox, i.e. the right-pane row immediately above the LineBox
+// bottom border ('└'). During a Down-walk (a keypress every ~200 ms, well
+// within key_timeout) the footer reliably reports the link at the cursor's
+// position, letting a caller follow only link-bearing lines.
 //
-// The scan is restricted to that single footer row (located by finding the
-// right-pane bottom border and checking the row above it). Scanning the WHOLE
-// right pane produced false positives from page BODY text that happens to contain
-// "Link to ", which was NOT harmless: examineMainPage pressed Enter (a no-op on a
-// non-link line) and then C-d (Back), navigating AWAY from the main page and
-// leaving the browser mid-retrieval — the cause of the Phase-3 "Announce Info
-// opened" cascade failures (the next Down+Enter landed in the browser).
+// The scan is restricted to that single footer row. Scanning the whole right
+// pane also matches page body text containing "Link to ", and a caller that
+// then sends Enter followed by Back navigates away from the page it was
+// reading.
 func (v *View) BrowserFooterLink() string {
 	if v.Screen == nil {
 		return ""
@@ -1145,20 +1141,17 @@ func firstErrorLine(full string) string {
 
 // GuideTopicRendered returns the first visible content line of the Guide
 // reader pane — the topic's `>Title` heading when the reader is at the top
-// (scroll offset 0). Used to verify a topic actually rendered and to detect
-// the scroll-reset bug: if the title is NOT at the top after selecting a new
-// topic, the scroll offset leaked from the previous topic (the Go port's
-// known bug; the Python reference makes a fresh Scrollable per topic so it
-// always resets).
+// (scroll offset 0). A caller uses it to verify that a topic rendered and that
+// the reader reset its scroll offset: a title missing from the top after
+// selecting a new topic means the offset carried over.
 //
 // The reader is a LineBox(ScrollBar(Scrollable(...))) — a bordered box whose
 // top border `┌──...──┐` sits on a fixed row (it does NOT scroll; only the
 // content inside does). So: find the reader's top border row and its left
-// edge (the SECOND `┌` on that row — the first `┌` is the Topics LineBox),
+// edge (the second `┌` on that row — the first `┌` is the Topics LineBox),
 // then return the first non-blank content row below it, stripped of the
 // leading `│` and trailing scrollbar/border. When the reader is scrolled to
-// the bottom, this returns mid-content instead of the title — exactly the
-// scroll-reset-bug signal.
+// the bottom this returns mid-content instead of the title.
 func (v *View) GuideTopicRendered() string {
 	if v.Screen == nil || len(v.Screen.Rows) == 0 {
 		return ""

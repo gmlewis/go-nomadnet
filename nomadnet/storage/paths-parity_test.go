@@ -33,15 +33,14 @@ var pathsPythonInput = map[string]string{
 }
 
 // pathsParityScript imports the real nomadnet.NomadNetworkApp and
-// nomadnet.Conversation references and derives every storage path FRESH from
-// the current Python source on each run. It introspects the actual
+// nomadnet.Conversation references and derives every storage path from the
+// current Python source on each run. It introspects the actual
 // NomadNetworkApp.__init__ source for the verbatim `self.X = self.configdir +
 // "/..."` assignments and the Conversation.py source for the per-conversation
 // / per-message path conventions, then emits the resolved paths as a JSON
-// object keyed by the short names the Go test compares against. If a future
-// Python release changes a path suffix or a conversation convention, this
-// script raises (and the test fails) rather than silently passing a stale
-// golden.
+// object keyed by the short names the Go test compares against. If a Python
+// release changes a path suffix or a conversation convention, this script
+// raises (and the test fails) rather than passing a stale golden.
 const pathsParityScript = `
 import sys, json, re, importlib, inspect
 req = json.loads(sys.stdin.read() or "{}")
@@ -108,13 +107,12 @@ func pathsPython(t *testing.T) map[string]string {
 // TestPathsPythonParity verifies that every storage.Paths field and path
 // helper matches the path conventions Python's NomadNetworkApp assigns in its
 // constructor (and that Conversation.py uses for per-conversation/per-message
-// paths). The expected paths are derived FRESH on every run by introspecting
-// the real Python nomadnet source via python3, not from a committed golden.
+// paths). The expected paths are derived on every run by introspecting the real
+// Python nomadnet source via python3, not from a committed golden.
 //
 // On POSIX platforms filepath.Join uses "/" separators, matching Python's
-// string concatenation. We compare via filepath.Clean so trailing-slash /
-// separator differences don't cause false failures across platforms (the CI
-// runners are Linux; darwin matches here too).
+// string concatenation. The comparison goes through filepath.Clean so
+// trailing-slash and separator differences do not cause false failures.
 func TestPathsPythonParity(t *testing.T) {
 	t.Parallel()
 

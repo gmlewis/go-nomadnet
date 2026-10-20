@@ -82,7 +82,6 @@ func TestEnsureDirs(t *testing.T) {
 		t.Fatalf("EnsureDirs: %v", err)
 	}
 
-	// Verify all directories were created
 	dirs := []string{
 		p.Storage,
 		p.Cache,

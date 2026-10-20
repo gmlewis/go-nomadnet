@@ -92,14 +92,13 @@ func TestInterfacesListMouseClickFocusesItem(t *testing.T) {
 	}
 }
 
-// TestInterfacesListMouseClickOnFocusedRowOpensDetails pins the requested
-// enhancement (operator, 2026-10-10): a left click on a row opens that
-// interface's details view — the same view Enter opens. This is an ADDITION,
-// not a parity fix: Python's SelectableInterfaceItem has no mouse_event and
-// Interfaces.py has no mouse handler, so Python has no click-to-open path at
-// all. To keep a stray click from navigating away, the click opens the details
-// only when the row ALREADY holds the focus; a click that changes the focus
-// just focuses (see TestInterfacesListMouseClickFocusesItem).
+// TestInterfacesListMouseClickOnFocusedRowOpensDetails pins click-to-open: a
+// left click on a row opens that interface's details view — the same view Enter
+// opens. Python's SelectableInterfaceItem has no mouse_event and Interfaces.py
+// has no mouse handler, so this is a Go-only addition. To keep a stray click
+// from navigating away, the click opens the details only when the row ALREADY
+// holds the focus; a click that changes the focus just focuses (see
+// TestInterfacesListMouseClickFocusesItem).
 func TestInterfacesListMouseClickOnFocusedRowOpensDetails(t *testing.T) {
 	t.Parallel()
 	id, app := newInterfacesMouseTestDisplay(t)

@@ -34,8 +34,7 @@ func NewComposeDisplay(app *App) *ComposeDisplay {
 	// Both the title field and the message editor use the msg_editor palette
 	// style (Python wraps each in `AttrMap(..., "msg_editor")`,
 	// Conversations.py:1921, 1926). msg_editor is 3-hex #111/#0bb
-	// (ui/TextUI.py:32/85), cube-quantized to #000000/#00afaf; route through
-	// the palette rather than the prior 0x222222/0xdddddd.
+	// (ui/TextUI.py:32/85), cube-quantized to #000000/#00afaf.
 	tc := GetThemeColors(app.Theme)
 	cd.title = NewReadlineEdit(app.killRing, "To: ", "recipient")
 	cd.title.SetFieldBackgroundColor(tc["msg_editor_bg"])

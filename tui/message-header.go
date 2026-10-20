@@ -132,7 +132,7 @@ func LXMessageHeader(in MessageHeaderInputs) (title, style string) {
 		title += " | " + strings.Join(parts, " ")
 	}
 
-	_ = isOutbound // retained for parity clarity; inbound branch above is the alternative
+	_ = isOutbound // set by the outbound branch above; nothing downstream needs it
 	return title, style
 }
 

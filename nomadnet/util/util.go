@@ -186,7 +186,6 @@ func SanitizeName(name *string) *string {
 	result = stripControlRe.ReplaceAllString(result, "")
 	result = stripPrivateRe.ReplaceAllString(result, "")
 
-	// Collapse whitespace
 	result = regexp.MustCompile(`\s+`).ReplaceAllString(result, " ")
 	result = strings.TrimSpace(result)
 

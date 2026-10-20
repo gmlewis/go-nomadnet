@@ -20,12 +20,12 @@ import (
 	"testing"
 )
 
-// TestLinkClickUpdatesURLBar covers the reported bug: following a link rendered
-// the new page but left the URL bar naming the page the link was on. The
-// typed-URL / Back / Forward path runs through displayURL, which calls
-// setURLHeader; the link-click path (loadLinkDirect) called OnRetrieveURL
-// directly and never touched the header, and refreshURLHeader only re-truncates
-// the stored bd.currentURLDisp rather than deriving it from the page.
+// TestLinkClickUpdatesURLBar pins that following a link moves the URL bar to the
+// clicked target, so the bar never names the page the link was on. The typed-URL
+// / Back / Forward path runs through displayURL, which calls setURLHeader; the
+// link-click path (loadLinkDirect) must do the same, because refreshURLHeader
+// only re-truncates the stored bd.currentURLDisp rather than deriving it from
+// the page.
 func TestLinkClickUpdatesURLBar(t *testing.T) {
 	t.Parallel()
 

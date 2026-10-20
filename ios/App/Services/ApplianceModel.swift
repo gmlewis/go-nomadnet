@@ -208,9 +208,8 @@ public final class ApplianceModel: ObservableObject {
     /// consoleProblem is why the console did not open, or `nil` when it did.
     ///
     /// It is a line of its own rather than an entry in the log because the log is the last
-    /// thing on the controls and scrolls: a reason a reader has to go looking for is one
-    /// the device acceptance could not find either, and the console silently not opening
-    /// is what that cost.
+    /// thing on the controls and scrolls, so a reason a reader has to go looking for is easy
+    /// to miss.
     @Published public private(set) var consoleProblem: String?
 
     /// locationStatus is what the appliance knows about its own position.
@@ -262,11 +261,10 @@ public final class ApplianceModel: ObservableObject {
             append("start the stack before opening the console")
             return
         }
-        // The camera, offered to the client's dialogs before the client exists. It is told
-        // the endpoint as it starts, so a server that is not listening yet is a console whose
-        // Scan buttons do nothing at all; a server that cannot be bound is reported and the
-        // console opens anyway, with addresses to be typed — which is what a device without a
-        // camera gets too, and is a far better outcome than a console that refuses to open.
+        // The camera is offered to the client's dialogs before the client exists. The client
+        // is told the endpoint as it starts, so a server that is not listening yet leaves the
+        // console's Scan buttons doing nothing. A server that cannot be bound is reported and
+        // the console opens anyway, with addresses to be typed.
         startScanServer()
 
         do {
@@ -310,9 +308,8 @@ public final class ApplianceModel: ObservableObject {
     /// startScanServer binds the scanner and tells the appliance where it is.
     ///
     /// Called before the console is started, because the client is told the endpoint as it
-    /// starts. A listener that cannot be bound is reported and the console opens anyway: a
-    /// console that refused to open because a camera could not be offered would be a far worse
-    /// trade than dialogs with addresses to be typed.
+    /// starts. A listener that cannot be bound is reported and the console opens anyway,
+    /// with addresses to be typed.
     private func startScanServer() {
         stopScanServer()
         do {
@@ -543,8 +540,8 @@ public final class ApplianceModel: ObservableObject {
 /// after, on the same thread: the pipeline publishes synchronously, from the device callback
 /// that offered the sample.
 ///
-/// The box is what carries the pipeline's decision, whole. There is one set of rules on the
-/// path — the pipeline's — and the appliance publishes exactly the reading they produced.
+/// The box carries the pipeline's decision whole: there is one set of rules on the path,
+/// the pipeline's, and the appliance publishes exactly the reading they produced.
 private final class ReadingSink: @unchecked Sendable {
     private let lock = NSLock()
     private var reading: SensorReading?

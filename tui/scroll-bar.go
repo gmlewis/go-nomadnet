@@ -76,15 +76,11 @@ type ScrollBar struct {
 	// the very first Up of a mid-document cursor walk.
 	atTop func() bool
 
-	// row-count cache for Draw. rowsMax (the total wrapped row count) only
-	// changes when the Text content or content width changes — NOT on scroll,
-	// where only the offset moves. Recomputing it every Draw via GetText(true)
-	// tag-strip + WordWrap over the whole document was the guide-scroll hotspot
-	// (~60% of scroll CPU in the live pprof), all pure waste on scroll. The
-	// cache is keyed on the raw tagged text (GetText(false), a single memcpy —
-	// tag-stripping is deterministic, so identical tagged text ⇒ identical
-	// stripped text ⇒ identical row count) plus the content width, so a scroll
-	// is a cache hit and skips the per-frame full-document re-wrap.
+	// row-count cache for Draw. The total row count only changes when the Text
+	// content or content width changes, not on scroll, so the cache keeps a
+	// scroll from re-wrapping the whole document every frame. It is keyed on
+	// the raw tagged text (tag-stripping is deterministic) plus the content
+	// width.
 	cachedRaw     string
 	cachedWidth   int
 	cachedRowsMax int
@@ -179,14 +175,11 @@ func wrappedRowCount(text string, width int) int {
 }
 
 // wrappedRows returns the total wrapped row count of the Text content at the
-// content width cw, using the row-count cache. The total only changes when the
-// text or content width changes — not on scroll — so a scroll is a cache hit
-// and skips the GetText(true) tag-strip + WordWrap over the whole document that
-// was the guide-scroll hotspot. The raw tagged text (GetText(false), a single
-// memcpy with no per-char work) is the key: stripping is deterministic, so
-// identical tagged text yields identical stripped text and thus identical row
-// count. See Draw for why the total is computed from the stripped text rather
-// than GetWrappedLineCount.
+// content width cw, using the row-count cache: the total only changes when the
+// text or content width changes, so a scroll is a cache hit. The raw tagged
+// text (GetText(false)) is the key, since stripping is deterministic. See
+// Draw for why the total is computed from the stripped text rather than
+// GetWrappedLineCount.
 func (s *ScrollBar) wrappedRows(cw int) int {
 	raw := s.Text.GetText(false)
 	if raw == s.cachedRaw && cw == s.cachedWidth {

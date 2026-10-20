@@ -14,21 +14,17 @@ import (
 	"github.com/gmlewis/go-reticulum/testutils"
 )
 
-// TestLoopbackBrowseViaSharedInstance guards the go-reticulum fix for
-// resource transfers (large page responses) over a shared-instance local
-// interface. A client C connected to a shared Reticulum instance S links to
-// S's OWN nomadnetwork.node destination (loopback) and requests /page/index.mu.
+// TestLoopbackBrowseViaSharedInstance guards resource transfers (large page
+// responses) over a shared-instance local interface. A client C connected to a
+// shared Reticulum instance S links to S's OWN nomadnetwork.node destination
+// (loopback) and requests /page/index.mu.
 //
-// Before the fix, the link handshake completed but the page request timed out:
-// the resource advertise packet is built with NewPacket(link, ...) and sent via
-// Packet.Send() (Transport.Outbound), not Link.send, so it reached Outbound
-// with AttachedInterface unset. Outbound's broadcast branch then handed the
-// packet to the LocalServerInterface listener, whose Send is a no-op (the real
-// socket lives on a spawned LocalClientInterface child that is NOT in
-// ts.interfaces) — silently dropping the advertise. The fix resolves the
-// attached interface from the local link at the top of Outbound so link packets
-// route directly via it, mirroring Python where Link.send stamps
-// packet.attached_interface.
+// A resource advertise is built with NewPacket(link, ...) and sent through
+// Transport.Outbound rather than Link.send, so it arrives with
+// AttachedInterface unset. Outbound must resolve the attached interface from
+// the local link or the broadcast branch hands the packet to the
+// LocalServerInterface listener, whose Send is a no-op and silently drops it.
+// This mirrors Python, where Link.send stamps packet.attached_interface.
 func TestLoopbackBrowseViaSharedInstance(t *testing.T) {
 	t.Parallel()
 	testutils.SkipShortIntegration(t)
@@ -89,7 +85,7 @@ func TestLoopbackBrowseViaSharedInstance(t *testing.T) {
 	}
 
 	// Node on S serving a LARGE page (>MDU), forcing a resource transfer over
-	// the shared-instance local interface — the production failure condition.
+	// the shared-instance local interface.
 	dir := tempDirInt(t)
 	writeFile(t, dir+"/index.mu", ">> Loopback\n\nHello loopback! "+strings.Repeat("x", 100000)+"\nEND\n")
 	n := NewNode("LoopbackNode", dir, dir, 720, 0, 0, false)

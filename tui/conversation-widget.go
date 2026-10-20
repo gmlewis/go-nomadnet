@@ -98,9 +98,9 @@ func (m *messageListView) Draw(screen tcell.Screen) {
 // does (Conversations.py check_editor_allowed): the caution palette covers the
 // FULL footer width (every cell, not only the glyphs), and each text line is
 // centered across that width using urwid's ceil-left rule. tview's TextView
-// only paints bg onto actual text cells, so a plain TextView left a short
-// yellow strip on a wide pane (the raspberrypi capture). Draw lays out from
-// the raw unwrapped string at the live inner width.
+// only paints bg onto actual text cells, so a plain TextView leaves a short
+// strip on a wide pane. Draw lays out from the raw unwrapped string at the live
+// inner width.
 type cautionBannerView struct {
 	*tview.TextView
 
@@ -175,12 +175,11 @@ type ConversationWidget struct {
 	// inbound. OnOwnHash, when set, supersedes the cached OwnHash at every
 	// render: Python reads app.lxmf_destination.hash FRESH inside
 	// LXMessageWidget.__init__ (Conversations.py:2607), while a widget that
-	// caches the value once could keep a nil/stale hash forever — e.g. when
-	// the conversation was opened before the LXMF router finished registering
-	// (a.LXMFDest still nil) — which classified every message, including
-	// own-sent ones, down the inbound branch (green "✓ ←" headers on sent
-	// messages, the reported bug). TimeFormat is the configured strftime
-	// format (default "%Y-%m-%d %H:%M:%S", Python app.time_format).
+	// caches the value once could keep a nil hash forever — e.g. when the
+	// conversation was opened before the LXMF router finished registering
+	// (a.LXMFDest still nil) — which classifies every message, including
+	// own-sent ones, down the inbound branch. TimeFormat is the configured
+	// strftime format (default "%Y-%m-%d %H:%M:%S", Python app.time_format).
 	OwnHash    []byte
 	OnOwnHash  func() []byte
 	TimeFormat string
@@ -378,7 +377,7 @@ func NewConversationWidget(app *App, sourceHash string) *ConversationWidget {
 	// IndicativeListBox of LXMessageWidget piles, Conversations.py:2286-2287).
 	// It exposes the IndicativeListBox top/bottom visibility flags the frame
 	// keypress branches on, and its bannerVisible hook lets the main
-	// dispatcher's Up-at-top check respect the trust banner (A3/A7).
+	// dispatcher's Up-at-top check respect the trust banner.
 	cw.messageList = newMessageListBox()
 	// A markdown body is laid out for a width, so a resize has to rebuild the entries.
 	// SetRect calls this from inside Draw; defer the rebuild to the event loop (and do
@@ -399,8 +398,8 @@ func NewConversationWidget(app *App, sourceHash string) *ConversationWidget {
 
 	// Minimal editor (content only) — Python builds MessageEdit(caption="",
 	// edit_text="", multiline=True) wrapped in AttrMap(..., "msg_editor")
-	// (Conversations.py:1904/1936): an INVISIBLE empty footer with no caption
-	// and no placeholder (B2) that WRAPS the draft onto as many rows as it
+	// (Conversations.py:1904/1936): an invisible empty footer with no caption
+	// and no placeholder that WRAPS the draft onto as many rows as it
 	// needs, growing the urwid Frame's flow footer. msg_editor is 3-hex #111 /
 	// #0bb (ui/TextUI.py:32/85), cube-quantized to #000000 / #00afaf.
 	cw.editor = NewReadlineEdit(app.killRing, "", "")
@@ -503,8 +502,7 @@ func (cw *ConversationWidget) ClearEditor() {
 // ctrl d/p/f/s and its special "up" and returns every other key — "tab"
 // included — to the widget above it. Deciding it in handleComposerKey instead
 // would leave Tab dead while the composer had focus, so focus could never come
-// back out of the editor and the "[Tab] ↓ Editor" shortcut-bar hint would be a
-// lie.
+// back out of the editor.
 func (cw *ConversationWidget) handleInput(event *tcell.EventKey) *tcell.EventKey {
 	if event.Key() == tcell.KeyTab {
 		cw.toggleFocusArea()
@@ -892,14 +890,11 @@ func (cw *ConversationWidget) buildFooter() {
 			)
 		}
 		// The banner FILLS the footer slot (weight 1), exactly as the composer
-		// does below. Its own height must not be pinned to the wrap count
-		// computed here: this runs with whatever width the frame happens to
-		// have, and the appliance starts the client at 80x24 and RESIZEs it to
-		// the real grid afterwards. A height captured at the narrow width (16
-		// rows at the ~38 columns that phase leaves the pane, against 13 at the
-		// real 52) then painted past the panel's bottom border until the frame
-		// was rebuilt. Draw re-wraps at the live width and the slot's height is
-		// the live wrap count (resizeFooter), so filling it keeps both right.
+		// does below. Its height must not be pinned to the wrap count computed
+		// here: this runs with whatever width the frame happens to have, and the
+		// appliance starts the client at one grid size and resizes it afterwards.
+		// Draw re-wraps at the live width and the slot's height is the live wrap
+		// count (resizeFooter), so filling it keeps both right.
 		rows := cw.footerRowsAt(cw.footerInnerWidth())
 		cw.footerRows = rows
 		cw.footerArea.AddItem(cw.cautionBanner, 0, 1, false)
@@ -1003,11 +998,9 @@ func (cw *ConversationWidget) resizeFooter(width, height int) {
 //
 // The wording is asserted byte-for-byte against the installed Python reference
 // by TestEditorAllowedBannerTextMatchesSOT, so a nomadnet upgrade that rewords
-// this string fails that test rather than going unnoticed. The text must not be
-// re-transcribed by hand from a checkout: nomadnet 1.2.3 said "should arrive
-// shortly, if available. Close this conversation and reopen it to try again.",
-// and a stale literal of that wording was held here long after 1.2.8 replaced
-// it with "…you will be able to send messages as soon as they arrive."
+// this string fails that test rather than going unnoticed. Do not re-transcribe
+// the text by hand from a checkout: releases differ, and only the installed
+// reference is authoritative.
 func (cw *ConversationWidget) editorAllowedBannerText() string {
 	g := cw.glyphs()
 	return "\n" + g["info"] + "\n\n" +
@@ -1106,10 +1099,11 @@ func (cw *ConversationWidget) updatePeerInfo() {
 
 // hasVisibleTrustBanner reports whether the trust banner should show,
 // mirroring Python's has_visible_trust_banner (Conversations.py:1953-1960),
-// which reads the directory trust level fresh each render. We prefer the live
-// OnResolveTrust lookup (so a peer trusted via the New Conversation / Peer Info
-// dialog is reflected immediately, even before the conversation list catches
-// up) and fall back to the cached TrustLevel snapshot when no resolver is wired.
+// which reads the directory trust level fresh each render. The live
+// OnResolveTrust lookup is preferred (so a peer trusted via the New Conversation
+// / Peer Info dialog is reflected immediately, even before the conversation list
+// catches up), falling back to the cached TrustLevel snapshot when no resolver
+// is wired.
 func (cw *ConversationWidget) hasVisibleTrustBanner() bool {
 	if cw.trustBannerDismissed {
 		return false
@@ -1285,7 +1279,7 @@ func (cw *ConversationWidget) relativeTimesChanged() bool {
 
 // renderedMessageText returns the concatenated per-message entry text (tags
 // stripped when strip is true) — the diagnostics view of what the message
-// list renders, mirroring reading the old flat TextView.
+// list renders.
 func (cw *ConversationWidget) renderedMessageText(strip bool) string {
 	var sb strings.Builder
 	for _, e := range cw.messageList.entries {
@@ -1369,8 +1363,8 @@ func (cw *ConversationWidget) renderMessageEntry(msg ConversationMessage) *messa
 func (cw *ConversationWidget) headerInputs(msg ConversationMessage) MessageHeaderInputs {
 	// Python reads app.lxmf_destination.hash fresh on every widget build, so
 	// resolve the own hash live here too: a one-shot snapshot taken while the
-	// LXMF router was still initializing kept OwnHash nil for the widget's
-	// whole lifetime and classified every message (sent included) as inbound.
+	// LXMF router was still initializing can keep OwnHash nil for the widget's
+	// whole lifetime and classify every message (sent included) as inbound.
 	ownHash := cw.OwnHash
 	if cw.OnOwnHash != nil {
 		if h := cw.OnOwnHash(); len(h) > 0 {
@@ -1423,10 +1417,10 @@ func (cw *ConversationWidget) headerInputs(msg ConversationMessage) MessageHeade
 			// that case, so LXMessageWidget's FIRST branch renders
 			// "msg_header_failed" with the warning glyph and no arrow
 			// (Conversations.py:2607-2609). Fabricating an inbound source with
-			// a validated signature here instead rendered own-sent messages
-			// with the green "✓ ←" inbound header — the reported direction
-			// bug. Leave SourceHash nil so the header takes the same
-			// no-source → msg_header_failed branch Python takes.
+			// a validated signature here would instead render own-sent messages
+			// with the green "✓ ←" inbound header. Leave SourceHash nil so the
+			// header takes the same no-source → msg_header_failed branch Python
+			// takes.
 		}
 	}
 	return in

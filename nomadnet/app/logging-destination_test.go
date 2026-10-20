@@ -31,8 +31,7 @@ import (
 //	else:
 //	    RNS.logdest = RNS.LOG_STDOUT
 //
-// The port chose the log FILE unless -c was given, so `destination = stdout` was
-// silently ignored and a user who asked for console logging got a file instead.
+// Any value other than "file" selects stdout, and -c forces console logging.
 func TestLoggingDestinationFromConfig(t *testing.T) {
 	// Not parallel — Init() starts real RNS/LXMF subsystems.
 

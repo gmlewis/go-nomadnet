@@ -27,11 +27,11 @@ import (
 // alignment matches urwid's left-heavy centering: when the slack
 // (available - title) is odd, the extra dash goes to the LEFT. Python
 // nomadnet (urwid) renders `┌───...─── Topics ───...──┐` with
-// left = right + 1 at odd widths; tview previously centered it
-// (left == right). The fix changes tview's Print centering to
-// (maxWidth - textWidth + 1) / 2, matching urwid's ceil-based left margin.
+// left = right + 1 at odd widths; tview's Print centers with
+// (maxWidth - textWidth) / 2 and so gives left == right. The border drawing
+// uses (maxWidth - textWidth + 1) / 2, matching urwid's ceil-based left margin.
 //
-// Golden values captured from Python urwid LineBox at widths 43, 44, 45:
+// Golden values from Python urwid LineBox at widths 43, 44, 45:
 //
 //	width=43: left=17 right=16
 //	width=44: left=17 right=17

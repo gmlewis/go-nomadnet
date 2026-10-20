@@ -46,13 +46,13 @@ func repoRoot(t *testing.T) string {
 	}
 }
 
-// packagesImportingLocation returns every package directory in the module whose Go sources
-// name this package, as slash-separated paths relative to the module root.
+// packagesImportingLocation returns every package directory in the module whose Go
+// sources name this package, as slash-separated paths relative to the module root.
 //
-// It is a plain source scan rather than a build query on purpose. A type checker answers "who
-// imports this today", which is only true of the build it was run against; a scan answers "who
-// mentions this", which is what a reviewer needs and what survives a build tag, a platform, or
-// a file that only compiles in CI.
+// It is a plain source scan rather than a build query on purpose: a type checker
+// answers "who imports this today", which is only true of the build it ran against;
+// a scan answers "who mentions this", which covers every build tag, platform, and
+// file that only compiles in CI.
 func packagesImportingLocation(t *testing.T) []string {
 	t.Helper()
 
@@ -105,31 +105,19 @@ func packagesImportingLocation(t *testing.T) []string {
 }
 
 // TestTheApplicationLayerCannotReachTheReaderPosition is the structural half of the privacy
-// argument, and it is the stronger half.
-//
-// The rendering tests prove that the client never *prints* the reader's own coordinate. This
-// one proves something harder to break: that the layers which announce, fetch pages, send
-// messages, and write state cannot reach the position at all. A `L Micron location construct is
-// resolved against the reader by the terminal UI and by nothing else, so there is nothing for
-// the network-facing code to serialise, deliberately or by accident.
-//
-// The claim is only worth anything if it is checked, and it is exactly the kind of claim that
-// rots: a future feature — a status line, a log entry, a "share my location" helper in the wrong
-// package — would quietly give the application layer a reference to the reader's position, and
-// every other privacy test here would still pass.
-//
-// `nomadnet/micron/location-extension.md` asserts that nothing leaves the node. This test, the
-// rendering tests beside it, and the wire capture in the project's E11 are what make that
-// assertion evidence rather than prose.
+// argument: the rendering tests prove that the client never *prints* the reader's own
+// coordinate, and this one proves that the layers which announce, fetch pages, send
+// messages, and write state cannot reach the position at all. A `L Micron location
+// construct is resolved against the reader by the terminal UI and by nothing else, so
+// there is nothing for the network-facing code to serialise.
 func TestTheApplicationLayerCannotReachTheReaderPosition(t *testing.T) {
 	t.Parallel()
 
 	importers := packagesImportingLocation(t)
 
-	// The anti-vacuity guard, and it is the important part. A negative assertion passes
-	// trivially if the thing it looks for has been renamed, moved, or misspelled: the scan would
-	// find no importers at all and report success. So the one legitimate importer is required to
-	// be found.
+	// The anti-vacuity guard: a negative assertion passes trivially if the thing it
+	// looks for has been renamed, moved, or misspelled, so the one legitimate
+	// importer is required to be found.
 	allowed := "cmd/gonomadnet"
 	foundAllowed := false
 	for _, dir := range importers {

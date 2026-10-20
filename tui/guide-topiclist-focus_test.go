@@ -63,8 +63,7 @@ func TestGuideTopicListFocusAfterRender(t *testing.T) {
 	}
 
 	// Move to item 0 and verify bodyListAtTop recognizes the IndicativeListBox
-	// (so the Up-at-top→menu transition works). This is the specific bug from
-	// the TODO: bodyListAtTop didn't recognize the focused widget.
+	// (so the Up-at-top→menu transition works).
 	gd.topics.SetCurrentItem(0)
 	app.Main.Root().Draw(screen)
 	if !app.Main.bodyListAtTop() {

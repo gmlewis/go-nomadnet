@@ -292,8 +292,8 @@ func fileBrowserContent(app *App, startPath string, onDone func(selected []strin
 	return content
 }
 
-// appThemeVal returns the app's theme or ThemeDark (for list focus styling when
-// the dialog is built without a fully-wired app, e.g. in tests).
+// appThemeVal returns the app's theme, or ThemeDark when app is nil (for list
+// focus styling when the dialog is built without a fully-wired app).
 func appThemeVal(app *App) int {
 	if app != nil {
 		return app.Theme

@@ -201,11 +201,7 @@ func TestCollectAndroidArtifacts(t *testing.T) {
 // appliance: an APK is just another asset of its release, so once that release falls out of
 // the retention window every file on it goes, the appliance included.
 //
-// The appliance used to be exempt from the prune — kept forever as a signed install artifact
-// somebody might want to re-fetch. That grew without bound, and the exemption was
-// inconsistent anyway: the iOS IPA was never on the list, so it survived only because its
-// name happened to miss the platform pattern the APK also happened to miss. The retention
-// window is the only policy now, and it selects nothing by name.
+// The retention window is the only policy, and it selects nothing by name.
 func TestThePruneDeletesAnApplianceAtTheEndOfItsWindow(t *testing.T) {
 	t.Parallel()
 
@@ -303,17 +299,15 @@ func TestReleaseNotesDescribeTheAndroidAppliance(t *testing.T) {
 				t.Errorf("the release notes do not mention %q:\n%v", want, notes)
 			}
 		}
-		// The appliance stopped needing another app to run the client, and a reader told to
-		// install one has been given work that does not exist and a reason to think the
-		// appliance is something other than one APK.
+		// The appliance runs the client itself; a reader sent to another app would be given
+		// work that does not exist and a reason to think the appliance is more than one APK.
 		if strings.Contains(notes, "Termux") {
 			t.Errorf("the notes still send the reader to another app:\n%v", notes)
 		}
 		// The cross-repo pin is the whole reason for the version sentence: the APK embeds
 		// daemons that are not built from this repository at all. The check is on the phrase
 		// alone, without the "v" the sentence puts in front of it, because a version the
-		// reader cannot use renders as "van unrecorded version" — which is how this went
-		// unnoticed: the guard matched a string the notes never contained.
+		// reader cannot use renders as "van unrecorded version".
 		if strings.Contains(notes, "unrecorded version") {
 			t.Errorf("the go-reticulum version was not read from the sibling module:\n%v", notes)
 		}
@@ -332,11 +326,8 @@ func TestReleaseNotesDescribeTheAndroidAppliance(t *testing.T) {
 // TestReadGoReticulumVersion asserts that the version the notes quote is the pin the release
 // actually ships, so the cross-repo pin cannot silently drift.
 //
-// It compares against go.mod, and it does not skip when a sibling checkout is absent. CI
-// checks out this repository and nothing else, so a sibling is exactly the thing the test
-// could not have: the version it read was the developer's workspace's, the notes said
-// "van unrecorded version" on every published release, and this test passed by skipping on
-// the one machine where the mistake was invisible.
+// It compares against go.mod and never skips when a sibling checkout is absent: CI checks out
+// this repository and nothing else, so a sibling is exactly the thing the test cannot have.
 func TestReadGoReticulumVersion(t *testing.T) {
 	t.Parallel()
 
@@ -398,10 +389,9 @@ replace github.com/gmlewis/go-reticulum => ../go-reticulum
 	}
 }
 
-// TestBuildAndroidApplianceRunsTheBuildScript is the guard for the confusion this replaces: a
-// publish used to only consume a pre-staged APK, so bumping the version and publishing shipped
-// a release with no appliance and a line about a file named for the OLD version having been
-// skipped. A publish now builds the appliance for the version it is publishing.
+// TestBuildAndroidApplianceRunsTheBuildScript pins that a publish builds the appliance for the
+// version it is publishing rather than consuming a pre-staged file, which a version bump
+// would leave stale.
 func TestBuildAndroidApplianceRunsTheBuildScript(t *testing.T) {
 	t.Parallel()
 

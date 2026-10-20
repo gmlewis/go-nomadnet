@@ -49,13 +49,11 @@ func dialogLeftTexts(t *testing.T, cd *ChannelsDisplay) []*urwidLeftText {
 	return rows
 }
 
-// TestChannelsCtrlDOverLimitOpensSplitDialog is the regression test for the
-// 2026-09-14 glenn-kamrui report: C-d on a draft over the per-message limit
-// must NOT be a silent no-op. Python's RoomWidget.send_message hands the draft
-// to _open_split_dialog (Channels.py:879-889), which raises the "Message Too
-// Long" dialog carrying the byte counts, the split plan, the part-1 preview and
-// Send Split / Cancel. Before this fix the gate's OnSplitDialog callback was
-// unwired, so the key did nothing at all: no send, no dialog, no notice.
+// TestChannelsCtrlDOverLimitOpensSplitDialog pins the over-limit send path: C-d
+// on a draft over the per-message limit must NOT be a silent no-op. Python's
+// RoomWidget.send_message hands the draft to _open_split_dialog
+// (Channels.py:879-889), which raises the "Message Too Long" dialog carrying the
+// byte counts, the split plan, the part-1 preview and Send Split / Cancel.
 func TestChannelsCtrlDOverLimitOpensSplitDialog(t *testing.T) {
 	t.Parallel()
 
@@ -121,11 +119,9 @@ func TestChannelsCtrlDOverLimitOpensSplitDialog(t *testing.T) {
 		t.Error("Send Split must be the dialog's initial focus (Python's Pile default)")
 	}
 
-	// The dialog must be visible, not just constructed: the user's report was
-	// that C-d produced nothing on screen at all. Rendered at a standard
-	// 80-column terminal — the width of the reported session — the dialog is
-	// wide enough for the full byte-count and limit lines, and the buttons carry
-	// urwid's "< label >" style.
+	// The dialog must be visible, not just constructed: rendered at a standard
+	// 80-column terminal it is wide enough for the full byte-count and limit
+	// lines, and the buttons carry urwid's "< label >" style.
 	screen := strings.Join(renderPrimitive(t, cd.dialogOverlay, 80, 24), "\n")
 	for _, want := range []string{
 		"Message Too Long",

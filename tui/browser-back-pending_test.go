@@ -22,10 +22,10 @@ import (
 // TestGoBackNoopWhileLinkFetchPending verifies that GoBack is a no-op
 // while a link click's fetch is still in flight, matching Python's
 // Browser.back() guard: `if not self.history_inc and not self.history_dec`
-// (Browser.py:1079). Before the fix, GoBack would decrement histIdx and
-// call displayURL, which rolled back the pending link push and started a
-// new fetch — but the original link fetch was still in flight and would
-// overwrite the back-navigated page when it completed.
+// (Browser.py:1079). Otherwise GoBack would decrement histIdx and call
+// displayURL, rolling back the pending link push and starting a new fetch —
+// while the original link fetch could still land and overwrite the
+// back-navigated page.
 func TestGoBackNoopWhileLinkFetchPending(t *testing.T) {
 	t.Parallel()
 

@@ -22,19 +22,17 @@ import (
 	"time"
 )
 
-// Regression tests for fleet bug #13 (the glenn-OMEN-875 SSH session): on a
-// headless Linux box there is no X11/Wayland clipboard backend, so the
-// golang.design write is a no-op and the copy previously vanished entirely.
-// The tmux `load-buffer -w` fallback both fills the running tmux server's
-// paste buffer and forwards OSC 52 toward the outer terminal, so the Peer
-// Info address copy reaches the machine the user types on.
+// Clipboard fallback tests. On a headless Linux box there is no X11/Wayland
+// clipboard backend, so the golang.design write is a no-op and a copy would
+// vanish entirely. The tmux `load-buffer -w` fallback both fills the running
+// tmux server's paste buffer and forwards OSC 52 toward the outer terminal, so
+// the Peer Info address copy reaches the machine the user types on.
 //
-// Fleet bug #14 (the glenn-mac-mini-m2 SSH session) is the same symptom with a
-// WORKING native backend: AppKit is present, so the golang.design write
-// succeeds — and fills the REMOTE Mac's pasteboard, which the user never sees.
-// The tmux buffer write must therefore run inside tmux even when ready is
-// true; tmux drops an application's own OSC 52 under its default
-// `set-clipboard external` but always forwards its own `load-buffer -w`.
+// The tmux buffer write must run inside tmux even when a native backend works
+// (e.g. AppKit over SSH): the native write fills the REMOTE machine's
+// pasteboard, which the user never sees. tmux drops an application's own OSC 52
+// under its default `set-clipboard external` but always forwards its own
+// `load-buffer -w`.
 
 func TestClipboardTmuxFallbackWhenNoBackend(t *testing.T) {
 	t.Setenv("TMUX", "/tmp/tmux-0/default,123,0")
@@ -100,7 +98,7 @@ func TestClipboardWriteTextFallsBackWhenInitFailed(t *testing.T) {
 	}
 }
 
-// TestClipboardWriteTextFillsTmuxBufferWithNativeBackend pins fleet bug #14:
+// TestClipboardWriteTextFillsTmuxBufferWithNativeBackend pins the other half:
 // inside tmux the buffer write must happen even when the native clipboard
 // backend works (the AppKit-backed remote mac), because the native write only
 // reaches the pasteboard of the machine gonomadnet runs on.

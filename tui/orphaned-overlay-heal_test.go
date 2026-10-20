@@ -22,14 +22,12 @@ import (
 	"github.com/gmlewis/tview"
 )
 
-// Regression tests for fleet bug #14 (the glenn-mac-mini-m2 session: Ctrl-p →
-// Esc → dead arrows, unable to exit the message window): the dialog-open
-// state can desync from the actual focus — a dialog left logically open but
-// invisible/orphaned (directly observed live during the bug #13 forensics:
-// focus sat inside its OK row while the screen showed the plain page). Keys
-// then dispatch into the invisible dialog (or nowhere), and every page
-// shortcut and arrow appears dead until the process is restarted. The
-// dispatcher now detects the orphaned state and heals it on the next key.
+// These tests pin the dialog-open healing path. The dialog-open state can
+// desync from the actual focus: a dialog left logically open but invisible or
+// orphaned, with focus sitting inside its OK row while the screen shows the
+// plain page. Keys then dispatch into the invisible dialog (or nowhere), and
+// every page shortcut and arrow appears dead until the process is restarted.
+// The dispatcher detects the orphaned state and heals it on the next key.
 
 // TestOrphanedOverlayStateHealedOnKey pins the heal: with dialogOpen stuck
 // true and NO dialog owning the focus, the next key recovers the state and is
@@ -40,7 +38,7 @@ func TestOrphanedOverlayStateHealedOnKey(t *testing.T) {
 	cd := NewConversationsDisplay(app, nil)
 
 	// Simulate the corrupted state: the flag stuck, no overlay installed,
-	// focus on the page's list (the live symptom — a stale invisible dialog).
+	// focus on the page's list (a stale invisible dialog).
 	cd.dialogOpen = true
 	if !cd.overlayStateOrphaned() {
 		t.Fatalf("stuck dialogOpen without any focused overlay must be detected as orphaned")
@@ -53,7 +51,7 @@ func TestOrphanedOverlayStateHealedOnKey(t *testing.T) {
 	}
 
 	// The next key heals the state AND is processed: Ctrl-N opens the New
-	// Conversation dialog (the shortcut that was dead in the bug report).
+	// Conversation dialog (the shortcut that was unresponsive).
 	if !cd.fireKey(t, tcell.KeyCtrlN) {
 		t.Fatalf("Ctrl-N still consumed=nothing after the heal — the keyboard would stay dead")
 	}
@@ -124,8 +122,7 @@ func TestRecoverOrphanedOverlaysClearsAllSlots(t *testing.T) {
 	app := newTestApp()
 	cd := NewConversationsDisplay(app, nil)
 
-	// Orphaned flags with a stale overlay installed and a stale footer
-	// region — the corrupted state from the bug report.
+	// Orphaned flags with a stale overlay installed and a stale footer region.
 	cd.dialogOpen = true
 	cd.shortcutFocus = "editor"
 	cd.ShowSyncDialog("", nil, SyncDialogHooks{}, nil)

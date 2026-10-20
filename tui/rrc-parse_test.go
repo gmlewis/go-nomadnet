@@ -248,10 +248,10 @@ func TestShortHash(t *testing.T) {
 func TestFormatTimestamp(t *testing.T) {
 	t.Parallel()
 
-	// A zone that is deliberately not UTC and not the test machine's, so that a
-	// formatter which reached for either is caught. Python renders these through
-	// time.localtime (Channels.py:207-211), so four hours west of UTC is the
-	// expected answer and UTC is the bug.
+	// A zone that is deliberately not UTC and not the test machine's, so a
+	// formatter which reached for either is caught. Python renders these
+	// through time.localtime (Channels.py:207-211), so four hours west of UTC
+	// is the expected answer.
 	newYork := time.FixedZone("EDT", -4*60*60)
 
 	tests := []struct {
@@ -276,9 +276,8 @@ func TestFormatTimestamp(t *testing.T) {
 	}
 }
 
-// TestFormatTimestampUsesTheLocalZone is the reason the live channel view is
-// right on a desktop and wrong on Android until the zone is resolved: the
-// formatter renders in time.Local, whatever that is.
+// TestFormatTimestampUsesTheLocalZone pins that the formatter renders in
+// time.Local, whatever that is, so the channel view follows the host's zone.
 func TestFormatTimestampUsesTheLocalZone(t *testing.T) {
 	t.Parallel()
 

@@ -25,22 +25,11 @@ import (
 // startPProf starts an HTTP server exposing net/http/pprof endpoints at addr
 // (e.g. "127.0.0.1:6060"). It is strictly opt-in via the -pprof-addr flag: when
 // addr is empty it is a no-op with zero overhead (no goroutine, no listener,
-// no pprof sampling).
-//
-// It exists so a REAL-terminal CPU profile can be captured while interacting
-// with the TUI. The headless tcell.SimulationScreen used by the go-test
-// benchmarks (tui/perf-*_test.go) measures the Go-side render/CPU cost but
-// cannot reproduce the real-terminal flush/cursor costs that drive the visible
-// cursor flicker and scroll sluggishness — only profiling the live binary can.
+// no pprof sampling). It exists so a live CPU profile can be captured while
+// interacting with the TUI, which a simulation screen cannot reproduce.
 //
 //	gonomadnet -textui -pprof-addr 127.0.0.1:6060
-//	# reproduce the flicker/scroll in the terminal, then in another shell:
 //	go tool pprof -http :8080 http://127.0.0.1:6060/debug/pprof/profile?seconds=30
-//
-// Expected hot symbols while scrolling a Guide page: WordWrap, wrappedRowCount,
-// ScrollBar.Draw, TextView.Draw. While moving the mouse over the Network page:
-// urwidColumns.MouseHandler, Application.SetFocus, Application.draw. While
-// idle: Application.draw firing on every background QueueUpdateDraw tick.
 func startPProf(addr string) {
 	if addr == "" {
 		return

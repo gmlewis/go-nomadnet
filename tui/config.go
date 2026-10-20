@@ -139,10 +139,8 @@ func (cd *ConfigDisplay) Widget() tview.Primitive {
 // explainer text or the "Open Editor" button — currently has focus. The
 // centralized MainDisplay.bodyListAtTop only recognizes *tview.List,
 // IndicativeListBox, and centeredText, so the button-focused config page must
-// own this transition itself, exactly as Python's ConfigFiller wrapper does.
-// This is the fix for the reported bug where, after Ctrl-x exits the embedded
-// editor and the cursor lands back on "Open Editor", Up could no longer reach
-// the main menu.
+// own this transition itself, exactly as Python's ConfigFiller wrapper does:
+// with the cursor on "Open Editor", Up must still reach the main menu.
 //
 // The capture is attached to cd.widget (the "main" page), so tview's Pages
 // only invokes it while the "main" page is the focused entry — during editing
@@ -196,7 +194,7 @@ func (cd *ConfigDisplay) SetEditorCmd(cmd string) { cd.editorCmd = cmd }
 // forbidden — and the button that started nothing is indistinguishable from a
 // button that is broken. Python raises out of the same failure; the sibling
 // Interfaces page shows it (see InterfacesDisplay.ShowEditor), and this one
-// now does too.
+// does too.
 func (cd *ConfigDisplay) ShowEditor(editorCmd, filePath string) {
 	if cd.editor != nil {
 		cd.closeEditor()

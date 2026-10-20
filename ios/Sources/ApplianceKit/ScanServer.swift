@@ -55,10 +55,8 @@ public enum ScanServerError: Error, CustomStringConvertible {
 /// accept loop is a thread either way.
 ///
 /// The address is the IPv4 loopback, stated rather than resolved, so that the endpoint is a
-/// plain `host:port` the client can dial. Android's appliance learned this the hard way: it
-/// named whatever `getLoopbackAddress` returned, which on that device is `::1`, and Go
-/// refuses an unbracketed IPv6 literal with "too many colons in address" — a Scan button that
-/// did nothing at all, on every device whose loopback resolves to IPv6 first.
+/// plain `host:port` the client can dial. A host that resolves to `::1` first would otherwise
+/// hand Go an unbracketed IPv6 literal, which it refuses as "too many colons in address".
 public final class ScanServer {
 
     /// The token every request must carry, as lower-case hex.

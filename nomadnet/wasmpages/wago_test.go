@@ -71,8 +71,7 @@ func TestRenderPagePlugin(t *testing.T) {
 // invocation deadline interrupts the native loop: the call returns
 // context.DeadlineExceeded and does not block. The 50ms budget leaves the
 // interrupt mechanism ample headroom; the generous wall-clock bound only
-// guards against a hung process, matching the engine's own cancellation
-// tests (about 20ms observed).
+// guards against a hung process.
 func TestRenderSpinTimeout(t *testing.T) {
 	t.Parallel()
 

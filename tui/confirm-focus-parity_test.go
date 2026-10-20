@@ -22,11 +22,10 @@ import (
 	"github.com/gmlewis/tview"
 )
 
-// Regression tests for fleet bug #10 (2026-09-01): Ctrl-x on a conversation →
-// confirm → Enter did NOTHING. The live diag trace showed the confirm dialog's
-// focus stranded on the *tui.urwidColumns BUTTON-ROW CONTAINER (no focused
-// child), where a bare Enter was dropped by the row's InputHandler — the Yes
-// handler never fired and the conversation was never deleted.
+// These tests pin the confirm dialog's focus contract: a dialog whose focus
+// strand on the button-row CONTAINER (no focused child) drops a bare Enter, so
+// the Yes handler never fires. The dialog must focus the Yes button itself, and
+// the row must route Enter to its first focusable child as a fallback.
 
 // TestConfirmDialogYesOwnsFocus pins the guarantee that the Yes button owns
 // the keyboard after the dialog opens: the app's focused primitive IS the Yes
@@ -65,9 +64,9 @@ func TestConfirmDialogYesOwnsFocus(t *testing.T) {
 }
 
 // TestButtonRowEnterWithoutFocusedChild pins the row-level recovery: when a
-// urwidColumns button row holds focus WITHOUT a focused child (the live
-// observed state behind bug #10), Enter must reach the row's first focusable
-// child (the primary action) instead of being silently dropped.
+// urwidColumns button row holds focus WITHOUT a focused child, Enter must reach
+// the row's first focusable child (the primary action) instead of being
+// silently dropped.
 func TestButtonRowEnterWithoutFocusedChild(t *testing.T) {
 	t.Parallel()
 	yesFired, noFired := false, false
@@ -81,7 +80,7 @@ func TestButtonRowEnterWithoutFocusedChild(t *testing.T) {
 	row.Blur()
 	row.Box.Focus(nil)
 
-	// Sanity: reproduce the broken pre-fix state — no child reports focus.
+	// Sanity: no child reports focus, the state a stranded focus leaves.
 	anyChildFocused := false
 	for _, child := range row.children {
 		if child.HasFocus() {
@@ -110,7 +109,7 @@ func TestConversationsDeleteEndToEnd(t *testing.T) {
 	app := newTestApp()
 	conv := ConversationInfo{SourceHash: "bbf3172fdf752ce1afc332ff44119a4f", TrustLevel: "untrusted"}
 	cd := NewConversationsDisplay(app, []ConversationInfo{conv})
-	cd.SetShowTrusted(false) // the Untrusted tab (the bug report's state)
+	cd.SetShowTrusted(false) // the Untrusted tab, where the delete flow begins
 
 	deleted := ""
 	cd.OnDeleteConv = func(conv ConversationInfo) { deleted = conv.SourceHash }

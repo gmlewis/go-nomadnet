@@ -72,8 +72,8 @@ type Message struct {
 	// FAILED. nil skips the check (headless/tests).
 	PendingChecker func(hash []byte) bool
 	// AttachmentPath, when set, overrides the global attachment directory
-	// base for this message. Tests set it directly to avoid touching shared
-	// global state; the app sets it when constructing messages.
+	// base for this message. The app sets it when constructing messages and
+	// Conversation.ScanStorage copies the cache's path onto each message.
 	AttachmentPath string
 
 	Loaded bool
@@ -136,9 +136,8 @@ func NewMessage(filePath string) *Message {
 
 	// Python __init__ seeds _cached_hash from the hex filename
 	// (Conversation.py:443-447: bytes.fromhex(filename)), so get_hash never
-	// needs to load from disk. Do the same: without it, GetHash's
-	// "index didn't supply a hash" fallback reloads the envelope and clobbers
-	// index-restored fields.
+	// needs to load from disk. Do the same: without it, GetHash falls back to
+	// loading the envelope and clobbers index-restored fields.
 	var cachedHash []byte
 	if filename := filepath.Base(filePath); len(filename) == 64 {
 		if h, err := hex.DecodeString(filename); err == nil {
@@ -322,8 +321,7 @@ func (m *Message) ContentRenderer() any {
 // IsMarkdown reports whether the message declares the markdown content renderer
 // (FIELD_RENDERER == RENDERER_MARKDOWN, 0x02). Python branches on exactly this to
 // render the body through MarkdownToMicron instead of as plain indented text
-// (Conversations.py:2714-2722), and the port composes markdown by default
-// (ComposeMarkdown), so it is the common case for a message this client sent.
+// (Conversations.py:2714-2722).
 //
 // The field's msgpack integer width varies with the value, so the comparison goes
 // through toInt rather than a type assertion.
@@ -449,9 +447,9 @@ func (m *Message) Load() {
 	// OUTBOUND/SENDING — that is no longer in the router's pending-outbound
 	// or pending-deferred-stamps queue is marked FAILED. Without this, an
 	// outbound message interrupted mid-send (app restart, crash) renders
-	// with the default "→" header branch instead of the "✕ →" FAILED glyph
-	// (B16). Skipped when no PendingChecker is wired (headless/tests) and
-	// when the message hash is unknown.
+	// with the default "→" header branch instead of the "✕ →" FAILED glyph.
+	// Skipped when no PendingChecker is wired (headless/tests) and when the
+	// message hash is unknown.
 	rawState := lxm.State()
 	if m.PendingChecker != nil && rawState > lxmf.StateGenerating && rawState < lxmf.StateSent {
 		hash := m.CachedHash
@@ -559,8 +557,8 @@ func (m *Message) computeAttachmentCacheFromFields() bool {
 
 // computeAttachmentCacheFromManifest rebuilds the attachment names from the
 // per-message attachment manifest, used when the envelope carries no attachment
-// fields. That is the state of every message that has already been through the
-// extraction + strip migration, so this is the branch that keeps the attachment
+// fields. That is the state of every message that has already been through
+// extraction and stripping, so this is the branch that keeps the attachment
 // rows on screen after a reload. It mirrors Python's `if not found_in_fields:`
 // fallback (Conversation.py:529-548): the manifest must exist, must parse, and
 // must list at least one file; anything else leaves the message with no

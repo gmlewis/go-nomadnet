@@ -16,10 +16,10 @@
 // Command serve-page runs a headless gonomadnet node that serves a directory of
 // micron pages (.mu) over a TCP RNS interface on the loopback address, and
 // prints its nomadnetwork.node destination hash. It is the fixture-serving node
-// for the local-loopback parity comparator (workflow C): both the Python
-// nomadnet client and the gonomadnet client connect to this server over a
-// TCPClientInterface and browse the same served page, so their renders can be
-// diffed with no real network and deterministic content.
+// for the local-loopback parity comparator: both the Python nomadnet client and
+// the gonomadnet client connect to this server over a TCPClientInterface and
+// browse the same served page, so their renders can be diffed with no real
+// network and deterministic content.
 //
 // The server uses a regular TCPServerInterface (the standard cross-implementation
 // RNS transport), not the shared-instance local interface, so external Python
@@ -180,9 +180,9 @@ func writeRNSConfig(cfgDir string, verbose bool) error {
 // freeLoopbackPort returns a free TCP port on the given bind address by opening
 // a throwaway listener and closing it. There is a small race window before the
 // real interface binds, which is acceptable for a local loopback test harness.
-// net.JoinHostPort brackets an IPv6 literal: concatenating "host:port" here
-// turned "::1" into "::1:0", which net.Listen rejects with "too many colons in
-// address".
+// net.JoinHostPort brackets an IPv6 literal; plain "host:port" concatenation
+// would turn "::1" into "::1:0", which net.Listen rejects with "too many colons
+// in address".
 func freeLoopbackPort(bind string) (int, error) {
 	l, err := net.Listen("tcp", net.JoinHostPort(bind, "0"))
 	if err != nil {

@@ -36,7 +36,7 @@ import (
 //     AT the fill column ("perfect space wrap"), dropping that space and
 //     starting line 2 with the remaining one of the double-space (" [C-r]…").
 //     tview's WordWrap instead breaks at the LAST space before overflow (before
-//     "Forward"), which is the bug this replaces.
+//     "Forward"), which drops a word urwid keeps on the line.
 //   - Conversations list bar at 80 cols: the fill column lands inside "Sort",
 //     so urwid walks back to the space after "[C-o]" → line 1 ends "[C-o]",
 //     line 2 starts "Sort  [C-p] My LXMF  [C-g] Fullscreen".
@@ -67,11 +67,9 @@ func TestUrwidSpaceWrap(t *testing.T) {
 			},
 		},
 		{
-			// Live capture (tooling/tui-parity/captures/pyaconv_100x28_00_esc.txt
-			// row 27): Python's wrapped bar line ends at "My LXMF" with NO
-			// trailing styled space — urwid trims the whitespace run at the
-			// break. The Go port kept one space ("...My LXMF "), painting one
-			// extra shortcutbar-background column.
+			// Python's wrapped bar line ends at "My LXMF" with NO trailing
+			// styled space — urwid trims the whitespace run at the break, so
+			// the shortcutbar background stops there.
 			"conversations list bar at 100 — break trims the trailing space",
 			listBar, 100,
 			[]string{
@@ -227,9 +225,8 @@ func TestMenuBarMouseCaptureConsumesAllActions(t *testing.T) {
 
 // TestTraceFocusIsOptIn pins the focus/quit forensic tracing gate. The traces
 // run in the per-key dispatch, so they must be off unless the environment names
-// a destination file: an always-on append opened, wrote and closed a file on
-// every keystroke (the trace file had reached 750 KB during the quit
-// investigation).
+// a destination file: an always-on append would open, write and close a file on
+// every keystroke and grow the trace file without bound.
 func TestTraceFocusIsOptIn(t *testing.T) {
 	// Not parallel: t.Setenv forbids it.
 	// The tempDir helper (not t.TempDir) keeps the path short on macOS.

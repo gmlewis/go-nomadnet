@@ -35,7 +35,7 @@ const (
 	// KindPartialOffLine is a partial directive that does not start its line.
 	// Micron tests for a partial only at the beginning of a line, so the
 	// directive is ordinary text: the visitor reads it and the partial is never
-	// fetched (the guestbook's quiet site counter shipped this way).
+	// fetched.
 	KindPartialOffLine Kind = "partial-off-line"
 	// KindLeakedDirective is a partial directive that survived into the rendered
 	// text, which is the same defect seen from the reader's side.

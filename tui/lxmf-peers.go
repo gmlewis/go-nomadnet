@@ -114,8 +114,7 @@ func (p *LXMFPeersDisplay) SetPeers(entries []LXMFPeerEntry) {
 	for _, e := range entries {
 		label := e.DisplayText
 		if label == "" {
-			// Legacy/simple fallback for callers that only populate
-			// Hash/Name (e.g. unit tests). Matches the prior placeholder.
+			// Fallback for callers that only populate Name/Hash (e.g. tests).
 			label = e.Name
 			if label == "" {
 				label = e.Hash
@@ -230,9 +229,8 @@ func FormatLXMFPeerEntry(d PeerEntryData, now time.Time) string {
 // followed by the f-string `f"{ar}"` (Network.py:1917,1924). Python's str(float)
 // always renders at least one decimal digit ("100.0", "0.0", "87.5", "33.33"),
 // so after Go's shortest-representation format we append ".0" when the result
-// has no decimal point. Rounding uses math.Round (half-away-from-zero); this
-// matches Python's round() for the non-exact-half values acceptance ratios
-// produce in practice.
+// has no decimal point. Rounding is half-up on 2 decimals, away from zero for
+// negative rates.
 func formatAcceptancePct(rate float64) string {
 	pct := rate * 100
 	rounded := float64(int64(pct*100+0.5)) / 100 // round to 2 decimals, half-up

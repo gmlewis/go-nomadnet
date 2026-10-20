@@ -25,9 +25,7 @@ import (
 // filenames containing multibyte UTF-8 characters are truncated by character
 // (rune) count, matching Python's Conversation.safe_attachment_name — which
 // slices `base[:200-len(ext)]` on a Python str (a sequence of code points),
-// never splitting a multibyte rune. The previous Go port sliced by byte
-// count, which both diverged from the Python output and produced incomplete
-// UTF-8 sequences that render as U+FFFD.
+// never splitting a multibyte rune.
 //
 // Golden values were captured from the Python original
 // (nomadnet/Conversation.py:815 safe_attachment_name) by running its exact

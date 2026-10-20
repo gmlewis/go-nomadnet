@@ -7,10 +7,10 @@ import (
 	"github.com/gmlewis/tview"
 )
 
-// TestEscProbeRealMainDisplay reproduces the reported bug: with the REAL
-// MainDisplay as the root main page, opening a TextView-content status dialog
-// (as the Local Peer "Saved" dialog does) and dispatching Esc through the root
-// Pages InputHandler (the path tview.Application takes) — does it dismiss?
+// TestEscProbeRealMainDisplay checks that with the REAL MainDisplay as the root
+// main page, a TextView-content status dialog (as the Local Peer "Saved" dialog
+// does) dismisses on Esc dispatched through the root Pages InputHandler — the
+// path tview.Application takes.
 func TestEscProbeRealMainDisplay(t *testing.T) {
 	app := newTestApp()
 	md := NewMainDisplay(app, 0, "default")

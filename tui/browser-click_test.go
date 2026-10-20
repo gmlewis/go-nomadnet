@@ -41,12 +41,13 @@ func typeRunes(t *testing.T, bd *BrowserDisplay, s string) {
 	}
 }
 
-// TestBrowserClickOnFormFieldFocusesIt pins the live report that neither input
-// box on a Micron form page could be clicked: the field editors are drawn as
-// off-tree overlays, so tview had no widget under the mouse and a click was
-// ignored. Python's urwid tree handles this in Pile.mouse_event (focus the row
-// under the press) plus Edit.mouse_event (move the edit cursor to the clicked
-// cell), so a click in a field puts the caret there and typing goes into it.
+// TestBrowserClickOnFormFieldFocusesIt pins that a click on a Micron form
+// page's input box focuses that field and puts the caret where the visitor
+// clicked: the field editors are drawn as off-tree overlays, so tview has no
+// widget under the mouse. Python's urwid tree handles this in Pile.mouse_event
+// (focus the row under the press) plus Edit.mouse_event (move the edit cursor
+// to the clicked cell), so a click in a field puts the caret there and typing
+// goes into it.
 func TestBrowserClickOnFormFieldFocusesIt(t *testing.T) {
 	t.Parallel()
 

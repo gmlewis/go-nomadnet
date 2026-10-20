@@ -22,20 +22,17 @@ import (
 	"github.com/gmlewis/tview"
 )
 
-// TestGuideReaderHardwareCursor pins B5 for the Guide reader: after a keypress
-// the focused selectable line must drive the real terminal cursor (tcell
-// ShowCursor), and each Down must move it to a different row so the
-// tmux-test-suite's cursor-y tracker sees movement (and does not false-bottom
-// during the within-viewport focus phase). Python positions the cursor via
-// urwid LinkableText.render → canvas.cursor (MicronParser.py:982-992); the Go
-// port mirrors this in guideReader.Draw → cursorScreenXY → ShowCursor, gated by
-// the 2 s key-timeout (cursorVisible). Before any key the cursor is hidden
-// (matching Python's key_timeout); after the first Down it appears and advances.
+// TestGuideReaderHardwareCursor pins the Guide reader's hardware cursor: after
+// a keypress the focused selectable line must drive the real terminal cursor
+// (tcell ShowCursor), and each Down must move it to a different row. Python
+// positions the cursor via urwid LinkableText.render → canvas.cursor
+// (MicronParser.py:982-992); the Go port mirrors this in guideReader.Draw →
+// cursorScreenXY → ShowCursor, gated by the 2 s key-timeout (cursorVisible).
+// Before any key the cursor is hidden (matching Python's key_timeout); after
+// the first Down it appears and advances.
 //
-// A SimulationScreen is used because it exposes GetCursor — the in-process
-// equivalent of `tmux display-message #{cursor_x},#{cursor_y}`. The live
-// tmux-test-suite verifies the same property end-to-end (B2 walk reaches the
-// bottom at ~500 downs only because cursorEverSeen becomes true).
+// A SimulationScreen is used because it exposes GetCursor, the in-process
+// equivalent of querying the terminal cursor position.
 func TestGuideReaderHardwareCursor(t *testing.T) {
 	t.Parallel()
 
@@ -61,8 +58,7 @@ func TestGuideReaderHardwareCursor(t *testing.T) {
 	// Drive the full input path (columns InputCapture → handleReaderKey →
 	// focusDown → noteKey) like the live app, and draw after each Down. After the
 	// first key the cursor must be in the READER pane (x >= 46, past the topics
-	// list) and advance one row per Down, so the tmux-test-suite's cursor-y
-	// tracker sees movement and does not false-bottom (B5).
+	// list) and advance one row per Down.
 	handler := gd.Widget().InputHandler()
 	var prevY int = -1
 	for i := range 6 {

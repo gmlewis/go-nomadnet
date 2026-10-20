@@ -4,7 +4,7 @@ go 1.26.4
 
 require (
 	github.com/creack/pty/v2 v2.0.1
-	github.com/gmlewis/go-reticulum v0.155.0
+	github.com/gmlewis/go-reticulum v0.156.0
 	github.com/gmlewis/tcell/v2 v2.13.13
 	github.com/gmlewis/tview v0.42.2
 	github.com/mattn/go-runewidth v0.0.16
@@ -14,7 +14,6 @@ require (
 	golang.org/x/sys v0.47.0
 	golang.org/x/term v0.45.0
 	golang.org/x/text v0.38.0
-	rsc.io/qr v0.2.0
 )
 
 require (
@@ -26,6 +25,7 @@ require (
 	golang.org/x/exp/shiny v0.0.0-20250606033433-dcc06ee1d476 // indirect
 	golang.org/x/image v0.41.0 // indirect
 	golang.org/x/mobile v0.0.0-20250606033058-a2a15c67f36f // indirect
+	rsc.io/qr v0.2.0 // indirect
 )
 
 // tcell fork (gmlewis/tcell): carries the inputLoop keychan/keyQ

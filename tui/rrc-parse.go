@@ -145,8 +145,8 @@ func ParseRoomListNotice(text string) (map[string]string, error) {
 
 // MakeMentionPattern returns a function that checks whether a text
 // contains an @nick mention with word boundary assertions.
-// Go's regexp lacks lookbehind, so we use a manual check.
-// Matches Python's _mention_re() behavior.
+// Go's regexp lacks lookbehind, so the caller must check boundaries with
+// MatchMention. Matches Python's _mention_re() behavior.
 func MakeMentionPattern(nick string) (*regexp.Regexp, error) {
 	if nick == "" {
 		return nil, fmt.Errorf("empty nick")
@@ -252,11 +252,11 @@ func ScanCodeBlocks(text string) []CodeBlockRegion {
 	// Inline backticks: `...` (not preceded by another backtick).
 	// Python's inline regex uses a (?<!`) lookbehind, so a backtick
 	// immediately preceded by another backtick is not an opener. Go's regexp
-	// lacks lookarounds, so we drive the regex manually and, on any match
-	// (accepted or rejected), advance one byte past the opener. This lets a
-	// backtick that Python would accept inside a rejected span — for example
-	// the `inline` after a ```fence``` — still be found, instead of being
-	// swallowed by a spurious "` and `" match that Python's lookbehind
+	// lacks lookarounds, so the scan drives the regex manually and, on any
+	// match (accepted or rejected), advances one byte past the opener. This
+	// lets a backtick that Python would accept inside a rejected span — for
+	// example the `inline` after a ```fence``` — still be found, instead of
+	// being swallowed by a spurious "` and `" match that Python's lookbehind
 	// suppresses.
 	inlineRe := regexp.MustCompile("(?s)`[^`\\n]+`")
 	pos := 0

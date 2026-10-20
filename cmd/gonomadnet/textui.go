@@ -53,8 +53,7 @@ import (
 	"github.com/gmlewis/tview"
 )
 
-// diagFile appends a line to a diagnostic file (TEMP debug for the input-box
-// reliability investigation).
+// diagFile appends a line to a diagnostic file.
 func diagFile(path, line string) {
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
@@ -67,10 +66,9 @@ func diagFile(path, line string) {
 // stdLogLineWriter splits Go std-log output into lines and routes each line
 // into the app's rns.Logger once it exists. Python parity: nomadnet sends all
 // logs through RNS.log into ~/.nomadnetwork/logfile with RNS's 5 MiB rotation
-// (RNS/__init__.py LOG_MAXSIZE), so there is no separate std-log file —
-// redirecting std log to its own unrotated file (the previous behavior) grew
-// without bound. Before the app logger exists, lines go to stderr (the TUI
-// has not taken over the terminal yet, so that is safe).
+// (RNS/__init__.py LOG_MAXSIZE), so there is no separate, unrotated std-log
+// file. Before the app logger exists, lines go to stderr (the TUI has not taken
+// over the terminal yet, so that is safe).
 type stdLogLineWriter struct {
 	logger atomic.Pointer[rns.Logger]
 	buf    []byte
@@ -106,11 +104,10 @@ func (w *stdLogLineWriter) route(line string) {
 
 // reportTUIError reports a terminal interface that would not run.
 //
-// On a desktop it is fatal, and deliberately so: a client whose interface did not
-// start is a client that is not running, and main.go's own comment records why that
-// must be loud rather than a silent exit 0. An appliance that hosts the client
-// inside its own process replaces this with a report and a return, because its
-// app has to survive its console closing.
+// On a desktop it is fatal: a client whose interface did not start is a client
+// that is not running, and that must be loud rather than a silent exit 0. An
+// appliance that hosts the client inside its own process replaces this with a
+// report and a return, because its app has to survive its console closing.
 var reportTUIError = func(err error) {
 	log.Fatalf("TUI error: %v", err)
 }
@@ -165,16 +162,15 @@ func runTextUI(configDir, rnsConfigDir string) {
 	// [textui] mouse_enabled and hide_guide reach the terminal and the menu bar
 	// here. Python hands the first to urwid as handle_mouse=mouse_enabled
 	// (ui/TextUI.py:201,229) and reads the second when it builds the menu buttons
-	// (ui/textui/Main.py:201); without these the port always enabled the mouse
-	// and always showed the Guide button, so both keys had no effect.
+	// (ui/textui/Main.py:201).
 	tuiApp := tui.NewApp(theme, glyphSet, colorMode,
 		tui.WithMouseEnabled(a.Config.TextUI.MouseEnabled),
 		tui.WithHideGuide(a.Config.TextUI.HideGuide),
 		tui.WithAnimationInterval(a.Config.TextUI.AnimationInterval))
 
-	// RRC message-render options (Python reads the rrc_* config toggles and
-	// the theme inside _message_widget, Channels.py:1281+): palette override,
-	// toggle state, the effective nick, and the glyph set.
+	// RRC message-render options: palette override, toggle state, the effective
+	// nick, and the glyph set (Python reads the rrc_* config toggles and the
+	// theme inside _message_widget, Channels.py:1281+).
 	rrcPalette := tui.DefaultNickPalette(theme)
 	if len(a.RRCNickColorsTheme) > 0 {
 		rrcPalette = a.RRCNickColorsTheme
@@ -200,9 +196,9 @@ func runTextUI(configDir, rnsConfigDir string) {
 
 	// Reader position for `L Micron location constructs, and the reader's heading
 	// for the relative bearing the location card shows. The optional [location]
-	// section is a gonomadnet extension: a static fix for a sensorless install, and
-	// a sensor feed for a device that has its own receiver. Without either, the
-	// client has no position and those constructs degrade to the bare Plus Code.
+	// section supplies a static fix for a sensorless install, and a sensor feed
+	// for a device that has its own receiver. Without either, the client has no
+	// position and those constructs degrade to the bare Plus Code.
 	//
 	// The source is live, so it is installed as a function rather than copied:
 	// the TUI renders on one goroutine while the sensor readers run on their own,
@@ -237,13 +233,11 @@ func runTextUI(configDir, rnsConfigDir string) {
 	tuiApp.SetScanner(tui.ScannerFromEnv())
 	// The reader's own exposure, said out loud whenever it changes.
 	//
-	// One line at startup is not enough to satisfy "the user can always see what the app
-	// knows": whether a live fix exists and how old it is are states that change, and a client
-	// that states them once and never again leaves the reader to guess. It is also the only
-	// record that the client ever held a position at all, which is what makes the privacy
-	// capture meaningful — a clean capture from a client that never had a fix proves nothing.
-	// The state is sampled once, and that one sample is both written and used as the
-	// watcher's baseline, so the same line cannot be written twice and a change landing
+	// One line at startup is not enough: whether a live fix exists and how old it
+	// is are states that change, and the reader should be able to see them. It is
+	// also the only record that the client ever held a position. The state is
+	// sampled once, and that one sample is both written and used as the watcher's
+	// baseline, so the same line cannot be written twice and a change landing
 	// between the two cannot be missed.
 	described := locationSource.Status().Describe()
 	log.Printf("reader position: %v", described)
@@ -268,13 +262,12 @@ func runTextUI(configDir, rnsConfigDir string) {
 
 	// Crash recovery. An unrecovered panic in a gonomadnet goroutine restores
 	// the terminal and writes the stack to a crash file instead of letting the
-	// runtime spray a GOTRACEBACK dump at the (raw, alt-screen) terminal — which
-	// is what leaves the tty in raw mode spewing escape-sequence garbage and
-	// forces a manual `reset`. tview restores the tty ONLY for panics in its own
-	// event-loop goroutine (and then re-panics); this defer catches that
-	// re-panic, and App.GoSafe/drainUpdates route background-goroutine panics
-	// here too. The launcher's EXIT trap remains the final backstop for panics
-	// in go-reticulum's own goroutines (which we cannot wrap from here).
+	// runtime spray a GOTRACEBACK dump at the raw, alt-screen terminal, which
+	// leaves the tty in raw mode and forces a manual `reset`. tview restores the
+	// tty ONLY for panics in its own event-loop goroutine (and then re-panics);
+	// this defer catches that re-panic, and App.GoSafe/drainUpdates route
+	// background-goroutine panics here too. The launcher's EXIT trap remains the
+	// final backstop for panics in go-reticulum's own goroutines.
 	handleCrash := func(r any) {
 		// Best-effort restore the tty so a bare-run user isn't left in raw mode.
 		go func() { defer func() { _ = recover() }(); tuiApp.RestoreTerminal() }()
@@ -328,11 +321,9 @@ func runTextUI(configDir, rnsConfigDir string) {
 
 	// External signals (SIGINT/SIGTERM — `kill`, the recovery path when the UI
 	// becomes unresponsive) run the SAME graceful exit as Ctrl-Q, so the
-	// directory and RNS state are saved and tcell restores the terminal,
-	// instead of the default immediate-death behavior that leaves the tty in
-	// raw mode on the alt screen. While the tty is in raw mode (ISIG cleared)
-	// Ctrl-C reaches the app as a key event, not a signal — this path covers a
-	// lost raw mode or an explicit kill.
+	// directory and RNS state are saved and tcell restores the terminal. While
+	// the tty is in raw mode (ISIG cleared) Ctrl-C reaches the app as a key
+	// event, not a signal — this path covers a lost raw mode or an explicit kill.
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
@@ -369,8 +360,7 @@ func runTextUI(configDir, rnsConfigDir string) {
 	// The client holds the terminal until this moment, and it is given back
 	// before anything else runs: the report below is fatal on a desktop, and an
 	// exit that skipped the restore would leave the shell reading in raw mode
-	// with the terminal still reporting the mouse — which is what prints
-	// escape-sequence garbage into the window when the user moves the mouse.
+	// with the terminal still reporting the mouse.
 	tuiApp.RestoreTerminal()
 
 	if err != nil {
@@ -381,7 +371,6 @@ func runTextUI(configDir, rnsConfigDir string) {
 	}
 }
 
-// wireDisplays connects the app data to the TUI display widgets.
 // wireDisplays builds and registers all body-page displays. It returns a
 // cleanup function that must be invoked on shutdown to release background
 // resources (e.g. the log live-tail goroutine).
@@ -673,17 +662,15 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 
 	// Debounce UIChangeCallback (fired from transport goroutines: one call per
 	// incoming announce/message, plus the end of async initRNS). Resetting a
-	// short timer on each fire coalesces a burst into one refreshDirectory, bounding
-	// the refresh rate to ~1 per refreshCoalesceWindow regardless of how fast
-	// announces arrive. An 80 ms window is imperceptible for a single event but
-	// collapses a tight path-response storm (hundreds of announces within a
-	// second or two) to a handful of refreshes.
-	// maxWait bounds the SUSTAINED-storm case the plain debounce cannot: with
-	// announces arriving faster than the window elapses, retriggering would
-	// postpone refreshDirectory indefinitely (the UI freezes on stale data). The
-	// 500 ms cap keeps the eventual refresh rate at ~2 Hz under a firehose
-	// while leaving quiet and burst-y traffic at the plain 80 ms trailing-edge
-	// behavior.
+	// short timer on each fire coalesces a burst into one refreshDirectory,
+	// bounding the refresh rate to ~1 per refreshCoalesceWindow regardless of how
+	// fast announces arrive. An 80 ms window is imperceptible for a single event
+	// but collapses a tight path-response storm to a handful of refreshes.
+	// maxWait bounds the sustained-storm case: with announces arriving faster
+	// than the window elapses, retriggering would postpone refreshDirectory
+	// indefinitely. The 500 ms cap keeps the eventual refresh rate at ~2 Hz
+	// under a firehose while leaving quiet and burst-y traffic at the plain
+	// 80 ms trailing-edge behavior.
 	const (
 		refreshCoalesceWindow = 80 * time.Millisecond
 		refreshMaxWait        = 500 * time.Millisecond
@@ -783,10 +770,10 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	networkDisplay.OnURLDialog = func() {
 		// Python Browser.url_dialog (Browser.py:1135-1182): title "Enter URL",
 		// caption "URL : ", Cancel/Go, overlaid on the browser pane at 65% width.
-		// D2: with a browser frame present, nd.handleInput delegates C-u to the
+		// With a browser frame present, nd.handleInput delegates C-u to the
 		// frame's bd.OnURLDialog (which pre-fills with the live URL), so this
-		// display-level handler now only fires when no browser frame exists —
-		// the field is empty either way, matching Python's current_url() == "".
+		// display-level handler only fires when no browser frame exists — the
+		// field is empty either way, matching Python's current_url() == "".
 		showURLDialog("", func(text string) {
 			navigateTo(browser.NormalizeEnteredURL(text))
 		})
@@ -914,12 +901,11 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		return data, true
 	}
 
-	// OnResolveKnownNodeInfo resolves the directory-backed fields the
+	// OnResolveKnownNodeInfo resolves the directory- and RNS-backed fields the
 	// KnownNodeInfo form needs (Python KnownNodeInfo __init__, Network.py:612-
-	// 740). The RNS-dependent fields (operator string via Identity.recall, hop
-	// distance via Transport.hops_to, the PN address hash, the current
-	// user-selected PN) need RNS identity recall and are stubbed here; identify-on-
-	// connect, display name, sort rank and trust come from the directory.
+	// 740): identify-on-connect, display name, sort rank, trust, operator
+	// string, hop distance, the PN address hash, and the current
+	// user-selected PN.
 	networkDisplay.OnResolveKnownNodeInfo = func(nodeHash string) (tui.KnownNodeInfoData, bool) {
 		data := tui.KnownNodeInfoData{
 			OpStr:       "Unknown",
@@ -975,10 +961,9 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	}
 
 	// OnKnownNodeSave writes the edited KnownNodeInfo form to the directory
-	// (Python save_node, Network.py:755-785). The default-PN
-	// toggle and autoselect need RNS (set_user_selected_propagation_node,
-	// autoselect_propagation_node) and are stubbed; trust/name/sort/identify
-	// are written to the directory entry.
+	// (Python save_node, Network.py:755-785): trust/name/sort/identify are
+	// written to the directory entry, the default-PN toggle is applied when the
+	// user changed it, and autoselect runs when the saved trust is Trusted.
 	networkDisplay.OnKnownNodeSave = func(nodeHash string, fd tui.KnownNodeInfoFormData) {
 		hash, ok := app.SourceHashFromHex(nodeHash)
 		if !ok {
@@ -1189,18 +1174,15 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	// Wire conversation keyboard shortcuts. OnDeleteConv forwards the SELECTED
 	// conversation as resolved by the display against the active tab's
 	// RENDERED rows (Python reads source_hash from
-	// self.ilb.get_selected_item(), Conversations.py:561-566). The former
-	// wiring resolved it here by list index against the UNFILTERED
-	// conversation list; with the Untrusted tab active the filtered row
-	// index maps onto a trusted row of the full model, so Ctrl-X offered —
-	// and on "Yes" deleted — the wrong (trusted) conversation.
+	// self.ilb.get_selected_item(), Conversations.py:561-566). Resolving it here
+	// by list index would map a filtered row index onto a row of the full model,
+	// so with the Untrusted tab active Ctrl-X could delete the wrong conversation.
 	conversationsDisplay.OnDeleteConv = func(conv tui.ConversationInfo) {
 		// Name the peer as Python does: directory.simplest_display_str of the
 		// source hash (Conversations.py:579-581), falling back to the row's
 		// display name for a malformed hash. The dialog itself is the LIST-SLOT
 		// overlay with Python's "?" title and two-line centered body
-		// (DeleteConversationConfirm); the former global DialogManager confirm
-		// centered on the whole screen diverged.
+		// (DeleteConversationConfirm).
 		name := conv.DisplayName
 		if hash, ok := app.SourceHashFromHex(conv.SourceHash); ok {
 			name = a.Dir.SimplestDisplayStr(hash)
@@ -1262,10 +1244,10 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 				conversationsDisplay.SetShowTrusted(false)
 			}
 			refreshConvs()
-			// B1: nomadnet 1.2.8 does NOT auto-open the conversation after
-			// Create — it returns to the list with the right pane showing
-			// "No conversation selected". The user must select the peer and
-			// press Enter to open it. Do NOT call DisplayConversation here.
+			// nomadnet 1.2.8 does not auto-open the conversation after Create:
+			// it returns to the list with the right pane showing "No
+			// conversation selected". The user must select the peer and press
+			// Enter to open it. Do NOT call DisplayConversation here.
 			return true
 		})
 	}
@@ -1273,10 +1255,10 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		conversationsDisplay.ToggleSort()
 	}
 	conversationsDisplay.OnShowQR = func() {
-		// C5: the My LXMF dialog is a WHOLE-display 70%-relative overlay with
-		// the QR, "< addr >" and a Close button (Python show_my_qr →
-		// show_qr_dialog, Conversations.py:630-692) — built inside the tui
-		// package, which owns the slot mechanics.
+		// The My LXMF dialog is a WHOLE-display 70%-relative overlay with the QR,
+		// "< addr >" and a Close button (Python show_my_qr → show_qr_dialog,
+		// Conversations.py:630-692), built inside the tui package, which owns
+		// the slot mechanics.
 		conversationsDisplay.ShowMyQRDialog(a.LXMFAddressHex())
 	}
 	conversationsDisplay.OnEditPeerInfo = func() {
@@ -1399,9 +1381,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	conversationsDisplay.OnIngestURI = func() {
 		// The ingest dialog is a LIST-SLOT overlay in the left column with
 		// Python's exact strings (title "Ingest message URI", "URI : " caption,
-		// Ingest/Back buttons) — IngestURIDialog (Conversations.py:1118-1268);
-		// the generic DialogManager input dialog centered on the whole screen
-		// with Save/Cancel labels is the old, non-parity form.
+		// Ingest/Back buttons) — IngestURIDialog (Conversations.py:1118-1268).
 		conversationsDisplay.IngestURIDialog(func(uri string) {
 			if a.Router == nil {
 				conversationsDisplay.ShowIngestResult(tui.IngestError)
@@ -1559,10 +1539,8 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	// Go-only enhancement (no Python SOT counterpart — Python nomadnet has no
 	// way to block a node): the AnnounceInfo "Block" button blackholes the
 	// node's identity (App.BlockDestination → Transport.BlackholeIdentity +
-	// ignored list + LXMF router ignore) and the directory's Go-only blocked
-	// filter drops its announces from the Announce Stream on the refresh below.
-	// Keep this hook (and the dialog/blocked-filter comments) when auditing
-	// parity against the Python original.
+	// ignored list + LXMF router ignore) and the directory's blocked filter
+	// drops its announces from the Announce Stream on the refresh below.
 	networkDisplay.OnBlockNode = func(nodeHash string) {
 		hash, ok := app.SourceHashFromHex(nodeHash)
 		if !ok {
@@ -1642,10 +1620,8 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	// Live trust resolver: the conversation widget's trust banner reads the
 	// directory's current trust on each render (Python has_visible_trust_banner
 	// calls self.app.directory.trust_level live, Conversations.py:1957-1960),
-	// instead of relying on the TrustLevel snapshot captured at
-	// DisplayConversation time — which can be stale (e.g. "" because the
-	// conversation dir didn't exist yet when the New Conversation dialog created
-	// the trusted entry, so the banner wrongly showed for a trusted peer).
+	// rather than relying on the TrustLevel snapshot captured at
+	// DisplayConversation time, which can be stale.
 	conversationsDisplay.OnResolveTrust = func(sourceHash string) string {
 		h, ok := app.SourceHashFromHex(sourceHash)
 		if !ok {
@@ -1681,8 +1657,6 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	// badge updates — Python created_callback → update_conversation_list), then
 	// reload the OPEN conversation's message list + trust banner so an inbound
 	// message appears in the already-open view without a manual interaction.
-	// Without this the list refreshed on receive but the open body stayed "No
-	// messages yet" until the next send/interaction triggered a reload.
 	if a.ConversationCache != nil {
 		a.ConversationCache.OnChanged = func(sourceHex string) {
 			tuiApp.QueueUpdateDraw(func() {
@@ -1770,9 +1744,8 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	main.SetShortcut("channels", "[C-n] New Hub  [C-a] Add Room  [C-r] Connect  [C-w] Disconnect  [C-t] Auto-reconnect  [C-e] Edit Hub  [C-x] Remove")
 	// Channels switches its bar by focus region (list / editor / body) the
 	// same way Conversations does (Python Channels.py:1573-1586 shortcuts()).
-	// Without this callback the footer stays on the static list bar even
-	// while the user is typing in the room composer — the fleet bug that
-	// hid "[C-d] Send".
+	// Without this callback the footer stays on the static list bar even while
+	// the user is typing in the room composer.
 	main.SetShortcutCallback("channels", channelsDisplay.GetShortcutText)
 
 	// Populate the hub/room list from the RRC manager (mirrors Python
@@ -1808,8 +1781,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	a.RRC.SetMessageCallback(func(hub *rrc.RRCHub, msg *rrc.RRCMessage) {
 		tuiApp.QueueUpdateDraw(func() {
 			// A mention in a room the user is not looking at rings the terminal
-			// bell, debounced per (hub, room). The bell was implemented and tested
-			// but never called, so a mention arrived silently.
+			// bell, debounced per (hub, room).
 			if shouldRingMentionBell(a, hub, msg) {
 				bell.Ring(hex.EncodeToString(hub.HubHash), strings.ToLower(msg.Room), time.Since(bellEpoch).Seconds())
 			}
@@ -2202,11 +2174,10 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	main.SetDisplay("log", logDisplay.Widget())
 	main.SetShortcut("log", "")
 
-	// Route focus-invariant violation dumps (a nil a.focus — the "arrow keys do
-	// nothing" lock-up root cause) into the application logger, which writes
-	// logPath — the same file the "[ Log ]" menu tails — so a stack trace
-	// surfaces in-menu instead of only in a /tmp scratch file. The dump still
-	// fires from MainDisplay.handleInput / App.SetFocus; this just chooses the
+	// Route focus-invariant violation dumps (a nil a.focus) into the application
+	// logger, which writes logPath — the same file the "[ Log ]" menu tails — so
+	// a stack trace surfaces in-menu instead of only in a /tmp scratch file. The
+	// dump fires from MainDisplay.handleInput / App.SetFocus; this chooses the
 	// destination. a.Logger writes at or above Notice, so Error always emits.
 	logger := a.Logger
 	tui.SetFocusInvariantSink(func(msg string, stack []byte) {
@@ -2231,13 +2202,9 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	// other target switches to the Network page and dispatches through the
 	// browser's handle_link (here BrowserDisplay.HandleLink), which routes
 	// nomadnetwork.node page URLs → OnRetrieveURL (the fetch backend), lxmf@ →
-	// OnOpenLXMF, rrc:// → OnOpenRRC, p: → OnPartialUpdate. Without this the
-	// Guide reader's OnHandleLink was nil, so clicking/Enter on a non-anchor
-	// link like the Introduction's "Aleph git" page link did NOTHING — the user
-	// could not click it (Python's mouse_event fires handle_link directly, so
-	// nomadnet could). The link's field-names component is now threaded through
-	// to HandleLink so a Guide submit link can collect form fields like a page
-	// link (Python recurse_down).
+	// OnOpenLXMF, rrc:// → OnOpenRRC, p: → OnPartialUpdate. The link's
+	// field-names component is threaded through to HandleLink so a Guide submit
+	// link can collect form fields like a page link (Python recurse_down).
 	guideDisplay.OnHandleLink = func(target, fields string) {
 		// A `L location link opens the client's location actions in place. It
 		// must not navigate away from the Guide, which the browser path below
@@ -2394,9 +2361,9 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		})
 	}
 	interfacesDisplay.OnShowInterface = func(idx int) {
-		// G1: Enter opens Python's FULL-PAGE ShowInterface view (title header,
+		// Enter opens Python's FULL-PAGE ShowInterface view (title header,
 		// info rows, RX/TX charts, parameter blocks, footer Back/Toggle/Edit
-		// row, Interfaces.py:2198-2620) — not a tiny modal.
+		// row, Interfaces.py:2198-2620) rather than a tiny modal.
 		items := interfacesDisplay.Items()
 		if idx < 0 || idx >= len(items) {
 			return
@@ -2434,9 +2401,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	// below; everything else (OnBack/Forward/Reload/CopyURL/URLDialog/SaveNode/
 	// JumpAnchor/OpenLXMF/OpenRRC/PartialUpdate/BrowserError/ToggleFullscreen/
 	// FetchPartial/RetrieveURL) is shared by BOTH the standalone browser page
-	// and the Network right pane via wireBrowser, so the two no longer diverge
-	// (the Network pane previously had most of these nil — e.g. Ctrl-d / Back
-	// was a no-op, stranding the user after a malformed-link error).
+	// and the Network right pane via wireBrowser, so the two cannot diverge.
 	browserDisplay.OnDisconnect = func() {
 		// Python Browser.disconnect (Browser.py:862-881) clears history, resets
 		// the pointer, and drops the current-destination hint — the BrowserDisplay
@@ -2483,12 +2448,12 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	// successful fetch the page is cached for its #!c=<seconds> header
 	// (response_received, Browser.py:1524-1546) unless that header is 0.
 	//
-	// Race fix: beginRequest cancels any in-flight fetch and bumps a request
-	// sequence BEFORE this fetch spawns. The goroutine captures ctx+seq by value
-	// and, at the top of its QueueUpdateDraw callback, drops the render when seq
-	// no longer equals the current sequence or ctx was cancelled — so a slow
-	// fetch from a superseded Connect can never overwrite the page the user is
-	// now viewing. This is the single convergence point for both displayURL →
+	// beginRequest cancels any in-flight fetch and bumps a request sequence
+	// BEFORE this fetch spawns. The goroutine captures ctx+seq by value and, at
+	// the top of its QueueUpdateDraw callback, drops the render when seq no
+	// longer equals the current sequence or ctx was cancelled, so a slow fetch
+	// from a superseded request can never overwrite the page the user is now
+	// viewing. This is the single convergence point for both displayURL →
 	// OnRetrieveURL and HandleLink → OnRetrieveURL, so link-click racing is
 	// covered too.
 	wireBrowser := func(bd *tui.BrowserDisplay) {
@@ -2508,10 +2473,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		// Navigation + link-handling callbacks are shared by BOTH the standalone
 		// browser page and the Network right pane (Python's BrowserFrame and
 		// NetworkDisplay both drive the same Browser instance, Browser.py:21-40 /
-		// Network.py:1609-1610). Previously these were wired only on the standalone
-		// browserDisplay, so the Network pane's browser had OnBack/OnForward/etc.
-		// nil — Ctrl-d (Back) was a no-op there, stranding the user after a
-		// malformed-link error with no way back.
+		// Network.py:1609-1610).
 		bd.OnBack = func() { bd.GoBack() }
 		bd.OnForward = func() { bd.GoForward() }
 		// Go-only enhancement (no Python SOT counterpart — Python nomadnet
@@ -2531,14 +2493,12 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		}
 		bd.OnReload = func() {
 			// Python reload() uncaches the current URL then re-loads, so a reload
-			// always re-fetches instead of returning a stale cache hit.
-			// The entry is keyed by the canonical "<hex>:<path>" form that
+			// always re-fetches instead of returning a stale cache hit. The entry
+			// is keyed by the canonical "<hex>:<path>" form that
 			// cache_page/get_cached hash (Python's current_url(), Browser.py:1615
 			// and 1564), so the uncache must use CanonicalURL() — not
 			// CurrentURL(), which is the raw string the user navigated with (a
-			// relative in-page link target such as ":/page/docs/x.mu"). Uncaching
-			// the raw target hashed a different key, leaving the entry in place:
-			// the reload re-read the stale page from disk without fetching it.
+			// relative in-page link target such as ":/page/docs/x.mu").
 			pageCache.UncachePage(bd.CanonicalURL())
 			bd.Reload()
 		}
@@ -2740,10 +2700,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 			// left pane so the in-page browser fills the width. The Go port mounts
 			// the browser as its OWN full-screen page (navigating switches to the
 			// "browser" page), so it is already full-width with no left pane to
-			// hide — the toggle has no chrome to collapse here. A no-op preserves
-			// the keybinding without a visible change; the in-network-pane browser
-			// placement (which would make this toggle meaningful) is a larger
-			// architecture change deferred beyond this phase.
+			// hide and the toggle is a no-op that keeps the keybinding.
 		}
 		bd.OnFetchPartial = func(p browser.Partial) ([]byte, error) {
 			// This closure runs on the runPartialRefresh goroutine (browser.go), NOT
@@ -2795,11 +2752,8 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 					// raises ValueError BEFORE touching status/destination/history,
 					// and handle_link / url_dialog catch it into the FOOTER
 					// ("Could not open link: ...") leaving the current page intact
-					// (Browser.py:300-304, 1142-1150). Mirroring that keeps the user
-					// on the page they were viewing so Back (Ctrl-d) works as normal
-					// — the previous SetContent overwrote the page with the error
-					// and, since the failed link never pushed history, stranded the
-					// user with no way back (Ctrl-d did nothing).
+					// (Browser.py:300-304, 1142-1150). That keeps the user on the
+					// page they were viewing so Back (Ctrl-d) works as normal.
 					bd.NotifyLinkError(fmt.Sprintf("Could not open link: %v", err))
 				})
 				return
@@ -2809,15 +2763,10 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 			// Serve from the page cache whenever no request_data is attached,
 			// matching Python's load_page (Browser.py:1237-1244), which checks
 			// get_cached based ONLY on request_data — NOT on whether an RNS link
-			// is active. The former Go-only gate (cache only when an active
-			// retained link existed) made Back/Forward re-fetch over the network
-			// whenever the retained link had gone stale, so Ctrl-d back to a cached
-			// page (e.g. RetiBooks' index after visiting an Author page) was slow
-			// where Python returns instantly from the cache. A form submit (rd !=
-			// nil) still always re-fetches. The retained link is reused for the
-			// next fetch via activeRetainedLink below; a cache hit simply does not
-			// establish one, exactly as in Python (Python's connect cache-hits and
-			// leaves link establishment to the next click).
+			// is active. A form submit (rd != nil) always re-fetches. The
+			// retained link is reused for the next fetch via activeRetainedLink
+			// below; a cache hit simply does not establish one, exactly as in
+			// Python.
 			if tui.ServeFromCache(rd) {
 				if cached := pageCache.GetCached(canonURL); cached != nil {
 					tuiApp.QueueUpdateDraw(func() {
@@ -2841,8 +2790,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 			// false even in Python), so without this Browse on the local
 			// node fails at the path-resolution gate with "No path to
 			// destination known". Local file downloads (/file/...) route
-			// through ServeLocalFile the same way; remote /file/ downloads
-			// are a separate, not-yet-wired path.
+			// through ServeLocalFile the same way.
 			if a.Node != nil {
 				if nd := a.Node.Destination(); nd != nil && bytes.Equal(dest, nd.Hash) {
 					go func() {
@@ -2890,11 +2838,10 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 				start := time.Now()
 				// Reuse the per-destination retained link (Python self_link,
 				// Browser.py:1375-1451) so a form-submit re-fetch rides the
-				// already-ACTIVE link instead of re-establishing — the reliability
-				// gap that made the search-results fetch flaky over a remote
-				// multi-hop path. activeRetainedLink returns nil when the retained
-				// link is absent or has gone stale (remote closed it), in which
-				// case FetchPageReuseLink establishes a fresh one.
+				// already-ACTIVE link instead of re-establishing. activeRetainedLink
+				// returns nil when the retained link is absent or has gone stale
+				// (remote closed it), in which case FetchPageReuseLink establishes
+				// a fresh one.
 				existing := activeRetainedLink(bd)
 				// Report each lifecycle stage to the footer while the fetch is
 				// in flight, mirroring Python Browser's status transitions
@@ -2948,8 +2895,7 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 					// (Browser.py:932-940, 1645-1661, 1797-1798). Saving here
 					// reuses the whole fetch above — path resolution, link reuse,
 					// timeouts, progress — exactly as Python's download_file
-					// shares its link handling with __load. The file bytes used to
-					// reach RenderPage and be rendered as markup.
+					// shares its link handling with __load.
 					if completeRemoteFilePath(bd, a.DownloadsPath, path, data, responseMeta, elapsed) {
 						return
 					}
@@ -2992,11 +2938,9 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 		// the BrowserDisplay's own key handler (browser.go handleInput KeyCtrlW
 		// → OnDisconnect). Python's BrowserFrame.keypress (Browser.py:21-22) calls
 		// self.delegate.disconnect() — the same Browser.disconnect the Network
-		// page shortcut calls — so wire it to the pane's Disconnect (which cancels
+		// page shortcut calls — so wire it to the pane's Disconnect, which cancels
 		// the in-flight fetch and resets the Remote Node pane to the disconnected
-		// view). Without this, C-w while the browser is focused is a no-op and the
-		// pane stays stuck on "Retrieving" after a connect to a non-responding
-		// node (the connect-timeout regression).
+		// view.
 		ndBd.OnDisconnect = func() {
 			if bp := networkDisplay.BrowserPane(); bp != nil {
 				bp.Disconnect()
@@ -3007,9 +2951,8 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	// C-w on the Network page with focus on the left list routes through
 	// NetworkDisplay.handleInput (network.go KeyCtrlW → OnDisconnect). Python's
 	// NetworkDisplay.keypress (Network.py:1609-1610) calls
-	// self.parent.browser.disconnect() directly; the Go port must wire the
-	// callback or C-w is a no-op (the in-flight fetch is never cancelled, the
-	// "Retrieving" loading body is never swapped out — the pane hangs).
+	// self.parent.browser.disconnect() directly, so C-w cancels the in-flight
+	// fetch and swaps the "Retrieving" loading body out.
 	networkDisplay.OnDisconnect = func() {
 		if bp := networkDisplay.BrowserPane(); bp != nil {
 			bp.Disconnect()
@@ -3022,11 +2965,10 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	// (Network.py:1612/129/695/893/1421 → self.parent.browser.retrieve_url) —
 	// there is no standalone "browser" sub-display in Python (SubDisplays lists
 	// network/conversations/channels/directory/config/interface/map/log/guide
-	// only). Loading the standalone browserDisplay here too spawned a SECOND
-	// concurrent link establishment to the same destination (two fresh
-	// existing=false handshakes racing), which intermittently made both time
-	// out — the last flakiness source. The standalone browserDisplay keeps
-	// its own Ctrl-u (bd.OnURLDialog → bd.LoadURL) for when it is shown.
+	// only). Loading the standalone browserDisplay here as well would start a
+	// second concurrent link establishment to the same destination. The
+	// standalone browserDisplay keeps its own Ctrl-u (bd.OnURLDialog →
+	// bd.LoadURL) for when it is shown.
 	navigateTo = func(url string) {
 		if ndBp := networkDisplay.BrowserPane(); ndBp != nil {
 			ndBp.LoadURL(url)
@@ -3103,13 +3045,6 @@ func wireDisplays(tuiApp *tui.App, a *app.App) func() {
 	}
 }
 
-// toConversationMessages maps the app's pure-data message view
-// (conversation.MessageDisplayData, parsed from each message's LXMF envelope
-// on disk) onto the TUI's ConversationMessage, which drives the
-// LXMessageWidget header (LXMessageHeader) and indented body rendering. The
-// raw LXMF state int and method are passed through unchanged so the header
-// logic compares against the raw LXMF constants, exactly like the Python
-// original (Conversations.py:2609-2626).
 // shouldRingMentionBell reports whether an arriving RRC message should ring the
 // terminal bell, mirroring Python's _on_rrc_message (Channels.py:2262-2271):
 //
@@ -3160,6 +3095,13 @@ func completeRemoteFilePath(bd *tui.BrowserDisplay, downloadsDir, path string, d
 	return true
 }
 
+// toConversationMessages maps the app's pure-data message view
+// (conversation.MessageDisplayData, parsed from each message's LXMF envelope
+// on disk) onto the TUI's ConversationMessage, which drives the
+// LXMessageWidget header (LXMessageHeader) and indented body rendering. The
+// raw LXMF state int and method are passed through unchanged so the header
+// logic compares against the raw LXMF constants, exactly like the Python
+// original (Conversations.py:2609-2626).
 func toConversationMessages(in []conversation.MessageDisplayData) []tui.ConversationMessage {
 	if len(in) == 0 {
 		return nil
@@ -3355,11 +3297,9 @@ func rrcHubAt(a *app.App, hubIdx int) *rrc.RRCHub {
 // (Channels.py:1716-1720): make the hub active, auto-connect it when it is
 // disconnected or failed (_maybe_autoconnect, Channels.py:1736-1741), and let
 // the display show its info panel straight after (Python _show_hub_info).
-// Without the auto-connect the only ways to revive a hub whose link dropped
-// were typing in one of its rooms or /connect: selecting the hub row — the
-// obvious recovery gesture — did nothing at all. The auto-connect applies only
-// while the hub's AutoRcn toggle is on, so a hub the user has taken off
-// automatic connection is not dialed by a mere selection (tui.MaybeAutoconnect).
+// The auto-connect applies only while the hub's AutoRcn toggle is on, so a hub
+// the user has taken off automatic connection is not dialed by a mere
+// selection (tui.MaybeAutoconnect).
 func selectHubRow(a *app.App, hubIdx int) {
 	hub := rrcHubAt(a, hubIdx)
 	if hub == nil {
@@ -3372,11 +3312,9 @@ func selectHubRow(a *app.App, hubIdx int) {
 // selectRoomRow is the room-row half of Python's ChannelsDisplay._select_room
 // (Channels.py:1722-1734): make the hub and room active, auto-connect the hub
 // when it is down (_maybe_autoconnect), and join a room the hub has not joined
-// yet once it is connected. This half was previously unwired (the
-// MaybeAutoconnect helper existed unused), so selecting a room revived nothing.
-// Like the hub-row path, the auto-connect is gated on the hub's AutoRcn toggle.
-// The hub is returned for the caller's room render, or nil when the index has no
-// hub.
+// yet once it is connected. Like the hub-row path, the auto-connect is gated on
+// the hub's AutoRcn toggle. The hub is returned for the caller's room render,
+// or nil when the index has no hub.
 func selectRoomRow(a *app.App, hubIdx int, room string) *rrc.RRCHub {
 	hub := rrcHubAt(a, hubIdx)
 	if hub == nil {

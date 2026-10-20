@@ -25,9 +25,7 @@ import (
 // TestNodeStatsCountersAndReset pins the hosted-node stat counters end to end: the
 // per-event increments the node's callbacks make, the snapshot the Local Node Info panel
 // renders ("Connected Now" / "Served Pages" / "Served Files"), and ResetNodeStats zeroing
-// and persisting them (Python NodeInfo.stats_query, Network.py:1391-1394). Nothing
-// covered these counters, so a counter that incremented the wrong field or a reset that
-// did not persist would show the user a number that came back on the next start.
+// and persisting them (Python NodeInfo.stats_query, Network.py:1391-1394).
 func TestNodeStatsCountersAndReset(t *testing.T) {
 	t.Parallel()
 
@@ -70,9 +68,8 @@ func TestNodeStatsCountersAndReset(t *testing.T) {
 // TestNodeLastAnnounceRoundTrip pins the persisted node-announce timestamp: the node's
 // announce callback records it (Python Node.announce sets
 // peer_settings["node_last_announce"], Node.py:218) and the Local Node Info panel reads
-// it back as "Last Announce". Without the round trip the panel would show "Never" after
-// every restart, which is what the go-nomadnet workaround for a nil value had to paper
-// over.
+// it back as "Last Announce". Without the round trip the panel would show "Never"
+// after every restart.
 func TestNodeLastAnnounceRoundTrip(t *testing.T) {
 	t.Parallel()
 

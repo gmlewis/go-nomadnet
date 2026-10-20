@@ -130,10 +130,10 @@ func repoRoot(t *testing.T) string {
 	}
 }
 
-// TestDaemonSmokeEndToEnd verifies the `-daemon` mode end-to-end (TODO):
-// build the gonomadnet binary, start it with a fresh temp config + RNS config,
-// confirm it registers its LXMF delivery destination and stays alive, then send
-// SIGTERM and confirm it shuts down gracefully.
+// TestDaemonSmokeEndToEnd verifies the `-daemon` mode end-to-end: build the
+// gonomadnet binary, start it with a fresh temp config + RNS config, confirm it
+// registers its LXMF delivery destination and stays alive, then send SIGTERM and
+// confirm it shuts down gracefully.
 //
 // "Registers destinations" is observed via the "LXMF Router ready to receive on
 // <hash>" log line (nomadnet/app/app.go:410), which fires only after the LXMF

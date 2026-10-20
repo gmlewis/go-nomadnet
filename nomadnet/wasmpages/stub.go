@@ -18,8 +18,7 @@
 // This file is the stub .wasm page renderer, compiled whenever the wago
 // runtime is not linked into the build (no -tags wago, or an unsupported
 // platform). Node and browser callers treat the stub as "not available" and
-// keep serving .wasm page files statically, which was the behavior before
-// executable pages landed.
+// keep serving .wasm page files statically.
 
 package wasmpages
 

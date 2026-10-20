@@ -22,16 +22,12 @@ import (
 	"github.com/gmlewis/tview"
 )
 
-// Live fleet bug (local tmux session, 2026-09-01): dismissing a slot-placed
-// dialog with Esc closed the overlay but left cd.dialogOpen stuck true — the
-// shortcut bar blanked permanently and EVERY list shortcut (C-e Peer Info,
-// C-n New, C-r Sync, …) died until the process was restarted.
-//
-// Root cause: tview dispatches a key from the root DOWN THROUGH the
-// DialogLineBox (an ancestor of the focused dialog item) before the item's own
-// handler, and ShowListSlotDialog overwrote dialog.onDismiss with the bare
-// CloseListSlotDialog — discarding the constructor's dismiss closure, which is
-// the only thing that resets cd.dialogOpen.
+// tview dispatches a key from the root DOWN THROUGH the DialogLineBox (an
+// ancestor of the focused dialog item) before the item's own handler. A
+// slot-placed dialog whose dismiss state lives in the constructor's
+// onDismiss closure must therefore keep that closure: replacing it with the
+// bare CloseListSlotDialog leaves the display's dialog-open flag set, which
+// blanks the shortcut bar and kills every list shortcut.
 
 // TestSlotDialogEscResetsDialogOpen drives Esc through the Message Sync
 // dialog's DialogLineBox — the exact dispatch path tview uses — and requires

@@ -152,8 +152,8 @@ func TestDefaultIndexInlineHitCounter(t *testing.T) {
 		})
 	}
 
-	// The counters are not reachable as links any more: the demo page they used
-	// to link to is rendered in place instead.
+	// The counters must not be reachable as links: the demo page is rendered in
+	// place instead.
 	for _, n := range micron.Parse(defaultIndexContent) {
 		if n.Type == micron.NodeLink && n.LinkURL == counterURL {
 			t.Error("defaultIndexContent still links to the hit counter as a separate page")

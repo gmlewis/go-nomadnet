@@ -24,8 +24,8 @@ import (
 
 // TestFormatAnnounceStreamRowPythonParity is a LIVE cross-implementation
 // check: it runs the stubbed-urwid golden capture script tooling/tui-parity/
-// announce_entry_golden.py fresh on every run. That script stubs gi/urwid
-// (GLib is broken on this host), instantiates the real Python nomadnet
+// announce_entry_golden.py fresh on every run. The script stubs gi/urwid so it
+// needs no display, instantiates the real Python nomadnet
 // AnnounceStreamEntry (Network.py:259-390) with a fake directory at a fixed
 // now (unix 1700000000), and prints the row text + style for each named case.
 // The Go test reproduces each case through FormatAnnounceStreamRow and
@@ -35,11 +35,8 @@ import (
 // Both sides render the timestamp in the machine's LOCAL zone — Go via
 // time.Unix(ts,0) (matching Python's datetime.fromtimestamp) — so the
 // same-day %H:%M:%S vs other-day %Y-%m-%d choice and the rendered value are
-// zone-consistent across implementations. now=2023-11-14 (local); same-day
-// announce = 1h prior; other-day announce = 7 days prior (-> "2023-11-07",
-// whose date is zone-stable). Source hash is bytes(0..31) so the hex form is
-// "000102…1f". The test SKIPs, not fails, when the Python reference is not
-// importable or the script file is not accessible.
+// zone-consistent across implementations. The test SKIPs, not fails, when the
+// Python reference is not importable or the script file is not accessible.
 func TestFormatAnnounceStreamRowPythonParity(t *testing.T) {
 	t.Parallel()
 

@@ -109,10 +109,8 @@ func main() {
 
 	// Auto-fallback to daemon mode when no TTY is available. The tview TUI
 	// requires a terminal; launched via nohup, systemd, or a non-interactive
-	// SSH session, Application.Run() fails and gonomadnet exits silently with
-	// code 0, leaving the operator with no running node and no error message.
-	// Detecting this and falling back to daemon mode ensures the node always
-	// starts, even without a terminal. An explicit -t or -d flag overrides
+	// SSH session, Application.Run() fails and the process would exit without
+	// a message and without a running node. An explicit -t or -d flag overrides
 	// this auto-detection.
 	if !daemon && !textUI && !hasTTY() {
 		log.Println("gonomadnet: no TTY detected (stdin is not a terminal); " +
@@ -120,12 +118,9 @@ func main() {
 		daemon = true
 	}
 
-	// Idiot-proof single-instance guard: refuse to start if a nomadnet
-	// (Python) process is already running, and acquire a per-config-dir
-	// exclusive lock so only one gonomadnet runs per config directory. This
-	// prevents the stale-second-instance situation where one gonomadnet stays
-	// the RNS shared instance while a second reports every interface
-	// Disconnected. Bypass the nomadnet check with
+	// Single-instance guard: refuse to start if a nomadnet (Python) process is
+	// already running, and acquire a per-config-dir exclusive lock so only one
+	// gonomadnet runs per config directory. Bypass the nomadnet check with
 	// GONOMADNET_IGNORE_RUNNING_NOMADNET=1 (e.g. for a false positive).
 	releaseLock, err := enforceSingleInstance(configDir)
 	if err != nil {

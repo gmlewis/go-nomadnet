@@ -33,9 +33,8 @@ public struct TouchGesture: Equatable, Sendable {
     /// What a finger did, once it has come up.
     ///
     /// A drag is not one of the cases, and that is deliberate: every line a drag asked for
-    /// was asked for as it happened, by ``move(x:y:)``, and a caller that acted on those has
-    /// nothing left to do when the finger comes up. A release that reported the drag again
-    /// was a second scroll of the same travel, which is what the appliance did.
+    /// was asked for as it happened, by ``move(x:y:)``, so a caller that acted on those has
+    /// nothing left to do when the finger comes up.
     public enum Outcome: Equatable, Sendable {
         /// A drag that asks for nothing: it crossed the slop, so it is not a tap, and what it
         /// asked for has already been asked for.

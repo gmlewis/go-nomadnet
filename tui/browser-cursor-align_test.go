@@ -100,9 +100,9 @@ func TestCursorScreenXYCenterAligned(t *testing.T) {
 	runCursorAlignCases(t, minimalCenterMenu, goldenCenterMenu)
 }
 
-// TestCursorScreenXYRetibooksMenu checks the exact right-justified menu the
-// user reported (nomadnet/micron/testdata/parity/retibooks-index.mu line 1):
-// plain text len 81, link parts at offsets 1,8,18,25,32,44,60,69,76. Golden
+// TestCursorScreenXYRetibooksMenu checks the right-justified menu from the
+// retibooks fixture (nomadnet/micron/testdata/parity/retibooks-index.mu line
+// 1): plain text len 81, link parts at offsets 1,8,18,25,32,44,60,69,76. Golden
 // (x,y) values are urwid calc_coords. w=120 and w=100 are single-row (sc=81,
 // pad width-81, y=0). w=80 and w=60 wrap once: urwid drops the single break
 // space from the non-final row (text_layout line_width), so row0 sc is 75 at

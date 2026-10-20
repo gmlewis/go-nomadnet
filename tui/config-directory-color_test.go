@@ -25,7 +25,7 @@ import (
 // the cube-quantized body_text palette entry. Python wraps the explainer in
 // `urwid.Text(("body_text", ...), align=CENTER)` (Config.py:40); body_text is
 // 3-hex #ddd (dark) / #222 (light) (ui/TextUI.py:26,80), cube-quantized to
-// #d7d7d7 / #000000. The Go port previously used 0xbbbbbb.
+// #d7d7d7 / #000000.
 func TestConfigDisplayExplainerColor(t *testing.T) {
 	t.Parallel()
 
@@ -52,9 +52,8 @@ func TestConfigDisplayExplainerColor(t *testing.T) {
 // body_text. Python's Directory.py is a 20-line stub whose only text uses the
 // body_text attr (Directory.py:14 `urwid.Text(("body_text", ...))`); the Go
 // port's richer two-pane list+detail has no direct Python color spec, so
-// body_text is the closest defensible base (the prior 0xbbbbbb is a color
-// Python never emits). body_text is 3-hex #ddd / #222, cube-quantized to
-// #d7d7d7 / #000000.
+// body_text is the closest defensible base. body_text is 3-hex #ddd / #222,
+// cube-quantized to #d7d7d7 / #000000.
 func TestDirectoryDisplayDetailColor(t *testing.T) {
 	t.Parallel()
 

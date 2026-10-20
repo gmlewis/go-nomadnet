@@ -367,13 +367,12 @@ func TestSplitLinkAnchor(t *testing.T) {
 	}
 }
 
-// TestBrowserLinkAnchorFieldJumpsAfterLoad pins the whole point of the
-// "anchor=" field: the generated documentation's cross-page section links name
-// a section of the target page, and clicking one must land on that section
-// rather than at the top of the page. The field must NOT be collected as a form
-// field (no var_anchor request data — Python's handling, which sends it to the
-// page and loses the jump), and the jump must happen exactly once, on the render
-// that lands the page, never again on a later partial refresh.
+// TestBrowserLinkAnchorFieldJumpsAfterLoad pins the point of the "anchor="
+// field: clicking a generated documentation section link must land on that
+// section rather than at the top of the page. The field must NOT be collected as
+// a form field (no var_anchor request data — Python's handling, which sends it
+// to the page and loses the jump), and the jump must happen exactly once, on the
+// render that lands the page, never again on a later partial refresh.
 func TestBrowserLinkAnchorFieldJumpsAfterLoad(t *testing.T) {
 	t.Parallel()
 

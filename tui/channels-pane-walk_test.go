@@ -27,11 +27,11 @@ import (
 // Columns focus movement: list ⇄ room ⇄ users, where the room's composer
 // lets a plain Left/Right through ONLY at the text boundaries (urwid
 // widget/edit.py keypress) and the room's frame part (body/footer,
-// Channels.py:511-546) persists across focus leaves. The user-visible walk
-// (Bug#4): the bright highlight sits on the focused pane's selected row, the
-// left list drops to its darker off-focus highlight while the cursor is in
-// the room, the Users pane bright-highlights its selected member, and every
-// Left steps back through the same path.
+// Channels.py:511-546) persists across focus leaves. The user-visible walk:
+// the bright highlight sits on the focused pane's selected row, the left list
+// drops to its darker off-focus highlight while the cursor is in the room, the
+// Users pane bright-highlights its selected member, and every Left steps back
+// through the same path.
 
 // walkCD builds a ChannelsDisplay with a connected hub and an open room, the
 // state the fleet runs when the user drives the pane walk.
@@ -70,10 +70,9 @@ func walkRegion(app *App, cd *ChannelsDisplay) string {
 	return "other"
 }
 
-// TestWalkListToRoomToUsers pins the user's Bug#4 sequence: from the
-// Channels list, Right enters the room (the composer — the hardware cursor
-// region), another Right enters the Users pane, and each Left steps back the
-// same way.
+// TestWalkListToRoomToUsers pins the pane-walk sequence: from the Channels list,
+// Right enters the room (the composer — the hardware cursor region), another
+// Right enters the Users pane, and each Left steps back the same way.
 func TestWalkListToRoomToUsers(t *testing.T) {
 	t.Parallel()
 

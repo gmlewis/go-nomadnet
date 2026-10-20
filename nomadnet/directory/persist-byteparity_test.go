@@ -27,10 +27,9 @@ import (
 	"github.com/gmlewis/go-nomadnet/testutils"
 )
 
-// TestSaveToDiskPythonByteParity pins the hard parity requirement for the
-// directory msgpack migration: Go's SaveToDisk MUST emit byte-for-byte
-// identical msgpack to Python NomadNet's save_to_disk (Directory.py:88) for the
-// same state.
+// TestSaveToDiskPythonByteParity pins the parity requirement for the directory
+// msgpack format: Go's SaveToDisk must emit byte-for-byte identical msgpack to
+// Python NomadNet's save_to_disk (Directory.py:88) for the same state.
 //
 // This is a LIVE cross-implementation test: it execs the real Python nomadnet
 // reference, rebuilds the SAME directory structure (same entries in the same
@@ -51,12 +50,8 @@ import (
 //     and Python's time.time() floats; the script wraps them in float() so a
 //     JSON-int round-trip still packs as float64.
 //
-// This test exists because the previous round-trip-only test could not catch
-// that a Go map's random iteration would reorder entry_list, that a Go int
-// would pack trust_level/preferred_delivery as signed (diverging from Python's
-// unsigned encodings), or that the top-level map key order was nondeterministic.
-// The rns/msgpack migration uses an OrderedMap and an insertion-ordered
-// entryOrder slice to reproduce Python's bytes exactly.
+// SaveToDisk reproduces Python's bytes with an OrderedMap for the top-level keys
+// and the insertion-ordered entryOrder slice for entry_list.
 func TestSaveToDiskPythonByteParity(t *testing.T) {
 	t.Parallel()
 	dir := tempDir(t)

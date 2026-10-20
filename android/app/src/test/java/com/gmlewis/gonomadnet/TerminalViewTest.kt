@@ -362,19 +362,13 @@ class TerminalViewTest {
 
     @Test
     fun `the console takes the focus, which is where a key goes`() {
-        // A key is delivered to the view that holds the focus, so a console that is drawn but
-        // not focused receives nothing at all: not a hardware keyboard's keys, and not the
-        // input method's, which serves the focused view and has nothing to serve when none is
-        // focused. That is the whole of the client's interface going quiet — its lists, its
-        // buttons, its menu — and it is what a reader meets as "the shortcuts do nothing",
-        // ctrl-e among them, while the strip and the client both still draw.
-        //
-        // The console is the page's only focusable view and the page is a terminal, so the
-        // claim is not a preference: the view takes the focus as soon as there is a window to
-        // hold it, and takes it back when the window comes to the front without it. Neither
-        // can be seen from a passing run — the view draws with a Canvas and no JVM test can
-        // attach it to anything — so the claim is read out of the source rather than trusted,
-        // the way [MainActivityTest] reads the manifest's claims.
+        // A key is delivered to the view that holds the focus, so a console that is drawn
+        // but not focused receives nothing at all: neither a hardware keyboard's keys nor
+        // the input method's. The console is the page's only focusable view, so it takes
+        // the focus as soon as there is a window to hold it, and takes it back when the
+        // window comes to the front without it. Neither can be seen from a JVM test — the
+        // view draws with a Canvas — so the claim is read out of the source, the way
+        // [MainActivityTest] reads the manifest's claims.
         val source = File(VIEW_SOURCE).readText()
 
         val attached = source.substringAfter("override fun onAttachedToWindow()")
@@ -398,10 +392,8 @@ class TerminalViewTest {
     @Test
     fun `the console draws with the font the APK carries`() {
         // The client's interface is not plain text. Its menu bar, its list markers and its
-        // arrows are Nerd Font glyphs, and the device's own monospace font has no code point
-        // for any of them, so a console that fell back to it would draw a working interface
-        // out of empty boxes. The font in the APK's assets is therefore not decoration: it is
-        // half of what the client draws with.
+        // arrows are Nerd Font glyphs that the device's own monospace font does not cover,
+        // so the font in the APK's assets is half of what the client draws with.
         val font = File(ASSETS, TerminalView.CONSOLE_FONT)
         assertTrue("the font the console draws with is not in the APK's assets: $font", font.isFile)
         assertTrue("the font is empty: $font", font.length() > 0L)
@@ -422,11 +414,9 @@ class TerminalViewTest {
     @Test
     fun `a modifier latch is spent by the next key wherever it is typed`() {
         // A tablet cannot hold Control or Alt down and press a letter, so each is a switch:
-        // armed by a tap, spent by whatever comes next. "Whatever comes next" is the care
-        // here — the latch belongs to the console rather than to the strip, because the
-        // letter it is spent on is typed on the soft keyboard, or on a keyboard that is not
-        // this app's at all. A latch that only the strip consulted would send a plain q where
-        // the person meant ^Q, which is the difference between quitting and typing.
+        // armed by a tap, spent by whatever comes next. The latch belongs to the console
+        // rather than to the strip, because the letter it is spent on is typed on the soft
+        // keyboard, or on a keyboard that is not this app's at all.
         val latch = ModifierLatch()
         assertFalse("the latch starts armed", latch.ctrl)
         assertFalse("the latch starts armed", latch.alt)

@@ -96,9 +96,7 @@ func (m *IndicativeMessages) Draw(screen tcell.Screen) {
 	// The bars are centered like urwid Text, which pads the LEFT side with
 	// (w-len+1)/2 spaces — a ceil over the RUNE count (Python's
 	// IndicativeListBox; additional_urwid_widgets). len(s) would count the
-	// 3-byte box-drawing runes as 9/3 and land both bars LEFT of Python's
-	// (measured live: "───" at col 44 and "▲" at col 47 of the 96-wide chat
-	// inner, vs Python's 47/48 — mac rows 3/33 of the 2026-09-03 capture).
+	// 3-byte box-drawing runes as 9/3 and land both bars LEFT of Python's.
 	centerBarX := func(s string) int { return x + max((w-len([]rune(s))+1)/2, 0) }
 	if h >= 3 {
 		tview.Print(screen, top, centerBarX(top), y, w, tview.AlignLeft, tcell.ColorDefault)

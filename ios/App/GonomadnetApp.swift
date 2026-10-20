@@ -34,11 +34,10 @@ struct GonomadnetApp: App {
 
     /// Whether the appliance was running when the app was last backgrounded.
     ///
-    /// It is what makes returning to the app return to the appliance, rather than starting
-    /// one under a reader who never asked for one: the scene goes inactive for a permission
-    /// alert and for the app switcher, and an appliance that started itself on every
-    /// interruption would be one that is always running whether or not it was wanted — and
-    /// would ask for location before the reader ever pressed Start Sensors.
+    /// It is what makes returning to the app return to the appliance rather than starting
+    /// one the reader never asked for: the scene goes inactive for a permission alert and
+    /// for the app switcher, and restarting on every interruption would also ask for
+    /// location before the reader ever pressed Start Sensors.
     @State private var resumeStack = false
     @State private var resumeSensors = false
 

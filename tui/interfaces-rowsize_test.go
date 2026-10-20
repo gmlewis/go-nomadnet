@@ -24,8 +24,7 @@ import (
 // TestInterfaceListBufferRow verifies the interface list leaves 1 blank
 // buffer row at the bottom, matching Python's iface_row_offset behavior.
 // Python sizes its BoxAdapter to `terminal_rows - iface_row_offset` (offset=4,
-// Interfaces.py:2837) and the ListBox renders items + 1 blank buffer row. The
-// Go port previously filled all remaining rows, showing 1 extra partial row.
+// Interfaces.py:2837) and the ListBox renders items + 1 blank buffer row.
 func TestInterfaceListBufferRow(t *testing.T) {
 	t.Parallel()
 

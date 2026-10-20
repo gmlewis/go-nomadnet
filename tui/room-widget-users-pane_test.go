@@ -23,7 +23,7 @@ import (
 	"github.com/gmlewis/tview"
 )
 
-// renderUsersPane draws a RoomWidget with the given members at the fleet's
+// renderUsersPane draws a RoomWidget with the given members at the production
 // geometry (120 total cols: chat 98 + users pane 22) and returns the screen.
 func renderUsersPane(t *testing.T, members []ChannelMember) (tcell.Screen, *RoomWidget) {
 	t.Helper()
@@ -82,11 +82,6 @@ func usersRowText(s tcell.Screen, y int) string {
 // _refresh_users_pane (Channels.py:679-716): the " N users" count row is a
 // DEFAULT-styled plain row (urwid.Text — no selection highlight), followed
 // by the member rows on CONSECUTIVE rows (no phantom blank between them).
-// Measured live on the 2026-09-03 12:32 full-fleet capture: the Go nodes
-// painted a phantom blank row after EVERY member row (the fork's
-// tview.List default ShowSecondaryText(true) renders each member's empty
-// secondary text) and the count row carried the selection highlight
-// (fg 0,0,0 / bg 175,175,175).
 func TestRoomWidgetUsersPaneRows(t *testing.T) {
 	t.Parallel()
 
@@ -136,8 +131,7 @@ func TestRoomWidgetUsersPaneRows(t *testing.T) {
 
 // TestRoomWidgetUsersPaneCountRowText pins the count row's text (" N users"
 // with the plural only for N != 1, Channels.py:694) and that it is NOT a
-// List item anymore (moving it out of the List keeps it from ever taking
-// the selection style).
+// List item (out of the List it can never take the selection style).
 func TestRoomWidgetUsersPaneCountRowText(t *testing.T) {
 	t.Parallel()
 
@@ -163,10 +157,9 @@ func TestRoomWidgetUsersPaneCountRowText(t *testing.T) {
 // urwid AttrMap rows (Channels.py:705: the member entry is wrapped in
 // AttrMap(entry, style) whose fill paints the member's fg across the FULL
 // pane width): the row's trailing spaces carry the member's palette fg to
-// the pane edge. Measured live on the 2026-09-03 12:32 full-fleet capture.
-// The SELECTED (focused) row instead carries the list_focus style across the
-// whole width (the focus map replaces the row's own style) — that state is
-// pinned by TestRoomWidgetUsersPaneSelectionHighlight.
+// the pane edge. The SELECTED (focused) row instead carries the list_focus
+// style across the whole width (the focus map replaces the row's own style);
+// that state is pinned by TestRoomWidgetUsersPaneSelectionHighlight.
 func TestRoomWidgetUsersRowFill(t *testing.T) {
 	t.Parallel()
 

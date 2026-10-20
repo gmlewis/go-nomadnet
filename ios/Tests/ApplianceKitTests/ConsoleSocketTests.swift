@@ -26,13 +26,10 @@ private let container = URL(fileURLWithPath:
     "/var/mobile/Containers/Data/Application/5B1D0A9C-7E4F-4A2B-9C3D-0E1F2A3B4C5D")
 
 final class ConsoleSocketTests: XCTestCase {
-    /// The device acceptance's second finding.
+    /// The socket in an app's own container has to fit the kernel's `sun_path`.
     ///
-    /// The socket was bound beside the appliance's configuration, under
-    /// `Library/Application Support` — a path that with the container's identifier is
-    /// 121 bytes before the socket's own name is added, and the kernel binds 103. The
-    /// bridge refused the path, the console stayed nil, and the appliance could only say
-    /// "No console open".
+    /// The container's identifier spends most of the 103 bytes, so the socket goes in the
+    /// app's temporary directory, which is the shortest one an iOS app has.
     func testTheConsoleSocketInAnAppsContainerFitsTheKernelsLimit() {
         let path = ConsoleSocket.path(temporaryDirectory: container.appendingPathComponent("tmp"))
 
@@ -41,10 +38,8 @@ final class ConsoleSocketTests: XCTestCase {
                                 "the kernel would refuse \(path), which is \(path.utf8.count) bytes")
     }
 
-    /// And the directory it used to be in is the one that does not fit. That is the whole
-    /// reason the socket is not there, so a change that made this pass should move the
-    /// socket back, and a change that moved it back without this passing is the bug
-    /// returning.
+    /// The configuration directory is the one that does not fit, which is why the socket is
+    /// not there.
     func testTheDirectoryTheConfigurationLivesInIsTooLongForTheSocket() {
         let beside = container
             .appendingPathComponent("Library/Application Support/gonomadnet")

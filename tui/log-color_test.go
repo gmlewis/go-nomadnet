@@ -25,7 +25,6 @@ import (
 // default. Python's LogTerminal embeds `urwid.Terminal` running `tail -f`,
 // wrapped only in a `urwid.LineBox` with NO AttrMap (Log.py:44-51), so the
 // terminal paints with its own default colors — there is no palette text fg.
-// The Go port previously used 0xbbbbbb.
 func TestLogDisplayBaseColor(t *testing.T) {
 	t.Parallel()
 	app := NewApp(ThemeDark, GlyphUnicode, ColorModeTrue)

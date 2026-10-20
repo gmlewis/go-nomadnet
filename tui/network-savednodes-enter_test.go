@@ -21,15 +21,13 @@ import (
 	"github.com/gmlewis/tcell/v2"
 )
 
-// TestSavedNodesEnterFiresOnConnectNode pins the reported parity bug "in the
-// Saved Nodes, it is impossible to hit Enter on a saved node to open a saved
-// node". Python's KnownNodes NodeEntry wires the urwid ListEntry "click" signal
-// to connect_node (Network.py:1019 + 881-919), and that signal fires on Enter,
-// opening the "Connect to node?" dialog. The Go port had previously made Enter
-// a no-op (mistaking node_list_selection — the selection-change callback,
-// Network.py:878-879 — for the Enter handler). Enter on a Saved Nodes row must
-// now dispatch the selected node to OnConnectNode, which the wiring layer uses
-// to open the connect dialog.
+// TestSavedNodesEnterFiresOnConnectNode pins that Enter on a Saved Nodes row
+// opens the "Connect to node?" dialog. Python's KnownNodes NodeEntry wires the
+// urwid ListEntry "click" signal to connect_node (Network.py:1019 + 881-919),
+// and that signal fires on Enter; node_list_selection (Network.py:878-879) is
+// only the selection-change callback. Enter must therefore dispatch the
+// selected node to OnConnectNode, which the wiring layer uses to open the
+// connect dialog.
 func TestSavedNodesEnterFiresOnConnectNode(t *testing.T) {
 	t.Parallel()
 	app := newTestApp()

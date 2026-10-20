@@ -43,11 +43,10 @@ class LocationSource(
     //
     // getLastKnownLocation is a binder call into the system location service, and the heading
     // source asks for the position on every sensor event — fifty times a second. Asking the
-    // system fifty times a second for a value it produced once is a measurable battery cost and
-    // it floods the platform log, which is how this was noticed:
-    //     LocationManagerService: gps provider getLastLocation from : 10300/com.gmlewis.gonomadnet
-    // The cache is refreshed by onLocationChanged and by a rate-limited re-query, so a client
-    // that has never had a fix still picks one up when the receiver produces one.
+    // system fifty times a second for a value it produced once costs battery and floods the
+    // platform log. The cache is refreshed by onLocationChanged and by a rate-limited
+    // re-query, so a client that has never had a fix still picks one up when the receiver
+    // produces one.
     private var cachedFix: Location? = null
     private var cachedAtMs: Long = 0
 

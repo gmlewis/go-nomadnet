@@ -258,9 +258,7 @@ func newLoadedFieldTestBrowser(t *testing.T, page string) (*App, *BrowserDisplay
 // TestBrowserGuestbookFieldTypedOnLoad pins Python's load-time focus for a form
 // page: the freshly built Pile focuses its first selectable widget, which on the
 // guestbook is the name field's Edit, so a visitor's first keystroke lands in
-// the field with no navigation key pressed. Previously the editor overlay
-// mounted only when a line-changing key ran syncFieldFocus, so on a freshly
-// loaded guestbook every keystroke was discarded.
+// the field with no navigation key pressed.
 func TestBrowserGuestbookFieldTypedOnLoad(t *testing.T) {
 	t.Parallel()
 
@@ -287,9 +285,8 @@ func TestBrowserGuestbookFieldTypedOnLoad(t *testing.T) {
 
 // TestBrowserGuestbookFieldsCaretAcrossFields walks the shipped guestbook form
 // the way a visitor does: the page opens with the name field focused and its
-// overlay mounted — the exact state of the live gonomadnet session, where that
-// field rendered as a white-on-blue box with the caret stranded on its first
-// column. Down then moves to the message field, which must take over the caret.
+// overlay mounted, its colors and caret taken from the page markup. Down then
+// moves to the message field, which must take over the caret.
 func TestBrowserGuestbookFieldsCaretAcrossFields(t *testing.T) {
 	t.Parallel()
 

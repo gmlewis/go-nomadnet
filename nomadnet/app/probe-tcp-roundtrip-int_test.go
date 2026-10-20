@@ -7,10 +7,10 @@
 // instances, each booted via Init() -> async initRNS() -> NewReticulumWithLogger
 // loading a private rnsconfig (A = TCP server, B = TCP client), announce-at-start
 // firing on its own — but WITHOUT the TUI/tmux layer, so a failure here isolates
-// the bug to the RNS/app layer (announce propagation, path, MethodDirect delivery)
-// rather than the TUI send path (C-d not firing, editor text false-positive).
+// a delivery problem to the RNS/app layer (announce propagation, path,
+// MethodDirect delivery) rather than the TUI send path.
 //
-// Run: GOCACHE=/tmp/go-cache go test -tags=integration -run TestIntegrationTwoAppTCPRoundTrip -v ./nomadnet/app/
+// Run: go test -tags=integration -run TestIntegrationTwoAppTCPRoundTrip -v ./nomadnet/app/
 package app
 
 import (
@@ -81,8 +81,8 @@ func writeProbeRNSClientConfig(t *testing.T, dir string, port int) {
 // TestIntegrationTwoAppTCPRoundTrip verifies the production initRNS path delivers
 // an LXMF message from A to B over a localhost TCP RNS link configured entirely
 // via rnsconfig (no manual interface registration), exactly like the
-// cmd/test-conversations harness. A failure here means the harness's
-// cross-instance delivery gap is in the RNS/app layer, not the TUI.
+// cmd/test-conversations harness. A failure here means a cross-instance delivery
+// problem is in the RNS/app layer, not the TUI.
 func TestIntegrationTwoAppTCPRoundTrip(t *testing.T) {
 	t.Parallel()
 	testutils.SkipShortIntegration(t)

@@ -24,9 +24,7 @@ import (
 
 // TestIndicativeListBoxSkipOverSpacer pins the skip-unselectable traversal on
 // a channels-shaped list [hub, room, spacer, hub]: Down must walk hub → room →
-// (jump the spacer) → hub. The live fleet bug: with a room row present, the
-// second Down stopped advancing, leaving the cursor stuck on the room row so
-// the RaspPi hub row could never be reached on the local node.
+// (jump the spacer) → hub, and stop at the last row.
 func TestIndicativeListBoxSkipOverSpacer(t *testing.T) {
 	t.Parallel()
 	app := newTestApp()

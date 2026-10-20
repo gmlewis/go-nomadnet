@@ -87,14 +87,13 @@ const (
 	pollInterval = 100 * time.Millisecond
 	// pathGrace is a short re-check window after the path-wait deadline: a
 	// shared-instance path response can land just past the deadline (it is
-	// delivered asynchronously), so we poll a little longer before declaring a
-	// target UNREACHABLE to avoid a tick-level near-miss false-negative.
+	// delivered asynchronously), so poll a little longer before declaring a
+	// target UNREACHABLE to avoid a tick-level near-miss false negative.
 	pathGrace = 2 * time.Second
 	// pathRetries is how many times a path request is re-issued when the
 	// previous one goes unanswered. A shared instance intermittently drops a
-	// path request even for a cached path (the same request succeeds via
-	// gornpath moments later), so a single attempt false-negatives a reachable
-	// node. Re-issuing recovers it.
+	// path request even for a cached path, so a single attempt false-negatives a
+	// reachable node. Re-issuing recovers it.
 	pathRetries = 2
 	// retryPathWait is the per-retry wait budget (seconds) after the first
 	// full-timeout attempt.
@@ -287,7 +286,7 @@ func run(args []string) int {
 	// Resolution is deliberately sequential: a shared instance reliably answers
 	// a single outstanding path request (the pattern gornpath relies on), but
 	// when several path requests are in flight at once it services some and
-	// drops others — so concurrent resolution made reachable nodes flap to
+	// drops others, so concurrent resolution makes reachable nodes flap to
 	// UNREACHABLE nondeterministically. The batch path timeout is raised above
 	// (batchPathTimeout) so a multi-hop path that takes 20+s to land still fits
 	// within one target's budget. Targets that cannot be resolved are reported
@@ -438,13 +437,12 @@ func resolveTarget(ts *rns.TransportSystem, t target, opts *options) (resolved, 
 
 	rb.ok = true
 	// Store the recalled identity back onto the target so establishLink can
-	// build the outbound SINGLE destination. Without this, targets loaded from
-	// a hash file (no preloaded identity) reach establishLink with a nil
-	// identity and NewDestination fails immediately ("can't create outbound
-	// SINGLE destination without an identity") — every link fails before a
-	// single request is sent. ping-nomadnet-node keeps the recalled identity
-	// in local scope through NewDestination; this tool splits resolution and
-	// link setup across functions, so the identity must be carried in res.
+	// build the outbound SINGLE destination. Targets loaded from a hash file (no
+	// preloaded identity) would otherwise reach establishLink with a nil identity
+	// and NewDestination fails immediately ("can't create outbound SINGLE
+	// destination without an identity") before a single request is sent.
+	// Resolution and link setup are separate functions here, so the identity is
+	// carried in res.
 	t.identity = identity
 	return resolved{
 		target:     t,
@@ -587,15 +585,15 @@ func runSustainedWorker(ctx context.Context, ts *rns.TransportSystem, res resolv
 				// The link is no longer usable — either it closed (dropped),
 				// the send failed, or the request timed out / was failed by the
 				// receipt. Stop sending into it and re-establish. Continuing to
-				// fire requests into a silent link only racks up 12s backstop
-				// timeouts (which used to false-positive UNRESPONSIVE); a fresh
+				// fire requests into a silent link only racks up backstop
+				// timeouts that are indistinguishable from a wedge; a fresh
 				// handshake both resets the fail streak and tests whether the
 				// node is still accepting links.
 				//
-				// Diagnostic: record whether the link CLOSED (and why) vs stayed
-				// ACTIVE-but-silent. This fork is what pins the go-reticulum
-				// client-link defect on a real (multi-hop) network — the symptom
-				// does not reproduce in-process.
+				// Record whether the link CLOSED (and why) rather than staying
+				// ACTIVE-but-silent: the distinction pins a go-reticulum
+				// client-link defect on a real (multi-hop) network, where it does
+				// not reproduce in-process.
 				log.Printf("link-break target=%x ok=%v status=%v rtt=%v linkStatus=%v dropped=%v teardownReason=%v",
 					res.targetHash, linkOK, status, rtt, linkStatusName(link.GetStatus()),
 					dropped.Load(), teardownReasonName(link.TeardownReason()))

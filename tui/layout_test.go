@@ -180,10 +180,8 @@ func TestLayoutWidgetHasBorder(t *testing.T) {
 			if w == nil {
 				t.Fatal("widget is nil")
 			}
-			// tview primitives that have borders are typically
-			// *tview.Flex or *tview.Box with SetBorder(true).
-			// We just verify the widget is non-nil (border is
-			// set during construction).
+			// tview exposes no border getter, so this only verifies the widget
+			// is non-nil; the border is set during construction.
 		})
 	}
 }

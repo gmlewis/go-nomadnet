@@ -21,8 +21,8 @@ import "testing"
 // with "|") and its SHA-256 hex hash match Python parse_partial
 // (MicronParser.py:187-189): partial_descriptor = "|".join(partial_components);
 // partial_hash = RNS.hexrep(RNS.Identity.full_hash(descriptor.encode("utf-8")),
-// delimit=False) — and RNS.Identity.full_hash is SHA-256. Golden values were
-// captured from a Python harness mirroring those two lines (no urwid needed).
+// delimit=False) — and RNS.Identity.full_hash is SHA-256. Expected values were
+// obtained by running those two lines in Python.
 func TestPartialDescriptorAndHash(t *testing.T) {
 	t.Parallel()
 

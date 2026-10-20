@@ -59,11 +59,6 @@ var notice47Lines = []string{
 }
 
 // noticeTagStrip removes the tview style tags the RRC render emits
-// (`[#rrggbb]`, `[default]`, `[-]`, `[-:-:UR]`, …) so a tagged render line can
-// be compared with the capture's plain text. The ts run's literal
-// `[08:45:54]` brackets do NOT match (they carry no color spec), but the
-// bodies under test carry no literal brackets either way.
-// noticeTagStrip removes the tview style tags the RRC render emits
 // (`[#rrggbb]`, `[default]`, `[-]`, `[-:-:UR]`, …) and the numbered region tags a
 // clickable render emits (`["3"]` … `[""]`) so a tagged render line can be
 // compared with the capture's plain text. The ts run's literal `[08:45:54]`
@@ -99,7 +94,7 @@ func TestFormatRRCNoticeWrapParityCapture47(t *testing.T) {
 	// The exact tagged lines: line 0 carries the " [HH:MM:SS] " ts run and
 	// the info glyph inside the notice color run; every continuation line
 	// opens with the notice color tag — the LEFT-EDGE body, no ts run. The
-	// body itself now carries link runs for the bare hashes (Python's
+	// body itself carries link runs for the bare hashes (Python's
 	// _body_markup marks them, capture below), so the styling claim is pinned
 	// as a PREFIX and the wrap geometry is pinned tag-stripped.
 	tsRun := colorTag(cubeHex3("#888"), "") + " [08:45:54] " + colorReset
@@ -258,8 +253,8 @@ func TestFormatRRCEventWrapWideRunes(t *testing.T) {
 // noticeColor returns the notice theme color for assertions.
 func noticeColor(theme int) tcell.Color { return rrcRenderColors(theme)["notice"] }
 
-// renderNoticeRoom draws a RoomWidget with the given messages at the fleet's
-// chat geometry (120x37, the 96-wide chat inner) with the NERD glyph set the
+// renderNoticeRoom draws a RoomWidget with the given messages at the
+// reference chat geometry (120x37, the 96-wide chat inner) with the NERD glyph set the
 // capture used (info = 󰙎) and returns the screen for per-cell assertions.
 func renderNoticeRoom(t *testing.T, msgs []ChannelMessage) tcell.Screen {
 	t.Helper()

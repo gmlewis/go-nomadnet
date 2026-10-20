@@ -42,7 +42,7 @@ type InterfaceStat struct {
 	// Params holds the interface's raw config parameters (everything except
 	// type/interface_enabled/enabled/selected_interface_mode/name, which the
 	// detail view shows elsewhere), keyed by config key. It feeds the
-	// ShowInterface parameter blocks (G1, Python Interfaces.py:2436-2492).
+	// ShowInterface parameter blocks (Python Interfaces.py:2436-2492).
 	Params map[string]string
 }
 
@@ -92,7 +92,7 @@ func (a *App) RNSConfigPath() string {
 // enabled state, matching Python's is_enabled rule (Interfaces.py:2871): enabled
 // defaults to true and is false only when "enabled" or "interface_enabled" is one
 // of false/off/no/0. RNodeMultiInterface sub-interface expansion (Interfaces.py:
-// 2843-2856) is not handled here — a deferred gap.
+// 2843-2856) is not handled here; those blocks are skipped.
 func parseInterfaceConfig(path string) []interfaceConfigEntry {
 	f, err := os.Open(path)
 	if err != nil {
@@ -112,10 +112,8 @@ func parseInterfaceConfig(path string) []interfaceConfigEntry {
 		}
 		switch {
 		case strings.HasPrefix(line, "[[[") && strings.HasSuffix(line, "]]]"):
-			// A sub-interface block: its keys describe the sub-interface. Stop
-			// attributing them to the parent, which previously let an
-			// RNodeMulti's sub-interface type override the parent's and its
-			// interface_enabled silently disable the whole interface.
+			// A sub-interface block: its keys describe the sub-interface, not
+			// the parent, so stop attributing them to the parent.
 			cur = nil
 		case strings.HasPrefix(line, "[[") && strings.HasSuffix(line, "]]"):
 			name := strings.Trim(line, "[] ")
@@ -319,9 +317,8 @@ func (a *App) liveInterfaceStats() map[string]InterfaceStat {
 			}
 			return statsByName
 		}
-		// A refused or failed query is reported rather than swallowed: the page it feeds
-		// shows an interface it cannot find as one that is down, which is exactly what a
-		// broken RPC looks like from the operator's side of the screen.
+		// A refused or failed query is reported rather than swallowed: the page it
+		// feeds shows an interface it cannot find as one that is down.
 		if err != nil {
 			a.Logger.Debug("Could not read the transport's interface stats: %v", err)
 		}

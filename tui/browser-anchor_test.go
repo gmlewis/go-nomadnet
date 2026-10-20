@@ -74,9 +74,9 @@ func TestBrowserJumpToAnchorScrollOffset(t *testing.T) {
 }
 
 // TestBrowserJumpToAnchorUnknownIsNoOp asserts an unknown anchor name does not
-// move the scroll position (Python: target_idx is None → return; the Go port
-// has no browser-footer slot to mirror Python's "Unknown anchor: #name"
-// message, so the faithful mapping is a no-op, matching GuideDisplay).
+// move the scroll position (Python: target_idx is None → return). The footer
+// separately reports "Unknown anchor: #name" (pinned in
+// browser-error-page_test.go); this test pins that the view stays put.
 func TestBrowserJumpToAnchorUnknownIsNoOp(t *testing.T) {
 	t.Parallel()
 

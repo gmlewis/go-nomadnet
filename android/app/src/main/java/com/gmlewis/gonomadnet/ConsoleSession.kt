@@ -98,12 +98,10 @@ sealed interface ConsoleEnd {
  *    while [sendKey], [resize] and [stop] are called from the UI thread as the user acts.
  *    Every one of those is safe to call while [pump] is blocked.
  *  - It is not a `View` and holds no `Activity`. Callbacks are plain functions, so the
- *    caller decides how to get back to the UI thread — and so this class can be tested
- *    with no Android object at all.
- *  - It does not throw at its caller. A socket that has lost its framing, a host that will
- *    not start, a peer that may not connect: each is reported through a callback, because
- *    this code runs inside an event loop, and a terminal that throws into one takes the
- *    appliance down with it.
+ *    caller decides how to get back to the UI thread.
+ *  - It does not throw at its caller. A lost frame stream, a host that will not start and a
+ *    peer that may not connect are each reported through a callback, because a terminal that
+ *    throws into an event loop takes the appliance down with it.
  *
  * The two callbacks arrive on whichever thread ended the session, which is usually the one
  * running [pump].

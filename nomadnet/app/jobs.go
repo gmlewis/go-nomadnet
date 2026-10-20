@@ -20,10 +20,8 @@ import "time"
 // lxmfSyncDue reports whether the periodic LXMF sync is due at now. It mirrors
 // Python's job-loop test verbatim (NomadNetworkApp.py:464, "now >
 // self.peer_settings['last_lxmf_sync'] + self.lxmf_sync_interval"), so the clock
-// it reads is the persisted last-sync time, seeded from peer settings at startup
-// (see loadPeerSettings) rather than a per-run in-memory zero. Without that seed
-// the zero time made every launch look like it had never synced, and the client
-// re-synced its whole mailbox on each start.
+// it reads is the persisted last-sync time seeded from peer settings at startup
+// (see loadPeerSettings) rather than a per-run in-memory zero.
 //
 // LastLXMFSync and its interval are read under mu because RequestLXMFSync (which
 // writes LastLXMFSync) is reachable from the TUI goroutine while this runs on
@@ -33,8 +31,7 @@ func (a *App) lxmfSyncDue(now time.Time) bool {
 	defer a.mu.Unlock()
 	// Deliberate Go improvement: Python's __jobs never consults
 	// periodic_lxmf_sync (NomadNetworkApp.py:465-467), so the key is inert there.
-	// Honoring it makes a documented setting actually work; see §6 of
-	// parity-gaps.md.
+	// Honoring it makes the documented setting actually work.
 	if !a.PeriodicLXMFSync {
 		return false
 	}

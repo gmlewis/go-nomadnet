@@ -39,9 +39,7 @@ func renderTestOpts(theme int) RRCRenderOpts {
 // nick's trailing space and drops it, leaving the segment exactly "<sender>"
 // (len == nickLen-1). Python renders the nick as a styled run inside one
 // wrapping flow (Channels.py:1405-1413), so the whole nick run stays on line
-// one and the body continues on line two — the slice must not panic (the
-// [17:16] crash of the JOINED-FANOUT live run, crash-20260904-143649.log:
-// "<Anonymous Peer> JOINED-FANOUT:…" at a 47-column body).
+// one and the body continues on line two — the slice must not panic.
 func TestFormatJustifiedHeadPrefixWrap(t *testing.T) {
 	t.Parallel()
 
@@ -50,9 +48,8 @@ func TestFormatJustifiedHeadPrefixWrap(t *testing.T) {
 		Room: "general", Nick: "Anonymous Peer", SrcHash: srcHex,
 		Text: "JOINED-FANOUT:0102030405060708090a0b0c0d0e0f10",
 	}
-	// bodyW 47 mirrors the live 120-column run: the first body word does not
-	// fit after the 17-column prefix, so the walk-back break lands on the
-	// nick's trailing space.
+	// bodyW 47: the first body word does not fit after the 17-column prefix,
+	// so the walk-back break lands on the nick's trailing space.
 	lines := formatRRCMessageLines(msg, renderTestOpts(ThemeDark), 13+47)
 	if len(lines) < 2 {
 		t.Fatalf("lines = %v, want at least the prefix line plus the wrapped body", lines)
@@ -86,10 +83,9 @@ func TestFormatJustifiedHeadPrefixWrap(t *testing.T) {
 }
 
 // TestFormatRRCMessageGolden pins the full msg-row render against the model
-// Python _message_widget produces (Channels.py:1281-1427), cross-checked with
-// the live #test SGR capture: one-space indent, grey [#888888][HH:MM:SS]
-// prefix (136;136;136), palette-colored <sender> by the SENDER HASH, plain
-// body inheriting the #dddddd default.
+// Python _message_widget produces (Channels.py:1281-1427): one-space indent,
+// grey [#888888][HH:MM:SS] prefix, palette-colored <sender> by the SENDER HASH,
+// plain body inheriting the #dddddd default.
 func TestFormatRRCMessageGolden(t *testing.T) {
 	t.Parallel()
 
@@ -124,9 +120,9 @@ func TestFormatRRCMessageTimestampFormat(t *testing.T) {
 	}
 }
 
-// TestRRCRenderColorsBodyText pins item 11: the body default fg is the RRC
-// render's nibble-doubled text color (#dddddd dark / #111111 light), the
-// value the live Python capture shows (221;221;221).
+// TestRRCRenderColorsBodyText pins the body default fg to the RRC render's
+// nibble-doubled text color (#dddddd dark / #111111 light), which Python emits
+// as 221;221;221.
 func TestRRCRenderColorsBodyText(t *testing.T) {
 	t.Parallel()
 
@@ -148,8 +144,8 @@ func TestRRCRenderColorsBodyText(t *testing.T) {
 	}
 }
 
-// TestNickColorByHashHexColor pins item 10's color MODEL: the palette index
-// comes from the SENDER HASH (Python get_nick_color), not the nick string.
+// TestRRCNickColorBySrcHash pins the color MODEL: the palette index comes from
+// the SENDER HASH (Python get_nick_color), not the nick string.
 func TestRRCNickColorBySrcHash(t *testing.T) {
 	t.Parallel()
 
@@ -249,9 +245,9 @@ func TestRRCSenderNameFallback(t *testing.T) {
 	}
 }
 
-// TestFormatRRCMessageLinkify pins item 13: 32-hex page runs, lxmf@ hashes
-// and #room names render underlined in the link color (#7799dd), while code
-// spans are left plain (Channels.py _body_markup + the link_ branch).
+// TestFormatRRCMessageLinkify pins that 32-hex page runs, lxmf@ hashes and
+// #room names render underlined in the link color (#7799dd), while code spans
+// are left plain (Channels.py _body_markup + the link_ branch).
 func TestFormatRRCMessageLinkify(t *testing.T) {
 	t.Parallel()
 
@@ -358,9 +354,7 @@ func TestScanChatSpansBoundaries(t *testing.T) {
 // TestFormatRRCMessageSystemNoticeError pins the system/notice/error render:
 // the leading space INSIDE the irc_ts-styled run (Python _ts_prefix,
 // Channels.py:1129-1131 — " [HH:MM:SS] ", 12 chars), the event icon, and the
-// STATIC palette's cube-quantized kind colors (ui/TextUI.py:63-68, measured
-// on the 2026-09-03 12:32 full-fleet capture, mac row 24: the " [12:21:08] "
-// run is (135,135,135) and the 󰙎 Welcome run (255,215,95)).
+// STATIC palette's cube-quantized kind colors (ui/TextUI.py:63-68).
 func TestFormatRRCMessageSystemNoticeError(t *testing.T) {
 	t.Parallel()
 

@@ -97,9 +97,9 @@ func TestOpenLXMFLinkInvalid(t *testing.T) {
 // new_conversation confirmed, Conversations.py:1063-1072): re-creating the
 // conversation for an address with a stored directory entry must not wipe the
 // entry's display name when the dialog's Name field is left empty. Python
-// protects the reported case with its existing-conversation guard
-// (Conversations.py:1065) — the wipe there is only reachable through this
-// create path, so the effect is the same: the row keeps rendering the name.
+// protects this with its existing-conversation guard (Conversations.py:1065);
+// the wipe would only be reachable through this create path, so the effect is
+// the same: the row keeps rendering the name.
 func TestOpenLXMFLinkPreservesExistingEntryName(t *testing.T) {
 	t.Parallel()
 	a := NewApp(tempDir(t), "", false, false)

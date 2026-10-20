@@ -21,16 +21,12 @@ import (
 	"testing"
 )
 
-// TestSplitDialogPythonParity is a LIVE cross-implementation check: it
+// TestSplitDialogPythonParity is a live cross-implementation check: it
 // AST-extracts the pure prologue of Python's _open_split_dialog
 // (nomadnet.ui.textui.Channels) — the body-byte count, _split_message parts,
-// part count K, and the part-1 preview (truncated to 70 code points with a
-// U+2026 ellipsis, then newlines/tabs replaced by spaces) — execs it with a
-// mock self whose _local_message captures the "too small to split" error, and
-// derives the expected fields freshly on every run. The noun is "message" +
-// ("s" if K != 1 else ""), matching Python's dialog assembly. Go owns the
-// input battery; Python owns the reference behavior. The test SKIPs, not
-// fails, when the Python reference is not importable.
+// part count K, and the part-1 preview — and derives the expected fields on
+// every run. The test skips, not fails, when the Python reference is not
+// importable.
 func TestSplitDialogPythonParity(t *testing.T) {
 	t.Parallel()
 

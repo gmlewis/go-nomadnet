@@ -148,8 +148,8 @@ func TestNodeInfoHostingLayoutDisabledPropagation(t *testing.T) {
 // + prettyhexrep(hash), held as a urwid.Text(align=CENTER). With a 32-hex
 // address the line is 69 cells, so urwid wraps it onto two centered rows in the
 // pane's 50 interior columns and the Pile PACK height grows to 16 rows (14
-// content + 2 border). The port rendered it in a one-row Flex item, so the
-// address was clipped away exactly as in the remote Node Info form.
+// content + 2 border). A one-row Flex item would clip the address away, as in
+// the remote Node Info form.
 func TestNodeInfoHostingLXMFAddrLineWraps(t *testing.T) {
 	t.Parallel()
 	app := newTestApp()

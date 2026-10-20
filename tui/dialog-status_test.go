@@ -28,11 +28,11 @@ func dispatchKey(app *App, root tview.Primitive, event *tcell.EventKey) {
 	}
 }
 
-// TestShowStatusDialogDismisses reproduces and pins the fix for the reported
-// "Saved modal never goes away" bug. After a mouse click opens a status dialog,
-// tview can leave focus on the underlying page (the clicked button) rather
-// than the dialog, so Esc reaches the page (which ignores it) instead of the
-// dialog's dismiss handler. Two independent fixes are verified here:
+// TestShowStatusDialogDismisses verifies that a status dialog always has a
+// working dismiss path. After a mouse click opens a status dialog, tview can
+// leave focus on the underlying page (the clicked button) rather than the
+// dialog, so Esc reaches the page (which ignores it) instead of the dialog's
+// dismiss handler. Two independent paths are verified here:
 //
 //  1. Esc dismisses regardless of focus, because MainDisplay.handleInput (the
 //     app-level capture) routes Esc to DismissTop whenever a dialog is open.
@@ -85,8 +85,7 @@ func TestShowStatusDialogDismisses(t *testing.T) {
 }
 
 // TestShowStatusDialogHasOKButton verifies the dialog content includes a
-// focused OK button (the visible dismiss affordance the Python original has
-// and the bare-text port lacked).
+// focused OK button (the visible dismiss affordance the Python original has).
 func TestShowStatusDialogHasOKButton(t *testing.T) {
 	app, _, pages := setupDialogTest(t)
 	dm := app.Dialogs
@@ -108,7 +107,7 @@ func TestShowStatusDialogHasOKButton(t *testing.T) {
 // TestEscDismissesDialogWhenMainFocused uses a bare-TextView dialog (no OK
 // button) to specifically pin the global Esc guard: with focus forced onto the
 // main page, Esc must still dismiss. This is the exact shape of the original
-// "Saved" dialog and the exact failure the user reported.
+// "Saved" dialog.
 func TestEscDismissesDialogWhenMainFocused(t *testing.T) {
 	app := newTestApp()
 	md := NewMainDisplay(app, 0, "default")

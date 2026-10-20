@@ -22,16 +22,12 @@ import (
 	"github.com/gmlewis/tcell/v2"
 )
 
-// TestUrwidButtonRenderingMatchesPython verifies that the UrwidButton
-// renders with the same spacing as Python's urwid.Button: one blank
-// after the left bracket, NO blank before the right bracket. Golden
-// values captured from Python urwid.Button.render:
+// TestUrwidButtonRenderingMatchesPython verifies that the UrwidButton renders
+// with the same spacing as Python's urwid.Button: one blank after the left
+// bracket, NO blank before the right bracket. Expected renderings:
 //
 //	Cancel at width 20: '< Cancel           >'
 //	Go     at width 20: '< Go               >'
-//
-// Before the fix, the Go port added urwidButtonDivideChars on BOTH
-// sides (one extra space before '>'), producing '< Cancel          >'.
 func TestUrwidButtonRenderingMatchesPython(t *testing.T) {
 	t.Parallel()
 
@@ -75,16 +71,11 @@ func TestUrwidButtonRenderingMatchesPython(t *testing.T) {
 	}
 }
 
-// TestUrwidButtonMultiByteLabelFillsCells pins the cell-vs-byte wrap bug: the
-// label print loop used the `range line` BYTE index as if it were a cell
-// offset, so every multi-byte rune (✉ is 3 bytes, 1 cell) truncated the line
-// one cell short and floated the right bracket away from the box edge — the
-// Conversations tab rendered "[ Untrusted (1) ✉ 1 ]· ·" with two blank cells
-// AFTER the bracket instead of urwid's label padding inside it. Python's tab
-// row (live capture nomadnet-glenn-mac-mini-m2_1788052270, row 3) is
-// "[ Untrusted (1)   1   ]": the leftover columns go BEFORE the "]".
-// With the ✉ glyph set the label is one cell narrower, so the inner pad is
-// four cells at this width.
+// TestUrwidButtonMultiByteLabelFillsCells pins that a multi-byte label is
+// measured in cells, not bytes, so the leftover columns are padding BEFORE the
+// closing bracket and the right bracket sits at the last cell. With the ✉
+// glyph set the label is one cell narrower, so the inner pad is four cells at
+// this width.
 func TestUrwidButtonMultiByteLabelFillsCells(t *testing.T) {
 	t.Parallel()
 

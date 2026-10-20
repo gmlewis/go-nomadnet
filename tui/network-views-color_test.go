@@ -28,9 +28,9 @@ import (
 // empty-string attr resolves to default; LocalPeer uses bare `urwid.Text`
 // ("LXMF Addr : ...", "Identity : ...") with NO AttrMap at all (Network.py:1271-
 // 1272,1351). Both therefore inherit the terminal default, not a palette color.
-// The Go port previously used 0xbbbbbb. (Go additionally over-formats the labels
-// with `[::b]`/`[lightblue]`/`[gray]` tags Python does not emit — a separate
-// parity gap; this test only pins the base/fallback color.)
+// (Go additionally over-formats the labels with `[::b]`/`[lightblue]`/`[gray]`
+// tags Python does not emit — a separate parity gap; this test only pins the
+// base/fallback color.)
 func TestNetworkViewsBaseColor(t *testing.T) {
 	t.Parallel()
 

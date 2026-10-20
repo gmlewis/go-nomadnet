@@ -58,13 +58,14 @@ func writeHistoryEntry(t *testing.T, path string, msg *rrc.RRCMessage) {
 	}
 }
 
-// TestRestartKeepsBotAndPrivateRepliesFromRoomHistory reproduces the live
-// failure on the Mac mini: after gonomadnet was brought back up, the room view
-// showed the user's own commands ("/msg gorrcbot help", "@gorrcbot help dn")
-// but NEITHER gorrbot's private replies NOR its public reply, even though all
-// of them were in the stored room history file.
+// TestRestartKeepsBotAndPrivateRepliesFromRoomHistory pins what survives a
+// restart: after the client reloads its stored room history and the hub's
+// greeting arrives, the room view must still show the user's own commands
+// ("/msg gorrcbot help", "@gorrcbot help dn"), gorrbot's private replies and its
+// public reply, while the ephemeral chatter (join notices, "Direct NOTICE sent
+// to ..." lines) is dropped.
 //
-// The rows below are the mini's real rows (hub chatter, the user's commands,
+// The rows below mirror a live session's rows (hub chatter, the user's commands,
 // gorrbot's private K_DST replies and its public reply), aged past the
 // ephemeral-notices timeout the way a reloaded file is. The client is then
 // restarted over the same storage directory and the hub's greeting arrives, so
@@ -124,8 +125,8 @@ func TestRestartKeepsBotAndPrivateRepliesFromRoomHistory(t *testing.T) {
 	}
 
 	// The hub's greeting arrives right after the reconnect; recording it is
-	// what triggers the first ephemeral-notice cleanup, which used to erase
-	// the replies the load had just restored.
+	// what triggers the first ephemeral-notice cleanup, which must not erase
+	// the replies the load has just restored.
 	feedEnvelope(t, hub[0], rrc.MakeClientEnvelope(rrc.TypeNotice, hubIdentity, []byte("general"), nil,
 		"Welcome! JOIN #general to discuss go-nomadnet and @gorrcbot.", make([]byte, 8), rrc.NowMs()))
 

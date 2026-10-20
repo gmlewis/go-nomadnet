@@ -22,11 +22,11 @@ import (
 )
 
 // While a dialog overlay is open, the page's list-region shortcuts must NOT
-// fire: Python's overlay replaces the page widget, so C-n under the QR
-// dialog never reached the page. In the Go port the page input capture stays
-// in the ancestor chain, so it must self-silence while ANY dialog overlay
-// (full-slot, list-slot, or right-pane) is up — otherwise C-n stacked the
-// New Conversation dialog on top of the QR dialog, rendering both at once.
+// fire: Python's overlay replaces the page widget, so C-n under the QR dialog
+// never reaches the page. In the Go port the page input capture stays in the
+// ancestor chain, so it must self-silence while ANY dialog overlay (full-slot,
+// list-slot, or right-pane) is up — otherwise C-n stacks the New Conversation
+// dialog on top of the QR dialog, rendering both at once.
 
 func TestConversationsShortcutsDeadWhileDialogOpen(t *testing.T) {
 	t.Parallel()

@@ -36,9 +36,10 @@ func pressKeyThroughFocus(app *App, key tcell.Key) tview.Primitive {
 	return app.GetFocus()
 }
 
-// TestC1IngestURIKeyboardTraversal pins C1 for the Ingest URI dialog: Down
-// walks field → Ingest → Back, Enter on Back dismisses (Python's button row
-// [Ingest | | Back] with dismiss_dialog, Conversations.py:1251-1256).
+// TestC1IngestURIKeyboardTraversal pins the keyboard traversal of the Ingest
+// URI dialog: Down walks field → Ingest → Back, Enter on Back dismisses
+// (Python's button row [Ingest | | Back] with dismiss_dialog,
+// Conversations.py:1251-1256).
 func TestC1IngestURIKeyboardTraversal(t *testing.T) {
 	t.Parallel()
 
@@ -61,9 +62,9 @@ func TestC1IngestURIKeyboardTraversal(t *testing.T) {
 	}
 }
 
-// TestC1SyncDialogKeyboardTraversal pins C1 for the Message Sync dialog: Down
-// walks radios → limit → Sync Now → Close, Enter on Close dismisses
-// (Conversations.py:1393-1400).
+// TestC1SyncDialogKeyboardTraversal pins the keyboard traversal of the Message
+// Sync dialog: Down walks radios → limit → Sync Now → Close, Enter on Close
+// dismisses (Conversations.py:1393-1400).
 func TestC1SyncDialogKeyboardTraversal(t *testing.T) {
 	t.Parallel()
 
@@ -104,8 +105,8 @@ func TestC1SyncDialogKeyboardTraversal(t *testing.T) {
 	}
 }
 
-// TestC1PeerInfoBackButton pins C1 for the Peer Info dialog: Down traversal
-// reaches the Back button and Enter on it dismisses (Python's
+// TestC1PeerInfoBackButton pins the keyboard traversal of the Peer Info dialog:
+// Down reaches the Back button and Enter on it dismisses (Python's
 // dismiss_dialog, Conversations.py:940-944).
 func TestC1PeerInfoBackButton(t *testing.T) {
 	t.Parallel()
@@ -116,7 +117,7 @@ func TestC1PeerInfoBackButton(t *testing.T) {
 	cd.ShowPeerInfoDialog(entry, PeerInfoDialogHooks{}, nil)
 
 	// Walk Down to the LAST item (Back) — the peer info chain is long; walk
-	// until the focus stops moving or we hit Back.
+	// until the focus stops moving or reaches Back.
 	for range 32 {
 		before := app.GetFocus()
 		if isButton(before, "Back") {
@@ -135,9 +136,9 @@ func TestC1PeerInfoBackButton(t *testing.T) {
 	}
 }
 
-// TestC1NewConversationBackButton pins C1 for the New Conversation dialog:
-// Down reaches Back and Enter dismisses without creating anything (Python's
-// dismiss_dialog, Conversations.py:1033-1037).
+// TestC1NewConversationBackButton pins the keyboard traversal of the New
+// Conversation dialog: Down reaches Back and Enter dismisses without creating
+// anything (Python's dismiss_dialog, Conversations.py:1033-1037).
 func TestC1NewConversationBackButton(t *testing.T) {
 	t.Parallel()
 
@@ -170,9 +171,9 @@ func TestC1NewConversationBackButton(t *testing.T) {
 	}
 }
 
-// TestC1MyQRKeyboardTraversal pins C1 for the My LXMF QR dialog: Down from
-// the QR view reaches the Close button; Enter dismisses; Space on the QR view
-// dismisses too (B4 owner decision).
+// TestC1MyQRKeyboardTraversal pins the keyboard traversal of the My LXMF QR
+// dialog: Down from the QR view reaches the Close button; Enter dismisses;
+// Space on the QR view dismisses too (by design).
 func TestC1MyQRKeyboardTraversal(t *testing.T) {
 	t.Parallel()
 
@@ -189,7 +190,7 @@ func TestC1MyQRKeyboardTraversal(t *testing.T) {
 		t.Error("Enter on Close must dismiss the QR dialog")
 	}
 
-	// Space on the QR view dismisses (B4).
+	// Space on the QR view dismisses.
 	cd.ShowMyQRDialog("2a6105f57145860441a62fe3b2a1352c")
 	focus := app.GetFocus()
 	if h := focus.InputHandler(); h != nil {

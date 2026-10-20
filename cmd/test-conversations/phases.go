@@ -170,14 +170,12 @@ func runAllPhases(h *harness, logf func(string, ...any)) {
 	h.announceAndAddresses()
 	h.firstMessageBtoA()
 	h.replyAtoB()
-	// inConversationShortcuts (dB) runs BEFORE headerStates so it exercises the
-	// REAL Alice conversation B is left viewing after the round-trip (editor
-	// focused, with hi-from-A in the body) — giving meaningful coverage of the
-	// titled-send + body-scroll steps. headerStates would replace it with the
-	// bogus "Nobody" conversation (no recalled identity → send is a no-op,
-	// empty body), so running it after would leave those steps snapshot-only on
-	// an empty conversation. Both phases open their own conversation
-	// (openFirstConversation), so neither depends on the other's focus state.
+	// inConversationShortcuts runs BEFORE headerStates so it exercises the real
+	// Alice conversation B is left viewing after the round-trip (editor focused,
+	// with the reply in the body). headerStates replaces it with an unnamed
+	// "Nobody" conversation (no recalled identity, so send is a no-op and the
+	// body is empty), which would leave those steps snapshot-only. Both phases
+	// open their own conversation, so neither depends on the other's focus state.
 	h.listShortcuts()
 	h.inConversationShortcuts()
 	h.composerWrap()

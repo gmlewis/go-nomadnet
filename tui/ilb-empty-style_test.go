@@ -22,12 +22,10 @@ import (
 	"github.com/gmlewis/tview"
 )
 
-// TestEmptyPlaceholderOffFocusStyle pins the 2026-08-28 finding: Python paints
-// the Conversations empty-state placeholder row with the list_off_focus
-// palette (fg #111→#000000, bg #777→#878787) across the full inner width, in
-// every focus state (live captures pyaconv_100x28_00/01/02 row 4 all show
-// fg 0,0,0 bg 135,135,135). The Go port previously rendered the placeholder
-// with the terminal default (no highlight).
+// TestEmptyPlaceholderOffFocusStyle pins that Python paints the Conversations
+// empty-state placeholder row with the list_off_focus palette (fg #111→#000000,
+// bg #777→#878787) across the full inner width, in every focus state (the
+// vendor ILB's off-focus attribute sticks to the placeholder item).
 func TestEmptyPlaceholderOffFocusStyle(t *testing.T) {
 	t.Parallel()
 
@@ -71,8 +69,7 @@ func TestEmptyPlaceholderOffFocusStyle(t *testing.T) {
 		t.Errorf("placeholder text fg = %v, want %v", f, fg)
 	}
 
-	// Unfocused: the same style persists (the live captures show it in every
-	// focus state).
+	// Unfocused: the same style persists (it applies in every focus state).
 	ilb.Blur()
 	screen.Clear()
 	ilb.Draw(screen)
@@ -84,7 +81,7 @@ func TestEmptyPlaceholderOffFocusStyle(t *testing.T) {
 
 // TestEmptyStyleNotAppliedToEmptyWidget pins the boundary: the Channels empty
 // state uses SetEmptyWidget (its own styled primitive) and must be untouched
-// by the new empty-text styling.
+// by the empty-text styling.
 func TestEmptyStyleNotAppliedToEmptyWidget(t *testing.T) {
 	t.Parallel()
 

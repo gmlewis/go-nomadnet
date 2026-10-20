@@ -27,13 +27,12 @@ import (
 // 4.0.3 Edit widget (multiline=True, wrap="space") — the widget behind Python
 // nomadnet's RoomMessageEdit footer (Channels.py:605). The Channels room
 // composer must wrap like urwid: the footer grows by one row per wrapped
-// line (urwid Frame shrinks the message list), and the caret never leaves
-// the panel (fleet bug: gonomadnet's single-row InputField clipped the text
-// at the right border and ShowCursor walked the caret beyond the panel).
+// line (urwid Frame shrinks the message list), and the caret never leaves the
+// panel. A single-row InputField would clip the text at the right border and
+// walk the caret beyond the panel.
 
-// c4Message is the exact draft typed live on glenn-mac-mini-m2 during the
-// parity report; wrapped at the room panel's inner width (96) it produces the
-// three visible editor rows in the Python capture.
+// c4Message is a long draft; wrapped at the room panel's inner width (96) it
+// produces the three visible editor rows in the Python capture.
 const c4Message = "Message C4 from glenn-mac-mini-m2 again, but this time typing way " +
 	"beyond the length of the input line to see how it is being handled, and it " +
 	"turns out that nomadnet will move the whole panel up one or more lines to " +
@@ -481,10 +480,9 @@ func TestReadlineEditMultilineDrawWraps(t *testing.T) {
 	}
 }
 
-// TestReadlineEditSingleLineCursorClamped pins the fleet symptom's root: the
-// single-line field's hardware caret must stay inside the field even when
-// tview scrolls the text horizontally (the caret previously walked past the
-// panel edge and off screen).
+// TestReadlineEditSingleLineCursorClamped verifies that the single-line
+// field's hardware caret stays inside the field even when tview scrolls the
+// text horizontally; a caret that walks past the panel edge is off screen.
 func TestReadlineEditSingleLineCursorClamped(t *testing.T) {
 	t.Parallel()
 

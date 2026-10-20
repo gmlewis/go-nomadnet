@@ -72,10 +72,8 @@ type Directory struct {
 	// persistPath, when set via SetPersistPath, makes Remember eagerly save the
 	// directory (entries + announce stream) to this path after each update —
 	// mirroring Python's Directory.remember → save_to_disk (Directory.py:340-
-	// 351). This is what makes the node directory survive across runs in Python
-	// regardless of how the process exits; without it Go only persisted on the
-	// menu-Quit shutdown path (and lost everything on Ctrl-C/SIGHUP). Empty
-	// means Remember only updates in-memory state and the caller owns persisting.
+	// 351). Empty means Remember only updates in-memory state and the caller owns
+	// persisting.
 	persistPath string
 
 	mu sync.Mutex
@@ -385,7 +383,6 @@ func (d *Directory) PNAnnounces() []Announce {
 	return result
 }
 
-// SetBlockedFilter installs the Go-only blocked announce filter. There is NO
 // isBlockedLocked reports whether the given source hash is blocked by the
 // configured filter (false when no filter is set). The caller must hold d.mu.
 func (d *Directory) isBlockedLocked(sourceHash []byte) bool {
@@ -427,7 +424,7 @@ func (d *Directory) RemoveAnnounceWithTimestamp(timestamp float64) {
 // never added to any announce stream, never auto-remembered in the directory
 // from a node announce, and existing stream announces for blocked sources are
 // hidden from every stream getter — so a blocked node's announcements are
-// never seen again, even ones already recorded this session. This is a
+// never seen again, even ones already recorded in this run. This is a
 // DELIBERATE gonomadnet enhancement with no Python nomadnet counterpart
 // (Python's transport blackhole cuts connectivity but still shows announces);
 // do not "fix" this back toward the Python original. The app wires

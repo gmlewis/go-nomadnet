@@ -136,8 +136,7 @@ func TestApplyLocationSensorFeed(t *testing.T) {
 }
 
 // TestDefaultLocationMaxAgeIsBounded asserts the default staleness window is
-// short enough that a dead feed degrades to no position promptly, because a
-// confidently stale position is the same class of bug as a confidently wrong one.
+// short enough that a dead feed degrades to no position promptly.
 func TestDefaultLocationMaxAgeIsBounded(t *testing.T) {
 	t.Parallel()
 

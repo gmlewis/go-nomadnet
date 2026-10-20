@@ -22,10 +22,9 @@ import (
 
 // TestTabComplete verifies TabComplete matches Python's
 // RoomMessageEdit._try_tab_complete (Channels.py:458) and _candidates
-// (Channels.py:439). Expected values were captured from the Python source run
-// in /tmp/tab_ref2.py with deduped member names. The completion cycles through
-// prefix matches, prepending "@" for mentions, appending ": " for a leading
-// nick, and leaving the nick bare mid-line.
+// (Channels.py:439). The completion cycles through prefix matches, prepending
+// "@" for mentions, appending ": " for a leading nick, and leaving the nick
+// bare mid-line.
 func TestTabComplete(t *testing.T) {
 	t.Parallel()
 

@@ -20,16 +20,13 @@ import XCTest
 /// The emulated terminal's parser: the escape sequences a client emits, and what they do
 /// to the screen.
 ///
-/// `tui/vterm.go` is the same parser in Go and these vectors are readable against it, but
-/// the Swift side has to be more than a port in four places, and each of them is a test
-/// below: Go has no OSC handling at all (so no title and no clipboard), no DEC special
-/// graphics (so a box-drawing page prints letters), no wide-character handling, and a
-/// package-level UTF-8 accumulator shared by every screen.
+/// `tui/vterm.go` is the same parser in Go. The Swift side differs in four places: OSC
+/// handling (title and clipboard), DEC special graphics, wide-character handling, and a
+/// per-screen rather than package-level UTF-8 accumulator.
 ///
-/// A terminal is fed a hostile byte stream by definition — anything the client on the
-/// other end of the socket prints arrives here unexamined — so the last two tests are
-/// seeded fuzz cases: no input may panic, and none may grow the screen or the parser
-/// without limit. They are bounded and deterministic, like `cmd/stress-test-nomadnet`.
+/// The parser is fed a hostile byte stream by definition — anything the client prints
+/// arrives unexamined — so the last two tests are seeded fuzz cases: no input may panic,
+/// and none may grow the screen or the parser without limit.
 final class TerminalParserTests: XCTestCase {
 
     /// Fixture is a parser and the sinks it reports to, which is everything a test needs.
@@ -548,9 +545,8 @@ final class TerminalParserTests: XCTestCase {
         XCTAssertEqual(24, fixture.screen.rows)
 
         // A hostile stream can also open a string that never ends. The parser holds at most
-        // a bounded amount of it, so the terminal recovers and is usable again rather than
-        // accumulating a megabyte of a title it will never be given. This one starts from a
-        // fresh parser, so what it is in the middle of is not left to the random bytes above.
+        // a bounded amount of it, so the terminal recovers and stays usable rather than
+        // accumulating a megabyte of a title it will never be given.
         let hostile = Fixture(cols: 80, rows: 24)
         var unterminated = "\u{1b}]52;c;"
         unterminated += String(repeating: "A", count: 1 << 20)

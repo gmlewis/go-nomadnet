@@ -211,7 +211,7 @@ func TestIntegrationNodeServesMicronToPython(t *testing.T) {
 	ts.RegisterInterface(goIface)
 	defer func() { _ = goIface.Detach() }()
 	// Wait for the TCP client to connect before announcing (poll the interface
-	// status; the fixed sleep it replaces always paid 500ms).
+	// status rather than sleeping a fixed interval).
 	if !testutils.PollUntil(5*time.Second, func() bool { return goIface.Status() }) {
 		t.Fatalf("Go TCP client interface never connected")
 	}
@@ -237,10 +237,7 @@ func TestIntegrationNodeServesMicronToPython(t *testing.T) {
 
 	// startNode → ensureDefaultPages seeds the pages directory with a default
 	// index.mu containing defaultIndexContent (the gonomadnet mascot page), so
-	// /page/index.mu is served from that file. (When no index.mu exists at all,
-	// defaultIndexHandler serves node.DefaultIndex — the placeholder pinned to
-	// Python's DEFAULT_INDEX by nomadnet/node.TestServeDefaultIndexPythonParity.
-	// Here the seeded mascot file is what the cross-process link must deliver.)
+	// /page/index.mu is served from that file.
 
 	// Publish the Go nomadnetwork.node destination hash so Python can recall it.
 	nodeHash := rns.CalculateHash(appGo.Identity, "nomadnetwork", "node")
@@ -276,10 +273,9 @@ func TestIntegrationNodeServesMicronToPython(t *testing.T) {
 		t.Errorf("received page bytes (len %v) != defaultIndexContent (len %v).\nreceived:\n%v\nwant:\n%v",
 			strings.TrimSpace(recvLen), len(defaultIndexContent), recvBytes, defaultIndexContent)
 	}
-	// node.DefaultIndex (the placeholder served when no index.mu exists at all)
-	// == Python DEFAULT_INDEX is pinned separately by
-	// nomadnet/node.TestServeDefaultIndexPythonParity (testdata/py_default_index.mu).
-	// This cross-process test pins the wire path: the bytes the Go node actually
-	// serves (the ensureDefaultPages mascot file) arrive byte-identical over the
+	// node.DefaultIndex (served when no index.mu exists at all) is pinned
+	// separately by nomadnet/node.TestServeDefaultIndexPythonParity. This
+	// cross-process test pins the wire path: the bytes the Go node actually
+	// serves (the ensureDefaultPages page) arrive byte-identical over the
 	// Go↔Python TCP RNS link.
 }

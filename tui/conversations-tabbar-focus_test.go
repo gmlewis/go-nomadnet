@@ -23,9 +23,8 @@ import (
 	"github.com/gmlewis/tview"
 )
 
-// focusTabBarFixture builds a ConversationsDisplay with one trusted
-// conversation and NO untrusted ones — the live state where the Trusted tab
-// was previously unreachable by arrow keys (empty untrusted list).
+// focusConvFixture builds a ConversationsDisplay with one trusted
+// conversation and NO untrusted ones, so the Untrusted tab's list is empty.
 func focusConvFixture(t *testing.T) (*ConversationsDisplay, *ConversationInfo) {
 	t.Helper()
 	app := newTestApp()
@@ -46,13 +45,12 @@ func pressKeyUp(cd *ConversationsDisplay) *tcell.EventKey {
 }
 
 // TestConversationsTabReachableFromEmptyList pins the arrow-key path to the
-// Trusted conversation selector (bug report: with the Untrusted tab showing an
-// EMPTY list, arrow keys could not reach the tab bar at all — Python's
-// ilb.body_is_empty branch jumps an empty-list Up straight to the menubar,
-// Conversations.py:108-111, which the Go port copied). This is a deliberate
-// Go enhancement on top of that Python behavior: Up from an empty list now
-// performs the SAME Pile traversal a non-empty list gets (checkbox → tab bar),
-// and only a further Up from the tab bar reaches the menubar.
+// tab bar when the current tab's list is EMPTY: Python's ilb.body_is_empty
+// branch jumps an empty-list Up straight to the menubar (Conversations.py:
+// 108-111). This is a deliberate Go enhancement on top of that behavior: Up
+// from an empty list performs the SAME Pile traversal a non-empty list gets
+// (checkbox → tab bar), and only a further Up from the tab bar reaches the
+// menubar.
 func TestConversationsTabReachableFromEmptyList(t *testing.T) {
 	t.Parallel()
 	cd, _ := focusConvFixture(t)
@@ -91,7 +89,7 @@ func TestConversationsTabReachableFromEmptyList(t *testing.T) {
 	}
 }
 
-// TestConversationsTabReachableFromNonEmptyList pins the Python-parity A6
+// TestConversationsTabReachableFromNonEmptyList pins the Python-parity
 // behavior that must NOT regress: Up at the top of a NON-empty trusted list
 // lands on the tab bar.
 func TestConversationsTabReachableFromNonEmptyList(t *testing.T) {
@@ -113,10 +111,10 @@ func TestConversationsTabReachableFromNonEmptyList(t *testing.T) {
 	}
 }
 
-// TestBodyListAtTopEmptyConversationsList pins the dispatcher-side half of the
-// fix: bodyListAtTop must report FALSE for the conversations list (even an
-// EMPTY one), so the app-level capture defers the Up to the page's pile
-// traversal instead of collapsing straight to the menu.
+// TestBodyListAtTopEmptyConversationsList pins the dispatcher side: bodyListAtTop
+// must report FALSE for the conversations list (even an EMPTY one), so the
+// app-level capture defers the Up to the page's pile traversal instead of
+// collapsing straight to the menu.
 func TestBodyListAtTopEmptyConversationsList(t *testing.T) {
 	t.Parallel()
 	app := newTestApp()

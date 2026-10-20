@@ -26,23 +26,20 @@ import (
 	"github.com/gmlewis/go-nomadnet/testutils"
 )
 
-// TestSavePythonByteParity pins the hard parity requirement for the msgpack
-// migration: Go's Save MUST emit byte-for-byte identical msgpack to Python
-// NomadNet's save_peer_settings (NomadNetworkApp.py:647), which serialises
-// self.peer_settings (an insertion-ordered dict) via RNS.vendor.umsgpack.
+// TestSavePythonByteParity pins the parity requirement for Save: it MUST emit
+// byte-for-byte identical msgpack to Python NomadNet's save_peer_settings
+// (NomadNetworkApp.py:647), which serialises self.peer_settings (an
+// insertion-ordered dict) via RNS.vendor.umsgpack.
 //
 // This is a LIVE cross-implementation test: it execs the real Python nomadnet
 // reference, builds the SAME peer_settings dict (same keys, same insertion
-// order, same values) the Go test constructs, msgpack.packb's it FRESH, and
-// diffs the bytes against Go's Save output. It is skipped (not failed) when
-// the Python nomadnet reference is not importable.
+// order, same values) the Go test constructs, packs it, and diffs the bytes
+// against Go's Save output. It is skipped (not failed) when the Python
+// nomadnet reference is not importable.
 //
-// The existing TestSavePythonCompatRoundTrip only round-trips Go Save -> Go
-// Load and checks field equality — it never compares the bytes to Python, so
-// it could not catch that the old vmihailenco codec chose different integer
-// widths (signed int16/int32 vs Python's unsigned uint16/uint32) and would
-// have diverged on announce_interval and last_lxmf_sync. This live byte diff
-// catches that class of regression on every run.
+// Integer field widths matter: Python packs non-negative ints as unsigned
+// (uint16/uint32), so a codec that chose signed widths would diverge on
+// announce_interval and last_lxmf_sync.
 func TestSavePythonByteParity(t *testing.T) {
 	t.Parallel()
 	cases := []struct {

@@ -167,9 +167,9 @@ class MainActivityTest {
     fun `the client is told one wheel notch is one row`() {
         // A finger drag reaches the client as wheel notches, one per row of the screen it
         // travelled, so what the page does is what the client does with a notch. The client's
-        // own default moves several rows a notch, and a drag then runs away from the finger —
-        // the "scrolling at 2X the speed of my finger" report. A multiplier the wire cannot
-        // express is not a fix, so the client is told what one notch means instead.
+        // own default moves several rows a notch, so a drag then runs away from the finger.
+        // A multiplier the wire cannot express is not a fix, so the client is told what one
+        // notch means instead.
         val paths = StackPaths(FILES_DIR)
         val client = MainActivity.builtInClient(NATIVE_LIBRARY_DIR, paths)
         val spec = MainActivity.consoleHostSpec(
@@ -355,11 +355,9 @@ class MainActivityTest {
     fun `pairing a keyboard does not end the console`() {
         // A Bluetooth keyboard connecting is a configuration change like a rotation is, and
         // it arrives in the middle of a session — the person has just reached for the keys.
-        // The activity did not claim it, so Android destroyed and rebuilt the activity the
-        // moment the keyboard appeared: the console page went with it, the session was
-        // stopped and the client was killed, and the screen the person was reading was
-        // replaced by the appliance's controls. On the tablet it read as the app closing
-        // itself when a key was pressed.
+        // An unclaimed change destroys and rebuilds the activity: the console page goes with
+        // it, the session is stopped and the client is killed, and the screen the person was
+        // reading is replaced by the appliance's controls.
         //
         // All three are the same event seen from three sides — the keyboard itself, the soft
         // keyboard that goes away when one is attached, and the navigation keys a keyboard
@@ -380,8 +378,7 @@ class MainActivityTest {
     fun `the appliance offers itself for a USB radio`() {
         // A radio on the tablet's USB port is a device Android asks who should have. It asks
         // by matching the attached device against every app's device filter, so an app with
-        // no filter is an app that is never offered — the radio's own chooser listed four
-        // other applications and not this one.
+        // no filter is an app that is never offered.
         //
         // The claim is only that offer, and it is made in the manifest and one resource, so
         // both are asserted here: a filter is the kind of thing that is silently lost when an
@@ -477,9 +474,9 @@ class MainActivityTest {
             queried.none { it == OTHER_PACKAGE },
         )
 
-        // The receiver that answer arrived at is gone with the question. A manifest entry
-        // naming a class that no longer exists is a package that fails to install, so this
-        // is also the check that the removal was complete.
+        // The appliance resolves no other app, so it declares no receiver for one. A manifest
+        // entry naming a class that does not exist is a package that fails to install, so
+        // this is also the check that the manifest and the sources agree.
         val receivers = document.elements("receiver")
             .map { it.getAttributeNS(ANDROID_NAMESPACE, "name") }
         for (gone in UNUSED_RECEIVERS) {
@@ -496,12 +493,12 @@ class MainActivityTest {
 
     @Test
     fun `the package carries nothing for another app to run`() {
-        // What is in the APK is what it downloads as, and a setup script for an app this one
-        // no longer talks to is dead weight in every download — and worse than dead weight,
-        // because it says the appliance does something it does not. The files that are kept
-        // are kept for reasons of their own: the font is what the console draws with, the
-        // client installs the terminal colors and the tmux configuration into its own home,
-        // and the Bible text is what the bundled offline page reads.
+        // What is in the APK is what it downloads as, and a setup script for another app is
+        // dead weight in every download — and worse than dead weight, because it says the
+        // appliance does something it does not. The files that are kept are kept for reasons
+        // of their own: the font is what the console draws with, the client installs the
+        // terminal colors and the tmux configuration into its own home, and the Bible text is
+        // what the bundled offline page reads.
         val assets = File(ASSETS_DIR)
         assertTrue("the assets are not with the module: $assets", assets.isDirectory)
         val present = assets.list()?.toList().orEmpty()
@@ -621,10 +618,8 @@ class MainActivityTest {
     fun `the location readout says what the answer is and nothing else about it`() {
         // A refused location has no other symptom anywhere on this screen — the sensors simply
         // never start — so its state is printed where somebody debugging the appliance can read
-        // it without a manual. It was printed from onCreate, ahead of the dialog that asks for
-        // it, and nothing ever rendered it again: a fresh install showed "Location: NOT
-        // granted" for the rest of the session, on a screen that had just been granted it, and
-        // the readout contradicted the appliance it was describing.
+        // it without a manual. The readout is rendered only once the answer exists, so it never
+        // contradicts the appliance it is describing.
         //
         // The answer is an argument, which is what makes both readings assertable here rather
         // than on a tablet, and it is the activity's job to supply it only once the answer
@@ -777,7 +772,7 @@ class MainActivityTest {
         /** The manifest, as Gradle runs these tests from the module directory. */
         const val MANIFEST = "src/main/AndroidManifest.xml"
 
-        /** The module's sources, so a class the package no longer has can be looked for. */
+        /** The module's sources, so a class the package should not carry can be looked for. */
         const val SOURCES_DIR = "src/main/java/com/gmlewis/gonomadnet"
 
         /** The module's resources, where the appliance's own theme is written down. */
@@ -799,39 +794,37 @@ class MainActivityTest {
          * The configuration changes an input device appearing or going away produces.
          *
          * A tablet has no keyboard until someone pairs one, and the system announces that by
-         * changing the configuration rather than by sending a key. All three arrive together
-         * — the evidence on the tablet is a single
-         * `changed={CONFIG_KEYBOARD, CONFIG_KEYBOARD_HIDDEN, CONFIG_NAVIGATION}` — so they
-         * are asserted together.
+         * changing the configuration rather than by sending a key. All three arrive together,
+         * so they are asserted together.
          */
         val KEYBOARD_CHANGES = listOf("keyboard", "keyboardHidden", "navigation")
 
         /**
-         * Permissions for a thing the appliance no longer does.
+         * Permissions for something the appliance does not do.
          *
-         * `REQUEST_INSTALL_PACKAGES` was for installing another app, and
-         * `com.termux.permission.RUN_COMMAND` for asking it to run a program. The appliance
-         * starts both halves out of its own storage, so it needs neither — and a listing
-         * that asks to install software is the kind of thing a person is right to refuse.
+         * `REQUEST_INSTALL_PACKAGES` would be for installing another app, and
+         * `com.termux.permission.RUN_COMMAND` for asking Termux to run a program. The
+         * appliance starts both halves out of its own storage, so it needs neither — and a
+         * listing that asks to install software is the kind of thing a person is right to
+         * refuse.
          */
         val UNUSED_PERMISSIONS = listOf(
             "android.permission.REQUEST_INSTALL_PACKAGES",
             "com.termux.permission.RUN_COMMAND",
         )
 
-        /** The package the appliance no longer asks the system about. */
+        /** The other app's package, which the appliance never queries. */
         const val OTHER_PACKAGE = "com.termux"
 
-        /** The receiver the install answer arrived at, gone with the question. */
+        /** The receiver that belonged to the install-request flow, which nothing declares. */
         val UNUSED_RECEIVERS = listOf("InstallResultReceiver")
 
         /**
          * Setup files for another app, which no code in the appliance reads.
          *
-         * `gonomadnet-client` is the client as an asset — the copy that used to be handed
-         * over; the app's client is `libgonomadnetclient.so` in its own native library
-         * directory, built by the same script. It is not tracked by git, so a package built
-         * after this change is what proves it is gone.
+         * `gonomadnet-client` is a copy of the client as an asset; the app's client is
+         * `libgonomadnetclient.so` in its own native library directory, built by the same
+         * script.
          */
         val SETUP_ASSETS = listOf(
             "gonomadnet-setup.sh",

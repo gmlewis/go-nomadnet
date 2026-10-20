@@ -17,17 +17,15 @@ package tui
 
 import "testing"
 
-// TestHandleLinkNodeHistoryPush pins the fix for Ctrl-d (GoBack) being a no-op
-// after click-navigating a nomadnetwork.node link. Python's retrieve_url appends
-// to history on success (Browser.py:131-145, 216-268), so after clicking a link
-// from page A to page B, Back must return to A. The Go fetch resolves via an
-// async app-layer callback (RenderPage with markup, not the URL), so the tui
-// layer cannot push on success; HandleLink instead pushes eagerly and the
-// failure paths (NotifyLinkError for a dispatch error, SetContent for a
-// fetch-fatal timeout/no-path) roll the push back, while RenderPage clears the
-// pending flag on success. Before the fix HandleLink called OnRetrieveURL
-// without touching history, so history stayed [A] with histIdx 0 and GoBack was
-// a no-op — the user was stranded on B with Back doing nothing.
+// TestHandleLinkNodeHistoryPush pins the history contract for a
+// nomadnetwork.node link click: after clicking a link from page A to page B,
+// Ctrl-d (GoBack) must return to A, and a failed link must leave the user on A.
+// Python's retrieve_url appends to history on success (Browser.py:131-145,
+// 216-268). The Go fetch resolves via an async app-layer callback (RenderPage
+// with markup, not the URL), so the tui layer cannot push on success; HandleLink
+// instead pushes eagerly and the failure paths (NotifyLinkError for a dispatch
+// error, SetContent for a fetch-fatal timeout/no-path) roll the push back, while
+// RenderPage clears the pending flag on success.
 func TestHandleLinkNodeHistoryPush(t *testing.T) {
 	t.Parallel()
 

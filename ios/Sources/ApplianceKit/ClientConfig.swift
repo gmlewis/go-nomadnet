@@ -51,8 +51,8 @@ extension ClientConfigError: LocalizedError {
 ///     application from starting a program at all, so anything written here would be a
 ///     command that can never run, and the client's Config page would fail with a reason
 ///     that blames a program instead of naming the one that does the job. The appliance's
-///     editor is a screen in the app (see docs/iOS.md), and the client is told so rather
-///     than pointed at a program.
+///     editor is a screen in the app, and the client is told so rather than pointed at a
+///     program.
 ///
 /// The file is written from the client's own default rather than from a second copy of it:
 /// the template is the `default.conf` the Go client embeds and writes on its first run,
@@ -92,7 +92,7 @@ public enum ClientConfig {
     ///
     /// - Throws: `ClientConfigError.missingKeys` when a template no longer carries the
     ///   keys. Refusing is deliberate: the alternative is a file that looks correct and
-    ///   hosts nothing, which is the failure this whole mechanism exists to remove.
+    ///   hosts nothing.
     public static func settings(template: String, editor: String) throws -> String {
         let served = try rewrite(
             template,

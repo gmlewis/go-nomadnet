@@ -77,10 +77,6 @@ func TestAutoSelectPropagationNodeUserSelected(t *testing.T) {
 // `<` means the first of several equally-close nodes is kept. Untrusted nodes are
 // skipped however close they are, and with no trusted node nothing is selected at
 // all.
-//
-// This test previously constructed the same state and asserted NOTHING — it called
-// AutoSelectPropagationNode and stopped, so the contract named in its title was
-// unverified (parity-gaps §5.2).
 func TestAutoSelectPropagationNodeTrustedFewestHops(t *testing.T) {
 	t.Parallel()
 

@@ -16,34 +16,28 @@
 // Package location keeps the reader's own position and heading, and answers
 // "where am I and which way am I facing" for the rest of the client.
 //
-// It exists because a `L Micron location construct is resolved against the
-// reader, not against the page: only the client that holds the position can turn
-// a Plus Code into "8 m away, 025° true, 40° to your left". Python's NomadNet has
-// no such construct at all, so this is a gonomadnet extension.
+// A `L` Micron location construct is resolved against the reader, not against
+// the page: only the client that holds the position can turn a Plus Code into
+// "8 m away, 025° true, 40° to your left". Python's NomadNet has no such
+// construct, so this is a gonomadnet extension.
 //
 // There are two tiers of position, and one rule between them: a live source is
 // the only source.
 //
 //   - A live source is a sensor feed — a device with its own receiver publishing
-//     NMEA-0183 sentences over a socket or a device path. A tablet knows where it
-//     is and which way it faces, continuously, and the feed is what tells the
-//     client so.
-//   - A static fix is the [location] fix setting. It is what a sensorless install
-//     uses, and it is consulted only when no live source is configured at all.
-//     Once a feed is configured, a silent feed means the client has no position:
-//     substituting the static fix would leave the reader unable to tell which
-//     position they were looking at.
+//     NMEA-0183 sentences over a socket or a device path.
+//   - A static fix is the [location] fix setting. It is used only when no live
+//     source is configured at all. Once a feed is configured, a silent feed
+//     means the client has no position: substituting the static fix would leave
+//     the reader unable to tell which position they were looking at.
 //
-// Two properties are the reason this is a type and not a field.
-//
-// It is read while it is being written. The TUI renders on one goroutine while a
-// scanner goroutine keeps the readers up to date, so every access goes through a
-// guarded accessor and the whole client passes the race detector.
+// A Source is read while it is being written: the TUI renders on one goroutine
+// while a scanner goroutine keeps the readers up to date, so every access goes
+// through a guarded accessor.
 //
 // What it reports is never stale. A reading that arrived longer ago than the
-// configured window stops being a position, and the constructs that depend on one
-// degrade to the bare Plus Code. A confidently stale position is the same class of
-// bug as a confidently wrong one.
+// configured window stops being a position, and the constructs that depend on
+// one degrade to the bare Plus Code.
 //
 // Nothing here transmits anything. The position is an input to a distance the
 // reader computed for themselves; it is never placed in an announce, a page
@@ -101,9 +95,8 @@ type Options struct {
 	Open func(endpoint string) (io.ReadCloser, error)
 }
 
-// Status describes what the client currently knows about its own position. It is
-// what lets the person holding the device see their own exposure rather than
-// having to take the documentation's word for it.
+// Status describes what the client currently knows about its own position,
+// including where it came from, how old it is, and how much to trust it.
 type Status struct {
 	// Feed is the configured sensor endpoint, or empty.
 	Feed string
@@ -132,9 +125,7 @@ type Status struct {
 }
 
 // Describe renders the status as one line a person can read: what the client
-// knows, where it came from, how old it is, and how much to trust it. The privacy
-// model is only real if the reader can check their own exposure, and this line is
-// where they check it.
+// knows, where it came from, how old it is, and how much to trust it.
 func (s Status) Describe() string {
 	switch s.Source {
 	case SourceStatic:
@@ -219,10 +210,9 @@ func New(opts Options) *Source {
 // current. It returns at once: the readers scan on their own goroutines.
 //
 // A feed that cannot be resolved — a malformed endpoint, or a device path that
-// does not open — is reported, because a misconfiguration the client silently
-// ignores is a client that never has a position and never says why. A socket that
-// cannot be *reached* is not an error: the sensor service on the other side may
-// simply not have started, and the stream reconnects itself when it appears.
+// does not open — is reported as an error. A socket that cannot be *reached* is
+// not an error: the sensor service on the other side may not have started yet,
+// and the stream reconnects itself when it appears.
 func (s *Source) Start(ctx context.Context) error {
 	if s.opts.Feed == "" {
 		return nil
@@ -398,8 +388,7 @@ func headingDegrees(heading bot.CompassHeading) (float64, bool) {
 
 // stampingReader records when bytes last arrived on a sensor stream. It is the
 // whole ageing mechanism: no timer runs, nothing polls, and a feed that goes quiet
-// simply stops moving its stamp. Without it a reader could only report what the
-// last sentence said, with no way to tell a live fix from one an hour old.
+// simply stops moving its stamp.
 type stampingReader struct {
 	// src is the sensor stream.
 	src io.Reader

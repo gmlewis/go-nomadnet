@@ -25,7 +25,7 @@ import (
 )
 
 // tempDir is a short-path temp directory: on macOS a t.TempDir() path is long
-// enough to break Unix domain sockets, so the base is /tmp there (see AGENTS.md).
+// enough to break Unix domain sockets, so the base is /tmp there.
 func tempDir(t *testing.T) string {
 	t.Helper()
 	base := ""
@@ -166,8 +166,7 @@ func TestScanMarkup(t *testing.T) {
 
 // TestScanTreeLinks pins the checks that need the whole tree: a relative page
 // target that does not exist, and an "anchor=" field naming an anchor the target
-// page does not declare. The second is the defect that made the generated
-// documentation's cross-page section links dead.
+// page does not declare.
 func TestScanTreeLinks(t *testing.T) {
 	t.Parallel()
 

@@ -167,8 +167,8 @@ func TestConversationsAttachDialogReopenKeepsTwoPanes(t *testing.T) {
 	assertTwoPanes(t, cd, cd.leftPanel, ovA)
 
 	// Re-invoking Ctrl-f while the dialog is already open must replace the
-	// overlay, not stack a second item (this is the input-misroute repro:
-	// the stale overlay stayed on top and keys fell through to the page).
+	// overlay, not stack a second item: a stale overlay on top would send keys
+	// through to the page.
 	cw.OnAttach()
 	if cd.detailSlotOverlay == nil || cd.detailSlotOverlay == ovA {
 		t.Fatalf("re-opened attach dialog not replaced (next=%v)", cd.detailSlotOverlay)

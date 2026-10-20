@@ -48,11 +48,9 @@ public final class TerminalController {
 
     /// The size the client has been told its window is.
     ///
-    /// It is remembered rather than read back off `screen`, and that is the whole point: the
-    /// screen is what the app draws, the view changes its size the moment the layout changes,
-    /// and a size read off it says nothing about what the client believes. The appliance asked
-    /// the question that way and so never sent a RESIZE frame at all — its client drew 80
-    /// columns into a 75-column pane for the whole session. See `TerminalSizing`.
+    /// It is remembered rather than read back off `screen`: the screen is what the app draws,
+    /// and the view changes its size the moment the layout changes, so a size read off it
+    /// says nothing about what the client believes. See `TerminalSizing`.
     public private(set) var told: TerminalSize
 
     /// Creates a controller for a console socket.
@@ -102,23 +100,19 @@ public final class TerminalController {
         session.send(bytes)
     }
 
-    /// resize tells the client its window has changed.
-    ///
-    /// This is the app->bridge half of the protocol, and the client reflows for it: a
-    /// console whose grid is not what the client believes it is draws its interface in the
-    /// wrong place, which after a rotation is every line on the screen. The size carries the
-    /// console's physical size as well as its cells, which is what the client needs to know
-    /// whether its terminal is standing up — a cell is about twice as tall as it is wide, so
-    /// a console in portrait holds more columns than rows.
     /// Called when the client is told a new size for its window.
+    ///
+    /// The client reflows for it: a console whose grid is not what the client believes it is
+    /// draws its interface in the wrong place, which after a rotation is every line on the
+    /// screen. The size carries the console's physical size as well as its cells, which is
+    /// what the client needs to know whether its terminal is standing up — a cell is about
+    /// twice as tall as it is wide, so a console in portrait holds more columns than rows.
     public var onResize: ((TerminalSize) -> Void)?
 
     /// resizeIfNeeded tells the client its window has changed, if it has.
     ///
-    /// This is the whole of the decision, and it is made against `told` — the size the client
-    /// believes — rather than against the screen, which is what the app is drawing. See
-    /// `TerminalSizing` for why that distinction is the difference between a client that fits
-    /// its pane and one that draws 80 columns into a 40-column window for the whole session.
+    /// The decision is made against `told` — the size the client believes — rather than
+    /// against the screen, which is what the app is drawing. See `TerminalSizing`.
     /// - Parameter metrics: the grid the view can show for its current bounds.
     public func resizeIfNeeded(to metrics: TerminalMetrics) {
         guard let size = TerminalSizing.resize(fitting: metrics, told: told) else { return }

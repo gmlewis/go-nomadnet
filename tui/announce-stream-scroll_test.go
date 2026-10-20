@@ -16,8 +16,8 @@ import (
 // a urwid ListBox, which scrolls on the wheel by default; the Go port wraps a
 // tview.List in an IndicativeListBox inside a pileFiller, so the wheel must
 // reach the list through the pileFiller's MouseHandler (which forwards to every
-// child, not just the focused one). The IndicativeListBox wheel fix translates
-// the wheel into a SetCurrentItem jump (arrow-key semantics) — the highlight
+// child, not just the focused one). The IndicativeListBox translates the
+// wheel into a SetCurrentItem jump (arrow-key semantics) — the highlight
 // follows the wheel and the viewport follows the highlight via the Draw
 // keep-current-visible clamp, instead of tview's default itemOffset-only move
 // that the clamp cancels at the viewport edges.

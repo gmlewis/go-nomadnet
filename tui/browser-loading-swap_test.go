@@ -17,18 +17,11 @@ package tui
 
 import "testing"
 
-// TestBrowserLoadingSwapOnFailure pins the regression where the browser gets
-// STUCK on the "Retrieving" loading body after a fetch fails (timeout/error) or
-// the user disconnects (C-w) while a request is in flight.
-//
-// displayURL/showLoading removes bd.content from bd.body and inserts the
-// centered "Retrieving\n[<url>]" loading primitive (bd.loading) in its place.
-// Only renderPage (success) swapped it back via showContent. The fetch-failure
-// path (OnBrowserError → SetContent) and Disconnect set text on bd.content but
-// never called showContent, so bd.loading stayed in the body and the
-// error/"Disconnected." text on bd.content was invisible — the browser appeared
-// permanently "Retrieving" with no timeout ever surfacing to the user, even
-// though the underlying fetch had already returned.
+// TestBrowserLoadingSwapOnFailure pins that a fetch failure or a disconnect
+// while a request is in flight swaps the centered "Retrieving" body back out, so
+// the error or "Disconnected." text is visible instead of the loading body
+// staying in the layout. Both SetContent (the app-layer failure callback) and
+// Disconnect restore the content via showContent.
 func TestBrowserLoadingSwapOnFailure(t *testing.T) {
 	t.Parallel()
 	app := NewApp(ThemeDark, GlyphUnicode, ColorModeTrue)

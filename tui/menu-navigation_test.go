@@ -46,19 +46,16 @@ func TestSavedNodesUpToMenu(t *testing.T) {
 }
 
 // TestAnnounceStreamUpToMenu drives the REAL event loop with the Announce
-// Stream focused and verifies that repeated Up escapes to the main menu — the
-// Bug 1 regression. The Announce Stream left panel is a pileFiller of
-// [tab bar, filter bar, list]; Up must traverse list→filter bar→tab bar and
-// then, from the top of the pile (the tab bar), escape to the menu (matching
-// urwid's MainFrame: Up at the top of the body moves focus to the header).
-// Before the fix, Up dead-ended on the tab bar and never reached the menu.
+// Stream focused and verifies that repeated Up escapes to the main menu. The
+// Announce Stream left panel is a pileFiller of [tab bar, filter bar, list]; Up
+// must traverse list→filter bar→tab bar and then, from the top of the pile
+// (the tab bar), escape to the menu (matching urwid's MainFrame: Up at the top
+// of the body moves focus to the header).
 //
 // Each key press is awaited through the pile's own focus index instead of a
 // sleep. That makes the wait a barrier AND an assertion: it proves the press
-// was handled before the focus region is inspected (a sleep only hoped so, and
-// raced the loop's write of focusRegion while doing it), and it makes the
-// traversal's intermediate states — the very states Bug 1 broke — observable
-// rather than assumed.
+// was handled before the focus region is inspected, and it makes the
+// traversal's intermediate states observable rather than assumed.
 func TestAnnounceStreamUpToMenu(t *testing.T) {
 	app := NewApp(ThemeDark, GlyphUnicode, ColorModeTrue)
 	nd := NewNetworkDisplay(app, nil, []NodeEntry{
@@ -107,8 +104,8 @@ func TestAnnounceStreamUpToMenu(t *testing.T) {
 
 	// With focus on the list, three Ups are required: list→filter bar→tab
 	// bar→menu. Focus must stay in the body for the first two — reaching the
-	// menu early is precisely the Bug 1 failure mode — and only the third Up,
-	// taken at the top of the pile, may escape to the menu.
+	// menu early would skip the inner bars — and only the third Up, taken at
+	// the top of the pile, may escape to the menu.
 	for i, want := range []int{1, 0} {
 		screen.InjectKey(tcell.KeyUp, 0, tcell.ModNone)
 		awaitLoop(t, app, runErr, fmt.Sprintf("Up to reach pile index %v", want), func() bool {

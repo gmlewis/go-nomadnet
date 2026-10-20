@@ -26,12 +26,11 @@ import (
 	"github.com/gmlewis/tcell/v2"
 )
 
-// TestLogDisplayUpAtTopToMenu asserts Up at the top of the log view moves focus
-// to the menu bar, matching Python's LogTerminal.keypress (Log.py:55-58) where
-// "up" is the escape sequence that returns focus to the header. The log view is
-// a scrollable TextView; Up scrolls up through history and, once at the top,
-// collapses focus to the menu (the centralized bodyListAtTop dispatcher only
-// covers *tview.List, so the log page owns this transition).
+// TestLogDisplayUpAtTopToMenu asserts Up on the log view moves focus to the
+// menu bar, matching Python's LogTerminal.keypress (Log.py:55-58) where "up" is
+// the escape sequence that returns focus to the header. The centralized
+// bodyListAtTop dispatcher only covers *tview.List, so the log page owns this
+// transition.
 func TestLogDisplayUpAtTopToMenu(t *testing.T) {
 	t.Parallel()
 
@@ -54,10 +53,9 @@ func TestLogDisplayUpAtTopToMenu(t *testing.T) {
 	}
 }
 
-// TestLogDisplayUpMidScrollGoesToMenu pins F1 (Python Log.py:55-61): EVERY Up
-// collapses focus to the menu — even mid-scroll — because the embedded
+// TestLogDisplayUpMidScrollGoesToMenu pins the Up escape (Python Log.py:55-61):
+// EVERY Up collapses focus to the menu — even mid-scroll — because the embedded
 // `tail -fn50` terminal never scrolls via keys. The log content is untouched.
-// (This reverses the earlier Go behavior of scrolling until the very top.)
 func TestLogDisplayUpMidScrollGoesToMenu(t *testing.T) {
 	t.Parallel()
 
@@ -82,16 +80,15 @@ func TestLogDisplayUpMidScrollGoesToMenu(t *testing.T) {
 	}
 }
 
-// TestLogDisplayPreservesLevelField pins B6: the Log page renders the raw
-// logfile verbatim, and the logfile (written by go-reticulum, matching
-// Python RNS.format `[timestamp] [Level]   message`) contains `[Info]`,
-// `[Error]`, etc. tview's TextView parses `[...]` as a color tag, so an
-// unescaped `[Info]` is silently dropped from the visible text (the user sees
-// `[timestamp]      message` with the level field blank). Python's Log.py
-// embeds urwid.Terminal running `tail -fn50`, which shows the brackets
-// literally. The Go substitute must escape tview color tags so the `[Level]`
-// field is visible. The log content has NO real tview color tags (it is plain
-// log text), so escaping the whole line is safe.
+// TestLogDisplayPreservesLevelField pins that the Log page shows the logfile's
+// `[Level]` token. The logfile is go-reticulum's, matching Python RNS.format
+// `[timestamp] [Level]   message`, and contains `[Info]`, `[Error]`, etc.
+// tview's TextView parses `[...]` as a color tag, so an unescaped `[Info]` would
+// be dropped from the visible text. Python's Log.py embeds urwid.Terminal
+// running `tail -fn50`, which shows the brackets literally. The Go substitute
+// must escape tview color tags so the `[Level]` field is visible; the log
+// content has no real tview color tags (it is plain log text), so escaping the
+// whole line is safe.
 func TestLogDisplayPreservesLevelField(t *testing.T) {
 	t.Parallel()
 
@@ -112,12 +109,11 @@ func TestLogDisplayPreservesLevelField(t *testing.T) {
 	}
 }
 
-// TestStopTailingIdempotent pins the "close of closed channel" panic regression.
+// TestStopTailingIdempotent pins that StopTailing is safe to call repeatedly.
 // The application cleanup path that wires a LogDisplay into the running UI
 // (cmd/gonomadnet/textui.go wireDisplays cleanup, invoked from the Ctrl-Q /
 // Ctrl-C quit handler) can fire more than once when the user issues the quit
-// key sequence. The original StopTailing did an unconditional close(stopCh),
-// so the second call panicked. StopTailing must be safe to call repeatedly.
+// key sequence, so a second StopTailing must not close the channel again.
 func TestStopTailingIdempotent(t *testing.T) {
 	t.Parallel()
 

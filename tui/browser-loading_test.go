@@ -30,13 +30,13 @@ func loadingRows(t *testing.T, bd *BrowserDisplay, w, h int) []string {
 	return renderPrimitive(t, bd.layout, w, h)
 }
 
-// TestBrowserLoadingShowsCenteredRetrieving pins the fix for the user report
-// that nomadnet shows "Retrieving" and "[<url>]" vertically+horizontally
-// centered in the browser while loading, but gonomadnet did not. Python's
-// Browser.update_display REQUEST_SENT branch (Browser.py:593-598) sets the body
-// to Filler(Text("Retrieving\n["+current_url()+"]", CENTER), MIDDLE). The Go
-// port now swaps a MIDDLE-centered "Retrieving\n[<url>]" body into the layout
-// in place of the page content during displayURL.
+// TestBrowserLoadingShowsCenteredRetrieving pins the loading body: while a fetch
+// is in flight the browser shows "Retrieving" and "[<url>]" vertically and
+// horizontally centered, as Python's Browser.update_display REQUEST_SENT branch
+// does (Browser.py:593-598: Filler(Text("Retrieving\n["+current_url()+"]",
+// CENTER), MIDDLE)). The Go port swaps a MIDDLE-centered
+// "Retrieving\n[<url>]" body into the layout in place of the page content during
+// displayURL.
 func TestBrowserLoadingShowsCenteredRetrieving(t *testing.T) {
 	t.Parallel()
 	app := newTestApp()

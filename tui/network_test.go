@@ -224,21 +224,17 @@ func TestNetworkDisplayKeyboardShortcuts(t *testing.T) {
 	}
 }
 
-// TestNetworkCtrlGFullscreenResizesLeftPane pins the Ctrl-G fullscreen fix for
-// the Network page. Before the fix, NetworkDisplay.handleInput Ctrl-G only
-// fired the OnToggleFullscreen callback, which the app layer never wired — so
-// the keypress was a no-op and the left list pane never collapsed (Python's
-// Network.toggle_fullscreen hides it so the in-page browser fills the page,
-// Network.py:1678-1686). The fix makes the display self-toggle the resize, so
-// no app-layer callback is needed. This dispatches Ctrl-G through the FULL
-// production key path — nd.mainCols.InputHandler() (the same handler tview
-// calls on a keypress), whose WrapInputHandler consults the SetInputCapture
-// registered in NewNetworkDisplay (network.go mainCols.SetInputCapture) before
-// forwarding to the focused child — with NO OnToggleFullscreen wired, and
-// asserts the left column width actually flips 52 → 0 → 52. Dispatching through
-// the capture chain (not handleInput directly) also pins that the capture is
-// registered, so the resize can't be silently dropped by a missing callback OR
-// a missing capture registration again.
+// TestNetworkCtrlGFullscreenResizesLeftPane pins that Ctrl-G on the Network
+// page self-toggles the left list pane's resize, with no OnToggleFullscreen
+// wired: Python's Network.toggle_fullscreen hides the pane so the in-page
+// browser fills the page (Network.py:1678-1686). This dispatches Ctrl-G through
+// the FULL production key path — nd.mainCols.InputHandler() (the same handler
+// tview calls on a keypress), whose WrapInputHandler consults the
+// SetInputCapture registered in NewNetworkDisplay (network.go
+// mainCols.SetInputCapture) before forwarding to the focused child — and
+// asserts the left column width flips 52 → 0 → 52. Dispatching through the
+// capture chain (not handleInput directly) also pins that the capture is
+// registered, so the resize cannot be silently dropped.
 func TestNetworkCtrlGFullscreenResizesLeftPane(t *testing.T) {
 	t.Parallel()
 
@@ -255,8 +251,8 @@ func TestNetworkCtrlGFullscreenResizesLeftPane(t *testing.T) {
 	// Ctrl-G through the full key path: mainCols.InputHandler() is what tview
 	// invokes on a keypress; its WrapInputHandler runs the SetInputCapture
 	// (nd.handleInput) before any child sees the key. No OnToggleFullscreen is
-	// wired (mirroring production before the fix), so the resize must happen
-	// inside the display itself, not via a callback.
+	// wired, so the resize must happen inside the display itself, not via a
+	// callback.
 	h := nd.mainCols.InputHandler()
 	if h == nil {
 		t.Fatal("mainCols has no InputHandler")

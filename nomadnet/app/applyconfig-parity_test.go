@@ -188,8 +188,7 @@ func applyCfgPython(t *testing.T) map[string]map[string]any {
 // whose conversion differs from the raw config struct:
 //   - RRCEphemeralNotices: Python seconds (value*60); Go config holds minutes,
 //     so applyConfig must multiply by 60.
-//   - DisablePropagation: must honor the [node] disable_propagation key rather
-//     than being hardcoded true.
+//   - DisablePropagation: must honor the [node] disable_propagation key.
 //   - NodeAnnounceInterval: Python minutes; Go config holds seconds, so
 //     applyConfig must divide by 60.
 //

@@ -70,8 +70,7 @@ func TestConversationsDisplayEmpty(t *testing.T) {
 // conversation list opens the conversation widget (DisplayConversation), not
 // just the peer info text (showDetail). In nomadnet, pressing Enter/Space on
 // a list item opens the conversation (Python's "click" signal →
-// display_conversation). Before the fix, gonomadnet's SetSelectedFunc called
-// showDetail which only showed peer info text without a composer.
+// display_conversation).
 func TestListEnterOpensConversation(t *testing.T) {
 	t.Parallel()
 
@@ -103,10 +102,10 @@ func TestListEnterOpensConversation(t *testing.T) {
 	}
 }
 
-// TestB14ConversationsColumnOrder verifies B14: the Conversations page must
-// have the list on the LEFT and the conversation/view on the RIGHT, matching
-// nomadnet 1.2.8 (and the node browser). The content Flex must have leftPanel
-// (list) at index 0 and detail at index 1.
+// TestB14ConversationsColumnOrder verifies that the Conversations page has the
+// list on the LEFT and the conversation/view on the RIGHT, matching nomadnet
+// 1.2.8 (and the node browser). The content Flex must have leftPanel (list) at
+// index 0 and detail at index 1.
 func TestB14ConversationsColumnOrder(t *testing.T) {
 	t.Parallel()
 
@@ -129,7 +128,7 @@ func TestB14ConversationsColumnOrder(t *testing.T) {
 	}
 }
 
-// TestB1NoAutoOpenAfterCreate verifies B1: after the New Conversation dialog's
+// TestB1NoAutoOpenAfterCreate verifies that after the New Conversation dialog's
 // Create callback returns true WITHOUT calling DisplayConversation, no
 // conversation is auto-opened (currentWidget stays nil), matching nomadnet
 // 1.2.8 which returns to the list with "No conversation selected".
@@ -140,7 +139,7 @@ func TestB1NoAutoOpenAfterCreate(t *testing.T) {
 	cd := NewConversationsDisplay(app, nil)
 
 	// Show the New Conversation dialog with a callback that does NOT call
-	// DisplayConversation (matching the fixed textui.go behavior).
+	// DisplayConversation (matching textui.go behavior).
 	cd.ShowNewConversationDialog(func(addrHex, name, trust string) bool {
 		// Simulate a successful Create without auto-opening the conversation.
 		return true
@@ -157,17 +156,18 @@ func TestB1NoAutoOpenAfterCreate(t *testing.T) {
 // Python's _label (Conversations.py:461-465): no digit prefixes, an envelope
 // glyph + alert count when a tab has unread/failed conversations. The glyph
 // here is the unicode set's "✉" (glyphs["unread"]).
-// TestTabBarTextPythonParity is a LIVE cross-implementation check: it
-// AST-extracts the trusted/untrusted count + _label block from Python's
-// ConversationsDisplay.update_listbox (Conversations.py:453-464), execs it
-// with mock conversations (tuples with c[2]=trust level, c[4]=unread,
-// c[6]=failed, matching the tuple layout app.conversations() yields) and a
-// real unicode glyph dict, and captures the two tab labels freshly on every
-// run. Go owns the input battery ([]ConversationInfo); Python owns the
-// reference behavior. Go's Unread/Failed map to Python's c[4]/c[6] alert
-// flags; Go's "trusted" maps to DirectoryEntry.TRUSTED and every other level
-// to the untrusted bucket (UNTRUSTED/WARNING/UNKNOWN), matching Python. The
-// test SKIPs, not fails, when the Python reference is not importable.
+//
+// It is a LIVE cross-implementation check: it AST-extracts the trusted/untrusted
+// count + _label block from Python's ConversationsDisplay.update_listbox
+// (Conversations.py:453-464), execs it with mock conversations (tuples with
+// c[2]=trust level, c[4]=unread, c[6]=failed, matching the tuple layout
+// app.conversations() yields) and a real unicode glyph dict, and captures the
+// two tab labels freshly on every run. Go owns the input battery
+// ([]ConversationInfo); Python owns the reference behavior. Go's Unread/Failed
+// map to Python's c[4]/c[6] alert flags; Go's "trusted" maps to
+// DirectoryEntry.TRUSTED and every other level to the untrusted bucket
+// (UNTRUSTED/WARNING/UNKNOWN), matching Python. The test SKIPs, not fails, when
+// the Python reference is not importable.
 func TestTabBarTextPythonParity(t *testing.T) {
 	t.Parallel()
 
@@ -573,8 +573,7 @@ func TestConversationsToggleFullscreen(t *testing.T) {
 
 // TestDisplayConversationWiresOnSend verifies that DisplayConversation wires
 // the ConversationWidget's OnSend to delegate to the display-level OnSend,
-// forwarding the conversation's source hash plus the composed content/title.
-// This pins the TUI-side of the "Wire conversation send" task:
+// forwarding the conversation's source hash plus the composed content/title:
 // C-d in the composer must reach the display's OnSend(sourceHash, content,
 // title), which the wiring layer (cmd/gonomadnet/textui.go) connects to
 // App.SendConversation. The C-d key path itself (handleInput → sendMessage →
@@ -665,9 +664,7 @@ func TestDisplayConversationOnSendForwardsTitle(t *testing.T) {
 // wires the open-conversation widget's Ctrl-G to the display's fullscreen
 // toggle, matching Python's ConversationWidget.keypress "ctrl g" →
 // conversations_display.toggle_fullscreen() (Conversations.py:2234-2235).
-// Before the fix the widget's OnToggleFullscreen was never wired, so Ctrl-G
-// inside an open conversation was a no-op even though the list-level Ctrl-G
-// worked. This dispatches Ctrl-G through the widget's input capture (the real
+// This dispatches Ctrl-G through the widget's input capture (the real
 // keypress path) and asserts the display's Fullscreen() state actually flips.
 func TestDisplayConversationWiresCtrlGFullscreen(t *testing.T) {
 	t.Parallel()
@@ -708,8 +705,7 @@ func TestDisplayConversationWiresCtrlGFullscreen(t *testing.T) {
 // TestDisplayConversationLoadsMessages verifies DisplayConversation calls the
 // display-level OnLoadMessages hook to populate the conversation widget's
 // message list, and injects OnOwnHash so the LXMessageWidget header can tell
-// inbound from outbound. This pins the TUI side of message loading
-// ("ConversationWidget — messages").
+// inbound from outbound.
 func TestDisplayConversationLoadsMessages(t *testing.T) {
 	t.Parallel()
 
@@ -797,7 +793,7 @@ func TestReloadCurrentMessages(t *testing.T) {
 	}
 }
 
-// TestR2RefreshOpenConversationAutoRefresh verifies R2: when a new message
+// TestR2RefreshOpenConversationAutoRefresh verifies that when a new message
 // arrives for the currently-open conversation, RefreshOpenConversation reloads
 // the message list so the new message appears live without re-selecting,
 // matching nomadnet 1.2.8 (Conversations.py:1896 + 2246-2252).
@@ -910,7 +906,7 @@ func TestDisplayConversationWiresPaperMessage(t *testing.T) {
 // attachment flow: ConfirmAttachFile stages file paths on the widget, and
 // C-d (sendMessage) forwards them through OnSend along with the content,
 // then clears the staged list (Python send_message, Conversations.py:2412-
-// 2436 + clear_editor). This pins the TUI side of the "attachFile" TODO.
+// 2436 + clear_editor).
 func TestConversationWidgetPendingAttachments(t *testing.T) {
 	t.Parallel()
 
@@ -1399,12 +1395,12 @@ func TestSyncStatusLine(t *testing.T) {
 	}
 }
 
-// TestConversationsSyncStatusLine pins B8: the Conversations left-pane sync
-// footer must read the persisted last-sync time (Python _sync_status_line,
-// Conversations.py:517-545, which reads peer_settings["last_lxmf_sync"]). The
-// Go port hardcoded " Last sync: never"; it must instead consult a
-// LastSyncInfo hook returning (lastSyncTime, nodeLabel) supplied by the wiring
-// layer from app.PeerSettings.LastLXMFSync + the default propagation node.
+// TestConversationsSyncStatusLine verifies the Conversations left-pane sync
+// footer reads the persisted last-sync time (Python _sync_status_line,
+// Conversations.py:517-545, which reads peer_settings["last_lxmf_sync"]),
+// supplied by a LastSyncInfo hook returning (lastSyncTime, nodeLabel) from the
+// wiring layer, which takes them from app.PeerSettings.LastLXMFSync + the
+// default propagation node.
 // Format: " Last sync: <relative|never>" + optional "  (<nodeLabel>)".
 func TestConversationsSyncStatusLine(t *testing.T) {
 	t.Parallel()
@@ -1412,7 +1408,7 @@ func TestConversationsSyncStatusLine(t *testing.T) {
 	app := newTestApp()
 	cd := NewConversationsDisplay(app, nil)
 
-	// No hook wired: legacy fallback is " Last sync: never".
+	// No hook wired: fallback is " Last sync: never".
 	if got := cd.syncStatusLine(); got != " Last sync: never" {
 		t.Errorf("syncStatusLine() no-hook = %q, want %q", got, " Last sync: never")
 	}

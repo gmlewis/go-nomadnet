@@ -13,11 +13,11 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-// Command embedded-terminal-demo is a Phase-1/2 prototype harness for the
-// EmbeddedTerminal widget: it runs a bare tview app whose sole primitive is an
-// EmbeddedTerminal running an editor (nano by default) on a temp file, so the
-// widget's render, input, resize, and mouse forwarding can be verified live in
-// a real terminal/tmux PTY.
+// Command embedded-terminal-demo is a minimal harness for the EmbeddedTerminal
+// widget: it runs a bare tview app whose sole primitive is an EmbeddedTerminal
+// running an editor (nano by default) on a temp file, so the widget's render,
+// input, resize, and mouse forwarding can be verified live in a real
+// terminal/tmux PTY.
 //
 // Usage: embedded-terminal-demo [editor] [args...]
 // All args after the editor are passed to it (e.g. "nano -m /tmp/file"). The
@@ -75,10 +75,8 @@ func main() {
 	app.Application.SetFocus(et)
 	err = app.Run()
 
-	// The terminal is handed back before the report below, which exits the
-	// process: a demo that left the shell reading in raw mode — with the terminal
-	// still reporting the mouse, printing escape-sequence garbage into the window
-	// on every mouse movement — would be a poor advertisement for the widget.
+	// Return the terminal before exiting so the shell is not left in raw mode
+	// with mouse reporting still enabled.
 	app.RestoreTerminal()
 
 	if err != nil {

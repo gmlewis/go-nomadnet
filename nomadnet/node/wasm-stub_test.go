@@ -16,8 +16,7 @@
 //go:build !wago || (!linux && !darwin && !windows) || (!amd64 && !arm64)
 
 // This file verifies the stub-build .wasm page behavior: without the wago
-// runtime the node keeps serving .wasm page files statically (their source
-// bytes), exactly the pre-sandbox behavior.
+// runtime the node serves .wasm page files statically (their source bytes).
 
 package node
 

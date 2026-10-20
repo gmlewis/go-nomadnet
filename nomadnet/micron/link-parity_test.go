@@ -18,8 +18,7 @@ package micron
 import "testing"
 
 // Expected values captured from Python MicronParser.make_output's "[" branch
-// (MicronParser.py:763-822), extracted via /tmp/micron_inline.py with the
-// urwid-dependent style helpers stubbed. In micron, links are entered from
+// (MicronParser.py:763-822). In micron, links are entered from
 // formatting mode with the `[ prefix. link_data is split on the backtick
 // into 1 (url only), 2 (label+url), or 3 (label+url+fields) components; any
 // other count, or an empty url, yields no link. An empty label falls back to

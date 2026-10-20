@@ -33,16 +33,10 @@ import (
 //     panel (packPanelIsNodeInfo), or the transient status dialog.
 //  4. The Local Node Info panel NEVER renders above the list slot.
 //
-// The bug this pins: the previous incremental mutators (RemoveItem + AddItem
-// per panel swap) interleaved badly when the Local Node Info detail panel was
-// showing while a list-slot dialog or status notice fired — tview Flex.AddItem
-// always appends, so items stranded in the wrong index and hidden panels were
-// resurrected (fleet render: [Local Node Info, Announce Stream, Local Peer
-// Info] with the browser pane pushed right). rebuildLeftPanel now rebuilds
-// the stack from state, and TestLeftPanelInvariantsUnderMutation walks a
-// deterministic-but-varying mutator sequence asserting the invariants after
-// every step so any future mutator that skips the rebuild reintroduces the
-// mess instead of silently corrupting the layout.
+// rebuildLeftPanel rebuilds the stack from state. The mutator-sequence test
+// below walks a deterministic-but-varying sequence, asserting the invariants
+// after every step so a mutator that skips the rebuild fails here instead of
+// silently corrupting the layout.
 func assertLeftPanelInvariants(t *testing.T, nd *NetworkDisplay, step string) {
 	t.Helper()
 	if got := nd.leftPanel.GetItemCount(); got != 2 {
@@ -81,8 +75,7 @@ func TestLeftPanelInvariantsUnderMutatorSequence(t *testing.T) {
 	app.GlyphSet = GlyphUnicode
 	nd := NewNetworkDisplay(app, nil, nil)
 
-	// The exact mutator set that touched nd.leftPanel before the rebuild
-	// centralization (the fleet's penguin node hit this order live).
+	// The mutator set that touches nd.leftPanel, in a worst-case order.
 	steps := []string{
 		"ShowNodeInfo",        // Local Node Info detail replaces Local Peer Info
 		"ShowListSlotDialog",  // in-slot dialog overlays the list

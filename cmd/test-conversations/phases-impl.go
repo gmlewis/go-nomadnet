@@ -11,13 +11,11 @@ import (
 
 // phases-impl.go implements the harness phase methods called by runAllPhases.
 //
-// Navigation reuses the proven patterns from cmd/run-tmux-test-suite
-// (escapeToMenu / moveMenuTo) plus a self-adapting focusActionButton loop that
-// finds a named "< Button >" by sending Down/Tab until the cursor lands on it.
-// Every assertion is non-fatal: a failure logs the observed state and the run
-// continues, so a single log records the full sequence even when a step
-// diverges. This is the harness's whole point — the log is the artifact for
-// analyzing bugs/failures/regressions, so we never abort early.
+// Navigation mirrors cmd/run-tmux-test-suite (escapeToMenu / moveMenuTo) plus a
+// self-adapting focusActionButton loop that finds a named "< Button >" by
+// sending Down/Tab until the cursor lands on it. Every assertion is non-fatal: a
+// failure logs the observed state and the run continues, so one log records the
+// full sequence even when a step diverges.
 
 // appStarted reports whether the menu bar is present (the app has finished its
 // intro splash and is showing the main UI).
@@ -28,8 +26,8 @@ func appStarted() func(*utils.View) bool {
 }
 
 // escapeToMenu moves focus from wherever it is (a body, the conversation list,
-// a dialog) up to the menu bar, capped at maxSteps. Adapted from the proven
-// cmd/run-tmux-test-suite escapeToMenu but trimmed to the pages this harness
+// a dialog) up to the menu bar, capped at maxSteps. Mirrors
+// cmd/run-tmux-test-suite's escapeToMenu, trimmed to the pages this harness
 // touches (Conversations / Network / Guide): Guide escapes via Up, Network via
 // Home+Up, everything else via Escape (clears a stray dialog) then Up (climbs
 // the pile toward the menu). A bounded loop so a stuck focus still returns.
@@ -259,14 +257,13 @@ const typeChunk = 16
 
 // typeIntoComposer types text into the focused composer and verifies it echoed
 // on screen, retrying at most three times, and returns whether the draft is
-// visible. The retry covers the observed harness flake where the first literal
-// sent right after a focus/region change is swallowed: tmux delivers the
-// keystrokes while the app is still settling the new focus and they land
-// nowhere. Each retry clears whatever partial text landed with C-l (readline
-// kill-whole-buffer — the binding both implementations share, Go ReadlineEdit
-// and Python ReadlineEdit) before retyping. Text is sent in small chunks so a
-// long single burst cannot outrun the input path either; a 251-character
-// one-shot burst was once observed to lose its leading 8 characters.
+// visible. The retry covers a harness flake where the first literal sent right
+// after a focus/region change is swallowed: tmux delivers the keystrokes while
+// the app is still settling the new focus and they land nowhere. Each retry
+// clears whatever partial text landed with C-l (readline kill-whole-buffer — the
+// binding both implementations share, Go ReadlineEdit and Python ReadlineEdit)
+// before retyping. Text is sent in small chunks so a long burst cannot outrun
+// the input path either.
 func (d *driver) typeIntoComposer(text string) bool {
 	for attempt := 1; attempt <= 3; attempt++ {
 		d.logf("  type into composer (attempt %v)", attempt)

@@ -85,9 +85,9 @@ func TestFocusFirstChildNil(t *testing.T) {
 
 // TestListFocusColors asserts the list selection colors come from the theme's
 // list_focus_fg/list_focus_bg entries (Python TextUI.py: list_focus is
-// #111 on #aaa in both dark and light), NOT the hardcoded #666 the port
-// previously used. Both #111 and #aaa are 3-hex, so urwid cube-quantizes them
-// even in truecolor: #111→#000000, #aaa→#afafaf.
+// #111 on #aaa in both dark and light), not a hardcoded value. Both #111 and
+// #aaa are 3-hex, so urwid cube-quantizes them even in truecolor: #111→#000000,
+// #aaa→#afafaf.
 func TestListFocusColors(t *testing.T) {
 	t.Parallel()
 
@@ -110,8 +110,8 @@ func TestListFocusColors(t *testing.T) {
 	}
 }
 
-// TestApplyListFocusStyle asserts ApplyListFocusStyle does not panic and that
-// the list focus colors differ from the old hardcoded #666.
+// TestApplyListFocusStyle asserts ApplyListFocusStyle does not panic and applies
+// the theme's list_focus colors.
 func TestApplyListFocusStyle(t *testing.T) {
 	t.Parallel()
 

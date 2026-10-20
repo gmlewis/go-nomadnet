@@ -21,21 +21,21 @@ import (
 	"github.com/gmlewis/tcell/v2"
 )
 
-// TestBrowserCursorMovesWithFocusOutOfFields pins the live report that the
-// hardware cursor stays inside a form's text box when Down moves the page focus
-// out of the last field: after typing in the name field and then the message
-// field, the second Down must place the cursor on the submit line the moment it
-// is pressed, without waiting for a further key.
+// TestBrowserCursorMovesWithFocusOutOfFields pins that the hardware cursor
+// leaves a form's text box when Down moves the page focus out of the last
+// field: after typing in the name field and then the message field, the second
+// Down must place the cursor on the submit line the moment it is pressed,
+// without waiting for a further key.
 //
-// Root cause: a key pressed while a field is in edit mode is consumed by the
-// off-tree field overlay, so it never reaches handleNavKey, and
-// moveFieldFocus (the overlay's onExit handler) moved focusLine without
-// stamping the keypress that opens the cursor-visibility window. drawCursor
-// therefore refused to show the page cursor and the terminal cursor stayed
-// where the overlay's own caret last was — in the text box the visitor just
-// left. Python refreshes that window on every keypress that moves page focus
-// (LinkableText.keypress sets delegate.last_keypress before returning "down"/
-// "up" to the Pile, MicronParser.py:932-935).
+// A key pressed while a field is in edit mode is consumed by the off-tree field
+// overlay, so it never reaches handleNavKey, and moveFieldFocus (the overlay's
+// onExit handler) must stamp the keypress that opens the cursor-visibility
+// window while it moves focusLine; otherwise drawCursor refuses to show the page
+// cursor and the terminal cursor stays where the overlay's own caret last was,
+// in the text box the visitor just left. Python refreshes that window on every
+// keypress that moves page focus (LinkableText.keypress sets
+// delegate.last_keypress before returning "down"/"up" to the Pile,
+// MicronParser.py:932-935).
 func TestBrowserCursorMovesWithFocusOutOfFields(t *testing.T) {
 	t.Parallel()
 
@@ -111,10 +111,10 @@ func TestBrowserCursorMovesWithFocusOutOfFields(t *testing.T) {
 	}
 }
 
-// TestBrowserTabOutOfLastFieldKeepsCursorVisible pins the same fix for the Tab
-// path, which shares moveFieldFocus: Tab from the last field of a form walks
-// forward off the field onto the next selectable line, and the cursor must be
-// drawn there rather than left in the box.
+// TestBrowserTabOutOfLastFieldKeepsCursorVisible pins the Tab path, which shares
+// moveFieldFocus: Tab from the last field of a form walks forward off the field
+// onto the next selectable line, and the cursor must be drawn there rather than
+// left in the box.
 func TestBrowserTabOutOfLastFieldKeepsCursorVisible(t *testing.T) {
 	t.Parallel()
 

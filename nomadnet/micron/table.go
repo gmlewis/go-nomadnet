@@ -201,8 +201,7 @@ func truncateCell(text string, width int) string {
 	if bgActive {
 		closers.WriteString("`b")
 	}
-	// Deterministic closer order (Python uses a set; order is unspecified there
-	// but these cells are not in the golden set).
+	// Deterministic closer order; Python iterates an unordered set here.
 	for _, fmt := range []rune{'!', '*', '_', '='} {
 		if activeTags[fmt] {
 			closers.WriteRune('`')

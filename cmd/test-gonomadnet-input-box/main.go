@@ -19,13 +19,10 @@
 // remote-control keystrokes, waits for the response, prints the rendered search
 // results to stdout, and exits.
 //
-// Its sole purpose is to be the autonomous regression harness for the gonomadnet
-// browser input-box, which is currently completely broken (micron <fields are
-// rendered as static text instead of focusable ReadlineEdit widgets, so typing
-// into them does nothing). The harness drives the canonical interaction
-// sequence and reports PASS/FAIL at each checkpoint with full screen snapshots,
-// so once the input box is fixed the harness passes end-to-end — and until then
-// it pinpoints exactly which step is broken.
+// It is the autonomous regression harness for the gonomadnet browser input box:
+// it drives the canonical interaction sequence and reports PASS/FAIL at each
+// checkpoint with full screen snapshots, so a break points at the step that
+// caused it.
 //
 // Because the input box works in the Python source-of-truth, pass --nomadnet to
 // drive /opt/homebrew/bin/nomadnet instead of the Go port: the harness then runs
@@ -297,9 +294,9 @@ func run(args []string) error {
 	// session has ended — so under --headed the user's terminal has been restored
 	// to its normal (cooked) state by tmux. ONLY NOW print the captured browser
 	// results to stdout: printing earlier (while the TUI was still attached)
-	// would interleave the results with the nomadnet display, which is what made
-	// the results hard to read under --headed. stdout carries ONLY the results;
-	// all progress/asserts/snapshots went to stderr and the log file.
+	// would interleave the results with the nomadnet display. stdout carries ONLY
+	// the results; all progress/asserts/snapshots went to stderr and the log
+	// file.
 	printResults(d)
 
 	both("")
@@ -354,9 +351,7 @@ type driver struct {
 	// button is focused (so its footer link indicator is already baked in) but
 	// BEFORE Enter is pressed. The response-wait compares against THIS, so the
 	// only subsequent pane change it can match is the actual search results — not
-	// the footer merely appearing as the cursor lands on the Search link (which
-	// otherwise satisfied a naive "sig changed" check in ~23ms, before any mesh
-	// search could return).
+	// the footer merely appearing as the cursor lands on the Search link.
 	preSubmitSig string
 
 	// results holds the captured search-result page written to stdout.
@@ -508,9 +503,7 @@ func appStarted() func(*utils.View) bool {
 // browser pane (the right column), ready for the Ctrl-u URL dialog. It does NOT
 // enter or scan the Announce Stream: the target node is reached directly by URL
 // (Ctrl-u), which connects via the cached path table and so does NOT require the
-// node to have announced recently (paths persist for days). Scanning the stream
-// was both slow and fragile — a node that last announced hours ago is not in the
-// recent stream but is still routable.
+// node to have announced recently (paths persist for days).
 func (d *driver) reachNetworkPage() bool {
 	// Boot focus is the body. Go to the top, then Up escapes to the menu.
 	d.send("Home")
@@ -555,9 +548,7 @@ func (d *driver) reachNetworkPage() bool {
 // connectToTarget opens the browser URL dialog (Ctrl-u), types the destination
 // hash, and submits — connecting directly to the node via the cached path table,
 // with no dependence on the Announce Stream (the node need not have announced
-// recently; a path persists for days once learned). This replaces the old
-// Announce-Stream scan, which only worked when the target had announced within
-// the stream's recent window.
+// recently; a path persists for days once learned).
 //
 // Retries a few times so a slow transport-interface startup (the local node
 // announcing just before this) does not cause a spurious "Link establishment
@@ -822,9 +813,8 @@ func normLine(s string) string {
 // entry and in the Python original can ACTIVATE it, navigating away from the
 // form mid-scan. A search link is followed via Enter (not by typing).
 //
-// This is the regression sentinel: while the gonomadnet input box is broken
-// (fields rendered as static text), no row accepts the text, the field is never
-// found, and the harness reports exactly that.
+// If no row accepts the text, the field is never found, and the harness reports
+// exactly that.
 func (d *driver) findAndTypeField(cfg *config) {
 	navigated := false // follow at most one search link to the search page
 	for i := range cfg.maxFieldDowns {
@@ -932,9 +922,8 @@ func (d *driver) findAndPressSubmit(cfg *config) {
 
 // quit navigates to the Quit menu item and selects it, then waits for the app
 // to exit. If the app does not exit within 15s (e.g. the Quit menu could not be
-// reached — a known rough edge), it KILLS the tmux session itself so the
-// terminal is reset before the caller prints the results. Best-effort: failures
-// here do not abort the run.
+// reached), it KILLS the tmux session itself so the terminal is reset before the
+// caller prints the results. Best-effort: failures here do not abort the run.
 func (d *driver) quit() {
 	d.step("Phase 5: quit")
 	if !d.sess.HasSession() {

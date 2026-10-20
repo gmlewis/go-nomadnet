@@ -76,10 +76,8 @@ func attachmentFixture(t *testing.T, convDir, name string, payload []byte) (path
 //     from the manifest (Conversation.py:527-548), so the attachment rows the
 //     user sees do not disappear on reload.
 //
-// Steps 2-4 had no production caller in the port: every .lxmf file kept its
-// full attachment payload on disk forever, and the attachment names vanished
-// as soon as the message was loaded a second time. This test drives the real
-// load path twice and asserts the payload survives both times.
+// This test drives the real load path twice and asserts the payload and names
+// survive both times.
 func TestMessageLoadPersistsAttachmentsAcrossReload(t *testing.T) {
 	t.Parallel()
 

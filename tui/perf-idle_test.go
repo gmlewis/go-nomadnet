@@ -20,22 +20,20 @@ import (
 )
 
 // =============================================================================
-// Layer 6 — background / idle refresh cost
+// Background / idle refresh cost
 //
 // The app has several background goroutines that marshal work onto the event
 // loop via App.QueueUpdateDraw(f) (cmd/gonomadnet/textui.go): a 1 s interface
 // ticker, a 30 s sync-status refresh, and a 2 s unread-conversation blink
 // (MainDisplay.startUnreadBlink). tview's QueueUpdateDraw runs f and THEN calls
 // Draw() unconditionally, so EVERY tick triggers a full screen redraw even when
-// the underlying state did not change — the "CPU spent when nothing should be
-// happening" architectural concern.
+// the underlying state did not change.
 //
 // The 1 s / 30 s tickers gather data from the live RNS node (interfaces,
 // sync state), so their data-gathering cost is coupled to package main and the
-// running transport; it is captured by the live pprof harness (Layer 7), not by
-// a headless go-test benchmark. Their REDRAW cost equals the full-page Draw
-// numbers already measured in Layer 4. What IS measurable headlessly is the
-// unread blink's per-tick work + the unconditional redraw it triggers.
+// running transport and is not measurable by a headless benchmark. Their
+// redraw cost equals the full-page Draw cost. What IS measurable headlessly is
+// the unread blink's per-tick work plus the unconditional redraw it triggers.
 // =============================================================================
 
 // BenchmarkUnreadBlinkTick measures the full per-2 s idle cost: the blink's

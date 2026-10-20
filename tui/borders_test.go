@@ -62,7 +62,7 @@ func TestApplySingleLineBorders(t *testing.T) {
 	}
 }
 
-// TestFocusedBoxRendersSingleLine proves the global fix end-to-end: a
+// TestFocusedBoxRendersSingleLine proves the global override end-to-end: a
 // focused tview.Box with SetBorder(true) renders single-line corners, not
 // tview's default double-line ╔╗╚╝.
 func TestFocusedBoxRendersSingleLine(t *testing.T) {

@@ -24,14 +24,14 @@ import (
 )
 
 // =============================================================================
-// Layer 5 — input / event path cost (one consumed event → full redraw)
+// Input / event path cost (one consumed event → full redraw)
 //
 // These replicate the tview event loop's unit of work for a single consumed
 // event: dispatch the synthesized event to the widget's MouseHandler, then —
 // because the handler returned consumed=true — run drawFrame (Clear+Draw+Show),
-// exactly as application.go:494-498 does. This measures the per-event cost the
-// user feels: a mouse-move over the Network/Guide pages, a wheel notch on a
-// browser/guide page, etc.
+// exactly as application.go:494-498 does. This measures the per-event cost: a
+// mouse-move over the Network/Guide pages, a wheel notch on a browser/guide
+// page, etc.
 // =============================================================================
 
 // center returns a position inside p's current rect (for synthesizing a mouse
@@ -64,14 +64,14 @@ func mouseScrollFrame(screen tcell.Screen, root tview.Primitive, handler func(tv
 	drawFrame(screen, root)
 }
 
-// BenchmarkURWIDColumnsMouseMove is the CONFIRMED mouse-move flicker root cause.
+// BenchmarkURWIDColumnsMouseMove measures the mouse-move redraw cost.
 // urwidColumns.MouseHandler (tui/urwid-columns.go:452) returns consumed=true and
 // calls setFocus for EVERY mouse action — including MouseMove — over a
 // focusable column, so every mouse-position event over the Network or Guide
 // page triggers a full screen clear + full tree redraw + screen sync. This
 // benchmark measures that per-move cost on a mounted Guide page and contrasts
 // it with a plain-Flex page (Browser standalone) whose move handler does NOT
-// consume — so it redraws nothing. The delta is the flicker cost.
+// consume — so it redraws nothing. The delta is the hover redraw overhead.
 func BenchmarkURWIDColumnsMouseMove(b *testing.B) {
 	app := NewApp(ThemeDark, GlyphUnicode, ColorModeTrue)
 	gd := NewGuideDisplay(app)
@@ -103,7 +103,7 @@ func BenchmarkURWIDColumnsMouseMove(b *testing.B) {
 // BenchmarkPlainFlexMouseMove is the baseline: a non-urwidColumns page (the
 // standalone Browser, a plain tview.Flex) whose content TextView does NOT
 // consume MouseMove, so a hover redraws nothing. Contrast with
-// BenchmarkURWIDColumnsMouseMove to see the flicker overhead.
+// BenchmarkURWIDColumnsMouseMove to see the hover redraw overhead.
 func BenchmarkPlainFlexMouseMove(b *testing.B) {
 	app := NewApp(ThemeDark, GlyphUnicode, ColorModeTrue)
 	bd := NewBrowserDisplay(app)
@@ -133,8 +133,7 @@ func BenchmarkPlainFlexMouseMove(b *testing.B) {
 // BenchmarkGuideWheelScroll measures the per-wheel-notch cost on the Guide
 // page: the ScrollBar delegates the wheel to its TextView (lineOffset++), then
 // the full MainDisplay tree redraws — including ScrollBar.Draw's per-frame
-// wrappedRowCount re-wrap. This is the path the user called "painfully
-// sluggish."
+// wrappedRowCount re-wrap.
 func BenchmarkGuideWheelScroll(b *testing.B) {
 	app := NewApp(ThemeDark, GlyphUnicode, ColorModeTrue)
 	gd := NewGuideDisplay(app)
@@ -241,10 +240,9 @@ func wheelFrameCond(screen tcell.Screen, root tview.Primitive, handler func(tvie
 
 // BenchmarkBrowserWheelScrollAtBoundary measures the cost of a wheel notch AT
 // the scroll boundary (parked at the bottom, scrolling down) on the Browser
-// page. The boundary guard returns consumed=false so tview skips the redraw —
-// the fix for the "scroll hangs at the ends" symptom. Contrast with
-// BenchmarkBrowserWheelScroll (mid-page, full redraw per notch): the boundary
-// number should be ~negligible (handler only, no Draw).
+// page. The boundary guard returns consumed=false so tview skips the redraw.
+// Contrast with BenchmarkBrowserWheelScroll (mid-page, full redraw per notch):
+// the boundary number is ~negligible (handler only, no Draw).
 func BenchmarkBrowserWheelScrollAtBoundary(b *testing.B) {
 	app := NewApp(ThemeDark, GlyphUnicode, ColorModeTrue)
 	bd := NewBrowserDisplay(app)

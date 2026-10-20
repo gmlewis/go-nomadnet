@@ -21,8 +21,8 @@ import (
 )
 
 // TestRenderToStyledLinesPlain verifies the base body-text style: full fg/bg
-// from the theme "plain" entry (STYLES_DARK plain fg="ddd"→#dddddd, bg="default"),
-// NOT bold — the core fix for the "all-bold body" regression (task 3.8).
+// from the theme "plain" entry (STYLES_DARK plain fg="ddd"→#dddddd,
+// bg="default") and not bold.
 //
 // The high-color values are derived from Python MicronParser.make_style's
 // high_color (MicronParser.py:518-567): "ddd"→"#dddddd", "default"→"default".
@@ -53,9 +53,9 @@ func TestRenderToStyledLinesLightTheme(t *testing.T) {
 }
 
 // TestRenderToStyledLinesFormattingToggles asserts bold/underline/italic toggles
-// are cumulative and persist across text runs (no reset until “). Golden span
-// segmentation + per-span flags captured from Python micron_inline.py for input
-// `!bold` and `_underline` and `*italic`.
+// are cumulative and persist across text runs until a double backtick. Expected
+// span segmentation and per-span flags captured from Python MicronParser for
+// the input `!bold` and `_underline` and `*italic`.
 func TestRenderToStyledLinesFormattingToggles(t *testing.T) {
 	t.Parallel()
 
@@ -79,7 +79,7 @@ func TestRenderToStyledLinesFormattingToggles(t *testing.T) {
 }
 
 // TestRenderToStyledLinesColors asserts fg/bg color application and reset, with
-// golden span colors from Python micron_inline.py for `F0f0bg green`B0f0on green`b.
+// span colors captured from Python MicronParser for `F0f0bg green`B0f0on green`b.
 func TestRenderToStyledLinesColors(t *testing.T) {
 	t.Parallel()
 
@@ -119,7 +119,7 @@ func TestRenderToStyledLinesFGReset(t *testing.T) {
 	}
 }
 
-// TestRenderToStyledLinesFullReset asserts “ (double backtick) clears all
+// TestRenderToStyledLinesFullReset asserts a double backtick clears all
 // formatting and colors (MicronParser.py:641-647).
 func TestRenderToStyledLinesFullReset(t *testing.T) {
 	t.Parallel()
@@ -430,7 +430,7 @@ func TestRenderToStyledLinesLiteralModePreservesRaw(t *testing.T) {
 }
 
 // TestRenderToStyledLinesAnchorDeclaration asserts `:name binds an anchor to
-// the current line (3.4 groundwork).
+// the current line.
 func TestRenderToStyledLinesAnchorDeclaration(t *testing.T) {
 	t.Parallel()
 
@@ -498,8 +498,8 @@ func spanText(l *StyledLine) string {
 // heuristic (tooling/tui-parity/summary.py:118-131) at the unit level: across a
 // Guide-like fixture of headings + body paragraphs + a link, the fraction of
 // body content runs (non-heading, non-divider spans with non-space text) that
-// are bold must be < 0.1 — the "all-bold body" regression guard for task 3.8.
-// Headings must use their headingN fg/bg (not bold); body must be plain.
+// are bold must be < 0.1. Headings must use their headingN fg/bg (not bold);
+// body must be plain.
 func TestBodyBoldRunFraction(t *testing.T) {
 	t.Parallel()
 

@@ -301,8 +301,8 @@ func (lt *LinkableText) findItemAtPos(pos int) *linkPart {
 }
 
 // LinkAtCursor returns the link spec at the current cursor position, or nil if
-// the cursor is on a plain (non-link) part. This exposes both the target URL
-// and the display label text (task 3.2 target/display-text).
+// the cursor is on a plain (non-link) part. The spec carries both the target URL
+// and the display label text.
 func (lt *LinkableText) LinkAtCursor() *micron.LinkSpec {
 	if part := lt.findItemAtPos(lt.cursor); part != nil {
 		return part.Link
@@ -368,16 +368,11 @@ func (lt *LinkableText) CursorVisible(now time.Time, focused bool) bool {
 // cursor byte offset is converted to a rune (codepoint) offset to match
 // Python's _cursor_position semantics.
 //
-// CAVEAT — best-effort, NOT golden-tested: tmux capture-pane records the cell
-// buffer, not the terminal hardware cursor, so capture parity tooling is blind
-// to it. The vertical scroll offset of the
-// underlying tview.TextView is internal and not exposed, so when the page is
-// scrolled the caret row is approximate. LinkableText is not yet wired into the
-// live page tree (the browser/guide bodies render via guideReader +
-// StyledLinesToTviewText into a plain TextView), so this override is currently
-// dormant; it becomes active once a LinkableText is hosted as the
-// focusable page primitive. The verified, testable deliverable for cursor
-// parity is the golden CalcCoords table in cursor-coords_test.go.
+// CAVEAT: the underlying tview.TextView's vertical scroll offset is internal
+// and not exposed, so when the page is scrolled the caret row is approximate.
+// tmux capture-pane records the cell buffer rather than the hardware cursor, so
+// render parity tooling cannot see the caret; CalcCoords itself is pinned by
+// the table in cursor-coords_test.go.
 func (lt *LinkableText) Draw(screen tcell.Screen) {
 	lt.TextView.Draw(screen)
 	if !lt.HasFocus() {

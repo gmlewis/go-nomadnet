@@ -69,10 +69,9 @@ func TestHandleLinkEmpty(t *testing.T) {
 // wheel multiplier (applyWheelMultiplier, installed in newBrowserPageView): a
 // wheel notch scrolls mouseWheelLines rows in one delivery via ScrollTo, and at
 // the top/bottom boundary it declines to consume so tview skips the no-op
-// redraw (the fix for the "scroll hangs at the ends" symptom and the
-// trackEnd-jump-after-topic-switch bug — scrolling by N in one ScrollTo keeps
-// trackEnd=false, so no leap to the bottom). mid-page notches consume and move
-// the offset by N rows, not tview's default 1.
+// redraw. Scrolling by N in one ScrollTo keeps trackEnd=false, so there is no
+// leap to the bottom. Mid-page notches consume and move the offset by N rows,
+// not tview's default 1.
 func TestBrowserPageViewWheelMultiplier(t *testing.T) {
 	orig := mouseWheelLines
 	t.Cleanup(func() { mouseWheelLines = orig })
@@ -157,11 +156,10 @@ func TestBrowserPageViewWheelMultiplier(t *testing.T) {
 	}
 }
 
-// TestBrowserPageHeaderAndMicronRendering pins what the test's name promises: a page's
-// section header and its body markup reach the render. It used to assert only that the
-// text was non-empty — and its one content check was disabled under -short, which is
-// exactly how run-all-tests.sh runs it — so in the gate a renderer producing one stray
-// character passed.
+// TestBrowserPageHeaderAndMicronRendering pins that a page's section header and
+// its body markup both reach the render: the heading keeps its text and the
+// theme's heading1 style, a bare "-" line becomes a divider, and the painted
+// text carries the header rather than only the line model.
 func TestBrowserPageHeaderAndMicronRendering(t *testing.T) {
 	t.Parallel()
 
@@ -363,9 +361,9 @@ func TestBrowserDisplayReload(t *testing.T) {
 
 // TestBrowserDisplayPartialSplicing pins the partial substitution: each fetched
 // partial is rendered as its own document and its lines replace the ⧖
-// placeholder line. Parsing it inline let formatting state cross the boundary,
-// whereas Python parses every partial through markup_to_attrmaps with the
-// page's default colors (Browser.py:699-702).
+// placeholder line, so formatting state cannot cross the boundary. Python parses
+// every partial through markup_to_attrmaps with the page's default colors
+// (Browser.py:699-702).
 func TestBrowserDisplayPartialSplicing(t *testing.T) {
 	t.Parallel()
 	app := newTestApp()
@@ -488,8 +486,7 @@ func TestBrowserDisplayPartialsInertWithoutCallback(t *testing.T) {
 // 881): tearing down the link clears the history, resets the history pointer,
 // and shows the disconnected state. The current-destination hint is also cleared
 // so a subsequent relative ":<path>" URL does not resolve against the stale
-// node (Python sets status=DISCONECTED and clears request_data; the Go port
-// keeps no persistent link to tear down, but must still reset navigation).
+// node (Python sets status=DISCONECTED and clears request_data).
 func TestBrowserDisplayDisconnect(t *testing.T) {
 	t.Parallel()
 	app := newTestApp()

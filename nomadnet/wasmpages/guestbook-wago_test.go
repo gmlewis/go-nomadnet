@@ -661,8 +661,7 @@ func TestExampleGuestbookTriggersTheSiteCounterWithoutShowingIt(t *testing.T) {
 	// The directive must PARSE as a partial, not merely appear in the page. A
 	// directive that shares its line with other text is ordinary text to Micron:
 	// it is never extracted, never fetched, and the visitor reads it verbatim,
-	// while the site counter silently stops advancing. Asserting the substring
-	// alone passed while exactly that was happening.
+	// while the site counter silently stops advancing.
 	var partials []*micron.Node
 	for _, n := range micron.Parse(page) {
 		if n.Type == micron.NodePartial {

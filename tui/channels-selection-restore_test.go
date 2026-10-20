@@ -19,9 +19,8 @@ import "testing"
 
 // TestChannelsSetHubsRestoresSelection pins the Python update_list selection
 // restore (Channels.py:1664-1692): a background hub status change rebuilds the
-// list, and the rebuild must re-select the row the user had selected instead
-// of yanking the cursor back to the first row — the live fleet bug where every
-// connect moved the cursor, redirecting the next Ctrl-A to the wrong hub.
+// list, and the rebuild must re-select the row the user had selected instead of
+// moving the cursor back to the first row.
 func TestChannelsSetHubsRestoresSelection(t *testing.T) {
 	t.Parallel()
 	app := newTestApp()

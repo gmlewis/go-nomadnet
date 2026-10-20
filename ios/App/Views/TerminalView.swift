@@ -40,11 +40,9 @@ public final class TerminalView: UIView, UIKeyInput {
 
     /// Called when the reader types, with the key the client expects.
     ///
-    /// The key and not its bytes, because the modifier latches are the *pane's*: a `Ctrl` the
-    /// reader tapped on the strip is shown as a lit button there, and the key that spends it
-    /// has to spend the same one the strip is showing. A view with its own copy of the latch
-    /// spent that instead — so a `Ctrl` then a letter left `Ctrl` lit on the strip, which is a
-    /// latch a reader cannot tell is spent.
+    /// The key and not its bytes, because the modifier latches are the *pane's*: a `Ctrl`
+    /// the reader tapped on the strip is shown as a lit button there, and the key that
+    /// spends it has to spend the same latch the strip is showing.
     public var onKey: ((TerminalKey) -> Void)?
 
     /// Called when the console's own scrollback moves, with the number of rows the view is
@@ -126,26 +124,20 @@ public final class TerminalView: UIView, UIKeyInput {
 
     // MARK: - Geometry
 
-    /// relayout recalculates the grid for the view's current size.
-    ///
-    /// It is called when the view is laid out and when the key strip appears or
-    /// disappears, because the strip takes rows from the terminal and the client has to
-    /// be told: a client that is not told reflows its own content for a window it does
-    /// not have.
     /// Called when the grid this view can show has changed, with the grid it can show now.
     ///
-    /// The view cannot tell the client its window has changed — that belongs to the controller,
-    /// which is the only thing that knows what the client currently believes — but the view is
-    /// the only thing that knows when its own bounds have changed, so it reports rather than
-    /// waits to be asked. Waiting to be asked is what the appliance did: SwiftUI calls a
-    /// representable's `updateUIView` when its inputs change, and a window that has just been
-    /// laid out is not one of those inputs, so the grid was computed once — often while the
-    /// bounds were still empty — and never again. The client drew 80 columns into a 40-column
-    /// pane for the whole session, with the last rows of the screen black, and no rotation could
-    /// fix it because nothing was ever sent.
+    /// The view cannot tell the client its window has changed — that belongs to the
+    /// controller, which is the only thing that knows what the client currently believes —
+    /// but the view is the only thing that knows when its own bounds have changed, so it
+    /// reports rather than waits to be asked. SwiftUI calls a representable's
+    /// `updateUIView` when its inputs change, and a window that has just been laid out is
+    /// not one of those inputs.
     public var onGridChanged: ((TerminalMetrics) -> Void)?
 
     /// relayout recomputes the grid this view can show for its current bounds, and returns it.
+    ///
+    /// It is called when the view is laid out and when the key strip appears or disappears,
+    /// because the strip takes rows from the terminal and the client has to be told.
     ///
     /// It deliberately does **not** resize the screen. The screen is the client's window, and
     /// only the controller may change it: a view that resizes it has already answered the
@@ -304,12 +296,11 @@ public final class TerminalView: UIView, UIKeyInput {
     ///
     /// The two coordinate systems disagree and this is where they are reconciled. UIKit
     /// hands a view a context whose y axis points down; Core Text draws glyphs with y
-    /// pointing up. A line drawn with the identity text matrix is therefore mirrored — the
-    /// appliance's whole client rendered upside down on the device, which is what a
-    /// screenshot of the running appliance showed. Negating the text matrix's y is what
-    /// makes the glyphs and the context agree, and once they do the baseline has to be
-    /// named rather than inferred from the cell's floor: it sits one ascent below the cell's
-    /// top, which is where a terminal puts it and what keeps a row's text inside its row.
+    /// pointing up. A line drawn with the identity text matrix is therefore mirrored.
+    /// Negating the text matrix's y makes the glyphs and the context agree, and once they do
+    /// the baseline has to be named rather than inferred from the cell's floor: it sits one
+    /// ascent below the cell's top, which is where a terminal puts it and what keeps a row's
+    /// text inside its row.
     ///
     /// The position is in the context's own space, so it is not affected by the text matrix.
     private func draw(_ line: CTLine, in context: CGContext, cellLeft: CGFloat, cellTop: CGFloat) {
@@ -443,16 +434,15 @@ public final class TerminalView: UIView, UIKeyInput {
     /// wheel reports a drag as mouse wheel notches at the cell the finger is on, or scrolls the
     /// console's own history when the client is not listening for a mouse.
     ///
-    /// **The cell is the finger's, not the cursor's**, and that is the whole of whether a drag
-    /// does anything. A client routes a wheel report to whatever it has under the cell, which
-    /// is how a reader scrolls the panel they are dragging — a page, a room's messages, a
-    /// guide. Reported at the cursor instead, the wheel arrives at whichever panel holds the
-    /// focus, which on the NomadNet client is the menu bar: it scrolls nothing at all, and a
-    /// drag anywhere on the screen looks like a console that cannot be dragged.
+    /// The cell is the finger's, not the cursor's: a client routes a wheel report to whatever
+    /// it has under that cell, which is how a reader scrolls the panel they are dragging.
+    /// Reported at the cursor instead, the wheel arrives at whichever panel holds the focus —
+    /// on the NomadNet client, the menu bar — so a drag anywhere looks like a console that
+    /// cannot be dragged.
     ///
-    /// A console scrolled away from the live output is a console the reader has taken
-    /// over, so the client is not told about the drag at all: sending it both a wheel
-    /// report and a scroll would move the client's own view and this one.
+    /// A console scrolled away from the live output is the reader's, so the client is not told
+    /// about the drag at all: sending both a wheel report and a scroll would move the client's
+    /// view and this one.
     private func wheel(_ lines: Int, x: Double, y: Double) {
         if screen.mouseReporting, scrollOffset == 0 {
             let button: TerminalMouseButton = lines > 0 ? .wheelDown : .wheelUp
@@ -496,17 +486,14 @@ public final class TerminalView: UIView, UIKeyInput {
     /// didMoveToWindow takes the keyboard for the console as soon as there is a window to take
     /// it in.
     ///
-    /// A key goes to the first responder. A hardware keyboard's keys arrive there, and the
-    /// software keyboard is served to it; a console that is drawn but is not the first responder
-    /// therefore receives nothing at all. The client's interface is reached with keys — its
-    /// lists, its buttons, its menu, and the shortcuts on its last row — so a console that is not
-    /// the first responder is the client's whole interface going quiet, with nothing on the
-    /// screen to say why. The pane is the console, and the console is what is typed into, so it
-    /// takes the keyboard the moment it has a window.
+    /// A key goes to the first responder: a hardware keyboard's keys arrive there, and the
+    /// software keyboard is served to it. A console that is drawn but is not the first
+    /// responder therefore receives nothing at all, and the client's whole interface goes
+    /// quiet with nothing on the screen to say why.
     ///
-    /// With a hardware keyboard attached the system presents no software keyboard for it, so the
-    /// pane looks exactly as it did and the keys work; without one the keyboard comes up at once,
-    /// and the key strip that accompanies it, which is the state a tap on the console reaches.
+    /// With a hardware keyboard attached the system presents no software keyboard, so the
+    /// pane looks exactly as it did and the keys work; without one the keyboard comes up at
+    /// once, and the key strip that accompanies it.
     public override func didMoveToWindow() {
         super.didMoveToWindow()
         if window != nil, !isFirstResponder {

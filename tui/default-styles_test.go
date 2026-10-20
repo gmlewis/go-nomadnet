@@ -32,8 +32,9 @@ import (
 // box.go borderStyle = white-on-black) produce `\x1b[38;2;255;255;255;
 // 48;2;0;0;0` borders — a hard black box that is wrong on a light terminal.
 //
-// The fix mutates the library-global `tview.Styles` (like ApplySingleLineBorders
-// mutates `tview.Borders`); it is idempotent and safe to call repeatedly.
+// The styles come from a single mutation of the library-global `tview.Styles`
+// (like ApplySingleLineBorders mutates `tview.Borders`); it is idempotent and
+// safe to call repeatedly.
 func TestTerminalDefaultBackgroundAndBorders(t *testing.T) {
 	t.Parallel()
 

@@ -67,16 +67,10 @@ func clickRoomComposer(t *testing.T, app *App, rw *RoomWidget) tview.Primitive {
 // knows it by.
 //
 // tview routes a click into the clicked widget's own handler, and a click on an
-// InputField ends in the inner TextArea it wraps, whose handler focuses ITSELF
-// (tview textarea.go MouseHandler: setFocus(t)). Every focus test in the port is
-// written against the ReadlineEdit — the room's editorHasFocus, the
-// conversation's composerHasFocus, MainDisplay.fieldEditor's *ReadlineEdit
-// assertion — so a tap left the composer looking and behaving focused (it paints
-// the caret, it takes every keystroke) while all of them said it was not.
-//
-// The appliance is a touch device, so a tap is the ONLY way its reader reaches
-// the composer, and the symptom was the operator's: in a room, focused on the
-// composer with the caret blinking at the line start, [C-g] typed nothing.
+// InputField ends in the inner TextArea it wraps, whose handler focuses itself
+// (tview textarea.go MouseHandler). Every focus check in the port is written
+// against the ReadlineEdit — the room's editorHasFocus, the conversation's
+// composerHasFocus, MainDisplay.fieldEditor — so the click must resolve to it.
 func TestRoomComposerClickFocusesTheEditor(t *testing.T) {
 	t.Parallel()
 
@@ -96,15 +90,12 @@ func TestRoomComposerClickFocusesTheEditor(t *testing.T) {
 	}
 }
 
-// TestRoomCtrlGWorksAfterClickingTheComposer pins the operator-visible half of
-// the same defect: the shortcut the room's own shortcut bar advertises must work
-// on a composer that was reached by tapping it.
+// TestRoomCtrlGWorksAfterClickingTheComposer pins that the shortcut the room's
+// own shortcut bar advertises works on a composer reached by tapping it.
 //
-// The shortcut is guarded (the command is only typed at the start of an empty
-// line), and both halves of that guard — the focus and the cursor — hold after a
-// tap: the caret sits at the line start. Only the focus IDENTITY was wrong, so
-// the guard refused and the key was passed on, leaving the reader with a key the
-// interface promises and a composer that looks ready.
+// The shortcut is guarded (the command is typed only at the start of an empty
+// line), and both halves of that guard — the focus and the cursor — hold after
+// a tap: the caret sits at the line start.
 func TestRoomCtrlGWorksAfterClickingTheComposer(t *testing.T) {
 	t.Parallel()
 
@@ -124,13 +115,11 @@ func TestRoomCtrlGWorksAfterClickingTheComposer(t *testing.T) {
 	}
 }
 
-// TestComposerClickKeepsTheFieldsFirstRefusal pins the other half of the same
-// identity: MainDisplay hands every key to the focused field before any page
+// TestComposerClickKeepsTheFieldsFirstRefusal pins the field-first key
+// ordering: MainDisplay hands every key to the focused field before any page
 // shortcut runs, so the readline editing keys reach the field the reader is
 // typing in (MainDisplay.handleInput's fieldEditor). That hand-off is a
-// *ReadlineEdit assertion, so a tap that recorded tview's inner TextArea lost it
-// too: ctrl-u killed the line in a composer reached by keyboard, and toggled the
-// room's members pane in one reached by tap.
+// *ReadlineEdit assertion, so a click must leave that identity in place.
 func TestComposerClickKeepsTheFieldsFirstRefusal(t *testing.T) {
 	t.Parallel()
 

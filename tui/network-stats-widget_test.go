@@ -50,8 +50,8 @@ func TestNetworkStatsWidgetContent(t *testing.T) {
 	if got := ns.view.GetTitle(); got != "Network Stats" {
 		t.Errorf("NetworkStats title = %q, want %q", got, "Network Stats")
 	}
-	// tview exposes no border getter (Box.border is unexported); border
-	// presence is verified via capture, not unit-tested here.
+	// tview exposes no border getter (Box.border is unexported), so border
+	// presence is not asserted here.
 }
 
 // TestNetworkStatsWidgetRefresh asserts refresh() re-reads the providers and

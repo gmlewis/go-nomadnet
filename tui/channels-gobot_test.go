@@ -24,10 +24,10 @@ import (
 // ctrlG is the Ctrl-G key event the room's dispatcher is offered.
 func ctrlG() *tcell.EventKey { return tcell.NewEventKey(tcell.KeyCtrlG, 0, tcell.ModNone) }
 
-// TestRoomCtrlGTypesGobotCommand pins the operator-requested [C-g] shortcut in
-// the Channels room: with the composer's cursor at the very start of the entry
-// line it types the chat-bot command in for the user. This is a deliberate
-// Go-only addition — Python's room has no [C-g] binding at all.
+// TestRoomCtrlGTypesGobotCommand pins the [C-g] shortcut in the Channels room:
+// with the composer's cursor at the very start of the entry line it types the
+// chat-bot command in for the user. This is a deliberate Go-only addition —
+// Python's room has no [C-g] binding at all.
 func TestRoomCtrlGTypesGobotCommand(t *testing.T) {
 	t.Parallel()
 
@@ -58,11 +58,11 @@ func TestRoomCtrlGTypesGobotCommand(t *testing.T) {
 	}
 }
 
-// TestRoomCtrlGOnlyFiresAtTheLineStart pins the guard the operator asked for:
-// the shortcut works ONLY with the cursor at the very first entry position. Any
-// other cursor position must leave the buffer untouched — inserting the command
-// into a half-typed message would corrupt it — and must leave the key
-// unconsumed so the room can bind it later.
+// TestRoomCtrlGOnlyFiresAtTheLineStart pins the guard: the shortcut works ONLY
+// with the cursor at the very first entry position. Any other cursor position
+// must leave the buffer untouched — inserting the command into a half-typed
+// message would corrupt it — and must leave the key unconsumed so the room can
+// bind it later.
 func TestRoomCtrlGOnlyFiresAtTheLineStart(t *testing.T) {
 	t.Parallel()
 

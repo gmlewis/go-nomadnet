@@ -238,8 +238,8 @@ class NodeConfigRendererTest {
     @Test
     fun theClientListsTheInterfacesTheTransportDials() {
         // The client's Interfaces page reads this file and shows what it finds there, so a
-        // client configuration that listed nothing showed the operator an appliance with no
-        // interfaces at all while its transport was dialling the hub. The two sections are
+        // client configuration that listed nothing would show the operator an appliance with
+        // no interfaces at all while its transport was dialling the hub. The two sections are
         // the same list because they are the same interfaces.
         val spec = NodeConfigSpec(
             interfaces = listOf(InterfaceSpec("Home Hub", "203.0.113.7", 4242)),

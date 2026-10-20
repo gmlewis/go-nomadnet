@@ -23,8 +23,8 @@ import (
 )
 
 // utilInputs is the input battery for the live cross-implementation parity
-// check. The Go test owns these inputs; the expected outputs are derived FRESH
-// on every run by executing the real Python nomadnet.util reference (see
+// check. The Go test owns these inputs; the expected outputs are derived on
+// every run by executing the real Python nomadnet.util reference (see
 // utilPythonOnce). The battery covers default, unicode-category, combining-mark,
 // variation-selector, ZWJ/ZWNJ, control-character, micron-formatting, and
 // edge cases that exercise the category-based filtering Go must replicate.

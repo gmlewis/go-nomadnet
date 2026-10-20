@@ -145,8 +145,8 @@ func (c *Chart) Plot(series [][]float64) (string, error) {
 	if c.Max != nil {
 		maxVal = *c.Max
 	}
-	// Python raises ValueError here (AsciiChart.py:21-22); silently swapping
-	// hid a caller's inverted range.
+	// Python raises ValueError here (AsciiChart.py:21-22); an inverted range
+	// must be reported, not silently swapped.
 	if minVal > maxVal {
 		return "", errors.New("the min value cannot exceed the max value")
 	}
@@ -294,7 +294,7 @@ func (c *Chart) PlotSingle(series []float64) (string, error) {
 // formatLabel formats a Y-axis value. Python's cfg['format'] is a str.format
 // template ("{:8.2f} ", "{}", or even a string with no field); a Go fmt verb is
 // also accepted. A template with no placeholder yields the literal text, as
-// str.format does, where this port used to emit twelve blanks.
+// Python's str.format does.
 func formatLabel(val float64, format string) string {
 	if math.IsNaN(val) || math.IsInf(val, 0) {
 		return "     NaN "

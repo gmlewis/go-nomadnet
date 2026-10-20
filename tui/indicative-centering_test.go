@@ -22,11 +22,9 @@ import (
 
 // TestIndicativeMessagesBarCentering pins the indicator bars' centering to
 // Python's IndicativeListBox (additional_urwid_widgets — urwid centers with
-// the ceil formula (maxcol-len+1)/2 on the RUNE length): drawn at the
-// fleet's 96-wide chat inner, "▲" starts at col 48 and "───" at col 47.
-// Measured on the 2026-09-03 12:32 full-fleet capture (mac rows 3/33): the
-// Go nodes drew "───" at col 44 and "▲" at col 47 — the byte length of the
-// 3-byte runes instead of the rune count.
+// the ceil formula (maxcol-len+1)/2 on the RUNE length): at the 96-wide chat
+// inner, "▲" starts at col 48 and "───" at col 47. Measuring the byte length
+// of the 3-byte runes instead would put both bars three columns left.
 func TestIndicativeMessagesBarCentering(t *testing.T) {
 	t.Parallel()
 

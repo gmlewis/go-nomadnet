@@ -26,7 +26,7 @@ import (
 // input battery; Python owns the reference behavior. The test SKIPs, not
 // fails, when the Python reference is not importable.
 //
-// Python's parse_url returns the destination hash as bytes; here we compare
+// Python's parse_url returns the destination hash as bytes; this test compares
 // hex strings. parse_url does NOT handle the backtick query part — that lives
 // in retrieve_url — so the battery contains no backtick cases; query parsing
 // is exercised by TestParseURLWithQuery.

@@ -19,13 +19,12 @@ import (
 	"testing"
 )
 
-// The 2026-09-03 20:5x fleet captures: with a room open, Python's channels
-// list carries its selection ON the opened room's row (the visible highlight
-// the user reads as "the joined room is highlighted"), while gonomadnet's
-// selection stayed on the hub row. Python's invariant is selected_key: every
-// path that shows a room sets the room row as the selected one (Channels.py
-// _select_room / update_list's select_item), and every path that shows a hub
-// info panel selects the hub row (_select_hub).
+// With a room open, Python's channels list carries its selection ON the opened
+// room's row (the visible highlight the user reads as "the joined room is
+// highlighted"). Python's invariant is selected_key: every path that shows a
+// room sets the room row as the selected one (Channels.py _select_room /
+// update_list's select_item), and every path that shows a hub info panel selects
+// the hub row (_select_hub).
 
 // fakeHubView is a minimal HubView for the selection tests.
 type fakeHubView struct {
@@ -111,7 +110,7 @@ func TestChannelsShowRoomSelectsRoomRow(t *testing.T) {
 // TestChannelsShowRoomSelectionSurvivesRebuild pins the full user flow: the
 // room view is shown, then a background hub refresh rebuilds the list — the
 // selection must stay on the opened room's row (Python update_list's
-// prev_key restore, which now keys on the room the view shows).
+// prev_key restore, keyed on the room the view shows).
 func TestChannelsShowRoomSelectionSurvivesRebuild(t *testing.T) {
 	t.Parallel()
 

@@ -35,8 +35,7 @@ type dialogEntry struct {
 // DialogManager overlays a stack of modal dialogs on top of the main content
 // using a tview.Pages root. The main content stays mounted underneath every
 // dialog (so the underlying screen is preserved); Esc dismisses the top
-// dialog and restores the previous focus. This replaces the old
-// app.SetRoot(dialog, true) approach that destroyed the underlying screen.
+// dialog and restores the previous focus.
 //
 // A DialogManager is owned by App (App.Dialogs) and wired up by Init (called
 // from App.SetRoot). Keeping it off the package level lets parallel tests
@@ -193,10 +192,10 @@ func (dm *DialogManager) DismissTop() {
 // transparentBox leaves the underlying screen untouched. centerDialog uses it
 // for the dialog margin spacers so that a centered dialog's right/bottom border
 // — which sits one cell outside the dialog box, inside the trailing margin's
-// rect — is not overwritten when the margin is drawn after the dialog. (tview
-// Flex.Draw only defers the focused item's draw to last; when focus is on a
+// rect — is not overwritten when the margin is drawn after the dialog. tview's
+// Flex.Draw only defers the focused item's draw to last, so when focus is on a
 // dialog's inner field rather than the dialog itself, the trailing margins
-// would otherwise clear the border.)
+// would otherwise clear the border.
 type transparentBox struct {
 	*tview.Box
 }

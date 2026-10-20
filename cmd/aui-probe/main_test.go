@@ -22,11 +22,9 @@ import (
 	"time"
 )
 
-// TestDeriveMulticastAddressGolden pins the group address against values
-// verified three ways: the reference derivation in
-// rns/interfaces/auto.go autoMulticastDiscoveryIP, an independent Python
-// reimplementation, and — decisively — the ff120000d70bfb1c16e45e39485e31e1
-// entry a live gonomadnet actually registered in /proc/net/igmp6.
+// TestDeriveMulticastAddressGolden pins the group address to the value the
+// reference derivation in rns/interfaces/auto.go autoMulticastDiscoveryIP
+// produces.
 func TestDeriveMulticastAddressGolden(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -48,7 +46,7 @@ func TestDeriveMulticastAddressGolden(t *testing.T) {
 
 func TestDiscoveryTokenKnownVector(t *testing.T) {
 	t.Parallel()
-	const src = "fe80::ecb7:f7fa:f27b:44bc" // raspberrypi wlan0, 2026-08-26 fleet test
+	const src = "fe80::ecb7:f7fa:f27b:44bc" // link-local address of a real interface
 	want := "54635a79cd9385118f57a730057c5bbe3481cb56094d71b155c1b801bed5072b"
 	if got := discoveryToken(defaultGroupID, src); len(got) != 32 {
 		t.Fatalf("token length = %v, want 32", len(got))

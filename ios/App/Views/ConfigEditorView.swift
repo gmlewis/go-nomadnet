@@ -19,7 +19,7 @@ import SwiftUI
 /// ConfigEditorView is the appliance's editor for its own configuration.
 ///
 /// The appliance's configuration is two files with two different owners, so the editor
-/// treats them differently, which is the only honest way to present them:
+/// treats them differently:
 ///
 ///   - **Reticulum's configuration is rendered.** The appliance writes it from its own
 ///     settings every time the stack starts, so editing its text by hand would be an
@@ -34,8 +34,7 @@ import SwiftUI
 /// Validation is the renderers' own in both cases: a hub host that is a name is refused
 /// with `NodeConfigError.nonLiteralAddress`'s reason, and client configuration that has
 /// lost a key the appliance has to state is refused with `ClientConfigError`'s. Neither
-/// is re-implemented here, because a second set of rules is a second set of rules to be
-/// wrong.
+/// is re-implemented here.
 struct ConfigEditorView: View {
     /// The appliance, as the interface sees it.
     @ObservedObject var model: ApplianceModel

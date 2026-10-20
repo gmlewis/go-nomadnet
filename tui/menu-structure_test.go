@@ -21,9 +21,8 @@ import (
 )
 
 // TestMenuStructureMatchesPython asserts the top-level menu matches the Python
-// original (nomadnet/ui/textui/Main.py:201-204). Golden values were captured
-// from a live headless run of the original (nerd glyph set, dark theme,
-// 135x32, frame 00) via tooling/tui-parity/summary.py:
+// original (nomadnet/ui/textui/Main.py:201-204) rendered with the nerd glyph
+// set:
 //
 //	menu_items(8)=['Conversations','Network','Channels','Log','Interfaces','Config','Guide','Quit']
 //	menu_raw= 󰐻 [ Conversations ] [ Network ] [ Channels ] [ Log ] [ Interfaces ] [ Config ] [ Guide ] [ Quit ]
@@ -64,7 +63,7 @@ func TestMenuStructureMatchesPython(t *testing.T) {
 	app := newTestApp()
 	md := NewMainDisplay(app, ThemeDark, GlyphNerd)
 
-	// Raw menu bar text with color tags stripped, matching summary.py menu_raw.
+	// Raw menu bar text with color tags stripped.
 	got := md.menuBar.GetText(true)
 
 	// nerd decoration_menu glyph = " " + U+F043B, then one dividechars space,

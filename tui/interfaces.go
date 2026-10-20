@@ -49,9 +49,9 @@ func InterfaceInfoFromStat(s app.InterfaceStat) InterfaceInfo {
 type InterfaceInfo struct {
 	Name   string
 	Type   string
-	Status string // "connected" or "disconnected" — legacy field used by
-	// interface-store and the text formatters; the SelectableInterfaceItem list
-	// driven by the live transport uses Connected/Enabled/TX/RX instead.
+	Status string // "connected" or "disconnected"; read by interface-store and the
+	// text formatters. The SelectableInterfaceItem list driven by the live
+	// transport uses Connected/Enabled/TX/RX instead.
 	Connected bool // live link online (RNS Interface.Status)
 	Enabled   bool // interface running / not detached
 	Target    string
@@ -61,8 +61,8 @@ type InterfaceInfo struct {
 	Bandwidth float64
 	Traffic   []float64 // recent traffic samples for chart
 	// Params holds the interface's raw config parameters for the ShowInterface
-	// detail view's Connection/Radio/Network/IFAC/Additional blocks (G1,
-	// Python Interfaces.py:2436-2492). nil when unavailable.
+	// detail view's Connection/Radio/Network/IFAC/Additional blocks
+	// (Python Interfaces.py:2436-2492). nil when unavailable.
 	Params map[string]string
 }
 
@@ -87,7 +87,7 @@ type InterfacesDisplay struct {
 	pages         *tview.Pages
 	dialogOverlay *SlotOverlay
 
-	// showWidget is the full-page ShowInterface detail view (G1) mounted as
+	// showWidget is the full-page ShowInterface detail view mounted as
 	// the "show" page over the interface list (Python self.widget =
 	// show_interface, Interfaces.py:3004-3007).
 	showWidget *interfaceShow
@@ -259,10 +259,10 @@ func (id *InterfacesDisplay) closeEditor() {
 	}
 }
 
-// ShowInterfaceDetail mounts the full-page ShowInterface detail view (G1,
-// Python switch_to_show_interface, Interfaces.py:3004-3007) for the given
+// ShowInterfaceDetail mounts the full-page ShowInterface detail view
+// (Python switch_to_show_interface, Interfaces.py:3004-3007) for the given
 // interface, replacing the list. Back (button/Esc) returns to the list
-// (Python switch_to_list, Interfaces.py:3011-3016, G2).
+// (Python switch_to_list, Interfaces.py:3011-3016).
 func (id *InterfacesDisplay) ShowInterfaceDetail(info InterfaceInfo) {
 	if id.showWidget != nil {
 		id.closeShowInterface()
@@ -655,14 +655,14 @@ func (b *interfaceListBox) InputHandler() func(event *tcell.EventKey, setFocus f
 // ListBox owns click-to-focus — Interfaces.py:1125-1252): a left click maps the
 // click row to an item index via InterfaceItemHeight and the scroll offset,
 // focuses that item (○→●), and moves tview focus onto the list so subsequent
-// arrow keys navigate it. Click-to-open is a Go-only addition (operator
-// request, 2026-10-10): a left click on the row that ALREADY holds the focus
-// opens its details view — the same activation Enter fires — while a click that
-// changes the focus only focuses, so a stray click never navigates away. Python
-// has no click-to-open path. The wheel moves the focused item one step per
-// notch — urwid's ListBox maps wheel to "up"/"down" keypresses and the viewport
-// follows the focus — which is also what makes the wheel visibly scroll this
-// list, since Draw re-pins the viewport to the focused item via scrollIntoView.
+// arrow keys navigate it. Click-to-open is a Go-only addition: a left click on
+// the row that ALREADY holds the focus opens its details view — the same
+// activation Enter fires — while a click that changes the focus only focuses,
+// so a stray click never navigates away. Python has no click-to-open path. The
+// wheel moves the focused item one step per notch — urwid's ListBox maps wheel
+// to "up"/"down" keypresses and the viewport follows the focus — which is also
+// what makes the wheel visibly scroll this list, since Draw re-pins the
+// viewport to the focused item via scrollIntoView.
 func (b *interfaceListBox) MouseHandler() func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(tview.Primitive)) (consumed bool, capture tview.Primitive) {
 	return b.WrapMouseHandler(func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(tview.Primitive)) (consumed bool, capture tview.Primitive) {
 		x, y := event.Position()
@@ -683,8 +683,7 @@ func (b *interfaceListBox) MouseHandler() func(action tview.MouseAction, event *
 			// A click on the row that ALREADY holds the focus opens its details
 			// view — the same activation Enter fires (onActivate). A click that
 			// changes the focus only focuses, so a stray click never navigates
-			// away (operator request, 2026-10-10; a Go-only addition, since
-			// Python's SelectableInterfaceItem has no mouse_event).
+			// away (Go-only: Python's SelectableInterfaceItem has no mouse_event).
 			alreadyFocused := b.focusIdx >= 0 && b.focusIdx == idx
 			b.focusIdx = idx
 			b.applyFocus()
@@ -697,9 +696,9 @@ func (b *interfaceListBox) MouseHandler() func(action tview.MouseAction, event *
 		case tview.MouseScrollUp, tview.MouseScrollDown:
 			// Wheel = move the focused item one step (urwid ListBox maps wheel
 			// to "up"/"down" keypresses, Interfaces.py:2911 SimpleFocusListWalker:
-			// the viewport follows the focus). An offset-only wheel is a no-op
-			// here: Draw's scrollIntoView re-pins the viewport to the focused
-			// item every frame, so the offset change never stuck.
+			// the viewport follows the focus). An offset-only wheel would be
+			// undone every frame by Draw's scrollIntoView, which re-pins the
+			// viewport to the focused item.
 			if action == tview.MouseScrollDown {
 				b.focusIdx++
 				if b.focusIdx >= len(b.items) {

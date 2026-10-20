@@ -22,8 +22,7 @@ import (
 	"github.com/gmlewis/tview"
 )
 
-// The "Ctrl-commands usable throughout" bug (owner report, 2026-09-04): the
-// conversation-level Ctrl shortcuts must stay reachable while the COMPOSER
+// The conversation-level Ctrl shortcuts must stay reachable while the COMPOSER
 // (an input widget) holds focus — the user should not have to hit Up/Tab
 // first. Python reaches this through urwid's bottom-up propagation
 // (MessageEdit.keypress consumes ctrl d/p/f/s and bubbles the rest to
@@ -33,10 +32,9 @@ import (
 //
 // Ctrl-w is the one key Python does NOT bubble from the composer: the
 // ReadlineMixin consumes it as word-kill (ReadlineEdit.py:40,59), so the
-// widget-level C-w Close stays reachable only after Up/Tab — verified live
-// against the installed Python (word-kill, conversation stays open). These
-// tests pin that parity: the composer's ctrl-w word-kills, and the bubbling
-// keys (ctrl-x clear history, ctrl-t) stay live while typing.
+// widget-level C-w Close stays reachable only after Up/Tab. These tests pin
+// that parity: the composer's ctrl-w word-kills, and the bubbling keys (ctrl-x
+// clear history, ctrl-t) stay live while typing.
 
 // composerKey dispatches one key through the conversation frame's real input
 // chain with the composer focused, then redraws nothing (state assertions
@@ -54,10 +52,9 @@ func composerKey(t *testing.T, cw *ConversationWidget, key tcell.Key, mod tcell.
 // TestComposerCtrlWWordKill pins the Python parity for ctrl-w from the
 // composer: the ReadlineMixin consumes it as unix-word-rubout
 // (ReadlineEdit.py:40,59), so it word-kills in the editor and the
-// widget-level C-w Close (Conversations.py:2225-2226) does NOT fire —
-// verified live against the installed Python (word-kill, conversation stays
-// open). Close remains reachable from the message body (the widget-level
-// path) after Up/Tab.
+// widget-level C-w Close (Conversations.py:2225-2226) does NOT fire. Close
+// remains reachable from the message body (the widget-level path) after
+// Up/Tab.
 func TestComposerCtrlWWordKill(t *testing.T) {
 	t.Parallel()
 

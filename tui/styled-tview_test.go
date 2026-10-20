@@ -26,9 +26,8 @@ import (
 // TestStyledLinesToTviewText asserts the styled-lines → tview color-tag
 // converter produces exact tview tags from hand-built StyledLines: per-span
 // [fg:bg:flags]text[-:-:-] (full reset after every span so bold/italic cannot
-// bleed into the next run — the cause of the original all-bold body), divider
-// lines expanded to width, section indents preserved, and links wrapped in
-// numbered region tags ["N"]...[""].
+// bleed into the next run), divider lines expanded to width, section indents
+// preserved, and links wrapped in numbered region tags ["N"]...[""].
 func TestStyledLinesToTviewText(t *testing.T) {
 	t.Parallel()
 
@@ -79,7 +78,7 @@ func TestStyledLinesToTviewText(t *testing.T) {
 // TestStyledLinesToTviewTextNoBoldBleed renders a real micron snippet via
 // RenderToStyledLines and confirms a bold run is closed before the following
 // plain run — i.e. the converter emits a full reset after the bold span so
-// the plain text is NOT bold (the all-bold regression must not return).
+// the plain text is NOT bold.
 func TestStyledLinesToTviewTextNoBoldBleed(t *testing.T) {
 	t.Parallel()
 
@@ -132,7 +131,7 @@ func TestMicronHeadingDepthAndDividerFormatting(t *testing.T) {
 		t.Errorf("heading 3 leading indent = %v, want 4 (line=%q)", got, renderedLines[2])
 	}
 	// Each heading row must fill the full 50-col width with the heading
-	// background (the parity fix): the visible width equals the pane width.
+	// background: the visible width equals the pane width.
 	for i, l := 0, renderedLines; i < 3 && i < len(l); i++ {
 		if got := visibleWidth(l[i]); got != 50 {
 			t.Errorf("heading %v visible width = %v, want 50 (line=%q)", i+1, got, l[i])
@@ -158,8 +157,8 @@ func TestMicronHeadingDepthAndDividerFormatting(t *testing.T) {
 	}
 }
 
-// TestStyledLinesToTviewTextAlignment pins micron `c`/`r` alignment rendering
-// (B3): Python's urwid.Text(align=state["align"]) centers/right-aligns each
+// TestStyledLinesToTviewTextAlignment pins micron `c`/`r` alignment rendering:
+// Python's urwid.Text(align=state["align"]) centers/right-aligns each
 // line within the pane width, so `cThis line will be centered.` at width 40
 // renders with (40-27+1)//2 = 7 leading spaces (urwid's center pad is the
 // ceiling of half the slack, urwid/text_layout.py:177), and `r...` right-aligns

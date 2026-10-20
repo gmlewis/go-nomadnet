@@ -26,9 +26,7 @@ import (
 // TestStartupClearsTmpDirOnANonFirstRun pins the startup tmp-dir clear. Python's
 // __init__ does `if not os.path.isdir(self.attachmentpath): os.makedirs(...) else:
 // self.clear_tmp_dir()` (NomadNetworkApp.py:193-198) — the clear is gated on the
-// attachments directory ALREADY existing, which is its "not a first run" test. The
-// port implemented ClearTmpDir but never called it, so leftovers from an
-// interrupted print or download accumulated in storage/tmp forever.
+// attachments directory ALREADY existing, which is its "not a first run" test.
 func TestStartupClearsTmpDirOnANonFirstRun(t *testing.T) {
 	t.Parallel()
 

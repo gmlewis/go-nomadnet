@@ -80,8 +80,8 @@ func TestHubInfoRendersRoomTopicsAndLinks(t *testing.T) {
 	}
 }
 
-// TestLinkifyMOTDLeavesWordPrefixedRoomsAlone pins the lookbehind behavior on
-// the refactored span scanner.
+// TestLinkifyMOTDLeavesWordPrefixedRoomsAlone pins the lookbehind behavior of
+// the span scanner.
 func TestLinkifyMOTDLeavesWordPrefixedRoomsAlone(t *testing.T) {
 	t.Parallel()
 

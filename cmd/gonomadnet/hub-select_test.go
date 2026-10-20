@@ -56,10 +56,9 @@ func (c *statusCapture) snapshot() []int {
 //
 // Python's ChannelsDisplay._select_hub runs _maybe_autoconnect before
 // _show_hub_info (Channels.py:1716-1720, 1736-1741), but its _maybe_autoconnect
-// dials any disconnected or failed hub without consulting auto_reconnect, so
-// selecting a hub row the user has taken off automatic connection still brought
-// the link up. The port gates that dial on AutoRcn: explicit Ctrl-R connect and
-// sending in a room remain the ways to bring a hub up by hand.
+// dials any disconnected or failed hub without consulting auto_reconnect. This
+// port gates that dial on AutoRcn: explicit Ctrl-R connect and sending in a room
+// remain the ways to bring a hub up by hand.
 //
 // ConnectAsync flips the status to CONNECTING synchronously and then notifies
 // the manager before it spawns the connect worker, so the notification is the
@@ -150,8 +149,7 @@ func TestSelectHubRowIgnoresUnknownHub(t *testing.T) {
 // Selecting a room row shows that room and makes it the hub's active room; it
 // dials the hub only when the hub's AutoRcn toggle is on, exactly like the
 // hub-row path. Python's _select_room auto-connects through the ungated
-// _maybe_autoconnect (Channels.py:1722-1741), so clicking a room of a hub the
-// user had taken off automatic connection still brought the link up.
+// _maybe_autoconnect (Channels.py:1722-1741).
 func TestSelectRoomRowGatedByAutoRcn(t *testing.T) {
 	t.Parallel()
 
@@ -232,8 +230,7 @@ func TestSelectRoomRowIgnoresUnknownHub(t *testing.T) {
 
 // TestSelectRoomRowQueuesUnjoinedRoomWhenDisconnected pins Python _select_room
 // (Channels.py:1727-1733): an unjoined room selected on a DISCONNECTED hub is
-// added locally (hub.add_room), not silently ignored. The port only joined
-// when connected, so selecting an available room on an offline hub did nothing.
+// added locally (hub.add_room), not silently ignored.
 func TestSelectRoomRowQueuesUnjoinedRoomWhenDisconnected(t *testing.T) {
 	t.Parallel()
 

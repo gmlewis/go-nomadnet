@@ -44,13 +44,13 @@ func focusedBrowser(t *testing.T, w, h int) *BrowserDisplay {
 	return bd
 }
 
-// TestNewPageDoesNotLeaveStaleHardwareCursor covers the reported bug: after
-// following a link, the hardware cursor stayed on the cell the OLD page had put
-// it on (the clicked link's row, or a blank row of a short new page). Python
-// hides the cursor once LinkableText's 2s key-timeout window has closed
-// (MicronParser.py:986 — the canvas gets no cursor, and urwid then leaves the
-// terminal cursor hidden), but tview only calls HideCursor from SetFocus, so
-// skipping ShowCursor is not enough: drawCursor must hide it explicitly.
+// TestNewPageDoesNotLeaveStaleHardwareCursor pins that a freshly rendered page
+// leaves no hardware cursor behind: after following a link, the cursor must not
+// stay on the cell the OLD page put it on. Python hides the cursor once
+// LinkableText's 2s key-timeout window has closed (MicronParser.py:986 — the
+// canvas gets no cursor, and urwid then leaves the terminal cursor hidden), but
+// tview only calls HideCursor from SetFocus, so skipping ShowCursor is not
+// enough: drawCursor must hide it explicitly.
 func TestNewPageDoesNotLeaveStaleHardwareCursor(t *testing.T) {
 	t.Parallel()
 
@@ -88,9 +88,9 @@ func TestNewPageDoesNotLeaveStaleHardwareCursor(t *testing.T) {
 	}
 }
 
-// TestGoBackRestoresReadingPosition covers the second reported bug: Back must
-// return to the page exactly where the reader left it — same focused line, same
-// part cursor, same scroll row — instead of jumping to the top.
+// TestGoBackRestoresReadingPosition pins that Back returns to the page exactly
+// where the reader left it — same focused line, same part cursor, same scroll
+// row.
 //
 // This is a deliberate divergence from Python, whose history holds URLs only
 // (Browser.py:131-132) and therefore always re-opens a page at the top.

@@ -303,8 +303,8 @@ func TestShowUserInfoDialog(t *testing.T) {
 // Columns with NO outer border — a bordered "Channels" left pane (width 36)
 // holding an IndicativeListBox ("───" indicators + the left-aligned "No hubs
 // yet…" empty state), and a bordered untitled right pane holding a top-filled,
-// centered "Select or add a hub to begin" placeholder. Capture-verified
-// byte-identical to Python at 80x24.
+// centered "Select or add a hub to begin" placeholder. Byte-identical to
+// Python at 80x24.
 func TestChannelsDisplayBootLayout(t *testing.T) {
 	t.Parallel()
 	app := newTestApp()

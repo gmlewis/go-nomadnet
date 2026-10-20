@@ -24,9 +24,9 @@ import (
 	"github.com/gmlewis/tcell/v2"
 )
 
-// TestDrawDoesNotBlockOnMainDisplayMu is the regression test for the freeze the
-// operator hit on the tablet: the client stopped painting, every later click was
-// ignored, and its background goroutines kept running.
+// TestDrawDoesNotBlockOnMainDisplayMu pins the absence of a lock-order inversion
+// around MainDisplay.mu. When it occurs the client stops painting, every later
+// click is ignored, and its background goroutines keep running.
 //
 // The deadlock is a lock-order inversion around MainDisplay.mu, and it needs
 // exactly two participants — both of which one mouse click produces:
@@ -104,7 +104,7 @@ func TestDrawDoesNotBlockOnMainDisplayMu(t *testing.T) {
 
 	// The before-draw hook runs with the application's write lock held and before
 	// the frame's DrawFunc, so a signal from it proves the loop is inside a draw.
-	// Parking here holds that lock, which is the state the real freeze starts from.
+	// Parking here holds that lock, which is the state the deadlock starts from.
 	app.Application.SetBeforeDrawFunc(func(screen tcell.Screen) bool {
 		if !armed.Load() {
 			return false

@@ -37,8 +37,8 @@ func TestIntroDisplayBigText(t *testing.T) {
 	if !strings.Contains(got, wantFirstRow) {
 		t.Errorf("big view missing big-text first row %q; got: %q", wantFirstRow, got)
 	}
-	// It must NOT contain the literal title as a plain string (the old
-	// placeholder rendered "Nomad Network" verbatim).
+	// It must NOT contain the literal title as a plain string: the title is
+	// rendered as big-text glyphs only.
 	if strings.Contains(got, "Nomad Network") {
 		t.Errorf("big view contains plain title string; should be big-text glyphs only: %q", got)
 	}

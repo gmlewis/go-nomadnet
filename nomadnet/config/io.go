@@ -117,10 +117,9 @@ func Save(c *Config, path string) (retErr error) {
 	}()
 
 	// writeSection emits one section in the key order the shipped default config uses.
-	// A Go map has no order, so iterating one directly (as this did) put the keys in a
-	// different arrangement on every save, while Python serialises through ConfigObj
-	// and preserves the default text's order. Keys the default text does not carry —
-	// the Go-only extensions — follow in sorted order, so they are at least stable.
+	// A Go map has no order, while Python serialises through ConfigObj and preserves
+	// the default text's order. Keys the default text does not carry — the Go-only
+	// extensions — follow in sorted order.
 	writeSection := func(name string, keys map[string]string) {
 		_, _ = fmt.Fprintf(w, "[%v]\n", name)
 		for _, k := range orderedKeys(name, keys) {

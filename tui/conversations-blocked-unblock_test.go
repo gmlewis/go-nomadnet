@@ -151,8 +151,8 @@ func TestConversationsDisplayBlockedRowRequiresShowBlocked(t *testing.T) {
 
 // TestConversationsDisplayShowBlockedCountLabel pins the "Show blocked (N)"
 // count (Python update_listbox, Conversations.py:472-477): N is the number of
-// ignored-list entries, refreshed on every list rebuild. It previously stayed
-// at the constructor's hardcoded "(0)" even with ignored entries present.
+// ignored-list entries, refreshed on every list rebuild rather than left at the
+// constructor's hardcoded "(0)".
 func TestConversationsDisplayShowBlockedCountLabel(t *testing.T) {
 	t.Parallel()
 	app := newTestApp()

@@ -22,12 +22,11 @@ import (
 	"github.com/gmlewis/tview"
 )
 
-// Regression tests for the 2026-09-01 fleet radio-group bugs (#6, #7): the
-// Peer Info dialog must open with the radio group reflecting the entry's
-// ACTUAL trust/delivery state (Python passes explicit states,
-// Conversations.py:903-909), and the New Conversation dialog opens with
-// exactly one pre-checked radio (owner-requested deviation from Python's
-// two-checked urwid quirk — see showNewConversationDialog).
+// These tests pin the dialog radio groups: the Peer Info dialog must open with
+// the group reflecting the entry's ACTUAL trust/delivery state (Python passes
+// explicit states, Conversations.py:903-909), and the New Conversation dialog
+// opens with exactly one pre-checked radio (a deliberate deviation from
+// Python's two-checked urwid quirk — see showNewConversationDialog).
 
 // fireDialogKey sends one key to the slot dialog's focused primitive through
 // the same dispatch tview uses (wireDialogNav captures live on the items).
@@ -44,12 +43,11 @@ func fireDialogKey(t *testing.T, app *App, key tcell.Key) {
 	h(tcell.NewEventKey(key, 0, tcell.ModNone), func(pr tview.Primitive) { app.SetFocus(pr) })
 }
 
-// TestPeerInfoDialogShowsEntryTrust is the regression test for fleet bug #6:
-// a Trusted entry opened with Ctrl-e rendered "(X) Untrusted" — the firstTrue
-// constructor flag forced Untrusted checked (first radio, empty group) and
-// Trusted unchecked, and saving the dialog silently DOWNGRADED the peer to
-// Untrusted. Python's dialog checks exactly one radio: the entry's trust
-// (Conversations.py:903-909, explicit state= arguments).
+// TestPeerInfoDialogShowsEntryTrust pins that the dialog checks exactly one
+// radio: the entry's trust. Using the firstTrue constructor flag instead would
+// check the first radio of the empty group and leave the entry's own state
+// unchecked, so an untouched save would downgrade the peer. Python's dialog
+// passes explicit state= arguments (Conversations.py:903-909).
 func TestPeerInfoDialogShowsEntryTrust(t *testing.T) {
 	t.Parallel()
 
@@ -107,7 +105,7 @@ func TestPeerInfoDialogShowsEntryTrust(t *testing.T) {
 // opening a Trusted+propagated entry and pressing Save without touching
 // anything must save the entry UNCHANGED (the read order matches Python's
 // confirmed(): unknown first, then trusted, default Untrusted — only correct
-// when the radios reflect the entry state, which the firstTrue flag broke).
+// when the radios reflect the entry state).
 func TestPeerInfoSavePreservesTrust(t *testing.T) {
 	t.Parallel()
 	app := newTestApp()
@@ -155,11 +153,11 @@ func TestPeerInfoSavePreservesTrust(t *testing.T) {
 	}
 }
 
-// TestNewConversationDialogSingleCheckedRadio is the regression test for fleet
-// bug #7: the dialog must open with exactly ONE radio checked. (Python's
-// urwid "first True" quirk checks both Untrusted and Unknown — verified
-// True/True/False against the installed urwid — but the owner asked for one;
-// this pins the deliberate deviation, see showNewConversationDialog.)
+// TestNewConversationDialogSingleCheckedRadio pins that the dialog opens with
+// exactly ONE radio checked. (Python's urwid "first True" quirk checks both
+// Untrusted and Unknown — verified True/True/False against the installed
+// urwid — but this dialog intentionally shows one; see
+// showNewConversationDialog.)
 func TestNewConversationDialogSingleCheckedRadio(t *testing.T) {
 	t.Parallel()
 	rows := renderNewConversationDialog(t, false)

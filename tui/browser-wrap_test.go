@@ -50,13 +50,12 @@ func renderedRows(t *testing.T, markup string, innerW int) []string {
 	return strings.Split(bd.content.GetText(true), "\n")
 }
 
-// TestBrowserBodyWrapRightIndent pins the Q3 fix: a depth-2 body paragraph wraps
-// one word narrower than the full content width (right indent) AND indents its
+// TestBrowserBodyWrapRightIndent pins that a depth-2 body paragraph wraps one
+// word narrower than the full content width (right indent) AND indents its
 // continuation row by the left indent, matching Python's Padding(left,right)
-// model. Before the fix the Go port wrapped at content_width-left_indent only
-// (no right indent) and left continuations at column 0, so "served" landed on the
-// first row and "over loopback RNS." at column 0 — diverging from Python which
-// puts "served" at the start of an indented continuation row.
+// model. Wrapping at content_width-left_indent only, with continuations at
+// column 0, would put "served" on the first row — diverging from Python, which
+// starts an indented continuation row there.
 func TestBrowserBodyWrapRightIndent(t *testing.T) {
 	t.Parallel()
 	// innerW=44 → wrap width 44-4=40. "This is a deterministic fixture page" is

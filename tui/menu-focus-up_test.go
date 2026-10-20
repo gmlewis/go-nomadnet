@@ -22,11 +22,11 @@ import (
 	"github.com/gmlewis/tview"
 )
 
-// TestFocusUpAtTopToMenu asserts the Phase-1 focus-model gap is closed: when
-// the body region is focused on a *tview.List sitting at item 0, an Up key
-// moves focus to the menu bar (MainFrame.focus_position = "header"), matching
-// Python's MainFrame where Up at the top of the body pile collapses focus to
-// the header menu (Main.py MainFrame:80-86). tview.List clamps silently at the
+// TestFocusUpAtTopToMenu asserts that when the body region is focused on a
+// *tview.List sitting at item 0, an Up key moves focus to the menu bar
+// (MainFrame.focus_position = "header"), matching Python's MainFrame where Up
+// at the top of the body pile collapses focus to the header menu
+// (Main.py MainFrame:80-86). tview.List clamps silently at the
 // top (it does NOT fire SetDoneFunc on Up-at-top, only on Escape), so the
 // MainDisplay dispatcher must own this transition.
 //
@@ -113,8 +113,8 @@ func TestFocusUpAtTopToMenu(t *testing.T) {
 	})
 
 	// An empty Conversations list (no items) still reports "at top" so Up
-	// reaches the menu, matching Python (the capture navigates with Up on an
-	// empty trusted-conversations list).
+	// reaches the menu, matching Python (Up on an empty trusted-conversations
+	// list navigates to the menu).
 	t.Run("empty indicative listbox focuses menu", func(t *testing.T) {
 		ilb := NewIndicativeListBox(nil)
 		app.SetFocus(ilb)

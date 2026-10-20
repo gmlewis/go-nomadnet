@@ -17,10 +17,9 @@ package main
 
 import "testing"
 
-// TestFreeLoopbackPortIPv6 verifies a bare IPv6 literal bind address is accepted.
-// The helper joins the address and port itself, so an unbracketed literal such
-// as "::1" became "::1:0" and net.Listen rejected it with
-// "too many colons in address", making -bind unusable with IPv6.
+// TestFreeLoopbackPortIPv6 verifies that a bare IPv6 literal bind address is
+// accepted. The helper joins the address and port itself, so a literal such as
+// "::1" must be bracketed before it reaches net.Listen.
 func TestFreeLoopbackPortIPv6(t *testing.T) {
 	t.Parallel()
 

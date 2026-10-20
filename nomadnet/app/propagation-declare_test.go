@@ -69,8 +69,7 @@ func propagationNodeState(t *testing.T, a *App) (serving, ok bool) {
 // TestPropagationDestinationExistsFromStartup pins Python's LXMRouter.__init__
 // (LXMRouter.py:188-191): the propagation destination exists as soon as the
 // router does, so any instance — client or propagation node — can declare the
-// address. The port created it only when serving, which is why a NomadNet node
-// could derive a propagation address that nothing had ever announced.
+// address.
 func TestPropagationDestinationExistsFromStartup(t *testing.T) {
 	t.Parallel()
 
@@ -227,8 +226,8 @@ func TestNodePropagationNotServing(t *testing.T) {
 		t.Error("NodePropagationNotServing(serving node) = true, want false")
 	}
 
-	// Node whose identity declared the address as not serving (the fleet's shape:
-	// the node announces its own propagation address with node_state false).
+	// Node whose identity declared the address as not serving: the node announces
+	// its own propagation address with node_state false.
 	stoppedNode := bytes.Repeat([]byte{0xc3}, 16)
 	stoppedID := rememberDestination(t, ts, stoppedNode)
 	rememberPropagationNodeAnnounce(t, ts, rns.CalculateHash(stoppedID, "lxmf", "propagation"), false)

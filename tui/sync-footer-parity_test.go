@@ -23,9 +23,8 @@ import (
 // The sync footer must span the left pane's full inner width: Python renders
 // it as a Text inside an AttrMap whose style paints the entire row
 // (Conversations.py:517-545). tview's TextView paints its background only over
-// the text run, so the line is padded to the row width — otherwise the
-// trailing columns lose the menubar background (attribute-only divergence
-// found by the differential explorer; text-only diffs cannot see it).
+// the text run, so the line is padded to the row width; otherwise the trailing
+// columns lose the menubar background.
 func TestSyncFooterPaddedToFullRowWidth(t *testing.T) {
 	t.Parallel()
 

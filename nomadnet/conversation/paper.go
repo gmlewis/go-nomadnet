@@ -55,9 +55,8 @@ const (
 //
 // (Conversation.py:358-360, 368-370, 377-379). The appended conversation message is
 // therefore the file inside the conversation directory — not the PNG or URI written
-// to downloads_path, and not the temporary print file. The port appended the latter,
-// and for print_qr it appended a path it had already deleted, so the new entry
-// pointed at a file that did not exist.
+// to downloads_path, and not the temporary print file, which is removed after
+// printing.
 func (c *Conversation) ingestPaperMessage(lxm *lxmf.Message) bool {
 	messagePath, err := c.sendDeps.Ingest(lxm, true)
 	if err != nil {

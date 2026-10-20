@@ -173,7 +173,7 @@ func (b *UrwidButton) Draw(screen tcell.Screen) {
 		// Label line (left-justified, padded to labelW cells). The rune cap is
 		// counted in CELLS (cellWidth per rune), not bytes: the byte index of
 		// `range line` crosses multi-byte glyphs (✉ is 3 bytes) sooner than
-		// their cell width, which used to truncate the line a cell short per
+		// their cell width, which would truncate the line a cell short per
 		// multi-byte rune and float the right bracket away from the edge.
 		cells := 0
 		for _, ch := range line {

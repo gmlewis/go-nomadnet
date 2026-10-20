@@ -27,9 +27,9 @@ import (
 // (Python's pane is a plain urwid.ListBox whose member rows are
 // AttrMap(entry, style, "list_focus") — the focus map applies on focus and
 // the row's own palette style otherwise, Channels.py:714). An unfocused pane
-// renders the selected member like any other row (Bug#2), and the focused
-// highlight replaces the member's palette fg with the list_focus foreground
-// so the row stays readable (Bug#3).
+// renders the selected member like any other row, and the focused highlight
+// replaces the member's palette fg with the list_focus foreground so the row
+// stays readable.
 
 // TestRoomWidgetUsersPaneSelectionHighlight pins that exactly ONE member row
 // (the list's selection, the first member by default) carries the list_focus
@@ -86,7 +86,7 @@ func TestRoomWidgetUsersPaneSelectionHighlight(t *testing.T) {
 		t.Errorf("count row bg = %v, want the default-styled plain text row", bg)
 	}
 
-	// Bug#3: the highlighted row's foreground is the list_focus foreground
+	// The highlighted row's foreground is the list_focus foreground
 	// (the AttrMap focus map REPLACES the member's palette color, urwid
 	// Channels.py:714), so the row reads as black-on-light-gray instead of
 	// keeping the palette fg over the highlight background.
@@ -96,7 +96,7 @@ func TestRoomWidgetUsersPaneSelectionHighlight(t *testing.T) {
 	}
 }
 
-// TestRoomWidgetUsersPaneUnfocusedNoHighlight pins Bug#2: with the cursor
+// TestRoomWidgetUsersPaneUnfocusedNoHighlight pins that with the cursor
 // elsewhere (the users pane NOT focused), the selected member row renders
 // like any other row — the member's palette foreground on the default
 // background, no highlight — mirroring Python's AttrMap(entry, style,

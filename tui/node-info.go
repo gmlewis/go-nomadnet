@@ -25,9 +25,8 @@ import (
 )
 
 // NodeInfoData supplies the Local Node Info panel's content. When HasNode is
-// false the panel renders the "This instance is not hosting a node" message
-// (the only reachable state until node hosting is wired in); the
-// remaining fields are used by the node-hosting branch.
+// false the panel renders the "This instance is not hosting a node" message;
+// the remaining fields are used by the node-hosting branch.
 type NodeInfoData struct {
 	HasNode            bool
 	Addr               string // node destination hex, no delimiters (RNS.hexrep delimit=False)
@@ -102,9 +101,9 @@ func (ni *NodeInfoDisplay) ConsumesLeftRight() bool {
 	return ni.btnRow != nil && ni.btnRow.HasFocus()
 }
 
-// NewNodeInfoDisplay builds the Local Node Info panel for the given data. Until
-// node hosting is wired in only the not-hosting branch is reachable; it
-// is the branch pinned by the tests.
+// NewNodeInfoDisplay builds the Local Node Info panel for the given data. It
+// builds the not-hosting branch when data.HasNode is false and the hosting
+// branch otherwise.
 func NewNodeInfoDisplay(app *App, data NodeInfoData) *NodeInfoDisplay {
 	ni := &NodeInfoDisplay{app: app, data: data}
 

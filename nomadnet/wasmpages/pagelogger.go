@@ -26,7 +26,7 @@ import "sync"
 var logMu sync.Mutex
 
 // logFunc receives the messages a page plugin emits through rns.log. It is nil
-// until SetLogFunc installs one, in which case guest log messages are dropped.
+// until SetLogFunc installs one; a nil logger drops guest log messages.
 //
 //lint:ignore U1000 referenced only with -tags=wago; this file compiles in every build
 var logFunc func(format string, args ...any)

@@ -31,8 +31,7 @@ import (
 //   - `Bg06`..`Bg99` (grayscale)  → bg from the gNN grayscale table
 //
 // The foreground is the plain style fg (#dddddd dark / #222222 light), and
-// Underline/Bold/Italic must all be false on every bar span — the prior A4
-// underline leak onto the bar is gone (see tui/underline-leak_test.go).
+// Underline/Bold/Italic must all be false on every bar span.
 //
 // The final `Bf00` (etc.) sets bg then immediately “ `b “ resets with no
 // intervening text, so it produces no visible span; hence 14 visible spans

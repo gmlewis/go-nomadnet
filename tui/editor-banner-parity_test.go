@@ -88,12 +88,12 @@ func TestConversationEditorAllowedBanner(t *testing.T) {
 	}
 }
 
-// TestCautionBannerFullWidthCenterDraw pins the live layout bug seen on
-// raspberrypi: Python paints msg_header_caution across the ENTIRE footer
-// width and centers each line in that width. The old TextView path only
-// colored ~46 columns (hardcoded pre-wrap) and left the rest of the pane
-// unpainted, with mis-centered ragged lines. Draw must fill every cell and
-// place the line with urwid ceil-left centering at the real width.
+// TestCautionBannerFullWidthCenterDraw verifies that the caution banner paints
+// msg_header_caution across the ENTIRE footer width and centers each line in
+// that width, matching Python. A TextView path that colors only ~46 columns
+// (hardcoded pre-wrap) would leave the rest of the pane unpainted, with
+// mis-centered ragged lines. Draw must fill every cell and place the line with
+// urwid ceil-left centering at the real width.
 func TestCautionBannerFullWidthCenterDraw(t *testing.T) {
 	t.Parallel()
 
@@ -158,9 +158,8 @@ func TestCautionBannerFullWidthCenterDraw(t *testing.T) {
 // The delete-conversation confirmation must be a LIST-SLOT overlay with
 // Python's exact chrome (installed 1.2.8, Conversations.py:571-598): the "?"
 // DialogLineBox title, the centered two-line "Delete conversation with\n<name>"
-// body, and flat Yes/No buttons — not the global DialogManager form whose
-// "Confirm" title and whole-screen centering diverged (differential explorer,
-// C-x finding).
+// body, and flat Yes/No buttons — not the global DialogManager form with its
+// "Confirm" title and whole-screen centering.
 func TestDeleteConversationConfirmListSlotDialog(t *testing.T) {
 	t.Parallel()
 
@@ -232,11 +231,9 @@ print(json.dumps({"file": path, "matches": matches}))
 // TestEditorAllowedBannerTextMatchesSOT asserts the identity-unknown banner
 // wording byte-for-byte against the installed Python nomadnet reference,
 // extracted from the reference's own source with ast. Deriving the expectation
-// rather than hand-copying it is what stops a nomadnet upgrade from being
-// silently absorbed: 1.2.8 replaced the 1.2.3 wording ("…and should arrive
-// shortly, if available. Close this conversation and reopen it to try again.")
-// with "…and you will be able to send messages as soon as they arrive.", and a
-// transcribed literal pinned the superseded text for the port's whole life.
+// from the reference rather than hand-copying it keeps a nomadnet upgrade from
+// being silently absorbed: nomadnet 1.2.8 reworded this banner, and a
+// transcribed literal would have pinned the superseded text.
 //
 // Skips (does not fail) when no Python nomadnet reference is importable, per the
 // testutils convention.

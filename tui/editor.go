@@ -19,15 +19,17 @@ import "sync"
 
 // The editor seam.
 //
-// The Config page's "Open Editor" button and the Interfaces page's editor action both
-// open the configured editor on a file by starting a program and embedding its
-// terminal. A host that cannot start a program at all — the iOS appliance, where the
-// platform forbids fork and exec outright — cannot do that, and a button that quietly
-// does nothing is worse than one that says why. This is where such a host says so.
+// The Config page's "Open Editor" button and the Interfaces page's editor
+// action open the configured editor on a file by starting a program and
+// embedding its terminal. A host that cannot start a program at all — the iOS
+// appliance, where the platform forbids fork and exec outright — cannot do
+// that, and a button that quietly does nothing is worse than one that says
+// why. This is where such a host says so.
 //
-// It is not a way to open a different editor: a host that installs a check is one that
-// has no editor program to offer, and the check exists so the failure names the thing
-// that does the job instead of a command that was never going to run.
+// It is not a way to open a different editor: a host that installs a check is
+// one that has no editor program to offer, and the check exists so the failure
+// names the thing that does the job instead of a command that was never going
+// to run.
 
 var (
 	// editorCheckMu guards the installed check, which a host registers from its own

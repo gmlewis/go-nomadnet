@@ -411,8 +411,7 @@ func (p *pileFiller) Draw(screen tcell.Screen) {
 // When no selectable child exists (focusedItem returns nil), the fallback
 // calls Box.Focus(delegate) so the pile's own hasFocus flag is set and
 // HasFocus() returns true. Without this, tview's event loop gate at
-// application.go:439 (root.HasFocus()) silently drops all key events,
-// producing the "arrow keys do nothing / cursor disappears" freeze. This
+// application.go:439 (root.HasFocus()) silently drops all key events. This
 // mirrors tview.Flex.Focus, which has the same Box.Focus fallback.
 func (p *pileFiller) Focus(delegate func(tview.Primitive)) {
 	if fi := p.focusedItem(); fi != nil {
@@ -427,7 +426,7 @@ func (p *pileFiller) Focus(delegate func(tview.Primitive)) {
 // (and Box) carry no cascading Blur — Flex.Blur is only the promoted Box flag —
 // so a leaf nested inside a Flex keeps hasFocus=true after the container is
 // blurred. Two panes then report focus at once and the next Down/Up dispatches
-// to the wrong one (the B1 class: focus must be exclusive).
+// to the wrong one; focus must be exclusive.
 func blurTree(w tview.Primitive) {
 	if w == nil {
 		return
@@ -464,8 +463,7 @@ func blurTree(w tview.Primitive) {
 // Focus (Box.Focus) never calls the delegate, so the chain stops there. Without
 // this override the focused child keeps hasFocus=true after focus moves to the
 // browser, so BOTH columns report focus and subsequent Downs dispatch to the
-// left list instead of scrolling the browser (tmux-suite bug B1: 0 browser
-// screenfuls / 0 links followed across 7 connects). Blurring the items' whole
+// left list instead of scrolling the browser. Blurring the items' whole
 // subtrees releases the left column cleanly. This is safe with moveFocus:
 // during setFocus(p) the new child has not been focused yet, so this Blur is a
 // no-op on it, and the subsequent pile.Focus -> fi.Focus re-focuses it.
@@ -495,8 +493,8 @@ func (p *pileFiller) HasFocus() bool {
 //  3. nothing has focus (a.focus is this pile itself — the common state after
 //     App.SetFocus(pile) early-returns on the already-focused pile while its
 //     children are blurred) → re-focus the item at focusIndex. Without this
-//     branch Enter on the announce list was routed to whichever stale child
-//     still held hasFocus (the tab bar) and swallowed — the D1 bug.
+//     branch Enter on the announce list would be routed to whichever stale
+//     child still held hasFocus (the tab bar) and swallowed.
 func (p *pileFiller) syncFocusIndex() {
 	if p.focusIndex >= 0 && p.focusIndex < len(p.selectable) &&
 		p.items[p.selectable[p.focusIndex]].widget.HasFocus() {

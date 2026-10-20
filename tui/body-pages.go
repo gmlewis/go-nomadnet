@@ -21,19 +21,16 @@ import (
 )
 
 // bodyPages is a tview.Pages wrapper used for the MainDisplay content area. It
-// exists to fix a focus-stealing bug in tview.Pages.InputHandler
-// (pages.go:329-340): that handler dispatches a key event to the FIRST page
-// whose Item.HasFocus() is true, iterating ALL pages regardless of visibility.
+// exists because tview.Pages.InputHandler (pages.go:329-340) dispatches a key
+// event to the FIRST page whose Item.HasFocus() is true, iterating ALL pages
+// regardless of visibility.
 //
 // Application.SetFocus only calls Blur() on the single previously-focused leaf
 // (application.go:838-855) — it does NOT blur the containers of a
 // previously-displayed page. So after SwitchToPage a hidden page's widget tree
 // retains stale HasFocus()==true, and tview.Pages.InputHandler routes the next
-// key to that hidden page instead of the now-visible one. In the Go port this
-// was the root cause of the Guide page never receiving keys after switching
-// from Network to Guide: Down/Enter were dispatched to the
-// hidden Network page's pileFiller/list, which blurred the guide topic list and
-// prevented any topic from rendering.
+// key to that hidden page instead of the now-visible one (for example, the
+// Guide page never receiving Down/Enter after a switch from Network).
 //
 // bodyPages overrides InputHandler to dispatch only to a page that is BOTH
 // visible and HasFocus, mirroring Python urwid's single Frame.focus_position
@@ -78,8 +75,7 @@ func (b *bodyPages) SwitchToPage(name string) *bodyPages {
 }
 
 // InputHandler dispatches a key event to the first page that is BOTH visible
-// and HasFocus — never to a hidden page that merely retains stale focus. This
-// is the fix for the Guide focus-stealing root cause.
+// and HasFocus — never to a hidden page that merely retains stale focus.
 func (b *bodyPages) InputHandler() func(event *tcell.EventKey, setFocus func(p tview.Primitive)) {
 	return b.WrapInputHandler(func(event *tcell.EventKey, setFocus func(p tview.Primitive)) {
 		for _, r := range b.refs {

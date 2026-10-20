@@ -36,8 +36,7 @@ const (
 // TestShortcutBarPerPage asserts the footer follows the DISPLAYED page (Python
 // Main.update_active_shortcuts), not a single hardcoded display. A page with a
 // registered dynamic callback (Conversations) uses the callback; others use
-// their static SetShortcut text. This is the fix for the unconditional
-// conversationsDisplay.GetShortcutText() that previously overrode every page.
+// their static SetShortcut text.
 func TestShortcutBarPerPage(t *testing.T) {
 	t.Parallel()
 

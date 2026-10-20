@@ -368,9 +368,7 @@ func (a *App) Init() error {
 	// Configure the logging destination, mirroring Python's applyConfig
 	// (NomadNetworkApp.py:811-818): the file destination is selected only when
 	// `[logging] destination = file` AND console logging was not forced, and
-	// EVERY other value — including an explicit "stdout" — selects stdout. The
-	// port previously chose the file unless -c was given, so `destination =
-	// stdout` was silently ignored.
+	// EVERY other value — including an explicit "stdout" — selects stdout.
 	switch {
 	case a.ForceConsoleLog:
 		a.Logger.SetLogDest(rns.LogStdout)
@@ -461,7 +459,7 @@ func (a *App) initRNS() {
 		return
 	}
 	// Re-assert the app's loglevel: Reticulum's applyConfig re-reads
-	// ~/.reticulum/config and overrides the level we set in Init (Python
+	// ~/.reticulum/config and overrides the level set in Init (Python
 	// nomadnet instead passes its loglevel into the RNS constructor, so the
 	// app value always wins there).
 	a.Logger.SetLogLevel(a.Config.Logging.LogLevel)
@@ -502,10 +500,9 @@ func (a *App) initRNS() {
 	// Register delivery identity for receiving messages. Python passes the
 	// configured stamp cost here (NomadNetworkApp.py:355 stamp_cost=
 	// self.required_stamp_cost), so the inbound requirement is in place before
-	// the first announce rather than only after AnnounceNow runs.
-	// Python passes peer_settings["display_name"] as the delivery identity's
-	// name (NomadNetworkApp.py:355); this port passed the UI mode string
-	// ("text"), so the destination advertised the wrong name.
+	// the first announce rather than only after AnnounceNow runs. Python also
+	// passes peer_settings["display_name"] as the delivery identity's name
+	// (NomadNetworkApp.py:355), which GetDisplayName returns.
 	a.LXMFDest, err = a.Router.RegisterDeliveryIdentity(a.Identity, a.GetDisplayName(), a.RequiredStampCost)
 	if err != nil {
 		a.Logger.Error("Could not register delivery identity: %v", err)
@@ -664,10 +661,9 @@ func (a *App) InitWithTransport(ts *rns.TransportSystem, identity *rns.Identity)
 
 	// The configured stamp cost goes in at registration, as Python does
 	// (NomadNetworkApp.py:355), so the requirement is set before the first
-	// announce rather than only once AnnounceNow runs.
-	// Python passes peer_settings["display_name"] as the delivery identity's
-	// name (NomadNetworkApp.py:355); this port passed the UI mode string
-	// ("text"), so the destination advertised the wrong name.
+	// announce rather than only once AnnounceNow runs. Python also passes
+	// peer_settings["display_name"] as the delivery identity's name, which
+	// GetDisplayName returns.
 	a.LXMFDest, err = a.Router.RegisterDeliveryIdentity(a.Identity, a.GetDisplayName(), a.RequiredStampCost)
 	if err != nil {
 		return fmt.Errorf("registering delivery identity: %w", err)
@@ -728,8 +724,6 @@ func (a *App) setupPaths() {
 // lxmfRouterConfig assembles the settings Python passes to its LXMRouter
 // constructor (NomadNetworkApp.py:334-347): autopeer, the three per-transfer
 // limits, max_peers, the decoded static peers and the node propagation cost.
-// These values were previously parsed into App fields and then never handed to
-// the router, so a configured cap or peer list had no effect at all.
 func (a *App) lxmfRouterConfig() lxmf.RouterConfig {
 	cfg := lxmf.RouterConfig{
 		Identity:        a.Identity,
@@ -777,8 +771,6 @@ func (a *App) staticPeerHashes() [][]byte {
 // router and registering the delivery identity (NomadNetworkApp.py:356-377):
 // enforce_stamps unless invalid stamps are accepted, and — only when the node is
 // enabled — the message storage limit and the prioritised LXMF destinations.
-// All three were previously parsed and discarded, so `accept_invalid_stamps`,
-// `message_storage_limit` and `prioritise_destinations` were inert.
 func (a *App) applyRouterSettings() {
 	if !a.AcceptInvalidStamps {
 		a.Router.EnforceStamps()
@@ -797,7 +789,6 @@ func (a *App) applyRouterSettings() {
 	}
 }
 
-// applyConfig applies a loaded config to the App fields.
 // installPageLogger routes the messages a .wasm executable page emits through
 // the rns.log host import into this app's logger. The closure resolves the
 // logger at call time so a replaced logger is honored.
@@ -809,6 +800,7 @@ func (a *App) installPageLogger() {
 	})
 }
 
+// applyConfig applies a loaded config to the App fields.
 func (a *App) applyConfig(cfg *config.Config) {
 	a.EnableClient = cfg.Client.EnableClient
 	a.AnnounceInterval = cfg.Client.AnnounceInterval
@@ -833,7 +825,7 @@ func (a *App) applyConfig(cfg *config.Config) {
 	// Python stores these as floats (as_float); the App fields are *int KB
 	// values. The config package has already applied defaults and clamping.
 	// Python's lxmf_max_incoming_size is None when the key is absent, which
-	// the router treats as unlimited; the port always installed a 500 KB limit.
+	// the router treats as unlimited.
 	if cfg.Client.MaxAcceptedSize > 0 {
 		a.LXMFMaxIncomingSize = new(int(cfg.Client.MaxAcceptedSize))
 	} else {
@@ -1088,8 +1080,8 @@ func (a *App) AutoSelectPropagationNode() {
 }
 
 // hopsTo reports the hop count to a destination, or one past the maximum when no
-// transport is wired — which makes every candidate tie and leaves nothing selected,
-// as the original inline loop did.
+// transport is wired — which makes every candidate tie and leaves nothing
+// selected.
 func (a *App) hopsTo(hash []byte) int {
 	if a.Transport == nil {
 		return rns.PathfinderM + 1
@@ -1165,11 +1157,9 @@ func (a *App) SetUIChangeCallback(fn func()) {
 // peer's display name + trust level from the directory. A conversation's name
 // and trust live only in the directory (the per-conversation dir on disk holds
 // messages, not metadata), so the displayNames/trustLevels maps passed to
-// conversation.ConversationList must be built from a.Dir — passing nil (as this
-// previously did) left every conversation showing its raw hash with unknown
-// trust, ignoring the name + trust the user set in the New Conversation / Peer
-// Info dialogs. Mirrors Python Conversations.py, which looks up name + trust
-// from self.app.directory for each conversation.
+// conversation.ConversationList are built from a.Dir. Mirrors Python
+// Conversations.py, which looks up name + trust from self.app.directory for
+// each conversation.
 func (a *App) ConversationList() []conversation.ConversationInfo {
 	if a.ConversationPath == "" {
 		return nil
@@ -1207,8 +1197,8 @@ func (a *App) ConversationList() []conversation.ConversationInfo {
 			if a.Transport != nil {
 				a.Transport.Recall(hashBytes)
 			}
-			// B2: when the directory has no display name for the peer, fall
-			// back to the announce app data (LXMF display_name_from_app_data),
+			// when the directory has no display name for the peer, fall back
+			// to the announce app data (LXMF display_name_from_app_data),
 			// matching nomadnet 1.2.8's _update_peer_info
 			// (Conversations.py:2092-2101): directory → announce app data → hash.
 			if displayNames[hashHex] == "" && a.Transport != nil {

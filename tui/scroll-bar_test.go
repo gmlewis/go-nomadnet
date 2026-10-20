@@ -156,13 +156,11 @@ func TestScrollBarScrolledDown(t *testing.T) {
 	}
 }
 
-// TestScrollBarThumbSizeWrappedContent is the regression test for the
-// height-dependent GetWrappedLineCount bug: with wrapped content that overflows
-// a small visible height, the thumb size must reflect the TRUE total wrapped row
-// count (as measured by a full-height parse), not the partial count
-// GetWrappedLineCount returns after a small-height Draw. The old code drew an
-// oversized thumb; this test pins the urwid thumb-size formula against the
-// ground-truth total.
+// TestScrollBarThumbSizeWrappedContent pins the thumb size for wrapped content
+// that overflows a small visible height: the thumb must reflect the TRUE total
+// wrapped row count (measured by a full-height parse), not the partial count
+// GetWrappedLineCount reports after a small-height Draw. The test asserts the
+// urwid thumb-size formula against the ground-truth total.
 func TestScrollBarThumbSizeWrappedContent(t *testing.T) {
 	t.Parallel()
 	const contentW = 10 // ScrollBar content width (w=11 → cw=10)
@@ -217,10 +215,9 @@ func TestScrollBarThumbSizeWrappedContent(t *testing.T) {
 // TestScrollBarWheelMultiplier pins the ScrollBar's per-primitive wheel
 // multiplier (applyWheelMultiplier, installed in NewScrollBar): a wheel notch
 // scrolls mouseWheelLines rows in one delivery via ScrollTo, and at the
-// top/bottom boundary it declines to consume so tview skips the no-op redraw
-// (the fix for the "scroll hangs at the ends" symptom and the trackEnd
-// jump-after-topic-switch bug). mid-page notches consume and move the offset
-// by N rows, not tview's default 1.
+// top/bottom boundary it declines to consume so tview skips the no-op redraw.
+// Mid-page notches consume and move the offset by N rows, not tview's
+// default 1.
 func TestScrollBarWheelMultiplier(t *testing.T) {
 	orig := mouseWheelLines
 	t.Cleanup(func() { mouseWheelLines = orig })
@@ -250,8 +247,8 @@ func TestScrollBarWheelMultiplier(t *testing.T) {
 	s.Text.Focus(func(p tview.Primitive) {})
 	s.Draw(screen) // settle the line index + clamp lineOffset to 0
 
-	// total is the TextView's own lineIndex length — the same figure the capture
-	// clamps against (GetWrappedLineCount) — so the boundary math agrees. With
+	// total is the TextView's own lineIndex length (the same figure
+	// GetWrappedLineCount reports), so the boundary math agrees. With
 	// SetWrap(false) and short lines there is no wrapping, so this also equals
 	// the ScrollBar's wrappedRows total.
 	total := tv.GetWrappedLineCount()
@@ -269,7 +266,7 @@ func TestScrollBarWheelMultiplier(t *testing.T) {
 	}
 
 	// At the top, scrolling up is a no-op: must NOT consume, and lineOffset
-	// must stay 0 (the old behavior returned consumed=true and left it at -1).
+	// must stay 0.
 	if consumed, _ := handler(tview.MouseScrollUp, ev(), setFocus); consumed {
 		t.Error("ScrollUp at top: consumed=true, want false (no-op should skip redraw)")
 	}
@@ -317,8 +314,8 @@ func TestScrollBarWheelMultiplier(t *testing.T) {
 // TestScrollBarRowCountCache pins the wrappedRows cache invariant: the cached
 // total must equal an independent recomputation, and it must stay valid across
 // a scroll (cache hit — text/width unchanged) while being recomputed when the
-// text changes (cache miss). This guards the perf fix that stopped Draw from
-// re-wrapping the whole document every frame.
+// text changes (cache miss), so Draw does not re-wrap the whole document every
+// frame.
 func TestScrollBarRowCountCache(t *testing.T) {
 	t.Parallel()
 	const w, h = 40, 8

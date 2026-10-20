@@ -67,15 +67,12 @@ func NewLogDisplay(app *App, logPath string, lines int) *LogDisplay {
 	ld.logView.SetBackgroundColor(tcell.ColorDefault)
 
 	// Load initial content and follow the end (Python `tail -f` shows latest).
-	// The logfile (go-reticulum, matching Python RNS.format
-	// `[timestamp] [Level]   message`) contains `[Info]` / `[Notice]` / `[Error]`
-	// tokens. tview's TextView parses `[...]` as a color tag, so an unescaped
-	// `[Notice]` is silently dropped from the visible text (B6: the Log page showed
-	// `[timestamp]      message` with the level field blank). Python's Log.py
-	// embeds urwid.Terminal running `tail -fn50`, which shows the brackets
-	// literally. Escape tview color tags so the `[Level]` field is visible. The
-	// log content has NO real tview color tags (plain log text), so escaping the
-	// whole content is safe.
+	// The log text is go-reticulum's, matching Python RNS.format
+	// `[timestamp] [Level]   message`, so it carries `[Info]` / `[Notice]` /
+	// `[Error]` tokens. tview's TextView parses `[...]` as a color tag, which
+	// would silently drop the level from the visible text, so the whole tail is
+	// escaped. The log content has no real tview color tags, so escaping it is
+	// safe.
 	content := tview.Escape(tailFile(logPath, lines))
 	ld.logView.SetText(content)
 	ld.logView.ScrollToEnd()
@@ -96,19 +93,18 @@ func (ld *LogDisplay) Widget() tview.Primitive {
 }
 
 // handleInput implements the Python LogTerminal.keypress "up" escape
-// (Log.py:55-58): Up at the top of the log returns focus to the menu bar. The
+// (Log.py:55-58): Up on the log page returns focus to the menu bar. The
 // centralized MainDisplay.bodyListAtTop only covers *tview.List, so this
-// TextView-based page owns the transition. Up elsewhere is forwarded so the
-// view scrolls up through history.
+// TextView-based page owns the transition.
 func (ld *LogDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 	if event == nil {
 		return event
 	}
 	if event.Key() == tcell.KeyUp {
-		// Python LogTerminal.keypress (Log.py:55-61): EVERY Up goes straight
-		// to the main display header — the embedded `tail -fn50` terminal never
-		// scrolls via keys, so there is no scroll-then-escape dance (F1). The
-		// log content is untouched by the transition.
+		// Python LogTerminal.keypress (Log.py:55-61): every Up goes straight to
+		// the main display header — the embedded `tail -fn50` terminal never
+		// scrolls via keys, so there is no scroll-then-escape step. The log
+		// content is untouched by the transition.
 		if ld.app != nil && ld.app.Main != nil {
 			ld.app.Main.FocusMenu()
 		}
@@ -118,9 +114,9 @@ func (ld *LogDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 }
 
 // logAtTop reports whether the log view is scrolled to its top. It is false
-// while a modal dialog is open. No longer part of the Up transition (F1:
-// Python's first Up goes to the header regardless of scroll position), but
-// kept as a scroll-state helper for tests and diagnostics.
+// while a modal dialog is open. The Up transition does not consult it (Python's
+// first Up goes to the header regardless of scroll position); it remains a
+// scroll-state helper for tests and diagnostics.
 func (ld *LogDisplay) logAtTop() bool {
 	if ld.app != nil && ld.app.Dialogs != nil && ld.app.Dialogs.Open() {
 		return false
@@ -172,9 +168,8 @@ func (ld *LogDisplay) StartTailing() {
 
 // StopTailing stops the live tail goroutine. It is idempotent and safe to call
 // any number of times, including concurrently: the cleanup path that wires the
-// log display into the application (cmd/gonomadnet/textui.go) can be invoked
-// more than once when the user issues the quit key sequence, and an
-// unconditional close here previously panicked with "close of closed channel".
+// log display into the application (cmd/gonomadnet/textui.go) can run more than
+// once when the user issues the quit key sequence.
 func (ld *LogDisplay) StopTailing() {
 	ld.stopOnce.Do(func() {
 		close(ld.stopCh)

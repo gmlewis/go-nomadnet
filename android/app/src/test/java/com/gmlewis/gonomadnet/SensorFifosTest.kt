@@ -20,9 +20,7 @@ import org.junit.Test
  * The decision matters more than it looks. A path that exists but is not a pipe is opened
  * happily as a file, and the bot then reads it from offset zero — the history of every
  * sample ever written — and comes to rest on the last line in it. A heading read that way
- * never changes again, and it is reported as if it were live. It was found on the tablet:
- * `files/run/compass.nmea` was a regular file, and `whereami` reported the same frozen
- * `212° True` across requests two minutes apart.
+ * never changes again, and it is reported as if it were live.
  */
 class SensorFifosTest {
 

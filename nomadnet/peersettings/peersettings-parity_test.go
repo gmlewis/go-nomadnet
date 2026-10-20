@@ -52,11 +52,11 @@ func bytesHex(v any) string {
 // peerLoadParityScript imports the real nomadnet reference's msgpack
 // (RNS.vendor.umsgpack, the exact codec save_peer_settings uses) and, for each
 // case, rebuilds the peer_settings dict in Python's declaration order
-// (NomadNetworkApp.py:287-298), msgpack.packb's it FRESH to produce the on-disk
-// bytes, then msgpack.unpackb's those FRESH bytes so the expected parsed fields
-// are derived from the current Python source on every run (never a committed
-// golden). Bytes fields are emitted as {"__bytes_hex__": "..."} so they survive
-// JSON round-tripping.
+// (NomadNetworkApp.py:287-298), packs it to produce the on-disk bytes, then
+// unpacks those bytes so the expected parsed fields are derived from the
+// current Python source on every run rather than a committed golden. Bytes
+// fields are emitted as {"__bytes_hex__": "..."} so they survive JSON
+// round-tripping.
 const peerLoadParityScript = `
 import sys, json, base64
 import RNS.vendor.umsgpack as msgpack
@@ -91,14 +91,14 @@ print(json.dumps(out))
 
 // TestLoadPythonCompat verifies Go's Load parses msgpack peersettings files
 // written by Python's NomadNetworkApp.save_peer_settings, with every field
-// matching what Python itself unpacks from the SAME fresh bytes.
+// matching what Python itself unpacks from the SAME bytes.
 //
 // This is a LIVE cross-implementation test: it execs the real Python nomadnet
-// reference, builds the SAME peer_settings dict the Go test constructs,
-// msgpack.packb's it FRESH to produce the on-disk bytes, and msgpack.unpackb's
-// those bytes FRESH to derive the expected field values — so a divergence is a
-// real Go/Python mismatch, never a stale committed golden. It is skipped (not
-// failed) when the Python nomadnet reference is not importable.
+// reference, builds the SAME peer_settings dict the Go test constructs, packs
+// it to produce the on-disk bytes, and unpacks those bytes to derive the
+// expected field values, so a divergence is a real Go/Python mismatch rather
+// than a stale committed golden. It is skipped (not failed) when the Python
+// nomadnet reference is not importable.
 func TestLoadPythonCompat(t *testing.T) {
 	t.Parallel()
 	cases := []struct {

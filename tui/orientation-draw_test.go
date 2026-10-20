@@ -43,17 +43,15 @@ func (r *recordingController) orientations() []bool {
 	return append([]bool(nil), r.calls...)
 }
 
-// TestOrientationIsNotAppliedDuringTheDraw is the invariant behind the frozen
-// client: a draw may RECORD the terminal's orientation, but it must not tell the
-// displays about it.
+// TestOrientationIsNotAppliedDuringTheDraw pins the invariant: a draw may
+// RECORD the terminal's orientation, but it must not tell the displays about it.
 //
 // A display's SetPortrait changes the tree, and the Guide's also moves focus. The
 // frame's DrawFunc runs inside tview's Application.draw, which holds the
 // application's write lock for the whole frame, and Application.SetFocus takes
 // that same non-reentrant lock — so a focus move from a draw does not fail, it
-// blocks the drawing goroutine on itself, forever. That is the wedge: the console
-// stops painting, stops answering keys, and never comes back, on the one page
-// whose SetPortrait moves focus.
+// blocks the drawing goroutine on itself, forever. The console then stops
+// painting and stops answering keys.
 //
 // It does not run in parallel: it installs the host's pixels probe for the
 // package while it runs.
@@ -90,15 +88,14 @@ func TestOrientationIsNotAppliedDuringTheDraw(t *testing.T) {
 	}
 }
 
-// TestGuideRotationToPortraitInALiveClientDoesNotWedge drives the real thing: a
-// running client, the Guide page in landscape with its topic list focused (the
-// state a normal launch leaves it in), then a rotation to portrait — the state
-// the tablet was in every time it froze.
+// TestGuideRotationToPortraitInALiveClientDoesNotWedge drives a running client:
+// the Guide page in landscape with its topic list focused (the state a normal
+// launch leaves it in), then a rotation to portrait.
 //
 // A display's SetPortrait rebuilds its columns and may move focus (the Guide's
-// does, when the topic list it is collapsing holds it), and that is what used to
-// wedge the client: the rotation arrives as a draw, the draw told the Guide, the
-// Guide set focus, and the focus call blocked on the lock the draw was holding.
+// does, when the topic list it is collapsing holds it). If the rotation were
+// applied during a draw, the draw would tell the Guide, the Guide would set
+// focus, and the focus call would block on the lock the draw was holding.
 // Every assertion here is a barrier on the event loop, so a client that has
 // stopped running its loop fails the test by timing out instead of hanging the
 // test binary.

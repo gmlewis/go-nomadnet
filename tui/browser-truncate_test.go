@@ -25,9 +25,9 @@ import (
 //	if len(lstr) > lmax: lstr = lstr[:lmax-1] + "…"
 //
 // Python len() counts Unicode code points, so the helper operates on runes,
-// not bytes. Golden values were captured from the source-of-truth Python
-// formula (see parity skill workflow B). The result is never longer than max
-// code points; "…" is one code point / one display cell.
+// not bytes. The golden values follow the source-of-truth Python formula. The
+// result is never longer than max code points; "…" is one code point / one
+// display cell.
 func TestTruncateEllipsis(t *testing.T) {
 	t.Parallel()
 

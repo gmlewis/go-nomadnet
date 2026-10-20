@@ -17,15 +17,15 @@ package tui
 
 import "testing"
 
-// TestShowTopicResetsScrollToTop pins the fix for the Guide scroll-reset-to-top
-// bug. Python's Guide.display_topic -> set_content_widgets (Guide.py:138-154,
+// TestShowTopicResetsScrollToTop pins that a topic switch resets the reader to
+// the top. Python's Guide.display_topic -> set_content_widgets (Guide.py:138-154,
 // 226-234) rebuilds the entire Scrollable widget on every topic switch, which
 // implicitly resets scroll to the top. The Go port reuses a single tview
 // TextView and calls SetText, which does NOT reset the line offset (tview's
-// clear/SetText leave lineOffset untouched), so the offset leaks from the
+// clear/SetText leave lineOffset untouched), so the offset would leak from the
 // previously-viewed topic: selecting topic N after scrolling topic N-1 to the
-// bottom opens topic N already scrolled part-way down — the first visible line
-// is NOT the topic's `>Title` heading. showTopic must explicitly ScrollTo(0,0).
+// bottom would open topic N already scrolled part-way down. showTopic must
+// explicitly ScrollTo(0,0).
 func TestShowTopicResetsScrollToTop(t *testing.T) {
 	t.Parallel()
 

@@ -105,8 +105,9 @@ print("SOT:" + json.dumps({"nomadnet": ver("nomadnet"), "rns": ver("RNS"), "lxmf
 // pythonNomadnetCandidates are the interpreter candidates probed for an
 // importable nomadnet reference. The system `python3` is tried first (so a
 // venv/PATH python with nomadnet wins), then the Homebrew py3.14 interpreter
-// that ships nomadnet+urwid on macOS. Adding more candidates here is safe; the
-// first that can import the reference and report its versions is used.
+// that ships nomadnet+urwid on macOS. The probe prefers a candidate reporting
+// the pinned versions, so a stale first candidate cannot select an older
+// reference. Adding more candidates here is safe.
 var pythonNomadnetCandidates = []string{
 	"python3",
 	"/opt/homebrew/bin/python3",
@@ -134,19 +135,38 @@ func pythonNomadnet() (string, SOTVersionSet) {
 	return pythonNomadnetExe, pythonNomadnetVer
 }
 
-// probePythonNomadnetExe returns the first candidate interpreter that can import
-// the nomadnet reference, together with the versions it reports.
+// pythonInterpreterEnv names an interpreter to use instead of probing the
+// candidates, for a developer or CI that manages Python explicitly.
+const pythonInterpreterEnv = "GONOMADNET_PYTHON"
+
+// probePythonNomadnetExe returns an interpreter that can import the nomadnet
+// reference, together with the versions it reports. It prefers a candidate
+// reporting the pinned versions; if none does, it returns the first importable
+// one so the version check can report what was found rather than "none".
 func probePythonNomadnetExe() (string, SOTVersionSet) {
-	for _, exe := range pythonNomadnetCandidates {
+	candidates := pythonNomadnetCandidates
+	if override := os.Getenv(pythonInterpreterEnv); override != "" {
+		candidates = []string{override}
+	}
+	var firstExe string
+	var firstVer SOTVersionSet
+	for _, exe := range candidates {
 		out, err := exec.Command(exe, "-c", sotProbeScript).Output()
 		if err != nil {
 			continue
 		}
-		if v, ok := parseSOTLine(out); ok {
+		v, ok := parseSOTLine(out)
+		if !ok {
+			continue
+		}
+		if firstExe == "" {
+			firstExe, firstVer = exe, v
+		}
+		if v.pinned() {
 			return exe, v
 		}
 	}
-	return "", SOTVersionSet{}
+	return firstExe, firstVer
 }
 
 // parseSOTLine decodes the last SOT:-prefixed line of out, ignoring any other

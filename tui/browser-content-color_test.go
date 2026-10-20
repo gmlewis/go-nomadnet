@@ -29,7 +29,6 @@ import (
 // only colors blank/padding cells and the non-micron placeholder/loading text:
 // micron plain runs carry an explicit #dddddd tag (Go micron DefaultFG, like
 // Python's high_color nibble-doubling), so they do not inherit SetTextColor.
-// The Go port previously used a hardcoded 0xbbbbbb, which Python never emits.
 func TestBrowserContentBaseColor(t *testing.T) {
 	t.Parallel()
 

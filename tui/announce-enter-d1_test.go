@@ -50,10 +50,8 @@ func newD1App(t *testing.T) (*App, *NetworkDisplay) {
 	})
 	app.Main.Root().Draw(screen)
 
-	// Walk the pile like the user does: two Downs (tab bar → filter bar →
-	// list) from the pile's initial focus — Python's AnnounceStream Pile
-	// (Network.py:437-441) starts on the tab bar and the announce list needs
-	// two Downs before Enter opens an Announce Info.
+	// Two Downs reach the announce list from the pile's initial focus (the tab
+	// bar), the state in which Enter opens an Announce Info.
 	if as := nd.announceStream; as == nil || as.pile == nil {
 		t.Fatal("announce stream pile missing")
 	} else {
@@ -68,11 +66,10 @@ func newD1App(t *testing.T) (*App, *NetworkDisplay) {
 	return app, nd
 }
 
-// TestD1EnterOnAnnounceOpensInfo pins D1: Enter on an announce in the
+// TestD1EnterOnAnnounceOpensInfo pins that Enter on an announce in the
 // Announce Stream opens the Announce Info view (Python AnnounceInfo,
 // Network.py:59-256 — Time/Addr/Type/Name/Oprtr/Trust rows + Announce Data +
-// a Back/Connect/Msg Op/Save button row). The earlier Go build swallowed the
-// Enter on the announce-stream pileFiller, so the overlay never opened.
+// a Back/Connect/Msg Op/Save button row).
 func TestD1EnterOnAnnounceOpensInfo(t *testing.T) {
 	t.Parallel()
 

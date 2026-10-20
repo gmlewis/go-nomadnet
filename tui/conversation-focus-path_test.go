@@ -56,7 +56,7 @@ func newFocusApp(t *testing.T, convs []ConversationInfo) (*App, *ConversationsDi
 	return app, cd, redraw
 }
 
-// TestA2RightFromListFocusesConversationColumn pins A2's Right path (Python
+// TestA2RightFromListFocusesConversationColumn pins the Right path (Python
 // urwid Columns.keypress: an unconsumed "right" moves focus to the next
 // selectable column, Conversations.py:221-229): with a conversation open,
 // Right from the conversation list focuses the conversation column at its
@@ -89,7 +89,7 @@ func TestA2RightFromListFocusesConversationColumn(t *testing.T) {
 	}
 }
 
-// TestA2LeftFromMessageListFocusesList pins A2's Left path: Left from the
+// TestA2LeftFromMessageListFocusesList pins the Left path: Left from the
 // conversation pane's message list bubbles to the Columns and focuses the
 // conversations list (Python urwid Columns.keypress "left" candidates to the
 // left; the ListBox does not consume Left/Right).
@@ -159,12 +159,11 @@ func TestA2LeftFromBannerButtons(t *testing.T) {
 	dispatchKey(app, app.GetRoot(), tcell.NewEventKey(tcell.KeyRight, 0, tcell.ModNone))
 }
 
-// TestA6UpAtListTopFocusesTabBar pins A6: Up at the top of the conversation
-// list focuses the TAB BAR (Python ConversationsArea.keypress "up" → Pile
-// previous-selectable; the TabButtons are keyboard-focusable — live-verified
-// on Python: Right+Enter switched to the Untrusted tab) — NOT the menubar.
-// Only another Up from the tab bar reaches the menubar. Enter on a tab
-// switches the filter.
+// TestA6UpAtListTopFocusesTabBar pins the Up-at-list-top path: Up at the top of
+// the conversation list focuses the TAB BAR (Python ConversationsArea.keypress
+// "up" → Pile previous-selectable; the TabButtons are keyboard-focusable, and
+// Right+Enter switches to the Untrusted tab) — NOT the menubar. Only another Up
+// from the tab bar reaches the menubar. Enter on a tab switches the filter.
 func TestA6UpAtListTopFocusesTabBar(t *testing.T) {
 	t.Parallel()
 
@@ -226,10 +225,10 @@ func TestA6UpAtListTopFocusesTabBar(t *testing.T) {
 	}
 }
 
-// TestA6UntrustedCheckboxInFocusPath pins the checkbox part of A6: on the
-// untrusted tab the "Show blocked" checkbox sits between the tab bar and the
-// list in the Pile (Python _apply_pile_layout, Conversations.py:316-318), so
-// Up from the list reaches the CHECKBOX first, then the tab bar.
+// TestA6UntrustedCheckboxInFocusPath pins the checkbox part of the Up path: on
+// the untrusted tab the "Show blocked" checkbox sits between the tab bar and
+// the list in the Pile (Python _apply_pile_layout, Conversations.py:316-318),
+// so Up from the list reaches the CHECKBOX first, then the tab bar.
 func TestA6UntrustedCheckboxInFocusPath(t *testing.T) {
 	t.Parallel()
 
@@ -249,11 +248,11 @@ func TestA6UntrustedCheckboxInFocusPath(t *testing.T) {
 	if got := app.GetFocus(); got != tview.Primitive(cd.showBlockedCheckbox) {
 		t.Fatalf("focus after Up at list top (untrusted) = %T, want the Show blocked checkbox", got)
 	}
-	// DELIBERATE GO ENHANCEMENT (do not "fix" back to parity): Up from the
-	// checkbox now focuses the tab bar's CURRENT tab (Untrusted here), not the
-	// stale first button — Python's urwid Columns keeps its focus on the tab
-	// that was last activated, and landing on the current tab gives the arrow
-	// keys a deterministic Left-path to the Trusted selector (fleet bug #3).
+	// This deliberately diverges from Python: Up from the checkbox focuses the
+	// tab bar's CURRENT tab (Untrusted here), not the stale first button —
+	// Python's urwid Columns keeps its focus on the tab that was last
+	// activated, and landing on the current tab gives the arrow keys a
+	// deterministic Left-path to the Trusted selector.
 	dispatchKey(app, app.GetRoot(), tcell.NewEventKey(tcell.KeyUp, 0, tcell.ModNone))
 	if got := app.GetFocus(); got != tview.Primitive(cd.tabUntrusted) {
 		t.Errorf("focus after Up from checkbox = %T, want the current Untrusted tab", got)
@@ -271,12 +270,11 @@ func TestA6UntrustedCheckboxInFocusPath(t *testing.T) {
 	}
 }
 
-// TestA5DownAtLastEntryIsNoOp pins A5 with the LIVE-VERIFIED Python behavior
-// (probe 2026-08-27 on the local Python instance: with the list selection on
-// the last entry, an extra Down leaves the highlight and the list shortcut
-// bar unchanged — the key bubbles up urwid's Pile/Columns chain and is
-// dropped by the MainFrame; urwid 4.0.3 Columns.keypress only traverses
-// columns for LEFT/RIGHT). Go must therefore also keep focus on the list.
+// TestA5DownAtLastEntryIsNoOp pins the Python behavior: with the list selection
+// on the last entry, an extra Down leaves the highlight and the list shortcut
+// bar unchanged — the key bubbles up urwid's Pile/Columns chain and is dropped
+// by the MainFrame; urwid 4.0.3 Columns.keypress only traverses columns for
+// LEFT/RIGHT. Go must therefore also keep focus on the list.
 func TestA5DownAtLastEntryIsNoOp(t *testing.T) {
 	t.Parallel()
 
@@ -302,13 +300,12 @@ func TestA5DownAtLastEntryIsNoOp(t *testing.T) {
 
 // TestA6EmptyListUpGoesToMenubar pins the empty-list Up path through the full
 // dispatch chain. Python's ilb.body_is_empty branch (Conversations.py:108-111)
-// jumps a single empty-list Up straight to the menubar — which left the
-// Trusted/Untrusted tab bar UNREACHABLE by arrow keys on an empty tab (live
-// fleet bug report). DELIBERATE GO ENHANCEMENT (do not "fix" back to parity):
-// the Go port routes an empty-list Up through the same Pile traversal a
-// non-empty list gets — the tab bar first (this fixture is on the Trusted tab
-// with an empty list, so no Show-blocked checkbox is in the pile), then the
-// menubar as before.
+// jumps a single empty-list Up straight to the menubar, which leaves the
+// Trusted/Untrusted tab bar unreachable by arrow keys on an empty tab. This is
+// a deliberate Go enhancement: an empty-list Up goes through the same Pile
+// traversal a non-empty list gets — the tab bar first (this fixture is on the
+// Trusted tab with an empty list, so no Show-blocked checkbox is in the pile),
+// then the menubar as before.
 func TestA6EmptyListUpGoesToMenubar(t *testing.T) {
 	t.Parallel()
 
@@ -326,12 +323,12 @@ func TestA6EmptyListUpGoesToMenubar(t *testing.T) {
 	}
 }
 
-// TestA3UpAtMessageListTopGoesToMenubar pins A3 through the full dispatch
-// chain: with a TRUSTED peer open (no banner), Up at the message-list top
-// collapses focus to the menubar (Python ConversationFrame.keypress
-// "up" + top_is_visible → main_display.frame.focus_position = "header",
-// Conversations.py:1845-1852). Before the fix the flat TextView was unknown
-// to bodyListAtTop and Up was a dead key.
+// TestA3UpAtMessageListTopGoesToMenubar pins the message-list Up path through
+// the full dispatch chain: with a TRUSTED peer open (no banner), Up at the
+// message-list top collapses focus to the menubar (Python
+// ConversationFrame.keypress "up" + top_is_visible →
+// main_display.frame.focus_position = "header", Conversations.py:1845-1852).
+// bodyListAtTop must therefore recognize the message list.
 func TestA3UpAtMessageListTopGoesToMenubar(t *testing.T) {
 	t.Parallel()
 

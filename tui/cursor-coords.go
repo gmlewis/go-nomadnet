@@ -15,9 +15,9 @@
 
 package tui
 
-// cursor-coords.go ports urwid's line-wrapping layout + calc_coords so the Go
-// port can position the terminal hardware cursor (screen.ShowCursor) on focused
-// micron LinkableText pages identically to the Python original.
+// cursor-coords.go reproduces urwid's line-wrapping layout and calc_coords so
+// the terminal hardware cursor (screen.ShowCursor) can be placed on a focused
+// micron LinkableText page exactly as the Python original does.
 //
 // urwid's LinkableText.render sets canvas.cursor = get_cursor_coords(size),
 // which maps the model cursor offset (a char position into the line's text) to
@@ -28,7 +28,7 @@ package tui
 // The wrapping reproduced here is urwid's default StandardTextLayout "space"
 // mode (break at spaces, break_long_words=True) from urwid/text_layout.py
 // (StandardTextLayout._calculate_segments), operating on runes with a
-// best-effort East-Asian width model. The golden (x,y) table in
+// best-effort East-Asian width model. The golden (x, y) table in
 // cursor-coords_test.go is captured from Python urwid calc_coords.
 
 // runeWidth returns the screen-column width of a single rune: 2 for East-Asian

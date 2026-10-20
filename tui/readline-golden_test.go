@@ -21,12 +21,11 @@ import (
 	"github.com/gmlewis/tcell/v2"
 )
 
-// Golden (text, cursorPos, kill-ring) states captured by running the EXACT
-// Python ReadlineMixin logic (ReadlineEdit.py) in a standalone harness that
-// backs the mixin with a fake urwid.Edit, since urwid itself won't import on
-// this host. Each step is the buffer state after the named key. These lock the
-// Go port to Python's observable behavior for every readline binding plus the
-// shared kill-ring accumulation/chain semantics.
+// Golden (text, cursorPos, kill-ring) states derived from Python's
+// ReadlineMixin logic (ReadlineEdit.py). Each step is the buffer state after
+// the named key. These lock the Go port to Python's observable behavior for
+// every readline binding plus the shared kill-ring accumulation/chain
+// semantics.
 
 type rlStep struct {
 	key      string // "ctrl a", "ctrl left", "x", ...

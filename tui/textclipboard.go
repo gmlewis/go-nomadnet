@@ -71,21 +71,18 @@ func (s *systemClipboard) init() {
 
 // WriteText puts text on the system clipboard. clipboard.Write is
 // asynchronous: it returns a done channel that (on macOS) may not close until
-// an unrelated pasteboard access — the data is on the pasteboard as soon as
-// the call returns (verified: a second process reads it back, and osascript
-// sees it), so this never blocks the UI loop on the done channel.
+// an unrelated pasteboard access. The data is on the pasteboard as soon as the
+// call returns, so this never blocks the UI loop on the done channel.
 //
 // Inside tmux the text is ALSO loaded into the running tmux server's paste
 // buffer (`load-buffer -w`), which is what makes the copy reach the machine
-// the user is typing on. tmux's own clipboard write is forwarded to the outer
-// terminal under the default `set-clipboard external`, but an application's
-// own OSC 52 escape is NOT (verified against tmux 3.7c: with `external` the
-// app's OSC 52 never leaves tmux, while `load-buffer -w` does). That matters
-// for a remote node with a WORKING native backend — the AppKit-backed
-// glenn-mac-mini-m2 over SSH — where ready is true and the native write only
-// fills the remote pasteboard; without the tmux write nothing would reach the
-// local clipboard. On a headless Linux node over SSH (glenn-OMEN-875) there
-// is no native backend at all, so the tmux write is the only path.
+// the user is typing on. tmux forwards its own clipboard write to the outer
+// terminal under the default `set-clipboard external`, but it drops an
+// application's own OSC 52 escape. That matters for a remote node with a
+// working native backend over SSH, where ready is true and the native write
+// only fills the remote pasteboard; without the tmux write nothing would reach
+// the local clipboard. On a headless Linux node over SSH there is no native
+// backend at all, so the tmux write is the only path.
 func (s *systemClipboard) WriteText(text string) {
 	s.init()
 	if text == "" {

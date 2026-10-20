@@ -13,7 +13,7 @@ import (
 	"github.com/gmlewis/go-nomadnet/nomadnet/directory"
 )
 
-// TestR1DeleteConversationRetainsDirectoryEntry verifies R1: deleting a
+// TestR1DeleteConversationRetainsDirectoryEntry verifies that deleting a
 // conversation (C-x) removes the conversation/messages but RETAINS the
 // directory entry (name + trust), matching nomadnet 1.2.8. A subsequent
 // incoming message from that peer re-creates the conversation under the
@@ -60,7 +60,7 @@ func TestR1DeleteConversationRetainsDirectoryEntry(t *testing.T) {
 		t.Fatalf("conversation dir should be removed, got err=%v", err)
 	}
 
-	// R1: verify the directory entry is RETAINED (name + trust preserved).
+	// Verify the directory entry is RETAINED (name + trust preserved).
 	entry = a.Dir.Find(hash)
 	if entry == nil {
 		t.Fatal("R1: directory entry should be retained after delete")

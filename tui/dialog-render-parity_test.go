@@ -23,10 +23,10 @@ import (
 	"github.com/gmlewis/tview"
 )
 
-// Regression tests for the 2026-09-01 fleet usability batch (bugs #2–#5):
-// wheel scrolling on the [ Interfaces ] page, the Ctrl-p QR dialog's cut-off
-// bottom and dead mouse Close, the chopped ingest-result message, the chopped
-// no-trusted-nodes sync dialog, and the fixed-height confirm dialog.
+// Rendering-parity tests for dialog and list layout: wheel scrolling on the
+// [ Interfaces ] page, the Ctrl-p QR dialog's bottom border and mouse Close,
+// the ingest-result message wrap, the no-trusted-nodes sync dialog, and the
+// confirm dialog's height.
 
 // drawRows renders a primitive on a wxh simulation screen and returns the
 // joined cell text per row (the headless parity capture technique).
@@ -53,13 +53,12 @@ func drawRows(t *testing.T, p tview.Primitive, w, h int) []string {
 	return rows
 }
 
-// TestInterfacesListWheelMovesFocus is the regression test for the fleet
-// report "mouse-wheel scrolling does NOT work on the [ Interfaces ] page":
-// Python's urwid ListBox maps the wheel to "up"/"down" keypresses, so the
-// FOCUSED item moves and the viewport follows (Interfaces.py:2911
-// SimpleFocusListWalker). The previous offset-only wheel was a no-op — Draw's
-// scrollIntoView re-pins the viewport to the focused item every frame — so the
-// wheel never scrolled the list.
+// TestInterfacesListWheelMovesFocus verifies that the mouse wheel moves the
+// FOCUSED item on the [ Interfaces ] page, matching Python's urwid ListBox,
+// which maps the wheel to "up"/"down" keypresses so the focused item moves and
+// the viewport follows (Interfaces.py:2911 SimpleFocusListWalker). An
+// offset-only wheel has no visible effect, because Draw's scrollIntoView
+// re-pins the viewport to the focused item every frame.
 func TestInterfacesListWheelMovesFocus(t *testing.T) {
 	t.Parallel()
 	app := newTestApp()
@@ -113,10 +112,10 @@ func TestInterfacesListWheelMovesFocus(t *testing.T) {
 	}
 }
 
-// TestIngestResultMessageNotChopped is the regression test for the chopped
-// ingest error ("Could ingest LXM from URI data. Check your inp"): urwid PACK
-// wraps the message at the dialog's inner width and grows the Pile, so the
-// full text must render on its wrapped rows with the OK row inside the border.
+// TestIngestResultMessageNotChopped verifies that the ingest-result error wraps
+// instead of being chopped: urwid PACK wraps the message at the dialog's inner
+// width and grows the Pile, so the full text must render on its wrapped rows
+// with the OK row inside the border.
 func TestIngestResultMessageNotChopped(t *testing.T) {
 	t.Parallel()
 	app := newTestApp()
@@ -153,10 +152,10 @@ func TestIngestResultMessageNotChopped(t *testing.T) {
 	}
 }
 
-// TestSyncDialogNoTrustedNodesFullHeight is the regression test for the same
-// sizing-bug class on the Message Sync dialog's no-trusted-nodes variant: the
-// layout was sized from GetItemCount (items, not rows), chopping the dialog
-// five rows short and overflowing the wrapped explainer over the border.
+// TestSyncDialogNoTrustedNodesFullHeight verifies that the Message Sync
+// dialog's no-trusted-nodes variant sizes its layout from wrapped rows rather
+// than GetItemCount (items), so the explainer renders above the bottom border
+// instead of overflowing it.
 func TestSyncDialogNoTrustedNodesFullHeight(t *testing.T) {
 	t.Parallel()
 	cd := newInvariantCD(t)
@@ -167,8 +166,8 @@ func TestSyncDialogNoTrustedNodesFullHeight(t *testing.T) {
 	rows := contentRows(t, cd, 80, 24)
 	// The explainer's LAST line must render above the dialog's bottom border.
 	// (urwid's space wrap splits the final sentence as "…or the manually" /
-	// "selected one." — matching the running Python build's render — so the
-	// assertion targets the last wrapped line, not the full phrase.)
+	// "selected one.", so the assertion targets the last wrapped line, not the
+	// full phrase.)
 	if !anyRowContains(rows, "selected one.") {
 		t.Errorf("sync explainer text cut off (rows: %v)", rows)
 	}
@@ -192,9 +191,10 @@ func TestSyncDialogNoTrustedNodesFullHeight(t *testing.T) {
 	}
 }
 
-// TestConfirmDialogSizesToWrappedMessage pins ShowConfirmDialog against the
-// fixed 3-row message cap: callers pass arbitrary-length text (e.g. "Could
-// not open LXMF link: <error>"), which urwid PACK wraps and grows for.
+// TestConfirmDialogSizesToWrappedMessage verifies that ShowConfirmDialog sizes
+// its message row to the wrapped text rather than a fixed 3-row cap: callers
+// pass arbitrary-length text (e.g. "Could not open LXMF link: <error>"), which
+// urwid PACK wraps and grows for.
 func TestConfirmDialogSizesToWrappedMessage(t *testing.T) {
 	t.Parallel()
 	app := newTestApp()
@@ -206,7 +206,7 @@ func TestConfirmDialogSizesToWrappedMessage(t *testing.T) {
 	rows := drawRows(t, app.Dialogs.Pages(), 80, 24)
 	joined := strings.Join(rows, "\n")
 	// 30 "word " words cannot fit one line at the dialog width: the tail must
-	// be present, which the fixed 3-row cap chopped.
+	// be present, which a fixed 3-row cap would chop.
 	if !anyRowContains(rows, "word word") {
 		t.Fatalf("confirm dialog not rendered: %v", rows)
 	}
@@ -215,10 +215,9 @@ func TestConfirmDialogSizesToWrappedMessage(t *testing.T) {
 	}
 }
 
-// TestQRDialogBottomInsideBorder is the regression test for the Ctrl-p QR
-// dialog's cut-off bottom (bug #4) and dead mouse Close (bug #3): the PACK
-// height omitted the 2 border rows, so the Close button rendered ON the
-// border row with a collapsed rect that could never receive a click.
+// TestQRDialogBottomInsideBorder verifies that the Ctrl-p QR dialog's PACK
+// height includes the 2 border rows, so the Close button renders inside the
+// border with an intact, clickable rect.
 func TestQRDialogBottomInsideBorder(t *testing.T) {
 	t.Parallel()
 	cd := newInvariantCD(t)
@@ -263,8 +262,7 @@ func TestQRDialogBottomInsideBorder(t *testing.T) {
 		t.Errorf("Close row %v sits on/after the dialog bottom border row %v — PACK height is 2 rows short", closeRow, borderRow)
 	}
 
-	// A mouse click on the rendered Close button must dismiss the dialog
-	// (previously the button's rect collapsed, so clicks never hit it). The
+	// A mouse click on the rendered Close button must dismiss the dialog. The
 	// Close button is the centered 12-wide column of the button row, so click
 	// at the dialog's horizontal center on the button row (one above the
 	// bottom border, after the trailing blank row).

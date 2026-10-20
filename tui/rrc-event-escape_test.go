@@ -24,10 +24,10 @@ import (
 	"github.com/gmlewis/tview"
 )
 
-// TestFormatRRCEventLinesEscapesBrackets pins the /help alignment bug: tview
-// treats "[room]" as a color tag and ate those tokens (and the dash column
-// after them). Python urwid does not; the body must keep literal brackets by
-// doubling "[" on the way into tview.
+// TestFormatRRCEventLinesEscapesBrackets pins bracket escaping in event lines:
+// tview treats "[room]" as a color tag and would eat those tokens (and the
+// dash column after them). Python urwid does not, so the body must keep
+// literal brackets by doubling "[" on the way into tview.
 func TestFormatRRCEventLinesEscapesBrackets(t *testing.T) {
 	t.Parallel()
 
@@ -69,9 +69,9 @@ func TestFormatRRCEventLinesEscapesBrackets(t *testing.T) {
 // TestSlashHelpRendersThroughTviewEngine draws /help through a real tview
 // TextView (SetDynamicColors) on a simulation screen and reads the painted
 // cells. String-level "[[" / tview.Escape assertions are not enough — the
-// fork's tag parser can still eat "room]" after a half-open escape (the
-// raspberrypi/local capture). Only a full render proves the user sees
-// "/part [room]" aligned like Python nomadnet.
+// fork's tag parser can still eat "room]" after a half-open escape. Only a
+// full render proves the user sees "/part [room]" aligned like Python
+// nomadnet.
 func TestSlashHelpRendersThroughTviewEngine(t *testing.T) {
 	t.Parallel()
 

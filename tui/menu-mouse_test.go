@@ -47,17 +47,12 @@ func dispatchAndDraw(t *testing.T, app *App, ev *tcell.EventKey) {
 	}
 }
 
-// TestMenuClickRedrawsPage is the Bug 2 regression: clicking a menu item must
-// repaint the screen so the new page is visible immediately. Before the fix the
-// menuBar's SetMouseCapture returned 0 (MouseMove) instead of tview.MouseConsumed,
-// so tview did not redraw after the click — the page switched internally but the
-// screen kept showing the old page until an unrelated async redraw fired, making
-// the app appear frozen/unresponsive after a menu click.
+// TestMenuClickRedrawsPage pins that clicking a menu item repaints the screen
+// so the new page is visible immediately: the menuBar's mouse capture must
+// return tview.MouseConsumed so tview redraws after the click.
 //
-// Every wait is a loop barrier (awaitLoop), never a sleep. A sleep orders
-// nothing, so the read of activePage it preceded was a data race against the
-// loop's own write no matter how long the sleep was, and it also left the
-// assertion racing the click it was meant to wait for.
+// Every wait is a loop barrier (awaitLoop), never a sleep: only the loop
+// goroutine draws, so screen state has to be read there.
 func TestMenuClickRedrawsPage(t *testing.T) {
 	app := NewApp(ThemeDark, GlyphUnicode, ColorModeTrue)
 	app.EnableMouse(true)
@@ -126,11 +121,10 @@ func TestMenuClickRedrawsPage(t *testing.T) {
 		return true
 	})
 
-	// The fix: the click must have REDRAWN, so the screen now shows the Guide
-	// page (its "Topics" pane title / "Introduction" topic), not the Network
-	// page. Before the fix no redraw fired and "Topics" was absent. The wait
-	// above deliberately does not force a repaint — forcing one would make this
-	// assertion vacuously true.
+	// The click must have REDRAWN, so the screen now shows the Guide page (its
+	// "Topics" pane title / "Introduction" topic), not the Network page. The
+	// wait above deliberately does not force a repaint — forcing one would make
+	// this assertion vacuously true.
 	if !containsSubstr(afterClick, "Topics") {
 		t.Errorf("after click: screen was not redrawn to the Guide page (no 'Topics'); the menu click did not trigger a redraw:\n%v", afterClick)
 	}
@@ -149,9 +143,9 @@ func TestMenuClickRedrawsPage(t *testing.T) {
 }
 
 // TestGuideEnterDoesNotDeadlock pins that activating the Guide page and pressing
-// Enter on the Introduction topic completes without deadlocking — the
-// historical SetChangedFunc↔SetCurrentItem recursion regression. It drives the
-// full key dispatch + Draw path with a timeout.
+// Enter on the Introduction topic completes without deadlocking (no
+// SetChangedFunc↔SetCurrentItem recursion). It drives the full key dispatch +
+// Draw path with a timeout.
 func TestGuideEnterDoesNotDeadlock(t *testing.T) {
 	app := NewApp(ThemeDark, GlyphUnicode, ColorModeTrue)
 	nd := NewNetworkDisplay(app, nil, []NodeEntry{{SourceHash: "aaaa", DisplayName: "Node A"}})

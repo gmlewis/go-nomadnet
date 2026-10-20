@@ -157,9 +157,8 @@ object HeadingReference {
 
     /**
      * The naive Android heading: the azimuth of the device's +Y axis, exactly
-     * what SensorManager.getOrientation returns in element zero. It exists so a
-     * test can show how far it diverges from the reference axis the operator
-     * actually means, and so the comparison can be recorded rather than argued.
+     * what SensorManager.getOrientation returns in element zero. Tests use it to
+     * measure how far it diverges from the reference axis the operator means.
      */
     fun naiveAzimuth(rotationVector: FloatArray): Double {
         val rotation = rotationMatrix(rotationVector)

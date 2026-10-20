@@ -25,8 +25,7 @@ import android.hardware.Camera
  * A camera that offers none of the three — one with only `infinity`, `macro` or `edof` — is
  * returned null for, and is left exactly as it is. That is not a failure: an EDOF or fixed-focus
  * camera has no lens to move and is already as sharp as it will ever be, and setting a mode on
- * one would only take it away from what it does well. It is also why this defect could not be
- * seen on a device with such a camera, which is the device this feature was built against.
+ * one would only take it away from what it does well.
  *
  * [ScanFocusTest] pins the preference, because the strings are the framework's contract and a
  * misspelling fails silently.

@@ -25,7 +25,7 @@ import (
 // FormatPongResult formats the ping-outcome string matching Python's
 // _ping_peer_from_dialog (Conversations.py:734-744):
 //
-//	hops_str = f" ({hops} hop{'s' if hops != 1 else '')})"  when hops < PATHFINDER_M
+//	hops_str = f" ({hops} hop{'s' if hops != 1 else ''})"  when hops < PATHFINDER_M
 //	f"Pong in {elapsed_ms} ms{hops_str}"
 //
 // The hop suffix is omitted when the hop count is unknown: hops < 0 (the

@@ -19,12 +19,7 @@
 // Micron is forgiving in the worst way: a construct it cannot recognize is not
 // rejected, it is rendered as ordinary text, and a construct it reads as a
 // container can swallow the rest of the page. A mistyped directive therefore
-// does not look like a bug in the source -- it looks like a page that prints
-// odd punctuation to its visitors, which is how the guestbook shipped a raw
-// "`{:/page/hit-counter.wasm`0`quiet=1}" to the web: the partial directive sat at
-// the end of a line of text, where Micron only tests for a partial at the START
-// of a line, so the directive was never extracted, never fetched (the site
-// counter silently stopped advancing), and the visitor read it verbatim.
+// does not surface as an error; it shows up as odd punctuation on the page.
 //
 // The linter renders every page through the same parser the client uses and
 // reports the constructs that cannot have done what their author intended:

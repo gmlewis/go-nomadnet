@@ -21,11 +21,8 @@ import Foundation
 /// rate limit and the sanity checks, and nothing else in the appliance repeats them — so
 /// what it accepts is what is published. This is that decision's result as a value.
 ///
-/// It was a serialized JSON line once, and that line was written and thrown away: the
-/// appliance feeds the Go half structured values, which emit the NMEA sentences their
-/// receivers parse, so the serialization was a second encoding of the same reading that
-/// nobody read. A reading is now handed over in the shape it is used in, which is what
-/// makes one set of rules the whole path's rules rather than the first half's.
+/// The appliance feeds the Go half these structured values, and the Go half emits the NMEA
+/// sentences its receivers parse; nothing is serialized here.
 public enum SensorReading: Equatable, Sendable {
     /// A position the appliance will publish.
     case fix(AcceptedFix)

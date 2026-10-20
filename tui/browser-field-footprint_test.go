@@ -38,9 +38,9 @@ const fieldFootprintPage = "Name: `B444`<name`>`b|end\n\n`[Go`/x]\n"
 //
 // renders as 6 cells of label, 24 cells of field, then whatever follows — the
 // field's box is visible whether or not it holds pre-defined text, and whether
-// or not it currently has the focus. The Go port advanced the line by the
-// field's *text* width instead, so an empty field occupied zero cells and the
-// mounted editor overlay (24 cells wide) painted over the text after it.
+// or not it currently has the focus. Advancing the line by the field's *text*
+// width instead would make an empty field occupy zero cells, and the mounted
+// editor overlay (24 cells wide) would paint over the text after it.
 func TestBrowserFieldFootprintReservesWidth(t *testing.T) {
 	t.Parallel()
 

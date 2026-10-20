@@ -69,9 +69,8 @@ func drawCheckboxScreen(t *testing.T, bd *BrowserDisplay) tcell.Screen {
 // TestBrowserCheckboxRadioRenderStateGlyph pins that checkbox and radio fields
 // draw the state glyph urwid draws, in the four-cell icon column urwid reserves
 // before the label (urwid/widget/wimp.py:146-151, 465-470): "[ ] ", "[X] ",
-// "( ) ", "(X) ". The Go port rendered only the bare label, so a visitor could
-// not see which options were set — and no state at all when a form's markup
-// prechecked one.
+// "( ) ", "(X) ". Rendering only the bare label hides which options are set,
+// and hides the state entirely when a form's markup prechecks one.
 func TestBrowserCheckboxRadioRenderStateGlyph(t *testing.T) {
 	t.Parallel()
 

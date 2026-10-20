@@ -21,14 +21,13 @@ import (
 	"github.com/gmlewis/tcell/v2"
 )
 
-// TestSelectableInterfaceItemStatusColors pins the V-Interfaces coloring fix.
+// TestSelectableInterfaceItemStatusColors pins the interfaces-list coloring.
 // Python's SelectableInterfaceItem (Interfaces.py:1136-1158) styles the
 // Enabled/Disabled status and the Connected/Disconnected connection text from
 // the palette: connected_status (green) when true, disconnected_status (red)
-// when false. The Go port painted every row with tcell.StyleDefault, so the
-// page read as monochrome. This test asserts the status/connection cells carry
-// the palette foreground color resolved through the same StyleRegistry the app
-// uses (robust to the exact RGB of the named "dark green"/"dark red" colors).
+// when false. This test asserts the status/connection cells carry the palette
+// foreground color resolved through the same StyleRegistry the app uses
+// (robust to the exact RGB of the named "dark green"/"dark red" colors).
 //
 // Row layout (content starts at x=3): the status row is
 // "Status:   <status10> | <conn>" → the status value's first char is at x=13,

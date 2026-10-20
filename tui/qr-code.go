@@ -39,8 +39,8 @@ func GenerateQRASCII(data string) (string, error) {
 		Writer:     &buf,
 		HalfBlocks: true,
 		// Half-block glyphs. The package's BLACK/WHITE constants are full-cell
-		// ANSI escape sequences; using them with HalfBlocks emitted escape
-		// bytes instead of "█▀▄", so the QR dialog rendered garbage.
+		// ANSI escape sequences and must not be used with HalfBlocks; the
+		// half-block constants emit "█▀▄" directly.
 		BlackChar:      qrterminal.BLACK_BLACK,
 		WhiteChar:      qrterminal.WHITE_WHITE,
 		BlackWhiteChar: qrterminal.BLACK_WHITE,

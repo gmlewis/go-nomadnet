@@ -20,11 +20,10 @@ import (
 	"testing"
 )
 
-// TestEmbeddedTerminalStopIsIdempotent pins the stop() race fix: stop is
-// called from both Close (the UI goroutine) and the child-exit watcher
-// goroutine, so concurrent calls raced a check-then-close into
-// "close of closed channel" (a pre-existing flake that panicked the whole
-// process under -race). Sixty concurrent stops must all succeed.
+// TestEmbeddedTerminalStopIsIdempotent verifies that stop is idempotent: it
+// is called from both Close (the UI goroutine) and the child-exit watcher
+// goroutine, so a check-then-close would race into "close of closed channel"
+// and panic the whole process. Sixty concurrent stops must all succeed.
 func TestEmbeddedTerminalStopIsIdempotent(t *testing.T) {
 	t.Parallel()
 

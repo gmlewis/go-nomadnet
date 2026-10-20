@@ -129,16 +129,14 @@ func TestGuidePaneFocusSwitching(t *testing.T) {
 	}
 }
 
-// TestGuideColumnsWidthsMatchPython pins B7: the Guide two-pane column widths
-// must match Python's urwid.Columns with float weights [0.33, 0.67] (Guide.py
+// TestGuideColumnsWidthsMatchPython pins the Guide two-pane column widths to
+// Python's urwid.Columns with float weights [0.33, 0.67] (Guide.py
 // list_width = 0.33). Python computes the topics-pane width as
-// int(maxcol*0.33 + 0.5) via urwid's column_widths subtractive rounding. The Go
-// port must use the SAME ratio — integer weights [33, 67] replicate 0.33/0.67
-// exactly (33/100 == 0.33 in float64), whereas [1, 2] (1/3, 2/3) rounds one
-// larger at widths where 1/3 of the width lands just above 0.33 of it
-// (e.g. maxcol 200 → [1,2] gives 67, but Python gives 66). At the tmux-suite
-// size the live Go topics box was 67 wide vs Python 66, shifting every reader
-// wrap point by one column.
+// int(maxcol*0.33 + 0.5) via urwid's column_widths subtractive rounding.
+// Integer weights [33, 67] replicate 0.33/0.67 exactly (33/100 == 0.33 in
+// float64), whereas [1, 2] (1/3, 2/3) rounds one larger at widths where 1/3 of
+// the width lands just above 0.33 of it (e.g. maxcol 200 → 67, but Python
+// gives 66).
 func TestGuideColumnsWidthsMatchPython(t *testing.T) {
 	t.Parallel()
 
@@ -200,12 +198,10 @@ func TestGuideDisplayWidgetType(t *testing.T) {
 	}
 }
 
-// TestGuideShortcutBarEmpty pins A2: the Guide page footer shortcut bar must be
-// EMPTY, matching Python's GuideDisplayShortcuts (Guide.py:8-13) which wraps an
+// TestGuideShortcutBarEmpty pins that the Guide page footer shortcut bar is
+// empty, matching Python's GuideDisplayShortcuts (Guide.py:8-13) which wraps an
 // empty urwid.Text("") in the "shortcutbar" attr — the footer row is just the
-// shortcutbar background fill with no text. The Go port previously returned a
-// "[C-q] Quit  [Tab] Move Focus  [Enter] Select Topic / Follow Link" bar
-// (go_session-002.cast confirms the extra text; python_session.cast has none).
+// shortcutbar background fill with no text.
 func TestGuideShortcutBarEmpty(t *testing.T) {
 	t.Parallel()
 
@@ -217,13 +213,11 @@ func TestGuideShortcutBarEmpty(t *testing.T) {
 	}
 }
 
-// TestGuideReaderBorderUntitled pins A3: the Guide reader (right pane) border
-// must carry NO title. Golden (Python Guide.py:207): the reader is
+// TestGuideReaderBorderUntitled pins that the Guide reader (right pane) border
+// carries no title. Python (Guide.py:207) builds the reader as
 // `urwid.LineBox(urwid.Filler(topic_text, urwid.TOP))` with no title= argument
-// — the topic title is a content `>` heading INSIDE the pane, not a border
-// title. The Topics list (left pane) IS titled "Topics" (Guide.py:188). The Go
-// port previously titled the reader border with the topic label (showTopic) or
-// "?" (showPlaceholder); both must be removed.
+// — the topic title is a content `>` heading inside the pane, not a border
+// title. The Topics list (left pane) IS titled "Topics" (Guide.py:188).
 func TestGuideReaderBorderUntitled(t *testing.T) {
 	t.Parallel()
 
@@ -231,13 +225,12 @@ func TestGuideReaderBorderUntitled(t *testing.T) {
 	gd := NewGuideDisplay(app)
 
 	// After construction the placeholder is shown; the reader border must be
-	// untitled (not "?").
+	// untitled.
 	if got := gd.readerBox.GetTitle(); got != "" {
 		t.Errorf("readerBox title after placeholder = %q, want \"\" (Python reader LineBox is untitled)", got)
 	}
 
-	// After showing a real topic the reader border must STILL be untitled
-	// (not the topic label).
+	// After showing a real topic the reader border must still be untitled.
 	gd.showTopic(0)
 	if got := gd.readerBox.GetTitle(); got != "" {
 		t.Errorf("readerBox title after showTopic = %q, want \"\" (topic title is content, not a border title)", got)
@@ -247,11 +240,10 @@ func TestGuideReaderBorderUntitled(t *testing.T) {
 func TestGuideContent(t *testing.T) {
 	t.Parallel()
 
-	// The Introduction topic is embedded from the Python Guide (with a
-	// deliberate, user-authorized grammar / US-spelling cleanup pass; see the
-	// guide-grammar-review-findings memory) and rendered through the micron
-	// styled-line renderer. Its rendered plain text must mention Nomad Network
-	// and Reticulum (the original introContent checked the same substrings).
+	// The Introduction topic is embedded from the Python Guide and rendered
+	// through the micron styled-line renderer. Its rendered plain text must
+	// mention Nomad Network and Reticulum (the original introContent checked
+	// the same substrings).
 	content := guideTopicPlainText(guideIntroduction, ThemeDark)
 	if len(content) == 0 {
 		t.Error("introduction rendered text is empty")

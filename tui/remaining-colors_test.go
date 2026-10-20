@@ -23,7 +23,7 @@ import (
 )
 
 // TestBrowserPaneFallbackColor pins the browser-pane disconnected fallback to
-// the cube-quantized browser_inactive value (#444 → #5f5f5f), not the prior
+// the cube-quantized browser_inactive value (#444 → #5f5f5f), not the
 // nibble-doubled 0x444444.
 //
 // Python source: TextUI.py:30 (browser_inactive = #444, 3-hex).
@@ -43,8 +43,8 @@ func TestBrowserPaneFallbackColor(t *testing.T) {
 
 // TestLXMFPeersViewTitleColor pins the LXMF peers view title to ColorDefault.
 // Python wraps the peers panel in `AttrMap(LineBox(...), widget_style)` where
-// widget_style is None (default) when populated (Network.py:1786). The LineBox
-// title inherits default styling. The Go port previously used 0xdddddd.
+// widget_style is None (default) when populated (Network.py:1786), so the
+// LineBox title inherits default styling.
 func TestLXMFPeersViewTitleColor(t *testing.T) {
 	t.Parallel()
 
@@ -77,8 +77,7 @@ func TestLXMFPeersViewTitleColor(t *testing.T) {
 // msg_header_sent palette entry. Python wraps the room header in
 // `AttrMap(urwid.Text(""), "msg_header_sent")` (Channels.py:602);
 // msg_header_sent is #111/#ddd (dark, 3-hex cube-quantized to
-// #000000/#d7d7d7) / #111/#ddd (light, cube-quantized same). The Go port
-// previously used 0xdddddd for text only, with no background.
+// #000000/#d7d7d7) / #111/#ddd (light, cube-quantized same).
 //
 // Python source: Channels.py:602; TextUI.py:35.
 func TestRoomWidgetHeaderColor(t *testing.T) {
@@ -142,7 +141,7 @@ func TestRoomWidgetUsersTitle(t *testing.T) {
 // TestDirectoryDisplayTitleColor pins the directory title text to body_text.
 // Python's Directory.py uses body_text for its only text (Directory.py:14);
 // body_text is 3-hex #ddd (dark) / #222 (light), cube-quantized to
-// #d7d7d7 / #000000. The Go port previously used 0xdddddd (nibble-doubled).
+// #d7d7d7 / #000000.
 func TestDirectoryDisplayTitleColor(t *testing.T) {
 	t.Parallel()
 
@@ -184,8 +183,7 @@ func TestDirectoryDisplayTitleColor(t *testing.T) {
 // shortcutbar palette fg (#111 cube-quantized to #000000). Python wraps the
 // sync-status line in `AttrMap(urwid.Text(...), "shortcutbar")`
 // (Conversations.py:410); shortcutbar has the same colors as menubar
-// (#111/#bbb, 3-hex cube-quantized to #000000/#afafaf). The Go port
-// previously used 0xaaaaaa (nibble-doubled #aaa).
+// (#111/#bbb, 3-hex cube-quantized to #000000/#afafaf).
 func TestConversationsSyncStatusColor(t *testing.T) {
 	t.Parallel()
 

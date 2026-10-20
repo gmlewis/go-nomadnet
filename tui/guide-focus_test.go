@@ -21,27 +21,16 @@ import (
 	"github.com/gmlewis/tview"
 )
 
-// TestGuideFocusModelTopic7DownsToBottom is the B2 golden test. The root cause:
-// Python's Guide reader is a urwid Scrollable(Pile(LinkableText)),
-// so each Down advances the Pile focus to the next SELECTABLE line — headings,
-// dividers and blank lines are urwid.Text/Divider (non-selectable) and are
-// skipped. The number of Downs to reach the bottom therefore equals the number
-// of selectable lines (one focus advance per Down), NOT the total rendered
-// row count. Python nomadnet reaches the bottom of topic 7 ("Markup") in 502
-// downs (nomadnet tmux-test-suite log line 13795: "guide topic 7 reader: bottom
-// reached after 502 downs (478 screenfuls)"). The Go renderer produces 497
-// selectable lines for topic 7, so the focus model reaches the LAST selectable
-// in 497-1 == 496 Downs (focus starts at the first), then the suite's K=4
-// stuck-confirmation adds ~4-6 → ~500-502, matching Python. The OLD Go model
-// (tview.TextView, 1 display row per Down) needs one Down per rendered row;
-// topic 7 has ~920 rendered lines so it blows past the suite's 700-Down safety
-// cap (gonomadnet log line 16833: "max 700 downs"), which is the user-visible
-// "2-3× slower, never ends" symptom.
+// TestGuideFocusModelTopic7DownsToBottom pins the focus model: Python's Guide
+// reader is a urwid Scrollable(Pile(LinkableText)), so each Down advances the
+// Pile focus to the next SELECTABLE line — headings, dividers and blank lines
+// are urwid.Text/Divider (non-selectable) and are skipped. The number of Downs
+// to reach the bottom therefore equals the number of selectable lines (one
+// focus advance per Down), NOT the total rendered row count.
 //
 // This test pins the model: the focus-model walk reaches the last selectable
-// line of topic 7 in exactly 496 Downs (== selectableCount-1), well under the
-// 700 cap, and the legacy one-row-per-Down count (total rendered lines) exceeds
-// 700 — proving the cap hit was the scroll model, not the content length.
+// line of topic 7 in exactly 496 Downs (== selectableCount-1), and the
+// one-row-per-Down count (total rendered lines) is much larger.
 func TestGuideFocusModelTopic7DownsToBottom(t *testing.T) {
 	t.Parallel()
 
@@ -183,11 +172,9 @@ func TestGuideFocusJumpToAnchorSetsFocus(t *testing.T) {
 	}
 }
 
-// TestGuideFocusCursorRowAdvances pins B5's precondition for the suite's
-// bottom-detection: within the visible viewport (no scroll), each Down must
-// move the hardware cursor to a different row, so the suite's cursor-y tracker
-// sees movement (and does not false-bottom during the within-viewport phase).
-// The cursor row is the focused line's display row minus the scroll offset.
+// TestGuideFocusCursorRowAdvances pins that within the visible viewport (no
+// scroll) each Down moves the hardware cursor to a different row. The cursor
+// row is the focused line's display row minus the scroll offset.
 func TestGuideFocusCursorRowAdvances(t *testing.T) {
 	t.Parallel()
 
@@ -235,9 +222,9 @@ func (gd *GuideDisplay) downsToLastSelectable() int {
 	return len(gd.selectable) - 1
 }
 
-// legacyDownsToBottom is the OLD one-row-per-Down count: the total number of
-// rendered (wrapped) display rows, which the TextView model needed one Down
-// per row to traverse. Used to demonstrate the 700-cap root cause.
+// legacyDownsToBottom returns the one-row-per-Down count: the total number of
+// rendered (wrapped) display rows, which a TextView-based model would need one
+// Down per row to traverse. Used to show the focus model needs far fewer Downs.
 func (gd *GuideDisplay) legacyDownsToBottom() int {
 	total := 0
 	w := gd.readerWidth()

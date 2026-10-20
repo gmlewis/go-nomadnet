@@ -64,8 +64,8 @@ func TestChannelsShortcutBar(t *testing.T) {
 	}
 }
 
-// TestChannelsRoomEditorFocusSwitchesBar pins item 17: focusing the room
-// composer switches the shortcut bar to the editor region (Python
+// TestChannelsRoomEditorFocusSwitchesBar pins that focusing the room composer
+// switches the shortcut bar to the editor region (Python
 // RoomFrame.focus_position setter → update_active_shortcuts,
 // Channels.py:509-520).
 func TestChannelsRoomEditorFocusSwitchesBar(t *testing.T) {

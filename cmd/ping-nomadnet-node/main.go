@@ -196,10 +196,9 @@ func run(args []string) int {
 	// Discover mode: listen for an announce matching the active aspect, then
 	// link to (and in --browse mode, request a page from) the announced node.
 	// This is the path a nomadnet/MeshChat browser takes when it has no prior
-	// identity for a node, and is the most faithful reproduction of the
-	// 0.4.0->0.7.0 "can't browse" symptom. The handler is registered before any
-	// grace so the very first announce (sent ~StartAnnounceDelay after the node
-	// starts) is not missed.
+	// identity for a node. The handler is registered before any grace so the
+	// very first announce (sent ~StartAnnounceDelay after the node starts) is
+	// not missed.
 	if opts.discover {
 		app, aspects := destAppAspects(opts)
 		aspectFilter := app + "." + strings.Join(aspects, ".")
@@ -377,7 +376,7 @@ func pingOne(ts *rns.TransportSystem, t target, opts *options) result {
 	})
 	link.SetLinkClosedCallback(func(l *rns.Link) {
 		// If the link activated, the established callback already recorded the
-		// outcome; the subsequent close (after our teardown) is a no-op.
+		// outcome; the subsequent close (after teardown) is a no-op.
 		select {
 		case <-established:
 			return
@@ -479,8 +478,7 @@ var (
 // and open a node it has no prior identity for: it hears the announce, recalls
 // the identity, and opens a link. Unlike --identity (which loads the target key
 // from disk and bypasses discovery entirely), --discover exercises the real
-// announce/discovery path that MeshChat depends on, making it the faithful
-// reproduction of the 0.4.0->0.7.0 "cannot browse any node" symptom.
+// announce/discovery path that MeshChat depends on.
 //
 // On an announce the destination hash and the announced identity are both
 // delivered to the handler, so no RecallIdentity is needed: the captured

@@ -160,16 +160,12 @@ func (lp *LocalPeerDisplay) SetLastAnnounce(t time.Time) {
 	lp.announce.SetText(lp.announceLine(t))
 }
 
-// SetName seeds the name edit field with the current display name. It is called
-// ONCE by the wiring layer when the Network display is first wired (from
-// app.GetDisplayName(), which reads peer_settings loaded synchronously during
-// Init), mirroring Python's LocalPeer.__init__ which sets e_name.edit_text once
-// at construction (Network.py:1271) and never re-sets it. The name is
-// deliberately NOT part of SetData: incoming announces/messages fire
-// UIChangeCallback → SetData on every event, so including the name there would
-// overwrite the user's in-progress typing and jump the cursor to the end. The
-// name is only ever re-seeded across a full app restart (when LocalPeer is
-// reconstructed from the saved peer_settings display name).
+// SetName seeds the name edit field with the current display name. The wiring
+// layer calls it once, when the Network display is first wired, mirroring
+// Python's LocalPeer.__init__ which sets e_name.edit_text once at construction
+// (Network.py:1271) and never re-sets it. The name is deliberately not part of
+// SetData: incoming announces and messages re-run SetData on every event, which
+// would overwrite in-progress typing and jump the cursor to the end.
 func (lp *LocalPeerDisplay) SetName(name string) {
 	lp.nameEdit.SetText(name)
 }

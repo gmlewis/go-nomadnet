@@ -189,11 +189,12 @@ func TestNewMainDisplay(t *testing.T) {
 	}
 }
 
-// TestMainDisplaySetDisplay pins what SetDisplay does, which the test previously
-// discarded: it mounts the widget as a page, and it switches to that page only when it is
-// the ACTIVE one (SetDisplay's isActive branch). A display registered for a page the user
-// is not looking at must be added without stealing the view — the other pages keep
-// refreshing in the background, and a steal would yank the reader off their page.
+// TestMainDisplaySetDisplay pins what SetDisplay does: it mounts the widget as
+// a page, and it switches to that page only when it is the ACTIVE one
+// (SetDisplay's isActive branch). A display registered for a page the user is
+// not looking at must be added without stealing the view — the other pages keep
+// refreshing in the background, and a steal would yank the reader off their
+// page.
 func TestMainDisplaySetDisplay(t *testing.T) {
 	t.Parallel()
 

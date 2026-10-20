@@ -28,22 +28,17 @@ import (
 )
 
 // The reader's position is a fact about the person holding the device, and who
-// else learns it is that person's decision. These tests turn the claim in
-// nomadnet/micron/location-extension.md — "nothing leaves the node" — into
-// evidence: they enumerate every place the client turns a position into text and
-// assert that the READER'S OWN coordinate appears in none of them.
+// else learns it is that person's decision. These tests enumerate every place
+// the client turns a position into text and assert that the READER'S OWN
+// coordinate appears in none of them.
 //
 // The structural half of the argument is that the application layer cannot reach
 // the position at all: nothing under nomadnet/app, nomadnet/node, nomadnet/browser,
 // nomadnet/conversation or nomadnet/directory imports this package, so the paths
 // that announce, fetch, send, and store have nothing to serialise. These tests
 // cover the other half — the places a position really is rendered — so that a
-// future change that started mixing the reader's own coordinate into one of them
-// would fail here rather than in the field.
-//
-// E11 in the project brief is the wire capture and the on-disk check, run against
-// the real stack on the device; these are the fast, deterministic half that runs
-// in the gate.
+// change that started mixing the reader's own coordinate into one of them would
+// fail here.
 
 // readerFix is a deliberately distinctive position: six decimal places is about
 // 11 cm, so the chance of a coincidental match in unrelated output is nil.
@@ -218,8 +213,7 @@ func TestReaderPositionNeverReachesTheLocationCard(t *testing.T) {
 
 // TestReaderPositionNeverReachesTheStatusLine asserts the line that tells the reader
 // what the client knows about them carries how old and how good the reading is, and
-// never the reading itself. A status line that printed the coordinate would leak it
-// into every log, screenshot, and bug report the reader produced.
+// never the reading itself.
 func TestReaderPositionNeverReachesTheStatusLine(t *testing.T) {
 	t.Parallel()
 
@@ -328,8 +322,7 @@ func TestSourceHoldsNoSerialisableFormOfThePosition(t *testing.T) {
 
 // TestAQuietFeedLeavesTheClientWithNothing asserts the graceful-absence rule in
 // the form that matters for privacy: a feed that stops does not leave the client
-// holding the last coordinate it heard, because a stale position reported as
-// current is the same class of bug as a wrong one.
+// holding the last coordinate it heard.
 func TestAQuietFeedLeavesTheClientWithNothing(t *testing.T) {
 	t.Parallel()
 

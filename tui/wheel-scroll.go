@@ -63,8 +63,7 @@ func scrollWheelStep(action tview.MouseAction, offset, height, total int) (next 
 // between wheel notches and rebuilds the index, so trackEnd is never set
 // prematurely. A root wrapper that re-dispatches a single notch N times with NO
 // Draw between deliveries breaks that — the 2nd delivery sees the shortfall
-// and sets trackEnd, and the post-notch Draw leaps to the bottom. That was the
-// "first scroll after a Guide topic switch jumps to the end" bug. Scrolling by
+// and sets trackEnd, and the post-notch Draw leaps to the bottom. Scrolling by
 // N rows in ONE ScrollTo sidesteps the trackEnd path entirely (ScrollTo sets
 // trackEnd=false), so there is no jump and exactly one redraw per notch.
 //
@@ -81,7 +80,7 @@ func scrollWheelStep(action tview.MouseAction, offset, height, total int) (next 
 // already override MouseHandler around a TextView (ScrollBar, browserPageView)
 // delegate their wheel to the TextView's handler, so installing this capture
 // on that TextView is sufficient for them too — their own boundary guard is
-// then redundant (scrollWheelStep handles the boundary) and is removed.
+// then redundant (scrollWheelStep handles the boundary).
 // wheelScrollable is the subset of a scrollable *tview.TextView (or a wrapper
 // that embeds one, like the Guide's guideReader) that the wheel-multiplier
 // capture needs: SetMouseCapture (promoted from *tview.Box) installs the

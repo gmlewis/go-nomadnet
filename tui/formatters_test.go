@@ -743,13 +743,12 @@ func TestParseQueryFields(t *testing.T) {
 }
 
 // TestPrettyDate verifies PrettyDate matches Python's pretty_date at
-// Network.py:1933 for a range of ages. Expected values were captured from the
-// Python source run with a fixed now (2026-07-31 12:00:00 UTC), so the test
-// drives the time-injected prettyDateAt with that same fixed now.
+// Network.py:1933 for a range of ages, driven through the time-injected
+// prettyDateAt with a fixed now.
 func TestPrettyDate(t *testing.T) {
 	t.Parallel()
 
-	// Fixed now matching /tmp/prettydate_ref.py: 2026-07-31 12:00:00 UTC.
+	// Fixed now so every expected value below is deterministic.
 	now := time.Date(2026, 7, 31, 12, 0, 0, 0, time.UTC)
 	tests := []struct {
 		name   string

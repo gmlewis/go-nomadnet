@@ -10,11 +10,10 @@ import (
 	"github.com/gmlewis/tview"
 )
 
-// TestStatusDialogOKButtonMouseClick reproduces the reported "click OK and
-// nothing happens" bug: a mouse click on the dialog's OK button must fire the
-// button's selected callback (DismissTop) and close the dialog. Before the
-// fix, DialogLineBox had no MouseHandler, so clicks never reached the button
-// (only Enter worked, via InputHandler).
+// TestStatusDialogOKButtonMouseClick verifies that a mouse click on the
+// dialog's OK button fires the button's selected callback (DismissTop) and
+// closes the dialog: DialogLineBox forwards mouse events to its content, so
+// clicks reach the button just as Enter does via InputHandler.
 func TestStatusDialogOKButtonMouseClick(t *testing.T) {
 	app, _, _ := setupDialogTest(t)
 	dm := app.Dialogs

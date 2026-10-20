@@ -61,12 +61,11 @@ fun choosePreviewSize(sizes: List<PreviewSize>): PreviewSize? {
  * and a code in one costs a number of pixels per module. What varies between one reading and the
  * next is not the code but how much of the frame it fills.
  *
- * VGA was the floor while the only code ever read filled the frame: a code printed on a page,
- * held so that it is the whole picture, resolves there. A code on a screen is not that. The
- * whole screen has to be in frame to be aimed, the reader is holding a device at arm's length
- * from another device, and the code is about a fifth of what the camera sees — a fifth of VGA is
- * roughly four pixels to a module, which is a decode with nothing to spare, and no margin at all
- * for an optic that is not perfectly sharp.
+ * VGA is enough for a code printed on a page and held so that it fills the frame. A code on a
+ * screen is not that: the whole screen has to be in frame to be aimed, the reader is holding a
+ * device at arm's length from another device, and the code is about a fifth of what the camera
+ * sees — a fifth of VGA is roughly four pixels to a module, which has no margin for an optic
+ * that is not perfectly sharp.
  *
  * 720p puts that same code at about nine pixels to a module and roughly triples the work per
  * frame, which a frame-dropping decoder and a preview that is read between frames both absorb.

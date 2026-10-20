@@ -127,7 +127,7 @@ func TestFormatUnixNilZoneFallsBackToLocal(t *testing.T) {
 	}
 }
 
-// TestParseTimestampConstruct pins the `t<seconds>`<format>t` construct: the
+// TestParseTimestampConstruct pins the `T<seconds>|<format>`T construct: the
 // page emits unix seconds, and the client that parses the page renders them in
 // its own zone.
 func TestParseTimestampConstruct(t *testing.T) {

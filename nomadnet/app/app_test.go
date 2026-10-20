@@ -579,15 +579,13 @@ func TestInitWithTransportSetsRRCIdentity(t *testing.T) {
 	}
 }
 
-// TestDirAnnounceEventsCrossRunRetention pins the parity fix for "gonomadnet
-// doesn't retain node history across runs": the Network panel must read the
-// persisted directory announce stream (a.DirAnnounceEvents, mirroring Python's
-// AnnounceStream widget iterating app.directory.announce_stream, Network.py:489)
-// so it populates at boot from the previous run's discovered nodes loaded by
-// Dir.LoadFromDisk.
+// TestDirAnnounceEventsCrossRunRetention pins cross-run announce retention: the
+// Network panel reads the persisted directory announce stream
+// (a.DirAnnounceEvents, mirroring Python's AnnounceStream widget iterating
+// app.directory.announce_stream, Network.py:489) so it populates at boot from
+// the previous run's discovered nodes loaded by Dir.LoadFromDisk.
 // AppA receives announces, shuts down (persisting the stream); AppB loads the
-// same storage dir and must see the announces — the "same list of live nodes
-// from history" the user needs for parity capture.
+// same storage dir and must see the announces.
 func TestDirAnnounceEventsCrossRunRetention(t *testing.T) {
 	t.Parallel()
 
@@ -647,8 +645,8 @@ func TestDirAnnounceEventsCrossRunRetention(t *testing.T) {
 	}
 	defer b.Shutdown()
 
-	// AppB's Network panel must show the persisted announces at boot — the
-	// core retention fix — without any new live announce having arrived.
+	// AppB's Network panel must show the persisted announces at boot, without
+	// any new live announce having arrived.
 	reloaded := b.DirAnnounceEvents()
 	var rNode, rPeer int
 	for _, ev := range reloaded {

@@ -19,11 +19,9 @@ import "testing"
 
 // TestBlankLineCarriesFormattingState pins the blank-line parity rule:
 // Python markup_to_attrmaps renders an empty line as urwid.Text("") wrapped in
-// AttrMap(make_style(state)) with the LIVE state (MicronParser.py:117-120), so
+// AttrMap(make_style(state)) with the live state (MicronParser.py:117-120), so
 // a blank line inside an active `F<color>`/`B<color>`/formatting run carries
-// that state, not the theme plain defaults. Found by the ttp-index.mu corpus
-// fixture (a blank line between a literal block and `f kept #dddddd in Go that
-// Python rendered #ffdd00).
+// that state, not the theme plain defaults.
 func TestBlankLineCarriesFormattingState(t *testing.T) {
 	t.Parallel()
 	// The bare `Ffd0 line toggles fg state and renders no visible row.

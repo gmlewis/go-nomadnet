@@ -12,9 +12,9 @@ import (
 
 // phases.go implements the 5-phase scripted test as a verified state machine.
 // Every keystroke is followed by a Wait on a View condition (parsed screen +
-// cursor position) that asserts the intended result, instead of the blind
-// sleep+grep the bash predecessor used. Failures are logged but never fatal —
-// the run continues through all phases so the log records the full sequence.
+// cursor position) that asserts the intended result. Failures are logged but
+// never fatal — the run continues through all phases so the log records the
+// full sequence.
 
 // driver holds the test run state and shared helpers.
 type driver struct {
@@ -40,7 +40,7 @@ type driver struct {
 	asserts   int
 	assertOK  int
 	failures  int
-	scrollBug int // guide topics where the scroll-reset bug was observed
+	scrollBug int // guide topics that did not open scrolled to the top
 }
 
 // send sends tmux key names then pauses stepDelay for the app to redraw.
@@ -184,32 +184,26 @@ func (d *driver) enterAnnounceList(maxDowns int) bool {
 // list, the tab/filter bar, a dialog) up to the menu bar. The caller asserts.
 // Caps total steps so a stuck focus still returns.
 //
-// ROOT CAUSE (the "Save Node Info loop" bug): the Python AnnounceStream's node
-// list is an IndicativeListBox built with modifier_key=MODIFIER_KEY.NONE, so
-// MODIFIER_KEY.NONE.prepend_to("up") == "up" — plain Up IS the ilb's handled
-// key. The ilb CONSUMES plain Up to move the SELECTION up the list
-// (_pass_key_to_contained_listbox -> ListBox.keypress); it only returns "up"
-// UNHANDLED when the first item is already selected (first_item_is_selected,
-// Network.py:862/1790 + indicative_listbox.py:217). Only then does the
-// AnnounceStream's internal Pile climb ilb -> filter -> tab, and the next Up at
-// the tab bar sets frame.focus_position="header" (Network.py:448) — 3 Ups total.
-// So Up from a MID-LIST selection (where the selection sits after Connect) moves
-// the selection (consumed) and never climbs — exactly the 10-Up stuck loop in
-// /tmp/nomadnet-tmux-test-suite-1785933157.log (cursor stayed (0,0), browser sig
-// unchanged, menu never reached).
+// The Python AnnounceStream's node list is an IndicativeListBox built with
+// modifier_key=MODIFIER_KEY.NONE, so plain Up IS the ilb's handled key. The ilb
+// consumes Up to move the selection up the list and only returns "up" unhandled
+// when the first item is already selected (Network.py:862/1790 +
+// indicative_listbox.py:217). Only then does the AnnounceStream's internal Pile
+// climb ilb -> filter -> tab, and the next Up at the tab bar sets
+// frame.focus_position="header" (Network.py:448) — 3 Ups total. Up from a
+// mid-list selection therefore moves the selection and never climbs.
 //
-// FIX: send Home ONCE first. Home -> ilb select_first_item (indicative_listbox
-// :217-221) moves the selection to the TOP (consumed when mid-list; a no-op that
-// returns "home" unhandled when already at top). After Home the ilb is at the
-// top, so the next plain Up returns "up" unhandled and the pile climbs
+// Send Home once first: Home -> ilb select_first_item (indicative_listbox:217-221)
+// moves the selection to the top (consumed when mid-list, unhandled when already
+// at the top). The next plain Up is then unhandled and the pile climbs
 // ilb -> filter -> tab -> menu in 3 Ups. The homeSent flag prevents looping on
 // Home (at the top it does nothing). Home is harmless on the filter/tab bars
 // (Edit Home / no-op) and the local-peer panel (no-op), and Up still climbs from
 // those, so the same Home+Up sequence escapes from any left-pane focus state.
 func (d *driver) escapeToMenu(maxSteps int) {
-	// homeSent tracks whether we've sent Home to move the AnnounceStream ilb's
-	// selection to the top. Reset on any key that could move focus to a different
-	// pile widget (Escape from Announce Info, Left from the browser, Up off the
+	// homeSent tracks whether Home has moved the AnnounceStream ilb's selection to
+	// the top. It is reset on any key that could move focus to a different pile
+	// widget (Escape from Announce Info, Left from the browser, Up off the
 	// local-peer panel) so Home is re-sent once focus is back on the ilb.
 	homeSent := false
 	for range maxSteps {
@@ -217,12 +211,11 @@ func (d *driver) escapeToMenu(maxSteps int) {
 		if _, ok := v.MenuFocusedButton(); ok {
 			return
 		}
-		// If an Announce Info is open, the cursor is trapped on its button row
-		// (< Back > at ~(3,12)) and Up cycles the buttons without escaping. The
-		// probe confirmed Escape closes Announce Info and returns focus to the
-		// Announce Stream list (cursor hidden at (0,0)), from which Home+Up×3
-		// reaches the menu. Handle this BEFORE the other checks, since the button
-		// row is in the LEFT pane at a small cursor_x.
+		// An Announce Info traps the cursor on its button row (< Back > at
+		// ~(3,12)) and Up cycles the buttons without escaping. Escape closes it and
+		// returns focus to the Announce Stream list (cursor hidden at (0,0)), from
+		// which Home+Up×3 reaches the menu. Handle this BEFORE the other checks,
+		// since the button row is in the LEFT pane at a small cursor_x.
 		if v.Screen != nil && utils.HasBorderTitle(v.Screen.FullText(), "Announce Info") {
 			d.send("Escape")
 			homeSent = false
@@ -240,7 +233,7 @@ func (d *driver) escapeToMenu(maxSteps int) {
 		// Local Peer < Save > / < Node Info > button focused (cursor on the
 		// button row at ~(3,28)): Up moves the NetworkLeftPile focus from
 		// local_peer (pos 1) up to the AnnounceStream (pos 0); then Home+Up
-		// climbs to the menu. This is the "Save Node Info loop" exit path.
+		// climbs to the menu.
 		if btn, ok := v.FocusedActionButton(); ok && (btn == "Save" || btn == "Node Info") {
 			d.send("Up")
 			homeSent = false
@@ -260,7 +253,7 @@ func (d *driver) escapeToMenu(maxSteps int) {
 		// On the Network left pane (AnnounceStream ilb with the cursor hidden at
 		// (0,0) after Connect/Escape, OR on a node/tab/filter row): Home selects
 		// the first item (top of the list), then Up×3 climbs the pile to the menu.
-		// See the ROOT CAUSE note above for why Home is required.
+		// See the doc comment above for why Home is required.
 		if v.ActivePage() == "network" {
 			if !homeSent {
 				d.send("Home")
@@ -526,13 +519,11 @@ func (d *driver) phase3() {
 			// NOT do urwid-style column-arrow traversal, so a disconnected pane
 			// (centered text, no LinkableText Left-at-start handler) would
 			// otherwise trap focus and this recovery could never reopen the
-			// next Announce Info. This must match the success-path recovery
-			// below: C-w alone already lands focus on the left list, so send
-			// ONLY C-w + Home — NOT a follow-up Left. Left is NOT a no-op here:
-			// the left list column is not self-managing, so urwidColumns.moveFocus
-			// wraps Left to the RIGHT (disconnected) pane, re-trapping focus and
-			// freezing every later attempt at cursor=(<right pane>,<row>)
-			// browser=disconnected (the "0 connects after one timeout" bug).
+			// next Announce Info. C-w alone lands focus on the left list, so
+			// send ONLY C-w + Home — NOT a follow-up Left: the left list column
+			// is not self-managing, so urwidColumns.moveFocus wraps Left to the
+			// RIGHT (disconnected) pane, re-trapping focus and freezing every
+			// later attempt at cursor=(<right pane>,<row>) browser=disconnected.
 			d.send("C-w") // Disconnect to reset the browser pane before the next node.
 			time.Sleep(d.stepDelay)
 			d.send("Home") // List selection -> top so the next Down can't overshoot into the Local Peer panel.
@@ -544,14 +535,13 @@ func (d *driver) phase3() {
 		success++
 
 		// 5. Thoroughly examine the node's main page. After Connect the Python
-		//    reference returns focus to the Announce Stream LIST (probe-confirmed:
-		//    a stray Enter on the list re-opens the Announce Info), NOT to the
-		//    browser. So we MUST send Right to move focus list->browser before
-		//    walking the page, else the first Enter re-opens the Announce Info and
-		//    traps the cursor on its button row (the Go port has the same
-		//    list-focus behavior after Connect — R-NET-FOCUS-TRAP). Right from the
-		//    list lands in the browser (cursor hidden at (0,0); the browser is a
-		//    urwid Text/Filler with no visible cursor).
+		//    reference returns focus to the Announce Stream LIST (a stray Enter on
+		//    the list re-opens the Announce Info), NOT to the browser. So send
+		//    Right to move focus list->browser before walking the page, else the
+		//    first Enter re-opens the Announce Info and traps the cursor on its
+		//    button row. The Go port has the same list-focus behavior after
+		//    Connect. Right from the list lands in the browser (cursor hidden at
+		//    (0,0); the browser is a urwid Text/Filler with no visible cursor).
 		d.assert(func(v *utils.View) bool {
 			// The Announce Info dialog closed and the browser is active: the
 			// Announce Info border title is gone.
@@ -565,28 +555,23 @@ func (d *driver) phase3() {
 		//    regression coverage) and follow every position-0 hyperlink as it
 		//    comes under the cursor. Link detection is by the browser footer
 		//    ("Link to <target>"), so linkless pages get a single clean walk with
-		//    no Enters — the efficient one-pass the user asked for (the old
-		//    two-pass walk-then-rejog was O(N²) and scanned the page twice).
+		//    no Enters.
 		d.examineMainPage(targetHash, 160)
 
 		// 6. Release the browser back to the list for the next iteration. C-w
 		//    disconnects the browser pane, which (via BrowserPane.Disconnect ->
 		//    OnReleaseFocus -> networkDisplay.FocusLists) reliably returns focus
 		//    to the left list REGARDLESS of where the walk left the browser cursor.
-		//    The previous recovery sent a single Left, but Left only releases
-		//    focus at a line's START (Python delegate.micron_released_focus fires on
-		//    Left-at-start, MicronParser.py:972-974) — and the walk frequently ends
-		//    mid-line (e.g. cursor x=52 resting on a link), so Left just moved
-		//    within the line and focus stayed trapped in the browser. The next
-		//    iteration's Down+Enter then acted on the stale browser page instead
-		//    of the list, so no Announce Info opened, no Connect happened, and the
-		//    browser stayed on the prior node's stale page (looked "blank" with no
-		//    "Retrieving" on the next Connect). C-w is the same reliable release
-		//    the connect-FAILED path uses below. Home then moves the list
-		//    selection to the TOP so the next Down advances to the 2nd node —
-		//    preventing the overshoot into the Local Peer panel (Enter on < Save >
-		//    opens "Save Node Info") that happened when a connected node sat at the
-		//    BOTTOM of the list and Down moved past the last node.
+		//    A single Left would not do: Left only releases focus at a line's START
+		//    (Python delegate.micron_released_focus fires on Left-at-start,
+		//    MicronParser.py:972-974), and the walk often ends mid-line (e.g. cursor
+		//    x=52 resting on a link), so Left would move within the line and leave
+		//    focus trapped in the browser. The next iteration's Down+Enter would
+		//    then act on the stale browser page instead of the list, so no Announce
+		//    Info would open and no Connect would happen. Home then moves the list
+		//    selection to the TOP so the next Down advances to the 2nd node,
+		//    preventing an overshoot into the Local Peer panel (Enter on < Save >
+		//    opens "Save Node Info").
 		d.send("C-w")  // disconnect -> releases focus to the left list (cursor-position independent)
 		d.send("Home") // list selection -> top so the next Down can't overshoot into Local Peer
 	}
@@ -686,17 +671,15 @@ func (d *driver) walkToBottom(sig func(v *utils.View) string, maxSteps int, step
 // examineMainPage walks Down through the node's whole main page in ONE pass,
 // snapshotting each screenful as it scrolls into view (full-page regression
 // coverage) AND following every position-0 hyperlink as it comes under the
-// cursor. This replaces the old two-pass walk-then-rejog (Pass 1 walkToBottom +
-// Pass 2 followLinksFromTop) the user found unbearably slow: that was O(N²)
-// (jog from the top to every line and back) and scanned the page twice. This is
-// a single O(N) walk.
+// cursor. A single O(N) walk replaces the two-pass walk-then-rejog (walk to the
+// bottom, then jog from the top to every line), which was O(N²) and scanned the
+// page twice.
 //
 // Link detection is by the browser footer, not by pressing Enter on every line:
 // the Python browser renders "Link to <target>" in its footer when the cursor
 // rests on a link (LinkableText.peek_link -> marked_link_job, ~100ms after a
-// keypress — see browserFooterLink). So we only press Enter on link-bearing
-// lines. Linkless pages (the common case — e.g. PARTEI, MKS, Santino) get a
-// single clean walk with NO Enters at all.
+// keypress — see browserFooterLink). So only link-bearing lines get an Enter.
+// Linkless pages get a single clean walk with NO Enters at all.
 //
 // Following a link navigates to the destination; Python's Browser.back (C-d)
 // RE-FETCHES the page with a fresh Scrollable at offset 0, so after a link we
@@ -704,7 +687,7 @@ func (d *driver) walkToBottom(sig func(v *utils.View) string, maxSteps int, step
 // left. The jog-back is outside this loop, so it does not perturb the
 // bottom-detection counters. Dedup is by the destination content signature
 // (same-node /page/x.mu links return url == mainHash, so the URL is not a usable
-// dedup key — see followLinksFromTop's note).
+// dedup key).
 //
 // Bottom detection is the walkToBottom rule, applied on every forward Down: sig
 // stable for K consecutive Downs AND (cursor stable for K, OR cursor never
@@ -762,14 +745,14 @@ func (d *driver) examineMainPage(mainHash string, maxSteps int) {
 		// footer shows "Link to"). Linkless lines get no Enter — the walk just
 		// continues Down.
 		if lt := v.BrowserFooterLink(); lt != "" {
-			// Per-session visited-links cache (the user-requested non-persistent
-			// cache): never attempt the same link twice during one suite run. Many
-			// nodes link to the same shared destinations (common hubs, shared
-			// indexes); re-fetching a destination only to C-d back wastes wall-clock
-			// and re-triggers transient fetch errors. Keyed by the footer "Link to
-			// <target>" string, checked BEFORE Enter so we don't even attempt a
-			// re-visit; recorded on attempt so a link that errored is not retried.
-			// (The per-call `followed` map below still dedupes within one page.)
+			// Per-session visited-links cache: never attempt the same link twice
+			// during one suite run. Many nodes link to the same shared destinations
+			// (common hubs, shared indexes); re-fetching a destination only to C-d
+			// back wastes wall-clock and re-triggers transient fetch errors. Keyed by
+			// the footer "Link to <target>" string, checked BEFORE Enter so a
+			// re-visit is never attempted, and recorded on attempt so a link that
+			// errored is not retried. (The per-call `followed` map below still
+			// dedupes within one page.)
 			if d.visitedLinks[lt] {
 				d.logf("  link line %v (%q): already visited this session; skipping", curLine, lt)
 				continue
@@ -833,18 +816,6 @@ func (d *driver) examineMainPage(mainHash string, maxSteps int) {
 		curLine, screenfuls, linksFollowed, len(d.visitedLinks))
 }
 
-// followLinksFromTop followed every hyperlink on the main page by jogging from
-// the top to each line, pressing Enter, and jogging back — an O(N²) two-pass
-// scan the user found unbearably slow. It has been replaced by the one-pass
-// examineMainPage (link detection via the browser footer, so linkless pages get
-// a single clean walk with no Enters). The navigation/dedup notes below still
-// apply to examineMainPage: navigation is detected by a CHANGE in the browser
-// pane content signature after Enter (NOT the URL — browserURL strips the path,
-// so a same-node /page/x.mu link returns url == mainHash), and dedup is by the
-// destination signature (same-node pages share url == mainHash). Python's
-// Browser.back (C-d) RE-FETCHES the page at offset 0, so after a link we jog
-// Down curLine to resume the walk.
-
 // settleMain waits for the main page to come back after a Back (C-d), confirmed
 // by the browser URL bar showing the main page hash again.
 func (d *driver) settleMain(mainHash string) {
@@ -875,7 +846,7 @@ func (d *driver) jogKeys(n int, key string) {
 
 // guideTopicTitles is the first rendered line (the `>Title` heading) of each
 // Guide topic in guideTopics order (tui/guide.go:83-95), used to verify each
-// topic actually rendered and to detect the scroll-reset bug.
+// topic actually rendered and that it opens scrolled to the top.
 var guideTopicTitles = []string{
 	"Nomad Network",                         // 0 Introduction
 	"Concepts and Terminology",              // 1 Concepts & Terminology
@@ -891,7 +862,7 @@ var guideTopicTitles = []string{
 	"Thanks, Acknowledgements and Licenses", // 11 Credits & Licenses
 }
 
-// ---------- Phase 4: Guide — walk all 12 topics, exercise the scroll bug ----------
+// ---------- Phase 4: Guide — walk all 12 topics, check each opens at the top ----------
 
 func (d *driver) phase4() {
 	d.step("Phase 4: Guide — select each topic, move right, scroll to bottom")
@@ -903,11 +874,9 @@ func (d *driver) phase4() {
 
 	// From wherever Phase 3 left focus (the Announce Stream list, or the browser
 	// content if the last connect failed and released focus via C-w), escape up
-	// to the menu. The blind script sent a fixed number of Ups — which only
-	// scrolled the browser when focus was stuck there, so it never reached the
-	// menu and walked 12 "topics" on the Network page. escapeToMenu sends Left
-	// to release browser focus back to a list FIRST, then Up to escape the list
-	// to the menu.
+	// to the menu. escapeToMenu sends Left to release browser focus back to a
+	// list FIRST, then Up to escape the list to the menu; a fixed run of Ups
+	// would only scroll the browser when focus was stuck there.
 	d.escapeToMenu(15)
 	d.assert(menuFocused(), 3*time.Second, "menu reached from Announce Stream (cursor on row 0)")
 	d.snapshot("menu reached from Announce Stream")
@@ -936,26 +905,26 @@ func (d *driver) phase4() {
 	d.snapshot("Guide topic 0 (Introduction) selected")
 
 	// For each topic: focus is in the reader (from this iteration's Enter, or
-	// the pre-loop Enter for topic 0), showing the topic at the top (Python
-	// resets the offset; the Go port's known bug leaks it, so the first
-	// visible line is mid-content instead of the title). Capture the FIRST
+	// the pre-loop Enter for topic 0). Python resets the scroll offset to 0 on
+	// selection, so the title is at the top; a port that leaks the previous
+	// offset shows the first visible line mid-content instead. Capture the FIRST
 	// visible content line (GuideTopicRendered skips the reader's border) and
-	// compare to the expected title. Then Home (ScrollToBeginning, correct) to
-	// contrast buggy-vs-correct; walkToBottom scrolls through the FULL topic
+	// compare it to the expected title. Then Home (ScrollToBeginning) corrects
+	// it and re-verifies the title; walkToBottom scrolls through the FULL topic
 	// content (every screenful, for regression coverage) and leaves the reader
-	// at the bottom (sets up the next topic's leak test); Left to release
-	// focus back to the Topics list; Down to the next topic + Enter to render.
+	// at the bottom (setting up the next topic's offset-leak check); Left to
+	// release focus back to the Topics list; Down to the next topic + Enter to
+	// render.
 	for topic := 0; topic <= 11; topic++ {
 		expected := guideTopicTitles[topic]
 		time.Sleep(300 * time.Millisecond)
 		v := d.view()
 		rendered := v.GuideTopicRendered()
 		d.snapshot(fmt.Sprintf("Guide topic %v reader right after selection (BUG CHECK: top should be %q)", topic, expected))
-		// Only count a scroll-reset bug when we are ACTUALLY on the Guide page.
-		// The blind script counted bogus hits because it never verified it was
-		// on the Guide (it read the browser border title as the Guide reader
-		// while stranded on the Network page). If focus never reached the
-		// Guide, log a NOTE instead of incrementing the bug counter.
+		// Only count an offset leak when actually on the Guide page. If focus
+		// never reached the Guide, log a note instead of incrementing the counter:
+		// reading another page's border title as the Guide reader would report a
+		// false hit.
 		if v.ActivePage() != "guide" {
 			d.logf("  topic %v: NOT on Guide page (active=%q) — not counting a scroll-reset bug; top is %q",
 				topic, v.ActivePage(), rendered)
@@ -979,8 +948,8 @@ func (d *driver) phase4() {
 		// as it scrolls into view, until the bottom — so every screenful of every
 		// topic is rendered (several topics span multiple screenfuls), catching
 		// any rendering regressions across the whole page. This also leaves the
-		// reader scrolled to the bottom, which sets up the next topic's leak test
-		// (the Go port's scroll-reset bug).
+		// reader scrolled to the bottom, which sets up the next topic's
+		// offset-leak check.
 		// Topic 7 (Markup) is ~490+ lines of micron examples — the longest topic
 		// by far. walkToBottom bottoms out at (page length) + H downs in the
 		// worst case (the sig-stuck fallback fires H downs after the last
@@ -1001,8 +970,8 @@ func (d *driver) phase4() {
 			// Python reference (the ilb cursor sits at x=135 and the list_focus
 			// bg only shows while the list has focus, which it now does not),
 			// so an assert here would noise up the Python run. The real
-			// verification is the next iteration's BUG CHECK (the reader shows
-			// the expected title).
+			// verification is the next iteration's top-of-topic check (the reader
+			// shows the expected title).
 			d.logf("  advanced to topic %v", topic+1)
 		}
 	}

@@ -29,8 +29,8 @@ import "testing"
 //
 // so a failed send leaves the draft where the reader can see it and try again.
 // Clearing it regardless is silent data loss: the message disappears from the
-// screen with nothing sent, nothing stored, and no error shown — the shape the
-// operator hit when a QR-scanned peer had no identity yet.
+// screen with nothing sent, nothing stored, and no error shown — which is what
+// happens when a QR-scanned peer has no identity yet.
 func TestComposerKeepsDraftWhenSendFails(t *testing.T) {
 	t.Parallel()
 

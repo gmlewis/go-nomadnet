@@ -16,10 +16,11 @@ import (
 	"github.com/gmlewis/go-reticulum/rns/msgpack"
 )
 
-// TestB2DisplayNameFallbackFromAnnounceAppData verifies B2: when the directory
-// does not have a display name for a peer, ConversationList should fall back to
-// the announce app data (LXMF display_name_from_app_data), matching nomadnet
-// 1.2.8's _update_peer_info (Conversations.py:2092-2101) which tries:
+// TestB2DisplayNameFallbackFromAnnounceAppData verifies the display-name
+// fallback: when the directory does not have a display name for a peer,
+// ConversationList falls back to the announce app data (LXMF
+// display_name_from_app_data), matching nomadnet 1.2.8's _update_peer_info
+// (Conversations.py:2092-2101) which tries:
 // 1. directory.display_name → 2. recall_app_data + display_name_from_app_data → 3. hash
 func TestB2DisplayNameFallbackFromAnnounceAppData(t *testing.T) {
 	t.Parallel()
@@ -83,15 +84,13 @@ func TestB2DisplayNameFallbackFromAnnounceAppData(t *testing.T) {
 }
 
 // TestB2StoredEmptyNameFallsBackToAnnounce pins the Python display-name
-// resolution for a NAMED-BEFORE peer whose stored directory name is empty
-// (Python Conversation.conversation_list, Conversation.py:125 + 151-152):
-// a directory entry EXISTING with an empty display name must still resolve to
-// the announced app-data name for the conversation-list row, instead of
-// rendering a bare symbol (or Python's post-load "Undefined"). Wire
-// equivalent: the golden LXMF announce app-data
-// msgpack [b"Go port of NomadNet on RaspPi", 32] resolves (via
-// /opt/homebrew/bin/python3: LXMF.display_name_from_app_data) to
-// "Go port of NomadNet on RaspPi".
+// resolution for a peer whose stored directory name is empty (Python
+// Conversation.conversation_list, Conversation.py:125 + 151-152): a directory
+// entry that exists with an empty display name must still resolve to the
+// announced app-data name for the conversation-list row, rather than rendering
+// a bare symbol. The announce app-data msgpack
+// [b"Go port of NomadNet on RaspPi", 32] resolves via
+// LXMF.display_name_from_app_data to "Go port of NomadNet on RaspPi".
 func TestB2StoredEmptyNameFallsBackToAnnounce(t *testing.T) {
 	t.Parallel()
 
@@ -127,8 +126,8 @@ func TestB2StoredEmptyNameFallsBackToAnnounce(t *testing.T) {
 	}
 	ts.Remember(nil, peerHash, peerID.GetPublicKey(), appData)
 
-	// A stored directory entry with an EMPTY display name (the wiped /
-	// no-name state) must not defeat the announced-name fallback.
+	// A stored directory entry with an EMPTY display name must not defeat the
+	// announced-name fallback.
 	entry, err := directory.NewEntry(peerHash)
 	if err != nil {
 		t.Fatalf("NewEntry: %v", err)

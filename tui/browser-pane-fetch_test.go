@@ -28,17 +28,13 @@ import (
 // BrowserDisplay.OnRetrieveURL seam (browser-pane.go:161 ->
 // BrowserDisplay.displayURL -> OnRetrieveURL), which the wiring layer fills
 // with the real backend — cmd/gonomadnet/textui.go calls wireBrowser on this
-// pane's display, and wireBrowser is what assigns OnRetrieveURL. The pre-
-// existing pane tests deliberately leave that seam nil, so they could only
-// ever observe the loading placeholder or the disconnected view; nothing
-// asserted that a returned page is actually rendered into the pane.
+// pane's display, and wireBrowser is what assigns OnRetrieveURL.
 //
 // Both entry paths are covered, because BrowserDisplay's loading -> content
 // shuttle is focus-sensitive (browser-pane.go:145-157) and the two paths differ
 // in exactly that: the Announce-Info Connect leaves focus on the left list,
 // while a load against an already-focused pane has to carry focus across the
-// fetch itself. A regression in either would leave a fetched page invisible
-// while the fetch itself still reported success.
+// fetch itself.
 func TestBrowserPaneRendersFetchedPage(t *testing.T) {
 	t.Parallel()
 

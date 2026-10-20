@@ -15,9 +15,8 @@ import java.security.SecureRandom
  * The bridge binds it and this app dials it, so the two halves have to arrive at the same
  * name from the same two inputs: the app's pid and a random value the app generates. It
  * follows [ConsoleSocket] exactly — same shape, same length of entropy, same reason — but
- * with a prefix of its own, because a socket named after the console that turned out to
- * carry a radio's transmit stream is a name that sends whoever reads the log looking in the
- * wrong place.
+ * with a prefix of its own, so that a log line naming the socket says which stream it
+ * carries.
  *
  * The name is random because an abstract Unix socket has no filesystem entry and no
  * permissions: anything on the device that knows the name can connect to it, and what this

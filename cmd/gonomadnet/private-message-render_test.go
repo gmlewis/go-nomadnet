@@ -41,9 +41,8 @@ func newPrivateRenderHub(t *testing.T) (*rrc.RRCHub, []byte) {
 }
 
 // TestRRCoomMessagesIncludesPrivateNotices asserts the room view a client
-// renders carries the private NOTICEs the hub delivered to this client alone:
-// Python's RRC.py records them in self.notices and never renders them, which is
-// why a private message was invisible before. A room row stays unmarked.
+// renders carries the private NOTICEs the hub delivered to this client alone.
+// A room row stays unmarked.
 func TestRRCoomMessagesIncludesPrivateNotices(t *testing.T) {
 	t.Parallel()
 

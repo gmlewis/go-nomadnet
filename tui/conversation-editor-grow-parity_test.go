@@ -32,14 +32,13 @@ import (
 //	"Message C4 from glenn-mac-mini-m2 again, but this time typing way beyond
 //	 the length of the input", row 2 ends "...extra lines of input."
 
-// TestConversationEditorGrowsPanelParity pins the fleet-reported behavior for
-// the conversation composer: Python builds the message editor as
+// TestConversationEditorGrowsPanelParity pins the conversation composer's
+// growth: Python builds the message editor as
 // MessageEdit(caption="", edit_text="", multiline=True) in the frame footer
 // (Conversations.py:1904/1936), so a long draft WRAPS onto as many rows as it
-// needs and the frame footer grows with it, pushing the message list up.
-// gonomadnet built the editor as a single-line field, so the text ran off the
-// right border and everything past it was invisible (the RRC room composer
-// already wrapped — this is the same fix for the conversation panel).
+// needs and the frame footer grows with it, pushing the message list up. A
+// single-line field instead runs the text off the right border and hides
+// everything past it.
 func TestConversationEditorGrowsPanelParity(t *testing.T) {
 	t.Parallel()
 
@@ -75,8 +74,7 @@ func TestConversationEditorGrowsPanelParity(t *testing.T) {
 	}
 
 	// Every wrapped row renders in full — nothing is clipped at the right
-	// border (the reported symptom). Rows are compared against the urwid
-	// capture above.
+	// border. Rows are compared against the urwid capture above.
 	wantRows := []string{
 		"Message C4 from glenn-mac-mini-m2 again, but this time typing way beyond the length of the input",
 		"line to see how it is being handled, and it turns out that nomadnet will move the whole panel up",
@@ -235,10 +233,10 @@ func TestConversationEditorUpEscapesAtTopRow(t *testing.T) {
 }
 
 // TestComposerUpDispatchesWithinWrappedRows drives Up through the widget's own
-// tview dispatch order (frame input capture, then the focused editor) — the
-// live path — and pins that the frame capture no longer steals Up from a
-// multiline draft: the caret walks up the wrapped rows, and only the top row
-// hands focus to the frame body.
+// tview dispatch order (frame input capture, then the focused editor) and pins
+// that the frame capture does not steal Up from a multiline draft: the caret
+// walks up the wrapped rows, and only the top row hands focus to the frame
+// body.
 func TestComposerUpDispatchesWithinWrappedRows(t *testing.T) {
 	t.Parallel()
 

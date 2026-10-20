@@ -48,9 +48,7 @@ func NewBrowserCache(cachePath string) *BrowserCache {
 // The retained-link state is deliberately NOT consulted: Python caches
 // regardless of whether an RNS link is currently active, so Back/Forward (and a
 // re-visit) to a cached page return instantly from the cache instead of
-// re-fetching over the network. Gating the cache on an active retained link (a
-// former Go-only workaround) made Back slow whenever the retained link had gone
-// stale, diverging from Python's instant cache hit.
+// re-fetching over the network.
 func ServeFromCache(requestData map[string]string) bool { return requestData == nil }
 
 // URLHash returns the SHA-256 full hash of url as a 64-character

@@ -121,8 +121,7 @@ func TestMarkdownMessageBodyText(t *testing.T) {
 
 // TestConversationMessageMarkdownIsFormatted pins the user-visible contract in the
 // widget: a message whose renderer is markdown shows its body formatted, while the same
-// content in a plain message is shown raw. Before this, every body was emitted as
-// "  "+line, so a markdown message rendered its own "**bold**" punctuation.
+// content in a plain message is shown raw.
 func TestConversationMessageMarkdownIsFormatted(t *testing.T) {
 	t.Parallel()
 

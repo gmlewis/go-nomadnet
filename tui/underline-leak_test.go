@@ -24,25 +24,16 @@ import (
 	"github.com/gmlewis/tview"
 )
 
-// TestStyledLinesToTviewTextUnderlineNoLeak pins the fix for the sticky
-// underline leak seen in go_session-002.cast's Guide "Markup & Color Display
-// Test" topic: the line "The following line should contain a red gradient
-// bar:" rendered UNDERLINED even though the micron renderer produced it with
-// Underline=false.
+// TestStyledLinesToTviewTextUnderlineNoLeak pins that an underlined span's
+// underline does not leak into the following plain run.
 //
-// Root cause: tview's color-tag reset [-:-:-] (strings.go parseTag) resets the
-// foreground, background, and the bold/italic attribute MASK, but it does NOT
-// clear the separate Underline toggle, which is set by the lowercase 'u' tag
-// and only cleared by the uppercase 'U' tag. So once any span emits :u, every
-// following run — plain indent spaces, spans whose tag has no attribute field,
-// divider chars — inherits underline until an explicit :U. The micron
-// renderer is correct; the leak is in StyledLinesToTviewText, which must
-// track the latched underline state and emit 'U' to turn it off.
-//
-// Golden (python_session.cast / Guide.py TOPIC_DISPLAYTEST): a line that
-// closes underline with a second `_` toggle and a “ full reset is followed
-// by a plain "The following line should contain a red gradient bar:" line
-// that is NOT underlined.
+// tview's color-tag reset [-:-:-] (strings.go parseTag) resets the foreground,
+// background, and the bold/italic attribute MASK, but it does NOT clear the
+// separate Underline toggle, which is set by the lowercase 'u' tag and only
+// cleared by the uppercase 'U' tag. Once any span emits :u, every following
+// run — plain indent spaces, spans whose tag has no attribute field, divider
+// chars — inherits underline until an explicit :U. StyledLinesToTviewText must
+// therefore track the latched underline state and emit 'U' to turn it off.
 func TestStyledLinesToTviewTextUnderlineNoLeak(t *testing.T) {
 	t.Parallel()
 
@@ -74,7 +65,6 @@ func TestStyledLinesToTviewTextUnderlineNoLeak(t *testing.T) {
 
 	// (2) End-to-end: render through a real tview TextView to a simulation
 	// screen and assert the plain line's cells carry NO underline attribute.
-	// This is the golden proof matching the Python source-of-truth.
 	screen := tcell.NewSimulationScreen("UTF-8")
 	if screen == nil {
 		t.Fatal("nil simulation screen")

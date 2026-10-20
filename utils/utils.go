@@ -3,8 +3,8 @@
 // Package utils provides the shared tmux remote-control and terminal-screen
 // parsing primitives used by the gonomadnet test harnesses
 // (cmd/run-tmux-test-suite and cmd/test-conversations) to drive a live
-// gonomadnet TUI and actively verify its state — instead of blindly sleeping
-// and grepping pane output like the earlier bash scripts did.
+// gonomadnet TUI and actively verify its state instead of sleeping and grepping
+// pane output.
 //
 // The package is split across these files:
 //

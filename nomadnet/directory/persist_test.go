@@ -118,10 +118,8 @@ func TestDirectorySaveLoadRoundTrip(t *testing.T) {
 
 // TestRememberEagerPersist pins the Python parity behavior that Remember
 // saves the directory to disk eagerly when a persist path is configured (Python
-// Directory.remember → save_to_disk, Directory.py:340-351). Without this, a Go
-// process that exits without reaching Shutdown (Ctrl-C, SIGHUP, crash) loses
-// every discovered node, which is the root cause of "gonomadnet doesn't retain
-// node history across runs".
+// Directory.remember → save_to_disk, Directory.py:340-351), so discovered nodes
+// survive a process that exits without reaching shutdown.
 func TestRememberEagerPersist(t *testing.T) {
 	t.Parallel()
 	dir := tempDir(t)
@@ -183,9 +181,8 @@ func TestRememberEagerPersist(t *testing.T) {
 }
 
 // TestRememberNoPersistPath verifies that with no persist path configured,
-// Remember only updates in-memory state and never writes a file (and does not
-// panic), preserving the historical pre-SetPersistPath behavior for callers
-// that manage persistence themselves (e.g. integration tests).
+// Remember only updates in-memory state and never writes a file, leaving
+// persistence to callers that manage it themselves (e.g. integration tests).
 func TestRememberNoPersistPath(t *testing.T) {
 	t.Parallel()
 	dir := tempDir(t)

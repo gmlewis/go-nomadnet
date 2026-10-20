@@ -122,9 +122,9 @@ func NewMainDisplay(app *App, theme int, glyphSetName string) *MainDisplay {
 			if action == tview.MouseLeftClick {
 				md.handleClick(x - bx)
 				// MouseConsumed (not 0) marks the event consumed so tview
-				// redraws after the click. Returning 0 (MouseMove) left
-				// consumed=false, so no redraw fired and the menu appeared
-				// frozen until an unrelated async redraw painted it.
+				// redraws after the click. Returning 0 (MouseMove) leaves
+				// consumed=false, so no redraw fires and the menu stays frozen
+				// until an unrelated async redraw paints it.
 				return tview.MouseConsumed, nil
 			}
 			// Down/Up/Move inside the bar: swallow the event (nil) so the
@@ -137,7 +137,7 @@ func NewMainDisplay(app *App, theme int, glyphSetName string) *MainDisplay {
 
 	// Create content area (individual displays add their own borders). This is
 	// a bodyPages (tview.Pages wrapper) so input dispatch only reaches the
-	// VISIBLE page — see body-pages.go for the focus-stealing root cause it fixes.
+	// VISIBLE page — see body-pages.go.
 	md.contentArea = newBodyPages()
 	md.contentArea.SetBackgroundColor(tcell.ColorDefault)
 
@@ -198,8 +198,8 @@ func NewMainDisplay(app *App, theme int, glyphSetName string) *MainDisplay {
 		md.selectMenu(0)
 	}
 	// Boot focus is the body (Python's MainFrame defaults focus_position to
-	// "body"). selectMenu no longer drops focus (it stays in the menu on Enter,
-	// matching Python's show_*), so establish the initial body focus explicitly.
+	// "body"). selectMenu keeps focus in the menu on Enter, matching Python's
+	// show_*, so establish the initial body focus explicitly.
 	md.FocusBody()
 
 	return md
@@ -345,8 +345,7 @@ func (md *MainDisplay) SetShortcut(key, text string) {
 // key. The provider is consulted only when that page is the displayed
 // (activePage) one, so a display that switches bars by focus region (e.g.
 // Conversations: list/editor/body) can supply the right text without
-// overriding other pages' bars. This replaces the former single global
-// callback that always returned the Conversations bar.
+// overriding other pages' bars.
 func (md *MainDisplay) SetShortcutCallback(key string, fn func() string) {
 	md.mu.Lock()
 	defer md.mu.Unlock()
@@ -367,8 +366,7 @@ func (md *MainDisplay) refreshShortcuts() {
 	if !md.mu.TryLock() {
 		// Contended from a path that does not refresh before releasing (the
 		// documented SetDisplay holder does): retry off the event loop so the
-		// footer can never stay stale (fleet bug #14 observed a stale editor
-		// footer while the conversation list held focus).
+		// footer can never stay stale.
 		if md.app != nil {
 			md.app.GoSafe(func() {
 				md.mu.Lock()
@@ -491,8 +489,7 @@ func urwidWrapSegment(seg string, width int) []string {
 			// Perfect space wrap: break here, drop the break space. Any
 			// REMAINING spaces of the run that fit before the boundary are
 			// trimmed from the line end too — Python's layout line carries no
-			// trailing whitespace (live capture pyaconv_100x28_00 row 27: the
-			// styled bar ends at "My LXMF", not "My LXMF ").
+			// trailing whitespace.
 			line := strings.TrimRight(string(runes[idx:pos]), " ")
 			lines = append(lines, line)
 			idx = pos + 1
@@ -508,8 +505,7 @@ func urwidWrapSegment(seg string, width int) []string {
 		}
 		if prev >= 0 {
 			// Break at the previous space; trim any remaining run spaces from
-			// the line end (Python's layout lines carry no trailing
-			// whitespace — live capture pyaconv_100x28_00 row 27).
+			// the line end (Python's layout lines carry no trailing whitespace).
 			line := strings.TrimRight(string(runes[idx:prev]), " ")
 			lines = append(lines, line)
 			idx = prev + 1
@@ -752,19 +748,18 @@ func (md *MainDisplay) FocusMenu() {
 		if prev := md.app.GetFocus(); prev != nil && prev != md.menuBar {
 			if _, stranded := prev.(*browserPageView); stranded {
 				// The browser page view never holds Python's body focus — the
-				// saved-nodes list keeps it (Network.py), and D3 requires menu
-				// re-entry to land there instead of on the stranded page view
-				// where every arrow key is dead. Treat that as no body focus,
-				// so the next FocusBody falls back to the content-area focus
-				// chain (⇒ the saved-nodes list) instead of restoring it.
+				// saved-nodes list keeps it (Network.py), and menu re-entry must
+				// land there instead of on the stranded page view where every
+				// arrow key is dead. Treat that as no body focus, so the next
+				// FocusBody falls back to the content-area focus chain
+				// (⇒ the saved-nodes list) instead of restoring it.
 				md.lastBodyFocus = nil
 			} else if focusIsInert(prev) {
-				// An inert container (a Flex whose cascade stopped on itself,
-				// a plain Box spacer) dispatches keys nowhere — remembering it
-				// here would make the next FocusBody restore the very focus
-				// state the invariant recovery just escaped, re-stranding
-				// every keypress (live: FocusMenu during a recovery from a
-				// bare-Flex focus). Treat it as no body focus.
+				// An inert container (a Flex whose cascade stopped on itself, a
+				// plain Box spacer) dispatches keys nowhere — remembering it here
+				// would make the next FocusBody restore the very focus state the
+				// invariant recovery just escaped, re-stranding every keypress.
+				// Treat it as no body focus.
 				md.lastBodyFocus = nil
 			} else if root := md.app.GetRoot(); root != nil && !root.HasFocus() {
 				// Detached/zombie focus: do not remember an unlinked widget.
@@ -872,8 +867,8 @@ func (md *MainDisplay) handleClick(x int) {
 // Global (any region): Ctrl-Q is the documented quit (TextUI.py:262-264
 // unhandled_input); Ctrl-C is also routed to quit (Python KeyboardInterrupt →
 // clean exit + atexit save, NomadNetworkApp.py:38-42). Esc is NOT a quit — it
-// is forwarded so the DialogManager overlay can close the top dialog (Phase
-// 0.5). There are no digit menu shortcuts and no 'q' quit.
+// is forwarded so the DialogManager overlay can close the top dialog. There are
+// no digit menu shortcuts and no 'q' quit.
 //
 // Menu region (MainFrame.focus_position == "header", Main.py MenuColumns:171-176):
 // Left/Right move the button highlight WITHOUT switching the body page;
@@ -913,9 +908,6 @@ func (md *MainDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 	//     delegating) or a plain Box spacer. root.HasFocus() is TRUE and
 	//     no violation is dumped, but every key event routed to the
 	//     focus is silently dropped, so the UI also appears frozen.
-	//     Observed live: a keypress recovery (FocusBody → SetFocus
-	//     (contentArea)) whose cascade stopped on a bare Flex; the next
-	//     keypress repeated the recovery instead of reaching a widget.
 	//
 	// Recover BEFORE any dispatch so no key is ever lost, and dump a stack
 	// so the violation surfaces immediately instead of festering for hours.
@@ -945,10 +937,10 @@ func (md *MainDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 	}
 
 	// Byte 0x0A (Ctrl-J / newline) decodes as Enter in urwid's input layer:
-	// the running Python build treats C-j as a plain Enter EVERYWHERE (verified
-	// live: C-j on the seeded conversations list activated the selected row,
-	// the same as Enter). tcell reports it as KeyLF, which no widget
-	// activates on — normalize it here so every Enter handler applies.
+	// the running Python build treats C-j as a plain Enter EVERYWHERE (it
+	// activates the selected row in a list, the same as Enter). tcell reports it
+	// as KeyLF, which no widget activates on — normalize it here so every Enter
+	// handler applies.
 	if event.Key() == tcell.KeyLF || event.Key() == tcell.KeyCtrlJ {
 		event = tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone)
 	}
@@ -990,12 +982,9 @@ func (md *MainDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 	//
 	// tview runs every container InputCapture BEFORE the focused widget, so a
 	// page capture that spans more than the widget owning its shortcuts (the
-	// Network page's mainCols covers both columns, network.go:317) steals those
-	// keys from the field the visitor is typing in: ctrl u opened the URL dialog
-	// instead of clearing to the beginning of the line, ctrl e opened Edit Node
-	// instead of jumping to the end of the line, ctrl w disconnected instead of
-	// deleting a word, and ctrl l toggled the list instead of clearing the field
-	// — the live report that a form's text could not be cleared.
+	// Network page's mainCols covers both columns, network.go:317) would steal
+	// those keys from the field being edited: ctrl u would open the URL dialog,
+	// ctrl e Edit Node, ctrl w disconnect, and ctrl l toggle the list.
 	//
 	// Restore urwid's ordering: the field in focus takes the key here, at the
 	// outermost capture. ReadlineEdit.offerKey makes the field's own, later
@@ -1097,16 +1086,11 @@ func (md *MainDisplay) bodyListAtTop() bool {
 	case *IndicativeListBox:
 		list = v.List
 	case *conversationsListBox:
-		// The Conversations page owns its ENTIRE Up routing (Python's
-		// ConversationsArea.keypress sends Up from the top of a list to the
-		// Pile → tab bar, Conversations.py:1800-1808, A6). It previously only
-		// returned false for a non-empty list; an EMPTY list collapsed straight
-		// to the menubar here (copying Python's ilb.body_is_empty branch,
-		// Conversations.py:108-111) — which made the Trusted/Untrusted tab bar
-		// unreachable by arrow keys on an empty tab (live fleet bug report).
-		// Go-only enhancement: the page now owns the empty-list Up too (its
-		// handleInput performs the same Pile traversal a non-empty list gets,
-		// checkbox → tab bar → menubar), so this must always report false and
+		// The Conversations page owns its ENTIRE Up routing, including the
+		// empty-list case: Python's ConversationsArea.keypress sends Up from the
+		// top of a list to the Pile → tab bar (Conversations.py:1800-1808), and
+		// the page's handleInput performs the same traversal for an empty tab
+		// (checkbox → tab bar → menubar). This must always report false and
 		// defer to the page.
 		return false
 	case *messageListBox:
@@ -1118,14 +1102,11 @@ func (md *MainDisplay) bodyListAtTop() bool {
 		return v.TopIsVisible() && (v.bannerVisible == nil || !v.bannerVisible())
 	case *ScrollBar:
 		// The Guide reader's scrollbar wraps the reader TextView and carries
-		// the guide's line-cursor focus model (B2) via its atTop hook
-		// (guide.go): true only when the document is scrolled to the top AND
-		// the cursor is at the first selectable line. Before this case the
-		// default branch returned false, so once Right moved focus into the
-		// reader (FocusReader) every Up was forwarded to the reader's own
-		// clamp — a silent no-op at the first line — and focus could never
-		// leave the reader pane: keys worked inside the reader but the menu
-		// was unreachable without knowing the undocumented Left escape.
+		// the guide's line-cursor focus model via its atTop hook (guide.go):
+		// true only when the document is scrolled to the top AND the cursor is
+		// at the first selectable line. Reporting anything else would forward
+		// every Up to the reader's own clamp — a silent no-op at the first line
+		// — leaving the menu unreachable once Right moved focus into the reader.
 		return v.TopIsVisible()
 	case *centeredText:
 		// The network left pane swaps the saved-nodes IndicativeListBox for a
@@ -1135,10 +1116,9 @@ func (md *MainDisplay) bodyListAtTop() bool {
 		// to the header on Up-at-top regardless of whether the top widget is a
 		// ListBox or the placeholder. Treat the non-scrollable placeholder as an
 		// empty list at item 0 so the dispatcher's Up-at-top→FocusMenu transition
-		// still fires (without this, escapeToMenu on an empty left pane strands
-		// focus — Up does nothing and the menu is never reached). Other
-		// centeredText body placeholders (config explainer, node-info, empty
-		// peers) get the same correct body-top→header parity.
+		// still fires, which keeps the menu reachable from an empty left pane.
+		// Other centeredText body placeholders (config explainer, node-info,
+		// empty peers) get the same body-top→header behavior.
 		return true
 	default:
 		if traceFocusOn() {
@@ -1199,8 +1179,7 @@ func (md *MainDisplay) handleMenuInput(event *tcell.EventKey) *tcell.EventKey {
 	case tcell.KeyLeft:
 		// Python urwid Columns.keypress (4.0.3 container.py): LEFT at the
 		// leftmost button has no candidate column, so the key is returned
-		// unhandled and DIES at the MainFrame — the highlight STAYS (H1;
-		// verified with a urwid probe: Left at 0 keeps focus 0). Never wrap
+		// unhandled and dies at the MainFrame — the highlight stays. Never wrap
 		// into Quit.
 		if md.activeMenu > 0 {
 			md.focusMenuIndex(md.activeMenu - 1)
@@ -1220,16 +1199,12 @@ func (md *MainDisplay) handleMenuInput(event *tcell.EventKey) *tcell.EventKey {
 		// Mirror Python's MenuColumns.keypress (Main.py:171-176): it sets
 		// frame.focus_position = "body" for Tab/Down and then returns
 		// super().keypress, leaving the key unhandled — and that is where it
-		// STOPS. urwid's Frame.keypress dispatches by the focus part at ENTRY
+		// stops. urwid's Frame.keypress dispatches by the focus part at ENTRY
 		// (header), so a focus_position change made mid-flight never
 		// re-dispatches the key into the body; the key dies, and
-		// TextUI.unhandled_input (TextUI.py:262-267) only handles
-		// Ctrl-Q/Ctrl-E. Verified on the live nomadnet 1.2.8 tmux pane: the
-		// first Down from the menu changes no rendering at all (the focus lands
-		// in the body, the key is dropped) and the SECOND Down scrolls the
-		// message list. Consuming the key here replicates that exactly;
-		// previously the key was forwarded, which scrolled the conversation one
-		// row sooner than Python.
+		// TextUI.unhandled_input (TextUI.py:262-267) only handles Ctrl-Q/Ctrl-E.
+		// Consuming the key here replicates that: the first Down from the menu
+		// only lands focus in the body, and the second one scrolls it.
 		md.FocusBody()
 		return nil
 	}
@@ -1429,9 +1404,9 @@ func traceFocusOn() bool { return os.Getenv(traceFocusEnv) != "" }
 // the file named by traceFocusEnv.
 //
 // Tracing is opt-in because the call sites sit in the per-key dispatch: an
-// always-on append opened, wrote and closed a file on every keystroke, and the
-// trace file grew into the megabytes during normal use. Set the variable to a
-// writable path to re-enable the traces for a live investigation.
+// always-on append would open, write and close a file on every keystroke and
+// grow the trace file into the megabytes during normal use. Set the variable to
+// a writable path to enable the traces for a live investigation.
 func traceFocus(line string) {
 	path := os.Getenv(traceFocusEnv)
 	if path == "" {

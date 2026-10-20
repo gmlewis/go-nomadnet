@@ -42,8 +42,8 @@ class ScanPreviewSizeTest {
 
     @Test
     fun `the pixel's own list gives 720p`() {
-        // The device the appliance is held as, pinned whole: 640x480 was picked from this list
-        // and left a code on a screen about four pixels to a module.
+        // The tablet's own list, pinned whole: 640x480 is on it, and a code on a screen read
+        // at that size is about four pixels to a module.
         val camera = sizes(
             1920 to 1920, 2560 to 1280, 2048 to 1536, 1920 to 1440, 1920 to 1080,
             1600 to 1200, 1920 to 960, 1792 to 1008, 1440 to 1080, 1344 to 1008,

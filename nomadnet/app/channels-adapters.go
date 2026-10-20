@@ -13,9 +13,8 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-// Package app adapts the core RRC manager/hubs to the HubView
-// interface that channels render. This file is the adapter seam
-// (mirrors the SendDeps injection pattern).
+// This file adapts the core RRC manager/hubs to the HubView interface that
+// channels render, mirroring the SendDeps injection pattern.
 
 package app
 

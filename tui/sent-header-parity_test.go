@@ -29,25 +29,22 @@ import (
 	"github.com/gmlewis/go-reticulum/testutils"
 )
 
-// This file pins the sent/received header classification end to end,
-// reproducing the fleet data the direction bug was reported against
-// (glenn-macm2pro ⇄ glenn-mac-mini-m2): real LXMF envelopes packed with real
-// identities, persisted on disk, scanned by Conversation.ScanStorage/Load,
-// and mapped through headerInputs → LXMessageHeader exactly as production
-// does. Python renders each class as:
+// This file pins the sent/received header classification end to end: real
+// LXMF envelopes packed with real identities, persisted on disk, scanned by
+// Conversation.ScanStorage/Load, and mapped through headerInputs →
+// LXMessageHeader exactly as production does. Python renders each class as:
 //
 //	outbound + DELIVERED (raw 0x08)       → msg_header_delivered, "✓ →" (blue)
 //	outbound + SENDING (raw 0x02) with a
 //	  drained router queue (pending-check → FAILED) → msg_header_failed, "✕ →"
 //	inbound from a known peer, valid sig  → msg_header_ok,         "✓ ←" (green)
 //
-// The reported bug — an own-sent message rendering with the green inbound
-// header and "←" — occurs exactly when the classifier loses the source hash
-// or the raw state, so every step below pins the fields feeding the branch.
+// A sent message renders with the inbound header exactly when the classifier
+// loses the source hash or the raw state, so every step below pins the fields
+// feeding the branch.
 
-// TestSentMessageHeaderParity runs the three message classes from the
-// reported conversation through the full pipeline and pins the header each
-// must render.
+// TestSentMessageHeaderParity runs the three message classes through the full
+// pipeline and pins the header each must render.
 func TestSentMessageHeaderParity(t *testing.T) {
 	t.Parallel()
 
@@ -86,8 +83,8 @@ func TestSentMessageHeaderParity(t *testing.T) {
 		}
 	}
 
-	// The three message classes exactly as they existed in the reported
-	// conversation directory on glenn-mac-mini-m2.
+	// One message of each class: outbound delivered, outbound sending, and
+	// inbound delivered.
 	writeMsg(peerDest, ownDest, "msg2: hello from Mac Mini (nomadnet)", lxmf.StateDelivered, lxmf.MethodDirect)
 	writeMsg(peerDest, ownDest, "msg10: from Mac Mini", lxmf.StateSending, lxmf.MethodDirect)
 	writeMsg(ownDest, peerDest, "Message from glenn-macm2pro to glenn-mac-mini-m2", lxmf.StateDelivered, lxmf.MethodDirect)
@@ -148,15 +145,12 @@ func TestSentMessageHeaderParity(t *testing.T) {
 	}
 }
 
-// TestUnparsableSentMessageHeader pins the reported fleet bug exactly: an
-// own-sent message whose on-disk envelope cannot be parsed reaches the header
-// with no wire fields (State 0, nil source, method 0, unencrypted). Python's
-// ConversationMessage keeps msg_source_hash = None after the failed load, so
-// LXMessageWidget's first branch renders "msg_header_failed" with the
-// warning glyph and no arrow (Conversations.py:2606-2608). The previous Go
-// legacy fallback fabricated an inbound source with a "validated" signature,
-// rendering the green msg_header_ok header with "✓ ←" for own-sent messages —
-// the reported divergence from the Python source of truth.
+// TestUnparsableSentMessageHeader pins the header for an own-sent message whose
+// on-disk envelope cannot be parsed: it reaches the header with no wire fields
+// (State 0, nil source, method 0, unencrypted). Python's ConversationMessage
+// keeps msg_source_hash = None after the failed load, so LXMessageWidget's
+// first branch renders "msg_header_failed" with the warning glyph and no arrow
+// (Conversations.py:2606-2608), not the green inbound header.
 func TestUnparsableSentMessageHeader(t *testing.T) {
 	t.Parallel()
 
@@ -329,7 +323,7 @@ func TestSentMessageDeliveredIndexRestoreParity(t *testing.T) {
 }
 
 // sentParityTempDir returns a short-lived /tmp directory; a short path keeps
-// Unix domain sockets working on macOS in tests (see AGENTS.md).
+// Unix domain sockets working on macOS in tests.
 func sentParityTempDir(t *testing.T) string {
 	t.Helper()
 	return testutils.TempDir(t, "nomadnet-sent-test")
@@ -343,10 +337,9 @@ func unixSecondsToTime(f float64) time.Time {
 	return time.Unix(sec, nsec)
 }
 
-// TestLateOwnHashSelfCorrection pins the fleet symptom from the 0.54.0 run on
-// glenn-mac-mini-m2: the conversation widget was created while the LXMF
-// router was still registering, so its cached OwnHash snapshot was nil and
-// EVERY message — own-sent ones included — rendered with the inbound green
+// TestLateOwnHashSelfCorrection pins the self-correction contract: a
+// conversation widget created before the LXMF router registered has a nil
+// OwnHash snapshot, so own-sent messages would render with the inbound green
 // "✓ ←" msg_header_ok header. Python reads app.lxmf_destination.hash fresh at
 // every LXMessageWidget construction; the widget must do the same via the
 // OnOwnHash resolver, so the render self-corrects as soon as the app's LXMF

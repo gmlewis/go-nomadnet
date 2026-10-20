@@ -27,11 +27,9 @@ import (
 
 // These tests cover the app-level persistence writers end to end: they drive the App
 // methods, then read the state back through a FRESH App over the same config directory.
-// The on-disk formats are already pinned byte-for-byte by the *-byteparity tests (see
-// parity-gaps §5.1), so what is under test here is the wiring those format tests cannot
-// see — the right path, the right field, and the write actually happening. A writer that
-// silently wrote to the wrong file, or a field the loader never restored, would pass
-// every format test and still lose the user's setting on restart.
+// The on-disk formats are pinned byte-for-byte by the *-byteparity tests, so what is
+// under test here is the wiring those format tests cannot see — the right path, the
+// right field, and the write actually happening.
 
 // newPersistApp builds an app over dir with a real (offline) transport, initialized far
 // enough to persist and load peer settings and the ignored list.
@@ -54,8 +52,7 @@ func newPersistApp(t *testing.T, dir string) *App {
 // restored by the next App over the same directory: the display name set through
 // SetDisplayName (which persists) and the propagation node chosen through
 // SetUserSelectedPropagationNode. Both are user-visible after a restart — the advertised
-// peer name and where messages are propagated — and neither had an app-level round-trip
-// test.
+// peer name and where messages are propagated.
 func TestPeerSettingsRoundTripThroughTheApp(t *testing.T) {
 	t.Parallel()
 

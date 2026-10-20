@@ -26,9 +26,8 @@ import (
 // TestNetworkDisplayNoOuterBorder asserts the Network page has NO outer
 // LineBox/title around the whole page: Python's NetworkDisplay sets
 // `self.widget = self.columns` directly (Network.py:1666) — the two columns sit
-// in the body with no enclosing border, each pane providing its own. The prior
-// Go skeleton wrapped everything in a bordered Flex titled "Network", which is
-// not parity. The columns Flex itself therefore carries no title.
+// in the body with no enclosing border, each pane providing its own. The
+// columns Flex itself therefore carries no title.
 func TestNetworkDisplayNoOuterBorder(t *testing.T) {
 	t.Parallel()
 
@@ -143,14 +142,12 @@ func TestNetworkDisplayShowNodeInfoSwap(t *testing.T) {
 	}
 }
 
-// TestNetworkDisplayShowNodeInfoRebuilds pins the parity fix for stale Node
-// Info static fields: ShowNodeInfo rebuilds the panel from the supplied data on
-// every call (mirroring Python's node_info_query, which constructs a fresh
+// TestNetworkDisplayShowNodeInfoRebuilds pins that Node Info static fields stay
+// current: ShowNodeInfo rebuilds the panel from the supplied data on every call
+// (mirroring Python's node_info_query, which constructs a fresh
 // NodeInfo(self.app, self.parent) each time, Network.py:1399-1401) rather than
-// caching the first-open values forever. The previous `if nd.nodeInfo == nil`
-// cache captured Name/Addr once, so changing the display name mid-session and
-// re-opening Node Info still showed the old name. HasNode:false keeps Start a
-// no-op so no ticker goroutine is involved.
+// caching the first-open values. HasNode:false keeps Start a no-op so no ticker
+// goroutine is involved.
 func TestNetworkDisplayShowNodeInfoRebuilds(t *testing.T) {
 	t.Parallel()
 

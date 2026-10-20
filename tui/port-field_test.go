@@ -153,9 +153,8 @@ func TestPortFieldDropdownCarriesTheDeviceTransform(t *testing.T) {
 }
 
 // TestPortFieldNoSerialPlaceholder pins the pyserial-unavailable wording, which is
-// what Python shows when it cannot detect ports at all
-// (Interfaces.py:149): the port's text said "serial detection not available",
-// naming the port rather than the missing dependency.
+// what Python shows when it cannot detect ports at all (Interfaces.py:149):
+// a placeholder naming the pyserial dependency rather than the port.
 func TestPortFieldNoSerialPlaceholder(t *testing.T) {
 	t.Parallel()
 
@@ -172,8 +171,8 @@ func TestPortFieldNoSerialPlaceholder(t *testing.T) {
 // TestSerialInterfaceTypesUseThePortField pins the wiring: the five serial-capable
 // interface types must carry the detector-backed port field, not the fixed
 // "detection not available" one. Python gives each of them get_port_field()
-// (Interfaces.py:677,766,833,892,996); the port handed all five the stub, so a
-// detected-port dropdown could never appear.
+// (Interfaces.py:677,766,833,892,996); with the stub, a detected-port dropdown
+// can never appear.
 func TestSerialInterfaceTypesUseThePortField(t *testing.T) {
 	t.Parallel()
 

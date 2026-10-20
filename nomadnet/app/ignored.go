@@ -132,7 +132,8 @@ func (a *App) applyIgnoredDestinations() {
 	}
 }
 
-// splitLines splits data on newline bytes, dropping the trailing empty element that
+// splitLines splits data on newline bytes, dropping the trailing empty element
+// that would otherwise follow a final newline.
 func splitLines(data []byte) [][]byte {
 	var lines [][]byte
 	start := 0

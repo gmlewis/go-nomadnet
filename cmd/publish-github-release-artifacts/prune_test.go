@@ -133,9 +133,7 @@ func TestSelectPrunable(t *testing.T) {
 // The asset names here cover everything a real release carries: the platform
 // binaries this publisher generates, the installable appliances it publishes
 // for Android and iOS, and a file it never produced. All of them must be
-// planned for deletion on a pruned release; an earlier name-matching guard kept
-// the appliances, and the iOS one escaped only by accident, because its name
-// happened to miss the pattern that exempted the Android one.
+// planned for deletion on a pruned release.
 func TestPlanPruneDeletesEveryAsset(t *testing.T) {
 	t.Parallel()
 
@@ -223,7 +221,7 @@ func TestHumanBytes(t *testing.T) {
 		{21 * 1024 * 1024, "21.0 MB"},
 		{1024 * 1024 * 1024, "1.00 GB"},
 		{323 * 1024 * 1024, "323.0 MB"},
-		{30184410941, "28.11 GB"}, // every asset this repo stores today
+		{30184410941, "28.11 GB"}, // a GB-scale total
 	}
 	for _, c := range cases {
 		if got := humanBytes(c.n); got != c.want {

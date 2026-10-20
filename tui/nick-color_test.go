@@ -36,8 +36,8 @@ func TestNickColorByHash(t *testing.T) {
 		},
 		{
 			// byte index 7 set: int.from_bytes = 1<<64. The full-hash mod
-			// gives (val + 15) % 24 = 7, NOT 16 — the old 8-byte-truncating
-			// implementation returned 16 here, which diverged from Python.
+			// gives (val + 15) % 24 = 7, not 16 as an 8-byte-truncating
+			// implementation would.
 			name:      "hash with high byte set",
 			hash:      []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0, 0, 0},
 			wantColor: "#" + DarkThemeNickColors[7], // (val + 15) % 24 = 7
@@ -96,8 +96,8 @@ func TestNickColorByHashPythonParity(t *testing.T) {
 	t.Parallel()
 
 	// Battery of byte hashes as hex strings, exercising lengths beyond the
-	// first 8 bytes (the old uint64-truncating implementation diverged here),
-	// the empty-hash edge case, single bytes, and string/multibyte content.
+	// first 8 bytes (where a uint64-truncating reduction would diverge), the
+	// empty-hash edge case, single bytes, and string/multibyte content.
 	hashHex := []string{
 		"",                                  // empty bytes
 		strings.Repeat("00", 16),            // 16 zero bytes

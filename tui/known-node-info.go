@@ -143,10 +143,9 @@ func newKnownNodeInfoDisplay(nd *NetworkDisplay, nodeHash string, data KnownNode
 	// LXMF PN address line (centered, Network.py:643-647/776). Python holds it
 	// as a urwid.Text(align=CENTER) inside the Pile, so the 69-cell line wraps to
 	// two centered rows in the pane and the Pile's PACK height follows the
-	// wrapped row count (urwid.Text(...).rows((50,)) == 2). AddItemFn is what
-	// expresses that: a fixed one-row item clipped the 32-hex address onto an
-	// invisible second row, and a fixed two-row one would reserve a blank row in
-	// a pane wide enough for the whole line.
+	// wrapped row count (urwid.Text(...).rows((50,)) == 2). AddItemFn carries
+	// that: a fixed row count would either clip the wrapped address or reserve a
+	// blank row in a pane wide enough for the whole line.
 	lxmfRow := NewUrwidCenterText(data.LXMFAddrStr)
 	MakeCenterAddrClickable(nd.app, "Propagation Node Address", lxmfRow)
 

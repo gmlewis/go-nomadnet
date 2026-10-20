@@ -99,8 +99,8 @@ var benchInputs = []struct {
 }
 
 // BenchmarkParse measures the micron parser in isolation (no rendering),
-// mirroring the per-navigation/per-reflow parse cost. There is no parse cache
-// today, so every render re-parses the whole document.
+// mirroring the per-navigation/per-reflow parse cost. There is no parse cache,
+// so every render re-parses the whole document.
 func BenchmarkParse(b *testing.B) {
 	for _, tc := range benchInputs {
 		b.Run(tc.name, func(b *testing.B) {

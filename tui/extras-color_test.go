@@ -21,7 +21,7 @@ import (
 	"github.com/gmlewis/tcell/v2"
 )
 
-// TestIntroDisplayDefaultColor pins the splash/intro color parity fix.
+// TestIntroDisplayDefaultColor verifies the splash/intro color parity.
 // Python's Extras.py renders the intro title as urwid.BigText with the palette
 // name "intro_title", which is NOT defined in nomadnet's palette, so urwid
 // falls back to its default style (terminal-default fg/bg — no forced color).

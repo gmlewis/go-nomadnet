@@ -43,8 +43,7 @@ var defaultIndexContent string
 
 // nodeStartAnnounceDelay mirrors Python Node.START_ANNOUNCE_DELAY = 6
 // (Node.py:12,42). It is distinct from the app-level peer announce delay
-// (NomadNetworkApp.START_ANNOUNCE_DELAY = 3): this port reused the peer
-// constant for both.
+// (NomadNetworkApp.START_ANNOUNCE_DELAY = 3).
 const nodeStartAnnounceDelay = 6 * time.Second
 
 // ensureDefaultPages creates the pages directory and a default index.mu file
@@ -55,10 +54,10 @@ const nodeStartAnnounceDelay = 6 * time.Second
 // InitWithTransport, after applyConfig so a config-overridden pages_path is
 // honored) so a fresh install — whose default config has enable_node = no and
 // therefore never enters startNode — still gets the starter index.mu. It is
-// also called from startNode so an explicit node start (e.g. the cross-process
-// node-serving test) seeds the page even when Init was bypassed. Both call
-// sites are safe: the write is gated on os.IsNotExist, so an existing
-// index.mu (the operator's customized home page) is never overwritten.
+// also called from startNode so an explicit node start seeds the page even when
+// Init was bypassed. Both call sites are safe: the write is gated on
+// os.IsNotExist, so an existing index.mu (the operator's customized home page)
+// is never overwritten.
 func (a *App) ensureDefaultPages() error {
 	// Create pages directory if it doesn't exist
 	if _, err := os.Stat(a.PagesPath); os.IsNotExist(err) {
@@ -86,12 +85,8 @@ func (a *App) ensureDefaultPages() error {
 // (Node.py:49-51), and an announce-at-start fires after START_ANNOUNCE_DELAY
 // when NodeAnnounceAtStart is set (Node.py:40-47). It is a no-op when
 // EnableNode is false (Python leaves self.node = None). It returns an error if
-// the node cannot be started; both production callers (initRNS and the test
-// harness InitWithTransport) log and continue so a node start failure never
-// aborts the client. Tests that need to control node state write a private
-// config with enable_node = no before calling InitWithTransport (see
-// writeTestNomadNetConfig), so the test suite never depends on the default
-// config.
+// the node cannot be started; callers log and continue so a node start failure
+// never aborts the client.
 func (a *App) startNode() error {
 	if !a.EnableNode {
 		return nil

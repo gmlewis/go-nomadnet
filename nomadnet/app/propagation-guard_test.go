@@ -61,14 +61,6 @@ func rememberPropagationNodeAnnounce(t *testing.T, ts *rns.TransportSystem, dest
 	ts.Remember([]byte{0x02}, destHash, id.GetPublicKey(), propagationAppData(t, serving))
 }
 
-// unservedPropagationGuard pins the Go-only guard on the KnownNodeInfo
-// "Use as default propagation node" checkbox. That checkbox derives the
-// lxmf.propagation address of the identity that announced the NODE
-// (Python Network.py:629), which is only a real mailbox when the propagation
-// node itself announced that address. Kamrui's node is announced by its app
-// identity, so the checkbox derives ef289bf8… — an address nothing serves.
-// Python accepts it silently; the Go port must not.
-//
 // testAppWithTransport builds an App over a real but offline transport, enough
 // to exercise the reachability guards without touching the network.
 func testAppWithTransport(t *testing.T) (*App, *rns.TransportSystem) {
@@ -153,8 +145,7 @@ func TestSetPropagationNodeFromNodeIdentityRefusesUnserved(t *testing.T) {
 	a, ts := testAppWithTransport(t)
 
 	// A node announced by its app identity: the derived lxmf.propagation address
-	// is the app identity's, which no propagation node serves. This is the exact
-	// shape of the kamrui trap.
+	// is the app identity's, which no propagation node serves.
 	nodeHash := bytes.Repeat([]byte{0x1f}, 16)
 	rememberDestination(t, ts, nodeHash)
 	if a.NodePropagationHash(nodeHash) == nil {
@@ -194,14 +185,13 @@ func TestSetPropagationNodeFromNodeIdentityAcceptsServed(t *testing.T) {
 }
 
 // TestSetPropagationNodeFromNodeIdentityRefusesDeclaredButStopped pins the
-// serving test against a declared address that is not serving. This is the shape
-// the Go fleet has after the Python-parity declaration lands: every NomadNet node
-// announces its own lxmf.propagation address on each node announce
-// (Node.py:216-220) with node_state false while propagation is switched off. Such
-// an address is real and announced but answers no requests, so adopting it would
-// silently fail every propagated send — exactly the trap the guard exists for.
-// It is also why the guard cannot test mere existence
-// (PropagationNodeKnown): the declaration would otherwise reopen the hole.
+// serving test against a declared address that is not serving. Every NomadNet
+// node announces its own lxmf.propagation address on each node announce
+// (Node.py:216-220) with node_state false while propagation is switched off.
+// Such an address is real and announced but answers no requests, so adopting it
+// would silently fail every propagated send. It is also why the guard cannot
+// test mere existence (PropagationNodeKnown): the declaration would otherwise
+// reopen the hole.
 func TestSetPropagationNodeFromNodeIdentityRefusesDeclaredButStopped(t *testing.T) {
 	t.Parallel()
 
@@ -390,7 +380,7 @@ func TestPropagationNodeUnprovenNotice(t *testing.T) {
 // is one line in the Conversations left pane, and the marker is appended after
 // the node label, so a marker that is too long is the *reason* that gets cut off
 // at the right edge — leaving " Last sync: …  (<7acc095f…>, " and no explanation,
-// which is worse than showing nothing. The first wording shipped that way.
+// which is worse than showing nothing.
 //
 // The fixed parts are the worst realistic ones: a three-minute-old sync, and the
 // "<8 hex chars…>" node label Python falls back to for a propagation node (they

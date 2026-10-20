@@ -54,11 +54,10 @@ func newMouseRecordingApp(t *testing.T, opts ...Option) (*App, *mouseRecordingSc
 	return NewApp(ThemeDark, GlyphUnicode, ColorModeTrue, opts...), rec
 }
 
-// TestMouseEnabledGatesTerminalMouseMode pins [textui] mouse_enabled, which
-// Python passes to urwid as `handle_mouse=mouse_enabled`
-// (ui/TextUI.py:201,229; default true). The port enabled the mouse
-// unconditionally and never read the key, so `mouse_enabled = no` had no effect
-// and clicks still navigated.
+// TestMouseEnabledGatesTerminalMouseMode pins that [textui] mouse_enabled
+// controls the terminal mouse mode, which Python passes to urwid as
+// `handle_mouse=mouse_enabled` (ui/TextUI.py:201,229; default true). With the
+// key disabled the terminal must never enter mouse mode, so clicks do nothing.
 func TestMouseEnabledGatesTerminalMouseMode(t *testing.T) {
 	tests := []struct {
 		name          string

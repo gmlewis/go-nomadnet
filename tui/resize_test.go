@@ -41,9 +41,7 @@ func resizeAndDraw(t *testing.T, root tview.Primitive, screen tcell.Screen, w, h
 // TestMainDisplayResizeNoCrash drives a running MainDisplay (mounted through
 // the dialog manager Pages root, the real entrypoint path) through a sequence
 // of terminal resizes including the recommended 135x32, the small-terminal
-// 80x24, and several degenerate sizes. None may panic — this is the Task 0.8
-// spec: "the process died on tmux resize-window; add a test that drives a
-// resize on a running MainDisplay without panic."
+// 80x24, and several degenerate sizes. None may panic.
 //
 // These tests use a per-test *App with its own DialogManager, so they are
 // safe to run in parallel (left serial here only because they drive a real
@@ -80,8 +78,8 @@ func TestMainDisplayResizeNoCrash(t *testing.T) {
 }
 
 // TestMainDisplayResizeWithDialogOpen repeats the resize sequence with a
-// modal dialog open, exercising DialogLineBox.Draw (the prime resize-crash
-// suspect) at small sizes where its border/title arithmetic is most fragile.
+// modal dialog open, exercising DialogLineBox.Draw at small sizes where its
+// border/title arithmetic is most fragile.
 func TestMainDisplayResizeWithDialogOpen(t *testing.T) {
 	app := newTestApp()
 	md := NewMainDisplay(app, ThemeDark, GlyphUnicode)
@@ -139,9 +137,8 @@ func mountRealDisplays(md *MainDisplay) []string {
 
 // TestMainDisplayResizeAllPagesRealWidgets mounts the real page widgets (not
 // just placeholders) and, for every page, drives the full resize sequence
-// including degenerate sizes. This exercises each page's Draw path — the
-// BorderedBoxes, lists, tables, and charts that are the actual resize-crash
-// surface — and asserts none panic.
+// including degenerate sizes, exercising each page's Draw path — the
+// BorderedBoxes, lists, tables, and charts — and asserting none panic.
 func TestMainDisplayResizeAllPagesRealWidgets(t *testing.T) {
 	app := newTestApp()
 	md := NewMainDisplay(app, ThemeDark, GlyphUnicode)

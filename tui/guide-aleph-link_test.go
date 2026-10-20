@@ -21,23 +21,19 @@ import (
 	"testing"
 )
 
-// TestGuideAlephGitLinkReachable pins the user-reported bug that the Guide =>
-// Introduction "Aleph git" link could not be selected/activated. The link is a
-// plain nomadnetwork.node page URL embedded in the last Introduction paragraph
+// TestGuideAlephGitLinkReachable pins that the Guide => Introduction "Aleph
+// git" link is reachable from the keyboard. The link is a plain
+// nomadnetwork.node page URL in the last Introduction paragraph
 // (introduction.mu line 26):
 //
 //	`_`F79d`[Aleph git`a8d24177d946de4f1f0a0fe1af9a1338:/page/index.mu]`f`_
 //
-// Python's Guide reader keyboard model has a known quirk (the focus cursor does
-// not follow scroll, Guide.py:78-88), so the keyboard never reliably lands on
-// the link — but the MOUSE activates it (LinkableText.mouse_event fires
-// handle_link on the clicked part, MicronParser.py:1005-1042). The Go port
-// reproduces the Python focus model on a single TextView (B2/B5): Down moves
-// to the paragraph's selectable line, Right advances the within-line cursor to
-// the link part, Enter activates. This test pins that the keyboard path
-// ACTUALLY reaches the link (an improvement over the Python source-of-truth,
-// which the user explicitly requested: "I would like to be able to use the
-// keyboard OR the mouse").
+// Python's Guide reader focus cursor does not follow scroll (Guide.py:78-88),
+// so its keyboard never reliably lands on the link, though the mouse does
+// (LinkableText.mouse_event fires handle_link on the clicked part,
+// MicronParser.py:1005-1042). The Go focus model reproduces Python's on a
+// single TextView: Down moves to the paragraph's selectable line, Right
+// advances the within-line cursor to the link part, Enter activates.
 //
 // It also pins that the link is registered in gd.links with the right URL, so
 // the tview region emitted for it resolves via activateLink (the mouse path).

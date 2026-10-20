@@ -200,8 +200,7 @@ class LaunchSpecTest {
         //     error=2, No such file or directory
         //
         // which names the program, the program is there, and the directory is what is
-        // missing. The console host is the one that found this: the stack created its own
-        // four directories and nothing created the client's home.
+        // missing.
         val root = tempDir("appliance-")
         val fresh = StackPaths(root.absolutePath)
         fresh.ensureDirectories()
@@ -237,9 +236,8 @@ class LaunchSpecTest {
             assertFalse("$what state directory must not be created by the list: $path", File(path).isDirectory)
         }
 
-        // And a process really can be started there, which is the thing the tablet refused
-        // to do. The assertion above is about the directory; this one is about the runner
-        // that was told to use it.
+        // And a process really can be started there. The assertions above are about the
+        // directory; this one is about the runner that was told to use it.
         val shell = File("/bin/sh")
         assertTrue("this test needs a POSIX shell to start a child with", shell.canExecute())
         val child = ProcessBuilder(listOf(shell.absolutePath, "-c", "exit 0"))

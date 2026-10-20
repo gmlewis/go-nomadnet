@@ -19,7 +19,7 @@ import (
 	"testing"
 )
 
-// TestConfigDisplayShowEditorMountsAndCloses verifies the Phase-4 wiring:
+// TestConfigDisplayShowEditorMountsAndCloses verifies the editor wiring:
 // ShowEditor mounts the EmbeddedTerminal as the editor page over the config
 // explainer (matching Python's open_editor setting self.widget =
 // LineBox(editor); Config.py:30-35) and focuses it; closeEditor removes the

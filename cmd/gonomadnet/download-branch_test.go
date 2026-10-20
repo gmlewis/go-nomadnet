@@ -48,10 +48,9 @@ func newDownloadTestDisplay(t *testing.T) *tui.BrowserDisplay {
 // the footer, and a page path is left entirely alone for the caller's page path
 // (cache + render) to handle.
 //
-// Python makes the same split in Browser.load_page — `if path.startswith("/file/")`
-// routes to download_file (Browser.py:932-940) — and the port had no such branch,
-// so a remote /file/ URL fetched the bytes and rendered them as markup: the file
-// was never saved and the user saw the file's contents as a page.
+// Python makes the same split in Browser.load_page: a path starting with
+// "/file/" routes to download_file (Browser.py:932-940); anything else is a
+// page.
 func TestCompleteRemoteFilePath(t *testing.T) {
 	body := []byte("download body bytes\n")
 
@@ -133,8 +132,8 @@ func TestCompleteRemoteFilePath(t *testing.T) {
 // TestShouldRingMentionBell pins the bell's gate, mirroring Python's
 // _on_rrc_message (Channels.py:2262-2271): only a message that mentions the local
 // nick rings, and only when its room is not the one already on screen. The bell
-// itself (debounce, the BEL byte) is covered by tui/mention-bell_test.go; this is
-// the call site, which had none — the bell was dead code.
+// itself (debounce, the BEL byte) is covered by tui/mention-bell_test.go; this
+// pins the call site's gate.
 func TestShouldRingMentionBell(t *testing.T) {
 	t.Parallel()
 

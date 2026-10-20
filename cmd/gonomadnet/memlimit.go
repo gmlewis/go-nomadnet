@@ -17,15 +17,11 @@ package main
 
 // Memory tuning for long-running nodes on small devices.
 //
-// A gonomadnet process on a memory-constrained host (e.g. a Jetson Nano with
-// 2 GiB RAM) can grow its RSS until it brings the device to its knees. Live-heap
-// profiling shows the Go heap itself stays modest (~single-digit MB) while
-// allocation churn (the terminal draw path, per-announce known-destination
-// re-saves) is high; with default GC settings (GOGC=100, no soft limit) the
-// runtime's RSS watermark floats well above the live heap and Go is slow to
-// return freed spans to the OS. Setting a soft memory limit caps that watermark
-// regardless of churn, without touching the (separate, cumulative) leak sources
-// in go-reticulum.
+// With default GC settings (GOGC=100, no soft limit) a long-running process's
+// RSS watermark floats well above the live heap, and Go is slow to return freed
+// spans to the OS. Allocation churn (the terminal draw path, per-announce
+// known-destination re-saves) can therefore grow RSS on a memory-constrained
+// host. A soft memory limit caps that watermark regardless of churn.
 //
 // To avoid being unnecessarily restrictive on powerful machines, the soft limit
 // is ONLY auto-applied when the host reports less than 4 GiB of RAM. On a
@@ -95,8 +91,8 @@ func applyMemoryTuning() {
 
 // totalMemoryBytes returns the host's total physical RAM in bytes, or 0 if it
 // cannot be determined (e.g. non-Linux). Only /proc/meminfo is consulted, so on
-// macOS/dev machines this returns 0 and applyMemoryTuning leaves Go defaults in
-// place — exactly the desired "don't restrict powerful machines" behavior.
+// macOS this returns 0 and applyMemoryTuning leaves Go defaults in place, which
+// keeps the auto-limit off powerful machines.
 func totalMemoryBytes() int64 {
 	data, err := os.ReadFile("/proc/meminfo")
 	if err != nil {

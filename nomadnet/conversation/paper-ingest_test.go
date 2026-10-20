@@ -35,10 +35,9 @@ import (
 //	message_path = Conversation.ingest(lxm, self.app, originator=True)
 //	self.messages.append(ConversationMessage(message_path))
 //
-// (Conversation.py:358-360, 368-370, 377-379). The port appended the downloads file
-// instead (and, for print_qr, the temporary print file it had already deleted), so
-// the new conversation entry pointed outside the conversation — for print_qr at a
-// path that no longer existed.
+// (Conversation.py:358-360, 368-370, 377-379), so the appended entry always
+// points at a file inside the conversation directory — never at the downloads
+// artefact or the temporary print file.
 func TestPaperOutputAppendsIngestedMessage(t *testing.T) {
 	t.Parallel()
 
@@ -74,7 +73,7 @@ func TestPaperOutputAppendsIngestedMessage(t *testing.T) {
 			if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 				t.Errorf("appended message %q is not inside the conversation directory %q", got, deps.convPath)
 			}
-			// And it exists on disk — the print_qr temp file did not.
+			// And it exists on disk.
 			if _, err := os.Stat(got); err != nil {
 				t.Errorf("appended conversation message %q does not exist: %v", got, err)
 			}
@@ -91,10 +90,8 @@ func TestPaperOutputAppendsIngestedMessage(t *testing.T) {
 // TestPaperOutputQRGeometryMatchesPython pins the saved QR's geometry to the
 // reference. Python renders it with qrcode.make(error_correction=QR_ERROR_CORRECTION,
 // border=1, data=self.as_uri(finalise=False)) — box_size is left at the library
-// default of 10 (LXMessage.py:718-736). The port used rsc.io/qr's Code.PNG(), which
-// hard-codes a 4-module quiet zone and a scale of 8, so every paper QR had a
-// different pixel geometry from the reference. lxmf.Message.AsQR renders a
-// 1-module border at 10 pixels per module; this test holds it to that.
+// default of 10 (LXMessage.py:718-736). lxmf.Message.AsQR renders a 1-module
+// border at 10 pixels per module; this test holds it to that.
 //
 // The expected module count comes from the Python reference itself (qrcode's
 // modules_count for the same URI and error-correction level), so no size is

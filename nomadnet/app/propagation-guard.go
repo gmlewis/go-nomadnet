@@ -35,11 +35,10 @@ import (
 // `lxmf.propagation` address of whichever identity announced the NODE being
 // viewed (Python Network.py:629, hash_from_name_and_identity on
 // Identity.recall(node_hash)). When a host's node and its propagation node run
-// under different identities — as they do on this fleet's hub, where the node
-// is announced by the NomadNet app identity and the propagation node runs from
-// the lxmd identity — the derived address belongs to the app identity and no
-// process serves it. The client then shows an opaque <hex…> in the Conversations
-// footer and silently fails every propagated delivery.
+// under different identities, the derived address belongs to the node's
+// announcing identity and no process serves it. The client then shows an opaque
+// <hex…> in the Conversations footer and silently fails every propagated
+// delivery.
 //
 // See the package documentation in app.go for the overall package layout.
 
@@ -80,8 +79,8 @@ func (a *App) PropagationNodeKnown(pnHash []byte) bool {
 // This is the check that matters for adopting a propagation node. A NomadNet
 // node declares its own propagation address on every node announce even when it
 // serves nothing, so "announced" alone would adopt an address that answers no
-// requests — the trap this file exists to prevent. An address that was never
-// announced, or whose latest announce carries no readable state, is not serving.
+// requests. An address that was never announced, or whose latest announce
+// carries no readable state, is not serving.
 func (a *App) PropagationNodeServing(pnHash []byte) bool {
 	if a.Transport == nil || len(pnHash) == 0 {
 		return false
@@ -119,15 +118,14 @@ func (a *App) NodePropagationNotServing(nodeHash []byte) bool {
 // Conversations footer: the empty string when the node looks usable, otherwise
 // the reason it does not. The three failure states are kept apart deliberately —
 // "no identity" means no process has announced that address at all (a dead
-// selection, and the state the fleet's phones were left in); "stopped" means the
-// address is declared but its node_state says it is not serving (a NomadNet
-// node's own propagation address, which it declares even with propagation
-// switched off); "no path" means the address is real and serving but not
-// currently routable (a transient condition that resolves itself, e.g. once the
-// node re-announces).
+// selection); "stopped" means the address is declared but its node_state says it
+// is not serving (a NomadNet node's own propagation address, which it declares
+// even with propagation switched off); "no path" means the address is real and
+// serving but not currently routable (a transient condition that resolves itself,
+// e.g. once the node re-announces).
 //
 // The wording is short on purpose. The footer is one line in a 52-column pane
-// and the marker is appended to the node label, so a longer phrase pushed the
+// and the marker is appended to the node label, so a longer phrase would push the
 // *reason* past the right edge — leaving the reader with "unreachable: " and no
 // idea why, which is worse than saying nothing.
 func propagationNodeMarker(identityKnown, serving, hasPath bool) string {

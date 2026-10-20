@@ -76,10 +76,10 @@ func assertAnnounceFilters(t *testing.T, ts *rns.TransportSystem) {
 
 // TestAnnounceHandlerFiltersMatchPython asserts the test harness registers
 // exactly the announce filters production registers, which are exactly the ones
-// Python registers. This is the regression test for a stray "rrc.chat" handler:
-// no destination is ever announced under that name (the real RRC name is
-// "rrc.hub"), so the handler could never run, and wiring it up instead would have
-// added every announced RRC hub to the hub list, which Python never does.
+// Python registers. In particular no RRC filter may appear: no destination is
+// ever announced under "rrc.chat" (the real RRC name is "rrc.hub"), and
+// subscribing to it would add every announced RRC hub to the hub list, which
+// Python never does.
 func TestAnnounceHandlerFiltersMatchPython(t *testing.T) {
 	t.Parallel()
 

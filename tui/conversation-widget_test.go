@@ -418,7 +418,7 @@ func TestConversationWidgetRenderMessages(t *testing.T) {
 // Python's update_message_widgets which constructs the IndicativeListBox with
 // position = len(message_widgets)-1 (Conversations.py:2304) so the newest
 // message is focused/visible. Without this, the view stays at the top after
-// a send/receive, leaving the newest messages off-screen (B14).
+// a send/receive, leaving the newest messages off-screen.
 func TestConversationWidgetAutoScrollBottom(t *testing.T) {
 	t.Parallel()
 

@@ -78,7 +78,6 @@ func TestPlotSingleSeries(t *testing.T) {
 		t.Error("PlotSingle returned empty")
 	}
 
-	// Should have multiple lines
 	lines := strings.Split(result, "\n")
 	if len(lines) < 2 {
 		t.Errorf("PlotSingle returned %v lines, want >= 2", len(lines))
@@ -217,7 +216,6 @@ func TestPlotWidth(t *testing.T) {
 
 	lines := strings.SplitSeq(result, "\n")
 	for line := range lines {
-		// Each line should have at least offset + series width
 		if len([]rune(line)) < 5+5 {
 			t.Errorf("Line too short: %q", line)
 		}
@@ -334,8 +332,8 @@ func TestPlainSymbols(t *testing.T) {
 }
 
 // TestPlotRejectsInvertedMinMax pins Python's ValueError when the configured
-// minimum exceeds the maximum (AsciiChart.py:21-22). The port silently swapped
-// them, hiding a caller's inverted range.
+// minimum exceeds the maximum (AsciiChart.py:21-22). The range must be
+// rejected rather than silently swapped.
 func TestPlotRejectsInvertedMinMax(t *testing.T) {
 	t.Parallel()
 

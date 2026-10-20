@@ -137,9 +137,9 @@ object Resolver {
      * Splits a `host:port` specification.
      *
      * An IPv6 address has to be bracketed — `[2001:db8::1]:4242` — because otherwise the
-     * colons in the address and the colon before the port cannot be told apart. This is the
-     * same requirement the dialer has, and the same bug it produced when a site joined a
-     * host and a port with a bare colon: `too many colons in address`.
+     * colons in the address and the colon before the port cannot be told apart. The dialer
+     * has the same requirement and rejects a host and port joined by a bare colon with
+     * `too many colons in address`.
      */
     fun parseHostPort(spec: String): Pair<String, Int>? {
         val trimmed = spec.trim()

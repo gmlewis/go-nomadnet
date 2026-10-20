@@ -62,8 +62,7 @@ final class TerminalGestureTests: XCTestCase {
         XCTAssertEqual(gesture.move(x: 100, y: 280), 1, "the drag's first line")
         XCTAssertEqual(gesture.move(x: 100, y: 260), 1, "the drag's second line")
         // And the release says nothing: the two lines were asked for as they happened, so a
-        // caller that acted on them has nothing left to do. Reporting them again is a second
-        // scroll of the same travel, which is what the appliance did.
+        // caller that acted on them has nothing left to do.
         XCTAssertEqual(gesture.up(), .none, "a drag was also a tap")
     }
 

@@ -142,7 +142,7 @@ func TestModalRenderingMatchesPython(t *testing.T) {
 	}
 
 	// EVERY cell must be the default style (default fg, default bg) — Python's
-	// urwid LineBox/Button/Text emit attr=None. No forced color (e.g. the former
+	// urwid LineBox/Button/Text emit attr=None. No forced color (e.g. a
 	// 0xdddddd border/text or tview.Button's black/green) may appear.
 	for y := range 6 {
 		for x := range 60 {

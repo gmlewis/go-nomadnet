@@ -41,10 +41,9 @@ const wrapModelPage = "aaaa bbbb cccc dddd eeee ffff gggg\nlast `[Link`:/page/x.
 
 // TestBrowserRowModelCountsWrappedLines pins rowsAbove/lineRowCount against the
 // rendered layout when a line ABOVE the cursor pre-wraps into multiple rows.
-// The regression this pins: lineTexts held one entry per emitted ROW (not per
-// line), so every currentLines index past the wrap shifted rowsAbove one row
-// short and the hardware cursor drew one row above the focused line (the TTP
-// node bottom-of-page off-by-one).
+// lineTexts must hold one entry per rendered line (not per emitted row), or
+// every currentLines index past the wrap shifts rowsAbove one row short and the
+// hardware cursor draws above the focused line.
 func TestBrowserRowModelCountsWrappedLines(t *testing.T) {
 	t.Parallel()
 	app := newTestApp()
@@ -103,7 +102,7 @@ func (c *cursorRecorderScreen) HideCursor() {
 	c.Screen.HideCursor()
 }
 
-// TestBrowserCursorBottomOnFinalLine reproduces the user's bug: on the TTP
+// TestBrowserCursorBottomOnFinalLine pins the bottom-of-page case: on the TTP
 // node's index page (a wrapping paragraph mid-page, centered link menu on the
 // final line) at the real 103×29 browser content size, pressing Down to the
 // last selectable line and then past it (extra line-scroll Downs) must draw
@@ -133,9 +132,8 @@ func TestBrowserCursorBottomOnFinalLine(t *testing.T) {
 	bd.focusLine = home
 	bd.lineCursors[home] = 0
 	bd.ensureVisible()
-	// The user pressed Down several more times after reaching the last line:
-	// each press line-scrolls (Scrollable SCROLL_LINE_DOWN) and clamps at the
-	// document bottom.
+	// Down past the last line: each press line-scrolls (Scrollable
+	// SCROLL_LINE_DOWN) and clamps at the document bottom.
 	for range 3 {
 		bd.handleInput(key(tcell.KeyDown, 0))
 	}

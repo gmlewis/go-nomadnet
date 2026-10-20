@@ -21,14 +21,13 @@ import (
 	"github.com/gmlewis/tcell/v2"
 )
 
-// TestNavKeyAfterSetContentNoPanic pins the runtime panic
-// "index out of range [0] with length 0" at browser-nav.go handleNavKey that was
-// introduced when SetContent (the fetch-failure callback) learned to swap the
-// loading body out via showContent: it re-shows bd.content with the error text
-// but does NOT run renderPage/initNavState, so the per-line nav model stays at
-// its zero value (bd.lineCursors nil, bd.focusLine 0). Pressing an arrow key on
-// the freshly-shown error page then indexes bd.lineCursors[0] with len==0 and
-// crashes the whole app.
+// TestNavKeyAfterSetContentNoPanic pins the nav-state invariant of a page body
+// that was never rendered from markup: SetContent (the fetch-failure callback)
+// swaps the loading body out via showContent and re-shows bd.content with the
+// error text, but does NOT run renderPage/initNavState, so the per-line nav
+// model stays at its zero value (bd.lineCursors nil, bd.focusLine 0). An arrow
+// key on that page must not index bd.lineCursors[0] with len==0 and crash the
+// whole app.
 //
 // The same applies to Disconnect (C-w), which sets the "Disconnected." text on
 // bd.content without renderPage. Both must reset the nav state to "no selectable
@@ -53,8 +52,9 @@ func TestNavKeyAfterSetContentNoPanic(t *testing.T) {
 	assertNavKeysNoPanic(t, bd, "after SetContent (fetch failure)")
 }
 
-// TestNavKeyAfterDisconnectNoPanic pins the same panic for the Disconnect path
-// (C-w), which sets the "Disconnected." text on bd.content without renderPage.
+// TestNavKeyAfterDisconnectNoPanic pins the same invariant for the Disconnect
+// path (C-w), which sets the "Disconnected." text on bd.content without
+// renderPage.
 func TestNavKeyAfterDisconnectNoPanic(t *testing.T) {
 	t.Parallel()
 	app := newTestApp()

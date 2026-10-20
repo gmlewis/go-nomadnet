@@ -89,8 +89,7 @@ func TestComposerFocusedReadlineKeysEditNotAttach(t *testing.T) {
 	}
 
 	// ctrl w → kill previous word, NOT close (Python parity: the ReadlineMixin
-	// consumes ctrl-w inside the composer, ReadlineEdit.py:40,59 — verified
-	// live against the installed Python).
+	// consumes ctrl-w inside the composer, ReadlineEdit.py:40,59).
 	cw.editor.SetText("hello world")
 	cw.editor.SetCursorPos(len("hello world"))
 	cw.pressComposerKey(t, tcell.KeyCtrlW)

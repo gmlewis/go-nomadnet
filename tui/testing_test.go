@@ -51,7 +51,7 @@ func onEventLoop(app *App, f func()) {
 // Running cond on the test goroutine instead would not be enough, even after a
 // barrier: a barrier only orders that goroutine against writes the loop has
 // ALREADY made, so the read still races with whatever write the loop is making
-// at that very instant. That is precisely how the two tests below used to race.
+// at that very instant.
 //
 // cond must not itself queue work (no onEventLoop, no QueueUpdateDraw): the loop
 // cannot service an update while it is running one. Anything cond leaves behind

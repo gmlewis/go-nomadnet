@@ -24,8 +24,7 @@ import (
 // TestLinkableTextBaseColor pins the LinkableText base text color to the
 // micron plain default #dddddd (6-hex exact). Python's LinkableText is a
 // bare urwid.Text whose parts carry the synthesized micron_ddd_default_
-// style (#dddddd dark / #222222 light). The Go port previously used
-// 0xbbbbbb which Python never emits.
+// style (#dddddd dark / #222222 light). Python never emits 0xbbbbbb here.
 //
 // Python source: MicronParser.py:866,405,424-425 (LinkableText uses
 // make_style(state) → micron_ddd_default_ = #dddddd dark).
@@ -59,7 +58,7 @@ func TestLinkableTextBaseColor(t *testing.T) {
 
 // TestBrowserControlsFallback pins the browserControlsColor fallback to
 // the cube-quantized browser_controls value (#bbb → #afafaf), not the
-// prior nibble-doubled 0xbbbbbb. This fallback is hit only when the theme
+// nibble-doubled 0xbbbbbb. This fallback is hit only when the theme
 // lookup yields ColorDefault (test-only); the primary path already uses
 // GetThemeColors.
 //

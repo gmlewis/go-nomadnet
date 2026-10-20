@@ -393,8 +393,7 @@ var cubeSteps256 = [6]int32{0x00, 0x5f, 0x87, 0xaf, 0xd7, 0xff}
 // the 256-color cube EVEN in 24-bit truecolor (_parse_color_true routes 3-hex
 // through _parse_color_256 first), so "#bbb" renders as #afafaf (175), not the
 // nibble-doubled #bbbbbb (187). Only 6-digit "#rrggbb" is parsed as exact
-// 24-bit. Replicating this collapses the port-wide color divergence where Go
-// nibble-doubled every 3-hex palette entry.
+// 24-bit.
 var cubeStepForNibble = [16]int{0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 3, 3, 4, 4, 5, 5}
 
 // cubeQuantize3 returns the urwid-cube-quantized 24-bit RGB for a 3-hex
@@ -407,9 +406,9 @@ func cubeQuantize3(r, g, b int) int32 {
 
 // cubeHex3 parses a 3-digit "#rgb" hex color and returns the urwid-cube-
 // quantized tcell.Color. It mirrors urwid's truecolor rendering of the
-// static palette's 3-hex entries (menubar #111→#000000, #bbb→#afafaf, …),
-// collapsing the port-wide nibble-doubling divergence. Used to express the
-// theme color maps (theme.go) from the Python source-of-truth 3-hex specs.
+// static palette's 3-hex entries (menubar #111→#000000, #bbb→#afafaf, …).
+// Used to express the theme color maps (theme.go) from the Python
+// source-of-truth 3-hex specs.
 func cubeHex3(spec string) tcell.Color {
 	if len(spec) != 4 || spec[0] != '#' {
 		return tcell.ColorDefault

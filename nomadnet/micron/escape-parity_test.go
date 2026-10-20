@@ -18,7 +18,7 @@ package micron
 import "testing"
 
 // Expected values captured from Python MicronParser.make_output's escape
-// handling (MicronParser.py:829-846), extracted via /tmp/micron_inline.py.
+// handling (MicronParser.py:829-846).
 // A backslash escapes the next character (making ` and \ literal); a
 // trailing backslash contributes nothing. A leading "\<" / "\#" line is
 // not a section-reset or comment — the backslash escapes the first char so

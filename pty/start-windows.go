@@ -27,8 +27,8 @@ import (
 // StartWithSize reports that the command cannot be started on a pty here: a
 // Windows console has no pseudo-terminals, so there is no terminal to give it.
 //
-// The answer is the pty library's own error value, which is what a caller saw
-// before this package existed and what its error path already reports.
+// The answer is the pty library's own error value, which a caller's error path
+// already handles.
 func StartWithSize(cmd *exec.Cmd, ws *Winsize) (*os.File, error) {
 	return nil, creackpty.ErrUnsupported
 }

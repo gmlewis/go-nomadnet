@@ -147,8 +147,8 @@ func TestLocalPeerAnnounceLine(t *testing.T) {
 // addr, identity, announce) but does NOT touch the name edit — mirroring
 // Python's LocalPeer, which never re-sets e_name.edit_text after construction
 // (Network.py:1271). The name is seeded once via SetName; a refresh must not
-// clobber it (this is the bug where inbound announces/messages fired
-// UIChangeCallback → SetData and overwrote the user's in-progress typing).
+// clobber it, since inbound announces and messages re-run SetData on every
+// event.
 func TestLocalPeerSetData(t *testing.T) {
 	t.Parallel()
 	app := newTestApp()

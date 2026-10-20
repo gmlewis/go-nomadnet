@@ -172,8 +172,8 @@ func TestParseInterfaceConfigNameProperty(t *testing.T) {
 
 // TestParseInterfaceConfigSkipsRNodeMultiSubInterfaces verifies that an
 // RNodeMultiInterface's [[[sub-interface]]] blocks do not contribute their keys
-// to the parent. A sub-interface's type/enabled used to overwrite the parent's,
-// so the list showed the last sub's type and could report the whole radio
+// to the parent. A sub-interface's type/enabled must not overwrite the parent's,
+// or the list would show the last sub's type and could report the whole radio
 // disabled. Python collects the sub-blocks into a "sub_interfaces" list that
 // nothing reads (Interfaces.py:2846-2860).
 func TestParseInterfaceConfigSkipsRNodeMultiSubInterfaces(t *testing.T) {

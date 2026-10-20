@@ -55,14 +55,12 @@ func newC2App(t *testing.T) (*App, *ConversationsDisplay) {
 	return app, cd
 }
 
-// TestC2DialogReplacesListColumnInPlace pins C2: opening a list-slot dialog
+// TestC2DialogReplacesListColumnInPlace pins that opening a list-slot dialog
 // REPLACES the list column at index 0 (Python
 // columns_widget.contents[0] = (overlay, options), Conversations.py:1024-1029)
 // so the layout stays [dialog | conversation] — the open conversation remains
-// visible on the right. The previous Go build appended the overlay to the END
-// of the content Flex, throwing the layout to [conversation | dialog], and
-// CloseListSlotDialog appended leftPanel at the end again, leaving the panes
-// SWAPPED until the next conversation open self-healed them.
+// visible on the right. Appending the overlay instead would throw the layout to
+// [conversation | dialog], and closing it would leave the panes swapped.
 func TestC2DialogReplacesListColumnInPlace(t *testing.T) {
 	t.Parallel()
 

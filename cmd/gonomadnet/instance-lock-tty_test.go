@@ -12,13 +12,10 @@ import (
 	"testing"
 )
 
-// TestHasTTYWithDevNull verifies that /dev/null is NOT detected as a TTY.
-// This is the regression test for the stale-lock silent-exit bug: when
-// gonomadnet was launched via `nohup bash ./gonomadnet.sh &` from a
-// non-interactive SSH session, stdin was not a terminal. The tview TUI
-// failed to initialize and gonomadnet exited silently with code 0, leaving
-// the operator with no running node and no error. The fix auto-falls back to
-// daemon mode when hasTTY() returns false.
+// TestHasTTYWithDevNull verifies that /dev/null is NOT detected as a TTY, which
+// is what lets a client launched with stdin redirected (e.g. `nohup ... &` from
+// a non-interactive SSH session) fall back to daemon mode instead of starting a
+// TUI that cannot run.
 func TestHasTTYWithDevNull(t *testing.T) {
 	f, err := os.Open("/dev/null")
 	if err != nil {

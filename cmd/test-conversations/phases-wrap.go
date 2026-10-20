@@ -10,13 +10,9 @@ import (
 )
 
 // phases-wrap.go verifies the conversation composer's multiline word wrap on a
-// live instance. The regression it guards was reported from the UI: as a long
-// draft grew, the composer kept every character on one row, the caret ran off
-// the right edge, and the user stopped seeing what they were typing — while the
-// RRC channel composer, which uses the same ReadlineEdit multiline behavior,
-// wrapped correctly. A wrapped draft therefore has to show its BEGINNING and
-// its END at the same time, on different screen rows; a horizontally-scrolled
-// single-line field shows only the end.
+// live instance. A long draft must show its BEGINNING and its END at the same
+// time, on different screen rows; a horizontally-scrolled single-line field
+// shows only the end.
 
 const (
 	// wrapHead and wrapTail bracket the long draft. They are unique to this

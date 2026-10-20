@@ -29,12 +29,9 @@ import (
 // TestScanStorageRestoreFromIndexUnconditional pins Python scan_storage
 // parity (Conversation.py:2240-2246): a newly-discovered message file
 // restores ALL cached fields from its .index entry UNCONDITIONALLY — Python
-// performs no sort_timestamp/mtime comparison. A previous Go-only
-// mtime-equality guard skipped the restore when the index snapshot's
-// sort_timestamp differed from the file mtime, so gonomadnet re-parsed the
-// envelope and re-verified signatures where nomadnet renders the indexed
-// cached state — a visible per-row divergence (fresh "✓ ←" vs indexed
-// "← Unknown Origin") on the glenn-macm2pro ⇄ glenn-mac-mini-m2 conversation.
+// performs no sort_timestamp/mtime comparison. A conditional restore would
+// re-parse the envelope and re-verify signatures, rendering a fresh "✓ ←"
+// header where nomadnet renders the indexed "← Unknown Origin".
 func TestScanStorageRestoreFromIndexUnconditional(t *testing.T) {
 	t.Parallel()
 	ts := rns.NewTransportSystem(nil)
@@ -79,8 +76,8 @@ func TestScanStorageRestoreFromIndexUnconditional(t *testing.T) {
 	conv.Messages[0].Load()
 	// Snapshot the entry with a title that can ONLY come from the index. The
 	// WriteIndex-written sort_timestamp equals the file mtime, so rewrite the
-	// index with a deliberately mismatching sort_timestamp — the exact case
-	// the mtime guard silently skipped.
+	// index with a deliberately mismatching sort_timestamp to prove the restore
+	// ignores it.
 	saved := *conv.Messages[0]
 	saved.CachedTitle = "restored-from-index-title"
 	if err := WriteIndex(convDir, []*Message{&saved}); err != nil {

@@ -134,8 +134,8 @@ class DefaultHubsTest {
         // The first console open happens before the stack has ever run, so the appliance
         // writes the two public hubs and no local one. The bytes are still its own — nobody
         // has edited them — so the next open, by which time the local hub has published a
-        // destination, may complete them. This is the bug: a store written once and then left
-        // alone forever shows two channels where it promised three.
+        // destination, may complete them. A store written once and left alone forever would
+        // show two channels where the appliance promises three.
         val store = File(tempDir(), "rrc_hubs")
         assertTrue("the first open seeds the two public hubs", DefaultHubs.seed(store, null))
         assertArrayEquals("the first open wrote something else", twoHubFixture(), store.readBytes())

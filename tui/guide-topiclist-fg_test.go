@@ -21,20 +21,19 @@ import (
 	"github.com/gmlewis/tcell/v2"
 )
 
-// TestGuideTopicListUnfocusedFg pins V-TopicList-Fg: unfocused Guide topic-list
-// items must render with the theme's topic_list_normal foreground, matching
-// Python Guide.py:133-135 where each GuideEntry is
+// TestGuideTopicListUnfocusedFg pins that unfocused Guide topic-list items
+// render with the theme's topic_list_normal foreground, matching Python
+// Guide.py:133-135 where each GuideEntry is
 // `AttrMap(widget, "topic_list_normal", "list_focus")`. Python's first palette
 // block is THEME_DARK (TextUI.py:19), so dark topic_list_normal = #ddd
 // (TextUI.py:52) and light = #222 (TextUI.py:105). Both are 3-hex, so urwid
-// cube-quantizes them even in truecolor: #ddd→#d7d7d7, #222→#000000. The Go
-// port previously left the unfocused items at tview's terminal-default fg
-// (ApplyListFocusStyle only sets the SELECTED colors), so the topic list read
-// as default text instead of the themed #ddd/#222.
+// cube-quantizes them even in truecolor: #ddd→#d7d7d7, #222→#000000.
+// ApplyListFocusStyle only sets the SELECTED colors, so the main text color
+// must be set separately.
 //
-// We draw the Guide and probe a NON-current topic row (its item is not the
-// focused/selected one, so it uses the main/unfocused text color) and assert
-// its cell foreground is topic_list_normal.
+// The test draws the Guide and probes a NON-current topic row (its item is not
+// the focused/selected one, so it uses the main/unfocused text color) and
+// asserts its cell foreground is topic_list_normal.
 func TestGuideTopicListUnfocusedFg(t *testing.T) {
 	t.Parallel()
 

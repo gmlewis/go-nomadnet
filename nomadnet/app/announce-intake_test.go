@@ -36,8 +36,7 @@ func announceIntakeApp(t *testing.T) *App {
 
 // TestPNAnnounceGate pins Python PNAnnounceHandler (Directory.py:20-30): only a
 // well-formed LXMF propagation announce whose node-state element is True enters
-// the PN stream (and re-runs auto-selection). The port recorded every announce,
-// so withdrawn or malformed declarations polluted the propagation-node list.
+// the PN stream (and re-runs auto-selection).
 func TestPNAnnounceGate(t *testing.T) {
 	t.Parallel()
 
@@ -71,7 +70,7 @@ func TestPNAnnounceGate(t *testing.T) {
 // TestAnnounceStreamCompactionGatedOnConfig pins Python's compact_stream gate
 // (Directory.py:158,181,222, default False): with compaction off, repeated
 // announces from one source all enter the stream; with it on, only the newest
-// survives. The port passed true unconditionally and never read the config.
+// survives.
 func TestAnnounceStreamCompactionGatedOnConfig(t *testing.T) {
 	t.Parallel()
 

@@ -13,19 +13,16 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The emulated terminal's parser: the escape sequences a client emits, and what they
- * do to the screen.
+ * The emulated terminal's parser: the escape sequences a client emits, and what they do to
+ * the screen.
  *
- * `tui/vterm.go` is the same parser in Go and these vectors are readable against it,
- * but the Kotlin side has to be more than a port in four places, and each of them is a
- * test below: Go has no OSC handling at all (so no title and no clipboard), no DEC
- * special graphics (so a box-drawing page prints letters), no wide-character handling,
- * and a package-level UTF-8 accumulator shared by every screen.
+ * `tui/vterm.go` is the same parser in Go. The Kotlin side differs in four places: OSC
+ * handling (title and clipboard), DEC special graphics, wide-character handling, and a
+ * per-screen rather than package-level UTF-8 accumulator.
  *
- * A terminal is fed a hostile byte stream by definition — anything the client on the
- * other end of the socket prints arrives here unexamined — so the last two tests are
- * seeded fuzz cases: no input may panic, and none may grow the screen or the parser
- * without limit. They are bounded and deterministic, like `cmd/stress-test-nomadnet`.
+ * The parser is fed a hostile byte stream by definition — anything the client prints
+ * arrives unexamined — so the last two tests are seeded fuzz cases: no input may panic,
+ * and none may grow the screen or the parser without limit.
  */
 class TerminalParserTest {
 
@@ -45,9 +42,8 @@ class TerminalParserTest {
 
     @Test
     fun `the parser says when it has been given something to draw`() {
-        // The view has to be told there is something new on the screen, and the parser is the
-        // only place that can know. It reports once per write rather than once per byte: a
-        // repaint per character would be a repaint per character on the screen.
+        // The view has to be told there is something new on the screen, and the parser is
+        // the only place that can know. It reports once per write, not once per byte.
         val fixture = Fixture()
         assertEquals("a fresh parser reported output", 0, fixture.drawn.size)
 
@@ -478,7 +474,7 @@ class TerminalParserTest {
         val random = java.util.Random(0xfeedL)
         val chunk = ByteArray(4096)
 
-        repeat(256) { // 256 KiB... 1 MiB in total
+        repeat(256) { // 256 chunks of 4 KiB: 1 MiB in total
             random.nextBytes(chunk)
             fixture.parser.write(chunk)
         }
@@ -488,10 +484,8 @@ class TerminalParserTest {
         assertEquals(24, fixture.screen.rows)
 
         // A hostile stream can also open a string that never ends. The parser holds at
-        // most a bounded amount of it, so the terminal recovers and is usable again
-        // rather than accumulating a megabyte of a title it will never be given. This
-        // one starts from a fresh parser, so what it is in the middle of is not left to
-        // the random bytes above.
+        // most a bounded amount of it, so the terminal recovers and stays usable rather
+        // than accumulating a megabyte of a title it will never be given.
         val hostile = Fixture(cols = 80, rows = 24)
         val unterminated = StringBuilder("\u001b]52;c;")
         repeat(1 shl 20) { unterminated.append('A') }

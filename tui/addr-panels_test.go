@@ -54,7 +54,7 @@ func addrRowIn(p tview.Primitive) *tview.TextView {
 	return nil
 }
 
-// centerAddrLineIn returns the first centered ulwid text row in the tree that
+// centerAddrLineIn returns the first centered urwid text row in the tree that
 // has an address click hook installed.
 func centerAddrLineIn(p tview.Primitive) *urwidCenterText {
 	switch v := p.(type) {

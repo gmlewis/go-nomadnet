@@ -34,11 +34,9 @@ import (
 //
 // Note: in Python truecolor, menubar (#111/#bbb) and list_focus (#111/#aaa)
 // both cube-quantize to the SAME rendered pair (#000000 on #afafaf), so a
-// per-button background color can no longer distinguish them — the bold
-// attribute is the only tell. The original Go regression wrapped the active
-// button in `[#111111:aaaaaa:b]…` (bold list_focus), which Python never
-// emits (confirmed in python_session.cast: every menu button carries the
-// same SGR, including the active page's).
+// per-button background color cannot distinguish them — the bold attribute
+// is the only tell. Python never bolds a menu button: every button carries
+// the same SGR, including the active page's.
 func TestMenuButtonsUniformMenubarStyle(t *testing.T) {
 	t.Parallel()
 
@@ -60,8 +58,8 @@ func TestMenuButtonsUniformMenubarStyle(t *testing.T) {
 
 			// No button may be bold. A bold button tag looks like ":b]".
 			// (In Python truecolor menubar and list_focus render the same
-			// colors, so bold is the only attribute that would reveal the
-			// old list_focus-on-active-button regression.)
+			// colors, so bold is the only attribute that would reveal a
+			// per-button focus style.)
 			if strings.Contains(styled, ":b]") {
 				t.Errorf("theme %v active %v: menu bar contains a bold button tag ':b]' (Python never bolds menu buttons):\n%v",
 					theme, active, styled)

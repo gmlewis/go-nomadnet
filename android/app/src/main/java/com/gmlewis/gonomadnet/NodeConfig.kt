@@ -219,16 +219,15 @@ object NodeConfigRenderer {
      * Renders the `[interfaces]` section: the transport's own, and the same one again for a
      * client.
      *
-     * A client renders them because its own interface list is a *page* — the client's
-     * Interfaces display reads this file and shows what it finds there — and a section that
-     * said "deliberately empty" produced an appliance whose client reported no interfaces at
-     * all while its transport was dialling one. The interfaces are rendered once, here, so
-     * the page and the wire cannot disagree about what this appliance connects through.
+     * A client renders them because its own interface list is a *page*: the client's
+     * Interfaces display reads this file and shows what it finds there, so a section that is
+     * empty leaves the client reporting no interfaces while its transport dials one. The
+     * interfaces are rendered once, here, so the page and the wire cannot disagree about what
+     * this appliance connects through.
      *
      * Listing them does not make the client dial them: an instance that attaches to a shared
-     * instance starts none of its own (an attached client's interfaces are owned by the
-     * instance it attached to), and the client's `require_shared_instance = yes` is what
-     * keeps it attaching rather than becoming one.
+     * instance starts none of its own, and the client's `require_shared_instance = yes` is
+     * what keeps it attaching rather than becoming one.
      */
     private fun renderInterfaces(spec: NodeConfigSpec): String {
         val out = StringBuilder()
@@ -298,15 +297,14 @@ object NodeConfigRenderer {
      *
      * It says `require_shared_instance = yes`, because a client that merely *prefers* the
      * shared instance tries to become the owner first and only falls back to attaching when
-     * the bind fails. Two clients racing for ownership of the transport's shared instance is
-     * a bug that shows up as one of them mysteriously being the transport, so the race is
-     * removed rather than made unlikely.
+     * the bind fails. Two clients racing for ownership would leave one of them being the
+     * transport, so the race is removed rather than made unlikely.
      *
      * It lists the same interfaces the transport does, and they are the same list for the
      * same reason: they are what this appliance connects through. The client owns none of
      * them — the shared instance does — but the client's Interfaces page is a view of this
-     * file, and a file that said "deliberately empty" showed an operator an appliance with no
-     * interfaces at all while its transport was dialling the hub.
+     * file, so an empty file would show an operator no interfaces while the transport dials
+     * the hub.
      */
     fun clientReticulumConfig(spec: NodeConfigSpec): String {
         val out = StringBuilder()

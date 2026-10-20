@@ -49,20 +49,17 @@ func dispatchApp(t *testing.T, app *App, ev *tcell.EventKey) {
 	handler(ev, func(p tview.Primitive) { app.SetFocus(p) })
 }
 
-// TestNetworkRightEntersBrowserPane reproduces tmux-suite bug B1: after
-// connecting to a node from the Announce Info view, focus returns to the
-// Announce Stream list, and pressing Right must move focus into the right-hand
-// browser pane so subsequent Downs scroll the rendered page and follow links
-// — not traverse the left list. The tmux suite recorded 0 browser screenfuls
-// and 0 links followed across 7 connects in gonomadnet (vs 13 screenfuls / 40
-// links in nomadnet) because Right never left the announce list.
+// TestNetworkRightEntersBrowserPane pins that after connecting to a node from
+// the Announce Info view, focus returns to the Announce Stream list, and
+// pressing Right moves focus into the right-hand browser pane so subsequent
+// Downs scroll the rendered page and follow links — not traverse the left list.
 //
 // This test drives the FULL connect flow (open Announce Info, Right to the
 // Connect button, Enter) and dispatches every key through the real app-level
 // path (app capture + root) that Application.input uses — not directly into
 // mainCols. The plain-list Right→browser routing is already pinned by
-// TestNetworkListRightMovesToBrowser; B1 is specifically the post-Connect
-// announce-stream state, so the test rebuilds that state faithfully.
+// TestNetworkListRightMovesToBrowser; the post-Connect announce-stream state
+// needs its own test, so it is rebuilt here.
 func TestNetworkRightEntersBrowserPane(t *testing.T) {
 	t.Parallel()
 
@@ -130,7 +127,7 @@ func TestNetworkRightEntersBrowserPane(t *testing.T) {
 		t.Fatalf("after Connect, left panel should have focus, got %T", app.GetFocus())
 	}
 
-	// THE BUG: Right must move focus from the announce list to the browser pane.
+	// Right must move focus from the announce list to the browser pane.
 	dispatchApp(t, app, tcell.NewEventKey(tcell.KeyRight, 0, tcell.ModNone))
 
 	if got := nd.mainCols.FocusIndex(); got != 1 {
@@ -140,7 +137,7 @@ func TestNetworkRightEntersBrowserPane(t *testing.T) {
 		t.Errorf("after Right, browser pane should have focus, got %T (leftPanel hasFocus=%v)", app.GetFocus(), nd.leftPanel.HasFocus())
 	}
 
-	// B1 core: focus must be EXCLUSIVE. The left column (an Announce-Stream
+	// Focus must be EXCLUSIVE. The left column (an Announce-Stream
 	// pileFiller wrapping the list) must NOT retain focus after Right moves
 	// focus to the browser. In the live app a.focus is the pileFiller (a
 	// container, because pileFiller.moveFocus registers the pile itself with
@@ -149,17 +146,16 @@ func TestNetworkRightEntersBrowserPane(t *testing.T) {
 	// pileFiller falls back to Box.Blur, which clears only the pile's own
 	// hasFocus flag — NOT the focused list child's. The list keeps
 	// hasFocus=true, so BOTH columns have focus and subsequent Downs dispatch
-	// to the left list instead of scrolling the browser (0 screenfuls / 0
-	// links followed across 7 connects in the tmux suite). pileFiller must
-	// blur its focused child so the left column releases focus cleanly.
+	// to the left list instead of scrolling the browser. pileFiller must blur
+	// its focused child so the left column releases focus cleanly.
 	if nd.leftPanel.HasFocus() {
 		t.Errorf("after Right, left panel must NOT retain focus (B1: pileFiller.Blur did not blur its focused child); leftPanel hasFocus=%v, browser hasFocus=%v",
 			nd.leftPanel.HasFocus(), nd.browser.Widget().HasFocus())
 	}
 
 	// Consequence check: a Down dispatched after Right must go to the browser,
-	// not advance the left list selection. Before the fix the leftover list
-	// focus steals the key.
+	// not advance the left list selection; leftover list focus would steal the
+	// key.
 	listBefore := nd.announcesList.List.GetCurrentItem()
 	dispatchApp(t, app, tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone))
 	if got := nd.announcesList.List.GetCurrentItem(); got != listBefore {

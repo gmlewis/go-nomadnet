@@ -17,12 +17,13 @@ package tui
 
 import "testing"
 
-// These tests cover the render-gate / request-tracking layer added to
-// BrowserDisplay to fix the "stale Connect overtakes the current page" race.
-// Each new Connect/URL-load/link-click calls beginRequest, which cancels any
-// in-flight fetch and bumps a monotonic sequence number; the fetch goroutine
-// captures ctx+seq BY VALUE and, inside its QueueUpdateDraw callback, drops the
-// render when seq no longer equals CurrentRequestSeq() or ctx was cancelled.
+// These tests cover the render-gate / request-tracking layer of
+// BrowserDisplay. Each Connect/URL-load/link-click calls beginRequest, which
+// cancels any in-flight fetch and bumps a monotonic sequence number; the fetch
+// goroutine captures ctx+seq BY VALUE and, inside its QueueUpdateDraw callback,
+// drops the render when seq no longer equals CurrentRequestSeq() or ctx was
+// cancelled. A render queued by a superseded or disconnected fetch must never
+// overwrite the current page.
 //
 // The fields are event-loop-confined, so these tests call the methods directly
 // (no tview event loop) — the cancellation closes the Done channel, making the

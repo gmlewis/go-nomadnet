@@ -32,8 +32,8 @@ import (
 // when p.HasFocus() is true. After switching pages (which can leave stale
 // hasFocus on hidden page containers) and then FocusMenu, the contentArea
 // may still report HasFocus()=true, causing SwitchToPage to steal focus
-// to the new page's first child. The fix must restore focus to the menu
-// bar after selectMenu when the menu was focused.
+// to the new page's first child. selectMenu must therefore restore focus to
+// the menu bar when the menu was focused.
 func TestMenuEnterKeepsFocusOnMenuBar(t *testing.T) {
 	t.Parallel()
 

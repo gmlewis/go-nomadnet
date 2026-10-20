@@ -1043,8 +1043,7 @@ func TestFileHandlerAttachesNameMetadata(t *testing.T) {
 // TestRegisterPagesReRegistersHandlers pins Python register_pages' effect
 // (Node.py:54-68, called from the refresh job at :229-237): scanning after
 // startup registers the pages that appeared since, so they are served without
-// a restart. The port updated the served-file list but left the RNS handlers
-// as they were.
+// a restart.
 func TestRegisterPagesReRegistersHandlers(t *testing.T) {
 	t.Parallel()
 

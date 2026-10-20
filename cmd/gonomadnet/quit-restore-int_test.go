@@ -31,24 +31,21 @@ import (
 	"github.com/gmlewis/go-reticulum/testutils"
 )
 
-// TestQuitGivesTheTerminalBack is the user's report as a test: run the real
-// client on a terminal, quit it with Ctrl-Q, and then check the terminal it
-// left behind.
+// TestQuitGivesTheTerminalBack runs the real client on a terminal, quits it
+// with Ctrl-Q, and then checks the terminal it left behind.
 //
-// The report was "quit, move the mouse, and the window fills with garbage",
-// which is the terminal still reporting mouse events to the shell. So the
-// bytes the client sends on its way out must carry the mouse-off codes — after
-// the last mouse-on code it sent while starting up; asserting only that they
-// appear somewhere would be satisfied by the codes the client sends when it
+// The bytes the client sends on its way out must carry the mouse-off codes —
+// after the last mouse-on code it sent while starting up; asserting only that
+// they appear somewhere would be satisfied by the codes the client sends when it
 // turns tracking on. And the settings the client leaves behind must be the
 // cooked ones, or the shell's line editing silently stops working.
 //
 // The terminal is a pty, and the client runs on it under a shell, which is how
 // a user meets it: the shell is what outlives the client, and it is what
-// reports the terminal afterwards, with the same `stty -a` a user would type
-// after seeing garbage in the window. The client cannot report its own
-// terminal after the fact — on macOS a pty whose session leader has exited
-// refuses to be interrogated at all, and its master answers EIO.
+// reports the terminal afterwards, with the same `stty -a` a user would type.
+// The client cannot report its own terminal after the fact — on macOS a pty
+// whose session leader has exited refuses to be interrogated at all, and its
+// master answers EIO.
 func TestQuitGivesTheTerminalBack(t *testing.T) {
 	t.Parallel()
 	testutils.SkipShortIntegration(t)

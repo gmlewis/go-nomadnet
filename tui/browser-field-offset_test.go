@@ -25,9 +25,9 @@ import (
 
 // alignedFieldPage puts a field on a centered line before an inline link, and a
 // sized field on a left-aligned line before plain text and another link (the
-// `l resets the alignment the `c line set). Both shapes used to be measured from
-// the raw span text, so the field's box, every part boundary after it, and the
-// link it hides all landed in the wrong place.
+// `l resets the alignment the `c line set). Such shapes must be measured from
+// the rendered row, not the raw span text, or the field's box, every part
+// boundary after it, and the link it hides all land in the wrong place.
 const alignedFieldPage = "`cSearch: `B444`<name`>`b `[Go`/go]\n" +
 	"`lPlain: `B444`<32|q`>`b tail `[Go2`/go2]"
 
@@ -50,8 +50,8 @@ func drawnRowText(t *testing.T, screen tcell.Screen, x0, y, n int) string {
 // the column the renderer drew its box at, for both a `c`-aligned line and a
 // left-aligned one: the column is derived from the rendered row (indent + the
 // alignment pad for that row), not from the raw span texts. Measuring the raw
-// text put the centered line's field 11 columns right of its box, so clicks,
-// carets, and the editor overlay all missed it.
+// text would put the centered line's field 11 columns right of its box, so
+// clicks, carets, and the editor overlay would all miss it.
 func TestBrowserFieldStartColMatchesDrawnRow(t *testing.T) {
 	t.Parallel()
 
@@ -88,10 +88,9 @@ func TestBrowserFieldStartColMatchesDrawnRow(t *testing.T) {
 // TestBrowserFieldLinePartOffsetsUseRenderedWidth pins that part boundaries and
 // link lookup walk the RENDERED line: a field that draws wider than its raw
 // text (its padded box, or a checkbox's icon column) must not shift the parts
-// after it. Previously a cursor anywhere in the six columns of plain text that
-// follow a 32-column field resolved to the link that actually sits 32 columns
-// further right — so Enter followed a link the visitor was not on, and the link
-// itself could not be activated at all.
+// after it. Measuring by raw text would make a cursor anywhere in the six
+// columns of plain text that follow a 32-column field resolve to the link 32
+// columns further right, so Enter would follow a link the visitor was not on.
 func TestBrowserFieldLinePartOffsetsUseRenderedWidth(t *testing.T) {
 	t.Parallel()
 
@@ -116,7 +115,7 @@ func TestBrowserFieldLinePartOffsetsUseRenderedWidth(t *testing.T) {
 	}{
 		{pos: 0, want: ""},      // "Plain: "
 		{pos: 7, want: ""},      // the field's box
-		{pos: 13, want: ""},     // inside the box, where a raw-text offset used to hit the link
+		{pos: 13, want: ""},     // inside the box; must not resolve to the link
 		{pos: 39, want: ""},     // " tail "
 		{pos: 44, want: ""},     // the space before the link
 		{pos: 45, want: "/go2"}, // the link
@@ -161,8 +160,9 @@ func TestBrowserFieldLinePartOffsetsUseRenderedWidth(t *testing.T) {
 // TestBrowserFieldOnWrappedRow pins a field whose span starts on a wrapped row
 // (the text before it fills the first rows): the field's box, its editor
 // overlay, and the caret all belong to the row the span actually starts on, not
-// to the line's first row. Placing them on the first row left the editor one row
-// (or more) above the field, so typing appeared to land in unrelated text.
+// to the line's first row. Placing them on the first row would leave the editor
+// one row (or more) above the field, so typing would appear to land in unrelated
+// text.
 func TestBrowserFieldOnWrappedRow(t *testing.T) {
 	t.Parallel()
 

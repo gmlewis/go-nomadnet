@@ -29,13 +29,12 @@ import (
 // TestTerminalRestoreSeqCoversEveryModeTheClientTurnsOn pins the sequence a
 // client writes as the last act of its life.
 //
-// The failure it guards against is the one a user reported: quit the client,
-// move the mouse, and the window fills with escape-sequence garbage, because
-// the terminal was still reporting mouse events to the shell. So every mouse
-// mode tcell can enable must have its "off" code here, along with the other
-// modes that make a terminal unusable when they outlive their program, and the
-// sequence must contain no enable code at all — an enable here would turn
-// tracking back on during the restore.
+// It guards against a terminal left reporting mouse events to the shell, which
+// fills the window with escape-sequence garbage after the client quits. Every
+// mouse mode tcell can enable must have its "off" code here, along with the
+// other modes that make a terminal unusable when they outlive their program,
+// and the sequence must contain no enable code at all — an enable here would
+// turn tracking back on during the restore.
 func TestTerminalRestoreSeqCoversEveryModeTheClientTurnsOn(t *testing.T) {
 	t.Parallel()
 

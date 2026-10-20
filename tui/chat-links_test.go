@@ -128,9 +128,7 @@ func TestChatLinkHandleNil(t *testing.T) {
 // TestChatLinkHandleInvalid pins that a target this handler does not recognise opens
 // nothing. Python's _ChatLinkDelegate.handle_link switches on the scheme it parsed and
 // has no branch for anything else (Channels.py:1151+), so an unknown scheme, a
-// scheme-less string, an empty scheme and a non-chat scheme are all inert. Before this
-// test asserted nothing, a regression that opened the first thing it saw would have
-// gone unnoticed.
+// scheme-less string, an empty scheme and a non-chat scheme are all inert.
 func TestChatLinkHandleInvalid(t *testing.T) {
 	t.Parallel()
 
@@ -170,8 +168,8 @@ func TestChatLinkHandleInvalid(t *testing.T) {
 }
 
 // TestChatLinkHandleKnownFormsStillOpen is the complement of the rejection test: the
-// schemes the handler does know must still open, so a fix that made the rejection
-// blanket would not pass as "more correct".
+// schemes the handler does know must still open, so a blanket rejection would not pass
+// as "more correct".
 func TestChatLinkHandleKnownFormsStillOpen(t *testing.T) {
 	t.Parallel()
 

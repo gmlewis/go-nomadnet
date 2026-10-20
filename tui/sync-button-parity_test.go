@@ -17,18 +17,17 @@ package tui
 
 import "testing"
 
-// TestSyncButtonOffersSyncNowAfterFailure is the regression test for the Message
-// Sync dialog's button after a FAILED sync. Python picks the label from the
-// router's state, not its wording (Conversations.py:1570):
+// TestSyncButtonOffersSyncNowAfterFailure pins that the Message Sync dialog's
+// button is chosen from the router's state, not from the status wording
+// (Conversations.py:1570):
 //
 //	self.app.get_sync_status() == "Idle" or
 //	self.app.message_router.propagation_transfer_state >= LXMF.LXMRouter.PR_COMPLETE
 //
-// and every terminal failure is >= PR_COMPLETE (PR_NO_PATH 0xf0, PR_LINK_FAILED
+// Every terminal failure is >= PR_COMPLETE (PR_NO_PATH 0xf0, PR_LINK_FAILED
 // 0xf1, PR_TRANSFER_FAILED 0xf2, PR_NO_IDENTITY_RCVD 0xf3, PR_NO_ACCESS 0xf4,
-// PR_FAILED 0xfe), so Python shows "Sync Now" again. Deciding it from the status
-// text instead left "Cancel Sync" — a button with nothing to cancel — on the
-// dialog after the failure the operator reported ("Link establishment failed").
+// PR_FAILED 0xfe), so Python shows "Sync Now" again. Deciding from the status
+// text instead would leave "Cancel Sync" — a button with nothing to cancel.
 func TestSyncButtonOffersSyncNowAfterFailure(t *testing.T) {
 	t.Parallel()
 
@@ -45,7 +44,7 @@ func TestSyncButtonOffersSyncNowAfterFailure(t *testing.T) {
 		{"Node rejected request", false},
 		{"Sync failed", false},
 		// Controls: the states that really are in flight, and the two
-		// PR_COMPLETE wordings the status-text fallback already handled.
+		// PR_COMPLETE wordings the status-text fallback recognizes.
 		{"Receiving messages", true},
 		{"Path requested", true},
 		{"Link established", true},

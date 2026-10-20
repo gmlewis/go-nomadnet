@@ -71,9 +71,7 @@ final class AcceptanceTests: XCTestCase {
         XCUIDevice.shared.orientation = .landscapeLeft
         // iOS asks its own questions the first time the appliance does something: the local
         // network, when the transport binds its first socket, and location, when the sensors
-        // start. An alert on screen is a tap that lands nowhere — the acceptance's own tap on
-        // Open gonomadnet was eaten by one, and the console it was supposed to open looked
-        // like a defect in the appliance rather than a question nobody answered.
+        // start. An alert left on screen swallows the test's own taps.
         addUIInterruptionMonitor(withDescription: "the system's own questions") { alert in
             let allow = ["Allow", "OK", "Continue", "Allow While Using App", "Allow Once"]
             for button in alert.buttons.allElementsBoundByIndex where allow.contains(button.label) {
@@ -248,9 +246,8 @@ final class AcceptanceTests: XCTestCase {
 
     /// Rotating the device reflows the client for the new grid.
     ///
-    /// It waits for the console before it rotates. It used to rotate whatever was there,
-    /// which meant three screenshots of a console that had never opened and a test that
-    /// passed: an appliance whose console is broken is not one to take pictures of.
+    /// It waits for the console before it rotates, so a console that never opened fails
+    /// here rather than being photographed empty.
     func testRotatingReflowsTheConsole() throws {
         startStack()
         openConsole()
@@ -265,12 +262,11 @@ final class AcceptanceTests: XCTestCase {
         Thread.sleep(forTimeInterval: 4)
         attach("the console after rotating to portrait")
 
-        // The client is told, and the proof is what it draws. In portrait the pane is taller and
-        // narrower, so a client still drawing the landscape grid fills half the height and
-        // leaves the bottom of the pane black — which is what the appliance did for a whole
-        // session before it ever sent a RESIZE. The controls are not on screen in portrait (the
-        // sidebar is behind the console there), so the client's size cannot be read from them;
-        // what it drew can.
+        // The client is told, and the proof is what it draws. In portrait the pane is taller
+        // and narrower, so a client still drawing the landscape grid fills half the height
+        // and leaves the bottom of the pane black. The controls are not on screen in
+        // portrait (the sidebar is behind the console there), so the client's size cannot be
+        // read from them; what it drew can.
         XCTAssertGreaterThan(litFraction(of: console.screenshot(), rows: 0.94...1.0), 0.01,
                              "the client did not reflow for the rotation: the bottom of the console is empty (\(geometry()))")
 
@@ -289,9 +285,9 @@ final class AcceptanceTests: XCTestCase {
     /// it here because its effect is the whole console: the client quits, the session ends and
     /// the controls come back.
     ///
-    /// No tap on the console happens anywhere in this test, which is the whole of it: every
-    /// other console test taps first, because it needs the key strip that the tap raises, and
-    /// that tap is what hides this defect.
+    /// No tap on the console happens anywhere in this test: every other console test taps
+    /// first, because it needs the key strip that the tap raises, and that tap would also
+    /// give the console the keyboard.
     func testTheConsoleTakesTheKeyboardWithoutATap() throws {
         // A console cannot be opened in the Simulator at all, and this test is only about the
         // console's keyboard. The appliance refuses a socket path longer than the kernel's 103
@@ -324,10 +320,9 @@ final class AcceptanceTests: XCTestCase {
     /// iOS rather than a unit test: the permission it asks for, and the location and motion
     /// services behind it, are the platform's.
     ///
-    /// It asserts the button, not a fix. A Wi-Fi-only iPad indoors has no GNSS at all and may
-    /// take a while to place itself, so a test that waited for a position would be a test
-    /// that fails in a basement and passes by the window. What the appliance promises here is
-    /// that it turned the sensors on and says so.
+    /// It asserts that the button flips, not that a position arrives. A Wi-Fi-only iPad
+    /// indoors has no GNSS at all and may take a while to place itself, so a test that
+    /// waited for a position would fail in a basement and pass by the window.
     func testStartSensorsTurnsTheSensorPathOn() throws {
         startStack()
 

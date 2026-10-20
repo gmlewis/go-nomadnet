@@ -26,12 +26,11 @@ import (
 // TestToIndexEntryStoresRawLXMFState verifies that ToIndexEntry stores the
 // RAW LXMF wire state (e.g. 0x04 SENT, 0xFF FAILED) in the "state" field,
 // matching Python's ConversationMessage.to_index_entry which stores
-// self._cached_state = self.lxm.state (the raw LXMF constant). The Go port
-// previously stored the MAPPED conversation MessageState (0-6), which is
-// incompatible: when Python reads a Go-written .index it interprets the
-// mapped values as raw LXMF constants, and since 3/5 match no LXMF state
-// (SENT=4, DELIVERED=8, FAILED=255) every outbound header falls to the
-// default "→" branch instead of "↑ →"/"✕ →".
+// self._cached_state = self.lxm.state (the raw LXMF constant). Storing the
+// mapped conversation MessageState (0-6) instead is incompatible: Python
+// reads a Go-written .index as raw LXMF constants, and 3/5 match no LXMF
+// state (SENT=4, DELIVERED=8, FAILED=255), so every outbound header falls to
+// the default "→" branch instead of "↑ →"/"✕ →".
 func TestToIndexEntryStoresRawLXMFState(t *testing.T) {
 	t.Parallel()
 

@@ -24,8 +24,8 @@ import (
 // TestBrowserHistoryCarriesRequestData pins that Back/Forward/Reload re-issue a
 // fetch with the request data the original navigation carried. Python keeps
 // [destination_hash, path, request_data] per history entry (Browser.py:1069-1071)
-// and back()/forward() pass it through (Browser.py:1085,1095); the port stored
-// URLs only, so returning to a form-submitted page re-fetched the
+// and back()/forward() pass it through (Browser.py:1085,1095), so returning to a
+// form-submitted page re-runs the parameterised request rather than the
 // unparameterised page.
 func TestBrowserHistoryCarriesRequestData(t *testing.T) {
 	t.Parallel()

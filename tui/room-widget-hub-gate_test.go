@@ -21,10 +21,9 @@ import (
 )
 
 // TestShowRoomRebuildsWidgetOnHubChange verifies the composer's connected-gate
-// follows the hub being viewed: two hubs can expose the same room name, and
-// reusing the old RoomWidget across a hub switch left its hubStatusFn bound to
-// the previous hub — a dead hub there silently swallowed every plain-message
-// send while slash commands (which bypass the gate) kept working.
+// follows the hub being viewed: two hubs can expose the same room name, so the
+// widget must be rebuilt across a hub switch rather than keeping a hubStatusFn
+// bound to the previous hub.
 func TestShowRoomRebuildsWidgetOnHubChange(t *testing.T) {
 	t.Parallel()
 
@@ -68,12 +67,11 @@ func TestShowRoomRebuildsWidgetOnHubChange(t *testing.T) {
 	}
 }
 
-// TestShowRoomHubSwitchRoutesSendToLiveHub goes past the widget-identity check
-// of TestShowRoomRebuildsWidgetOnHubChange: after ShowRoom on a same-named room
-// of a DIFFERENT hub, typing a plain message into the room widget and sending
-// it must reach the display's OnSendMessage. This is the end-to-end guarantee
-// the identity test only implied — a widget stuck on the previous (dead) hub
-// would swallow the message at its connected-gate.
+// TestShowRoomHubSwitchRoutesSendToLiveHub is the end-to-end counterpart of
+// the widget-identity check: after ShowRoom on a same-named room of a
+// DIFFERENT hub, typing a plain message into the room widget and sending it
+// must reach the display's OnSendMessage rather than being swallowed by a
+// widget still gated on the previous hub.
 func TestShowRoomHubSwitchRoutesSendToLiveHub(t *testing.T) {
 	t.Parallel()
 
@@ -110,13 +108,12 @@ func TestShowRoomHubSwitchRoutesSendToLiveHub(t *testing.T) {
 	}
 }
 
-// TestShowRoomRebuildsWidgetOnHubObjectReplacement pins the residual defect the
-// address check alone cannot catch. In production a hub removed and re-added
-// under the same destination hash is a NEW *rrc.RRCHub carrying the SAME
-// AddressHex (manager.RemoveHub + manager.AddHub), so a widget must rebuild on
-// hub OBJECT identity, not the address string — otherwise its hubStatusFn stays
-// bound to the dead object and the composer keeps every draft forever while the
-// same-named room's live hub never sees a byte.
+// TestShowRoomRebuildsWidgetOnHubObjectReplacement pins the case the address
+// check alone cannot catch. A hub removed and re-added under the same
+// destination hash is a NEW *rrc.RRCHub carrying the SAME AddressHex
+// (manager.RemoveHub + manager.AddHub), so a widget must rebuild on hub
+// OBJECT identity, not the address string; otherwise its hubStatusFn stays
+// bound to the removed object and the composer never sends.
 func TestShowRoomRebuildsWidgetOnHubObjectReplacement(t *testing.T) {
 	t.Parallel()
 
@@ -191,9 +188,8 @@ func TestSendMessageDisconnectedGateKeepsDraftWithNotice(t *testing.T) {
 	}
 }
 
-// TestSendMessageConnectedGateSendsWithoutNotice verifies the connected path is
-// unchanged: the message goes out, the editor clears, and no gate notice is
-// appended.
+// TestSendMessageConnectedGateSendsWithoutNotice verifies the connected path:
+// the message goes out, the editor clears, and no gate notice is appended.
 func TestSendMessageConnectedGateSendsWithoutNotice(t *testing.T) {
 	t.Parallel()
 

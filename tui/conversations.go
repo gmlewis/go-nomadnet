@@ -91,7 +91,7 @@ type ConversationsDisplay struct {
 	// tabFocus is the focused tab index within the tab bar (0=Trusted,
 	// 1=Untrusted), mirroring Python's tab_bar Columns focus_position
 	// (Conversations.py:392-398). It decides which tab button receives focus
-	// when Up from the list reaches the tab bar (A6).
+	// when Up from the list reaches the tab bar.
 	tabFocus int
 	// listSlotOverlay, when non-nil, is a SlotOverlay temporarily replacing
 	// leftPanel in content[0] for an in-slot dialog (Python's
@@ -123,9 +123,9 @@ type ConversationsDisplay struct {
 	// rather than letting the wiring layer map a row index onto the
 	// unfiltered conversation model — is load-bearing: the full model's
 	// row N is a different conversation than the filtered list's row N, so
-	// an index-based delete named (and deleted) a TRUSTED conversation
-	// while the cursor sat on the Untrusted tab. Not fired when no row is
-	// selected (Python's "if item == None: return", Conversations.py:562).
+	// an index-based delete would delete a TRUSTED conversation while the
+	// cursor sits on the Untrusted tab. Not fired when no row is selected
+	// (Python's "if item == None: return", Conversations.py:562).
 	OnDeleteConv       func(conv ConversationInfo)
 	OnNewConv          func()
 	OnIngestURI        func()
@@ -288,22 +288,21 @@ func NewConversationsDisplay(app *App, convs []ConversationInfo) *ConversationsD
 	cd.list.SetHighlightFullLine(true)
 	// Python's IndicativeListBox (urwid ListBox) does NOT wrap: Up at the top
 	// bubbles "up" to the Pile (→ tab bar) and Down at the bottom bubbles
-	// "down" and is dropped by the MainFrame — the live-verified A5 behavior
-	// (selection stays on the last entry). tview's forked List defaults to
-	// wrapAround=true, which would jump the selection to item 0 instead.
+	// "down" and is dropped by the MainFrame, so the selection stays on the
+	// last entry. tview's forked List defaults to wrapAround=true, which would
+	// jump the selection to item 0 instead.
 	cd.list.SetWrapAround(false)
 	ApplyListFocusStyle(cd.list, cd.app.Theme)
 	// conversationsListBox marks this list as the Conversations page's list so
 	// the main dispatcher's Up-at-top→menu transition defers to the page: Up
 	// at the top of a NON-empty list must land on the tab bar first (Python
-	// ConversationsArea.keypress → Pile previous-selectable, A6); only an
-	// EMPTY list collapses straight to the menubar (ilb.body_is_empty,
+	// ConversationsArea.keypress → Pile previous-selectable); only an EMPTY
+	// list collapses straight to the menubar (ilb.body_is_empty,
 	// Conversations.py:1800-1802).
 	cd.ilb = &conversationsListBox{IndicativeListBox: NewIndicativeListBox(cd.list)}
 	// Empty-state placeholder style: Python paints the centered
 	// "No trusted/untrusted conversations" row with the list_off_focus palette
-	// across the full inner width in every focus state (live captures
-	// pyaconv_100x28_00/01/02 row 4) — see the ILB empty-style test.
+	// across the full inner width in every focus state.
 	colors := GetThemeColors(app.Theme)
 	cd.ilb.SetEmptyStyle(colors["list_off_focus_fg"], colors["list_off_focus_bg"])
 	// Python's vendor ILB repaints the SELECTED row with the list_off_focus
@@ -314,11 +313,9 @@ func NewConversationsDisplay(app *App, convs []ConversationInfo) *ConversationsD
 
 	// Default the shortcut region to "list": on first display the list pane
 	// (left column) is the focused region, and Python's focus-path dispatch
-	// (Conversations.py:1765-1779) starts in the list. Without this, the
-	// zero value "" leaves cd.handleInput's region gate (shortcutFocus=="list")
-	// passing every list shortcut through unconsumed until the first focus
-	// event fires — breaking list-region keyboard shortcuts (C-e/C-n/C-r/
-	// C-p My-LXMF/C-u Ingest-URI/C-o/C-x/C-g) before any SetFocusFunc runs.
+	// (Conversations.py:1765-1779) starts in the list. The zero value "" would
+	// leave cd.handleInput's region gate (shortcutFocus=="list") passing list
+	// shortcuts through unconsumed until the first focus event fires.
 	cd.shortcutFocus = "list"
 
 	cd.populateList()
@@ -344,12 +341,11 @@ func NewConversationsDisplay(app *App, convs []ConversationInfo) *ConversationsD
 		Background(syncColors["menubar_bg"]))
 	cd.setSyncText(cd.syncStatusLine())
 
-	// Detail view (right pane). Empty state matches Python's ConversationWidget
-	// (None): a bordered LineBox with "\n  No conversation selected"
-	// (Conversations.py:1884-1886), a bare urwid.Text with no AttrMap → terminal
-	// default base. (The populated "Trust/Messages/Last" summary Go renders here
-	// is a Go-specific format with no Python equivalent; the empty state is the
-	// only Python-specified surface.)
+	// Detail view (right pane). The empty state matches Python's
+	// ConversationWidget(None): a bordered LineBox with "\n  No conversation
+	// selected" (Conversations.py:1884-1886), a bare urwid.Text with no AttrMap
+	// → terminal default base. The populated "Trust/Messages/Last" summary is a
+	// Go-specific format with no Python equivalent.
 	cd.detail = applyWheelMultiplier(tview.NewTextView())
 	cd.detail.SetDynamicColors(true)
 	cd.detail.SetScrollable(true)
@@ -387,9 +383,8 @@ func NewConversationsDisplay(app *App, convs []ConversationInfo) *ConversationsD
 	// select the peer and press Enter to open it.
 	cd.list.SetSelectedFunc(func(i int, mainText, secondaryText string, shortcut rune) {
 		// Resolve the row against the RENDERED conversations (visible), not
-		// the unfiltered model — with the trusted/untrusted filter active the
-		// raw indices map to different conversations, which opened the
-		// "Undefined" conversation for both keyboard Enter and mouse clicks.
+		// the unfiltered model: with the trusted/untrusted filter active the
+		// raw indices map to different conversations.
 		cd.activateListRow(i, cd.DisplayConversation)
 	})
 
@@ -469,37 +464,11 @@ func (cd *ConversationsDisplay) GetShortcutText() string {
 	}
 }
 
-// handleInput processes the LIST-PANE keyboard shortcuts for the conversations
-// display, matching Python's ConversationsArea.keypress() at Conversations.py:88.
-//
-// Crucially, these shortcuts fire ONLY when the list pane (left column) is
-// focused — mirroring Python, where ConversationsArea is the LEFT (list) column
-// and urwid dispatches a key only to the focused column (Conversations.py:88-117
-// + 420). The conversation widget (right column) has its own frame-level capture
-// (ConversationWidget.handleInput) for the editor/body shortcuts. Python gets
-// region-awareness for free from this structural split; tview runs an ancestor
-// InputCapture before the focused descendant, so without this gate cd.handleInput
-// would STEAL the dual-meaning keys when the editor/body is focused:
-//
-//	C-p  list→My LXMF (show_my_qr)   editor→Paper Msg (paper_message)   Conversations.py:104,1811
-//	C-u  list→Ingest URI              body→Purge failed (purge_failed)  Conversations.py:95,2227
-//	C-x  list→Delete conversation     body→Clear History              Conversations.py:92,2232
-//	C-o  list→toggle sort mode        body→sort_by_timestamp toggle  Conversations.py:101,2236
-//
-// The shortcut bars GetShortcutText advertises already reflect this split
-// (editor bar: "[C-p] Paper Msg"; body bar: "[C-u] Purge [C-o] Sort [C-x] Clear
-// History"; list bar: "[C-p] My LXMF [C-u] Ingest URI [C-x] Delete [C-o] Sort"),
-// so gating here makes the actual behavior match the advertised bar + Python.
-// cd.shortcutFocus is maintained by the SetFocusFunc of every focusable
-// Conversations primitive (line 269-273 + DisplayConversation editor/body focus
-// funcs), so it accurately reflects which column has focus. When a dialog overlay
-// is open this capture does not run at all (the overlay sits in a separate Pages
-// layer and receives keys directly), so dialogs are unaffected.
 // conversationsListBox wraps the Conversations page's IndicativeListBox. The
 // distinct type is the marker the main dispatcher's bodyListAtTop checks:
 // Python's ConversationsArea.keypress sends Up from the top of a NON-empty
-// list to the Pile, which focuses the tab bar (Conversations.py:1800-1808,
-// A6) — only an EMPTY list goes straight to the menubar.
+// list to the Pile, which focuses the tab bar (Conversations.py:1800-1808) —
+// only an EMPTY list goes straight to the menubar.
 type conversationsListBox struct {
 	*IndicativeListBox
 }
@@ -511,7 +480,7 @@ type conversationsListBox struct {
 //
 //   - Up at the top of the list (non-empty): the tab bar — or the "Show
 //     blocked" checkbox first on the untrusted tab, where it sits between the
-//     tab bar and the list in the Pile (Conversations.py:392-410 + A6);
+//     tab bar and the list in the Pile (Conversations.py:392-410);
 //   - Up from a tab button or the checkbox: the menubar (Python: the Pile
 //     returns "up" and ConversationsArea sends it to the main display header);
 //   - Down from a tab button: the checkbox (untrusted layout) or the list
@@ -522,23 +491,36 @@ type conversationsListBox struct {
 //     (the empty placeholder column is not selectable);
 //   - Left from the list, checkbox, or leftmost tab: bubbles past the Columns
 //     (no column to the left) and dies — a no-op.
+//
+// These shortcuts fire ONLY when the list pane (left column) is focused —
+// mirroring Python, where ConversationsArea is the LEFT (list) column and urwid
+// dispatches a key only to the focused column (Conversations.py:88-117 + 420).
+// The conversation widget (right column) has its own frame-level capture
+// (ConversationWidget.handleInput) for the editor/body shortcuts. Python gets
+// region-awareness for free from this structural split; tview runs an ancestor
+// InputCapture before the focused descendant, so without this gate cd.handleInput
+// would steal the dual-meaning keys when the editor/body is focused:
+//
+//	C-p  list→My LXMF (show_my_qr)   editor→Paper Msg (paper_message)   Conversations.py:104,1811
+//	C-u  list→Ingest URI              body→Purge failed (purge_failed)  Conversations.py:95,2227
+//	C-x  list→Delete conversation     body→Clear History              Conversations.py:92,2232
+//	C-o  list→toggle sort mode        body→sort_by_timestamp toggle  Conversations.py:101,2236
+//
+// cd.shortcutFocus is maintained by the SetFocusFunc of every focusable
+// Conversations primitive, so it reflects which column has focus. When a dialog
+// overlay is open this capture does not run at all (the overlay sits in a
+// separate Pages layer and receives keys directly), so dialogs are unaffected.
 func (cd *ConversationsDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 	// While a dialog is open (the whole-display QR/friends overlay, a list
 	// slot dialog, or a right-pane dialog), keys belong to the dialog alone —
 	// Python's overlay REPLACES the page widget, so the page's keypress never
-	// runs with the QR dialog up. Without this guard, C-n pressed while the
-	// QR dialog was open still opened the New Conversation dialog ON TOP of
-	// it, drawing both at once (they interpenetrated; Esc then had to unwind
-	// two stacked dialogs).
+	// runs with the QR dialog up; otherwise C-n would open a second dialog on
+	// top of the first.
 	if cd.dialogOpen || cd.listSlotOverlay != nil || cd.fullSlotOverlay != nil || cd.detailSlotOverlay != nil {
 		if cd.overlayStateOrphaned() {
-			// FLEET BUG #14 (Ctrl-p → Esc → dead arrows): the overlay state
-			// says a dialog is open, but NO dialog primitive owns the
-			// keyboard focus — the dispatch routes keys into a dialog the
-			// user cannot see (or nowhere at all), so the page's shortcuts
-			// and arrows appear dead until the process is restarted. Heal
-			// the orphaned state and fall through: the key is handled by the
-			// page as if no dialog were open.
+			// The overlay state says a dialog is open, but no dialog primitive
+			// owns the keyboard focus: heal the state and fall through so the
+			// page handles the key as if no dialog were open.
 			cd.recoverOrphanedOverlays()
 		} else {
 			return event
@@ -565,16 +547,13 @@ func (cd *ConversationsDisplay) handleInput(event *tcell.EventKey) *tcell.EventK
 			if conv.TrustLevel == "blocked" {
 				// A "[blocked]" row renders from the ignored list, not from a
 				// conversation directory, so the delete-conversation flow can
-				// never remove it — deleting the (usually nonexistent)
-				// conversation directory left the row standing, which looked
-				// like an undeletable conversation. Python's own Ctrl-X on a
-				// blocked row dies on the missing source_hash attribute (the
-				// blocked widget carries only blocked_dest_hash,
-				// Conversations.py:341-343) and does nothing. Route the key to
-				// the row's Python semantic instead — the unblock flow
-				// (blocked-row click → _unblock_dialog, Conversations.py:
-				// 332-347) — whose confirmation removes the ignored entry and
-				// the row with it.
+				// never remove it. Python's own Ctrl-X on a blocked row dies on
+				// the missing source_hash attribute (the blocked widget carries
+				// only blocked_dest_hash, Conversations.py:341-343) and does
+				// nothing. Route the key to the row's Python semantic instead —
+				// the unblock flow (blocked-row click → _unblock_dialog,
+				// Conversations.py:332-347) — whose confirmation removes the
+				// ignored entry and the row with it.
 				if cd.OnUnblockPeer != nil {
 					cd.OnUnblockPeer(conv.SourceHash)
 				}
@@ -642,15 +621,13 @@ func (cd *ConversationsDisplay) handleInput(event *tcell.EventKey) *tcell.EventK
 			// Pile traversal: previous selectable above the list — the
 			// "Show blocked" checkbox on the untrusted layout, else the tab bar.
 			//
-			// Go-only enhancement (do not remove when auditing parity): this
-			// empty-list branch previously jumped straight to the menubar,
-			// copying Python's ilb.body_is_empty branch (Conversations.py:
-			// 108-111) — which left the Trusted/Untrusted tab bar UNREACHABLE
-			// by arrow keys whenever the current tab's list had no items (the
-			// live fleet bug report). Instead, an empty list now performs the
-			// SAME Pile traversal a non-empty list gets (checkbox → tab bar);
-			// the menubar path remains, one step later, as the Up from the
-			// tab bar below.
+			// An empty list performs the SAME Pile traversal a non-empty list
+			// gets (checkbox → tab bar) instead of copying Python's
+			// ilb.body_is_empty branch (Conversations.py:108-111), which jumps
+			// straight to the menubar and leaves the Trusted/Untrusted tab bar
+			// unreachable by arrow keys whenever the current tab's list is
+			// empty. The menubar path remains, one step later, as the Up from
+			// the tab bar.
 			if !cd.showTrusted && cd.showBlockedCheckbox != nil && cd.pileHasItem(cd.showBlockedCheckbox) {
 				cd.app.SetFocus(cd.showBlockedCheckbox)
 			} else {
@@ -707,8 +684,7 @@ func (cd *ConversationsDisplay) handleInput(event *tcell.EventKey) *tcell.EventK
 // stays on the tab that was just switched to (urwid Columns focus_position),
 // so an Up from the list/checkbox below lands on the live tab, where Left/
 // Right switch tabs. Focusing cd.tabButtons()[cd.tabFocus] instead could land
-// on a STALE button (e.g. Trusted while the Untrusted tab is showing), which
-// is exactly the live fleet bug report about reaching the Trusted selector.
+// on a stale button (e.g. Trusted while the Untrusted tab is showing).
 func (cd *ConversationsDisplay) focusCurrentTab() {
 	if cd.showTrusted {
 		cd.tabFocus = 0
@@ -773,16 +749,11 @@ func (cd *ConversationsDisplay) focusConversationColumn() {
 // row order (the model filtered to the active tab's trust level). List row
 // indices from the highlight, Enter, and mouse clicks resolve into THIS
 // slice: the raw cd.conversations indices drift apart from the rendered rows
-// whenever the trusted/untrusted filter hides entries, which made both Enter
-// and mouse clicks open the "Undefined" conversation (the model row the
-// rendered row happened to overlap).
+// whenever the trusted/untrusted filter hides entries.
 func (cd *ConversationsDisplay) visibleList() []ConversationInfo {
 	return cd.visible
 }
 
-// selectVisibleConversation resolves a rendered list row to its conversation
-// and fires open with the source hash. Out-of-range rows (a highlight that
-// raced ahead of the model population between events) are dropped silently.
 // activateListRow is the shared row-activation entry point behind the list's
 // SelectedFunc (Enter/Space and click). It routes through
 // selectVisibleConversation, which sends "[blocked]" rows to OnUnblockPeer and
@@ -796,7 +767,9 @@ func (cd *ConversationsDisplay) activateListRow(row int, open func(sourceHash st
 // the Untrusted tab's "Show blocked" checkbox) runs the unblock flow (Python
 // blocked-row click → _unblock_dialog, Conversations.py:332-347), while any
 // other row opens the conversation (Python's "click" signal →
-// display_conversation, Conversations.py:1637-1639).
+// display_conversation, Conversations.py:1637-1639). Out-of-range rows (a
+// highlight that raced ahead of the model population between events) are
+// dropped silently.
 func (cd *ConversationsDisplay) selectVisibleConversation(row int, open func(sourceHash string)) {
 	visible := cd.visible
 	if row < 0 || row >= len(visible) {
@@ -836,13 +809,11 @@ func (cd *ConversationsDisplay) DisplayConversation(sourceHash string) {
 		}
 	}
 	// Wire the live trust resolver BEFORE the first refreshTrustBanner so the
-	// banner reflects the directory's actual trust from the start. Without this
-	// ordering, refreshTrustBanner ran with OnResolveTrust still nil and fell
-	// back to the cached TrustLevel — which is "" for a freshly-created
-	// conversation whose dir doesn't exist yet (so cd.conversations has no entry
-	// for it), leaving the banner wrongly showing for a peer the user just marked
-	// Trusted in the New Conversation dialog. (Python reads directory.trust_level
-	// live in has_visible_trust_banner, Conversations.py:1957-1960.)
+	// banner reflects the directory's actual trust from the start: with
+	// OnResolveTrust still nil, refreshTrustBanner falls back to the cached
+	// TrustLevel, which is "" for a freshly-created conversation whose
+	// directory does not exist yet. (Python reads directory.trust_level live
+	// in has_visible_trust_banner, Conversations.py:1957-1960.)
 	if cd.OnResolveTrust != nil {
 		cw.OnResolveTrust = cd.OnResolveTrust
 	}
@@ -873,14 +844,10 @@ func (cd *ConversationsDisplay) DisplayConversation(sourceHash string) {
 		}
 	}
 	cw.OnClose = func() {
-		// Restore the empty detail pane by REBUILDING both columns: the
-		// previous RemoveItem(content.GetItem(1)) removed whatever happened to
-		// sit at index 1 — the conversation widget only while the two columns
-		// are still in the built order. Once a slot dialog or a detail overlay
-		// had shuffled the items, index 1 was the (only copy of the) left list
-		// panel, which got removed and left the page in a full-width
-		// "No conversation selected" state that never recovered from C-w,
-		// page-away/back, or C-g.
+		// Restore the empty detail pane by REBUILDING both columns: removing
+		// content.GetItem(1) would remove whatever sits at index 1, which is
+		// the left list panel once a slot dialog or a detail overlay has
+		// shuffled the items.
 		cd.clearDisplayedConversation()
 	}
 	// Python ConversationWidget.keypress "ctrl g" →
@@ -966,11 +933,9 @@ func (cd *ConversationsDisplay) DisplayConversation(sourceHash string) {
 	}
 	// Inject the app's own LXMF hash and time format so the LXMessageWidget
 	// header can tell outbound from inbound and format timestamps like the
-	// Python original. The widget keeps both a snapshot and the live
-	// resolver: python reads app.lxmf_destination.hash fresh at every render,
-	// so a widget created while the LXMF router was still registering (nil
-	// hash) self-corrects on its next render instead of classifying every
-	// message as inbound for its whole lifetime.
+	// Python original. The widget keeps both a snapshot and the live resolver:
+	// Python reads app.lxmf_destination.hash fresh at every render, so a widget
+	// created before the LXMF router registers self-corrects on its next render.
 	if cd.OnOwnHash != nil {
 		cw.OnOwnHash = cd.OnOwnHash
 		cw.OwnHash = cd.OnOwnHash()
@@ -1002,7 +967,7 @@ func (cd *ConversationsDisplay) DisplayConversation(sourceHash string) {
 	// "editor"; message list (frame body) → "body"; trust banner buttons
 	// (frame header) → "body" as well (Python's shortcuts() returns
 	// body_shortcuts for any non-footer frame focus). Each also records the
-	// widget's focus part so A2's column traversal can restore it.
+	// widget's focus part so column traversal can restore it.
 	cw.OnBodyFocus = func() { cd.setShortcutRegion("body") }
 	cw.OnBannerFocus = func() { cd.setShortcutRegion("body") }
 	cw.editor.SetFocusFunc(func() {
@@ -1013,7 +978,7 @@ func (cd *ConversationsDisplay) DisplayConversation(sourceHash string) {
 		cw.focusPart = "footer"
 		cd.setShortcutRegion("editor")
 	})
-	// A2: Left from the conversation column's non-consuming widgets (message
+	// Left from the conversation column's non-consuming widgets (message
 	// list, banner buttons) moves focus back to the list column — Python's
 	// urwid Columns.keypress "left" traversal (Conversations.py:221-229).
 	cw.OnSwitchToList = func() {
@@ -1030,9 +995,8 @@ func (cd *ConversationsDisplay) DisplayConversation(sourceHash string) {
 	// conversation widget at index 1 — mirroring Python's
 	// columns_widget.contents[1] = (make_conversation_widget(source_hash),
 	// options) (Conversations.py:1637), which REPLACES index 1 rather than
-	// appending. RemoveItem+AddItem here appended the new widget after any
-	// dialog overlay that had grabbed index 1 (3-column layout, focus/send to
-	// the wrong pane); the rebuild re-establishes the order unconditionally.
+	// appending. A plain RemoveItem+AddItem would append the new widget after
+	// any dialog overlay that had grabbed index 1, giving a 3-column layout.
 	cd.currentWidget = cw
 	if cd.detailSlotOverlay != nil {
 		// An open right-pane dialog belonged to the conversation it covered;
@@ -1054,16 +1018,6 @@ func (cd *ConversationsDisplay) DisplayConversation(sourceHash string) {
 	cd.focusEditor()
 }
 
-// RefreshRelativeTimes re-renders the open conversation's message list when
-// any message header's relative-time string would change (e.g. "1m ago" →
-// "2m ago"). Message headers are computed at render time, so without a
-// periodic refresh an open conversation's relative-time labels freeze until
-// the next event-driven reload — Python rebuilds all message widgets on every
-// conversation change (Conversations.py:2254) and re-arms a 30 s
-// _refresh_sync_status alarm (Conversations.py:550-557); this uses the same
-// 30 s cadence (wired next to RefreshSyncStatus) and skips the rebuild (and
-// its OnLoadMessages disk round-trip) when no label changed. Must run on the
-// UI thread.
 // RefreshEditorAllowed re-runs the composer footer's editor-allowed check for
 // the currently displayed conversation. Python's became-known callback calls
 // check_editor_allowed when the peer's identity arrives (Conversations.py:
@@ -1077,6 +1031,16 @@ func (cd *ConversationsDisplay) RefreshEditorAllowed() {
 	cd.currentWidget.buildFooter()
 }
 
+// RefreshRelativeTimes re-renders the open conversation's message list when
+// any message header's relative-time string would change (e.g. "1m ago" →
+// "2m ago"). Message headers are computed at render time, so without a
+// periodic refresh an open conversation's relative-time labels freeze until
+// the next event-driven reload — Python rebuilds all message widgets on every
+// conversation change (Conversations.py:2254) and re-arms a 30 s
+// _refresh_sync_status alarm (Conversations.py:550-557); this uses the same
+// 30 s cadence (wired next to RefreshSyncStatus) and skips the rebuild (and
+// its OnLoadMessages disk round-trip) when no label changed. Must run on the
+// UI thread.
 func (cd *ConversationsDisplay) RefreshRelativeTimes() {
 	if cd.currentWidget == nil || !cd.currentWidget.relativeTimesChanged() {
 		return
@@ -1112,19 +1076,17 @@ func (cd *ConversationsDisplay) RefreshProgress() {
 // so the hash binds to the `sender` parameter, source_hash stays None, and
 // display_conversation swaps contents[1] for the placeholder
 // (Conversations.py:1892) and sets columns_widget.focus_position = 0
-// (Conversations.py:1649-1650). Verified live against nomadnet 1.2.8: after
-// Create the right pane reads "No conversation selected" and the list holds
-// focus, even when a conversation was open before the dialog opened.
+// (Conversations.py:1649-1650).
 //
-// The rebuild (rather than a plain RemoveItem) matters: see the original C-w
-// defect it fixes below. Focus must land on the list wrapper (not the bare
-// List) so the main dispatcher's Up-at-top logic sees the
-// conversationsListBox marker (A6: Up at the top lands on the tab bar, not
-// the menu). Without the focus move, tview leaves focus on the now-empty
-// detail placeholder (right column) and the user is stranded — list-region
-// shortcuts (C-e/C-n/C-r/C-p My-LXMF/C-u Ingest-URI) no longer fire and there
-// is no keyboard path back to the list (tview Flex does not do urwid Columns'
-// Left/Right column traversal). No-op-safe when no conversation is open.
+// The rebuild (rather than a plain RemoveItem) keeps the two-column order
+// intact however many overlays have swapped pane items. Focus must land on the
+// list wrapper (not the bare List) so the main dispatcher's Up-at-top logic
+// sees the conversationsListBox marker (Up at the top lands on the tab bar,
+// not the menu). Without the focus move, tview leaves focus on the now-empty
+// detail placeholder (right column) and the user is stranded: list-region
+// shortcuts no longer fire and there is no keyboard path back to the list
+// (tview Flex does not do urwid Columns' Left/Right column traversal).
+// No-op-safe when no conversation is open.
 func (cd *ConversationsDisplay) clearDisplayedConversation() {
 	if cd.detailSlotOverlay != nil {
 		// An open right-pane dialog dies with the conversation that owned it;
@@ -1188,13 +1150,12 @@ func (cd *ConversationsDisplay) RefreshOpenConversation(sourceHex string) {
 }
 
 // populateList fills the list based on current tab (trusted/untrusted),
-// preserving the selected CONVERSATION across the refresh: the previous
-// Clear()+re-Add reset the list cursor to row 0, so every background
-// refresh (SetConversations under an announce firehose) dragged the
-// highlight back to the top with no user input while the user was
-// navigating. The selection is remembered by source hash and restored
-// after the re-population (degrading to the default when the selected
-// conversation no longer passes the filter).
+// preserving the selected CONVERSATION across the refresh: clearing and
+// re-adding resets the list cursor to row 0, so a background refresh
+// (SetConversations under an announce firehose) would drag the highlight back
+// to the top with no user input while the user is navigating. The selection is
+// remembered by source hash and restored after the re-population (degrading to
+// the default when the selected conversation no longer passes the filter).
 func (cd *ConversationsDisplay) populateList() {
 	// Remember the source hash of the currently highlighted row (resolved
 	// against the previously-rendered rows, which may be empty).
@@ -1223,9 +1184,6 @@ func (cd *ConversationsDisplay) populateList() {
 			// only UNTRUSTED/WARNING/UNKNOWN trust levels on the untrusted
 			// tab; blocked (ignored-list) rows are appended separately and
 			// ONLY when "Show blocked" is checked (Conversations.py:483-488).
-			// Without this gate an ignored peer's row shows unconditionally,
-			// and since the row has no conversation to delete it can never
-			// be removed via Ctrl-X — it looked permanently undeletable.
 			if conv.TrustLevel == "trusted" || (conv.TrustLevel == "blocked" && !cd.showBlocked) {
 				continue
 			}
@@ -1416,15 +1374,12 @@ func (cd *ConversationsDisplay) listPaneWidth() int {
 }
 
 // rebuildContent restores the two-column invariant — exactly [list column,
-// right pane] in that order — from scratch, replacing whatever interleaved
-// open/close/dialog mutations have accumulated. Every right-pane mutation
+// right pane] in that order — from scratch. Every right-pane mutation
 // (open/close conversation, detail-slot dialogs, list-slot dialogs) funnels
-// through this, so no sequence of RemoveItem+AddItem appends (which produced
-// swapped or collapsed panes that only self-healed by accident) can leave a
-// third item behind: RemoveItem removes ALL occurrences of a primitive and
-// AddItem appends to the end, so mixed sequences used to append the dialog or
-// the detail at the wrong position and leave the layout unrecoverable
-// (list panel gone, "No conversation selected" rendered full-width).
+// through this: RemoveItem removes ALL occurrences of a primitive and AddItem
+// appends to the end, so a mixed sequence can leave a third item behind and an
+// unrecoverable layout (list panel gone, "No conversation selected" rendered
+// full-width).
 func (cd *ConversationsDisplay) rebuildContent(left, right tview.Primitive, rightFocusable bool) {
 	cd.content.Clear()
 	if left != nil {
@@ -1439,11 +1394,8 @@ func (cd *ConversationsDisplay) rebuildContent(left, right tview.Primitive, righ
 // the right column (open conversation or empty detail) at index 1 — Python's
 // columns_widget.contents[0] = (widget, options) replacement
 // (Conversations.py:1024-1029, 381, 607, 810, 1116, 1269, 1474, 1604, 2054).
-// Rebuilding the two items preserves the column ORDER: the previous
-// RemoveItem+AddItem approach APPENDED the dialog at the end, throwing the
-// layout to [conversation | dialog], and CloseListSlotDialog appended
-// leftPanel at the end again, leaving the panes swapped until the next
-// conversation open self-healed them (C2).
+// Rebuilding both items preserves the column ORDER; RemoveItem+AddItem would
+// append the dialog at the end and leave the panes swapped.
 func (cd *ConversationsDisplay) setListColumn(item tview.Primitive) {
 	right, rightFocus := cd.rightPaneItem()
 	cd.rebuildContent(item, right, rightFocus)
@@ -1473,8 +1425,8 @@ func (cd *ConversationsDisplay) ShowListSlotDialog(dialog *DialogLineBox, widthP
 	// overwrite it with the bare CloseListSlotDialog: tview dispatches the Esc
 	// key from the root down THROUGH this DialogLineBox before it ever reaches
 	// an inner nav item, so the bare close would dismiss the overlay while
-	// cd.dialogOpen stayed true — blanking the shortcut bar and blocking every
-	// list shortcut (C-e/C-n/C-r/…) until the process restarted.
+	// cd.dialogOpen stayed true, blanking the shortcut bar and blocking every
+	// list shortcut.
 	if dialog.onDismiss == nil {
 		dialog.onDismiss = cd.CloseListSlotDialog
 	}
@@ -1549,7 +1501,7 @@ func (cd *ConversationsDisplay) CloseFullSlotDialog() {
 // at 70% relative width (min_width 44) showing the QR code, the address as
 // "< addr >" (spaces inside the brackets), and a 12-wide Close button in a
 // [weight, 12, weight] row. Title "QR Code" when the QR renders, "LXMF
-// Address" (no QR) on failure. Space dismisses (B4 owner decision 2026-08-23).
+// Address" (no QR) on failure. Space dismisses the dialog.
 func (cd *ConversationsDisplay) ShowMyQRDialog(addr string) {
 	qrText := RenderQRText(addr)
 	title := "QR Code"
@@ -1590,8 +1542,8 @@ func (cd *ConversationsDisplay) ShowMyQRDialog(addr string) {
 	buttonRow.SetFixedWidth(1, 12)
 	buttonRow.SetWeight(2, 1)
 
-	// Space on the QR/address view dismisses (nomadnet's QR popup dismisses on
-	// Space; B4 owner decision 2026-08-23). Keep Esc (Go enhancement).
+	// Space on the QR/address view dismisses the dialog, as in nomadnet's QR
+	// popup. Esc is handled by wireDialogNav.
 	qrView.SetInputCapture(func(ev *tcell.EventKey) *tcell.EventKey {
 		if ev.Rune() == ' ' {
 			cd.CloseFullSlotDialog()
@@ -1610,11 +1562,10 @@ func (cd *ConversationsDisplay) ShowMyQRDialog(addr string) {
 		AddItem(blank(), 1, 0, false)
 
 	dialog := NewDialogLineBox(title, layout, cd.CloseFullSlotDialog)
-	// PACK height: 6 content rows beyond the QR block (leading blank, address,
-	// and 3 blanks around the Close row) + 2 border rows. The former
-	// qrLines+6 forgot the border rows, squeezing the Close button onto the
-	// dialog's bottom border — the bottom border was not drawn at all and the
-	// button's rect collapsed (mouse clicks on it could never hit).
+	// PACK height: the QR block plus 6 content rows (leading blank, address,
+	// and 3 blanks around the Close row) plus 2 border rows. The border rows
+	// must be counted, or the Close button is squeezed onto the dialog's bottom
+	// border and its rect collapses.
 	cd.ShowFullSlotDialog(dialog, 70, 44, qrLines+8)
 	wireDialogNav(cd.app, cd.CloseFullSlotDialog, []tview.Primitive{qrView, closeBtn})
 }
@@ -1653,11 +1604,9 @@ func (cd *ConversationsDisplay) ShowDetailSlotDialog(dialog *DialogLineBox, widt
 	}
 	cd.detailSlotBottom = bottom
 	cd.detailSlotOverlay = ov
-	// Rebuild (not RemoveItem+AddItem): a RemoveItem+AddItem here appended the
-	// dialog at the END of the content Flex when an interleaving (e.g. a
-	// re-invoked Ctrl-f, or a conversation re-open) had already disturbed the
-	// item order, stacking a second dialog item that stayed on screen while
-	// keystrokes fell through to the page underneath.
+	// Rebuild rather than RemoveItem+AddItem: the latter would append the
+	// dialog at the END of the content Flex whenever the item order had been
+	// disturbed, stacking a second dialog item on screen.
 	cd.rebuildContent(cd.listPaneItem(), ov, true)
 	if cd.app != nil {
 		cd.app.SetFocus(ov)
@@ -1781,21 +1730,20 @@ func (cd *ConversationsDisplay) SetConversations(convs []ConversationInfo) {
 // its display name, hop count and stamp cost — and re-renders it.
 //
 // A peer's display name arrives only with its announce, and the conversation is
-// routinely opened before that: the New Conversation dialog knows nothing but the
-// address it was given, and a fresh pairing has no directory entry with a name.
-// The LIST ROW resolves as soon as the announce lands, because every refresh
-// rebuilds it from App.ConversationList, whose app-data fallback reads the peer's
-// announce. The header was resolved once, at DisplayConversation time, and nothing
-// re-resolved it — so the two disagreed indefinitely, the header holding the
-// "<hex>…" fallback until the operator closed and reopened the conversation.
+// routinely opened before that: the New Conversation dialog knows nothing but
+// the address it was given, and a fresh pairing has no directory entry with a
+// name. The list row resolves as soon as the announce lands, because every
+// refresh rebuilds it from App.ConversationList, whose app-data fallback reads
+// the peer's announce. The header is resolved only at DisplayConversation time,
+// so it must be re-resolved on the same refresh or the two disagree.
 //
 // Python has no such split: _update_peer_info runs inside update_widget_list, so
 // every announce-driven list refresh re-resolves the open conversation's header
 // too (Conversations.py:622, 1909). SetConversations is the Go port's equivalent
 // refresh entry point, so the re-resolution belongs here rather than in each
 // caller. The hop count and stamp cost come along for the same reason — they are
-// live lookups through OnHops/OnStampCost, and a peer's hop count is exactly what
-// settles when its announce and path finally arrive.
+// live lookups through OnHops/OnStampCost, and a peer's hop count settles when
+// its announce and path finally arrive.
 //
 // Must run on the UI thread (SetConversations does).
 func (cd *ConversationsDisplay) refreshDisplayedPeerInfo() {
@@ -1905,8 +1853,8 @@ func tabBarText(convs []ConversationInfo, unreadGlyph string) string {
 // the Trusted tab, UNTRUSTED/WARNING/UNKNOWN toward the Untrusted tab, and
 // nothing else. Blocked (ignored-list) rows — which only Go's model carries,
 // since Python's app.conversations() enumerates on-disk conversations only —
-// count toward NEITHER tab; counting them made the Untrusted tab advertise an
-// entry its (filtered) list could never show.
+// count toward NEITHER tab, which would otherwise advertise an entry the
+// filtered Untrusted list can never show.
 func tabButtonLabels(convs []ConversationInfo, unreadGlyph string) (trusted, untrusted string) {
 	trustedCount, untrustedCount := 0, 0
 	trustedAlert, untrustedAlert := 0, 0
@@ -1985,8 +1933,7 @@ func (cd *ConversationsDisplay) syncStatusLine() string {
 // width: Python renders the footer as a Text inside an AttrMap, whose style
 // paints the FULL row width (Conversations.py:517-545), while tview's
 // TextView paints its background only over the text run — without the pad the
-// row's trailing columns lose the menubar background (attribute-only parity
-// divergence caught by the differential explorer).
+// row's trailing columns lose the menubar background.
 func (cd *ConversationsDisplay) setSyncText(line string) {
 	width := max(cd.listWidth-2, 1)
 	for len(line) < width {
@@ -2080,11 +2027,11 @@ func (cd *ConversationsDisplay) DialogOpen() bool {
 	return cd.dialogOpen
 }
 
-// overlayStateOrphaned reports the stuck state behind fleet bug #14: the
-// dialog-open flags say a dialog is up, but the app's keyboard focus is NOT
-// inside any of them and no global modal is open. Keys dispatched in that
-// state fall into a dialog the user cannot see (or nowhere at all), so the
-// page's shortcuts and arrows appear dead until the process is restarted.
+// overlayStateOrphaned reports a stuck overlay state: the dialog-open flags
+// say a dialog is up, but the app's keyboard focus is NOT inside any of them
+// and no global modal is open. Keys dispatched in that state fall into a dialog
+// the user cannot see (or nowhere at all), so the page's shortcuts and arrows
+// appear dead.
 //
 // The check walks the CONTAINMENT of the app's actual focused primitive in
 // each overlay's tree instead of trusting the primitives' HasFocus(): tview
@@ -2213,8 +2160,7 @@ func BlockedRowLabel(displayName, sourceHash string) string {
 	}
 	// The "[blocked]" marker and any bracketed display name must be escaped:
 	// tview's markup engine consumes "[...]" runs as color tags when the row
-	// renders, so the raw label "× [blocked] <hash>  <hash>" appeared as
-	// "×  <hash>  <hash>" (Python's urwid renders the label literally).
+	// renders (Python's urwid renders the label literally).
 	return fmt.Sprintf("× %v %v  <%v>", tview.Escape("[blocked]"), tview.Escape(displayName), sourceHash)
 }
 
@@ -2312,9 +2258,7 @@ func (cd *ConversationsDisplay) showClearHistoryDialog(sourceHash string) {
 // delete_selected_conversation dialog (installed 1.2.8, Conversations.py:
 // 571-598): a DialogLineBox titled "?" with a centered two-line body
 // ("Delete conversation with\n<display name>\n") and flat Yes/No buttons in a
-// 0.45/0.1/0.45 column row. The former global DialogManager confirm centered
-// on the whole screen with a "Confirm" title and a one-line body — the
-// differential explorer flagged the divergence.
+// 0.45/0.1/0.45 column row.
 func (cd *ConversationsDisplay) DeleteConversationConfirm(displayName string, onYes, onNo func()) {
 	cd.dialogOpen = true
 	close := func() { cd.CloseListSlotDialog(); cd.dialogOpen = false }
@@ -2340,8 +2284,8 @@ func (cd *ConversationsDisplay) DeleteConversationConfirm(displayName string, on
 	dialog := NewDialogLineBox("?", layout, no)
 	// body 3 + buttons 1 + 2 border = 6 PACK height.
 	cd.ShowListSlotDialog(dialog, 100, 0, 6)
-	// GUARANTEE Yes owns the keyboard (fleet bug #10: a stranded focus killed
-	// the Enter path), then Tab/Left/Right traverse the two buttons.
+	// Yes must own the keyboard so Enter activates it, then Tab/Left/Right
+	// traverse the two buttons.
 	if cd.app != nil {
 		cd.app.SetFocus(yesBtn)
 	}
@@ -2349,21 +2293,18 @@ func (cd *ConversationsDisplay) DeleteConversationConfirm(displayName string, on
 }
 
 // ShowIngestResult shows the result of an LXM URI ingest operation, overlaid on
-// the conversations list column (Python's ingest_lxm_uri result roverlay,
+// the conversations list column (Python's ingest_lxm_uri result overlay,
 // Conversations.py:1143-1237: columns_widget.contents[0] = urwid.Overlay(
-// dialog, bottom=listbox, width=RELATIVE_100, height=PACK, left=2, right=2),
-// title "Ingest message URI", a message Text + a 0.6-spacer/0.4-OK button row).
 // dialog, bottom=listbox, width=RELATIVE_100, height=PACK, left=2, right=2),
 // title "Ingest message URI", a message Text + a 0.6-spacer/0.4-OK button row).
 //
 // Python's result Pile is [Text(message), Text(""), Columns([0.6 blank,
 // 0.4 OK])] under a PACK overlay: urwid wraps the message at the dialog's
 // inner width (the 48-column overlay minus the 2-cell border) and the PACK
-// height follows the WRAPPED row count. Sizing from the raw "\n" count
-// chopped every message longer than one line (fleet bug: the ingest error
-// rendered as "Could ingest LXM from URI data. Check your inp"). Python's
-// result texts are left-aligned; only the error line is centered
-// (Conversations.py:1172,1233 align=CENTER on the error_text row).
+// height follows the WRAPPED row count. Sizing from the raw "\n" count would
+// chop every message longer than one line. Python's result texts are
+// left-aligned; only the error line is centered (Conversations.py:1172,1233
+// align=CENTER on the error_text row).
 func (cd *ConversationsDisplay) ShowIngestResult(result IngestResult) {
 	cd.dialogOpen = true
 	msg := IngestResultText(result)
@@ -2489,9 +2430,9 @@ func (cd *ConversationsDisplay) PaperMessageDialog(
 //	"Select the desired paper message output method.\nSaved files will be
 //	 written to:\n\n" + str(self.app.downloads_path) + "\n"
 //
-// (Conversations.py:2538-2541). The port showed only the first sentence, so the
-// user was never told where the file would land — and an empty composer makes the
-// dialog close without doing anything at all, which is baffling without it.
+// (Conversations.py:2538-2541). The destination line is required: an empty
+// composer makes the dialog close without doing anything at all, which is
+// baffling without it.
 func paperMessageDialogText(downloadsPath string) string {
 	return "Select the desired paper message output method.\n" +
 		"Saved files will be written to:\n\n" + downloadsPath + "\n"
@@ -2526,9 +2467,8 @@ func (cd *ConversationsDisplay) PaperMessageFailed() {
 func (cd *ConversationsDisplay) PaperMessageSaved(path string) {
 	cd.dialogOpen = true
 	msg := "The paper message was saved to:\n\n" + path + "\n"
-	// urwid PACK wraps the message at the 60-wide dialog's inner width (58) —
-	// a long saved-path must grow the dialog, not clip (same wrap-sizing bug
-	// class as the ingest error chop).
+	// urwid PACK wraps the message at the 60-wide dialog's inner width (58), so
+	// a long saved path grows the dialog instead of being clipped.
 	msgRows := len(urwidSpaceWrap(msg, 58))
 	close := func() { cd.CloseDetailSlotDialog(); cd.dialogOpen = false }
 	ok := NewUrwidButton("OK").SetSelectedFunc(close)
@@ -2710,9 +2650,8 @@ func (cd *ConversationsDisplay) ShowPeerInfoDialog(entry PeerInfoEntry, hooks Pe
 	// entry's ACTUAL trust level — Python passes explicit states
 	// (Conversations.py:903-905: RadioButton(group, label, state=*_selected)),
 	// so exactly ONE radio is checked: the entry's trust. Passing firstTrue
-	// here forced Untrusted checked (first radio, empty group) and Trusted
-	// unchecked on every open — a saved Trusted entry opened as Untrusted,
-	// and saving it silently downgraded the peer to Untrusted (fleet bug #6).
+	// here would force Untrusted checked (first radio, empty group) and Trusted
+	// unchecked on every open, silently downgrading a saved Trusted peer.
 	utrust := entry.TrustLevelValue()
 	untrustedSel := false
 	unknownSel := true
@@ -2729,9 +2668,9 @@ func (cd *ConversationsDisplay) ShowPeerInfoDialog(entry PeerInfoEntry, hooks Pe
 	rTrusted := NewRadioButton(trustGroup, "Trusted", trustedSel, false)
 
 	// Delivery radio group (Deliver directly/Use propagation nodes): same
-	// explicit-state construction as Python (Conversations.py:908-909) — the
+	// explicit-state construction as Python (Conversations.py:908-909). The
 	// firstTrue flag would force "Deliver directly" checked even for a
-	// propagated entry (both radios then showed (X)).
+	// propagated entry.
 	propagatedSel := entry.PreferredDelivery == "propagated"
 	methodGroup := &DialogRadioGroup{}
 	rDirect := NewRadioButton(methodGroup, "Deliver directly", !propagatedSel, false)
@@ -2914,7 +2853,7 @@ func (cd *ConversationsDisplay) ShowPeerInfoDialog(entry PeerInfoEntry, hooks Pe
 // content rows), matching the original whose overlay sits in the 52-column
 // left pane with left=right=2 padding (Conversations.py:1108-1113). The Go
 // DialogManager centers the overlay on the WHOLE screen rather than the left
-// pane, a known position parity gap; the width/height/content match exactly.
+// pane; the width, height and content match exactly.
 func (cd *ConversationsDisplay) ShowNewConversationDialog(onCreate func(addrHex, name, trust string) bool) {
 	cd.showNewConversationDialog("", "", false, onCreate)
 }
@@ -2930,14 +2869,12 @@ func (cd *ConversationsDisplay) showNewConversationDialog(addr, name string, sho
 	eName := NewReadlineEdit(cd.app.killRing, "Name : ", "")
 	eName.SetText(name)
 
-	// Trust radio group. DELIBERATE deviation from Python at the owner's
-	// request (fleet bug #7, 2026-09-01): urwid's RadioButton default
-	// ("first True") leaves BOTH "Untrusted" and "Unknown" checked on open
-	// (verified against the installed urwid: True/True/False for the
-	// Conversations.py:1028-1030 construction — Python's confirmed() then
-	// applies Unknown because it checks r_unknown first). The owner asked for
-	// exactly ONE pre-checked radio, so the dialog opens with only "Unknown"
-	// selected — the same trust a no-toggle Create would store.
+	// Trust radio group. This deliberately deviates from Python: urwid's
+	// RadioButton default ("first True") leaves BOTH "Untrusted" and "Unknown"
+	// checked on open (True/True/False for the Conversations.py:1028-1030
+	// construction; Python's confirmed() then applies Unknown because it checks
+	// r_unknown first). This dialog opens with only "Unknown" selected — the
+	// same trust a no-toggle Create would store.
 	group := &DialogRadioGroup{}
 	rUntrusted := NewRadioButton(group, "Untrusted", false, false)
 	rUnknown := NewRadioButton(group, "Unknown", true, false)
@@ -3019,10 +2956,10 @@ func (cd *ConversationsDisplay) showNewConversationDialog(addr, name string, sho
 		}
 		if onCreate(addrHex, displayName, trust) {
 			dismiss()
-			// B1: nomadnet 1.2.8 does NOT auto-open the conversation after
-			// Create — it returns to the list with the right pane showing
-			// "No conversation selected". The user must select the peer and
-			// press Enter to open it. Python's confirmed() does call
+			// nomadnet 1.2.8 does NOT auto-open the conversation after Create:
+			// it returns to the list with the right pane showing "No
+			// conversation selected". The user must select the peer and press
+			// Enter to open it. Python's confirmed() does call
 			// display_conversation(source_hash_text), but POSITIONALLY, so the
 			// hash binds to the `sender` parameter and source_hash stays None:
 			// display_conversation replaces the detail pane with the empty
@@ -3037,8 +2974,7 @@ func (cd *ConversationsDisplay) showNewConversationDialog(addr, name string, sho
 		// Re-show with the preserved inputs and the error row. The dialog is
 		// fixed-height, so the error row cannot be added in place; rebuilding
 		// preserves the typed Addr/Name. Python appends the error without
-		// rebuilding (so focus stays on Create there) — a minor parity gap not
-		// visible in static captures (the tmux capture cannot see the cursor).
+		// rebuilding, so focus stays on Create there.
 		cd.CloseListSlotDialog()
 		cd.showNewConversationDialog(addrHex, displayName, true, onCreate)
 	})
@@ -3193,8 +3129,8 @@ func (cd *ConversationsDisplay) ShowSyncDialog(
 
 	var layout *tview.Flex
 	var navItems []tview.Primitive
-	// PACK content height in ROWS (each variant sizes its own rows below —
-	// the previous item-count sizing chopped the no-trusted-nodes variant).
+	// PACK content height in ROWS (each variant sizes its own rows below;
+	// item-count sizing would chop the no-trusted-nodes variant).
 	syncContentRows := 0
 	if generalLayout {
 		// Propagation-node header row (Python urwid.Text(g["node"]+header_str,
@@ -3245,13 +3181,12 @@ func (cd *ConversationsDisplay) ShowSyncDialog(
 			AddItem(closeBtn, 0, 45, false)
 		// The explainer WRAPS like any urwid.Text under PACK: size its rows
 		// from the wrapped length at the dialog's inner width (48 - 2 border),
-		// not a hard-coded 5 — the hard-coded height chopped the dialog bottom
-		// and let the wrapped text overflow the border.
+		// not a fixed height, which would chop the dialog bottom and let the
+		// wrapped text overflow the border.
 		explainer := "To synchronise messages from the network, one or more nodes must be marked as trusted in the Known Nodes list, or a node must manually be selected as the default propagation node. Nomad Network will then automatically sync from the nearest trusted node, or the manually selected one."
 		// Both texts are PRE-WRAPPED with urwid's space wrap and rendered
-		// verbatim (SetWrap(false)): letting tview wrap at draw time diverged
-		// from Python's break positions (the differential explorer's wrap
-		// family — tview drops a word urwid fits exactly).
+		// verbatim (SetWrap(false)): letting tview wrap at draw time diverges
+		// from Python's break positions (tview drops a word urwid fits exactly).
 		explainerLines := urwidSpaceWrap(explainer, 46)
 		explainerRows := len(explainerLines)
 		// Python centers the no-nodes line (Conversations.py:1534 in the
@@ -3273,11 +3208,11 @@ func (cd *ConversationsDisplay) ShowSyncDialog(
 
 	cd.updateSyncProgress()
 	// Slot-place in the 52-wide list column (Python columns_widget.contents[0],
-	// RELATIVE_100). PACK height = content rows + 2 border. Row count, NOT
+	// RELATIVE_100). PACK height = content rows + 2 border. The row count, not
 	// GetItemCount: the no-trusted-nodes layout packs a 2-row and a wrapped
-	// multi-row Text, so counting ITEMS under-sized the dialog and chopped its
-	// bottom rows (fleet bug). The tview Flex does not expose per-item fixed
-	// sizes, so the two layouts report their packed row count directly.
+	// multi-row Text, so counting ITEMS would under-size the dialog and chop
+	// its bottom rows. The tview Flex does not expose per-item fixed sizes, so
+	// the two layouts report their packed row count directly.
 	dialog := NewDialogLineBox("Message Sync", layout, dismiss)
 	cd.ShowListSlotDialog(dialog, 100, 0, syncContentRows+2)
 	wireDialogNav(cd.app, dismiss, navItems)
@@ -3347,7 +3282,7 @@ func (cd *ConversationsDisplay) SetSyncShowPercentHook(f func() bool) {
 	cd.syncMutex.Unlock()
 }
 
-// startSyncRefresh launches the 200ms progress-refresh goroutine, mirroring
+// StartSyncRefresh launches the 200ms progress-refresh goroutine, mirroring
 // Python's set_alarm_in(0.2, update_sync_dialog) loop
 // (Conversations.py:1575). marshal=true queues updates onto the running
 // application event loop (production); false runs synchronously (tests, where

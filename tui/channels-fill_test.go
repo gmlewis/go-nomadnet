@@ -25,9 +25,7 @@ import (
 // TestConnectedHubRowFullWidthFill pins the connected hub row's attribute
 // fill to Python's urwid AttrMap behavior (Channels list rows fill the FULL
 // pane width): the connected hub row's fg #5faf00 covers all 34 left-pane
-// columns, not only the text run. Measured live on the 2026-09-03 12:32
-// full-fleet capture (the Go nodes painted the trailing columns
-// default-styled).
+// columns, not only the text run.
 func TestConnectedHubRowFullWidthFill(t *testing.T) {
 	t.Parallel()
 
@@ -50,10 +48,9 @@ func TestConnectedHubRowFullWidthFill(t *testing.T) {
 	t.Cleanup(func() { screen.Fini() })
 	screen.SetSize(channelsListInnerWidth, 9)
 
-	// Select the ROOM row (index 1) so the HUB row renders NON-selected —
-	// the capture's connected hub row is not the highlighted row (the
-	// fork's List full-line-fills only the SELECTED row; the highlighted
-	// selected-room style is byte-exact already and out of scope here).
+	// Select the ROOM row (index 1) so the HUB row renders NON-selected.
+	// The fork's List full-line-fills only the SELECTED row; the selected-room
+	// highlighted style is not under test here.
 	cd.rooms.SetCurrentItem(1)
 	cd.rooms.SetRect(0, 0, channelsListInnerWidth, 9)
 	cd.rooms.Draw(screen)

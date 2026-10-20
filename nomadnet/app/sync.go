@@ -49,9 +49,8 @@ func (a *App) GetSyncStatus() string {
 	case lxmf.PRNoPath:
 		return "No path to node"
 	case lxmf.PRLinkFailed:
-		// "establishment", not Python's "establisment" (NomadNetworkApp.py:502
-		// misspells it and the port copied it faithfully); fixed here on the
-		// operator's instruction.
+		// Python spells this "Link establisment failed" (NomadNetworkApp.py:502);
+		// the Go display uses the correct spelling.
 		return "Link establishment failed"
 	case lxmf.PRTransferFailed:
 		return "Sync request failed"

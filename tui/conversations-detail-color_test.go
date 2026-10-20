@@ -27,8 +27,7 @@ import (
 // (Conversations.py:1881-1884) — no AttrMap — so its base is the terminal
 // default. (The populated summary Go renders in cd.detail is a Go-specific
 // "Trust/Messages/Last" format with no Python equivalent; the empty state is
-// the only Python-specified surface, and it is default.) The Go port previously
-// used 0xbbbbbb.
+// the only Python-specified surface, and it is default.)
 func TestConversationsDetailBaseColor(t *testing.T) {
 	t.Parallel()
 	app := NewApp(ThemeDark, GlyphUnicode, ColorModeTrue)

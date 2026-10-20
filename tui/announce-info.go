@@ -31,7 +31,7 @@ type AnnounceInfoData struct {
 	DisplayStr string // directory.simplest_display_str(source_hash)
 	TrustStr   string // "Untrusted" / "Unknown" / "Trusted" / "Warning"
 	TrustStyle string // palette key: list_untrusted/list_unknown/list_trusted/list_warning
-	OpStr      string // node operator display (stub: "Unknown")
+	OpStr      string // node operator display; "Unknown" until the identity is recalled
 	// OpHash is the hex "lxmf.delivery" destination hash derived from the
 	// announced node's recallable identity (Network.py:143). It is the address
 	// the Msg Op button targets; empty when the identity cannot be recalled.
@@ -155,11 +155,9 @@ func newAnnounceInfoDisplay(nd *NetworkDisplay, ann AnnounceEntry, data Announce
 			// AnnounceInfo grows a second button row with the "Block" action
 			// that blackholes this node and filters its announces. It is a
 			// SELECTABLE pile item so Down/Tab lands on it and Up returns to
-			// the Python-parity button row (bug report: the Block row was
-			// unreachable by arrow keys when marked non-selectable). See
-			// NetworkDisplay.OnBlockNode and directory.Directory.
-			// SetBlockedFilter. Deliberate divergence — keep it when auditing
-			// parity against the Python original.
+			// the Python-parity button row. See NetworkDisplay.OnBlockNode and
+			// directory.Directory.SetBlockedFilter. Deliberate divergence from
+			// the Python original.
 			pile.AddItem(ai.blockButtonRow(), 1, true)
 		}
 	}
@@ -226,9 +224,8 @@ func (ai *announceInfoDisplay) announceDataRow(dataStr string, untrusted bool) *
 // urwid.Button "< label >" (NewUrwidButton); the spacer columns are empty
 // Boxes. dividechars is 0 (urwid Columns default).
 //
-// The layout intentionally matches Python EXACTLY (same buttons, same weights)
-// so the pinned node/pn/peer layout tests keep passing; the Go-only "Block"
-// enhancement lives on the separate blockButtonRow below.
+// The layout matches Python EXACTLY (same buttons, same weights); the Go-only
+// "Block" enhancement lives on the separate blockButtonRow below.
 func (ai *announceInfoDisplay) buttonRow() *urwidColumns {
 	isNode := ai.ann.Type == "node"
 	isPN := ai.ann.Type == "pn"
@@ -260,16 +257,14 @@ func (ai *announceInfoDisplay) buttonRow() *urwidColumns {
 }
 
 // blockButtonRow returns the Go-only "Block" action row shown UNDER the
-// Python-parity button row on NODE announce-info views (Python parity row
-// stays Back/Connect/Msg Op/Save; gonomadnet adds Block because blocking a
-// node is a requested gonomadnet enhancement with NO Python SOT counterpart
-// — Python nomadnet cannot block nodes). The Block button fires
-// NetworkDisplay.OnBlockNode with the announce's source (destination) hash.
-// The layout is [button 9, divider 2, filler 30]: the button claims the same
-// 9/41 column share as the row above (11 cells at inner width 50, aligning
-// with the Back column) instead of stretching across the whole panel, and the
-// trailing filler absorbs the remaining width. Do not remove this row (or
-// make the button full-width) when auditing parity.
+// Python-parity button row on NODE announce-info views. Blocking a node is a
+// gonomadnet enhancement with NO Python SOT counterpart — Python nomadnet
+// cannot block nodes. The Block button fires NetworkDisplay.OnBlockNode with
+// the announce's source (destination) hash. The layout is [button 9, divider
+// 2, filler 30]: the button claims the same 9/41 column share as the row above
+// (11 cells at inner width 50, aligning with the Back column) instead of
+// stretching across the whole panel, and the trailing filler absorbs the
+// remaining width.
 func (ai *announceInfoDisplay) blockButtonRow() *urwidColumns {
 	block := NewUrwidButton("Block").SetSelectedFunc(func() { ai.nd.blockNode(ai.ann) })
 	return newURWIDColumns(0,

@@ -23,16 +23,13 @@ import (
 	"github.com/gmlewis/tview"
 )
 
-// TestMenuDownRestoresBodyFocus pins the Down-from-menu behavior measured
-// against the live nomadnet 1.2.8 source of truth: urwid's Frame keeps the
-// body's INTERNAL focus while the header owns focus (Main.py MenuColumns
-// keypress sets frame.focus_position = "body" and re-dispatches the key), so a
-// Down from the menu bar returns to the widget the body had focused — the
-// open conversation's scrolled message list — and that same keypress scrolls
-// it one row. The regression was FocusBody cascading to the content area's
-// default focus chain, which landed on the LEFT conversations list: the key
-// count to walk back down the conversation changed and the cursor sat in the
-// wrong pane.
+// TestMenuDownRestoresBodyFocus pins the Down-from-menu behavior: urwid's
+// Frame keeps the body's INTERNAL focus while the header owns focus (Main.py
+// MenuColumns keypress sets frame.focus_position = "body" and re-dispatches the
+// key), so a Down from the menu bar returns to the widget the body had focused
+// — the open conversation's scrolled message list — and that same keypress
+// scrolls it one row. FocusBody must not cascade to the content area's default
+// focus chain, which would land on the LEFT conversations list.
 func TestMenuDownRestoresBodyFocus(t *testing.T) {
 	t.Parallel()
 
@@ -73,8 +70,8 @@ func TestMenuDownRestoresBodyFocus(t *testing.T) {
 	// Down from the menu restores the SAME body primitive but DROPS the key:
 	// Python's MenuColumns.keypress sets frame.focus_position = "body" and
 	// urwid's Frame dispatches by the entry-time focus part, so the key never
-	// re-dispatches into the body (verified live on nomadnet 1.2.8 — the first
-	// Down renders nothing, the second Down scrolls).
+	// re-dispatches into the body (the first Down renders nothing, the second
+	// Down scrolls).
 	down := tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone)
 	if ret := md.handleInput(down); ret != nil {
 		t.Fatalf("Down from the menu was forwarded (%v); Python drops it (MenuColumns.keypress Main.py:171-176)", ret)

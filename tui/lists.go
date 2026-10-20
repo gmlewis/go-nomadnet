@@ -38,16 +38,15 @@ func NewSelectableList() *SelectableList {
 
 // ListFocusColors returns the (foreground, background) colors for a selected
 // list row under the given theme, matching Python's list_focus style
-// (TextUI.py: #111 on #aaa in both dark and light). Use instead of a
-// hardcoded #666.
+// (TextUI.py: #111 on #aaa in both dark and light).
 func ListFocusColors(theme int) (tcell.Color, tcell.Color) {
 	colors := GetThemeColors(theme)
 	return colors["list_focus_fg"], colors["list_focus_bg"]
 }
 
 // ApplyListFocusStyle sets a tview.List's selected-foreground and
-// selected-background to the theme's list_focus colors. Every list in the port
-// must use this instead of a hardcoded #666 selection background.
+// selected-background to the theme's list_focus colors. Every list should use
+// this rather than a hardcoded selection background.
 func ApplyListFocusStyle(list *tview.List, theme int) {
 	fg, bg := ListFocusColors(theme)
 	list.SetSelectedTextColor(fg)
@@ -81,8 +80,7 @@ func NewTrustListItem(name, trustLevel string) string {
 
 // FocusFirstChild moves focus to the first child of a Flex. It takes the
 // application because tview focus is application-owned: a Flex cannot move the
-// focus itself, and the previous signature's delegate was an empty lambda, so
-// the helper never moved anything.
+// focus itself.
 func FocusFirstChild(app *tview.Application, flex *tview.Flex) {
 	if app == nil || flex == nil || flex.GetItemCount() == 0 {
 		return
@@ -101,7 +99,7 @@ func CycleFocus(flex *tview.Flex, forward bool) {
 	if count == 0 {
 		return
 	}
-	// For simplicity, just set focus to first item
+	// tview gives no child-focus delegate here, so this only refreshes focus.
 	flex.Focus(func(p tview.Primitive) {
 		_ = p
 	})

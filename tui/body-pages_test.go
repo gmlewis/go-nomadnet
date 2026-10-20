@@ -26,10 +26,10 @@ import (
 // whether it received a key event. It lets the bodyPages dispatch test observe
 // exactly which page tview routed a key to, independent of tview.List's own
 // key handling. Its HasFocus/Focus/Blur are externally controllable so the test
-// can model a hidden page that retains stale focus (the root-cause condition:
-// Application.SetFocus only blurs the single focused leaf, not the previously
-// displayed page's containers, so a hidden page's widgets keep HasFocus()==true
-// after SwitchToPage).
+// can model a hidden page that retains stale focus: Application.SetFocus only
+// blurs the single focused leaf, not the previously displayed page's
+// containers, so a hidden page's widgets keep HasFocus()==true after
+// SwitchToPage.
 type focusRecorder struct {
 	*tview.Box
 	focused bool
@@ -49,16 +49,15 @@ func (r *focusRecorder) InputHandler() func(event *tcell.EventKey, setFocus func
 	}
 }
 
-// TestBodyPagesDispatchesOnlyToVisible is the red-green test for the Guide
-// focus-stealing root cause. tview.Pages.InputHandler (pages.go:329-340)
-// dispatches a key to the FIRST page whose Item.HasFocus() is true, iterating
-// ALL pages regardless of visibility. Because Application.SetFocus only blurs
-// the single focused leaf (application.go:838-855) — not the previously
-// displayed page's containers — a hidden page retains stale HasFocus()==true
-// after SwitchToPage, so its widget tree steals keys from the now-visible page.
-// bodyPages overrides InputHandler to dispatch only to a page that is BOTH
-// visible and HasFocus, mirroring Python urwid's single Frame.focus_position
-// (only the visible body receives input).
+// TestBodyPagesDispatchesOnlyToVisible pins that a key reaches only the visible
+// page. tview.Pages.InputHandler (pages.go:329-340) dispatches a key to the
+// FIRST page whose Item.HasFocus() is true, iterating ALL pages regardless of
+// visibility. Because Application.SetFocus only blurs the single focused leaf
+// (application.go:838-855) — not the previously displayed page's containers —
+// a hidden page retains stale HasFocus()==true after SwitchToPage, so its
+// widget tree would steal keys from the now-visible page. bodyPages dispatches
+// only to a page that is BOTH visible and HasFocus, mirroring Python urwid's
+// single Frame.focus_position (only the visible body receives input).
 func TestBodyPagesDispatchesOnlyToVisible(t *testing.T) {
 	bp := newBodyPages()
 	hidden := newFocusRecorder()  // "Network" page — focused then left for Guide
@@ -78,7 +77,7 @@ func TestBodyPagesDispatchesOnlyToVisible(t *testing.T) {
 	// stale HasFocus()==true. FocusBody then focuses the guide page's widget.
 	bp.SwitchToPage("guide")
 	visible.focused = true
-	// hidden.focused is STILL true (stale) — the bug condition.
+	// hidden.focused is STILL true (stale) — the condition bodyPages guards.
 
 	// Dispatch a key. With the buggy tview.Pages.InputHandler the first page
 	// with HasFocus (network, slice order) receives it. bodyPages must route it

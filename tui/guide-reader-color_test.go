@@ -34,10 +34,9 @@ import (
 // TextView base color (SetTextColor — the fallback for `[-:-:-]` resets and
 // the plain indent/padding spaces StyledLinesToTviewText writes BEFORE the
 // first span) must ALSO be #dddddd/#222222, else those untagged runs diverge
-// to a third color. The port previously set 0xbbbbbb, which Python never
-// emits and which surfaced on boot/Guide captures as an extra #bbbbbb
-// foreground. We render topic 0 and probe BLANK cells (indent/padding), whose
-// foreground is the base color (styled spans only color non-blank glyphs).
+// to a third color. The test renders topic 0 and probes BLANK cells
+// (indent/padding), whose foreground is the base color (styled spans only
+// color non-blank glyphs).
 func TestGuideReaderBaseColor(t *testing.T) {
 	t.Parallel()
 

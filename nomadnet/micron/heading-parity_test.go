@@ -18,8 +18,7 @@ package micron
 import "testing"
 
 // Expected values captured from Python MicronParser.parse_line
-// (MicronParser.py:220-416), extracted via /tmp/micron_parseline.py with
-// urwid widget constructors stubbed. The heading level is the unbounded
+// (MicronParser.py:220-416). The heading level is the unbounded
 // count of leading ">" characters (Python does not clamp it). Heading lines
 // that contain a field (`<) lose their heading status: the leading ">"s are
 // stripped and the line is reclassified (MicronParser.py:233-236).

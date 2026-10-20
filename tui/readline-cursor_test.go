@@ -43,7 +43,7 @@ func drawReadlineEditFocused(t *testing.T, re *ReadlineEdit, w int) (int, int, b
 	return x, y, vis
 }
 
-// TestReadlineEditCaretTracksCursor pins the Phase-0 cursor-parity behavior for
+// TestReadlineEditCaretTracksCursor pins the cursor-parity behavior for
 // ReadlineEdit: the terminal hardware caret must sit at the model cursorPos,
 // not at the end of the buffer. tview's InputField exposes no public cursor
 // setter (its internal cursor stays at the end after SetText), so ReadlineEdit

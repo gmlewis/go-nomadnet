@@ -13,11 +13,10 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-// instance-lock.go implements single-instance enforcement for gonomadnet so a
-// developer cannot accidentally run two gonomadnet instances (or gonomadnet
-// alongside nomadnet) on the same Nomad Network config directory — the exact
-// situation that left a stale gonomadnet as the RNS shared instance while a
-// second one reported every interface Disconnected.
+// instance-lock.go implements single-instance enforcement for gonomadnet so two
+// gonomadnet instances (or gonomadnet alongside nomadnet) cannot run on the same
+// Nomad Network config directory, where one would hold the RNS shared instance
+// and the other would report every interface Disconnected.
 //
 // This is a development-ergonomics enhancement, not a parity requirement.
 package main
@@ -73,8 +72,7 @@ func enforceSingleInstance(configDir string) (func(), error) {
 func acquireInstanceLock(lockPath string) (func(), int, error) {
 	// The lock is opened O_CREATE, but on a brand-new install the config
 	// directory itself does not exist yet (main runs this guard before RNS or
-	// the UI create it) — without this, the very first gonomadnet run dies
-	// with "no such file or directory".
+	// the UI create it), so it has to be created first.
 	if err := os.MkdirAll(filepath.Dir(lockPath), 0o700); err != nil {
 		return nil, 0, err
 	}

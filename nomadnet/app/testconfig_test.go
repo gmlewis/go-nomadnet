@@ -38,8 +38,7 @@ import (
 // DefaultConfig, so every other key keeps its default — identical to the
 // no-config-file case for all settings except enable_node. The test suite thus
 // depends only on settings it explicitly sets, never on defaults that may
-// change in the user's config (e.g. the EnableNode default flipped from no to
-// yes, which previously broke the node-hosting tests).
+// change in the user's config.
 func writeTestNomadNetConfig(t *testing.T, dir string) {
 	t.Helper()
 	const contents = "[node]\nenable_node = no\n"

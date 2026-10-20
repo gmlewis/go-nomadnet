@@ -213,8 +213,8 @@ func (e *entry) toJSON() jsonEntry {
 // loadKnownDestinations reads <storage>/known_destinations, a msgpack map of
 // destHash -> [timestamp(float s), packetHash, publicKey, appData]. Map keys are
 // binary (Python/go-reticulum write bin keys); msgpack.Unpack decodes bin map
-// keys as a Go string whose bytes are the raw destination hash, so we accept
-// both string and []byte keys to also cover legacy str-keyed files.
+// keys as a Go string whose bytes are the raw destination hash. Both string and
+// []byte keys are accepted to also cover legacy str-keyed files.
 func loadKnownDestinations(storage string) (map[string][]any, error) {
 	data, err := os.ReadFile(filepath.Join(storage, "known_destinations"))
 	if err != nil {
@@ -655,8 +655,7 @@ func quoteOrUnknown(s string) string {
 	return strconvQuote(s)
 }
 
-// strconvQuote wraps strconv.Quote without importing strconv twice; kept inline
-// to avoid pulling another import alias.
+// strconvQuote renders s as a double-quoted Go-style string literal.
 func strconvQuote(s string) string {
 	var b strings.Builder
 	b.WriteByte('"')

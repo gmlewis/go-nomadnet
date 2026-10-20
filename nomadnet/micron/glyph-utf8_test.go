@@ -21,18 +21,10 @@ import (
 	"unicode/utf8"
 )
 
-// TestParseInlineMultibyteGlyph pins the UTF-8 regression: the inline parser
-// previously iterated the line as BYTES (c := line[i]; part += string(c)), which
-// mangles any multibyte UTF-8 rune. string(byte(0xe2)) == "â" ("â"), so a
-// checkmark "✓" (U+2713, UTF-8 e2 9c 93) was rendered as three runes
-// "â" + U+009C + U+0093, and the cast showed "â" (the two C1 controls dropped).
-//
-// Golden (Python MicronParser): a plain-text micron run preserves every input
-// rune verbatim. Box-drawing "─" (e2 94 80) survives in the Go cast only because
-// it is drawn by tview's border code, not the text path; the text path
-// (parseInline) mangled every multibyte glyph. This test exercises the text
-// path directly: plain text, escaped text, and the chars that appear in the
-// Display Test "Unicode Glyphs" row.
+// TestParseInlineMultibyteGlyph pins that the inline parser decodes whole
+// runes rather than bytes: a plain-text micron run preserves every input rune
+// verbatim, as Python MicronParser does. It exercises the text path directly
+// with the characters that appear in the Display Test "Unicode Glyphs" row.
 func TestParseInlineMultibyteGlyph(t *testing.T) {
 	t.Parallel()
 
@@ -58,14 +50,11 @@ func TestParseInlineMultibyteGlyph(t *testing.T) {
 }
 
 // TestParseInlineMultibyteEscaped pins the escape branch: "\✓" must yield the
-// literal rune ✓ (Python escapes the next character), not the byte-mangled
-// sequence. A backslash followed by a multibyte char must consume the WHOLE
-// rune.
+// literal rune ✓ (Python escapes the next character), and a backslash followed
+// by a multibyte char must consume the whole rune.
 func TestParseInlineMultibyteEscaped(t *testing.T) {
 	t.Parallel()
 
-	// `= toggles literal mode so backslashes are real micron escapes... actually
-	// escapes apply in normal mode. Use a plain line with an escaped glyph.
 	lines := RenderToStyledLines(`\✓`, ThemeDark)
 	if len(lines) != 1 {
 		t.Fatalf("RenderToStyledLines produced %v lines, want 1", len(lines))
@@ -80,9 +69,8 @@ func TestParseInlineMultibyteEscaped(t *testing.T) {
 	}
 }
 
-// TestParseInlineMultibyteRoundtrip guards against any future regression that
-// reintroduces byte-iteration: it feeds a battery of multibyte runes through
-// the renderer and asserts each round-trips in the span text.
+// TestParseInlineMultibyteRoundtrip feeds a battery of multibyte runes through
+// the renderer and asserts each round-trips unchanged in the span text.
 func TestParseInlineMultibyteRoundtrip(t *testing.T) {
 	t.Parallel()
 

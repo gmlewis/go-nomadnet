@@ -62,8 +62,7 @@ func peerNameApp(t *testing.T, dir string) *App {
 }
 
 // writeNodeNameConfig seeds the app's config file with the given node_name so
-// applyConfig picks it up (the ~/.nomadnetwork/config edit the Bug#1 report
-// describes).
+// applyConfig picks it up.
 func writeNodeNameConfig(t *testing.T, dir, nodeName string) {
 	t.Helper()
 
@@ -74,13 +73,12 @@ func writeNodeNameConfig(t *testing.T, dir, nodeName string) {
 	}
 }
 
-// TestNickFollowsPeerSettingsNotNodeName pins Bug#1's parity resolution
-// (owner decision: keep Python parity): the chat Nick is the peer settings
-// display_name (Python RRCManager.get_nickname, RRC.py:1286-1294 reading
-// peer_settings["display_name"]), and the config's [node] node_name only
-// names the hosted node (Python Node.py:28-36). Changing node_name in
-// ~/.nomadnetwork/config and restarting must NOT change the Nick; changing
-// the peer display name (the TUI's Local Peer Info Name field) must.
+// TestNickFollowsPeerSettingsNotNodeName pins that the chat Nick is the peer
+// settings display_name (Python RRCManager.get_nickname, RRC.py:1286-1294
+// reading peer_settings["display_name"]), while the config's [node] node_name
+// only names the hosted node (Python Node.py:28-36). Changing node_name and
+// restarting must NOT change the Nick; changing the peer display name (the
+// TUI's Local Peer Info Name field) must.
 func TestNickFollowsPeerSettingsNotNodeName(t *testing.T) {
 	t.Parallel()
 
@@ -108,7 +106,7 @@ func TestNickFollowsPeerSettingsNotNodeName(t *testing.T) {
 		t.Errorf("RRC nick after restart = %q, want the peer settings display_name", got)
 	}
 
-	// The node_name edit from the report must not leak into the Nick.
+	// The configured node_name must not leak into the Nick.
 	if got := a.NodeName; got != "go-nomadnet on MacM2Max" {
 		t.Errorf("NodeName = %q, want the config's node_name", got)
 	}

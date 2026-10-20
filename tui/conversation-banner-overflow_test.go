@@ -28,7 +28,7 @@ func cautionBg() tcell.Color { return cubeHex3("#fd3") }
 // cautionOutside draws the conversation frame at w x h and reports where its
 // caution background lands. Any caution cell outside the frame's own inner
 // rect is a cell painted over whatever the page put below the conversation
-// panel — the reported "yellow message overflows its rendering area" defect.
+// panel.
 func cautionOutside(t *testing.T, cw *ConversationWidget, w, h int) (outside, total, firstRow, lastRow int) {
 	t.Helper()
 
@@ -67,7 +67,7 @@ func cautionOutside(t *testing.T, cw *ConversationWidget, w, h int) (outside, to
 // newCautionConversation builds a ConversationWidget for a peer whose identity
 // is not known, so the footer is the identity-unknown caution banner
 // (check_editor_allowed). The frame is laid out at w x h BEFORE the footer is
-// built, which is what pins the banner's height in the broken version.
+// built, so the banner's height comes from that width.
 func newCautionConversation(t *testing.T, w, h int) *ConversationWidget {
 	t.Helper()
 
@@ -79,19 +79,19 @@ func newCautionConversation(t *testing.T, w, h int) *ConversationWidget {
 	return cw
 }
 
-// TestConversationCautionBannerNeverOverflowsFrame is the regression test for
-// the reported defect: the yellow identity-unknown banner is a FOOTER swap
-// (Python AttrMap+Padding+Text(CENTER), Conversations.py:2195-2214), so it must
-// stay inside the conversation panel, and it must reach the panel's bottom
-// inner row because it is the frame's last child.
+// TestConversationCautionBannerNeverOverflowsFrame pins the geometry of the
+// identity-unknown banner, a FOOTER swap (Python AttrMap+Padding+Text(CENTER),
+// Conversations.py:2195-2214): it must stay inside the conversation panel, and
+// it must reach the panel's bottom inner row because it is the frame's last
+// child.
 //
-// The defect needs two sizes, which is why a single-size draw never caught it:
-// the appliance starts the client at 80x24 and RESIZEs it to the real grid
-// afterwards, so the banner's fixed height is computed once at the narrow
-// width. At the device's real grid the right pane is 54 columns (52 inner) and
-// 23 rows, where the banner wraps to 13 rows — but at the ~38 columns the
-// 80x24 phase leaves the pane it wraps to 16, and the stale 16-row height then
-// paints three rows below the panel, over the command footer.
+// Two sizes are exercised because the banner must survive a resize: the
+// appliance starts the client at 80x24 and RESIZEs it to the real grid
+// afterwards. At the device's real grid the right pane is 54 columns (52 inner)
+// and 23 rows, where the banner wraps to 13 rows; at the ~38 columns the 80x24
+// phase leaves the pane it wraps to 16. A height captured at the narrow width
+// must not outlive the resize and paint below the panel, over the command
+// footer.
 func TestConversationCautionBannerNeverOverflowsFrame(t *testing.T) {
 	t.Parallel()
 

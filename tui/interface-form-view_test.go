@@ -143,8 +143,8 @@ func TestInterfaceTypePickerEntries(t *testing.T) {
 	}
 }
 
-// TestInterfaceAddFormWritesConfigThatReparses is row 1's acceptance test: the
-// Add form collects an interface's own settings, and what it writes to the RNS
+// TestInterfaceAddFormWritesConfigThatReparses checks the Add form end to end:
+// the form collects an interface's own settings, and what it writes to the RNS
 // config re-parses to the values that were entered.
 func TestInterfaceAddFormWritesConfigThatReparses(t *testing.T) {
 	t.Parallel()
@@ -612,12 +612,11 @@ func TestInterfaceEditFormLoadsCheckboxOptions(t *testing.T) {
 	}
 }
 
-// TestInterfaceEditFormSaveWritesCheckboxState pins a Python behaviour worth
-// knowing before it surprises someone: a checkbox always yields a value, so a
-// save writes its state even when it is false — an unchanged save of a
-// TCPClientInterface adds `kiss_framing = False` to a section that did not have
-// it (FormCheckbox.get_value returns the state and Python's `value != ""` test
-// is true for False, Interfaces.py:1926-1930).
+// TestInterfaceEditFormSaveWritesCheckboxState pins a Python behaviour: a
+// checkbox always yields a value, so a save writes its state even when it is
+// false — an unchanged save of a TCPClientInterface adds `kiss_framing = False`
+// to a section that did not have it (FormCheckbox.get_value returns the state
+// and Python's `value != ""` test is true for False, Interfaces.py:1926-1930).
 func TestInterfaceEditFormSaveWritesCheckboxState(t *testing.T) {
 	t.Parallel()
 
@@ -670,9 +669,9 @@ func drawnText(t *testing.T, root tview.Primitive, w, h int) string {
 
 // TestInterfaceFormRendersFitsTheGrid pins that the form actually draws, at the
 // host console's 80x24 and at the tablet's real grid. The appliance's console
-// host starts the pty at 80x24 and the client resizes it once the terminal view
-// has been measured (measured as at least 151 columns), so a form that only
-// renders at one of those widths would ship broken to the other.
+// host starts the pty at 80x24 and the client resizes it to at least 151 columns
+// once the terminal view has been measured, so the form must render at both
+// widths.
 //
 // The form is mounted the way the page mounts it — as an 85% x 85% overlay — so
 // this also pins the overlay geometry: the dialog's rect must be 85% of the grid
@@ -843,7 +842,7 @@ func TestEditFormKeepsAddNewHeader(t *testing.T) {
 // TestBuildWritesOnePortKey pins Python's config_key-keyed form fields
 // (Interfaces.py:1645-1660): BackboneInterface declares "port" twice (listen
 // and target), so the dict keeps one value — the last row's — and the config
-// gets a single `port =` line. The port wrote both, producing duplicate keys.
+// gets a single `port =` line.
 func TestBuildWritesOnePortKey(t *testing.T) {
 	t.Parallel()
 

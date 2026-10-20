@@ -17,8 +17,7 @@ import org.junit.Test
  *
  * A rotation matrix is only arithmetic, so the whole question of which axis a
  * heading should be measured along can be settled by constructing an attitude and
- * asking. This is the test that would have caught the mistake the design brief's
- * reasoning invited.
+ * asking.
  */
 class HeadingReferenceTest {
 
@@ -42,9 +41,8 @@ class HeadingReferenceTest {
 
     @Test
     fun screenTopHeadingIsNotTheDirectionTheOperatorFacesWhenStandingUpright() {
-        // This is the failure the brief predicted for the wrong reason. On a tablet
-        // standing up, the device's +Y axis is vertical, so its azimuth is the
-        // degenerate case: whatever number comes out, it does not describe where
+        // On a tablet standing up, the device's +Y axis is vertical, so its azimuth is
+        // the degenerate case: whatever number comes out, it does not describe where
         // anybody is looking.
         val attitude = HeadingReference.attitude(
             HeadingFixtures.standingUpright(90.0),

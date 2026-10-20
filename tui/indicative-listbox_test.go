@@ -143,12 +143,8 @@ func TestIndicativeListBoxEmptyList(t *testing.T) {
 // parity for two-line list items (the Conversations list): Python renders each
 // entry as one urwid Text (name + "\n  time"), so urwid's focus cursor sits on
 // the FIRST row of the current entry and every Up/Down moves it exactly one
-// CONVERSATION (two physical rows — live capture "py_*": both name and time
-// lines share the list_focus style). The old ILB handed ShowCursor the item
-// INDEX as a row offset (row = current-offset), so with 2-row items the cursor
-// landed a conversation below each press and drifted one row per keypress
-// against the highlight (live: highlight row 16 vs cursor (1,10), then 14 vs
-// (1,9), then 12 vs (1,8) across three Ups).
+// CONVERSATION (two physical rows). The cursor row is therefore the item index
+// scaled by the item height, not the item index itself.
 //
 // It also pins the single-line case (Guide / Saved Nodes lists): one row per
 // item, cursor exactly on the highlighted row.
@@ -267,12 +263,11 @@ func newWheelILB(t *testing.T, n, w, h int) (*IndicativeListBox, func(tview.Mous
 	return ilb, ilb.MouseHandler(), screen
 }
 
-// TestIndicativeListBoxWheelMovesHighlight pins the wheel fix: one wheel
+// TestIndicativeListBoxWheelMovesHighlight pins the wheel behavior: one wheel
 // delivery moves the highlight (currentItem) by mouseWheelLines rows via
 // SetCurrentItem — arrow-key semantics — instead of tview's default
 // itemOffset-only viewport move that the Draw keep-current-visible clamp
-// cancels at the edges. This is the fix for the "wheel stuck at the highlight"
-// bug on the Network Announce Stream / Saved Nodes lists.
+// cancels at the edges.
 //
 // The rows-per-notch MULTIPLIER (GONOMADNET_WHEEL_LINES) is applied inside this
 // handler — the per-primitive multiplier — so with it pinned to 3, one delivery

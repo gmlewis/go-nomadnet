@@ -43,10 +43,8 @@ import (
 // (fmt.Sprintf, fmt.Errorf, fmt.Printf, fmt.Fprintf, and the testing.T/B/F
 // Errorf/Fatalf/Logf methods, plus t.Run subtest names) whose format string is
 // a literal. For each %v-family verb it resolves the corresponding argument's
-// type and fails if that type is a []byte / []uint8 slice. The guard passes
-// today (the codebase uses %s / %x for byte slices) and will fail the moment a
-// future %s => %v change targets a []byte argument — preventing the regression
-// the user asked to guard against.
+// type and fails if that type is a []byte / []uint8 slice. The guard fails the
+// moment a %s => %v change targets a []byte argument.
 //
 // It uses only the standard library (go/parser, go/types, go/importer) so no
 // new module dependency is required.

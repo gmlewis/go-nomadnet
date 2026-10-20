@@ -23,7 +23,7 @@ import (
 )
 
 // =============================================================================
-// Layer 2 — display-bridge pure functions (no Screen, no App)
+// Display-bridge pure functions (no Screen, no App)
 // =============================================================================
 
 // BenchmarkStyledLinesToTviewText measures the styled-lines → tview color-tag
@@ -70,16 +70,15 @@ func BenchmarkBodyMarkup(b *testing.B) {
 }
 
 // =============================================================================
-// Layer 3 — widget-level Draw (the per-frame cost the event loop pays)
+// Widget-level Draw (the per-frame cost the event loop pays)
 // =============================================================================
 
-// BenchmarkScrollBarDraw is the CONFIRMED guide-scroll hot path. ScrollBar.Draw
+// BenchmarkScrollBarDraw measures the guide-scroll hot path. ScrollBar.Draw
 // (tui/scroll-bar.go:152) runs wrappedRowCount(s.Text.GetText(true), cw) on
 // EVERY frame: GetText(true) strips all color/region tags from the ENTIRE
 // document (O(document)), then wrappedRowCount runs tview.WordWrap per line
 // (O(document lines × width)). Nothing is cached, so one full re-wrap happens
-// per wheel notch. The sub-benchmarks by document size should scale ~linearly —
-// that slope is the smoking gun.
+// per wheel notch. The sub-benchmarks by document size scale ~linearly.
 func BenchmarkScrollBarDraw(b *testing.B) {
 	for _, n := range []int{8, 64, 256} {
 		b.Run(sizeLabel(n), func(b *testing.B) {
@@ -91,8 +90,8 @@ func BenchmarkScrollBarDraw(b *testing.B) {
 			defer screen.Fini()
 			gd.scroll.SetRect(0, 0, benchScreenW, benchScreenH)
 			// Warm up: the first Draw builds the TextView line index (a one-time
-			// parseAhead); the per-wheel-notch cost we want is steady-state, with
-			// the index cached — so draw once before timing.
+			// parseAhead); the per-wheel-notch cost measured is steady-state,
+			// with the index cached — so draw once before timing.
 			gd.scroll.Draw(screen)
 
 			b.ReportAllocs()
@@ -161,13 +160,13 @@ func BenchmarkBrowserPageViewDraw(b *testing.B) {
 
 // BenchmarkTextViewDrawWrappedLarge isolates tview's own TextView.Draw on a
 // large, tag-dense, wrapped text — the shared engine under both browser and
-// guide content. The sub-benchmarks test the suspected browser-sluggishness
-// mechanism: tview resets the whole line index whenever width changes while
-// wrap is on (textview.go:1061), and parseAhead then rebuilds from line 0 up
-// to the scroll offset. "DeepOffset" measures a deep scroll at a stable width
+// guide content. The sub-benchmarks exercise the width-change path: tview
+// resets the whole line index whenever width changes while wrap is on
+// (textview.go:1061), and parseAhead then rebuilds from line 0 up to the
+// scroll offset. "DeepOffset" measures a deep scroll at a stable width
 // (index cached → baseline); "WidthOscillate" toggles the width by 1 every
-// frame to force a reset each draw — if it is dramatically slower, that
-// confirms the resetIndex→parseAhead O(scroll-position) cost.
+// frame to force a reset each draw and expose the resetIndex→parseAhead
+// O(scroll-position) cost.
 func BenchmarkTextViewDrawWrappedLarge(b *testing.B) {
 	markup := benchSyntheticMicron(256)
 	lines := micron.RenderToStyledLines(markup, micronTheme(ThemeDark))

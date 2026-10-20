@@ -14,14 +14,11 @@ import (
 	"github.com/gmlewis/go-reticulum/testutils"
 )
 
-// TestPipeRepeatRequestOnSameLink models the stress-test-nomadnet topology
-// precisely: a node on tsA, a client tsB joined by a REAL interface pair
-// (pipes), the client opening Nconcurrent links to the node and barraging each
-// with sequential page requests. The stress tool (go-reticulum client) sees
-// each link answer ~1-4 requests then die, regardless of whether the server is
-// gonomadnet or Python nomadnet — so the defect is in the go-reticulum CLIENT
-// link. This test reproduces it over a real interface (vs the in-process local
-// interface, which did not reproduce).
+// TestPipeRepeatRequestOnSameLink drives a node on tsA and a client tsB joined
+// by a REAL interface pair (pipes), where the client opens N concurrent links
+// to the node and barrages each with sequential page requests. Every request
+// must succeed: the server never closes a link, and the client does not tear
+// one down between requests.
 func TestPipeRepeatRequestOnSameLink(t *testing.T) {
 	t.Parallel()
 	testutils.SkipShortIntegration(t)
@@ -202,8 +199,8 @@ func TestPipeRepeatRequestOnSameLink(t *testing.T) {
 			}
 		done:
 			results[li] = lr
-			// Synchronous teardown: a fire-and-forget goroutine raced with
-			// the transport stop (and other links) under -race in CI.
+			// Tear down synchronously: a fire-and-forget goroutine can outlive
+			// the transport stop and race with other links under -race.
 			func() { defer func() { _ = recover() }(); link.Teardown() }()
 		}(li)
 	}
@@ -220,8 +217,8 @@ func TestPipeRepeatRequestOnSameLink(t *testing.T) {
 	}
 	t.Logf("TOTAL ok=%v fail=%v", totalOK, totalFail)
 
-	// Every request on every link should succeed (server never closes; client
-	// doesn't teardown between requests). Any failure reproduces the bug.
+	// Every request on every link should succeed: the server never closes a
+	// link and the client does not tear one down between requests.
 	if totalFail != 0 {
 		t.Fatalf("reproduced link-dies-after-N: %v ok, %v fail (see logs)", totalOK, totalFail)
 	}

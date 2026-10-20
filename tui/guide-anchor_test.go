@@ -24,8 +24,8 @@ import (
 // TestJumpToAnchorScrollOffset asserts jumpToAnchor scrolls the reader so the
 // anchor's line sits at the top, mirroring Python's Guide.jump_to_anchor
 // (Guide.py:236-261): the scroll target is _rows_above(attrmaps, target_idx,
-// cols) — the count of wrapped display rows preceding the anchor line. We
-// compute the expected offset independently with tview.WordWrap (the same
+// cols) — the count of wrapped display rows preceding the anchor line. The
+// expected offset is computed independently with tview.WordWrap (the same
 // word-wrap tview's TextView uses to draw), so the test pins the integration
 // of anchor lookup + row-summing + ScrollTo, not the wrap algorithm itself.
 func TestJumpToAnchorScrollOffset(t *testing.T) {

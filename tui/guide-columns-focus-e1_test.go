@@ -44,14 +44,13 @@ func newE1App(t *testing.T) (*App, *GuideDisplay) {
 	return app, gd
 }
 
-// TestE1TopicListNavigableAfterOpen pins E1: after opening a topic the focus
-// moves to the reader (Python focus_reader, Guide.py:152-154), the reader's
-// Up/Down navigate the reader's focus model (Python: Up/Down work on whichever
-// Columns column is focused), and Left returns focus to the topics list
-// (Python urwid Columns traversal + micron_released_focus → focus_topics,
-// Guide.py:100-101 + 279-281) — after which the list is still arrow-navigable.
-// The earlier Go build stranded focus on the reader's ScrollBar wrapper where
-// arrows did nothing.
+// TestE1TopicListNavigableAfterOpen pins focus handling around opening a
+// topic: after opening, focus moves to the reader (Python focus_reader,
+// Guide.py:152-154), the reader's Up/Down navigate the reader's focus model
+// (Python: Up/Down work on whichever Columns column is focused), and Left
+// returns focus to the topics list (Python urwid Columns traversal +
+// micron_released_focus → focus_topics, Guide.py:100-101 + 279-281) — after
+// which the list is still arrow-navigable.
 func TestE1TopicListNavigableAfterOpen(t *testing.T) {
 	t.Parallel()
 
@@ -92,7 +91,7 @@ func TestE1TopicListNavigableAfterOpen(t *testing.T) {
 	}
 }
 
-// TestE2UpOnFirstTopicToMenubar pins E2: Up on the FIRST topic collapses
+// TestE2UpOnFirstTopicToMenubar pins that Up on the FIRST topic collapses
 // focus to the menubar (Python TopicList.keypress, Guide.py:191-195).
 func TestE2UpOnFirstTopicToMenubar(t *testing.T) {
 	t.Parallel()

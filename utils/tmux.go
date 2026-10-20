@@ -36,7 +36,7 @@ func NewSession(name, dir, launchCmd string, w, h int) (*Session, error) {
 		return nil, fmt.Errorf("tmux new-session: %w (%v)", err, strings.TrimSpace(string(out)))
 	}
 	// Pin the window size so attaching (or the client) cannot resize it away
-	// from the fixed size we drive against.
+	// from the fixed size the harness drives against.
 	_ = exec.Command("tmux", "set-option", "-t", name, "-w", "window-size", "manual").Run()
 	_ = exec.Command("tmux", "resize-window", "-t", name, "-x", strconv.Itoa(w), "-y", strconv.Itoa(h)).Run()
 	return &Session{Name: name}, nil

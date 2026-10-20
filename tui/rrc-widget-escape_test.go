@@ -20,10 +20,10 @@ import (
 	"testing"
 )
 
-// These tests pin the same bracket-swallowing bug as the chat body
-// (rrc-chat-escape_test.go) at the other RRC surfaces that render external text
-// into tag-parsing widgets: the room header, the room users list, the channels
-// hub/room list, the hub-info pane, and the legacy message/member views.
+// These tests pin bracket escaping at the RRC surfaces that render external
+// text into tag-parsing widgets, as the chat body does
+// (rrc-chat-escape_test.go): the room header, the room users list, the
+// channels hub/room list, the hub-info pane, and the message/member views.
 //
 // tview.List ALWAYS parses tags in item main/secondary text, and any TextView
 // with SetDynamicColors(true) parses them too. A nick, room topic, hub display
@@ -49,7 +49,7 @@ func TestRoomHeaderEscapesBrackets(t *testing.T) {
 
 // TestUsersListEscapesBrackets covers the room users pane. tview.List has no
 // strip-tags accessor, so assert the escaped token reached the item text: the
-// fork's parser consumes a bare "[bot]", so "[bot[]" is what proves the fix.
+// fork's parser consumes a bare "[bot]", so "[bot[]" is what proves escaping.
 func TestUsersListEscapesBrackets(t *testing.T) {
 	t.Parallel()
 
@@ -124,7 +124,7 @@ func TestHubInfoEscapesBrackets(t *testing.T) {
 	}
 }
 
-// TestShowMessagesEscapesBrackets covers the legacy channel message view, which
+// TestShowMessagesEscapesBrackets covers the channel message view, which
 // embeds intentional color tags around untrusted nick and body text.
 func TestShowMessagesEscapesBrackets(t *testing.T) {
 	t.Parallel()

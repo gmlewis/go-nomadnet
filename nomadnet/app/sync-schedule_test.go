@@ -26,9 +26,9 @@ import (
 // launches. Python's job loop compares against the persisted value directly
 // (NomadNetworkApp.py:464, "now > self.peer_settings['last_lxmf_sync'] +
 // self.lxmf_sync_interval", with the field defaulted to 0 at :263-264 and
-// loaded from disk at startup). The Go port kept a separate in-memory clock
-// that was only ever written, never seeded, so it was the zero time at every
-// launch and the client re-synced on every start.
+// loaded from disk at startup). The Go app keeps a separate in-memory clock, so
+// it must be seeded from the persisted value at load or the client re-syncs on
+// every start.
 func TestLoadPeerSettingsSeedsLastLXMFSync(t *testing.T) {
 	t.Parallel()
 

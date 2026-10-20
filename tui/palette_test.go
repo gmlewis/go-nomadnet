@@ -244,7 +244,7 @@ func TestRegisterThemeStylesTrueColor(t *testing.T) {
 		// truecolor (urwid _parse_color_true routes 3-hex through
 		// _parse_color_256): #111→#000000, #bbb/#aaa→#afafaf, #ddd→#d7d7d7,
 		// #f44→#ff5f5f, #fb4→#ffaf5f. heading is g93 grayscale (not 3-hex),
-		// so it is unchanged by the cube-quantization fix.
+		// so it is not cube-quantized.
 		{"menubar", tcell.NewHexColor(0x000000), tcell.NewHexColor(0xafafaf), 0, false},
 		{"list_focus", tcell.NewHexColor(0x000000), tcell.NewHexColor(0xafafaf), 0, false},
 		{"body_text", tcell.NewHexColor(0xd7d7d7), tcell.ColorDefault, 0, false},
@@ -306,10 +306,9 @@ func TestRegisterThemeStylesMono(t *testing.T) {
 // of the six cube steps {0x00,0x5f,0x87,0xaf,0xd7,0xff} via
 // _CUBE_256_LOOKUP_16 = [0,0,0,1,1,1,1,2,2,2,3,3,4,4,5,5] — EVEN in 24-bit
 // truecolor. So Python renders "#bbb"→#afafaf (175), not #bbbbbb (187); only
-// 6-hex "#rrggbb" is parsed as exact 24-bit. The Go port previously
-// nibble-doubled, diverging from Python on every mid-tone 3-hex value. The
-// golden RGB values below were captured verbatim from urwid
-// (_parse_color_true) for the dark + light theme 3-hex high-color specs.
+// 6-hex "#rrggbb" is parsed as exact 24-bit. The golden RGB values below were
+// captured verbatim from urwid (_parse_color_true) for the dark + light theme
+// 3-hex high-color specs.
 func TestCubeQuantize3Hex(t *testing.T) {
 	t.Parallel()
 
@@ -363,8 +362,7 @@ func TestCubeQuantize3Hex(t *testing.T) {
 		}
 	}
 
-	// 6-hex stays EXACT (urwid's 7-char branch) — the regression guard: do
-	// not quantize 6-hex.
+	// 6-hex stays EXACT (urwid's 7-char branch) — do not quantize 6-hex.
 	if got := parseColor("#bbbbbb"); got != tcell.NewHexColor(0xbbbbbb) {
 		t.Errorf("parseColor(#bbbbbb) = #%06x, want exact #bbbbbb (6-hex must NOT be cube-quantized)", uint32(got.Hex())&0xffffff)
 	}

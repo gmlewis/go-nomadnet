@@ -23,9 +23,8 @@ import (
 )
 
 // TestDescribeRelativeBearing pins the one sentence that turns a compass reading
-// into an instruction. "271° true" is a number the operator has to work out;
-// "40° to your left" is something somebody holding a tablet can act on, which is
-// the whole reason the client wants a heading at all.
+// into an instruction: "40° to your left" rather than a bearing the reader has
+// to compare against a heading.
 func TestDescribeRelativeBearing(t *testing.T) {
 	t.Parallel()
 
@@ -61,8 +60,7 @@ func TestDescribeRelativeBearing(t *testing.T) {
 }
 
 // TestDescribeLocationRelativeBearing asserts the relative bearing is only ever
-// rendered when the client holds BOTH a position and a heading, because a bearing
-// from a stale or absent heading is a confidently wrong instruction.
+// rendered when the client holds both a position and a heading.
 func TestDescribeLocationRelativeBearing(t *testing.T) {
 	t.Parallel()
 

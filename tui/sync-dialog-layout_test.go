@@ -22,7 +22,7 @@ import (
 	"github.com/gmlewis/tcell/v2"
 )
 
-// TestC6SyncDialogLayout pins C6: the Message Sync dialog matches Python's
+// TestC6SyncDialogLayout pins the Message Sync dialog layout to Python's
 // sync_conversations layout/strings/row order (Conversations.py:1359-1541):
 //
 //	title "Message Sync"
@@ -34,9 +34,6 @@ import (
 //	blank
 //	(X) Download all
 //	( ) Limit to  5
-//
-// The previous Go build used the title "Sync" and invented rows ("Download
-// mode:", "Messages: ", "[0%]") that Python does not have.
 func TestC6SyncDialogLayout(t *testing.T) {
 	t.Parallel()
 
@@ -93,7 +90,7 @@ func TestC6SyncDialogLayout(t *testing.T) {
 		t.Errorf("missing the default limit IntEdit value 5 in %q", rows)
 	}
 
-	// Go-invented rows must be GONE.
+	// Rows Python does not render must not appear.
 	for _, banned := range []string{"Download mode:", "Messages:", "[0%]", "[50%]"} {
 		if strings.Contains(joined, banned) {
 			t.Errorf("Go-invented row %q still present in %q", banned, rows)
@@ -190,9 +187,9 @@ func TestC6SyncDialogLimitedMode(t *testing.T) {
 	}
 }
 
-// TestC4IngestURIDialogStrings pins C4: the Ingest URI dialog strings match
-// Python's ingest_lxm_uri (Conversations.py:1118-1260): title "Ingest message
-// URI", field caption "URI : ", buttons Ingest/Back.
+// TestC4IngestURIDialogStrings pins the Ingest URI dialog strings to Python's
+// ingest_lxm_uri (Conversations.py:1118-1260): title "Ingest message URI",
+// field caption "URI : ", buttons Ingest/Back.
 func TestC4IngestURIDialogStrings(t *testing.T) {
 	t.Parallel()
 
@@ -224,9 +221,9 @@ func TestC4IngestURIDialogStrings(t *testing.T) {
 	}
 }
 
-// TestC3PeerInfoPinCheckbox pins C3: the Peer Info dialog renders "Pin to top"
+// TestC3PeerInfoPinCheckbox pins that the Peer Info dialog renders "Pin to top"
 // as a real CHECKBOX (Python urwid.CheckBox("Pin to top"), Conversations.py:890)
-// — not plain text — and its state feeds Save (Pinned).
+// — not plain text — and that its state feeds Save (Pinned).
 func TestC3PeerInfoPinCheckbox(t *testing.T) {
 	t.Parallel()
 

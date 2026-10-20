@@ -24,9 +24,9 @@ import (
 // TestPeerInfoDialogFieldColors pins the Peer Info dialog's ReadlineEdit
 // input fields (eName, eCopy, eNotes) to the "default" style. Python's
 // Conversations.py creates these as BARE ReadlineEdit (no urwid.AttrMap) —
-// they inherit urwid's default terminal colors, NOT msg_editor (#111/#0bb)
-// and NOT the prior Go 0x222222/0xdddddd. The Go port must leave the field
-// background and text at tcell.ColorDefault to match.
+// they inherit urwid's default terminal colors, NOT msg_editor (#111/#0bb).
+// The Go port must leave the field background and text at tcell.ColorDefault
+// to match.
 //
 // Python source: Conversations.py:845-889 (e_id, e_name, e_copy, e_notes are
 // bare ReadlineEdit, placed raw into dialog_pile with no AttrMap).

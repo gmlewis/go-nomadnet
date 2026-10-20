@@ -116,7 +116,7 @@ func (bd *BrowserDisplay) reflowIfWidthChanged() {
 // It does not reposition the keyboard part-cursor to the click (Python sets
 // _cursor_position); a click typically navigates to a new page whose
 // initNavState resets the cursor, and for in-page anchors JumpToAnchor
-// scrolls instead. That finer cursor-follow is a deferred refinement.
+// scrolls instead.
 func (v *browserPageView) MouseHandler() func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(p tview.Primitive)) (consumed bool, capture tview.Primitive) {
 	base := v.TextView.MouseHandler()
 	return func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(p tview.Primitive)) (consumed bool, capture tview.Primitive) {
@@ -140,9 +140,9 @@ func (v *browserPageView) MouseHandler() func(action tview.MouseAction, event *t
 			setFocus(v.bd.content)
 			// Move the page focus (and, inside a form field, the caret) to the
 			// clicked cell, mirroring urwid's Pile/Columns/LinkableText/Edit
-			// mouse handling (browser-click.go). Without this a click on a form
-			// field did nothing at all: the field editor is an off-tree overlay,
-			// so no widget sat under the mouse.
+			// mouse handling (browser-click.go). Without it a click on a form
+			// field would do nothing: the field editor is an off-tree overlay,
+			// so no widget sits under the mouse.
 			mx, my := event.Position()
 			v.bd.clickFocus(mx, my)
 		case tview.MouseLeftClick:
@@ -232,10 +232,9 @@ func (bd *BrowserDisplay) restoreNavState(s navSnapshot) {
 // NOT run renderPage/initNavState. Without this, bd.lineCursors stays nil and
 // bd.focusLine stays 0 (its zero value), so handleNavKey's "no selectable line"
 // guard (bd.focusLine < 0) would NOT fire and an arrow key would index
-// bd.lineCursors[0] with len==0, crashing the app with
-// "index out of range [0] with length 0". Setting focusLine = -1 (and emptying
-// the rendered-line tables) makes the existing empty-page guard consume the
-// arrow keys, matching Python's blank-page no-op for arrows.
+// bd.lineCursors[0] out of range. Setting focusLine = -1 (and emptying the
+// rendered-line tables) makes the existing empty-page guard consume the arrow
+// keys, matching Python's blank-page no-op for arrows.
 //
 // Call this from every path that puts non-rendered text into bd.content
 // (SetContent, Disconnect). renderPage owns the populated state via initNavState.
@@ -443,10 +442,8 @@ func (bd *BrowserDisplay) peekLink() {
 // which walks the line layout whose first segment is the alignment padding
 // (urwid/text_layout.py:166-178: right pad = width-sc, center pad =
 // (width-sc+1)//2, where sc is the wrapped row's content width; no pad when
-// sc == width). Without this the hardware cursor sat at the left edge of a
-// right-justified menu line while the glyphs — and Python's cursor — sit at the
-// right edge, so arrow-key navigation appeared to move the cursor in empty
-// space instead of along the menu items.
+// sc == width). Without the pad the hardware cursor would sit at the left edge
+// of a right-justified line while the glyphs sit at the right edge.
 func (bd *BrowserDisplay) cursorScreenXY() (x, y int, ok bool) {
 	if bd.focusLine < 0 || bd.focusLine >= len(bd.currentLines) {
 		return 0, 0, false
@@ -715,10 +712,7 @@ func (bd *BrowserDisplay) automoveFocus() {
 // LinkableText whose key-timeout window has closed (MicronParser.py:986), and
 // urwid then leaves the terminal cursor hidden. tview, by contrast, only calls
 // HideCursor from SetFocus — never per frame — so merely skipping ShowCursor
-// leaves the cursor VISIBLE at whatever cell the previous page put it. That was
-// the reported bug: after following a link, the cursor stayed on the old page's
-// link row (or on a blank row of a short page) instead of the new page, whose
-// focus is already the top, starting clean.
+// would leave the cursor VISIBLE at whatever cell the previous page put it.
 func (bd *BrowserDisplay) drawCursor(screen tcell.Screen) {
 	if screen == nil {
 		return

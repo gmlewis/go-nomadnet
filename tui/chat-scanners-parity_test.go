@@ -22,7 +22,7 @@ import (
 // The scanner parity tests are LIVE cross-implementation checks: they exec the
 // real Python nomadnet reference (nomadnet.ui.textui.Channels) and derive the
 // expected output freshly on every run, so a divergence is a real Go/Python
-// mismatch to fix in production — never a stale literal transcription. The Go
+// mismatch to fix in production, never a stale literal transcription. The Go
 // test owns the input battery (the edge cases that exercise the
 // lookbehind/lookahead boundaries Go's regexp must replicate manually); Python
 // owns the reference behavior. Tests SKIP, not fail, when the Python reference
@@ -342,9 +342,9 @@ type nickLiveWant struct {
 // its mention spans with what Python's _body_markup emits. Python _scan_mentions
 // compiles with re.IGNORECASE and ASCII [A-Za-z0-9_] boundaries
 // (Channels.py:124-129); _scan_nick_mentions yields every other @nick
-// (Channels.py:131-137). The previous production scanner was case-sensitive and
-// emitted no nick_mention spans at all, so @ALICE lost its highlight and
-// @othernick lost its hash color.
+// (Channels.py:131-137). The production scanner must therefore match
+// case-insensitively and emit nick_mention spans, so @ALICE keeps its highlight
+// and @othernick its hash color.
 func TestScanChatSpansMentionsPythonParity(t *testing.T) {
 	t.Parallel()
 

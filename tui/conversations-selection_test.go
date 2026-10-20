@@ -21,10 +21,10 @@ import (
 
 // The conversation list must select by CONVERSATION, not by raw row index:
 // every background refresh (SetConversations under an announce firehose)
-// repopulates the tview.List, and the previous Clear()+re-Add reset the
-// cursor to row 0 while the user was navigating — the highlight drifted to
-// the top with no input, and Enter/click resolving a model row that differed
-// from the highlighted row opened the WRONG conversation under the firehose.
+// repopulates the tview.List, and a Clear()+re-Add resets the cursor to row 0
+// while the user is navigating — the highlight drifts to the top with no input,
+// and Enter/click resolving a model row that differs from the highlighted row
+// opens the WRONG conversation under the firehose.
 
 func selectionConvs() []ConversationInfo {
 	return []ConversationInfo{

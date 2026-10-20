@@ -29,14 +29,13 @@ import (
 //	`L<code>|<format>`L
 //
 // A page stores an Open Location Code (Plus Code) and names how it wants it
-// shown. A client that knows its own position renders the great-circle
-// distance and compass bearing to the code as well, all from data it already
-// has, so a reader on a 1 kbps link with no map and no geocoder still learns how
-// far away something is and in which direction. Python's NomadNet has no such
-// construct: it consumes the backtick and the marker character and renders the
-// payload as ordinary text, so a reader on the original client sees the bare
-// code where gonomadnet shows distance and bearing. Because pages are parsed
-// client-side, only the reader's own client can resolve a position.
+// shown. A client that knows its own position also renders the great-circle
+// distance and compass bearing to the code, so a reader on a 1 kbps link with
+// no map and no geocoder still learns how far away something is and in which
+// direction. Python's NomadNet has no such construct: it consumes the backtick
+// and the marker character and renders the payload as ordinary text, so a
+// reader on the original client sees the bare code where gonomadnet shows
+// distance and bearing.
 //
 // The code is validated before it is rendered. A malformed code, or a format
 // token this file does not define, makes the construct unrecognized: the marker
@@ -109,9 +108,8 @@ type LocationDetail struct {
 	HasFix bool
 	// RelativeBearing describes the bearing to the code measured from the
 	// direction the reader is facing, or empty when either the position or the
-	// heading is unknown. It is deliberately empty in the zero case rather than
-	// defaulting to the cardinal bearing, because a relative bearing computed
-	// from a heading nobody has is a confidently wrong instruction.
+	// heading is unknown. It never falls back to the cardinal bearing, which
+	// relative to an unknown heading would be misleading.
 	RelativeBearing string
 }
 

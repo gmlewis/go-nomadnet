@@ -176,9 +176,6 @@ func (a *App) SetFocus(p tview.Primitive) *tview.Application {
 	return a.Application.SetFocus(p)
 }
 
-// NewApp creates a new tview Application with the given theme, color depth,
-// and glyph set. colorMode selects the palette variant (mono/16/256/true);
-// pass ColorModeTrue for the shipped 24-bit default.
 // Option adjusts the application at construction. Every option is applied after
 // the application and its screen exist and before anything is drawn.
 type Option func(*appOptions)
@@ -237,6 +234,9 @@ func (a *App) AnimationInterval() time.Duration {
 	return time.Second
 }
 
+// NewApp creates a new tview Application with the given theme, color depth,
+// and glyph set. colorMode selects the palette variant (mono/16/256/true);
+// pass ColorModeTrue for the shipped 24-bit default.
 func NewApp(theme int, glyphSet string, colorMode int, opts ...Option) *App {
 	cfg := appOptions{mouseEnabled: true}
 	for _, opt := range opts {
@@ -463,8 +463,7 @@ func (a *App) RestoreTerminal() {
 
 // drainUpdates is the single long-lived goroutine that serializes queued
 // functions onto tview's blocking Application.QueueUpdateDraw. It exits when
-// Stop closes done. At most one of these exists per App, replacing the prior
-// one-goroutine-per-QueueUpdateDraw-call pattern.
+// Stop closes done. At most one of these exists per App.
 func (a *App) drainUpdates() {
 	defer func() {
 		if r := recover(); r != nil {
@@ -488,16 +487,13 @@ func (a *App) drainUpdates() {
 // QueueUpdateDraw queues f to be executed on the application event loop.
 //
 // It is non-blocking and safe to call from any goroutine, including the event
-// loop itself and during shutdown — the same deadlock-safety the prior
-// go-spawned wrapper provided, but without spawning a goroutine per call.
+// loop itself and during shutdown, and it never spawns a goroutine per call.
 //
-// Why the old `go a.Application.QueueUpdateDraw(f)` is gone: tview's
-// QueueUpdateDraw blocks on a buffered updates channel and then waits for the
-// draw to finish. When the event loop cannot keep up (e.g. a slow terminal on a
-// memory-constrained device), that channel fills and every per-call goroutine
-// blocks forever, accumulating at the producer rate for the life of the process
-// — unbounded memory growth. A live profile of a long-running node showed ~85%
-// of allocated objects flowing through that wrapper's gowrap1. Handing f to a
+// tview's QueueUpdateDraw blocks on a buffered updates channel and then waits
+// for the draw to finish. When the event loop cannot keep up (e.g. a slow
+// terminal on a memory-constrained device), that channel fills, so a
+// goroutine-per-call wrapper accumulates blocked goroutines at the producer
+// rate for the life of the process — unbounded memory growth. Handing f to a
 // single drainer caps goroutines at one and bounds queued work to the channel
 // buffer (no per-call allocation).
 //
@@ -512,7 +508,7 @@ func (a *App) QueueUpdateDraw(f func()) {
 	}
 	if a.updates == nil {
 		// Not constructed via NewApp (e.g. a minimal test fixture): fall back to
-		// the direct non-blocking spawn to preserve prior behavior.
+		// a direct non-blocking spawn.
 		go a.Application.QueueUpdateDraw(f)
 		return
 	}

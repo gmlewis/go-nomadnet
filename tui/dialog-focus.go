@@ -139,12 +139,11 @@ func wireDialogNav(app focuser, dismiss func(), items []tview.Primitive) {
 
 // wireDialogNavDynamic wires the same urwid-Pile-style traversal as
 // wireDialogNav, but consults active() on every keypress so widgets currently
-// REMOVED from the dialog layout never dead-end the chain. Python's
+// removed from the dialog layout never dead-end the chain. Python's
 // join_room_dialog swaps the key field with a blank placeholder via
-// update_key_visibility (Channels.py:1946-1955): the removed widget is not a
-// Pile child, so Tab from the checkbox lands on the button row. A static item
-// list instead focuses the DETACHED key field, whose capture swallows every
-// further key and leaves the Join button unreachable by keyboard.
+// update_key_visibility (Channels.py:1946-1955), so a removed widget is not a
+// Pile child: Tab from the checkbox must land on the button row rather than on
+// the detached key field.
 func wireDialogNavDynamic(app focuser, dismiss func(), items []tview.Primitive, active func(tview.Primitive) bool) {
 	if len(items) == 0 {
 		return

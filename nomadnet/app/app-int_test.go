@@ -141,8 +141,8 @@ func init() {
 	_ = fmt.Sprintf
 }
 
-// TestIntegrationSendConversationWiring exercises the Phase-1 conversation
-// send wiring end-to-end: composing via App.SendConversation (the C-d path)
+// TestIntegrationSendConversationWiring exercises the conversation send
+// wiring end-to-end: composing via App.SendConversation (the C-d path)
 // builds the outbound LXMF message against the recalled peer destination,
 // dispatches it through the real router, and the peer receives it with the
 // composed content/title byte-faithful through the LXMF stack. It also
@@ -260,13 +260,10 @@ func TestIntegrationConversationMessages(t *testing.T) {
 	if !bytesEqual(got[0].SourceHash, appA.LXMFDest.Hash) {
 		t.Errorf("source hash = %x, want %x", got[0].SourceHash, appA.LXMFDest.Hash)
 	}
-	// NOTE: TransportEncrypted is not asserted here. go-reticulum's Pack does
-	// not call DetermineTransportEncryption before serializing the container
-	// (Python calls it inside pack), and the wire Packed payload omits the
-	// transport-metadata container, so the receiver cannot recover it on
-	// re-load. That is a go-reticulum wire-format divergence, not a
-	// go-nomadnet loading bug — the parsed content/title/source-hash above
-	// prove the envelope is loaded correctly.
+	// TransportEncrypted is not asserted: go-reticulum's Pack omits the
+	// transport-metadata container from the wire payload, so the receiver cannot
+	// recover it on re-load. The parsed content/title/source-hash above prove
+	// the envelope itself loads correctly.
 }
 
 func bytesEqual(a, b []byte) bool {
@@ -307,8 +304,6 @@ func fieldLookupInt(fields map[any]any, key int) (any, bool) {
 // attachment flow: App.SendConversation with attachment file paths reads each
 // file, builds the LXMF FIELD_FILE_ATTACHMENTS field ([[name, data], ...]),
 // and dispatches a message the receiver unpacks with those attachments intact.
-// This pins the send side of the "attachFile" TODO. The receive-side
-// extraction (ExtractAttachmentsFromLXM) is a separate, still-unwired gap.
 func TestIntegrationSendConversationWithAttachment(t *testing.T) {
 	t.Parallel()
 	appA, appB, cleanup := setupTwoNodeApps(t)
@@ -383,8 +378,8 @@ func TestIntegrationSendConversationWithAttachment(t *testing.T) {
 // per-message attachment directory (mirroring Python Conversation.ingest →
 // extract_attachments_from_lxm, Conversation.py:73-76). The extracted file
 // "file_0" must equal the original attachment bytes, and a msgpack manifest must
-// be written. This pins the receive side of the attachment TODO; the
-// C-s save-focattachments path then copies these extracted files to downloads.
+// be written. The C-s save-attachments action then copies these extracted
+// files to downloads.
 func TestIntegrationAttachmentExtractionOnReceive(t *testing.T) {
 	t.Parallel()
 	appA, appB, cleanup := setupTwoNodeApps(t)
@@ -495,7 +490,8 @@ func TestIntegrationSaveConversationAttachments(t *testing.T) {
 		t.Fatalf("ConversationMessages = %v, want 1", len(msgs))
 	}
 
-	// Redirect B's downloads path to a temp dir so we can assert the saved file.
+	// Redirect B's downloads path to a temp dir so the saved file can be
+	// asserted.
 	destDir := testutils.TempDir(t, "nomadnet-int-dest")
 	appB.DownloadsPath = destDir
 	appB.AttachmentSavePath = ""
@@ -528,9 +524,8 @@ func TestIntegrationSaveConversationAttachments(t *testing.T) {
 // App.PaperMessage with the "SaveURI" action builds a paper LXMF message
 // addressed to the peer, writes a .txt file under downloads_path containing
 // the lxm:// URI, ingests the outbound message into the sender's conversation,
-// and returns the save path. This pins the app side of the paperMessage TODO;
-// the QR modes share the same paper_output path (unit-tested in
-// conversation/paper_test.go).
+// and returns the save path. The QR modes share the same paper_output path
+// (unit-tested in conversation/paper_test.go).
 func TestIntegrationPaperMessageSaveURI(t *testing.T) {
 	t.Parallel()
 	appA, appB, cleanup := setupTwoNodeApps(t)
@@ -580,9 +575,9 @@ func TestIntegrationPaperMessageSaveURI(t *testing.T) {
 // that URI via the router's granular IngestLXMURIOutcome, the message is
 // decrypted and delivered locally (IngestOutcomeLocalDelivery, the
 // signal_local_delivery equivalent), and the ingested message appears in B's
-// conversation with A. This pins the receive side of the ingestLXMURI TODO:
-// the URI is parsed, the message is created, and parity with
-// Python's ingest_lxm_uri local-delivery branch holds.
+// conversation with A. This pins the receive side of the ingest path: the URI
+// is parsed, the message is created, and Python's ingest_lxm_uri
+// local-delivery branch is matched.
 func TestIntegrationIngestLXMURI(t *testing.T) {
 	t.Parallel()
 	appA, appB, cleanup := setupTwoNodeApps(t)

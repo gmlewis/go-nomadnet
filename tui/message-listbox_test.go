@@ -24,8 +24,8 @@ import (
 	"github.com/gmlewis/tview"
 )
 
-// TestMessageListBoxPerMessageEntries pins A4: the conversation message list
-// is a per-message selectable ListBox (Python: messagelist =
+// TestMessageListBoxPerMessageEntries pins the conversation message list as a
+// per-message selectable ListBox (Python: messagelist =
 // IndicativeListBox(message_widgets), one LXMessageWidget Pile per message,
 // Conversations.py:2287) — NOT a flat text blob. Each message is its own
 // entry; Up/Down move focus message-by-message.
@@ -56,11 +56,11 @@ func TestMessageListBoxPerMessageEntries(t *testing.T) {
 	}
 }
 
-// TestMessageListBoxRowScrolling pins the scrolling model verified against
-// the live nomadnet 1.2.8 source of truth: the LXMessageWidgets are NOT
-// selectable, so each Up/Down shifts the viewport exactly ONE row (urwid
-// ListBox _keypress_up/down shift_focus fallback) — NOT one message per
-// keypress. The focus follows the viewport edge; the keys at the scroll
+// TestMessageListBoxRowScrolling pins the scrolling model: the
+// LXMessageWidgets are NOT selectable, so each Up/Down shifts the viewport
+// exactly ONE row (urwid ListBox _keypress_up/down shift_focus fallback) — NOT
+// one message per keypress. The focus follows the viewport edge; the keys at
+// the scroll
 // boundaries are declined so the ConversationFrame capture can apply the
 // banner/menu (up) and composer (down) transitions.
 func TestMessageListBoxRowScrolling(t *testing.T) {
@@ -125,11 +125,10 @@ func TestMessageListBoxRowScrolling(t *testing.T) {
 	}
 }
 
-// TestMessageListBoxRowScrollCounts pins the exact keystroke counts measured
-// against the Python 1.2.8 source of truth (the tmux panel A/B comparison):
-// reaching the top takes exactly one Up per conversation row above the
-// viewport, and returning to the bottom one Down per row — message-boundary
-// hops (3-4 rows per keypress) are a regression.
+// TestMessageListBoxRowScrollCounts pins the exact keystroke counts: reaching
+// the top takes exactly one Up per conversation row above the viewport, and
+// returning to the bottom one Down per row — message-boundary hops (3-4 rows
+// per keypress) must not happen.
 func TestMessageListBoxRowScrollCounts(t *testing.T) {
 	t.Parallel()
 
@@ -226,8 +225,9 @@ func TestMessageListBoxTopBottomVisible(t *testing.T) {
 	}
 }
 
-// TestConversationFocusPathEditorToMessages pins A1's focus path (Python
-// MessageEdit.keypress "up" at cursor y==0 → frame.focus_position = "body",
+// TestConversationFocusPathEditorToMessages pins the editor↔messages focus
+// path (Python MessageEdit.keypress "up" at cursor y==0 →
+// frame.focus_position = "body",
 // Conversations.py:1816-1825) and the body→footer Down (Python
 // ConversationFrame.keypress "down" at bottom_is_visible → footer,
 // Conversations.py:1866-1867): Up from the minimal editor focuses the message
@@ -290,7 +290,7 @@ func TestConversationFocusPathEditorToMessages(t *testing.T) {
 	}
 }
 
-// TestConversationUpAtTopBanner pins A3/A7: with the trust banner visible,
+// TestConversationUpAtTopBanner pins the banner path: with the trust banner visible,
 // Up at the message-list top focuses the banner's FIRST button (Trust) —
 // Python ConversationFrame.keypress sets _header_pile.focus_position = 1 and
 // focus_position = "header" (Conversations.py:1854-1862). Up again from the

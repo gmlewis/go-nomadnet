@@ -24,10 +24,10 @@ import (
 
 // fieldPageProbe drives the capture chain of the Network page, which hosts a
 // browser pane (and therefore form fields) inside a container that also
-// declares page-wide shortcuts (network.go:313-317). It reproduces the live
-// dispatch order, where tview applies every container's InputCapture from the
-// app down to the focused widget (tview flex.go InputHandler delegates to the
-// focused child; application.go runs the app capture first).
+// declares page-wide shortcuts (network.go:313-317). It reproduces the
+// production dispatch order, where tview applies every container's InputCapture
+// from the app down to the focused widget (tview flex.go InputHandler delegates
+// to the focused child; application.go runs the app capture first).
 type fieldPageProbe struct {
 	app *App
 	md  *MainDisplay
@@ -104,12 +104,10 @@ func (p *fieldPageProbe) typeText(s string) {
 //
 // The Go port installs each page's shortcuts as a tview InputCapture on a
 // container (network.go:317 is mainCols, which holds BOTH the left column and
-// the browser pane), and tview captures run BEFORE the focused widget. The page
-// therefore stole the editing keys from the visitor's field: ctrl u opened the
-// URL dialog instead of clearing to the beginning of the line, ctrl e opened
-// Edit Node instead of jumping to the end of the line, ctrl w disconnected
-// instead of deleting a word, and ctrl l toggled the list instead of clearing
-// the field — the live report that the text could not be cleared.
+// the browser pane), and tview captures run BEFORE the focused widget. The
+// field must therefore win these keys explicitly; otherwise ctrl u opens the
+// URL dialog, ctrl e opens Edit Node, ctrl w disconnects, and ctrl l toggles
+// the list instead of editing the text.
 func TestPageShortcutsDoNotStealReadlineKeysFromField(t *testing.T) {
 	t.Parallel()
 

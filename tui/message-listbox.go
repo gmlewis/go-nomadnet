@@ -31,10 +31,8 @@ import (
 // The Python LXMessageWidgets are NOT selectable, so stock urwid's ListBox
 // never hops the focus message-by-message: Up/Down fall through to the
 // viewport-shift fallback (_keypress_up/down "just shift the current focus"),
-// scrolling the view exactly ONE row per keypress. Verified against the live
-// nomadnet 1.2.8 source of truth: a ~250-row conversation scrolled to the top
-// in one Ups-per-row (and back down one row per Down), never aligned to
-// message boundaries. SetEntries still anchors the initial focus at the
+// scrolling the view exactly ONE row per keypress. SetEntries still anchors
+// the initial focus at the
 // newest entry (IndicativeListBox position=len-1, Conversations.py:2287); the
 // keyboard keeps a viewport-edge focus so save-focussed-attachments tracks
 // roughly what urwid's change_focus would select. There is deliberately no
@@ -101,9 +99,9 @@ func (m *messageListBox) SetEntries(entries []*messageListView) {
 
 // SetRect lays out the list; a width change re-wraps every entry height and
 // re-clamps the scroll position. A height change alone must also re-scroll:
-// SetEntries runs before the pane has its final height, so the offset computed
-// against the old viewport (and clamped to old-total) leaves the newest
-// messages stranded at the top with blank space below when the pane grows.
+// SetEntries runs before the pane has its final height, so an offset computed
+// against the old viewport leaves the newest messages stranded at the top when
+// the pane grows.
 func (m *messageListBox) SetRect(x, y, w, h int) {
 	// Sample the PREVIOUS height before updating the rect: GetRect returns
 	// (x, y, width, height), so the height is the fourth value.
@@ -325,7 +323,7 @@ func (m *messageListBox) drawBarText(screen tcell.Screen, x, y int, s string) {
 }
 
 // InputHandler scrolls the viewport ONE row per Up/Down (Python's message
-// widgets are non-selectable, so urwid'sListBox falls back to shifting the
+// widgets are non-selectable, so urwid's ListBox falls back to shifting the
 // view a single row per keypress instead of hopping the focus between
 // messages). The trackable focus follows the viewport edge after each shift.
 // Keys at the boundaries are left unconsumed so the surrounding frame capture

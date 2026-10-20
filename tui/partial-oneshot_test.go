@@ -76,8 +76,8 @@ func TestBrowserOneShotPartialFetchedOnLoad(t *testing.T) {
 	}
 }
 
-// TestBrowserRefreshingPartialStillRepeats pins that the fix does not disable
-// auto-refresh: a partial declaring a refresh interval keeps re-fetching.
+// TestBrowserRefreshingPartialStillRepeats pins that auto-refresh still works:
+// a partial declaring a refresh interval keeps re-fetching.
 func TestBrowserRefreshingPartialStillRepeats(t *testing.T) {
 	var mu sync.Mutex
 	fetched := 0

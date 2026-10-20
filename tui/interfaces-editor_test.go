@@ -19,13 +19,12 @@ import (
 	"testing"
 )
 
-// TestInterfacesDisplayShowEditorMountsAndCloses verifies the Phase-3 wiring:
-// ShowEditor mounts the EmbeddedTerminal as the editor page (matching Python's
-// open_config_editor swapping self.widget for a LineBox(urwid.Terminal)) and
-// moves focus onto it; closeEditor removes the page and clears the editor. It
-// uses sleep 5 as a stand-in editor that stays alive long enough to inspect the
-// page state; closeEditor closes the PTY master (SIGHUP to sleep) so no child
-// process leaks.
+// TestInterfacesDisplayShowEditorMountsAndCloses verifies that ShowEditor mounts
+// the EmbeddedTerminal as the editor page (matching Python's open_config_editor
+// swapping self.widget for a LineBox(urwid.Terminal)) and moves focus onto it;
+// closeEditor removes the page and clears the editor. It uses sleep 5 as a
+// stand-in editor that stays alive long enough to inspect the page state;
+// closeEditor closes the PTY master (SIGHUP to sleep) so no child process leaks.
 func TestInterfacesDisplayShowEditorMountsAndCloses(t *testing.T) {
 	t.Parallel()
 	app := newTestApp()

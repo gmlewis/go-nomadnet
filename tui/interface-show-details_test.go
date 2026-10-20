@@ -20,16 +20,13 @@ import (
 	"testing"
 )
 
-// TestInterfaceShowDetailsFitsConsoleGrid reproduces the report from the tablet
-// (2026-10-10): on the appliance the Enter -> "Show Interface" details view draws
-// its frame at the wrong width, cuts the right edge off, lets the "Bandwidth
-// Charts" box overlap the frame and the text inside it, and reads "No additional
-// parameters" where the interface's own settings belong.
+// TestInterfaceShowDetailsFitsConsoleGrid pins the ShowInterface layout inside
+// the 100x40 grid an appliance console provides: the frame fits, every drawn box
+// lines up with its own borders, and the interface's own settings are listed.
 //
-// The appliance's console gives the client a 100x40 grid, so that is the size the
-// view must lay out inside. The two states below are the two it is actually read
-// in: the appliance's own RNode interface — enabled, and disconnected by design
-// whenever no radio is attached — and a connected TCP interface.
+// The two states below are the two the view is read in: the appliance's own RNode
+// interface — enabled, and disconnected by design whenever no radio is attached —
+// and a connected TCP interface.
 func TestInterfaceShowDetailsFitsConsoleGrid(t *testing.T) {
 	t.Parallel()
 
@@ -141,9 +138,8 @@ func TestInterfaceShowDetailsFitsConsoleGrid(t *testing.T) {
 
 // assertDrawnBoxesLineUp checks every box drawn inside the frame: each box's
 // contents must end at the same column as that box's own borders, and the last
-// box must reach the body's right edge. This is the shape the tablet report
-// described breaking — the "Bandwidth Charts" box was drawn 26 columns wide
-// around 53 columns of text, so its borders and its contents disagreed.
+// box must reach the body's right edge. Without it a box can be drawn narrower
+// than the text inside it, so its borders and its contents disagree.
 func assertDrawnBoxesLineUp(t *testing.T, rows []string, gridWidth int) {
 	t.Helper()
 

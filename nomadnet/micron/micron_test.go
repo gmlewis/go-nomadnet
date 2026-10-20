@@ -179,12 +179,10 @@ func TestParseDividerCustomChar(t *testing.T) {
 }
 
 // TestParseDividerCustomCharMultibyte pins Python's behavior that a custom
-// divider char is the first CHARACTER (codepoint) after '-', not the first
-// byte: markup.mu uses "-∿" (U+223F SINE WAVE, 2 UTF-8 bytes) as its section
-// divider. Python's `len(line) == 2` / `line[1]` operate on codepoints, so it
-// renders ∿. The Go parser must use rune count, not byte length, or it falls
-// through to the default ─ (U+2500) — which is the live Guide topic-7 divider
-// discrepancy (B4: Go shows ───── where Python shows ∿∿∿).
+// divider char is the first codepoint after '-', not the first byte: "-∿"
+// (U+223F SINE WAVE, 2 UTF-8 bytes) must render ∿. Python's `len(line) == 2` /
+// `line[1]` operate on codepoints, so the Go parser must use a rune count, not
+// byte length, or it falls through to the default ─ (U+2500).
 func TestParseDividerCustomCharMultibyte(t *testing.T) {
 	t.Parallel()
 

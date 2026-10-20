@@ -21,14 +21,12 @@ import XCTest
 ///
 /// Both encodings a terminal can use are here, because the client says which it wants: SGR
 /// (`CSI ?1006h`) carries the button and both coordinates as decimal numbers, and the older
-/// X10 form packs them into three bytes with 32 added to each. A tablet's client asks for
-/// SGR — the coordinates can then pass column 223 — but a terminal that only ever wrote one
-/// of them would be a terminal that ignored what the client asked for.
+/// X10 form packs them into three bytes with 32 added to each. SGR is what the client asks
+/// for, and it addresses columns past 223.
 ///
 /// The cells here are the client's own, counted from its top-left corner and zero-based, as
 /// everything in the emulator counts them. Both encodings carry them one-based, because the
-/// wire's first cell is 1: that conversion is the encoder's, and it is the one thing about
-/// these vectors worth reading twice.
+/// wire's first cell is 1; that conversion belongs to the encoder.
 final class TerminalMouseTests: XCTestCase {
 
     private let esc = 0x1B
@@ -52,9 +50,8 @@ final class TerminalMouseTests: XCTestCase {
     }
 
     func testAPressAndAReleaseAreBothSentAndAreWhatMakesAClick() {
-        // The client derives a click from a press and a release in the same cell: a
-        // terminal that sent only the press would move the client's focus and activate
-        // nothing, which is exactly a console where tapping an entry does nothing at all.
+        // The client derives a click from a press and a release in the same cell; a press
+        // alone moves its focus but activates nothing.
         XCTAssertEqual(
             sent(.left, col: 2, row: 4, pressed: true),
             [esc, 0x5B, 0x3C] + "0;3;5M".map { Int($0.asciiValue!) })
@@ -110,12 +107,9 @@ final class TerminalMouseTests: XCTestCase {
     }
 
     func testTheWheelIsWhatADragIsSentAs() {
-        // A finger cannot click a scrollbar, so a drag over the client's interface is the
-        // wheel a trackpad would have turned at the cell the finger is on: what scrolls is
-        // whatever the client has there — a page, a guide, a room's messages — which is the
-        // only scrolling a full-screen client can be given from outside itself. The wire
-        // gives the wheel no buttons of its own, and no release either: one report is one
-        // notch.
+        // A finger cannot click a scrollbar, so a drag is sent as the wheel a trackpad
+        // would have turned at the cell the finger is on. The wire gives the wheel no
+        // buttons of its own and no release: one report is one notch.
         XCTAssertEqual(
             sent(.wheelUp, col: 2, row: 4, pressed: true),
             [esc, 0x5B, 0x3C] + "64;3;5M".map { Int($0.asciiValue!) })

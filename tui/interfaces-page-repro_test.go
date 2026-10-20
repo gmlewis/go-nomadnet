@@ -22,16 +22,15 @@ import (
 	"github.com/gmlewis/tview"
 )
 
-// TestInterfacesPageDownFromMenuFocusesFirstItem is the regression test for the
-// reported "cursor movement via arrow keys does not work" bug on the [ Interfaces ]
-// page. Python's MenuColumns.keypress (Main.py:171-176) sets
-// frame.focus_position="body" for Down and returns the key unhandled, and
-// urwid's Frame dispatches by the entry-time focus part — so the key DIES at
-// the main frame, but focus has already entered the body: the Interfaces list
-// gains the terminal focus and its CURRENT item renders the focus marker
-// (verified live on nomadnet 1.2.8: one Down lights up item 0, a SECOND Down
-// moves to item 1). A single Down from the menu must therefore leave the list
-// focused at its current item (0) WITHOUT moving the selection.
+// TestInterfacesPageDownFromMenuFocusesFirstItem pins the menu-to-body Down
+// transition on the [ Interfaces ] page. Python's MenuColumns.keypress
+// (Main.py:171-176) sets frame.focus_position="body" for Down and returns the key
+// unhandled, and urwid's Frame dispatches by the entry-time focus part — so the
+// key dies at the main frame, but focus has already entered the body: the
+// Interfaces list gains the terminal focus and its CURRENT item renders the
+// focus marker (one Down lights up item 0, a SECOND Down moves to item 1). A
+// single Down from the menu must therefore leave the list focused at its
+// current item (0) WITHOUT moving the selection.
 func TestInterfacesPageDownFromMenuFocusesFirstItem(t *testing.T) {
 	t.Parallel()
 	app := newTestApp()

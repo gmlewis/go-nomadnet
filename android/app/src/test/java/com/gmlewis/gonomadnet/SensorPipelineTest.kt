@@ -160,9 +160,8 @@ class SensorPipelineTest {
 
     @Test
     fun theConvertersSentencesReachTheLoopbackSubscribers() {
-        // The feed accepting a connection is not the same as the feed saying anything. This is
-        // the assertion that would have caught the socket that hung: without the pump the
-        // subscriber sees no bytes and no error.
+        // The feed accepting a connection is not the same as the feed saying anything: without
+        // the pump the subscriber sees no bytes and no error.
         val fixture = PipelineFixture()
         val pipeline = fixture.pipeline()
         pipeline.start()
@@ -258,9 +257,9 @@ class SensorPipelineTest {
 
     @Test
     fun stoppingTheStackLeavesTheSensorsExactlyAsTheyWere() {
-        // This is the §4.1 Axis 2 guarantee. Stopping the daemons must not disturb the
-        // sensors, because in Mode A there are no daemons and the sensors are the only
-        // reason the client can do anything with a position at all.
+        // Stopping the daemons must not disturb the sensors, because with no stack there are
+        // no daemons and the sensors are the only reason the client can do anything with a
+        // position at all.
         val fixture = PipelineFixture()
         val pipeline = fixture.pipeline()
         val supervisor = SupervisorFixture().supervisor()

@@ -17,7 +17,7 @@
 
 // This file verifies the stub page renderer: without the wago build tag the
 // renderer is permanently unavailable, so the node and browser fall back to
-// serving .wasm page files statically (the pre-sandbox behavior).
+// serving .wasm page files statically.
 
 package wasmpages
 

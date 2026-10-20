@@ -85,8 +85,7 @@ func TestLinkNavPartPositions(t *testing.T) {
 }
 
 // TestLinkNavLinkAtCursorTargetAndDisplay asserts find_item_at_pos lands on the
-// link span and exposes both the target URL and the display (label) text — the
-// "test target/display-text" mandate of task 3.2.
+// link span and exposes both the target URL and the display (label) text.
 func TestLinkNavLinkAtCursorTargetAndDisplay(t *testing.T) {
 	t.Parallel()
 	lt := NewLinkableTextFromSpans(navLinkSpans(), &fakeLinkDelegate{})

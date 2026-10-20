@@ -26,13 +26,13 @@ import (
 	"github.com/gmlewis/go-reticulum/rns/interfaces"
 )
 
-// TestOpenLXMFLinkAsksTheNetworkForUnknownPeerKeys pins the statement the
-// conversation-create path was missing. Every Python site that creates a
-// conversation builds a Conversation object (Conversations.py:1058 for the New
-// Conversation dialog — typed address or scanned QR — and the Network/Browser/
-// Channels "Converse" paths), and Conversation.__init__ immediately recalls the
-// peer's identity and, when it cannot be recalled, asks the network for it
-// (Conversation.py:204-208):
+// TestOpenLXMFLinkAsksTheNetworkForUnknownPeerKeys pins that opening an LXMF
+// link for an unknown peer asks the network for that peer's keys. Every Python
+// site that creates a conversation builds a Conversation object
+// (Conversations.py:1058 for the New Conversation dialog — typed address or
+// scanned QR — and the Network/Browser/Channels "Converse" paths), and
+// Conversation.__init__ immediately recalls the peer's identity and, when it
+// cannot be recalled, asks the network for it (Conversation.py:204-208):
 //
 //	if not RNS.Identity.recall(bytes.fromhex(self.source_hash)):
 //	    RNS.Transport.request_path(bytes.fromhex(source_hash))
@@ -40,11 +40,7 @@ import (
 // That request is what turns an "addressed, but identity unknown" peer into a
 // peer that can actually be messaged: LXMF encrypts to the recipient's identity,
 // so without it nothing can be sent — not directly, and not through a
-// propagation node either. The Go port's App.OpenLXMFLink wrote the directory
-// entry and the conversation directory but never constructed the Conversation,
-// so no request was ever made and the peer stayed unmessagable until an
-// lxmf.delivery announce happened to arrive on its own (announce_interval
-// defaults to 6 hours).
+// propagation node either.
 func TestOpenLXMFLinkAsksTheNetworkForUnknownPeerKeys(t *testing.T) {
 	t.Parallel()
 

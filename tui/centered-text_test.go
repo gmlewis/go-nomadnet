@@ -1,6 +1,4 @@
 // Copyright 2026 Glenn Lewis. All rights reserved.
-//
-// Unit tests for centeredText primitive.
 
 package tui
 

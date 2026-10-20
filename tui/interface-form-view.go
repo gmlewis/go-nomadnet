@@ -476,8 +476,7 @@ func (v *InterfaceFormView) Build() (string, []app.ConfigProp) {
 
 	// Python keys the form's fields by config_key (Interfaces.py:1645-1660), so
 	// two rows sharing a key (BackboneInterface's "port" and "Target Port") hold
-	// ONE value: the last row's. Writing both produced duplicate `port =` lines
-	// in the config.
+	// ONE value: the last row's. Writing both would duplicate the `port =` line.
 	propIndex := make(map[string]int, len(props))
 	for i, p := range props {
 		propIndex[p.Key] = i

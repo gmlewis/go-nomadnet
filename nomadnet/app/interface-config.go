@@ -202,7 +202,6 @@ func (a *App) GetInterfaceConfigMap(name string) (map[string]any, error) {
 	}
 
 	if !inTarget && len(res) == 0 {
-		// Section not found or empty
 		return res, nil
 	}
 

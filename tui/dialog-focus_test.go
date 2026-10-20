@@ -12,11 +12,11 @@ import (
 	"github.com/gmlewis/tview"
 )
 
-// TestB5WireDialogNavHandlesTabAndDown verifies B5: the New Conversation
-// dialog field-advance must support BOTH Tab (gonomadnet enhancement) and
-// Down (nomadnet's key), matching the allowed enhancements rule
-// ("gonomadnet ⊇ nomadnet's input set"). wireDialogNav should return nil
-// (consume) for both KeyTab and KeyDown so focus advances to the next field.
+// TestB5WireDialogNavHandlesTabAndDown verifies that the New Conversation
+// dialog field advance supports BOTH Tab (a gonomadnet enhancement) and Down
+// (nomadnet's key): gonomadnet must accept a superset of nomadnet's input set.
+// wireDialogNav should return nil (consume) for both KeyTab and KeyDown so
+// focus advances to the next field.
 func TestB5WireDialogNavHandlesTabAndDown(t *testing.T) {
 	t.Parallel()
 

@@ -31,9 +31,7 @@ const (
 // _parse_color_true routes 3-hex through _parse_color_256). Nibble-doubling
 // (#bbb→#bbbbbb=187) would diverge from Python, which renders #bbb as
 // #afafaf (175). 6-hex "#rrggbb" entries (buttons) and named-color entries
-// (dark red, dark gray, …) are left as literal tcell.Color values; the
-// named-color literals are a separate, pre-existing parity gap, not part of
-// the 3-hex cube-quantization fix.
+// (dark red, dark gray, …) are left as literal tcell.Color values.
 
 // Color definitions for the dark theme.
 var darkColors = map[string]tcell.Color{
@@ -75,10 +73,10 @@ var darkColors = map[string]tcell.Color{
 	"list_unknown":             cubeHex3("#bbb"),
 	"list_normal":              cubeHex3("#bbb"),
 	"list_untrusted":           cubeHex3("#a22"),
-	// list_warning has no Python palette entry (the SOT references the name in
-	// Conversations.py:1711 / Network.py:118 but never defines it — urwid would
-	// fail its screen attr lookup on a warning entry); #ba4 is the warning hue
-	// the repo established in trustPaletteHex (announce-info.go).
+	// list_warning has no Python palette entry: the SOT names it in
+	// Conversations.py:1711 / Network.py:118 but never defines it (urwid would
+	// fail its screen attr lookup on a warning entry). #ba4 is the warning hue
+	// used by trustPaletteHex in announce-info.go.
 	"list_warning":               cubeHex3("#ba4"),
 	"list_focus_untrusted_fg":    cubeHex3("#810"),
 	"list_focus_untrusted_bg":    cubeHex3("#aaa"),

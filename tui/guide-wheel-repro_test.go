@@ -9,24 +9,24 @@ import (
 	"github.com/gmlewis/tview"
 )
 
-// TestGuideWheelAfterTopicSwitchNoJump reproduces and pins the fix for the
-// reported bug:
-//  1. click Guide topic A, scroll all the way down,
-//  2. click topic B (resets scroll to the top),
-//  3. the FIRST mouse-scroll-down JUMPS all the way to the bottom.
+// TestGuideWheelAfterTopicSwitchNoJump pins that a wheel notch after a topic
+// switch moves exactly mouseWheelLines rows instead of jumping to the bottom:
+//  1. show topic A and scroll all the way down,
+//  2. show topic B (resets scroll to the top),
+//  3. the FIRST mouse-scroll-down must advance delta rows, not leap to the end.
 //
-// Root cause: tview's TextView wheel handler bumps lineOffset by 1 and sets
-// trackEnd=true when its lazy line index is short relative to the offset; the
-// next Draw then jumps lineOffset to len(lineIndex)-height (the bottom). After
-// a topic switch SetText resets the line index to nil and a Draw only rebuilds
-// it to lineOffset+height+1, so the very first wheel notch sets trackEnd and
-// the following Draw leaps to the bottom.
+// tview's TextView wheel handler bumps lineOffset by 1 and sets trackEnd=true
+// when its lazy line index is short relative to the offset; the next Draw then
+// jumps lineOffset to len(lineIndex)-height (the bottom). After a topic switch
+// SetText resets the line index to nil and a Draw only rebuilds it to
+// lineOffset+height+1, so the very first wheel notch would set trackEnd and the
+// following Draw would leap to the bottom.
 //
-// The fix is the per-primitive wheel multiplier (installWheelCapture, wired in
-// NewScrollBar): a notch scrolls mouseWheelLines rows in ONE delivery via
-// ScrollTo, which sets trackEnd=false — so there is no premature trackEnd and
-// no jump. This test drives the real ScrollBar→guideReader path (the capture is
-// installed on the reader via the wheelScrollable interface).
+// The per-primitive wheel multiplier (installWheelCapture, wired in NewScrollBar)
+// avoids that: a notch scrolls mouseWheelLines rows in ONE delivery via
+// ScrollTo, which sets trackEnd=false. This test drives the real
+// ScrollBar→guideReader path (the capture is installed on the reader via the
+// wheelScrollable interface).
 func TestGuideWheelAfterTopicSwitchNoJump(t *testing.T) {
 	orig := mouseWheelLines
 	t.Cleanup(func() { mouseWheelLines = orig })
@@ -104,8 +104,7 @@ func TestGuideWheelAfterTopicSwitchNoJump(t *testing.T) {
 		t.Skipf("topic B too short to distinguish a delta-step from the bottom (posmax=%v, delta=%v)", posmax, delta)
 	}
 
-	// 4. ONE wheel-down notch. Before the fix this jumped to the bottom; now it
-	// must move exactly delta rows (trackEnd stays false).
+	// 4. ONE wheel-down notch must move exactly delta rows (trackEnd stays false).
 	handler(tview.MouseScrollDown, ev(), setFocus)
 	gd.scroll.Draw(screen)
 	afterOneNotch, _ := gd.reader.GetScrollOffset()

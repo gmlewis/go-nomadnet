@@ -23,8 +23,7 @@ import (
 func TestSortChannelMessagesChronological(t *testing.T) {
 	t.Parallel()
 
-	// The Go room buffer used to render newest-first (TODO items 1-3): the
-	// render adapter must order oldest→newest like Python's RoomWidget.
+	// The render adapter must order oldest→newest like Python's RoomWidget.
 	msgs := []ChannelMessage{
 		{Text: "Message 6", TsMs: 6000},
 		{Text: "Message 4", TsMs: 4000},

@@ -24,9 +24,8 @@ import (
 
 // BenchmarkURWIDColumnsSetRect isolates the per-frame layout cost of the
 // Columns widget: every full-screen redraw runs SetRect on every Columns row
-// on screen, which used to recompute (and re-sort) the urwid width table from
-// scratch on every call — allocations and closures per columns row per frame
-// even though the geometry only changes when the total width does.
+// on screen, and the urwid width table is only recomputed when the total
+// width changes.
 func BenchmarkURWIDColumnsSetRect(b *testing.B) {
 	c := newURWIDColumns(1, tview.NewTextView(), tview.NewTextView(), tview.NewTextView())
 	c.SetWeight(2, 3)

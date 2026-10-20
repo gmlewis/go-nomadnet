@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-// TestB3RenderQRText verifies B3: RenderQRText produces a non-empty QR code
+// TestB3RenderQRText verifies RenderQRText produces a non-empty QR code
 // rendering using Unicode half-block characters for a valid LXMF address.
 func TestB3RenderQRText(t *testing.T) {
 	t.Parallel()

@@ -15,14 +15,12 @@
 
 // Release-asset retention for publish-github-release-artifacts.
 //
-// Every publish uploads the full platform matrix (14 binaries, about 308 MB),
-// and nothing in the publish path ever removed an older upload. One release a
-// day therefore added ~308 MB per day forever, and the account carried 28 GB of
-// old binaries that no consumer downloads (the whole history has had 554
-// downloads, against 1,454 stored assets). GitHub documents no cap on total
-// release size, but its Acceptable Use Policy reserves the right to throttle
-// file hosting for accounts that place undue strain on the infrastructure, so
-// unbounded growth is a real risk.
+// Every publish uploads the full platform matrix (14 binaries, about 308 MB).
+// Nothing in the publish path removes an older upload, so without a retention
+// policy the account grows by that much per release, forever. GitHub documents
+// no cap on total release size, but its Acceptable Use Policy reserves the
+// right to throttle file hosting for accounts that place undue strain on the
+// infrastructure, so unbounded growth is a real risk.
 //
 // pruneReleaseAssets deletes the ASSETS of every release older than the newest
 // --keep-releases releases that still have assets. It never deletes a release,
@@ -32,11 +30,9 @@
 // binaries go away.
 //
 // Every asset of a pruned release is deleted, whatever its name: the retention
-// window is the whole policy. An earlier version selected assets by matching
-// their names against the pattern this publisher generates, exempted Android
-// APKs on top of that, and kept everything else — so the ESP32 firmware the
-// sibling go-reticulum publisher builds was retained forever, and a pruned
-// release kept a signed appliance. Nothing is selected by name now.
+// window is the whole policy. No name is consulted, so an artifact this
+// publisher did not generate — an ESP32 firmware image, an Android APK, a
+// hand-attached file — goes with the rest.
 package main
 
 import (
@@ -65,13 +61,11 @@ const defaultKeepReleases = 3
 //     mutative request (POST/PATCH/PUT/DELETE) costs 5 points, so about
 //     180 deletions/minute.
 //
-// We pace just under the primary limit (75/minute, 4500/hour) so deletions flow
+// Pace just under the primary limit (75/minute, 4500/hour) so deletions flow
 // steadily rather than bursting and then parking when the hourly budget runs
 // out, and so the token keeps enough budget for anything else it does in the
-// same hour. The one-time cleanup of ~1,314 assets therefore takes about
-// 18 minutes; in steady state a publish retires only about 14 assets, a few
-// seconds. waitForRateLimit is the backstop for when other activity has already
-// spent part of the hourly budget.
+// same hour. waitForRateLimit is the backstop for when other activity has
+// already spent part of the hourly budget.
 const deletesPerMinute = 75
 
 // rateLimitCheckEvery is how many deletions happen between checks of the
@@ -81,7 +75,7 @@ const rateLimitCheckEvery = 200
 
 // rateLimitFloor is the remaining core API budget below which the pruner stops
 // and waits for the window to reset. A publish happens at the end of the same
-// run, so we leave room for it rather than draining the budget to zero.
+// run, so leave room for it rather than draining the budget to zero.
 const rateLimitFloor = 500
 
 // deleteAttempts is how many times a single asset deletion is tried before the
@@ -95,9 +89,9 @@ const deleteAttempts = 5
 const progressEvery = 500
 
 // errAssetGone reports that an asset was already deleted (or its release was
-// removed). That is a success for our purposes: a prune run that was
-// interrupted, or that is racing another run, can simply be re-run, because
-// the plan is recomputed from live state on every run.
+// removed). That is treated as success: a prune run that was interrupted, or
+// that is racing another run, can simply be re-run, because the plan is
+// recomputed from live state on every run.
 var errAssetGone = errors.New("asset already deleted")
 
 // asset is one uploaded file attached to a GitHub release.
@@ -131,9 +125,9 @@ func (r publishedRelease) totalBytes() int64 {
 //
 // Drafts are included so the prune can REPORT them (an unpublished draft keeps
 // its assets, and silently retaining a gigabyte would look like a bug), but
-// they are never pruned. Note that the releases list endpoint returns every
-// asset of each release (verified against all 1,454 assets in this repo), so
-// a single paginated call is enough and no per-release request is needed.
+// they are never pruned. The releases list endpoint returns every asset of each
+// release, so a single paginated call is enough and no per-release request is
+// needed.
 const releasesWithAssetsQuery = `.[] | .tag_name as $t | .created_at as $c | ` +
 	`(.draft | tostring) as $d | .assets[] | ` +
 	`[$t, $c, $d, (.id | tostring), (.size | tostring), .name] | @tsv`

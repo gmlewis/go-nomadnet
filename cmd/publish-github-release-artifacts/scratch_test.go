@@ -59,10 +59,11 @@ func sweepPrefixLists(t *testing.T) (swept, notSwept []string) {
 	return parse("prefixes"), parse("not_swept_prefixes")
 }
 
-// TestScratchDirNeverSwept pins the property whose absence let a concurrent
-// test run delete a publish's artifacts: the scratch dir's name must match no
-// prefix the /tmp sweeper deletes, and must be named in the sweep script's
-// not_swept_prefixes so its own drift check keeps it that way.
+// TestScratchDirNeverSwept pins the agreement with the /tmp sweeper: the
+// scratch dir's name must match no prefix the sweeper deletes — otherwise a
+// concurrent test run's sweep would delete a publish's artifacts mid-publish —
+// and must be named in the sweep script's not_swept_prefixes so its own drift
+// check keeps it that way.
 func TestScratchDirNeverSwept(t *testing.T) {
 	t.Parallel()
 

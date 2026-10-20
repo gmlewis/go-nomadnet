@@ -45,14 +45,11 @@ func (realClock) AfterFunc(d time.Duration, fn func()) timer {
 // debouncedCall coalesces a burst of Trigger calls into a single invocation of
 // fn. The first Trigger schedules fn to run after window; each subsequent
 // Trigger before the window elapses resets the timer, so a burst of N calls
-// within the window collapses to one fn invocation. This is used to keep the
-// tview event loop responsive when a callback fires once per incoming network
-// event (e.g. announces/messages): without coalescing, a burst of N announces
-// would queue N full UI refreshes (each doing disk I/O and a full redraw),
-// starving key handling and making the UI appear hung. Python's per-announce
-// directory_change_callback (Network.py:1744) avoids this by doing only cheap
-// in-memory widget rebuilds; the Go refresh is heavier, so coalescing is the
-// parity-preserving fix.
+// within the window collapses to one fn invocation. This keeps the tview event
+// loop responsive when a callback fires once per incoming network event (e.g.
+// announces or messages): without coalescing, a burst of N announces would
+// queue N full UI refreshes (each doing disk I/O and a full redraw), starving
+// key handling and making the UI appear hung.
 //
 // Trigger is safe for concurrent use. fn runs on the clock's AfterFunc
 // goroutine; it is the caller's responsibility to marshal any tview mutations
@@ -107,7 +104,7 @@ func newDebouncedCallWithMaxWait(window, maxWait time.Duration, fn func(), c clo
 }
 
 // newDebouncedCallWithClock is a test constructor that injects a deterministic
-// clock so tests can advance time explicitly instead of sleeping.
+// clock so tests can advance time explicitly.
 func newDebouncedCallWithClock(window time.Duration, fn func(), c clock) *debouncedCall {
 	return &debouncedCall{fn: fn, window: window, clock: c}
 }

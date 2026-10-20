@@ -57,9 +57,8 @@ func writeLXMFixtureWithState(t *testing.T, dir string, state int) (path string,
 // ConversationMessage.load (Conversation.py:451-460): a message on disk whose
 // LXMF state is between GENERATING and SENT (OUTBOUND, SENDING) that is NOT in
 // the router's pending-outbound / pending-deferred-stamps queue is marked
-// FAILED on load. Without this, interrupted outbound messages render with the
-// wrong header glyph (the default "→" branch instead of "✕ →" FAILED), which
-// is B16's "→ for sent" symptom on gonomadnet.
+// FAILED on load. Otherwise an interrupted outbound renders with the default
+// "→" header branch instead of the "✕ →" FAILED glyph.
 func TestMessageLoadPendingNotQueuedMarksFailed(t *testing.T) {
 	t.Parallel()
 

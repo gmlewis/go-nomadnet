@@ -121,11 +121,8 @@ type Node struct {
 
 	// jobsStop is closed by Stop to interrupt the Jobs loop's inter-pass sleep
 	// so the goroutine exits promptly instead of blocking up to JobInterval
-	// (5 s) in time.Sleep. Go has no daemon goroutines, so unlike Python
-	// (which marks the jobs thread daemon and os._exits), we must make the
-	// sleep cancellable or Quit waits the full interval. This mirrors the
-	// App.jobsStop pattern (app/jobs.go). jobsStopOnce guards the close so
-	// repeated Stop calls are safe.
+	// (5 s) in time.Sleep. jobsStopOnce guards the close so repeated Stop calls
+	// are safe. This mirrors the App.jobsStop pattern (app/jobs.go).
 	jobsStop     chan struct{}
 	jobsStopOnce sync.Once
 }
@@ -167,8 +164,7 @@ func (n *Node) Start(ts rns.Transport, identity *rns.Identity) error {
 	// (re)connects and announceDestinationsOnInterface calls d.Announce(nil))
 	// include the node name rather than sending a nameless announce.
 	// Mirrors Python Destination.announce's default_app_data fallback
-	// (Destination.py:275-279), which the Go port's buildAnnouncePacket
-	// now also implements.
+	// (Destination.py:275-279), which buildAnnouncePacket also implements.
 	dest.SetDefaultAppData([]byte(n.Name))
 
 	dest.SetLinkEstablishedCallback(n.PeerConnected)
@@ -244,9 +240,9 @@ func (n *Node) registerRequestHandlers() {
 
 	// Python suppresses the default-index handler only when the ROOT
 	// index.mu is served (Node.py:57: `not pagespath+"index.mu" in
-	// servedpages`), so a page at pages/sub/index.mu does not shadow
-	// /page/index.mu's default response. Testing the basename made any nested
-	// index.mu suppress it, leaving /page/index.mu unanswered.
+	// servedpages`), so a page at pages/sub/index.mu must not shadow
+	// /page/index.mu's default response; compare cleaned full paths, not
+	// basenames.
 	rootIndex := filepath.Clean(filepath.Join(pagesPath, "index.mu"))
 	hasIndex := false
 	for _, page := range pages {
@@ -277,7 +273,7 @@ func (n *Node) registerRequestHandlers() {
 // A .wasm page is an executable page: with the wago runtime linked it renders
 // through the sandboxed wasmpages renderer (mirroring Python's executable-page
 // subprocess branch, Node.py:161-175); without it the file is served
-// statically, as before.
+// statically.
 func (n *Node) makePageHandler(filePath string) func(string, any, []byte, []byte, *rns.Identity, time.Time) any {
 	return func(path string, data any, requestID []byte, linkID []byte, remoteIdentity *rns.Identity, requestedAt time.Time) any {
 		// Python counts the request BEFORE the allow-list check and the read
@@ -605,8 +601,8 @@ func ScanFiles(basePath string) []string {
 // RegisterPages scans the pages directory, updates the served pages list, and
 // re-registers the request handlers, mirroring Python register_pages
 // (Node.py:54-68): the refresh job calls it so a page added after startup is
-// served without a restart. (Python's TODO notes that handlers for removed
-// pages are not deregistered; the same applies here.)
+// served without a restart. Handlers for removed pages are not deregistered,
+// matching Python.
 func (n *Node) RegisterPages() {
 	pages := ScanPages(n.PagesPath)
 	n.mu.Lock()
@@ -669,7 +665,7 @@ func ParseAllowedFile(path string) ([][]byte, error) {
 	lines := strings.SplitSeq(string(data), "\n")
 	for line := range lines {
 		// Python tests len(hash_str) == 64 with NO trimming (Node.py:137), so a
-		// line with a trailing space is rejected; TrimSpace here accepted it.
+		// line with a trailing space is rejected.
 		if len(line) != 64 {
 			continue
 		}

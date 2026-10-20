@@ -21,16 +21,14 @@ import (
 	"time"
 )
 
-// TestInterfaceShowStatusGoesLive pins the details view against the report from
-// the tablet: the radio was plugged in, the list page moved the RNode row to
-// Connected within a second, and the details view that was open at the time went
-// on saying "Disconnected".
+// TestInterfaceShowStatusGoesLive pins that an open details view follows the
+// interface's state instead of the snapshot it was opened with.
 //
-// Python's ShowInterface is live. Its start() arms poll_stats on a 1 s alarm
+// Python's ShowInterface is live: its start() arms poll_stats on a 1 s alarm
 // (Interfaces.py:2921-2925) and poll_stats re-arms itself (Interfaces.py:2999),
-// so the Type/Status rows and the TX/RX counters follow the interface. Go built
-// the view once from a captured InterfaceInfo and never revisited it, which left
-// the one screen whose whole purpose is a live reading as the only stale one.
+// so the Type/Status rows and the TX/RX counters follow the interface. The Go
+// view must be refreshed the same way, or the one screen whose whole purpose is
+// a live reading is the only stale one.
 func TestInterfaceShowStatusGoesLive(t *testing.T) {
 	t.Parallel()
 
@@ -75,8 +73,8 @@ func TestInterfaceShowStatusGoesLive(t *testing.T) {
 	}
 }
 
-// TestInterfaceShowLiveTrafficCharts pins the second half of the report: the
-// details view's RX/TX traffic boxes were drawn but never fed — a static
+// TestInterfaceShowLiveTrafficCharts pins that the details view's RX/TX traffic
+// boxes are fed from the interface's byte counters rather than left as a static
 // "Loading RX data..." box reading "Peak: 0 B/s" forever (interfaceShow.
 // chartsRows). Python's ShowInterface keeps an InterfaceBandwidthChart per
 // interface (Interfaces.py:2308), samples it from the interface's rx/tx byte

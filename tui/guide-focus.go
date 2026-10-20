@@ -38,7 +38,7 @@ const guideCursorKeyTimeout = 2 * time.Second
 // lineRows[i] is the wrapped display-row offset where line i begins
 // (lineRows[len] is the total row count). It mirrors Python's Pile layout:
 // Down advances focus through `selectable` one entry per press, so the number
-// of Downs to reach the bottom equals the selectable count (B2 root cause).
+// of Downs to reach the bottom equals the selectable count.
 //
 // It is a no-op when no topic is rendered (currentIdx < 0).
 func (gd *GuideDisplay) computeFocusLayout() {
@@ -120,7 +120,7 @@ func (gd *GuideDisplay) setFocusAtOrAfter(lineIdx int) {
 	}
 }
 
-// noteKey records a keypress timestamp for the cursor key-timeout (B5).
+// noteKey records a keypress timestamp for the cursor key-timeout.
 func (gd *GuideDisplay) noteKey() {
 	gd.lastKey = time.Now()
 	gd.hasKey = true
@@ -305,8 +305,7 @@ func (gd *GuideDisplay) scrollFocusVisible() {
 }
 
 // cursorRow returns the focused line's display row relative to the current
-// scroll offset (the row the hardware cursor sits on within the reader). Used
-// by tests to assert the cursor advances per Down (B5 precondition).
+// scroll offset (the row the hardware cursor sits on within the reader).
 func (gd *GuideDisplay) cursorRow() int {
 	gd.computeFocusLayout()
 	if gd.focusSel < 0 || gd.focusSel >= len(gd.selectable) {
@@ -378,10 +377,9 @@ func (gd *GuideDisplay) cursorVisible(now time.Time, focused bool) bool {
 }
 
 // handleReaderKey processes a key while the reader is focused, applying the
-// focus model (B2/B5). It returns nil when the key is consumed and the event
-// to let tview handle otherwise (PageUp/Down/Home/End scroll the underlying
-// TextView, which Python's Guide reader also leaves to the Scrollable — the
-// known "scroll then arrow jumps back" behavior noted in GuideColumns.keypress).
+// focus model. It returns nil when the key is consumed and the event to let
+// tview handle otherwise (PageUp/Down/Home/End scroll the underlying TextView,
+// which Python's Guide reader also leaves to the Scrollable).
 func (gd *GuideDisplay) handleReaderKey(ev *tcell.EventKey) *tcell.EventKey {
 	if ev == nil {
 		return nil
@@ -409,8 +407,7 @@ func (gd *GuideDisplay) handleReaderKey(ev *tcell.EventKey) *tcell.EventKey {
 }
 
 // plainLineText returns the concatenated span text of a styled line (no tview
-// tags), used for cursor-column width math. Unused outside tests/diagnostics
-// but kept for completeness of the model.
+// tags), used for cursor-column width math.
 func plainLineText(line *micron.StyledLine) string {
 	if line == nil {
 		return ""

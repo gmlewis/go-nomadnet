@@ -25,9 +25,9 @@ import (
 
 // hasTTY reports whether the process has a terminal on stdin. The tview TUI
 // requires a terminal; without one, Application.Run() fails and gonomadnet
-// exits silently with code 0, leaving the operator with no node and no error.
-// Used to auto-fallback to daemon mode when launched without a terminal
-// (e.g. via nohup, systemd, or a non-interactive SSH session).
+// exits without a message. Used to auto-fallback to daemon mode when launched
+// without a terminal (e.g. via nohup, systemd, or a non-interactive SSH
+// session).
 func hasTTY() bool {
 	return hasTTYFromFile(os.Stdin)
 }

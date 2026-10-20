@@ -115,27 +115,23 @@ const binaryName = "gonomadnet"
 
 // scratchDirPrefix names the build scratch dir os.MkdirTemp creates under /tmp.
 // It deliberately begins with no prefix scripts/clean-test-tmp.sh sweeps: a
-// "gonomadnet-release-" prefix sat inside that script's swept "gonomadnet-"
-// family, so a concurrent test run's sweep deleted the artifacts out from under
-// a publish mid-flight, and because go build quietly recreates a missing output
-// directory nothing failed until gh reported a missing file. scratch_test.go
-// enforces the guarantee against the script's live prefix lists, and
-// not_swept_prefixes there names this prefix so -c keeps it that way.
+// prefix inside that script's swept "gonomadnet-" family would let a concurrent
+// test run's sweep delete the artifacts from under a publish mid-flight.
+// scratch_test.go enforces the guarantee against the script's live prefix lists,
+// and not_swept_prefixes there names this prefix so -c keeps it that way.
 const scratchDirPrefix = "publish-release-gonomadnet-*"
 
 // The Android appliance, which reaches a release by being built for it and then consumed.
 const (
 	// androidStagingDir is where scripts/build-android-apk.sh leaves a signed APK.
 	//
-	// The publisher runs that script itself, once per release, so the appliance always matches
-	// the version being published. It used to only consume a previously staged file, which
-	// meant the staging directory was a cache that every version bump silently invalidated:
-	// bump the version, publish, and the release went out with no appliance and a line
-	// explaining that a file named for the OLD version had been skipped. Building here is what
-	// removes that whole class of confusion. A build that cannot run (no signing key, no
-	// Android SDK) is reported and does not fail the release, because refusing to publish a Go
-	// program's release over an Android toolchain would be worse than publishing it without
-	// the appliance.
+	// The publisher runs that script itself, once per release, so the appliance
+	// always matches the version being published. The staging directory is a cache
+	// that a version bump invalidates, so a publish never depends on a file staged
+	// for an older version. A build that cannot run (no signing key, no Android
+	// SDK) is reported and does not fail the release: withholding the Go programs
+	// over an Android toolchain would be worse than publishing without the
+	// appliance.
 	androidStagingDir = "dist/android"
 	// androidAssetPrefix and androidAssetSuffix name what the publisher will attach:
 	// gonomadnet-<version>-android-<abi>.apk.
@@ -803,8 +799,8 @@ func stagedAppliances(stagingDir, version, suffix string) []string {
 // explains itself when there is none.
 //
 // It never fails. A release that carried no APK is a normal, working release; a release that
-// refused to happen because an APK was missing would be a regression in the only path the Go
-// project has for shipping anything at all.
+// refused to happen because an APK was missing would withhold the only artifacts this
+// project ships.
 //
 // Only THIS version's appliance is looked for. A file named for another version is not this
 // release's appliance and is passed over in silence: the build that runs beforehand stages the
@@ -837,11 +833,9 @@ func collectAndroidArtifacts(stagingDir, version string, progress *os.File) []st
 // It reads this repository's own go.mod, and that is the whole of the matter: the require
 // line is the pin those binaries were actually built from — it is what `go build` resolves,
 // what the module cache holds, and what a reader can look up. The sibling checkout at
-// ../go-reticulum is where a developer's workspace happens to point, it is not what ships,
-// and it does not exist at all in CI. Reading it there produced a release note that said
-// the appliance embeds daemons from "van unrecorded version" on every published release,
-// while passing on the one machine it was written on. Nothing reaches outside this
-// repository, so the notes read the same wherever they are rendered.
+// ../go-reticulum is where a developer's workspace happens to point; it is not what ships,
+// and it does not exist at all in CI. Nothing reaches outside this repository, so the notes
+// read the same wherever they are rendered.
 //
 // It is a file read rather than `go list`, because the notes are rendered before anything is
 // uploaded and `go list` in a workspace resolves to a directory rather than to a version.

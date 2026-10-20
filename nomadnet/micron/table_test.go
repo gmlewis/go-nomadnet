@@ -20,8 +20,8 @@ import "testing"
 // TestFormatTableRaw asserts the Go port of MarkdownToMicron.format_table_raw
 // (RNS/Utilities/rngit/util.py:530) produces byte-identical output to Python,
 // including the canonical visible-width-vs-raw-emit behavior where cells
-// containing micron color/format tags overflow their column physically. Golden
-// values were captured from Python format_table_raw directly (no urwid needed).
+// containing micron color/format tags overflow their column physically.
+// Expected values were captured from Python format_table_raw directly.
 func TestFormatTableRaw(t *testing.T) {
 	t.Parallel()
 

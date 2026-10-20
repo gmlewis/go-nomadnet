@@ -99,16 +99,14 @@ type BrowserDisplay struct {
 	// pendingLinkHist marks that a nomadnetwork.node link click (HandleLink)
 	// eagerly pushed its target onto history and the fetch is still in flight.
 	// Python's retrieve_url appends to history only on SUCCESS (Browser.py:131-145,
-	// 216-268); the Go single-callback fetch model cannot push on success from
-	// the tui layer (the success callback lives in the app layer and calls
-	// RenderPage with markup, not the URL), so HandleLink pushes eagerly and the
-	// failure paths (NotifyLinkError for a malformed/dispatch-error link, SetContent
-	// for a fetch-fatal timeout/no-path) roll it back by popping. RenderPage clears
-	// the flag on success (keeping the entry), and any new fetch (displayURL for a
-	// typed URL / Back / Forward, or another HandleLink) pops a still-pending entry
-	// first so a superseded click does not leave a stale history row. This mirrors
-	// Python's "raise before touching history" for a failed link so the user is not
-	// stranded on an error page with Ctrl-d a no-op.
+	// 216-268), but the Go fetch resolves through an async app-layer callback that
+	// renders markup rather than a URL, so the tui layer cannot push on success.
+	// HandleLink therefore pushes eagerly, and the failure paths (NotifyLinkError
+	// for a malformed/dispatch-error link, SetContent for a fetch-fatal
+	// timeout/no-path) roll it back; RenderPage clears the flag on success. Any
+	// new fetch (displayURL for a typed URL / Back / Forward, or another
+	// HandleLink) pops a still-pending entry first, so a superseded click leaves
+	// no stale history row.
 	pendingLinkHist bool
 	// pendingAnchor is the anchor a followed link asked the target page to open
 	// at, named by the link's "anchor=<name>" request field. Micron links carry
@@ -116,24 +114,20 @@ type BrowserDisplay struct {
 	// (tools/bin/sync-go-reticulum-docs) rewrites every Markdown
 	// "page.md#section" link into a `:/page/page.mu target carrying the fragment
 	// as this field. Python's handle_link folds every k=v link field into
-	// request_data["var_k"], so it delivers var_anchor to the page and the jump
-	// is lost; honouring the field is a deliberate Go extension (like the
-	// repeated-directive substitution in effectiveMarkup), so the section links
-	// the generated documentation ships actually land on their section.
-	// renderPage consumes it on the next successful render; a failed, superseded
-	// or superseding navigation drops it in rollbackPendingLink, so an unrelated
-	// page load can never inherit the jump.
+	// request_data["var_k"], which loses the jump; honouring the field is a
+	// deliberate Go extension (like the repeated-directive substitution in
+	// splicePartialLines). renderPage consumes it on the next successful render;
+	// a failed, superseded or superseding navigation drops it in
+	// rollbackPendingLink, so an unrelated page load can never inherit the jump.
 	pendingAnchor string
 	// keepScroll tells the next renderPage to leave the reader where they are
-	// instead of starting the page at the top. Only the in-place repaints set it
+	// instead of starting the page at the top. Only in-place repaints set it
 	// (repaint): a partial's content arriving mid-read, and a reflow at a newly
-	// known pane width. Neither is a navigation -- the page is the one the reader
-	// is already reading, and Python, which swaps only a partial's own pile and
-	// never rebuilds the page (Browser.partial_received, Browser.py:692-705),
-	// never moves them; this port rebuilds the page, so it carries the offset
-	// across, and a pane resize gets the same treatment for the same reason.
-	// A fresh load (RenderPage) leaves the flag unset, so a new page still starts
-	// at the top, and a restored Back/Forward position or an anchor a link asked
+	// known pane width. Neither is a navigation; Python swaps only a partial's
+	// own pile and never rebuilds the page (Browser.partial_received,
+	// Browser.py:692-705), so the reader never moves. This port rebuilds the
+	// page, so it carries the offset across. A fresh load (RenderPage) leaves the
+	// flag unset, and a restored Back/Forward position or an anchor a link asked
 	// for outranks it. renderPage consumes it, so a request never outlives the
 	// render that made it.
 	keepScroll bool
@@ -177,10 +171,9 @@ type BrowserDisplay struct {
 	// establishes a link once and reuses it for every page/partial request to
 	// the same destination, so a form-submit re-fetch (search page → search
 	// results) rides the already-ACTIVE link instead of re-running the
-	// DH handshake + identification. The Go port used a one-shot link per
-	// fetch (torn down in FetchPage), which made the second fetch re-establish
-	// — flaky over a remote 2-hop path (link-establishment timeout, stalled
-	// response resource). Retaining the link closes that reliability gap.
+	// DH handshake + identification. A one-shot link per fetch would make the
+	// second fetch re-establish, which is fragile over a multi-hop path
+	// (link-establishment timeout, stalled response resource).
 	//
 	// It is opaque (any) so this package does not import go-reticulum; the
 	// wiring layer (cmd/gonomadnet) owns the *rns.Link lifecycle — it passes
@@ -206,7 +199,7 @@ type BrowserDisplay struct {
 	// and the field width. The browser body is a single tview.TextView that
 	// cannot host child primitives, so text fields are rendered as an in-place
 	// ReadlineEdit overlay mounted over the field's screen cells when its row is
-	// focused (syncFieldFocus/drawFieldOverlay); checkbox/radio fields toggle in
+	// focused (syncFieldFocus/drawFieldOverlays); checkbox/radio fields toggle in
 	// place via Space/Enter. On a form-submit link, collectFields walks this
 	// table to build request_data (Python recurse_down, Browser.py:232-268).
 	lineFields [][]*renderedField
@@ -230,10 +223,9 @@ type BrowserDisplay struct {
 	partialContents map[string]string
 	partialCancel   chan struct{}
 
-	// In-flight page-fetch tracking, fixing the "stale Connect overtakes the
-	// current page" race: every new navigation (Connect / URL load / link click)
-	// calls beginRequest, which cancels the previous fetch's ctx and bumps
-	// reqSeq. The fetch goroutine captures ctx+seq BY VALUE and, inside its
+	// In-flight page-fetch tracking: every new navigation (Connect / URL load /
+	// link click) calls beginRequest, which cancels the previous fetch's ctx and
+	// bumps reqSeq. The fetch goroutine captures ctx+seq BY VALUE and, inside its
 	// QueueUpdateDraw callback, drops the render when seq no longer equals
 	// CurrentRequestSeq() or ctx was cancelled. Disconnect calls CancelRequest
 	// to drop late renders of a page nobody is visiting anymore.
@@ -288,9 +280,8 @@ type BrowserDisplay struct {
 	// destination is blocked. When it reports a blocked destination,
 	// LoadURL and HandleLink defer the fetch behind the "Blocked node"
 	// warning modal (ShowBlockedNodeConfirmDialog) whose default focus is
-	// Cancel, so a bare Enter never connects. When nil, navigation behaves
-	// exactly as before. Part of the deliberate gonomadnet block-node
-	// enhancement — keep it and the modal when auditing parity.
+	// Cancel, so a bare Enter never connects. When nil, navigation proceeds
+	// directly.
 	OnBlockedConnectCheck func(nodeHashHex string) (display string, blocked bool)
 
 	// OnLoadURL, when set, overrides the URL-dialog submit path (Python's
@@ -390,7 +381,7 @@ func (bd *BrowserDisplay) handleInput(event *tcell.EventKey) *tcell.EventKey {
 		return event
 	}
 	// A mounted text-field overlay (ReadlineEdit) is drawn over the page body by
-	// drawFieldOverlay but is NOT a child of bd.layout, so tview's dispatch
+	// drawFieldOverlays but is NOT a child of bd.layout, so tview's dispatch
 	// cascades to bd.content (the tree leaf) and would never reach the editor —
 	// printable runes would be dropped by the TextView and the field would never
 	// accept text. Route the key through the overlay's handleKey instead:
@@ -745,14 +736,13 @@ func (bd *BrowserDisplay) showLoading(url string) {
 	// The browser's key shortcuts (Ctrl-d/w/u/etc. in handleInput) run as an
 	// input capture on bd.widget, which bodyPages dispatches to only while the
 	// browser page's widget tree HasFocus (body-pages.go:86). Removing the
-	// focused bd.content orphans focus — no child of the page keeps it — so
-	// the page stops receiving keys and the keyboard goes dead for the whole
-	// fetch ("Retrieving" dead-keyboard bug: nomadnet stays responsive because
-	// BrowserFrame.keypress always runs for the browser region). Move focus
-	// onto the loading body when the content held it so the page keeps a
+	// focused bd.content orphans focus — no child of the page keeps it — so the
+	// page stops receiving keys and the keyboard goes dead for the whole fetch.
+	// Python's BrowserFrame.keypress always runs for the browser region. Move
+	// focus onto the loading body when the content held it so the page keeps a
 	// focused child and bodyPages keeps dispatching to handleInput. When the
 	// left list (Network pane) held focus, bd.content.HasFocus() is false and
-	// we must NOT steal focus — the list stays driven during the fetch.
+	// focus must NOT be stolen — the list stays driven during the fetch.
 	contentHadFocus := bd.content.HasFocus()
 	bd.body.RemoveItem(bd.content)
 	bd.loading = newMiddleCentered(bd.contentFG, "Retrieving", "["+url+"]")
@@ -810,10 +800,8 @@ func (bd *BrowserDisplay) RenderPage(markup string) {
 // repaint re-renders the page that is already on screen, keeping the reader
 // where they are. It is the render for a change that is not a navigation: a
 // partial's content arriving (fetchAndSubstitute), or a reflow once the pane's
-// width is known (BrowserDisplay.reflow). Neither has any business scrolling the
-// page, and to a reader a counter updating or a window resizing is not a reason
-// to lose one's place. Loading a page uses RenderPage instead, which starts at
-// the top.
+// width is known (reflowIfWidthChanged). Neither should scroll the page.
+// Loading a page uses RenderPage instead, which starts at the top.
 func (bd *BrowserDisplay) repaint() {
 	bd.keepScroll = true
 	bd.renderPage()
@@ -841,10 +829,10 @@ func (bd *BrowserDisplay) renderPage() {
 	markup := bd.currentMarkup
 	// The page's #!bg=/#!fg= directives are the parse state's starting colors, so
 	// every plain run takes them — Python passes the same pair to markup_to_attrmaps
-	// (Browser.py:1269,1348,1513 → MicronParser.py:104-108,41-45,63-64). Feeding them
-	// only to the TextView default (which this also does, further down) was not
-	// enough: every micron span carries an explicit color, so the spans overrode the
-	// widget default and `#!fg=` had no effect on body text.
+	// (Browser.py:1269,1348,1513 → MicronParser.py:104-108,41-45,63-64). Setting
+	// them only as the TextView default is not enough: every micron span carries
+	// an explicit color, so the spans override the widget default and `#!fg=` has
+	// no effect on body text.
 	pageBG, pageFG := ParseMicronColors(markup)
 	// Python renders strip_modifiers(self.markup) (Browser.py:1269,1348,1513):
 	// CRLF line ends, zero-width joiners, variation selectors and emoji
@@ -934,8 +922,8 @@ func (bd *BrowserDisplay) renderPage() {
 	// the focus from the moment the page loads and a visitor's first keystroke
 	// lands in it (MicronParser.parse_line builds the Columns with the Edit as
 	// its only selectable child). Mount the focused row's editor overlay here
-	// too: without it the overlay stays unmounted until a line-changing key, and
-	// typing on a freshly loaded form — the guestbook's name field — is dropped.
+	// too; otherwise typing into a freshly loaded form (the guestbook's name
+	// field, say) is dropped until a line-changing key mounts the overlay.
 	if bd.content.HasFocus() {
 		bd.syncFieldFocus()
 	}
@@ -1032,9 +1020,8 @@ func (bd *BrowserDisplay) rowsAbove(idx int) int {
 // lines produced by rendering that partial as its own document. Python renders
 // every partial through markup_to_attrmaps with the page's default colors
 // (Browser.py:699-702), so the partial starts from a clean formatting state and
-// cannot change the page's state after it. Parsing the content inline — the
-// previous string substitution — let an unclosed toggle on the page bleed into
-// the partial (and vice versa).
+// cannot change the page's state after it. Parsing the content inline would let
+// an unclosed toggle on the page bleed into the partial (and vice versa).
 //
 // Every occurrence of a directive is substituted, not just the first. A page
 // may legally repeat a directive — the node's own index.mu embeds the two
@@ -1042,7 +1029,7 @@ func (bd *BrowserDisplay) rowsAbove(idx int) int {
 // must show the fetched count. This is a deliberate divergence from Python,
 // whose page_partials dict is keyed by partial_hash (Browser.py:668) and so
 // retains only the last pile per directive, leaving every earlier duplicate
-// stuck on the ⧖ placeholder forever.
+// stuck on the ⧖ placeholder.
 func (bd *BrowserDisplay) splicePartialLines(lines []*micron.StyledLine, theme micron.Theme, opts micron.StyledOptions) []*micron.StyledLine {
 	if len(bd.partialContents) == 0 {
 		return lines
@@ -1284,9 +1271,8 @@ func (bd *BrowserDisplay) CurrentURL() string {
 // loading body (bd.loading) in the layout in place of bd.content (showLoading,
 // Browser.py:593-598), SetContent must swap that loading body back out via
 // showContent — otherwise the error text lands on the hidden content widget and
-// the browser stays stuck on "Retrieving" forever (the regression where a
-// non-responding node appeared to never time out). showContent is a no-op when
-// no fetch is in flight (bd.loading == nil).
+// the browser stays on "Retrieving" even though the fetch has failed.
+// showContent is a no-op when no fetch is in flight (bd.loading == nil).
 func (bd *BrowserDisplay) SetContent(text string) {
 	// A fetch-fatal failure (timeout / no path) or a local /file/ download
 	// lands here. If the fetch was a nomadnetwork.node link click, HandleLink
@@ -1294,15 +1280,15 @@ func (bd *BrowserDisplay) SetContent(text string) {
 	// error/download page with Ctrl-d a no-op (Python's retrieve_url raises or
 	// downloads without touching history). A typed-URL fetch-fatal has
 	// pendingLinkHist already false (displayURL cleared it), so this is a no-op
-	// for it — preserving the prior eager-push behavior for typed URLs.
+	// for it, keeping the eager push of a typed URL in place.
 	bd.rollbackPendingLink()
 	bd.showContent()
 	bd.content.SetTextAlign(tview.AlignLeft)
 	bd.content.SetText(text)
 	// Error text is not a rendered micron page (no renderPage/initNavState ran):
 	// reset the per-line nav model so an arrow key falls into handleNavKey's
-	// empty-page guard instead of indexing an empty bd.lineCursors and
-	// panicking ("index out of range [0] with length 0"). See resetNavState.
+	// empty-page guard instead of indexing an empty bd.lineCursors. See
+	// resetNavState.
 	bd.resetNavState()
 }
 
@@ -1327,8 +1313,8 @@ func (bd *BrowserDisplay) ShowRequestFailed(statusText string) {
 // destination_hash, or history, so the page the user was viewing stays put and
 // Back (Ctrl-d) works as normal (it has nothing to undo for the failed link).
 //
-// HandleLink now pushes a nomadnetwork.node link's target eagerly (so a
-// SUCCESSFUL click's Back works), so a FAILED link must roll that push back;
+// HandleLink pushes a nomadnetwork.node link's target eagerly (so a SUCCESSFUL
+// click's Back works), so a FAILED link must roll that push back;
 // rollbackPendingLink pops the just-pushed entry, leaving the user on the page
 // they were viewing with the footer carrying the error. showContent swaps the
 // "Retrieving" loading body back out if a URL-bar load had shown it (a no-op
@@ -1497,12 +1483,6 @@ func (bd *BrowserDisplay) MarkedLink(target, fields string) {
 	bd.footerStatus.SetText(escapeTviewTags(truncateEllipsis(lstr, lmax)))
 }
 
-// SetTransferStats records the response size, transfer size, and elapsed time
-// for the most recent fetch, then refreshes the footer status — mirroring
-// Python Browser.status_text (Browser.py:1756-1803) which renders
-// "Done  ▤ <size>   ↓<size> in <t>s   ◷ <speed>b/s". cached marks a cache hit
-// (" (cached)"). Call with hasTransfer=false before the fetch completes to show
-// the in-flight status label instead.
 // FooterText returns the footer status line exactly as rendered. The status line
 // is user-visible state — "No path to destination known", "Establishing link...",
 // "Saved <name>", the byte/speed stats — so tests assert on it rather than on the
@@ -1530,6 +1510,12 @@ func (bd *BrowserDisplay) ShowDownload(savedName string, savedSize int, elapsed 
 	bd.SetTransferStats(int64(savedSize), int64(savedSize), elapsed, false)
 }
 
+// SetTransferStats records the response size, transfer size, and elapsed time
+// for the most recent fetch, then refreshes the footer status — mirroring
+// Python Browser.status_text (Browser.py:1756-1803) which renders
+// "Done  ▤ <size>   ↓<size> in <t>s   ◷ <speed>b/s". cached marks a cache hit
+// (" (cached)"). A zero transferSize records a fetch with no body and shows the
+// in-flight status label instead.
 func (bd *BrowserDisplay) SetTransferStats(responseSize, transferSize int64, responseTime float64, cached bool) {
 	bd.responseSize = responseSize
 	bd.responseTransfer = transferSize

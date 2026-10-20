@@ -26,10 +26,9 @@ import (
 //	"Select the desired paper message output method.\nSaved files will be written
 //	 to:\n\n" + str(self.app.downloads_path) + "\n"
 //
-// SOT: ui/textui/Conversations.py:2538-2541 (nomadnet 1.2.8). The port showed only
-// the first sentence, so a user was never told where the file would be written —
-// and an empty composer closes the dialog without doing anything at all, which is
-// baffling without that line.
+// SOT: ui/textui/Conversations.py:2538-2541 (nomadnet 1.2.8). The body must name
+// the destination directory, since an empty composer closes the dialog without
+// doing anything at all.
 func TestPaperMessageDialogText(t *testing.T) {
 	t.Parallel()
 
@@ -44,7 +43,7 @@ func TestPaperMessageDialogText(t *testing.T) {
 	if !strings.Contains(got, downloads) {
 		t.Errorf("dialog text %q does not name the downloads directory", got)
 	}
-	// The sentence the port used to show on its own must not be the whole body.
+	// The first sentence alone must not be the whole body.
 	if got == "Select the desired paper message output method." {
 		t.Error("dialog text is the truncated form that never named the destination directory")
 	}
@@ -53,8 +52,8 @@ func TestPaperMessageDialogText(t *testing.T) {
 // TestAnimationIntervalReachesTheDisplay pins the wiring half of
 // [textui] animation_interval: the configured seconds must reach the Network
 // page's live widgets, which Python drives from the same key
-// (ui/textui/Network.py:399,1030-1231,1542). The port hardcoded one second, so a
-// user who asked for a slower or faster refresh got neither.
+// (ui/textui/Network.py:399,1030-1231,1542). A configured interval must reach
+// both the app and the Node Info ticker.
 func TestAnimationIntervalReachesTheDisplay(t *testing.T) {
 	t.Parallel()
 

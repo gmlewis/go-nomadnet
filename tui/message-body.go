@@ -34,8 +34,8 @@ import (
 // Color-model note: the RRC render's 3-hex specs ("ddd", "888", …) flow
 // through MicronParser high_color, which NIBBLE-DOUBLES them into 6-digit
 // "#rrggbb" specs ("#dddddd"), so urwid's truecolor path renders them exact
-// (221;221;221 for the body text — verified against the live #test captures).
-// That differs from the static UI palette entries ("#bbb" etc.), which urwid
+// (221;221;221 for the body text). That differs from the static UI palette
+// entries ("#bbb" etc.), which urwid
 // routes through the 256-color cube first (175) — hence nibbleHex3 here
 // versus cubeHex3 for the chrome colors in palette.go.
 
@@ -62,8 +62,7 @@ func nibbleHex3(spec string) tcell.Color {
 // (irc_system/irc_notice/irc_error, ui/TextUI.py:66-68) whose 3-hex specs
 // urwid routes through the 256-color cube first — so they (and the irc_ts
 // prefix of system/notice/error rows, ui/TextUI.py:63) are CUBE-quantized
-// here. Measured on the 2026-09-03 12:32 full-fleet capture (mac row 24):
-// the notice ts run (135,135,135) and the 󰙎 Welcome run (255,215,95).
+// here.
 func rrcRenderColors(theme int) map[string]tcell.Color {
 	if theme == ThemeLight {
 		return map[string]tcell.Color{
@@ -182,10 +181,9 @@ var (
 	// RE2 equivalent and are checked manually in scanChatLinks.
 	//
 	// The rrc:// alternative is a deliberate extension over Python's chat
-	// grammar, which has no RRC form in chat: the request was for an RRC hub link
-	// to work in a chat row exactly as it already does inside a Micron page, where
-	// the browser parses "rrc://<hex>[:<dest name>]/<room>" (Browser.py:277-279,
-	// handle_rrc_link at Browser.py:426). The shape below is that same form.
+	// grammar: a chat row accepts the same "rrc://<hex>[:<dest name>]/<room>"
+	// form the Micron browser parses (Browser.py:277-279, handle_rrc_link at
+	// Browser.py:426).
 	chatLinkCoreRE = regexp.MustCompile(
 		`lxmf@[0-9a-fA-F]{32}` +
 			`|rrc://[0-9a-fA-F]{32}(?::[^\s/]+)?(?:/[^\s/]+)?` +
@@ -504,12 +502,10 @@ func ircTsRun(tsMs int64, tsColor tcell.Color) string {
 // rrcEventIconBody resolves a system/notice/error row's render shape: the
 // event icon (empty when the text carries its own) and the body color.
 // Join/part events arrive as Kind "system" rows whose text is "<nick>
-// joined" / "<nick> left" (Python _record_system, no arrow in the text):
-// the suffix-derived arrow below reproduces capture 47's `→ Nick joined` /
-// `← Nick left` rows; older arrow-prefixed rows (the arrow already in the
-// text) render the text AS-IS with no extra icon. Regular notices carry the
-// info glyph in the notice color and errors the warning glyph in the error
-// color.
+// joined" / "<nick> left" (Python _record_system, no arrow in the text), so
+// the arrow is derived from that suffix; text that already starts with an
+// arrow renders AS-IS with no extra icon. Regular notices carry the info
+// glyph in the notice color and errors the warning glyph in the error color.
 func rrcEventIconBody(msg ChannelMessage, opts RRCRenderOpts) (icon string, color tcell.Color) {
 	colors := rrcRenderColors(opts.Theme)
 	switch {
@@ -544,8 +540,8 @@ func isArrowPrefixedText(text string, opts RRCRenderOpts) bool {
 // escapeTviewTags hides style-tag-looking runs so they print literally.
 // tview.Escape turns "[room]" into "[room[]" (see tview strings.go Escape /
 // escapePattern); Python urwid has no such tags, so /help must not lose
-// "[room]"/"[target]". Manual "[[" doubling is wrong for this parser — it
-// left "room]" in a half-open tag and dropped it on screen.
+// "[room]"/"[target]". Manual "[[" doubling is wrong for this parser: it
+// leaves a half-open tag that swallows the closing bracket.
 func escapeTviewTags(s string) string {
 	return tview.Escape(s)
 }
@@ -555,8 +551,7 @@ func escapeTviewTags(s string) string {
 // the event icon and the body form ONE text flow wrapped at the message
 // pane's inner width (urwid.Text "space" wrap), and every CONTINUATION line
 // starts at the LEFT EDGE of the pane with no timestamp, no indent and no
-// leader — capture 47's `members in general:` notice whose `(9ebb…)`
-// continuations start at column 0. Chat rows keep their justified layout.
+// leader. Chat rows keep their justified layout.
 // A width too small to hold the prefix falls back to the single-line render.
 // Body text is wrap-measured UNESCAPED, then "[" is doubled on the way out
 // so tview does not swallow "[room]"/"[target]" from /help (Python does not
@@ -573,8 +568,7 @@ func formatRRCEventLines(msg ChannelMessage, opts RRCRenderOpts, width int) []st
 	// Python runs the same _body_markup for a system/notice/error row as for a chat
 	// row (Channels.py:1295-1312) and hands the result to _wrap_text together with
 	// the chat link delegate, so an address a bot prints in a notice is styled and
-	// clickable exactly like one a person types in a chat row. The Go port escaped
-	// the body and never scanned it, which left every bot-posted address inert.
+	// clickable exactly like one a person types in a chat row.
 	body := func(text string) string {
 		return formatRRCBody(ChannelMessage{Room: msg.Room, Text: text}, opts)
 	}
@@ -595,9 +589,8 @@ func formatRRCEventLines(msg ChannelMessage, opts RRCRenderOpts, width int) []st
 	}
 	lines := make([]string, 0, len(segments))
 	// The first line carries the ts run, then the icon + the wrapped body
-	// part (the icon's own color run covers it, like the capture's
-	// `[ts][notice]󰙎 members…`); the body part is segment 0 minus the
-	// prefix runes.
+	// part (the icon's own color run covers it); the body part is segment 0
+	// minus the prefix runes.
 	lines = append(lines, tsRun+colorTag(color, "")+iconPart+body(string(first[prefixLen:]))+colorReset)
 	for _, seg := range segments[1:] {
 		lines = append(lines, colorTag(color, "")+body(seg)+colorReset)
@@ -746,9 +739,7 @@ func hexColorOr(spec string, fallback tcell.Color) tcell.Color {
 // divider, carrying no fg), and the body column starts at col 13 with
 // "<nick>". The body column wraps in the remaining width and EVERY wrapped
 // continuation line starts at col 13 — the same column as the "<" — with a
-// default-styled pad (measured on the 2026-09-03 12:32 full-fleet capture,
-// mac rows 22/27/28: pad len 1 default, ts len 11 (136,136,136), gap len 1
-// default, nick palette at col 13, body #dddddd from col 13 to the edge).
+// default-styled pad.
 
 const (
 	// rrcJustifyIndent is the chat column the body column starts at: the
@@ -804,10 +795,9 @@ func formatRRCMessageLines(msg ChannelMessage, opts RRCRenderOpts, width int) []
 				spanReset + formatRRCBody(ChannelMessage{Room: msg.Room, Text: seg}, opts)
 		}
 		// Python's urwid AttrMap rows paint the body attr across the FULL
-		// body column (the 2026-09-03 12:32 capture's rows 22/27/28: the
-		// body run + trailing spaces carry #dddddd to the chat box edge,
-		// cols 13..96) — pad the tagged line to the inner width; the pad
-		// is styled with the body color.
+		// body column, so the body run and its trailing spaces carry
+		// #dddddd to the chat box edge — pad the tagged line to the inner
+		// width with the body color.
 		if pad := width - tview.TaggedStringWidth(line); pad > 0 {
 			line += colorTag(colors["text"], "") + strings.Repeat(" ", pad) + colorReset
 		}
@@ -819,8 +809,7 @@ func formatRRCMessageLines(msg ChannelMessage, opts RRCRenderOpts, width int) []
 // formatJustifiedHead renders the first line of a justified message row: the
 // default pad, the grey ts run, the default gap, the palette-colored
 // "<sender>", and the body up to the first wrap. The styled nick run covers
-// "<sender>" only — the space after it carries the body (base) color like the
-// live capture's row 27 col 49.
+// "<sender>" only — the space after it carries the body (base) color.
 func formatJustifiedHead(msg ChannelMessage, opts RRCRenderOpts, seg string, nickLen int) string {
 	// The wrapped first line may END inside the "<sender> " prefix: urwid's
 	// space wrap breaks AT the nick's trailing space and drops it, leaving a
@@ -828,8 +817,7 @@ func formatJustifiedHead(msg ChannelMessage, opts RRCRenderOpts, seg string, nic
 	// that walks back into the prefix). Python renders the nick as a styled
 	// run inside one wrapping flow (Channels.py:1405-1413), so a partial
 	// nick run on line one is normal — slice defensively instead of
-	// panicking (the [17:16] crash of the JOINED-FANOUT live run,
-	// logs/crash-20260904-143649.log).
+	// panicking.
 	nick := seg
 	body := ""
 	if len(seg) >= nickLen {
