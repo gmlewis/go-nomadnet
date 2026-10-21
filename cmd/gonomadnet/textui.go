@@ -23,6 +23,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/signal"
@@ -69,8 +70,17 @@ func diagFile(path, line string) {
 // (RNS/__init__.py LOG_MAXSIZE), so there is no separate, unrotated std-log
 // file. Before the app logger exists, lines go to stderr (the TUI has not taken
 // over the terminal yet, so that is safe).
+//
+// Once the logger exists nothing is written to stderr: the terminal is what
+// tcell draws on, and a line written to it corrupts the display. That includes
+// the logger's own console fallback, which is why the TUI disables it
+// (SetConsoleFallback(false)); these lines then reach the log file, or are
+// dropped when it cannot be written.
 type stdLogLineWriter struct {
 	logger atomic.Pointer[rns.Logger]
+	// errOut is where a line goes before the app logger exists. It is nil in
+	// production, which means os.Stderr, and a buffer in tests.
+	errOut io.Writer
 	buf    []byte
 }
 
@@ -95,11 +105,43 @@ func (w *stdLogLineWriter) Write(p []byte) (int, error) {
 }
 
 func (w *stdLogLineWriter) route(line string) {
-	if l := w.logger.Load(); l != nil && !l.GetAlwaysOverride() {
-		l.Info("%v", line)
+	l := w.logger.Load()
+	if l == nil {
+		// The app logger does not exist yet, so the TUI has not taken the
+		// terminal over and stderr is the right place for the line.
+		out := w.errOut
+		if out == nil {
+			out = os.Stderr
+		}
+		_, _ = fmt.Fprintln(out, line)
 		return
 	}
-	fmt.Fprintln(os.Stderr, line)
+	if l.IsClosed() {
+		// Shutdown closes the logger before tcell restores the terminal, so a
+		// late line is dropped rather than drawn over the screen.
+		return
+	}
+	if l.GetAlwaysOverride() {
+		// A latched console override would send the line back through the
+		// standard logger, which is this writer: re-feeding it would loop.
+		// Nothing is drawn over the screen instead.
+		return
+	}
+	l.Info("%v", line)
+}
+
+// tuiLogDestError reports why a log destination cannot be used while the
+// terminal UI owns the screen, or nil when it can.
+//
+// tcell draws on the same console (on Windows it opens CONOUT$ itself), so a
+// line printed to stdout lands in the middle of the display and stays there.
+// The file sink is the only destination that keeps logging off the screen;
+// Python permits the combination and garbles its display.
+func tuiLogDestError(dest int, configPath string) error {
+	if dest != rns.LogStdout {
+		return nil
+	}
+	return fmt.Errorf("the terminal UI cannot log to stdout: %v does not set [logging] destination = file, and a log line written to the console overwrites the display; set [logging] destination = file, or run daemon mode", configPath)
 }
 
 // reportTUIError reports a terminal interface that would not run.
@@ -134,9 +176,30 @@ func runTextUI(configDir, rnsConfigDir string) {
 		log.Fatalf("Failed to initialize: %v", err)
 	}
 	if a.Logger != nil {
+		// Logging may never reach the terminal: tcell owns the screen, and a
+		// line written underneath it corrupts the display. Disabling the
+		// logger's Python console fallback here, before anything can fail,
+		// keeps a broken file sink from latching into console mode at all.
+		a.Logger.SetConsoleFallback(false)
+
 		// From here on std-log lines join the RNS logs in the rotating
 		// ~/.nomadnetwork/logfile instead of stderr.
 		stdLog.logger.Store(a.Logger)
+	}
+
+	// A terminal UI cannot log to stdout: see tuiLogDestError.
+	if a.Logger != nil {
+		configPath := a.ConfigPath
+		if configPath == "" {
+			configPath = filepath.Join(a.ConfigDir, "config")
+		}
+		if err := tuiLogDestError(a.Logger.GetLogDest(), configPath); err != nil {
+			// The TUI has not started, so stderr is safe here. The logger's
+			// queue is asynchronous and Fatal exits immediately, so writing
+			// through it could lose the one message that must be seen.
+			log.SetOutput(os.Stderr)
+			log.Fatal(err)
+		}
 	}
 
 	// Determine theme and color depth from config. Python raises ValueError
@@ -319,6 +382,21 @@ func runTextUI(configDir, rnsConfigDir string) {
 	}
 	tuiApp.SetQuitCallback(quitFn)
 
+	// The logger's console fallback is already off, so a failed file sink drops
+	// the line and reports it here instead of writing anything to the terminal.
+	// A failure that outlasts the grace period is fatal — logging is silently
+	// broken and the client must not keep running as if it were healthy — and
+	// it stops through the same graceful exit as Ctrl-Q, so tcell restores the
+	// terminal before the error is printed. The stop is issued on a new
+	// goroutine because a.Shutdown closes the logger, and this callback runs on
+	// the logger's writer goroutine, which Close waits for.
+	sink := newSinkWatch(a.LogFilePath)
+	a.Logger.SetSinkErrorFunc(func(op string, err error) {
+		if sink.observe(op, err) {
+			go quitFn()
+		}
+	})
+
 	// External signals (SIGINT/SIGTERM — `kill`, the recovery path when the UI
 	// becomes unresponsive) run the SAME graceful exit as Ctrl-Q, so the
 	// directory and RNS state are saved and tcell restores the terminal. While
@@ -362,6 +440,18 @@ func runTextUI(configDir, rnsConfigDir string) {
 	// exit that skipped the restore would leave the shell reading in raw mode
 	// with the terminal still reporting the mouse.
 	tuiApp.RestoreTerminal()
+
+	// The terminal is back, so the standard logger may write to stderr again.
+	// Without this the reports below would be routed into the app logger,
+	// which shutdown has closed, and lost.
+	log.SetOutput(os.Stderr)
+
+	// A log sink that could not recover is why Run returned; report it first so
+	// the user sees the cause rather than a bare exit.
+	if reason := sink.stopReason(); reason != nil {
+		a.Logger.Flush()
+		reportTUIError(reason)
+	}
 
 	if err != nil {
 		// The rns logger writes asynchronously; flush the queue so queued

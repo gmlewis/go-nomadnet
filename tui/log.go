@@ -129,7 +129,7 @@ func (ld *LogDisplay) logAtTop() bool {
 // view. It polls the file at a fixed interval (avoiding the CPU spin of a
 // busy-loop) and marshals each append onto the application event loop.
 func (ld *LogDisplay) StartTailing() {
-	file, err := os.Open(ld.logPath)
+	file, err := openLogTail(ld.logPath)
 	if err != nil {
 		return
 	}
