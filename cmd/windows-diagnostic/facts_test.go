@@ -308,10 +308,31 @@ func TestDiagnose(t *testing.T) {
 					c := console(120, 30, 120, 30)
 					c.ConsoleWindow = 0x1234
 					c.ConsoleVisible = false
+					c.ConsoleVisibleKnown = true
 					return c
 				}(),
 			},
 			want: []string{codeHiddenConsoleOnMintty},
+		},
+		{
+			// IsWindowVisible can fail to resolve, and a zero ConsoleVisible
+			// then means nothing. Unknown visibility must not be reported as a
+			// hidden console.
+			name: "unknown console visibility on mintty",
+			f: Facts{
+				GOOS:      "windows",
+				TermSet:   true,
+				TermValue: "xterm-256color",
+				Backend:   backendTerminfo,
+				Entry:     entry("xterm-direct"),
+				Env:       Env{"MSYSTEM": "MINGW64"},
+				Console: func() *ConsoleFacts {
+					c := console(120, 30, 120, 30)
+					c.ConsoleWindow = 0x1234
+					return c
+				}(),
+			},
+			want: nil,
 		},
 		{
 			name: "unix without TERM has no screen at all",

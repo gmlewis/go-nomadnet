@@ -156,8 +156,15 @@ type ConsoleFacts struct {
 	Attributes      uint16
 	ConsoleWindow   uintptr
 	ConsoleVisible  bool
-	InputCP         uint32
-	OutputCP        uint32
+	// ConsoleVisibleKnown records whether IsWindowVisible answered. When it did
+	// not, ConsoleVisible is meaningless and must not be read as "hidden".
+	ConsoleVisibleKnown bool
+	InputCP             uint32
+	OutputCP            uint32
+
+	// UnavailableAPIs lists lazily-loaded Win32 procedures that could not be
+	// resolved, so the report can distinguish "unknown" from a measured zero.
+	UnavailableAPIs []string
 }
 
 // OutputMode returns the console output mode as it was found before the
@@ -535,7 +542,8 @@ func diagnoseWindowsConsole(f Facts, flavor string) []Finding {
 			})
 		}
 	}
-	if c.Attached && c.ConsoleWindow != 0 && !c.ConsoleVisible && flavor == termClassMintty {
+	if c.Attached && c.ConsoleWindow != 0 && c.ConsoleVisibleKnown && !c.ConsoleVisible &&
+		flavor == termClassMintty {
 		out = append(out, Finding{
 			Severity: SeverityNote,
 			Code:     codeHiddenConsoleOnMintty,

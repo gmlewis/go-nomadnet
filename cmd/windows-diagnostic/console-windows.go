@@ -18,6 +18,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 
 	"golang.org/x/sys/windows"
@@ -25,10 +26,33 @@ import (
 
 var (
 	kernel32             = windows.NewLazySystemDLL("kernel32.dll")
+	user32               = windows.NewLazySystemDLL("user32.dll")
 	procGetConsoleWindow = kernel32.NewProc("GetConsoleWindow")
 	procGetConsoleCP     = kernel32.NewProc("GetConsoleCP")
-	procIsWindowVisible  = kernel32.NewProc("IsWindowVisible")
+	procIsWindowVisible  = user32.NewProc("IsWindowVisible")
 )
+
+// callProc invokes a lazily-loaded Win32 procedure and reports an error when
+// the export cannot be found.
+//
+// A LazyProc resolves its export on first Call and panics when the procedure
+// does not exist, which is not acceptable in a diagnostic tool: one missing
+// API would abort the run before it printed anything. Find is therefore called
+// first, and the lookup error is returned instead of raised.
+func callProc(proc *windows.LazyProc, args ...uintptr) (uintptr, error) {
+	if err := proc.Find(); err != nil {
+		return 0, err
+	}
+	r, _, _ := proc.Call(args...)
+	return r, nil
+}
+
+// noteUnavailable records a Win32 procedure that could not be resolved, so the
+// report can say a fact is unknown rather than reporting a default as a
+// measurement.
+func noteUnavailable(c *ConsoleFacts, dll, name string, err error) {
+	c.UnavailableAPIs = append(c.UnavailableAPIs, fmt.Sprintf("%v!%v: %v", dll, name, err))
+}
 
 // consoleProbe is the result of opening one console device name and asking it
 // about itself.
@@ -105,17 +129,28 @@ func gatherConsole() *ConsoleFacts {
 	c.Attached = c.StdinIsConsole || c.StdoutIsConsole || c.StderrIsConsole ||
 		c.ConInOpens || c.ConOutOpens
 
-	if hwnd, _, _ := procGetConsoleWindow.Call(); hwnd != 0 {
+	hwnd, err := callProc(procGetConsoleWindow)
+	switch {
+	case err != nil:
+		noteUnavailable(c, "kernel32", "GetConsoleWindow", err)
+	case hwnd != 0:
 		c.ConsoleWindow = hwnd
 		// A console window that is not visible means the process was given a
 		// console that is not the window the user is looking at: mintty's
 		// relay, or a ConPTY. It is the strongest single sign that tcell's
-		// output has a translation layer in front of it.
-		if visible, _, _ := procIsWindowVisible.Call(hwnd); visible != 0 {
-			c.ConsoleVisible = true
+		// output has a translation layer in front of it. Visibility is only
+		// known when the call succeeds, so an unknown value is never reported
+		// as "hidden".
+		visible, err := callProc(procIsWindowVisible, hwnd)
+		if err != nil {
+			noteUnavailable(c, "user32", "IsWindowVisible", err)
+		} else {
+			c.ConsoleVisible, c.ConsoleVisibleKnown = visible != 0, true
 		}
 	}
-	if cp, _, _ := procGetConsoleCP.Call(); cp != 0 {
+	if cp, err := callProc(procGetConsoleCP); err != nil {
+		noteUnavailable(c, "kernel32", "GetConsoleCP", err)
+	} else if cp != 0 {
 		c.InputCP = uint32(cp)
 	}
 	if cp, err := windows.GetConsoleOutputCP(); err == nil {

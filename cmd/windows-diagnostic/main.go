@@ -274,11 +274,15 @@ func writeConsoleReport(p func(string, ...any), c *ConsoleFacts) {
 		p("  screen buffer    : <unavailable>\n")
 	}
 	if c.ConsoleWindow != 0 {
-		p("  console HWND     : %#x (%v)\n", c.ConsoleWindow, visibleWord(c.ConsoleVisible))
+		p("  console HWND     : %#x (%v)\n", c.ConsoleWindow,
+			visibleWord(c.ConsoleVisible, c.ConsoleVisibleKnown))
 	} else {
 		p("  console HWND     : <none>\n")
 	}
 	p("  code pages       : input %v, output %v\n", c.InputCP, c.OutputCP)
+	if len(c.UnavailableAPIs) > 0 {
+		p("  unavailable APIs : %v\n", strings.Join(c.UnavailableAPIs, "; "))
+	}
 }
 
 // writeScreenReport prints the live probe section.
@@ -405,10 +409,15 @@ func yesNo(b bool) string {
 	return "no"
 }
 
-// visibleWord describes a console window's visibility.
-func visibleWord(visible bool) string {
-	if visible {
+// visibleWord describes a console window's visibility, keeping "unknown"
+// distinct from "hidden".
+func visibleWord(visible, known bool) string {
+	switch {
+	case !known:
+		return "visibility unknown"
+	case visible:
 		return "visible"
+	default:
+		return "hidden"
 	}
-	return "hidden"
 }
